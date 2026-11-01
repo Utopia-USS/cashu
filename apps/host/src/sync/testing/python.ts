@@ -1,4 +1,4 @@
-// TRANSITIONAL(S49): test helpers of the sync daemon (S31a). A synthetic Python database with the
+// TRANSITIONAL(S49): test helpers of the host's outbox bridge (S31a). A synthetic Python database with the
 // sync tables (Alembic 0027-0029 shape) and outbox rows of alert edits, and a fake `cashu` CLI that
 // acks into it. Synthetic values only.
 import { mkdtempSync } from "node:fs";
@@ -58,8 +58,10 @@ export class SyntheticPython {
   #id = 0;
 
   constructor() {
-    this.dir = mkdtempSync(join(tmpdir(), "cashu-daemon-py-"));
+    this.dir = mkdtempSync(join(tmpdir(), "cashu-bridge-py-"));
     this.#db = new DatabaseSync(join(this.dir, "cashu.db"));
+    // Match the real Python app: concurrent readers must not block the writer.
+    this.#db.exec("PRAGMA journal_mode=WAL");
     this.#db.exec(DDL);
   }
 
@@ -130,18 +132,18 @@ export class SyntheticPython {
     return {
       acks,
       applied,
-      ack(through, entries) {
+      async ack(through, entries) {
         acks.push({ through, entries });
         db.prepare("UPDATE sync_outbox SET acked_at = ? WHERE id <= ? AND acked_at IS NULL").run(
           T0,
           through,
         );
       },
-      apply(_slug, lines) {
+      async apply(_slug, lines) {
         applied.push([...lines]);
         return { applied: lines.length };
       },
-      seed() {
+      async seed() {
         return { inserted: 0 };
       },
     };

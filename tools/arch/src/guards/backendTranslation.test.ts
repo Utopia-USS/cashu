@@ -134,7 +134,7 @@ describe("backend translation scope", () => {
     "apps/cli/src/index.ts",
     "apps/host/src/cli/runner.ts",
     "apps/relay/src/index.ts",
-    "apps/sync-daemon/src/index.ts",
+    "apps/host/src/sync/service.ts",
     "apps/desktop/src/main.ts",
     "apps/desktop/src/preload.cts",
     "apps/desktop/src/hostRelay.ts",

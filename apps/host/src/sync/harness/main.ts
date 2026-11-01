@@ -1,4 +1,4 @@
-// TRANSITIONAL(S49): the S31a phase 1 milestone harness (spec 9): Python writes -> outbox -> daemon ->
+// TRANSITIONAL(S49): the S31a phase 1 milestone harness (spec 9): Python writes -> outbox -> host ->
 // encrypted log -> a verifier's TS fold == the Python DB, per `store.table.*`, on a run copy of a
 // parity dataset (`demo`, synthetic; `lab`, the owner's real data COPY).
 //
@@ -13,8 +13,8 @@
 //
 // Placement deviation (S31a checkpoint): the spec puts the harness in packages/parity, but it drives
 // sync engines and Node folders, which the parity layer may not import (parity -> domain, store, mcp;
-// node-host is for apps): it lives in the daemon app and calls the parity CLIs as processes.
-import { spawn, spawnSync } from "node:child_process";
+// node-host is for apps): it lives in the host app and calls the parity CLIs as processes.
+import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -24,8 +24,9 @@ import { detGidFor, mintUlid, vaultSalt } from "@cashu/store";
 import { createOwnLogCodec, crypto, decodePayload, FolderTransport, scanFrames } from "@cashu/sync";
 import { labFileKeyStore } from "../keys/labFile.js";
 import { openDevice, openVerifier, verifierDb } from "./devices.js";
+import { HarnessHost } from "./host.js";
 
-const REPO = resolve(import.meta.dirname, "..", "..", "..", "..");
+const REPO = resolve(import.meta.dirname, "..", "..", "..", "..", "..");
 const PY = join(REPO, ".venv", "bin", "python");
 const CASHU = join(REPO, ".venv", "bin", "cashu");
 const NODE_TS = [
@@ -34,7 +35,6 @@ const NODE_TS = [
   "--import",
   join(REPO, "tools", "node-ts", "resolveTs.ts"),
 ];
-const DAEMON = [...NODE_TS, join(REPO, "apps", "sync-daemon", "src", "cli.ts")];
 const STORE_TABLES = [
   "profiles",
   "profile_modules",
@@ -105,10 +105,10 @@ const lastJson = (out: string): Line => jsonLines(out).at(-1) ?? {};
 interface Ctx {
   readonly dataset: "lab" | "demo";
   readonly run: string;
-  readonly config: string;
+  readonly host: HarnessHost;
   readonly env: NodeJS.ProcessEnv;
   readonly envSync: NodeJS.ProcessEnv;
-  readonly daemonLines: Line[];
+  readonly hostLines: Line[];
 }
 
 function dataDirCheck(c: Ctx, env: NodeJS.ProcessEnv): void {
@@ -135,58 +135,16 @@ function cashu(c: Ctx, args: readonly string[], sync: boolean): string {
   return run(CASHU, args, env, `cashu ${args[0] ?? ""}`);
 }
 
-function daemon(c: Ctx, args: readonly string[], what: string): Line[] {
-  const r = spawnSync(process.execPath, [...DAEMON, ...args, "--config", c.config], {
-    encoding: "utf8",
-    cwd: REPO,
-    env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },
-    maxBuffer: 256 * 1024 * 1024,
-  });
-  const lines = jsonLines(r.stdout);
-  c.daemonLines.push(...lines.map((l) => ({ ...l, run: what })));
-  if (r.status !== 0) {
-    const blocked = lines.find((l) => "blocked" in l);
-    throw new HarnessError(
-      `daemon ${what} exit ${r.status ?? "signal"}${blocked ? ` blocked=${String(blocked.blocked)}` : ""}`,
-    );
-  }
+function bridge(c: Ctx, args: readonly string[], what: string): Line[] {
+  const lines = c.host.run(args);
+  c.hostLines.push(...lines.map((line) => ({ ...line, run: what })));
   return lines;
 }
 
-/** Starts `run`, SIGKILLs it when it prints the progress line `point`; true when it was killed there. */
-function killAt(c: Ctx, point: string): Promise<boolean> {
-  return new Promise((done, fail) => {
-    const child = spawn(process.execPath, [...DAEMON, "run", "--config", c.config], {
-      cwd: REPO,
-      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    let killed = false;
-    let buffer = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      fail(new HarnessError(`kill test: no ${point} line within 120 s`));
-    }, 120_000);
-    child.stdout.on("data", (chunk: Buffer) => {
-      buffer += chunk.toString("utf8");
-      let nl = buffer.indexOf("\n");
-      while (nl >= 0) {
-        const line = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 1);
-        if (line.startsWith("{"))
-          c.daemonLines.push({ ...(JSON.parse(line) as Line), run: `kill-${point}` });
-        if (!killed && line.includes(`"progress":"${point}"`)) {
-          killed = true;
-          child.kill("SIGKILL");
-        }
-        nl = buffer.indexOf("\n");
-      }
-    });
-    child.on("exit", () => {
-      clearTimeout(timer);
-      done(killed);
-    });
-  });
+async function killAt(c: Ctx, point: string): Promise<boolean> {
+  const lines = await c.host.killAt(point);
+  c.hostLines.push(...lines.map((line) => ({ ...line, run: `kill-${point}` })));
+  return true;
 }
 
 /** Read-only counts / targets from the run copy (never printed). */
@@ -301,6 +259,10 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   chmodSync(runDir, 0o700);
   let failed = true;
+  let exitCode = 70;
+  let host: HarnessHost | undefined;
+  let sourceManifest: unknown;
+  let manifestChecked = false;
   try {
     const before = lastJson(
       run(
@@ -310,6 +272,7 @@ async function main(argv: readonly string[]): Promise<number> {
         "manifest",
       ),
     );
+    sourceManifest = before.manifest;
     say({ step: "manifest", when: "before", manifest: String(before.manifest).slice(0, 20) });
     run(
       PY,
@@ -341,40 +304,40 @@ async function main(argv: readonly string[]): Promise<number> {
       ) as NodeJS.ProcessEnv;
     const env = envOf(false);
     const envSync = envOf(true);
-    const config = join(runDir, "daemon.json");
+    const config = join(runDir, "data", "sync-bridge.json");
     writeFileSync(
       config,
       JSON.stringify({
-        format: 1,
-        dataDir: join(runDir, "data"),
+        format: 2,
         python: { argv: [CASHU], env: envSync },
         stateRoot: join(runDir, "state"),
         remotes: [{ kind: "folder", root: join(runDir, "remote") }],
         keys: {
           kind: "lab-file",
-          path: join(runDir, "keys", "daemon-keys.json"),
+          path: join(runDir, "keys", "host-keys.json"),
           pythonKeyring: join(runDir, "keys", "keyring.json"),
         },
         pollMs: 500,
       }),
       { mode: 0o600 },
     );
-    const c: Ctx = { dataset, run: runDir, config, env, envSync, daemonLines: [] };
+    host = new HarnessHost(REPO, runDir, NODE_TS);
+    const c: Ctx = { dataset, run: runDir, host, env, envSync, hostLines: [] };
 
     // 1-2: schema to head, first start.
     cashu(c, ["init-db"], false);
-    daemon(c, ["init"], "init");
+    bridge(c, ["init"], "init");
     say({
       step: "init",
-      vaults: c.daemonLines.filter((l) => l.step === "init").length,
-      events: c.daemonLines
+      vaults: c.hostLines.filter((l) => l.step === "init").length,
+      events: c.hostLines
         .filter((l) => l.step === "init")
         .reduce((n, l) => n + Number(l.events ?? 0), 0),
     });
 
     // A stale device: holds the genesis only; its clock stays near the genesis wall.
     const sodium = await crypto.loadNodeSodium();
-    const keyStore = labFileKeyStore(join(runDir, "keys", "daemon-keys.json"));
+    const keyStore = labFileKeyStore(join(runDir, "keys", "host-keys.json"));
     const first = targets(c);
     const ring = await crypto.loadKeyring(keyStore, sodium, first.vaultId);
     if (ring === null) throw new HarnessError("no ring for vault 0");
@@ -411,8 +374,8 @@ async function main(argv: readonly string[]): Promise<number> {
         ),
       ),
     });
-    daemon(c, ["run", "--once"], "phaseA");
-    say({ step: "shipA", pending: pending(c), ...shipTotals(c.daemonLines, "phaseA") });
+    bridge(c, ["run", "--once"], "phaseA");
+    say({ step: "shipA", pending: pending(c), ...shipTotals(c.hostLines, "phaseA") });
 
     // 5: phase B in three parts, one SIGKILL per crash point, each recovered by `run --once`.
     const kills: Line = {};
@@ -432,8 +395,10 @@ async function main(argv: readonly string[]): Promise<number> {
         `phase B${i + 1}`,
       );
       const killed = await killAt(c, point);
-      daemon(c, ["run", "--once"], `recover-${point}`);
-      kills[point] = { killed, pending: pending(c) };
+      bridge(c, ["run", "--once"], `recover-${point}`);
+      const remaining = pending(c);
+      if (!killed || remaining !== 0) throw new HarnessError(`crash recovery failed at ${point}`);
+      kills[point] = { killed, pending: remaining };
     }
     say({ step: "kill", ...kills });
 
@@ -521,8 +486,8 @@ async function main(argv: readonly string[]): Promise<number> {
     say({ step: "inbound", at: atIso.slice(0, 10), ...inbound });
 
     // 7: pull + pipe, then a local write after the inbound ones and ship it.
-    daemon(c, ["run", "--once"], "inbound");
-    say({ step: "pipe", ...pipeTotals(c.daemonLines, "inbound") });
+    bridge(c, ["run", "--once"], "inbound");
+    say({ step: "pipe", ...pipeTotals(c.hostLines, "inbound") });
     say({
       step: "phaseC",
       ...lastJson(
@@ -540,7 +505,7 @@ async function main(argv: readonly string[]): Promise<number> {
         ),
       ),
     });
-    daemon(c, ["run", "--once"], "phaseC");
+    bridge(c, ["run", "--once"], "phaseC");
     // The scenarios the first milestone avoided (review F2): an overlapping broker re-import, then a
     // merge of an instrument the vault already holds; S31c: a re-import with changed figures (X),
     // alert tags (T), a proposal rejected with a note and an approval that failed after the
@@ -560,13 +525,13 @@ async function main(argv: readonly string[]): Promise<number> {
           `phase ${phase}`,
         ),
       );
-      daemon(c, ["run", "--once"], `phase${phase}`);
+      bridge(c, ["run", "--once"], `phase${phase}`);
       say({
         step: `phase${phase}`,
         txns: writes.txns,
         skipped: writes.skipped,
         pending: pending(c),
-        ...shipTotals(c.daemonLines, `phase${phase}`),
+        ...shipTotals(c.hostLines, `phase${phase}`),
       });
     }
     await stale.close();
@@ -639,6 +604,22 @@ async function main(argv: readonly string[]): Promise<number> {
         s31c,
       });
       await dev.close();
+      if (
+        dup !== 0 ||
+        raw.duplicates !== 0 ||
+        synced.rejected.length !== 0 ||
+        synced.parked !== 0
+      ) {
+        say({
+          step: "verifier-failed",
+          vault: ordinal,
+          duplicates: dup,
+          rawDuplicates: raw.duplicates,
+          rejected: synced.rejected.length,
+          parked: synced.parked,
+        });
+        throw new HarnessError("verifier integrity failed");
+      }
     }
     writeFileSync(
       join(runDir, "verifier", "verifier.json"),
@@ -694,7 +675,6 @@ async function main(argv: readonly string[]): Promise<number> {
         join(runDir, "out", dataset),
         "--actual",
         join(runDir, "out", "ts"),
-        "--allow-stale",
         ...STORE_TABLES.flatMap((s) => ["--check", s]),
       ],
       { encoding: "utf8", cwd: REPO },
@@ -723,24 +703,60 @@ async function main(argv: readonly string[]): Promise<number> {
     });
     process.stdout.write(compare.stdout);
     writeFileSync(
-      join(runDir, "out", "daemon.jsonl"),
-      c.daemonLines.map((l) => JSON.stringify(l)).join("\n"),
+      join(runDir, "out", "host.jsonl"),
+      c.hostLines.map((l) => JSON.stringify(l)).join("\n"),
       { mode: 0o600 },
     );
+    manifestChecked = true;
     if (after.manifest !== before.manifest) throw new HarnessError("source manifest changed", 2);
     failed = compare.status !== 0;
-    return failed ? 1 : 0;
+    exitCode = failed ? 1 : 0;
   } catch (e) {
     say({
       step: "error",
       message: e instanceof HarnessError ? e.message : e instanceof Error ? e.name : "unknown",
     });
     if (process.env.CASHU_HARNESS_DEBUG === "1" && dataset === "demo") console.error(e);
-    return e instanceof HarnessError ? e.exitCode : 70;
+    exitCode = e instanceof HarnessError ? e.exitCode : 70;
   } finally {
-    if (!keep && !failed) rmSync(runDir, { recursive: true, force: true });
+    let cleanupExit: number | undefined;
+    try {
+      host?.stop();
+    } catch {
+      failed = true;
+      cleanupExit = 70;
+      say({ step: "cleanup", stopped: false });
+    }
+    // A failed milestone still proves that its read-only source stayed unchanged.
+    if (!manifestChecked && sourceManifest !== undefined) {
+      try {
+        const after = lastJson(
+          run(
+            PY,
+            [join(REPO, "parity", "python", "golden.py"), "--manifest", dataset],
+            process.env,
+            "manifest",
+          ),
+        );
+        const unchanged = after.manifest === sourceManifest;
+        say({
+          step: "manifest",
+          when: "after",
+          manifest: String(after.manifest).slice(0, 20),
+          unchanged,
+        });
+        if (!unchanged) cleanupExit = 2;
+      } catch {
+        cleanupExit = 70;
+        say({ step: "manifest", when: "after", verified: false });
+      }
+    }
+    if (!keep && !failed && cleanupExit === undefined)
+      rmSync(runDir, { recursive: true, force: true });
     else say({ step: "run-dir", kept: true });
+    if (cleanupExit !== undefined) exitCode = cleanupExit;
   }
+  return exitCode;
 }
 
 function shipTotals(lines: readonly Line[], run: string): Line {

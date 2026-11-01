@@ -140,7 +140,7 @@ function runGenesis(db: PythonDb): GenesisRun {
 // --------------------------------------------------------------------------------------------- //
 // TRANSITIONAL(S49): the S31a milestone store source. Instead of genesis, each vault's view is the
 // verifier store of a bridge run (a fresh device that pulled only the encrypted remote log and folded
-// it; `apps/sync-daemon` harness), and `sources` come from the run copy's `sync_ids` / `sync_vaults`,
+// it; `apps/host/src/sync/harness`), and `sources` come from the run copy's `sync_ids` / `sync_vaults`,
 // so the producers' view-count invariant also proves Python's gid map complete.
 
 interface VerifierVault {

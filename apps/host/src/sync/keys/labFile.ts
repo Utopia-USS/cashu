@@ -1,7 +1,6 @@
-// TRANSITIONAL(S47): the lab key store of the sync daemon (S31a spec 2.3, D3a). The production
-// KeyStore lives only in Electron (`safeStorage`), so the production daemon runs in the desktop
-// utility process; this file store exists for the lab host and refuses any path outside the lab root
-// (`config.ts`). Format `{format: 1, entries: {<name>: <base64>}}`, mode 0600, replaced atomically.
+// TRANSITIONAL(S56e): the lab key store of the host's outbox bridge (S31a spec 2.3, D3a). The
+// production KeyStore is the host's OS keyring adapter (S56e); this file store exists for the lab
+// and refuses any path outside the lab root (`config.ts`). Format `{format: 1, entries: {<name>: <base64>}}`, mode 0600, replaced atomically.
 //
 // Python's gid salt goes to the lab `FileKeyring` backend (parity/python/lab_keyring.py) in its own
 // file: `{format: 1, entries: {<service>: {<account>: <password>}}}`.

@@ -1,8 +1,8 @@
 // TRANSITIONAL(S49): the S31a milestone harness (spec 9.3 steps 6 and 8).
 //
-// Devices of the harness process besides the daemon: an inbound device that writes allowed edits into
+// Devices of the harness process besides the host: an inbound device that writes allowed edits into
 // a vault (spec 9.3 step 6) and the verifier, a fresh device with an empty store that pulls only the
-// encrypted remote folder and folds it (step 8; never the daemon's state dir). Each gets its own
+// encrypted remote folder and folds it (step 8; never the host's bridge state dir). Each gets its own
 // device identity and the vault ring from the lab key store.
 //
 // Deviation (S31a checkpoint): the ring is loaded from the creator's lab key store instead of being
@@ -10,7 +10,8 @@
 // recovery identity from that store so the lab gates verify its signed frames; the inbound edits are catalog events validated with `parseEvent`, because the store has
 // no commands for most of them yet (S22d / S43) and no command -> engine writer exists.
 import { join } from "node:path";
-import { NodeFolderFs, openNodeSqlite } from "@cashu/node-host";
+import { NodeFolderFs } from "@cashu/node-host";
+import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, metaClockStore, Store, v1, vaultSalt } from "@cashu/store";
 import {
   createOwnLogCarrier,

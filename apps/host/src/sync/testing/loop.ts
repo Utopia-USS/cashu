@@ -2,6 +2,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { mintUlid } from "@cashu/store";
 import { crypto } from "@cashu/sync";
 
@@ -64,6 +65,7 @@ export async function openAll(w: World): Promise<OpenVault[]> {
         keys,
         sodium,
         gate: await labGate(store, sodium, keys.ring, keys.identity),
+        openDb: openNodeSqlite,
       }),
     );
   }

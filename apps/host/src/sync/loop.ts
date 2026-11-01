@@ -1,6 +1,7 @@
-// TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 2.4, 5.5, 6).
+// TRANSITIONAL(S49): the host's outbox bridge loop (S31a spec 2.4, 5.5, 6), run by the sync service
+// (service.ts).
 //
-// The daemon's one serialized loop over every linked vault: recover an open intent, ship the Python
+// One serialized loop over every linked vault: recover an open intent, ship the Python
 // outbox (plan -> intents durable -> one write per vault -> ack with field clocks -> clear), sync
 // (push own bytes, pull and fold foreign frames), pipe the other devices' events to Python. The steps
 // never interleave: nothing is piped while a shipped row is unacked (spec 2.4 invariant), so Python's
@@ -124,7 +125,7 @@ export class Loop {
       if (allWritten) {
         // A crash between the per-vault clears: the ack already ran (clears follow it); acking
         // again is idempotent, so re-ack what is left and clear it (review F1).
-        this.#ack(open);
+        await this.#ack(open);
         this.#d.out({ step: "recover", vaults: open.length, reacked: true });
         return true;
       }
@@ -147,13 +148,13 @@ export class Loop {
         rewritten += 1;
       }
     }
-    this.#ack(open.map((o) => o));
+    await this.#ack(open);
     this.#d.out({ step: "recover", vaults: open.length, rewritten });
     return true;
   }
 
   /** Acks a written plan (every vault's batch durable) and clears its intents. */
-  #ack(members: readonly { v: OpenVault; intent: Intent }[]): number {
+  async #ack(members: readonly { v: OpenVault; intent: Intent }[]): Promise<number> {
     const first = members[0];
     if (first === undefined) return 0;
     const hlcs = new Map<string, string>();
@@ -177,7 +178,7 @@ export class Loop {
       },
     };
     const entries = bridge.ackEntries(plan, hlcs);
-    this.#d.cli.ack(first.intent.through, entries, this.#tmpDir(first.v));
+    await this.#d.cli.ack(first.intent.through, entries, this.#tmpDir(first.v));
     this.#point("acked");
     for (const { v } of members) {
       v.state.clearIntent();
@@ -232,11 +233,11 @@ export class Loop {
     }
     this.#point("written");
     if (members.length > 0) {
-      this.#ack(members);
+      await this.#ack(members);
     } else {
       // Nothing to write (unlinked or no-event rows only): ack the rows without clocks.
       const v = this.#d.vaults[0];
-      if (v !== undefined) this.#d.cli.ack(p.through, [], this.#tmpDir(v));
+      if (v !== undefined) await this.#d.cli.ack(p.through, [], this.#tmpDir(v));
     }
     const c = p.counts;
     this.#d.out({
@@ -330,7 +331,7 @@ export class Loop {
   }
 
   /** The other devices' events since the pipe cursor -> `cashu sync apply --stdin` (spec 5.5). */
-  pipe(): void {
+  async pipe(): Promise<void> {
     for (const v of this.#d.vaults) {
       const slug = this.#d.slugs.get(v.profileId);
       if (slug === undefined) throw new BlockedError("profile-missing");
@@ -342,7 +343,7 @@ export class Loop {
         const page = v.store.foreignEvents(cursor.seq, exclude, PIPE_PAGE);
         if (page.last === undefined) break;
         if (page.events.length > 0) {
-          const counts = this.#d.cli.apply(
+          const counts = await this.#d.cli.apply(
             slug,
             page.events.map((e) => JSON.stringify(e)),
           );
@@ -361,7 +362,7 @@ export class Loop {
     await this.recover();
     const shipped = await this.ship();
     await this.sync();
-    this.pipe();
+    await this.pipe();
     return shipped;
   }
 }

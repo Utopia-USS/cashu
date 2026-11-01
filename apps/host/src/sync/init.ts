@@ -1,4 +1,4 @@
-// TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 8).
+// TRANSITIONAL(S49): the host's outbox bridge, first start (S31a spec 8; `cashu bridge init`).
 //
 // First start: every profile of a quiescent Python data dir (no Python process writes during `init`)
 // becomes a vault created by this device. Genesis reads the live database in one read transaction
@@ -19,11 +19,11 @@
 // push); the S29 registry's first device statement is out of phase 1 (TRANSITIONAL(S44)).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { mintUlid, vaultSalt } from "@cashu/store";
+import { mintUlid, type SqlDriver, vaultSalt } from "@cashu/store";
 import * as bridge from "@cashu/store/bridge";
 import type * as genesis from "@cashu/store/genesis";
 import { type crypto, devices } from "@cashu/sync";
-import type { DaemonConfig } from "./config.js";
+import type { BridgeConfig } from "./config.js";
 import { writePythonGidSalt } from "./keys/labFile.js";
 import { labGate } from "./keys/labGate.js";
 import { createVault } from "./keys/vaultKeys.js";
@@ -62,11 +62,13 @@ export class InitRefusedError extends Error {
 }
 
 export interface InitDeps {
-  readonly config: DaemonConfig;
+  readonly config: BridgeConfig;
   readonly reader: PythonReader;
   readonly cli: PythonCli;
   readonly sodium: crypto.Sodium;
   readonly keyStore: crypto.KeyStore;
+  /** Opens a vault database (vault.ts `openDb`). */
+  readonly openDb: (path: string) => SqlDriver;
   /** The caller's clock: only genesis's clock-skew guard reads it. */
   readonly now: number;
   readonly out: (line: Readonly<Record<string, unknown>>) => void;
@@ -133,6 +135,7 @@ export async function initVaults(d: InitDeps): Promise<void> {
       keys: k,
       sodium: d.sodium,
       gate: await labGate(d.keyStore, d.sodium, k.ring, k.identity),
+      openDb: d.openDb,
     });
     try {
       let chunks: number;
@@ -147,7 +150,7 @@ export async function initVaults(d: InitDeps): Promise<void> {
       }
       const tmp = join(vault.dir, "tmp");
       mkdirSync(tmp, { recursive: true, mode: 0o700 });
-      const seeded = d.cli.seed(v.slug, v.ids, tmp);
+      const seeded = await d.cli.seed(v.slug, v.ids, tmp);
       const pusher = await genesisEngine(vault, d.sodium, v.wall, remotes);
       await pusher.sync();
       await pusher.close();

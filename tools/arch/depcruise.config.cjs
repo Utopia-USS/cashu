@@ -104,12 +104,7 @@ module.exports = {
         'Only the local host (apps/host, one per data dir) and the Expo app (apps/mobile, its engine in process) open SQLite stores. Every other app is a client of the host over its socket (@cashu/node-host connectHost / connectOrStart): a second process opening a store would fork this device\'s stream (layers.md, "Which process runs what"). Move the store access into a host service and call it over the protocol.',
       from: {
         path: "^apps/",
-        pathNot: [
-          TEST,
-          "^apps/(host|mobile)/",
-          // TRANSITIONAL(S56c): the lab outbox bridge harness; S56c moves the bridge loop into the host.
-          "^apps/sync-daemon/src/harness/main\\.ts$",
-        ],
+        pathNot: [TEST, "^apps/(host|mobile)/"],
       },
       to: { path: SQLITE_OPENERS },
     },

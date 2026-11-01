@@ -23,6 +23,7 @@
     "@cashu/mcp": "workspace:*",
     "@cashu/node-host": "workspace:*",
     "@cashu/store": "workspace:*",
+    "@cashu/sync": "workspace:*",
     "commander": "15.0.0",
     "zod": "^4.6.7"
   }

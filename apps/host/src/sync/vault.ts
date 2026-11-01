@@ -1,17 +1,21 @@
-// TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 5.1).
+// TRANSITIONAL(S49): the host's outbox bridge (S31a spec 5.1).
 //
 // One vault on this device: the view store (`view.db`), the local own-log copy (`log/`, a folder
 // transport over the durable Node `FolderFs`), the configured remote folders behind the manifest-gated
 // own-log carrier, the frame codec over the vault ring, and the sync engine. The one factory of the
 // engine. S29c-B2: the codec signs as this device (the genesis engine as the genesis device), and
-// every frame's signed head is checked by the vault's frame gate (keys/labGate.ts in the lab).
+// every frame's signed head is checked by the vault's frame gate (keys/labGate.ts in the lab). The
+// databases open through `openDb`: in the host an exclusive open under the writer lease (service.ts),
+// so a second process (or a second host on another data dir naming the same state root) cannot open
+// the vault and fork this device's stream.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { NodeFolderFs, openNodeSqlite } from "@cashu/node-host";
+import { NodeFolderFs } from "@cashu/node-host";
 import {
   builtinModules,
   metaClockStore,
   metaGateStateStore,
+  type SqlDriver,
   Store,
   type VaultSalt,
   vaultSalt,
@@ -64,6 +68,8 @@ export interface VaultOptions {
   readonly sodium: crypto.Sodium;
   /** Verifies every frame's signed head (keys/labGate.ts). */
   readonly gate: FrameGate;
+  /** Opens (or creates) one of the vault's databases: `view.db`, `bridge.db`. */
+  readonly openDb: (path: string) => SqlDriver;
 }
 
 /** `<stateRoot>/v<ordinal>` (private): named by the ordinal, never the slug or the vault id. */
@@ -96,28 +102,42 @@ export async function openVault(o: VaultOptions): Promise<OpenVault> {
   const secret = ring.gidSalt();
   const salt = vaultSalt(secret.expose().slice());
   secret.wipe();
-  const store = Store.open({
-    driver: openNodeSqlite(join(dir, "view.db")),
-    vault: ring.vaultId,
-    salt,
-    modules: builtinModules(),
-  });
-  const codec = createOwnLogCodec({ sodium: o.sodium, ring, signer: identity });
+  // bridge.db first: an exclusive open that fails (another holder) fails before anything else opens.
+  const state = new VaultState(o.openDb(join(dir, "bridge.db")));
   const local = new FolderTransport({ fs: new NodeFolderFs(join(dir, "log")) });
+  let store: Store;
+  try {
+    store = Store.open({
+      driver: o.openDb(join(dir, "view.db")),
+      vault: ring.vaultId,
+      salt,
+      modules: builtinModules(),
+    });
+  } catch (error) {
+    state.close();
+    throw error;
+  }
+  const codec = createOwnLogCodec({ sodium: o.sodium, ring, signer: identity });
+  let engine: SyncEngine;
+  try {
+    engine = await createSyncEngine({
+      vault: ring.vaultId,
+      device: identity.deviceId,
+      local,
+      remotes: remoteTransports(o.remotes, codec, o.gate, identity.deviceId),
+      codec,
+      gate: o.gate,
+      sink: store.sink(),
+      clockStore: metaClockStore(store.driver, identity.deviceId),
+      // S29c-B3: the gate's snapshot, so a restart replays only the log's new tail.
+      gateState: metaGateStateStore(store.driver, identity.deviceId),
+    });
+  } catch (error) {
+    store.close();
+    state.close();
+    throw error;
+  }
   const device = identity.deviceId;
-  const engine = await createSyncEngine({
-    vault: ring.vaultId,
-    device,
-    local,
-    remotes: remoteTransports(o.remotes, codec, o.gate, device),
-    codec,
-    gate: o.gate,
-    sink: store.sink(),
-    clockStore: metaClockStore(store.driver, device),
-    // S29c-B3: the gate's snapshot, so a restart replays only the log's new tail.
-    gateState: metaGateStateStore(store.driver, device),
-  });
-  const state = new VaultState(openNodeSqlite(join(dir, "bridge.db")));
   return {
     ordinal: o.ordinal,
     profileId: o.profileId,

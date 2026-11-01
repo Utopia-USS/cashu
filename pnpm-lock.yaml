@@ -93,6 +93,9 @@ importers:
       '@cashu/store':
         specifier: workspace:*
         version: link:../../packages/store
+      '@cashu/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -222,21 +225,6 @@ importers:
         version: 1.3.1(@types/react@19.3.0)(react@19.3.0)
 
   apps/relay: {}
-
-  apps/sync-daemon:
-    dependencies:
-      '@cashu/node-host':
-        specifier: workspace:*
-        version: link:../../packages/node-host
-      '@cashu/store':
-        specifier: workspace:*
-        version: link:../../packages/store
-      '@cashu/sync':
-        specifier: workspace:*
-        version: link:../../packages/sync
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
 
   frontend:
     dependencies:

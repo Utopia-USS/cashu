@@ -29,8 +29,14 @@
       "project": ["src/**/*.ts"]
     },
     "apps/host": {
-      // Spawned by the crash tests as a separate process (through its path), which knip cannot follow.
-      "entry": ["src/cli.ts", "src/testing/faultHost.ts"],
+      // Process entry points and the fake Python CLI are referenced by path, not imported.
+      "entry": [
+        "src/cli.ts",
+        "src/testing/faultHost.ts",
+        "src/sync/harness/main.ts",
+        "src/sync/harness/crashHost.ts",
+        "src/sync/testing/fakeCashu.ts"
+      ],
       "project": ["src/**/*.ts"]
     },
     "apps/desktop": {

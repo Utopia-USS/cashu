@@ -110,6 +110,15 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               `  sessions  ${sessions}`,
               `  vaults    ${s.vaults ?? "?"}, pending writes ${s.pendingWrites ?? "?"}`,
               `  safe mode ${s.safeMode === true ? "yes (no jobs, no network after repeated crashes)" : "no"}`,
+              ...(s.sync === undefined
+                ? []
+                : [
+                    `  sync      ${s.sync.state}${s.sync.reason === undefined ? "" : ` (${s.sync.reason})`}, pending ${s.sync.pending ?? "?"}, last run ${s.sync.lastRunAt ?? "never"}`,
+                    ...s.sync.vaults.map(
+                      (v) =>
+                        `    vault ${v.ordinal}: leader ${v.leader ? "yes" : "no"}, intent ${v.intentOpen ? "open" : "closed"}, pipe ${v.pipeSeq}`,
+                    ),
+                  ]),
               ...(s.stopping ? ["  stopping"] : []),
             ].join("\n"),
           );

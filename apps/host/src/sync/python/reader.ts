@@ -1,10 +1,10 @@
-// TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 5.3).
+// TRANSITIONAL(S49): the host's outbox bridge, Python reader (S31a spec 5.3).
 //
-// The daemon's read-only view of Python's live database (`node:sqlite`, `readOnly`): every read is one
+// The bridge's read-only view of Python's live database (`node:sqlite`, `readOnly`): every read is one
 // short transaction, never held across loop steps (Python's WAL checkpoints must not starve). The
-// daemon never writes Python's schema; writes go through the `cashu` CLI (`cli.ts`).
+// bridge never writes Python's schema; writes go through the `cashu` CLI (`cli.ts`).
 import { join } from "node:path";
-import { openNodeSqlite } from "@cashu/node-host";
+import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import type { SqlDriver } from "@cashu/store";
 import * as bridge from "@cashu/store/bridge";
 import * as genesis from "@cashu/store/genesis";

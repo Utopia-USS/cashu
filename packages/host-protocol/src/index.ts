@@ -11,6 +11,10 @@ export {
   adminStatusResultSchema,
   adminStopParamsSchema,
   adminStopResultSchema,
+  SYNC_STATES,
+  type SyncStatus,
+  syncStatusSchema,
+  syncVaultStatusSchema,
 } from "./admin.js";
 export {
   CLI_ENV_KEYS,

@@ -1,4 +1,4 @@
-// TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 4.3, 4.6).
+// TRANSITIONAL(S49): the host's outbox bridge, Python side files (S31a spec 4.3, 4.6).
 //
 // The Python data dir's side files as genesis reads them (`GenesisFiles`: relative paths with `/`),
 // read-only and confined to the data dir. Follow-up (D6): the CLI has the same adapter over its

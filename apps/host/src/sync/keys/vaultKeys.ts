@@ -1,4 +1,4 @@
-// TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 2.3, 8.2).
+// TRANSITIONAL(S49): the host's outbox bridge, vault keys (S31a spec 2.3, 8.2).
 //
 // A vault's keys on this device through the S27 `KeyStore`: the ring (data keys + gid salt) under
 // `keyringName`, this device's identity under `deviceIdentityName`, and a pointer

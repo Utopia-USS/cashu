@@ -49,7 +49,6 @@
     "S55j": "planned: renderer Settings, proposals, update notice",
     "S55k": "planned: renderer Wizard and module setup pages",
     "S55z": "planned: legacy SPA retirement from the desktop window",
-    "S56c": "hold: parked host bridge and carrier loop on ts-host-sync 12932569; not merged",
     "S56e": "planned: OS keyring, on-demand host service and daily wake (macOS 13+)",
     "S56f": "planned: closed-app notifications and signed-build click routing",
     "S57": "planned: conflict copies for long text, tags union",

@@ -128,7 +128,14 @@ export interface SpawnedHost {
  */
 export function spawnHost(
   dataDir: string,
-  options: { killAfterCommits?: number; lingerMs?: number } = {},
+  options: {
+    killAfterCommits?: number;
+    lingerMs?: number;
+    /** The home the host's real-location guards use (default: a fresh temp dir). */
+    home?: string;
+    /** The sync service's crash point at which the host SIGKILLs itself. */
+    syncKillAt?: string;
+  } = {},
 ): SpawnedHost {
   const child = spawn(
     process.execPath,
@@ -139,9 +146,10 @@ export function spawnHost(
       RESOLVE_TS,
       FAULT_HOST,
       dataDir,
-      tempDir("cashu-home-"),
+      options.home ?? tempDir("cashu-home-"),
       String(options.killAfterCommits ?? 0),
       String(options.lingerMs ?? 60_000),
+      ...(options.syncKillAt === undefined ? [] : [options.syncKillAt]),
     ],
     { stdio: ["ignore", "pipe", "pipe"] },
   );

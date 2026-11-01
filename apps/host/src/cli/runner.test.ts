@@ -223,26 +223,40 @@ describe("cli.exec", () => {
   });
 
   it("aborts a running command when the client goes away", async () => {
-    const { h, conn } = await host();
+    let fixture: Awaited<ReturnType<typeof host>> | undefined;
     let aborted = false;
+    let started!: () => void;
+    let stopped!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const finished = new Promise<void>((resolve) => {
+      stopped = resolve;
+    });
     const watcher: PortedCommand = {
       name: "watch",
       async run(_args, io) {
-        await new Promise<void>((resolve) => io.signal.addEventListener("abort", () => resolve()));
+        await new Promise<void>((resolve) => {
+          io.signal.addEventListener("abort", () => resolve(), { once: true });
+          started();
+        });
         aborted = true;
+        stopped();
         return 0;
       },
     };
     TEST_COMMANDS.push(watcher);
     try {
+      fixture = await host();
+      const { conn } = fixture;
       exec(conn, params(["watch"]));
-      await new Promise((r) => setTimeout(r, 20));
+      await ready;
       conn.close();
-      for (let i = 0; i < 50 && !aborted; i++) await new Promise((r) => setTimeout(r, 10));
+      await finished;
       expect(aborted).toBe(true);
     } finally {
       TEST_COMMANDS.pop();
-      await h.stop();
+      await fixture?.h.stop();
     }
   });
 });

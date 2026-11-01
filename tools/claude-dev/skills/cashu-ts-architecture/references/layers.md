@@ -91,8 +91,8 @@ client over an authenticated Unix socket (`@cashu/host-protocol`, platform glue 
 Only the host (and the Expo app, in-process) opens stores. depcruise `only-host-opens-stores`: an app
 other than `apps/host` and `apps/mobile` imports no SQLite binding (`node:sqlite`, `better-sqlite3`,
 `expo-sqlite`, op-sqlite) and not node-host's driver entry (`@cashu/node-host/sqlite`); test code is
-exempt. Marked exceptions until their scopes land: the
-sync daemon's harness and its use of node-host's root re-export of the driver (TRANSITIONAL(S56c)).
+exempt. The Python outbox bridge, carrier loop and their parity harness live in `apps/host/src/sync`;
+the SQLite driver is available only through node-host's dedicated `sqlite` entry.
 `cashu genesis` runs in the host (apps/host `cli/genesis`, S56d). Inside the host, a store file opens only under the
 `WriterLease` (apps/host `lease.ts`), which wraps the held machine lock that the exclusive open
 (`openNodeSqlite(path, { exclusive })`) requires.

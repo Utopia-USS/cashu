@@ -35,7 +35,7 @@ Apps compose packages and never import another app. `frontend/` remains the lega
 | `apps/mobile/` | Apps | Expo/Hermes development client, routes/screens and native store/crypto/platform adapters. |
 | `apps/cli/` | Apps | Node CLI entry; currently dispatches the lab genesis command, not the full Python command tree. |
 | `apps/relay/` | Apps | Relay app scaffold. |
-| `apps/sync-daemon/` | Apps | Sync-daemon app scaffold. |
+| `apps/host/` | Apps | One local host per data dir: exclusive stores, CLI and MCP sessions, sync carrier and Python outbox bridge; `src/sync/harness/` runs bridge parity through the host. |
 | `tools/arch/` | Development tooling | Architecture runner, dependency graph, lint/unused-code/package checks and regression guards. |
 | `tools/claude-dev/` | Development tooling | Repo-local TS architecture/UI skills and file-check hook; not shipped to profile workspaces. |
 | `tools/node-ts/` | Development tooling | Resolver for running workspace TS sources with Node type stripping. |

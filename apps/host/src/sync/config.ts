@@ -1,22 +1,25 @@
-// TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 2.2, 2.3, D3a): the production
-// loop runs in the desktop utility process once the Python app is retired or wrapped (S47).
+// TRANSITIONAL(S49): the host's outbox bridge (S31a spec 2.2, 2.3, D3a; S56c: a host service).
 //
-// The daemon's configuration file (strict, absolute paths only) and the refusals checked before
-// anything is opened (exit 64): every path outside the owner's real data dir, workspaces and
-// installed app, none inside a git work tree, the outputs never inside the Python data dir, and the
-// lab key files only under `<home>/cashu-lab` (TRANSITIONAL(S47): a file key store exists only in
-// the lab). Refusal messages name the setting, never a path or a value.
-import { readFileSync } from "node:fs";
+// The bridge's configuration: `<data dir>/sync-bridge.json` of the host's data dir (the Python data
+// dir whose `cashu.db` the bridge reads); no file, no sync service. Strict, absolute paths only, and
+// the refusals checked before anything is opened: every path outside the owner's real data dir,
+// workspaces and installed app, none inside a git work tree, the outputs never inside the Python data
+// dir, and the lab key files only under `<home>/cashu-lab` (TRANSITIONAL(S56e): a file key store
+// exists only in the lab; the OS keyring adapter and pairing (S44) replace the file). Refusal
+// messages name the setting, never a path or a value.
+import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { RefusalError, refusePaths, resolveReal } from "@cashu/node-host";
 import { z } from "zod";
 
 const abs = z.string().refine(isAbsolute, { message: "an absolute path" });
 
+/** The bridge configuration's file name in the host's data dir. */
+export const BRIDGE_CONFIG_FILE = "sync-bridge.json";
+
 const configSchema = z.strictObject({
-  format: z.literal(1),
-  /** The Python data dir (`CASHU_DATA_DIR`) whose `cashu.db` the daemon reads. */
-  dataDir: abs,
+  /** 2 (S56c): the data dir is the host's own, no longer a field. */
+  format: z.literal(2),
   /** The `cashu` command and the environment it runs with (the lab: a safe env over the run). */
   python: z.strictObject({
     argv: z.array(z.string().min(1)).min(1),
@@ -31,10 +34,16 @@ const configSchema = z.strictObject({
     /** Python's keyring file (the lab `FileKeyring` backend): the gid salt entry for Python. */
     pythonKeyring: abs,
   }),
+  /** How often the service looks at Python's outbox (a change wakes the loop). */
   pollMs: z.int().positive().default(2000),
+  /** The carrier loop: a full iteration (push, pull, pipe) at least this often, changes or not. */
+  carrierMs: z.int().positive().default(60_000),
 });
 
-export type DaemonConfig = z.infer<typeof configSchema>;
+export type BridgeConfig = z.infer<typeof configSchema> & {
+  /** The host's data dir (the Python data dir). */
+  readonly dataDir: string;
+};
 
 /** Throws `RefusalError` unless `path` resolves inside `<home>/cashu-lab`. */
 function refuseOutsideLab(label: string, path: string, home: string): void {
@@ -45,8 +54,13 @@ function refuseOutsideLab(label: string, path: string, home: string): void {
   }
 }
 
-/** The validated configuration, after every refusal. */
-export function loadConfig(path: string, home: string): DaemonConfig {
+/**
+ * The validated configuration of the data dir's bridge after every refusal; undefined when the data
+ * dir has none (the service stays off).
+ */
+export function loadConfig(dataDir: string, home: string): BridgeConfig | undefined {
+  const path = join(dataDir, BRIDGE_CONFIG_FILE);
+  if (!existsSync(path)) return undefined;
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(path, "utf8"));
@@ -55,10 +69,10 @@ export function loadConfig(path: string, home: string): DaemonConfig {
   }
   const parsed = configSchema.safeParse(raw);
   if (!parsed.success) throw new RefusalError("the config file does not validate");
-  const config = parsed.data;
+  const config = { ...parsed.data, dataDir };
   refusePaths(
     {
-      dataDir: { label: "dataDir", path: config.dataDir },
+      dataDir: { label: "dataDir", path: dataDir },
       outputs: [
         { label: "stateRoot", path: config.stateRoot },
         { label: "keys.path", path: config.keys.path },

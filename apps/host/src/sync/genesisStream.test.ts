@@ -6,6 +6,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { mintUlid, v1 } from "@cashu/store";
 import { crypto } from "@cashu/sync";
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,6 +32,7 @@ async function open(root: string, keys: VaultKeys, store: crypto.KeyStore): Prom
     keys,
     sodium,
     gate: await labGate(store, sodium, keys.ring, keys.identity),
+    openDb: (path) => openNodeSqlite(path),
   });
 }
 

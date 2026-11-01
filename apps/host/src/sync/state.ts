@@ -1,6 +1,6 @@
-// TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 6.1).
+// TRANSITIONAL(S49): the host's outbox bridge, per-vault state (S31a spec 6.1).
 //
-// The daemon's state of one vault, `<stateRoot>/v<ordinal>/bridge.db` (node:sqlite, WAL,
+// The bridge's state of one vault, `<stateRoot>/v<ordinal>/bridge.db` (node:sqlite, WAL,
 // synchronous FULL: an intent must be durable before its append): at most one open intent (a plan's
 // batch for this vault, stored before the write so a crash re-writes the SAME batch, never a new
 // mapping), the pipe cursor, the last shipped cushion and the genesis progress. Plaintext domain
@@ -53,7 +53,7 @@ export class VaultState {
     if (format === undefined) {
       db.prepare("INSERT INTO meta (key, value) VALUES ('format', ?)").run(FORMAT);
     } else if (format.value !== FORMAT) {
-      throw new Error("unsupported daemon state format");
+      throw new Error("unsupported bridge state format");
     }
   }
 

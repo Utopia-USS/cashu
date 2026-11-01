@@ -10,7 +10,7 @@ export function isBackendTranslationFile(path: string): boolean {
     return false;
   return (
     /^packages\/(api|mcp|store|sync|market)\/src\//.test(file) ||
-    /^apps\/(cli|host|relay|sync-daemon)\/src\//.test(file) ||
+    /^apps\/(cli|host|relay)\/src\//.test(file) ||
     /^apps\/desktop\/src\/(?!renderer(?:\/|$))/.test(file)
   );
 }

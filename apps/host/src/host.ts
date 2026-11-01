@@ -7,6 +7,9 @@
 //   4. serves sessions by role: `ui` gets the store channel v2, `admin` gets status / stop / handover,
 //      `cli` the hosted command tree (cli/runner.ts), `mcp` an MCP server for its profile (mcp/session.ts);
 //      writes the stable launcher `<data dir>/bin/cashu` (launcher.ts),
+//   4a. runs the sync service when the data dir configures one (sync/service.ts: the outbox bridge and
+//      the carrier loop, TRANSITIONAL(S49)); it starts in the background, never in safe mode, and
+//      stops before the stores close,
 //   5. lingers while idle (no session, no queued write) and then exits 0; exits 75 when its bundle
 //      was replaced (handover); a signal or `admin.stop` exits 0.
 // Everything is logged as codes and counts (log.ts). A clean exit clears the crash record.
@@ -51,6 +54,9 @@ import {
 } from "./runtime.js";
 import { serveStoreChannel } from "./storeChannel.js";
 import { type HostStores, openHostStores } from "./stores.js";
+import { bridgeCommand } from "./sync/command.js";
+import type { CrashPoint } from "./sync/loop.js";
+import { SyncService } from "./sync/service.js";
 
 const DEFAULT_LINGER_MS = 10 * 60 * 1000;
 const DEFAULT_BUNDLE_CHECK_MS = 60 * 1000;
@@ -89,6 +95,8 @@ export interface LocalHostOptions {
   readonly mcpFxNewest?: () => string | null;
   /** Explicit legacy-file authority for packaged hosts or an external Python program. */
   readonly mcpLegacyDataDir?: string;
+  /** Tests only: called at each crash point of the sync service's loop. */
+  readonly syncAt?: (point: CrashPoint) => void;
 }
 
 export interface LocalHost {
@@ -96,6 +104,8 @@ export interface LocalHost {
   readonly lease: WriterLease;
   readonly stores: HostStores;
   readonly safeMode: boolean;
+  /** The sync service, once started (state `off` when the data dir configures none). */
+  readonly sync: Promise<SyncService | undefined>;
   /** What may run besides serving sessions: nothing in safe mode (rule 6 under crash loops). */
   readonly capabilities: { readonly jobs: boolean; readonly network: boolean };
   /** Resolves with the exit code once the host stopped (0 clean, 75 handover). */
@@ -125,7 +135,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const server = await startHost({
     dataDir: options.dataDir,
     build,
-    features: ["store.v2", "admin.handover", "cli.exec", "mcp.lines"],
+    features: ["store.v2", "admin.handover", "cli.exec", "mcp.lines", "sync.status"],
     ...(options.pathEnv === undefined ? {} : { pathEnv: options.pathEnv }),
     onSession: (session) => dispatch(session),
   });
@@ -147,15 +157,37 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const runtime = options.runtime ?? currentRuntime();
   const python =
     options.python === undefined ? pythonProgram(runtime) : (options.python ?? undefined);
+  const capabilities = { jobs: !safeMode, network: !safeMode };
+  let syncService: SyncService | undefined;
+  const sync: Promise<SyncService | undefined> = SyncService.start({
+    dataDir: server.paths.dataDir,
+    home: options.home ?? homedir(),
+    lease,
+    log,
+    capabilities,
+    now,
+    ...(options.syncAt === undefined ? {} : { at: options.syncAt }),
+  }).then(
+    (service) => {
+      syncService = service;
+      return service;
+    },
+    (error: unknown) => {
+      log.error("sync.start-failed", { error: errorName(error) });
+      return undefined;
+    },
+  );
   // TRANSITIONAL(S39c): Python owns financial mutations in mixed sessions. Native-only builds
   // bind the explicit profile to a loaded vault until the shared authority/catalog is available.
-  const ported =
-    options.ported ??
-    portedCommands({
-      runtime,
-      now,
-      ...(python === undefined ? { nativeStores: stores } : {}),
-    });
+  const ported = [
+    ...(options.ported ??
+      portedCommands({
+        runtime,
+        now,
+        ...(python === undefined ? { nativeStores: stores } : {}),
+      })),
+    bridgeCommand(() => sync),
+  ];
   const portedNames = new Set(ported.map((command) => command.name));
   const delegated = Object.fromEntries(
     Object.entries(DELEGATED).filter(([name]) => !portedNames.has(name)),
@@ -199,6 +231,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     safeMode,
     vaults: stores.vaults.size,
     pendingWrites: stores.pending(),
+    ...(syncService === undefined ? {} : { sync: syncService.status() }),
   });
 
   const stop = (reason: ExitReason = "stop"): Promise<number> => {
@@ -211,6 +244,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       if (reason === "handover")
         await Promise.all([...mcpServers].map((b) => b.prepareHandover?.()));
       await Promise.all([...mcpServers].map((b) => b.close()));
+      // The sync service's current iteration finishes and its vaults close while the lock is held.
+      await (await sync)?.stop();
       await stores.drain();
       stores.close();
       // Before the lock goes: a successor host records its own start after taking the lock.
@@ -252,7 +287,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     lease,
     stores,
     safeMode,
-    capabilities: { jobs: !safeMode, network: !safeMode },
+    sync,
+    capabilities,
     exit,
     status,
     stop,

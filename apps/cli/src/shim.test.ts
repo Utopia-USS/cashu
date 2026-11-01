@@ -108,6 +108,9 @@ describe("cashu shim: host admin and failures", () => {
       const running = await runShim(["host", "status"], e, { cwd });
       expect(running.code).toBe(0);
       expect(running.stdout).toMatch(/^Usługa cashU w tle działa \(pid \d+/);
+      expect(running.stdout).toContain(
+        "synchronizacja wyłączona, oczekujące ?, ostatni przebieg nigdy",
+      );
       const pid = hostPid(e.CASHU_DATA_DIR as string) as number;
       expect((await runShim(["host", "stop"], e, { cwd })).code).toBe(0);
       for (let i = 0; i < 100 && alive(pid); i++) await new Promise((r) => setTimeout(r, 20));

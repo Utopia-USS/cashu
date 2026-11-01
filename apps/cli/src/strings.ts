@@ -3,6 +3,7 @@
 // backend one (`@cashu/i18n` createBackendI18n: CASHU_LANG, settings.json, the OS, English), read
 // through a Translator; MCP texts carry both languages (the agent reads them, Python's MCP output is
 // fixed, not localized per user).
+import type { SyncStatus } from "@cashu/host-protocol";
 import type { TranslationVariants } from "@cashu/i18n";
 
 type Text = TranslationVariants<string>;
@@ -75,6 +76,45 @@ export const S = {
       `  safe mode   ${on ? "yes (no jobs, no network after repeated crashes)" : "no"}`,
   } satisfies Fn<[boolean]>,
   hostStopping: { pl: "  zatrzymuje się", en: "  stopping" } satisfies Text,
+  hostSyncState: {
+    pl: (state: SyncStatus["state"]) =>
+      ({
+        off: "wyłączona",
+        refused: "odmowa uruchomienia",
+        "safe-mode": "tryb awaryjny",
+        uninitialized: "nieskonfigurowana",
+        idle: "bezczynna",
+        running: "działa",
+        blocked: "zablokowana",
+        error: "błąd",
+        stopped: "zatrzymana",
+      })[state],
+    en: (state: SyncStatus["state"]) =>
+      ({
+        off: "off",
+        refused: "refused",
+        "safe-mode": "safe mode",
+        uninitialized: "uninitialized",
+        idle: "idle",
+        running: "running",
+        blocked: "blocked",
+        error: "error",
+        stopped: "stopped",
+      })[state],
+  } satisfies Fn<[SyncStatus["state"]]>,
+  hostSyncNever: { pl: "nigdy", en: "never" } satisfies Text,
+  hostSync: {
+    pl: (state: string, pending: string, lastRun: string) =>
+      `  synchronizacja ${state}, oczekujące ${pending}, ostatni przebieg ${lastRun}`,
+    en: (state: string, pending: string, lastRun: string) =>
+      `  sync        ${state}, pending ${pending}, last run ${lastRun}`,
+  } satisfies Fn<[string, string, string]>,
+  hostSyncVault: {
+    pl: (ordinal: number, leader: boolean, intentOpen: boolean, pipeSeq: number) =>
+      `    sejf ${ordinal}: lider ${leader ? "tak" : "nie"}, zamiar zapisu ${intentOpen ? "otwarty" : "zamknięty"}, kursor odbioru ${pipeSeq}`,
+    en: (ordinal: number, leader: boolean, intentOpen: boolean, pipeSeq: number) =>
+      `    vault ${ordinal}: leader ${leader ? "yes" : "no"}, intent ${intentOpen ? "open" : "closed"}, pipe ${pipeSeq}`,
+  } satisfies Fn<[number, boolean, boolean, number]>,
 
   // `cashu mcp`: tool errors and diagnostics the agent reads (both languages at once).
   mcpLost: {

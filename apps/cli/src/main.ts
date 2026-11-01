@@ -218,6 +218,18 @@ async function runHostAdmin(ctx: Context, action: "status" | "stop" | "run"): Pr
       ctx.t.tr(S.hostSessions)(sessions),
       ctx.t.tr(S.hostStores)(String(s.vaults ?? "?"), String(s.pendingWrites ?? "?")),
       ctx.t.tr(S.hostSafeMode)(s.safeMode === true),
+      ...(s.sync === undefined
+        ? []
+        : [
+            ctx.t.tr(S.hostSync)(
+              `${ctx.t.tr(S.hostSyncState)(s.sync.state)}${s.sync.reason === undefined ? "" : ` (${s.sync.reason})`}`,
+              String(s.sync.pending ?? "?"),
+              s.sync.lastRunAt ?? ctx.t.tr(S.hostSyncNever),
+            ),
+            ...s.sync.vaults.map((v) =>
+              ctx.t.tr(S.hostSyncVault)(v.ordinal, v.leader, v.intentOpen, v.pipeSeq),
+            ),
+          ]),
       ...(s.stopping ? [ctx.t.tr(S.hostStopping)] : []),
     ];
     say(ctx.proc, "stdout", lines.join("\n"));

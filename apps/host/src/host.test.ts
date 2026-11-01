@@ -264,8 +264,11 @@ describe("local host", () => {
     expect(await main(["status", "--data-dir", dir], io)).toBe(3);
     expect(out.pop()).toBe("cashu-host: not running");
     const host = await startLocalHost(testHostOptions(dir));
+    await host.sync;
     expect(await main(["status", "--data-dir", dir], io)).toBe(0);
-    expect(out.pop()).toMatch(/running \(pid \d+, build test, protocol 1\.2\)[\s\S]*vaults {4}1/);
+    const status = out.pop();
+    expect(status).toMatch(/running \(pid \d+, build test, protocol 1\.2\)[\s\S]*vaults {4}1/);
+    expect(status).toContain("sync      off, pending ?, last run never");
     expect(await main(["stop", "--data-dir", dir], io)).toBe(0);
     expect(await host.exit).toBe(0);
     expect(await main(["status", "--data-dir", dir], io)).toBe(3);

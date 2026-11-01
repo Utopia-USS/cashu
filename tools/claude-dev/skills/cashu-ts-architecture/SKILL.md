@@ -20,7 +20,7 @@ silence a rule to get green.
 
 | Layer | Package | May import (workspace) | Holds |
 |---|---|---|---|
-| Apps | `apps/desktop`, `apps/mobile`, `apps/cli`, `apps/sync-daemon`, `apps/relay` | any package, never another app | route files, screen hooks, Views, platform adapters, process lifecycle |
+| Apps | `apps/desktop`, `apps/mobile`, `apps/cli`, `apps/host`, `apps/relay` | any package, never another app | route files, screen hooks, Views, platform adapters, process lifecycle |
 | Services | `packages/api`, `packages/mcp` | domain, store, sync, i18n | HTTP / MCP surfaces |
 | UI logic | `packages/ui-logic` | domain, store, store-react, i18n | reusable feature hooks shared by desktop and mobile (no screens, no JSX) |
 | UI system | `packages/ui` | domain, i18n | tokens, display components, platform controls (see `cashu-ui`) |

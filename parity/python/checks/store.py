@@ -61,7 +61,10 @@ import datetime as dt
 import enum
 import hashlib
 import math
+import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -647,6 +650,32 @@ def _guard_schema(ctx: Ctx) -> None:
 _DECIDED = frozenset({"manual_txn", "llm_full", "llm_fallback", "cash_leg"})
 
 
+@contextmanager
+def _derived_session(ctx: Ctx) -> Iterator[Any]:
+    """Recompute on the oracle copy with normal capture, then discard the entire transaction.
+
+    Linked copies require capture even for derived-field flushes. A separate session keeps its
+    capture cache out of the caller: nested rollback alone does not reset root-transaction state.
+    This is a sequential, isolated oracle child; no production environment or guard is changed.
+    """
+    from sqlmodel import Session
+
+    previous = os.environ.get("CASHU_SYNC")
+    os.environ["CASHU_SYNC"] = "1"
+    try:
+        with Session(ctx.session.get_bind()) as session:
+            savepoint = session.begin_nested()
+            try:
+                yield session
+            finally:
+                savepoint.rollback()
+    finally:
+        if previous is None:
+            os.environ.pop("CASHU_SYNC", None)
+        else:
+            os.environ["CASHU_SYNC"] = previous
+
+
 def _recompute_derived(ctx: Ctx, txns: list[dict]) -> None:
     """The derived columns as the view derives them (D-24.1): per profile, a fresh transfer match and
     ``categorize_all(use_llm=False)`` inside a savepoint that is rolled back (the copy leaves as it
@@ -667,17 +696,16 @@ def _recompute_derived(ctx: Ctx, txns: list[dict]) -> None:
     result: dict[int, tuple[str | None, str | None]] = {}
     transfer: dict[int, tuple[bool, str | None]] = {}
     cash: set[int] = set()
-    savepoint = ctx.session.begin_nested()
-    try:
+    with _derived_session(ctx) as session:
         for p in ctx.profiles:
-            cash |= cash_account_ids(ctx.session, p.id)
-            reset_transfer_matches(ctx.session, profile_id=p.id)
-            ctx.session.flush()
-            match_internal_transfers(ctx.session, profile_id=p.id)
-            ctx.session.flush()
-            service.categorize_all(ctx.session, use_llm=False, profile_id=p.id)
-            ctx.session.flush()
-            rows = ctx.session.exec(transactions(p.id).order_by(Transaction.id)).all()
+            cash |= cash_account_ids(session, p.id)
+            reset_transfer_matches(session, profile_id=p.id)
+            session.flush()
+            match_internal_transfers(session, profile_id=p.id)
+            session.flush()
+            service.categorize_all(session, use_llm=False, profile_id=p.id)
+            session.flush()
+            rows = session.exec(transactions(p.id).order_by(Transaction.id)).all()
             outflow: dict[str, int] = {}
             for t in rows:
                 result[t.id] = (t.category, t.category_source)
@@ -687,8 +715,6 @@ def _recompute_derived(ctx: Ctx, txns: list[dict]) -> None:
                 group = t.transfer_group_id
                 key = None if group is None else ctx.ids.key("transactions", outflow[group])
                 transfer[t.id] = (bool(t.is_internal_transfer), key)
-    finally:
-        savepoint.rollback()
     for row in txns:
         if row["account_id"] in cash:
             if row["category_source"] not in _DECIDED:
