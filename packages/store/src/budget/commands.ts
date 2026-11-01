@@ -4,11 +4,18 @@
 // The category commands (set a transaction's category, add a cash expense, merchant rules, LLM
 // results) need the S09 taxonomy for validation and land with S24c.
 import { Decimal, floatRepr } from "@cashu/domain";
-import { type DatedAmount, planImport, type RawTransaction } from "@cashu/domain/budget";
+import {
+  checkCushionAccounts,
+  type DatedAmount,
+  defaultBudgetSettings,
+  planImport,
+  type RawTransaction,
+} from "@cashu/domain/budget";
+import { pyStrip, pyUpper } from "@cashu/domain/text";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../command.js";
 import { emitBalance, ensureAccount } from "../core/commands.js";
-import { accountByGid } from "../core/queries.js";
+import { accountByGid, profileOf } from "../core/queries.js";
 import { BALANCE_SOURCES } from "../events/v1/core.js";
 import { blobRef, gid } from "../events/v1/primitives.js";
 import { storedTxnsOfAccount, transactionByGid } from "./queries.js";
@@ -204,7 +211,10 @@ function positive(value: z.infer<typeof loose>): Decimal | null | "invalid" {
 /**
  * Save the cushion settings (Python `settings.parse` + `save`): currency stripped and upper-cased,
  * positive amounts quantized to 0.01, months 1..36, account gids of this vault (first occurrence
- * kept), an enabled cushion needs a target. One `budgetSettings.cushionSet` with every field.
+ * kept), an enabled cushion needs a target, then (PUT /budget/settings) every account is the
+ * vault's and in the cushion currency (else the base currency). Refusals are value-free codes
+ * (`cushion_currency_mismatch`, `unknown_account`, ...). One `budgetSettings.cushionSet` with every
+ * field.
  */
 export const setCushion = defineCommand({
   id: "budget.setCushion",
@@ -219,7 +229,7 @@ export const setCushion = defineCommand({
   run(ctx: CommandContext, input) {
     let currency: string | null = null;
     if (input.currency !== undefined && input.currency !== null && input.currency !== "") {
-      currency = input.currency.trim().toUpperCase();
+      currency = pyUpper(pyStrip(input.currency));
       if (!ISO_CURRENCY.test(currency)) return refuse("invalid_currency");
     }
     const target = positive(input.targetAmount);
@@ -235,10 +245,23 @@ export const setCushion = defineCommand({
       months = m;
     }
     const accounts = [...new Set(input.accounts)];
-    if (accounts.some((a) => accountByGid(ctx.read, a) === undefined)) {
-      return refuse("unknown_account");
-    }
     if (input.enabled && target === null && months === null) return refuse("needs_target");
+    // Python PUT /budget/settings, after the parse: every account is the profile's (unknown ids
+    // first), and in the cushion currency (else the profile's base currency, "PLN" before a profile).
+    const refs = accounts.flatMap((g) => {
+      const a = accountByGid(ctx.read, g);
+      return a === undefined ? [] : [{ id: a.gid, name: a.name, currency: a.currency }];
+    });
+    const problem = checkCushionAccounts(
+      { ...defaultBudgetSettings().cushion, currency, accountIds: accounts },
+      refs,
+      profileOf(ctx.read)?.baseCurrency || "PLN",
+    );
+    if (problem !== null) {
+      return refuse(
+        problem.kind === "unknown_account" ? "unknown_account" : "cushion_currency_mismatch",
+      );
+    }
     ctx.emit("budgetSettings.cushionSet", ctx.det("budget_settings", ["cushion"]), {
       enabled: input.enabled,
       currency,

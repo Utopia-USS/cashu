@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type CushionSettings,
+  checkCushionAccounts,
   cushionAccountsError,
   defaultBudgetSettings,
   loadBudgetSettings,
@@ -76,6 +77,26 @@ describe("settings.parse", () => {
     );
     expect(cushionAccountsError(fine, [MAIN, EUR], "PLN")).toBeNull();
     expect(cushionAccountsError(defaultBudgetSettings().cushion, [], "PLN")).toBeNull();
+  });
+
+  it("checkCushionAccounts: the typed result behind the message", () => {
+    const base = asIds(cushionOf({ cushion: { enabled: true, target_amount: 1 } }));
+    const pick = (ids: string[], currency: string | null = null) => ({
+      ...base,
+      currency,
+      accountIds: ids,
+    });
+    expect(checkCushionAccounts(pick(["7", "99", "98"], "EUR"), [MAIN], "PLN")).toEqual({
+      kind: "unknown_account",
+      ids: ["99", "98"],
+    });
+    expect(checkCushionAccounts(pick(["7", "8"], "EUR"), [MAIN, EUR], "PLN")).toEqual({
+      kind: "wrong_currency",
+      currency: "EUR",
+      names: ["mKonto Test"],
+    });
+    expect(checkCushionAccounts(pick(["8"]), [MAIN, EUR], "EUR")).toBeNull();
+    expect(checkCushionAccounts(pick([]), [], "PLN")).toBeNull();
   });
 
   it("test_cushion_accounts_of_another_profile_are_refused", () => {

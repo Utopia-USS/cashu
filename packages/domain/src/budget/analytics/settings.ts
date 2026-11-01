@@ -194,23 +194,45 @@ export interface CushionAccountRef {
   readonly currency: string;
 }
 
+/** What the cushion account check found wrong (value-free codes live in the callers). */
+export type CushionAccountsProblem =
+  | { readonly kind: "unknown_account"; readonly ids: readonly string[] }
+  | {
+      readonly kind: "wrong_currency";
+      readonly currency: string;
+      readonly names: readonly string[];
+    };
+
 /**
  * The account check of `PUT /budget/settings` (budget api.py): every chosen account must be one of the
- * profile's (`accounts`), in the cushion currency (`currency`, else the base currency). The English
- * message as Python words it, null when the choice is fine or empty.
+ * profile's (`accounts`), in the cushion currency (`currency`, else the base currency). Unknown ids
+ * come first, then accounts in another currency; null when the choice is fine or empty.
  */
-export function cushionAccountsError(
+export function checkCushionAccounts(
   cushion: CushionSettings,
   accounts: readonly CushionAccountRef[],
   baseCurrency: string,
-): string | null {
+): CushionAccountsProblem | null {
   if (cushion.accountIds.length === 0) return null;
   const currency = cushion.currency || baseCurrency;
   const chosen = new Set(cushion.accountIds);
   const found = accounts.filter((a) => chosen.has(a.id));
   const known = new Set(found.map((a) => a.id));
   const missing = cushion.accountIds.filter((id) => !known.has(id));
-  if (missing.length > 0) return `unknown account id(s): ${missing.join(", ")}`;
+  if (missing.length > 0) return { kind: "unknown_account", ids: missing };
   const wrong = found.filter((a) => a.currency !== currency).map((a) => a.name);
-  return wrong.length > 0 ? `cushion accounts must be in ${currency}: ${wrong.join(", ")}` : null;
+  return wrong.length > 0 ? { kind: "wrong_currency", currency, names: wrong } : null;
+}
+
+/** `checkCushionAccounts` as the English message Python words it (`PUT /budget/settings` detail). */
+export function cushionAccountsError(
+  cushion: CushionSettings,
+  accounts: readonly CushionAccountRef[],
+  baseCurrency: string,
+): string | null {
+  const problem = checkCushionAccounts(cushion, accounts, baseCurrency);
+  if (problem === null) return null;
+  return problem.kind === "unknown_account"
+    ? `unknown account id(s): ${problem.ids.join(", ")}`
+    : `cushion accounts must be in ${problem.currency}: ${problem.names.join(", ")}`;
 }

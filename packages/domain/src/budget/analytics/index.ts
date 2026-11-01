@@ -58,7 +58,9 @@ export { activeRecurring, recurringPayments, subscriptionExclusions } from "./re
 export {
   type BudgetSettings,
   type CushionAccountRef,
+  type CushionAccountsProblem,
   type CushionSettings,
+  checkCushionAccounts,
   cushionAccountsError,
   defaultBudgetSettings,
   loadBudgetSettings,

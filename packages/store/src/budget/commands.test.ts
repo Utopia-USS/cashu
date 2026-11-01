@@ -7,7 +7,7 @@
 import { D } from "@cashu/domain";
 import type { RawTransaction, TxnSource } from "@cashu/domain/budget";
 import { describe, expect, it } from "vitest";
-import { openAccount } from "../core/commands.js";
+import { createProfile, openAccount } from "../core/commands.js";
 import type { Store } from "../materialize.js";
 import { run, testEnv } from "../testing/commands.js";
 import { EventFactory, openTestStore } from "../testing/store.js";
@@ -272,5 +272,129 @@ describe("setCushion", () => {
         reason: "unknown_account",
       },
     );
+  });
+});
+
+// Python tests/test_month_close.py: test_settings_validation (the order and the account rules),
+// test_cushion_with_chosen_accounts_and_currency, test_cushion_accounts_of_another_profile_are_refused.
+describe("setCushion account rules", () => {
+  const IBAN_EUR = "PL10000000000000000000000007";
+  function setup(baseCurrency?: string) {
+    const store = openTestStore();
+    const env = testEnv();
+    if (baseCurrency !== undefined) {
+      run(store, env, createProfile, { slug: "dom", name: "Dom", baseCurrency });
+    }
+    const open = (currency: string, iban: string) =>
+      value<{ account: string }>(
+        run(store, env, openAccount, { bank: "mbank", type: "savings", currency, iban }),
+      )?.account as string;
+    return { store, env, pln: open("PLN", IBAN), eur: open("EUR", IBAN_EUR) };
+  }
+  const cushionRows = (s: Store) => s.read("SELECT gid FROM budget_settings");
+
+  it("refuses an account outside the cushion currency, emitting nothing", () => {
+    const { store, env, pln } = setup();
+    const out = run(store, env, setCushion, {
+      enabled: true,
+      currency: "eur",
+      targetAmount: 1,
+      accounts: [pln],
+    });
+    expect(out).toEqual({ ok: false, reason: "cushion_currency_mismatch" });
+    expect(cushionRows(store)).toEqual([]);
+  });
+
+  it("takes the profile base currency when the cushion has none", () => {
+    const eurBase = setup("EUR");
+    expect(
+      run(eurBase.store, eurBase.env, setCushion, {
+        enabled: true,
+        targetAmount: 1,
+        accounts: [eurBase.pln],
+      }),
+    ).toMatchObject({ reason: "cushion_currency_mismatch" });
+    expect(
+      run(eurBase.store, eurBase.env, setCushion, {
+        enabled: true,
+        targetAmount: 1,
+        accounts: [eurBase.eur],
+      }).ok,
+    ).toBe(true);
+    // no profile yet: Python's "PLN" placeholder
+    const none = setup();
+    expect(
+      run(none.store, none.env, setCushion, {
+        enabled: true,
+        targetAmount: 1,
+        accounts: [none.eur],
+      }),
+    ).toMatchObject({ reason: "cushion_currency_mismatch" });
+  });
+
+  it("accepts chosen accounts in the (normalized) cushion currency", () => {
+    const { store, env, eur } = setup();
+    const out = run(store, env, setCushion, {
+      enabled: true,
+      currency: " eur ",
+      targetAmount: 1000,
+      accounts: [eur],
+    });
+    expect(out.ok && out.events[0]?.data).toMatchObject({ currency: "EUR", accounts: [eur] });
+  });
+
+  it("refuses one wrong account among right ones, and a mix with an unknown id as unknown", () => {
+    const { store, env, pln, eur } = setup();
+    const base = { enabled: true, currency: "EUR", targetAmount: 1 };
+    expect(run(store, env, setCushion, { ...base, accounts: [eur, pln] })).toMatchObject({
+      reason: "cushion_currency_mismatch",
+    });
+    // Python reports unknown ids before the currency of the known ones
+    const ghost = "01JD0000000000000000000099";
+    expect(run(store, env, setCushion, { ...base, accounts: [pln, ghost] })).toMatchObject({
+      reason: "unknown_account",
+    });
+  });
+
+  it("checks the parse rules before the accounts, in Python's order", () => {
+    const { store, env, pln } = setup();
+    const ghost = "01JD0000000000000000000099";
+    // needs a target before the account check (parse runs first)
+    expect(run(store, env, setCushion, { enabled: true, accounts: [ghost] })).toMatchObject({
+      reason: "needs_target",
+    });
+    expect(
+      run(store, env, setCushion, { targetAmount: -5, currency: "EUR", accounts: [pln] }),
+    ).toMatchObject({ reason: "invalid_target_amount" });
+    // a disabled cushion with a stale currency mismatch is refused too (Python checks regardless)
+    expect(
+      run(store, env, setCushion, { enabled: false, currency: "EUR", accounts: [pln] }),
+    ).toMatchObject({ reason: "cushion_currency_mismatch" });
+  });
+
+  it("matches Python's parse for currency and months shapes", () => {
+    const { store, env } = setup();
+    const target = { enabled: true, targetAmount: 1 };
+    expect(run(store, env, setCushion, { ...target, currency: "EURO" })).toMatchObject({
+      reason: "invalid_currency",
+    });
+    expect(run(store, env, setCushion, { ...target, currency: "  " })).toMatchObject({
+      reason: "invalid_currency",
+    });
+    expect(run(store, env, setCushion, { enabled: true, targetMonths: true })).toMatchObject({
+      reason: "invalid_target_months",
+    });
+    expect(run(store, env, setCushion, { enabled: true, targetMonths: 2.5 })).toMatchObject({
+      reason: "invalid_target_months",
+    });
+    expect(run(store, env, setCushion, { enabled: true, targetMonths: 0 })).toMatchObject({
+      reason: "invalid_target_months",
+    });
+    expect(run(store, env, setCushion, { enabled: true, targetAmount: "abc" })).toMatchObject({
+      reason: "invalid_target_amount",
+    });
+    expect(run(store, env, setCushion, { enabled: "yes", targetAmount: 1 })).toMatchObject({
+      reason: "invalid_input",
+    });
   });
 });
