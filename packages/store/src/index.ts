@@ -88,6 +88,13 @@ export {
   type WireBatch,
 } from "./materialize.js";
 export { builtinModules } from "./modules.js";
+export type {
+  RebuildListener,
+  RebuildProgress,
+  RebuildReason,
+  RebuildReport,
+  RebuildScope,
+} from "./rebuild.js";
 export {
   EventRegistry,
   type EventTypeDef,

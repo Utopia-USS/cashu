@@ -108,6 +108,9 @@ export interface FoldDeps {
   readonly det: DetGid;
 }
 
+/** Events between two progress reports of a full re-fold. */
+const FOLD_TICK = 4096;
+
 export class MaterializerRunner {
   readonly mat: Materializer;
   readonly #deps: FoldDeps;
@@ -225,7 +228,11 @@ export class MaterializerRunner {
    * indexes are dropped for the fold and built again after it (inside the same transaction, so no
    * reader sees a table without them).
    */
-  refoldAll(sql: ViewSql, dirty?: DirtyCollector): void {
+  refoldAll(
+    sql: ViewSql,
+    dirty?: DirtyCollector,
+    onFold?: (folded: number, total: number) => void,
+  ): void {
     if (this.track) dirty?.all(this.mat.id);
     const ctx = this.#ctx(sql);
     const stmts = this.#deps.stmts;
@@ -235,7 +242,14 @@ export class MaterializerRunner {
     for (const { t, ix } of bulk) stmts.exec(`DROP INDEX IF EXISTS ${indexName(t, ix)}`);
     this.#members.clearAll();
     const events = this.#deps.log.appliedOfTypes(this.mat.handles);
-    for (const e of events) this.mat.apply(e, ctx);
+    if (onFold === undefined) for (const e of events) this.mat.apply(e, ctx);
+    else {
+      for (const [n, e] of events.entries()) {
+        this.mat.apply(e, ctx);
+        if ((n + 1) % FOLD_TICK === 0) onFold(n + 1, events.length);
+      }
+      onFold(events.length, events.length);
+    }
     sql.flush();
     for (const { t, ix } of bulk) stmts.exec(createIndexSql(t, ix));
     const last = events[events.length - 1];

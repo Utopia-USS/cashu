@@ -4,6 +4,8 @@
 import type { IsoDate } from "@cashu/domain";
 import type { NetWorthContributor, SetupContext, SetupStep } from "@cashu/domain/core";
 import type { market } from "@cashu/domain/investments";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import type { z } from "zod";
 import { canonicalJson } from "./canonical.js";
 import { membersTable } from "./engine/fold.js";
@@ -126,9 +128,18 @@ export class EventRegistry {
     return { fww: this.fwwTypes(), revokers };
   }
 
-  /** Changes whenever a type's current version changes: a stored log must then be re-decoded. */
+  /**
+   * Changes whenever a type's current version or the causal suppression rules change (FWW types,
+   * revokers: they decide which held events are in effect): the stored log is then re-decoded and
+   * the whole view rebuilt.
+   */
   fingerprint(): string {
-    return canonicalJson(Object.fromEntries(this.types().map((t) => [t, this.get(t)?.current])));
+    const rules = this.suppressionRules();
+    return canonicalJson({
+      versions: Object.fromEntries(this.types().map((t) => [t, this.get(t)?.current])),
+      fww: [...rules.fww].sort(),
+      revokers: Object.fromEntries([...rules.revokers].sort(([a], [b]) => (a < b ? -1 : 1))),
+    });
   }
 }
 
@@ -222,6 +233,35 @@ export class ModuleRegistry {
     ];
   }
 
+  /**
+   * What each view component (materializer, identity kind, deriver) was built with: its version, a
+   * fingerprint of its tables' exact DDL, the tables it owns and the facts the upgrade rule needs.
+   * Recorded in the view database, compared on open: a difference selects what is rebuilt
+   * (`planViewUpgrade`).
+   */
+  viewDefs(): ViewDefs {
+    const out: Record<string, ComponentDef> = {};
+    const tables = (ts: readonly TableDef[]) => ({
+      ddl: ddlFingerprint(ts),
+      tables: ts.map((t) => t.name),
+    });
+    for (const m of this.materializers) {
+      const refs = m.refs === undefined ? undefined : m.refsOnDemand === true ? "lazy" : "eager";
+      out[componentKey("materializer", m.id)] = {
+        version: m.version,
+        ...tables([...m.tables, membersTable(m)]),
+        ...(refs ? { refs } : {}),
+      };
+    }
+    for (const k of this.identityKinds) {
+      out[componentKey("identity", k.id)] = { version: k.version, ...tables(k.tables ?? []) };
+    }
+    for (const [at, d] of this.derivers.entries()) {
+      out[componentKey("deriver", d.id)] = { version: d.version, ...tables(d.tables ?? []), at };
+    }
+    return out;
+  }
+
   /** Changes whenever a materializer's version or a table's DDL changes: the view must be rebuilt. */
   fingerprint(): string {
     return canonicalJson({
@@ -231,6 +271,32 @@ export class ModuleRegistry {
       ddl: this.viewTables().map(createTableSql),
     });
   }
+}
+
+export type ComponentKind = "materializer" | "identity" | "deriver";
+
+/** The `ViewDefs` key of one component: `<kind>:<id>`. */
+export function componentKey(kind: ComponentKind, id: string): string {
+  return `${kind}:${id}`;
+}
+
+/** One view component's recorded definition (see `ModuleRegistry.viewDefs`). */
+export interface ComponentDef {
+  readonly version: number;
+  /** sha256 (hex, 16 chars) of the component's `CREATE TABLE` / `CREATE INDEX` statements. */
+  readonly ddl: string;
+  /** Every table it owns, internal ones (a materializer's members table) included. */
+  readonly tables: readonly string[];
+  /** A materializer that indexes event refs (they feed every fold's `referrers`, events.md 6.1). */
+  readonly refs?: "eager" | "lazy";
+  /** A deriver's position in the registry order (each deriver sees the previous ones' writes). */
+  readonly at?: number;
+}
+
+export type ViewDefs = Readonly<Record<string, ComponentDef>>;
+
+function ddlFingerprint(tables: readonly TableDef[]): string {
+  return bytesToHex(sha256(utf8ToBytes(tables.map(createTableSql).join("\n")))).slice(0, 16);
 }
 
 /**

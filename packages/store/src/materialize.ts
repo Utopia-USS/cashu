@@ -35,8 +35,17 @@ import { type Decoded, decodeEnvelope, envelopeExtra } from "./envelope.js";
 import { detPartsOf } from "./events/v1/det-parts.js";
 import { fromWire } from "./events/v1/envelope.js";
 import { detGidFor, type VaultSalt } from "./gid.js";
-import { rebuildView } from "./rebuild.js";
-import { EventRegistry, ModuleRegistry, type StoreModule } from "./registry.js";
+import {
+  planViewUpgrade,
+  type RebuildContext,
+  type RebuildListener,
+  type RebuildReason,
+  type RebuildReport,
+  rebuildPartial,
+  rebuildView,
+  type ViewUpgradePlan,
+} from "./rebuild.js";
+import { EventRegistry, ModuleRegistry, type StoreModule, type ViewDefs } from "./registry.js";
 import { createTableSql, type TableDef } from "./sql/ddl.js";
 import type { SqlDriver, SqlValue } from "./sql/driver.js";
 import { SYSTEM_SCHEMA_VERSION, SYSTEM_TABLES } from "./sql/system.js";
@@ -49,6 +58,11 @@ export interface StoreOptions {
   /** The vault's gid salt (gid.md 3), from the device keyring. */
   readonly salt: VaultSalt;
   readonly modules: readonly StoreModule[];
+  /**
+   * Progress of a rebuild (the one `open` runs after an app update, and `rebuild()`), for the UI.
+   * Called synchronously inside the rebuild transaction; `done` after the commit.
+   */
+  readonly onRebuild?: RebuildListener;
 }
 
 export interface WireBatch {
@@ -105,6 +119,10 @@ export function isCorruption(e: unknown): boolean {
 }
 const META_EVENTS = "events_fingerprint";
 const META_VIEW = "view_fingerprint";
+/** Every view table the database holds (dropped by name when the view is rebuilt). */
+const META_VIEW_TABLES = "view_tables";
+/** Per view component: version, DDL fingerprint, tables (`ModuleRegistry.viewDefs`). */
+const META_VIEW_DEFS = "view_defs";
 
 export class Store {
   readonly vault: string;
@@ -123,6 +141,8 @@ export class Store {
   readonly #hub = new ChangeHub();
   readonly deps: FoldDeps;
   readonly #deriveDeps: DeriveDeps;
+  readonly #onRebuild: RebuildListener | undefined;
+  #lastRebuild: RebuildReport | null = null;
 
   private constructor(opts: StoreOptions, events: EventRegistry, modules: ModuleRegistry) {
     this.vault = opts.vault;
@@ -130,6 +150,7 @@ export class Store {
     this.events = events;
     this.modules = modules;
     this.#suppression = events.suppressionRules();
+    this.#onRebuild = opts.onRebuild;
     this.#stmts = new StatementCache(opts.driver);
     this.#log = new EventLog(opts.driver);
     this.#ids = new ViewIds(this.#stmts);
@@ -247,28 +268,45 @@ export class Store {
     const eventsFp = events.fingerprint();
     const viewChanged = meta(META_VIEW) !== viewFp;
     const eventsChanged = meta(META_EVENTS) !== eventsFp;
-    if (viewChanged) {
-      // View tables are derived: an upgraded definition drops and recreates them. The view
-      // fingerprint covers their exact DDL, so an unchanged one means they exist as defined.
-      const allTables = modules.viewTables();
-      const known = meta("view_tables");
-      for (const name of known ? (JSON.parse(known) as string[]) : []) {
-        db.exec(`DROP TABLE IF EXISTS ${name}`);
+    if (!viewChanged && !eventsChanged) {
+      // The common open: nothing to rebuild. A database from before per-component records gets one.
+      if (meta(META_VIEW_DEFS) === undefined) {
+        setMeta(META_VIEW_DEFS, canonicalJson(modules.viewDefs()));
       }
-      db.exec(allTables.map(createTableSql).join("\n"));
-      setMeta("view_tables", JSON.stringify(allTables.map((t) => t.name)));
+      const store = new Store(opts, events, modules);
+      setMeta(META_SESSION, "1");
+      return store;
     }
 
-    const store = new Store(opts, events, modules);
-    if (viewChanged || eventsChanged) {
+    // An app update changed definitions (events.md 7.9, M10). DDL, rebuild and the new record commit
+    // together: a crash rolls all of it back and the next open starts again from the old record, so
+    // a half-rebuilt view is never served (rebuild.ts "Upgrade rule").
+    const storedDefs = meta(META_VIEW_DEFS);
+    const knownTables = meta(META_VIEW_TABLES);
+    const plan = planViewUpgrade({
+      registry: modules,
+      stored: storedDefs === undefined ? undefined : (JSON.parse(storedDefs) as ViewDefs),
+      previousTables: knownTables === undefined ? [] : (JSON.parse(knownTables) as string[]),
+      eventsChanged,
+      viewChanged,
+    });
+    const byName = new Map(modules.viewTables().map((t) => [t.name, t]));
+    const opened = db.transaction(() => {
+      for (const name of plan.drop) db.exec(`DROP TABLE IF EXISTS ${name}`);
+      db.exec(plan.create.map((name) => createTableSql(byName.get(name) as TableDef)).join("\n"));
+      const store = new Store(opts, events, modules);
       // An empty log has an empty view (a new vault, a reset store): nothing to recompute.
-      const held = db.prepare("SELECT 1 AS held FROM event_log LIMIT 1").get();
-      if (held !== undefined) store.rebuild({ redecode: eventsChanged, reindex: true });
+      const held = db.prepare("SELECT 1 AS held FROM event_log LIMIT 1").get() !== undefined;
+      const report = held ? store.#runUpgrade(plan) : null;
+      setMeta(META_VIEW_TABLES, JSON.stringify([...byName.keys()]));
+      setMeta(META_VIEW_DEFS, canonicalJson(modules.viewDefs()));
       setMeta(META_VIEW, viewFp);
       setMeta(META_EVENTS, eventsFp);
-    }
+      return { store, report };
+    });
+    if (opened.report !== null) opened.store.#finishRebuild(opened.report);
     setMeta(META_SESSION, "1");
-    return store;
+    return opened.store;
   }
 
   /** Every view table of the registered modules (public and internal). */
@@ -538,34 +576,70 @@ export class Store {
 
   /**
    * Recompute the view from the held log. `redecode` re-validates every stored event (the event
-   * registry changed); `reindex` recomputes the event refs (a materializer changed). Opening a store
-   * after an upgrade does both.
+   * registry changed); `reindex` recomputes the event refs (a materializer changed). Progress goes
+   * to `StoreOptions.onRebuild`; subscribers of the rewritten tables are notified after the commit.
    */
-  rebuild(options: { redecode?: boolean; reindex?: boolean } = {}): {
-    readonly touchedTables: ReadonlySet<string>;
-  } {
-    const touched = new TouchedTables(this.#internal);
+  rebuild(options: { redecode?: boolean; reindex?: boolean } = {}): RebuildReport {
+    let report: RebuildReport | undefined;
     this.driver.transaction(() => {
-      rebuildView(
-        {
-          driver: this.driver,
-          vault: this.vault,
-          log: this.#log,
-          events: this.events,
-          identity: this.#identity,
-          runners: this.#runners,
-          suppression: this.#suppression,
-          det: this.deps.det,
-          lazyRefs: this.deps.lazyRefs,
-          sql: viewSql(this.#stmts, touched),
-          logRow: (decoded, original) => this.#logRow(decoded, original),
-          deriveAll: (sql) => this.#deriveAll(sql),
-        },
-        options,
-      );
+      report = this.#rebuildFull({ ...options, reason: "manual" });
     });
-    this.#hub.notify(touched.set);
-    return { touchedTables: touched.set };
+    return this.#finishRebuild(report as RebuildReport);
+  }
+
+  /** The last rebuild of this store (the open-time upgrade, or `rebuild()`), null if none ran. */
+  get lastRebuild(): RebuildReport | null {
+    return this.#lastRebuild;
+  }
+
+  #rebuildContext(touched: TouchedTables): RebuildContext {
+    return {
+      driver: this.driver,
+      vault: this.vault,
+      log: this.#log,
+      events: this.events,
+      identity: this.#identity,
+      runners: this.#runners,
+      suppression: this.#suppression,
+      det: this.deps.det,
+      lazyRefs: this.deps.lazyRefs,
+      sql: viewSql(this.#stmts, touched),
+      logRow: (decoded, original) => this.#logRow(decoded, original),
+      derivers: this.modules.derivers,
+      deriveContext: (sql) => deriveContext(this.#deriveDeps, sql),
+      onProgress: this.#onRebuild,
+    };
+  }
+
+  /** Inside a transaction. */
+  #rebuildFull(options: {
+    redecode?: boolean;
+    reindex?: boolean;
+    reason: RebuildReason;
+  }): RebuildReport {
+    const touched = new TouchedTables(this.#internal);
+    const done = rebuildView(this.#rebuildContext(touched), options);
+    return { ...done, touchedTables: touched.set };
+  }
+
+  /** Inside the open transaction, after the plan's DDL. */
+  #runUpgrade(plan: ViewUpgradePlan): RebuildReport {
+    if (plan.scope === "full") {
+      return this.#rebuildFull({ redecode: plan.redecode, reindex: true, reason: plan.reason });
+    }
+    const touched = new TouchedTables(this.#internal);
+    const done = rebuildPartial(this.#rebuildContext(touched), plan);
+    // Recreated tables changed shape or content even where no row was written.
+    for (const name of plan.create) touched.add(name);
+    return { ...done, touchedTables: touched.set };
+  }
+
+  /** After the commit: remember, notify subscribers, report `done`. */
+  #finishRebuild(report: RebuildReport): RebuildReport {
+    this.#lastRebuild = report;
+    this.#hub.notify(report.touchedTables);
+    this.#onRebuild?.({ phase: "done", report });
+    return report;
   }
 
   // ------------------------------------------------------------------------------------------- //

@@ -9,6 +9,9 @@ import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { detGid } from "./gid.js";
+import { Store } from "./materialize.js";
+import { builtinModules } from "./modules.js";
+import type { StoreModule } from "./registry.js";
 import { viewHash } from "./snapshot.js";
 import { betterSqlite3Driver } from "./sql/better-sqlite3.js";
 import { rng } from "./testing/random.js";
@@ -16,9 +19,11 @@ import {
   EventFactory,
   openTestStore,
   TEST_SALT,
+  TEST_VAULT,
   type TestEnvelope,
   testUlid,
 } from "./testing/store.js";
+import { bumpVersion } from "./testing/upgrade.js";
 
 const ACCOUNTS = [
   { gid: detGid(TEST_SALT, "accounts", ["ext", "mbank", "perf-1"]), currency: "PLN" },
@@ -226,7 +231,9 @@ describe("perf smoke: 64k events", () => {
     timeout: 300_000,
   }, () => {
     const { events, f, next } = workload();
-    const { store, mode } = perfStore();
+    const perf = perfStore();
+    const mode = perf.mode;
+    let store = perf.store;
     let t0 = now();
     for (let i = 0; i < events.length; i += 1000) store.applyEnvelopes(events.slice(i, i + 1000));
     const bulk = since(t0);
@@ -239,6 +246,29 @@ describe("perf smoke: 64k events", () => {
     t0 = now();
     store.rebuild();
     const rebuild = since(t0);
+    expect(viewHash(store).hash).toBe(hash);
+
+    // Opens after an app update (events.md 7.9, S23d), same run. "Before" = what every definitions
+    // change cost until S23d: the whole view with refs re-indexed, inside the open.
+    const reopen = (modules: readonly StoreModule[]) => {
+      store.detach();
+      const t = now();
+      store = Store.open({ driver: store.driver, vault: TEST_VAULT, salt: TEST_SALT, modules });
+      return since(t);
+    };
+    const opens = Array.from({ length: 5 }, () => reopen(builtinModules()).cpu).sort(
+      (a, b) => a - b,
+    );
+    expect(store.lastRebuild).toBeNull();
+    t0 = now();
+    store.rebuild({ reindex: true });
+    const upgradeBefore = since(t0);
+    const rulesBumped = bumpVersion(builtinModules(), "budget.category_rules");
+    const upgradeRules = reopen(rulesBumped);
+    expect(store.lastRebuild?.scope).toBe("partial");
+    expect(viewHash(store).hash).toBe(hash);
+    const upgradeTxns = reopen(bumpVersion(rulesBumped, "budget.transactions"));
+    expect(store.lastRebuild?.scope).toBe("full");
     expect(viewHash(store).hash).toBe(hash);
 
     t0 = now();
@@ -329,6 +359,10 @@ describe("perf smoke: 64k events", () => {
       bulkCpu: bulk.cpu,
       rebuildWall: rebuild.wall,
       rebuildCpu: rebuild.cpu,
+      openUnchangedCpuMedian: opens[2],
+      upgradeBeforeCpu: upgradeBefore.cpu,
+      upgradeRulesCpu: upgradeRules.cpu,
+      upgradeTxnsCpu: upgradeTxns.cpu,
       edits10Wall: edits10.wall,
       dayBatchWall: dayBatch.wall,
       dayBatchCpu: dayBatch.cpu,
