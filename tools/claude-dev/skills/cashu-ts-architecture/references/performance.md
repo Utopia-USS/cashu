@@ -135,6 +135,23 @@ imports; now `+type`), and rows addressed by `dedup_hash` alone scan `transactio
 addressed by gid). The derived oracle (`Store.rederive`, every deriver's deriveAll) costs ~1 s at this
 size: tests only.
 
+With the effective categories (S24c, `budget/derive/categories.ts`: the S09 engine, recurring groups
+kept per (payee, currency, amount)), same workload, one run each, wall (CPU) ms, load average 8-20;
+the "stub" column is the same tree with the categories deriver switched off:
+
+| Phase | Memory | File | File, stub | Budget |
+|---|---|---|---|---|
+| bulk apply, 1,000-event batches | 5,374 (6,301) | 10,358-10,751 (10,180-10,248) | 5,308 (4,760) | first sync desktop <= 10 s |
+| bulk apply, one apply (a sync pull: one transaction, 25k-event chunks) | - | 3,639 (4,004) | - | first sync desktop <= 10 s |
+| full rebuild | 1,383-1,402 | 1,648-1,668 | 1,156 | desktop <= 3 s |
+| a day's events | 15-17 | 64-67 | 51 | <= 100 ms |
+
+A full pass costs ~8 us per row (it writes only what changed); the incremental path ~70 us per dirty
+row (SQLite: one membership row per outflow, two B-trees, plus the category update), so a batch
+dirtying more than an eighth of the rows takes the full pass. The 1,000-event bulk is over the line
+on a loaded machine; a first sync goes through the sink's pull transaction (chunks of 25k events, each
+dirtying more than an eighth of the rows, so each takes the full pass), well inside it.
+
 ## Rebuild after an app update (S23d)
 
 `Store.open` compares each view component's recorded version and DDL fingerprint (`view_defs`) and

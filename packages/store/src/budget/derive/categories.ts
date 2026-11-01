@@ -8,16 +8,20 @@
 // registers, never from the derived column (so the result is a function of the facts, not of the
 // previous run).
 //
-// Incremental unit = the payee (merchant key): a payee's subscription flag depends only on its own
-// rows, its merchant rule and the vault-wide inputs (own IBANs, cash accounts, payment patterns).
-// - a dirty row re-derives itself, and re-checks the flag of its old and new payee;
-// - a touched merchant rule re-derives every row of its payee;
-// - a payee whose flag flips re-derives every row of it;
+// Incremental unit = the recurring group (payee, currency, outflow amount; `recurringMember`): a
+// payee is a subscription payee when one of its groups qualifies (`recurringDates`), and a row's
+// group depends only on the row, its payee's merchant rule and the vault-wide inputs (own IBANs,
+// cash accounts, payment patterns).
+// - a dirty row re-derives itself and re-checks its old and new group;
+// - a touched merchant rule re-groups and re-derives every row of its payee;
+// - a payee whose subscription flag flips re-derives every row of it;
 // - a change of the own-IBAN set or of the cash accounts (signature in `fold_category_env`), a
-//   module contribution (payment patterns), a full re-fold, or a bulk dirty set (a fifth of the rows,
-//   256 at least) runs `deriveAll`.
-// Internal state: `fold_category_payees` (row key -> its view row id and payee, as last derived; the
-// old payee of a re-folded row is only known here) and `fold_category_subs` (the flagged payees).
+//   module contribution (payment patterns), a full re-fold, or a bulk dirty set (an eighth of the
+//   rows, 256 at least) runs `deriveAll`.
+// Internal state: `fold_category_members` (row key -> its group and date, for rows in a group: the
+// old group of a re-folded row is only known here) and `fold_category_groups` (the qualifying
+// groups and their payees). A payee's rows are found through the transactions materializer's
+// `fold_txn_keys.merchant_key` (the same `merchantKey` of the same row content).
 //
 // `is_internal_transfer` is read from the view (S24b's transfers deriver writes it, before this
 // one); when it lands, its changed rows must reach this deriver as dirty rows.
@@ -29,25 +33,30 @@ import { budgetEngineContext } from "../read-models.js";
 import { CASHEXP, CASHLEG, splitKey, TRANSACTIONS } from "../transactions.js";
 import { selectIn } from "./keys.js";
 
-const payeesTable: TableDef = {
-  name: "fold_category_payees",
+const membersTable: TableDef = {
+  name: "fold_category_members",
   primaryKey: ["row"],
   internal: true,
   withoutRowid: true,
   columns: [
     { name: "row", type: "TEXT", notNull: true },
-    { name: "txn", type: "INTEGER", notNull: true },
-    { name: "payee", type: "TEXT", notNull: true },
+    /** JSON `[payee, currency, amountKey]`. */
+    { name: "grp", type: "TEXT", notNull: true },
+    { name: "booking_date", type: "TEXT", notNull: true },
   ],
-  indexes: [{ columns: ["payee"] }],
+  indexes: [{ columns: ["grp"] }],
 };
 
-const subsTable: TableDef = {
-  name: "fold_category_subs",
-  primaryKey: ["payee"],
+/** The qualifying recurring groups (`recurringDates` not null) and their payees. */
+const groupsTable: TableDef = {
+  name: "fold_category_groups",
+  primaryKey: ["grp"],
   internal: true,
   withoutRowid: true,
-  columns: [{ name: "payee", type: "TEXT", notNull: true }],
+  columns: [
+    { name: "grp", type: "TEXT", notNull: true },
+    { name: "payee", type: "TEXT", notNull: true },
+  ],
 };
 
 const envTable: TableDef = {
@@ -65,11 +74,15 @@ const envTable: TableDef = {
 const CLAIM_SOURCES: ReadonlySet<string> = new Set(["manual_txn", "llm_full", "llm_fallback"]);
 const REGISTRY = core.builtinRegistry();
 /**
- * One full pass instead of per-payee work when at least FULL_PASS_MIN rows are dirty and they are
- * more than a fifth of the rows (S24 4.1: a bulk import, a first sync).
+ * One full pass instead of per-group work when at least FULL_PASS_MIN rows are dirty and they are
+ * more than an eighth of the rows (S24 4.1: a bulk import, a first sync). Measured (perf.test.ts,
+ * file mode): a full pass costs ~8 us per row (it writes only what changed), the incremental path
+ * ~70 us per dirty row.
  */
-const FULL_PASS_SHARE = 5;
+const FULL_PASS_SHARE = 8;
 const FULL_PASS_MIN = 256;
+const CHUNK = 256;
+const PLACEHOLDERS = Array.from({ length: CHUNK }, () => "?").join(", ");
 
 interface Loaded {
   id: number;
@@ -95,6 +108,11 @@ interface Row {
   readonly input: budget.CategorizeRow;
 }
 
+interface Member {
+  readonly grp: string;
+  readonly date: string;
+}
+
 const COLUMNS = `t.id, t.booking_date, t.amount, t.currency, t.counterparty_name, t.counterparty_iban,
   t.description, t.reference, t.is_internal_transfer, t.category, t.category_source,
   a.type AS account_type, c.claim, c.claim_by`;
@@ -102,6 +120,10 @@ const COLUMNS = `t.id, t.booking_date, t.amount, t.currency, t.counterparty_name
 /** The row key of a view row (the transactions materializer's partition). */
 const ROW_KEY = `CASE WHEN t.dedup_hash LIKE '${CASHEXP}%' THEN t.dedup_hash
   ELSE v.gid || '|' || t.dedup_hash || '|' || t.occurrence END`;
+
+const SELECT_ROWS = `SELECT ${COLUMNS}, ${ROW_KEY} AS row FROM transactions t
+  JOIN view_ids v ON v.id = t.account_id LEFT JOIN accounts a ON a.id = t.account_id
+  LEFT JOIN fold_transaction_claims c ON c.partition = ${ROW_KEY}`;
 
 function toRow(r: Loaded): Row {
   const onCash = r.account_type === budget.CASH_ACCOUNT_TYPE;
@@ -128,29 +150,80 @@ function toRow(r: Loaded): Row {
   };
 }
 
+/** `values` in chunks of CHUNK, each padded with NULL (one prepared statement shape). */
+function* chunks(values: readonly string[]): Generator<(string | null)[]> {
+  for (let i = 0; i < values.length; i += CHUNK) {
+    const c: (string | null)[] = values.slice(i, i + CHUNK);
+    while (c.length < CHUNK) c.push(null);
+    yield c;
+  }
+}
+
 /** Every non-leg row of the view (the full recompute's input). */
 function allRows(ctx: DeriveContext): Row[] {
+  return ctx.sql.all<Loaded>(`${SELECT_ROWS} WHERE t.dedup_hash NOT LIKE '${CASHLEG}%'`).map(toRow);
+}
+
+/**
+ * The view rows the row keys name now, in a few batched reads: import rows per account root by
+ * hash, cash expenses by gid. Keys naming no row are absent from the result.
+ */
+function rowsByKey(ctx: DeriveContext, keys: Iterable<string>): Map<string, Row> {
+  const wanted = new Set(keys);
+  const out = new Map<string, Row>();
+  const hashesByRoot = new Map<string, Set<string>>();
+  const expenses: string[] = [];
+  for (const key of wanted) {
+    if (key.startsWith(CASHEXP)) expenses.push(key.slice(CASHEXP.length));
+    else if (!key.startsWith(CASHLEG)) {
+      const [root, hash] = splitKey(key);
+      const set = hashesByRoot.get(root) ?? new Set<string>();
+      set.add(hash);
+      hashesByRoot.set(root, set);
+    }
+  }
+  const take = (rows: Loaded[]) => {
+    for (const r of rows) if (wanted.has(r.row)) out.set(r.row, toRow(r));
+  };
+  for (const [root, hashes] of hashesByRoot) {
+    for (const c of chunks([...hashes])) {
+      take(
+        ctx.sql.all<Loaded>(
+          `${SELECT_ROWS} WHERE t.account_id = (SELECT id FROM view_ids WHERE gid = ?)
+             AND t.dedup_hash IN (${PLACEHOLDERS})`,
+          root,
+          ...c,
+        ),
+      );
+    }
+  }
+  for (const c of chunks(expenses)) {
+    take(
+      ctx.sql.all<Loaded>(
+        `${SELECT_ROWS} WHERE t.gid IN (${PLACEHOLDERS}) AND t.dedup_hash LIKE '${CASHEXP}%'`,
+        ...c,
+      ),
+    );
+  }
+  return out;
+}
+
+/** The row keys of a payee (the materializer's merchant key index). */
+function keysOfPayee(ctx: DeriveContext, payee: string): string[] {
   return ctx.sql
-    .all<Loaded>(
-      `SELECT ${COLUMNS}, ${ROW_KEY} AS row FROM transactions t
-       JOIN view_ids v ON v.id = t.account_id LEFT JOIN accounts a ON a.id = t.account_id
-       LEFT JOIN fold_transaction_claims c ON c.partition = ${ROW_KEY}
-       WHERE t.dedup_hash NOT LIKE '${CASHLEG}%'`,
-    )
-    .map(toRow);
+    .all<{ row: string }>("SELECT row FROM fold_txn_keys WHERE merchant_key = ?", payee)
+    .map((r) => r.row);
 }
 
-/** Rows through the payee index (current after `trackRows`). */
-const BY_PAYEE = `SELECT ${COLUMNS}, p.row AS row FROM fold_category_payees p
-  JOIN transactions t ON t.id = p.txn LEFT JOIN accounts a ON a.id = t.account_id
-  LEFT JOIN fold_transaction_claims c ON c.partition = p.row`;
-
-function rowsOfPayee(ctx: DeriveContext, payee: string): Row[] {
-  return ctx.sql.all<Loaded>(`${BY_PAYEE} WHERE p.payee = ?`, payee).map(toRow);
-}
-
-function rowsByKey(ctx: DeriveContext, keys: readonly string[]): Row[] {
-  return selectIn<Loaded>(ctx.sql, `${BY_PAYEE} WHERE p.row IN (%IN%)`, keys).map(toRow);
+/** The stored group membership of these row keys. */
+function membersOf(ctx: DeriveContext, keys: readonly string[]): Map<string, Member> {
+  return new Map(
+    selectIn<{ row: string; grp: string; booking_date: string }>(
+      ctx.sql,
+      "SELECT row, grp, booking_date FROM fold_category_members WHERE row IN (%IN%)",
+      keys,
+    ).map((m) => [m.row, { grp: m.grp, date: m.booking_date }]),
+  );
 }
 
 /** The vault-wide inputs that are not dirty-tracked per row: own IBANs and cash accounts. */
@@ -170,18 +243,12 @@ function storedSignature(ctx: DeriveContext): string | undefined {
   return ctx.sql.get<{ v: string }>("SELECT v FROM fold_category_env WHERE k = 'env'")?.v;
 }
 
-function saveSignature(ctx: DeriveContext, sig: string): void {
-  ctx.sql.write(
-    envTable.name,
-    "INSERT OR REPLACE INTO fold_category_env (k, v) VALUES ('env', ?)",
-    sig,
-  );
+interface Engine {
+  readonly categorizer: budget.Categorizer;
+  readonly notSubscription: ReadonlySet<string>;
 }
 
-function engine(ctx: DeriveContext): {
-  categorizer: budget.Categorizer;
-  notSubscription: ReadonlySet<string>;
-} {
+function engine(ctx: DeriveContext): Engine {
   const read: Read = (sql, ...params) => ctx.sql.all(sql, ...params);
   return {
     categorizer: budget.createCategorizer(
@@ -193,6 +260,17 @@ function engine(ctx: DeriveContext): {
     ]),
   };
 }
+
+/** The recurring group a row counts in, or null (internal transfers count in none). */
+function memberOf(e: Engine, row: Row): Member | null {
+  if (row.input.isInternalTransfer) return null;
+  const m = e.categorizer.recurringMember(row.input, e.notSubscription);
+  return m === null
+    ? null
+    : { grp: JSON.stringify([m.payee, m.currency, m.amountKey]), date: row.input.bookingDate };
+}
+
+const payeeOfGroup = (grp: string): string => (JSON.parse(grp) as [string])[0];
 
 function write(ctx: DeriveContext, row: Row, value: budget.Effective): void {
   const category = value?.category ?? null;
@@ -207,124 +285,145 @@ function write(ctx: DeriveContext, row: Row, value: budget.Effective): void {
   );
 }
 
-/** Whether the recurring grouping flags `payee` (its non-internal rows only, payee-wide). */
-function flagged(e: ReturnType<typeof engine>, rows: readonly Row[], payee: string): boolean {
-  if (!payee) return false;
-  const input = rows.filter((r) => !r.input.isInternalTransfer).map((r) => r.input);
-  return e.categorizer.detectRecurring(input, e.notSubscription).length > 0;
-}
-
-/** The view row (id and merchant key) a row key names now, if any. */
-function findRow(ctx: DeriveContext, key: string): { id: number; payee: string } | undefined {
-  type Found = {
-    id: number;
-    counterparty_name: string | null;
-    reference: string | null;
-    description: string | null;
-  };
-  const cols = "t.id, t.counterparty_name, t.reference, t.description";
-  let r: Found | undefined;
-  if (key.startsWith(CASHEXP)) {
-    r = ctx.sql.get<Found>(
-      `SELECT ${cols} FROM transactions t WHERE t.gid = ? AND t.dedup_hash = ?`,
-      key.slice(CASHEXP.length),
-      key,
-    );
-  } else {
-    const [root, hash, occurrence] = splitKey(key);
-    r = ctx.sql.get<Found>(
-      `SELECT ${cols} FROM transactions t
-       WHERE t.account_id = (SELECT id FROM view_ids WHERE gid = ?) AND t.dedup_hash = ?
-         AND t.occurrence = ?`,
-      root,
-      hash,
-      occurrence,
-    );
-  }
-  if (r === undefined) return undefined;
-  return {
-    id: r.id,
-    payee: budget.merchantKey(r.counterparty_name, r.reference, r.description),
-  };
-}
-
 /**
- * Bring `fold_category_payees` up to date for the dirty row keys; returns the payees whose rows
- * changed (old and new) and the keys that still name a row.
+ * Set the stored membership of `key` (null: in no group), writing only a change; adds the groups it
+ * left and joined to `groups`.
  */
-function trackRows(
+function setMember(
   ctx: DeriveContext,
-  keys: readonly string[],
-): { payees: Set<string>; live: string[] } {
-  const payees = new Set<string>();
-  for (const r of selectIn<{ payee: string }>(
-    ctx.sql,
-    "SELECT payee FROM fold_category_payees WHERE row IN (%IN%)",
-    keys,
-  )) {
-    payees.add(r.payee);
-  }
-  const live: string[] = [];
-  for (const key of keys) {
-    const found = key.startsWith(CASHLEG) ? undefined : findRow(ctx, key);
-    if (found === undefined) {
-      ctx.sql.write(payeesTable.name, "DELETE FROM fold_category_payees WHERE row = ?", key);
-      continue;
+  key: string,
+  old: Member | undefined,
+  now: Member | null,
+  groups: Set<string>,
+): void {
+  if (old !== undefined) groups.add(old.grp);
+  if (now !== null) groups.add(now.grp);
+  if (now === null) {
+    if (old !== undefined) {
+      ctx.sql.write(membersTable.name, "DELETE FROM fold_category_members WHERE row = ?", key);
     }
-    ctx.sql.write(
-      payeesTable.name,
-      "INSERT OR REPLACE INTO fold_category_payees (row, txn, payee) VALUES (?, ?, ?)",
+  } else if (old === undefined || old.grp !== now.grp || old.date !== now.date) {
+    ctx.sql.insert(
+      membersTable.name,
+      "INSERT OR REPLACE INTO fold_category_members (row, grp, booking_date)",
+      "(?, ?, ?)",
       key,
-      found.id,
-      found.payee,
+      now.grp,
+      now.date,
     );
-    payees.add(found.payee);
-    live.push(key);
   }
-  return { payees, live };
+}
+
+/** The payees with a qualifying group. */
+function subscriptionPayees(ctx: DeriveContext): Set<string> {
+  return new Set(
+    ctx.sql
+      .all<{ payee: string }>("SELECT DISTINCT payee FROM fold_category_groups")
+      .map((r) => r.payee),
+  );
+}
+
+/** Re-check groups from their members' dates: a qualifying group is stored, any other is not. */
+function recheckGroups(ctx: DeriveContext, groups: readonly string[]): void {
+  const stored = new Set(
+    selectIn<{ grp: string }>(
+      ctx.sql,
+      "SELECT grp FROM fold_category_groups WHERE grp IN (%IN%)",
+      groups,
+    ).map((g) => g.grp),
+  );
+  const dates = new Map<string, string[]>();
+  for (const m of selectIn<{ grp: string; booking_date: string }>(
+    ctx.sql,
+    "SELECT grp, booking_date FROM fold_category_members WHERE grp IN (%IN%)",
+    groups,
+  )) {
+    const list = dates.get(m.grp) ?? [];
+    list.push(m.booking_date);
+    dates.set(m.grp, list);
+  }
+  for (const grp of groups) {
+    const qualifies = budget.recurringDates(dates.get(grp) ?? []) !== null;
+    if (qualifies === stored.has(grp)) continue;
+    if (qualifies) {
+      ctx.sql.write(
+        groupsTable.name,
+        "INSERT INTO fold_category_groups (grp, payee) VALUES (?, ?)",
+        grp,
+        payeeOfGroup(grp),
+      );
+    } else {
+      ctx.sql.write(groupsTable.name, "DELETE FROM fold_category_groups WHERE grp = ?", grp);
+    }
+  }
 }
 
 function deriveAll(ctx: DeriveContext): void {
   const e = engine(ctx);
   const rows = allRows(ctx);
-  const subs = budget.subscriptionPayees(
-    e.categorizer.detectRecurring(
-      rows.filter((r) => !r.input.isInternalTransfer).map((r) => r.input),
-      e.notSubscription,
-    ),
-  );
-  for (const r of rows) write(ctx, r, e.categorizer.effective(r.input, subs));
-  ctx.sql.write(payeesTable.name, "DELETE FROM fold_category_payees");
+  const members = new Map<string, Member | null>();
+  const dates = new Map<string, string[]>();
   for (const r of rows) {
+    const m = memberOf(e, r);
+    members.set(r.input.key, m);
+    if (m === null) continue;
+    const list = dates.get(m.grp) ?? [];
+    list.push(m.date);
+    dates.set(m.grp, list);
+  }
+  const qualifying = [...dates].filter(([, d]) => budget.recurringDates(d) !== null);
+  const subs = new Set(qualifying.map(([grp]) => payeeOfGroup(grp)));
+  for (const r of rows) write(ctx, r, e.categorizer.effective(r.input, subs));
+  // The internal tables: write only what differs from the last derivation (a bulk apply re-derives
+  // a mostly unchanged set; a rebuild starts empty).
+  const stored = new Map(
+    ctx.sql
+      .all<{ row: string; grp: string; booking_date: string }>(
+        "SELECT row, grp, booking_date FROM fold_category_members",
+      )
+      .map((m) => [m.row, { grp: m.grp, date: m.booking_date }]),
+  );
+  const unused = new Set<string>();
+  for (const [key, m] of members) {
+    setMember(ctx, key, stored.get(key), m, unused);
+    stored.delete(key);
+  }
+  for (const gone of stored.keys()) {
+    ctx.sql.write(membersTable.name, "DELETE FROM fold_category_members WHERE row = ?", gone);
+  }
+  const storedGroups = new Set(
+    ctx.sql.all<{ grp: string }>("SELECT grp FROM fold_category_groups").map((g) => g.grp),
+  );
+  for (const [grp] of qualifying) {
+    if (storedGroups.delete(grp)) continue;
     ctx.sql.insert(
-      payeesTable.name,
-      "INSERT INTO fold_category_payees (row, txn, payee)",
-      "(?, ?, ?)",
-      r.input.key,
-      r.id,
-      budget.txnMerchantKey(r.input),
+      groupsTable.name,
+      "INSERT INTO fold_category_groups (grp, payee)",
+      "(?, ?)",
+      grp,
+      payeeOfGroup(grp),
     );
   }
-  ctx.sql.write(subsTable.name, "DELETE FROM fold_category_subs");
-  for (const p of subs) {
-    ctx.sql.insert(subsTable.name, "INSERT INTO fold_category_subs (payee)", "(?)", p);
+  for (const gone of storedGroups) {
+    ctx.sql.write(groupsTable.name, "DELETE FROM fold_category_groups WHERE grp = ?", gone);
   }
-  saveSignature(ctx, envSignature(ctx));
+  ctx.sql.write(
+    envTable.name,
+    "INSERT OR REPLACE INTO fold_category_env (k, v) VALUES ('env', ?)",
+    envSignature(ctx),
+  );
 }
 
 export const categoriesDeriver: Deriver = {
   id: "budget.categories",
   version: 2,
-  tables: [payeesTable, subsTable, envTable],
+  tables: [membersTable, groupsTable, envTable],
   writes: [{ table: TRANSACTIONS, columns: ["category", "category_source"] }],
   inputs: ["budget.transactions", "budget.category_rules", "core.accounts", CONTRIBUTIONS],
   derive(dirty, ctx) {
-    if (dirty.has("core.accounts")) {
-      const sig = envSignature(ctx);
-      if (sig !== storedSignature(ctx)) {
-        deriveAll(ctx);
-        return;
-      }
+    if (dirty.has("core.accounts") && envSignature(ctx) !== storedSignature(ctx)) {
+      deriveAll(ctx);
+      return;
     }
     const txns = dirty.get("budget.transactions");
     const rules = dirty.get("budget.category_rules");
@@ -334,8 +433,7 @@ export const categoriesDeriver: Deriver = {
     }
     const keys = txns === undefined ? [] : [...txns];
     if (keys.length >= FULL_PASS_MIN) {
-      const total =
-        ctx.sql.get<{ n: number }>("SELECT count(*) AS n FROM fold_category_payees")?.n ?? 0;
+      const total = ctx.sql.get<{ n: number }>("SELECT count(*) AS n FROM fold_txn_keys")?.n ?? 0;
       if (keys.length * FULL_PASS_SHARE > total) {
         deriveAll(ctx);
         return;
@@ -356,29 +454,25 @@ export const categoriesDeriver: Deriver = {
     if (keys.length === 0 && rulePayees.size === 0) return;
 
     const e = engine(ctx);
-    const { payees, live } = trackRows(ctx, keys);
-    for (const p of rulePayees) payees.add(p);
-    const subs = new Set(
-      ctx.sql.all<{ payee: string }>("SELECT payee FROM fold_category_subs").map((r) => r.payee),
-    );
-    const todo = new Map<string, Row>();
-    for (const p of payees) {
-      const rows = rowsOfPayee(ctx, p);
-      const now = flagged(e, rows, p);
-      const flipped = now !== subs.has(p);
-      if (flipped) {
-        if (now) {
-          subs.add(p);
-          ctx.sql.write(subsTable.name, "INSERT INTO fold_category_subs (payee) VALUES (?)", p);
-        } else {
-          subs.delete(p);
-          ctx.sql.write(subsTable.name, "DELETE FROM fold_category_subs WHERE payee = ?", p);
-        }
-      }
-      if (flipped || rulePayees.has(p)) for (const r of rows) todo.set(r.input.key, r);
+    const before = subscriptionPayees(ctx);
+    // Rows whose group may have changed: the dirty ones and every row of a re-ruled payee (the rule
+    // decides their category).
+    const regroup = new Set(keys);
+    for (const p of rulePayees) for (const k of keysOfPayee(ctx, p)) regroup.add(k);
+    const keyList = [...regroup];
+    const old = membersOf(ctx, keyList);
+    const rows = rowsByKey(ctx, keyList);
+    const groups = new Set<string>();
+    for (const key of keyList) {
+      const row = rows.get(key);
+      setMember(ctx, key, old.get(key), row === undefined ? null : memberOf(e, row), groups);
     }
-    for (const r of rowsByKey(ctx, live)) todo.set(r.input.key, r);
-    for (const r of todo.values()) write(ctx, r, e.categorizer.effective(r.input, subs));
+    recheckGroups(ctx, [...groups]);
+    const subs = subscriptionPayees(ctx);
+    const flipped = [...new Set([...before, ...subs])].filter((p) => before.has(p) !== subs.has(p));
+    const more = flipped.flatMap((p) => keysOfPayee(ctx, p)).filter((k) => !rows.has(k));
+    for (const [k, r] of rowsByKey(ctx, more)) rows.set(k, r);
+    for (const r of rows.values()) write(ctx, r, e.categorizer.effective(r.input, subs));
   },
   deriveAll,
 };
