@@ -5,7 +5,9 @@
 // `mapRename`, `mapValuation`, `mapOverride`, `mapInstruments`); updates take every payload field
 // from the genesis snapshot of `post`:
 // - account settings and manual valuations: the whole value again (LWW-F on the row key);
-// - imports, transactions, position snapshots, renames: CREATE / APPEND, no update event: blocked;
+// - imports, transactions, renames: CREATE / APPEND, no update event: blocked (a broker re-import
+//   never updates a transaction: changed figures are a new dedup hash, a new row);
+// - position snapshots: a re-import with changed figures is `position.snapshotUpdated` (S31c);
 // - shared instruments: `instrument.updated` with the changed fields; an alias insert (or a guessed
 //   alias confirmed) is `instrument.aliasAdded`; the owner merge (explicit `merge`) is
 //   `instrument.merged`. An instrument insert never reaches a bridge: the planner ships new
@@ -153,34 +155,40 @@ const transactions: TableBridge<InvTransactionRow> = {
 /** Columns an overlapping re-import rewrites without changing the snapshot (provenance only). */
 const PROVENANCE: readonly string[] = ["import_batch_id", "created_at"];
 
+function positionSnapshot(c: RowChange<InvPositionSnapshotRow>, ctx: MapContext) {
+  const r = need(c.post);
+  requireRefs(ctx, [
+    ["accounts", r.accountId],
+    ["inv_instruments", r.instrumentId],
+  ]);
+  return eventsOf(
+    "inv_position_snapshots",
+    ctx.attempt(() => mapPosition(r, ctx)),
+  );
+}
+
 const positions: TableBridge<InvPositionSnapshotRow> = {
   table: "inv_position_snapshots",
   gid: "det",
   columns: carried(
-    ["position.snapshotImported"],
+    ["position.snapshotImported", "position.snapshotUpdated"],
     ...["id", "account_id", "instrument_id", "as_of", "quantity", "currency", "avg_price"],
     ...["market_value", "import_batch_id", "created_at"],
   ),
-  insert: (c, ctx) => {
-    const r = need(c.post);
-    requireRefs(ctx, [
-      ["accounts", r.accountId],
-      ["inv_instruments", r.instrumentId],
-    ]);
-    return eventsOf(
-      "inv_position_snapshots",
-      ctx.attempt(() => mapPosition(r, ctx)),
-    );
-  },
-  // A re-import upserts the same (account, instrument, as_of): its snapshot event is the row's DET
-  // gid again, which `position.snapshotImported` (CREATE) dedupes, first import wins (lead decision,
-  // S31c item 1). So a provenance-only rewrite (import_batch_id / created_at of an overlapping
-  // re-import) is a no-event row, explicitly; a changed VALUE cannot be carried by a CREATE and
-  // blocks visibly (follow-up: an LWW re-snapshot event) instead of diverging silently.
-  update: (c) => {
+  insert: positionSnapshot,
+  // A re-import upserts the same (account, instrument, as_of) (S31c item 2). Python writes nothing
+  // for the same figures; a provenance-only rewrite (import_batch_id / created_at) is a no-event row;
+  // changed figures are `position.snapshotUpdated`: the whole snapshot of `post` under the row's own
+  // DET gid (the create's), LWW on the row key, so a vault folds the newest import like Python.
+  update: (c, ctx) => {
     const changed = [...c.changed];
     if (changed.every((col) => PROVENANCE.includes(col))) return [];
-    throw new BridgeBlock("resnapshot:inv_position_snapshots");
+    const snapshot = pick(
+      "inv_position_snapshots",
+      positionSnapshot(c, ctx),
+      "position.snapshotImported",
+    );
+    return [derived(snapshot, "position.snapshotUpdated", snapshot.data)];
   },
 };
 

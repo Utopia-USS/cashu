@@ -335,7 +335,7 @@ describe("positions, renames, valuations", () => {
     created_at: T0,
   };
 
-  it("a position snapshot insert is DET(account, instrument, as_of); a re-import update blocks", () => {
+  it("a position snapshot insert is DET(account, instrument, as_of); changed figures update it", () => {
     const { events } = shipped([
       { table: "inv_position_snapshots", localId: "5", fields: position, post: position },
     ]);
@@ -347,11 +347,30 @@ describe("positions, renames, valuations", () => {
       table: "inv_position_snapshots",
       localId: "5",
       op: "update" as const,
-      fields: { quantity: "3" },
-      prev: { quantity: "2" },
-      post: { ...position, quantity: "3" },
+      fields: { quantity: "3", market_value: "33", created_at: T1 },
+      prev: { quantity: "2", market_value: "20", created_at: T0 },
+      post: { ...position, quantity: "3", market_value: "33", created_at: T1 },
     };
-    expect(blockOf([reimport])).toBe("resnapshot:inv_position_snapshots");
+    // Changed figures (S31c item 2): the whole snapshot again under the row's own DET gid.
+    const updated = shipped([reimport]).events;
+    expect(updated.map((e) => [e.t, e.g])).toEqual([["position.snapshotUpdated", gid]]);
+    expect(updated[0]?.d).toMatchObject({
+      account: ACCOUNT_GID,
+      instrument: INSTRUMENT_GID,
+      asOf: "2026-03-01",
+      quantity: "3",
+      marketValue: "33",
+      batch: BATCH_GID,
+      stamps: { created_at: expect.stringMatching(/^2026-03-02/) },
+    });
+    // A price-only move (same quantity) ships too: no figure is dropped.
+    const priceOnly = {
+      ...reimport,
+      fields: { avg_price: "10.5" },
+      prev: { avg_price: null },
+      post: { ...position, avg_price: "10.5" },
+    };
+    expect(shipped([priceOnly]).events[0]?.d).toMatchObject({ avgPrice: "10.5", quantity: "2" });
     // An overlapping re-import that only rewrites provenance is an explicit no-event row.
     const provenance = {
       ...reimport,

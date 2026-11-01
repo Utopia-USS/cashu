@@ -319,8 +319,14 @@ def test_an_identical_overlapping_reimport_leaves_the_snapshots_alone(setup, mon
     moved = [k for k in after if after[k] != before[k]]
     assert len(moved) == 1 and after[moved[0]][0] == 25 and after[moved[0]][1] == changed.batch_id
     with get_session() as s:
-        [upd] = [r for r in sync_outbox.rows_of(s, table_name="inv_position_snapshots") if r["op"] == "update"]
+        captured_rows = sync_outbox.rows_of(s, table_name="inv_position_snapshots")
+    [upd] = [r for r in captured_rows if r["op"] == "update"]
     assert Decimal(str(upd["fields"]["quantity"])) == 25
+    # S31c: the shipper maps this row to ``position.snapshotUpdated`` under the snapshot's own DET gid,
+    # from the changed figure plus the new provenance and the whole stored row (``post``).
+    assert {"quantity", "import_batch_id", "created_at"} <= set(upd["fields"])
+    [ins] = [r for r in captured_rows if r["op"] == "insert" and r["local_id"] == upd["local_id"]]
+    assert upd["gid"] == ins["gid"] and upd["post"]["import_batch_id"] == changed.batch_id
 
 
 def test_a_reimport_with_the_same_importer_leaves_the_account_settings_alone(setup):

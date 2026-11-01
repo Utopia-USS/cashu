@@ -265,16 +265,16 @@
     "inv_position_snapshots": {
       "gid": "det",
       "columns": {
-        "account_id": ["position.snapshotImported"],
-        "as_of": ["position.snapshotImported"],
-        "avg_price": ["position.snapshotImported"],
-        "created_at": ["position.snapshotImported"],
-        "currency": ["position.snapshotImported"],
-        "id": ["position.snapshotImported"],
-        "import_batch_id": ["position.snapshotImported"],
-        "instrument_id": ["position.snapshotImported"],
-        "market_value": ["position.snapshotImported"],
-        "quantity": ["position.snapshotImported"]
+        "account_id": ["position.snapshotImported", "position.snapshotUpdated"],
+        "as_of": ["position.snapshotImported", "position.snapshotUpdated"],
+        "avg_price": ["position.snapshotImported", "position.snapshotUpdated"],
+        "created_at": ["position.snapshotImported", "position.snapshotUpdated"],
+        "currency": ["position.snapshotImported", "position.snapshotUpdated"],
+        "id": ["position.snapshotImported", "position.snapshotUpdated"],
+        "import_batch_id": ["position.snapshotImported", "position.snapshotUpdated"],
+        "instrument_id": ["position.snapshotImported", "position.snapshotUpdated"],
+        "market_value": ["position.snapshotImported", "position.snapshotUpdated"],
+        "quantity": ["position.snapshotImported", "position.snapshotUpdated"]
       },
       "ops": ["insert", "update"]
     },
