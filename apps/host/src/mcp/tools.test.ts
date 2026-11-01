@@ -1,7 +1,7 @@
 // The S38 assignment of the Python MCP tools against the Python registry (oracle: the repo's .venv;
 // skipped where there is no Python): every tool has exactly one slice, nothing extra is listed.
 
-import { coreTools } from "@cashu/mcp";
+import { budgetTools, coreTools, loansTools } from "@cashu/mcp";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup } from "../testing/harness.js";
 import { HAS_PYTHON, python } from "../testing/python.js";
@@ -16,7 +16,7 @@ describe.skipIf(!HAS_PYTHON)("Python MCP tools (Python oracle)", () => {
     )
       .trim()
       .split("\n");
-    const native = coreTools().map((spec) => spec.name);
+    const native = [...coreTools(), ...budgetTools(), ...loansTools()].map((spec) => spec.name);
     expect([...Object.keys(PYTHON_TOOLS), ...native].sort()).toEqual(names);
     expect(new Set(TOOL_INVENTORY.map((entry) => entry.name)).size).toBe(45);
     expect(native.every((name) => !(name in PYTHON_TOOLS))).toBe(true);

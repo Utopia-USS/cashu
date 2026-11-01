@@ -8,6 +8,25 @@ const UUID = "8b245b1d-7972-8c4e-9b39-7de914604848";
 const NUMERIC_ULID = "01234567890123456789012345";
 const NUMERIC_UUID = "12345678-9012-8000-8000-123456789012";
 describe("opaque global references", () => {
+  it.each([ULID, UUID, NUMERIC_ULID, NUMERIC_UUID])(
+    "keeps loan references typed and safe through both privacy modes: %s",
+    (gid) => {
+      const encoded = encodeEntityRef("loan", gid);
+      expect(decodeEntityRef("loan", encoded)).toBe(gid);
+      expect(() => decodeEntityRef("review", encoded)).toThrow();
+      for (const privacy of ["strict", "amounts"] as const) {
+        const redactor = new Redactor({ privacy });
+        const output = redactor.apply({ loan_id: ref(encoded) });
+        expect(() =>
+          leakCheck(output, {
+            strict: redactor.strict,
+            isins: redactor.isins,
+            nonMoney: redactor.nonMoney,
+          }),
+        ).not.toThrow();
+      }
+    },
+  );
   describe.each(["strict", "amounts"] as const)("%s privacy", (privacy) => {
     it.each([ULID, UUID, NUMERIC_ULID, NUMERIC_UUID])(
       "round trips %s through the full privacy pipeline",

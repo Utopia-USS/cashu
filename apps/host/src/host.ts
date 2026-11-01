@@ -10,10 +10,12 @@
 //   5. lingers while idle (no session, no queued write) and then exits 0; exits 75 when its bundle
 //      was replaced (handover); a signal or `admin.stop` exits 0.
 // Everything is logged as codes and counts (log.ts). A clean exit clears the crash record.
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import type { market } from "@cashu/domain/investments";
 import { type AdminStatus, HOST_PROTOCOL } from "@cashu/host-protocol";
-import { coreTools, NativeMcpServer } from "@cashu/mcp";
+import { budgetTools, coreTools, loansTools, NativeMcpServer } from "@cashu/mcp";
 import {
   type HostPathEnv,
   type HostSession,
@@ -33,6 +35,8 @@ import { writeLauncher } from "./launcher.js";
 import { takeWriterLease, type WriterLease } from "./lease.js";
 import { errorName, fileLog, type HostLog } from "./log.js";
 import { compositeBackend } from "./mcp/composite.js";
+import { budgetFileReader } from "./mcp/files.js";
+import { mcpFileHome, mcpNamedHome } from "./mcp/homes.js";
 import { nativeRuntime } from "./mcp/native.js";
 import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
@@ -83,6 +87,8 @@ export interface LocalHostOptions {
   /** Device cache dependency, also used by synthetic oracle fixtures. */
   readonly mcpPrices?: market.PriceCache;
   readonly mcpFxNewest?: () => string | null;
+  /** Explicit legacy-file authority for packaged hosts or an external Python program. */
+  readonly mcpLegacyDataDir?: string;
 }
 
 export interface LocalHost {
@@ -316,6 +322,24 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             // TRANSITIONAL(S53b): a profile with no native vault is still owned wholly by Python.
             // Never take this path for a native profile after a policy or bridge failure.
             if (vault === undefined) return child;
+            const legacyDataDir =
+              options.mcpLegacyDataDir ??
+              (runtime.checkout !== undefined &&
+              (python === undefined ||
+                (python.command === join(runtime.checkout, ".venv", "bin", "cashu") &&
+                  python.args.length === 0))
+                ? join(runtime.checkout, "data")
+                : undefined);
+            const fileReader =
+              legacyDataDir === undefined
+                ? undefined
+                : budgetFileReader({
+                    cwd: existsSync(open.cwd) ? open.cwd : server.paths.dataDir,
+                    home: mcpFileHome(runtime.env),
+                    namedHome: (name) => mcpNamedHome(name, runtime.env),
+                    dataDir: server.paths.dataDir,
+                    legacyDataDir,
+                  });
             // TRANSITIONAL(S22c): cached-market reads remain on the legacy source until a real
             // device cache is supplied. The restrictive bridge still enforces this vault's policy.
             const tools = coreTools().filter((tool) =>
@@ -323,6 +347,18 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 ? options.mcpPrices !== undefined && options.mcpFxNewest !== undefined
                 : tool.name !== "networth_breakdown" || options.mcpPrices !== undefined,
             );
+            // TRANSITIONAL(S38b): mixed sessions keep financial reads beside the Python writer.
+            // Native payee identities and unsynchronized native category views cannot form a
+            // consistent categorization workflow with the delegated setter. Loans also use cashflow.
+            // S56c ingestion alone does not settle the blocked native classification write contract.
+            tools.push(
+              ...budgetTools().filter((tool) =>
+                tool.name === "validate_budget_import"
+                  ? fileReader !== undefined
+                  : child === undefined,
+              ),
+            );
+            if (child === undefined) tools.push(...loansTools());
             const inventory =
               child === undefined
                 ? TOOL_INVENTORY.filter((entry) => tools.some((tool) => tool.name === entry.name))
@@ -338,6 +374,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 inventory,
                 prices: options.mcpPrices ?? null,
                 fxNewest: options.mcpFxNewest,
+                readBudgetImportFile: fileReader,
               }),
               tools,
             );

@@ -21,7 +21,7 @@ interface LoanRow {
 }
 
 /** The vault's loan terms (a loan row is visible once its terms exist), oldest first. */
-function loanTerms(read: Read): loans.LoanTerms[] {
+export function loanTerms(read: Read): loans.LoanTerms[] {
   return read<LoanRow>(
     `SELECT l.gid, a.gid AS account, l.principal, l.annual_rate AS annualRate,
        l.term_months AS termMonths, l.start_date AS startDate,
@@ -43,7 +43,7 @@ function loanTerms(read: Read): loans.LoanTerms[] {
 }
 
 /** Balance rows of the loan accounts with the moment each figure was recorded, in id order. */
-function recordedBalances(read: Read): Map<string, loans.RecordedBalance[]> {
+export function recordedBalances(read: Read): Map<string, loans.RecordedBalance[]> {
   const out = new Map<string, loans.RecordedBalance[]>();
   for (const b of read<{ gid: string; date: IsoDate; amount: string; recordedAt: string }>(
     `SELECT a.gid, b.date, b.amount, b.created_at AS recordedAt

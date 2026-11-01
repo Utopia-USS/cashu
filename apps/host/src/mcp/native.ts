@@ -27,6 +27,13 @@ export interface NativeMcpOptions {
   readonly inventory: readonly ToolInventoryEntry[];
   readonly prices?: market.PriceCache | null;
   readonly fxNewest?: () => string | null;
+  readonly readBudgetImportFile?: (
+    rawPath: string,
+    profileSlug: string,
+  ) => {
+    readonly name: string;
+    readonly bytes: Uint8Array;
+  };
 }
 function localDay(ms: number): string {
   const date = new Date(ms);
@@ -35,6 +42,7 @@ function localDay(ms: number): string {
 const unique = (values: readonly string[]): string[] => [...new Set(values)];
 export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
   const { vault, stores, now } = options;
+  const readBudgetImportFile = options.readBudgetImportFile;
   const read = vault.store.read.bind(vault.store);
   const policy = () => {
     const profile = mcpProfile(read);
@@ -121,6 +129,12 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           prices: options.prices ?? null,
           fxNewest: options.fxNewest?.() ?? null,
           toolInventory: options.inventory,
+          ...(readBudgetImportFile === undefined
+            ? {}
+            : {
+                readBudgetImportFile: (rawPath: string) =>
+                  readBudgetImportFile(rawPath, profile.slug),
+              }),
           run(command, input) {
             // Current core writes are one command each. A second read-dependent command needs an overlay.
             if (pending.length > 0)

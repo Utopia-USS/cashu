@@ -31,11 +31,20 @@ pnpm parity --dataset lab --out $PARITY_BRANCH_ROOT --actual $PARITY_BRANCH_ROOT
 ```
 
 MCP name sources now come from the real native providers over genesis-folded vaults; the guard
-bridge and `--bridge-mcp` option are removed. Privacy checks still replay the Python raw labelled
-trees for all read tools, including the native core reads: these checks prove provider/redactor
-equivalence, while focused handler and real host tests cover native core execution separately.
-`mcp.tool_schemas` uses native core specs plus the
-generated contracts of tools still delegated to Python, with native module gating. Host integration
+bridge and `--bridge-mcp` option are removed. The five S38b dataset reads (`spending_breakdown`,
+`cashflow_summary`, `recurring_payments`, `uncategorized_merchants`, `loans_summary`) execute actual
+native handlers against folded vaults, including independent module/error handling and the real
+privacy boundary. Only after leak checking, typed loan references map through genesis identities
+to the oracle's natural keys; production wire references remain opaque gids, not Python integers.
+The remaining read tools, including native core reads, still replay Python labelled trees to prove
+provider/redactor equivalence. Focused handler and real host tests cover native core separately.
+The file validator uses synthetic file/host tests; the blocked category writer is not read parity.
+Mixed Python/native hosts retain the five financial reads on Python until write/ingestion contracts
+are resolved, preserving coherent merchant references and read-after-write results. Native-only
+hosts expose the five reads without the unavailable writer. Dataset parity exercises native bodies
+regardless of that temporary routing choice.
+`mcp.tool_schemas` uses native specs plus the generated contracts of remaining Python tools, in
+the exact Python registry order, with native module gating. Host integration
 tests compare the complete actual SDK tool list. Regenerate delegated contracts with
 `scripts/gen_mcp_tool_metadata.py` when Python registry metadata changes, then format/check normally.
 

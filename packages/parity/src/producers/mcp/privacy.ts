@@ -1,11 +1,8 @@
 /// <reference types="node" />
 /**
- * `mcp.read_strict` / `mcp.read_amounts`: the S02 raw labelled trees (`mcp.read_raw`, captured before
- * redaction from every read tool of the Python MCP server) run through the TS privacy layer: the
- * profile's guard (real native providers over the dataset's genesis-folded vault), `Redactor.apply`,
- * the "a tool returns an object" rule and
- * `leakCheck`, exactly as `checks/mcp.py` replays `CashuMcp._call`. Entries the raw golden holds no
- * tree for (a disabled module, a tool error, an unlabelled value) pass through unchanged.
+ * S38b's five dataset reads execute actual native handlers on the genesis-folded vault. Remaining
+ * reads replay S02 labelled Python trees through native providers and privacy. Only unported
+ * calls may pass through an oracle error; native module/error results are computed independently.
  */
 
 import { createHash } from "node:crypto";
@@ -15,15 +12,22 @@ import * as macro from "@cashu/domain/investments/macro";
 import {
   LeakDetected,
   leakCheck,
+  loadAccountLabels,
   loadGuard,
+  mcpToolMetadata,
   type NameGuard,
+  type NativeToolStore,
   Redactor,
+  toolContext,
   UnlabelledValue,
 } from "@cashu/mcp";
+import { mcpProfile } from "@cashu/store/core";
 import { type CanonObject, type CanonValue, parseCanonical } from "../../json.ts";
-import { type Dataset, goldenRoot, type PythonDb } from "../../sources/index.ts";
+import { DATASET_CLOCKS, type Dataset, goldenRoot, type PythonDb } from "../../sources/index.ts";
 import type { OutValue } from "../output.ts";
 import { genesisRun } from "../store/genesisRun.ts";
+import { GidKeys } from "../store/gidKeys.ts";
+import { mergeMcpReads, nativeMcpReads } from "./nativeReads.ts";
 import { canonToOut, SyntheticIds, toCanonical, toLabelledTree } from "./rawTrees.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..", "..");
@@ -118,15 +122,41 @@ export function produceMcpRead(
     if (vault === undefined) throw new Error("MCP provider parity: missing genesis vault");
     // Match the Python oracle's caller identity only here. The host uses the stable vault id,
     // since two native vaults may each have the same local profile row id.
-    const guard = loadGuard(vault.store.read.bind(vault.store), profile.id, PARITY_PAYEE_KEY);
-    const entries: Record<string, OutValue> = {};
-    for (const [call, entry] of calls) {
-      entries[call] =
-        entry instanceof Map && isPassThrough(entry)
-          ? canonToOut(entry)
-          : redactEntry(entry, mode, guard, summaryOk);
-    }
-    out[pkey] = entries;
+    const read = vault.store.read.bind(vault.store);
+    const guard = loadGuard(read, profile.id, PARITY_PAYEE_KEY);
+    const nativeProfile = mcpProfile(read);
+    if (nativeProfile === undefined) throw new Error("MCP parity: missing native profile");
+    const keys = new GidKeys(vault, db.keys);
+    const store: NativeToolStore = {
+      read,
+      profile: nativeProfile,
+      today: db.asOf,
+      now: () => Date.parse(`${DATASET_CLOCKS[db.dataset]}Z`),
+      prices: null,
+      fxNewest: null,
+      toolInventory: mcpToolMetadata(),
+      run: () => {
+        throw new Error("MCP read parity attempted a mutation");
+      },
+    };
+    const context = toolContext({
+      store,
+      profileId: profile.id,
+      privacy: mode,
+      today: db.asOf,
+      loadGuard: () => guard,
+      loadAccountLabels: () => loadAccountLabels(read),
+    });
+    const native = nativeMcpReads(context, new Set(nativeProfile.modules), (gid) => {
+      const key = keys.ref("loans", gid);
+      if (key === null) throw new Error("MCP parity: missing native loan identity");
+      return key;
+    });
+    out[pkey] = mergeMcpReads(calls, native, (entry) =>
+      entry instanceof Map && isPassThrough(entry)
+        ? canonToOut(entry)
+        : redactEntry(entry, mode, guard, summaryOk),
+    );
   }
   if (Object.keys(out).length !== perProfile.size)
     throw new Error("mcp.read_raw has profiles the dataset lacks");

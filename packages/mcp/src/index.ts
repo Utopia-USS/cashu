@@ -54,4 +54,6 @@ export {
   toolDescriptor,
 } from "./runtime/server.js";
 export type { NativeToolStore, ToolInventoryEntry } from "./runtime/types.js";
+export { budgetTools } from "./tools/budget.js";
 export { coreTools } from "./tools/core.js";
+export { loansTools } from "./tools/loans.js";

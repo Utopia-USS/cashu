@@ -21,4 +21,9 @@ export interface NativeToolStore {
   /** Fixed at the start of this call, shared with command execution. */
   readonly now: () => number;
   readonly toolInventory: readonly ToolInventoryEntry[];
+  /** Host-bound checked file reader, scoped to the current profile and MCP session. */
+  readonly readBudgetImportFile?: (rawPath: string) => {
+    readonly name: string;
+    readonly bytes: Uint8Array;
+  };
 }

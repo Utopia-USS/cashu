@@ -2,18 +2,13 @@
 // Until a slice lands every tool is served by the Python child of the session (python.ts); the slices
 // move tools into the host one group at a time, and the session then merges the lists (TS tools win
 // by name). The Python registry is checked against this table (python.test.ts), so a tool added in
-// Python cannot go unassigned.
+// Python cannot go unassigned. This tracks implementation coverage, not default routing: the host
+// may retain delegation where native dependencies or the mixed-source write contract are unsettled.
 import { mcpToolMetadata } from "@cashu/mcp";
 
 export const PYTHON_TOOLS: Readonly<Record<string, string>> = {
-  // TRANSITIONAL(S38b): budget and loans tools
-  spending_breakdown: "S38b",
-  cashflow_summary: "S38b",
-  recurring_payments: "S38b",
-  uncategorized_merchants: "S38b",
+  // TRANSITIONAL(S38b): classification awaits the native learned-rule write contract.
   set_merchant_category: "S38b",
-  validate_budget_import: "S38b",
-  loans_summary: "S38b",
   // TRANSITIONAL(S38c): investments read tools
   portfolio_overview: "S38c",
   positions: "S38c",
@@ -54,5 +49,5 @@ export const PYTHON_TOOLS: Readonly<Record<string, string>> = {
   connectors: "S38f",
 };
 
-/** Complete provider order and module ownership, including native core tools. */
+/** Complete provider order and module ownership for native and delegated handlers. */
 export const TOOL_INVENTORY = mcpToolMetadata();

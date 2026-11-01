@@ -1,5 +1,7 @@
 // Budget-owned MCP inputs. Python account_ids_query includes retained transactions of removed accounts.
 import type { Read } from "../query.js";
+
+export { budgetBook, budgetEngineContext } from "./read-models.js";
 export interface BudgetNameRow {
   readonly counterpartyName: string | null;
   readonly counterpartyIban: string | null;
