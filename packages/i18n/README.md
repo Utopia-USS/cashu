@@ -4,6 +4,12 @@ The UI uses `lang()`, `catalog()` and `tr({ pl, en })` from `@cashu/i18n` with i
 `LanguageSource` (S33). Backend work uses an explicit `Translator` (S34). Never change the UI's
 global language to service a request: two requests can overlap across an `await`.
 
+`pnpm arch:check` enforces this in API, MCP, store, sync and market packages, CLI/sync workers and
+Electron main/preload/utility code: no root `tr` import or re-export, including aliases. Backend
+imports of the root namespace (static/dynamic/CommonJS) are also rejected because they expose `tr`;
+use explicit named imports of `Translator`, `createTranslator` and pure helpers. Renderer, UI logic
+and legacy frontend code retain the ambient UI helper. Test-only files are outside this production rule.
+
 ## App and request language
 
 Create one `createBackendI18n(source)` per settings location at the app composition root.
