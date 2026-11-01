@@ -79,6 +79,7 @@ describe("composeYaml (yaml.compose with SafeLoader)", () => {
   it("reports a non-printable character as a ReaderError with its code point position", () => {
     expect(fail("ab\u{1F600}\x07")).toEqual({
       kind: "reader",
+      position: 3,
       text: 'unacceptable character #x0007: special characters are not allowed\n  in "<unicode string>", position 3',
     });
   });

@@ -22,7 +22,8 @@ export type YamlError =
       readonly note: string | null;
       readonly text: string;
     }
-  | { readonly kind: "reader"; readonly text: string };
+  /** `position` = the code point index of the refused character (`ReaderError.position`). */
+  | { readonly kind: "reader"; readonly position: number; readonly text: string };
 
 /** What a stage raised, before the text is rendered against the input buffer. */
 export type YamlFailureDetail =
@@ -101,6 +102,7 @@ export function renderError(detail: YamlFailureDetail, buffer: readonly string[]
     const code = detail.character.toString(16).padStart(4, "0");
     return {
       kind: "reader",
+      position: detail.position,
       text: `unacceptable character #x${code}: special characters are not allowed\n  in "${NAME}", position ${detail.position}`,
     };
   }

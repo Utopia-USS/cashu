@@ -13,12 +13,14 @@
 
 import { Composer, type YamlNode } from "./composer.js";
 import { renderError, type YamlError, YamlFailure } from "./errors.js";
+import type { YamlEvent } from "./events.js";
 import { Parser } from "./parser.js";
 import { Reader } from "./reader.js";
 import { Scanner } from "./scanner.js";
 
 export type { YamlNode } from "./composer.js";
-export type { YamlMark } from "./errors.js";
+export type { YamlError, YamlMark } from "./errors.js";
+export type { YamlEvent } from "./events.js";
 
 export type YamlComposeResult =
   | { readonly ok: true; readonly node: YamlNode | null }
@@ -31,6 +33,31 @@ export function composeYaml(text: string): YamlComposeResult {
     reader = new Reader(text);
     const node = new Composer(new Parser(new Scanner(reader))).getSingleNode();
     return { ok: true, node };
+  } catch (error) {
+    if (!(error instanceof YamlFailure)) throw error;
+    return { ok: false, error: renderError(error.detail, reader?.buffer ?? []) };
+  }
+}
+
+/**
+ * `for event in yaml.parse(text, Loader=yaml.SafeLoader)`: hands each event to `visit` in stream order
+ * until the stream ends or `visit` returns `false` (the caller stopped, like a `raise` inside the
+ * Python loop). A scanner / parser error ends the walk as an error result, at the point Python raises.
+ */
+export function walkYamlEvents(
+  text: string,
+  visit: (event: YamlEvent) => boolean,
+): { readonly ok: true } | { readonly ok: false; readonly error: YamlError } {
+  let reader: Reader | null = null;
+  try {
+    reader = new Reader(text);
+    const parser = new Parser(new Scanner(reader));
+    while (parser.peekEvent() !== null) {
+      const event = parser.getEvent();
+      if (!visit(event)) return { ok: true };
+      if (event.kind === "StreamEnd") break;
+    }
+    return { ok: true };
   } catch (error) {
     if (!(error instanceof YamlFailure)) throw error;
     return { ok: false, error: renderError(error.detail, reader?.buffer ?? []) };
