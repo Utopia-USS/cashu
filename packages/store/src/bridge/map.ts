@@ -85,7 +85,10 @@ function insertGid(bridge: TableBridge, row: LogicalRow, vm: VaultMapping): stri
   }
   switch (bridge.gid) {
     case "shipper": {
-      const gid = vm.shipperGid(row.table, row.localId);
+      const values = row.post ?? row.fields;
+      const account = values.account_id;
+      const accountId = account === null || account === undefined ? undefined : String(account);
+      const gid = vm.shipperGid(row.table, row.localId, accountId);
       vm.put(row.table, row.localId, gid, true);
       return gid;
     }
@@ -143,6 +146,8 @@ export function mapRow(
     if (gid === undefined && bridge.gid !== "none" && !explicit) {
       throw new BridgeBlock(`unresolved:${row.table}`);
     }
+    // The genesis mapper reads the row's own gid through the resolver.
+    if (gid !== undefined) vm.put(row.table, row.localId, gid, false);
     if (row.op === "update") {
       if (bridge.update === undefined) throw new BridgeBlock(`no-update-mapper:${row.table}`);
       const values = row.post ?? row.fields;

@@ -117,12 +117,28 @@ export class VaultMapping {
    * The gid of a row a shipper-computed insert creates (Python left it NULL): phase 1 over the live
    * rows; a genesis-gid fallback becomes a minted ULID.
    */
-  shipperGid(table: string, localId: string): string {
+  shipperGid(table: string, localId: string, accountLocalId?: string): string {
     if (!SHIPPER_TABLES.has(table)) throw new BridgeBlock(`unresolved:${table}`);
-    const gid = this.#phaseOne().resolver.gid(table, localId);
+    const p1 = this.#phaseOne();
+    const gid = p1.resolver.gid(table, localId);
     if (gid === undefined) throw new BridgeBlock(`unresolved:${table}`);
     const fallback = this.det("genesis", [table, localId]);
-    return gid === fallback ? this.#ports.ulid() : gid;
+    if (gid === fallback) return this.#ports.ulid();
+    if (table === "accounts" || accountLocalId === undefined) return gid;
+    // A transaction's DET parts name its account by the gid the VAULT holds, which differs from
+    // phase 1's when the account got a minted ULID (a live collision fallback): the gid is then the
+    // genesis rule of ids.ts over the phase-1 hash and the vault's account gid.
+    const account = this.existing("accounts", accountLocalId);
+    if (account === undefined) throw new BridgeBlock(`unresolved-ref:${table}`);
+    const id = Number(localId);
+    if (table === "transactions") {
+      const hash = p1.budgetTxns.get(id);
+      if (hash === undefined) return gid; // a cash expense: Python minted its gid
+      return this.det("transactions", [account, hash.dedupHash, String(hash.occurrence)]);
+    }
+    const hash = p1.invDedupHashes.get(id);
+    if (hash === undefined || hash.startsWith("manual:")) return gid;
+    return this.det("inv_transactions", [account, hash]);
   }
 
   /** Whether the vault holds the instrument (its gid is mapped or was shipped in this plan). */
