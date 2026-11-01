@@ -81,36 +81,7 @@ describe("runtimes", () => {
     }
   });
 
-  it("a backend whose decrypt failure message is unknown fails the self-test (fail closed)", async () => {
-    const fake = await fakeReactNativeLibsodium();
-    const lib: LibsodiumLike = {
-      ...fake.namespace,
-      crypto_box_seal_open: (c, pk, sk) => {
-        try {
-          return fake.namespace.crypto_box_seal_open(c, pk, sk);
-        } catch {
-          throw new Error("some other library's wording");
-        }
-      },
-    };
-    expect(runtimeCode(() => fromLibsodium(lib, { aead: "noble" }))).toBe("unsupported_runtime");
-    // The same for the AEAD: a library that reports tampering in words we do not know.
-    const aead: LibsodiumLike = {
-      ...sodiumLib,
-      crypto_aead_xchacha20poly1305_ietf_decrypt: (sn, c, ad, pn, k) => {
-        try {
-          return (
-            sodiumLib.crypto_aead_xchacha20poly1305_ietf_decrypt as NonNullable<
-              LibsodiumLike["crypto_aead_xchacha20poly1305_ietf_decrypt"]
-            >
-          )(sn, c, ad, pn, k);
-        } catch {
-          throw new Error("some other library's wording");
-        }
-      },
-    };
-    expect(runtimeCode(() => fromLibsodium(aead))).toBe("unsupported_runtime");
-  });
+  // Failure classification by kind (iOS / Android / unknown shapes): sodium.classify.test.ts.
 
   it("a primitive that returns wrong answers fails the self-test", async () => {
     const fake = await fakeReactNativeLibsodium();

@@ -9,6 +9,7 @@
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { CryptoError } from "./errors.js";
+import { aeadAuthentic, sealAuthentic } from "./verify.js";
 
 export interface KeyPairBytes {
   publicKey: Uint8Array;
@@ -87,23 +88,35 @@ const AEAD_REQUIRED = [
   "crypto_aead_xchacha20poly1305_ietf_decrypt",
 ] as const;
 
-// The exact messages libraries use for "this ciphertext does not authenticate". Anything else
-// (TypeError, "input type not yet implemented", a missing binding) is a runtime problem, never tampering.
-const AEAD_AUTH_FAILURES = new Set([
-  "ciphertext cannot be decrypted using that key", // libsodium-wrappers
-  "invalid tag", // @noble/ciphers
-  "[react-native-libsodium][crypto_aead_xchacha20poly1305_ietf_decrypt] crypto_aead_xchacha20poly1305_ietf_decrypt failed",
-]);
-const SEAL_AUTH_FAILURES = new Set([
-  "incorrect key pair for the given ciphertext", // libsodium-wrappers
-  "[react-native-libsodium][crypto_box_seal_open] crypto_box_seal_open failed",
-]);
+/**
+ * Classifies a throw from an authenticated open by its kind, never by its message (bindings word and
+ * wrap the same failure differently: react-native-libsodium's arrives on Android as "Exception in
+ * HostFunction: ..."). It is `auth_failed` only when all three hold:
+ * - the backend threw a plain `Error`, the kind libsodium, its bindings (JSI included) and @noble
+ *   raise for a failed verification; a TypeError, any other subclass or a non-Error value is an
+ *   unknown shape;
+ * - the independent verify path (`verify.ts`) says the inputs do not authenticate;
+ * - the backend still opens a known-good input, so it is not broken and throwing for everything.
+ * Anything else, including a verify path or probe that throws, is `unsupported_runtime`: a broken
+ * runtime is never reported as tampered data, and tampered data on a working runtime never as a
+ * runtime fault.
+ */
+function classify(error: unknown, authentic: () => boolean, healthy: () => boolean): CryptoError {
+  try {
+    const plainError = error instanceof Error && Object.getPrototypeOf(error) === Error.prototype;
+    if (plainError && !authentic() && healthy()) return new CryptoError("auth_failed");
+  } catch {
+    // The verify path or the probe failed: fall through, fail closed.
+  }
+  return new CryptoError("unsupported_runtime");
+}
 
-function classify(error: unknown, authFailures: Set<string>): CryptoError {
-  const message = error instanceof Error ? error.message : undefined;
-  return new CryptoError(
-    message !== undefined && authFailures.has(message) ? "auth_failed" : "unsupported_runtime",
-  );
+function wellFormed(...parts: [Uint8Array, number][]): void {
+  for (const [bytes, length] of parts) {
+    if (!(bytes instanceof Uint8Array) || bytes.length !== length) {
+      throw new CryptoError("unsupported_runtime");
+    }
+  }
 }
 
 function runtime<T>(fn: () => T): T {
@@ -131,16 +144,27 @@ export function fromLibsodium(lib: LibsodiumLike, options: SodiumOptions = {}): 
             if (!encrypt) throw new CryptoError("unsupported_runtime");
             return encrypt.call(lib, plain, aad, null, nonce, key);
           });
+  const rawDecrypt: Sodium["aeadDecrypt"] = (cipher, aad, nonce, key) =>
+    aead === "noble"
+      ? xchacha20poly1305(key, nonce, aad).decrypt(cipher)
+      : libDecrypt(lib)(null, cipher, aad, nonce, key);
+  const aeadHealthy = () => {
+    const { cipher, aad, nonce, key, plain } = KAT_AEAD;
+    return same(rawDecrypt(cipher, aad, nonce, key), plain);
+  };
   const aeadDecrypt: Sodium["aeadDecrypt"] = (cipher, aad, nonce, key) => {
+    wellFormed([key, KEY_BYTES], [nonce, NONCE_BYTES]);
     // Too short to hold a tag: reject here, before any library sees a length it may mishandle.
     if (cipher.length < TAG_BYTES) throw new CryptoError("auth_failed");
     try {
-      return aead === "noble"
-        ? xchacha20poly1305(key, nonce, aad).decrypt(cipher)
-        : libDecrypt(lib)(null, cipher, aad, nonce, key);
+      return rawDecrypt(cipher, aad, nonce, key);
     } catch (e) {
-      throw classify(e, AEAD_AUTH_FAILURES);
+      throw classify(e, () => aeadAuthentic(cipher, aad, nonce, key), aeadHealthy);
     }
+  };
+  const sealHealthy = () => {
+    const { box, publicKey, privateKey, message } = KAT_SEAL;
+    return same(lib.crypto_box_seal_open(box, publicKey, privateKey), message);
   };
 
   const sodium: Sodium = {
@@ -151,12 +175,13 @@ export function fromLibsodium(lib: LibsodiumLike, options: SodiumOptions = {}): 
     boxSeedKeyPair: (seed) => runtime(() => lib.crypto_box_seed_keypair(seed)),
     seal: (message, publicKey) => runtime(() => lib.crypto_box_seal(message, publicKey)),
     sealOpen: (cipher, publicKey, privateKey) => {
+      wellFormed([publicKey, PUBLIC_KEY_BYTES], [privateKey, KEY_BYTES]);
       // react-native-libsodium computes `length - 48` unchecked; never hand it a shorter box.
       if (cipher.length < SEAL_OVERHEAD) throw new CryptoError("auth_failed");
       try {
         return lib.crypto_box_seal_open(cipher, publicKey, privateKey);
       } catch (e) {
-        throw classify(e, SEAL_AUTH_FAILURES);
+        throw classify(e, () => sealAuthentic(cipher, publicKey, privateKey), sealHealthy);
       }
     },
     hash: (length, message, key) =>
@@ -197,6 +222,16 @@ const KAT_AEAD = {
 };
 // crypto_box_seed_keypair(32 zero bytes): X25519 of SHA-512(seed)[0..32] (checked with @noble).
 const KAT_SEED_PUBLIC = hex("5bf55c73b82ebe22be80f3430667af570fae2556a6415e6b30d4065300aa947d");
+// "cashu/selftest/seal" sealed by libsodium-wrappers 0.8.4 to the 32-zero-byte seed key pair above.
+const KAT_SEAL = {
+  publicKey: KAT_SEED_PUBLIC,
+  privateKey: hex("5046adc1dba838867b2bbbfdd0c3423e58b57970b5267a90f57960924a87f196"),
+  message: new TextEncoder().encode("cashu/selftest/seal"),
+  box: hex(
+    "8a12c79a573fa35d21db90e295d7b89e6b9a33c01d61149c9764c72bf82c0d2c06dbbd565f419110aa41f5d2d1b91b17" +
+      "bd859e47f6c159e56ac8caf11ec4d7c7bc16fa",
+  ),
+};
 // RFC 8032 section 7.1, test 1 (Ed25519, empty message), run on @noble/curves.
 const KAT_ED25519 = {
   secret: hex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"),
@@ -216,6 +251,15 @@ function selfTest(sodium: Sodium): void {
     const tampered = cipher.slice();
     tampered[0] = (tampered[0] ?? 0) ^ 1;
     expectAuthFailure(() => sodium.aeadDecrypt(tampered, aad, nonce, key));
+    // The verify paths that classify a backend's throw must agree with the known answers.
+    if (!aeadAuthentic(cipher, aad, nonce, key) || aeadAuthentic(tampered, aad, nonce, key)) {
+      throw new Error("aead verify");
+    }
+    const seal = KAT_SEAL;
+    if (!same(sodium.sealOpen(seal.box, seal.publicKey, seal.privateKey), seal.message)) {
+      throw new Error("seal open");
+    }
+    if (!sealAuthentic(seal.box, seal.publicKey, seal.privateKey)) throw new Error("seal verify");
 
     const pair = sodium.boxSeedKeyPair(new Uint8Array(32));
     if (!same(pair.publicKey, KAT_SEED_PUBLIC)) throw new Error("seed keypair");
@@ -235,6 +279,7 @@ function selfTest(sodium: Sodium): void {
       throw new Error("seal");
     box[box.length - 1] = (box.at(-1) ?? 0) ^ 1;
     expectAuthFailure(() => sodium.sealOpen(box, pair.publicKey, pair.privateKey));
+    if (sealAuthentic(box, pair.publicKey, pair.privateKey)) throw new Error("seal verify");
 
     if (!same(sodium.hash(32, new TextEncoder().encode("cashu/selftest"), seq(0, 32)), KAT_HASH)) {
       throw new Error("generichash");

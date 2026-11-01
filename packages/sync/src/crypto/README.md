@@ -368,12 +368,23 @@ re-certify (review W1, lead decision: default none).
 - **libsodium-wrappers, not sumo**: the standard build has every function used
   (`crypto_box_seed_keypair`, `crypto_box_seal_open`, keyed `crypto_generichash`, the XChaCha20-Poly1305
   AEAD); sumo only adds unused primitives (Argon2id among them), so the smaller surface wins.
-- **Narrow error mapping**: only the libraries' exact authentication-failure messages become
-  `auth_failed`; a TypeError, a missing binding or "not yet implemented" is `unsupported_runtime`, so a
-  broken runtime is never reported as tampered data. The self-test checks that the auth-failure mapping
-  works on the running library, that two random draws differ and are not zero, and covers @noble's Ed25519 (RFC 8032 test 1) and X25519 (must agree
-  with libsodium's seed key pair). Follow-up before S29 wires mobile: confirm react-native-libsodium's
-  failure strings on a device build; if they differ the self-test fails closed (`unsupported_runtime`).
+- **Failure classification by kind, never by message**: bindings word and wrap the same failure
+  differently (react-native-libsodium's seal_open failure arrives on Android as "Exception in
+  HostFunction: ..." with a stack), so `sodium.ts` never reads an error message. A throw from a
+  well-formed `aeadDecrypt` / `sealOpen` (key, nonce and public-key lengths checked first; a malformed
+  one is `unsupported_runtime`) is `auth_failed` only when the backend threw a plain `Error` (the kind
+  libsodium, its JSI bindings and @noble raise), the boolean verify path in `verify.ts` (pure @noble:
+  XChaCha20-Poly1305 tag, and the sealed box rebuilt from X25519 + HSalsa20 + BLAKE2b + XSalsa20-Poly1305,
+  low-order ephemeral keys refused like libsodium) says the input does not authenticate, and the backend
+  still opens a known-good input (probe). Anything else - a TypeError, an Error subclass, a non-Error
+  value, a verify path or probe that throws, a throw on authentic input, a runtime that throws for
+  everything - is `unsupported_runtime`, so a broken runtime is never reported as tampered data and
+  tampered data on a working runtime never as a runtime fault. The verify paths run only on the failure
+  path. The self-test checks that a tampered AEAD and a tampered box are recognised on the running
+  library, that the verify paths agree with the known answers (including a box sealed by
+  libsodium-wrappers), that two random draws differ and are not zero, and covers @noble's Ed25519 (RFC
+  8032 test 1) and X25519 (must agree with libsodium's seed key pair). `sodium.classify.test.ts` covers
+  the iOS, Android and unknown shapes.
 - **Padme** is computed with integer bit lengths (`Math.clz32`), never `Math.log2`, so Hermes and V8
   produce identical frame sizes (checked against a BigInt reference).
 - **Secrets** (`Secret`, `Keyring`, `BoxKeyPair`, identities, the gid salt) print `[redacted]` through
