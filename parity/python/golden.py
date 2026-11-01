@@ -5,6 +5,11 @@
     .venv/bin/python parity/python/golden.py                    # both datasets
     .venv/bin/python parity/python/golden.py --dataset lab --check core.networth
     .venv/bin/python parity/python/golden.py --dataset lab --out ~/cashu-lab/parity/out-<branch>
+    .venv/bin/python parity/python/golden.py --dataset lab --source-dir <run>/data --check 'store.table.*' --out <run>/out
+
+``--check`` takes a check name or a glob (``store.table.*``), repeatable. ``--source-dir`` (the bridge
+harness, S31a spec 9.3 step 9) copies that dir instead of the dataset's, keeping the dataset's clock and
+natural keys; it must resolve inside ``~/cashu-lab/parity/``.
 
 Datasets (both live outside git):
 - ``lab``:  ``~/cashu-lab/data`` (a copy of real data; its goldens never go into git);
@@ -30,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fnmatch
 import hashlib
 import os
 import shutil
@@ -148,8 +154,22 @@ def make_demo() -> int:
     return 0
 
 
-def run_dataset(name: str, checks: list[str], keep: bool, out_root: Path = OUT_ROOT) -> int:
-    source = DATASETS[name]
+def source_dir_allowed(path: Path) -> bool:
+    """A ``--source-dir`` must resolve inside ``~/cashu-lab/parity/`` (case-insensitive: APFS)."""
+    real = os.path.realpath(path).casefold()
+    base = os.path.realpath(PARITY_ROOT).casefold().rstrip(os.sep) + os.sep
+    return real.startswith(base)
+
+
+def selects(name: str, only: list[str]) -> bool:
+    """``--check`` values are names or globs (``store.table.*``); none = every check."""
+    return not only or any(fnmatch.fnmatchcase(name, pattern) for pattern in only)
+
+
+def run_dataset(
+    name: str, checks: list[str], keep: bool, out_root: Path = OUT_ROOT, source: Path | None = None
+) -> int:
+    source = DATASETS[name] if source is None else source
     if not (source / "cashu.db").is_file():
         print(f"[{name}] no dataset at {source}" + (" (run --make-demo)" if name == "demo" else ""))
         return 1
@@ -281,7 +301,9 @@ def child(name: str, run: Path, out: Path, only: list[str]) -> int:
     from checks import CHECKS, Ctx
 
     ctx = Ctx.open(name, frozen_clock=os.environ["CASHU_PARITY_CLOCK"])
-    selected = [c for c in CHECKS if not only or c.name in only]
+    selected = [c for c in CHECKS if selects(c.name, only)]
+    if only and not selected:
+        print(f"[{name}] no check matches {only}")
     index: dict = {
         "format": FORMAT,
         "dataset": name,
@@ -349,7 +371,14 @@ def child(name: str, run: Path, out: Path, only: list[str]) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--dataset", choices=[*DATASETS, "all"], default="all")
-    parser.add_argument("--check", action="append", default=[], help="Run only this check.")
+    parser.add_argument(
+        "--check", action="append", default=[], help="Run only this check (a name or a glob, repeatable)."
+    )
+    parser.add_argument(
+        "--source-dir",
+        type=Path,
+        help="Copy this dir instead of the dataset's (inside ~/cashu-lab/parity/; one --dataset).",
+    )
     parser.add_argument("--keep-run", action="store_true", help="Keep the run-<ts> copy.")
     parser.add_argument("--make-demo", action="store_true", help="Generate the demo dataset.")
     parser.add_argument(
@@ -368,6 +397,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--child-out", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
+    source = None
+    if args.source_dir is not None:
+        if args.dataset == "all" or args.update_golden_demo:
+            print("--source-dir needs one --dataset (lab or demo) and no --update-golden-demo")
+            return 1
+        if not source_dir_allowed(args.source_dir.expanduser()):
+            print(f"--source-dir must be inside {PARITY_ROOT}")
+            return 1
+        source = Path(os.path.realpath(args.source_dir.expanduser()))
     if args.child:
         return child(args.child, args.run_dir, args.child_out, args.check)
     if "cashu" in sys.modules:
@@ -377,7 +415,9 @@ def main(argv: list[str] | None = None) -> int:
     names = list(DATASETS) if args.dataset == "all" else [args.dataset]
     status = 0
     for n in names:
-        status = max(status, run_dataset(n, args.check, args.keep_run, args.out.expanduser().resolve()))
+        status = max(
+            status, run_dataset(n, args.check, args.keep_run, args.out.expanduser().resolve(), source)
+        )
     if args.update_golden_demo:
         if status != 0 or "demo" not in names or args.check:
             print("golden-demo not updated: needs a full, green demo run")
