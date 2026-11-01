@@ -113,6 +113,24 @@ describe("S25 catalog deltas (optional fields, absent keeps the v1 meaning)", ()
   });
 });
 
+describe("alert tag (S31c): exactly the form Python validate_tag stores", () => {
+  const tagOk = (tag: unknown) => PAYLOADS["alert.updated"].safeParse({ tag }).success;
+  it.each(["cena", "średnia krocząca", "rsi-14", "wybicie 2", "-", "a".repeat(24), "ąę"])(
+    "accepts %j",
+    (tag) => expect(tagOk(tag)).toBe(true),
+  );
+  it.each(["", "Cena", "cena!", " cena", "cena ", "dwie  spacje", "a".repeat(25), "tab\tx", "١٢"])(
+    "rejects %j",
+    (tag) => expect(tagOk(tag)).toBe(false),
+  );
+  it("null clears; the create field is optional", () => {
+    expect(tagOk(null)).toBe(true);
+    const create = VALID_SAMPLES["alert.created"];
+    expect(PAYLOADS["alert.created"].safeParse({ ...create, tag: "cena" }).success).toBe(true);
+    expect(PAYLOADS["alert.created"].safeParse({ ...create, tag: "Cena" }).success).toBe(false);
+  });
+});
+
 describe("payload schemas: invalid samples", () => {
   const bad: Array<[EventType, Record<string, unknown>, string]> = [
     [

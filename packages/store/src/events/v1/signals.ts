@@ -39,15 +39,19 @@ export const KNOWN_ALERT_CREATORS = ["app", "cli", "mcp"] as const;
 export const MAX_ALERT_TAG_LENGTH = 24;
 
 /**
- * An alert's label (Python `validate_tag` output, Alembic 0027): non-empty, at most
- * MAX_ALERT_TAG_LENGTH characters. Null = no label (the UI derives one from the kind).
+ * An alert's label, exactly the form Python `validate_tag` stores (Alembic 0027): lowercase, single
+ * inner spaces, no edge spaces, only letters (any script, Python `str.isalpha`), ASCII digits, spaces
+ * and hyphens, 1..MAX_ALERT_TAG_LENGTH characters (code points). Null = no label.
  */
+const ALERT_TAG_RE = /^[\p{L}0-9-]+( [\p{L}0-9-]+)*$/u;
 const alertTag = z
   .string()
-  .min(1)
-  .refine((t) => [...t].length <= MAX_ALERT_TAG_LENGTH, {
-    message: `an alert tag has at most ${MAX_ALERT_TAG_LENGTH} characters`,
-  });
+  .refine(
+    (t) => ALERT_TAG_RE.test(t) && t === t.toLowerCase() && [...t].length <= MAX_ALERT_TAG_LENGTH,
+    {
+      message: `an alert tag is Python's normalized form: lowercase letters, digits, single spaces and hyphens, at most ${MAX_ALERT_TAG_LENGTH} characters`,
+    },
+  );
 
 /**
  * A v2 dedup key (gid.md section 5 and 6): `<rule>[|i:<gid>][|a:<gid>][|s:<scope>]`,

@@ -67,6 +67,9 @@ describe("alerts", () => {
     const created = ev.make("alert.created", AL, { tag: "cena" }, { wall: 10 });
     const retag = ev.make("alert.updated", AL, { tag: "rsi" }, { wall: 20 });
     const title = ev.make("alert.updated", AL, { title: "Nowy" }, { wall: 30 });
+    converge([created], (store) => {
+      expect(row(store, "alerts", AL)).toMatchObject({ tag: "cena" });
+    });
     converge([created, retag, title], (store) => {
       expect(row(store, "alerts", AL)).toMatchObject({ tag: "rsi", title: "Nowy" });
     });
