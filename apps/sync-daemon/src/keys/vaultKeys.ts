@@ -4,9 +4,15 @@
 // `keyringName`, this device's identity under `deviceIdentityName`, and a pointer
 // `cashu.vault.<vault>.device` naming the identity. The creator also keeps the vault's recovery
 // material there (lab only, TRANSITIONAL(S44): the recovery words are shown by the pairing UI later).
+//
+// Deviation (S29c-B2): the lab genesis device does not write its announcement and retirement
+// statements (devices/genesis.ts) into the genesis stream, because the store parks reserved
+// `device.*` events until the codec contract wires the device layer into the store (S29b item 2);
+// its frames verify through the lab gate's certificate instead, and its key lives only in memory
+// during `init` and is wiped right after the genesis stream is written.
 import { vaultSalt } from "@cashu/store";
 import * as genesis from "@cashu/store/genesis";
-import { crypto } from "@cashu/sync";
+import { crypto, devices } from "@cashu/sync";
 import type { VaultKeys } from "../vault.js";
 
 const utf8 = new TextEncoder();
@@ -96,13 +102,14 @@ export async function createVault(
   const secret = created.ring.gidSalt();
   const genesisId = genesis.genesisDevice(vaultSalt(secret.expose().slice()));
   secret.wipe();
-  const genesisIdentity = crypto.createDeviceIdentity(sodium, genesisId);
-  const genesisCert = crypto.certifyDevice(
+  const genesisDevice = devices.createGenesisDevice(
     sodium,
     recoveryId,
-    subjectOf(genesisIdentity),
     created.ring.vaultId,
+    genesisId,
   );
+  const genesisIdentity = genesisDevice.identity;
+  const genesisCert = genesisDevice.certificate;
   recoveryId.wipe();
   const id = created.ring.vaultId;
   await addLabCertificate(store, id, created.creatorCertificate);

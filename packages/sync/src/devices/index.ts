@@ -51,6 +51,13 @@ export {
   type Watermark,
   waiveConfirmationText,
 } from "./events.js";
+export {
+  createGenesisDevice,
+  GENESIS_DEVICE_NAME,
+  type GenesisDevice,
+  genesisAnnouncement,
+  retireGenesis,
+} from "./genesis.js";
 export { DeviceFrameGate, type DeviceFrameGateOptions, logEventsOf } from "./gate.js";
 export {
   devicesNeedingRebuild,
