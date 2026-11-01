@@ -87,74 +87,102 @@ export function addAliases(
 
 const nullableText = z.string().nullable().optional();
 
+/** A planned instrument (`createInstrument` input; `instrumentSpec.parse` fills the defaults). */
+export const instrumentSpec = z.object({
+  name: z.string().min(1),
+  currency: assetCurrency,
+  assetClass: z.enum(ASSET_CLASSES),
+  symbol: nullableText,
+  isin: nullableText,
+  mic: nullableText,
+  region: nullableText,
+  sector: nullableText,
+  tags: z.array(z.string()).default([]),
+  needsClassification: z.boolean().default(false),
+  valuationMode: z.enum(VALUATION_MODES).nullable().optional(),
+  status: z.enum(INSTRUMENT_STATUSES).default("active"),
+  aliases: z.array(aliasInput).default([]),
+});
+
+/** What `storeInstrument` stores (defaults filled). */
+export type InstrumentSpec = z.infer<typeof instrumentSpec>;
+
+/**
+ * Python `insert`: the instrument and the aliases nobody holds yet. The gid is DET of its creation
+ * alias (gid.md 4.6: `isin:<ISIN>` when it has an ISIN, else its first alias), so two devices
+ * storing the same planned instrument converge on one row; ULID without any alias. When the
+ * creation alias already belongs to an instrument, that one is returned and nothing is written.
+ * A building block for commands that store instruments inside their own batch (imports, manual
+ * transactions, the watchlist); it sees only the view, so the caller keeps the planned instruments of
+ * one batch apart (distinct creation aliases).
+ */
+/**
+ * The creation alias of a planned instrument (gid.md 4.6): `isin:<ISIN>` when it has an ISIN (the
+ * column, else an ISIN alias), else its first alias, null without any; the instrument's DET gid is
+ * derived from it.
+ */
+export function creationAliasOf(input: Pick<InstrumentSpec, "isin" | "aliases">): string | null {
+  const aliases = input.aliases
+    .map((a) => ({ ...a, value: normalizeAlias(a.namespace, a.value) }))
+    .filter((a) => a.value !== "");
+  const isin =
+    (input.isin ? input.isin.trim().toUpperCase() : null) ||
+    (aliases.find((a) => a.namespace === AliasNamespace.ISIN)?.value ?? null);
+  const first = aliases[0];
+  if (isin) return `${AliasNamespace.ISIN}:${isin}`;
+  return first === undefined ? null : `${first.namespace}:${first.value}`;
+}
+
+export function storeInstrument(
+  ctx: CommandContext,
+  input: InstrumentSpec,
+  /** The gid of an instrument without any alias (default a fresh ULID): a caller that keyed rows by it first. */
+  ulid?: string,
+): { readonly gid: string; readonly created: boolean } {
+  const aliases = input.aliases
+    .map((a) => ({ ...a, value: normalizeAlias(a.namespace, a.value) }))
+    .filter((a) => a.value !== "");
+  const isin =
+    (input.isin ? input.isin.trim().toUpperCase() : null) ||
+    (aliases.find((a) => a.namespace === AliasNamespace.ISIN)?.value ?? null);
+  const creationAlias = creationAliasOf(input);
+  if (creationAlias !== null) {
+    const [namespace = "", ...rest] = creationAlias.split(":");
+    const held = aliasOwner(ctx.read, namespace, rest.join(":"));
+    if (held !== undefined) return { gid: held.instrument, created: false };
+    const existing = instrumentGid(ctx.read, ctx.det("inv_instruments", [creationAlias]));
+    if (existing !== undefined) return { gid: existing, created: false };
+  }
+  const gidOf =
+    creationAlias === null ? (ulid ?? ctx.newGid()) : ctx.det("inv_instruments", [creationAlias]);
+  ctx.emit("instrument.created", gidOf, {
+    name: input.name,
+    currency: input.currency,
+    assetClass: input.assetClass,
+    symbol: input.symbol || null,
+    isin,
+    mic: input.mic || null,
+    region: input.region ?? null,
+    sector: input.sector ?? null,
+    tags: [...input.tags],
+    needsClassification: input.needsClassification,
+    valuationMode: input.valuationMode ?? defaultValuationMode(input.assetClass),
+    status: input.status,
+    creationAlias,
+  });
+  // Writers emit `aliasAdded` for every alias, the creation alias included (events.md 8.6).
+  const claims =
+    isin && !aliases.some((a) => a.namespace === AliasNamespace.ISIN && a.value === isin)
+      ? [{ namespace: AliasNamespace.ISIN, value: isin, guessed: false }, ...aliases]
+      : aliases;
+  addAliases(ctx, gidOf, isin, claims);
+  return { gid: gidOf, created: true };
+}
+
 export const createInstrument = defineCommand({
   id: "investments.createInstrument",
-  input: z.object({
-    name: z.string().min(1),
-    currency: assetCurrency,
-    assetClass: z.enum(ASSET_CLASSES),
-    symbol: nullableText,
-    isin: nullableText,
-    mic: nullableText,
-    region: nullableText,
-    sector: nullableText,
-    tags: z.array(z.string()).default([]),
-    needsClassification: z.boolean().default(false),
-    valuationMode: z.enum(VALUATION_MODES).nullable().optional(),
-    status: z.enum(INSTRUMENT_STATUSES).default("active"),
-    aliases: z.array(aliasInput).default([]),
-  }),
-  /**
-   * Python `insert`: the instrument and the aliases nobody holds yet. The gid is DET of its creation
-   * alias (gid.md 4.6: `isin:<ISIN>` when it has an ISIN, else its first alias), so two devices
-   * storing the same planned instrument converge on one row; ULID without any alias. When the
-   * creation alias already belongs to an instrument, that one is returned and nothing is written.
-   */
-  run(ctx, input) {
-    const aliases = input.aliases
-      .map((a) => ({ ...a, value: normalizeAlias(a.namespace, a.value) }))
-      .filter((a) => a.value !== "");
-    const isin =
-      (input.isin ? input.isin.trim().toUpperCase() : null) ||
-      (aliases.find((a) => a.namespace === AliasNamespace.ISIN)?.value ?? null);
-    const first = aliases[0];
-    const creationAlias = isin
-      ? `${AliasNamespace.ISIN}:${isin}`
-      : first === undefined
-        ? null
-        : `${first.namespace}:${first.value}`;
-    if (creationAlias !== null) {
-      const [namespace = "", ...rest] = creationAlias.split(":");
-      const held = aliasOwner(ctx.read, namespace, rest.join(":"));
-      if (held !== undefined) return ok({ gid: held.instrument, created: false });
-      const existing = instrumentGid(ctx.read, ctx.det("inv_instruments", [creationAlias]));
-      if (existing !== undefined) return ok({ gid: existing, created: false });
-    }
-    const gidOf =
-      creationAlias === null ? ctx.newGid() : ctx.det("inv_instruments", [creationAlias]);
-    ctx.emit("instrument.created", gidOf, {
-      name: input.name,
-      currency: input.currency,
-      assetClass: input.assetClass,
-      symbol: input.symbol || null,
-      isin,
-      mic: input.mic || null,
-      region: input.region ?? null,
-      sector: input.sector ?? null,
-      tags: [...input.tags],
-      needsClassification: input.needsClassification,
-      valuationMode: input.valuationMode ?? defaultValuationMode(input.assetClass),
-      status: input.status,
-      creationAlias,
-    });
-    // Writers emit `aliasAdded` for every alias, the creation alias included (events.md 8.6).
-    const claims =
-      isin && !aliases.some((a) => a.namespace === AliasNamespace.ISIN && a.value === isin)
-        ? [{ namespace: AliasNamespace.ISIN, value: isin, guessed: false }, ...aliases]
-        : aliases;
-    addAliases(ctx, gidOf, isin, claims);
-    return ok({ gid: gidOf, created: true });
-  },
+  input: instrumentSpec,
+  run: (ctx, input) => ok(storeInstrument(ctx, input)),
 });
 
 export const addInstrumentAliases = defineCommand({
