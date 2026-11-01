@@ -355,3 +355,20 @@ def test_the_target_takes_the_market_identity_it_lacks_including_the_mic(db_engi
     with get_session() as s:
         row = s.get(InvInstrument, target)
         assert (row.isin, row.symbol, row.mic) == (ISIN, "A", "XNAS")
+
+
+def test_a_merged_override_exists_since_the_earlier_of_the_two(db_engine):
+    """S31a review F2 run: the surviving override keeps the earlier creation time, as the event fold's
+    CREATE does."""
+    profile_id, _ = make_profile("Inwestor")
+    early, late = dt.datetime(2026, 1, 1, 9), dt.datetime(2026, 2, 1, 9)
+    with get_session() as s:
+        source = _instrument(s, "A", isin=ISIN)
+        target = _instrument(s, "A", symbol="A")
+        s.add(InvProfileInstrument(profile_id=profile_id, instrument_id=source, tags=["x"], created_at=early))
+        s.add(InvProfileInstrument(profile_id=profile_id, instrument_id=target, created_at=late))
+    with get_session() as s:
+        instrument_merge.merge_instruments(s, source, target)
+    with get_session() as s:
+        [row] = s.exec(select(InvProfileInstrument).where(InvProfileInstrument.profile_id == profile_id)).all()
+        assert (row.instrument_id, row.created_at.replace(tzinfo=None)) == (target, early)

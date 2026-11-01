@@ -247,6 +247,10 @@ def _merge_overrides(session: Session, report: MergeReport, source: int, target:
                 updates.update({k: src[k] for k in group})
             elif any(src[k] != tgt[k] for k in group):
                 lost.update({k: src[k] for k in group})
+        # The merged override exists since the earlier of the two (the event fold's CREATE takes the
+        # first create's time, S31a review F2 run).
+        if src.get("created_at") is not None and str(src["created_at"]) < str(tgt.get("created_at")):
+            updates["created_at"] = src["created_at"]
         conn.execute(text("DELETE FROM inv_profile_instruments WHERE id = :id"), {"id": sid})
         if updates:
             sets = ", ".join(f'"{k}" = :{k}' for k in updates)
