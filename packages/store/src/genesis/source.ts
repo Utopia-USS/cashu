@@ -92,9 +92,19 @@ function selectList(
     .join(", ");
 }
 
-type RowResult<R> =
+export type RowResult<R> =
   | { readonly ok: true; readonly value: R; readonly tally: JsonTally }
   | { readonly ok: false; readonly reason: DecodeFailure };
+
+/**
+ * Decodes one raw row of a table spec (every field of the spec): the S31a bridge decodes outbox
+ * `post` values with it, so a shipped row is the typed row genesis would have read.
+ */
+export function decodeSourceRow<R>(spec: TableSpec<R>, raw: SqlRow): RowResult<R> {
+  const fields: (keyof R & string)[] = [];
+  for (const field in spec.fields) fields.push(field);
+  return decodeRow(spec, fields, raw);
+}
 
 function decodeRow<R>(
   spec: TableSpec<R>,
@@ -200,10 +210,16 @@ export function readPythonSource(
   driver: SqlDriver,
   files: GenesisFiles,
   counters: GenesisCounters,
+  options: { readonly liveSyncState?: boolean } = {},
 ): PythonSource {
   const schema = readSchemaVersion(driver);
-  refuseSyncState(driver);
-  refuseAlertTags(driver);
+  // The S31a bridge reads the live rows of a synced database (its phase-1 inputs): sync state is
+  // expected there, and an alert tag blocks the row that carries it in the bridge instead of the
+  // whole read. Genesis itself always refuses both.
+  if (options.liveSyncState !== true) {
+    refuseSyncState(driver);
+    refuseAlertTags(driver);
+  }
   const read = <K extends keyof PythonTables>(k: K): PythonTables[K][number][] =>
     readTable(driver, TABLES[k], schema, counters);
   return {

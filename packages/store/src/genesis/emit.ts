@@ -59,9 +59,13 @@ interface VaultLog {
   readonly rows: readonly RowEvents[];
 }
 
-type Check = "ok" | "invalid_event" | "det_mismatch";
+export type Check = "ok" | "invalid_event" | "det_mismatch";
 
-function checkEvent(
+/**
+ * `parseEvent` (with `placeholder`'s envelope fields) and the `detPartsOf` self-check of one draft;
+ * the S31a bridge validates its events with it too.
+ */
+export function checkEvent(
   e: EventDraft,
   placeholder: Readonly<Record<string, unknown>>,
   det: DetGid,
