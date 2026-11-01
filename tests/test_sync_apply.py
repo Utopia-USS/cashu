@@ -473,6 +473,70 @@ def test_an_inbound_edit_older_than_a_shipped_local_edit_loses(world):
     assert only(apply(newer, pid=pid), "applied") and alert_row(world).title == "Nowszy"
 
 
+def local_title(world, title: str) -> None:
+    with get_session() as s:
+        alerts.update(s, s.get(Profile, world["pid"]), world["ids"]["alerts"], {"title": title})
+
+
+def ship_with_clocks(world, ms: int, cols=("title",)) -> None:
+    """The shipper acked everything pending, the alert's columns stamped at ``ms`` (S31a P-A)."""
+    stamp = [f"{_b36(ms, 9)}-0000-{DEVICE_B}", sync_keys.mint_ulid(ms)]
+    entry = {
+        "profile_id": world["pid"], "table": "alerts", "local_id": str(world["ids"]["alerts"]),
+        "clocks": {c: stamp for c in cols},
+    }
+    with get_session() as s:
+        sync_outbox.ack(s, s.exec(select(func.max(SyncOutbox.id))).one(), [entry])
+
+
+def test_a_shipped_local_edit_competes_with_its_stamp(world):
+    """Section 7: the ack's clock decides, not the wall time of the outbox row (``hlc_floor``)."""
+    pid, g = world["pid"], world["gids"]
+    local_title(world, "Lokalny")
+    stamped = now_ms() + 600_000  # the log stamped it later than its outbox wall time
+    ship_with_clocks(world, stamped)
+    between = event("alert.updated", g["alerts"], {"title": "Starszy"}, ms=stamped - 300_000)
+    out = apply(between, pid=pid)  # after the outbox ts, before the stamp: older
+    assert only(out, "lost") and out["reasons"] == {"lost:older": 1}
+    assert alert_row(world).title == "Lokalny"
+    after = event("alert.updated", g["alerts"], {"title": "Nowszy"}, ms=stamped + 1)
+    assert only(apply(after, pid=pid), "applied") and alert_row(world).title == "Nowszy"
+
+
+def test_a_pruned_outbox_row_keeps_its_decision(world):
+    pid, g = world["pid"], world["gids"]
+    local_title(world, "Lokalny")
+    stamped = now_ms() + 600_000
+    ship_with_clocks(world, stamped)
+    with get_session() as s:
+        assert sync_outbox.prune(s) > 0
+    out = apply(event("alert.updated", g["alerts"], {"title": "Starszy"}, ms=stamped - 1), pid=pid)
+    assert only(out, "lost") and alert_row(world).title == "Lokalny"
+
+
+def test_a_column_carried_by_two_acks_keeps_the_later_stamp(world):
+    pid, g = world["pid"], world["gids"]
+    base = now_ms() + 600_000
+    local_title(world, "Pierwszy")
+    ship_with_clocks(world, base + 2000)
+    local_title(world, "Drugi")
+    ship_with_clocks(world, base + 1000)  # acked out of order: the clock keeps the later stamp
+    with get_session() as s:
+        clock = s.get(SyncClock, (pid, "alerts", str(world["ids"]["alerts"]), "title"))
+        assert clock.hlc == f"{_b36(base + 2000, 9)}-0000-{DEVICE_B}"
+    out = apply(event("alert.updated", g["alerts"], {"title": "Z telefonu"}, ms=base + 1500), pid=pid)
+    assert only(out, "lost") and alert_row(world).title == "Drugi"
+
+
+def test_an_ack_never_moves_an_inbound_clock_back(world):
+    pid, g = world["pid"], world["gids"]
+    base = now_ms() + 600_000
+    assert only(apply(event("alert.updated", g["alerts"], {"title": "Z telefonu"}, ms=base + 2000), pid=pid), "applied")
+    ship_with_clocks(world, base)  # an older local stamp of the same column
+    out = apply(event("alert.updated", g["alerts"], {"title": "Starszy"}, ms=base + 1000), pid=pid)
+    assert only(out, "lost") and alert_row(world).title == "Z telefonu"
+
+
 def test_lww_is_per_field(world):
     pid, g = world["pid"], world["gids"]
     base = now_ms() + 60_000

@@ -22,7 +22,7 @@ from sqlmodel import SQLModel, select
 from cashu.core import accounts, profiles, reviews, sync_keys, sync_outbox
 from cashu.core.db import get_session
 from cashu.core.models import Account, Balance, Profile
-from cashu.core.sync_models import SyncId, SyncOutbox
+from cashu.core.sync_models import SyncClock, SyncId, SyncOutbox
 from cashu.modules.budget import cash
 from cashu.modules.budget import service as budget
 from cashu.modules.budget.models import Transaction
@@ -607,6 +607,160 @@ def test_rows_are_pruned_only_after_an_ack(db_engine, sync_on):
     assert outbox_count() == total - 2
     with get_session() as s, pytest.raises(ValueError):
         sync_outbox.ack(s, 10**9, [{"profile_id": pid, "table": "inv_instruments", "local_id": "1", "gid": "1"}])
+
+
+DEVICE = "3f9a2c8e1d7b4a6050c3e9f12d8b7a64"
+
+
+def hlc(ms: int, counter: int = 0) -> str:
+    def b36(n: int, width: int) -> str:
+        digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+        out = ""
+        while n:
+            n, r = divmod(n, 36)
+            out = digits[r] + out
+        return out.rjust(width, "0")
+
+    return f"{b36(ms, 9)}-{b36(counter, 4)}-{DEVICE}"
+
+
+def clocks_of(pid: int, table: str, local_id: str) -> dict:
+    with get_session() as s:
+        rows = s.exec(
+            select(SyncClock).where(
+                SyncClock.profile_id == pid, SyncClock.table_name == table, SyncClock.local_id == local_id
+            )
+        ).all()
+        return {c.field: (c.hlc, c.eid) for c in rows}
+
+
+def test_an_ack_stores_field_clocks_and_only_moves_them_forward(db_engine, sync_on):
+    pid = new_profile("Clocks")
+    item = watch(pid, new_instrument(), note="n")
+    top = outbox()[-1]["id"]
+    early, late = (hlc(1_700_000_000_000), sync_keys.mint_ulid()), (hlc(1_700_000_005_000), sync_keys.mint_ulid())
+    entry = {"profile_id": pid, "table": "watchlist_items", "local_id": str(item), "clocks": {"note": list(late), "tags": list(early)}}
+    with get_session() as s:
+        assert sync_outbox.ack(s, top, [entry]) > 0
+    assert clocks_of(pid, "watchlist_items", str(item)) == {"note": late, "tags": early}
+    before = outbox()
+    with get_session() as s:  # the same ack again: a no-op
+        assert sync_outbox.ack(s, top, [entry]) == 0
+    assert outbox() == before and clocks_of(pid, "watchlist_items", str(item)) == {"note": late, "tags": early}
+    # an older stamp never moves a clock back; a newer one moves it; one column in two entries keeps the later
+    newer = (hlc(1_700_000_009_000), sync_keys.mint_ulid())
+    with get_session() as s:
+        sync_outbox.ack(
+            s,
+            top,
+            [
+                {"profile_id": pid, "table": "watchlist_items", "local_id": item, "clocks": {"note": list(early), "tags": list(late)}},
+                {"profile_id": pid, "table": "watchlist_items", "local_id": item, "clocks": {"tags": list(newer)}},
+            ],
+        )
+    assert clocks_of(pid, "watchlist_items", str(item)) == {"note": late, "tags": newer}
+    with get_session() as s:  # no gid in the entries: the gid map is untouched
+        assert s.exec(select(func.count()).select_from(SyncId).where(SyncId.source == "shipper")).one() == 0
+
+
+def test_an_old_ack_line_with_only_a_gid_is_still_valid(db_engine, sync_on):
+    pid = new_profile("OldLine")
+    inst = new_instrument()
+    gid = "fc9daa13-f073-8a72-8cd0-c1345436bc05"
+    with get_session() as s:
+        sync_outbox.ack(s, outbox()[-1]["id"], [{"profile_id": pid, "table": "inv_instruments", "local_id": str(inst), "gid": gid}])
+    with get_session() as s:
+        assert s.exec(select(SyncId.gid).where(SyncId.source == "shipper")).one() == gid
+        assert s.exec(select(func.count()).select_from(SyncClock)).one() == 0
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"profile_id": "1", "table": "watchlist_items", "local_id": "1"},
+        {"profile_id": True, "table": "watchlist_items", "local_id": "1"},
+        {"profile_id": 1, "table": "sync_outbox", "local_id": "1"},
+        {"profile_id": 1, "table": "watchlist_items", "local_id": "1", "gid": "not-a-gid"},
+        {"profile_id": 1, "table": "watchlist_items", "local_id": "1", "clocks": {"updated_at": "VALID"}},
+        {"profile_id": 1, "table": "watchlist_items", "local_id": "1", "clocks": {"added_at": "VALID"}},
+        {"profile_id": 1, "table": "watchlist_items", "local_id": "1", "clocks": {"nope": "VALID"}},
+        {"profile_id": 1, "table": "watchlist_items", "local_id": "1", "clocks": {"note": ["bad-hlc", "EID"]}},
+        {"profile_id": 1, "table": "watchlist_items", "local_id": "1", "clocks": {"note": ["HLC", "not-a-ulid"]}},
+        {"profile_id": 1, "table": "watchlist_items", "local_id": "1", "clocks": {"note": ["HLC"]}},
+        {"profile_id": 1, "table": "watchlist_items", "local_id": "1", "clocks": ["note"]},
+    ],
+)
+def test_a_bad_ack_entry_writes_nothing(db_engine, sync_on, bad):
+    pid = new_profile("BadAck")
+    inst = new_instrument()
+    item = watch(pid, inst)
+    stamp = [hlc(1_700_000_000_000), sync_keys.mint_ulid()]
+
+    def fill(value):
+        if value == "VALID":
+            return list(stamp)
+        if isinstance(value, list):
+            return [stamp[0] if v == "HLC" else stamp[1] if v == "EID" else v for v in value]
+        return value
+
+    bad = dict(bad)
+    if isinstance(bad.get("clocks"), dict):
+        bad["clocks"] = {k: fill(v) for k, v in bad["clocks"].items()}
+    good = [
+        {"profile_id": pid, "table": "inv_instruments", "local_id": str(inst), "gid": "fc9daa13-f073-8a72-8cd0-c1345436bc05"},
+        {"profile_id": pid, "table": "watchlist_items", "local_id": str(item), "clocks": {"note": stamp}},
+    ]
+    before = outbox()
+    with get_session() as s, pytest.raises(ValueError):
+        sync_outbox.ack(s, before[-1]["id"], [*good, bad])
+    assert outbox() == before  # nothing acked
+    with get_session() as s:
+        assert s.exec(select(func.count()).select_from(SyncClock)).one() == 0
+        assert s.exec(select(func.count()).select_from(SyncId).where(SyncId.source == "shipper")).one() == 0
+
+
+def test_cli_ack_reads_entries_with_clocks(db_engine, sync_on, tmp_path):
+    import json
+
+    from typer.testing import CliRunner
+
+    from cashu.cli import app
+
+    pid = new_profile("CliAck")
+    item = watch(pid, new_instrument(), note="n")
+    stamp = [hlc(1_700_000_000_000), sync_keys.mint_ulid()]
+    path = tmp_path / "ack.jsonl"
+    path.write_text(json.dumps({"profile_id": pid, "table": "watchlist_items", "local_id": str(item), "clocks": {"note": stamp}}) + "\n")
+    out = CliRunner().invoke(app, ["sync", "ack", "--through", str(outbox()[-1]["id"]), "--ids", str(path)])
+    assert out.exit_code == 0, out.output
+    assert "0 gid(s) and 1 field clock(s) stored" in out.output
+    assert clocks_of(pid, "watchlist_items", str(item)) == {"note": tuple(stamp)}
+    path.write_text(json.dumps({"profile_id": pid, "table": "watchlist_items", "local_id": str(item), "clocks": {"nope": stamp}}) + "\n")
+    assert CliRunner().invoke(app, ["sync", "ack", "--through", "1", "--ids", str(path)]).exit_code == 1
+
+
+def test_escalating_an_acknowledged_signal_keeps_the_previous_status_as_evidence(db_engine, sync_on):
+    """P-C: the status pair active <-> acknowledged is not shipped, but ``prev.status`` stays so the
+    shipper can tell a reactivating escalation (``signal.escalated {reactivate}``)."""
+    pid = new_profile("Escalate")
+    sig = new_signal(pid, new_instrument())
+    with get_session() as s:
+        assert journal.acknowledge(s, s.get(InvSignal, sig))
+    start = outbox_count()
+    with get_session() as s:  # store/signals.py EscalateSignal with reactivate
+        row = s.get(InvSignal, sig)
+        row.severity = "action"
+        row.status = "active"
+        row.acknowledged_at = None
+        s.add(row)
+    [esc] = outbox()[start:]
+    assert esc["op"] == "update" and esc["fields"] == {"severity": "action"}
+    assert esc["prev"] == {"severity": "warning", "status": "acknowledged"}
+    with get_session() as s:  # a status-only change (acknowledge again) is still dropped
+        row = s.get(InvSignal, sig)
+        row.status = "acknowledged"
+        s.add(row)
+    assert outbox_count() == start + 1
 
 
 def test_status_reports_counts_only(db_engine, sync_on):

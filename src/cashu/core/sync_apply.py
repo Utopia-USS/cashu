@@ -23,9 +23,12 @@ Rules (events.md 2, 6, 7; gid.md 4):
   acked with ``origin = inbound``, so the shipper never sends them back; rows the event creates take
   the event's gid. A later local edit of the same row is captured normally.
 - **LWW-F by HLC.** Per synced field, an inbound write applies only if it sorts after the field's last
-  write, in the ``(hlc, eid)`` order of events.md 3.2: ``sync_clock`` holds the last inbound write; a
-  local write still in the outbox (unacked) sorts after every event the daemon has already received
-  (its HLC is stamped later, events.md 3.3 receive rule), an acked one at least at its own wall time.
+  write, in the ``(hlc, eid)`` order of events.md 3.2: ``sync_clock`` holds the last write whose stamp
+  this database knows (inbound writes, and local writes the shipper acked with their field clocks,
+  S31a P-A); a local write still in the outbox (unacked) sorts after every event the daemon has already
+  received (its HLC is stamped later, events.md 3.3 receive rule); an acked one without clocks (an older
+  shipper, the first-start cut) at least at its own wall time (``hlc_floor``, conservative: its real
+  stamp is never lower).
   GUARDs are kept: a locked manual rule / manual claim is not overwritten by a later LLM write, so
   later local LLM writes do not count against an inbound manual one.
 
@@ -60,10 +63,10 @@ STATUSES = ("applied", "duplicate", "lost", "covered", "parked", "rejected")
 """Outcome of one event. Persisted: all but ``duplicate`` (and rejections that are about the run, not
 the event: a bad envelope, an unlinked vault, another profile's vault)."""
 
-ULID_RE = re.compile(r"^[0-7][0-9A-HJKMNP-TV-Z]{25}$")
+ULID_RE = sync_outbox.ULID_RE
 UUID8_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 HEX32_RE = re.compile(r"^[0-9a-f]{32}$")
-HLC_RE = re.compile(r"^[0-9a-z]{9}-[0-9a-z]{4}-[0-9a-f]{32}$")
+HLC_RE = sync_outbox.HLC_RE  # events.md 3.1; one definition shared with the ack clocks
 TYPE_RE = re.compile(r"^[a-z][a-zA-Z]*\.[a-z][a-zA-Z]*$")
 TIMESTAMP_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,6})?Z$")
 DECIMAL_RE = re.compile(r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$")

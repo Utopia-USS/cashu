@@ -81,21 +81,33 @@ def ack_cmd(
     through: Annotated[int, typer.Option(help="Ack every outbox row with id <= this.")],
     ids: Annotated[
         Path | None,
-        typer.Option(help="JSON lines {profile_id, table, local_id, gid} the shipper computed."),
+        typer.Option(
+            help="JSON lines {profile_id, table, local_id, gid?, clocks?: {column: [hlc, eid]}}: the gids "
+            "the shipper computed and the stamps the columns got in the log."
+        ),
     ] = None,
 ) -> None:
-    """Mark outbox rows as shipped (the shipper, S31a) and store the gids it computed."""
+    """Mark outbox rows as shipped (the shipper, S31a) and store the gids and field clocks it returns.
+    All or nothing: a bad entry writes nothing and exits 1."""
     init_db()
-    gids = []
+    entries = []
     if ids is not None:
-        gids = [json.loads(line) for line in ids.read_text(encoding="utf-8").splitlines() if line.strip()]
+        try:
+            entries = [
+                json.loads(line) for line in ids.read_text(encoding="utf-8").splitlines() if line.strip()
+            ]
+        except ValueError:
+            cliutil.err_console.print("[red]the ids file is not JSON lines[/]")
+            raise typer.Exit(1) from None
     with get_session() as s:
         try:
-            n = sync_outbox.ack(s, through, gids)
+            n = sync_outbox.ack(s, through, entries)
         except (ValueError, KeyError) as e:
             cliutil.err_console.print(f"[red]{e}[/]")
             raise typer.Exit(1) from None
-    typer.echo(f"acked {n} row(s), {len(gids)} gid(s) stored")
+    gids = sum(1 for e in entries if e.get("gid") is not None)
+    clocks = sum(len(e.get("clocks") or {}) for e in entries)
+    typer.echo(f"acked {n} row(s), {gids} gid(s) and {clocks} field clock(s) stored")
 
 
 @sync_app.command("seed")

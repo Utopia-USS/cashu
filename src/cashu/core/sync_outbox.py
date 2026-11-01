@@ -52,12 +52,13 @@ from sqlalchemy.orm import object_mapper
 from . import sync_keys
 from .env import env
 from .models import utcnow
-from .sync_models import SyncId, SyncOutbox, SyncVault
+from .sync_models import SyncClock, SyncId, SyncOutbox, SyncVault
 
 ENV_FLAG = "SYNC"
 OUTBOX = SyncOutbox.__table__
 IDS = SyncId.__table__
 VAULTS = SyncVault.__table__
+CLOCKS = SyncClock.__table__
 STATE_KEY = "cashu.sync_outbox"
 ORIGINS = ("local", "inbound")
 EXPLICIT_OPS = ("merge", "undo", "leg_delete")
@@ -136,14 +137,15 @@ def _txn_filter(op: str, fields: dict, prev: dict | None, row: dict) -> None:
 
 def _signal_filter(op: str, fields: dict, prev: dict | None, row: dict) -> None:
     """``acknowledged`` is derived from decisions (events.md 6.5): active <-> acknowledged is not
-    captured; every other status change is (closed, reopened)."""
+    captured; every other status change is (closed, reopened). ``prev["status"]`` stays (evidence only,
+    never shipped): the shipper derives ``signal.escalated {reactivate}`` from an escalation whose
+    previous status was ``acknowledged`` (S31a P-C). A row whose only change was this status is still
+    dropped (no fields)."""
     if op != "update" or "status" not in fields:
         return
     pair = {fields["status"], (prev or {}).get("status")}
     if pair <= {"active", "acknowledged"}:
         fields.pop("status")
-        if prev:
-            prev.pop("status", None)
 
 
 def _proposal_filter(op: str, fields: dict, prev: dict | None, row: dict) -> None:
@@ -966,19 +968,100 @@ def pending(session, after: int = 0, limit: int = 1000) -> list[dict]:
     return [dict(r._mapping) for r in conn.execute(q)]
 
 
-def ack(session, through: int, gids: Iterable[dict] = (), *, now: dt.datetime | None = None) -> int:
-    """Mark every row with id <= ``through`` shipped and store the gids the shipper computed
-    (``{"profile_id", "table", "local_id", "gid"}``). Returns the number of rows acked."""
+HLC_RE = re.compile(r"^[0-9a-z]{9}-[0-9a-z]{4}-[0-9a-f]{32}$")
+"""An HLC (events.md 3.1): wall ms base36 (9), counter base36 (4), device (32 hex)."""
+ULID_RE = re.compile(r"^[0-7][0-9A-HJKMNP-TV-Z]{25}$")
+
+
+@dataclass(frozen=True)
+class _AckEntry:
+    profile_id: int
+    table: str
+    local_id: str
+    gid: str | None
+    clocks: dict[str, tuple[str, str]]
+
+
+def _ack_entry(e: Any) -> _AckEntry:
+    """One validated ack entry (``ValueError`` otherwise; nothing is written for a bad call)."""
+    e = e if isinstance(e, dict) else {}
+    pid, name, local_id = e.get("profile_id"), e.get("table"), e.get("local_id")
+    if (
+        not isinstance(pid, int)
+        or isinstance(pid, bool)
+        or not isinstance(name, str)
+        or name not in SPECS
+        or isinstance(local_id, bool)
+        or not isinstance(local_id, str | int)
+    ):
+        raise ValueError("bad ack entry")
+    gid = e.get("gid")
+    if gid is not None and not (isinstance(gid, str) and _GID.match(gid)):
+        raise ValueError("bad gid mapping in an ack")
+    raw = e.get("clocks")
+    clocks: dict[str, tuple[str, str]] = {}
+    if raw is not None:
+        if not isinstance(raw, dict):
+            raise ValueError("bad field clocks in an ack")
+        columns = {c.name for c in _synced_columns(name, IDS.metadata.tables[name])}
+        for col, stamp in raw.items():
+            if (
+                col not in columns
+                or not isinstance(stamp, list | tuple)
+                or len(stamp) != 2
+                or not isinstance(stamp[0], str)
+                or not isinstance(stamp[1], str)
+                or not HLC_RE.match(stamp[0])
+                or not ULID_RE.match(stamp[1])
+            ):
+                raise ValueError("bad field clock in an ack")
+            clocks[col] = (stamp[0], stamp[1])
+    return _AckEntry(pid, name, str(local_id), gid, clocks)
+
+
+def ack(session, through: int, entries: Iterable[dict] = (), *, now: dt.datetime | None = None) -> int:
+    """Mark every row with id <= ``through`` shipped and store what the shipper returns per row
+    (S31a P-A): ``{"profile_id", "table", "local_id", "gid"?, "clocks"?: {column: [hlc, eid]}}``.
+
+    - ``gid``: the gid the shipper computed (upserted into ``sync_ids``, source ``shipper``).
+    - ``clocks``: the ``(hlc, eid)`` each synced column was stamped with in the log; ``sync_clock``
+      moves to the max of the stored and the given stamp (events.md 3.2 order, plain string compare),
+      so the inbound compare (``sync_apply``) sees the local write's real stamp even after a prune.
+
+    Every entry is validated first (table in ``SPECS``, int profile, gid shape, column synced, HLC of
+    events.md 3.1, ULID eid): on any bad entry ``ValueError`` and nothing is written. Idempotent: the
+    same call again changes nothing. Returns the number of rows acked."""
+    parsed = [_ack_entry(e) for e in entries]
     conn = session.connection()
-    for g in gids:
-        pid, name, local_id, gid = g["profile_id"], g["table"], str(g["local_id"]), g["gid"]
-        if name not in SPECS or not isinstance(pid, int) or not _GID.match(gid or ""):
-            raise ValueError("bad gid mapping in an ack")
-        mine = and_(IDS.c.profile_id == pid, IDS.c.table_name == name)
-        conn.execute(delete(IDS).where(mine, or_(IDS.c.local_id == local_id, IDS.c.gid == gid)))
-        conn.execute(
-            insert(IDS).values(profile_id=pid, table_name=name, local_id=local_id, gid=gid, source="shipper")
+    stamps: dict[tuple[int, str, str, str], tuple[str, str]] = {}
+    for e in parsed:
+        if e.gid is not None:
+            mine = and_(IDS.c.profile_id == e.profile_id, IDS.c.table_name == e.table)
+            conn.execute(delete(IDS).where(mine, or_(IDS.c.local_id == e.local_id, IDS.c.gid == e.gid)))
+            conn.execute(
+                insert(IDS).values(
+                    profile_id=e.profile_id, table_name=e.table, local_id=e.local_id, gid=e.gid, source="shipper"
+                )
+            )
+        for col, stamp in e.clocks.items():
+            k = (e.profile_id, e.table, e.local_id, col)
+            stamps[k] = max(stamps.get(k, stamp), stamp)
+    for (pid, name, local_id, col), stamp in stamps.items():
+        where = and_(
+            CLOCKS.c.profile_id == pid,
+            CLOCKS.c.table_name == name,
+            CLOCKS.c.local_id == local_id,
+            CLOCKS.c.field == col,
         )
+        held = conn.execute(select(CLOCKS.c.hlc, CLOCKS.c.eid).where(where)).first()
+        if held is None:
+            conn.execute(
+                insert(CLOCKS).values(
+                    profile_id=pid, table_name=name, local_id=local_id, field=col, hlc=stamp[0], eid=stamp[1]
+                )
+            )
+        elif (held.hlc, held.eid) < stamp:  # clocks only move forward
+            conn.execute(update(CLOCKS).where(where).values(hlc=stamp[0], eid=stamp[1]))
     result = conn.execute(
         update(OUTBOX)
         .where(OUTBOX.c.id <= through, OUTBOX.c.acked_at.is_(None))
