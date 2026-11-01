@@ -7,7 +7,16 @@ export {
   setNote,
 } from "./assets/commands.js";
 export { assetsModule } from "./assets/index.js";
-export { deleteCashTransaction, importStatement, setCushion } from "./budget/commands.js";
+export {
+  addCashExpense,
+  cacheLlmRules,
+  deleteCashTransaction,
+  importStatement,
+  setCushion,
+  setLlmCategories,
+  setMerchantCategory,
+  setTransactionCategory,
+} from "./budget/commands.js";
 export { budgetModule } from "./budget/index.js";
 export { canonicalJson } from "./canonical.js";
 export {

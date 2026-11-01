@@ -1,15 +1,26 @@
-// Budget commands (S24 5): statement imports, cash pool deletes, the cushion settings. Python
-// oracles: `budget/service.py` (ingest_transactions, import_statement, _end_of_day_balances),
-// `budget/cash.py` (delete_cash_transaction), `budget/settings.py` (parse).
-// The category commands (set a transaction's category, add a cash expense, merchant rules, LLM
-// results) need the S09 taxonomy for validation and land with S24c.
+// Budget commands (S24 5): statement imports, categories, the cash pool, the cushion settings.
+// Python oracles: `budget/service.py` (ingest_transactions, import_statement, _end_of_day_balances,
+// set_transaction_category, recategorize_merchant, the LLM half of categorize_all), `budget/cash.py`
+// (get_cash_account, add_cash_expense, delete_cash_transaction), `categorize/reclassify.py` (the
+// answers it writes), `budget/settings.py` (parse), with the validation of `budget/api.py`.
+// Categories are facts (claims, rules); the effective category of every row is derived
+// (`derive/categories.ts`), so no command writes one.
 import { Decimal, floatRepr } from "@cashu/domain";
 import {
+  acceptMerchantAnswer,
+  budgetBaseCurrency,
+  CASH_ACCOUNT_TYPE,
+  CASH_WITHDRAWAL,
+  cashExpenseAmount,
+  cashPoolExternalId,
+  cashPoolName,
   checkCushionAccounts,
   type DatedAmount,
   defaultBudgetSettings,
+  isCategoryKey,
   planImport,
   type RawTransaction,
+  ruleUpsert,
 } from "@cashu/domain/budget";
 import { pyStrip, pyUpper } from "@cashu/domain/text";
 import { z } from "zod";
@@ -17,8 +28,8 @@ import { type CommandContext, defineCommand, ok, refuse } from "../command.js";
 import { emitBalance, ensureAccount } from "../core/commands.js";
 import { accountByGid, profileOf } from "../core/queries.js";
 import { BALANCE_SOURCES } from "../events/v1/core.js";
-import { blobRef, gid } from "../events/v1/primitives.js";
-import { storedTxnsOfAccount, transactionByGid } from "./queries.js";
+import { blobRef, calendarDate, gid } from "../events/v1/primitives.js";
+import { ruleByMerchant, storedTxnsOfAccount, transactionByGid } from "./queries.js";
 import { CASHEXP, CASHLEG } from "./transactions.js";
 
 const ISO_CURRENCY = /^[A-Z]{3}$/;
@@ -161,7 +172,178 @@ export const importStatement = defineCommand({
   },
 });
 
+// ------------------------------------------------------------------------------- categories
+
+const categoryKey = z.string().refine(isCategoryKey, "unknown category");
+
+/**
+ * The cash pool account of `currency` (Python `get_cash_account(create=True)`): the vault's
+ * `manual` / `cash:<CUR>` account, else `account.opened` with its DET gid, named "Gotówka" in the
+ * base currency and "Gotówka (<CUR>)" otherwise (the name is matching data, decided once).
+ */
+function ensureCashPool(ctx: CommandContext, currency: string): { gid: string; currency: string } {
+  const base = budgetBaseCurrency(profileOf(ctx.read)?.baseCurrency);
+  const pool = ensureAccount(ctx, {
+    bank: "manual",
+    iban: null,
+    name: cashPoolName(currency, base),
+    externalId: cashPoolExternalId(currency),
+    type: CASH_ACCOUNT_TYPE,
+    currency,
+  });
+  return { gid: pool.gid, currency: pool.currency };
+}
+
+/**
+ * Set one transaction's category by hand (Python `set_transaction_category` via
+ * POST /transactions/{id}/category): a `manual_txn` claim on the row (a cash leg or a cash expense
+ * included), which survives every recomputation. Marking a bank row `cash_withdrawal` derives its
+ * mirror leg on the cash pool, so the pool is opened in the same batch when the view lacks it (m3).
+ */
+export const setTransactionCategory = defineCommand({
+  id: "budget.setTransactionCategory",
+  input: z.object({ txn: gid, category: categoryKey }),
+  run(ctx, input) {
+    const t = transactionByGid(ctx.read, input.txn);
+    if (t === undefined) return refuse("no_transaction");
+    if (input.category === CASH_WITHDRAWAL && t.accountType !== CASH_ACCOUNT_TYPE) {
+      ensureCashPool(ctx, t.currency);
+    }
+    ctx.emit("txn.categorySet", t.gid, { category: input.category, source: "manual_txn" });
+    return ok(null);
+  },
+});
+
+/**
+ * Pin a merchant to a category (Python `recategorize_merchant` via POST /merchant-category): a
+ * manual, locked `categoryRule.set`; its rows follow by derivation (rows with their own decision,
+ * structural transfers and cash legs keep theirs). Nothing is emitted when the rule already says so.
+ */
+export const setMerchantCategory = defineCommand({
+  id: "budget.setMerchantCategory",
+  input: z.object({ merchantKey: z.string().min(1), category: categoryKey }),
+  run(ctx, input) {
+    const prev = ruleByMerchant(ctx.read, input.merchantKey);
+    if (prev?.locked && prev.source === "manual" && prev.category === input.category) {
+      return ok({ changed: false });
+    }
+    ctx.emit("categoryRule.set", ctx.det("category_rules", [input.merchantKey]), {
+      merchantKey: input.merchantKey,
+      category: input.category,
+      source: "manual",
+      locked: true,
+    });
+    return ok({ changed: true });
+  },
+});
+
+/**
+ * Cache the merchant classifier's answers as `llm` rules (the LLM half of `categorize_all`): an
+ * answer becomes a rule only when `acceptMerchantAnswer` takes it (FIX(Q9, D-09.5a): never `other`,
+ * `transfer` or `cash_withdrawal`), never over a locked rule (`ruleUpsert`), and not when the rule
+ * already says so. The answers come from the classifier port (S09b), whose cloud variant only ever
+ * saw `classifierMerchants(read).cloud` (PRIVACY(D-09.5)); this command sends nothing anywhere.
+ */
+export const cacheLlmRules = defineCommand({
+  id: "budget.cacheLlmRules",
+  input: z.object({
+    items: z.array(z.object({ merchantKey: z.string().min(1), category: z.string() })),
+  }),
+  run(ctx, input) {
+    const answers = new Map<string, string>();
+    for (const it of input.items) {
+      const category = acceptMerchantAnswer(it.category);
+      if (category !== null) answers.set(it.merchantKey, category);
+    }
+    let cached = 0;
+    for (const [merchantKey, category] of answers) {
+      const prev = ruleByMerchant(ctx.read, merchantKey);
+      const next = ruleUpsert(prev, merchantKey, { category, source: "llm", locked: false });
+      if (next === "keep") continue;
+      if (prev?.source === "llm" && !prev.locked && prev.category === category) continue;
+      ctx.emit("categoryRule.set", ctx.det("category_rules", [merchantKey]), {
+        merchantKey,
+        category: next.category,
+        source: next.source,
+        locked: next.locked,
+      });
+      cached += 1;
+    }
+    return ok({ cached });
+  },
+});
+
+/**
+ * Store the transaction classifier's answers (`reclassify_all` after `applyReclassify`): an
+ * `llm_full` claim per row, except rows holding a manual claim (the claim GUARD, checked here too so
+ * nothing redundant is emitted) and rows on a cash account (structural, never reclassified).
+ * Unknown rows are skipped; the result counts the claims written.
+ */
+export const setLlmCategories = defineCommand({
+  id: "budget.setLlmCategories",
+  input: z.object({ items: z.array(z.object({ txn: gid, category: categoryKey })) }),
+  run(ctx, input) {
+    let set = 0;
+    for (const it of input.items) {
+      const t = transactionByGid(ctx.read, it.txn);
+      if (t === undefined || t.accountType === CASH_ACCOUNT_TYPE) continue;
+      if (t.categorySource === "manual_txn") continue;
+      ctx.emit("txn.categorySet", t.gid, { category: it.category, source: "llm_full" });
+      set += 1;
+    }
+    return ok({ set });
+  },
+});
+
 // ------------------------------------------------------------------------------- cash pool
+
+/**
+ * Log a manual cash expense (Python `add_cash_expense` via POST /cash/expense): it draws the cash
+ * pool of `currency` (default: the base currency) down by `-abs(amount)`, opened in the same batch
+ * when missing. Refusals: `unknown_category`, `empty_title` (the title is stripped, as the API does),
+ * `invalid_amount` (not a finite number: FIX(Q14), Python would store NaN), `zero_amount`,
+ * `bad_currency`. The day defaults to today (the injected clock).
+ */
+export const addCashExpense = defineCommand({
+  id: "budget.addCashExpense",
+  input: z.object({
+    amount: z.union([z.string(), z.number()]),
+    title: z.string(),
+    category: z.string(),
+    currency: z.string().nullable().optional(),
+    onDate: calendarDate.nullable().optional(),
+  }),
+  run(ctx, input) {
+    if (!isCategoryKey(input.category)) return refuse("unknown_category");
+    const title = pyStrip(input.title);
+    if (!title) return refuse("empty_title");
+    let parsed: Decimal;
+    try {
+      parsed = Decimal.parse(
+        typeof input.amount === "number" ? floatRepr(input.amount) : pyStrip(input.amount),
+      );
+    } catch {
+      return refuse("invalid_amount");
+    }
+    const amount = cashExpenseAmount(parsed);
+    if (!amount.ok) return refuse(amount.reason);
+    const currency = input.currency
+      ? pyUpper(pyStrip(input.currency))
+      : budgetBaseCurrency(profileOf(ctx.read)?.baseCurrency);
+    if (!ISO_CURRENCY.test(currency)) return refuse("bad_currency");
+    const pool = ensureCashPool(ctx, currency);
+    const txn = ctx.newGid();
+    ctx.emit("txn.cashExpenseAdded", txn, {
+      account: pool.gid,
+      bookingDate: input.onDate ?? ctx.today(),
+      amount: plain(amount.amount),
+      currency: pool.currency,
+      title,
+      category: input.category,
+    });
+    return ok({ txn });
+  },
+});
 
 /**
  * Delete a cash pool entry (Python `delete_cash_transaction`): a cash expense ends (`txn.deleted`);

@@ -4,7 +4,15 @@
 import { D } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
 import { addManualPosition } from "./assets/commands.js";
-import { importStatement, setCushion } from "./budget/commands.js";
+import {
+  addCashExpense,
+  cacheLlmRules,
+  importStatement,
+  setCushion,
+  setLlmCategories,
+  setMerchantCategory,
+  setTransactionCategory,
+} from "./budget/commands.js";
 import { type Command, type CommandEnv, runCommand } from "./command.js";
 import { createProfile, openAccount, recordBalance, setModules } from "./core/commands.js";
 import { addLoan } from "./loans/commands.js";
@@ -184,6 +192,78 @@ describe("command batches invalidate the queries that read their tables", () => 
       "SELECT * FROM transactions WHERE account_id IN (SELECT id FROM accounts WHERE type = 'cash')",
     );
     expect(pool).toEqual({ tables: ["accounts", "transactions"], notified: 1 }); // the leg row
+  });
+
+  it("category commands: a merchant rule re-derives its rows; claims and cash expenses too", () => {
+    const store = openTestStore();
+    const env = testEnv();
+    const imp = runCommand(
+      store,
+      { append: (b) => void store.applyEnvelopes(b) },
+      importStatement,
+      {
+        statement: {
+          bank: "mbank",
+          accountNumber: "61109010140000071219812874",
+          accountName: null,
+          currency: "PLN",
+          transactions: [
+            {
+              bookingDate: "2026-10-01",
+              valueDate: null,
+              amount: D("-5.00"),
+              currency: "PLN",
+              counterpartyName: "ZXQ SKLEP",
+              counterpartyIban: null,
+              description: null,
+              reference: null,
+              bankTransactionId: null,
+              source: "csv",
+              raw: {},
+            },
+          ],
+          balances: [],
+          closingBalances: [],
+        },
+      },
+      env,
+    );
+    expect(imp.ok).toBe(true);
+    const txn = store.read<{ gid: string }>("SELECT gid FROM transactions")[0]?.gid;
+    const spending = "SELECT category, SUM(amount) FROM transactions GROUP BY category";
+    expect(
+      touched(
+        store,
+        env,
+        setMerchantCategory,
+        { merchantKey: "ZXQ SKLEP", category: "gifts" },
+        spending,
+      ),
+    ).toEqual({ tables: ["category_rules", "transactions"], notified: 1 });
+    expect(
+      touched(
+        store,
+        env,
+        cacheLlmRules,
+        { items: [{ merchantKey: "ZXQ INNY", category: "dining" }] },
+        "SELECT * FROM category_rules",
+      ),
+    ).toEqual({ tables: ["category_rules"], notified: 1 });
+    expect(
+      touched(store, env, setLlmCategories, { items: [{ txn, category: "health" }] }, spending),
+    ).toEqual({ tables: [], notified: 0 }); // the locked rule beats an llm claim: nothing visible changed
+    expect(
+      touched(store, env, setTransactionCategory, { txn, category: "cash_withdrawal" }, spending),
+    ).toEqual({ tables: ["accounts", "transactions"], notified: 1 });
+    expect(
+      touched(
+        store,
+        env,
+        addCashExpense,
+        { amount: "2", title: "Kawa", category: "dining" },
+        spending,
+      ),
+    ).toEqual({ tables: ["transactions"], notified: 1 });
   });
 
   it("cushion, loans, manual positions", () => {
