@@ -7,6 +7,7 @@
 import type { Dataset, PythonDb } from "../sources/index.ts";
 import { produceBudgetDedup } from "./budget/dedup.ts";
 import { produceIngestFixtures } from "./budget/ingestFixtures.ts";
+import { produceBudgetTransfers } from "./budget/transfers.ts";
 import { bridgeDir, readBridge } from "./core/bridge.ts";
 import { produceNetworth } from "./core/networth.ts";
 import { produceImportPlan } from "./investments/importPlan.ts";
@@ -73,6 +74,13 @@ export const PRODUCERS: readonly Producer[] = [
     datasets: ["demo"],
     inputs: [],
     produce: () => produceIngestFixtures(),
+  },
+  {
+    check: "budget.transfers",
+    // lab has no bank transactions yet (R3): enable lab here once it does.
+    datasets: ["demo"],
+    inputs: [],
+    produce: produceBudgetTransfers,
   },
   {
     check: "investments.valuation",
