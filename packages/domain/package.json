@@ -12,6 +12,8 @@
     "./investments": "./src/investments/index.ts",
     "./investments/importing": "./src/investments/importing/index.ts",
     "./investments/macro": "./src/investments/macro/index.ts",
+    "./investments/rules": "./src/investments/rules/index.ts",
+    "./investments/strategy": "./src/investments/strategy/index.ts",
     "./loans": "./src/loans/index.ts",
     "./text": "./src/text.ts"
   },
@@ -20,6 +22,7 @@
     "lint": "biome check .",
     "test": "vitest run",
     "gen:import-schema": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ../../tools/node-ts/resolveTs.ts scripts/genImportSchema.ts",
+    "gen:strategy-templates": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ../../tools/node-ts/resolveTs.ts scripts/genStrategyTemplates.ts",
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
   }
 }
