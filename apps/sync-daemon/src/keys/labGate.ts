@@ -32,6 +32,7 @@ export async function labGate(
         : { ok: false, wait: false, code: "bad_head_signature" };
     },
     accept: () => ({ verdict: { ok: true }, changed: false }),
+    observe() {},
     needsReplay: () => false,
     takeRebuild: () => false,
     reset() {},

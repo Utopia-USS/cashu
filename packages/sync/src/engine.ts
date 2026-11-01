@@ -15,7 +15,8 @@
 //   cursor persisted by the sink with the batch, data only when the gate accepts it (cut, fork
 //   freeze). A partial frame or an incomplete group leaves the cursor where it is; a rejected frame
 //   stops that device's stream for this pass only. The gate sees every verified frame's statements
-//   (the first apply after start replays the whole local log into it without re-delivering data).
+//   (the first apply after start replays the whole local log into a gate with statement state:
+//   every frame's statements first, then data judged from the start without re-delivering it).
 // - D8: when the gate reports that data the view holds is no longer accepted, the pass ends with a
 //   full rebuild (sink reset, gate reset, replay).
 // - Every public operation runs serialized on one queue.
@@ -677,10 +678,50 @@ class OwnLogEngine implements SyncEngine {
     const replay = !this.#primed && this.#gate.needsReplay();
     for (const [device, segs] of streams) {
       if (!this.#chains.has(device)) await this.#indexStream(device, segs);
+    }
+    if (replay) await this.#observeAll(streams, pass);
+    for (const [device, segs] of streams) {
       const cursor = cursors.get(device) ?? START_CURSOR;
       await this.#applyStream(device, segs, replay ? START_CURSOR : cursor, cursor, pass);
     }
     this.#primed = true;
+  }
+
+  /**
+   * Replay, phase 1: every verified frame's statements go to the gate before any data is judged
+   * (a revocation in one stream decides data in another), repeated while frames of writers that
+   * became known in a round verify in the next.
+   */
+  async #observeAll(streams: ReadonlyMap<DeviceId, SegmentInfo[]>, pass: Pass): Promise<void> {
+    const done = new Map<DeviceId, number>();
+    for (let round = 0, progress = true; progress && round < MAX_ROUNDS * 4; round++) {
+      progress = false;
+      for (const [device, segs] of streams) {
+        let prev = this.#codec.genesis(this.vault, device, 1);
+        let index = 0;
+        frames: for (const s of segs) {
+          const bytes = await this.#local.read(this.vault, device, s.seg, 0);
+          for (const f of scanFrames(bytes, 0).frames) {
+            const at = { vault: this.vault, device, seg: s.seg, offset: f.offset };
+            let opened: Opened;
+            try {
+              opened = await this.#open(f.sealed, at, prev, pass);
+            } catch {
+              break frames;
+            }
+            prev = opened.head.chain;
+            index += 1;
+            if (index <= (done.get(device) ?? 0)) continue;
+            const decoded = decodePayload(opened.plain, device);
+            const events = decoded.ok ? decoded.payload.events : [];
+            if (!this.#gate.authenticate(opened.head, events).ok) break frames;
+            this.#gate.observe(opened.head, events);
+            done.set(device, index);
+            progress = true;
+          }
+        }
+      }
+    }
   }
 
   async #applyStream(

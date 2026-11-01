@@ -181,6 +181,8 @@ export interface FrameGate {
     head: FrameHead,
     events: readonly WireEvent[],
   ): { readonly verdict: GateVerdict; readonly changed: boolean };
+  /** A verified data frame's statements only (the engine's replay after start, before any data). */
+  observe(head: FrameHead, events: readonly WireEvent[]): void;
   /**
    * True when the gate keeps state built from statements (a registry) that it does not have yet:
    * the engine then walks the whole local log through `accept` once after start (without

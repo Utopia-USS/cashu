@@ -147,6 +147,10 @@ export class DeviceFrameGate implements FrameGate {
     };
   }
 
+  observe(head: FrameHead, events: readonly WireEvent[]): void {
+    this.ingest(logEventsOf(head, events));
+  }
+
   accept(
     head: FrameHead,
     events: readonly WireEvent[],
