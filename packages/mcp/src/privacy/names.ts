@@ -20,91 +20,37 @@ import { createHmac } from "node:crypto";
 import {
   escapeRe,
   ignoreCaseLiteral,
-  isCombining,
   PY_END,
   PY_W,
-  PY_WS,
   pyCasefold,
   pyLen,
   pySplit,
   pyStrip,
-  pyUpper,
   uRegex,
 } from "@cashu/domain";
-import { pyHasDigit, pyIsDigit } from "./pyText.js";
+import {
+  AMBIGUOUS_MARKERS,
+  BUSINESS_MARKERS,
+  foldName,
+  looksLikePerson,
+  normalizeMerchantName,
+  personPart,
+} from "@cashu/domain/core";
+import { pyIsDigit } from "./pyText.js";
 
 export const REF_PREFIX = "payee:";
 const PAYEE_REF = uRegex(`^payee:[a-p]{10}${PY_END}`); // hex digest spelled with letters: never a digit run
 
-/** Words that mark an organisation, not a person (normalized: upper case, no diacritics, no dots). */
-export const BUSINESS_MARKERS: ReadonlySet<string> = new Set(
-  `
-    SP OO ZOO SA SK SKA SPJ SPOLKA SPOLDZIELNIA SPOLDZIELCZY SKLEP SKLEPY SHOP STORE STORES
-    MARKET SUPERMARKET HIPERMARKET MARKETS BANK BANKU URZAD SKARBOWY SKARBOWA US ZUS KRUS GMINA
-    GMINY MIASTO MIASTA POWIAT WOJEWODZTWO WSPOLNOTA WSPOLNOTY MIESZKANIOWA MIESZKANIOWY
-    MIESZKANIOWE FUNDACJA STOWARZYSZENIE PHU PPHU FHU PPH PHP FPHU ZAKLAD ZAKLADY USLUGI
-    USLUGOWY USLUGOWE SERWIS SERVICE SERVICES STACJA APTEKA APTEKI RESTAURACJA BAR CAFE
-    KAWIARNIA PIEKARNIA HOTEL KLUB CENTRUM SZKOLA PRZEDSZKOLE UCZELNIA UNIWERSYTET KANCELARIA
-    BIURO GROUP GRUPA HOLDING LTD LLC INC GMBH AG CO CORP COMPANY POLSKA POLAND ENERGIA ENERGA
-    TAURON PGE ENEA ORANGE PLAY PLUS TMOBILE NETIA UPC VECTRA INSURANCE UBEZPIECZENIA
-    UBEZPIECZEN TU TUIR PZU LEASING FINANCE FINANSE CREDIT KREDYT KREDYTU POZYCZKA TOWARZYSTWO
-    INWESTYCYJNE TFI DOM MAKLERSKI BROKER ADMINISTRACJA ZARZAD NIERUCHOMOSCI OPERATOR GAZOWNIA
-    WODOCIAGI WODOCIAGOW CIEPLOWNICTWO PARAFIA KOSCIOL ALLEGRO PAYU PAYPAL REVOLUT WISE STRIPE
-    PRZELEWY24 DOTPAY BLIK TPAY POCZTA POLSKA PKP PKO MBANK ING SANTANDER PEKAO ERSTE MILLENNIUM
-    ALIOR CITI NEST VELO PROFIT FIRMA HANDEL HANDLOWE HANDLOWA PRODUKCJA TRANSPORT AUTO MOTO
-    GARAGE WARSZTAT SALON STUDIO GABINET KLINIKA SZPITAL PRZYCHODNIA MEDICAL MEDICOVER LUXMED
-    ENEL FORTUM VEOLIA OPLATA OPLATY RATA PODATEK CZYNSZ
-  `
-    .trim()
-    .split(/\s+/),
-);
-
 /**
- * Markers that are also plausible surnames or first names: they only count with another marker or
- * in names of 3+ words ("JAN BAR" is a person, "BAR MLECZNY POD ORLEM" is not).
+ * The person-name heuristic and the folds are the domain's (`@cashu/domain/core` `personNames`, one
+ * implementation shared with the budget import, S37fix3 item 4); re-exported under the names of
+ * Python `core/mcp/names.py`.
  */
-export const AMBIGUOUS_MARKERS: ReadonlySet<string> = new Set(
-  `
-    DOM BAR PLUS AUTO MOTO SALON STUDIO PLAY NEST VELO PROFIT CO US TU AG SK SA ING CITI WISE
-    SERWIS FIRMA HANDEL BIURO KLUB HOTEL ORANGE
-  `
-    .trim()
-    .split(/\s+/),
-);
-
-/** Where an address starts after a name ("ANNA NOWAK UL. POLNA 5 WARSZAWA"). */
-const ADDRESS: ReadonlySet<string> = new Set(
-  "UL ULICA AL ALEJA ALEJE OS OSIEDLE PL PLAC KOD ADRES".split(" "),
-);
-
-const FOLD_EXTRA: Readonly<Record<string, string>> = {
-  Ł: "L",
-  ł: "L",
-  Đ: "D",
-  đ: "D",
-  Ø: "O",
-  ø: "O",
-  ß: "SS",
-  Æ: "AE",
-  æ: "AE",
-};
-
-function foldChar(ch: string): string {
-  const extra = FOLD_EXTRA[ch];
-  if (extra !== undefined) return extra;
-  let kept = "";
-  for (const c of ch.normalize("NFKD")) {
-    if (!isCombining(c.codePointAt(0) as number)) kept += c;
-  }
-  return pyUpper(kept);
-}
-
-/** Upper case without diacritics (`"Łoś"` -> `"LOS"`). */
-export function fold(text: string): string {
-  let out = "";
-  for (const ch of text) out += foldChar(ch);
-  return out;
-}
+export { AMBIGUOUS_MARKERS, BUSINESS_MARKERS, looksLikePerson, personPart };
+/** Upper case without diacritics (`"Łoś"` -> `"LOS"`): `names.fold`. */
+export const fold: (text: string) => string = foldName;
+/** Folded, dots and commas removed, whitespace collapsed (merchant comparison key): `names.normalize`. */
+export const normalize: (text: string | null) => string = normalizeMerchantName;
 
 /** Cyrillic and Greek letters that look like Latin ones (folded to the Latin letter before matching). */
 const CONFUSABLES: ReadonlyMap<string, string> = (() => {
@@ -182,7 +128,7 @@ function maskFoldChar(ch: string): string {
   let folded: string;
   if (ch === "\u00ad") folded = "";
   else if (MASK_SPACE.has(ch) || ZS.test(ch)) folded = " ";
-  else folded = foldChar(CONFUSABLES.get(ch) ?? ch);
+  else folded = foldName(CONFUSABLES.get(ch) ?? ch);
   if (MASK_FOLD_CACHE.size >= 4096) MASK_FOLD_CACHE.clear();
   MASK_FOLD_CACHE.set(ch, folded);
   return folded;
@@ -324,46 +270,7 @@ function termPatterns(term: string, words: readonly string[]): readonly [RegExp,
   return entry;
 }
 
-const DOTS_COMMAS = /[.,]/g;
-const SPACES = uRegex(`[${PY_WS}]+`, "g");
-
-/** Folded, dots and commas removed, whitespace collapsed (merchant comparison key). */
-export function normalize(text: string | null): string {
-  const folded = fold(text ?? "").replace(DOTS_COMMAS, "");
-  return pyStrip(folded.replace(SPACES, " "));
-}
-
-const TOKEN = uRegex(`^[A-Z][A-Z'\\-]*${PY_END}`);
 const NAME_SPLIT = uRegex(`[^${PY_W}'\\-]+`);
-
-function tokens(text: string | null): string[] {
-  return pySplit(normalize(text).replaceAll("-", " - ")).filter((t) => t !== "-");
-}
-
-/** The leading words before an address or a number ("ANNA NOWAK UL POLNA 5" -> ANNA NOWAK). */
-export function personPart(text: string | null): string[] {
-  const out: string[] = [];
-  for (const t of tokens(text)) {
-    if (ADDRESS.has(t) || pyHasDigit(t)) break;
-    out.push(t);
-  }
-  return out;
-}
-
-/**
- * 2-4 words of letters (initials allowed) before any address, none of them a business marker (an
- * ambiguous marker counts only next to another marker or in a longer name).
- */
-export function looksLikePerson(text: string | null): boolean {
-  const words = personPart(text);
-  if (words.length < 2 || words.length > 4) return false;
-  if (words.some((t) => !TOKEN.test(t))) return false;
-  if (words.filter((t) => pyLen(t) >= 2).length < 1) return false;
-  const strong = words.filter((t) => BUSINESS_MARKERS.has(t) && !AMBIGUOUS_MARKERS.has(t));
-  const weak = words.filter((t) => AMBIGUOUS_MARKERS.has(t));
-  if (strong.length > 0) return false;
-  return !(weak.length > 0 && (weak.length >= 2 || words.length >= 3));
-}
 
 /** Python `re.split(r"[^\w'-]+", fold(name))` without the empty parts. */
 function nameWords(name: string): string[] {

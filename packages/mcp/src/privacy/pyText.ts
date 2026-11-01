@@ -42,12 +42,6 @@ export function pyIsDigit(s: string): boolean {
   return true;
 }
 
-/** Python `any(c.isdigit() for c in s)`. */
-export function pyHasDigit(s: string): boolean {
-  for (const ch of s) if (isDigitChar(ch.codePointAt(0) as number)) return true;
-  return false;
-}
-
 /** Python `int(s)` for a run of Unicode decimal digits (what `\d+` matched). */
 export function pyDigitsValue(s: string): number {
   let n = 0;
