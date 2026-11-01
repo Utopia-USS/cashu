@@ -738,7 +738,11 @@ def merge_shipped_instrument(r: Run) -> None:
     first, then the merge in one transaction)."""
     from sqlmodel import select
 
-    from cashu.modules.investments.models import InvInstrument, InvWatchlistItem
+    from cashu.modules.investments.models import (
+        InvInstrument,
+        InvProfileInstrument,
+        InvWatchlistItem,
+    )
     from cashu.modules.investments.store import instrument_merge, instruments
 
     with _session() as s:
@@ -753,14 +757,29 @@ def merge_shipped_instrument(r: Run) -> None:
                 raise Skip("no-instrument")
             source = known[0]
         src = s.get(InvInstrument, source)
-        target = None
+
+        def collides(target_id: int) -> bool:
+            # A profile with an override or a watchlist item on BOTH instruments makes the merge
+            # collapse two rows, where the event fold's field precedence differs from Python's by a
+            # lead decision (R-2): such a target is taken only when no other is possible.
+            for model in (InvProfileInstrument, InvWatchlistItem):
+                pids = [
+                    set(s.exec(select(model.profile_id).where(model.instrument_id == i)).all())
+                    for i in (source, target_id)
+                ]
+                if pids[0] & pids[1]:
+                    return True
+            return False
+
+        candidates = []
         for inst in s.exec(select(InvInstrument).order_by(InvInstrument.id)).all():
             if inst.id == source or (inst.currency or "").upper() != (src.currency or "").upper():
                 continue
             if src.isin and inst.isin and src.isin.upper() != inst.isin.upper():
                 continue
-            target = inst.id
-            break
+            candidates.append(inst.id)
+        clean = [i for i in candidates if not collides(i)]
+        target = (clean or candidates or [None])[0]
     if target is None:
         raise Skip("no-merge-target")
     with _session() as s:

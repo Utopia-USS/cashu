@@ -341,3 +341,17 @@ def test_owner_annotations_move_and_the_owner_segment_wins(db_engine):
         "equity",
         ["x"],
     )
+
+
+def test_the_target_takes_the_market_identity_it_lacks_including_the_mic(db_engine):
+    """D-S5 (the event fold's rule, S31a review F2 run): the target takes the source's ISIN, symbol
+    and MIC where it has none."""
+    with get_session() as s:
+        source = _instrument(s, "A", isin=ISIN)
+        s.get(InvInstrument, source).mic = "XNAS"
+        target = _instrument(s, "A", symbol="A")
+    with get_session() as s:
+        instrument_merge.merge_instruments(s, source, target)
+    with get_session() as s:
+        row = s.get(InvInstrument, target)
+        assert (row.isin, row.symbol, row.mic) == (ISIN, "A", "XNAS")

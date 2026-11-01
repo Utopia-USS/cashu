@@ -321,3 +321,15 @@ def test_an_identical_overlapping_reimport_leaves_the_snapshots_alone(setup, mon
     with get_session() as s:
         [upd] = [r for r in sync_outbox.rows_of(s, table_name="inv_position_snapshots") if r["op"] == "update"]
     assert Decimal(str(upd["fields"]["quantity"])) == 25
+
+
+def test_a_reimport_with_the_same_importer_leaves_the_account_settings_alone(setup):
+    """S31a review F2 run: an unchanged importer / mapping is no write, so the settings row keeps its
+    time (the sync outbox never ships an updated_at-only change)."""
+    pid, _slug, aid = setup
+    import_file(pid, aid, canonical_csv())
+    with get_session() as s:
+        stamp = s.get(InvAccountSettings, aid).updated_at
+    import_file(pid, aid, canonical_csv(), name="history-2.csv")
+    with get_session() as s:
+        assert s.get(InvAccountSettings, aid).updated_at == stamp

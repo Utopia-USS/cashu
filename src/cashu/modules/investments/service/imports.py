@@ -604,11 +604,15 @@ def commit(
             settings = s.get(InvAccountSettings, account.id) or InvAccountSettings(
                 account_id=account.id
             )
+            before = (settings.importer, settings.mapping_yaml)
             settings.importer = preview_.importer_id
             if preview_.importer_id == GENERIC_CSV_BROKER_ID or request.mapping_yaml:
                 settings.mapping_yaml = request.mapping_yaml or settings.mapping_yaml
-            settings.updated_at = now
-            s.add(settings)
+            # Touch the row only when the importer or mapping changed: an unchanged re-import is no
+            # write (the sync outbox never ships an updated_at-only change; S31a review F2 run).
+            if settings.updated_at is None or (settings.importer, settings.mapping_yaml) != before:
+                settings.updated_at = now
+                s.add(settings)
 
         # 7. Planned deposits this file's deposits book (F6; never cash until then).
         booked = planned_service.book_matching(s, profile.id, now=now) if inserted else []

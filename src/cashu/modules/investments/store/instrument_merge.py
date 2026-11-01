@@ -119,7 +119,7 @@ def _instrument(session: Session, instrument_id: int) -> dict:
     row = (
         session.connection()
         .execute(
-            text("SELECT id, name, currency, symbol, isin FROM inv_instruments WHERE id = :id"),
+            text("SELECT id, name, currency, symbol, isin, mic FROM inv_instruments WHERE id = :id"),
             {"id": instrument_id},
         )
         .mappings()
@@ -426,7 +426,7 @@ def _apply(
     if any(t == _RENAMES for t, _ in refs):
         _merge_renames(session, report, source_id, target_id)
 
-    for col in ("isin", "symbol"):
+    for col in ("isin", "symbol", "mic"):  # D-S5: the target takes the market identity it lacks
         if not target[col] and source[col]:
             session.connection().execute(
                 text(f"UPDATE inv_instruments SET {col} = :v WHERE id = :id"),
