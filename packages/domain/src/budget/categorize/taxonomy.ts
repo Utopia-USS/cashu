@@ -7,6 +7,7 @@
  * against `merchantKey` / `normalizeText` output (upper case, diacritics stripped).
  */
 
+import { pickLabel, type UiLang } from "../../core/i18n.js";
 import { escapeRe } from "../../pyRegex.js";
 import { SEED_RULE_DATA } from "./seedRules.js";
 
@@ -83,9 +84,10 @@ export function isCategoryKey(key: string): boolean {
   return KEY_SET.has(key);
 }
 
-/** The Polish label (`LABELS`) of a key; the key itself when unknown. */
-export function categoryLabel(key: string): string {
-  return CATEGORIES.find((c) => c.key === key)?.label ?? key;
+/** Explicit display language, defaulting to Polish for LLM/MCP identity; unknown keys pass through. */
+export function categoryLabel(key: string, language: UiLang = "pl"): string {
+  const category = CATEGORIES.find((c) => c.key === key);
+  return category ? pickLabel(language, category.label, category.labelEn) : key;
 }
 
 export interface SeedRule {

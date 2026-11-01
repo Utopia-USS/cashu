@@ -1,5 +1,7 @@
-// Pure parts of tests/test_i18n_core_modules.py and tests/test_message_codes.py, using existing
+// Pure parts of tests/test_i18n_core_modules.py, using existing
 // domain producers. HTTP / DB / notification / boot-page producers remain in their module scopes.
+
+import { CATEGORIES, categoryLabel } from "@cashu/domain/budget";
 import {
   builtinRegistry,
   componentLabels,
@@ -8,11 +10,10 @@ import {
   moduleName,
   profileDisplayName,
 } from "@cashu/domain/core";
-import * as importing from "@cashu/domain/investments/importing";
 import { expect, it } from "vitest";
 import { createTranslator } from "./tr.js";
 
-// test_labels_follow_the_language_and_polish_stays_for_mcp (core registry / institutions subset)
+// test_labels_follow_the_language_and_polish_stays_for_mcp (except unported budget import service)
 it("resolves existing domain labels in the request language and preserves Polish identity fields", () => {
   const registry = builtinRegistry();
   const pl = createTranslator("pl");
@@ -20,6 +21,8 @@ it("resolves existing domain labels in the request language and preserves Polish
   expect(registry.accountTypes.bucket("money").label).toBe("Pieniądze");
   expect(componentLabels(registry.accountTypes, pl.language).get("property")).toBe("Nieruchomości");
   expect(registry.institutions.displayName("manual", pl.language)).toBe("Ręcznie");
+  expect(categoryLabel("groceries", pl.language)).toBe("Spożywcze");
+  expect(CATEGORIES.find((category) => category.key === "groceries")?.label).toBe("Spożywcze");
   const labels = componentLabels(registry.accountTypes, en.language);
   expect(labels.get("money")).toBe("Money");
   expect(labels.get("mortgage")).toBe("Mortgage");
@@ -28,8 +31,27 @@ it("resolves existing domain labels in the request language and preserves Polish
   expect(labels.get("loan")).toBe("Loan");
   expect(registry.institutions.displayName("manual", en.language)).toBe("Manual");
   expect(registry.institutions.displayName("mbank", en.language)).toBe("mBank");
+  expect(categoryLabel("cash_withdrawal", en.language)).toBe("Cash withdrawal");
+  expect(categoryLabel("unknown_key", en.language)).toBe("unknown_key");
+  expect(
+    new Set(CATEGORIES.filter((category) => category.labelEn.length > 0).map((c) => c.key)),
+  ).toEqual(new Set(CATEGORIES.map((category) => category.key)));
   expect(moduleName(getModule(registry, "loans"), en.language)).toBe("Loans");
   expect(registry.accountTypes.bucket("money").label).toBe("Pieniądze");
+  // The Polish identity field and default LLM/MCP lookup are never changed by display rendering.
+  expect(CATEGORIES.find((category) => category.key === "groceries")?.label).toBe("Spożywcze");
+  expect(categoryLabel("groceries")).toBe("Spożywcze");
+});
+
+// test_categories_and_networth_labels_over_the_api (renderers only; HTTP / spending await S36).
+it("renders the oracle's category and net-worth labels with an explicit language", () => {
+  const context = createTranslator("en");
+  expect(categoryLabel("groceries", context.language)).toBe("Groceries");
+  expect(categoryLabel("transfer", context.language)).toBe("Own transfer");
+  expect(categoryLabel(CATEGORIES[0]?.key ?? "", "pl")).toBe("Spożywcze");
+  expect(componentLabels(builtinRegistry().accountTypes, context.language).get("money")).toBe(
+    "Money",
+  );
 });
 
 // test_modules_and_setup_steps_in_english (pure module names / descriptions subset)
@@ -52,17 +74,4 @@ it("translates only the untouched default profile name and preserves user data",
   expect(profileDisplayName(profile, "en")).toBe("Default");
   expect(profile.name).toBe("Domyślny");
   expect(profileDisplayName({ ...profile, name: "Dom" }, "en")).toBe("Dom");
-});
-
-// test_import_warning_code_follows_its_kind
-it("keeps warning codes stable independently of the rendering language", () => {
-  const { ImportWarningKind, importWarning, warningCode } = importing;
-  for (const language of ["pl", "en"] as const) {
-    const context = createTranslator(language);
-    const message = context.tr({ pl: "Błąd", en: "Error" });
-    expect(warningCode(importWarning({ message, kind: ImportWarningKind.INVALID_VALUE }))).toBe(
-      "import.invalid_value",
-    );
-    expect(warningCode(importWarning({ message }))).toBe("import.other");
-  }
 });

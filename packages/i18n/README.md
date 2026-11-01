@@ -82,9 +82,20 @@ alerts, notification and other module texts belongs to their module scopes.
 ## Verification
 
 `src/tr.test.ts` translates every case of `tests/test_i18n.py` (the HTTP framework boundary becomes
-an explicit request context) and the language-isolation part of
-`tests/test_i18n_core_modules.py::test_mcp_output_stays_polish_with_an_english_app_language`.
+an explicit request context). Its explicit Polish-run test covers only the translator prerequisite
+of `tests/test_i18n_core_modules.py::test_mcp_output_stays_polish_with_an_english_app_language`;
+the actual MCP host invocation and category redaction assertion belong to S38, whose host is not
+implemented yet. This is not MCP integration coverage.
 Extra cases cover simultaneous PL/EN requests, adapter errors and write retries, separate settings
 locations, untrusted headers and generic values. `lang.test.ts` and `plural.test.ts` keep the S33
-catalog/UI and plural contract. The Python module-label and message-code suites remain regression
-oracles; their producers stay with module scopes, rather than being copied into this runtime.
+catalog/UI and plural contract. `backendModules.test.ts` ports the existing core registry, institution,
+module, profile and taxonomy assertions from the Python module-label oracle. Category display passes
+the context's language explicitly; the default lookup and stored label stay Polish. English-key
+coverage, unknown-key passthrough and the English cash-withdrawal label are asserted directly.
+
+The budget import service's `format_name()` / `importer_choices()` has no TypeScript producer yet.
+It must be tested when that service is ported; a UI catalog with a similarly named investment-import
+label is not a substitute. HTTP setup/import errors, notifications and boot pages likewise stay
+with their actual adapters. S39 must test language on real CLI command execution; this runtime
+does not yet expose those commands. Stable warning-code assertions already live with the domain
+import contract and are not duplicated here behind a language loop.

@@ -185,6 +185,14 @@ it("warning kinds", () => {
   expect(warningCode(importWarning({ message: "m", kind: "" }))).toBe("import.other");
 });
 
+// tests/test_message_codes.py::test_import_warning_code_follows_its_kind
+it("derives stable warning codes from the kind", () => {
+  expect(warningCode(importWarning({ message: "x", kind: ImportWarningKind.INVALID_VALUE }))).toBe(
+    "import.invalid_value",
+  );
+  expect(warningCode(importWarning({ message: "x" }))).toBe("import.other");
+});
+
 // A reminder that the contract uses the domain currency type (no raw strings).
 it("currencies come from the domain", () => {
   expect(parsedTxnOf(TxnType.BUY, { currency: Currencies.PLN }).currency).toBe("PLN");

@@ -281,8 +281,9 @@ describe("backend boundaries and request isolation", () => {
     expect(lang()).toBe("en");
   });
 
-  // tests/test_i18n_core_modules.py::test_mcp_output_stays_polish_with_an_english_app_language
-  it("pins MCP to Polish independently of an English worker and UI", async () => {
+  // Pure prerequisite only. The Python MCP oracle also calls CashuMcp and labels.category;
+  // that integration assertion waits for the S38 host, not this translator unit test.
+  it("pins an explicit Polish run independently of an English worker and UI", async () => {
     const { state, backend } = settings();
     state.environment = "en";
     setLanguageForTests("en");
