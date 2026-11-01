@@ -19,6 +19,7 @@
 
 import { PY_B, PY_D, PY_W, PY_WS, pySplit, uRegex } from "@cashu/domain";
 import { type ExprDeps, scrubAmountLiterals } from "./exprLiterals.js";
+import { nativeExprDeps } from "./exprNative.js";
 import { type Labelled, text as textLabel } from "./labels.js";
 import { scrubText } from "./scrub.js";
 
@@ -100,7 +101,7 @@ export function systemText(ctx: PrivacyContext, value: string | null): Labelled 
 export function customCondition(
   ctx: PrivacyContext,
   value: string | null,
-  deps: ExprDeps,
+  deps: ExprDeps = nativeExprDeps,
   { privatePrices = false }: { readonly privatePrices?: boolean } = {},
 ): Labelled {
   if (value === null || !ctx.strict) return textLabel(value);
@@ -122,7 +123,7 @@ export function customSignalMessage(
   ctx: PrivacyContext,
   message: string | null,
   when: string | null,
-  deps: ExprDeps,
+  deps: ExprDeps = nativeExprDeps,
   { privatePrices = false }: { readonly privatePrices?: boolean } = {},
 ): Labelled {
   if (message === null || !ctx.strict) return textLabel(message);

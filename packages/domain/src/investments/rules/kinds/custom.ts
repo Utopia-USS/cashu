@@ -18,20 +18,13 @@ import {
 import type { RuleKind } from "../kind.js";
 import { type ParamErrors, ParamReader } from "../params.js";
 import { SignalPolarity } from "../polarity.js";
-import { INSTRUMENT_FILTER_KEYS, type InstrumentFilter, readInstrumentFilter } from "./support.js";
+import { evaluateCustom } from "./customEvaluate.js";
+import { CustomParams } from "./customParams.js";
+import { INSTRUMENT_FILTER_KEYS, readInstrumentFilter } from "./support.js";
 
 export const MAX_MESSAGE_LENGTH = 200;
 
-export interface CustomParams {
-  /** null only when parsing failed (the loader then discards the rule). */
-  readonly expression: CompiledExpression | null;
-  readonly scope: Scope;
-  readonly message: string | null;
-  /** Scope instrument only. */
-  readonly filter: InstrumentFilter;
-  /** Scope bucket only: bucket ids to check; empty = every bucket. */
-  readonly buckets: readonly string[];
-}
+export { CustomParams } from "./customParams.js";
 
 export const CUSTOM = "custom";
 
@@ -47,6 +40,8 @@ export function customBucketReferences(params: CustomParams): readonly string[] 
 export const customRule: RuleKind<CustomParams> = Object.freeze({
   kind: CUSTOM,
   defaultPolarity: SignalPolarity.NEUTRAL, // the owner sets polarity per rule
+  paramsType: CustomParams,
+  evaluate: evaluateCustom,
   parseParams(raw: PyPlainMap, errors: ParamErrors): CustomParams {
     const reader = new ParamReader(raw, errors);
     const errorCount = errors.errorCount;
@@ -93,12 +88,12 @@ export const customRule: RuleKind<CustomParams> = Object.freeze({
     if (scope !== Scope.BUCKET && reader.has("buckets")) {
       errors.error("buckets", "buckets only applies to scope bucket");
     }
-    return {
+    return new CustomParams({
       expression,
       scope,
       message: message ? pyStrip(message) : null,
       filter,
       buckets,
-    };
+    });
   },
 });

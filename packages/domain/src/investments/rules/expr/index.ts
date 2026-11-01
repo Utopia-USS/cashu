@@ -3,8 +3,8 @@
  * metric catalog: EXPRESSIONS.md).
  *
  * Hand-written tokenizer, parser and type checker; no `eval` / `Function`, no attribute access, no
- * imports. Only metrics from the fixed catalog can be read. The evaluator, metric resolvers and the
- * privacy layer of the Python package are a later scope.
+ * imports. Only metrics from the fixed catalog can be read; pure evaluation and metric resolution
+ * operate on caller-supplied portfolio inputs.
  */
 
 export { ASSET_CLASS_NAMES, METRICS, namesInScope } from "./catalog.js";
@@ -27,8 +27,16 @@ export {
   metricLabel,
   normalized,
 } from "./compiled.js";
+export {
+  type Evaluation,
+  evaluateExpression,
+  type MetricResolver,
+  Unknown,
+  type Value,
+} from "./evaluator.js";
 export { ExpressionError, type Token, TokenType, tokenize } from "./lexer.js";
 export * from "./limits.js";
+export { MetricEnv } from "./metrics.js";
 export {
   type BinaryNode,
   type BooleanNode,

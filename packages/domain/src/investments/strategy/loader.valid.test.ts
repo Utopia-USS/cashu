@@ -17,9 +17,11 @@ import {
   EMPTY_INSTRUMENT_FILTER,
   expr,
   type PositionConcentrationParams,
+  RulesEngine,
   type TaggedWeightParams,
   type UnrealizedThresholdParams,
 } from "../rules/index.js";
+import { context as ruleContext } from "../rules/testing/fixtures.js";
 import { isoNumber, ruleById, Weekday } from "./index.js";
 import { configOf, expectRebalance, issueAt, load, MINIMAL, paramsOf } from "./testing/load.js";
 
@@ -189,7 +191,19 @@ describe("TestValidStrategies", () => {
     expect(isoNumber(Weekday.FRIDAY)).toBe(5);
   });
 
-  it.todo("test_the_parsed_rules_run_in_the_engine - needs the rules engine (S15b)");
+  it("test_the_parsed_rules_run_in_the_engine", () => {
+    const config = configOf(load(FULL));
+    // Same empty portfolio at 2026-10-02 as the Python strategy-loader oracle.
+    const outcomes = new RulesEngine(config.rules).evaluate(
+      ruleContext({ contributions: config.contributions }),
+    );
+    expect(new Set(outcomes.map((outcome) => outcome.ruleId))).toEqual(
+      new Set(config.rules.map((rule) => rule.id)),
+    );
+    expect(
+      outcomes.filter((outcome) => outcome.type === "fired").map((outcome) => outcome.ruleId),
+    ).toEqual(["missed_deposit"]);
+  });
 
   it("test_a_minimal_strategy_uses_defaults", () => {
     const config = configOf(load(MINIMAL));

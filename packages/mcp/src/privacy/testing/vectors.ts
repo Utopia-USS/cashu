@@ -180,8 +180,8 @@ function toNode(a: AstJson): ExprNode {
 }
 
 /**
- * Expression deps backed by the Python parser's trees and the metric units in the vectors (S15a
- * has not ported the parser yet): `parse` knows exactly the sources the vectors hold.
+ * Independent Python parser trees and metric units for differential tests of the native adapter:
+ * `parse` knows exactly the sources the vectors hold.
  */
 export function exprDepsFromVectors(): ExprDeps {
   const file = loadVectors<{

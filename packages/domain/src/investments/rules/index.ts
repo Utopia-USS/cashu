@@ -1,11 +1,13 @@
 /**
  * Investments rules (`rules/__init__.py`), the parsing side the strategy loader needs: the catalog of
  * rule kinds with their params, the param reader, the policies and polarity, and the compile front-end
- * of custom expressions. The engine, evaluation and signal lifecycle are S15b; the expression
- * evaluator and metrics S15a.
+ * and evaluation of custom expressions, all built-in evaluators and the pure engine. Signal
+ * persistence and lifecycle are separate from these pure computations.
  */
 
 export { BUILT_IN_KINDS, RuleCatalog } from "./catalog.js";
+export { buildRuleContext, type RuleContext } from "./context.js";
+export { RulesEngine } from "./engine.js";
 export * as expr from "./expr/index.js";
 export { closestMatch, didYouMean } from "./hints.js";
 export {
@@ -20,7 +22,7 @@ export {
 } from "./kind.js";
 export {
   ALLOCATION_DRIFT,
-  type AllocationDriftParams,
+  AllocationDriftParams,
   allocationDriftRule,
   DEFAULT_REBALANCE,
   REBALANCE_KEYS,
@@ -28,28 +30,28 @@ export {
   readRebalancePolicy,
   rebalanceToRaw,
 } from "./kinds/allocationDrift.js";
-export { type CashLevelParams, cashLevelRule } from "./kinds/cashLevel.js";
+export { CashLevelParams, cashLevelRule } from "./kinds/cashLevel.js";
 export {
   CONTRIBUTION_GAP,
-  type ContributionGapParams,
+  ContributionGapParams,
   contributionGapRule,
   DEFAULT_GRACE_DAYS,
   DEFAULT_PERIOD_DAYS,
 } from "./kinds/contributionGap.js";
 export {
   CUSTOM,
-  type CustomParams,
+  CustomParams,
   customBucketReferences,
   customRule,
   MAX_MESSAGE_LENGTH,
 } from "./kinds/custom.js";
 export {
   DEFAULT_WINDOW_DAYS,
-  type DrawdownFromHighParams,
+  DrawdownFromHighParams,
   drawdownFromHighRule,
 } from "./kinds/drawdownFromHigh.js";
 export {
-  type PositionConcentrationParams,
+  PositionConcentrationParams,
   positionConcentrationRule,
 } from "./kinds/positionConcentration.js";
 export {
@@ -59,12 +61,21 @@ export {
   type InstrumentFilter,
   readInstrumentFilter,
 } from "./kinds/support.js";
-export { type TaggedWeightParams, taggedWeightRule } from "./kinds/taggedWeight.js";
+export { TaggedWeightParams, taggedWeightRule } from "./kinds/taggedWeight.js";
 export {
   gainFromCostRule,
   lossFromCostRule,
-  type UnrealizedThresholdParams,
+  UnrealizedThresholdParams,
 } from "./kinds/unrealizedFromCost.js";
+export {
+  Fired,
+  NotFired,
+  outcomeScope,
+  type RuleOutcome,
+  type SignalCandidate,
+  Skipped,
+  signalDedupKey,
+} from "./outcomes.js";
 export {
   formatNumber,
   type IntegerBounds,

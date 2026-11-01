@@ -16,64 +16,20 @@
  * Everything else is treated as an amount. An expression that does not parse loses every number,
  * glued to letters too (S37fix3 E2: `800k`), except a small percent.
  *
- * TRANSITIONAL(S15a): the expression parser and the metric catalog are not ported yet, so the syntax
- * tree shape (`ExprNode`, the Python parser's dataclasses) and the two lookups come in as `ExprDeps`.
- * When S15a lands its `parse` and `METRICS`, this file moves next to them in
- * `@cashu/domain/investments` and the deps become imports.
+ * Production defaults to the reviewed domain parser and metric catalog through an exact tree
+ * adapter. Explicit dependencies remain useful for independent oracle-vector tests; the privacy
+ * classification and scrubbing policy is unchanged.
  */
 
-import { type Decimal, D as dec, PY_D, PY_W, uRegex } from "@cashu/domain";
+import { D as dec, PY_D, PY_W, uRegex } from "@cashu/domain";
+import { nativeExprDeps } from "./exprNative.js";
+import type { ExprDeps, ExprNode, ExprUnit } from "./exprTypes.js";
 
 export const AMOUNT_PLACEHOLDER = "[amount]";
 
-/** How a numeric metric is shown in messages (`rules/expr/catalog.py` `Unit`). */
-export type ExprUnit = "ratio" | "pp" | "amount" | "price" | "days" | "count" | "text" | "flag";
-
-/** The parser's syntax tree (`rules/expr/parser.py`); `column` is 1-based (code points). */
-export type ExprNode =
-  | {
-      readonly kind: "number";
-      readonly value: Decimal;
-      readonly text: string;
-      readonly column: number;
-    }
-  | { readonly kind: "string"; readonly value: string; readonly column: number }
-  | { readonly kind: "boolean"; readonly value: boolean; readonly column: number }
-  | { readonly kind: "name"; readonly name: string; readonly column: number }
-  | {
-      readonly kind: "call";
-      readonly name: string;
-      readonly args: readonly ExprNode[];
-      readonly column: number;
-    }
-  | {
-      readonly kind: "unary";
-      readonly op: string;
-      readonly operand: ExprNode;
-      readonly column: number;
-    }
-  | {
-      readonly kind: "binary" | "compare";
-      readonly op: string;
-      readonly left: ExprNode;
-      readonly right: ExprNode;
-      readonly column: number;
-    }
-  | {
-      readonly kind: "logical";
-      readonly op: string;
-      readonly operands: readonly ExprNode[];
-      readonly column: number;
-    };
+export type { ExprDeps, ExprNode, ExprUnit } from "./exprTypes.js";
 
 type NumberNode = Extract<ExprNode, { kind: "number" }>;
-
-export interface ExprDeps {
-  /** The parsed tree, or null when the expression does not parse (`ExpressionError`). */
-  readonly parse: (source: string) => ExprNode | null;
-  /** The unit of a metric or metric function, or null for an unknown name. */
-  readonly metricUnit: (name: string) => ExprUnit | null;
-}
 
 const NON_MONEY: ReadonlySet<ExprUnit | null> = new Set([
   "ratio",
@@ -212,7 +168,7 @@ export interface LiteralOptions {
 /** The number literals of `source` that count as amounts (null when it does not parse). */
 export function amountLiterals(
   source: string,
-  deps: ExprDeps,
+  deps: ExprDeps = nativeExprDeps,
   { privatePrices = false }: LiteralOptions = {},
 ): NumberNode[] | null {
   const tree = deps.parse(source);
@@ -239,7 +195,7 @@ export function amountLiterals(
 /** `source` with every amount literal replaced by `placeholder` (see the module doc). */
 export function scrubAmountLiterals(
   source: string,
-  deps: ExprDeps,
+  deps: ExprDeps = nativeExprDeps,
   {
     privatePrices = false,
     placeholder = AMOUNT_PLACEHOLDER,

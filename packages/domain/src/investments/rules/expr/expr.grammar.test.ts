@@ -1,11 +1,12 @@
 // tests/investments/rules/test_rules_expr_grammar.py, test-for-test (the Python test named in each
-// title). Tests that need `evaluate` are `it.todo` until the evaluator lands (S15a); a test that mixes
-// compile and evaluation assertions keeps its compile part here.
+// title), including the evaluator's decimal and three-valued behavior.
 
 import { describe, expect, it } from "vitest";
+import { D } from "../../../decimal.js";
 import { Scope } from "./catalogTypes.js";
 import { compileExpression } from "./checker.js";
 import { bucketReferences, metricLabel, normalized } from "./compiled.js";
+import { evaluateExpression, Unknown, type Value } from "./evaluator.js";
 import { ExpressionError, TokenType, tokenize } from "./lexer.js";
 import type { ExprNode } from "./nodes.js";
 import { parse } from "./parser.js";
@@ -25,7 +26,17 @@ function as<T extends ExprNode["type"]>(node: ExprNode, type: T): Extract<ExprNo
   return node as Extract<ExprNode, { type: T }>;
 }
 
-const todo = (name: string) => it.todo(`${name} - needs the evaluator (S15a)`);
+function run(source: string, values: Readonly<Record<string, Value>>) {
+  return evaluateExpression(
+    compileExpression(source, Scope.INSTRUMENT),
+    (ref) => {
+      const value = values[metricLabel(ref)];
+      if (value === undefined) throw new Error("missing synthetic metric");
+      return value;
+    },
+    "pl",
+  );
+}
 
 describe("TestTokens", () => {
   it("test_numbers_percentages_text_names_operators", () => {
@@ -52,8 +63,12 @@ describe("TestTokens", () => {
     expect(tokens.slice(0, 3).map((t) => t.column)).toEqual([1, 8, 11]);
   });
 
-  todo("test_whitespace_and_newlines_are_free");
-  todo("test_text_in_single_quotes_and_unicode_inside_text");
+  it("test_whitespace_and_newlines_are_free", () => {
+    expect(run("weight\n  >\t5%", { weight: D("0.06") }).result).toBe(true);
+  });
+  it("test_text_in_single_quotes_and_unicode_inside_text", () => {
+    expect(run("holding_has_tag('złoto')", { 'holding_has_tag("złoto")': true }).result).toBe(true);
+  });
 });
 
 describe("TestPrecedence", () => {
@@ -71,24 +86,82 @@ describe("TestPrecedence", () => {
     expect(as(addition.right, "Binary").op).toBe("*");
   });
 
-  todo("test_left_associative_arithmetic_and_parentheses");
+  it("test_left_associative_arithmetic_and_parentheses", () => {
+    expect(run("weight - 0.1 - 0.05 == 0", { weight: D("0.15") }).result).toBe(true);
+    expect(run("weight / 2 / 2 == 0.25", { weight: D("1") }).result).toBe(true);
+    expect(run("(weight - 0.1) * 2 == 0.1", { weight: D("0.15") }).result).toBe(true);
+    expect(run("weight - 0.1 * 2 == -0.05", { weight: D("0.15") }).result).toBe(true);
+  });
 
-  todo("test_unary_minus_and_exact_decimals");
-  it("test_unary_minus_and_exact_decimals (compile part)", () => {
+  it("test_unary_minus_and_exact_decimals", () => {
+    expect(run("-unrealized_pct >= 25%", { unrealized_pct: D("-0.25") }).result).toBe(true);
+    expect(run("weight + 0.2 == 0.3", { weight: D("0.1") }).result).toBe(true);
+    expect(run("- - weight == weight", { weight: D("0.1") }).result).toBe(true);
     const tree = as(parse("-1"), "Unary");
     as(tree.operand, "Number");
   });
 
-  todo("test_comparison_tolerance");
-  todo("test_text_and_boolean_equality");
+  it("test_comparison_tolerance", () => {
+    expect(run("weight > 0.07", { weight: D("0.07000000000000001") }).result).toBe(false);
+    expect(run("weight <= 0.07", { weight: D("0.07000000000000001") }).result).toBe(true);
+    expect(run("weight == 0.07", { weight: D("0.0700000001") }).result).toBe(true);
+    expect(run("weight == 0.07", { weight: D("0.070000002") }).result).toBe(false);
+  });
+  it("test_text_and_boolean_equality", () => {
+    expect(
+      run('asset_class == "etf" and symbol != "PKN"', { asset_class: "etf", symbol: "VWCE" })
+        .result,
+    ).toBe(true);
+    expect(run('holding_has_tag("x") == false', { 'holding_has_tag("x")': false }).result).toBe(
+      true,
+    );
+  });
 });
 
 describe("TestThreeValuedLogic", () => {
-  todo("test_and_is_false_when_one_side_is_false_whatever_the_unknown");
-  todo("test_or_is_true_when_one_side_is_true");
-  todo("test_otherwise_unknown_with_all_reasons");
-  todo("test_unknown_propagates_through_arithmetic_and_division_by_zero_is_unknown");
-  todo("test_metric_values_are_reported_by_label");
+  it("test_and_is_false_when_one_side_is_false_whatever_the_unknown", () => {
+    expect(
+      run("weight > 10% and unrealized_pct < 0", {
+        weight: D("0.05"),
+        unrealized_pct: new Unknown(["x"]),
+      }).result,
+    ).toBe(false);
+  });
+  it("test_or_is_true_when_one_side_is_true", () => {
+    expect(
+      run("weight > 10% or unrealized_pct < 0", {
+        weight: D("0.2"),
+        unrealized_pct: new Unknown(["x"]),
+      }).result,
+    ).toBe(true);
+  });
+  it("test_otherwise_unknown_with_all_reasons", () => {
+    const result = run("weight > 10% and unrealized_pct < 0 and market_value > 0", {
+      weight: new Unknown(["stale"]),
+      unrealized_pct: new Unknown(["no cost"]),
+      market_value: D("5"),
+    });
+    expect(result.result).toBeNull();
+    expect(result.reasons).toEqual(["stale", "no cost"]);
+    expect(run("not (weight > 10%)", { weight: new Unknown(["stale"]) }).result).toBeNull();
+  });
+  it("test_unknown_propagates_through_arithmetic_and_division_by_zero_is_unknown", () => {
+    expect(run("weight * 2 > 1", { weight: new Unknown(["stale"]) }).reasons).toEqual(["stale"]);
+    const division = run("market_value / cost_basis > 1", {
+      market_value: D("1"),
+      cost_basis: D("0"),
+    });
+    expect(division.result).toBeNull();
+    expect(division.reasons).toEqual(["Dzielenie przez zero (kolumna 14)"]);
+  });
+  it("test_metric_values_are_reported_by_label", () => {
+    const result = run("drawdown_from_high(252) >= 15% and weight < 5%", {
+      weight: D("0.01"),
+      "drawdown_from_high(252)": D("0.2"),
+    });
+    expect(result.result).toBe(true);
+    expect([...result.values.keys()]).toEqual(["drawdown_from_high(252)", "weight"]);
+  });
 });
 
 describe("TestScopesAndTypes", () => {
