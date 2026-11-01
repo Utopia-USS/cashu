@@ -219,6 +219,10 @@ export class VaultMapping {
           if (e instanceof GenesisError && e.code === "unmapped_id_key") {
             throw new BridgeBlock("unmapped-id");
           }
+          // Genesis `requiredGid`: a reference phase 1 guarantees in genesis is a missing gid here.
+          if (e instanceof Error && e.message.startsWith("genesis invariant:")) {
+            throw new BridgeBlock("unresolved-ref");
+          }
           throw e;
         }
       },
