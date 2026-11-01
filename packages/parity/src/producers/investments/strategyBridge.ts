@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { investments as inv } from "@cashu/domain";
-import { type Dataset, labRoot } from "../../sources/index.ts";
+import { bridgeStrategyRoot, type Dataset } from "../../sources/index.ts";
 
 interface BridgeMatch {
   readonly asset_classes: readonly string[];
@@ -55,12 +55,12 @@ export type StrategyBridge = ReadonlyMap<string, StrategyInputs>;
 
 const CHECK = "investments.strategy";
 
-/** The dir `strategy_bridge.py` writes (its `index.json` records the source commit). */
-export function strategyBridgeDir(dataset: Dataset, root: string = labRoot()): string {
-  return join(root, "parity", "bridge-strategy", dataset);
+/** The dir `strategy_bridge.py --out <root>` writes (its `index.json` records the source commit). */
+export function strategyBridgeDir(dataset: Dataset, root: string = bridgeStrategyRoot()): string {
+  return join(root, dataset);
 }
 
-export function readStrategyBridge(dataset: Dataset, root: string = labRoot()): StrategyBridge {
+export function readStrategyBridge(dataset: Dataset, root?: string): StrategyBridge {
   const path = join(strategyBridgeDir(dataset, root), `${CHECK}.json`);
   if (!existsSync(path)) {
     throw new Error(

@@ -36,6 +36,16 @@ export function bridgeMcpRoot(env: Record<string, string | undefined> = process.
   return join(labRoot(env), "parity", "bridge-mcp");
 }
 
+/** The shared networth bridge root (`networth_bridge.py --out` default): `<lab>/parity/bridge`. */
+export function bridgeRoot(env: Record<string, string | undefined> = process.env): string {
+  return join(labRoot(env), "parity", "bridge");
+}
+
+/** The shared strategy bridge root (`strategy_bridge.py --out` default): `<lab>/parity/bridge-strategy`. */
+export function bridgeStrategyRoot(env: Record<string, string | undefined> = process.env): string {
+  return join(labRoot(env), "parity", "bridge-strategy");
+}
+
 /** The dataset's source dir (golden.py `DATASETS`): never opened directly, only copied. */
 export function datasetDir(dataset: Dataset, root: string = labRoot()): string {
   return dataset === "lab" ? join(root, "data") : join(root, "parity", "demo-data");

@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { addDays, type core, D, type Decimal, type IsoDate } from "@cashu/domain";
-import { type Dataset, labRoot } from "../../sources/index.ts";
+import { bridgeRoot, type Dataset } from "../../sources/index.ts";
 
 const BRIDGE_CHECK = "core.networth_contributors";
 const BRIDGED_MODULES = ["loans", "assets"] as const;
@@ -29,12 +29,12 @@ interface BridgeProfile {
 }
 export type BridgeFile = Readonly<Record<string, BridgeProfile>>;
 
-/** The dir `networth_bridge.py` writes (its `index.json` records the source commit). */
-export function bridgeDir(dataset: Dataset, root: string = labRoot()): string {
-  return join(root, "parity", "bridge", dataset);
+/** The dir `networth_bridge.py --out <root>` writes (its `index.json` records the source commit). */
+export function bridgeDir(dataset: Dataset, root: string = bridgeRoot()): string {
+  return join(root, dataset);
 }
 
-function bridgePath(dataset: Dataset, root: string = labRoot()): string {
+function bridgePath(dataset: Dataset, root?: string): string {
   return join(bridgeDir(dataset, root), `${BRIDGE_CHECK}.json`);
 }
 

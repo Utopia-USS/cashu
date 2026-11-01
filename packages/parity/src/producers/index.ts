@@ -19,10 +19,17 @@ import { produceMcpRead, rawGoldenDir } from "./mcp/privacy.ts";
 import type { OutValue } from "./output.ts";
 import { produceStoreTable, STORE_TABLES } from "./store/tables.ts";
 
-/** Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root / --bridge-mcp`). */
+/**
+ * Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root / --bridge /
+ * --bridge-strategy / --bridge-mcp`).
+ */
 export interface ProduceInputs {
   /** The Python golden root (`golden.py --out`); the MCP producers read `<root>/lab/mcp.read_raw.json`. */
   readonly goldenRoot: string;
+  /** The networth bridge root (`networth_bridge.py --out`). */
+  readonly bridgeRoot: string;
+  /** The strategy bridge root (`strategy_bridge.py --out`). */
+  readonly bridgeStrategyRoot: string;
   /** The guard bridge root (`guard_bridge.py --out`). */
   readonly bridgeMcpRoot: string;
 }
@@ -36,9 +43,9 @@ export function inputDir(name: InputName, dataset: Dataset, inputs: ProduceInput
     case "golden":
       return rawGoldenDir(dataset, inputs.goldenRoot);
     case "bridge":
-      return bridgeDir(dataset);
+      return bridgeDir(dataset, inputs.bridgeRoot);
     case "bridge-strategy":
-      return strategyBridgeDir(dataset);
+      return strategyBridgeDir(dataset, inputs.bridgeStrategyRoot);
     case "bridge-mcp":
       return guardBridgeDir(dataset, inputs.bridgeMcpRoot);
   }
@@ -59,7 +66,7 @@ export const PRODUCERS: readonly Producer[] = [
     check: "core.networth",
     datasets: ["demo", "lab"],
     inputs: ["bridge"],
-    produce: (db) => produceNetworth(db, readBridge(db.dataset)),
+    produce: (db, inputs) => produceNetworth(db, readBridge(db.dataset, inputs.bridgeRoot)),
   },
   {
     check: "budget.dedup",
@@ -86,19 +93,22 @@ export const PRODUCERS: readonly Producer[] = [
     check: "investments.valuation",
     datasets: ["demo", "lab"],
     inputs: ["bridge-strategy"],
-    produce: (db) => produceValuation(db, readStrategyBridge(db.dataset)),
+    produce: (db, inputs) =>
+      produceValuation(db, readStrategyBridge(db.dataset, inputs.bridgeStrategyRoot)),
   },
   {
     check: "investments.allocation",
     datasets: ["demo", "lab"],
     inputs: ["bridge-strategy"],
-    produce: (db) => produceAllocation(db, readStrategyBridge(db.dataset)),
+    produce: (db, inputs) =>
+      produceAllocation(db, readStrategyBridge(db.dataset, inputs.bridgeStrategyRoot)),
   },
   {
     check: "investments.performance",
     datasets: ["demo", "lab"],
     inputs: ["bridge-strategy"],
-    produce: (db) => producePerformance(db, readStrategyBridge(db.dataset)),
+    produce: (db, inputs) =>
+      producePerformance(db, readStrategyBridge(db.dataset, inputs.bridgeStrategyRoot)),
   },
   {
     check: "investments.import_plan",

@@ -20,14 +20,17 @@ stale inputs (below).
 Defaults: lab goldens `~/cashu-lab/parity/out/lab` (`$CASHU_LAB_DIR` moves the lab root), demo
 goldens `parity/golden-demo`, actual `~/cashu-lab/parity/ts-out/<dataset>`.
 
-Branch runs: the shared `~/cashu-lab/parity/out`, `bridge-mcp` and `ts-out` dirs are written from
+Branch runs: the shared `~/cashu-lab/parity/out`, `bridge`, `bridge-strategy`, `bridge-mcp` and `ts-out` dirs are written from
 lab/ts-stack HEAD only. A branch writes its own set and points every step at it:
 
 ```bash
 B=~/cashu-lab/parity/out-<branch>
 .venv/bin/python parity/python/golden.py --dataset lab --out $B             # $B/lab, index.json records the commit
+.venv/bin/python packages/parity/src/producers/core/networth_bridge.py --dataset lab --out $B/bridge
+.venv/bin/python packages/parity/src/producers/investments/strategy_bridge.py --dataset lab --out $B/bridge-strategy
 .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset lab --out $B/bridge-mcp
-pnpm parity:produce --dataset lab --golden-root $B --bridge-mcp $B/bridge-mcp --out $B/ts-out/lab
+pnpm parity:produce --dataset lab --golden-root $B --bridge $B/bridge --bridge-strategy $B/bridge-strategy \
+  --bridge-mcp $B/bridge-mcp --out $B/ts-out/lab
 pnpm parity --dataset lab --out $B --actual $B/ts-out/lab                    # golden = $B/lab
 ```
 

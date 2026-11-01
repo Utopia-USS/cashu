@@ -1,10 +1,11 @@
 /// <reference types="node" />
 /**
  * `pnpm parity:produce --dataset demo|lab [--check <name>]... [--out <dir>] [--golden-root <dir>]
- * [--bridge-mcp <dir>] [--force]`: run the TS producers and write their outputs for the comparer
- * (`pnpm parity`). `--out` is the TS output dir (default `<lab>/parity/ts-out/<dataset>`);
- * `--golden-root` / `--bridge-mcp` are where the Python-side inputs were written (`golden.py --out`,
- * `guard_bridge.py --out`; defaults: the shared dirs, which only lab/ts-stack HEAD writes). Prints
+ * [--bridge <dir>] [--bridge-strategy <dir>] [--bridge-mcp <dir>] [--force]`: run the TS producers
+ * and write their outputs for the comparer (`pnpm parity`). `--out` is the TS output dir (default
+ * `<lab>/parity/ts-out/<dataset>`); `--golden-root` / `--bridge` / `--bridge-strategy` /
+ * `--bridge-mcp` are where the Python-side inputs were written (`golden.py --out`, and each bridge
+ * script's `--out`; defaults: the shared dirs, which only lab/ts-stack HEAD writes). Prints
  * check names, row counts and hashes only, never values (the lab dataset is real data). `index.json`
  * in the output dir records, per check, the source commit, the dirty state and the inputs' commits
  * (`tsIndex.ts`), which the comparer's staleness guard checks.
@@ -14,7 +15,15 @@ import { createHash } from "node:crypto";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { bridgeMcpRoot, goldenRoot, isDataset, labRoot, withPythonDb } from "../sources/index.ts";
+import {
+  bridgeMcpRoot,
+  bridgeRoot,
+  bridgeStrategyRoot,
+  goldenRoot,
+  isDataset,
+  labRoot,
+  withPythonDb,
+} from "../sources/index.ts";
 import { readTreeState } from "../staleness.ts";
 import { inputDir, PRODUCERS } from "./index.ts";
 import { dumps, writeCheck } from "./output.ts";
@@ -43,6 +52,8 @@ export function main(argv: string[]): number {
       check: { type: "string", multiple: true },
       out: { type: "string" },
       "golden-root": { type: "string" },
+      bridge: { type: "string" },
+      "bridge-strategy": { type: "string" },
       "bridge-mcp": { type: "string" },
       force: { type: "boolean", default: false },
     },
@@ -50,7 +61,7 @@ export function main(argv: string[]): number {
   const dataset = values.dataset ?? "";
   if (!isDataset(dataset)) {
     process.stderr.write(
-      "usage: pnpm parity:produce --dataset demo|lab [--check name] [--out dir] [--golden-root dir] [--bridge-mcp dir]\n",
+      "usage: pnpm parity:produce --dataset demo|lab [--check name] [--out dir] [--golden-root dir] [--bridge dir] [--bridge-strategy dir] [--bridge-mcp dir]\n",
     );
     return 64;
   }
@@ -64,6 +75,10 @@ export function main(argv: string[]): number {
   const out = values.out ? resolve(values.out) : join(labRoot(), "parity", "ts-out", dataset);
   const inputs = {
     goldenRoot: values["golden-root"] ? resolve(values["golden-root"]) : goldenRoot(),
+    bridgeRoot: values.bridge ? resolve(values.bridge) : bridgeRoot(),
+    bridgeStrategyRoot: values["bridge-strategy"]
+      ? resolve(values["bridge-strategy"])
+      : bridgeStrategyRoot(),
     bridgeMcpRoot: values["bridge-mcp"] ? resolve(values["bridge-mcp"]) : bridgeMcpRoot(),
   };
   const tree = readTreeState(REPO_ROOT);

@@ -3,6 +3,8 @@
 export type { Dataset } from "./datasets.ts";
 export {
   bridgeMcpRoot,
+  bridgeRoot,
+  bridgeStrategyRoot,
   DATASET_CLOCKS,
   datasetAsOf,
   datasetDir,
