@@ -1,6 +1,6 @@
 // The store: one vault's decrypted log copy and its materialized view in one SQLite database.
 //
-// apply(batch), in one transaction:
+// applyWireBatches(batches), in one transaction (each batch in order, its cursor with it):
 //   1. decode (zod, upcast) and insert new events into `event_log` (idempotent by eid; an eid seen
 //      again with another body is reported as a conflict and the first one kept);
 //   2. causal suppression and FWW losers (events.md 6.6) -> state flips;
@@ -327,38 +327,52 @@ export class Store {
 
   /** Apply one wire-form batch read from a device's segments (S28a `InboundBatch`). */
   applyWire(batch: WireBatch): ApplyResult {
-    const view = batch.events.filter((w) => !isSyncStatement(w));
-    const raws = view.map((w) => fromWire(w, { vault: this.vault, device: batch.device }));
-    const statements = batch.events.length - view.length;
-    return { ...this.#apply(raws, batch.device, batch.cursor), statements };
+    return this.applyWireBatches([batch])[0] as ApplyResult;
+  }
+
+  /**
+   * Apply wire-form batches in order in ONE transaction (S29c-B3: one per sync pull), each batch's
+   * cursor persisted with it. The outcome of each batch is that of a sequential apply; `touchedTables`
+   * of every outcome is the union of the whole call. Subscribers are notified once, after commit.
+   */
+  applyWireBatches(batches: readonly WireBatch[]): readonly ApplyResult[] {
+    const touched = new TouchedTables(this.#internal);
+    const results: Omit<ApplyResult, "touchedTables">[] = [];
+    this.driver.transaction(() => {
+      for (const batch of batches) {
+        const view = batch.events.filter((w) => !isSyncStatement(w));
+        const raws = view.map((w) => fromWire(w, { vault: this.vault, device: batch.device }));
+        const result = this.#applyInTransaction(raws, batch.device, touched);
+        if (batch.cursor) this.#saveCursor(batch.device, batch.cursor);
+        results.push({ ...result, statements: batch.events.length - view.length });
+      }
+    });
+    this.#hub.notify(touched.set);
+    return results.map((r) => ({ ...r, touchedTables: touched.set }));
   }
 
   /** Apply logical-form envelopes (genesis, tests, the in-process writer). */
   applyEnvelopes(envelopes: readonly unknown[]): ApplyResult {
-    return this.#apply(envelopes, null, undefined);
-  }
-
-  #apply(raws: readonly unknown[], device: string | null, cursor?: SegmentCursor): ApplyResult {
     const touched = new TouchedTables(this.#internal);
     let result: Omit<ApplyResult, "touchedTables" | "statements"> | undefined;
     this.driver.transaction(() => {
-      result = this.#applyInTransaction(raws, device, touched);
-      if (device !== null && cursor) {
-        this.#stmts
-          .get(
-            `INSERT INTO sync_cursors (device, seg, offset) VALUES (?, ?, ?)
-             ON CONFLICT (device) DO UPDATE SET seg = excluded.seg, offset = excluded.offset`,
-          )
-          .run(device, cursor.seg, cursor.offset);
-      }
+      result = this.#applyInTransaction(envelopes, null, touched);
     });
-    const out = {
+    this.#hub.notify(touched.set);
+    return {
       ...(result as Omit<ApplyResult, "touchedTables" | "statements">),
       touchedTables: touched.set,
       statements: 0,
     };
-    this.#hub.notify(touched.set);
-    return out;
+  }
+
+  #saveCursor(device: string, cursor: SegmentCursor): void {
+    this.#stmts
+      .get(
+        `INSERT INTO sync_cursors (device, seg, offset) VALUES (?, ?, ?)
+         ON CONFLICT (device) DO UPDATE SET seg = excluded.seg, offset = excluded.offset`,
+      )
+      .run(device, cursor.seg, cursor.offset);
   }
 
   #applyInTransaction(
@@ -782,14 +796,14 @@ export class Store {
   sink(): EventSink {
     return {
       cursors: () => this.cursors(),
-      apply: (batch: InboundBatch): ApplyOutcome => {
-        const r = this.applyWire({
-          device: batch.device,
-          events: batch.events as readonly SyncWireEvent[],
-          cursor: batch.cursor,
-        });
-        return { applied: r.applied, duplicates: r.duplicates, parked: r.parked };
-      },
+      applyBatches: (batches: readonly InboundBatch[]): ApplyOutcome[] =>
+        this.applyWireBatches(
+          batches.map((b) => ({
+            device: b.device,
+            events: b.events as readonly SyncWireEvent[],
+            cursor: b.cursor,
+          })),
+        ).map((r) => ({ applied: r.applied, duplicates: r.duplicates, parked: r.parked })),
       reset: () => this.reset(),
     };
   }

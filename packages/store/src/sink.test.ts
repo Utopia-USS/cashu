@@ -191,4 +191,44 @@ describe("Store as EventSink", () => {
     });
     expect(unknown.statements).toBe(0);
   });
+
+  it("applies wire batches in one transaction: sequential outcomes, all or nothing (S29c-B3)", () => {
+    const hlc = (n: number) => `0mvwcmtc${n}-0000-${A}`;
+    const rule = (n: number, category: string) => ({
+      t: "categoryRule.set",
+      v: 1,
+      h: hlc(n),
+      i: testUlid("01JG", n),
+      g: RULE,
+      a: at(T0 + n),
+      d: { merchantKey: "SKLEP TESTOWY", category, source: "manual", locked: true },
+    });
+    const batches = [1, 2, 3, 4].map((n) => ({
+      device: A,
+      events:
+        n === 3 ? [rule(2, "fuel"), rule(3, "fuel")] : [rule(n, n % 2 ? "groceries" : "fuel")],
+      cursor: { seg: 1, offset: n * 100 },
+    }));
+    const one = openTestStore();
+    const sequential = batches.map((b) => one.applyWire(b));
+    const all = openTestStore();
+    let notified = 0;
+    all.subscribe(["category_rules"], () => {
+      notified += 1;
+    });
+    const together = all.applyWireBatches(batches);
+    expect(notified).toBe(1);
+    expect(together.map((r) => [r.applied, r.duplicates, r.suppressed])).toEqual(
+      sequential.map((r) => [r.applied, r.duplicates, r.suppressed]),
+    );
+    expect(viewHash(all).hash).toBe(viewHash(one).hash);
+    expect(all.cursors().get(A)).toEqual({ seg: 1, offset: 400 });
+
+    // A failure inside the call (here: a cursor the table refuses) rolls every batch back.
+    const failing = openTestStore();
+    const broken = { ...batches[1], cursor: { seg: null, offset: 0 } } as never;
+    expect(() => failing.applyWireBatches([batches[0] as never, broken])).toThrow();
+    expect(failing.read("SELECT COUNT(*) AS n FROM event_log")).toEqual([{ n: 0 }]);
+    expect(failing.cursors().size).toBe(0);
+  });
 });

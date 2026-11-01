@@ -86,14 +86,18 @@ export interface ApplyOutcome {
 
 /**
  * The store side of the engine (S23 implements it over SQLite: materializers + `applied_events` +
- * a cursor table, one transaction per `apply`). The engine guarantees per-device order and at-least-
- * once delivery; the sink guarantees idempotency by `eid` and order independence across devices.
+ * a cursor table). The engine guarantees per-device order and at-least-once delivery; the sink
+ * guarantees idempotency by `eid` and order independence across devices.
  */
 export interface EventSink {
   /** Cursors persisted with the view (missing device = start of its stream). */
   cursors(): Awaitable<ReadonlyMap<DeviceId, SegmentCursor>>;
-  /** Apply one batch and persist `batch.cursor` atomically with it. */
-  apply(batch: InboundBatch): Awaitable<ApplyOutcome>;
+  /**
+   * Apply `batches` in order, in ONE transaction, persisting every batch's `cursor` with it: all of
+   * them or none (S29c-B3: one transaction per sync pull, chunked by the engine). The outcome of each
+   * batch is the one a sequential apply would give. A throw means nothing was applied.
+   */
+  applyBatches(batches: readonly InboundBatch[]): Awaitable<readonly ApplyOutcome[]>;
   /** Drop the view, parked events and cursors (rebuild, events.md 7.9). */
   reset(): Awaitable<void>;
 }

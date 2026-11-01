@@ -1,6 +1,7 @@
 // Reference `EventSink` for the contract suite and for engine-level tests: idempotent by eid, LWW
 // register per gid (`g`) ordered by (hlc, eid), unknown types / newer versions parked raw
-// (events.md 7). The real store (S23) must behave the same on these properties.
+// (events.md 7), one transaction per `applyBatches` (all or nothing). The real store (S23) must
+// behave the same on these properties.
 import type {
   ApplyOutcome,
   DeviceId,
@@ -26,8 +27,12 @@ export class MemorySink implements EventSink {
   #eids = new Map<string, string>();
   #registers = new Map<string, WireEvent>();
   #parked: WireEvent[] = [];
-  /** Every batch handed to `apply`, in order (cleared by `reset`). */
+  /** Every batch applied, in order (cleared by `reset`). */
   readonly deliveries: Delivery[] = [];
+  /** Per committed `applyBatches` call, its number of batches and events (cleared by `reset`). */
+  readonly transactions: { readonly batches: number; readonly events: number }[] = [];
+  /** Fault injection: the next `applyBatches` throws at this batch index (then it is cleared). */
+  failAtBatch: number | undefined;
   /** Same eid seen with a different body (corruption, events.md 2). */
   conflicts = 0;
 
@@ -39,7 +44,39 @@ export class MemorySink implements EventSink {
     return new Map(this.#cursors);
   }
 
-  apply(batch: InboundBatch): ApplyOutcome {
+  applyBatches(batches: readonly InboundBatch[]): ApplyOutcome[] {
+    const saved = {
+      cursors: new Map(this.#cursors),
+      eids: new Map(this.#eids),
+      registers: new Map(this.#registers),
+      parked: [...this.#parked],
+      deliveries: this.deliveries.length,
+      conflicts: this.conflicts,
+    };
+    const fail = this.failAtBatch;
+    this.failAtBatch = undefined;
+    try {
+      const out = batches.map((b, i) => {
+        if (i === fail) throw new Error("injected sink failure");
+        return this.#apply(b);
+      });
+      this.transactions.push({
+        batches: batches.length,
+        events: batches.reduce((n, b) => n + b.events.length, 0),
+      });
+      return out;
+    } catch (e) {
+      this.#cursors = saved.cursors;
+      this.#eids = saved.eids;
+      this.#registers = saved.registers;
+      this.#parked = saved.parked;
+      this.deliveries.length = saved.deliveries;
+      this.conflicts = saved.conflicts;
+      throw e;
+    }
+  }
+
+  #apply(batch: InboundBatch): ApplyOutcome {
     let applied = 0;
     let duplicates = 0;
     let parked = 0;
@@ -77,6 +114,7 @@ export class MemorySink implements EventSink {
     this.#registers.clear();
     this.#parked = [];
     this.deliveries.length = 0;
+    this.transactions.length = 0;
     this.conflicts = 0;
   }
 

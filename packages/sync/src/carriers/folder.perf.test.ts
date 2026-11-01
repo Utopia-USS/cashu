@@ -129,7 +129,10 @@ class CountingSink implements EventSink {
   cursors() {
     return new Map(this.#cursors);
   }
-  apply(batch: InboundBatch): ApplyOutcome {
+  applyBatches(batches: readonly InboundBatch[]): ApplyOutcome[] {
+    return batches.map((b) => this.#apply(b));
+  }
+  #apply(batch: InboundBatch): ApplyOutcome {
     let applied = 0;
     let duplicates = 0;
     for (const e of batch.events) {

@@ -11,9 +11,11 @@
 // - Chains: every frame links to its writer's previous frame (crypto/head.ts). The engine keeps the
 //   chain after every frame of its local log (rebuilt from the bytes at start, no decryption) and
 //   passes the previous one to the codec, so a reordered, spliced or rewritten stream never verifies.
-// - Apply: per device stream in segment order, one sink call per frame or per complete frame group,
+// - Apply: per device stream in segment order, one batch per frame or per complete frame group,
 //   cursor persisted by the sink with the batch, data only when the gate accepts it (cut, fork
-//   freeze). A partial frame or an incomplete group leaves the cursor where it is; a rejected frame
+//   freeze). The batches of a pass reach the sink in ONE `applyBatches` transaction (S29c-B3),
+//   chunked at `maxBatchEvents` / `maxBatchBytes` so a first sync stays within phone memory; a sink
+//   failure applies nothing, and the next pass re-delivers. A partial frame or an incomplete group leaves the cursor where it is; a rejected frame
 //   stops that device's stream for this pass only. The gate sees every verified frame's statements
 //   (the first apply after start replays the whole local log into a gate with statement state:
 //   every frame's statements first, then data judged from the start without re-delivering it).
@@ -29,6 +31,7 @@ import type {
   FrameGate,
   FrameHead,
   FramePosition,
+  InboundBatch,
   LeaseTransport,
   RejectedFrame,
   SegmentCursor,
@@ -92,7 +95,15 @@ export interface SyncEngineOptions {
   readonly maxFrameBytes?: number;
   /** Soft segment size cap; a new segment starts when a frame would cross it (default 4 MiB). */
   readonly maxSegmentBytes?: number;
+  /** Events per sink transaction before a pass is split into several (default 25 000, D12). */
+  readonly maxBatchEvents?: number;
+  /** Plaintext bytes per sink transaction before a pass is split into several (default 32 MiB). */
+  readonly maxBatchBytes?: number;
 }
+
+/** D12 caps of one sink transaction: a daily pull is one transaction, a 64k first sync three. */
+export const DEFAULT_MAX_BATCH_EVENTS = 25_000;
+export const DEFAULT_MAX_BATCH_BYTES = 32 * 1024 * 1024;
 
 export async function createSyncEngine(options: SyncEngineOptions): Promise<SyncEngine> {
   if (!VAULT_RE.test(options.vault)) throw new SyncError("invalid-config", "invalid vault id");
@@ -139,6 +150,10 @@ interface Pass {
   types: Set<string>;
   clockDirty: boolean;
   rolledBack: boolean;
+  /** Batches collected for the next sink transaction, their events and plaintext bytes. */
+  pending: InboundBatch[];
+  pendingEvents: number;
+  pendingBytes: number;
 }
 
 function newPass(): Pass {
@@ -161,6 +176,9 @@ function newPass(): Pass {
     types: new Set(),
     clockDirty: false,
     rolledBack: false,
+    pending: [],
+    pendingEvents: 0,
+    pendingBytes: 0,
   };
 }
 
@@ -203,6 +221,8 @@ class OwnLogEngine implements SyncEngine {
   readonly #maxFrameEvents: number;
   readonly #maxFrameBytes: number;
   readonly #maxSegmentBytes: number;
+  readonly #maxBatchEvents: number;
+  readonly #maxBatchBytes: number;
   readonly #physical: PhysicalClock;
   readonly #listeners = new Set<(info: AppliedInfo) => void>();
   #leaseTransport: LeaseTransport = { kind: "eventual" };
@@ -234,6 +254,8 @@ class OwnLogEngine implements SyncEngine {
     this.#maxFrameEvents = Math.max(1, o.maxFrameEvents ?? 1000);
     this.#maxFrameBytes = Math.max(1, o.maxFrameBytes ?? 1024 * 1024);
     this.#maxSegmentBytes = Math.max(1, o.maxSegmentBytes ?? 4 * 1024 * 1024);
+    this.#maxBatchEvents = Math.max(1, o.maxBatchEvents ?? DEFAULT_MAX_BATCH_EVENTS);
+    this.#maxBatchBytes = Math.max(1, o.maxBatchBytes ?? DEFAULT_MAX_BATCH_BYTES);
   }
 
   /** Find the own write position and chain, and detect a rolled-back clock (own log ahead of the clock). */
@@ -684,6 +706,7 @@ class OwnLogEngine implements SyncEngine {
       const cursor = cursors.get(device) ?? START_CURSOR;
       await this.#applyStream(device, segs, replay ? START_CURSOR : cursor, cursor, pass);
     }
+    await this.#flush(pass);
     this.#primed = true;
   }
 
@@ -732,7 +755,7 @@ class OwnLogEngine implements SyncEngine {
     pass: Pass,
   ): Promise<void> {
     const own = device === this.device;
-    let group: { events: WireEvent[]; count: number; next: number } | undefined;
+    let group: { events: WireEvent[]; count: number; next: number; bytes: number } | undefined;
     let prev = this.#chainBefore(device, from.seg, from.offset);
     if (!prev) {
       // The view's cursor is not a frame end of the local log: its data cannot be trusted.
@@ -787,13 +810,13 @@ class OwnLogEngine implements SyncEngine {
             this.#reject(pass, at, "malformed");
             return;
           }
-          if (delivered) await this.#deliver(device, own, batch, next, pass);
+          if (delivered) await this.#collect(device, own, batch, next, opened.plain.length, pass);
           continue;
         }
         const [index, count] = part;
         const prevLast = group?.events.at(-1)?.h;
         if (index === 0 && !group) {
-          group = { events: [...batch], count, next: 1 };
+          group = { events: [...batch], count, next: 1, bytes: opened.plain.length };
         } else if (
           group &&
           index === group.next &&
@@ -803,12 +826,15 @@ class OwnLogEngine implements SyncEngine {
         ) {
           group.events.push(...batch);
           group.next += 1;
+          group.bytes += opened.plain.length;
         } else {
           this.#reject(pass, at, "malformed");
           return;
         }
         if (group.next === group.count) {
-          if (delivered) await this.#deliver(device, own, group.events, next, pass);
+          if (delivered) {
+            await this.#collect(device, own, group.events, next, group.bytes, pass);
+          }
           group = undefined;
         }
       }
@@ -824,29 +850,64 @@ class OwnLogEngine implements SyncEngine {
     }
   }
 
-  async #deliver(
+  /** Queue a batch for the pass's sink transaction; a full chunk is committed first. */
+  async #collect(
     device: DeviceId,
     own: boolean,
     events: readonly WireEvent[],
     cursor: SegmentCursor,
+    bytes: number,
     pass: Pass,
   ): Promise<void> {
-    const outcome = await this.#sink.apply({ vault: this.vault, device, own, events, cursor });
-    pass.batches += 1;
-    pass.applied += outcome.applied;
-    pass.duplicates += outcome.duplicates;
-    pass.parked += outcome.parked;
-    if (outcome.parked > 0) pass.needsUpgrade = true;
-    for (const e of events) pass.types.add(e.t);
-    if (own) return;
-    for (const e of events) {
-      const warning = this.#clock.receive(e.h);
-      if (!warning) {
-        pass.clockDirty = true;
-        continue;
+    if (
+      pass.pending.length > 0 &&
+      (pass.pendingEvents + events.length > this.#maxBatchEvents ||
+        pass.pendingBytes + bytes > this.#maxBatchBytes)
+    ) {
+      await this.#flush(pass);
+    }
+    pass.pending.push({ vault: this.vault, device, own, events, cursor });
+    pass.pendingEvents += events.length;
+    pass.pendingBytes += bytes;
+  }
+
+  /**
+   * Commit the collected batches in one sink transaction. A failure applied nothing: the gate
+   * forgets which data it accepted (judged again from the log on the next pass) and the error
+   * ends the pass.
+   */
+  async #flush(pass: Pass): Promise<void> {
+    const batches = pass.pending;
+    if (batches.length === 0) return;
+    pass.pending = [];
+    pass.pendingEvents = 0;
+    pass.pendingBytes = 0;
+    let outcomes: readonly { applied: number; duplicates: number; parked: number }[];
+    try {
+      outcomes = await this.#sink.applyBatches(batches);
+    } catch (e) {
+      this.#gate.reset();
+      this.#primed = false;
+      throw e;
+    }
+    for (const [i, batch] of batches.entries()) {
+      const outcome = outcomes[i] ?? { applied: 0, duplicates: 0, parked: 0 };
+      pass.batches += 1;
+      pass.applied += outcome.applied;
+      pass.duplicates += outcome.duplicates;
+      pass.parked += outcome.parked;
+      if (outcome.parked > 0) pass.needsUpgrade = true;
+      for (const e of batch.events) pass.types.add(e.t);
+      if (batch.own) continue;
+      for (const e of batch.events) {
+        const warning = this.#clock.receive(e.h);
+        if (!warning) {
+          pass.clockDirty = true;
+          continue;
+        }
+        const prev = pass.warnings.get(warning.device);
+        if (!prev || warning.aheadMs > prev.aheadMs) pass.warnings.set(warning.device, warning);
       }
-      const prev = pass.warnings.get(warning.device);
-      if (!prev || warning.aheadMs > prev.aheadMs) pass.warnings.set(warning.device, warning);
     }
   }
 }
