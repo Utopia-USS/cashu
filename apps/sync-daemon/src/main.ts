@@ -78,8 +78,8 @@ async function run(config: DaemonConfig, env: MainEnv, once: boolean): Promise<n
     slugs,
     ports: {
       ulid: () => mintUlid(Date.now(), (n) => new Uint8Array(randomBytes(n))),
-      // TRANSITIONAL(S29c-B1): phase 1 runs one Python device per vault, its creator, which is the
-      // pinned fetch leader by construction; B1 replaces this with the registry query.
+      // TRANSITIONAL(S44): phase 1 runs one Python device per vault, its creator, which is the
+      // pinned fetch leader by construction; pairing and registry integration wires the creator pin and lease query.
       isLeader: () => true,
     },
     now: () => Date.now(),

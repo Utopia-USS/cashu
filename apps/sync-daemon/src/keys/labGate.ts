@@ -1,5 +1,5 @@
-// TRANSITIONAL(S56): the lab / dev host's frame gate (S29c phase B2, B3). The host process (S56)
-// owns the device trust state and replaces it with the registry's `DeviceFrameGate`.
+// TRANSITIONAL(S44): the lab / dev host's frame gate (S29c phase B2, B3). Pairing and registry integration
+// supplies device trust state and replaces it with the registry's `DeviceFrameGate`.
 //
 // The lab host runs without the device registry (no pairing, S31a deviation: rings come from the lab
 // key store), so it cannot use `DeviceFrameGate`. Every device of a lab vault is instead certified by

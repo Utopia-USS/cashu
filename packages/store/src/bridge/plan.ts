@@ -6,7 +6,7 @@
 // - shared rows (instruments, aliases: no profile) shipped to every vault that holds the instrument;
 // - rows of a profile without a vault acked unshipped (genesis of that profile reads the live state);
 // - the causal link of a transaction's side events to its `proposal.*` / `note.candidateUpdated`;
-// - the leader filter (TRANSITIONAL(S29c-B1) port): leader-only events dropped on a non-leader;
+// - the injected leader filter: leader-only events dropped on a non-leader;
 // - every event validated (`parseEvent` + the DET self-check, genesis `checkEvent`);
 // - ONE engine write per vault per plan, bounded by the engine's sink transaction caps (25k events,
 //   32 MiB): the engine appends every frame of a write atomically (S29c-B3), so a write of many

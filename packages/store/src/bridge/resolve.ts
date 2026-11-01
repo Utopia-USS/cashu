@@ -67,7 +67,7 @@ interface FieldClock {
 export interface BridgePorts {
   /** A fresh ULID (event eids, minted gids). */
   ulid(): string;
-  /** TRANSITIONAL(S29c-B1): whether this device is the vault's fetch leader. */
+  /** Whether this device is the vault's fetch leader (injected by the host). */
   isLeader(vault: string): boolean;
 }
 
