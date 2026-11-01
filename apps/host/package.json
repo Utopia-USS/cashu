@@ -1,0 +1,25 @@
+{
+  "name": "@cashu/host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The local host process: one per data dir, the only process that opens this device's stores; every other process is a client over the host socket.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "cashu-host": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cashu/host-protocol": "workspace:*",
+    "@cashu/node-host": "workspace:*",
+    "@cashu/store": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

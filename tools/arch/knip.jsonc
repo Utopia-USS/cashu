@@ -28,6 +28,11 @@
       "entry": ["src/testing/fixtureHost.ts"],
       "project": ["src/**/*.ts"]
     },
+    "apps/host": {
+      // Spawned by the crash tests as a separate process (through its path), which knip cannot follow.
+      "entry": ["src/cli.ts", "src/testing/faultHost.ts"],
+      "project": ["src/**/*.ts"]
+    },
     "apps/desktop": {
       "entry": [
         "src/main.ts",
