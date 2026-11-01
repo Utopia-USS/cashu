@@ -50,3 +50,12 @@ export function sliceStarts(count: number, size: number): number[] {
 
 /** Seed vectors in the fast tier: the first variants of every needle (12 per needle, needle order). */
 export const SEED_FAST = 1200;
+
+/** Engine cases in the fast tier. */
+export const ENGINE_FAST = 400;
+/** `OWN_IBANS_RAW` of the generator (synthetic): the own accounts of every engine case. */
+export const ENGINE_OWN_IBANS: readonly string[] = [
+  "PL61 1090 1014 0000 0712 1981 2874",
+  "99 1000 0000 0000 0000 0000 0001",
+  "DE89370400440532013000",
+];

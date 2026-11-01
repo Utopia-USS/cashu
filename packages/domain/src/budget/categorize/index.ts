@@ -1,6 +1,17 @@
 /** Public API of the budget categorization sub-folder (Python `modules/budget/categorize`). */
 
 export {
+  type Categorization,
+  categorize,
+  type EngineContext,
+  type EngineSource,
+  type EngineTxn,
+  ownerDecision,
+  txnMerchantKey,
+  txnText,
+} from "./engine.js";
+export { type MerchantRule, type RuleSource, rulesByMerchant, ruleUpsert } from "./rules.js";
+export {
   AUTO_CATEGORY_KEYS,
   applySeedRules,
   applyTextRules,
