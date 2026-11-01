@@ -9,8 +9,9 @@
 // manifest.ts) BEFORE it creates segment N. Readers expose another device's segment N only once
 // N - 1 is present up to its recorded size; a missing early segment, an incomplete one or a manifest
 // still on its way holds the rest of that stream (reported by `status`, retried on the next pass).
-// Records are sealed with the vault codec at their position, so storage can withhold them (the stream
-// waits) but not forge them. The device's own segments pass through ungated (its local log is the
+// Records are sealed with the vault codec at their position, chained (manifest stream 0) and signed by
+// their writer, and verified by the `FrameGate`, so storage can withhold them (the stream waits) but
+// not forge them, and a key holder that is not the writer cannot either (S29c phase B2). The device's own segments pass through ungated (its local log is the
 // authority; the engine's rollback check needs their true sizes).
 //
 // Compaction hooks (full compaction is S32): `markSnapshot` records a snapshot boundary,
@@ -20,6 +21,8 @@
 import type {
   DeviceId,
   FrameCodec,
+  FrameGate,
+  FrameHead,
   SegmentCursor,
   SegmentInfo,
   Transport,
@@ -73,6 +76,8 @@ export interface OwnLogCarrierOptions {
   readonly transport: Transport;
   /** The vault's frame codec; seals and opens manifest records. */
   readonly codec: FrameCodec;
+  /** Verifies the signed heads of other devices' manifest records (devices/gate.ts). */
+  readonly gate: FrameGate;
   /** The device using this handle: its own segments are not gated. */
   readonly device: DeviceId;
   /** S32: where a device's stream resumes after its snapshot was installed (earlier segments not needed). */
@@ -82,6 +87,8 @@ export interface OwnLogCarrierOptions {
 interface ManifestState {
   /** Verified bytes of segment 0. */
   offset: number;
+  /** Chain after the last verified record (the manifest stream's genesis before the first). */
+  chain: Uint8Array;
   readonly closed: Map<number, number>;
   readonly conflicts: Set<number>;
   readonly snapshots: SnapshotMarker[];
@@ -108,6 +115,7 @@ export class OwnLogCarrier implements Transport {
   readonly watch?: (vault: VaultId, onChange: () => void) => () => void;
   readonly #raw: Transport;
   readonly #codec: FrameCodec;
+  readonly #heads: FrameGate;
   readonly #resumeFrom: OwnLogCarrierOptions["resumeFrom"];
   readonly #manifests = new Map<string, ManifestState>();
   readonly #gates = new Map<string, Gate>();
@@ -117,6 +125,7 @@ export class OwnLogCarrier implements Transport {
     this.#raw = options.transport;
     this.consistency = options.transport.consistency;
     this.#codec = options.codec;
+    this.#heads = options.gate;
     this.#resumeFrom = options.resumeFrom;
     const rawWatch = options.transport.watch?.bind(options.transport);
     if (rawWatch) this.watch = (vault, onChange) => rawWatch(vault, onChange);
@@ -255,13 +264,17 @@ export class OwnLogCarrier implements Transport {
     size: number,
     record: ManifestRecord,
   ): Promise<void> {
-    const at = { vault, device, seg: MANIFEST_SEG, offset: size };
-    const frame = frameBytes(await this.#codec.seal(encodeRecord(record), at));
-    await this.#raw.append(vault, device, MANIFEST_SEG, size, frame);
-    if (manifest.offset === size && manifest.rejected === undefined) {
-      applyRecord(manifest, record);
-      manifest.offset = size + frame.length;
+    if (manifest.offset !== size || manifest.rejected !== undefined) {
+      // The own manifest must be read to its end before appending: the record links to its chain.
+      throw new TransportError("offset-conflict", "the manifest is not fully verified");
     }
+    const at = { vault, device, seg: MANIFEST_SEG, offset: size };
+    const sealed = await this.#codec.seal(encodeRecord(record), at, manifest.chain);
+    const frame = frameBytes(sealed.sealed);
+    await this.#raw.append(vault, device, MANIFEST_SEG, size, frame);
+    applyRecord(manifest, record);
+    manifest.offset = size + frame.length;
+    manifest.chain = sealed.head.chain;
   }
 
   /** Verify and fold the not yet read part of a device's manifest stream. */
@@ -271,6 +284,7 @@ export class OwnLogCarrier implements Transport {
     if (!manifest) {
       manifest = {
         offset: 0,
+        chain: this.#codec.genesis(vault, device, 0),
         closed: new Map(),
         conflicts: new Set(),
         snapshots: [],
@@ -285,20 +299,31 @@ export class OwnLogCarrier implements Transport {
     manifest.rejected = undefined;
     for (const f of scan.frames) {
       const at = { vault, device, seg: MANIFEST_SEG, offset: f.offset };
-      let plain: Uint8Array;
+      let opened: { readonly plain: Uint8Array; readonly head: FrameHead };
       try {
-        plain = await this.#codec.open(f.sealed, at);
+        opened = await this.#codec.open(f.sealed, at, manifest.chain);
       } catch (e) {
         manifest.rejected = { offset: f.offset, code: rejectionCode(e) };
         return manifest;
       }
-      const decoded = decodeRecord(plain);
+      if (device !== this.device) {
+        const verdict = this.#heads.authenticate(opened.head, []);
+        if (!verdict.ok) {
+          manifest.rejected = {
+            offset: f.offset,
+            code: verdict.wait ? "writer-unknown" : verdict.code,
+          };
+          return manifest;
+        }
+      }
+      const decoded = decodeRecord(opened.plain);
       if (!decoded.ok) {
         manifest.rejected = { offset: f.offset, code: decoded.code };
         return manifest;
       }
       if (decoded.record) applyRecord(manifest, decoded.record);
       manifest.offset = f.end;
+      manifest.chain = opened.head.chain;
     }
     if (scan.tail === "too-large")
       manifest.rejected = { offset: scan.tailOffset, code: "too-large" };

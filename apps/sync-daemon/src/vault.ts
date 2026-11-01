@@ -3,7 +3,8 @@
 // One vault on this device: the view store (`view.db`), the local own-log copy (`log/`, a folder
 // transport over the durable Node `FolderFs`), the configured remote folders behind the manifest-gated
 // own-log carrier, the frame codec over the vault ring, and the sync engine. The one factory of the
-// engine: S29c-B2 (signed heads) adds the device signer here and nowhere else (spec 15.2).
+// engine. S29c-B2: the codec signs as this device (the genesis engine as the genesis device), and
+// every frame's signed head is checked by the vault's frame gate (keys/labGate.ts in the lab).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { NodeFolderFs, openNodeSqlite } from "@cashu/node-host";
@@ -16,6 +17,7 @@ import {
   type crypto,
   FolderTransport,
   type FrameCodec,
+  type FrameGate,
   type PhysicalClock,
   type SyncEngine,
   type Transport,
@@ -39,9 +41,10 @@ export interface OpenVault {
   readonly store: Store;
   readonly engine: SyncEngine;
   readonly state: VaultState;
-  /** The local own-log copy and the codec (the genesis engine of `init` writes through them). */
+  /** The local own-log copy, the gate and the ring (the genesis engine of `init` uses them). */
   readonly local: Transport;
-  readonly codec: FrameCodec;
+  readonly gate: FrameGate;
+  readonly ring: crypto.Keyring;
   close(): Promise<void>;
 }
 
@@ -52,6 +55,8 @@ export interface VaultOptions {
   readonly remotes: readonly string[];
   readonly keys: VaultKeys;
   readonly sodium: crypto.Sodium;
+  /** Verifies every frame's signed head (keys/labGate.ts). */
+  readonly gate: FrameGate;
 }
 
 /** `<stateRoot>/v<ordinal>` (private): named by the ordinal, never the slug or the vault id. */
@@ -65,12 +70,14 @@ function vaultDir(stateRoot: string, ordinal: number): string {
 function remoteTransports(
   roots: readonly string[],
   codec: FrameCodec,
+  gate: FrameGate,
   device: string,
 ): Transport[] {
   return roots.map((root) =>
     createOwnLogCarrier({
       transport: new FolderTransport({ fs: new NodeFolderFs(root), owner: device }),
       codec,
+      gate,
       device,
     }),
   );
@@ -88,15 +95,16 @@ export async function openVault(o: VaultOptions): Promise<OpenVault> {
     salt,
     modules: builtinModules(),
   });
-  const codec = createOwnLogCodec({ sodium: o.sodium, ring });
+  const codec = createOwnLogCodec({ sodium: o.sodium, ring, signer: identity });
   const local = new FolderTransport({ fs: new NodeFolderFs(join(dir, "log")) });
   const device = identity.deviceId;
   const engine = await createSyncEngine({
     vault: ring.vaultId,
     device,
     local,
-    remotes: remoteTransports(o.remotes, codec, device),
+    remotes: remoteTransports(o.remotes, codec, o.gate, device),
     codec,
+    gate: o.gate,
     sink: store.sink(),
     clockStore: metaClockStore(store.driver, device),
   });
@@ -113,7 +121,8 @@ export async function openVault(o: VaultOptions): Promise<OpenVault> {
     engine,
     state,
     local,
-    codec,
+    gate: o.gate,
+    ring,
     async close() {
       await engine.close();
       store.close();
@@ -122,19 +131,26 @@ export async function openVault(o: VaultOptions): Promise<OpenVault> {
   };
 }
 
-/** The genesis pseudo-device's engine of a vault (spec 8.4): a fixed physical clock W. */
+/**
+ * The genesis device's engine of a vault (spec 8.4): a fixed physical clock W; `signer` is the
+ * genesis identity while it writes (absent: a read-only codec, enough to push).
+ */
 export function genesisEngine(
   v: OpenVault,
+  sodium: crypto.Sodium,
   wall: number,
   remotes: readonly string[],
+  signer?: crypto.DeviceIdentity,
 ): Promise<SyncEngine> {
   const clock: PhysicalClock = { now: () => wall };
+  const codec = createOwnLogCodec({ sodium, ring: v.ring, ...(signer ? { signer } : {}) });
   return createSyncEngine({
     vault: v.vaultId,
     device: v.genesisDevice,
     local: v.local,
-    remotes: remoteTransports(remotes, v.codec, v.genesisDevice),
-    codec: v.codec,
+    remotes: remoteTransports(remotes, codec, v.gate, v.genesisDevice),
+    codec,
+    gate: v.gate,
     sink: v.store.sink(),
     clockStore: metaClockStore(v.store.driver, v.genesisDevice),
     physicalClock: clock,

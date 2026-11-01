@@ -9,16 +9,24 @@
 // - `admission`: the subject key of the certificate being admitted (certificates.ts, self lane):
 //   the closure that decision keys come from does not exist yet; the certificate itself is checked
 //   against the recovery key in the same step;
-// - `invite`: the inviter key the owner scanned while pairing (out of band, pairing.ts).
+// - `invite`: the inviter key the owner scanned while pairing (out of band, pairing.ts);
+// - `author`: for a frame's signed head only (S29c phase B2, `acceptedHead`), the keys certified for
+//   its writer through any chain from the recovery key, revocations ignored (`Registry.authorKeys`),
+//   narrowed to the one key the writer's stream is bound to (heads.ts). A head signature says WHO
+//   wrote a frame, never what counts: the frame's data is judged by cuts and fork freezes, its
+//   statements by decision keys, as before. A stream's first frame may instead introduce its writer
+//   with a recovery-issued certificate it carries (`admission`, checked against the recovery key).
 // Key wraps go through `unwrapFromTrusted`, whose sender keys are decision keys too.
 
 import type { SegmentCursor } from "../carrier.js";
 import {
   type DeviceIdentity,
+  headBody,
   type Keyring,
   RECOVERY_SIGNER_ID,
   type RecoveryIdentity,
   type RecoveryPublicKeys,
+  type SignedHead,
   type Sodium,
   type UnwrapOptions,
   type Unwrapped,
@@ -47,7 +55,8 @@ export type KeySource =
     }
   | { readonly kind: "recovery"; readonly signKeys: readonly Uint8Array[] }
   | { readonly kind: "admission"; readonly signKey: Uint8Array }
-  | { readonly kind: "invite"; readonly signKey: Uint8Array };
+  | { readonly kind: "invite"; readonly signKey: Uint8Array }
+  | { readonly kind: "author"; readonly keys: readonly Uint8Array[] };
 
 function keysOf(source: KeySource): readonly Uint8Array[] {
   switch (source.kind) {
@@ -62,7 +71,25 @@ function keysOf(source: KeySource): readonly Uint8Array[] {
     case "admission":
     case "invite":
       return [source.signKey];
+    case "author":
+      return source.keys;
   }
+}
+
+/** The key of `source` a frame's signed head verifies with (heads are signed by their writer). */
+export function acceptedHead(
+  verify: StatementVerifier,
+  vaultId: string,
+  head: SignedHead,
+  source: KeySource,
+): Uint8Array | undefined {
+  let body: Uint8Array;
+  try {
+    body = headBody(vaultId, head);
+  } catch {
+    return undefined;
+  }
+  return acceptedKey(verify, "cashu/head/v1", body, head.sig, source);
 }
 
 /** The key of `source` the signature verifies with, or undefined. */

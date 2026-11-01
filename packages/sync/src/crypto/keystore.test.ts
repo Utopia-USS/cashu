@@ -19,7 +19,7 @@ import {
   saveKeyring,
 } from "./keystore.js";
 import { InMemoryKeyStore } from "./testing.js";
-import { ctx, newRing, samplePlain, sodium } from "./testkit.js";
+import { ctx, newRing, samplePlain, sodium, writerOf } from "./testkit.js";
 
 // Fake safeStorage: reversible but not identity, so a test can tell stored blobs are not the raw value.
 function fakeSafeStorage(backend = "keychain", available = true): SafeStorageLike {
@@ -69,10 +69,10 @@ function fakeSecureStore(): SecureStoreLike & {
 async function roundtrip(store: KeyStore) {
   const ring = newRing();
   const c = ctx(ring.vaultId);
-  const frame = sealFrame(sodium, ring, samplePlain(), c);
+  const frame = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
   await saveKeyring(store, ring);
   const loaded = await loadKeyring(store, sodium, ring.vaultId);
-  expect(loaded && openFrame(sodium, loaded, frame, c)).toEqual(samplePlain());
+  expect(loaded && openFrame(sodium, loaded, frame, c).plain).toEqual(samplePlain());
 
   const identity = createDeviceIdentity(sodium);
   await saveDeviceIdentity(store, identity);

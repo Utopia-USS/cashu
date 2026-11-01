@@ -9,6 +9,7 @@ import { mintUlid } from "@cashu/store";
 import { crypto } from "@cashu/sync";
 import { afterEach, describe, expect, it } from "vitest";
 import { labFileKeyStore } from "./keys/labFile.js";
+import { labGate } from "./keys/labGate.js";
 import { createVault, loadVaultKeys } from "./keys/vaultKeys.js";
 import { BlockedError, type CrashPoint, Loop } from "./loop.js";
 import { PythonReader } from "./python/reader.js";
@@ -67,6 +68,7 @@ async function openAll(w: World): Promise<OpenVault[]> {
         remotes: [join(w.root, "remote")],
         keys,
         sodium,
+        gate: await labGate(store, sodium, keys.ring),
       }),
     );
   }

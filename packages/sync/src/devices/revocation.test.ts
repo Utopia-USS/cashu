@@ -4,7 +4,8 @@ import {
   CryptoError,
   certifyDevice,
   createDeviceIdentity,
-  frameKeyId,
+  type DeviceIdentity,
+  genesisChain,
   type Keyring,
   openFrame,
   recoveryRecipient,
@@ -18,7 +19,8 @@ import {
   buildKeysRotated,
   buildLeaseClaim,
 } from "./events.js";
-import { devicesNeedingRebuild, type FrameAt } from "./guard.js";
+import { DeviceFrameGate } from "./gate.js";
+import { devicesNeedingRebuild } from "./guard.js";
 import { foldLease } from "./lease.js";
 import { type PreparedChange, prepareRotation } from "./rotation.js";
 import {
@@ -40,13 +42,39 @@ function note() {
   return { t: "note.added", v: 1, i: newEid(), d: {} };
 }
 
-function frameCtx(vaultId: string, at: FrameAt) {
-  return { vaultId, deviceId: at.device, segment: at.start.seg, offset: at.start.offset };
+/** A crypto frame of `signer` written under `device`'s id at `seg:offset` (its stream's first frame). */
+function frame(ring: Keyring, signer: DeviceIdentity, seg: number, offset: number) {
+  const ctx = {
+    vaultId: ring.vaultId,
+    deviceId: signer.deviceId,
+    segment: seg,
+    offset,
+    prev: genesisChain({ vaultId: ring.vaultId, deviceId: signer.deviceId, stream: 1 }),
+  };
+  return { ctx, sealed: sealFrame(sodium, ring, plain, ctx, signer) };
 }
 
-/** The frame of `device` starting at `offset` (100 bytes long, like the simulator's batches). */
-function frameAt(device: string, offset: number): FrameAt {
-  return { device, start: { seg: 1, offset }, end: { seg: 1, offset: offset + 100 } };
+/**
+ * Opens a frame the way the engine does: authenticated decryption, the head checked by a gate over
+ * the reader's devices state (a fresh one: these frames are outside the simulated streams), then
+ * the data rule. Returns the first failure, or "ok".
+ */
+function carrierOpen(reader: SimDevice, f: ReturnType<typeof frame>): string {
+  let opened: ReturnType<typeof openFrame>;
+  try {
+    opened = openFrame(sodium, reader.ring, f.sealed.bytes, f.ctx);
+  } catch (e) {
+    if (e instanceof CryptoError) return e.code;
+    throw e;
+  }
+  const gate = new DeviceFrameGate(reader.devices, { sodium });
+  const verdict = gate.authenticate(opened.head, []);
+  if (!verdict.ok) return verdict.wait ? "writer-unknown" : verdict.code;
+  const data = reader.devices.guard.check({
+    device: opened.head.device,
+    end: { seg: opened.head.seg, offset: opened.head.offset },
+  });
+  return data.ok ? "ok" : data.reason;
 }
 
 function code(f: () => unknown): string {
@@ -57,22 +85,6 @@ function code(f: () => unknown): string {
     if (e instanceof CryptoError) return e.code;
     throw e;
   }
-}
-
-/** Opens a frame the way the carrier will: guard policy first, record after success. */
-function carrierOpen(reader: SimDevice, frame: Uint8Array, at: FrameAt): string {
-  return code(() => {
-    const out = openFrame(
-      sodium,
-      reader.ring,
-      frame,
-      frameCtx(reader.ring.vaultId, at),
-      reader.devices.guard.policy(at),
-    );
-    const entry = reader.ring.get(frameKeyId(frame));
-    if (entry) reader.devices.guard.record(at, entry);
-    return out;
-  });
 }
 
 /** The honest revoke flow: the targets' consent when it counts, else the owner's words (H2). */
@@ -114,8 +126,6 @@ describe("revocation", () => {
     r.sync();
     a.pull();
     b.pull();
-    const beforeAt = frameAt(r.id, 0);
-    const before = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, beforeAt));
 
     const change = revoke(a, r);
     expect(change.key?.epoch).toBe(1);
@@ -132,40 +142,31 @@ describe("revocation", () => {
     expect(a.devices.rotationNeeded()).toBeUndefined();
 
     // New data: readable by B, not by R.
-    const at = frameAt(a.id, 5000);
-    const fresh = sealFrame(sodium, a.ring, plain, frameCtx(a.ring.vaultId, at));
-    expect(carrierOpen(b, fresh, at)).toBe("ok");
-    expect(code(() => openFrame(sodium, r.ring, fresh, frameCtx(r.ring.vaultId, at)))).toBe(
+    const fresh = frame(a.ring, a.identity, 9, 0);
+    expect(carrierOpen(b, fresh)).toBe("ok");
+    expect(code(() => openFrame(sodium, r.ring, fresh.sealed.bytes, fresh.ctx))).toBe(
       "unknown_key",
     );
 
-    // R's own stream: history before its cut still opens; anything at or after the cut is rejected.
+    // R's own stream: its signature still verifies (it wrote it), but data at or after the cut is
+    // rejected; the cut lies after R's first batch.
     const revocation = b.devices.registry.revoked.get(r.id);
     expect(revocation?.cut).toEqual({ seg: 1, offset: 100 });
-    const cut = revocation?.cut ?? START_CURSOR;
-    expect(carrierOpen(b, before, beforeAt)).toBe("ok");
-    const afterAt = frameAt(r.id, cut.offset);
-    const after = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, afterAt));
-    expect(carrierOpen(b, after, afterAt)).toBe("key_not_allowed");
-    expect(b.devices.guard.check(afterAt, r.ring.active)).toEqual({
+    expect(carrierOpen(b, frame(r.ring, r.identity, 9, 0))).toBe("revoked_writer");
+    expect(b.devices.guard.check({ device: r.id, end: { seg: 1, offset: 100 } }).ok).toBe(true);
+    expect(b.devices.guard.check({ device: r.id, end: { seg: 1, offset: 200 } })).toEqual({
       ok: false,
       reason: "revoked_writer",
     });
 
-    // Under B's id: once B wrote at the new key, an old-key frame at a later position is rejected.
-    const bAt = frameAt(b.id, 7000);
-    const bFrame = sealFrame(sodium, b.ring, plain, frameCtx(b.ring.vaultId, bAt));
-    expect(carrierOpen(a, bFrame, bAt)).toBe("ok");
-    const forgedAt = frameAt(b.id, 7100);
-    const forged = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, forgedAt));
-    expect(carrierOpen(a, forged, forgedAt)).toBe("key_not_allowed");
-    // The same frame re-opened at its earlier position (verify, then apply) still passes.
-    expect(carrierOpen(a, bFrame, bAt)).toBe("ok");
-
-    // Under a fresh id: the key predates the revocation, so it is refused.
-    const strangerAt = frameAt(createDeviceIdentity(sodium).deviceId, 0);
-    const stranger = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, strangerAt));
-    expect(carrierOpen(a, stranger, strangerAt)).toBe("key_not_allowed");
+    // Under B's id: R holds the old data key, so it can seal at B's next position, but it cannot
+    // sign as B (S28b's window is closed whatever key epoch B last wrote at, S29c D6).
+    const forger = createDeviceIdentity(sodium, b.id); // B's id, a key nobody certified for B
+    expect(carrierOpen(a, frame(r.ring, forger, 9, 0))).toBe("bad_head_signature");
+    // Under a fresh id: nobody certified it; its frames wait and are never copied.
+    expect(carrierOpen(a, frame(r.ring, createDeviceIdentity(sodium), 9, 0))).toBe(
+      "writer-unknown",
+    );
   });
 
   it("statements a revoked device writes after its cut are ignored (no re-admission, no lease)", async () => {

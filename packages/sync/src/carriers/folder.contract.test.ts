@@ -6,23 +6,25 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DeviceId, FrameCodec } from "../carrier.js";
+import type { DeviceId, FrameGate } from "../carrier.js";
 import { createKeyring, createRecoveryKey, loadNodeSodium } from "../crypto/index.js";
 import { describeCarrierContract } from "../testing/index.js";
+import { type TestSigners, testSigners } from "../testing/signers.js";
 import { CloudSim } from "../transports/folder/testing/cloud.js";
 import { NodeFolderFs } from "../transports/folder/testing/node-fs.js";
 import { FolderTransport } from "../transports/folder/transport.js";
 import type { FolderFs } from "../transports/index.js";
 import { createOwnLogCarrier } from "./ownlog/carrier.js";
-import { createOwnLogCodec } from "./ownlog/codec.js";
 
 const sodium = await loadNodeSodium();
 const recovery = createRecoveryKey(sodium).publicKeys;
 
-function carrierFor(fs: FolderFs, codec: FrameCodec, device: DeviceId) {
+function carrierFor(fs: FolderFs, signers: TestSigners, device: DeviceId) {
+  const gate: FrameGate = signers.gateFor(device);
   return createOwnLogCarrier({
     transport: new FolderTransport({ fs, owner: device }),
-    codec,
+    codec: signers.codecFor(device),
+    gate,
     device,
   });
 }
@@ -32,10 +34,11 @@ describeCarrierContract({
   async createMedium(vault) {
     const root = await mkdtemp(join(tmpdir(), "cashu-s28b-shared-"));
     const fs = new NodeFolderFs(root);
-    const codec = createOwnLogCodec({ sodium, ring: createKeyring(sodium, recovery, vault) });
+    const signers = testSigners(sodium, createKeyring(sodium, recovery, vault));
     return {
-      remoteFor: (device) => carrierFor(fs, codec, device),
-      codecFor: () => codec,
+      remoteFor: (device) => carrierFor(fs, signers, device),
+      codecFor: (device) => signers.codecFor(device),
+      gateFor: (device) => signers.gateFor(device),
       dispose: () => rm(root, { recursive: true, force: true }),
     };
   },
@@ -48,7 +51,7 @@ describeCarrierContract({
   async createMedium(vault) {
     const root = await mkdtemp(join(tmpdir(), "cashu-s28b-eventual-"));
     const sim = new CloudSim({ seed: seed++, partialRate: 0.3, conflictRate: 0.3, maxDelay: 4 });
-    const codec = createOwnLogCodec({ sodium, ring: createKeyring(sodium, recovery, vault) });
+    const signers = testSigners(sodium, createKeyring(sodium, recovery, vault));
     const replica = async (device: DeviceId): Promise<FolderFs> => {
       const known = sim.replica(device);
       if (known) return known;
@@ -60,8 +63,9 @@ describeCarrierContract({
       return fs;
     };
     return {
-      remoteFor: async (device) => carrierFor(await replica(device), codec, device),
-      codecFor: () => codec,
+      remoteFor: async (device) => carrierFor(await replica(device), signers, device),
+      codecFor: (device) => signers.codecFor(device),
+      gateFor: (device) => signers.gateFor(device),
       settle: async () => {
         for (let i = 0; i < 3; i++) await sim.churn();
         await sim.flush();

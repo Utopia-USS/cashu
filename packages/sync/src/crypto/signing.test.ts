@@ -18,6 +18,7 @@ const CONTEXTS: SigningContext[] = [
   "cashu/registry/v1",
   "cashu/lease/v1",
   "cashu/pairing/v1",
+  "cashu/head/v1",
 ];
 
 describe("signing contexts (S29b)", () => {

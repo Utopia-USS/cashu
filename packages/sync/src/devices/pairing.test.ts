@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDeviceIdentity, openFrame, sealFrame } from "../crypto/index.js";
+import { createDeviceIdentity, genesisChain, openFrame, sealFrame } from "../crypto/index.js";
 import { fromUtf8, toHex } from "./bytes.js";
 import {
   decodeInvite,
@@ -42,9 +42,11 @@ describe("pairing", () => {
     }
     expect(phone.ring.vaultId).toBe(creator.ring.vaultId);
     expect(phone.ring.gidSalt().expose()).toEqual(creator.ring.gidSalt().expose());
-    const ctx = { vaultId: creator.ring.vaultId, deviceId: creator.id, segment: 1, offset: 0 };
-    const frame = sealFrame(sodium, creator.ring, plain, ctx);
-    expect(openFrame(sodium, laptop.ring, frame, ctx)).toEqual(plain);
+    const vaultId = creator.ring.vaultId;
+    const prev = genesisChain({ vaultId, deviceId: creator.id, stream: 1 });
+    const ctx = { vaultId, deviceId: creator.id, segment: 1, offset: 0, prev };
+    const frame = sealFrame(sodium, creator.ring, plain, ctx, creator.identity);
+    expect(openFrame(sodium, laptop.ring, frame.bytes, ctx).plain).toEqual(plain);
   });
 
   it("the QR round-trips and carries no secret", () => {

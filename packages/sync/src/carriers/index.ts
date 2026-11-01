@@ -15,5 +15,4 @@ export {
   encodeEnvelope,
   MAX_ENVELOPE_BODY,
 } from "./ownlog/envelope.js";
-export { WriterKeyFloor, type WriterKeyFloorState } from "./ownlog/floor.js";
 export { MANIFEST_SEG, SNAPSHOT_REF_RE } from "./ownlog/manifest.js";

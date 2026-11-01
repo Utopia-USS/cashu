@@ -353,16 +353,10 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
     expect(r.ignored).toContainEqual({ eid: inside.eid, reason: "after_revocation" });
     a.devices.ingest([revokeC, inside]);
     const guard = a.devices.guard;
-    const key = { epoch: 0, generation: 1 };
-    expect(
-      guard.check(
-        { device: c.id, start: { seg: 1, offset: 100 }, end: { seg: 1, offset: 200 } },
-        key,
-      ),
-    ).toEqual({ ok: false, reason: "revoked_writer" });
-    expect(
-      guard.check({ device: c.id, start: { seg: 1, offset: 0 }, end: { seg: 1, offset: 100 } }, key)
-        .ok,
-    ).toBe(true);
+    expect(guard.check({ device: c.id, end: { seg: 1, offset: 200 } })).toEqual({
+      ok: false,
+      reason: "revoked_writer",
+    });
+    expect(guard.check({ device: c.id, end: { seg: 1, offset: 100 } }).ok).toBe(true);
   });
 });

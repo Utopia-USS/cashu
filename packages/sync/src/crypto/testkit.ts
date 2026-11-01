@@ -4,7 +4,8 @@ import { certifyDevice, type TrustedDevice, verifyCertificates } from "./cert.js
 import { utf8 } from "./encoding.js";
 import { CryptoError, type CryptoErrorCode } from "./errors.js";
 import type { FrameContext } from "./frame.js";
-import type { DeviceIdentity } from "./identity.js";
+import { genesisChain, streamOf } from "./head.js";
+import { createDeviceIdentity, type DeviceIdentity, isDeviceId } from "./identity.js";
 import { createKeyring, type Keyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
@@ -115,7 +116,25 @@ export function samplePlain(): Uint8Array {
 }
 
 export function ctx(vaultId: string, over: Partial<FrameContext> = {}): FrameContext {
-  return { vaultId, deviceId: DEVICE_A, segment: 3, offset: 4096, ...over };
+  const deviceId = over.deviceId ?? DEVICE_A;
+  const segment = over.segment ?? 3;
+  const prev = isDeviceId(deviceId)
+    ? genesisChain({ vaultId, deviceId, stream: streamOf(segment) })
+    : new Uint8Array(32);
+  return { vaultId, deviceId, segment, offset: 4096, prev, ...over };
+}
+
+const writers = new Map<string, DeviceIdentity>();
+
+/** A signing identity for the writer of `c` (frames are signed by their writer; tests only). */
+export function writerOf(c: FrameContext | string): DeviceIdentity {
+  const deviceId = typeof c === "string" ? c : c.deviceId;
+  let identity = writers.get(deviceId);
+  if (!identity) {
+    identity = createDeviceIdentity(sodium, isDeviceId(deviceId) ? deviceId : DEVICE_A);
+    writers.set(deviceId, identity);
+  }
+  return identity;
 }
 
 export function range(from: number, to: number): Uint8Array {

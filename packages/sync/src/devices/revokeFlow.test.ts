@@ -228,6 +228,17 @@ describe("revoke flow with re-certification", () => {
       a.remote.publish(full);
       a.remote.replace(truncated);
       b.rebuild();
+      // A frame whose content storage changed no longer matches its writer's signed head: never
+      // ingested (S29c phase B2).
+      expect(b.verdicts).toContainEqual({
+        device: a.id,
+        cursor: truncated.cursor,
+        verdict: "bad_head_signature",
+      });
+      expect(b.devices.registry.revoked.has(desk.id)).toBe(false);
+      // The registry's own atomicity still holds for statements delivered without their batch's
+      // tail (a frame group whose last frame has not arrived).
+      b.devices.ingest(truncated.events);
       const reg = b.devices.registry;
       expect(reg.revoked.has(desk.id)).toBe(false);
       expect(reg.isTrusted(phone.id)).toBe(true);

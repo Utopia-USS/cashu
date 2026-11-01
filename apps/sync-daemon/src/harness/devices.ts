@@ -6,8 +6,8 @@
 // device identity and the vault ring from the lab key store.
 //
 // Deviation (S31a checkpoint): the ring is loaded from the creator's lab key store instead of being
-// paired in through the S29 pairing API (the codec only needs the data keys until S29c-B2 signs
-// frames); the inbound edits are catalog events validated with `parseEvent`, because the store has
+// paired in through the S29 pairing API, and (S29c-B2) each device is certified by the vault's
+// recovery identity from that store so the lab gates verify its signed frames; the inbound edits are catalog events validated with `parseEvent`, because the store has
 // no commands for most of them yet (S22d / S43) and no command -> engine writer exists.
 import { join } from "node:path";
 import { NodeFolderFs, openNodeSqlite } from "@cashu/node-host";
@@ -22,6 +22,8 @@ import {
   type SyncEngine,
   type UnstampedEvent,
 } from "@cashu/sync";
+import { labGate } from "../keys/labGate.js";
+import { certifyLabDevice } from "../keys/vaultKeys.js";
 
 export interface HarnessDevice {
   readonly device: string;
@@ -38,12 +40,16 @@ export interface HarnessDevice {
 export async function openDevice(o: {
   readonly sodium: crypto.Sodium;
   readonly ring: crypto.Keyring;
+  /** The lab key store holding the vault's recovery words and device certificates. */
+  readonly keyStore: crypto.KeyStore;
   readonly remote: string;
   readonly dbPath: string;
   readonly clockMs: number;
 }): Promise<HarnessDevice> {
   const identity = crypto.createDeviceIdentity(o.sodium);
   const device = identity.deviceId;
+  await certifyLabDevice(o.keyStore, o.sodium, o.ring.vaultId, identity);
+  const gate = await labGate(o.keyStore, o.sodium, o.ring);
   const secret = o.ring.gidSalt();
   const salt = vaultSalt(secret.expose().slice());
   secret.wipe();
@@ -53,7 +59,7 @@ export async function openDevice(o: {
     salt,
     modules: builtinModules(),
   });
-  const codec = createOwnLogCodec({ sodium: o.sodium, ring: o.ring });
+  const codec = createOwnLogCodec({ sodium: o.sodium, ring: o.ring, signer: identity });
   let now = o.clockMs;
   const engine = await createSyncEngine({
     vault: o.ring.vaultId,
@@ -63,10 +69,12 @@ export async function openDevice(o: {
       createOwnLogCarrier({
         transport: new FolderTransport({ fs: new NodeFolderFs(o.remote), owner: device }),
         codec,
+        gate,
         device,
       }),
     ],
     codec,
+    gate,
     sink: store.sink(),
     clockStore: metaClockStore(store.driver, device),
     physicalClock: { now: () => now },
@@ -110,6 +118,7 @@ export const verifierDb = (ordinal: number) => `v${ordinal}.db`;
 export function openVerifier(o: {
   readonly sodium: crypto.Sodium;
   readonly ring: crypto.Keyring;
+  readonly keyStore: crypto.KeyStore;
   readonly remote: string;
   readonly run: string;
   readonly ordinal: number;

@@ -87,16 +87,21 @@ export async function runCryptoSelfTest(deps: CryptoSelfTestDeps): Promise<Crypt
   }
 
   if (ring && device) {
-    const ctx = { vaultId: ring.vaultId, deviceId: device.deviceId, segment: 0, offset: 0 };
+    const prev = crypto.genesisChain({
+      vaultId: ring.vaultId,
+      deviceId: device.deviceId,
+      stream: 0,
+    });
+    const ctx = { vaultId: ring.vaultId, deviceId: device.deviceId, segment: 0, offset: 0, prev };
     const plain = sodium.randomBytes(300);
     try {
-      const frame = crypto.sealFrame(sodium, ring, plain, ctx);
-      add(
-        "frame",
-        equal(crypto.openFrame(sodium, ring, frame, ctx), plain) ? undefined : "mismatch",
-      );
-      const tampered = frame.slice();
-      tampered[tampered.length - 1] = (tampered[tampered.length - 1] ?? 0) ^ 1;
+      const sealed = crypto.sealFrame(sodium, ring, plain, ctx, device);
+      const opened = crypto.openFrame(sodium, ring, sealed.bytes, ctx);
+      const signed = crypto.verifyHeadSignature(ring.vaultId, opened.head, device.signPublicKey);
+      add("frame", equal(opened.plain, plain) && signed ? undefined : "mismatch");
+      const tampered = sealed.bytes.slice();
+      // The AEAD tag (the last 64 bytes are the head signature).
+      tampered[tampered.length - 65] = (tampered[tampered.length - 65] ?? 0) ^ 1;
       add(
         "frameTamper",
         throwsCode(() => crypto.openFrame(sodium, ring, tampered, ctx), "auth_failed"),

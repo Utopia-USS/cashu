@@ -12,11 +12,11 @@ import {
 import { createSyncEngine } from "../engine.js";
 import { MemoryClockStore, MemoryTransport } from "../memory.js";
 import { ManualClock, MemorySink } from "../testing/index.js";
+import { testSigners } from "../testing/signers.js";
 import { CloudSim, seededRandom } from "../transports/folder/testing/cloud.js";
 import { MemoryFolderFs } from "../transports/folder/testing/memory-fs.js";
 import { FolderTransport } from "../transports/folder/transport.js";
 import { createOwnLogCarrier, type OwnLogCarrier } from "./ownlog/carrier.js";
-import { createOwnLogCodec } from "./ownlog/codec.js";
 
 const sodium = await loadNodeSodium();
 const recovery = createRecoveryKey(sodium).publicKeys;
@@ -64,15 +64,17 @@ class Device {
   }
 
   async open(): Promise<void> {
-    const codec = createOwnLogCodec({ sodium, ring: this.ring });
+    const codec = signers.codecFor(this.id, this.ring);
+    const gate = signers.gateFor(this.id);
     const folder = new FolderTransport({ fs: this.replica, owner: this.id });
-    this.carrier = createOwnLogCarrier({ transport: folder, codec, device: this.id });
+    this.carrier = createOwnLogCarrier({ transport: folder, codec, gate, device: this.id });
     this.engine = await createSyncEngine({
       vault: VAULT,
       device: this.id,
       local: this.local,
       remotes: [this.options.ungated ? folder : this.carrier],
       codec,
+      gate,
       sink: this.sink,
       clockStore: this.clockStore,
       physicalClock: this.clock,
@@ -115,6 +117,9 @@ class Device {
 function ringPair(): Keyring {
   return createKeyring(sodium, recovery, VAULT);
 }
+
+// One signing identity per device id, for every world of this file (heads verify with them).
+const signers = testSigners(sodium, ringPair());
 
 async function makeWorld(seed: number, ids: DeviceId[], options: DeviceOptions = {}, rates = {}) {
   const sim = new CloudSim({ seed, partialRate: 0.35, conflictRate: 0.35, maxDelay: 6, ...rates });
@@ -236,10 +241,13 @@ describe("folder carrier: why the manifest gate exists", () => {
     return { a, b };
   }
 
-  it("without it the engine skips the rest of an earlier segment (events missing until a rebuild)", async () => {
+  it("without it, chains still stop the stream at the next segment instead of skipping (S29c B2)", async () => {
+    // Before signed heads the ungated engine applied segment 2 and skipped the rest of segment 1
+    // until a rebuild. Segment 2's first frame now links to segment 1's LAST frame, so against the
+    // stale copy its head does not verify: the stream waits, and nothing is skipped.
     const { a, b } = await staleSegmentScenario(true);
-    expect(b.sink.size).toBeLessThan(a.written);
-    await b.engine.rebuild();
+    expect(b.rejected.some((r) => r.device === A && r.seg === 2 && r.offset === 0)).toBe(true);
+    expect(b.rejected.every((r) => r.code === "bad_head_signature")).toBe(true);
     expect(b.sink.size).toBe(a.written);
   });
 

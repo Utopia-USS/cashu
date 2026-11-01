@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { FrameCodec, FramePosition } from "../../carrier.js";
 import {
+  createDeviceIdentity,
   createKeyring,
   createRecoveryKey,
+  type DeviceIdentity,
   FRAME_OVERHEAD,
+  type Keyring,
   loadNodeSodium,
   rotateKeyring,
+  verifyHeadSignature,
 } from "../../crypto/index.js";
 import { rejectionCode } from "../../errors.js";
 import { utf8Encode } from "../../runtime.js";
 import { encodePayload } from "../../segment.js";
-import { createOwnLogCodec } from "./codec.js";
-import { WriterKeyFloor } from "./floor.js";
+import { createOwnLogCodec, type OwnLogCodecOptions } from "./codec.js";
 
 const sodium = await loadNodeSodium();
 const VAULT = "5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e";
@@ -27,6 +30,27 @@ function at(seg: number, offset: number, device = A): FramePosition {
   return { vault: VAULT, device, seg, offset };
 }
 
+const identities = new Map<string, DeviceIdentity>([
+  [A, createDeviceIdentity(sodium, A)],
+  [B, createDeviceIdentity(sodium, B)],
+]);
+
+/** A codec over `ring` signing as `device` (default A). */
+function codecOf(ring: Keyring, device = A, extra: Partial<OwnLogCodecOptions> = {}): FrameCodec {
+  return createOwnLogCodec({ sodium, ring, signer: identities.get(device), ...extra });
+}
+
+/** The genesis chain of `device`'s data stream (every frame here is a stream's first). */
+const GENESIS = (device = A) => codecOf(newRing()).genesis(VAULT, device, 1);
+
+async function seal(codec: FrameCodec, plain: Uint8Array, pos: FramePosition) {
+  return (await codec.seal(plain, pos, GENESIS(pos.device))).sealed;
+}
+
+async function open(codec: FrameCodec, sealed: Uint8Array, pos: FramePosition) {
+  return (await codec.open(sealed, pos, GENESIS(pos.device))).plain;
+}
+
 function payload(n: number, marker = "x"): Uint8Array {
   const events = Array.from({ length: n }, (_, i) => ({
     t: "txn.imported",
@@ -40,7 +64,7 @@ function payload(n: number, marker = "x"): Uint8Array {
 
 async function codeOf(codec: FrameCodec, sealed: Uint8Array, pos: FramePosition) {
   try {
-    await codec.open(sealed, pos);
+    await open(codec, sealed, pos);
     return "opened";
   } catch (e) {
     return rejectionCode(e);
@@ -58,44 +82,44 @@ function contains(haystack: Uint8Array, needle: Uint8Array): boolean {
 describe("own-log codec", () => {
   it("round-trips, compresses before sealing and never shows the plaintext", async () => {
     const ring = newRing();
-    const codec = createOwnLogCodec({ sodium, ring });
+    const codec = codecOf(ring);
     const plain = payload(200, CANARY);
-    const sealed = await codec.seal(plain, at(1, 0));
-    expect(await codec.open(sealed, at(1, 0))).toEqual(plain);
+    const sealed = await seal(codec, plain, at(1, 0));
+    expect(await open(codec, sealed, at(1, 0))).toEqual(plain);
     expect(contains(sealed, utf8Encode(CANARY))).toBe(false);
-    const stored = createOwnLogCodec({ sodium, ring, compression: false });
-    const big = await stored.seal(plain, at(1, 0));
+    const stored = codecOf(ring, A, { compression: false });
+    const big = await seal(stored, plain, at(1, 0));
     expect(sealed.length).toBeLessThan(big.length / 4);
     expect(big.length).toBeGreaterThan(plain.length + FRAME_OVERHEAD);
     // Either side reads both (the codec byte travels inside the frame).
-    expect(await codec.open(big, at(1, 0))).toEqual(plain);
-    expect(await stored.open(sealed, at(1, 0))).toEqual(plain);
+    expect(await open(codec, big, at(1, 0))).toEqual(plain);
+    expect(await open(stored, sealed, at(1, 0))).toEqual(plain);
   });
 
   it("binds a frame to its vault, device, segment and offset", async () => {
     const ring = newRing();
-    const codec = createOwnLogCodec({ sodium, ring });
-    const sealed = await codec.seal(payload(3), at(2, 128));
+    const codec = codecOf(ring);
+    const sealed = await seal(codec, payload(3), at(2, 128));
     expect(await codeOf(codec, sealed, at(2, 128))).toBe("opened");
     expect(await codeOf(codec, sealed, at(2, 129))).toBe("auth_failed");
     expect(await codeOf(codec, sealed, at(3, 128))).toBe("auth_failed");
     expect(await codeOf(codec, sealed, at(2, 128, B))).toBe("auth_failed");
     const flipped = sealed.slice();
-    flipped[flipped.length - 3] = (flipped[flipped.length - 3] ?? 0) ^ 1;
+    flipped[flipped.length - 67] = (flipped[flipped.length - 67] ?? 0) ^ 1; // the AEAD tag
     expect(await codeOf(codec, flipped, at(2, 128))).toBe("auth_failed");
     expect(await codeOf(codec, sealed.slice(0, 30), at(2, 128))).toBe("truncated");
-    const other = createOwnLogCodec({ sodium, ring: newRing() });
+    const other = codecOf(newRing());
     expect(await codeOf(other, sealed, at(2, 128))).toBe("unknown_key");
   });
 
   it("follows key rotation: one log holds frames under two generations", async () => {
     const ringA = newRing();
     const ringB = ringA.clone(sodium);
-    const a = createOwnLogCodec({ sodium, ring: ringA });
-    const b = createOwnLogCodec({ sodium, ring: ringB });
-    const g1 = await a.seal(payload(2), at(1, 0));
+    const a = codecOf(ringA);
+    const b = codecOf(ringB);
+    const g1 = await seal(a, payload(2), at(1, 0));
     rotateKeyring(sodium, ringA);
-    const g2 = await a.seal(payload(2), at(1, 500));
+    const g2 = await seal(a, payload(2), at(1, 500));
     expect(await codeOf(b, g1, at(1, 0))).toBe("opened");
     expect(await codeOf(b, g2, at(1, 500))).toBe("unknown_key");
     ringB.merge(ringA); // S29 delivers the wrap
@@ -103,44 +127,31 @@ describe("own-log codec", () => {
     expect(await codeOf(a, g1, at(1, 0))).toBe("opened");
   });
 
-  it("generation floor: refuses old-key frames after a writer's first frame at the floor", async () => {
+  it("signs as its device and chains: the head verifies under the writer's key, link() needs no key", async () => {
     const ring = newRing();
-    const writer = createOwnLogCodec({ sodium, ring: ring.clone(sodium) });
-    const floor = new WriterKeyFloor();
-    const reader = createOwnLogCodec({ sodium, ring, floor });
-    const oldA1 = await writer.seal(payload(1), at(1, 0));
-    const oldA3 = await writer.seal(payload(1), at(1, 300)); // a revoked device forging A's id
-    const oldB = await writer.seal(payload(1), at(1, 0, B));
-    rotateKeyring(sodium, ring, { epoch: 1 }); // the revocation key, generation 2
-    const newA = createOwnLogCodec({ sodium, ring });
-    const newA2 = await newA.seal(payload(1), at(1, 100));
-    floor.raise(2);
-    expect(await codeOf(reader, oldA1, at(1, 0))).toBe("opened");
-    expect(await codeOf(reader, newA2, at(1, 100))).toBe("opened");
-    expect(await codeOf(reader, oldA3, at(1, 300))).toBe("key_not_allowed");
-    // History before the mark stays readable (a new device replays it).
-    expect(await codeOf(reader, oldA1, at(1, 0))).toBe("opened");
-    // B has not written at the new generation yet: the window only signatures close (S28d).
-    expect(await codeOf(reader, oldB, at(1, 0, B))).toBe("opened");
-    const restored = new WriterKeyFloor(floor.state());
-    const again = createOwnLogCodec({ sodium, ring, floor: restored });
-    expect(await codeOf(again, oldA3, at(1, 300))).toBe("key_not_allowed");
-    expect(JSON.stringify(floor.state())).toBe(
-      JSON.stringify({ generation: 2, marks: { [`${VAULT}/${A}`]: { seg: 1, offset: 100 } } }),
+    const codec = codecOf(ring);
+    const first = await codec.seal(payload(2), at(1, 0), GENESIS());
+    const second = await codec.seal(payload(2), at(1, first.head.offset), first.head.chain);
+    const a = identities.get(A) as DeviceIdentity;
+    const b = identities.get(B) as DeviceIdentity;
+    expect(verifyHeadSignature(VAULT, second.head, a.signPublicKey)).toBe(true);
+    expect(verifyHeadSignature(VAULT, second.head, b.signPublicKey)).toBe(false);
+    expect(codec.link(second.sealed, at(1, first.head.offset), first.head.chain)).toEqual(
+      second.head.chain,
     );
-    expect(() => floor.raise(0)).toThrow(RangeError);
-  });
-
-  it("passes an extra S27 policy per frame (S29 hook)", async () => {
-    const ring = newRing();
-    const codec = createOwnLogCodec({
-      sodium,
-      ring,
-      policy: (pos) => (pos.device === B ? { minGeneration: 2 } : undefined),
-    });
-    const fromA = await codec.seal(payload(1), at(1, 0));
-    const fromB = await codec.seal(payload(1), at(1, 0, B));
-    expect(await codeOf(codec, fromA, at(1, 0))).toBe("opened");
-    expect(await codeOf(codec, fromB, at(1, 0, B))).toBe("key_not_allowed");
+    const opened = await codecOf(ring, B).open(
+      second.sealed,
+      at(1, first.head.offset),
+      first.head.chain,
+    );
+    expect(opened.head.chain).toEqual(second.head.chain);
+    // Opened after another previous frame (reorder, splice, rewrite): the signature no longer fits.
+    const spliced = await codec.open(second.sealed, at(1, first.head.offset), GENESIS());
+    expect(verifyHeadSignature(VAULT, spliced.head, a.signPublicKey)).toBe(false);
+    // A device seals only its own frames; a read-only codec opens but never seals.
+    expect(() => codec.seal(payload(1), at(1, 0, B), GENESIS(B))).toThrow(RangeError);
+    const readOnly = createOwnLogCodec({ sodium, ring });
+    expect(await codeOf(readOnly, first.sealed, at(1, 0))).toBe("opened");
+    expect(() => readOnly.seal(payload(1), at(1, 0), GENESIS())).toThrow(/read only/);
   });
 });

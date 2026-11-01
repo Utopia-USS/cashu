@@ -10,7 +10,12 @@ import {
   unwrapKeys,
   wrapKeys,
 } from "../crypto/index.js";
-import { buildDeviceRevoked, buildRecoveryChanged, decodeRecoveryChanged } from "./events.js";
+import {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  buildRecoveryChanged,
+  decodeRecoveryChanged,
+} from "./events.js";
 import { buildRecoveryChange } from "./recoveryChange.js";
 import { epochPolicy } from "./rotation.js";
 import {
@@ -61,7 +66,12 @@ describe("recovery (n3)", () => {
     );
     if (!result.ok) throw new Error(result.reason);
     expect(result.change.recipients).toEqual([RECOVERY_SIGNER_ID]);
-    n.write(result.change.events);
+    // A restored device introduces itself in its first frame: its recovery-issued certificate in its
+    // own `device.added` (S29c phase B2: other devices verify its frames' signed heads with it).
+    n.write([
+      buildDeviceAdded(n.identity, vault.vaultId, newEid(), subject, "restored", cert),
+      ...result.change.events,
+    ]);
     result.change.commit();
     n.push();
     expect(n.devices.rotationNeeded()).toBeUndefined();

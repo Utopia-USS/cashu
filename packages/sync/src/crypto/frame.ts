@@ -1,47 +1,66 @@
-// Segment frame encryption (XChaCha20-Poly1305, random 24-byte nonce, the key's frame subkey).
+// Segment frame encryption and signing (XChaCha20-Poly1305 with the key's frame subkey, then the
+// writer's signed head, head.ts). Frame version 3 (S29c phase B2; v2, unsigned, is gone: nothing was
+// deployed and an unsigned reader would be a downgrade target).
 //
-//   frame  = version 0x02 | key id (16 bytes) | nonce (24 bytes) | ciphertext + tag (16 bytes)
-//   AAD    = "cashu/frame/v2" | version | key id | lp(vault id) | lp(device id) | u32 segment | u64 offset
+//   frame  = 0x03 | key id (16) | nonce (24) | ciphertext + tag (16) | head signature (64)
+//   AAD    = "cashu/frame/v3" | 0x03 | key id | lp(vault id) | lp(device id) | u32 segment | u64 offset
 //   plain' = u32 length | data | zero bytes up to Padme(length + 4)   (inside the AEAD)
+//   head   = (device, stream, segment, end, chain) signed by the writer (head.ts), where
+//            chain = chain(prev, digest(frame without the signature)) and end = offset + 4 + frame size
 //
-// Version 2 means "Padme v1 padding, no codec": a carrier that compresses must record the codec in
-// the version / AAD and cap the decompressed size. The AAD binds a frame to its vault (profile),
-// writer device and position, so a frame copied into another vault, another device's log or
-// another position fails authentication: no splice, reorder or replay. Length framing (the u32
-// before each frame in a segment file) belongs to the carrier (S28b); this module sees one frame.
+// The AAD binds a frame to its vault (profile), writer device and position, so a frame copied into
+// another vault, another device's log or another position fails authentication. The head binds it to
+// the writer's whole stream before it (`prev`) and to the writer's signing key: only the writer can
+// sign it, so a key holder that is not the writer (a revoked device keeps old data keys) can no longer
+// forge its frames. `openFrame` recomputes the chain and returns the head with the frame's signature;
+// it does NOT know the writer's key, so the signature is checked by the caller (devices/ through its
+// acceptance gate, with the registry's keys). Length framing (the u32 before each frame in a segment
+// file) belongs to the carrier; this module sees one frame.
 
 import { concat, fromHex, lengthPrefixed, toHex, u32, u64, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
-import { assertDeviceId } from "./identity.js";
+import {
+  CHAIN_BYTES,
+  frameDigest,
+  nextChain,
+  type SignedHead,
+  signHead,
+  streamOf,
+} from "./head.js";
+import { assertDeviceId, type DeviceIdentity, SIGNATURE_BYTES } from "./identity.js";
 import { assertVaultId, type KeyEntry, type Keyring, KID_BYTES } from "./keys.js";
 import { NONCE_BYTES, type Sodium, TAG_BYTES } from "./sodium.js";
 
-export const FRAME_VERSION = 2;
+export const FRAME_VERSION = 3;
 export const FRAME_HEADER_BYTES = 1 + KID_BYTES + NONCE_BYTES;
-/** Fixed bytes around the padded plaintext: header + tag. */
-export const FRAME_OVERHEAD = FRAME_HEADER_BYTES + TAG_BYTES;
+/** Fixed bytes around the padded plaintext: header + tag + head signature. */
+export const FRAME_OVERHEAD = FRAME_HEADER_BYTES + TAG_BYTES + SIGNATURE_BYTES;
 /** Largest plaintext one frame carries (64 MiB). */
 export const MAX_FRAME_PLAINTEXT = 64 * 1024 * 1024;
 const LENGTH_BYTES = 4;
-const AAD_CONTEXT = utf8("cashu/frame/v2");
+const AAD_CONTEXT = utf8("cashu/frame/v3");
 
 export interface FrameContext {
   vaultId: string;
   /** The writer device's id: 32 lowercase hex characters (`createDeviceId`). */
   deviceId: string;
   segment: number;
-  /** Byte offset of the frame inside its segment file. */
+  /** Byte offset of the frame inside its segment file (where its u32 length prefix starts). */
   offset: number;
+  /** Chain of the writer's previous frame in this stream (`genesisChain` before the first one). */
+  prev: Uint8Array;
 }
 
-/**
- * Which keys the carrier accepts for this frame's writer, checked before decrypting
- * (`key_not_allowed`). Example: a per-device generation floor so a revoked device cannot keep
- * writing frames under its old key.
- */
-export interface FramePolicy {
-  minGeneration?: number;
-  acceptKid?: (entry: KeyEntry) => boolean;
+export interface SealedFrame {
+  readonly bytes: Uint8Array;
+  readonly head: SignedHead;
+}
+
+export interface OpenedFrame {
+  readonly plain: Uint8Array;
+  readonly entry: KeyEntry;
+  /** The frame's head with its signature bytes: NOT verified here (the caller holds the keys). */
+  readonly head: SignedHead;
 }
 
 /**
@@ -105,14 +124,34 @@ function unpad(padded: Uint8Array): Uint8Array {
   return padded.slice(LENGTH_BYTES, LENGTH_BYTES + length);
 }
 
-/** Encrypts one frame with the ring's active key. */
+function headOf(ctx: FrameContext, withoutSignature: Uint8Array) {
+  if (ctx.prev.length !== CHAIN_BYTES) throw new RangeError("prev chain must be 32 bytes");
+  const stream = streamOf(ctx.segment);
+  const end = ctx.offset + LENGTH_BYTES + withoutSignature.length + SIGNATURE_BYTES;
+  const chain = nextChain(
+    { vaultId: ctx.vaultId, deviceId: ctx.deviceId, stream },
+    { seg: ctx.segment, start: ctx.offset, end },
+    ctx.prev,
+    frameDigest(withoutSignature),
+  );
+  return { device: ctx.deviceId, stream, seg: ctx.segment, offset: end, chain };
+}
+
+/** The chain after a frame from its bytes alone (no key needed): rebuilds the chains of a stored log. */
+export function frameChain(frame: Uint8Array, ctx: FrameContext): Uint8Array {
+  if (frame.length < SIGNATURE_BYTES) throw new CryptoError("truncated");
+  return headOf(ctx, frame.subarray(0, frame.length - SIGNATURE_BYTES)).chain;
+}
+
+/** Encrypts one frame with the ring's active key and signs its head as `signer` (the writer). */
 export function sealFrame(
   sodium: Sodium,
   ring: Keyring,
   plain: Uint8Array,
   ctx: FrameContext,
-): Uint8Array {
-  return sealFrameWithNonce(sodium, ring, plain, ctx, sodium.randomBytes(NONCE_BYTES));
+  signer: DeviceIdentity,
+): SealedFrame {
+  return sealFrameWithNonce(sodium, ring, plain, ctx, signer, sodium.randomBytes(NONCE_BYTES));
 }
 
 /** Test seam for golden vectors; production code always goes through `sealFrame`. */
@@ -121,20 +160,25 @@ export function sealFrameWithNonce(
   ring: Keyring,
   plain: Uint8Array,
   ctx: FrameContext,
+  signer: DeviceIdentity,
   nonce: Uint8Array,
-): Uint8Array {
+): SealedFrame {
   if (ctx.vaultId !== ring.vaultId) throw new CryptoError("vault_mismatch");
+  if (signer.deviceId !== ctx.deviceId) throw new RangeError("a device signs only its own frames");
   if (nonce.length !== NONCE_BYTES) throw new RangeError("nonce must be 24 bytes");
   if (plain.length > MAX_FRAME_PLAINTEXT) throw new CryptoError("frame_too_large");
   const active = ring.active;
   const kid = fromHex(active.kid);
   const padded = pad(plain);
+  let body: Uint8Array;
   try {
     const cipher = sodium.aeadEncrypt(padded, frameAad(kid, ctx), nonce, active.frameKey.expose());
-    return concat(Uint8Array.of(FRAME_VERSION), kid, nonce, cipher);
+    body = concat(Uint8Array.of(FRAME_VERSION), kid, nonce, cipher);
   } finally {
     padded.fill(0);
   }
+  const head = signHead(signer, ctx.vaultId, headOf(ctx, body));
+  return { bytes: concat(body, head.sig), head };
 }
 
 /** The key id a frame was sealed with, without decrypting it (to look up a missing key). */
@@ -145,33 +189,33 @@ export function frameKeyId(frame: Uint8Array): string {
 }
 
 /**
- * Decrypts and authenticates one frame. Throws `CryptoError` with code `truncated`,
- * `unsupported_version`, `frame_too_large`, `unknown_key`, `key_not_allowed` (policy),
- * `auth_failed` or `bad_padding`; never returns unauthenticated bytes.
+ * Decrypts and authenticates one frame and recomputes its head from `ctx.prev`. Throws
+ * `CryptoError` with code `truncated`, `unsupported_version`, `frame_too_large`, `unknown_key`,
+ * `auth_failed` or `bad_padding`; never returns unauthenticated bytes. The returned head's
+ * signature is the frame's, unverified: the caller verifies it with the writer's keys.
  */
 export function openFrame(
   sodium: Sodium,
   ring: Keyring,
   frame: Uint8Array,
   ctx: FrameContext,
-  policy?: FramePolicy,
-): Uint8Array {
+): OpenedFrame {
   const kidHex = frameKeyId(frame);
   if (frame.length > MAX_FRAME_BYTES) throw new CryptoError("frame_too_large");
   if (ctx.vaultId !== ring.vaultId) throw new CryptoError("vault_mismatch");
   const entry = ring.get(kidHex);
   if (!entry) throw new CryptoError("unknown_key");
-  if (policy?.minGeneration !== undefined && entry.generation < policy.minGeneration) {
-    throw new CryptoError("key_not_allowed");
-  }
-  if (policy?.acceptKid && !policy.acceptKid(entry)) throw new CryptoError("key_not_allowed");
+  const body = frame.subarray(0, frame.length - SIGNATURE_BYTES);
   const kid = frame.subarray(1, 1 + KID_BYTES);
   const nonce = frame.subarray(1 + KID_BYTES, FRAME_HEADER_BYTES);
-  const cipher = frame.subarray(FRAME_HEADER_BYTES);
+  const cipher = body.subarray(FRAME_HEADER_BYTES);
   const padded = sodium.aeadDecrypt(cipher, frameAad(kid, ctx), nonce, entry.frameKey.expose());
+  let plain: Uint8Array;
   try {
-    return unpad(padded);
+    plain = unpad(padded);
   } finally {
     padded.fill(0);
   }
+  const head = { ...headOf(ctx, body), sig: frame.slice(frame.length - SIGNATURE_BYTES) };
+  return { plain, entry, head };
 }

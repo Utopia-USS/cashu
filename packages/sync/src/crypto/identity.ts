@@ -21,15 +21,15 @@ const INSPECT = Symbol.for("nodejs.util.inspect.custom");
  * - `cashu/registry/v1`: device registry statements (`device.added`, `device.revoked`,
  *   `device.recoveryChanged`); `cashu/lease/v1`: fetch-lease statements; `cashu/pairing/v1`: pairing
  *   messages (challenge, welcome). Bodies are built by `devices/` from length-prefixed fields and
- *   canonical JSON.
- * S28d frame signatures must add a new context that neither extends nor is a prefix of these.
+ *   canonical JSON; `cashu/head/v1`: signed stream heads, one per frame (head.ts, S29c phase B2).
  */
 export type SigningContext =
   | "cashu/wrap/v3"
   | "cashu/cert/v1"
   | "cashu/registry/v1"
   | "cashu/lease/v1"
-  | "cashu/pairing/v1";
+  | "cashu/pairing/v1"
+  | "cashu/head/v1";
 
 const SIGNING_CONTEXTS: ReadonlySet<string> = new Set<SigningContext>([
   "cashu/wrap/v3",
@@ -37,6 +37,7 @@ const SIGNING_CONTEXTS: ReadonlySet<string> = new Set<SigningContext>([
   "cashu/registry/v1",
   "cashu/lease/v1",
   "cashu/pairing/v1",
+  "cashu/head/v1",
 ]);
 
 /** Reserved signer id of the recovery identity (16 zero bytes); never a device's id. */

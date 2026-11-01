@@ -26,11 +26,11 @@ import { createKeyring, createRecoveryKey, loadNodeSodium } from "../crypto/inde
 import { createSyncEngine } from "../engine.js";
 import { MemoryClockStore, MemoryTransport } from "../memory.js";
 import { ManualClock } from "../testing/index.js";
+import { testSigners } from "../testing/signers.js";
 import { seededRandom } from "../transports/folder/testing/cloud.js";
 import { NodeFolderFs } from "../transports/folder/testing/node-fs.js";
 import { FolderTransport } from "../transports/folder/transport.js";
 import { createOwnLogCarrier } from "./ownlog/carrier.js";
-import { createOwnLogCodec } from "./ownlog/codec.js";
 
 const sodium = await loadNodeSodium();
 const VAULT = "9e5f9e5f9e5f9e5f9e5f9e5f9e5f9e5f";
@@ -179,6 +179,7 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
     const events = workload();
     expect(events.length).toBe(64_340);
     const ring = createKeyring(sodium, createRecoveryKey(sodium).publicKeys, VAULT);
+    const signers = testSigners(sodium, ring);
     const folder = new NodeFolderFs(await tempDir("folder"));
     const results: Record<string, number> = {};
 
@@ -188,10 +189,12 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
       sink: CountingSink,
       clock = new MemoryClockStore(),
     ) => {
-      const codec = createOwnLogCodec({ sodium, ring });
+      const codec = signers.codecFor(id);
+      const gate = signers.gateFor(id);
       const remote = createOwnLogCarrier({
         transport: new FolderTransport({ fs: folder, owner: id }),
         codec,
+        gate,
         device: id,
       });
       return createSyncEngine({
@@ -200,6 +203,7 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
         local,
         remotes: [remote],
         codec,
+        gate,
         sink,
         clockStore: clock,
         physicalClock: new ManualClock(T0),

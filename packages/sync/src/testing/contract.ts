@@ -11,6 +11,7 @@ import type {
   Awaitable,
   DeviceId,
   FrameCodec,
+  FrameGate,
   SyncEngine,
   SyncResult,
   Transport,
@@ -31,8 +32,10 @@ import { MemorySink } from "./sink.js";
 export interface CarrierMedium {
   /** The remote transport as one device sees it (a client of the relay, its view of the folder). */
   remoteFor(device: DeviceId): Awaitable<Transport>;
-  /** The vault's frame codec (same keys on every device). */
+  /** The frame codec of `device` (the vault's keys on every device; it signs as `device`). */
   codecFor(device: DeviceId): Awaitable<FrameCodec>;
+  /** The frame gate of `device` (verifies every device's signed heads). */
+  gateFor(device: DeviceId): Awaitable<FrameGate>;
   /** A device's local log store. Default: a fresh `MemoryTransport` per device. */
   localFor?(device: DeviceId): Awaitable<Transport>;
   /** Resolve once appends through one handle are visible through every other handle. */
@@ -86,6 +89,7 @@ class TestDevice {
   clockStore: MemoryClockStore;
   readonly local: Transport;
   readonly codec: FrameCodec;
+  readonly gate: FrameGate;
   readonly options: DeviceOptions;
   #eid = 0;
 
@@ -94,12 +98,14 @@ class TestDevice {
     ctx: Ctx;
     local: Transport;
     codec: FrameCodec;
+    gate: FrameGate;
     options: DeviceOptions;
   }) {
     this.id = init.id;
     this.ctx = init.ctx;
     this.local = init.local;
     this.codec = init.codec;
+    this.gate = init.gate;
     this.options = init.options;
     this.clock = new ManualClock(T0 + (init.options.clockOffsetMs ?? 0));
     this.sink = new MemorySink(init.options.supported);
@@ -109,7 +115,8 @@ class TestDevice {
   static async create(ctx: Ctx, id: DeviceId, options: DeviceOptions = {}): Promise<TestDevice> {
     const local = (await ctx.medium.localFor?.(id)) ?? new MemoryTransport();
     const codec = await ctx.medium.codecFor(id);
-    const device = new TestDevice({ id, ctx, local, codec, options });
+    const gate = await ctx.medium.gateFor(id);
+    const device = new TestDevice({ id, ctx, local, codec, gate, options });
     for (const m of [ctx.medium, ...(options.extraMedia ?? [])]) {
       device.remotes.push(new FaultInjector(await m.remoteFor(id)));
     }
@@ -131,6 +138,7 @@ class TestDevice {
       local: this.local,
       remotes: this.remotes,
       codec: this.codec,
+      gate: this.gate,
       sink: this.sink,
       clockStore: this.clockStore,
       physicalClock: this.clock,

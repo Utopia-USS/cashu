@@ -15,6 +15,7 @@ import { crypto } from "@cashu/sync";
 import { type DaemonConfig, loadConfig } from "./config.js";
 import { InitRefusedError, initVaults } from "./init.js";
 import { labFileKeyStore } from "./keys/labFile.js";
+import { labGate } from "./keys/labGate.js";
 import { loadVaultKeys } from "./keys/vaultKeys.js";
 import { acquireLock, LockedError } from "./lock.js";
 import { BlockedError, Loop } from "./loop.js";
@@ -53,6 +54,7 @@ async function openLinked(
         remotes: config.remotes.map((r) => r.root),
         keys,
         sodium,
+        gate: await labGate(store, sodium, keys.ring),
       }),
     );
   }

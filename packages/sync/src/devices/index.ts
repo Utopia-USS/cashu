@@ -51,6 +51,7 @@ export {
   type Watermark,
   waiveConfirmationText,
 } from "./events.js";
+export { DeviceFrameGate, type DeviceFrameGateOptions, logEventsOf } from "./gate.js";
 export {
   devicesNeedingRebuild,
   type FrameAt,
@@ -58,8 +59,8 @@ export {
   type FrameRejection,
   type FrameRejectionReason,
   type FrameVerdict,
-  type KeyOrder,
 } from "./guard.js";
+export { type BehindReport, type ForkReport, StreamIndex } from "./heads.js";
 export {
   catchUpMissing,
   creatorPin,

@@ -105,35 +105,113 @@ describe("cashU format golden vectors", () => {
     );
   });
 
-  it("frame", () => {
-    const frame = sealFrameWithNonce(sodium, ring(), utf8("hello frame"), frameCtx, nonce);
-    expect(toHex(frame)).toBe(
-      "027bd6215fabb945b83e9fe5c54e25bd1d" +
-        "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7" +
-        "305fbd31db6286351d93b9be644b2e26" +
-        "3b20b134d1674ab17236387ff34b1c43",
+  // The writer of the vector frame: fixed seeds, so its Ed25519 signatures are fixed too.
+  const writer = () =>
+    new DeviceIdentity(DEVICE_A, new Secret(range(0x10, 0x2f)), new Secret(range(0x30, 0x4f)));
+  const u64be = (n: number) => [
+    0,
+    0,
+    0,
+    0,
+    (n >>> 24) & 255,
+    (n >>> 16) & 255,
+    (n >>> 8) & 255,
+    n & 255,
+  ];
+
+  it("chain genesis (data stream)", () => {
+    expect(toHex(frameCtx.prev)).toBe(
+      "d0cbaf449fc4e5df4f83c13ca9a25a9bf075a29cb8b7453cc33eeb48475085ae",
     );
-    expect(openFrame(sodium, ring(), frame, frameCtx)).toEqual(utf8("hello frame"));
+    // Spelled out from head.ts with an independent BLAKE2b.
+    const genesis = blake2b(
+      new Uint8Array([...utf8("cashu/chain/v1/genesis"), ...lp(vaultId), ...lp(DEVICE_A), 1]),
+      { dkLen: 32 },
+    );
+    expect(toHex(genesis)).toBe(toHex(frameCtx.prev));
   });
 
-  it("an independent implementation (@noble/ciphers + @noble/hashes) opens and unpads the frame", () => {
-    const frame = sealFrameWithNonce(sodium, ring(), utf8("hello frame"), frameCtx, nonce);
+  it("frame v3", () => {
+    const sealed = sealFrameWithNonce(
+      sodium,
+      ring(),
+      utf8("hello frame"),
+      frameCtx,
+      writer(),
+      nonce,
+    );
+    expect(toHex(sealed.bytes)).toBe(
+      "037bd6215fabb945b83e9fe5c54e25bd1d" +
+        "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7" +
+        "305fbd31db6286351d93b9be644b2e26" +
+        "00b0471a5c719e34910c5963a67f65f2" +
+        "2b658677417a3a9469938b728262ecef4d7f6df46fcb349ff273967a3b794f72393ba0a0e632d089fe47f2db923ec0f59879de70f300076e2a2e9ca939761005",
+    );
+    expect(toHex(sealed.head.chain)).toBe(
+      "2889ba2527caea771a56edc4ea96f7dbf02ceb79d9388c00a9a2efa746405c6e",
+    );
+    const opened = openFrame(sodium, ring(), sealed.bytes, frameCtx);
+    expect(opened.plain).toEqual(utf8("hello frame"));
+    expect(toHex(opened.head.chain)).toBe(toHex(sealed.head.chain));
+  });
+
+  it("an independent implementation (@noble) opens the frame, recomputes its chain and checks the head", () => {
+    const { bytes: frame } = sealFrameWithNonce(
+      sodium,
+      ring(),
+      utf8("hello frame"),
+      frameCtx,
+      writer(),
+      nonce,
+    );
     const kid = frame.subarray(1, 1 + KID_BYTES);
+    const body = frame.subarray(0, frame.length - 64);
     // AAD spelled out byte by byte from the format comment in frame.ts.
     const aad = new Uint8Array([
-      ...utf8("cashu/frame/v2"),
-      2,
+      ...utf8("cashu/frame/v3"),
+      3,
       ...kid,
       ...lp(vaultId),
       ...lp(DEVICE_A),
       ...[0, 0, 0, 7],
-      ...[0, 0, 0, 0, 0, 0, 0, 128],
+      ...u64be(128),
     ]);
     const plain = xchacha20poly1305(frameKey, nonce, aad).decrypt(
-      frame.subarray(FRAME_HEADER_BYTES),
+      body.subarray(FRAME_HEADER_BYTES),
     );
     // u32 length 11 | "hello frame" | zero padding up to Padme(15) = 16.
     expect(plain).toEqual(new Uint8Array([0, 0, 0, 11, ...utf8("hello frame"), 0]));
+    const end = 128 + 4 + frame.length;
+    const digest = blake2b(new Uint8Array([...utf8("cashu/frame-digest/v1"), ...body]), {
+      dkLen: 32,
+    });
+    const chain = blake2b(
+      new Uint8Array([
+        ...utf8("cashu/chain/v1"),
+        ...lp(vaultId),
+        ...lp(DEVICE_A),
+        1,
+        ...[0, 0, 0, 7],
+        ...u64be(128),
+        ...u64be(end),
+        ...frameCtx.prev,
+        ...digest,
+      ]),
+      { dkLen: 32 },
+    );
+    const headBody = new Uint8Array([
+      ...utf8("cashu/head/v1"),
+      ...lp(vaultId),
+      ...lp(DEVICE_A),
+      1,
+      ...[0, 0, 0, 7],
+      ...u64be(end),
+      ...chain,
+    ]);
+    expect(
+      ed25519.verify(frame.subarray(frame.length - 64), headBody, writer().signPublicKey),
+    ).toBe(true);
+    expect(toHex(chain)).toBe(toHex(openFrame(sodium, ring(), frame, frameCtx).head.chain));
   });
 
   it("recovery public keys for the all-zero phrase", () => {

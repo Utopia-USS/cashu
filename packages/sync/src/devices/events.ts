@@ -12,6 +12,7 @@
 import type { InboundBatch, SegmentCursor, UnstampedEvent } from "../carrier.js";
 import {
   type DeviceIdentity,
+  decodeHead,
   isDeviceId,
   RECOVERY_SIGNER_ID,
   type RecoveryIdentity,
@@ -112,6 +113,31 @@ export interface RevokedEntry {
   readonly device: string;
   /** First position of the device's own stream that is no longer accepted (its revocation point). */
   readonly cut: SegmentCursor;
+  /**
+   * The target's signed head AT the cut (crypto `encodeHead`; S29c phase B2): the cut commits to the
+   * target's stream hash as the revoker held it. Absent when the revoker holds no frame ending
+   * exactly there (nothing applied, or a cut chosen by the words below what it holds). Readers
+   * whose copy of the target's stream has another chain at the cut hold a rewritten stream: the
+   * target is frozen at the prefix the attestations agree on (devices/heads.ts).
+   */
+  readonly head?: string;
+}
+
+/** The JSON form of an entry in signed bodies (revocation and consent). */
+function entryJson(e: RevokedEntry): { readonly [key: string]: CanonicalValue } {
+  return {
+    device: e.device,
+    cut: { seg: e.cut.seg, offset: e.cut.offset },
+    ...(e.head === undefined ? {} : { head: e.head }),
+  };
+}
+
+/** A head that names `device` and ends exactly at `cut` (data stream), or undefined. */
+function headAtCut(value: unknown, device: string, cut: SegmentCursor): string | undefined {
+  const head = decodeHead(value);
+  if (!head || head.device !== device || head.stream !== 1) return undefined;
+  if (head.seg !== cut.seg || head.offset !== cut.offset) return undefined;
+  return value as string;
 }
 
 export interface DeviceRevokedData {
@@ -144,10 +170,7 @@ export function revocationConsentBody(
   signer: string,
 ): Uint8Array {
   return statementBody(vaultId, REVOCATION_CONSENT_BODY, eid, {
-    devices: entries.map((e) => ({
-      device: e.device,
-      cut: { seg: e.cut.seg, offset: e.cut.offset },
-    })),
+    devices: entries.map(entryJson),
     signer,
   });
 }
@@ -426,11 +449,13 @@ export function buildDeviceRevoked(
   ) {
     throw new RangeError("recertify 0-256 distinct eids");
   }
+  for (const e of entries) {
+    if (e.head !== undefined && headAtCut(e.head, e.device, e.cut) === undefined) {
+      throw new RangeError("a cut head must be the target's head at the cut");
+    }
+  }
   return signed(signer, "cashu/registry/v1", vaultId, DEVICE_REVOKED, eid, {
-    devices: entries.map((e) => ({
-      device: e.device,
-      cut: { seg: e.cut.seg, offset: e.cut.offset },
-    })),
+    devices: entries.map(entryJson),
     ...(recertify.length > 0 ? { recertify: [...recertify] } : {}),
     ...(Object.keys(consent).length > 0 ? { consent: { ...consent } } : {}),
     signer: signer.deviceId,
@@ -799,13 +824,20 @@ export function decodeDeviceRevoked(
   const entries: RevokedEntry[] = [];
   const seen = new Set<string>();
   for (const e of devices) {
-    if (!isRecord(e) || !hasExactly(e, ["device", "cut"])) return undefined;
+    if (
+      !isRecord(e) ||
+      !(hasExactly(e, ["device", "cut"]) || hasExactly(e, ["device", "cut", "head"]))
+    )
+      return undefined;
     const { device, cut } = e;
     if (typeof device !== "string" || !isDeviceId(device) || seen.has(device) || !isCursor(cut)) {
       return undefined;
     }
+    const at = { seg: cut.seg, offset: cut.offset };
+    const head = "head" in e ? headAtCut(e.head, device, at) : undefined;
+    if ("head" in e && head === undefined) return undefined;
     seen.add(device);
-    entries.push({ device, cut: { seg: cut.seg, offset: cut.offset } });
+    entries.push({ device, cut: at, ...(head === undefined ? {} : { head }) });
   }
   let consents: Record<string, string> | undefined;
   if ("consent" in data) {

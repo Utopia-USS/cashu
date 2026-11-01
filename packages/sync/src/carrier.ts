@@ -10,7 +10,11 @@
 // - Each device keeps a full local copy of the log in its `local` transport (own segments are written
 //   there first, so writes work offline) and replicates with zero or more `remotes` (synced folder,
 //   relay) on `sync()`: own bytes are pushed by offset, foreign frames are pulled after the codec
-//   verified them, so the local copy only ever holds frames that open.
+//   opened them and the `FrameGate` verified their signed heads, so the local copy only ever holds
+//   frames that open and that their writer signed (S29c phase B2).
+// - Every frame ends with its writer's signed head over the writer's hash chain (crypto/head.ts):
+//   the codec computes the chain from the previous frame's (`prev`), the gate checks the signature
+//   with the registry's keys (devices/gate.ts) and decides whether the frame's data is accepted.
 // - A cursor per device segment stream says how far the view has applied. The sink persists it in the
 //   same transaction as the batch, so a crash re-delivers (at least once) and the sink's idempotency
 //   by `eid` (events.md 2) makes that harmless.
@@ -112,14 +116,81 @@ export interface FramePosition {
 }
 
 /**
- * Seam for compression + authenticated encryption (S27 `sealFrame` / `openFrame`, wrapped by S28b).
- * `open` MUST throw (preferably a `FrameRejectedError` or an error with a string `code`) when the
- * bytes were changed, truncated, sealed with another key or for another position. It must never
- * return partial plaintext.
+ * A frame's signed head (crypto `SignedHead`, structurally): the writer's statement about its stream
+ * `stream` (0 = the carrier's manifest, segment 0; 1 = data) up to `seg:offset`, the cursor after the
+ * frame, with the hash chain over every frame before it and the writer's Ed25519 signature.
+ */
+export interface FrameHead {
+  readonly device: DeviceId;
+  readonly stream: 0 | 1;
+  readonly seg: number;
+  readonly offset: number;
+  readonly chain: Uint8Array;
+  readonly sig: Uint8Array;
+}
+
+/**
+ * Seam for compression + authenticated encryption + the writer's signature (S27 `sealFrame` /
+ * `openFrame` v3, wrapped by S28b). `prev` is the chain of the writer's previous frame in the same
+ * stream (`genesis` before the first). `open` MUST throw (preferably a `FrameRejectedError` or an
+ * error with a string `code`) when the bytes were changed, truncated, sealed with another key or for
+ * another position, and must never return partial plaintext; the head it returns carries the
+ * frame's signature UNVERIFIED (the `FrameGate` checks it with the writer's keys).
  */
 export interface FrameCodec {
-  seal(plain: Uint8Array, at: FramePosition): Awaitable<Uint8Array>;
-  open(sealed: Uint8Array, at: FramePosition): Awaitable<Uint8Array>;
+  /** Seals as this codec's own device (the writer of `at`); throws for another writer. */
+  seal(
+    plain: Uint8Array,
+    at: FramePosition,
+    prev: Uint8Array,
+  ): Awaitable<{ readonly sealed: Uint8Array; readonly head: FrameHead }>;
+  open(
+    sealed: Uint8Array,
+    at: FramePosition,
+    prev: Uint8Array,
+  ): Awaitable<{ readonly plain: Uint8Array; readonly head: FrameHead }>;
+  /** The chain after a frame, from its bytes alone (no decryption): rebuilds chains of a stored log. */
+  link(sealed: Uint8Array, at: FramePosition, prev: Uint8Array): Uint8Array;
+  /** The chain before the first frame of `device`'s stream (`stream` 0: manifest, 1: data). */
+  genesis(vault: VaultId, device: DeviceId, stream: 0 | 1): Uint8Array;
+}
+
+/** A gate decision; `wait`: not decidable yet (writer unknown), retried after the next change. */
+export type GateVerdict =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly wait: boolean; readonly code: string };
+
+/**
+ * The device layer as the engine and the carrier see it (devices/gate.ts implements it over the
+ * registry). Signatures are checked here, never by the codec, because only the registry knows which
+ * keys a writer has.
+ */
+export interface FrameGate {
+  /**
+   * Whether `head` (just opened, chain recomputed by the codec) was signed by its writer. `events`
+   * are the frame's decoded events (empty for manifest records or an unreadable payload): a stream's
+   * first frame may introduce its writer with the recovery-issued certificate it carries.
+   */
+  authenticate(head: FrameHead, events: readonly WireEvent[]): GateVerdict;
+  /**
+   * A verified data frame, in its writer's stream order: ingests its statements (`device.*`,
+   * `lease.*`) and decides whether its DATA is accepted (revocation cut, fork freeze).
+   * `changed`: the registry changed, so frames that waited may verify now.
+   */
+  accept(
+    head: FrameHead,
+    events: readonly WireEvent[],
+  ): { readonly verdict: GateVerdict; readonly changed: boolean };
+  /**
+   * True when the gate keeps state built from statements (a registry) that it does not have yet:
+   * the engine then walks the whole local log through `accept` once after start (without
+   * re-delivering data). A stateless gate returns false.
+   */
+  needsReplay(): boolean;
+  /** True once data the view holds is no longer accepted (D8): rebuild. Reading it clears it. */
+  takeRebuild(): boolean;
+  /** Forget which data was accepted (the engine resets the sink and replays the log next). */
+  reset(): void;
 }
 
 export interface SegmentInfo {
@@ -202,6 +273,8 @@ export interface WriteResult {
 }
 
 export interface SyncResult {
+  /** True when the pass rebuilt the view because data it held was no longer accepted (D8). */
+  readonly rebuilt: boolean;
   /** Own bytes pushed to remotes. */
   readonly pushedBytes: number;
   /** Foreign frames verified and copied into the local log. */
@@ -215,7 +288,10 @@ export interface SyncResult {
   readonly needsUpgrade: boolean;
   /** Remotes that could not be reached in this pass. */
   readonly offlineRemotes: number;
-  /** Frames that did not open or parse; that device's stream waits at the frame (retried next pass). */
+  /**
+   * Frames that did not open, parse or verify (or whose writer is not known yet: `writer-unknown`);
+   * that device's stream waits at the frame (retried next pass).
+   */
   readonly rejected: readonly RejectedFrame[];
   readonly clockWarnings: readonly ClockWarning[];
   /** A remote holds more of this device's own log than the local copy: writes are refused. */

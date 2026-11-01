@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createKeyring, createRecoveryKey, loadNodeSodium } from "../../crypto/index.js";
 import { TransportError } from "../../errors.js";
 import { MemoryTransport } from "../../memory.js";
-import { frameBytes } from "../../segment.js";
+import { frameBytes, scanFrames } from "../../segment.js";
+import { testSigners } from "../../testing/signers.js";
 import { createOwnLogCarrier } from "./carrier.js";
-import { createOwnLogCodec } from "./codec.js";
 import { encodeRecord, MANIFEST_SEG } from "./manifest.js";
 
 const sodium = await loadNodeSodium();
@@ -12,13 +12,35 @@ const VAULT = "ca77ca77ca77ca77ca77ca77ca77ca77";
 const A = "a1".repeat(16);
 const B = "b2".repeat(16);
 const ring = createKeyring(sodium, createRecoveryKey(sodium).publicKeys, VAULT);
-const codec = createOwnLogCodec({ sodium, ring });
+const signers = testSigners(sodium, ring);
+const codec = signers.codecFor(A);
+const gate = signers.gateFor(A);
+signers.identityOf(B);
+
+/** The chain after the manifest records of A that `raw` holds (what the next record links to). */
+async function manifestChain(raw: MemoryTransport): Promise<Uint8Array> {
+  let prev = codec.genesis(VAULT, A, 0);
+  const bytesOf = await raw.read(VAULT, A, MANIFEST_SEG, 0);
+  for (const f of scanFrames(bytesOf, 0).frames) {
+    prev = codec.link(
+      f.sealed,
+      { vault: VAULT, device: A, seg: MANIFEST_SEG, offset: f.offset },
+      prev,
+    );
+  }
+  return prev;
+}
 const bytes = (n: number, fill = 1) => new Uint8Array(n).fill(fill);
 
 function setup() {
   const raw = new MemoryTransport();
-  const writer = createOwnLogCarrier({ transport: raw, codec, device: A });
-  const reader = createOwnLogCarrier({ transport: raw, codec, device: B });
+  const writer = createOwnLogCarrier({ transport: raw, codec, gate, device: A });
+  const reader = createOwnLogCarrier({
+    transport: raw,
+    codec: signers.codecFor(B),
+    gate,
+    device: B,
+  });
   return { raw, writer, reader };
 }
 
@@ -61,7 +83,7 @@ describe("own-log carrier (manifest gating)", () => {
 
     // Eventual storage: copy pieces of A's log into what B sees.
     const partial = new MemoryTransport();
-    const seen = createOwnLogCarrier({ transport: partial, codec, device: B });
+    const seen = createOwnLogCarrier({ transport: partial, codec, gate, device: B });
     const copy = async (seg: number, upTo?: number) => {
       const all = await full.read(VAULT, A, seg, 0);
       const have =
@@ -101,12 +123,13 @@ describe("own-log carrier (manifest gating)", () => {
     await writer.append(VAULT, A, 1, 0, bytes(10));
     // A forged "closed" record sealed for another position.
     const forged = frameBytes(
-      await codec.seal(encodeRecord({ kind: "closed", seg: 1, size: 4 }), {
-        vault: VAULT,
-        device: A,
-        seg: MANIFEST_SEG,
-        offset: 999,
-      }),
+      (
+        await codec.seal(
+          encodeRecord({ kind: "closed", seg: 1, size: 4 }),
+          { vault: VAULT, device: A, seg: MANIFEST_SEG, offset: 999 },
+          codec.genesis(VAULT, A, 0),
+        )
+      ).sealed,
     );
     await raw.append(VAULT, A, MANIFEST_SEG, 0, forged);
     await raw.append(VAULT, A, 2, 0, bytes(3));
@@ -121,12 +144,13 @@ describe("own-log carrier (manifest gating)", () => {
     await second.writer.append(VAULT, A, 2, 0, bytes(3));
     const size = (await second.raw.list(VAULT)).find((s) => s.seg === 0)?.size ?? 0;
     const conflicting = frameBytes(
-      await codec.seal(encodeRecord({ kind: "closed", seg: 1, size: 7 }), {
-        vault: VAULT,
-        device: A,
-        seg: MANIFEST_SEG,
-        offset: size,
-      }),
+      (
+        await codec.seal(
+          encodeRecord({ kind: "closed", seg: 1, size: 7 }),
+          { vault: VAULT, device: A, seg: MANIFEST_SEG, offset: size },
+          await manifestChain(second.raw),
+        )
+      ).sealed,
     );
     await second.raw.append(VAULT, A, MANIFEST_SEG, size, conflicting);
     expect(await view(second.reader)).toEqual([]);
@@ -154,7 +178,7 @@ describe("own-log carrier (manifest gating)", () => {
       if (s.seg === 1 || s.seg === 2) continue;
       await compacted.append(VAULT, A, s.seg, 0, await raw.read(VAULT, A, s.seg, 0));
     }
-    const fresh = createOwnLogCarrier({ transport: compacted, codec, device: B });
+    const fresh = createOwnLogCarrier({ transport: compacted, codec, gate, device: B });
     expect(await fresh.list(VAULT)).toEqual([]);
     expect(fresh.status(VAULT)[0]).toMatchObject({
       held: { seg: 1, reason: "compacted" },
@@ -167,6 +191,7 @@ describe("own-log carrier (manifest gating)", () => {
     const resumed = createOwnLogCarrier({
       transport: compacted,
       codec,
+      gate,
       device: B,
       resumeFrom: (_vault, device) => (device === A ? { seg: 3, offset: 8 } : undefined),
     });

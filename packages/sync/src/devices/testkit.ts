@@ -2,14 +2,17 @@
 //
 // Each simulated device holds its own identity, ring, `VaultDevices` state, HLC clock (with its own
 // skew against the simulated true time) and its own append-only stream of batches. One batch is one
-// frame here, sealed under the writer's active key (its key order is recorded with the batch). A
-// shared remote keeps every pushed batch (and lets a test rewrite one, as untrusted storage can).
+// frame here: its "bytes" are its canonical content, and it carries its writer's signed head over
+// the writer's hash chain (crypto head.ts, S29c phase B2). A shared remote keeps every pushed batch
+// (and lets a test rewrite one, as untrusted storage can).
 //
-// A device models the store + codec contract of guard.ts: it downloads every batch in per-device
-// order, passes the statements of EVERY downloaded batch to `VaultDevices.ingest` (also batches the
-// guard rejects), and applies a batch's data only through the guard: per writer, the accepted data
-// is the longest prefix that passes `guard.check`; when an ingest reports rejected frames, the
-// device drops that writer's data after the reported position and re-applies from there.
+// A device models the engine + gate contract (carrier.ts `FrameGate`, devices/gate.ts): it downloads
+// batches in per-device order, recomputes each batch's chain from the previous batch IT holds,
+// verifies the head through the gate (a forged, rewritten or reordered batch stops that stream; a
+// writer not known yet waits), passes the statements of every verified batch to the gate (also
+// batches whose data is rejected), and applies a batch's data only through the guard: per writer,
+// the accepted data is the longest prefix that passes `guard.check`. When the gate reports data no
+// longer accepted, the device rebuilds its data view (lead decision D8).
 
 import type { LeaseTransport, SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { START_CURSOR } from "../carrier.js";
@@ -19,11 +22,17 @@ import {
   createRecoveryKey,
   createVaultWithRecovery,
   type DeviceIdentity,
+  frameDigest,
+  genesisChain,
+  headBody,
   type Keyring,
   loadNodeSodium,
+  nextChain,
   type RecoveryIdentity,
   recoveryIdentity,
+  type SignedHead,
   type Sodium,
+  signHead,
 } from "../crypto/index.js";
 import { formatHlc, type Hlc, HybridClock, parseHlc } from "../hlc.js";
 import {
@@ -34,7 +43,8 @@ import {
   pinConfirmationText,
   type RevokedEntry,
 } from "./events.js";
-import type { FrameRejection, KeyOrder } from "./guard.js";
+import { DeviceFrameGate } from "./gate.js";
+import type { FrameRejection } from "./guard.js";
 import { creatorPin, type LeaseLocal, type OwnLeaseRecord, pinEventFor } from "./lease.js";
 import { PairingInviter, PairingJoiner } from "./pairing.js";
 import { type PairingLink, runInviter, runJoiner } from "./pairingLink.js";
@@ -73,8 +83,58 @@ export interface Batch {
   /** Start of the batch's frame (frame AAD offset) and the cursor after it. */
   readonly start: SegmentCursor;
   readonly cursor: SegmentCursor;
-  /** The key the writer sealed it under. */
-  readonly key: KeyOrder;
+  /** The writer's signed head (its chain as the writer computed it; readers recompute theirs). */
+  readonly head: SignedHead;
+}
+
+/** The bytes a batch's digest covers (its "frame"): writer, positions and events. */
+function batchBytes(b: Pick<Batch, "device" | "start" | "cursor" | "events">): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify([
+      b.device,
+      b.start,
+      b.cursor,
+      b.events.map((e) => [e.eid, e.hlc, e.type, e.v, e.data]),
+    ]),
+  );
+}
+
+/** The chain after `b` when the stream before it ends with `prev`. */
+export function chainOf(
+  vaultId: string,
+  b: Pick<Batch, "device" | "start" | "cursor" | "events">,
+  prev: Uint8Array,
+): Uint8Array {
+  return nextChain(
+    { vaultId, deviceId: b.device, stream: 1 },
+    { seg: b.start.seg, start: b.start.offset, end: b.cursor.offset },
+    prev,
+    frameDigest(batchBytes(b)),
+  );
+}
+
+/**
+ * A batch at `start`..`cursor` of `writer`'s stream whose head is signed by `signer`'s key, whoever
+ * that is (a forgery when it is not the writer: a revoked device or untrusted storage).
+ */
+export function forgeBatch(
+  vaultId: string,
+  signer: DeviceIdentity,
+  writer: string,
+  at: { readonly start: SegmentCursor; readonly cursor: SegmentCursor },
+  events: readonly LogEvent[],
+  prev: Uint8Array,
+): Batch {
+  const content = { device: writer, start: at.start, cursor: at.cursor, events };
+  const unsigned = {
+    device: writer,
+    stream: 1 as const,
+    seg: at.cursor.seg,
+    offset: at.cursor.offset,
+    chain: chainOf(vaultId, content, prev),
+  };
+  const head = { ...unsigned, sig: signer.sign("cashu/head/v1", headBody(vaultId, unsigned)) };
+  return { ...content, head };
 }
 
 /**
@@ -205,12 +265,17 @@ export class SimDevice {
   /** The vault's recovery words, as the owner knows them (the honest revoke helpers fall back to them). */
   words: RecoveryIdentity | undefined;
   devices!: VaultDevices;
+  gate!: DeviceFrameGate;
   #bootstrap: readonly Uint8Array[] = [];
   #clock: HybridClock;
   #pushed = 0;
   #offset = 0;
-  /** Downloaded batches per writer, in stream order (statements already ingested). */
+  /** Downloaded batches per writer, in stream order (verified; statements already ingested). */
   readonly #downloaded = new Map<string, Batch[]>();
+  /** The chain after the last downloaded batch per writer (as this device computed it). */
+  readonly #heldChains = new Map<string, Uint8Array>();
+  /** Every head verdict of a download, in order (tests read why a stream stopped). */
+  readonly verdicts: { device: string; cursor: SegmentCursor; verdict: string }[] = [];
   /** Accepted data per writer: the batches whose data is in this device's view. */
   readonly #accepted = new Map<string, Batch[]>();
   /** Peers whose latest events were more than the skew ahead of this clock (HLC warnings). */
@@ -261,6 +326,7 @@ export class SimDevice {
       certificateCache: this.certificateCache,
       ...(recovering ? { recovering } : {}),
     });
+    this.gate = new DeviceFrameGate(this.devices, { sodium, verify: this.verify });
   }
 
   /** Stamps and appends one batch to this device's own stream and applies it. */
@@ -278,9 +344,18 @@ export class SimDevice {
       v: e.v,
       data: e.d,
     }));
-    const active = this.devices.ring.active;
-    const key = { epoch: active.epoch, generation: active.generation };
-    const batch: Batch = { device: writer, events: stamped, start, cursor, key };
+    const vaultId = this.devices.ring.vaultId;
+    const prev =
+      this.stream.at(-1)?.head.chain ?? genesisChain({ vaultId, deviceId: writer, stream: 1 });
+    const content = { device: writer, events: stamped, start, cursor };
+    const head = signHead(this.identity, vaultId, {
+      device: writer,
+      stream: 1,
+      seg: cursor.seg,
+      offset: cursor.offset,
+      chain: chainOf(vaultId, content, prev),
+    });
+    const batch: Batch = { ...content, head };
     this.stream.push(batch);
     for (const e of stamped) {
       if (e.type.startsWith("lease.")) this.own.set(e.eid, { writtenAt: this.now() });
@@ -306,18 +381,47 @@ export class SimDevice {
 
   /** Downloads every batch not downloaded yet, in per-device order (`filter` false stops a stream). */
   pull(filter: (b: Batch) => boolean = () => true): void {
-    for (const device of [...this.remote.batches.keys()].sort()) {
-      if (device === this.id) continue;
-      const have = this.#downloaded.get(device) ?? [];
-      const last = have[have.length - 1]?.cursor;
-      for (const b of this.remote.batches.get(device) ?? []) {
-        if (last && comparePositions(b.cursor, last) <= 0) continue;
-        if (!filter(b) || !this.remote.visibleTo(this.id, b)) break;
-        this.#download(b);
+    // A stream whose writer is not known yet waits; another stream may register it in the same
+    // pull (an inviter's batch carries the certificate), so repeat while that happens (as the
+    // engine's rounds do). A stream the filter stopped is not revisited in this pull.
+    const stopped = new Set<string>([this.id]);
+    for (;;) {
+      let progress = false;
+      let waited = false;
+      for (const device of [...this.remote.batches.keys()].sort()) {
+        if (stopped.has(device)) continue;
+        const have = this.#downloaded.get(device) ?? [];
+        const last = have[have.length - 1]?.cursor;
+        for (const b of this.remote.batches.get(device) ?? []) {
+          if (last && comparePositions(b.cursor, last) <= 0) continue;
+          if (!filter(b) || !this.remote.visibleTo(this.id, b)) {
+            stopped.add(device);
+            break;
+          }
+          if (!this.#download(b)) {
+            if (this.verdicts.at(-1)?.verdict === "wait") waited = true;
+            else stopped.add(device);
+            break;
+          }
+          progress = true;
+        }
       }
+      if (this.#downloadOwn()) progress = true;
+      if (!waited || !progress) break;
     }
     this.#settle();
     this.lastPullAt = this.now();
+  }
+
+  /** Re-downloads own batches not held yet (after a rebuild); true when any was taken. */
+  #downloadOwn(): boolean {
+    const have = this.#downloaded.get(this.id)?.length ?? 0;
+    let took = false;
+    for (const b of this.stream.slice(have)) {
+      if (!this.#download(b)) break;
+      took = true;
+    }
+    return took;
   }
 
   sync(): void {
@@ -326,18 +430,77 @@ export class SimDevice {
   }
 
   /** Forgets the view and the devices state and downloads everything again (a store rebuild). */
-  rebuild(): void {
+  rebuild(filter: (b: Batch) => boolean = () => true): void {
     this.#downloaded.clear();
+    this.#heldChains.clear();
     this.#accepted.clear();
     this.cursors.clear();
+    this.verdicts.length = 0;
     const ring = this.devices.ring;
     this.attach(ring, this.#bootstrap);
-    for (const b of this.stream) this.#download(b);
-    this.pull();
+    this.#downloadOwn();
+    this.pull(filter);
   }
 
-  #download(b: Batch): void {
+  /**
+   * Re-signs this device's own batch `index` with `events`, and every later batch (their chains
+   * change): what a device rewriting its own history writes into untrusted storage (review A1b).
+   * Returns the new batches; the device's own copy is left as it was.
+   */
+  rewrite(index: number, events: readonly UnstampedEvent[]): Batch[] {
+    const vaultId = this.devices.ring.vaultId;
+    let prev =
+      index === 0
+        ? genesisChain({ vaultId, deviceId: this.id, stream: 1 })
+        : (this.stream[index - 1] as Batch).head.chain;
+    const out: Batch[] = [];
+    for (const [i, original] of this.stream.entries()) {
+      if (i < index) continue;
+      const stamped =
+        i === index
+          ? events.map((e, k) => ({
+              eid: e.i,
+              hlc: original.events[0]?.hlc ?? this.#clock.tick(),
+              writer: this.id,
+              position: original.cursor,
+              type: e.t,
+              v: e.v,
+              data: e.d,
+              ...(k > 0 ? { hlc: this.#clock.tick() } : {}),
+            }))
+          : original.events;
+      const batch = forgeBatch(vaultId, this.identity, this.id, original, stamped, prev);
+      out.push(batch);
+      prev = batch.head.chain;
+    }
+    return out;
+  }
+
+  /**
+   * Verifies `b` against the chain this device holds of its writer and, when its head verifies,
+   * keeps it and ingests its statements. False: the stream stops here (retried on the next pull).
+   */
+  #download(b: Batch): boolean {
     const list = this.#downloaded.get(b.device) ?? [];
+    if (this.devices) {
+      const vaultId = this.devices.ring.vaultId;
+      const prevBatch = list.at(-1);
+      const prev = prevBatch
+        ? (this.#heldChains.get(b.device) ??
+          genesisChain({ vaultId, deviceId: b.device, stream: 1 }))
+        : genesisChain({ vaultId, deviceId: b.device, stream: 1 });
+      // The reader's own chain, as the codec recomputes it from the bytes it holds.
+      const head = { ...b.head, chain: chainOf(vaultId, b, prev) };
+      const wire = b.events.map((e) => ({ t: e.type, v: e.v, h: e.hlc, i: e.eid, d: e.data }));
+      const verdict = this.gate.authenticate(head, wire);
+      this.verdicts.push({
+        device: b.device,
+        cursor: b.cursor,
+        verdict: verdict.ok ? "ok" : verdict.wait ? "wait" : verdict.code,
+      });
+      if (!verdict.ok) return false;
+      this.#heldChains.set(b.device, head.chain);
+    }
     list.push(b);
     this.#downloaded.set(b.device, list);
     for (const e of b.events) {
@@ -346,22 +509,19 @@ export class SimDevice {
       const warning = this.#clock.receive(e.hlc);
       this.#farAhead.set(e.writer, warning !== undefined || parseHlc(e.hlc).wall > pt + MAX_SKEW);
     }
-    if (!this.devices) return;
-    const report = this.devices.ingest(b.events);
+    if (!this.devices) return true;
+    const report = this.gate.ingest(b.events);
     this.#reject(report.rejectedFrames);
+    return true;
   }
 
+  /** D8: data the view holds is no longer accepted: rebuild the data view from what is held. */
   #reject(rejections: readonly FrameRejection[]): void {
-    for (const r of rejections) {
-      this.rejections.push(r);
-      const kept = (this.#accepted.get(r.device) ?? []).filter(
-        (b) => comparePositions(b.cursor, r.after) <= 0,
-      );
-      this.#accepted.set(r.device, kept);
-      const last = kept[kept.length - 1];
-      if (last) this.cursors.set(r.device, last.cursor);
-      else this.cursors.delete(r.device);
-    }
+    if (rejections.length === 0) return;
+    this.rejections.push(...rejections);
+    this.#accepted.clear();
+    this.cursors.clear();
+    this.devices.guard.reset();
   }
 
   /** Extends every writer's accepted data as far as the guard allows (until nothing changes). */
@@ -374,9 +534,9 @@ export class SimDevice {
         const last = accepted[accepted.length - 1]?.cursor;
         for (const b of list) {
           if (last && comparePositions(b.cursor, last) <= 0) continue;
-          const at = { device, start: b.start, end: b.cursor };
-          if (!this.devices.guard.check(at, b.key).ok) break;
-          this.devices.guard.record(at, b.key);
+          const at = { device, end: b.cursor };
+          if (!this.devices.guard.check(at).ok) break;
+          this.devices.guard.record(at);
           accepted.push(b);
           this.cursors.set(device, b.cursor);
           changed = true;
@@ -385,6 +545,14 @@ export class SimDevice {
       }
       if (changed) this.#reject(this.devices.guard.recheck());
     }
+  }
+
+  /** Eids of the accepted data, sorted (what the view holds, by content). */
+  acceptedEids(): string[] {
+    const out: string[] = [];
+    for (const list of this.#accepted.values())
+      for (const b of list) for (const e of b.events) out.push(e.eid);
+    return out.sort();
   }
 
   /** Accepted data as `writer@offset`, sorted (for convergence checks). */
@@ -633,17 +801,20 @@ export function prepareConsented(
   recertify: readonly SimDevice[] = [],
 ) {
   const selection = { recertify: recertify.map((d) => d.id) };
-  const entries = targets.map((t) => ({
-    device: t.id,
-    cut: revoker.cursors.get(t.id) ?? START_CURSOR,
-  }));
+  // Consent path (cut-before-ack rule 2): each target states its own last position and head.
+  const own = targets.map((t) => t.gate.ownEntry());
   const eid = newEid();
-  const consent = consentsOf(targets, revoker.ring.vaultId, eid, entries, revoker.id);
+  const consent = consentsOf(targets, revoker.ring.vaultId, eid, own, revoker.id);
   const eids = { revoke: eid, rotate: newEid(), recertify: newEid };
-  const result = revoker.devices.prepareRevocation(entries, eids, { consent }, selection);
+  const result = revoker.devices.prepareRevocation(own, eids, { consent }, selection);
   const words = recovery ?? revoker.words;
   if (!result.ok && result.reason === "authority_required" && words) {
-    return revoker.devices.prepareRevocation(entries, eids, words, selection);
+    // Words path (rule 1): the revoker's own view of each target, never below its last lease event.
+    const entries = targets.map((t) =>
+      revoker.gate.revocationEntry(t.id, revoker.cursors.get(t.id) ?? START_CURSOR),
+    );
+    const words2 = { revoke: newEid(), rotate: eids.rotate, recertify: newEid };
+    return revoker.devices.prepareRevocation(entries, words2, words, selection);
   }
   return result;
 }

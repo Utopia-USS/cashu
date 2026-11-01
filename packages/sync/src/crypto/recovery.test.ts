@@ -9,7 +9,7 @@ import { createDeviceIdentity, type DeviceIdentity, RECOVERY_SIGNER_ID } from ".
 import { createKeyring, createVaultId, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, RECOVERY_WORDS, recoveryIdentity } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
-import { anyEpoch, backends, code, ctx, samplePlain } from "./testkit.js";
+import { anyEpoch, backends, code, ctx, samplePlain, writerOf } from "./testkit.js";
 import { createVaultWithRecovery } from "./vault.js";
 import { recoveryRecipient, type TrustedSigner, unwrapKeys, wrapKeys } from "./wrap.js";
 
@@ -66,14 +66,14 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     creator.wipe();
     // Later the desktop pairs the phone and certifies it (a chain).
     certs.push(certifyDevice(sodium, desktop, subjectOf(phone), vaultId));
-    const old = sealFrame(sodium, ring, samplePlain(), c);
+    const old = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
 
     // Later rotations are wrapped for the recovery key by devices; no device needs the words.
     const gen2 = rotateKeyring(sodium, ring);
     wraps.push(wrapKeys(sodium, ring, desktop, recoveryRecipient(ring), [gen2.kid]));
     const gen3 = rotateKeyring(sodium, ring);
     wraps.push(wrapKeys(sodium, ring, phone, recoveryRecipient(ring), [gen3.kid]));
-    const recent = sealFrame(sodium, ring, samplePlain(), c);
+    const recent = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
     ring.wipe();
 
     const identity = recoveryIdentity(sodium, recovery.phrase);
@@ -91,8 +91,8 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     );
     for (const w of rest) unwrapKeys(sodium, w, identity, restored, trust, anyEpoch);
     expect(restored.active.kid).toBe(gen3.kid);
-    expect(openFrame(sodium, restored, old, c)).toEqual(samplePlain());
-    expect(openFrame(sodium, restored, recent, c)).toEqual(samplePlain());
+    expect(openFrame(sodium, restored, old, c).plain).toEqual(samplePlain());
+    expect(openFrame(sodium, restored, recent, c).plain).toEqual(samplePlain());
   });
 
   it("storage cannot add a device: self-signed or uncertified-signer certificates are not trusted", () => {

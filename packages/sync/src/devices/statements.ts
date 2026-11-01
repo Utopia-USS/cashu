@@ -16,7 +16,12 @@ import {
 } from "../crypto/index.js";
 import { concat, toHex, utf8 } from "./bytes.js";
 
-export type StatementContext = "cashu/registry/v1" | "cashu/lease/v1" | "cashu/pairing/v1";
+export type StatementContext =
+  | "cashu/registry/v1"
+  | "cashu/lease/v1"
+  | "cashu/pairing/v1"
+  /** Signed stream heads (crypto head.ts): one per frame, checked only through acceptance.ts. */
+  | "cashu/head/v1";
 
 export const SIGNATURE_BYTES = 64;
 

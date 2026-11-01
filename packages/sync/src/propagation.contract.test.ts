@@ -9,6 +9,7 @@ import {
   checkPropagationClaim,
   describeCarrierContract,
   insecureTestCodec,
+  insecureTestGate,
   ManualClock,
   SimulatedRelay,
 } from "./testing/index.js";
@@ -34,7 +35,8 @@ describeCarrierContract({
   name: "simulated relay declaring a 2-minute propagation bound (honest: 90 s)",
   createMedium() {
     const codec = insecureTestCodec();
-    return { ...relay(2 * MIN, 90_000), codecFor: () => codec };
+    const gate = insecureTestGate();
+    return { ...relay(2 * MIN, 90_000), codecFor: () => codec, gateFor: () => gate };
   },
 });
 

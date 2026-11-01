@@ -4,11 +4,20 @@
 // - Writes: stamp (HLC) -> persist the clock -> seal every frame -> append to the own local segment ->
 //   apply from the local log through the same path as remote frames. The clock is saved before the
 //   append, so a persisted clock behind the device's own log means a rollback (events.md 3.2).
-// - Pull: a foreign frame enters the local log only after the codec opened it, so the local copy never
-//   holds a tampered frame and a rejected frame is retried from the remote on the next pass.
+// - Pull: a foreign frame enters the local log only after the codec opened it and the gate verified
+//   its signed head (S29c phase B2), so the local copy never holds a tampered or forged frame; a
+//   rejected frame, or one whose writer is not known yet, is retried from the remote on the next pass
+//   (and in the same pass once the registry changed).
+// - Chains: every frame links to its writer's previous frame (crypto/head.ts). The engine keeps the
+//   chain after every frame of its local log (rebuilt from the bytes at start, no decryption) and
+//   passes the previous one to the codec, so a reordered, spliced or rewritten stream never verifies.
 // - Apply: per device stream in segment order, one sink call per frame or per complete frame group,
-//   cursor persisted by the sink with the batch. A partial frame or an incomplete group leaves the
-//   cursor where it is; a rejected frame stops that device's stream for this pass only.
+//   cursor persisted by the sink with the batch, data only when the gate accepts it (cut, fork
+//   freeze). A partial frame or an incomplete group leaves the cursor where it is; a rejected frame
+//   stops that device's stream for this pass only. The gate sees every verified frame's statements
+//   (the first apply after start replays the whole local log into it without re-delivering data).
+// - D8: when the gate reports that data the view holds is no longer accepted, the pass ends with a
+//   full rebuild (sink reset, gate reset, replay).
 // - Every public operation runs serialized on one queue.
 import type {
   AppliedInfo,
@@ -16,6 +25,8 @@ import type {
   DeviceId,
   EventSink,
   FrameCodec,
+  FrameGate,
+  FrameHead,
   FramePosition,
   LeaseTransport,
   RejectedFrame,
@@ -51,6 +62,14 @@ import {
 
 export const VAULT_RE = /^[0-9A-Za-z_-]{1,64}$/;
 
+function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+function comparePositions(a: SegmentCursor, b: SegmentCursor): number {
+  return a.seg - b.seg || a.offset - b.offset;
+}
+
 export interface SyncEngineOptions {
   readonly vault: VaultId;
   readonly device: DeviceId;
@@ -59,6 +78,8 @@ export interface SyncEngineOptions {
   /** Replication targets: synced folder, relay. Empty = local only. */
   readonly remotes?: readonly Transport[];
   readonly codec: FrameCodec;
+  /** Verifies signed heads and decides data acceptance (devices/gate.ts `DeviceFrameGate`). */
+  readonly gate: FrameGate;
   readonly sink: EventSink;
   readonly clockStore: ClockStore;
   readonly physicalClock?: PhysicalClock;
@@ -81,8 +102,29 @@ export async function createSyncEngine(options: SyncEngineOptions): Promise<Sync
   return engine;
 }
 
+interface Opened {
+  readonly plain: Uint8Array;
+  readonly head: FrameHead;
+}
+
+interface ChainEntry {
+  readonly seg: number;
+  readonly end: number;
+  readonly chain: Uint8Array;
+}
+
+/** Rounds of pull + apply in one `sync()` while the registry changes and streams wait. */
+const MAX_ROUNDS = 4;
+
 interface Pass {
-  cache: Map<string, Uint8Array>;
+  cache: Map<string, Opened>;
+  /** A stream waited for its writer to become known. */
+  waited: boolean;
+  /** The gate's registry changed while applying. */
+  gateChanged: boolean;
+  /** A frame whose data the view already holds no longer verifies or is no longer accepted. */
+  staleView: boolean;
+  rebuilt: boolean;
   pushedBytes: number;
   pulledFrames: number;
   batches: number;
@@ -101,6 +143,10 @@ interface Pass {
 function newPass(): Pass {
   return {
     cache: new Map(),
+    waited: false,
+    gateChanged: false,
+    staleView: false,
+    rebuilt: false,
     pushedBytes: 0,
     pulledFrames: 0,
     batches: 0,
@@ -133,6 +179,8 @@ function isUnstampedEvent(e: unknown): e is UnstampedEvent {
   );
 }
 
+const WRITER_UNKNOWN = "writer-unknown";
+
 function posKey(p: FramePosition): string {
   return `${p.device}/${p.seg}/${p.offset}`;
 }
@@ -147,6 +195,7 @@ class OwnLogEngine implements SyncEngine {
   readonly #local: Transport;
   readonly #remotes: readonly Transport[];
   readonly #codec: FrameCodec;
+  readonly #gate: FrameGate;
   readonly #sink: EventSink;
   readonly #clockStore: ClockStore;
   readonly #clock: HybridClock;
@@ -161,6 +210,10 @@ class OwnLogEngine implements SyncEngine {
   #rolledBack = false;
   #ownSeg = 1;
   #ownSize = 0;
+  /** Chain after every frame of the local log, per device, in stream order (data stream). */
+  readonly #chains = new Map<DeviceId, ChainEntry[]>();
+  /** False until the gate has seen every frame of the local log once (after start). */
+  #primed = false;
 
   constructor(o: SyncEngineOptions, restored: { wall: number; counter: number } | undefined) {
     this.vault = o.vault;
@@ -168,6 +221,7 @@ class OwnLogEngine implements SyncEngine {
     this.#local = o.local;
     this.#remotes = o.remotes ?? [];
     this.#codec = o.codec;
+    this.#gate = o.gate;
     this.#sink = o.sink;
     this.#clockStore = o.clockStore;
     this.#physical = o.physicalClock ?? systemClock;
@@ -181,25 +235,37 @@ class OwnLogEngine implements SyncEngine {
     this.#maxSegmentBytes = Math.max(1, o.maxSegmentBytes ?? 4 * 1024 * 1024);
   }
 
-  /** Find the own write position and detect a rolled-back clock (own log ahead of the clock). */
+  /** Find the own write position and chain, and detect a rolled-back clock (own log ahead of the clock). */
   async init(): Promise<void> {
     const own = (await this.#local.list(this.vault))
-      .filter((s) => s.device === this.device)
+      .filter((s) => s.device === this.device && s.seg >= 1)
       .sort(bySegment);
     const last = own.at(-1);
     if (!last) return;
     this.#ownSeg = last.seg;
     this.#ownSize = last.size;
-    const bytes = await this.#local.read(this.vault, this.device, last.seg, 0);
-    const frame = scanFrames(bytes, 0).frames.at(-1);
-    if (!frame) return;
-    const at = { vault: this.vault, device: this.device, seg: last.seg, offset: frame.offset };
+    await this.#indexStream(this.device, own);
+    const entries = this.#chains.get(this.device) ?? [];
+    const lastEntry = entries.at(-1);
+    if (!lastEntry) return;
+    const bytes = await this.#local.read(this.vault, this.device, lastEntry.seg, 0);
+    const frame = scanFrames(bytes, 0).frames.find((f) => f.end === lastEntry.end);
+    const prev = this.#chainBefore(this.device, lastEntry.seg, frame?.offset ?? -1);
     let lastHlc: string | undefined;
-    try {
-      const decoded = decodePayload(await this.#codec.open(frame.sealed, at), this.device);
-      lastHlc = decoded.ok ? decoded.payload.events.at(-1)?.h : undefined;
-    } catch {
-      lastHlc = undefined;
+    if (frame && prev) {
+      const at = {
+        vault: this.vault,
+        device: this.device,
+        seg: lastEntry.seg,
+        offset: frame.offset,
+      };
+      try {
+        const opened = await this.#codec.open(frame.sealed, at, prev);
+        const decoded = decodePayload(opened.plain, this.device);
+        lastHlc = decoded.ok ? decoded.payload.events.at(-1)?.h : undefined;
+      } catch {
+        lastHlc = undefined;
+      }
     }
     // An own frame that does not open is as suspicious as a clock behind the log.
     if (lastHlc === undefined || lastHlc > this.#clock.last) this.#rolledBack = true;
@@ -219,10 +285,11 @@ class OwnLogEngine implements SyncEngine {
       await this.#clockStore.save(this.#clock.state);
 
       const groups = this.#split(stamped);
-      const sealedFrames: { at: FramePosition; bytes: Uint8Array }[] = [];
-      const cache = new Map<string, Uint8Array>();
+      const sealedFrames: { at: FramePosition; bytes: Uint8Array; chain: Uint8Array }[] = [];
+      const cache = new Map<string, Opened>();
       let seg = this.#ownSeg;
       let size = this.#ownSize;
+      let prev = this.#ownChain();
       for (const [index, group] of groups.entries()) {
         const plain = encodePayload(
           groups.length > 1 ? { events: group, part: [index, groups.length] } : { events: group },
@@ -232,24 +299,27 @@ class OwnLogEngine implements SyncEngine {
           size = 0;
         }
         const at = { vault: this.vault, device: this.device, seg, offset: size };
-        const sealed = await this.#codec.seal(plain, at);
+        const { sealed, head } = await this.#codec.seal(plain, at, prev);
         if (sealed.length > MAX_SEALED_FRAME_BYTES) {
           throw new SyncError("frame-too-large", "an event is larger than the frame limit");
         }
         const bytes = frameBytes(sealed);
-        sealedFrames.push({ at, bytes });
-        cache.set(posKey(at), plain);
+        sealedFrames.push({ at, bytes, chain: head.chain });
+        cache.set(posKey(at), { plain, head });
         size += bytes.length;
+        prev = head.chain;
       }
       for (const f of sealedFrames) {
         await this.#local.append(this.vault, this.device, f.at.seg, f.at.offset, f.bytes);
         this.#ownSeg = f.at.seg;
         this.#ownSize = f.at.offset + f.bytes.length;
+        this.#addChain(this.device, { seg: f.at.seg, end: this.#ownSize, chain: f.chain });
       }
 
       const pass = newPass();
       pass.cache = cache;
       await this.#applyLocal(pass);
+      await this.#rebuildIfNeeded(pass);
       this.#emit(pass);
       const first = stamped[0]?.h ?? "";
       const last = stamped.at(-1)?.h ?? "";
@@ -261,6 +331,9 @@ class OwnLogEngine implements SyncEngine {
     return this.#run(async () => {
       this.#assertOpen();
       const pass = newPass();
+      // A gate with statement state sees the local log first, so every stream's key is bound by its
+      // first frame before anything new is verified.
+      if (!this.#primed && this.#gate.needsReplay()) await this.#applyLocal(pass);
       this.#leaseTransport = { kind: "eventual" };
       const bounded: { propagationMs: number; pullAt: number; pushAt: number }[] = [];
       let boundedOffline = false;
@@ -278,6 +351,22 @@ class OwnLogEngine implements SyncEngine {
           if (bound !== undefined) boundedOffline = true;
         }
       }
+      // Frames whose writer was unknown wait; applying may register it (an inviter's frame carries
+      // the certificate), so pull again while that happens, a bounded number of times.
+      for (let round = 1; round < MAX_ROUNDS && pass.waited; round++) {
+        await this.#applyLocal(pass);
+        if (!pass.gateChanged) break;
+        pass.waited = false;
+        pass.gateChanged = false;
+        pass.rejected = pass.rejected.filter((r) => r.code !== WRITER_UNKNOWN);
+        for (const remote of this.#remotes) {
+          try {
+            await this.#replicate(remote, pass, false);
+          } catch (e) {
+            if (!isTransportUnavailable(e)) throw e;
+          }
+        }
+      }
       this.#leaseTransport =
         bounded.length > 0 && !boundedOffline
           ? {
@@ -288,6 +377,7 @@ class OwnLogEngine implements SyncEngine {
             }
           : { kind: "eventual" };
       await this.#applyLocal(pass);
+      await this.#rebuildIfNeeded(pass);
       return this.#finish(pass);
     });
   }
@@ -295,9 +385,8 @@ class OwnLogEngine implements SyncEngine {
   rebuild(): Promise<SyncResult> {
     return this.#run(async () => {
       this.#assertOpen();
-      await this.#sink.reset();
       const pass = newPass();
-      await this.#applyLocal(pass);
+      await this.#rebuildView(pass);
       return this.#finish(pass);
     });
   }
@@ -357,6 +446,7 @@ class OwnLogEngine implements SyncEngine {
     if (pass.clockDirty) await this.#clockStore.save(this.#clock.state);
     this.#emit(pass);
     return {
+      rebuilt: pass.rebuilt,
       pushedBytes: pass.pushedBytes,
       pulledFrames: pass.pulledFrames,
       batches: pass.batches,
@@ -391,8 +481,86 @@ class OwnLogEngine implements SyncEngine {
     if (code === "frame-format") pass.needsUpgrade = true;
   }
 
+  /** The chain after this device's last own frame (genesis before the first). */
+  #ownChain(): Uint8Array {
+    return (
+      this.#chains.get(this.device)?.at(-1)?.chain ??
+      this.#codec.genesis(this.vault, this.device, 1)
+    );
+  }
+
+  #addChain(device: DeviceId, entry: ChainEntry): void {
+    const list = this.#chains.get(device) ?? [];
+    const last = list.at(-1);
+    if (last && (last.seg > entry.seg || (last.seg === entry.seg && last.end >= entry.end))) return;
+    list.push(entry);
+    this.#chains.set(device, list);
+  }
+
+  /** Rebuilds the chain index of a device's stream from the local log's bytes (no decryption). */
+  async #indexStream(device: DeviceId, segs: readonly SegmentInfo[]): Promise<void> {
+    const entries: ChainEntry[] = [];
+    let prev = this.#codec.genesis(this.vault, device, 1);
+    let expected = 1;
+    for (const s of [...segs].filter((x) => x.seg >= 1).sort(bySegment)) {
+      if (s.seg !== expected) break; // a gap: chains after it are unknown (S32 compaction: resume)
+      const bytes = await this.#local.read(this.vault, device, s.seg, 0);
+      for (const f of scanFrames(bytes, 0).frames) {
+        const at = { vault: this.vault, device, seg: s.seg, offset: f.offset };
+        prev = this.#codec.link(f.sealed, at, prev);
+        entries.push({ seg: s.seg, end: f.end, chain: prev });
+      }
+      expected += 1;
+    }
+    this.#chains.set(device, entries);
+  }
+
+  /**
+   * The chain before a frame of `device` starting at `seg:offset` (offset 0 of a later segment links
+   * to the previous segment's last frame), or undefined when the local log does not lead there.
+   */
+  #chainBefore(device: DeviceId, seg: number, offset: number): Uint8Array | undefined {
+    const list = this.#chains.get(device) ?? [];
+    if (offset === 0) {
+      if (seg === 1) return this.#codec.genesis(this.vault, device, 1);
+      return list.findLast((e) => e.seg === seg - 1)?.chain;
+    }
+    return list.find((e) => e.seg === seg && e.end === offset)?.chain;
+  }
+
+  /** D8: data the view holds is no longer accepted (a cut moved, a fork froze a writer): rebuild. */
+  async #rebuildIfNeeded(pass: Pass): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const stale = this.#gate.takeRebuild() || pass.staleView;
+      if (!stale) return;
+      pass.staleView = false;
+      await this.#rebuildView(pass);
+    }
+  }
+
+  async #rebuildView(pass: Pass): Promise<void> {
+    await this.#sink.reset();
+    this.#gate.reset();
+    pass.rebuilt = true;
+    await this.#applyLocal(pass);
+  }
+
+  /** Opens a frame (cached when this pass opened it already). */
+  async #open(
+    sealed: Uint8Array,
+    at: FramePosition,
+    prev: Uint8Array,
+    pass: Pass,
+  ): Promise<Opened> {
+    const cached = pass.cache.get(posKey(at));
+    if (cached && equalBytes(cached.head.chain, this.#codec.link(sealed, at, prev))) return cached;
+    const opened = await this.#codec.open(sealed, at, prev);
+    pass.cache.set(posKey(at), opened);
+    return opened;
+  }
+
   /** Push own bytes to `remote`, pull verified foreign frames from it into the local log. */
-  async #replicate(remote: Transport, pass: Pass): Promise<void> {
+  async #replicate(remote: Transport, pass: Pass, push = true): Promise<void> {
     const [remoteList, localList] = await Promise.all([
       remote.list(this.vault),
       this.#local.list(this.vault),
@@ -412,20 +580,47 @@ class OwnLogEngine implements SyncEngine {
         }
         continue;
       }
-      if (r.size <= have || blocked.has(r.device)) continue;
+      if (r.size <= have || blocked.has(r.device) || r.seg < 1) continue;
+      if (!this.#chains.has(r.device)) {
+        await this.#indexStream(
+          r.device,
+          localList.filter((s) => s.device === r.device),
+        );
+      }
+      let prev = this.#chainBefore(r.device, r.seg, have);
+      if (!prev) {
+        // The local log does not reach this segment's start (a missing earlier segment).
+        blocked.add(r.device);
+        continue;
+      }
       const bytes = await remote.read(this.vault, r.device, r.seg, have);
       const scan = scanFrames(bytes, have);
       let end = have;
       let frames = 0;
+      const chains: ChainEntry[] = [];
       for (const f of scan.frames) {
         const at = { vault: this.vault, device: r.device, seg: r.seg, offset: f.offset };
+        let opened: Opened;
         try {
-          pass.cache.set(posKey(at), await this.#codec.open(f.sealed, at));
+          opened = await this.#open(f.sealed, at, prev, pass);
         } catch (e) {
           this.#reject(pass, at, rejectionCode(e));
           blocked.add(r.device);
           break;
         }
+        const decoded = decodePayload(opened.plain, r.device);
+        const verdict = this.#gate.authenticate(
+          opened.head,
+          decoded.ok ? decoded.payload.events : [],
+        );
+        if (!verdict.ok) {
+          this.#reject(pass, at, verdict.wait ? WRITER_UNKNOWN : verdict.code);
+          if (verdict.wait) pass.waited = true;
+          blocked.add(r.device);
+          break;
+        }
+        prev = opened.head.chain;
+        chains.push({ seg: r.seg, end: f.end, chain: prev });
         end = f.end;
         frames += 1;
       }
@@ -443,9 +638,11 @@ class OwnLogEngine implements SyncEngine {
         await this.#local.append(this.vault, r.device, r.seg, have, bytes.subarray(0, end - have));
         localSize.set(key, end);
         pass.pulledFrames += frames;
+        for (const c of chains) this.#addChain(r.device, c);
       }
     }
 
+    if (!push) return;
     const own = localList.filter((s) => s.device === this.device).sort(bySegment);
     for (const s of own) {
       const theirs = remoteSize.get(`${s.device}/${s.seg}`) ?? 0;
@@ -463,79 +660,114 @@ class OwnLogEngine implements SyncEngine {
     }
   }
 
-  /** Apply every complete, not yet applied frame or frame group of the local log. */
+  /**
+   * Apply every complete, not yet applied frame or frame group of the local log. The first call after
+   * start walks every stream from its start so the gate sees every frame's statements, delivering
+   * only what lies after the sink's cursor.
+   */
   async #applyLocal(pass: Pass): Promise<void> {
     const cursors = await this.#sink.cursors();
     const streams = new Map<DeviceId, SegmentInfo[]>();
     for (const s of [...(await this.#local.list(this.vault))].sort(bySegment)) {
+      if (s.seg < 1) continue;
       const list = streams.get(s.device) ?? [];
       list.push(s);
       streams.set(s.device, list);
     }
+    const replay = !this.#primed && this.#gate.needsReplay();
     for (const [device, segs] of streams) {
-      await this.#applyStream(device, segs, cursors.get(device) ?? START_CURSOR, pass);
+      if (!this.#chains.has(device)) await this.#indexStream(device, segs);
+      const cursor = cursors.get(device) ?? START_CURSOR;
+      await this.#applyStream(device, segs, replay ? START_CURSOR : cursor, cursor, pass);
     }
+    this.#primed = true;
   }
 
   async #applyStream(
     device: DeviceId,
     segs: readonly SegmentInfo[],
+    from: SegmentCursor,
     cursor: SegmentCursor,
     pass: Pass,
   ): Promise<void> {
     const own = device === this.device;
     let group: { events: WireEvent[]; count: number; next: number } | undefined;
+    let prev = this.#chainBefore(device, from.seg, from.offset);
+    if (!prev) {
+      // The view's cursor is not a frame end of the local log: its data cannot be trusted.
+      this.#reject(
+        pass,
+        { vault: this.vault, device, seg: from.seg, offset: from.offset },
+        "chain-unknown",
+      );
+      return;
+    }
     for (const s of segs) {
-      if (s.seg < cursor.seg) continue;
-      const start = s.seg === cursor.seg ? cursor.offset : 0;
+      if (s.seg < from.seg) continue;
+      const start = s.seg === from.seg ? from.offset : 0;
       if (start >= s.size) continue;
       const bytes = await this.#local.read(this.vault, device, s.seg, start);
       const scan = scanFrames(bytes, start);
       for (const f of scan.frames) {
         const at = { vault: this.vault, device, seg: s.seg, offset: f.offset };
-        let plain = pass.cache.get(posKey(at));
-        if (!plain) {
-          try {
-            plain = await this.#codec.open(f.sealed, at);
-          } catch (e) {
-            this.#reject(pass, at, rejectionCode(e));
-            return;
-          }
+        let opened: Opened;
+        try {
+          opened = await this.#open(f.sealed, at, prev, pass);
+        } catch (e) {
+          this.#reject(pass, at, rejectionCode(e));
+          return;
         }
-        const decoded = decodePayload(plain, device);
+        prev = opened.head.chain;
+        const delivered = comparePositions({ seg: s.seg, offset: f.end }, cursor) > 0;
+        const decoded = decodePayload(opened.plain, device);
+        const events = decoded.ok ? decoded.payload.events : [];
+        const verified = this.#gate.authenticate(opened.head, events);
+        if (!verified.ok) {
+          this.#reject(pass, at, verified.wait ? WRITER_UNKNOWN : verified.code);
+          if (verified.wait) pass.waited = true;
+          if (!delivered) pass.staleView = true;
+          return;
+        }
+        const accepted = this.#gate.accept(opened.head, events);
+        if (accepted.changed) pass.gateChanged = true;
         if (!decoded.ok) {
           this.#reject(pass, at, decoded.code);
           return;
         }
-        const { events, part } = decoded.payload;
+        if (!accepted.verdict.ok) {
+          this.#reject(pass, at, accepted.verdict.code);
+          if (!delivered) pass.staleView = true;
+          return;
+        }
+        const { events: batch, part } = decoded.payload;
         const next = { seg: s.seg, offset: f.end };
         if (!part) {
           if (group) {
             this.#reject(pass, at, "malformed");
             return;
           }
-          await this.#deliver(device, own, events, next, pass);
+          if (delivered) await this.#deliver(device, own, batch, next, pass);
           continue;
         }
         const [index, count] = part;
         const prevLast = group?.events.at(-1)?.h;
         if (index === 0 && !group) {
-          group = { events: [...events], count, next: 1 };
+          group = { events: [...batch], count, next: 1 };
         } else if (
           group &&
           index === group.next &&
           count === group.count &&
           prevLast !== undefined &&
-          (events[0]?.h ?? "") > prevLast
+          (batch[0]?.h ?? "") > prevLast
         ) {
-          group.events.push(...events);
+          group.events.push(...batch);
           group.next += 1;
         } else {
           this.#reject(pass, at, "malformed");
           return;
         }
         if (group.next === group.count) {
-          await this.#deliver(device, own, group.events, next, pass);
+          if (delivered) await this.#deliver(device, own, group.events, next, pass);
           group = undefined;
         }
       }

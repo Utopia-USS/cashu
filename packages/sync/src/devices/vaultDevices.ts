@@ -1,9 +1,12 @@
 // One device's view of one vault's devices: it folds the registry and lease events it is given,
 // applies the key wraps addressed to it (retrying those that are not acceptable yet), applies
 // recovery-key changes, owns the frame guard and answers "must I rotate before writing?". Pure
-// protocol state: the store feeds it the events of every frame it can open (`logEventsFromBatch`,
-// data-rejected frames included, see guard.ts) and writes the events it prepares.
+// protocol state: the frame gate (gate.ts) feeds it the events of every frame whose signed head
+// verified (data-rejected frames included, see guard.ts) and the fork freezes it derives from signed
+// heads; the caller writes the events it prepares. Statements a frozen writer made after its agreed
+// prefix never enter a fold (heads.ts).
 
+import type { SegmentCursor } from "../carrier.js";
 import {
   CertificateCache,
   type DeviceIdentity,
@@ -23,7 +26,7 @@ import {
 } from "./events.js";
 import { FrameGuard, type FrameRejection } from "./guard.js";
 import { foldLease, isLeaseEvent, type LeaseView } from "./lease.js";
-import { positionKey } from "./positions.js";
+import { comparePositions, positionKey } from "./positions.js";
 import type { ProvenanceStore } from "./provenance.js";
 import {
   authorizedByOldKeys,
@@ -83,6 +86,8 @@ export interface IngestReport {
   readonly rejectedFrames: readonly FrameRejection[];
   /** Recovery-key changes applied in this pass (eids), and changes refused as conflicting. */
   readonly recovery: { readonly applied: readonly string[]; readonly conflicts: readonly string[] };
+  /** The registry was folded again (new registry or lease statements, or a freeze changed). */
+  readonly registryChanged: boolean;
 }
 
 interface PendingWrap {
@@ -114,6 +119,8 @@ export class VaultDevices {
   #keysAtPin: ReadonlySet<string> | undefined;
   #recoveryConflicts: string[] = [];
   #lastRetryAt = Number.NEGATIVE_INFINITY;
+  /** Writers frozen at an agreed prefix (proven forks, heads.ts): later statements are ignored. */
+  #frozen: ReadonlyMap<string, SegmentCursor> = new Map();
 
   constructor(options: VaultDevicesOptions) {
     this.#o = options;
@@ -122,7 +129,54 @@ export class VaultDevices {
     this.#recovering = options.recovering;
     this.#registry = this.#foldRegistry();
     this.#lease = foldLease(this.#registry, this.#leaseEvents, this.#verify);
-    this.guard = new FrameGuard(() => this.#registry);
+    this.guard = new FrameGuard(
+      () => this.#registry,
+      () => this.#frozen,
+    );
+  }
+
+  /** Writers frozen at an agreed prefix (set by the gate from signed heads). */
+  get frozen(): ReadonlyMap<string, SegmentCursor> {
+    return this.#frozen;
+  }
+
+  /**
+   * Replaces the fork freezes (gate.ts, from signed heads). When they change, the folds run again
+   * without the frozen writers' later statements, and the guard reports data no longer accepted.
+   */
+  freeze(frozen: ReadonlyMap<string, SegmentCursor>): IngestReport | undefined {
+    const same =
+      frozen.size === this.#frozen.size &&
+      [...frozen].every(([d, at]) => {
+        const known = this.#frozen.get(d);
+        return known !== undefined && comparePositions(known, at) === 0;
+      });
+    if (same) return undefined;
+    this.#frozen = new Map(frozen);
+    return this.#refold();
+  }
+
+  /** Events a fold may use: everything, minus frozen writers' statements after their prefix. */
+  #unfrozen(events: readonly LogEvent[]): LogEvent[] {
+    if (this.#frozen.size === 0) return [...events];
+    return events.filter((e) => {
+      const limit = this.#frozen.get(e.writer);
+      return !limit || comparePositions(e.position, limit) <= 0;
+    });
+  }
+
+  #refold(): IngestReport {
+    this.#registry = this.#foldRegistry();
+    const applied = this.#applyRecoveryChanges();
+    this.#lease = foldLease(this.#registry, this.#unfrozen(this.#leaseEvents), this.#verify);
+    return {
+      wraps: [],
+      pending: [],
+      rotation: this.rotationNeeded(),
+      rejectedFrames: this.guard.recheck(),
+      recovery: { applied, conflicts: [...this.#recoveryConflicts] },
+      registryChanged: true,
+    };
   }
 
   get registry(): Registry {
@@ -141,6 +195,16 @@ export class VaultDevices {
     return this.#o.identity.deviceId;
   }
 
+  /** The position of the last lease event `device` wrote that this device holds (undefined: none). */
+  lastLeaseEventOf(device: string): SegmentCursor | undefined {
+    let last: SegmentCursor | undefined;
+    for (const e of this.#leaseEvents) {
+      if (e.writer === device && (!last || comparePositions(e.position, last) > 0))
+        last = e.position;
+    }
+    return last;
+  }
+
   /** Local clock when this device first ingested a lease event (for `LeaseLocal.firstSeen`). */
   firstSeen(eid: string): number | undefined {
     return this.#firstSeen.get(eid);
@@ -152,7 +216,7 @@ export class VaultDevices {
     return foldRegistry(
       this.#o.sodium,
       { vaultId: ring.vaultId, recovery: ring.recovery, previous: this.#history.previous },
-      [...this.#registryEvents, ...this.#leaseEvents],
+      this.#unfrozen([...this.#registryEvents, ...this.#leaseEvents]),
       {
         bootstrapCertificates: [
           ...(this.#o.bootstrapCertificates ?? []),
@@ -220,7 +284,7 @@ export class VaultDevices {
       applied.push(...this.#applyRecoveryChanges());
     }
     if (registryChanged || leaseChanged) {
-      this.#lease = foldLease(this.#registry, this.#leaseEvents, this.#verify);
+      this.#lease = foldLease(this.#registry, this.#unfrozen(this.#leaseEvents), this.#verify);
     }
     if (registryChanged) {
       for (const [k, p] of this.#pending) {
@@ -258,6 +322,7 @@ export class VaultDevices {
       rotation: this.rotationNeeded(),
       rejectedFrames: registryChanged ? this.guard.recheck() : [],
       recovery: { applied, conflicts: [...this.#recoveryConflicts] },
+      registryChanged,
     };
   }
 

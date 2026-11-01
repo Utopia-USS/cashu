@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
+import { verifyHeadSignature } from "./head.js";
 import { createDeviceIdentity, type DeviceIdentity, verifySignature } from "./identity.js";
 import { decodeKeyPayload, type Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
@@ -21,6 +22,7 @@ import {
   sodium,
   testRecovery,
   trustedTo,
+  writerOf,
 } from "./testkit.js";
 import { type TrustedSigner, unwrapKeys, WRAP_VERSION, wrapKeys } from "./wrap.js";
 
@@ -104,21 +106,29 @@ describe("review attacks now fail", () => {
     expect(rotateKeyring(sodium, phoneRing).generation).toBe(2);
   });
 
-  it("A2: a revoked device's frames under its old key are refused by the carrier's generation floor", () => {
+  it("A2: a revoked device's frames verify under its own key only, never as another writer (v3 heads)", () => {
     const { ids, rings, vaultId } = vault(2);
     const [desktop, lost] = ids as [DeviceIdentity, DeviceIdentity];
     const desktopRing = rings[0] as Keyring;
     const lostRing = rings[1] as Keyring;
     rotateKeyring(sodium, desktopRing, { epoch: 1 }); // revoke 'lost'
-    // 'lost' writes at a future position, even impersonating the desktop.
-    for (const deviceId of [lost.deviceId, desktop.deviceId]) {
-      const c = ctx(vaultId, { deviceId, segment: 9, offset: 0 });
-      const forged = sealFrame(sodium, lostRing, utf8('[{"t":"lease.claimed"}]'), c);
-      // The carrier's floor for both writers after the revocation point is generation 2.
-      expect(code(() => openFrame(sodium, desktopRing, forged, c, { minGeneration: 2 }))).toBe(
-        "key_not_allowed",
-      );
-    }
+    // 'lost' still holds the old key and can AEAD-seal at any position, but it signs only as itself.
+    const c = ctx(vaultId, { deviceId: desktop.deviceId, segment: 9, offset: 0 });
+    expect(() => sealFrame(sodium, lostRing, utf8('[{"t":"lease.claimed"}]'), c, lost)).toThrow(
+      RangeError,
+    );
+    // Re-labelled by hand: a frame sealed as itself and moved to the desktop's position does not
+    // open there (AAD), and its head never verifies under the desktop's key.
+    const own = ctx(vaultId, { deviceId: lost.deviceId, segment: 9, offset: 0 });
+    const forged = sealFrame(sodium, lostRing, utf8('[{"t":"lease.claimed"}]'), own, lost);
+    expect(code(() => openFrame(sodium, desktopRing, forged.bytes, c))).toBe("auth_failed");
+    expect(
+      verifyHeadSignature(
+        vaultId,
+        { ...forged.head, device: desktop.deviceId },
+        desktop.signPublicKey,
+      ),
+    ).toBe(false);
   });
 
   it("A3: concurrent rotation never lets a key wrapped for the revoked device win", () => {
@@ -156,11 +166,11 @@ describe("review attacks now fail", () => {
   it("A5: malformed frames never crash with a non-CryptoError", () => {
     const ring = newRing();
     const c = ctx(ring.vaultId);
-    const good = sealFrame(sodium, ring, samplePlain(), c);
+    const good = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
     let other = 0;
     const tryOpen = (f: Uint8Array) => {
       try {
-        openFrame(sodium, ring, f, c);
+        openFrame(sodium, ring, f, c).plain;
       } catch (e) {
         if (!(e instanceof CryptoError)) other++;
       }
@@ -182,13 +192,26 @@ describe("review attacks now fail", () => {
   it("A6: device ids with lone surrogates (or any non-hex id) are rejected", () => {
     const ring = newRing();
     for (const deviceId of ["dev\uD800", "dev�", "DEVICE", "a1".repeat(15), "0".repeat(32)]) {
-      expect(() => sealFrame(sodium, ring, samplePlain(), ctx(ring.vaultId, { deviceId }))).toThrow(
-        RangeError,
-      );
+      expect(
+        () =>
+          sealFrame(
+            sodium,
+            ring,
+            samplePlain(),
+            ctx(ring.vaultId, { deviceId }),
+            writerOf(ctx(ring.vaultId, { deviceId })),
+          ).bytes,
+      ).toThrow(RangeError);
     }
-    const frame = sealFrame(sodium, ring, samplePlain(), ctx(ring.vaultId));
-    expect(() =>
-      openFrame(sodium, ring, frame, ctx(ring.vaultId, { deviceId: "dev\uD800" })),
+    const frame = sealFrame(
+      sodium,
+      ring,
+      samplePlain(),
+      ctx(ring.vaultId),
+      writerOf(ctx(ring.vaultId)),
+    ).bytes;
+    expect(
+      () => openFrame(sodium, ring, frame, ctx(ring.vaultId, { deviceId: "dev\uD800" })).plain,
     ).toThrow(RangeError);
   });
 
@@ -248,8 +271,8 @@ describe("revocation races and hygiene", () => {
       // ... and R, which holds B's concurrent key, cannot read what A and B write next.
       expect(ringR.get(plain.kid)).toBeDefined();
       const c = ctx(vaultId, { deviceId: a.deviceId });
-      const next = sealFrame(sodium, ringA, samplePlain(), c);
-      expect(code(() => openFrame(sodium, ringR, next, c))).toBe("unknown_key");
+      const next = sealFrame(sodium, ringA, samplePlain(), c, writerOf(c)).bytes;
+      expect(code(() => openFrame(sodium, ringR, next, c).plain)).toBe("unknown_key");
     }
   });
 

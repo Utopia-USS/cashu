@@ -21,6 +21,7 @@ import type * as genesis from "@cashu/store/genesis";
 import type { crypto } from "@cashu/sync";
 import type { DaemonConfig } from "./config.js";
 import { writePythonGidSalt } from "./keys/labFile.js";
+import { labGate } from "./keys/labGate.js";
 import { createVault } from "./keys/vaultKeys.js";
 import type { PythonCli } from "./python/cli.js";
 import type { PythonReader } from "./python/reader.js";
@@ -72,7 +73,7 @@ const hex = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
 export async function initVaults(d: InitDeps): Promise<void> {
   if (d.reader.vaults().length > 0) throw new InitRefusedError("a profile is already linked");
   const profiles = d.reader.profiles();
-  const created = new Map<string, VaultKeys>();
+  const created = new Map<string, VaultKeys & { readonly genesis: crypto.DeviceIdentity }>();
   const keys = new Map<string, genesis.VaultKeys>();
   for (const p of profiles) {
     const k = await createVault(d.keyStore, d.sodium);
@@ -95,9 +96,10 @@ export async function initVaults(d: InitDeps): Promise<void> {
       remotes: [],
       keys: k,
       sodium: d.sodium,
+      gate: await labGate(d.keyStore, d.sodium, k.ring),
     });
     try {
-      const writer = await genesisEngine(vault, v.wall, []);
+      const writer = await genesisEngine(vault, d.sodium, v.wall, [], k.genesis);
       const chunks = frameChunks(v.events);
       for (const [i, chunk] of chunks.entries()) {
         const unstamped = chunk.map(({ h: _h, ...rest }) => rest);
@@ -111,7 +113,10 @@ export async function initVaults(d: InitDeps): Promise<void> {
       const tmp = join(vault.dir, "tmp");
       mkdirSync(tmp, { recursive: true, mode: 0o700 });
       const seeded = d.cli.seed(v.slug, v.ids, tmp);
-      const pusher = await genesisEngine(vault, v.wall, remotes);
+      // The genesis device retires once its stream is written (lead decision B2): its key existed
+      // only in memory and is wiped; the push needs none.
+      k.genesis.wipe();
+      const pusher = await genesisEngine(vault, d.sodium, v.wall, remotes);
       await pusher.sync();
       await pusher.close();
       // The genesis log carries the cushion of budget.json: record it as shipped, so the first loop

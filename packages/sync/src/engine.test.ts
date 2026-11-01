@@ -7,13 +7,20 @@ import { SyncError } from "./errors.js";
 import { MemoryClockStore, MemoryTransport } from "./memory.js";
 import { utf8Encode } from "./runtime.js";
 import { frameBytes } from "./segment.js";
-import { FaultInjector, insecureTestCodec, ManualClock, MemorySink } from "./testing/index.js";
+import {
+  FaultInjector,
+  insecureTestCodec,
+  insecureTestGate,
+  ManualClock,
+  MemorySink,
+} from "./testing/index.js";
 
 const VAULT = "0123456789abcdef0123456789abcdef";
 const A = "daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const B = "dbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const T0 = Date.UTC(2026, 9, 31, 12);
 const codec = insecureTestCodec();
+const gate = insecureTestGate();
 
 async function engine(
   device: string,
@@ -27,6 +34,7 @@ async function engine(
     local,
     remotes,
     codec,
+    gate,
     sink,
     clockStore: new MemoryClockStore(),
     physicalClock: new ManualClock(T0),
@@ -50,6 +58,7 @@ describe("SyncEngine", () => {
         device: A,
         local,
         codec,
+        gate,
         sink: new MemorySink(),
         clockStore: new MemoryClockStore(),
       }),
@@ -121,7 +130,13 @@ describe("SyncEngine", () => {
         e: [{ t: "test.set", v: 1, h: `0mvwcmtc0-0000-${A}`, i: "x", d: {} }],
       }),
     );
-    const sealed = await codec.seal(plain, { vault: VAULT, device: A, seg: 1, offset: 0 });
+    const sealed = (
+      await codec.seal(
+        plain,
+        { vault: VAULT, device: A, seg: 1, offset: 0 },
+        codec.genesis(VAULT, A, 1),
+      )
+    ).sealed;
     await remote.append(VAULT, A, 1, 0, frameBytes(sealed));
     const b = await engine(B, new MemoryTransport(), [remote]);
     const r = await b.sync();
@@ -159,6 +174,7 @@ describe("SyncEngine", () => {
       local: new MemoryTransport(),
       remotes: [eventualFolder, relay],
       codec,
+      gate,
       sink: new MemorySink(),
       clockStore: new MemoryClockStore(),
       physicalClock: clock,

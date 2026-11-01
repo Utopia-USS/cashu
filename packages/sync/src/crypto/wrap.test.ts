@@ -14,6 +14,7 @@ import {
   samplePlain,
   testRecovery,
   trustedTo,
+  writerOf,
 } from "./testkit.js";
 import {
   openPairingWrap,
@@ -53,30 +54,32 @@ describe.each(backends)("pairing hop (%s)", (_name, sodium: Sodium) => {
       ring,
       samplePlain(),
       ctx(vaultId, { deviceId: desktop.deviceId }),
-    );
+      writerOf(ctx(vaultId, { deviceId: desktop.deviceId })),
+    ).bytes;
     const fromPhone = sealFrame(
       sodium,
       phoneRing,
       samplePlain(),
       ctx(vaultId, { deviceId: phone.deviceId }),
-    );
+      writerOf(ctx(vaultId, { deviceId: phone.deviceId })),
+    ).bytes;
     expect(
-      openFrame(sodium, phoneRing, fromDesktop, ctx(vaultId, { deviceId: desktop.deviceId })),
+      openFrame(sodium, phoneRing, fromDesktop, ctx(vaultId, { deviceId: desktop.deviceId })).plain,
     ).toEqual(samplePlain());
-    expect(openFrame(sodium, ring, fromPhone, ctx(vaultId, { deviceId: phone.deviceId }))).toEqual(
-      samplePlain(),
-    );
+    expect(
+      openFrame(sodium, ring, fromPhone, ctx(vaultId, { deviceId: phone.deviceId })).plain,
+    ).toEqual(samplePlain());
   });
 
   it("the whole ring travels, so the new device reads frames of older generations", () => {
     const phone = createDeviceIdentity(sodium);
     const ring = newRing(sodium);
     const c = ctx(ring.vaultId);
-    const old = sealFrame(sodium, ring, samplePlain(), c);
+    const old = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
     rotateKeyring(sodium, ring);
     const phoneRing = pairWith(sodium, ring, phone);
     expect(phoneRing.size).toBe(2);
-    expect(openFrame(sodium, phoneRing, old, c)).toEqual(samplePlain());
+    expect(openFrame(sodium, phoneRing, old, c).plain).toEqual(samplePlain());
   });
 
   it("a third device cannot open it; tampered, truncated or another vault's boxes are refused", () => {
@@ -320,8 +323,8 @@ describe.each(backends)("revocation is rotation going forward (%s)", (_name, sod
     unwrapKeys(sodium, onlyNew, phone, phoneRing, trusting(desktop), anyEpoch);
 
     const c = ctx(vaultId, { deviceId: desktop.deviceId });
-    const frame = sealFrame(sodium, ring, samplePlain(), c);
-    expect(openFrame(sodium, phoneRing, frame, c)).toEqual(samplePlain());
-    expect(code(() => openFrame(sodium, lostRing, frame, c))).toBe("unknown_key");
+    const frame = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
+    expect(openFrame(sodium, phoneRing, frame, c).plain).toEqual(samplePlain());
+    expect(code(() => openFrame(sodium, lostRing, frame, c).plain)).toBe("unknown_key");
   });
 });

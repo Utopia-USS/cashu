@@ -386,6 +386,7 @@ async function main(argv: readonly string[]): Promise<number> {
     const stale = await openDevice({
       sodium,
       ring,
+      keyStore,
       remote: join(runDir, "remote"),
       dbPath: ":memory:",
       clockMs: genesisWall + 60_000,
@@ -441,6 +442,7 @@ async function main(argv: readonly string[]): Promise<number> {
     const current = await openDevice({
       sodium,
       ring,
+      keyStore,
       remote: join(runDir, "remote"),
       dbPath: ":memory:",
       clockMs: Date.now(),
@@ -591,6 +593,7 @@ async function main(argv: readonly string[]): Promise<number> {
       const dev = await openVerifier({
         sodium,
         ring: r,
+        keyStore,
         remote: join(runDir, "remote"),
         run: runDir,
         ordinal,
@@ -757,16 +760,18 @@ async function rawScan(remote: string, ring: crypto.Keyring, sodium: crypto.Sodi
   const seen = new Set<string>();
   let events = 0;
   let duplicates = 0;
-  for (const seg of await t.list(ring.vaultId)) {
-    if (seg.seg === 0) continue; // the manifest segment
+  // Segments in stream order per device: each frame links to the previous one's chain.
+  const segs = [...(await t.list(ring.vaultId))]
+    .filter((s) => s.seg !== 0) // the manifest segment
+    .sort((a, b) => (a.device < b.device ? -1 : a.device > b.device ? 1 : a.seg - b.seg));
+  const chains = new Map<string, Uint8Array>();
+  for (const seg of segs) {
     const bytes = await t.read(ring.vaultId, seg.device, seg.seg, 0);
     for (const f of scanFrames(bytes, 0).frames) {
-      const plain = await codec.open(f.sealed, {
-        vault: ring.vaultId,
-        device: seg.device,
-        seg: seg.seg,
-        offset: f.offset,
-      });
+      const at = { vault: ring.vaultId, device: seg.device, seg: seg.seg, offset: f.offset };
+      const prev = chains.get(seg.device) ?? codec.genesis(ring.vaultId, seg.device, 1);
+      const { plain, head } = await codec.open(f.sealed, at, prev);
+      chains.set(seg.device, head.chain);
       const decoded = decodePayload(plain, seg.device);
       if (!decoded.ok) continue;
       for (const e of decoded.payload.events) {

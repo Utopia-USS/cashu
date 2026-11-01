@@ -13,6 +13,7 @@ import {
   samplePlain,
   sodium,
   trustedTo,
+  writerOf,
 } from "./testkit.js";
 import { unwrapKeys, wrapKeys } from "./wrap.js";
 
@@ -42,12 +43,14 @@ describe("runtimes", () => {
   it("frames and wraps interoperate both ways between the Node and the mobile backend", () => {
     const ring = newRing();
     const c = ctx(ring.vaultId);
-    expect(openFrame(mobileSodium, ring, sealFrame(sodium, ring, samplePlain(), c), c)).toEqual(
-      samplePlain(),
-    );
-    expect(openFrame(sodium, ring, sealFrame(mobileSodium, ring, samplePlain(), c), c)).toEqual(
-      samplePlain(),
-    );
+    expect(
+      openFrame(mobileSodium, ring, sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes, c)
+        .plain,
+    ).toEqual(samplePlain());
+    expect(
+      openFrame(sodium, ring, sealFrame(mobileSodium, ring, samplePlain(), c, writerOf(c)).bytes, c)
+        .plain,
+    ).toEqual(samplePlain());
     const desktop = createDeviceIdentity(sodium);
     const phone = createDeviceIdentity(mobileSodium);
     const phoneRing = ring.clone(mobileSodium);
@@ -66,9 +69,9 @@ describe("runtimes", () => {
     const noble = await loadNodeSodium({ aead: "noble" });
     const ring = newRing();
     const c = ctx(ring.vaultId);
-    expect(openFrame(noble, ring, sealFrame(sodium, ring, samplePlain(), c), c)).toEqual(
-      samplePlain(),
-    );
+    expect(
+      openFrame(noble, ring, sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes, c).plain,
+    ).toEqual(samplePlain());
   });
 
   it("F7: a zero or repeating RNG fails the self-test", async () => {
@@ -127,9 +130,9 @@ describe("runtimes", () => {
     const s = fromLibsodium(lib);
     const ring = newRing();
     const c = ctx(ring.vaultId);
-    const frame = sealFrame(s, ring, samplePlain(), c);
+    const frame = sealFrame(s, ring, samplePlain(), c, writerOf(c)).bytes;
     broken = true;
-    expect(code(() => openFrame(s, ring, frame, c))).toBe("unsupported_runtime");
+    expect(code(() => openFrame(s, ring, frame, c).plain)).toBe("unsupported_runtime");
     const box = s.seal(samplePlain(), createDeviceIdentity(s).box.publicKey);
     expect(code(() => s.sealOpen(box, new Uint8Array(32), new Uint8Array(32)))).toBe(
       "unsupported_runtime",

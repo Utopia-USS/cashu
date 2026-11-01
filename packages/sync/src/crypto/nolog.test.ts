@@ -18,6 +18,7 @@ import {
   samplePlain,
   sodium,
   trustedTo,
+  writerOf,
 } from "./testkit.js";
 import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
@@ -67,9 +68,9 @@ describe("no key or plaintext in logs", () => {
     const c = ctx(ring.vaultId);
     const phone = createDeviceIdentity(sodium);
     rotateKeyring(sodium, ring);
-    const frame = sealFrame(sodium, ring, samplePlain(), c);
+    const frame = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
     const phoneRing = pairWith(sodium, ring, phone);
-    openFrame(sodium, phoneRing, frame, c);
+    openFrame(sodium, phoneRing, frame, c).plain;
     const store = new InMemoryKeyStore();
     await saveKeyring(store, ring);
     await loadKeyring(store, sodium, ring.vaultId);
@@ -83,8 +84,8 @@ describe("no key or plaintext in logs", () => {
       anyEpoch,
     );
     const tampered = frame.slice();
-    tampered[tampered.length - 1] = (tampered.at(-1) ?? 0) ^ 1;
-    expect(() => openFrame(sodium, ring, tampered, c)).toThrow();
+    tampered[tampered.length - 65] = (tampered.at(-65) ?? 0) ^ 1; // the AEAD tag
+    expect(() => openFrame(sodium, ring, tampered, c).plain).toThrow();
     expect(() => recoveryIdentity(sodium, `${recovery.phrase.reveal()} extra`)).toThrow();
     expect(written).toEqual([]);
   });
@@ -127,12 +128,13 @@ function logEverything(recovery: NewRecoveryKey): {
   const pair = createDeviceIdentity(sodium);
   const recoveryPair = recoveryIdentity(sodium, recovery.phrase);
   const c = ctx(ring.vaultId);
-  const frame = sealFrame(sodium, ring, samplePlain(), c);
+  const frame = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
 
   const errors: unknown[] = [];
   for (const fn of [
-    () => openFrame(sodium, createKeyring(sodium, recovery.publicKeys, ring.vaultId), frame, c),
-    () => openFrame(sodium, ring, frame.subarray(0, frame.length - 1), c),
+    () =>
+      openFrame(sodium, createKeyring(sodium, recovery.publicKeys, ring.vaultId), frame, c).plain,
+    () => openFrame(sodium, ring, frame.subarray(0, frame.length - 1), c).plain,
     () => recoveryIdentity(sodium, recovery.phrase.reveal().split(" ").slice(0, 23).join(" ")),
     () =>
       unwrapKeys(
@@ -172,5 +174,5 @@ function logEverything(recovery: NewRecoveryKey): {
     ...secretsOf(recoveryPair.box.secretKey.expose()),
     ...secretsOf(recoveryPair.signSecretKey.expose()),
   ];
-  return { output, secrets, opened: openFrame(sodium, ring, frame, c) };
+  return { output, secrets, opened: openFrame(sodium, ring, frame, c).plain };
 }

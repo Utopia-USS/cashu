@@ -7,15 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createOwnLogCarrier,
-  createOwnLogCodec,
   crypto,
   type DeviceId,
   type FolderFs,
   FolderTransport,
-  type FrameCodec,
   TransportError,
 } from "@cashu/sync";
-import { describeCarrierContract } from "@cashu/sync/testing";
+import { describeCarrierContract, type TestSigners, testSigners } from "@cashu/sync/testing";
 import { CloudSim } from "@cashu/sync/testing/folder";
 import { describe, expect, it } from "vitest";
 import { NodeFolderFs } from "./folderFs.js";
@@ -106,10 +104,11 @@ describe("NodeFolderFs", () => {
 const sodium = await crypto.loadNodeSodium();
 const recovery = crypto.createRecoveryKey(sodium).publicKeys;
 
-function carrierFor(fs: FolderFs, codec: FrameCodec, device: DeviceId) {
+function carrierFor(fs: FolderFs, signers: TestSigners, device: DeviceId) {
   return createOwnLogCarrier({
     transport: new FolderTransport({ fs, owner: device }),
-    codec,
+    codec: signers.codecFor(device),
+    gate: signers.gateFor(device),
     device,
   });
 }
@@ -120,13 +119,11 @@ describeCarrierContract({
     const root = await tempRoot("shared");
     const locals = await tempRoot("locals");
     const fs = new NodeFolderFs(root);
-    const codec = createOwnLogCodec({
-      sodium,
-      ring: crypto.createKeyring(sodium, recovery, vault),
-    });
+    const signers = testSigners(sodium, crypto.createKeyring(sodium, recovery, vault));
     return {
-      remoteFor: (device) => carrierFor(fs, codec, device),
-      codecFor: () => codec,
+      remoteFor: (device) => carrierFor(fs, signers, device),
+      codecFor: (device) => signers.codecFor(device),
+      gateFor: (device) => signers.gateFor(device),
       localFor: async (device) => {
         // A device's durable log copy (the daemon's `log/`); a restart reopens the same one.
         const dir = join(locals, device);
@@ -149,10 +146,7 @@ describeCarrierContract({
   async createMedium(vault) {
     const root = await tempRoot("eventual");
     const sim = new CloudSim({ seed: seed++, partialRate: 0.3, conflictRate: 0.3, maxDelay: 4 });
-    const codec = createOwnLogCodec({
-      sodium,
-      ring: crypto.createKeyring(sodium, recovery, vault),
-    });
+    const signers = testSigners(sodium, crypto.createKeyring(sodium, recovery, vault));
     const replica = async (device: DeviceId): Promise<FolderFs> => {
       const known = sim.replica(device);
       if (known) return known;
@@ -164,8 +158,9 @@ describeCarrierContract({
       return fs;
     };
     return {
-      remoteFor: async (device) => carrierFor(await replica(device), codec, device),
-      codecFor: () => codec,
+      remoteFor: async (device) => carrierFor(await replica(device), signers, device),
+      codecFor: (device) => signers.codecFor(device),
+      gateFor: (device) => signers.gateFor(device),
       settle: async () => {
         for (let i = 0; i < 3; i++) await sim.churn();
         await sim.flush();

@@ -41,6 +41,7 @@
 import type { SegmentCursor } from "../carrier.js";
 import {
   CertificateCache,
+  type CertificateClosure,
   type CertificateIndex,
   RECOVERY_SIGNER_ID,
   type RecoveryPublicKeys,
@@ -145,6 +146,7 @@ export class Registry {
   readonly #windows: ReadonlyMap<string, number>;
   readonly #retired: ReadonlySet<string>;
   readonly #previousRecovery: readonly PreviousRecoveryKey[];
+  #all: CertificateClosure | undefined;
 
   /** Not public API: use `foldRegistry`. */
   constructor(parts: {
@@ -262,6 +264,17 @@ export class Registry {
    */
   statementKeys(device: string, position: SegmentCursor): readonly Uint8Array[] {
     return this.#keys.statementKeys(device, position, this.revoked);
+  }
+
+  /**
+   * The keys that may have SIGNED frames of `device` (its stream heads): every key certified for it
+   * through a chain from the recovery key, revocations ignored (acceptance.ts `author` source). A
+   * frame signature only says who wrote the frame; whether its data or statements count is decided
+   * by cuts and decision keys, as for every statement.
+   */
+  authorKeys(device: string): readonly Uint8Array[] {
+    this.#all ??= this.#index.closure(new Set());
+    return this.#all.keysOf(device).map((k) => k.signPublicKey.slice());
   }
 
   /** Trusted devices and the revocation count once `devices` are revoked too (before writing it). */
