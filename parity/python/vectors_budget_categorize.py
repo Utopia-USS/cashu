@@ -5,7 +5,7 @@
     .venv/bin/python parity/python/vectors_budget_categorize.py --check    # regenerates in memory, fails on any diff
 
 Writes ``packages/domain/test/vectors/budget-categorize-*.jsonl`` and
-``budget-categorize-matching-data.json``. Every input is synthetic: random with a fixed seed, the
+``budget-categorize-matching-data.jsonl``. Every input is synthetic: random with a fixed seed, the
 live Python rule tables (imported, never retyped) and hand-picked edge cases. Nothing reads a data
 dir. Scenarios run the real ``match_internal_transfers`` / ``categorize_all`` / ``detect_recurring``
 / ``reclassify_all`` on one in-memory SQLite engine (``create_all``: every module's models), each
@@ -780,6 +780,7 @@ LAYOUTS = {
     "engine": "[case, txns[[amount, cpName, cpIban, reference, description, internal]], rules[[mk,cat,src,locked]], patterns[[cat,iban,text]], subscription_keys, [[owner_decision|null, categorize]] per txn]",
     "all": "[scenario, ctx{accountIbans, ownIbans, rules, patterns}, rows (id order, after transfer matching, stored before; fields ROW_FIELDS), non-internal query order (ids), [category, source] per row after categorize_all(use_llm=False), detect_recurring() before the run (the one categorize_all uses), payees]",
     "llm": "['merchants', n, backend, merchants, keys, requests[[url, body]], replies, result{m:[cat,conf]}, personLike{m:bool}] | ['pass', n, backend, ctx, rows, requests, replies, outcome, rules after, personLike]",
+    "matching-data": "[{data: the live Python objects (prompts, rule tables, sets, regexes, literals, defaults), sha256: of json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}]",
     "reclassify": "['text', txn, currency, amounts, txn_signature, txn_context] | ['scenario', n, ctx, rows, query order, opts, requests, replies, stats, final [cat, src] per row]",
 }
 
@@ -807,7 +808,7 @@ def generate() -> dict[str, str]:
     files["budget-categorize-all.jsonl"] = dump("all", gen_all(random.Random(SEED + 2), engine))
     files["budget-categorize-llm.jsonl"] = dump("llm", gen_llm(random.Random(SEED + 3), engine))
     files["budget-categorize-reclassify.jsonl"] = dump("reclassify", gen_reclassify(random.Random(SEED + 4), engine))
-    files["budget-categorize-matching-data.json"] = no_em_dash(json.dumps(matching_data(), ensure_ascii=False, indent=1) + "\n")
+    files["budget-categorize-matching-data.jsonl"] = dump("matching-data", [[matching_data()]])
     if offline.blocked():
         raise SystemExit(f"network attempts blocked: {offline.blocked()}")
     print(f"socket guard: {offline.blocked()} blocked attempts", file=sys.stderr)
