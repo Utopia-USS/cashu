@@ -16,6 +16,7 @@
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@cashu/node-host": "workspace:*",
     "@cashu/store": "workspace:*",
     "better-sqlite3": "13.0.3",
     "zod": "^4.6.7"

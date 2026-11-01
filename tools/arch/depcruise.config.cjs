@@ -26,6 +26,8 @@ const LAYERS = {
   api: ["domain", "store", "sync", "i18n"],
   mcp: ["domain", "store", "sync", "i18n"],
   parity: ["domain", "store", "mcp"],
+  // Node-only adapters shared by apps (guard, FolderFs, node:sqlite SqlDriver); only apps import it.
+  "node-host": ["domain", "store", "sync"],
 };
 
 const layerRules = Object.entries(LAYERS).map(([pkg, allowed]) => ({
@@ -73,6 +75,14 @@ module.exports = {
       to: { dependencyTypes: ["local"], path: "^(packages|apps|tools)/", pathNot: "^$1/$2/" },
     },
     {
+      name: "node-host-is-for-apps",
+      severity: "error",
+      comment:
+        "@cashu/node-host holds Node-only adapters (file system, node:sqlite, path guards) for the hosts in apps/. Only apps import it; a package takes the platform piece through its interface (SqlDriver, FolderFs) wired at the app root.",
+      from: { path: "^(packages|tools)/", pathNot: "^packages/node-host/" },
+      to: { path: "^packages/node-host/" },
+    },
+    {
       name: "module-internals",
       severity: "error",
       comment:
@@ -97,7 +107,7 @@ module.exports = {
       to: {
         dependencyTypesNot: ["type-only"],
         path: [
-          `^packages/(store|store-react|sync|ui-logic)/`,
+          `^packages/(store|store-react|sync|ui-logic|node-host)/`,
           "(^|/)commands(\\.tsx?|/|$)",
           IMPURE_LIBS,
         ],

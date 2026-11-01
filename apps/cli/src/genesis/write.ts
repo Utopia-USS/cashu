@@ -1,6 +1,7 @@
 // The out dir of `cashu-next genesis` (S26 spec 9.4, D-G11 lab layout). Plaintext vault logs: the
 // folders are 0700 and the files 0600, and the dir is never inside the data dir or a git work tree
-// (guard.ts). Vault folders are named by ordinal (profiles ordered by id), never by slug.
+// (`refusePaths` of @cashu/node-host). Vault folders are named by ordinal (profiles ordered by id),
+// never by slug.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalJson } from "@cashu/store";

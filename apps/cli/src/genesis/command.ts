@@ -8,12 +8,12 @@
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { parseArgs } from "node:util";
+import { RefusalError, refusePaths, resolveReal } from "@cashu/node-host";
 import { betterSqlite3Driver } from "@cashu/store";
 import * as genesis from "@cashu/store/genesis";
 import Database from "better-sqlite3";
 import { assertUnchanged, copyRun, manifest, runFiles, SourceChangedError } from "./copy.ts";
 import { FoldError, foldVault } from "./fold.ts";
-import { type GenesisPaths, RefusalError, refusePaths, resolveReal } from "./guard.ts";
 import { initKeys, KeysFileError, readKeys } from "./keys.ts";
 import { createOut, type VaultSummary, vaultDir, writeManifest, writeVault } from "./write.ts";
 
@@ -42,6 +42,13 @@ class UsageError extends Error {
 }
 
 const short = (hex: string) => hex.slice(0, 12);
+
+/** The three paths, resolved (`resolveReal`). */
+interface GenesisPaths {
+  readonly dataDir: string;
+  readonly out: string;
+  readonly keys: string;
+}
 
 interface Options extends GenesisPaths {
   readonly initKeys: boolean;
@@ -217,7 +224,16 @@ export function genesisCommand(argv: readonly string[], env: CliEnv): number {
   let code = 0;
   try {
     const options = parse(argv);
-    refusePaths(options, env.home);
+    refusePaths(
+      {
+        dataDir: { label: "--data-dir", path: options.dataDir },
+        outputs: [
+          { label: "--out", path: options.out },
+          { label: "--keys", path: options.keys },
+        ],
+      },
+      env.home,
+    );
     checkTargets(options);
     run(options, env);
   } catch (e) {

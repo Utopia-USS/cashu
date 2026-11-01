@@ -32,6 +32,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@cashu/node-host':
+        specifier: workspace:*
+        version: link:../../packages/node-host
       '@cashu/store':
         specifier: workspace:*
         version: link:../../packages/store
@@ -248,6 +251,15 @@ importers:
       '@cashu/domain':
         specifier: workspace:*
         version: link:../domain
+
+  packages/node-host:
+    dependencies:
+      '@cashu/store':
+        specifier: workspace:*
+        version: link:../store
+      '@cashu/sync':
+        specifier: workspace:*
+        version: link:../sync
 
   packages/parity:
     dependencies:
