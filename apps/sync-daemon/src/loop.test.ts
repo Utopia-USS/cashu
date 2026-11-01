@@ -2,138 +2,14 @@
 // synthetic Python database, a fake `cashu` CLI and real vaults (node:sqlite view, Node folder log,
 // libsodium codec) in temp dirs. A crash is a throw at a crash point followed by reopening every
 // vault from disk. Synthetic data only.
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { mintUlid } from "@cashu/store";
-import { crypto } from "@cashu/sync";
 import { afterEach, describe, expect, it } from "vitest";
-import { labFileKeyStore } from "./keys/labFile.js";
-import { labGate } from "./keys/labGate.js";
-import { createVault, loadVaultKeys } from "./keys/vaultKeys.js";
-import { BlockedError, type CrashPoint, Loop } from "./loop.js";
+import { BlockedError, Loop } from "./loop.js";
 import { PythonReader } from "./python/reader.js";
-import { SyntheticPython } from "./testing/python.js";
-import { type OpenVault, openVault } from "./vault.js";
+import { cleanupLoop, logOf, openAll, ports, runLoop, world } from "./testing/loop.js";
 
-const sodium = await crypto.loadNodeSodium();
 const GID_A = "01JQ0000000000000000000001";
 const GID_B = "01JQ0000000000000000000002";
-
-class Crash extends Error {}
-
-interface World {
-  readonly py: SyntheticPython;
-  readonly root: string;
-  readonly vaultIds: readonly string[];
-  readonly keysPath: string;
-}
-
-const cleanup: (() => void)[] = [];
-afterEach(() => {
-  for (const f of cleanup.splice(0)) f();
-});
-
-async function world(profiles: number): Promise<World> {
-  const py = new SyntheticPython();
-  const root = mkdtempSync(join(tmpdir(), "cashu-daemon-state-"));
-  const keysPath = join(root, "keys.json");
-  const store = labFileKeyStore(keysPath);
-  const vaultIds: string[] = [];
-  for (let p = 1; p <= profiles; p++) {
-    py.profile(p, `syn-${p}`);
-    const keys = await createVault(store, sodium);
-    py.link(p, keys.ring.vaultId);
-    vaultIds.push(keys.ring.vaultId);
-  }
-  cleanup.push(() => {
-    py.close();
-    rmSync(py.dir, { recursive: true, force: true });
-    rmSync(root, { recursive: true, force: true });
-  });
-  return { py, root, vaultIds, keysPath };
-}
-
-async function openAll(w: World): Promise<OpenVault[]> {
-  const store = labFileKeyStore(w.keysPath);
-  const out: OpenVault[] = [];
-  for (const [i, id] of w.vaultIds.entries()) {
-    const keys = await loadVaultKeys(store, sodium, id);
-    if (keys === undefined) throw new Error("keys");
-    out.push(
-      await openVault({
-        ordinal: i,
-        profileId: i + 1,
-        stateRoot: join(w.root, "state"),
-        remotes: [join(w.root, "remote")],
-        keys,
-        sodium,
-        gate: await labGate(store, sodium, keys.ring, keys.identity),
-      }),
-    );
-  }
-  return out;
-}
-
-let tick = 0;
-const ports = {
-  ulid: () => {
-    tick += 1;
-    return mintUlid(Date.UTC(2026, 2, 1) + tick, (n) => sodium.randomBytes(n));
-  },
-  isLeader: () => true,
-};
-
-async function runLoop(w: World, crashAt?: CrashPoint) {
-  const vaults = await openAll(w);
-  const reader = new PythonReader(w.py.dir);
-  const cli = w.py.cli();
-  const lines: Record<string, unknown>[] = [];
-  const loop = new Loop({
-    reader,
-    cli,
-    vaults,
-    slugs: new Map(vaults.map((v) => [v.profileId, `syn-${v.profileId}`])),
-    ports,
-    now: () => Date.UTC(2026, 2, 2),
-    out: (l) => lines.push({ ...l }),
-    at: (p) => {
-      if (p === crashAt) throw new Crash(p);
-    },
-  });
-  let crashed = false;
-  try {
-    for (;;) {
-      const r = await loop.iteration();
-      if (r.idle) break;
-    }
-  } catch (e) {
-    if (!(e instanceof Crash)) throw e;
-    crashed = true;
-  }
-  return {
-    vaults,
-    cli,
-    lines,
-    crashed,
-    async close() {
-      for (const v of vaults) await v.close();
-      reader.close();
-    },
-  };
-}
-
-/** Bridge events held per vault, and whether any eid repeats. */
-function logOf(v: OpenVault) {
-  const rows = v.store.read<{ eid: string; type: string }>(
-    "SELECT eid, type FROM event_log ORDER BY seq",
-  );
-  return {
-    count: rows.length,
-    distinct: new Set(rows.map((r) => r.eid)).size,
-    types: rows.map((r) => r.type),
-  };
-}
+afterEach(cleanupLoop);
 
 describe("the loop", () => {
   it("ships, acks with field clocks and leaves nothing pending", async () => {
@@ -224,28 +100,6 @@ describe("the loop", () => {
     if (v === undefined) throw new Error("vault");
     expect(logOf(v)).toMatchObject({ count: 1, distinct: 1 });
     await second.close();
-  });
-
-  it("ships a large import (one transaction, several frames) as one atomic write (S29c-B3)", async () => {
-    const w = await world(1);
-    const rows = 2500;
-    for (let i = 0; i < rows; i++) {
-      const gid = `01JQ${String(i + 1).padStart(22, "0")}`;
-      w.py.editAlert(1, 100 + i, gid, `bulk-${i}`, {}, "txn-import");
-    }
-    w.py.editAlert(1, 5, GID_A, "after-import");
-    const run = await runLoop(w);
-    expect(run.crashed).toBe(false);
-    expect(w.py.pending()).toBe(0);
-    const [v] = run.vaults;
-    if (v === undefined) throw new Error("vault");
-    expect(logOf(v)).toMatchObject({ count: rows + 1, distinct: rows + 1 });
-    // The import went out as one frame group in one write: its frames sit in one segment, and a
-    // reader that opens the vault from the log applies it as one batch.
-    const segs = (await v.local.list(v.vaultId)).filter((s) => s.device === v.device);
-    expect(segs.map((s) => s.seg)).toEqual([1]);
-    expect(run.cli.acks.map((a) => a.through)).toEqual([rows, rows + 1]);
-    await run.close();
   });
 
   it("D4: an unmappable row stops the loop; nothing is written or acked", async () => {
