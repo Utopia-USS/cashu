@@ -16,6 +16,7 @@ import {
 } from "./events.js";
 import { PairingInviter } from "./pairing.js";
 import { foldRegistry, type Registry } from "./registry.js";
+import { expectOrderFree, mutualRevocationScenario } from "./registryOrder.js";
 import {
   createSimVault,
   hlcAt,
@@ -48,22 +49,14 @@ function fold(device: SimDevice, events: readonly LogEvent[]): Registry {
     sodium,
     { vaultId: device.ring.vaultId, recovery: device.ring.recovery },
     events,
+    // The device's own signature caches (results are a function of the bytes): a test's folds and
+    // the device's ingests verify each statement once, as a running device does.
+    { verify: device.verify, certificateCache: device.certificateCache },
   );
 }
 
 function allEvents(...devices: SimDevice[]): LogEvent[] {
   return devices.flatMap((d) => d.stream.flatMap((s) => s.events));
-}
-
-function shuffle<T>(items: readonly T[], seed: number): T[] {
-  const out = [...items];
-  let s = seed;
-  for (let i = out.length - 1; i > 0; i--) {
-    s = (s * 1103515245 + 12345) % 2 ** 31;
-    const j = s % (i + 1);
-    [out[i], out[j]] = [out[j] as T, out[i] as T];
-  }
-  return out;
 }
 
 async function vaultOfThree() {
@@ -75,40 +68,9 @@ async function vaultOfThree() {
 }
 
 describe("device registry", () => {
-  it("the fold depends only on the set of events (any order, duplicates)", async () => {
-    const { a, b, c } = await vaultOfThree();
-    const d = await pairDevice(a, "watch"); // B's sibling: neither certified the other (H5')
-    const vaultId = a.ring.vaultId;
-    // B revokes D while D revokes B, each after the other's cut (each consented): no order decides,
-    // both are revoked.
-    const bRevokesC = stamp(
-      revokedWithConsent(b.identity, vaultId, [{ device: d.id, cut: { seg: 1, offset: 0 } }], [d]),
-      b.id,
-      START_TIME + 1e7,
-      1e6,
-    );
-    const cRevokesB = stamp(
-      revokedWithConsent(d.identity, vaultId, [{ device: b.id, cut: { seg: 1, offset: 0 } }], [b]),
-      d.id,
-      START_TIME + 2e7,
-      1e6,
-    );
-    const events = [...allEvents(a, b, c, d), bRevokesC, cRevokesB];
-    const reference = fold(a, events);
-    expect(reference.revoked.has(d.id)).toBe(true);
-    expect(reference.revoked.has(b.id)).toBe(true);
-    expect(reference.revoked.get(b.id)?.contested).toBe(true);
-    expect(reference.revocationCount).toBe(2);
-    expect([...reference.trusted.keys()]).toEqual([a.id]);
-    for (let seed = 1; seed <= 25; seed++) {
-      const r = fold(a, shuffle([...events, ...events.slice(0, seed % events.length)], seed));
-      expect([...r.trusted.keys()].sort()).toEqual([...reference.trusted.keys()].sort());
-      expect([...r.revoked.keys()]).toEqual([...reference.revoked.keys()]);
-      expect([...r.revoked.values()].map((x) => x.cut)).toEqual(
-        [...reference.revoked.values()].map((x) => x.cut),
-      );
-      expect(r.revocationCount).toBe(2);
-    }
+  it("the fold depends only on the set of events (any order, duplicates; seeds 1-3, the sweep is exhaustive)", async () => {
+    const scenario = await mutualRevocationScenario();
+    for (let seed = 1; seed <= 3; seed++) expectOrderFree(scenario, seed);
   });
 
   it("ignores forged statements: tampered, another eid, another vault, signer not the writer", async () => {
