@@ -23,10 +23,9 @@
 // groups and their payees). A payee's rows are found through the transactions materializer's
 // `fold_txn_keys.merchant_key` (the same `merchantKey` of the same row content).
 //
-// TRANSITIONAL(S24b): `is_internal_transfer` is read from the view and is always 0 until the
-// transfers deriver writes it (before this one): a one-sided pair leg (only the other leg carries
-// its account's IBAN) is categorized by the engine and may join a recurring group. S24b must make its
-// changed rows reach this deriver as dirty rows.
+// `is_internal_transfer` is read from the view (the transfers deriver writes it, before this one);
+// the bank rows whose flag it flipped in this apply (`takeTransferFlips`) are dirty rows here too.
+// Every input of the transfers deriver is an input here, so this deriver runs whenever it did.
 import { budget, core, D } from "@cashu/domain";
 import { CONTRIBUTIONS, type DeriveContext, type Deriver } from "../../engine/types.js";
 import type { Read } from "../../query.js";
@@ -34,6 +33,7 @@ import type { TableDef } from "../../sql/ddl.js";
 import { budgetEngineContext } from "../read-models.js";
 import { CASHEXP, CASHLEG, splitKey, TRANSACTIONS } from "../transactions.js";
 import { selectIn } from "./keys.js";
+import { takeTransferFlips } from "./transfers.js";
 
 const membersTable: TableDef = {
   name: "fold_category_members",
@@ -361,6 +361,7 @@ function recheckGroups(ctx: DeriveContext, groups: readonly string[]): void {
 }
 
 function deriveAll(ctx: DeriveContext): void {
+  takeTransferFlips(ctx); // every row is re-derived below
   const e = engine(ctx);
   const rows = allRows(ctx);
   const members = new Map<string, Member | null>();
@@ -433,7 +434,7 @@ export const categoriesDeriver: Deriver = {
       deriveAll(ctx);
       return;
     }
-    const keys = txns === undefined ? [] : [...txns];
+    const keys = [...new Set([...(txns ?? []), ...takeTransferFlips(ctx)])];
     if (keys.length >= FULL_PASS_MIN) {
       const total = ctx.sql.get<{ n: number }>("SELECT count(*) AS n FROM fold_txn_keys")?.n ?? 0;
       if (keys.length * FULL_PASS_SHARE > total) {

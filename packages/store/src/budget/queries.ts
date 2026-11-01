@@ -107,8 +107,6 @@ export function reclassifyRowByGid(read: Read, gid: string): ReclassifyRow | und
         counterpartyIban: r.counterparty_iban,
         description: r.description,
         reference: r.reference,
-        // TRANSITIONAL(S24b): always 0 until the transfers deriver writes it, so a one-sided transfer
-        // leg is not structural here yet.
         isInternalTransfer: r.is_internal_transfer === 1,
         onCashAccount: r.type === CASH_ACCOUNT_TYPE,
         category: r.category,
@@ -160,8 +158,6 @@ export function classifierMerchants(read: Read): {
     counterpartyIban: r.counterparty_iban,
     description: r.description,
     reference: r.reference,
-    // TRANSITIONAL(S24b): always 0 until the transfers deriver writes it, so a one-sided transfer
-    // leg can show up here as an unknown merchant.
     isInternalTransfer: r.is_internal_transfer === 1,
     source: r.category_source,
   }));

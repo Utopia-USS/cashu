@@ -805,7 +805,7 @@ Lease state never enters the view fold (6.2 LEADER), so the reference fold does 
 
 | Column | Recomputed from |
 |---|---|
-| `transactions.is_internal_transfer`, `transfer_group_id` | the resolved account set, counterparty IBAN only (rule 5) |
+| `transactions.is_internal_transfer`, `transfer_group_id` | full recompute (S24 D-24.1) with the S08 matcher over every row (cash legs and expenses included): counterparty IBAN only (rule 5) against the accounts' raw match key `iban_match` incl. removed accounts (D-08.1), amount key `transferAmountKey` (D-08.2), rows in anchor order, group id = the outflow row's gid (D-24.2) |
 | `transactions.category`, `category_source` | claims + rules + payment patterns + recurring payees + engine (8.3), full recompute (S24 D-24.1), rule categories on every device (D8) |
 | cash mirror legs (`cashleg:<@txn>`, `raw.cash_leg_of`) | the folded `manual_txn` claim `cash_withdrawal` of a row not on a cash account, while the cash pool account `cash:<CUR>` is open (S24 D-24.3; a locked merchant rule to `cash_withdrawal` makes no leg) |
 | account key parking (`<key>~<@account>`) | per (bank, external id) group: live accounts hold the key (several live all show it, m12), else the latest opened (fold order of its first open); every other member is parked (S24 D-24.7) |
