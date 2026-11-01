@@ -251,15 +251,33 @@ class Planner {
       kept.map((d) => d.draft),
       s.vm,
     );
-    const eids = kept.map(() => this.#input.ports.ulid());
-    const causeIndex = kept.findIndex((d) => CAUSES.includes(d.draft.type));
-    const noteIndex = kept.findIndex((d) => d.draft.type === "note.candidateUpdated");
-    const events = kept.map((d, i): UnstampedEvent => {
-      let cause: string | undefined;
-      if (causeIndex >= 0 && i !== causeIndex) cause = eids[causeIndex];
-      else if (causeIndex < 0 && noteIndex >= 0 && NOTE_SIDE.test(d.draft.type)) {
-        cause = eids[noteIndex];
-      }
+    // The cause of a transaction's side effects (events.md 6.6): a proposal decision, else a
+    // candidate accept / undo. A caused event must sort AFTER its cause (the store suppresses it
+    // otherwise), so the cause moves right after the earlier events of its own row; those (its own
+    // row's history) never get it as their cause.
+    let causeIndex = kept.findIndex((d) => CAUSES.includes(d.draft.type));
+    const byNote = causeIndex < 0;
+    if (byNote) causeIndex = kept.findIndex((d) => d.draft.type === "note.candidateUpdated");
+    const causeItem = kept[causeIndex];
+    const ordered =
+      causeItem === undefined
+        ? [...kept]
+        : [
+            ...kept.slice(0, causeIndex).filter((d) => d.draft.gid === causeItem.draft.gid),
+            causeItem,
+            ...kept.filter(
+              (d, i) =>
+                i !== causeIndex && !(i < causeIndex && d.draft.gid === causeItem.draft.gid),
+            ),
+          ];
+    const eids = ordered.map(() => this.#input.ports.ulid());
+    const causeEid = causeItem === undefined ? undefined : eids[ordered.indexOf(causeItem)];
+    const events = ordered.map((d, i): UnstampedEvent => {
+      const caused =
+        causeItem !== undefined &&
+        d !== causeItem &&
+        d.draft.gid !== causeItem.draft.gid &&
+        (!byNote || NOTE_SIDE.test(d.draft.type));
       return {
         t: d.draft.type,
         v: 1,
@@ -268,10 +286,10 @@ class Planner {
         a: d.at,
         d: d.draft.data,
         o: "bridge",
-        ...(cause === undefined ? {} : { c: cause }),
+        ...(caused && causeEid !== undefined ? { c: causeEid } : {}),
       };
     });
-    return { events, carries: kept.map((d) => d.carries) };
+    return { events, carries: ordered.map((d) => d.carries) };
   }
 
   batches(): VaultBatch[] {
