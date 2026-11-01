@@ -34,6 +34,68 @@ describe("research_runs", () => {
   });
 });
 
+describe("research_runs FWW close", () => {
+  // Lead decision 2026-11-01: any device closes a stale run `failed {interrupted}` on its next start /
+  // note; the first finish in fold order wins, later closes and a late completion are no-ops.
+  const fail = (ev: Events, wall: number) =>
+    ev.make(
+      "researchRun.finished",
+      RUN,
+      {
+        status: "failed",
+        counts: { notes: 1, reason: "interrupted" },
+        stamps: { finished_at: "2026-10-31T12:00:00.050Z" },
+      },
+      { wall },
+    );
+
+  it("two devices closing one stale run and a late done: the first close wins in every order", () => {
+    const a = new Events();
+    const b = new Events(DEV_B, "01JB");
+    const c = new Events("cccccccccccccccccccccccccccccccc", "01JD");
+    const events = [
+      a.make("researchRun.started", RUN, { scope: { held: true } }, { wall: 10 }),
+      b.make(
+        "researchRun.finished",
+        RUN,
+        { status: "failed", counts: { notes: 1, reason: "interrupted", by: "b" } },
+        { wall: 100 },
+      ),
+      c.make(
+        "researchRun.finished",
+        RUN,
+        { status: "failed", counts: { notes: 1, reason: "interrupted", by: "c" } },
+        { wall: 101 },
+      ),
+      a.make("researchRun.finished", RUN, { status: "done", counts: { notes: 2 } }, { wall: 200 }), // late success
+    ];
+    converge(events, (store) => {
+      expect(row(store, "research_runs", RUN)).toMatchObject({
+        status: "failed",
+        counts: { notes: 1, reason: "interrupted", by: "b" },
+        finished_at: "2026-10-31 12:00:00.100000",
+      });
+    });
+  });
+
+  it("a completion that sorts before the close wins; the close is then a no-op", () => {
+    const a = new Events();
+    const b = new Events(DEV_B, "01JB");
+    const events = [
+      a.make("researchRun.started", RUN, {}, { wall: 10 }),
+      a.make("researchRun.finished", RUN, { status: "done", counts: { notes: 3 } }, { wall: 90 }),
+      fail(b, 100),
+    ];
+    converge(events, (store) => {
+      expect(row(store, "research_runs", RUN)).toMatchObject({
+        status: "done",
+        counts: { notes: 3 },
+        finished_at: "2026-10-31 12:00:00.090000",
+      });
+    });
+  });
+});
+
 describe("research_notes", () => {
   it("an agent note is born unread, an owner note born read, a read_at stamp wins", () => {
     const store = openTestStore();

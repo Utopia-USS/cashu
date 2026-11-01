@@ -467,7 +467,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | inv_decisions + inv_decision_signals | `decision.recorded`, `decision.undone` | ULID | APPEND; links embedded; undo TOMB |
 | reviews | `review.done`, `review.undone` | ULID | APPEND; undo TOMB |
 | proposals | `proposal.created`, `proposal.approved`, `proposal.rejected`, `proposal.failed` | ULID | CREATE; terminal FWW; caused side effects (6.6); import-like kinds leader-only |
-| research_runs | `researchRun.started`, `researchRun.finished` | ULID | APPEND; finish LWW-F |
+| research_runs | `researchRun.started`, `researchRun.finished` | ULID | APPEND; finish FWW on the status (8.9) |
 | research_notes | `note.added`, `note.read`, `note.dismissed`, `note.restored`, `note.candidateUpdated`, `note.signalLinked` | ULID | APPEND; read / dismissed / candidate / signal link LWW-F |
 | connector_bindings | `connectorBinding.set`, `connectorBinding.removed`, `connectorBinding.cursorAdvanced` | DET(account, connector_id) | LWW-F on the row key; removed SOFT (M1); cursor LWW, LEADER, caused (M5) |
 
@@ -690,7 +690,16 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 - `topicThesis.rejected` `{}` (SOFT `rejected_at`).
 - `topicThesis.marketViewSet` `{segment, assessment|null, outlook|null, sources?, by}`: `sources`
   absent = keep (Python `KEEP`), null = clear; `view_updated_at` = domain time.
-- `researchRun.started` `{scope, createdBy}`; `researchRun.finished` `{status, counts}`.
+- `researchRun.started` `{scope, createdBy}`; `researchRun.finished` `{status: done|failed, counts}`
+  (`stamps.finished_at` may set the close time). Emitters: the run's device (`done` / `failed` with the
+  agent's counts), and **any device** that finds the run stale (running, no note for 4 hours) on its
+  next run start or note, plus the leader's housekeeping: `failed` with `counts.reason = interrupted`
+  and `finished_at` = the run's last activity (Python `_fail_stale_runs`; lead decision 2026-11-01).
+  Rule: **first-writer-wins on the run's status** - the first `finished` in fold order `(hlc, eid)`
+  sets `status`, `counts` and `finished_at`; every later `finished` of the run is a no-op (a second
+  device's close of the same stale run, or a late `done` from the run's own device arriving after the
+  close). A completion that sorts before a close wins and the close is the no-op. Delivery order never
+  matters (convergence: `investments/research.test.ts`, "research_runs FWW close").
 - `note.added` `{run@|null, instrument@|null, theme|null, segment|null, kind, polarity, strength,
   thesisRelation, thesisField|null, title, summary, sources[], details|null, candidateKey|null,
   signal@|null, observedAt, expiresAt, createdBy}`; owner notes are born read. `note.read` (fills
@@ -837,7 +846,9 @@ Resolved in v1.2 (lead decisions on the re-check):
 - R-4 accepted as a deferral: S29 is a hard gate before two devices may hold or contest the lease
   (multi-device fetching stays off until then).
 - R-5 accepted: closes from either side converge in the episode fold; leader-only `notes_expired` only
-  delays a close.
+  delays a close. Superseded for research runs (lead decision 2026-11-01, S21b): v1's leader-only close
+  of a stale run no longer holds; any device closes a stale run `failed {interrupted}` on its next start
+  / note, made safe by first-writer-wins on the run's status (8.9).
 
 Remaining: none from S04. Hand-offs: the lease payloads and watermark wait (S29), the salt wrapping,
 recovery and dual-runtime storage (S27, [`gid.md`](gid.md) G5).

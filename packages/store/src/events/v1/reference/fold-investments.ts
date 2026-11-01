@@ -631,7 +631,7 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
         break;
       case "researchRun.finished": {
         const r = researchRuns.get(e.gid);
-        if (r === undefined) break;
+        if (r === undefined || r.status !== "running") break; // FWW on the run's status
         r.status = d.status;
         r.counts = d.counts;
         r.finished_at = time(e, "finished_at");

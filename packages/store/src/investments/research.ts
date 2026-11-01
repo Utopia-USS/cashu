@@ -1,8 +1,11 @@
 // Research runs and notes (events.md 8.9; S25 spec 4.14, 4.15).
 //
-// Runs: `researchRun.started` APPEND (status running), `researchRun.finished` LWW-F (status, counts,
-// finished_at). A run that never finishes stays running in the view (D-G9); the stale-run failure is
-// a leader `finished {failed}` (S22c).
+// Runs: `researchRun.started` APPEND (status running), `researchRun.finished` FWW (first-writer-wins
+// on the run's status): the first applied finish in fold order `(hlc, eid)` sets status, counts and
+// finished_at; every later finish (a second device closing the same stale run, a late `done` from the
+// run's own device after a `failed {interrupted}` close) is a no-op. A run that never finishes stays
+// running in the view (D-G9); any device closes a stale run `failed {interrupted}` on its next start /
+// note, the leader in its housekeeping (S21b, lead decision 2026-11-01).
 //
 // Notes: `note.added` APPEND; LWW-F side fields:
 // - `read_at`: on add the `read_at` stamp when present (null included), else the domain time for an
@@ -57,9 +60,10 @@ export const researchRunsMaterializer: Materializer = {
       );
       return;
     }
+    // FWW: only a running run takes a finish (the first applied finish in fold order wins).
     ctx.sql.write(
       runs.name,
-      "UPDATE research_runs SET status = ?, counts = ?, finished_at = ? WHERE gid = ?",
+      "UPDATE research_runs SET status = ?, counts = ?, finished_at = ? WHERE gid = ? AND status = 'running'",
       String(d.status),
       json(d.counts ?? {}),
       ctx.time(e, "finished_at"),
