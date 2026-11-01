@@ -184,7 +184,12 @@ class Planner {
           continue;
         }
         const ids = instrumentsOf(row);
-        const holders = this.#states.filter((s) => ids.some((id) => s.vm.holdsInstrument(id)));
+        // A merge also reaches every vault Python recorded gids for (the source mapping is gone).
+        const recorded = row.op === "merge" ? ((row.key?.gids as object | undefined) ?? {}) : {};
+        const holders = this.#states.filter(
+          (s) =>
+            String(s.vm.input.profileId) in recorded || ids.some((id) => s.vm.holdsInstrument(id)),
+        );
         if (holders.length === 0) this.counts.sharedUnheld += 1;
         for (const s of holders) push(s, this.#mapped(row, s, logical));
         continue;

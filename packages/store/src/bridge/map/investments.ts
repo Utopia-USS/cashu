@@ -150,6 +150,9 @@ const transactions: TableBridge<InvTransactionRow> = {
   update: refuseAll("inv_transactions"),
 };
 
+/** Columns an overlapping re-import rewrites without changing the snapshot (provenance only). */
+const PROVENANCE: readonly string[] = ["import_batch_id", "created_at"];
+
 const positions: TableBridge<InvPositionSnapshotRow> = {
   table: "inv_position_snapshots",
   gid: "det",
@@ -169,9 +172,16 @@ const positions: TableBridge<InvPositionSnapshotRow> = {
       ctx.attempt(() => mapPosition(r, ctx)),
     );
   },
-  // CREATE on the row key: a re-import's upsert of the same (account, instrument, as_of) has no
-  // catalog event (follow-up: the catalog needs an LWW-F re-snapshot).
-  update: refuseAll("inv_position_snapshots"),
+  // A re-import upserts the same (account, instrument, as_of): its snapshot event is the row's DET
+  // gid again, which `position.snapshotImported` (CREATE) dedupes, first import wins (lead decision,
+  // S31c item 1). So a provenance-only rewrite (import_batch_id / created_at of an overlapping
+  // re-import) is a no-event row, explicitly; a changed VALUE cannot be carried by a CREATE and
+  // blocks visibly (follow-up: an LWW re-snapshot event) instead of diverging silently.
+  update: (c) => {
+    const changed = [...c.changed];
+    if (changed.every((col) => PROVENANCE.includes(col))) return [];
+    throw new BridgeBlock("resnapshot:inv_position_snapshots");
+  },
 };
 
 const renames: TableBridge<InvInstrumentRenameRow> = {
@@ -278,12 +288,19 @@ function instrumentUpdate(c: RowChange<InvInstrumentRow>, ctx: MapContext): read
 
 function instrumentMerge(c: RowChange<InvInstrumentRow>, ctx: MapContext): readonly EventDraft[] {
   const key = c.row.key ?? {};
-  const gidOf = (v: unknown) =>
-    v === undefined || v === null ? undefined : ctx.ids.resolver.gid("inv_instruments", String(v));
-  const source = gidOf(key.source);
-  const target = gidOf(key.target);
-  // Python drops the source's `sync_ids` mapping when it emits the merge (S30), so a merge of an
-  // instrument this plan did not map blocks: follow-up for the emit to keep the mapping until ack.
+  // Python records each profile's gids of both instruments in the merge row's key (it drops the
+  // source mapping at emit); a vault without them resolves the live map.
+  const perProfile = (
+    key.gids as Record<string, { source?: unknown; target?: unknown }> | undefined
+  )?.[String(c.vaultProfileId)];
+  const resolve = (fromKey: unknown, local: unknown) =>
+    typeof fromKey === "string"
+      ? fromKey
+      : local === undefined || local === null
+        ? undefined
+        : ctx.ids.resolver.gid("inv_instruments", String(local));
+  const source = resolve(perProfile?.source, key.source);
+  const target = resolve(perProfile?.target, key.target);
   if (source === undefined || target === undefined) {
     throw new BridgeBlock("unresolved:inv_instruments");
   }

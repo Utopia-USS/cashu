@@ -350,7 +350,18 @@ describe("positions, renames, valuations", () => {
       prev: { quantity: "2" },
       post: { ...position, quantity: "3" },
     };
-    expect(blockOf([reimport])).toBe("immutable:inv_position_snapshots:quantity");
+    expect(blockOf([reimport])).toBe("resnapshot:inv_position_snapshots");
+    // An overlapping re-import that only rewrites provenance is an explicit no-event row.
+    const provenance = {
+      ...reimport,
+      fields: { import_batch_id: 7, created_at: T1 },
+      prev: { import_batch_id: 2, created_at: T0 },
+      post: { ...position, import_batch_id: 7, created_at: T1 },
+    };
+    const r = run([provenance]);
+    expect(r.ok && r.plan.counts.noEvent).toBe(1);
+    expect(r.ok && r.plan.batches.flatMap((b) => b.events).length).toBe(0);
+    expect(r.ok && r.plan.through).toBeGreaterThan(0);
   });
 
   it("a rename insert is instrumentRename.recorded", () => {

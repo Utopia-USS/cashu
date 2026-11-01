@@ -30,6 +30,8 @@ export interface RowChange<R> {
   readonly changed: ReadonlySet<string>;
   /** Every logical row of the same Python transaction (e.g. a decision's signal links). */
   readonly txn: readonly LogicalRow[];
+  /** The Python profile of the vault the row is mapped into (a shared row has no profile). */
+  readonly vaultProfileId: number;
 }
 
 type Handler<R> = (change: RowChange<R>, ctx: MapContext) => readonly EventDraft[];

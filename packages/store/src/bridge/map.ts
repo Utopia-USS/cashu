@@ -119,15 +119,82 @@ function settleDet(row: LogicalRow, events: readonly EventDraft[], vm: VaultMapp
   return events.map((e) => (e.gid === PENDING_DET ? { ...e, gid } : e));
 }
 
+/** Python columns that reference an instrument (what a merge repoints). */
+const INSTRUMENT_REFS: readonly string[] = [
+  "instrument_id",
+  "old_instrument_id",
+  "new_instrument_id",
+];
+/** Tables whose rows Python deletes when a merge makes two rows collide (the fold collapses them). */
+const MERGE_COLLAPSED: readonly string[] = [
+  "watchlist_items",
+  "inv_profile_instruments",
+  "inv_instrument_renames",
+  "inv_instrument_aliases",
+];
+
+/**
+ * The redirect of an instrument merge earlier in the same transaction (lead decision, S31c item 1):
+ * `instrument.merged` makes the fold re-key every reference of the source onto the target and
+ * collapse rows that then collide, so the rows Python's raw-SQL merge rewrote carry nothing more for
+ * those changes: a repoint (source -> target, also inside a signal's dedup key) is dropped from the
+ * row, and a colliding row's delete is a no-event row. Every other column change ships normally.
+ */
+function throughMerge(row: LogicalRow, txn: readonly LogicalRow[]): LogicalRow | undefined {
+  const at = txn.indexOf(row);
+  const merges = txn.filter(
+    (r, i) => r.op === "merge" && r.table === "inv_instruments" && (at < 0 || i < at),
+  );
+  if (merges.length === 0) return row;
+  for (const m of merges) {
+    const source = String(m.key?.source ?? "");
+    const target = String(m.key?.target ?? "");
+    if (row.op === "delete") {
+      const refs = INSTRUMENT_REFS.map((c) => String(row.fields[c] ?? ""));
+      if (MERGE_COLLAPSED.includes(row.table) && refs.some((v) => v === source || v === target)) {
+        return undefined;
+      }
+      continue;
+    }
+    if (row.op !== "update") continue;
+    const prev = row.prev ?? {};
+    const token = new RegExp(`(^|\\|)i:${source}(\\||$)`, "g");
+    const kept = Object.entries(row.fields).filter(([col, value]) => {
+      if (INSTRUMENT_REFS.includes(col)) {
+        return !(String(prev[col] ?? "") === source && String(value ?? "") === target);
+      }
+      if (col === "dedup_key" && typeof prev.dedup_key === "string") {
+        return prev.dedup_key.replace(token, `$1i:${target}$2`) !== value;
+      }
+      return true;
+    });
+    if (kept.length !== Object.keys(row.fields).length) {
+      const cols = new Set(kept.map(([c]) => c));
+      const fields = Object.fromEntries(kept);
+      const nextPrev = Object.fromEntries(Object.entries(prev).filter(([c]) => cols.has(c)));
+      return { ...row, fields, prev: nextPrev };
+    }
+  }
+  return row;
+}
+
 /**
  * The events of one merged row in one vault. A row of a shared table (instruments, aliases) is
  * mapped only in a vault that holds its instrument; the caller decides that (`plan.ts`).
  */
 export function mapRow(
-  row: LogicalRow,
+  input: LogicalRow,
   vm: VaultMapping,
-  txn: readonly LogicalRow[] = [row],
+  txn: readonly LogicalRow[] = [input],
 ): MappedRow {
+  const redirected = throughMerge(input, txn);
+  if (
+    redirected === undefined ||
+    (redirected.op === "update" && Object.keys(redirected.fields).length === 0)
+  ) {
+    return NOTHING;
+  }
+  const row = redirected;
   const bridge = bridgeOf(row.table);
   const profileId = vm.input.profileId;
   const changed = new Set(Object.keys(row.fields));
@@ -137,7 +204,15 @@ export function mapRow(
     const gid = insertGid(bridge, row, vm) ?? "";
     const post = decoded(row, row.post ?? row.fields, profileId);
     if (!post.ok) throw new BridgeBlock(post.reason);
-    const change: RowChange<never> = { row, gid, post: post.row, pre: undefined, changed, txn };
+    const change: RowChange<never> = {
+      row,
+      gid,
+      post: post.row,
+      pre: undefined,
+      changed,
+      txn,
+      vaultProfileId: profileId,
+    };
     events = settleDet(row, bridge.insert(change, vm.ctx), vm);
   } else {
     const gid = row.gid ?? vm.existing(row.table, row.localId);
@@ -161,6 +236,7 @@ export function mapRow(
         pre: pre.ok ? pre.row : undefined,
         changed,
         txn,
+        vaultProfileId: profileId,
       };
       events = bridge.update(change, vm.ctx);
     } else if (row.op === "delete") {
@@ -173,6 +249,7 @@ export function mapRow(
         pre: pre.ok ? pre.row : undefined,
         changed,
         txn,
+        vaultProfileId: profileId,
       };
       events = bridge.delete(change, vm.ctx);
     } else {
@@ -185,6 +262,7 @@ export function mapRow(
         pre: undefined,
         changed,
         txn,
+        vaultProfileId: profileId,
       };
       events = handler(change, vm.ctx);
     }
