@@ -7,6 +7,7 @@
  */
 
 import { SPECS } from "../../sources/index.ts";
+import { DANGLING } from "./canonical.ts";
 import type { GidSource, VaultRun } from "./genesisRun.ts";
 
 /** Natural keys by Python table and row id (`PythonDb.keys`). */
@@ -17,6 +18,7 @@ export interface KeyLookup {
 /** A gid as genesis writes it (keyed UUIDv8 or ULID, events v1 `gid`). */
 const GID =
   "[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9A-HJKMNP-TV-Z]{26}";
+const GID_RE = new RegExp(`^(${GID})$`);
 /** A whole alert key or rule id (`alert:<gid>`). */
 const ALERT_KEY = new RegExp(`^alert:(${GID})$`);
 /** A `|` part of a signal key holding an instrument (`i:`) or account (`a:`) gid. */
@@ -116,5 +118,14 @@ export class GidKeys {
   }
 
   /** For JSON walks: a gid string -> its natural key. */
-  readonly mapString = (s: string): string | undefined => this.keyOf(s);
+  /**
+   * A JSON string: an exported row's gid -> its natural key; a gid of no exported row (a row deleted
+   * or merged away after it was referenced, bridge runs) -> `DANGLING`, as store.py's canonical form
+   * treats an id whose row is gone; any other string stays.
+   */
+  readonly mapString = (s: string): string | undefined | typeof DANGLING => {
+    const key = this.keyOf(s);
+    if (key !== undefined) return key;
+    return GID_RE.test(s) ? DANGLING : undefined;
+  };
 }

@@ -44,14 +44,28 @@ export function bool(value: unknown): boolean | null {
  * A JSON value with every string `mapString` maps replaced (gids -> natural keys); numbers become
  * `bigint` (integers) or Python floats (fractions), as Python's `json.loads` reads them back.
  */
-export function json(value: unknown, mapString: (s: string) => string | undefined): OutValue {
+/** `mapString`'s answer for a reference to a row that no longer exists: dropped from a list, null. */
+export const DANGLING: unique symbol = Symbol("dangling");
+
+export function json(
+  value: unknown,
+  mapString: (s: string) => string | undefined | typeof DANGLING,
+): OutValue {
   if (value === null || value === undefined) return null;
   if (typeof value === "boolean") return value;
-  if (typeof value === "string") return mapString(value) ?? value;
+  if (typeof value === "string") {
+    const mapped = mapString(value);
+    return mapped === DANGLING ? null : (mapped ?? value);
+  }
   if (typeof value === "number") {
     return Number.isSafeInteger(value) ? BigInt(value) : pyFloat(value);
   }
-  if (Array.isArray(value)) return value.map((v) => json(v, mapString));
+  if (Array.isArray(value)) {
+    // A dangling id in a list is dropped, as store.py's canonical form drops it.
+    return value
+      .filter((v) => typeof v !== "string" || mapString(v) !== DANGLING)
+      .map((v) => json(v, mapString));
+  }
   if (typeof value === "object") {
     const out: Record<string, OutValue> = {};
     for (const [k, v] of Object.entries(value)) out[k] = json(v, mapString);
