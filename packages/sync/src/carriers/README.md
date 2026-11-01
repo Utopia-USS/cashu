@@ -46,6 +46,12 @@ createSyncEngine({ vault, device, local, remotes: [remote], codec, gate, sink, c
   `FrameGate`, so a key holder that is not the writer cannot forge a frame, and a stale earlier
   segment can no longer be skipped even without the manifest gate (segment N's first frame links to
   N - 1's last). The S28b writer key floor is gone (D6).
+- **Atomic writes and pulls** (S29c-B3): the engine appends every frame of one write in ONE append
+  to one segment (the segment cap is soft), so a crash never leaves part of a frame group behind; a
+  sync pass reaches the sink in one `applyBatches` transaction (chunked at 25,000 events or 32 MiB).
+- **Gate snapshot** (S29c-B3): with a `gateState` store the engine saves the gate's state after a
+  pass and, after a restart, checks it (signed by the device itself; each position's frame found in
+  the local log with the same chain and signature) and replays only the log's tail.
 - **Compaction hooks** (S32 builds compaction): `markSnapshot`, `retireBefore`, `snapshots`, and the
   reader option `resumeFrom` to start a stream at an installed snapshot.
 
