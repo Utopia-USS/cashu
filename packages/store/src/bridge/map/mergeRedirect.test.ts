@@ -2,7 +2,9 @@
 // ships `instrument.merged` with the gids Python recorded in its key, and the rows the raw-SQL merge
 // rewrote ship only what the fold's redirect does not already do. Synthetic rows only.
 import { describe, expect, it } from "vitest";
+import { TABLES } from "../../genesis/tables.js";
 import { plan } from "../plan.js";
+import type { CurrentRows } from "../resolve.js";
 import { DET, idsOf, outboxRow, T0, testPorts, vaultInput } from "../testing/rows.js";
 
 const SRC = DET("inv_instruments", ["isin:XS0000000001"]);
@@ -100,5 +102,96 @@ describe("instrument merge transaction", () => {
     ];
     const r = plan({ rows, vaults: [vaultInput(ids)], ports: testPorts() });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe("a merge in a vault that holds one side", () => {
+  it("ships the target's own identity and snapshot, then folds the source into it", () => {
+    const TS = "2026-03-01T10:00:00.000000Z"; // decoded form (genesis readers)
+    const empty = Object.fromEntries(Object.keys(TABLES).map((k) => [k, []]));
+    const target = {
+      id: 4,
+      name: "Syn Target",
+      currency: "USD",
+      assetClass: "etf",
+      symbol: "TGT",
+      isin: null,
+      mic: null,
+      region: null,
+      sector: null,
+      tags: [],
+      needsClassification: false,
+      valuationMode: "market",
+      status: "active",
+      createdAt: TS,
+      updatedAt: TS,
+    };
+    const alias = (id: number, namespace: string, value: string) => ({
+      id,
+      instrumentId: 4,
+      namespace,
+      value,
+      guessed: false,
+      createdAt: TS,
+    });
+    const current = (): CurrentRows => ({
+      scope: {
+        ...empty,
+        profile: {
+          id: 1,
+          slug: "syn",
+          name: "Syn",
+          baseCurrency: "PLN",
+          mcpPrivacy: "strict",
+          createdAt: T0,
+        },
+      } as unknown as CurrentRows["scope"],
+      global: {
+        instruments: [target],
+        aliases: [alias(11, "yahoo", "TGT"), alias(12, "isin", "XS0000000001")],
+      },
+    });
+    const only = outboxRow({
+      table: "inv_instruments",
+      localId: "3",
+      op: "merge",
+      profileId: null,
+      fields: { source_id: 3, target_id: 4 },
+      key: { source: "3", target: "4", gids: { "1": { source: SRC, target: null } } },
+    });
+    // the source's ISIN alias, repointed by the merge (the fold's redirect covers it)
+    const moved = outboxRow({
+      table: "inv_instrument_aliases",
+      localId: "12",
+      op: "update",
+      profileId: null,
+      fields: { instrument_id: 4 },
+      prev: { instrument_id: 3 },
+    });
+    const ownGid = DET("inv_instruments", ["yahoo:TGT"]);
+    const r = plan({
+      rows: [only, moved],
+      vaults: [
+        vaultInput(
+          idsOf({
+            "inv_instrument_aliases|12": DET("inv_instrument_aliases", ["isin", "XS0000000001"]),
+          }),
+          current,
+        ),
+      ],
+      ports: testPorts(),
+    });
+    if (!r.ok) throw new Error(`blocked: ${r.reason}`);
+    const events = r.plan.batches.flatMap((b) => b.events);
+    expect(events.map((e) => [e.t, e.g])).toEqual([
+      ["instrument.created", ownGid],
+      ["instrument.aliasAdded", DET("inv_instrument_aliases", ["yahoo", "TGT"])],
+      ["instrument.merged", SRC],
+    ]);
+    expect(events[2]?.d).toMatchObject({ source: SRC, target: ownGid });
+    expect(r.plan.batches[0]?.gids.map((g) => [g.table, g.localId])).toContainEqual([
+      "inv_instruments",
+      "4",
+    ]);
   });
 });

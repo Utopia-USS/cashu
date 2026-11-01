@@ -33,7 +33,7 @@ interface IdEntry {
   readonly gid: string;
 }
 
-interface InstrumentIdentity extends InstrumentRef {
+export interface InstrumentIdentity extends InstrumentRef {
   readonly row: InvInstrumentRow;
   /** `isin:<value>` of the ISIN alias, else `namespace:value` of the oldest alias; null: none. */
   readonly creationAlias: string | null;
@@ -68,7 +68,7 @@ export interface VaultIds {
   missingGid(table: string, id: number): string;
 }
 
-function instrumentIdentities(
+export function instrumentIdentities(
   closure: readonly number[],
   global: GlobalInstruments,
   det: DetGid,

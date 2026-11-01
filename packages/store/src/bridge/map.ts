@@ -195,8 +195,34 @@ export function mapRow(
     return NOTHING;
   }
   const row = redirected;
-  const bridge = bridgeOf(row.table);
   const profileId = vm.input.profileId;
+  if (row.op === "merge" && row.table === "inv_instruments") {
+    // A vault that holds one side only (review F2, lead S31c item 1).
+    const gids = (
+      row.key?.gids as Record<string, { source?: unknown; target?: unknown }> | undefined
+    )?.[String(profileId)];
+    const source = typeof gids?.source === "string" ? gids.source : undefined;
+    const target = typeof gids?.target === "string" ? gids.target : undefined;
+    if (source !== undefined && target === undefined) {
+      // The vault held only the source: the target joins it (its own identity and snapshot), then
+      // the merge folds the source in, as in a vault that held both.
+      const src = String(row.key?.source ?? "");
+      const moved = new Set(
+        txn
+          .filter(
+            (r) =>
+              r.table === "inv_instrument_aliases" &&
+              r.op === "update" &&
+              String(r.prev?.instrument_id ?? "") === src,
+          )
+          .map((r) => Number(r.localId)),
+      );
+      vm.mergeTarget(String(row.key?.target ?? ""), moved);
+    } else if (source === undefined && target !== undefined) {
+      return NOTHING; // the vault held only the target: nothing changes there
+    }
+  }
+  const bridge = bridgeOf(row.table);
   const changed = new Set(Object.keys(row.fields));
   let events: readonly EventDraft[];
   if (row.op === "insert") {

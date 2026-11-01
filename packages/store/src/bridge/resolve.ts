@@ -16,6 +16,8 @@
 import {
   type GidResolver,
   type GlobalInstruments,
+  type InstrumentIdentity,
+  instrumentIdentities,
   type VaultIds,
   vaultIds,
 } from "../genesis/ids.js";
@@ -89,6 +91,8 @@ export class VaultMapping {
   /** Instruments (local ids) this vault references but does not hold: closure snapshot needed. */
   readonly #missing = new Set<number>();
   readonly #snapshotted = new Set<number>();
+  /** Closure identities that differ from phase 1's (a merge target, `mergeTarget`). */
+  readonly #overrides = new Map<number, InstrumentIdentity>();
   #phase1: VaultIds | undefined;
   #current: CurrentRows | undefined;
   readonly resolver: GidResolver;
@@ -141,6 +145,43 @@ export class VaultMapping {
     return this.det("inv_transactions", [account, hash]);
   }
 
+  /**
+   * A merge into a target this vault does not hold (review F2): the target's identity from its OWN
+   * aliases (the live rows already carry the source's aliases, `moved`, which would give it the
+   * source's creation alias and so the source's gid), its gid sent with the ack, and its closure
+   * snapshot queued, so `instrument.merged` folds the source into it as in a vault that held both.
+   */
+  mergeTarget(localId: string, moved: ReadonlySet<number>): string {
+    this.#current ??= this.input.current();
+    const id = Number(localId);
+    const row = this.#current.global.instruments.find((i) => i.id === id);
+    if (row === undefined) throw new BridgeBlock("unresolved:inv_instruments");
+    const own = this.#current.global.aliases.filter(
+      (a) => a.instrumentId === id && !moved.has(a.id),
+    );
+    const identity = instrumentIdentities([id], { instruments: [row], aliases: own }, this.det).get(
+      id,
+    );
+    if (identity === undefined) throw new BridgeBlock("unresolved:inv_instruments");
+    const gid = identity.creationAlias === null ? this.#ports.ulid() : identity.gid;
+    this.#overrides.set(id, { ...identity, gid });
+    this.put("inv_instruments", localId, gid, true);
+    // Its own aliases' gids as genesis phase 1 computes them (ids.ts): the target may sit outside
+    // this vault's phase-1 closure.
+    for (const a of own) {
+      if (this.existing("inv_instrument_aliases", String(a.id)) === undefined) {
+        this.put(
+          "inv_instrument_aliases",
+          String(a.id),
+          this.det("inv_instrument_aliases", [a.namespace, a.value]),
+          true,
+        );
+      }
+    }
+    this.#missing.add(id);
+    return gid;
+  }
+
   /** Whether the vault holds the instrument (its gid is mapped or was shipped in this plan). */
   holdsInstrument(localId: string): boolean {
     return this.existing("inv_instruments", localId) !== undefined;
@@ -156,9 +197,11 @@ export class VaultMapping {
     this.#missing.clear();
     if (ids.length === 0) return [];
     const all = this.#phaseOne().instruments;
-    const wanted = new Map([...all].filter(([id]) => ids.includes(id)));
+    const wanted = new Map<number, InstrumentIdentity>();
     for (const id of ids) {
-      if (!wanted.has(id)) throw new BridgeBlock("unresolved:inv_instruments");
+      const identity = this.#overrides.get(id) ?? all.get(id);
+      if (identity === undefined) throw new BridgeBlock("unresolved:inv_instruments");
+      wanted.set(id, identity);
       this.#snapshotted.add(id);
     }
     const rows = mapInstruments(this.#context(() => wanted));
