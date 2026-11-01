@@ -580,24 +580,75 @@ def test_a_bulk_insert_into_a_synced_table_is_refused(db_engine, sync_on):
         s.execute(insert(InvWatchlistItem), [{"profile_id": pid, "instrument_id": inst, "tags": []}])
 
 
-def test_instrument_merge_is_one_explicit_row(db_engine, sync_on):
+def test_instrument_merge_is_one_explicit_row_then_the_rows_it_rewrote(db_engine, sync_on):
+    """F2: the merge row comes first and carries both instruments' gids per profile (read before the
+    source mapping is dropped); then, in the same transaction, every synced row the raw-SQL merge
+    rewrote: a repoint (prev = the source id), the colliding watchlist entry and override deleted
+    with the target's entry filled, the source signal rekeyed and resolved, the target instrument
+    filling its ISIN. The source instrument's own delete has no row."""
+    from cashu.modules.investments.models import InvProfileInstrument
+
     pid = new_profile("Merge")
-    src = new_instrument("Dup", isin=None)
-    dst = new_instrument("Real", isin="XX0000000001")
-    watch(pid, src, note="from the duplicate")
-    watch(pid, dst)
-    new_signal(pid, src, key=f"drawdown|i:{src}")
+    other_pid = new_profile("Other")
+    src = new_instrument("Dup", isin="XX0000000001")
+    dst = new_instrument("Real", isin=None)
+    src_item = watch(pid, src, note="from the duplicate")
+    dst_item = watch(pid, dst)
+    watch(other_pid, src)  # no collision in this profile: repointed
+    src_sig = new_signal(pid, src, key=f"drawdown|i:{src}")
+    dst_sig = new_signal(pid, dst, key=f"drawdown|i:{dst}")
+    with get_session() as s:
+        s.add(InvProfileInstrument(profile_id=pid, instrument_id=src, sector="tech"))
+        s.add(InvProfileInstrument(profile_id=pid, instrument_id=dst))
+        th = InvThesis(profile_id=pid, instrument_id=src, entry_type="trend", thesis="Teza")
+        s.add(th)
+        s.flush()
+        thesis_id = th.id
+    gid_src, gid_dst = "fc9daa13-f073-8a72-8cd0-c1345436bc05", "d0a95ad2-2211-8a30-b04b-809c6be84b30"
+    with get_session() as s:
+        s.add(SyncId(profile_id=pid, table_name="inv_instruments", local_id=str(src), gid=gid_src, source="genesis"))
+        s.add(SyncId(profile_id=pid, table_name="inv_instruments", local_id=str(dst), gid=gid_dst, source="genesis"))
+        s.add(SyncId(profile_id=other_pid, table_name="inv_instruments", local_id=str(src), gid=gid_src, source="genesis"))
     start = outbox_count()
     with get_session() as s:
         instrument_merge.merge_instruments(s, src, dst)
     rows = outbox()[start:]
-    assert [(r["table_name"], r["op"], r["local_id"]) for r in rows] == [("inv_instruments", "merge", str(src))]
-    assert rows[0]["fields"] == {"source_id": src, "target_id": dst} and rows[0]["profile_id"] is None
+    merge, rest = rows[0], rows[1:]
+    assert (merge["table_name"], merge["op"], merge["local_id"]) == ("inv_instruments", "merge", str(src))
+    assert merge["fields"] == {"source_id": src, "target_id": dst} and merge["profile_id"] is None
+    assert merge["key"] == {
+        "source": str(src),
+        "target": str(dst),
+        "gids": {
+            str(pid): {"source": gid_src, "target": gid_dst},
+            str(other_pid): {"source": gid_src, "target": None},
+        },
+    }
+    assert len({r["txn"] for r in rows}) == 1  # one transaction
+    by = {(r["table_name"], r["op"], r["local_id"]): r for r in rest}
+    thesis = by[("inv_theses", "update", str(thesis_id))]
+    assert thesis["fields"] == {"instrument_id": dst} and thesis["prev"] == {"instrument_id": src}
+    assert thesis["post"]["instrument_id"] == dst
+    assert ("watchlist_items", "delete", str(src_item)) in by
+    assert by[("watchlist_items", "update", str(dst_item))]["fields"] == {"note": "from the duplicate"}
+    assert next(r for r in rest if r["table_name"] == "watchlist_items" and r["op"] == "update" and r["profile_id"] == other_pid)["fields"] == {"instrument_id": dst}
+    assert [r for r in rest if r["table_name"] == "inv_profile_instruments" and r["op"] == "delete"]
+    assert next(r for r in rest if r["table_name"] == "inv_profile_instruments" and r["op"] == "update")["fields"] == {"sector": "tech"}
+    sig = by[("inv_signals", "update", str(src_sig))]
+    assert sig["fields"]["instrument_id"] == dst and sig["fields"]["dedup_key"] == f"drawdown|i:{dst}"
+    assert sig["fields"]["status"] == "resolved" and sig["prev"]["status"] == "active"
+    assert ("inv_signals", "update", str(dst_sig)) not in by
+    assert by[("inv_instruments", "update", str(dst))]["fields"] == {"isin": "XX0000000001"}
+    assert ("inv_instruments", "delete", str(src)) not in by  # the merge row stands for it
+    assert rows.index(merge) == 0
+    with get_session() as s:  # the source mappings are gone, the target's stay
+        left = s.exec(select(SyncId.local_id).where(SyncId.table_name == "inv_instruments")).all()
+    assert set(left) == {str(dst)}
     other = new_instrument("Other")
     mark = outbox_count()
     with get_session() as s:
         instrument_merge.merge_instruments(s, dst, other, dry_run=True)
-    assert outbox_count() == mark  # a dry run rolls the row back
+    assert outbox_count() == mark  # a dry run rolls the rows back
 
 
 def test_decision_record_and_undo(db_engine, sync_on):

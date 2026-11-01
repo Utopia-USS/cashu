@@ -999,11 +999,106 @@ def emit(session, table_name: str, op: str, local_id: str, *, profile_id: int | 
     )
 
 
-def emit_instrument_merge(session, source_id: int, target_id: int) -> None:
-    """``instrument.merged``: one row for the whole raw-SQL merge (the fold remaps the references,
-    events.md 6.4); the source instrument's gid mappings go with it."""
+def _instrument_refs(metadata) -> list[tuple[Any, list[str]]]:
+    """Synced tables with columns referencing ``inv_instruments`` (renames have two)."""
+    out = []
+    for name in SPECS:
+        table = metadata.tables.get(name)
+        if table is None:
+            continue
+        cols = [
+            c.name
+            for c in table.columns
+            if any(fk.column.table.name == "inv_instruments" for fk in c.foreign_keys)
+        ]
+        if cols:
+            out.append((table, cols))
+    return out
+
+
+def merge_snapshot(session, source_id: int, target_id: int) -> dict | None:
+    """Before a raw-SQL instrument merge (``store/instrument_merge.py``): every synced row that
+    references either instrument, plus the target instrument row, keyed by ``(table, local id)``.
+    :func:`emit_instrument_merge` diffs it against the rows after the merge (S31a F2). None while
+    capture is off."""
+    if not enabled():
+        return None
+    conn = session.connection()
+    if not _tables_ready(conn):
+        return None
+    metadata = OUTBOX.metadata
+    rows: dict[tuple[str, str], dict] = {}
+    ids = [source_id, target_id]
+    for table, cols in _instrument_refs(metadata):
+        where = or_(*(table.c[c].in_(ids) for c in cols))
+        for r in conn.execute(select(table).where(where)):
+            row = dict(r._mapping)
+            rows[(table.name, _local_id(table, row))] = row
+    instruments = metadata.tables["inv_instruments"]
+    target = conn.execute(select(instruments).where(instruments.c.id == target_id)).first()
+    if target is not None:
+        rows[("inv_instruments", str(target_id))] = dict(target._mapping)
+    return rows
+
+
+def _merge_gids(conn, source_id: int, target_id: int) -> dict[str, dict[str, str | None]]:
+    """Per profile (vault) that maps either instrument: the source and target gids."""
+    out: dict[str, dict[str, str | None]] = {}
+    found = conn.execute(
+        select(IDS.c.profile_id, IDS.c.local_id, IDS.c.gid).where(
+            IDS.c.table_name == "inv_instruments",
+            IDS.c.local_id.in_([str(source_id), str(target_id)]),
+        )
+    ).all()
+    for pid, local_id, gid in sorted(found):
+        entry = out.setdefault(str(pid), {"source": None, "target": None})
+        entry["source" if local_id == str(source_id) else "target"] = gid
+    return out
+
+
+def _capture_merge_rewrites(session, conn, before: dict) -> None:
+    """Record what the raw-SQL merge changed in the snapshot rows through the normal capture path:
+    an update (changed columns, ``prev``, ``post``) per rewritten row, a delete per removed row
+    (colliding watchlist entries, overrides, market data, renames). The source instrument's own
+    delete is the merge row itself (not in the snapshot)."""
+    metadata = OUTBOX.metadata
+    order = _order(metadata)
+    cap = _Capture(session, conn)
+    removed: list[tuple[Any, dict]] = []
+
+    def rank(item):
+        (name, _), row = item
+        table = metadata.tables[name]
+        return (order.get(name, 0), tuple(_pk_sort(row.get(c.name)) for c in table.primary_key.columns))
+
+    for (name, _local), row in sorted(before.items(), key=rank):
+        table = metadata.tables[name]
+        pk = list(table.primary_key.columns)
+        current = conn.execute(select(table).where(and_(*(c == row[c.name] for c in pk)))).first()
+        if current is None:
+            removed.append((table, row))
+            continue
+        after = dict(current._mapping)
+        changes = {c: (row[c], after[c], True) for c in after if c in row and after[c] != row[c]}
+        if changes:
+            cap.update(table, after, changes)
+    for table, row in reversed(removed):  # children first
+        cap.delete(table, row)
+    cap.flush_rows()
+
+
+def emit_instrument_merge(session, source_id: int, target_id: int, *, before: dict | None = None) -> None:
+    """``instrument.merged``: one explicit row for the raw-SQL merge (events.md 6.4), first; its
+    ``key`` carries the local ids and, read before the source's mapping is dropped, the gids of both
+    instruments per profile that maps either (``{"source", "target", "gids": {"<profile id>":
+    {"source": gid|None, "target": gid|None}}}``), so the shipper resolves a merge of an instrument
+    it already shipped. Then the rows the merge rewrote (``before`` = :func:`merge_snapshot`) are
+    recorded in the same transaction. The source instrument's gid mappings go last."""
     if not enabled():
         _guard(session)
+        return
+    conn = session.connection()
+    if not _tables_ready(conn):
         return
     emit(
         session,
@@ -1011,11 +1106,15 @@ def emit_instrument_merge(session, source_id: int, target_id: int) -> None:
         "merge",
         str(source_id),
         fields={"source_id": source_id, "target_id": target_id},
-        key={"source": str(source_id), "target": str(target_id)},
+        key={
+            "source": str(source_id),
+            "target": str(target_id),
+            "gids": _merge_gids(conn, source_id, target_id),
+        },
     )
-    conn = session.connection()
-    if _tables_ready(conn):
-        _drop_gid(conn, _state(session), None, "inv_instruments", str(source_id))
+    if before:
+        _capture_merge_rewrites(session, conn, before)
+    _drop_gid(conn, _state(session), None, "inv_instruments", str(source_id))
 
 
 # --------------------------------------------------------------------------- #

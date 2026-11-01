@@ -380,8 +380,9 @@ def merge_instruments(
         target_name=target["name"],
         dry_run=dry_run,
     )
+    before = sync_outbox.merge_snapshot(session, source_id, target_id)  # the rows it rewrites
     try:
-        _apply(session, report, refs, source, target)
+        _apply(session, report, refs, source, target, before)
     except IntegrityError as e:
         session.rollback()
         raise MergeError(
@@ -394,7 +395,12 @@ def merge_instruments(
 
 
 def _apply(
-    session: Session, report: MergeReport, refs: list[tuple[str, str]], source: dict, target: dict
+    session: Session,
+    report: MergeReport,
+    refs: list[tuple[str, str]],
+    source: dict,
+    target: dict,
+    before: dict | None = None,
 ) -> None:
     source_id, target_id = source["id"], target["id"]
     for table, column in refs:
@@ -430,6 +436,6 @@ def _apply(
     session.connection().execute(
         text("DELETE FROM inv_instruments WHERE id = :id"), {"id": source_id}
     )
-    # Raw SQL bypasses the session hooks: one ``instrument.merged`` stands for every write above (the
-    # fold remaps the references, events.md 6.4).
-    sync_outbox.emit_instrument_merge(session, source_id, target_id)
+    # Raw SQL bypasses the session hooks: one ``instrument.merged`` row, then every synced row the
+    # writes above changed (diffed against ``before``), events.md 6.4 / S31a F2.
+    sync_outbox.emit_instrument_merge(session, source_id, target_id, before=before)
