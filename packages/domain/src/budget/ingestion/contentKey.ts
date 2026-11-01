@@ -74,6 +74,14 @@ const TX_DATE_SUFFIX = new RegExp(
   `${TX_DATE_SUFFIX_CLASSES.map(cpClass).join("")}[^\\n]*${PY_END}`,
   "gu",
 );
+/**
+ * Python `re.sub(r"DATA TRANSAKCJI:.*$", "", s, flags=re.IGNORECASE)`: mBank's transaction date
+ * suffix removed (Python IGNORECASE folding, `.` not `\n`, `$` also before a final `\n`). Shared
+ * by `merchantKey` and the reclassify signature (`reclassify._DATES`).
+ */
+export function stripTxDateSuffix(s: string): string {
+  return s.replace(TX_DATE_SUFFIX, "");
+}
 const LOCATION_PADDING = new RegExp(`[${PY_WS}]{2,}[^\\n]*${PY_END}`, "gu");
 
 /**
@@ -83,7 +91,7 @@ const LOCATION_PADDING = new RegExp(`[${PY_WS}]{2,}[^\\n]*${PY_END}`, "gu");
 export function merchantKey(...fields: readonly (string | null | undefined)[]): string {
   for (const f of fields) {
     if (!f) continue;
-    const s = normalizeText(f.replace(TX_DATE_SUFFIX, "").replace(LOCATION_PADDING, ""));
+    const s = normalizeText(stripTxDateSuffix(f).replace(LOCATION_PADDING, ""));
     if (s) return s;
   }
   return "";

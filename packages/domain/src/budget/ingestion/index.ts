@@ -17,7 +17,13 @@ export { type BudgetIssue, formatIssue, type IssueKind, issueCode } from "./cano
 export { type CanonicalResult, canonicalOk } from "./canonical/validate.js";
 /** Public API of budget ingestion: parsed shapes, Polish formats, the v2 content hash. */
 
-export { contentKeyV2, dedupHashV2, type HashInput, merchantKey } from "./contentKey.js";
+export {
+  contentKeyV2,
+  dedupHashV2,
+  type HashInput,
+  merchantKey,
+  stripTxDateSuffix,
+} from "./contentKey.js";
 export { type ImportPlan, planImport, type RowStatus, type StoredTxn } from "./dedup.js";
 export { type NewTransaction, toNewTransaction } from "./newTransaction.js";
 export { findAccountNumber, parsePlAmount, parsePlDate } from "./plFormats.js";

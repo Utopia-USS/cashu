@@ -20,6 +20,22 @@ export {
   txnMerchantKey,
   txnText,
 } from "./engine.js";
+export { acceptMerchantAnswer, codePointCompare, unknownMerchants } from "./llmPass.js";
+export {
+  applyReclassify,
+  isOwnerDecided,
+  isStructural,
+  OWNER_SOURCES,
+  planReclassify,
+  RECLASSIFY_PATTERNS,
+  type ReclassifyGroup,
+  type ReclassifyOptions,
+  type ReclassifyPlan,
+  type ReclassifyRow,
+  signCorrect,
+  txnContext,
+  txnSignature,
+} from "./reclassify.js";
 export {
   detectRecurring,
   NOT_SUBSCRIPTION_CATEGORIES,

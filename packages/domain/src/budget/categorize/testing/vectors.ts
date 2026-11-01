@@ -62,3 +62,6 @@ export const ENGINE_OWN_IBANS: readonly string[] = [
 
 /** `all` scenarios in the fast tier (the spec's fast slice). */
 export const ALL_FAST = 60;
+
+/** Reclassify text vectors in the fast tier. */
+export const TEXT_FAST = 400;
