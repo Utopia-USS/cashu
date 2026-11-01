@@ -66,3 +66,17 @@ describe("PythonDb investments readers", () => {
     });
   });
 });
+
+describe("PythonDb rule runs", () => {
+  it("a finished run is one that ended ok or partial, per profile", () => {
+    ds = syntheticDataset(INVESTMENTS);
+    ds.exec(`INSERT INTO inv_rule_runs VALUES
+      (1, 1, '2026-09-01 10:00:00', 'cli', 'failed'),
+      (2, 2, '2026-09-01 10:00:00', 'cli', 'partial')`);
+    run((db) => {
+      expect(db.investments.hasFinishedRuleRun(1)).toBe(false);
+      expect(db.investments.hasFinishedRuleRun(2)).toBe(true);
+      expect(db.investments.hasFinishedRuleRun(3)).toBe(false);
+    });
+  });
+});

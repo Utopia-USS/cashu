@@ -67,6 +67,8 @@ CREATE TABLE inv_import_batches (id INTEGER PRIMARY KEY, profile_id INTEGER, acc
   created_at DATETIME);
 CREATE TABLE inv_strategy_versions (id INTEGER PRIMARY KEY, profile_id INTEGER, version INTEGER,
   sha256 VARCHAR, yaml_text VARCHAR, md_text VARCHAR, state VARCHAR, issues JSON, created_at DATETIME);
+CREATE TABLE inv_rule_runs (id INTEGER PRIMARY KEY, profile_id INTEGER, started_at DATETIME,
+  trigger VARCHAR, status VARCHAR);
 `;
 
 export interface SyntheticDataset {

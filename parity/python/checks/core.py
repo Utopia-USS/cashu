@@ -1,4 +1,5 @@
-"""Core checks: net worth per currency (``core/networth.py``)."""
+"""Core checks: net worth per currency (``core/networth.py``) and the overview read models (the shell
+summary, the net-worth series view and every module's blank-page status, as the API serves them)."""
 
 from __future__ import annotations
 
@@ -78,7 +79,58 @@ def networth_series(ctx: Ctx) -> dict:
     return out
 
 
+SERIES_VIEWS = [(g, sc) for g in ("daily", "weekly", "monthly") for sc in ("total", "liquid")]
+
+
+def overview(ctx: Ctx) -> dict:
+    """``GET /summary``, ``GET /networth/series`` (every granularity and scope per currency of the
+    profile's accounts, plus the default currency) and ``GET /modules/{id}/setup`` / the profile's
+    module states, through the route functions themselves (JSON floats from ``f()``). Setup and labels
+    in both languages; the setup's ``skill`` keeps only the command (``mcp_add`` / ``translocated``
+    are the runtime's, not the read model's)."""
+    from sqlmodel import select
+
+    from cashu.api.app import summary
+    from cashu.core import i18n, profiles
+    from cashu.core.api import module_setup, networth_series
+    from cashu.core.models import Account
+
+    out = {}
+    for p in ctx.profiles:
+        currencies = sorted(
+            set(ctx.session.exec(select(Account.currency).where(Account.profile_id == p.id)).all())
+        )
+        series = {
+            c: {f"{g}_{sc}": networth_series(p, c, g, sc) for g, sc in SERIES_VIEWS}
+            for c in currencies
+        }
+        with i18n.use_language("en"):
+            labels_en = networth_series(p, None, "monthly", "total")["components"]
+        setup = {}
+        for lang in ("pl", "en"):
+            with i18n.use_language(lang):
+                for spec_id in ("budget", "assets", "loans", "investments"):
+                    body = module_setup(p, spec_id)
+                    skill = body["skill"]
+                    setup[f"{spec_id}_{lang}"] = {
+                        "state": body["state"],
+                        "steps": body["steps"],
+                        "cli_prefix": body["cli_prefix"],
+                        "skill": skill["command"] if skill else None,
+                    }
+        out[ctx.pkey(p)] = {
+            "summary": summary(p),
+            "series_default": networth_series(p, None, "daily", "total"),
+            "series": series,
+            "series_labels_en": labels_en,
+            "setup": setup,
+            "modules": profiles.as_dict(ctx.session, p)["modules"],
+        }
+    return out
+
+
 CHECKS = [
     Check("core.networth", networth),
     Check("core.networth_series", networth_series),
+    Check("core.overview", overview),
 ]

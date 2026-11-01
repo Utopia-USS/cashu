@@ -231,6 +231,16 @@ export class InvestmentsReader {
     return row === undefined ? null : { version: int(row, "version"), sha256: text(row, "sha256") };
   }
 
+  /** Whether a rules run of the profile finished `ok` or `partial` (`setup.py` `has_run`). */
+  hasFinishedRuleRun(profileId: number): boolean {
+    return (
+      this.query(
+        "SELECT 1 AS one FROM inv_rule_runs WHERE profile_id = ? AND status IN ('ok', 'partial') LIMIT 1",
+        profileId,
+      ).length > 0
+    );
+  }
+
   /** Shared instrument rows of `ids`, in id order. */
   instruments(ids: readonly number[]): InvInstrumentRow[] {
     if (ids.length === 0) return [];
