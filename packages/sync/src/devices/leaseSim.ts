@@ -24,6 +24,7 @@ import {
   type SimDevice,
   SimRemote,
   type SimVisibility,
+  START_CURSOR,
 } from "./testkit.js";
 
 export const MIN = 60_000;
@@ -316,9 +317,13 @@ export async function pinnedRun(
  * over a synced folder (seeded delays up to 30 minutes). Never two holders; afterwards everyone
  * agrees on the leader the old one acknowledged first.
  */
-export async function siblingRun(run: number): Promise<{ overlaps: number; acks: number }> {
+export async function siblingRun(
+  run: number,
+  /** S1b: right before the sibling, B retires the old leader A (after B saw A's acknowledgement). */
+  retire = false,
+): Promise<{ overlaps: number; acks: number; attacked: boolean }> {
   const rand = mulberry32(104_729 * (run + 1));
-  const { a, b, c, remote } = await devices([0, 0, 0], {
+  const { a, b, c, remote, recovery } = await devices([0, 0, 0], {
     mode: "pinned",
     visibility: { kind: "eventual", maxDelayMs: 30 * MIN },
     seed: run + 101,
@@ -333,8 +338,22 @@ export async function siblingRun(run: number): Promise<{ overlaps: number; acks:
   const attackAt = 1 + Math.floor(rand() * 40);
   let overlaps = 0;
   let acks = 0;
+  let attacked = false;
   for (let minute = 0; minute < 150; minute++) {
-    if (minute === attackAt) {
+    const handedOver = view(b).pinned === c.id && view(b).pendingFrom === null;
+    if (!attacked && minute >= attackAt && (!retire || handedOver)) {
+      attacked = true;
+      if (retire) {
+        const r = b.devices.prepareRevocation(
+          [{ device: a.id, cut: b.cursors.get(a.id) ?? START_CURSOR }],
+          { revoke: newEid(), rotate: newEid(), recertify: newEid },
+          recovery,
+          { recertify: [b.id, c.id] },
+        );
+        if (!r.ok) throw new Error(r.reason);
+        b.write(r.change.events);
+        r.change.commit();
+      }
       const text = pinConfirmationText("pinned", b.id, false);
       b.write(
         [
@@ -363,5 +382,5 @@ export async function siblingRun(run: number): Promise<{ overlaps: number; acks:
   remote.flush();
   for (let i = 0; i < 3; i++) for (const d of all) d.sync();
   expect(new Set(all.map((d) => view(d).pinned)).size).toBe(1);
-  return { overlaps, acks };
+  return { overlaps, acks, attacked };
 }

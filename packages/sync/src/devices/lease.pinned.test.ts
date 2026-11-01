@@ -24,7 +24,14 @@ import {
   view,
   visibilityOf,
 } from "./leaseSim.js";
-import { hlcAt, newEid, prepareConsented, type SimDevice, sodium } from "./testkit.js";
+import {
+  hlcAt,
+  newEid,
+  prepareConsented,
+  type SimDevice,
+  START_CURSOR,
+  sodium,
+} from "./testkit.js";
 
 const BACKENDS: readonly Backend[] = ["linearizable", "bounded", "eventual"];
 
@@ -281,6 +288,37 @@ describe("S1: sibling pins never make the old leader hand over twice", () => {
     expect(reasonOf(a, sibling)).toBe("stale_prev");
   });
 
+  it("S1b: retiring the old leader after its hand-over does not void its acknowledgement", async () => {
+    const { a, b, c, remote, recovery } = await devices([0, 0, 0], { mode: "pinned" });
+    remote.flush();
+    syncAll([a, b, c]);
+    const root = view(b).head as string;
+    pin(b, "pinned", c);
+    syncAll([a, b, c]);
+    expect(decide(a)).toBe("release");
+    syncAll([a, b, c]);
+    expect([a, b, c].filter(holds)).toEqual([c]);
+    // The owner retires the old desktop (it certified everyone: words, re-certifying the others).
+    const r = b.devices.prepareRevocation(
+      [{ device: a.id, cut: b.cursors.get(a.id) ?? START_CURSOR }],
+      { revoke: newEid(), rotate: newEid(), recertify: newEid },
+      recovery,
+      { recertify: [b.id, c.id] },
+    );
+    if (!r.ok) throw new Error(r.reason);
+    b.write(r.change.events);
+    r.change.commit();
+    // A stale sibling of the laptop's pin, stamped earlier, naming the phone.
+    pinAt(b, b, root, b.now() - 2 * MIN);
+    b.push();
+    b.pull();
+    c.pull(() => false); // the laptop has seen neither the retirement nor the sibling
+    expect(view(b).pinned).toBe(c.id); // the retired desktop's earlier acknowledgement still counts
+    expect([a, b, c].filter(holds)).toEqual([c]);
+    syncAll([b, c]);
+    expect([b, c].filter(holds)).toEqual([c]);
+  });
+
   it("an offline tablet's earlier pin arriving later does not move the leader again", async () => {
     const { a, b, c, remote } = await devices([0, 0, 0], { mode: "pinned" });
     remote.flush();
@@ -385,6 +423,12 @@ describe("R4: rule 6 on both backend kinds (one schedule each)", () => {
     const r = await siblingRun(7);
     expect(r.overlaps).toBe(0);
     expect(r.acks).toBe(1); // the old leader handed over exactly once
+  });
+
+  it("S1b: the old leader retired after its hand-over, then a sibling pin: never two holders", async () => {
+    const r = await siblingRun(0, true); // judging by today's trust made two devices fetch here
+    expect(r.attacked).toBe(true);
+    expect(r.overlaps).toBe(0);
   });
 
   it("forced re-pins: every overlap is a holder that has not seen the forced pin", async () => {

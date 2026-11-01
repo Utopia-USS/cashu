@@ -320,6 +320,15 @@ export function foldLease(
     if (mode === "pinned") return trusted(pinned) ? pinned : null;
     return !released && trusted(holder) ? holder : null;
   };
+  /**
+   * The leader in charge at the current head as the chain recorded it, NOT filtered by today's
+   * trust (S1b): sibling pins are judged by its acknowledgements, which verify as of their own stream
+   * position (`statementKeys` through the gate: a revoked or retired device's pre-cut statements
+   * still count), so a later revocation never reorders the past. Current trust only decides whether
+   * a NEW pin still needs an acknowledgement (`activeLeader`).
+   */
+  const recordedLeader = (): string | null =>
+    pendingFrom ?? (mode === "pinned" ? pinned : released ? null : holder);
   /** Why `d` cannot extend the chain now, or undefined. */
   const refusal = (d: DecodedLease): LeaseIgnoredReason | undefined => {
     const pending = trusted(pendingFrom);
@@ -345,8 +354,8 @@ export function foldLease(
   };
 
   /**
-   * S1: among sibling pins (same `prev`), the one the leader in charge acknowledged FIRST in its own
-   * stream wins (writing a pin itself counts as acknowledging it), whatever their timestamps. So once
+   * S1: among sibling pins (same `prev`), the one the leader in charge (`recordedLeader`)
+   * acknowledged FIRST in its own stream wins (writing a pin itself counts as acknowledging it), whatever their timestamps. So once
    * the old leader handed over, a sibling stamped earlier (an offline tablet's pin arriving late, or
    * a backdating device) can never make it hand over a second time; its later acks are stale.
    */
@@ -377,8 +386,7 @@ export function foldLease(
 
   for (;;) {
     let next: Candidate | undefined;
-    const leaderNow = activeLeader();
-    for (const eid of (children.get(head) ?? []).sort(siblingOrder(leaderNow))) {
+    for (const eid of (children.get(head) ?? []).sort(siblingOrder(recordedLeader()))) {
       if (onChain.has(eid)) continue;
       const c = resolve(eid);
       if (!c || c.d.prev !== head) continue;

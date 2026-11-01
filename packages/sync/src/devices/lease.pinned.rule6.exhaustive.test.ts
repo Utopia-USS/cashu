@@ -3,7 +3,8 @@
 // (eventual: delays up to 30 minutes, some batches held back) or a bounded relay; the owner re-pins
 // the fetch leader at random, typed on a random device or with the recovery words. Without force:
 // never two holders, and a leader whose hand-over is done holds at its next pull. S1: a staged
-// backdated sibling pin (random delays, delivery order and attack time) never makes two holders. With force (D4):
+// backdated sibling pin (random delays, delivery order and attack time) never makes two holders,
+// also when the old leader is retired after its hand-over (S1b). With force (D4):
 // overlaps happen, and each one is a holder that has not seen a forced pin the other has.
 
 import { describe, expect, it } from "vitest";
@@ -23,6 +24,15 @@ describe("pinned fetch leader property (rule 6), every schedule", () => {
   it.each(seeds(40))("S1: a staged backdated sibling pin, schedule %i", async (run) => {
     expect((await siblingRun(run)).overlaps).toBe(0);
   });
+
+  it.each(seeds(40))(
+    "S1b: the old leader retired, then a sibling pin, schedule %i",
+    async (run) => {
+      const r = await siblingRun(run, true);
+      expect(r.attacked).toBe(true);
+      expect(r.overlaps).toBe(0);
+    },
+  );
 
   let forcedOverlaps = 0;
   it.each(seeds(16))("pinned, synced folder, forced re-pins, schedule %i", async (run) => {
