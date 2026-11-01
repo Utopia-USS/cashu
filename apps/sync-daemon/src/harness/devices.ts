@@ -49,7 +49,7 @@ export async function openDevice(o: {
   const identity = crypto.createDeviceIdentity(o.sodium);
   const device = identity.deviceId;
   await certifyLabDevice(o.keyStore, o.sodium, o.ring.vaultId, identity);
-  const gate = await labGate(o.keyStore, o.sodium, o.ring);
+  const gate = await labGate(o.keyStore, o.sodium, o.ring, identity);
   const secret = o.ring.gidSalt();
   const salt = vaultSalt(secret.expose().slice());
   secret.wipe();

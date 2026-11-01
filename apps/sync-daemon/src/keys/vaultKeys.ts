@@ -5,11 +5,10 @@
 // `cashu.vault.<vault>.device` naming the identity. The creator also keeps the vault's recovery
 // material there (lab only, TRANSITIONAL(S44): the recovery words are shown by the pairing UI later).
 //
-// Deviation (S29c-B2): the lab genesis device does not write its announcement and retirement
-// statements (devices/genesis.ts) into the genesis stream, because the store parks reserved
-// `device.*` events until the codec contract wires the device layer into the store (S29b item 2);
-// its frames verify through the lab gate's certificate instead, and its key lives only in memory
-// during `init` and is wiped right after the genesis stream is written.
+// The genesis device (S29c-B2, B3) is certified by the recovery identity here too; `init` writes its
+// announcement as the genesis stream's first frame and its retirement as the last (the store skips
+// `device.*` statements, the gates read them), and its key lives only in memory during `init` and is
+// wiped right after the retirement is written.
 import { vaultSalt } from "@cashu/store";
 import * as genesis from "@cashu/store/genesis";
 import { crypto, devices } from "@cashu/sync";
@@ -91,7 +90,7 @@ export async function certifyLabDevice(
 export async function createVault(
   store: crypto.KeyStore,
   sodium: crypto.Sodium,
-): Promise<VaultKeys & { readonly genesis: crypto.DeviceIdentity }> {
+): Promise<VaultKeys & { readonly genesis: devices.GenesisDevice }> {
   const identity = crypto.createDeviceIdentity(sodium);
   const recovery = crypto.createRecoveryKey(sodium);
   const recoveryId = crypto.recoveryIdentity(sodium, recovery.phrase);
@@ -108,7 +107,6 @@ export async function createVault(
     created.ring.vaultId,
     genesisId,
   );
-  const genesisIdentity = genesisDevice.identity;
   const genesisCert = genesisDevice.certificate;
   recoveryId.wipe();
   const id = created.ring.vaultId;
@@ -120,5 +118,5 @@ export async function createVault(
   await store.set(`cashu.vault.${id}.recovery`, utf8.encode(recovery.phrase.reveal()));
   await store.set(`cashu.vault.${id}.recoverywrap`, created.recoveryWrap);
   await store.set(`cashu.vault.${id}.creatorcert`, created.creatorCertificate);
-  return { ring: created.ring, identity, genesis: genesisIdentity };
+  return { ring: created.ring, identity, genesis: genesisDevice };
 }

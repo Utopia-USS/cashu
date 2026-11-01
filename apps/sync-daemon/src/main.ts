@@ -54,7 +54,7 @@ async function openLinked(
         remotes: config.remotes.map((r) => r.root),
         keys,
         sodium,
-        gate: await labGate(store, sodium, keys.ring),
+        gate: await labGate(store, sodium, keys.ring, keys.identity),
       }),
     );
   }

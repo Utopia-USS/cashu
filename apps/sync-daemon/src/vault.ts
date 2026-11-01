@@ -8,7 +8,14 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { NodeFolderFs, openNodeSqlite } from "@cashu/node-host";
-import { builtinModules, metaClockStore, Store, type VaultSalt, vaultSalt } from "@cashu/store";
+import {
+  builtinModules,
+  metaClockStore,
+  metaGateStateStore,
+  Store,
+  type VaultSalt,
+  vaultSalt,
+} from "@cashu/store";
 import * as genesis from "@cashu/store/genesis";
 import {
   createOwnLogCarrier,
@@ -107,6 +114,8 @@ export async function openVault(o: VaultOptions): Promise<OpenVault> {
     gate: o.gate,
     sink: store.sink(),
     clockStore: metaClockStore(store.driver, device),
+    // S29c-B3: the gate's snapshot, so a restart replays only the log's new tail.
+    gateState: metaGateStateStore(store.driver, device),
   });
   const state = new VaultState(openNodeSqlite(join(dir, "bridge.db")));
   return {

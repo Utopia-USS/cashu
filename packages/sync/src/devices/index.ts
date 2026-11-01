@@ -22,6 +22,7 @@ export {
   DEVICE_REVOKED,
   type DeviceAddedData,
   type DeviceRevokedData,
+  decodeDeviceRevoked,
   isDeviceName,
   KEYS_ROTATED,
   type KeysRotatedData,

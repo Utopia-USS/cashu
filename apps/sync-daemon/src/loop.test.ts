@@ -68,7 +68,7 @@ async function openAll(w: World): Promise<OpenVault[]> {
         remotes: [join(w.root, "remote")],
         keys,
         sodium,
-        gate: await labGate(store, sodium, keys.ring),
+        gate: await labGate(store, sodium, keys.ring, keys.identity),
       }),
     );
   }

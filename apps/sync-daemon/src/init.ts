@@ -8,6 +8,10 @@
 // genesis's, `genesis-hlc-mismatch` otherwise), in one-frame chunks (spec 5.2), folded into the view
 // through the same store sink, then Python's `sync_ids` is seeded (`cashu sync seed`, which links the
 // vault and verifies the salt), and only then is the stream pushed to the remotes.
+// The genesis device (S29c-B2, B3) introduces itself in the stream's first frame (its announcement,
+// stamped at W - 1 ms so genesis's own HLC sequence at W is unchanged) and retires itself in the last
+// (a self-revocation at its own position); its key is then wiped, and every gate rejects the data of
+// any later frame in that stream.
 //
 // Deviations (S31a checkpoint): genesis reads the live database in one read transaction instead of a
 // copy (the precondition is quiescence either way); `init` runs over every profile at once and is not
@@ -15,17 +19,17 @@
 // push); the S29 registry's first device statement is out of phase 1 (TRANSITIONAL(S44)).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { vaultSalt } from "@cashu/store";
+import { mintUlid, vaultSalt } from "@cashu/store";
 import * as bridge from "@cashu/store/bridge";
 import type * as genesis from "@cashu/store/genesis";
-import type { crypto } from "@cashu/sync";
+import { type crypto, devices } from "@cashu/sync";
 import type { DaemonConfig } from "./config.js";
 import { writePythonGidSalt } from "./keys/labFile.js";
 import { labGate } from "./keys/labGate.js";
 import { createVault } from "./keys/vaultKeys.js";
 import type { PythonCli } from "./python/cli.js";
 import type { PythonReader } from "./python/reader.js";
-import { genesisEngine, openVault, type VaultKeys } from "./vault.js";
+import { genesisEngine, type OpenVault, openVault, type VaultKeys } from "./vault.js";
 
 /** `,"h":` is already in a genesis wire event: the engine's frame split sees the same bytes. */
 function frameChunks(events: readonly genesis.GenesisVault["events"][number][]) {
@@ -70,10 +74,42 @@ export interface InitDeps {
 
 const hex = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
 
+/**
+ * Writes a vault's genesis stream as the genesis device: its announcement (at W - 1 ms), the events
+ * in one-frame chunks at the fixed clock W (each stamped HLC checked against genesis's), then its
+ * retirement. Returns the number of chunks; `onChunk` reports progress. The caller wipes the key.
+ */
+export async function writeGenesisStream(
+  vault: OpenVault,
+  sodium: crypto.Sodium,
+  g: devices.GenesisDevice,
+  wall: number,
+  events: readonly genesis.GenesisVault["events"][number][],
+  onChunk: (written: number) => void = () => undefined,
+): Promise<number> {
+  const eid = (ms: number) => mintUlid(ms, (n) => sodium.randomBytes(n));
+  const intro = await genesisEngine(vault, sodium, wall - 1, [], g.identity);
+  await intro.write([devices.genesisAnnouncement(g, vault.vaultId, eid(wall - 1))]);
+  await intro.close();
+  const writer = await genesisEngine(vault, sodium, wall, [], g.identity);
+  const chunks = frameChunks(events);
+  for (const [i, chunk] of chunks.entries()) {
+    const unstamped = chunk.map(({ h: _h, ...rest }) => rest);
+    const r = await writer.write(unstamped);
+    if (r.first !== chunk[0]?.h || r.last !== chunk.at(-1)?.h || r.frames !== 1) {
+      throw new InitRefusedError("genesis-hlc-mismatch");
+    }
+    onChunk(i + 1);
+  }
+  await writer.write([devices.retireGenesis(g, vault.vaultId, eid(wall)).event]);
+  await writer.close();
+  return chunks.length;
+}
+
 export async function initVaults(d: InitDeps): Promise<void> {
   if (d.reader.vaults().length > 0) throw new InitRefusedError("a profile is already linked");
   const profiles = d.reader.profiles();
-  const created = new Map<string, VaultKeys & { readonly genesis: crypto.DeviceIdentity }>();
+  const created = new Map<string, VaultKeys & { readonly genesis: devices.GenesisDevice }>();
   const keys = new Map<string, genesis.VaultKeys>();
   for (const p of profiles) {
     const k = await createVault(d.keyStore, d.sodium);
@@ -96,26 +132,22 @@ export async function initVaults(d: InitDeps): Promise<void> {
       remotes: [],
       keys: k,
       sodium: d.sodium,
-      gate: await labGate(d.keyStore, d.sodium, k.ring),
+      gate: await labGate(d.keyStore, d.sodium, k.ring, k.identity),
     });
     try {
-      const writer = await genesisEngine(vault, d.sodium, v.wall, [], k.genesis);
-      const chunks = frameChunks(v.events);
-      for (const [i, chunk] of chunks.entries()) {
-        const unstamped = chunk.map(({ h: _h, ...rest }) => rest);
-        const r = await writer.write(unstamped);
-        if (r.first !== chunk[0]?.h || r.last !== chunk.at(-1)?.h || r.frames !== 1) {
-          throw new InitRefusedError("genesis-hlc-mismatch");
-        }
-        vault.state.setGenesis({ status: "writing", chunksWritten: i + 1, wall: v.wall });
+      let chunks: number;
+      try {
+        chunks = await writeGenesisStream(vault, d.sodium, k.genesis, v.wall, v.events, (n) =>
+          vault.state.setGenesis({ status: "writing", chunksWritten: n, wall: v.wall }),
+        );
+      } finally {
+        // The genesis device retired in its last frame (lead decision B2): its key existed only in
+        // memory and is wiped as defence in depth; the push needs none.
+        k.genesis.identity.wipe();
       }
-      await writer.close();
       const tmp = join(vault.dir, "tmp");
       mkdirSync(tmp, { recursive: true, mode: 0o700 });
       const seeded = d.cli.seed(v.slug, v.ids, tmp);
-      // The genesis device retires once its stream is written (lead decision B2): its key existed
-      // only in memory and is wiped; the push needs none.
-      k.genesis.wipe();
       const pusher = await genesisEngine(vault, d.sodium, v.wall, remotes);
       await pusher.sync();
       await pusher.close();
@@ -123,12 +155,12 @@ export async function initVaults(d: InitDeps): Promise<void> {
       // iteration does not re-ship it as a new local write stamped now (review F5).
       const cushion = bridge.cushionValue(d.reader.files, v.slug);
       if (cushion !== undefined) vault.state.setCushionShipped(cushion);
-      vault.state.setGenesis({ status: "done", chunksWritten: chunks.length, wall: v.wall });
+      vault.state.setGenesis({ status: "done", chunksWritten: chunks, wall: v.wall });
       d.out({
         step: "init",
         vault: v.ordinal,
         events: v.events.length,
-        chunks: chunks.length,
+        chunks,
         ids: v.ids.length,
         seeded,
         log: v.logSha256.slice(0, 12),
