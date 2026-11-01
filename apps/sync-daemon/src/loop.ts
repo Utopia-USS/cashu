@@ -115,7 +115,11 @@ export class Loop {
       if (held !== 0 && held !== eids.length) throw new BlockedError("partial-intent");
       written.set(v, held === eids.length);
     }
-    const allWritten = [...written.values()].every(Boolean);
+    // Written = some open intent has events and all of those are in their logs. A batch of gids only
+    // (no events) proves nothing: if every open intent is empty, the plan is discarded, never acked
+    // (a crash while the intents were stored would otherwise ack another vault's unwritten rows).
+    const withEvents = open.filter((o) => o.intent.batch.events.length > 0);
+    const allWritten = withEvents.length > 0 && withEvents.every((o) => written.get(o.v) === true);
     if (open.length < expected) {
       if (allWritten) {
         // A crash between the per-vault clears: the ack already ran (clears follow it); acking

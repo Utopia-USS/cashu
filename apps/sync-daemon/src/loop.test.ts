@@ -180,6 +180,35 @@ describe("the loop", () => {
     },
   );
 
+  it("discards a plan whose only stored intent is a gids-only batch (crash while storing intents)", async () => {
+    const w = await world(2);
+    const through = w.py.editAlert(2, 7, GID_B, "bridge-test-2");
+    const vaults = await openAll(w);
+    const [a] = vaults;
+    if (a === undefined) throw new Error("vault");
+    // Vault A's intent (gids, no events) was stored; the crash came before vault B's.
+    a.state.putIntent({
+      planId: "01JQ0000000000000000000099",
+      vaults: 2,
+      through,
+      batch: {
+        ordinal: 0,
+        profileId: 1,
+        vault: a.vaultId,
+        events: [],
+        carries: [],
+        gids: [{ table: "alerts", localId: "9", gid: "01JQ0000000000000000000098" }],
+      },
+    });
+    for (const v of vaults) await v.close();
+    const run = await runLoop(w);
+    expect(w.py.pending()).toBe(0);
+    const b = run.vaults[1];
+    if (b === undefined) throw new Error("vault");
+    expect(logOf(b).count).toBe(1); // vault B's row was shipped, not acked unwritten
+    await run.close();
+  });
+
   it("recovers an append that was durable before the local apply (view lost its events)", async () => {
     const w = await world(1);
     w.py.editAlert(1, 5, GID_A, "bridge-test-1");
