@@ -166,6 +166,14 @@ function throughMerge(row: LogicalRow, txn: readonly LogicalRow[]): LogicalRow |
       if (col === "dedup_key" && typeof prev.dedup_key === "string") {
         return prev.dedup_key.replace(token, `$1i:${target}$2`) !== value;
       }
+      // A collapsed row takes the earlier of the two creation times: the fold's CREATE does too.
+      if (col === "created_at" && MERGE_COLLAPSED.includes(row.table)) {
+        return !(
+          typeof value === "string" &&
+          typeof prev.created_at === "string" &&
+          value < prev.created_at
+        );
+      }
       return true;
     });
     if (kept.length !== Object.keys(row.fields).length) {
