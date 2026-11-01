@@ -101,7 +101,7 @@ module.exports = {
       name: "only-host-opens-stores",
       severity: "error",
       comment:
-        "Only the local host (apps/host, one per data dir) and the Expo app (apps/mobile, its engine in process) open SQLite stores. Every other app is a client of the host over its socket (@cashu/node-host connectHost / connectOrStart): a second process opening a store would fork this device's stream (layers.md, \"Which process runs what\"). Move the store access into a host service and call it over the protocol.",
+        'Only the local host (apps/host, one per data dir) and the Expo app (apps/mobile, its engine in process) open SQLite stores. Every other app is a client of the host over its socket (@cashu/node-host connectHost / connectOrStart): a second process opening a store would fork this device\'s stream (layers.md, "Which process runs what"). Move the store access into a host service and call it over the protocol.',
       from: {
         path: "^apps/",
         pathNot: [
