@@ -6,15 +6,13 @@
 // anchor`; its category is the leg claim when one is held, else `cash_withdrawal` / `cash_leg`.
 // The deriver owns these rows (`dedup_hash LIKE 'cashleg:%'`); `fold_txn_legs` remembers which leg
 // a partition produced, so a vanished source or a moved anchor drops the old leg.
+import { budget, D } from "@cashu/domain";
 import { ACCOUNTS } from "../../core/accounts.js";
 import type { DeriveContext, Deriver } from "../../engine/types.js";
 import type { TableDef } from "../../sql/ddl.js";
 import { sqlJson } from "../../sql/values.js";
 import { CASHLEG, legClaimed, splitKey, TRANSACTIONS } from "../transactions.js";
 import { selectIn } from "./keys.js";
-
-/** Polish matching data written by Python `budget/cash.py` (byte-identical, hash-tested). */
-export const CASH_WITHDRAWAL_TEXT = "Wypłata gotówki";
 
 const legsTable: TableDef = {
   name: "fold_txn_legs",
@@ -59,8 +57,13 @@ function poolAccountId(ctx: DeriveContext, currency: string): number | undefined
   return ctx.sql.get<{ id: number }>("SELECT id FROM accounts WHERE gid = ?", pool)?.id;
 }
 
+/** A claim register's value as the domain reads it (null when empty or cleared). */
+function claimOf(category: string | null, by: string | null): budget.CategoryClaim | null {
+  return category === null || by === null ? null : { category, source: by };
+}
+
 function computeLeg(ctx: DeriveContext, key: string, c: ClaimRow | undefined): Leg | undefined {
-  if (c === undefined || !legClaimed(c) || !key.includes("|")) return undefined;
+  if (c === undefined || !key.includes("|")) return undefined;
   const [root, hash, occurrence] = splitKey(key);
   const src = ctx.sql.get<Source>(
     `SELECT t.gid, t.booking_date, t.value_date, t.amount, t.currency, t.description, t.reference,
@@ -72,28 +75,39 @@ function computeLeg(ctx: DeriveContext, key: string, c: ClaimRow | undefined): L
     hash,
     occurrence,
   );
-  if (src === undefined || src.account_type === "cash") return undefined;
+  if (src === undefined) return undefined;
+  if (!budget.hasCashLeg(claimOf(c.claim, c.claim_by), src.account_type ?? "")) return undefined;
   const poolId = poolAccountId(ctx, src.currency);
   if (poolId === undefined) return undefined;
   const gid = ctx.det("transactions", ["cashleg", src.gid]);
-  const claimed = c.leg_claim !== null;
+  // Python `cash.sync_cash_leg` (D-08.3: `abs()` in the 28-digit context, scale kept)
+  const leg = budget.cashLegFields(
+    {
+      bookingDate: src.booking_date,
+      valueDate: src.value_date,
+      amount: D(src.amount),
+      currency: src.currency,
+      description: src.description,
+      reference: src.reference,
+    },
+    claimOf(c.leg_claim, c.leg_claim_by),
+  );
   return {
     gid,
     values: [
       ctx.id(gid),
       gid,
       poolId,
-      src.booking_date,
-      src.value_date,
-      src.amount.replace(/^-/, ""),
-      src.currency,
-      CASH_WITHDRAWAL_TEXT,
-      // Python `bank_txn.reference or bank_txn.description or "Wypłata gotówki"` (empty is falsy)
-      src.reference || src.description || CASH_WITHDRAWAL_TEXT,
-      CASH_WITHDRAWAL_TEXT,
+      leg.bookingDate,
+      leg.valueDate,
+      leg.amount.toString(),
+      leg.currency,
+      leg.counterpartyName,
+      leg.description,
+      leg.reference,
       CASHLEG + src.gid,
-      claimed ? c.leg_claim : "cash_withdrawal",
-      claimed ? c.leg_claim_by : "cash_leg",
+      leg.category,
+      leg.categorySource,
       sqlJson({ cash_leg_of: src.gid }),
       c.leg_on ?? src.created_at,
     ],
@@ -163,7 +177,7 @@ function deriveKeys(ctx: DeriveContext, keys: readonly string[]): void {
 
 export const legsDeriver: Deriver = {
   id: "budget.legs",
-  version: 1,
+  version: 2,
   tables: [legsTable],
   writes: [{ table: TRANSACTIONS, rows: `dedup_hash LIKE '${CASHLEG}%'` }],
   inputs: ["budget.transactions", "core.accounts"],

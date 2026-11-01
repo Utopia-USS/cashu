@@ -12,7 +12,7 @@
 // This materializer writes the rows, the claim registers and `fold_txn_keys`; the derived parts
 // (cash mirror legs, the effective `category` / `category_source`, transfer groups) are written by
 // the budget derivers (`derive/`), never here.
-import { Decimal, format2 } from "@cashu/domain";
+import { budget, Decimal, format2 } from "@cashu/domain";
 import { merchantKey } from "@cashu/domain/budget";
 import { ACCOUNTS } from "../core/accounts.js";
 import { type FoldContext, type FoldEvent, type Materializer, ord } from "../engine/types.js";
@@ -119,9 +119,12 @@ export const CASHEXP = "cashexp:";
 /** `dedup_hash` prefix of a derived cash leg row: `cashleg:<anchor gid>` (gid.md 4.4). */
 export const CASHLEG = "cashleg:";
 
-/** Whether a claim register makes the cash mirror leg present (D-24.3: the manual claim only). */
+/**
+ * Whether a claim register holds the owner's manual `cash_withdrawal` (D-24.3), the claim half of
+ * `budget.hasCashLeg` (the legs deriver also checks the row's account type and the pool).
+ */
 export function legClaimed(c: { claim: string | null; claim_by: string | null }): boolean {
-  return c.claim === "cash_withdrawal" && c.claim_by === "manual_txn";
+  return c.claim === budget.CASH_WITHDRAWAL && c.claim_by === budget.MANUAL_CATEGORY_SOURCE;
 }
 
 function rowKey(e: FoldEvent, ctx: FoldContext): string {
