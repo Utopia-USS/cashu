@@ -185,8 +185,8 @@ frozen clock), to `<lab>/parity/bridge/<dataset>/core.networth_contributors.json
 ```
 
 Everything core owns (balance snapshots and their source rank, contributor precedence, signs, per
-currency totals, breakdown) is recomputed in TS; the cash pool runs through a stand-in of budget's
-contributor on the core `RunningValuation` (`core/cashPool.ts`). When a module's TS contributor lands,
+currency totals, breakdown) is recomputed in TS; the cash pool runs through budget's domain
+contributor (`budget.cashContributor`, S08). When a module's TS contributor lands,
 drop it from `BRIDGED` / `BRIDGED_MODULES`; delete the bridge with the last one.
 
 `core.networth` runs on `demo` and `lab`. `core.networth_series` needs `at()` / `axisDates()` of the

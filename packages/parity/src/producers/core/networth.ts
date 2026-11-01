@@ -3,18 +3,17 @@
  * and 365 days before as_of, the lines, the breakdown per currency, the bucket order.
  *
  * Inputs: accounts, balance snapshots and the cash pool's transactions from the read-only source
- * (`sources/pythonDb.ts`); the investments contributor is the domain `BrokerageContributor` over the
- * profile's investments rows (`../investments/brokerage.ts`); the loans / assets contributors come
- * from the Python bridge until their ports land (`bridge.ts`). Everything core owns runs in
- * `@cashu/domain` core.
+ * (`sources/pythonDb.ts`). The cash pool is budget's domain `cashContributor`, the investments
+ * contributor the domain `BrokerageContributor` over the profile's investments rows
+ * (`../investments/brokerage.ts`); the loans / assets contributors come from the Python bridge until
+ * their ports land (`bridge.ts`). Everything core owns runs in `@cashu/domain` core.
  */
 
-import { addDays, core, D, type Decimal } from "@cashu/domain";
+import { addDays, budget, core, D, type Decimal } from "@cashu/domain";
 import type { PythonDb } from "../../sources/index.ts";
 import { brokerageContributor } from "../investments/brokerage.ts";
 import type { OutValue } from "../output.ts";
 import { type BridgeFile, bridgedContributors } from "./bridge.ts";
-import { CashPoolContributor } from "./cashPool.ts";
 
 function decimals(map: ReadonlyMap<string, Decimal>): Record<string, Decimal> {
   return Object.fromEntries(map);
@@ -44,10 +43,11 @@ function profileBook(
     list.push({ date: b.date, amount: D(b.amount), source: b.source });
     balances.set(id, list);
   }
-  const cash = new CashPoolContributor(
+  // `transactions` is in (account_id, id) order: per account that is id order, the anchor order
+  // budget's contributor needs (it values each pool from that pool's rows only).
+  const cash = budget.cashContributor(
     db.transactions(profileId).map((t) => ({
-      accountKey: key(t.accountId),
-      id: t.id,
+      account: key(t.accountId),
       bookingDate: t.bookingDate,
       amount: D(t.amount),
     })),
