@@ -713,8 +713,8 @@ def test_det_gids_need_the_keychain_salt_and_known_references(db_engine, sync_on
 
 
 def test_det_gid_parts_use_the_stored_enum_value(db_engine, sync_on):
-    """S31a: a str-mixin enum column (``Source.MANUAL``) is a DET part by its stored value, the text
-    genesis and the TS shipper read; ``str()`` of the member gave another gid."""
+    """S31a: an enum column (``Source.MANUAL``) is a DET part by its value (``manual``), as genesis
+    decodes the stored name and the TS shipper checks; ``str()`` of the member gave another gid."""
     from cashu.core.models import Source
 
     pid = new_profile("Enum", ("budget",))
@@ -729,7 +729,7 @@ def test_det_gid_parts_use_the_stored_enum_value(db_engine, sync_on):
     with get_session() as s:
         accounts.upsert_balance(s, s.get(Account, acc_id), dt.date(2026, 1, 31), Decimal("5.00"), source=Source.MANUAL)
     [row] = outbox(table_name="balances", op="insert")
-    expected = sync_keys.det_gid(sync_keys.Salt(TEST_SALT), "balances", [acc_gid, "2026-01-31", "MANUAL"])
+    expected = sync_keys.det_gid(sync_keys.Salt(TEST_SALT), "balances", [acc_gid, "2026-01-31", "manual"])
     assert row["gid"] == expected
 
 

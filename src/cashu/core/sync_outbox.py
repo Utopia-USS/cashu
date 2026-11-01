@@ -42,6 +42,7 @@ form (columns, referenced local ids), so the shipper computes the gid with the s
 from __future__ import annotations
 
 import datetime as dt
+import enum
 import re
 import uuid
 import weakref
@@ -525,11 +526,10 @@ def _det_gid(conn, st: _State, table_name: str, row: dict, profile_id: int | Non
         elif part[0] == "date":
             parts.append(value.isoformat() if isinstance(value, dt.date) else str(value)[:10])
         else:
-            # The stored text, as genesis and the shipper read it (the column's bind encoding): an
-            # Enum column stores the member NAME ("MANUAL"), while str() of a str-mixin member gives
-            # "Source.MANUAL" and .value "manual" (S31a: Python's DET gid then differed from TS).
-            column = IDS.metadata.tables[table_name].c[part[1]]
-            parts.append(str(_encoder(column, conn.dialect)(value)))
+            # An enum member is its catalog value, as genesis decodes the stored NAME ("MANUAL" ->
+            # "manual"): str() of a str-mixin member gives "Source.MANUAL" (S31a: Python's DET gid of
+            # a manual balance differed from the one TS checks).
+            parts.append(str(value.value if isinstance(value, enum.Enum) else value))
     return sync_keys.det_gid(salt, spec.det_table or table_name, parts)
 
 
