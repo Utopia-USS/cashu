@@ -1,6 +1,89 @@
 # Multi-device sync, a mobile app and the TypeScript stack (design spike)
 
-Status: proposal, nothing implemented. Waiting for the owner's decisions at the end of this document.
+Status: the spike below is the original proposal (2026-10-30). The owner's questions are answered and
+the stack is being built as a strangler on the lab branch `ts-stack` (not on `staging` / `main`, not
+shipped). What is decided and built now is in "Status" right below; where it differs from the spike
+text, the status wins.
+
+## Status (2026-11-01): decided and built
+
+Decided (owner and lead; the plan of record keeps the full list and the scope ids):
+
+- **Strangler**, same repo: Python keeps running and writing; TypeScript packages and apps grow next to
+  it (`packages/*`, `apps/*`, pnpm + turbo); a Python module is retired only after TS parity on the
+  synthetic demo set and a local copy of real data, translated pytest oracles and a clean shadow run.
+- **Carrier: our own log** (phase 0 spike): Evolu was 30-50x slower, has no folder transport and no
+  Node runtime; LiveStore needs a sync backend that sees plaintext and lost data in the spike. The log
+  is per profile (vault) and per device: compress-then-encrypt segments (XChaCha20-Poly1305, the
+  compression flag inside the ciphertext), a sealed manifest, capped decompression, a segment
+  completeness gate; one HLC (`packages/sync` `./hlc`), 32-hex ids, keyed deterministic gids with a
+  per-vault salt (HMAC).
+- **Transports behind one interface**: the synced folder transport (iCloud Drive / Syncthing, temp +
+  rename, conflict copies merged, forks reported) is built; the blind relay waits for the owner's
+  answer to question 4 (ciphertext on third-party storage) and runs on synthetic data only until then.
+  Each transport declares its consistency.
+- **Fetch leader is pinned**: the device that created the vault is the pinned fetch leader on every
+  backend (PSD2, prices, rules, imports); it changes only by an explicit owner action signed by a
+  non-revoked device or the recovery key; automatic hand-over is an owner opt-in on a relay that
+  declares bounded propagation. Every device warns after 36 h without a fetch. This replaces the
+  expiring lease of section (b).
+- **Devices and trust**: pairing with a short authentication string, revocation with key rotation,
+  recovery words (24) as the default way to revoke a device not in the owner's hands, a single
+  chain-of-trust rule at every acceptance site. Signed heads / per-device frame signatures are still to
+  come and are required before real multi-device use.
+- **Conflicts**: per-field last-writer-wins by HLC for short fields; concurrent edits of long text
+  (theses, notes) keep both versions as an Obsidian-like conflict copy; tags merge as a union; imports
+  are a union with content-hash dedup; decisions, notes and review closures append; deletions are
+  tombstones.
+- **Imports run on the fetch leader**; another device hands the file over as an encrypted blob, so two
+  devices never import overlapping statements on their own.
+- **Instruments are per vault**; price and FX caches are device-local, keyed by provider + symbol,
+  never synced; the phone first shows leader-computed snapshots, later a compact price snapshot.
+- **Desktop = Electron** (Electron 45, single instance, deep links, notifications, tray). The store runs
+  in an Electron **utility process** on `node:sqlite` and talks to the renderer over a MessagePort;
+  the main process only routes ports. The desktop UI becomes a **new store-backed renderer, ported tab
+  by tab**; the legacy SPA over the Python sidecar stays until its last tab is ported. There is no TS
+  HTTP API for the legacy SPA.
+- **One local host process per data dir** (store, sync, worker, MCP) with Electron, the CLI and the MCP
+  stdio server as its clients, also with the app closed: the design is in progress; until it lands
+  the TS MCP server, CLI and worker are not built.
+- **Mobile = Expo / React Native**, iOS first, Android in scope. UI stack on both platforms: Tailwind v4
+  + Uniwind + tailwind-variants, `@expo/ui` for native controls (react-strict-dom / StyleX were
+  rejected); charts are shared SVG scenes (DOM svg / react-native-svg). React Compiler on, no manual
+  memo; live reads via `useQuery` (useSyncExternalStore).
+- **Phone hardening before real data**: encrypted view DB at rest, local notifications from synced
+  data (APNs later), signing and TestFlight / Play distribution.
+- Proposal approval stays desktop only; the agent never writes strategy files directly; the MCP audit
+  stays per device; connector code and approval stay per device (bindings sync, cursors are
+  leader-only); rule categories are recomputed on each device, LLM and manual categories ship as
+  events.
+
+Built on `ts-stack` (synthetic data in tests; parity on the demo set and a local copy of real data):
+
+- Domain ports with parity: Python-decimal primitives, core net worth per currency, bank CSV parsers
+  and dedup, internal transfers (IBAN only) and the cash pool, keyword categorization (Polish rules
+  byte-identical) and the LLM port, investments domain, lots / valuation / allocation, performance,
+  macro, market sources (leader-only `@cashu/market`), importing (contract, CSV, plan), research pure
+  logic, the MCP privacy layer (stricter than Python, thousands of adversarial vectors).
+- Store: event catalog v1 with a reference fold and convergence property tests, materializers for
+  every synced table, commands for core / budget / loans / assets / investments, crash recovery from
+  the encrypted log (WAL + replay), React bindings (`@cashu/store-react`).
+- Sync: crypto and keys, carrier engine and contract suite, the own-log carrier, the folder transport,
+  devices / pairing / revocation / fetch-leader phase A.
+- Bridge: genesis (an existing `cashu.db` -> per-vault event logs), the Python outbox and inbound
+  applier behind a lab-only switch (to become a persisted per-vault flag), the shipper (Python writes
+  -> encrypted log -> TS view equals the Python DB on a lab copy) in review.
+- Apps: the Electron shell over the Python sidecar with the store utility process behind a dev flag;
+  the Expo app (expo-router, expo-sqlite store, crypto self-test on iOS and Android, debug screens),
+  Hermes bundle under a ratchet ceiling (performance.md).
+- Gates: `pnpm arch:check` (layers, imports, knip, catalogs PL / EN, story coverage, TRANSITIONAL
+  markers must name a live scope), test tiers (default + exhaustive), parity staleness guard.
+
+Not built yet (planned): budget analytics, loans / assets math, strategy, rules, alerts, investments
+views / write services / daily run, research services, the store-backed desktop renderer, the TS MCP
+server and CLI, worker and notifications (also with the app closed), connectors host, workspace
+renderer, packaging and auto-update, phone screens / edits / pairing UI, the relay, the cut-over and
+migration of other installs.
 
 Owner requirements this answers:
 
@@ -137,7 +220,11 @@ migration (now: event upcasting and rebuild), skills shape, MCP privacy.
 - **Push notifications** for alerts need APNs and therefore a server; until then alerts show when the
   app opens or via a local notification scheduled from synced data.
 
-## Open questions for the owner
+## Open questions for the owner (answered; see Status)
+
+Answers: 1 strangler; 2 own log (spike); 3 both behind one interface, folder built first, relay on hold;
+4 still open (the relay and any non-synthetic transport wait for it); 5 Electron; 6 Android in scope,
+iOS first.
 
 1. **Strangler or big bang?** Recommendation: strangler with an early mobile companion.
 2. **Sync carrier**: adopt Evolu (or LiveStore) or own a thin event log on SQLite? Recommendation:
