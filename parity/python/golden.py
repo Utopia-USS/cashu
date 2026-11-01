@@ -7,6 +7,10 @@
     .venv/bin/python parity/python/golden.py --dataset lab --out ~/cashu-lab/parity/out-<branch>
     .venv/bin/python parity/python/golden.py --dataset lab --source-dir <run>/data --check 'store.table.*' --out <run>/out
 
+Bridge harness helpers (counts only): ``--manifest <dataset>`` prints ``{"manifest", "files"}`` of the
+dataset's source dir; ``--copy-dataset <dataset> --to <dir>`` copies it into ``<dir>`` (inside
+``~/cashu-lab/parity/``, must not exist; source manifest unchanged, copy identical, ``quick_check``).
+
 ``--check`` takes a check name or a glob (``store.table.*``), repeatable. ``--source-dir`` (the bridge
 harness, S31a spec 9.3 step 9) copies that dir instead of the dataset's, keeping the dataset's clock and
 natural keys; it must resolve inside ``~/cashu-lab/parity/``.
@@ -159,6 +163,54 @@ def source_dir_allowed(path: Path) -> bool:
     real = os.path.realpath(path).casefold()
     base = os.path.realpath(PARITY_ROOT).casefold().rstrip(os.sep) + os.sep
     return real.startswith(base)
+
+
+def quick_check(db: Path) -> bool:
+    """``PRAGMA quick_check`` of a copied database, opened read-only (stdlib sqlite3, no cashU)."""
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            return conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError:
+        return False
+
+
+def copy_dataset(name: str, dest: Path) -> int:
+    """``--copy-dataset <name> --to <dest>`` (the bridge harness, S31a spec 9.1): the dataset's source
+    dir copied whole (``profiles/``, ``imports/`` ...) into ``dest`` the way a golden run copies it.
+    The source manifest is taken before and after (a change while copying = exit 2, the copy may be
+    torn) and the copied database must pass ``quick_check``. Prints the source manifest as JSON."""
+    import json
+
+    source = DATASETS[name]
+    if not source_dir_allowed(dest):
+        print(json.dumps({"error": f"--to must be inside {PARITY_ROOT}"}))
+        return 1
+    if dest.exists():
+        print(json.dumps({"error": "--to must not exist yet"}))
+        return 1
+    if not (source / "cashu.db").is_file():
+        print(json.dumps({"error": "no dataset"}))
+        return 1
+    before = manifest(source)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, dest)
+    after = manifest(source)
+    if before != after:
+        print(json.dumps({"error": "the source dataset changed while copying"}))
+        return 2
+    if manifest(dest) != before:
+        print(json.dumps({"error": "the copy differs from the source"}))
+        return 2
+    if not quick_check(dest / "cashu.db"):
+        print(json.dumps({"error": "the copied database fails quick_check"}))
+        return 2
+    print(json.dumps({"manifest": before[1], "files": before[0]}))
+    return 0
 
 
 def selects(name: str, only: list[str]) -> bool:
@@ -379,6 +431,13 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="Copy this dir instead of the dataset's (inside ~/cashu-lab/parity/; one --dataset).",
     )
+    parser.add_argument(
+        "--manifest", choices=list(DATASETS), help="Print the dataset source's manifest as JSON and exit."
+    )
+    parser.add_argument(
+        "--copy-dataset", choices=list(DATASETS), help="Copy the dataset source into --to (inside the parity tree)."
+    )
+    parser.add_argument("--to", type=Path, help="The target dir of --copy-dataset (must not exist).")
     parser.add_argument("--keep-run", action="store_true", help="Keep the run-<ts> copy.")
     parser.add_argument("--make-demo", action="store_true", help="Generate the demo dataset.")
     parser.add_argument(
@@ -397,6 +456,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--child-out", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
+    if args.manifest:
+        import json
+
+        if not (DATASETS[args.manifest] / "cashu.db").is_file():
+            print(json.dumps({"error": "no dataset"}))
+            return 1
+        n, digest = manifest(DATASETS[args.manifest])
+        print(json.dumps({"manifest": digest, "files": n}))
+        return 0
+    if args.copy_dataset:
+        if args.to is None:
+            print("--copy-dataset needs --to")
+            return 1
+        return copy_dataset(args.copy_dataset, Path(os.path.abspath(args.to.expanduser())))
     source = None
     if args.source_dir is not None:
         if args.dataset == "all" or args.update_golden_demo:
