@@ -1,7 +1,8 @@
 // `--fold` invariants (S26 spec 8.4) on the synthetic data dir: a clean log folds with one view row
 // per exported row; a row the export does not list, a missing row and an invalid-gid event fail.
 import { join } from "node:path";
-import { betterSqlite3Driver, genesis } from "@cashu/store";
+import { betterSqlite3Driver } from "@cashu/store";
+import * as genesis from "@cashu/store/genesis";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { runFiles } from "./copy.ts";

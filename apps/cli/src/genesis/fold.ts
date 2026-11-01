@@ -4,7 +4,8 @@
 // no unknown events (incl. `invalid-gid` parks) and one view row per exported source row.
 
 import { writeFileSync } from "node:fs";
-import { betterSqlite3Driver, builtinModules, genesis, Store, viewHash } from "@cashu/store";
+import { betterSqlite3Driver, builtinModules, Store, viewHash } from "@cashu/store";
+import * as genesis from "@cashu/store/genesis";
 import Database from "better-sqlite3";
 
 /** A fold invariant failed (exit 65); the message carries counts only. */

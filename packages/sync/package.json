@@ -3,11 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
     "./hlc": "./src/hlc.ts",
     "./testing": "./src/testing/index.ts",
     "./testing/folder": "./src/transports/folder/testing/index.ts"
+  },
+  "react-native": {
+    "libsodium-wrappers": false
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

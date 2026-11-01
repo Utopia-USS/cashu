@@ -14,7 +14,7 @@ import {
   statSync,
 } from "node:fs";
 import { isAbsolute, join, normalize, sep } from "node:path";
-import type { genesis } from "@cashu/store";
+import type * as genesis from "@cashu/store/genesis";
 
 /** The database files and side-file folders a run copies (spec 2.1). */
 const DB_FILES = ["cashu.db", "cashu.db-wal", "cashu.db-shm"] as const;

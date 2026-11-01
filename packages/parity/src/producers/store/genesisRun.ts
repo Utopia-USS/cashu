@@ -18,10 +18,10 @@ import {
   builtinModules,
   type DetGid,
   detGidFor,
-  genesis,
   Store,
   vaultSalt,
 } from "@cashu/store";
+import * as genesis from "@cashu/store/genesis";
 import Database from "better-sqlite3";
 import { DATASET_CLOCKS, type PythonDb } from "../../sources/index.ts";
 

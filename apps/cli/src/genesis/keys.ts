@@ -4,7 +4,8 @@
 // and salts are secrets of the vault: never printed, logged or put in an error message.
 import { randomBytes } from "node:crypto";
 import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { type genesis, newVaultSalt, vaultSalt } from "@cashu/store";
+import { newVaultSalt, vaultSalt } from "@cashu/store";
+import type * as genesis from "@cashu/store/genesis";
 import { z } from "zod";
 
 const keysFileSchema = z.strictObject({

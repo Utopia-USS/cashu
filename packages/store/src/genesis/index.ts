@@ -6,8 +6,8 @@
 // Phase 1 (`ids.ts`) maps every exported row to its gid; phase 2 (`order.ts`, `map/*`) maps rows to
 // events through that map only; `emit.ts` validates, clocks and serializes them. Deterministic: the
 // same source bytes and the same `VaultKeys` give byte-identical logs (spec 7); `now` only guards the
-// clock skew. Re-exported from the package as `genesis` (`import { genesis } from "@cashu/store"`,
-// then `genesis.genesis(...)`).
+// clock skew. Its own subpath, never the package root, so the phone's bundle does not carry it
+// (`import * as genesis from "@cashu/store/genesis"`, then `genesis.genesis(...)`).
 //
 // Result per vault, by ordinal (profiles ordered by id):
 // - `events`: wire envelopes (`toWire`) in (hlc, eid) order, one logical batch; apply or write them

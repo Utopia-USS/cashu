@@ -8,7 +8,8 @@
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { parseArgs } from "node:util";
-import { betterSqlite3Driver, genesis } from "@cashu/store";
+import { betterSqlite3Driver } from "@cashu/store";
+import * as genesis from "@cashu/store/genesis";
 import Database from "better-sqlite3";
 import { assertUnchanged, copyRun, manifest, runFiles, SourceChangedError } from "./copy.ts";
 import { FoldError, foldVault } from "./fold.ts";

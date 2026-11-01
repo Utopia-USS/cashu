@@ -3,7 +3,8 @@
 // (guard.ts). Vault folders are named by ordinal (profiles ordered by id), never by slug.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalJson, type genesis } from "@cashu/store";
+import { canonicalJson } from "@cashu/store";
+import type * as genesis from "@cashu/store/genesis";
 import type { SourceManifest } from "./copy.ts";
 
 const DIR_MODE = 0o700;

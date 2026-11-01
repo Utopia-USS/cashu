@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "description": "React bindings over the event store (useQuery, useCommand, providers) and the store port between the desktop renderer and the store process.",
   "exports": {
     ".": "./src/index.ts",
