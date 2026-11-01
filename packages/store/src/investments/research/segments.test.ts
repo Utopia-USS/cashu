@@ -12,13 +12,7 @@ import { addDays } from "@cashu/domain";
 import { market, research } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import { setInstrumentSegment } from "../commands/instruments.js";
-import {
-  applyRaw as applyRawEvents,
-  brokerage as brokerageOf,
-  stock,
-  type Vault,
-  vault,
-} from "../commands/testing/fixtures.js";
+import { stock, type Vault } from "../commands/testing/fixtures.js";
 import { PerformanceService } from "../performance/service.js";
 import { noBenchmarkStrategy } from "../performance/testing/household.js";
 import {
@@ -35,10 +29,12 @@ import {
   addNote,
   distinctWords,
   investor,
+  movingPortfolio,
   putBars,
   putRates,
   refusal,
   researchSignals,
+  START,
   TODAY,
   thesis,
   watch,
@@ -370,118 +366,6 @@ describe("review digest", () => {
 });
 
 // ------------------------------------------------------------------ attribution
-
-const START = addDays(TODAY, -7);
-const d = (days: number) => addDays(TODAY, -days);
-
-let seq = 0;
-function txn(v: Vault, account: string, instrument: string | null, data: Record<string, unknown>) {
-  const dedupHash = (++seq).toString(16).padStart(64, "f");
-  return {
-    type: "invTxn.imported",
-    gid: v.det("inv_transactions", [account, dedupHash]),
-    data: {
-      account,
-      batch: null,
-      type: "buy",
-      tradeDate: d(20),
-      settleDate: null,
-      instrument,
-      quantity: null,
-      price: null,
-      currency: "PLN",
-      grossAmount: "0",
-      fee: "0",
-      tax: "0",
-      cashAmount: "0",
-      cashCurrency: "PLN",
-      fxRate: null,
-      splitRatio: null,
-      note: null,
-      source: "import",
-      externalRef: null,
-      dedupHash,
-      createdAt: `${d(20)}T10:00:00.000001Z`,
-      ...data,
-    },
-  };
-}
-
-/**
- * Python `_moving_portfolio`: a PLN deposit, ABC (PLN) +10 % and WRLD (EUR) -10 % within the window
- * with EUR +10 %, a cost-valued treasury bond, cash, and XMPL (USD, flat) bought mid-window.
- * `eurFrom`: EUR rates only from that day on; `eurGap`: no EUR rate in the days up to the start.
- */
-function movingPortfolio(o: { eurFrom?: string; eurGap?: number } = {}) {
-  const v = vault();
-  const account = brokerageOf(v);
-  const abc = stock(v, "ABC", "PLABC0000016", { aliases: [yahoo("ABC.WA")] });
-  const wrld = stock(v, "WRLD", "IE00BEXAMPL1", {
-    currency: "EUR",
-    assetClass: "etf",
-    mic: "XETR",
-    aliases: [yahoo("WRLD.DE")],
-  });
-  const edox = stock(v, "EDOX", "PL0000000002", { assetClass: "treasury_bond" });
-  const xmpl = stock(v, "XMPL", "US0000000001", {
-    currency: "USD",
-    mic: "XNAS",
-    aliases: [yahoo("XMPL")],
-  });
-  applyRawEvents(v, [
-    txn(v, account, null, { type: "deposit", tradeDate: d(30), cashAmount: "20000.00" }),
-    txn(v, account, abc, {
-      quantity: "100",
-      price: "50.00",
-      grossAmount: "5000.00",
-      cashAmount: "-5000.00",
-    }),
-    txn(v, account, wrld, {
-      quantity: "10",
-      price: "100.00",
-      currency: "EUR",
-      grossAmount: "1000.00",
-      cashAmount: "-4000.00",
-      fxRate: "4.0",
-    }),
-    txn(v, account, edox, {
-      quantity: "10",
-      price: "100.00",
-      grossAmount: "1000.00",
-      cashAmount: "-1000.00",
-    }),
-    txn(v, account, xmpl, {
-      tradeDate: d(3),
-      quantity: "10",
-      price: "100.00",
-      currency: "USD",
-      grossAmount: "1000.00",
-      cashAmount: "-4000.00",
-      fxRate: "4.0",
-      createdAt: `${d(3)}T10:00:00.000001Z`,
-    }),
-  ]);
-  v.value(setInstrumentSegment, { instrument: abc, segment: "equity_pl", by: "owner" });
-  v.value(setInstrumentSegment, { instrument: wrld, segment: "equity_global", by: "owner" });
-  const cache = new market.InMemoryPriceCache();
-  putBars(cache, "ABC.WA", TODAY, 40, (day) => (day <= START ? "50" : "55"), "PLN");
-  putBars(cache, "WRLD.DE", TODAY, 40, (day) => (day <= START ? "100" : "90"), "EUR");
-  putBars(cache, "XMPL", TODAY, 40, () => "100", "USD");
-  const days = Array.from({ length: 41 }, (_, k) => addDays(TODAY, k - 40));
-  const gap = o.eurGap ?? 0;
-  putRates(
-    cache,
-    "EUR",
-    days.filter(
-      (day) =>
-        (o.eurFrom === undefined || day >= o.eurFrom) &&
-        !(addDays(START, -gap) < day && day <= START),
-    ),
-    (day) => (day <= START ? "4.0" : "4.4"),
-  );
-  putRates(cache, "USD", days, () => "4.0");
-  return { v, cache, abc, wrld, edox, xmpl };
-}
 
 describe("attribution through the service", () => {
   it("test_attribution_with_moving_prices_fx_cost_holding_cash_and_a_mid_window_buy", () => {

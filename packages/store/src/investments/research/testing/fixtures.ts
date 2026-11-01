@@ -4,6 +4,8 @@ import { addDays, D, parseDateTime } from "@cashu/domain";
 import { market } from "@cashu/domain/investments";
 import { expect } from "vitest";
 import type { CommandOutcome } from "../../../command.js";
+import { run as runCommand } from "../../../testing/commands.js";
+import { setInstrumentSegment } from "../../commands/instruments.js";
 import { createThesis } from "../../commands/journal.js";
 import {
   applyRaw,
@@ -174,6 +176,27 @@ export function putRates(
   );
 }
 
+/**
+ * Run `fn` on the vault with its domain clock `days` back (Python `now=utcnow() - timedelta(days=ago)`):
+ * events carry the earlier `at` and `now()`, while the device's hybrid clock keeps its own physical
+ * source (an HLC never goes back).
+ */
+export function daysAgo<T>(v: Vault, days: number, fn: (w: Vault) => T): T {
+  const clock = { now: () => v.env.clock.now() - days * DAY };
+  const env = { ...v.env, clock };
+  const w: Vault = {
+    ...v,
+    env,
+    run: (cmd, input) => runCommand(v.store, env, cmd, input),
+    value(cmd, input) {
+      const out = runCommand(v.store, env, cmd, input);
+      if (!out.ok) expect.fail(`${cmd.id} refused: ${out.reason}`);
+      return out.value;
+    },
+  };
+  return fn(w);
+}
+
 /** Python `distinct_words`: three words unique to `n` (synthetic notes are never near duplicates). */
 export function distinctWords(n: number): string {
   let code = "";
@@ -190,6 +213,7 @@ function rawNote(
   n: number,
   changes: Record<string, unknown> = {},
   url = `https://example.com/news/${n}`,
+  published = TODAY,
 ): Record<string, unknown> {
   return {
     kind: "news",
@@ -197,7 +221,7 @@ function rawNote(
     strength: 2,
     title: `Example fact number ${n} ${distinctWords(n)}`,
     summary: `Przykladowy fakt ${distinctWords(n)} ze zrodla, opisany neutralnie.`,
-    sources: [{ url, publisher: "Example News", published_at: TODAY }],
+    sources: [{ url, publisher: "Example News", published_at: published }],
     ...changes,
   };
 }
@@ -218,7 +242,7 @@ export function addNote(
   o: AddOptions = {},
 ): CommandOutcome<AddedNote> {
   return v.run(addResearchNote, {
-    note: rawNote(n, changes, o.url),
+    note: rawNote(n, changes, o.url, new Date(v.env.clock.now()).toISOString().slice(0, 10)),
     instrument: o.instrument === undefined ? "XMPL" : o.instrument,
     run: o.run ?? null,
     createdBy: o.createdBy ?? "agent",
@@ -259,4 +283,126 @@ export function researchSignals(v: Vault): SignalView[] {
   return read<{ gid: string }>(
     "SELECT gid FROM inv_signals WHERE dedup_key LIKE 'research:%' ORDER BY id",
   ).map((r) => signalByGid(read, r.gid) as SignalView);
+}
+
+// ------------------------------------------------------------------ attribution
+
+/** The 1w window start of the fixture day (Python `START`). */
+export const START = addDays(TODAY, -7);
+/** `TODAY - days` (Python `_d`). */
+export const d = (days: number) => addDays(TODAY, -days);
+
+let seq = 0;
+/** An imported transaction event (Python canonical import row) with its DET gid. */
+export function importTxn(
+  v: Vault,
+  account: string,
+  instrument: string | null,
+  data: Record<string, unknown>,
+) {
+  const dedupHash = (++seq).toString(16).padStart(64, "f");
+  return {
+    type: "invTxn.imported",
+    gid: v.det("inv_transactions", [account, dedupHash]),
+    data: {
+      account,
+      batch: null,
+      type: "buy",
+      tradeDate: d(20),
+      settleDate: null,
+      instrument,
+      quantity: null,
+      price: null,
+      currency: "PLN",
+      grossAmount: "0",
+      fee: "0",
+      tax: "0",
+      cashAmount: "0",
+      cashCurrency: "PLN",
+      fxRate: null,
+      splitRatio: null,
+      note: null,
+      source: "import",
+      externalRef: null,
+      dedupHash,
+      createdAt: `${d(20)}T10:00:00.000001Z`,
+      ...data,
+    },
+  };
+}
+
+/**
+ * Python `_moving_portfolio`: a PLN deposit, ABC (PLN) +10 % and WRLD (EUR) -10 % within the window
+ * with EUR +10 %, a cost-valued treasury bond, cash, and XMPL (USD, flat) bought mid-window.
+ * `eurFrom`: EUR rates only from that day on; `eurGap`: no EUR rate in the days up to the start.
+ */
+export function movingPortfolio(o: { eurFrom?: string; eurGap?: number } = {}) {
+  const v = vault();
+  const account = brokerage(v);
+  const abc = stock(v, "ABC", "PLABC0000016", { aliases: [yahoo("ABC.WA")] });
+  const wrld = stock(v, "WRLD", "IE00BEXAMPL1", {
+    currency: "EUR",
+    assetClass: "etf",
+    mic: "XETR",
+    aliases: [yahoo("WRLD.DE")],
+  });
+  const edox = stock(v, "EDOX", "PL0000000002", { assetClass: "treasury_bond" });
+  const xmpl = stock(v, "XMPL", "US0000000001", {
+    currency: "USD",
+    mic: "XNAS",
+    aliases: [yahoo("XMPL")],
+  });
+  applyRaw(v, [
+    importTxn(v, account, null, { type: "deposit", tradeDate: d(30), cashAmount: "20000.00" }),
+    importTxn(v, account, abc, {
+      quantity: "100",
+      price: "50.00",
+      grossAmount: "5000.00",
+      cashAmount: "-5000.00",
+    }),
+    importTxn(v, account, wrld, {
+      quantity: "10",
+      price: "100.00",
+      currency: "EUR",
+      grossAmount: "1000.00",
+      cashAmount: "-4000.00",
+      fxRate: "4.0",
+    }),
+    importTxn(v, account, edox, {
+      quantity: "10",
+      price: "100.00",
+      grossAmount: "1000.00",
+      cashAmount: "-1000.00",
+    }),
+    importTxn(v, account, xmpl, {
+      tradeDate: d(3),
+      quantity: "10",
+      price: "100.00",
+      currency: "USD",
+      grossAmount: "1000.00",
+      cashAmount: "-4000.00",
+      fxRate: "4.0",
+      createdAt: `${d(3)}T10:00:00.000001Z`,
+    }),
+  ]);
+  v.value(setInstrumentSegment, { instrument: abc, segment: "equity_pl", by: "owner" });
+  v.value(setInstrumentSegment, { instrument: wrld, segment: "equity_global", by: "owner" });
+  const cache = new market.InMemoryPriceCache();
+  putBars(cache, "ABC.WA", TODAY, 40, (day) => (day <= START ? "50" : "55"), "PLN");
+  putBars(cache, "WRLD.DE", TODAY, 40, (day) => (day <= START ? "100" : "90"), "EUR");
+  putBars(cache, "XMPL", TODAY, 40, () => "100", "USD");
+  const days = Array.from({ length: 41 }, (_, k) => addDays(TODAY, k - 40));
+  const gap = o.eurGap ?? 0;
+  putRates(
+    cache,
+    "EUR",
+    days.filter(
+      (day) =>
+        (o.eurFrom === undefined || day >= o.eurFrom) &&
+        !(addDays(START, -gap) < day && day <= START),
+    ),
+    (day) => (day <= START ? "4.0" : "4.4"),
+  );
+  putRates(cache, "USD", days, () => "4.0");
+  return { v, cache, abc, wrld, edox, xmpl };
 }
