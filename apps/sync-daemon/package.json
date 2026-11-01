@@ -6,10 +6,19 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "bin": {
+    "cashu-sync-daemon": "./src/cli.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "vitest run",
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cashu/node-host": "workspace:*",
+    "@cashu/store": "workspace:*",
+    "@cashu/sync": "workspace:*",
+    "zod": "^4.6.7"
   }
 }
