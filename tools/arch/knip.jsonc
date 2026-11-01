@@ -23,6 +23,11 @@
     "apps/*": {
       "project": ["src/**/*.{ts,tsx}"]
     },
+    "packages/node-host": {
+      // Spawned by the host tests as a separate process (through its path), which knip cannot follow.
+      "entry": ["src/testing/fixtureHost.ts"],
+      "project": ["src/**/*.ts"]
+    },
     "apps/desktop": {
       "entry": [
         "src/main.ts",
