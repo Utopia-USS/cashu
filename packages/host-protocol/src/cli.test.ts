@@ -56,3 +56,8 @@ describe("cli.exec", () => {
     ).toBe(false);
   });
 });
+
+it("carries optional caller terminal context without forwarding unlisted environment", () => {
+  const tty = { ...exec.tty, compatible: false, unicodeVersion: "17.0.0" };
+  expect(cliExecParamsSchema.parse({ ...exec, tty }).tty).toEqual(tty);
+});

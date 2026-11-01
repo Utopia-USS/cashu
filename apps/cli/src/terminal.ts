@@ -1,7 +1,8 @@
 // The shim's terminal: output writes, the window size, and standard input read only on demand
 // (prompt answers, hidden input without echo, or the whole stream when a host command asks for it).
 // `Terminal` is the process; tests pass a fake.
-import { isatty } from "node:tty";
+import { closeSync, openSync } from "node:fs";
+import { isatty, WriteStream } from "node:tty";
 
 export interface Terminal {
   write(stream: "stdout" | "stderr", data: string): void;
@@ -18,12 +19,34 @@ export function processTerminal(): Terminal {
     write: (stream, data) => {
       (stream === "stdout" ? process.stdout : process.stderr).write(data);
     },
-    columns: () => (isatty(1) ? process.stdout.columns : undefined),
-    rows: () => (isatty(1) ? process.stdout.rows : undefined),
+    columns: () => terminalSize()?.[0],
+    rows: () => terminalSize()?.[1],
     get stdin() {
       return process.stdin;
     },
   };
+}
+
+/** Rich probes stdin, stdout and stderr on POSIX, including when stdout is redirected. */
+export function terminalSize(): readonly [number, number] | undefined {
+  if (process.platform !== "win32" && isatty(0)) {
+    let fd: number | undefined;
+    let stream: WriteStream | undefined;
+    try {
+      // A separate descriptor ensures destroying the sizing stream never closes caller stdin.
+      fd = openSync("/dev/fd/0", "w");
+      stream = new WriteStream(fd);
+      return stream.getWindowSize();
+    } catch {
+      /* Fall back to the output descriptors if stdin cannot be reopened. */
+    } finally {
+      if (stream !== undefined) stream.destroy();
+      else if (fd !== undefined) closeSync(fd);
+    }
+  }
+  if (isatty(1)) return process.stdout.getWindowSize();
+  if (isatty(2)) return process.stderr.getWindowSize();
+  return undefined;
 }
 
 const NEWLINE = 0x0a;

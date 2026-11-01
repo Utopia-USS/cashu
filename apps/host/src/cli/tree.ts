@@ -19,6 +19,8 @@ export interface CommandIo {
     readonly stdout: boolean;
     readonly stderr: boolean;
     readonly columns?: number;
+    readonly compatible?: boolean;
+    readonly unicodeVersion?: string;
   };
   /** Aborted when the user presses Ctrl-C (the command should stop and return 130). */
   readonly signal: AbortSignal;
@@ -40,7 +42,11 @@ interface RootOptions {
 export interface PortedCommand {
   readonly name: string;
   /** Runs with the raw arguments after the command name; resolves with the exit code. */
-  run(args: readonly string[], io: CommandIo, root: RootOptions): Promise<number>;
+  run(
+    args: readonly string[],
+    io: CommandIo,
+    root: RootOptions,
+  ): Promise<number | { readonly kind: "delegate" }>;
 }
 
 export type TreeOutcome =
@@ -100,12 +106,12 @@ export async function runTree(
     leaf(program, command.name).action(async () => {
       const at = commandIndex(argv);
       const profile = program.opts<{ profile?: string }>().profile;
-      const code = await command.run(
+      const result = await command.run(
         argv.slice(at + 1),
         io,
         profile === undefined ? {} : { profile },
       );
-      outcome = { kind: "exit", code };
+      outcome = typeof result === "number" ? { kind: "exit", code: result } : result;
     });
   }
   for (const name of Object.keys(delegated)) {

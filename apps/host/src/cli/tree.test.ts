@@ -56,3 +56,16 @@ describe("runTree", () => {
     expect(seen).toEqual([]);
   });
 });
+
+it("lets a partially native group delegate an unported child before output", async () => {
+  const group: PortedCommand = {
+    name: "group",
+    async run(args) {
+      return args[0] === "native" ? 0 : { kind: "delegate" };
+    },
+  };
+  expect(await runTree(["group", "native"], io, [group], {})).toEqual({ kind: "exit", code: 0 });
+  expect(await runTree(["group", "legacy", "--help"], io, [group], {})).toEqual({
+    kind: "delegate",
+  });
+});

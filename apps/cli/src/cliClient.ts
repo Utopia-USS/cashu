@@ -62,6 +62,7 @@ function execParams(options: ExecOptions): CliExecParams {
   // A terminal that reports no size (0, e.g. a fresh pty) sends none.
   const columns = options.terminal.columns() || undefined;
   const rows = options.terminal.rows() || undefined;
+  const compatible = options.env.TTY_COMPATIBLE;
   return {
     argv: [...options.argv],
     cwd: options.cwd,
@@ -72,6 +73,10 @@ function execParams(options: ExecOptions): CliExecParams {
       stderr: isatty(2),
       ...(columns === undefined ? {} : { columns }),
       ...(rows === undefined ? {} : { rows }),
+      ...(compatible === "0" || compatible === "1" ? { compatible: compatible === "1" } : {}),
+      ...(options.env.UNICODE_VERSION === undefined
+        ? {}
+        : { unicodeVersion: options.env.UNICODE_VERSION }),
     },
   };
 }

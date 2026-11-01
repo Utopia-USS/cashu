@@ -132,7 +132,18 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const runtime = options.runtime ?? currentRuntime();
   const python =
     options.python === undefined ? pythonProgram(runtime) : (options.python ?? undefined);
-  const ported = options.ported ?? portedCommands();
+  // TRANSITIONAL(S39c): Python owns financial mutations in mixed sessions. Native-only builds
+  // bind the explicit profile to a loaded vault until the shared authority/catalog is available.
+  const ported =
+    options.ported ??
+    portedCommands({
+      now,
+      ...(python === undefined ? { nativeStores: stores } : {}),
+    });
+  const portedNames = new Set(ported.map((command) => command.name));
+  const delegated = Object.fromEntries(
+    Object.entries(DELEGATED).filter(([name]) => !portedNames.has(name)),
+  );
   if (options.launcher ?? true) {
     try {
       if (writeLauncher(server.paths.dataDir, shimProgram(runtime)))
@@ -267,7 +278,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         serveCliSession(session, {
           dataDir: server.paths.dataDir,
           ported,
-          delegated: DELEGATED,
+          delegated,
           python,
           log,
         });

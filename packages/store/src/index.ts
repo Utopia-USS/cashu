@@ -7,6 +7,7 @@ export {
   setNote,
 } from "./assets/commands.js";
 export { assetsModule } from "./assets/index.js";
+export { setVehicle, vehicleAccount } from "./assets/vehicle.js";
 export {
   addCashExpense,
   cacheLlmRules,

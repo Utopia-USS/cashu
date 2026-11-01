@@ -38,6 +38,10 @@ export const cliExecParamsSchema = z.object({
     stderr: z.boolean(),
     columns: z.number().int().positive().max(10_000).optional(),
     rows: z.number().int().positive().max(10_000).optional(),
+    /** Rich's explicit terminal override, independent of the fd's TTY bit. */
+    compatible: z.boolean().optional(),
+    /** Explicit Unicode-width selection; absent means the installed default. */
+    unicodeVersion: text(32).optional(),
   }),
 });
 export type CliExecParams = z.infer<typeof cliExecParamsSchema>;

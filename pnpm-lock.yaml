@@ -75,6 +75,9 @@ importers:
 
   apps/host:
     dependencies:
+      '@cashu/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@cashu/host-protocol':
         specifier: workspace:*
         version: link:../../packages/host-protocol
