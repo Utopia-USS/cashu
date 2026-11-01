@@ -7,6 +7,7 @@ import { formatHlc } from "../events/v1/hlc-format.js";
 import { materialize, type RefEvent } from "../events/v1/reference/fold.js";
 import { complete, syntheticDet } from "../events/v1/reference/testing/scenarios.js";
 import { viewHash } from "../snapshot.js";
+import { expectCategoriesRecomputed } from "./categories-oracle.js";
 import { chunked, shuffled } from "./random.js";
 import { Names, normalize, project, toEnvelopes } from "./reference-bridge.js";
 import { openTestStore } from "./store.js";
@@ -362,6 +363,7 @@ export const convergesProperty = fc.property(
     const h = viewHash(a).hash;
     expect(viewHash(b).hash).toBe(h);
     expect(a.rederive().touchedTables).toEqual(new Set());
+    expectCategoriesRecomputed(a);
     a.rebuild();
     expect(viewHash(a).hash).toBe(h);
   },

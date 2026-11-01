@@ -186,7 +186,9 @@ describe("touched tables and subscriptions", () => {
     // It sorts before its import, so it is a no-op in the fold; the re-fold rewrote the partition's
     // rows, and a rewrite reports its tables (a superset is safe for invalidation, never a miss).
     expect([...r.touchedTables]).toEqual(["transactions"]);
-    expect(store.read("SELECT category FROM transactions")).toEqual([{ category: null }]);
+    expect(store.read("SELECT category_source FROM transactions")).toEqual([
+      { category_source: "default" },
+    ]);
     const r2 = store.applyEnvelopes([
       late.make(
         "txn.categorySet",

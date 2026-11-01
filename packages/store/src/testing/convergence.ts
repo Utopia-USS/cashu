@@ -8,6 +8,7 @@ import { materialize, type RefDet, type RefEvent } from "../events/v1/reference/
 import { delivery } from "../events/v1/reference/testing/scenarios.js";
 import type { Store } from "../materialize.js";
 import { viewHash } from "../snapshot.js";
+import { expectCategoriesRecomputed } from "./categories-oracle.js";
 import { chunked } from "./random.js";
 import { Names, normalize, project, toEnvelopes } from "./reference-bridge.js";
 import { openTestStore } from "./store.js";
@@ -23,7 +24,8 @@ function openInvariant(store: Store): void {
  * Deliver the scenario in each of `orders` (delivery k: single events for even k, random batches
  * for odd k, plus re-delivered duplicates); after every batch check the invariant and the derived
  * oracle (re-deriving everything changes nothing, S24 6); every order must project to the reference
- * view with one view hash, and a rebuild must keep that hash. Returns the projected view.
+ * view with one view hash, the effective categories must equal the domain recompute (D-24.1), and a
+ * rebuild must keep that hash. Returns the projected view.
  */
 export function converge(events: readonly RefEvent[], det: RefDet, orders: readonly number[]) {
   const expected = normalize(materialize(events, det));
@@ -41,6 +43,7 @@ export function converge(events: readonly RefEvent[], det: RefDet, orders: reado
     }
     const projected = project(store, names);
     expect(projected).toEqual(expected);
+    expectCategoriesRecomputed(store);
     const h = viewHash(store).hash;
     if (hash === undefined) hash = h;
     expect(h).toBe(hash);

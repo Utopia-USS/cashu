@@ -264,10 +264,11 @@ describe("view upgrade on open (events.md 7.9)", () => {
     oldApp(driver, builtinModules(), events);
     const rules = bumpVersion(builtinModules(), "budget.category_rules");
     const r1 = reopen(driver, rules);
+    // budget.categories reads the merchant rules (S24c): it re-derives with them
     expect(r1.lastRebuild).toMatchObject({
       scope: "partial",
       materializers: ["budget.category_rules"],
-      derivers: [],
+      derivers: ["budget.categories"],
     });
     expect(viewHash(r1).hash).toBe(freshHash(rules, events));
     r1.detach();

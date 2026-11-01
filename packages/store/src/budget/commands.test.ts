@@ -188,9 +188,10 @@ describe("deleteCashTransaction", () => {
     expect(
       store.read("SELECT COUNT(*) AS n FROM transactions WHERE dedup_hash LIKE 'cashleg:%'"),
     ).toEqual([{ n: 0 }]);
-    expect(store.read("SELECT category FROM transactions WHERE gid = ?", txn)).toEqual([
-      { category: null },
-    ]);
+    // Python `recategorize_one`: the source row falls back to the engine's category.
+    expect(
+      store.read("SELECT category, category_source FROM transactions WHERE gid = ?", txn),
+    ).toEqual([{ category: "other", category_source: "default" }]);
   });
 
   it("deletes a cash expense; refuses a bank transaction", () => {

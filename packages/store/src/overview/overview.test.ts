@@ -210,7 +210,8 @@ describe("module setup over the view", () => {
     ingest(store, env, "mbank", "99114000000000000000000101", [
       raw("2026-09-05", "-2700.90", "RATA KREDYTU HIPOTECZNEGO"),
     ]);
-    expect(setupOf(store, "loans").state).toBe("partial");
+    // The loans text rule ("RATA KREDYTU") categorizes the installment as `loans` in the view.
+    expect(setupOf(store, "loans").steps.map((st) => st.status)).toEqual(["done", "done"]);
     run(store, env, claimCategory, { gid: txnGid(store, "-2700.90"), category: "loans" });
     expect(setupOf(store, "loans").steps.map((st) => st.status)).toEqual(["done", "done"]);
   });

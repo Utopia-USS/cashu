@@ -4,7 +4,7 @@
 import { budget, core, D, type IsoDate } from "@cashu/domain";
 import type { PaymentPattern } from "@cashu/domain/core";
 import { MANUAL_INSTITUTION } from "@cashu/domain/core";
-import { ownIbanKeys, profileOf } from "../core/queries.js";
+import { profileOf } from "../core/queries.js";
 import type { Read } from "../query.js";
 import type { NetWorthSource, SetupSource } from "../registry.js";
 
@@ -104,6 +104,9 @@ export function budgetBook(read: Read): budget.BudgetBook {
 /**
  * The categorization context of the vault (`EngineContext`): own IBAN keys of every account, the
  * merchant rules and the module payment patterns the caller collected (`ModuleContributions`).
+ * Own IBANs are Python's `own_ibans` (D-08.1): `iban_key` of the raw stored IBAN of every account,
+ * removed ones too, with no checksum (the identity `iban_key` column stays valid-only; matching never
+ * fuses accounts, and the signal is still the counterparty IBAN only, rule 5).
  */
 export function budgetEngineContext(
   read: Read,
@@ -119,7 +122,7 @@ export function budgetEngineContext(
     locked: r.locked === 1,
   }));
   return {
-    ownIbans: ownIbanKeys(read),
+    ownIbans: core.ownIbans(read<{ iban: string | null }>("SELECT iban FROM accounts")),
     rules: budget.rulesByMerchant(rules),
     patterns,
     moduleTextRules: core.textRules(registry),
@@ -133,9 +136,8 @@ const BANK_TXNS = "FROM transactions t JOIN accounts a ON a.id = t.account_id WH
 
 /**
  * The counts behind the budget steps (Python `setup_status`): bank accounts are those of an
- * institution other than the manual one, removed ones included. A row the categorization has not
- * decided yet (`category_source` NULL until the rules engine runs in the store, S24c) counts as
- * uncategorized, as its default category would.
+ * institution other than the manual one, removed ones included. Uncategorized = outflows whose
+ * derived source is `default` (the engine could not decide).
  */
 function budgetSetupFacts(read: Read): budget.BudgetSetupFacts {
   const m = MANUAL_INSTITUTION;
@@ -145,7 +147,7 @@ function budgetSetupFacts(read: Read): budget.BudgetSetupFacts {
     uncategorized: count(
       read,
       `SELECT count(*) AS n ${BANK_TXNS} AND CAST(t.amount AS REAL) < 0
-       AND coalesce(t.category_source, 'default') = 'default'`,
+       AND t.category_source = 'default'`,
       m,
     ),
     manualDecisions:
