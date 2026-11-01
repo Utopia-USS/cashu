@@ -63,7 +63,7 @@ export async function dashboardWindow(
 }
 
 /**
- * The API token, asked the way the SPA asks it: through the window's TRANSITIONAL(S36) bridge. The
+ * The API token, asked the way the SPA asks it: through the window's TRANSITIONAL(S55z) bridge. The
  * shell generates it and hands it to the sidecar over a pipe; no file or output carries it.
  */
 export async function bridgeToken(page: Page): Promise<string> {

@@ -43,7 +43,7 @@ export const ENV = {
   lang: "CASHU_LANG",
   /**
    * `1`: also start the TS store process (utility process) on a synthetic demo vault in
-   * `<data dir>/store`, and hand the window a store port when it asks. TRANSITIONAL(desktop-renderer):
+   * `<data dir>/store`, and hand the window a store port when it asks. TRANSITIONAL(S55a):
    * the dev flag goes when the first TS screen reads the store.
    */
   store: "CASHU_DESKTOP_STORE",

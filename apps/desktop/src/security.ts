@@ -68,8 +68,8 @@ export function redactToken(text: string, token?: string | null): string {
 }
 
 /**
- * TRANSITIONAL(S36): the preload exposes the `window.pywebview` shim only to a page on the app's
- * own origin (the legacy SPA needs it until S36 moves the token off the page). The main process
+ * TRANSITIONAL(S55z): the preload exposes the `window.pywebview` shim only to a page on the app's
+ * own origin (the legacy SPA needs it until S55z retires the SPA from the window). The main process
  * decides from the sending frame's URL, never from what the page claims.
  */
 export function bridgeAllowed(

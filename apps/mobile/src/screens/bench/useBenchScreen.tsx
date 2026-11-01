@@ -23,7 +23,7 @@ interface TxDbRow {
   category: string | null;
 }
 
-// TRANSITIONAL(packages-ui-values): amounts are formatted here until <Money> exists in packages/ui.
+// TRANSITIONAL(S52): amounts are formatted here until <Money> exists in packages/ui.
 let moneyFormats: Map<string, Intl.NumberFormat> | undefined;
 function formatMoney(amount: string, currency: string): string {
   moneyFormats ??= new Map();

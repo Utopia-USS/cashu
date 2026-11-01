@@ -1,10 +1,10 @@
-# TRANSITIONAL(S38): supplies the MCP name providers' outputs until their TS ports land; remove then.
+# TRANSITIONAL(S38a): supplies the MCP name providers' outputs until their TS ports land; remove then.
 """Temporary bridge: what the MCP name guard is collected from, per profile, for the TS privacy layer.
 
 ``core/mcp/names.collect`` builds a profile's guard from the profile name, the stored account names
 (both read in TS through ``PythonDb``) and the modules' name providers (``NAME_PROVIDERS``:
 ``tools/budget.name_sources`` over the bank transactions, ``tools/investments.strong_names`` /
-``name_sources`` / ``strict_aliases`` over the instruments). The providers are not ported yet (S38),
+``name_sources`` / ``strict_aliases`` over the instruments). The providers are not ported yet (S38a),
 so this script exports their raw outputs; the TS producer runs the ported ``collect`` on them. The
 macro summary vocabulary the ``market`` label's gate needs comes from the TS port of
 ``investments/macro/texts`` (S20).

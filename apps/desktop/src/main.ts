@@ -228,7 +228,7 @@ function fromMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEven
   return ok ? frame.url : null;
 }
 
-// TRANSITIONAL(S36): the preload asks (synchronously, before page scripts run) whether to expose
+// TRANSITIONAL(S55z): the preload asks (synchronously, before page scripts run) whether to expose
 // the `window.pywebview` shim at all; only the app's own origin gets it.
 ipcMain.on("cashu:bridge-allowed", (event) => {
   event.returnValue = desktop.exposesBridgeTo(fromMainFrame(event));
@@ -240,7 +240,7 @@ ipcMain.handle("cashu:token", (event) => {
   return token;
 });
 
-// ---- store process (TRANSITIONAL(desktop-renderer): behind CASHU_DESKTOP_STORE=1) ---------------
+// ---- store process (TRANSITIONAL(S55a): behind CASHU_DESKTOP_STORE=1) ------------------------
 
 const storeProcess =
   env[ENV.store] === "1"

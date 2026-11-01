@@ -1,10 +1,10 @@
 /// <reference types="node" />
 // The stores this device opens in the store process: the device store and the vaults.
 //
-// TRANSITIONAL(desktop-vaults): vaults come from a synthetic demo source behind the dev flag. The real
+// TRANSITIONAL(S53b): vaults come from a synthetic demo source behind the dev flag. The real
 // source opens each vault the device holds with its gid salt from the keyring (KeyStore, S27) and its
 // device identity from pairing (S29), and writes commands through the sync engine's local append
-// (S28) instead of applying them straight to the view.
+// (S29c-B3) instead of applying them straight to the view.
 import { randomBytes } from "node:crypto";
 import {
   chmodSync,

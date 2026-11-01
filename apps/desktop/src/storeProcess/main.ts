@@ -3,7 +3,7 @@
 // owns SQLite and the store engine; each renderer gets its own MessagePort, served by `serveStore`.
 // The main process forks it, hands it ports and asks it to stop; it never sees store data.
 //
-// TRANSITIONAL(desktop-renderer): started only behind CASHU_DESKTOP_STORE=1 while the window still
+// TRANSITIONAL(S55a): started only behind CASHU_DESKTOP_STORE=1 while the window still
 // shows the legacy SPA over the Python sidecar; the flag goes when the first TS screen uses the store.
 import type { Channel } from "@cashu/store-react/client";
 import { serveStore } from "@cashu/store-react/host";

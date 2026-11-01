@@ -34,7 +34,7 @@ interface BalanceRow {
   currency: string;
 }
 
-// TRANSITIONAL(packages-ui-values): amounts are formatted here until <Money> exists in packages/ui.
+// TRANSITIONAL(S52): amounts are formatted here until <Money> exists in packages/ui.
 let formats: { money: Map<string, Intl.NumberFormat>; axis: Intl.NumberFormat } | undefined;
 function fmt() {
   formats ??= {

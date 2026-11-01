@@ -4,7 +4,7 @@
 // only routes ports. Electron's `utilityProcess` and `MessageChannelMain` come in as functions so the
 // lifecycle is testable without Electron.
 //
-// TRANSITIONAL(desktop-renderer): started only behind CASHU_DESKTOP_STORE=1 (config.ts) until the first
+// TRANSITIONAL(S55a): started only behind CASHU_DESKTOP_STORE=1 (config.ts) until the first
 // TS screen reads the store; the Python sidecar keeps serving the legacy SPA meanwhile (strangler).
 import { STOP_TIMEOUT_MS } from "./config.js";
 import { type FromStoreProcess, isFromStoreProcess, type ToStoreProcess } from "./storeControl.js";

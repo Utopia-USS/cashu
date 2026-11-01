@@ -138,7 +138,7 @@ export class DesktopApp {
     window.focus();
   }
 
-  /** TRANSITIONAL(S36): whether the preload exposes the `window.pywebview` shim to this page. */
+  /** TRANSITIONAL(S55z): whether the preload exposes the `window.pywebview` shim to this page. */
   exposesBridgeTo(senderUrl: string | null | undefined): boolean {
     return bridgeAllowed(senderUrl, this.origin);
   }

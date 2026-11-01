@@ -14,7 +14,7 @@ import { nativeLibsodium } from "../platform/sodium";
 import { openDeviceStore, openVaultStore } from "../platform/sqlite";
 import { type CryptoSelfTest, runCryptoSelfTest } from "../selftest/cryptoSelfTest";
 
-/** TRANSITIONAL(S29): this device's id until pairing mints the device identity. */
+/** TRANSITIONAL(S44): this device's id until pairing mints the device identity. */
 const SCAFFOLD_DEVICE = "d2000000000000000000000000000041";
 
 export interface Services {
@@ -57,12 +57,12 @@ export function bootServices(): Services {
         DEMO_VAULT,
         {
           store,
-          // TRANSITIONAL(S29): straight into the store until the sync engine's local append exists.
+          // TRANSITIONAL(S43): straight into the store until commands go through the engine's local append.
           writer: storeWriter(store),
           env: {
             device: SCAFFOLD_DEVICE,
             clock,
-            // TRANSITIONAL(S29): the clock state is persisted by the sync engine; no command runs here yet.
+            // TRANSITIONAL(S43): the clock state is persisted by the sync engine; no command runs here yet.
             hlc: new HybridClock(SCAFFOLD_DEVICE, { physical: clock }),
             lease: { isHolder: () => true },
           },

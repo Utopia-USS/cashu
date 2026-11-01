@@ -2,9 +2,9 @@
 // Run from the repo root by `pnpm arch:check` (tools/arch/src/run.ts).
 {
   "$schema": "../../node_modules/.pnpm/knip@6.41.0/node_modules/knip/schema-jsonc.json",
-  // TRANSITIONAL(frontend-retirement): the legacy SPA in frontend/ is a workspace member only so that its imports
+  // TRANSITIONAL(S55z): the legacy SPA in frontend/ is a workspace member only so that its imports
   // count as uses of @cashu/i18n and @cashu/ui-logic; its own dead code was never under these checks (nor under
-  // Biome or dependency-cruiser) and is not reported. Drop this with frontend/ once the renderer lives in apps/.
+  // Biome or dependency-cruiser) and is not reported. Drop this with frontend/ once the renderer lives in apps/ (S55z).
   "ignore": ["frontend/**"],
   "workspaces": {
     // The root holds only tooling; the Python app is not part of the TS monorepo.

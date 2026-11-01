@@ -3,7 +3,7 @@
 // Seed the demo data dir first (once, never with --force):
 //   .venv/bin/python scripts/demo_data.py --data-dir ~/cashu-lab/desktop-demo
 // With CASHU_DESKTOP_STORE=1 the TS store process also starts, on a synthetic demo vault in
-// <data dir>/store (TRANSITIONAL(desktop-renderer)).
+// <data dir>/store (TRANSITIONAL(S55a)).
 import { spawn, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";

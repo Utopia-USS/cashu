@@ -1,8 +1,8 @@
 /// <reference types="node" />
 /**
- * TRANSITIONAL(S38): reader of the guard bridge (`guard_bridge.py`): per profile, the raw outputs of
+ * TRANSITIONAL(S38a): reader of the guard bridge (`guard_bridge.py`): per profile, the raw outputs of
  * the MCP name providers (budget `name_sources`, investments `strong_names` / `name_sources` /
- * `strict_aliases`) that `collectGuard` runs on, until those providers are ported (S38). Delete with
+ * `strict_aliases`) that `collectGuard` runs on, until those providers are ported (S38a). Delete with
  * the bridge script.
  */
 

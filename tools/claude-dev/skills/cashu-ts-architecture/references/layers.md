@@ -92,4 +92,4 @@ own origin, creates a `MessageChannelMain`, sends one end to the store process (
 other back to that frame, which receives it as a window message (`{ cashu: "store-port" }`).
 MessagePorts cannot cross `contextBridge`, hence the window message. Main routes ports and never
 reads store data. Until the first TS screen reads the store, this runs only behind
-`CASHU_DESKTOP_STORE=1` next to the Python sidecar (TRANSITIONAL(desktop-renderer)).
+`CASHU_DESKTOP_STORE=1` next to the Python sidecar (TRANSITIONAL(S55a)).

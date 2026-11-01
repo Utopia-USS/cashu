@@ -1,7 +1,7 @@
 // Page-side harness of the store port spec (92-store-port): bundled to one script and evaluated in
 // the Electron window, it asks the preload for a store port, connects the real port client and reads
 // a query / runs commands through it. The real renderer bootstrap does the same once a TS screen
-// reads the store (TRANSITIONAL(desktop-renderer) in the preload).
+// reads the store (TRANSITIONAL(S55a) in the preload).
 import { createProfile, renameProfile } from "@cashu/store";
 import { profile } from "@cashu/store/core";
 import { currentVault } from "@cashu/store/device";
