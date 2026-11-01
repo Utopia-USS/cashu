@@ -1,6 +1,7 @@
 /** Checks of the LLM vectors (`budget-categorize-llm`, reclassify scenarios), tests only. */
 import { looksLikePerson } from "../../../core/index.js";
 import type { Mismatches } from "../../../testing/vectors.js";
+import { pySplitlines } from "../../../text.js";
 import { type CloudMerchant, cloudMerchants, isCloudSafeString } from "../cloudGate.js";
 import { categorizeAll } from "../effective.js";
 import { categorize, txnMerchantKey } from "../engine.js";
@@ -14,6 +15,7 @@ import {
 } from "../llm/replies.js";
 import {
   anthropicMerchantBatches,
+  listItem,
   ollamaMerchantBatches,
   ollamaTxnBatches,
 } from "../llm/requests.js";
@@ -97,6 +99,7 @@ export interface LlmCounts {
   q9Answers: number;
   cashUnknown: number;
   gatedCases: number;
+  sanitizedCases: number;
 }
 
 export const newCounts = (): LlmCounts => ({
@@ -109,6 +112,7 @@ export const newCounts = (): LlmCounts => ({
   q9Answers: 0,
   cashUnknown: 0,
   gatedCases: 0,
+  sanitizedCases: 0,
 });
 
 /** Batches of one backend, the ids each carries and the bodies (anthropic: malformed batches dropped). */
@@ -172,6 +176,23 @@ export function checkMerchantCases(
       // FIX(Q12): no person-like merchant in any cloud batch.
       for (const b of batches)
         for (const mk of b.ids.values()) m.check(`#${n} unsafe sent`, isCloudSafeString(mk), true);
+    } else if (backend === "ollama" && merchants.some((mk) => listItem(mk) !== mk)) {
+      // PRIVACY(D-09.5): control characters are spaced out of the list items. Python's bodies equal
+      // TS's with the raw items put back, and every TS item stays on one line.
+      c.sanitizedCases++;
+      c.bodiesCompared += requests.length;
+      const raw = batches.slice(0, requests.length).map((b) => {
+        const body = b.body as Body;
+        const [system, user] = body.messages as { role: string; content: string }[];
+        const listing = [...b.ids].map(([k, v]) => `${k}: ${v}`).join("\n");
+        m.check(`#${n} list lines`, pySplitlines(user?.content ?? "").length, b.ids.size + 1);
+        return { ...body, messages: [system, { ...user, content: `Classify:\n${listing}` }] };
+      });
+      m.check(
+        `#${n} bodies (raw items)`,
+        raw,
+        requests.map(([, body]) => expandBody(body)),
+      );
     } else {
       // An aborted Python call (Q11) sent only the batches before the failing one.
       const sent = "error" in result ? batches.slice(0, requests.length) : batches;

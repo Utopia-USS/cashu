@@ -63,6 +63,18 @@ function ollamaBody(model: string, schema: unknown, system: string, user: string
   };
 }
 
+/** Control characters and line / paragraph separators (anything that could start a new prompt line). */
+const LINE_BREAKING = /[\p{Cc}\u2028\u2029]/gu;
+
+/**
+ * PRIVACY(D-09.5): a merchant string as one list item: control characters and line separators
+ * become a space, so a string cannot forge an id line (`m3: ...`) in the prompt. Python sends them
+ * raw; strings without them (every `merchantKey`) are byte-identical to Python's prompt.
+ */
+export function listItem(merchant: string): string {
+  return merchant.replace(LINE_BREAKING, " ");
+}
+
 /** `local_llm.classify_merchants` request bodies (local: the merchant strings stay on the machine). */
 export function ollamaMerchantBatches(
   merchants: readonly string[],
@@ -74,7 +86,7 @@ export function ollamaMerchantBatches(
   const model = opts.model ?? OLLAMA_DEFAULT_MODEL;
   return chunks(uniqueMerchants(merchants), opts.batchSize ?? OLLAMA_BATCH_SIZE).map((batch) => {
     const ids = new Map(batch.map((m, i) => [`m${i}`, m]));
-    const listing = [...ids].map(([k, v]) => `${k}: ${v}`).join("\n");
+    const listing = [...ids].map(([k, v]) => `${k}: ${listItem(v)}`).join("\n");
     return { ids, body: ollamaBody(model, schema, system, OLLAMA_MERCHANT_PREFIX + listing) };
   });
 }
