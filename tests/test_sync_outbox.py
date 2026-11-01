@@ -30,6 +30,7 @@ from cashu.modules.investments.models import (
     InvAlert,
     InvDecision,
     InvDecisionSignal,
+    InvFxRate,
     InvInstrument,
     InvInstrumentAlias,
     InvSignal,
@@ -122,6 +123,55 @@ def test_flag_off_writes_nothing(db_engine, monkeypatch):
     assert outbox_count() == 0
     with get_session() as s:
         assert s.exec(select(func.count()).select_from(SyncId)).one() == 0
+
+
+def test_a_linked_vault_refuses_writes_without_the_flag(db_engine, monkeypatch):
+    """P-D: once a profile is linked, a write to a synced table with the flag off fails closed (it
+    would fork the database from the log); a non-synced table, and the flag on, still write."""
+    from cashu.core.sync_models import SyncVault
+
+    monkeypatch.delenv("CASHU_SYNC", raising=False)
+    pid = new_profile("Guard")
+    inst = new_instrument()
+    other = new_instrument("Other")
+    item = watch(pid, inst, note="n")
+    with get_session() as s:
+        sync_outbox.link_vault(s, pid, VAULT)
+    with pytest.raises(sync_outbox.SyncCaptureError, match="CASHU_SYNC=1"), get_session() as s:
+        s.add(InvWatchlistItem(profile_id=pid, instrument_id=other, tags=[]))
+    with pytest.raises(sync_outbox.SyncCaptureError), get_session() as s:
+        row = s.get(InvWatchlistItem, item)
+        row.note = "changed"
+        s.add(row)
+    with pytest.raises(sync_outbox.SyncCaptureError), get_session() as s:
+        s.exec(update(InvWatchlistItem).where(InvWatchlistItem.id == item).values(note="bulk"))
+    with pytest.raises(sync_outbox.SyncCaptureError), get_session() as s:
+        s.exec(delete(InvWatchlistItem).where(InvWatchlistItem.id == item))
+    with pytest.raises(sync_outbox.SyncCaptureError), get_session() as s:
+        instrument_merge.merge_instruments(s, other, inst)
+    with get_session() as s:  # nothing of the refused writes landed
+        row = s.get(InvWatchlistItem, item)
+        assert row.note == "n"
+        assert s.exec(select(func.count()).select_from(InvWatchlistItem)).one() == 1
+        assert s.get(InvInstrument, other) is not None
+        assert s.exec(select(func.count()).select_from(SyncOutbox)).one() == 0
+    with get_session() as s:  # a table that does not sync is not guarded
+        s.add(InvFxRate(base="PLN", quote="USD", date=dt.date(2026, 1, 2), rate=Decimal("4.0"), source="test"))
+    monkeypatch.setenv("CASHU_SYNC", "1")
+    with get_session() as s:
+        row = s.get(InvWatchlistItem, item)
+        row.note = "with the flag"
+        s.add(row)
+    assert outbox(table_name="watchlist_items", op="update")[-1]["fields"] == {"note": "with the flag"}
+    monkeypatch.delenv("CASHU_SYNC")
+    with get_session() as s:  # unlinked again: the flag-off behaviour is back
+        s.exec(delete(SyncVault))
+    with get_session() as s:
+        row = s.get(InvWatchlistItem, item)
+        row.note = "unlinked"
+        s.add(row)
+    with get_session() as s:
+        assert s.get(InvWatchlistItem, item).note == "unlinked"
 
 
 def test_every_table_is_classified():

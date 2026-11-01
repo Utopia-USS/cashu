@@ -5,8 +5,10 @@ TRANSITIONAL(S49): the strangler bridge between the Python app (the writer today
 transaction (``txn``) to one batch of catalog events (``packages/store/spec/events.md`` 8), appends
 them through the carrier and acks the rows; only acked rows are ever pruned.
 
-Gated by ``CASHU_SYNC=1``. With the flag off nothing here runs and nothing is written (zero behaviour
-change). With it on, a capture failure fails the write (fail closed: a silently lost change would make
+Gated by ``CASHU_SYNC=1``. With the flag off nothing is captured and nothing is written; but once a
+profile is linked to a vault (``sync_vaults`` has a row), a write to a synced table without the flag
+fails (``SyncCaptureError``, S31a P-D): it would leave no outbox row and fork the database from the log.
+With the flag on, a capture failure fails the write (fail closed: a silently lost change would make
 the devices diverge).
 
 What is captured (hooks in ``core/events.py``):
@@ -62,6 +64,7 @@ IDS = SyncId.__table__
 VAULTS = SyncVault.__table__
 CLOCKS = SyncClock.__table__
 STATE_KEY = "cashu.sync_outbox"
+GUARD_KEY = "cashu.sync_guard"  # flag off: is a vault linked? (cached per root transaction, _guard)
 ORIGINS = ("local", "inbound")
 EXPLICIT_OPS = ("merge", "undo", "leg_delete")
 GLOBAL_DERIVED = frozenset({"updated_at"})
@@ -328,6 +331,26 @@ def _state(session) -> _State:
 def reset(session) -> None:
     """Forget the transaction state (the root transaction ended: commit or rollback)."""
     session.info.pop(STATE_KEY, None)
+    session.info.pop(GUARD_KEY, None)
+
+
+def _guard(session) -> None:
+    """Fail closed while the flag is off (S31a P-D): once a profile is linked to a vault, a write to a
+    synced table without ``CASHU_SYNC=1`` would leave no outbox row, and the database would silently
+    fork from the event log. Raises ``SyncCaptureError`` when ``sync_vaults`` has a row.
+
+    Cost: only for a flush / bulk statement that touches a synced table with the flag off; one
+    ``SELECT ... LIMIT 1`` on ``sync_vaults`` (a handful of rows) per root transaction, cached in
+    ``session.info`` until the transaction ends (:func:`reset`); before the sync tables exist (an old
+    schema mid-upgrade) one cached ``has_table`` instead. Flag off and no vault linked: nothing else
+    changes."""
+    linked = session.info.get(GUARD_KEY)
+    if linked is None:
+        conn = session.connection()
+        linked = _tables_ready(conn) and conn.execute(select(VAULTS.c.profile_id).limit(1)).first() is not None
+        session.info[GUARD_KEY] = linked
+    if linked:
+        raise SyncCaptureError("a linked vault needs CASHU_SYNC=1")
 
 
 @contextmanager
@@ -743,8 +766,11 @@ def _pk_sort(value: Any) -> tuple:
 def prepare_flush(session) -> None:
     """``before_flush``: load the expired columns of changed and deleted synced rows while they still
     exist (an object kept across a commit is expired; setting one attribute does not load the others),
-    so the capture sees the profile, the key columns and a delete's last state."""
+    so the capture sees the profile, the key columns and a delete's last state. With the flag off it
+    only runs the linked-vault guard (:func:`_guard`), before any SQL of the flush."""
     if not enabled():
+        if any(_table_of(o) in SPECS for o in (*session.new, *session.dirty, *session.deleted)):
+            _guard(session)
         return
     for obj in (*session.dirty, *session.deleted):
         if _table_of(obj) not in SPECS:
@@ -810,13 +836,17 @@ def _history(obj) -> dict[str, tuple[Any, Any, bool]]:
 def capture_bulk(state) -> Any:
     """``do_orm_execute`` of a bulk ``update()`` / ``delete()`` on a synced table: read the affected
     rows, run the statement, record each row. Returns the statement's result (or None when the
-    statement is not one to capture, so SQLAlchemy runs it normally)."""
-    if not enabled() or not (state.is_update or state.is_delete or state.is_insert):
+    statement is not one to capture, so SQLAlchemy runs it normally). With the flag off only the
+    linked-vault guard runs (:func:`_guard`)."""
+    if not (state.is_update or state.is_delete or state.is_insert):
         return None
     statement = state.statement
     table = getattr(statement, "table", None)
     name = getattr(table, "name", None)
     if name not in SPECS:
+        return None
+    if not enabled():
+        _guard(state.session)
         return None
     session = state.session
     conn = session.connection()
@@ -861,6 +891,7 @@ def emit_row(session, obj, op: str, *, fields: dict | None = None, covers: Itera
     capture of the row's delete and of ``covers`` in this transaction: ``undo`` of a decision or a
     review, ``leg_delete`` of a cash mirror leg."""
     if not enabled():
+        _guard(session)
         return
     if op not in EXPLICIT_OPS:
         raise ValueError(f"unknown explicit op {op!r}")
@@ -895,6 +926,7 @@ def emit_row(session, obj, op: str, *, fields: dict | None = None, covers: Itera
 def emit(session, table_name: str, op: str, local_id: str, *, profile_id: int | None = None, fields: dict | None = None, key: dict | None = None) -> None:
     """Record an explicit ``op`` for a raw-SQL writer (instrument merge)."""
     if not enabled():
+        _guard(session)
         return
     if table_name not in SPECS or op not in EXPLICIT_OPS:
         raise ValueError(f"unknown explicit emit {table_name}.{op}")
@@ -923,6 +955,7 @@ def emit_instrument_merge(session, source_id: int, target_id: int) -> None:
     """``instrument.merged``: one row for the whole raw-SQL merge (the fold remaps the references,
     events.md 6.4); the source instrument's gid mappings go with it."""
     if not enabled():
+        _guard(session)
         return
     emit(
         session,
@@ -1240,6 +1273,7 @@ def link_vault(session, profile_id: int, vault_id: str) -> None:
         raise ValueError("that vault is linked to another profile")
     conn.execute(delete(VAULTS).where(VAULTS.c.profile_id == profile_id))
     conn.execute(insert(VAULTS).values(profile_id=profile_id, vault_id=vault_id, linked_at=utcnow()))
+    session.info.pop(GUARD_KEY, None)
     sync_keys.forget_cached_salts()
 
 
