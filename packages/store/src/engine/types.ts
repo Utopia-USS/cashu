@@ -31,6 +31,9 @@ export function compareOrd(a: FoldEvent, b: FoldEvent): number {
 }
 
 /** SQL access for a materializer: reads anywhere in its own tables, writes recorded per table. */
+/** The read half of `ViewSql` (what a contribution needs; a query's read handle provides it too). */
+type ViewReader = Pick<ViewSql, "all">;
+
 export interface ViewSql {
   write(table: string, sql: string, ...params: SqlValue[]): SqlRunResult;
   /**
@@ -146,7 +149,8 @@ export const CONTRIBUTIONS = "contributions";
  * the contribution reads: touching one marks `CONTRIBUTIONS` dirty for every deriver that inputs it.
  */
 export interface ModuleContributions {
-  readonly paymentPatterns?: (sql: ViewSql) => readonly PaymentPattern[];
+  /** Read-only: a deriver passes its `ViewSql`, a query (the recurring view) its read handle. */
+  readonly paymentPatterns?: (sql: ViewReader) => readonly PaymentPattern[];
   readonly notSubscriptionCategories?: readonly string[];
   readonly reads: readonly string[];
 }

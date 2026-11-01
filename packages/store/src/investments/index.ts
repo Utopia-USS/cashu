@@ -11,6 +11,7 @@ import { instrumentIdentity, instrumentsMaterializer } from "./instruments.js";
 import { overridesMaterializer } from "./overrides.js";
 import { plannedMaterializer } from "./planned.js";
 import { positionsMaterializer, renamesMaterializer } from "./positions.js";
+import { investmentsNetWorth, investmentsSetup } from "./read-models.js";
 import { researchNotesMaterializer, researchRunsMaterializer } from "./research.js";
 import { reviewsMaterializer } from "./reviews.js";
 import { signalsMaterializer } from "./signals.js";
@@ -45,4 +46,6 @@ export const investmentsModule: StoreModule = {
     researchNotesMaterializer,
     reviewsMaterializer,
   ],
+  netWorth: investmentsNetWorth,
+  setup: investmentsSetup,
 };

@@ -5,6 +5,7 @@ import { normalizeText } from "@cashu/domain";
 import { LOANS_CATEGORY, LOANS_MODULE } from "@cashu/domain/core";
 import type { StoreModule } from "../registry.js";
 import { LOANS, loansMaterializer } from "./loans.js";
+import { loansNetWorth, loansSetup } from "./read-models.js";
 
 export const loansModule: StoreModule = {
   id: "loans",
@@ -24,4 +25,6 @@ export const loansModule: StoreModule = {
           text: normalizeText(l.payment_text) || null,
         })),
   },
+  netWorth: loansNetWorth,
+  setup: loansSetup,
 };

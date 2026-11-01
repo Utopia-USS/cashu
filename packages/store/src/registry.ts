@@ -1,6 +1,9 @@
 // Registries: event types (current version, schemas per version, upcasters) and the store modules
 // (materializers and identity kinds). The v1 catalog (`events/v1`) is the base; a module that evolves
 // a type registers the next version with its upcaster (events.md 7.6), and a new type starts at v1.
+import type { IsoDate } from "@cashu/domain";
+import type { NetWorthContributor, SetupContext, SetupStep } from "@cashu/domain/core";
+import type { market } from "@cashu/domain/investments";
 import type { z } from "zod";
 import { canonicalJson } from "./canonical.js";
 import { membersTable } from "./engine/fold.js";
@@ -12,6 +15,7 @@ import {
   type ModuleContributions,
 } from "./engine/types.js";
 import { type EventMeta, type EventType, META, PAYLOADS } from "./events/v1/catalog.js";
+import type { Read } from "./query.js";
 import { createTableSql, type TableDef } from "./sql/ddl.js";
 import type { Payload, Upcaster } from "./upcast.js";
 
@@ -122,7 +126,29 @@ export interface StoreModule {
   readonly derivers?: readonly Deriver[];
   /** What this module offers other modules' derivers without being imported (S24 4.2). */
   readonly contributions?: ModuleContributions;
+  /**
+   * How this module values the accounts it owns for net worth (Python `ModuleSpec.networth`), read
+   * from the vault's view (and the device's price cache): the read models compose it, core never
+   * imports the module.
+   */
+  readonly netWorth?: NetWorthSource;
+  /** The module's blank-page steps (Python `ModuleSpec.setup_status`) from the vault's view. */
+  readonly setup?: SetupSource;
 }
+
+/** What a net-worth source reads besides the view: "now" and the device's price cache. */
+export interface NetWorthEnv {
+  /** Today's local date ("now" for computed valuations; domain has no clock). */
+  readonly today: IsoDate;
+  /** The device's price cache (prices are device-local caches, never view tables, events.md 10). */
+  readonly prices: market.PriceCache | null;
+}
+
+/** A module's net-worth contributor over the vault's view. */
+export type NetWorthSource = (read: Read, env: NetWorthEnv) => NetWorthContributor;
+
+/** A module's blank-page steps over the vault's view. */
+export type SetupSource = (read: Read, ctx: SetupContext) => SetupStep[];
 
 /** The resolved set of modules of one store: lookup by event type, conflicts rejected. */
 export class ModuleRegistry {

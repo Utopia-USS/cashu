@@ -10,6 +10,7 @@
     "./device": "./src/device/index.ts",
     "./bridge": "./src/bridge/index.ts",
     "./genesis": "./src/genesis/index.ts",
+    "./overview": "./src/overview/index.ts",
     "./query": "./src/query.ts"
   },
   "scripts": {
