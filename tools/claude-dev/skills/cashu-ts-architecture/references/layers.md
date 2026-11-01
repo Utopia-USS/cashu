@@ -89,9 +89,23 @@ client over an authenticated Unix socket (`@cashu/host-protocol`, platform glue 
 | Expo app (Hermes) | UI and the store engine in-process (sync SQLite driver) | the relay / folder transport |
 | Electron utility process (`apps/desktop/src/storeProcess`, behind `CASHU_DESKTOP_STORE=1`; replaced by the host in S56b) | today's store engine for the store-backed renderer | renderer over a `MessagePort` (`serveStore`, store protocol v1) |
 
-Only the host (and the Expo app, in-process) opens stores: once `apps/host` exists, a depcruise rule
-"only apps/host and apps/mobile open stores" enforces it (S56a2), next to the structural `HostLock`
-requirement of the exclusive open.
+Only the host (and the Expo app, in-process) opens stores. depcruise `only-host-opens-stores`: an app
+other than `apps/host` and `apps/mobile` imports no SQLite binding (`node:sqlite`, `better-sqlite3`,
+`expo-sqlite`, op-sqlite) and not node-host's driver entry (`@cashu/node-host/sqlite`); test code is
+exempt. Marked exceptions until their scopes land: the S53 utility process (TRANSITIONAL(S56b)), the
+sync daemon's harness and its use of node-host's root re-export of the driver (TRANSITIONAL(S56c)),
+`cashu-next genesis` (TRANSITIONAL(S56d)). Inside the host, a store file opens only under the
+`WriterLease` (apps/host `lease.ts`), which wraps the held machine lock that the exclusive open
+(`openNodeSqlite(path, { exclusive })`) requires.
+
+The host itself (`apps/host`): `startLocalHost` takes the lock and socket, records its start
+(`run/starts.json`: after 3 unclean starts within 10 minutes it runs in safe mode, no jobs and no
+network), opens the stores, serves `ui` sessions the store channel v2 and `admin` sessions status /
+stop / handover. Every store has one write queue (commands of all sessions, sync applies, job writes
+run one at a time; long applies in 1,000-event slices with other work between slices). A command's
+idempotency key is recorded in the store's `host_requests` table in the same transaction as its
+events, so a resent command is answered from the table. It exits 0 after a 10-minute idle linger,
+75 when its bundle was replaced (handover), and logs codes and counts only (`logs/host.log`).
 
 This placement is why `useQuery` suspends on the desktop's first read (an async hop) and never on
 mobile (a sync read); see [data-flow.md](data-flow.md).

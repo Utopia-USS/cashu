@@ -47,6 +47,16 @@ const layerRules = Object.entries(LAYERS).map(([pkg, allowed]) => ({
   },
 }));
 
+/**
+ * What opens a SQLite store file: the bindings (node:sqlite, better-sqlite3, expo-sqlite, op-sqlite) and
+ * node-host's driver entry (`@cashu/node-host/sqlite`).
+ */
+const SQLITE_OPENERS = [
+  "^(node:)?sqlite$",
+  "(^|/)node_modules/.*/(better-sqlite3|expo-sqlite|@op-engineering/op-sqlite)/",
+  "^packages/node-host/src/(sqlite|nodeSqlite)\\.ts$",
+];
+
 /** Libraries a pure render component must not reach: navigation, app state stores, fetch caches, Electron. */
 const IMPURE_LIBS =
   "(^|/node_modules/)(expo-router|@tanstack/react-router|@react-navigation/[^/]+|zustand|jotai|swr|@tanstack/react-query|electron)(/|$)";
@@ -85,6 +95,26 @@ module.exports = {
         "@cashu/node-host holds Node-only adapters (file system, node:sqlite, path guards) for the hosts in apps/. Only apps import it; a package takes the platform piece through its interface (SqlDriver, FolderFs) wired at the app root.",
       from: { path: "^(packages|tools)/", pathNot: "^packages/node-host/" },
       to: { path: "^packages/node-host/" },
+    },
+    {
+      name: "only-host-opens-stores",
+      severity: "error",
+      comment:
+        "Only the local host (apps/host, one per data dir) and the Expo app (apps/mobile, its engine in process) open SQLite stores. Every other app is a client of the host over its socket (@cashu/node-host connectHost / connectOrStart): a second process opening a store would fork this device's stream (layers.md, \"Which process runs what\"). Move the store access into a host service and call it over the protocol.",
+      from: {
+        path: "^apps/",
+        pathNot: [
+          TEST,
+          "^apps/(host|mobile)/",
+          // TRANSITIONAL(S56b): the S53 Electron utility process; S56b relays the renderer's store port to the host and deletes it.
+          "^apps/desktop/src/storeProcess/",
+          // TRANSITIONAL(S56c): the lab outbox bridge harness; S56c moves the bridge loop into the host.
+          "^apps/sync-daemon/src/harness/main\\.ts$",
+          // TRANSITIONAL(S56d): `cashu-next genesis` builds vault stores from the Python data dir; with the thin clients it runs as a host command.
+          "^apps/cli/src/genesis/(command|fold)\\.ts$",
+        ],
+      },
+      to: { path: SQLITE_OPENERS },
     },
     {
       name: "module-internals",
@@ -146,7 +176,9 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: "(^|/)node_modules/" },
-    exclude: { path: "(^|/)(node_modules|dist|\\.turbo|coverage)/" },
+    // node_modules is not followed (above) but must not be excluded: an excluded module drops the
+    // edges to it, so rules naming npm packages (IMPURE_LIBS, SQLITE_OPENERS) would never fire.
+    exclude: { path: "(^|/)(dist|\\.turbo|coverage)/" },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: "tsconfig.base.json" },
     enhancedResolveOptions: {
