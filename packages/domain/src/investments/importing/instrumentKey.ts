@@ -117,19 +117,26 @@ export interface CandidateKeyInput {
  * without repeats: each own alias in the broker's equivalent namespaces under the canonical name and
  * under the name it is stored with (legacy name: `finanse:` keys of the pre-S17d genesis rule), each
  * `isin` alias, the ISIN column, the display ticker and the row's own symbol and ISIN (the gid.md 4.6
- * hint rule) when no other instrument owns them, the gid and the gids merged into it.
+ * hint rule) when no other instrument owns them, its aliases in other brokers' namespaces (a content
+ * row another importer stored), the gid and the gids merged into it.
  */
 export function candidateInstrumentKeys(input: CandidateKeyInput): readonly string[] {
   const { subject, brokerId } = input;
   const canonical = namespaceOf(brokerId);
   const keys = new Set<string>([instrumentKeyV2(subject, brokerId, () => input.gid)]);
   const namespaces = equivalentNamespaces(brokerId);
+  const otherBrokers: string[] = [];
   for (const alias of subject.aliases) {
     if (namespaces.includes(alias.namespace)) {
       keys.add(`${canonical}:${alias.value}`);
       keys.add(`${alias.namespace}:${alias.value}`);
     } else if (alias.namespace === AliasNamespace.ISIN) {
       keys.add(`isin:${alias.value}`);
+    } else {
+      // a row an import of ANOTHER broker stored (keyed by that broker's alias): Python's content
+      // hash has no broker part, so the same trade through another importer is a duplicate too
+      otherBrokers.push(`${namespaceOf(alias.namespace)}:${alias.value}`);
+      otherBrokers.push(`${alias.namespace}:${alias.value}`);
     }
   }
   if (subject.isin) keys.add(`isin:${subject.isin}`);
@@ -139,6 +146,7 @@ export function candidateInstrumentKeys(input: CandidateKeyInput): readonly stri
   if (input.rowIsin && input.free(AliasNamespace.ISIN, input.rowIsin)) {
     keys.add(`isin:${input.rowIsin}`);
   }
+  for (const key of otherBrokers) keys.add(key);
   keys.add(reconciliationInstrumentKey(input.gid));
   for (const former of input.formerGids ?? []) keys.add(reconciliationInstrumentKey(former));
   return Object.freeze([...keys]);

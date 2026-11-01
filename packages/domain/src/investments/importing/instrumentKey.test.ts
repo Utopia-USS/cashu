@@ -195,6 +195,22 @@ describe("candidateInstrumentKeys", () => {
     ]);
   });
 
+  it("adds the instrument's aliases of other brokers (a row another importer stored)", () => {
+    const keys = candidateInstrumentKeys({
+      subject: {
+        aliases: [alias("xtb", "SYM"), alias("isin", "XX0000000001")],
+        isin: null,
+        symbol: null,
+      },
+      brokerId: "generic_csv",
+      gid: "G1",
+      rowSymbol: null,
+      rowIsin: null,
+      free,
+    });
+    expect(keys).toEqual(["isin:XX0000000001", "xtb:SYM", "gid:G1"]);
+  });
+
   it("adds the gids merged into the instrument as gid keys (the store's merge record)", () => {
     const keys = candidateInstrumentKeys({
       subject: { aliases: [], isin: null, symbol: null },
