@@ -51,7 +51,8 @@ class SyncOutbox(SQLModel, table=True):
     acked_at: dt.datetime | None = Field(default=None, index=True)
     # S31a P-B: insert / update rows: the whole row after the change as stored (every column but
     # profile_id, derived ones included; encoded like ``fields``). NULL for delete and explicit ops.
-    post: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    # SQL NULL (not the JSON text 'null') when absent, so a reader can test ``post IS NULL``.
+    post: dict | None = Field(default=None, sa_column=Column(JSON(none_as_null=True), nullable=True))
 
 
 class SyncId(SQLModel, table=True):

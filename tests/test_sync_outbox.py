@@ -435,10 +435,14 @@ def test_inserts_and_updates_carry_the_whole_stored_row_in_post(db_engine, sync_
         s.delete(s.get(InvWatchlistItem, item))
     [dele] = outbox(table_name="watchlist_items", op="delete")
     assert dele["post"] is None and dele["fields"]["note"] == "bulk"
+    with get_session() as s:  # SQL NULL, not the JSON text 'null'
+        assert s.exec(text(f"SELECT post IS NULL FROM sync_outbox WHERE id = {dele['id']}")).one()[0] == 1
     with get_session() as s:
         instrument_merge.merge_instruments(s, new_instrument("Dup"), inst)
     [merge] = outbox(op="merge")
     assert merge["post"] is None
+    with get_session() as s:
+        assert s.exec(text(f"SELECT post IS NULL FROM sync_outbox WHERE id = {merge['id']}")).one()[0] == 1
 
 
 def test_post_reads_back_a_column_missing_from_the_flushed_state(db_engine, sync_on):
