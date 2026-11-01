@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { createRecoveryKey, recoveryIdentity } from "../crypto/index.js";
 import { fromHex, toHex } from "./bytes.js";
 import { buildLeaseClaim, buildLeasePin, pinConfirmationText } from "./events.js";
-import { holdsLease, nextLeaseStep, pinEventFor } from "./lease.js";
+import { nextLeaseStep, pinEventFor } from "./lease.js";
 import {
   type Backend,
   boundedConfig,

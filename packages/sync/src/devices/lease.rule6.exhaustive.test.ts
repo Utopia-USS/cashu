@@ -9,7 +9,7 @@
 // Mode pinned: lease.pinned.rule6.exhaustive.test.ts.
 
 import { describe, expect, it } from "vitest";
-import { pinnedRun, rule6Run } from "./leaseSim.js";
+import { rule6Run } from "./leaseSim.js";
 
 const seeds = (n: number) => Array.from({ length: n }, (_, run) => run);
 
