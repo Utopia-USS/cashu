@@ -83,7 +83,7 @@ def parent(name: str, keep: bool, out_root: Path) -> int:
     run = golden.PARITY_ROOT / f"bridge-run-{stamp}-{name}"
     run.mkdir(parents=True)
     os.chmod(run, 0o700)
-    shutil.copytree(source, run / "data")
+    golden.copy_source(source, run / "data")
     out = out_root / name
     if out.exists():
         shutil.rmtree(out)

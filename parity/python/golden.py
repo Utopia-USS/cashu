@@ -179,6 +179,18 @@ def quick_check(db: Path) -> bool:
         return False
 
 
+def copy_source(source: Path, dest: Path) -> None:
+    """Copy a dataset source dir to ``dest`` and make the copy owner-writable.
+
+    The sources are read-only on disk (lab README rule 9) and ``copytree`` keeps their modes, so
+    without this a run copy could not take the migration backup or the ``-wal`` / ``-shm`` files.
+    Only the copy changes mode; the source is never touched."""
+    shutil.copytree(source, dest)
+    for path in [dest, *dest.rglob("*")]:
+        if not path.is_symlink():
+            path.chmod(path.stat().st_mode | 0o200)
+
+
 def copy_dataset(name: str, dest: Path) -> int:
     """``--copy-dataset <name> --to <dest>`` (the bridge harness, S31a spec 9.1): the dataset's source
     dir copied whole (``profiles/``, ``imports/`` ...) into ``dest`` the way a golden run copies it.
@@ -198,7 +210,7 @@ def copy_dataset(name: str, dest: Path) -> int:
         return 1
     before = manifest(source)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, dest)
+    copy_source(source, dest)
     after = manifest(source)
     if before != after:
         print(json.dumps({"error": "the source dataset changed while copying"}))
@@ -230,7 +242,7 @@ def run_dataset(
     run = PARITY_ROOT / f"run-{stamp}-{name}"
     run.mkdir(parents=True)
     os.chmod(run, 0o700)
-    shutil.copytree(source, run / "data")
+    copy_source(source, run / "data")
     out = out_root / name
     if out.exists():
         shutil.rmtree(out)
