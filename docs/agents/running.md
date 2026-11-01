@@ -7,6 +7,41 @@ What this is: how to run and verify the app locally, seed synthetic demo data, a
 The command list is in [CLAUDE.md](../../CLAUDE.md) "Common commands"; this file carries the caveats
 behind them. Everything here runs on synthetic data and temp data dirs.
 
+## TypeScript workspace
+
+Run from the repo root with Node >=22 and the pinned pnpm version in `package.json` (11.28.9).
+The pnpm workspace includes `packages/*`, `apps/*`, `tools/arch` and the legacy `frontend/`.
+
+| Task | Command |
+|---|---|
+| Install locked dependencies | `pnpm install --frozen-lockfile` |
+| Typecheck / lint / default tests | `pnpm typecheck`, `pnpm lint`, `pnpm test` |
+| Exhaustive tests (serial packages) | `pnpm test:exhaustive` |
+| Architecture checks | `pnpm arch:check` |
+| Complete handoff gate | `pnpm check:handoff` (default checks, exhaustive tests, architecture) |
+| Compare prepared synthetic TS outputs | `pnpm parity --dataset demo --actual /absolute/path/to/ts-output` |
+| Build/run local iOS dev client | `pnpm --filter @cashu/mobile ios` |
+| Build/run local Android dev client | `pnpm --filter @cashu/mobile android` |
+| Start the dev-client bundler | `pnpm --filter @cashu/mobile start` |
+
+Parity requires outputs and Python inputs from the commit under test. `pnpm parity:produce` runs the
+TS producers; follow [the parity workflow](../../packages/parity/README.md) for input generation,
+selected checks and branch-specific output directories. Shared lab outputs are written only from
+`lab/ts-stack`; a stale-input comparison is not acceptance evidence.
+
+Desktop development still requires the Python environment and built legacy SPA described below.
+Seed the default synthetic demo directory once, then launch the shell with its TS store process:
+
+```bash
+.venv/bin/python scripts/demo_data.py --data-dir ~/cashu-lab/desktop-demo
+CASHU_DESKTOP_STORE=1 pnpm --filter @cashu/desktop dev
+```
+
+The launcher builds Electron, defaults data/workspaces to the lab's demo directories and starts the
+Python sidecar. `CASHU_DESKTOP_STORE=1` additionally starts the TS store utility process; the renderer
+still uses the legacy SPA. Mobile uses a native development client with SQLite and Sodium adapters;
+build it locally for the chosen simulator/emulator before using the dev-client bundler.
+
 ## Running and verifying
 
 | Step | Command / note |

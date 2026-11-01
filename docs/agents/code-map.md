@@ -12,6 +12,35 @@ needs go through core (net-worth contributors, account types, institutions, cate
 Rows marked (+) were added when this map moved out of `AGENTS.md`; they describe files that existed
 but were not listed before.
 
+## TypeScript workspace
+
+Dependencies point down the [layer table](../../tools/claude-dev/skills/cashu-ts-architecture/references/layers.md),
+enforced by `LAYERS` in [depcruise.config.cjs](../../tools/arch/depcruise.config.cjs).
+Apps compose packages and never import another app. `frontend/` remains the legacy SPA workspace member.
+
+| Path | Layer | Purpose |
+|---|---|---|
+| `packages/domain/` | Domain | Pure core/module types, validation, calculations, import parsing and rules; no IO or external runtime imports. |
+| `packages/sync/` | Sync | Event log, HLC, crypto, carrier/transport interfaces and device membership; may depend on domain. |
+| `packages/market/` | Market | Leader-only HTTP market/calendar sources behind injected fetch; parsing contracts live in domain. |
+| `packages/store/` | Store | Event schemas, materializers, queries, commands and device-local state; depends on domain/sync. |
+| `packages/store-react/` | Store bindings | React query/command hooks and providers, plus React-free client/local/host/protocol store-port subpaths. |
+| `packages/i18n/` | i18n | PL/EN catalogs, plurals, formatting and explicit backend translation contexts; depends on domain. |
+| `packages/ui/` | UI system | Shared tokens, display components and platform controls; no store access. |
+| `packages/ui-logic/` | UI logic | Platform-free reusable UI logic and feature hooks; no app screens. |
+| `packages/api/` | Services | HTTP surface scaffold; route implementations are not ported yet. |
+| `packages/mcp/` | Services | Privacy/redaction and tool registry; the MCP server/tools remain a later scope. |
+| `packages/parity/` | Verification tooling | TS producers and Python-golden comparer; may import domain, store and mcp. |
+| `apps/desktop/` | Apps | Electron main/preload/renderer shell, Python sidecar and opt-in TS store utility process. |
+| `apps/mobile/` | Apps | Expo/Hermes development client, routes/screens and native store/crypto/platform adapters. |
+| `apps/cli/` | Apps | Node CLI entry; currently dispatches the lab genesis command, not the full Python command tree. |
+| `apps/relay/` | Apps | Relay app scaffold. |
+| `apps/sync-daemon/` | Apps | Sync-daemon app scaffold. |
+| `tools/arch/` | Development tooling | Architecture runner, dependency graph, lint/unused-code/package checks and regression guards. |
+| `tools/claude-dev/` | Development tooling | Repo-local TS architecture/UI skills and file-check hook; not shipped to profile workspaces. |
+| `tools/node-ts/` | Development tooling | Resolver for running workspace TS sources with Node type stripping. |
+| `parity/` | Verification fixtures/oracle | Python golden producers, synthetic committed demo outputs and canonicalization rules; see its README. |
+
 ## `src/cashu/` (top level)
 
 | Path | Purpose |
