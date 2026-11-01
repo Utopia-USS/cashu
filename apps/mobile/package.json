@@ -16,6 +16,7 @@
     "bundle:check": "node scripts/bundle-size.mjs"
   },
   "dependencies": {
+    "@cashu/domain": "workspace:*",
     "@cashu/i18n": "workspace:*",
     "@cashu/store": "workspace:*",
     "@cashu/store-react": "workspace:*",

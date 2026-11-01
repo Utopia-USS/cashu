@@ -1,21 +1,29 @@
-// The UI environment the app root provides to packages/ui (cashu-ui skill, components.md "Value
-// components"): privacy mode for now, fed by the app from the store's device-local settings. Components
-// read it here and never check privacy mode on their own.
+// The app root supplies device-local display settings. Nested privacy providers inherit locale
+// unless explicitly overridden; components read the resolved environment rather than the store.
+import { intlLocale } from "@cashu/i18n";
 import { createContext, type ReactNode, use } from "react";
 
 export interface UiEnv {
   /** Privacy mode: amounts are hidden everywhere (money, money axes); shares stay. */
-  privacy: boolean;
+  readonly privacy: boolean;
+  /** Defaults to the app's current UI locale. */
+  readonly locale?: string;
 }
 
 const UiEnvContext = createContext<UiEnv>({ privacy: false });
 
-/** Provides the UI environment (privacy mode) to every packages/ui component below it. */
-export function UiEnvProvider({ privacy, children }: UiEnv & { children: ReactNode }) {
-  return <UiEnvContext value={{ privacy }}>{children}</UiEnvContext>;
+/** Provides locale and privacy mode to every packages/ui component below it. */
+export function UiEnvProvider({ privacy, locale, children }: UiEnv & { children: ReactNode }) {
+  const parent = use(UiEnvContext);
+  return (
+    <UiEnvContext value={{ privacy, locale: locale ?? parent.locale ?? intlLocale() }}>
+      {children}
+    </UiEnvContext>
+  );
 }
 
-/** The current UI environment (privacy mode off outside a provider). */
-export function useUiEnv(): UiEnv {
-  return use(UiEnvContext);
+/** The current environment, with locale resolved even outside a provider. */
+export function useUiEnv(): UiEnv & { readonly locale: string } {
+  const env = use(UiEnvContext);
+  return { ...env, locale: env.locale ?? intlLocale() };
 }

@@ -1,7 +1,7 @@
 // Screen hook of the list benchmark: store rows -> list items, the S50 scroll / mount runs, results
 // shown and appended to documents/bench/results.jsonl. `?autorun=1` runs the S50 sequence by itself
 // (no HID tool on this Mac): 3 x scroll 4k, 1 x scroll 12k, 1 x mount 500.
-import { intlLocale } from "@cashu/i18n";
+import { D, Money } from "@cashu/domain";
 import { useQuery } from "@cashu/store-react";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams } from "expo-router";
@@ -23,18 +23,6 @@ interface TxDbRow {
   category: string | null;
 }
 
-// TRANSITIONAL(S52): amounts are formatted here until <Money> exists in packages/ui.
-let moneyFormats: Map<string, Intl.NumberFormat> | undefined;
-function formatMoney(amount: string, currency: string): string {
-  moneyFormats ??= new Map();
-  let f = moneyFormats.get(currency);
-  if (!f) {
-    f = new Intl.NumberFormat(intlLocale(), { style: "currency", currency });
-    moneyFormats.set(currency, f);
-  }
-  return f.format(Number(amount));
-}
-
 const itemsCache = new WeakMap<readonly TxDbRow[], TxItem[]>();
 function toItems(rows: readonly TxDbRow[]): TxItem[] {
   const hit = itemsCache.get(rows);
@@ -42,8 +30,9 @@ function toItems(rows: readonly TxDbRow[]): TxItem[] {
   const items = rows.map((r) => ({
     id: r.id,
     title: r.counterparty_name ?? "",
-    subtitle: `${r.booking_date} · ${r.category ?? S.uncategorized}`,
-    amount: formatMoney(r.amount, r.currency),
+    date: r.booking_date,
+    category: r.category ?? S.uncategorized,
+    amount: new Money(D(r.amount), r.currency),
     negative: r.amount.startsWith("-"),
   }));
   itemsCache.set(rows, items);

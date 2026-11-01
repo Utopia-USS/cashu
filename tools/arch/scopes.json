@@ -37,7 +37,6 @@
     "S47": "planned: desktop packaging and update",
     "S48": "planned: owner cut-over runbook",
     "S49": "planned: retirement gates per module (Python strangler code)",
-    "S52": "planned: value components in packages/ui",
     "S53b": "planned: real desktop vaults in apps/host (paired identity, registry gate, engine local append)",
     "S55a": "planned: desktop renderer shell",
     "S55b": "planned: renderer Przeglad tab",

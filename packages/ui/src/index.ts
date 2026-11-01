@@ -23,3 +23,16 @@ export type {
 } from "./charts/types.js";
 export { type UiEnv, UiEnvProvider, useUiEnv } from "./environment/UiEnv.js";
 export { type Layout, type LayoutClass, layoutClass, SPACING_STEPS, type Step } from "./layout.js";
+export { Amount } from "./values/Amount.js";
+export { DateText } from "./values/DateText.js";
+export { Delta } from "./values/Delta.js";
+export { Money } from "./values/Money.js";
+export { Percent } from "./values/Percent.js";
+export type {
+  AmountProps,
+  DateTextProps,
+  DeltaProps,
+  MoneyProps,
+  PercentProps,
+  ValueStyle,
+} from "./values/types.js";

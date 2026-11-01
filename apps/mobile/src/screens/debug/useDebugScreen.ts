@@ -1,10 +1,11 @@
 // Screen hook of the debug screen: reads the store live, rebuilds the demo vault from its log on
 // request, and logs the first frame with data once per launch (the S41 cold start measurement).
 
-import { intlLocale } from "@cashu/i18n";
+import { D } from "@cashu/domain";
+import { formatDecimalValue } from "@cashu/i18n/values";
 import type { Store } from "@cashu/store";
 import { useQuery } from "@cashu/store-react";
-import type { ChartTip, DonutSegment } from "@cashu/ui";
+import { type ChartTip, type DonutSegment, useUiEnv } from "@cashu/ui";
 import { useRouter } from "expo-router";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import { bootStartedAt } from "../../boot";
@@ -34,33 +35,19 @@ interface BalanceRow {
   currency: string;
 }
 
-// TRANSITIONAL(S52): amounts are formatted here until <Money> exists in packages/ui.
-let formats: { money: Map<string, Intl.NumberFormat>; axis: Intl.NumberFormat } | undefined;
-function fmt() {
-  formats ??= {
-    money: new Map(),
-    axis: new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 0 }),
-  };
-  return formats;
-}
-function money(amount: string, currency: string): string {
-  const f = fmt();
-  let m = f.money.get(currency);
-  if (!m) {
-    m = new Intl.NumberFormat(intlLocale(), { style: "currency", currency });
-    f.money.set(currency, m);
-  }
-  return m.format(Number(amount));
-}
-
 interface BalanceChart {
   values: number[];
   months: { i: number; text: string }[];
   tip: (i: number) => ChartTip;
 }
-const chartCache = new WeakMap<readonly BalanceRow[], BalanceChart>();
-function balanceChart(rows: readonly BalanceRow[]): BalanceChart {
-  let out = chartCache.get(rows);
+const chartCache = new WeakMap<readonly BalanceRow[], Map<string, BalanceChart>>();
+function balanceChart(rows: readonly BalanceRow[], locale: string): BalanceChart {
+  let locales = chartCache.get(rows);
+  if (!locales) {
+    locales = new Map();
+    chartCache.set(rows, locales);
+  }
+  let out = locales.get(locale);
   if (!out) {
     const last = rows.length - 1;
     out = {
@@ -72,11 +59,19 @@ function balanceChart(rows: readonly BalanceRow[]): BalanceChart {
         const r = rows[i];
         return {
           title: r?.date ?? "",
-          rows: r ? [{ name: S.balance, value: money(r.amount, r.currency), amount: true }] : [],
+          rows: r
+            ? [
+                {
+                  name: S.balance,
+                  value: formatDecimalValue(D(r.amount), locale, { currency: r.currency }).text,
+                  amount: true,
+                },
+              ]
+            : [],
         };
       },
     };
-    chartCache.set(rows, out);
+    locales.set(locale, out);
   }
   return out;
 }
@@ -109,11 +104,12 @@ function summary(load: DemoLoad, firstLaunch: boolean): DebugLoad {
 let firstDataLogged = false;
 
 export function useDebugScreen(cryptoPanel: ReactNode): DebugViewProps {
+  const { locale } = useUiEnv();
   const services = useServices();
   const { store } = services;
   const router = useRouter();
   const counts = useQuery(tableCounts, { tables: viewTables(store) });
-  const balance = balanceChart(useQuery(firstAccountBalances));
+  const balance = balanceChart(useQuery(firstAccountBalances), locale);
   const spendingByAccount = spending(useQuery(plnOutflowsByAccount));
   const [rebuilt, setRebuilt] = useState<DemoLoad | null>(null);
   const [rebuilding, startRebuild] = useTransition();
@@ -139,7 +135,7 @@ export function useDebugScreen(cryptoPanel: ReactNode): DebugViewProps {
     unfoldedTypes: store.unfoldedTypes().length,
     balanceTrend: balance.values,
     balanceMonths: balance.months,
-    balanceAxis: (v) => fmt().axis.format(v),
+    balanceAxis: (v) => formatDecimalValue(D(String(v)), locale, { fractionDigits: 0 }).text,
     balanceTip: balance.tip,
     spendingByAccount,
     cryptoPanel,

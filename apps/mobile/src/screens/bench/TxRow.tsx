@@ -1,12 +1,15 @@
 // One transaction row of the benchmark list: title, date and category, amount in its tone. Token
-// classes only (packages/ui theme); the shared ListRow / Money components land with the UI port.
+// classes only (packages/ui theme); value components share locale and privacy with every screen.
+import type { Money as MoneyValue } from "@cashu/domain";
+import { DateText, Money } from "@cashu/ui";
 import { Text, View } from "react-native";
 
 export interface TxItem {
   readonly id: number;
   readonly title: string;
-  readonly subtitle: string;
-  readonly amount: string;
+  readonly date: string;
+  readonly category: string;
+  readonly amount: MoneyValue;
   readonly negative: boolean;
 }
 
@@ -18,14 +21,10 @@ export function TxRow({ item }: { item: TxItem }) {
           {item.title}
         </Text>
         <Text numberOfLines={1} className="text-caption text-fg-muted">
-          {item.subtitle}
+          <DateText value={item.date} size="caption" tone="muted" /> · {item.category}
         </Text>
       </View>
-      <Text
-        className={`text-body font-strong tabular-nums ${item.negative ? "text-negative" : "text-positive"}`}
-      >
-        {item.amount}
-      </Text>
+      <Money value={item.amount} weight="strong" tone={item.negative ? "negative" : "positive"} />
     </View>
   );
 }

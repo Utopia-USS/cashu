@@ -1,13 +1,15 @@
 // Stories of the list benchmark (CSF 3, synthetic rows): idle, with results, while running.
 
+import { D, Money } from "@cashu/domain";
 import { BenchView, type BenchViewProps } from "./BenchView";
 import type { TxItem } from "./TxRow";
 
 const items: TxItem[] = Array.from({ length: 40 }, (_, i) => ({
   id: i + 1,
   title: `SKLEP OSIEDLOWY ${String(i % 7).padStart(2, "0")}`,
-  subtitle: `2026-10-${String(1 + (i % 28)).padStart(2, "0")} · groceries`,
-  amount: `-${(10 + i).toFixed(2)} zł`,
+  date: `2026-10-${String(1 + (i % 28)).padStart(2, "0")}`,
+  category: "groceries",
+  amount: new Money(D(String(-10 - i)), "PLN"),
   negative: true,
 }));
 

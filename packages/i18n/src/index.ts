@@ -2,6 +2,8 @@
 // no DOM, React or Node; UI uses a `LanguageSource`, backend contexts use a `BackendLanguageSource`.
 // Screen copy catalogs live under
 // src/<core|module>/ and are imported by their own subpath (`@cashu/i18n/core/common.strings`).
+// Exact domain-value formatting is opt-in via @cashu/i18n/values; keep this entrypoint compatible
+// with the legacy dashboard runtime instead of pulling in the modern domain barrel.
 export { catalog } from "./catalog.js";
 export {
   FALLBACK_LANG,

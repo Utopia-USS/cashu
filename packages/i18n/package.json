@@ -6,6 +6,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./values": "./src/valueFormat.ts",
     "./assets/AssetsWidget.strings": "./src/assets/AssetsWidget.strings.ts",
     "./assets/Steps.strings": "./src/assets/Steps.strings.ts",
     "./assets/index.strings": "./src/assets/index.strings.ts",
