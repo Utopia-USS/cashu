@@ -7,6 +7,7 @@ export * from "./import-preview.js";
 export * from "./instruments.js";
 export * from "./journal.js";
 export * from "./mcp.js";
+export * from "./planFacts.js";
 export * from "./planned.js";
 export * from "./reviews.js";
 export {

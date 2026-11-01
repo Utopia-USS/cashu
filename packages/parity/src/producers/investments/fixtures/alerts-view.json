@@ -1,0 +1,810 @@
+{
+  "expected": {
+    "alert_kinds": {
+      "kinds": {
+        "kinds": [
+          {
+            "doc": "The last close is above a level.",
+            "kind": "price_above",
+            "params": [
+              {
+                "choices": [],
+                "default": null,
+                "doc": "price level in the instrument's currency",
+                "maximum": null,
+                "minimum": 0,
+                "name": "level",
+                "required": true,
+                "type": "number"
+              }
+            ],
+            "scopes": ["instrument"],
+            "unit": "price"
+          },
+          {
+            "doc": "The last close is below a level.",
+            "kind": "price_below",
+            "params": [
+              {
+                "choices": [],
+                "default": null,
+                "doc": "price level in the instrument's currency",
+                "maximum": null,
+                "minimum": 0,
+                "name": "level",
+                "required": true,
+                "type": "number"
+              }
+            ],
+            "scopes": ["instrument"],
+            "unit": "price"
+          },
+          {
+            "doc": "The close moved by at least threshold over window_days sessions.",
+            "kind": "change_pct",
+            "params": [
+              {
+                "choices": [],
+                "default": null,
+                "doc": "trading sessions (daily bars), including the last one",
+                "maximum": 260,
+                "minimum": 1,
+                "name": "window_days",
+                "required": true,
+                "type": "integer"
+              },
+              {
+                "choices": [],
+                "default": null,
+                "doc": "size of the move as a fraction (0.1 = 10%)",
+                "maximum": 10.0,
+                "minimum": 0,
+                "name": "threshold",
+                "required": true,
+                "type": "number"
+              },
+              {
+                "choices": ["up", "down", "any"],
+                "default": "any",
+                "doc": "up, down or any",
+                "maximum": null,
+                "minimum": null,
+                "name": "direction",
+                "required": false,
+                "type": "choice"
+              }
+            ],
+            "scopes": ["instrument"],
+            "unit": "ratio"
+          },
+          {
+            "doc": "The last close is at least threshold below the highest close of the window.",
+            "kind": "drawdown_from_high",
+            "params": [
+              {
+                "choices": [],
+                "default": 252,
+                "doc": "trading sessions (daily bars), including the last one",
+                "maximum": 260,
+                "minimum": 2,
+                "name": "window_days",
+                "required": false,
+                "type": "integer"
+              },
+              {
+                "choices": [],
+                "default": null,
+                "doc": "drop from the high (0.15 = 15%)",
+                "maximum": 1,
+                "minimum": 0,
+                "name": "threshold",
+                "required": true,
+                "type": "number"
+              }
+            ],
+            "scopes": ["instrument"],
+            "unit": "ratio"
+          },
+          {
+            "doc": "The last close is above every other close of the window.",
+            "kind": "new_high",
+            "params": [
+              {
+                "choices": [],
+                "default": 252,
+                "doc": "trading sessions (daily bars), including the last one",
+                "maximum": 260,
+                "minimum": 2,
+                "name": "window_days",
+                "required": false,
+                "type": "integer"
+              }
+            ],
+            "scopes": ["instrument"],
+            "unit": "price"
+          },
+          {
+            "doc": "The last close is above (or below) the simple moving average of the window: the signal opens on the cross and resolves when the price crosses back.",
+            "kind": "sma_cross",
+            "params": [
+              {
+                "choices": [],
+                "default": 200,
+                "doc": "trading sessions (daily bars), including the last one",
+                "maximum": 260,
+                "minimum": 2,
+                "name": "window_days",
+                "required": false,
+                "type": "integer"
+              },
+              {
+                "choices": ["above", "below"],
+                "default": null,
+                "doc": "above or below",
+                "maximum": null,
+                "minimum": null,
+                "name": "direction",
+                "required": true,
+                "type": "choice"
+              }
+            ],
+            "scopes": ["instrument"],
+            "unit": "price"
+          },
+          {
+            "doc": "The instrument's (or bucket's) share of the portfolio is above threshold.",
+            "kind": "weight_above",
+            "params": [
+              {
+                "choices": [],
+                "default": null,
+                "doc": "weight as a fraction (0.3 = 30%)",
+                "maximum": 1,
+                "minimum": 0,
+                "name": "threshold",
+                "required": true,
+                "type": "number"
+              },
+              {
+                "choices": [],
+                "default": null,
+                "doc": "strategy bucket id (scope bucket only)",
+                "maximum": null,
+                "minimum": null,
+                "name": "bucket",
+                "required": false,
+                "type": "text"
+              }
+            ],
+            "scopes": ["instrument", "bucket"],
+            "unit": "ratio"
+          },
+          {
+            "doc": "The instrument's (or bucket's) share of the portfolio is below threshold (an instrument that is not held weighs 0).",
+            "kind": "weight_below",
+            "params": [
+              {
+                "choices": [],
+                "default": null,
+                "doc": "weight as a fraction (0.3 = 30%)",
+                "maximum": 1,
+                "minimum": 0,
+                "name": "threshold",
+                "required": true,
+                "type": "number"
+              },
+              {
+                "choices": [],
+                "default": null,
+                "doc": "strategy bucket id (scope bucket only)",
+                "maximum": null,
+                "minimum": null,
+                "name": "bucket",
+                "required": false,
+                "type": "text"
+              }
+            ],
+            "scopes": ["instrument", "bucket"],
+            "unit": "ratio"
+          },
+          {
+            "doc": "A condition in the strategy expression language (EXPRESSIONS.md), evaluated for the instrument (held positions only), a bucket or the portfolio.",
+            "kind": "custom",
+            "params": [
+              {
+                "choices": [],
+                "default": null,
+                "doc": "e.g. \"weight > 10%\" or \"cash_weight >= 5%\"",
+                "maximum": null,
+                "minimum": null,
+                "name": "expression",
+                "required": true,
+                "type": "text"
+              },
+              {
+                "choices": [],
+                "default": null,
+                "doc": "strategy bucket id (scope bucket only)",
+                "maximum": null,
+                "minimum": null,
+                "name": "bucket",
+                "required": false,
+                "type": "text"
+              }
+            ],
+            "scopes": ["instrument", "portfolio", "bucket"],
+            "unit": "none"
+          },
+          {
+            "doc": "The last close leaves the min / max close of the previous window_days sessions while that range ((max - min) / min) was at most max_range_pct: a break out of a consolidation. A one-session event (the next window contains the break).",
+            "kind": "range_breakout",
+            "params": [
+              {
+                "choices": [],
+                "default": 30,
+                "doc": "sessions before the last one that form the range",
+                "maximum": 260,
+                "minimum": 10,
+                "name": "window_days",
+                "required": false,
+                "type": "integer"
+              },
+              {
+                "choices": [],
+                "default": 0.08,
+                "doc": "widest range that counts as a consolidation, a fraction (0.08 = 8%)",
+                "maximum": 0.3,
+                "minimum": 0.01,
+                "name": "max_range_pct",
+                "required": false,
+                "type": "number"
+              },
+              {
+                "choices": ["up", "down", "any"],
+                "default": "any",
+                "doc": "up, down or any",
+                "maximum": null,
+                "minimum": null,
+                "name": "direction",
+                "required": false,
+                "type": "choice"
+              }
+            ],
+            "scopes": ["instrument"],
+            "unit": "price"
+          },
+          {
+            "doc": "The last session's volume is at least multiple times the average volume of the previous window_days sessions.",
+            "kind": "volume_spike",
+            "params": [
+              {
+                "choices": [],
+                "default": 20,
+                "doc": "sessions before the last one that form the average",
+                "maximum": 260,
+                "minimum": 5,
+                "name": "window_days",
+                "required": false,
+                "type": "integer"
+              },
+              {
+                "choices": [],
+                "default": 2.5,
+                "doc": "volume as a multiple of the average (2.5 = 2.5x)",
+                "maximum": 20.0,
+                "minimum": 1.5,
+                "name": "multiple",
+                "required": false,
+                "type": "number"
+              }
+            ],
+            "scopes": ["instrument"],
+            "unit": "ratio"
+          }
+        ],
+        "polarities": ["positive", "negative", "neutral"],
+        "severities": ["info", "action"],
+        "statuses": ["triggered", "active", "snoozed", "muted", "expired"]
+      }
+    },
+    "profile:8a83d94d44b74afe": {
+      "alerts": [
+        {
+          "cooldown_days": 3,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "mcp",
+          "expires_at": null,
+          "id": "alert:78225bb0c2238b6a",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "price_above",
+          "last_checked_at": "2026-09-01T10:00:00+00:00",
+          "last_triggered_at": "2026-09-01T10:00:00+00:00",
+          "last_value": 112.5,
+          "note": null,
+          "params": {
+            "level": 90.0
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": {
+            "first_seen_at": "2026-09-01T10:00:00+00:00",
+            "id": "signal:513d9f720b966509",
+            "message": "Synthetic price: detail",
+            "message_code": "alert.price_above",
+            "message_params": {
+              "close": "112.5",
+              "currency": "PLN",
+              "date": "2026-10-01",
+              "label": "Synthetic override",
+              "level": "90",
+              "title": "Synthetic price"
+            },
+            "status": "acknowledged"
+          },
+          "snoozed_until": null,
+          "source": "agent",
+          "state": null,
+          "status": "triggered",
+          "tag": "cena",
+          "title": "Synthetic price_above",
+          "unit": "price",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:40e8cd15bff1d5e6",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "volume_spike",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": null,
+          "params": {
+            "multiple": 2.5,
+            "window_days": 5
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": {
+            "average_volume": 100.0,
+            "ratio": 4.0,
+            "volume": 400,
+            "window_days": 5
+          },
+          "status": "active",
+          "tag": null,
+          "title": "Synthetic volume_spike",
+          "unit": "ratio",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:0d7003863d843b65",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "range_breakout",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": "Synthetic note",
+          "params": {
+            "direction": "any",
+            "max_range_pct": 0.08,
+            "window_days": 10
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": {
+            "close": 112.0,
+            "currency": "PLN",
+            "range_high": 100.0,
+            "range_low": 100.0,
+            "range_pct": 0.0,
+            "window_days": 10
+          },
+          "status": "active",
+          "tag": null,
+          "title": "Synthetic range_breakout",
+          "unit": "price",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:afc24d0319af41de",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "custom",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": null,
+          "params": {
+            "expression": "weight > 10%"
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": null,
+          "status": "active",
+          "tag": null,
+          "title": "Synthetic custom",
+          "unit": "none",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:1de8e5f783ff79c9",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "weight_below",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": "Synthetic note",
+          "params": {
+            "threshold": 0.3
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": null,
+          "status": "active",
+          "tag": null,
+          "title": "Synthetic weight_below",
+          "unit": "ratio",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:b8fbcd6756a73894",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "weight_above",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": null,
+          "params": {
+            "threshold": 0.3
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": null,
+          "status": "active",
+          "tag": null,
+          "title": "Synthetic weight_above",
+          "unit": "ratio",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:ad7f19627041047a",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "sma_cross",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": "Synthetic note",
+          "params": {
+            "direction": "above",
+            "window_days": 5
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": null,
+          "status": "active",
+          "tag": null,
+          "title": "Synthetic sma_cross",
+          "unit": "price",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": "2026-09-01T10:00:00+00:00",
+          "id": "alert:6fe43206124fb1cf",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "new_high",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": null,
+          "params": {
+            "window_days": 5
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": null,
+          "status": "active",
+          "tag": null,
+          "title": "Synthetic new_high",
+          "unit": "price",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:f9946c15065580c9",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "change_pct",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": null,
+          "params": {
+            "direction": "any",
+            "threshold": 0.05,
+            "window_days": 5
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": "2026-10-02T10:00:00+00:00",
+          "source": "user",
+          "state": null,
+          "status": "snoozed",
+          "tag": null,
+          "title": "Synthetic change_pct",
+          "unit": "ratio",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:87cbffd51ad83bd8",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "price_below",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": "Synthetic note",
+          "params": {
+            "level": 90.0
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": null,
+          "status": "muted",
+          "tag": null,
+          "title": "Synthetic price_below",
+          "unit": "price",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:bef768f7005df68d",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:e3681e0c135cd7b0",
+            "isin": null,
+            "label": "Synthetic override",
+            "name": "Synthetic override",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:e3681e0c135cd7b0",
+          "kind": "drawdown_from_high",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": "Synthetic note",
+          "params": {
+            "threshold": 0.1,
+            "window_days": 5
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": null,
+          "status": "expired",
+          "tag": null,
+          "title": "Synthetic drawdown_from_high",
+          "unit": "ratio",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        }
+      ]
+    },
+    "profile:aa2f4fa70b74a4b8": {
+      "alerts": [
+        {
+          "cooldown_days": null,
+          "created_at": "2026-09-01T10:00:00+00:00",
+          "created_by": "app",
+          "expires_at": null,
+          "id": "alert:18610a78b8624412",
+          "instrument": {
+            "asset_class": "equity",
+            "currency": "PLN",
+            "id": "instrument:4335fc71f1139543",
+            "isin": null,
+            "label": "Synthetic asset 2",
+            "name": "Synthetic asset 2",
+            "symbol": null,
+            "valuation_mode": "market"
+          },
+          "instrument_id": "instrument:4335fc71f1139543",
+          "kind": "volume_spike",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": null,
+          "params": {
+            "multiple": 2.5,
+            "window_days": 5
+          },
+          "polarity": "neutral",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "user",
+          "state": null,
+          "status": "active",
+          "tag": null,
+          "title": "No bars",
+          "unit": "ratio",
+          "updated_at": "2026-09-01T10:00:00+00:00"
+        }
+      ]
+    }
+  },
+  "sql": "PRAGMA foreign_keys = OFF;\nDROP TABLE IF EXISTS \"accounts\";\nDROP TABLE IF EXISTS \"alerts\";\nDROP TABLE IF EXISTS \"inv_instrument_aliases\";\nDROP TABLE IF EXISTS \"inv_instruments\";\nDROP TABLE IF EXISTS \"inv_price_bars\";\nDROP TABLE IF EXISTS \"inv_profile_instruments\";\nDROP TABLE IF EXISTS \"inv_signals\";\nDROP TABLE IF EXISTS \"profile_modules\";\nDROP TABLE IF EXISTS \"profiles\";\nCREATE TABLE accounts (\n\tid INTEGER NOT NULL, \n\tbank VARCHAR NOT NULL, \n\tname VARCHAR NOT NULL, \n\tiban VARCHAR, \n\texternal_id VARCHAR, \n\tcurrency VARCHAR NOT NULL, \n\ttype VARCHAR NOT NULL, \n\tactive BOOLEAN NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tprofile_id INTEGER NOT NULL, \n\tremoved_at DATETIME, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_account_profile_bank_external UNIQUE (profile_id, bank, external_id), \n\tCONSTRAINT fk_accounts_profile_id FOREIGN KEY(profile_id) REFERENCES profiles (id)\n);\nCREATE TABLE alerts (\n\tid INTEGER NOT NULL, \n\tprofile_id INTEGER NOT NULL, \n\tinstrument_id INTEGER, \n\tscope VARCHAR NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tparams JSON NOT NULL, \n\tpolarity VARCHAR NOT NULL, \n\tseverity VARCHAR NOT NULL, \n\ttitle VARCHAR NOT NULL, \n\tnote VARCHAR, \n\tsource VARCHAR NOT NULL, \n\tcreated_by VARCHAR NOT NULL, \n\tstatus VARCHAR NOT NULL, \n\tcooldown_days INTEGER, \n\texpires_at DATETIME, \n\tsnoozed_until DATETIME, \n\tlast_triggered_at DATETIME, \n\tlast_checked_at DATETIME, \n\tlast_value VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tdeleted_at DATETIME, \n\ttag VARCHAR, \n\tPRIMARY KEY (id), \n\tCONSTRAINT fk_alerts_profile_id FOREIGN KEY(profile_id) REFERENCES profiles (id), \n\tFOREIGN KEY(instrument_id) REFERENCES inv_instruments (id)\n);\nINSERT INTO \"alerts\" VALUES(1,1,1,'instrument','price_above','{\"level\": 90.0}','neutral','info','Synthetic price_above',NULL,'agent','mcp','triggered',3,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000','112.50','2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,'cena');\nINSERT INTO \"alerts\" VALUES(2,1,1,'instrument','price_below','{\"level\": 90.0}','neutral','info','Synthetic price_below','Synthetic note','user','app','muted',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(3,1,1,'instrument','change_pct','{\"window_days\": 5, \"threshold\": 0.05, \"direction\": \"any\"}','neutral','info','Synthetic change_pct',NULL,'user','app','snoozed',NULL,NULL,'2026-10-02 10:00:00.000000',NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(4,1,1,'instrument','drawdown_from_high','{\"window_days\": 5, \"threshold\": 0.1}','neutral','info','Synthetic drawdown_from_high','Synthetic note','user','app','expired',NULL,NULL,NULL,NULL,NULL,'not-a-decimal','2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(5,1,1,'instrument','new_high','{\"window_days\": 5}','neutral','info','Synthetic new_high',NULL,'user','app','active',NULL,'2026-09-01 10:00:00.000000',NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(6,1,1,'instrument','sma_cross','{\"window_days\": 5, \"direction\": \"above\"}','neutral','info','Synthetic sma_cross','Synthetic note','user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(7,1,1,'instrument','weight_above','{\"threshold\": 0.3}','neutral','info','Synthetic weight_above',NULL,'user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(8,1,1,'instrument','weight_below','{\"threshold\": 0.3}','neutral','info','Synthetic weight_below','Synthetic note','user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(9,1,1,'instrument','custom','{\"expression\": \"weight > 10%\"}','neutral','info','Synthetic custom',NULL,'user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(10,1,1,'instrument','range_breakout','{\"window_days\": 10, \"max_range_pct\": 0.08, \"direction\": \"any\"}','neutral','info','Synthetic range_breakout','Synthetic note','user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(11,1,1,'instrument','volume_spike','{\"window_days\": 5, \"multiple\": 2.5}','neutral','info','Synthetic volume_spike',NULL,'user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(12,2,2,'instrument','volume_spike','{\"window_days\": 5, \"multiple\": 2.5}','neutral','info','No bars',NULL,'user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nINSERT INTO \"alerts\" VALUES(13,1,1,'instrument','price_above','{\"level\": 1.0}','neutral','info','Deleted',NULL,'user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL);\nINSERT INTO \"alerts\" VALUES(14,3,2,'instrument','price_above','{\"level\": 1.0}','neutral','info','Disabled profile',NULL,'user','app','active',NULL,NULL,NULL,NULL,NULL,NULL,'2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL);\nCREATE TABLE inv_instrument_aliases (\n\tid INTEGER NOT NULL, \n\tinstrument_id INTEGER NOT NULL, \n\tnamespace VARCHAR NOT NULL, \n\tvalue VARCHAR NOT NULL, \n\tguessed BOOLEAN NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_inv_alias_namespace_value UNIQUE (namespace, value), \n\tFOREIGN KEY(instrument_id) REFERENCES inv_instruments (id)\n);\nCREATE TABLE inv_instruments (\n\tid INTEGER NOT NULL, \n\tname VARCHAR NOT NULL, \n\tcurrency VARCHAR NOT NULL, \n\tasset_class VARCHAR NOT NULL, \n\tsymbol VARCHAR, \n\tisin VARCHAR, \n\tmic VARCHAR, \n\tregion VARCHAR, \n\tsector VARCHAR, \n\ttags JSON NOT NULL, \n\tneeds_classification BOOLEAN NOT NULL, \n\tvaluation_mode VARCHAR NOT NULL, \n\tstatus VARCHAR NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n);\nINSERT INTO \"inv_instruments\" VALUES(1,'Synthetic asset 1','PLN','equity',NULL,NULL,NULL,NULL,NULL,'[]',0,'market','active','2026-10-01 10:00:00.000000','2026-10-01 10:00:00.000000');\nINSERT INTO \"inv_instruments\" VALUES(2,'Synthetic asset 2','PLN','equity',NULL,NULL,NULL,NULL,NULL,'[]',0,'market','active','2026-10-01 10:00:00.000000','2026-10-01 10:00:00.000000');\nCREATE TABLE inv_price_bars (\n\tid INTEGER NOT NULL, \n\tinstrument_id INTEGER NOT NULL, \n\tdate DATE NOT NULL, \n\tclose VARCHAR NOT NULL, \n\topen VARCHAR, \n\thigh VARCHAR, \n\tlow VARCHAR, \n\tvolume INTEGER, \n\tcurrency VARCHAR, \n\tsource VARCHAR NOT NULL, \n\tfetched_at DATETIME, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_inv_price_bar UNIQUE (instrument_id, date), \n\tFOREIGN KEY(instrument_id) REFERENCES inv_instruments (id)\n);\nINSERT INTO \"inv_price_bars\" VALUES(1,1,'2026-09-20','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(2,1,'2026-09-21','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(3,1,'2026-09-22','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(4,1,'2026-09-23','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(5,1,'2026-09-24','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(6,1,'2026-09-25','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(7,1,'2026-09-26','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(8,1,'2026-09-27','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(9,1,'2026-09-28','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(10,1,'2026-09-29','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(11,1,'2026-09-30','100',NULL,NULL,NULL,100,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(12,1,'2026-10-01','112',NULL,NULL,NULL,400,'PLN','synthetic',NULL);\nINSERT INTO \"inv_price_bars\" VALUES(13,1,'2026-10-02','999',NULL,NULL,NULL,999,'PLN','synthetic',NULL);\nCREATE TABLE inv_profile_instruments (\n\tid INTEGER NOT NULL, \n\tprofile_id INTEGER NOT NULL, \n\tinstrument_id INTEGER NOT NULL, \n\tname VARCHAR, \n\tasset_class VARCHAR, \n\ttags JSON, \n\tregion VARCHAR, \n\tsector VARCHAR, \n\tvaluation_mode VARCHAR, \n\tstatus VARCHAR, \n\tneeds_classification BOOLEAN, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\t\"plan\" VARCHAR, \n\tplan_at DATETIME, \n\tplan_reason VARCHAR, \n\tsegment VARCHAR, \n\tsegment_by VARCHAR, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_inv_profile_instrument UNIQUE (profile_id, instrument_id), \n\tCONSTRAINT fk_inv_profile_instruments_profile_id FOREIGN KEY(profile_id) REFERENCES profiles (id), \n\tFOREIGN KEY(instrument_id) REFERENCES inv_instruments (id)\n);\nINSERT INTO \"inv_profile_instruments\" VALUES(1,1,1,'Synthetic override',NULL,'null',NULL,NULL,NULL,NULL,NULL,'2026-10-01 10:00:00.000000','2026-10-01 10:00:00.000000',NULL,NULL,NULL,NULL,NULL);\nCREATE TABLE inv_signals (\n\tid INTEGER NOT NULL, \n\tprofile_id INTEGER NOT NULL, \n\trule_id VARCHAR NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tdedup_key VARCHAR NOT NULL, \n\tseverity VARCHAR NOT NULL, \n\tstatus VARCHAR NOT NULL, \n\tmessage VARCHAR NOT NULL, \n\tinstrument_id INTEGER, \n\taccount_id INTEGER, \n\tpayload JSON NOT NULL, \n\tfirst_seen_at DATETIME NOT NULL, \n\tlast_seen_at DATETIME NOT NULL, \n\tcreated_run_id INTEGER, \n\tlast_run_id INTEGER, \n\tacknowledged_at DATETIME, \n\tclosed_at DATETIME, \n\tpolarity VARCHAR DEFAULT 'neutral' NOT NULL, \n\tsnoozed_until DATETIME, \n\tPRIMARY KEY (id), \n\tCONSTRAINT fk_inv_signals_profile_id FOREIGN KEY(profile_id) REFERENCES profiles (id), \n\tFOREIGN KEY(instrument_id) REFERENCES inv_instruments (id), \n\tFOREIGN KEY(account_id) REFERENCES accounts (id), \n\tFOREIGN KEY(created_run_id) REFERENCES inv_rule_runs (id), \n\tFOREIGN KEY(last_run_id) REFERENCES inv_rule_runs (id)\n);\nINSERT INTO \"inv_signals\" VALUES(1,1,'alert:1','alert:price_above','alert:1','info','acknowledged','Synthetic price: detail',1,NULL,'{\"title\": \"Synthetic price\", \"close\": \"112.5\", \"level\": \"90\", \"currency\": \"PLN\", \"price_date\": \"2026-10-01\"}','2026-09-01 10:00:00.000000','2026-09-01 10:00:00.000000',NULL,NULL,NULL,NULL,'neutral',NULL);\nCREATE TABLE profile_modules (\n\tprofile_id INTEGER NOT NULL, \n\tmodule_id VARCHAR NOT NULL, \n\tenabled BOOLEAN NOT NULL, \n\tenabled_at DATETIME NOT NULL, \n\tPRIMARY KEY (profile_id, module_id), \n\tFOREIGN KEY(profile_id) REFERENCES profiles (id)\n);\nINSERT INTO \"profile_modules\" VALUES(1,'investments',1,'2026-09-01 10:00:00.000000');\nINSERT INTO \"profile_modules\" VALUES(2,'investments',1,'2026-09-01 10:00:00.000000');\nINSERT INTO \"profile_modules\" VALUES(3,'investments',0,'2026-09-01 10:00:00.000000');\nCREATE TABLE profiles (\n\tid INTEGER NOT NULL, \n\tslug VARCHAR NOT NULL, \n\tname VARCHAR NOT NULL, \n\tbase_currency VARCHAR NOT NULL, \n\tmcp_privacy VARCHAR NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n);\nINSERT INTO \"profiles\" VALUES(1,'synthetic-1','Synthetic 1','PLN','strict','2026-09-01 10:00:00.000000');\nINSERT INTO \"profiles\" VALUES(2,'synthetic-2','Synthetic 2','PLN','strict','2026-09-01 10:00:00.000000');\nINSERT INTO \"profiles\" VALUES(3,'synthetic-3','Synthetic 3','PLN','strict','2026-09-01 10:00:00.000000');\nPRAGMA foreign_keys = ON;"
+}

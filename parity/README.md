@@ -78,7 +78,7 @@ and hashes only; tracebacks go to `errors.log` next to the outputs.
 | `assets.depreciation` | `modules/assets/depreciation.py`, the assets manual rows |
 | `investments.overview`, `.positions`, `.position_detail`, `.signals`, `.alerts`, `.watchlist`, `.strategy_status`, `.accounts`, `.review_digest` | `modules/investments/service/views.py` |
 | `investments.valuation`, `investments.allocation` | `portfolio/valuation.py`, `portfolio/allocation.py` via `service/portfolio.build` (the pure pipeline; TS scope S13) |
-| `investments.allocation_view` | `service/views.allocation_view` on the same state (needs the allocation_drift rule; TS scopes S15b + S22a) |
+| `investments.allocation_view` | `service/views.allocation_view` on the same state (pure allocation_drift is ported; remaining view composition is S22a) |
 | `investments.performance` | `performance/service.py` (every range + attribution) |
 | `investments.rules` | `rules/engine.py` outcomes at `as_of` (pure, nothing persisted) |
 | `investments.strategy_loader` | `strategy/loader.py` on each profile's files and the bundled templates |
@@ -88,6 +88,12 @@ and hashes only; tracebacks go to `errors.log` next to the outputs.
 
 Not covered (recorded in `skipped`): the MCP read tools that take a file path or run connector code
 (`validate_budget_import`, `inspect_export`, `validate_import`, `test_connector`).
+
+Native `investments.signals` and `investments.alerts` producers read the copied Python source through
+typed readers. Signals parity checks the stored view. Alerts parity additionally computes effective
+status and the current evaluator state, and includes the alert catalog. Neither view comparison proves
+command atomicity or lifecycle persistence: separate synthetic engine/lifecycle/store and alert CRUD /
+leader-pass tests exercise those contracts. S22c still owns complete daily scheduling and caller wiring.
 
 ## Known intentional differences
 

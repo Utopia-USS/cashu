@@ -15,6 +15,7 @@ import { produceBudgetTransfers } from "./budget/transfers.ts";
 import { produceNetworth } from "./core/networth.ts";
 import { produceNetworthSeries } from "./core/networthSeries.ts";
 import { produceOverview } from "./core/overview.ts";
+import { produceAlerts } from "./investments/alerts.ts";
 import { produceImportPlan } from "./investments/importPlan.ts";
 import { producePerformance } from "./investments/performance.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
@@ -171,6 +172,12 @@ export const PRODUCERS: readonly Producer[] = [
     datasets: ["demo", "lab"],
     inputs: [],
     produce: produceSignals,
+  },
+  {
+    check: "investments.alerts",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceAlerts,
   },
   {
     check: "investments.import_plan",

@@ -86,8 +86,8 @@ const PARENTS: Readonly<Record<string, string>> = {
   transactions: "inv_transactions",
 };
 
-function tableFor(field: string, parent: string): string | undefined {
-  if (field === "id") return PARENTS[parent] ?? "inv_signals";
+function tableFor(field: string, parent: string, bareIdTable: string): string | undefined {
+  if (field === "id") return PARENTS[parent] ?? bareIdTable;
   if (FIELDS[field]) return FIELDS[field];
   for (const suffix of ["instrument_id", "signal_id", "account_id", "alert_id", "note_id"]) {
     if (field.endsWith(`_${suffix}`) || field.endsWith(`_${suffix}s`)) return FIELDS[suffix];
@@ -119,12 +119,14 @@ export function canonicalSignalValue(
   db: Pick<PythonDb, "keys">,
   field = "",
   parent = "",
+  bareIdTable = "inv_signals",
 ): OutValue {
-  if (Array.isArray(value)) return value.map((v) => canonicalSignalValue(v, db, field, parent));
+  if (Array.isArray(value))
+    return value.map((v) => canonicalSignalValue(v, db, field, parent, bareIdTable));
   if (field === "id" || field.endsWith("_id") || field.endsWith("_ids")) {
     const id = rowId(value);
     if (id !== null) {
-      const table = tableFor(field, parent);
+      const table = tableFor(field, parent, bareIdTable);
       if (table === undefined) throw new Error(`unmapped stored signal reference: ${field}`);
       return db.keys.key(table, id);
     }
@@ -139,7 +141,10 @@ export function canonicalSignalValue(
   if (typeof value === "number") return pyFloat(value);
   if (typeof value === "object")
     return Object.fromEntries(
-      Object.entries(value).map(([key, v]) => [key, canonicalSignalValue(v, db, key, field)]),
+      Object.entries(value).map(([key, v]) => [
+        key,
+        canonicalSignalValue(v, db, key, field, bareIdTable),
+      ]),
     );
   throw new Error("unsupported stored signal value");
 }

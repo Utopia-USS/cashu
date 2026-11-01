@@ -54,11 +54,22 @@ export {
   positionConcentrationRule,
 } from "./kinds/positionConcentration.js";
 export {
+  bucketNamed,
+  bucketWord,
   decimalText,
   EMPTY_INSTRUMENT_FILTER,
+  formatDecimal,
+  formatPct,
   INSTRUMENT_FILTER_KEYS,
   type InstrumentFilter,
+  InstrumentPosition,
+  noAllocationProblem,
+  portfolioDataProblem,
+  RATIO_EPSILON,
   readInstrumentFilter,
+  shortSeriesProblem,
+  staleCloseProblem,
+  unclassifiedProblem,
 } from "./kinds/support.js";
 export { TaggedWeightParams, taggedWeightRule } from "./kinds/taggedWeight.js";
 export {

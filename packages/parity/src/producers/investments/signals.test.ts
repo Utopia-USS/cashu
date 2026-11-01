@@ -32,6 +32,22 @@ it("reads native stored state anew, without oracle-result inputs", () => {
 describe("legacy signal canonical references", () => {
   const keys = { key: (table: string, value: number | bigint) => `${table}:${value}` };
   const ids = { keys } as Parameters<typeof canonicalSignalValue>[1];
+  it("uses the caller's bare-id fallback while preserving known parent and field mappings", () => {
+    const value = { params: { id: 7n }, signal: { id: 1n }, instrument_id: 2n };
+    expect(JSON.parse(dumps(canonicalSignalValue(value, ids, "", "", "alerts")))).toEqual({
+      params: { id: "alerts:7" },
+      signal: { id: "inv_signals:1" },
+      instrument_id: "inv_instruments:2",
+    });
+    expect(JSON.parse(dumps(canonicalSignalValue(value, ids)))).toEqual({
+      params: { id: "inv_signals:7" },
+      signal: { id: "inv_signals:1" },
+      instrument_id: "inv_instruments:2",
+    });
+    expect(() => canonicalSignalValue({ unknown_id: 1n }, ids, "", "", "alerts")).toThrow(
+      "unmapped stored signal reference",
+    );
+  });
   it("maps nested links and suffix references while retaining opaque keys and float types", () => {
     const value = canonicalSignalValue(
       {

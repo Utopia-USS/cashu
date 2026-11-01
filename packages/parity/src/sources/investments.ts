@@ -24,8 +24,8 @@ type Param = string | number | bigint | null;
 type Query = (sql: string, ...params: Param[]) => Row[];
 
 /** JSON keeps Python integers distinct from floats for canonical stored payload serialization. */
-function payload(row: Row): Readonly<Record<string, unknown>> | null {
-  const raw = textOrNull(row, "payload");
+function payload(row: Row, column = "payload"): Readonly<Record<string, unknown>> | null {
+  const raw = textOrNull(row, column);
   if (raw === null) return null;
   const value = parsePyJson(raw, (literal, integer) =>
     integer ? BigInt(literal) : Number(literal),
@@ -72,6 +72,30 @@ export interface InvSignalDecisionRow {
   readonly currency: string | null;
   readonly reason: string | null;
   readonly createdAt: string;
+}
+
+export interface InvAlertRow {
+  readonly id: number;
+  readonly instrumentId: number | null;
+  readonly scope: string;
+  readonly kind: string;
+  readonly params: Readonly<Record<string, unknown>>;
+  readonly polarity: string;
+  readonly severity: string;
+  readonly title: string;
+  readonly note: string | null;
+  readonly tag: string | null;
+  readonly source: string;
+  readonly createdBy: string;
+  readonly status: string;
+  readonly cooldownDays: number | null;
+  readonly expiresAt: string | null;
+  readonly snoozedUntil: string | null;
+  readonly lastTriggeredAt: string | null;
+  readonly lastCheckedAt: string | null;
+  readonly lastValue: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 /** Account type id owned by the investments module (`store/transactions.py:BROKERAGE`). */
@@ -212,6 +236,39 @@ export class InvestmentsReader {
   constructor(query: Query, accounts: (profileId: number) => readonly ProfileAccount[]) {
     this.query = query;
     this.accounts = accounts;
+  }
+
+  /** Legacy stored status is retained here; production effective-status queries are separate. */
+  storedAlerts(profileId: number): InvAlertRow[] {
+    return this.query(
+      `SELECT id, instrument_id, scope, kind, params, polarity, severity, title,
+      note, tag, source, created_by, status, cooldown_days, expires_at, snoozed_until,
+      last_triggered_at, last_checked_at, last_value, created_at, updated_at FROM alerts
+      WHERE profile_id = ? AND deleted_at IS NULL ORDER BY id`,
+      profileId,
+    ).map((r) => ({
+      id: int(r, "id"),
+      instrumentId: intOrNull(r, "instrument_id"),
+      scope: text(r, "scope"),
+      kind: text(r, "kind"),
+      params: payload(r, "params") ?? {},
+      polarity: text(r, "polarity"),
+      severity: text(r, "severity"),
+      title: text(r, "title"),
+      note: textOrNull(r, "note"),
+      tag: textOrNull(r, "tag"),
+      source: text(r, "source"),
+      createdBy: text(r, "created_by"),
+      status: text(r, "status"),
+      cooldownDays: intOrNull(r, "cooldown_days"),
+      expiresAt: textOrNull(r, "expires_at"),
+      snoozedUntil: textOrNull(r, "snoozed_until"),
+      lastTriggeredAt: textOrNull(r, "last_triggered_at"),
+      lastCheckedAt: textOrNull(r, "last_checked_at"),
+      lastValue: textOrNull(r, "last_value"),
+      createdAt: text(r, "created_at"),
+      updatedAt: text(r, "updated_at"),
+    }));
   }
 
   /** Stored signals in source-id descending order, never lifecycle evaluation results. */

@@ -1,0 +1,6068 @@
+[
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": null,
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Teza spełniona, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": null,
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": null,
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": null,
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Teza spełniona, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "buy",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Rekomendacja: dokup, teza osłabiona",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "info"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Rekomendacja: dokup, teza osłabiona",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "info"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Rekomendacja: dokup, teza podważona",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "action"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Rekomendacja: dokup, teza podważona",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "action"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy_asap",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Teza spełniona, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "buy_asap",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy_asap",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Rekomendacja: dokup asap, teza osłabiona",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy_asap",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "info"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Rekomendacja: dokup asap, teza osłabiona",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy_asap",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "info"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy_asap",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Rekomendacja: dokup asap, teza podważona",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy_asap",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "action"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Rekomendacja: dokup asap, teza podważona",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy_asap",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "action"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "hold",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Teza spełniona, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "hold",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "hold",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "hold",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "Brak aktualnej ceny: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "Brak aktualnej ceny: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": -1.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "Brak aktualnej ceny: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": -1.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": -1.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": -1.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 0.999999999
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "Brak aktualnej ceny: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 0.999999999
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 0.999999999
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 0.999999999
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "Brak aktualnej ceny: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.0
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.005
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "Brak aktualnej ceny: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.005
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.005
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.0
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.005
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.015
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "Brak aktualnej ceny: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.015
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.015
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.01
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.015
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 2.675
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "Brak aktualnej ceny: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 2.675
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 2.675
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 2.67
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 2.675
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Teza spełniona, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "buy",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": null
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Teza spełniona, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "buy",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 2.0
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 2.0
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100 % od kosztu, brak planu wyjścia",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": "SYN",
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": "SYN",
+      "unrealized": 1.25
+    },
+    "lang": "pl"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": null,
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Thesis fulfilled, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": null,
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": null,
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": null,
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": null,
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Thesis fulfilled, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "buy",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Recommendation: buy more, thesis weakened",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "info"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Recommendation: buy more, thesis weakened",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "info"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Recommendation: buy more, thesis invalidated",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "action"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Recommendation: buy more, thesis invalidated",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "action"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy_asap",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Thesis fulfilled, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "buy_asap",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy_asap",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Recommendation: buy more asap, thesis weakened",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy_asap",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "info"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Recommendation: buy more asap, thesis weakened",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "buy_asap",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "info"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy_asap",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Recommendation: buy more asap, thesis invalidated",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy_asap",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "action"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_vs_thesis|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_vs_thesis",
+            "message": "Recommendation: buy more asap, thesis invalidated",
+            "payload": {
+              "check": "plan_vs_thesis",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "buy_asap",
+              "symbol": null,
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_vs_thesis",
+            "severity": "action"
+          }
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "hold",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Thesis fulfilled, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "hold",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "weakened",
+              "plan": "hold",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "invalidated",
+              "plan": "hold",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "hold",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "reduce",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "weakened",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "invalidated",
+      "held": false,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "exit_asap",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "No current price: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "No current price: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": -1.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "No current price: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": -1.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": -1.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": -1.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 0.999999999
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "No current price: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 0.999999999
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 0.999999999
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 0.999999999
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "No current price: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.0
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.005
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "No current price: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.005
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.005
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.0
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.005
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.015
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "No current price: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 1.015
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.015
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.01
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 1.015
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 2.675
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Skipped",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "reason": "No current price: Synthetic instrument",
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": 2.675
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_no_exit|i:1",
+          "details": {},
+          "rule_id": "plan:plan_no_exit"
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": true,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 2.675
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": null,
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 2.67
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 2.675
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Thesis fulfilled, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "buy",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": null
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": true,
+      "symbol": null,
+      "unrealized": null
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "Thesis fulfilled, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "fulfilled",
+              "plan": "buy",
+              "symbol": null,
+              "trigger": "fulfilled",
+              "unrealized": 2.0
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "fulfilled",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": null,
+      "unrealized": 2.0
+    },
+    "lang": "en"
+  },
+  {
+    "expected": [
+      {
+        "type": "Fired",
+        "value": {
+          "candidate": {
+            "account_id": null,
+            "dedup_key": "plan:plan_no_exit|i:1",
+            "instrument_id": "1",
+            "kind": "plan:plan_no_exit",
+            "message": "+100% from cost, no exit plan",
+            "payload": {
+              "check": "plan_no_exit",
+              "has_exit_plan": false,
+              "health": "current",
+              "plan": "buy",
+              "symbol": "SYN",
+              "threshold": 1.0,
+              "trigger": "gain",
+              "unrealized": 1.25
+            },
+            "polarity": "negative",
+            "rule_id": "plan:plan_no_exit",
+            "severity": "info"
+          }
+        }
+      },
+      {
+        "type": "NotFired",
+        "value": {
+          "dedup_key": "plan:plan_vs_thesis|i:1",
+          "details": {},
+          "rule_id": "plan:plan_vs_thesis"
+        }
+      }
+    ],
+    "facts": {
+      "has_exit_plan": false,
+      "health": "current",
+      "held": true,
+      "instrument_id": 1,
+      "label": "Synthetic instrument",
+      "plan": "buy",
+      "price_stale": false,
+      "symbol": "SYN",
+      "unrealized": 1.25
+    },
+    "lang": "en"
+  }
+]

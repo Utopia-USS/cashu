@@ -1,4 +1,4 @@
-/** Read-only S16 prerequisite: stored alert facts as stable message code and params. */
+/** Stored alert facts as stable message code and params. */
 
 import { floatRepr } from "../../decimal.js";
 import { pyReprStr } from "../../pyRepr.js";

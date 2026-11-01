@@ -11,6 +11,7 @@ export * from "./domain/index.js";
 export * as market from "./market/index.js";
 export * from "./networth.js";
 export * as performance from "./performance/index.js";
+export * as plan from "./plan/index.js";
 export * from "./portfolio/index.js";
 export * as research from "./research/index.js";
 export * from "./setup.js";

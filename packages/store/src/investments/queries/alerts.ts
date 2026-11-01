@@ -29,6 +29,7 @@ export interface AlertView {
   readonly severity: string;
   readonly title: string;
   readonly note: string | null;
+  readonly tag: string | null;
   readonly source: string;
   readonly createdBy: string;
   /** The effective status at the reader's `now`. */
@@ -55,6 +56,7 @@ interface AlertRow {
   severity: string;
   title: string;
   note: string | null;
+  tag: string | null;
   source: string;
   created_by: string;
   status: StoredAlertStatus;
@@ -70,7 +72,7 @@ interface AlertRow {
 }
 
 const ALERT_SQL = `SELECT a.gid, ${gidOf("a.instrument_id")} AS instrument, a.scope, a.kind, a.params,
-  a.polarity, a.severity, a.title, a.note, a.source, a.created_by, a.status, a.cooldown_days,
+  a.polarity, a.severity, a.title, a.note, a.tag, a.source, a.created_by, a.status, a.cooldown_days,
   a.expires_at, a.snoozed_until, a.last_triggered_at, a.last_checked_at, a.last_value, a.created_at,
   a.updated_at, a.deleted_at FROM alerts a`;
 
@@ -86,6 +88,7 @@ function toAlert(r: AlertRow, now: DateTime | string): AlertView {
     severity: r.severity,
     title: r.title,
     note: r.note,
+    tag: r.tag,
     source: r.source,
     createdBy: r.created_by,
     status: effective.status,
