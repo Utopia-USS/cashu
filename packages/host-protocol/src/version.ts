@@ -8,8 +8,11 @@ export interface ProtocolVersion {
   readonly minor: number;
 }
 
-/** The version this build speaks. Bump `major` only for a change old peers cannot ignore. */
-export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 0 };
+/**
+ * The version this build speaks. Bump `major` only for a change old peers cannot ignore.
+ * 1.1: optional `admin.status` fields (safeMode, vaults, pendingWrites) and `admin.handover`.
+ */
+export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 1 };
 
 export const protocolVersionSchema = z.object({
   major: z.number().int().min(0).max(65_535),

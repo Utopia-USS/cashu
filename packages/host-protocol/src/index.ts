@@ -4,6 +4,8 @@
 // The store channel v2 (JSON value codec, idempotency keys) is the `./store` subpath.
 export {
   type AdminStatus,
+  adminHandoverParamsSchema,
+  adminHandoverResultSchema,
   adminStatusParamsSchema,
   adminStatusResultSchema,
   adminStopParamsSchema,
