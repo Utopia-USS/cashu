@@ -6,11 +6,13 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./assets": "./src/assets/index.ts",
     "./budget": "./src/budget/index.ts",
     "./core": "./src/core/index.ts",
     "./investments": "./src/investments/index.ts",
     "./investments/importing": "./src/investments/importing/index.ts",
     "./investments/macro": "./src/investments/macro/index.ts",
+    "./loans": "./src/loans/index.ts",
     "./text": "./src/text.ts"
   },
   "scripts": {

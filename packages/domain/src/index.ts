@@ -1,5 +1,7 @@
 export const PACKAGE_NAME = "@cashu/domain";
 
+/** Assets module (namespaced like investments). */
+export * as assets from "./assets/index.js";
 /** Budget module (namespaced like investments). */
 export * as budget from "./budget/index.js";
 export * from "./casefold.js";
@@ -12,6 +14,8 @@ export * from "./difflib.js";
 export * from "./iban.js";
 /** Investments module (namespaced: its names would collide with other modules', e.g. `Transaction`). */
 export * as investments from "./investments/index.js";
+/** Loans module (namespaced like investments). */
+export * as loans from "./loans/index.js";
 export * from "./money.js";
 export * from "./pycsv.js";
 export * from "./pyJson.js";
