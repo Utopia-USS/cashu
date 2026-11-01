@@ -569,6 +569,53 @@ export class Store {
   }
 
   // ------------------------------------------------------------------------------------------- //
+  // Log reads of the sync bridge (S31a spec 5.4)
+
+  /** The HLC of each of `eids` held in the log (any state); absent eids are missing from the map. */
+  eventHlcs(eids: readonly string[]): ReadonlyMap<string, string> {
+    const out = new Map<string, string>();
+    const stmt = this.#stmts.get("SELECT hlc FROM event_log WHERE eid = ?");
+    for (const eid of eids) {
+      const row = stmt.get<{ hlc: string }>(eid);
+      if (row !== undefined) out.set(eid, row.hlc);
+    }
+    return out;
+  }
+
+  /**
+   * Logical envelopes (`fromWire` shape, the vault re-attached) of the log rows after `afterSeq` in
+   * insertion order whose writing device is not in `exclude`, at most `limit`; `last` is the
+   * `(seq, eid)` of the last row scanned (excluded rows included), so a cursor moves past them too.
+   * A cursor whose `seq` no longer carries its eid (the store was rebuilt) is the caller's to detect
+   * with `eidAt`.
+   */
+  foreignEvents(
+    afterSeq: number,
+    exclude: ReadonlySet<string>,
+    limit: number,
+  ): {
+    readonly events: readonly Readonly<Record<string, unknown>>[];
+    readonly last: { readonly seq: number; readonly eid: string } | undefined;
+  } {
+    const rows = this.#stmts
+      .get("SELECT * FROM event_log WHERE seq > ? ORDER BY seq LIMIT ?")
+      .all<LogRow>(afterSeq, Math.max(1, limit));
+    const events: Readonly<Record<string, unknown>>[] = [];
+    for (const row of rows) {
+      if (exclude.has(deviceOf(row.hlc))) continue;
+      events.push(JSON.parse(storedBody(row, this.vault)) as Record<string, unknown>);
+    }
+    const tail = rows.at(-1);
+    return { events, last: tail === undefined ? undefined : { seq: tail.seq, eid: tail.eid } };
+  }
+
+  /** The eid of the log row at `seq`, undefined when there is none. */
+  eidAt(seq: number): string | undefined {
+    return this.#stmts.get("SELECT eid FROM event_log WHERE seq = ?").get<{ eid: string }>(seq)
+      ?.eid;
+  }
+
+  // ------------------------------------------------------------------------------------------- //
   // Reading and subscriptions
 
   /** Run a read-only query on the view. */

@@ -80,4 +80,64 @@ describe("Store as EventSink", () => {
     await a.rebuild();
     expect(viewHash(sa).hash).toBe(before);
   });
+
+  it("reads the HLCs of held eids and the other devices' events after a cursor (S31a 5.4)", async () => {
+    const remote = new MemoryTransport();
+    const clock = new ManualClock(T0);
+    const sa = openTestStore();
+    const sb = openTestStore();
+    const a = await device(A, remote, sa, clock);
+    const b = await device(B, remote, sb, clock);
+    const own = testUlid("01JE", 1);
+    const foreign = testUlid("01JE", 2);
+    const written = await a.write([
+      {
+        t: "account.opened",
+        v: 1,
+        i: own,
+        g: ACC,
+        a: at(T0),
+        d: {
+          bank: "mbank",
+          externalId: null,
+          iban: null,
+          currency: "PLN",
+          type: "checking",
+          name: "Konto",
+          keys: [],
+        },
+      },
+    ]);
+    clock.advance(10);
+    await b.write([
+      {
+        t: "categoryRule.set",
+        v: 1,
+        i: foreign,
+        g: RULE,
+        a: at(T0 + 10),
+        d: { merchantKey: "SKLEP TESTOWY", category: "groceries", source: "manual", locked: true },
+      },
+    ]);
+    await b.sync();
+    await a.sync();
+    const missing = testUlid("01JE", 3);
+    const hlcs = sa.eventHlcs([own, foreign, missing]);
+    expect(hlcs.get(own)).toBe(written.first);
+    expect(hlcs.get(foreign)?.endsWith(B)).toBe(true);
+    expect(hlcs.has(missing)).toBe(false);
+
+    const page = sa.foreignEvents(0, new Set([A]), 10);
+    expect(page.events.map((e) => [e.eid, e.type, e.vault, e.device])).toEqual([
+      [foreign, "categoryRule.set", sa.vault, B],
+    ]);
+    expect(page.last).toBeDefined();
+    const last = page.last ?? { seq: 0, eid: "" };
+    expect(sa.eidAt(last.seq)).toBe(last.eid);
+    expect(sa.foreignEvents(last.seq, new Set([A]), 10)).toEqual({ events: [], last: undefined });
+    // Paging: one row per page still moves the cursor past an excluded row.
+    const first = sa.foreignEvents(0, new Set([A]), 1);
+    const second = sa.foreignEvents(first.last?.seq ?? 0, new Set([A]), 1);
+    expect([...first.events, ...second.events].map((e) => e.eid)).toEqual([foreign]);
+  });
 });
