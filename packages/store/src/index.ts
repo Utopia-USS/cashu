@@ -42,6 +42,13 @@ export {
 } from "./core/commands.js";
 export { coreModule } from "./core/index.js";
 export {
+  assertHmacConformance,
+  HMAC_VECTORS,
+  HmacConformanceError,
+  type HmacSha256,
+  nobleHmacSha256,
+} from "./crypto/hmac.js";
+export {
   CONTRIBUTIONS,
   type Contributions,
   type DeriveContext,

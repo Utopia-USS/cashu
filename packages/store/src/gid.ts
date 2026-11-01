@@ -1,9 +1,8 @@
 // Global ids (spec: gid.md). Keyed deterministic gids are UUIDv8 over HMAC-SHA256 with the per-vault
 // salt; the salt is passed in by the caller (keyring entry next to the vault data key, S27) and is
 // never derived from anything public. ULIDs are minted for created entities.
-import { hmac } from "@noble/hashes/hmac.js";
-import { sha256 } from "@noble/hashes/sha2.js";
 import { randomBytes } from "@noble/hashes/utils.js";
+import { type HmacSha256, nobleHmacSha256 } from "./crypto/hmac.js";
 import {
   detMessage,
   GID_TABLES,
@@ -39,24 +38,25 @@ const GID_TABLE_SET: ReadonlySet<string> = new Set(GID_TABLES);
 
 /**
  * DET gids of one vault (gid.md 3): uuid8(HMAC-SHA256(salt, "cashu.gid.v1/" + table + US + parts)).
- * The keyed HMAC state (the salt's inner and outer pads) is built once and cloned per gid.
+ * The salt is keyed once; `impl` is the HMAC implementation (crypto/hmac.ts: noble by default, a
+ * native one injected by the app; both give byte-identical gids).
  */
-export function detGidFor(salt: VaultSalt): DetGid {
-  const keyed = hmac.create(sha256, salt.bytes);
+export function detGidFor(salt: VaultSalt, impl: HmacSha256 = nobleHmacSha256): DetGid {
+  const mac = impl.keyed(salt.bytes);
   return (table, parts) => {
     if (!GID_TABLE_SET.has(table)) throw new RangeError(`unknown gid domain: ${table}`);
-    return uuid8FromDigest(
-      keyed
-        .clone()
-        .update(utf8.encode(detMessage(table, parts)))
-        .digest(),
-    );
+    return uuid8FromDigest(mac(utf8.encode(detMessage(table, parts))));
   };
 }
 
 /** One DET gid (a one-off caller; folds and commands hold a `detGidFor` function). */
-export function detGid(salt: VaultSalt, table: GidTable, parts: readonly string[]): string {
-  return detGidFor(salt)(table, parts);
+export function detGid(
+  salt: VaultSalt,
+  table: GidTable,
+  parts: readonly string[],
+  impl?: HmacSha256,
+): string {
+  return detGidFor(salt, impl)(table, parts);
 }
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";

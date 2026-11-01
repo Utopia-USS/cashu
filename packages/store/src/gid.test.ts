@@ -1,7 +1,9 @@
 // gid.md section 8 vectors (produced with Python hmac / hashlib) against the runtime HMAC.
 import { describe, expect, it } from "vitest";
+import { nobleHmacSha256 } from "./crypto/hmac.js";
 import { ULID_RE, UUID8_RE } from "./events/v1/primitives.js";
 import { detGid, detGidFor, mintUlid, newVaultSalt, vaultSalt } from "./gid.js";
+import { nodeHmacSha256 } from "./testing/node-hmac.js";
 import { rng } from "./testing/random.js";
 import { TEST_SALT } from "./testing/store.js";
 
@@ -43,6 +45,9 @@ describe("keyed DET gids", () => {
     const g = detGid(TEST_SALT, table, parts);
     expect(g).toBe(expected);
     expect(g).toMatch(UUID8_RE);
+    // Byte-identical under the injected native HMAC (S29c-B3, D11).
+    expect(detGid(TEST_SALT, table, parts, nodeHmacSha256)).toBe(expected);
+    expect(detGid(TEST_SALT, table, parts, nobleHmacSha256)).toBe(expected);
   });
 
   it("depends on the salt: another vault gets unrelated gids", () => {

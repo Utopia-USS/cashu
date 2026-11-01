@@ -16,6 +16,7 @@ import type {
   WireEvent as SyncWireEvent,
 } from "@cashu/sync";
 import { canonicalJson, jsonEqual } from "./canonical.js";
+import { assertHmacConformance, type HmacSha256 } from "./crypto/hmac.js";
 import { encodePayload } from "./engine/compact.js";
 import { StatementCache, TouchedTables, ViewIds, viewSql } from "./engine/context.js";
 import {
@@ -64,6 +65,11 @@ export interface StoreOptions {
    * Called synchronously inside the rebuild transaction; `done` after the commit.
    */
   readonly onRebuild?: RebuildListener;
+  /**
+   * HMAC-SHA256 for DET gids (default @noble/hashes). A native implementation injected by the app
+   * is checked against RFC 4231 at open and refused when it differs (crypto/hmac.ts).
+   */
+  readonly hmac?: HmacSha256;
 }
 
 export interface WireBatch {
@@ -158,7 +164,7 @@ export class Store {
     this.#log = new EventLog(opts.driver);
     this.#ids = new ViewIds(this.#stmts);
     this.#identity = new IdentityService(opts.driver, modules.identityKinds);
-    const det = detGidFor(opts.salt);
+    const det = detGidFor(opts.salt, opts.hmac);
     this.deps = {
       vault: opts.vault,
       log: this.#log,
@@ -226,6 +232,7 @@ export class Store {
   }
 
   static #open(opts: StoreOptions): Store {
+    if (opts.hmac !== undefined) assertHmacConformance(opts.hmac);
     const events = EventRegistry.v1();
     for (const m of opts.modules) for (const d of m.events ?? []) events.define(d);
     const modules = new ModuleRegistry(opts.modules);
