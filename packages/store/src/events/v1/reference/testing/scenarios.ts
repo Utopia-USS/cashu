@@ -443,6 +443,27 @@ scenario(
   );
 }
 
+{
+  // S31c F1: two desktops approved offline; b's approval wins, a's loses and a's write fails.
+  const winner = ev("b", 10, "proposal.approved", "p1", { result: {} });
+  const loser = ev("a", 12, "proposal.approved", "p1", { result: {} });
+  const base = [ev("a", 5, "proposal.created", "p1", { kind: "strategy" }), winner, loser];
+  const failure = (approval: string, wall: number) =>
+    ev("a", wall, "proposal.applyFailed", "p1", { result: {}, approval });
+  scenario(
+    M,
+    "S31c: the losing approver's applyFailed leaves the winning approval standing",
+    [...base, failure(loser.eid, 13)],
+    (v) => expect(v.proposals.p1).toBe("approved"),
+  );
+  scenario(
+    M,
+    "S31c: the winning approval's applyFailed fails the proposal",
+    [...base, failure(winner.eid, 14)],
+    (v) => expect(v.proposals.p1).toBe("failed"),
+  );
+}
+
 const RN1 = "v1.2: row addressing after merges (N1)";
 scenario(
   RN1,

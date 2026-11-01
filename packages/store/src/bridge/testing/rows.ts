@@ -47,8 +47,18 @@ export function vaultInput(
   current: () => CurrentRows = () => {
     throw new Error("this test reads no live rows");
   },
+  fieldClock: VaultInput["fieldClock"] = () => undefined,
 ): VaultInput {
-  return { ordinal: 0, profileId: 1, vault: VAULT, salt: SALT, syncIds, current, files: NO_FILES };
+  return {
+    ordinal: 0,
+    profileId: 1,
+    vault: VAULT,
+    salt: SALT,
+    syncIds,
+    current,
+    files: NO_FILES,
+    fieldClock,
+  };
 }
 
 /** Deterministic ports: ULIDs from a counter, leader unless told otherwise. */

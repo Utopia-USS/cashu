@@ -16,6 +16,7 @@ import { mapConnectorBinding, mapProposal, mapReview } from "../../genesis/map/a
 import { type EventDraft, event, type MapContext } from "../../genesis/map/context.js";
 import type { ConnectorBindingRow, ProposalRow, ReviewRow } from "../../genesis/rows.js";
 import {
+  APPROVAL_OF_ROW,
   anyChanged,
   BridgeBlock,
   carried,
@@ -94,8 +95,10 @@ function proposalUpdate(c: RowChange<ProposalRow>, ctx: MapContext): readonly Ev
   if (c.pre?.status === "approved" && post.status === "failed") {
     // The approved change could not be completed (Python `_finish`): the execution result, not a
     // second decision (S31c); it revokes the approval's caused side effects (events.md 6.6).
+    // `approval`: the planner names the approval event this failure reports (APPROVAL_OF_ROW).
     const failed = pick(PROPOSALS, snapshot, "proposal.failed");
-    return [derived(failed, "proposal.applyFailed", { result: failed.data.result })];
+    const data = { result: failed.data.result, approval: APPROVAL_OF_ROW };
+    return [derived(failed, "proposal.applyFailed", data)];
   }
   const terminal = TERMINAL[post.status];
   if (terminal !== undefined) return [pick(PROPOSALS, snapshot, terminal)];

@@ -52,6 +52,13 @@ export interface TableBridge<R = never> {
   readonly explicitEvents?: Partial<Record<"merge" | "undo" | "leg_delete", readonly EventType[]>>;
 }
 
+/**
+ * Placeholder of `proposal.applyFailed.approval` in a draft: the planner fills in the eid of the
+ * approval event of the same proposal (shipped earlier in the plan, else Python's `sync_clock` of
+ * the row's `status`, which the approval's ack wrote), or blocks.
+ */
+export const APPROVAL_OF_ROW = "approval-of-row";
+
 /** A row that cannot ship: the loop stops on it (D4); `reason` names the table, never a value. */
 export class BridgeBlock extends Error {
   readonly reason: string;

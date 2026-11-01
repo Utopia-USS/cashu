@@ -97,7 +97,7 @@ function applied(evs: readonly RefEvent[]): RefEvent[] {
     if (decided.has(e.gid)) losers.add(e.eid);
     else decided.add(e.gid);
   }
-  // Causal revocation (events.md 6.6, S31c): a later `proposal.applyFailed` of the approval's gid.
+  // Causal revocation (events.md 6.6, S31c): a later `proposal.applyFailed` naming the approval.
   const index = new Map(evs.map((e, i) => [e.eid, i]));
   const revoked = (c: RefEvent): boolean =>
     c.type === "proposal.approved" &&
@@ -105,6 +105,7 @@ function applied(evs: readonly RefEvent[]): RefEvent[] {
       (r) =>
         r.type === "proposal.applyFailed" &&
         r.gid === c.gid &&
+        r.data.approval === c.eid &&
         (index.get(r.eid) ?? -1) > (index.get(c.eid) ?? -1),
     );
   const memo = new Map<string, boolean>();

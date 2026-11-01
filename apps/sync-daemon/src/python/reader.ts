@@ -5,7 +5,7 @@
 // daemon never writes Python's schema; writes go through the `cashu` CLI (`cli.ts`).
 import { join } from "node:path";
 import { openNodeSqlite } from "@cashu/node-host";
-import { type SqlDriver } from "@cashu/store";
+import type { SqlDriver } from "@cashu/store";
 import * as bridge from "@cashu/store/bridge";
 import * as genesis from "@cashu/store/genesis";
 import { dataDirFiles } from "./files.js";
@@ -105,6 +105,16 @@ export class PythonReader {
       map.set(`${r.table_name}\u001f${r.local_id}`, r.gid);
     }
     return { gid: (table, localId) => map.get(`${table}\u001f${localId}`) };
+  }
+
+  /** Python `sync_clock` of one field of one row of a profile (the event that last wrote it). */
+  fieldClock(profileId: number): bridge.VaultInput["fieldClock"] {
+    return (table, localId, field) =>
+      this.#db
+        .prepare(
+          "SELECT hlc, eid FROM sync_clock WHERE profile_id = ? AND table_name = ? AND local_id = ? AND field = ?",
+        )
+        .get<{ hlc: string; eid: string }>(profileId, table, localId, field);
   }
 
   /** The live rows of every profile (phase-1 inputs), one snapshot. */

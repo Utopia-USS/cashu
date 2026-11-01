@@ -296,13 +296,14 @@ export class EventLog {
   /** Every non-parked event in fold order, without payloads (full suppression pass). */
   allHeldStates(): {
     eid: string;
+    hlc: string;
     gid: string;
     type: string;
     cause: string | null;
     state: EventState;
   }[] {
     return this.#cached(
-      "SELECT eid, gid, type, cause, state FROM event_log WHERE state != 'parked' ORDER BY hlc, eid",
+      "SELECT eid, hlc, gid, type, cause, state FROM event_log WHERE state != 'parked' ORDER BY hlc, eid",
     ).all();
   }
 

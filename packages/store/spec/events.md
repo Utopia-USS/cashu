@@ -365,12 +365,14 @@ one row, in `(hlc, eid)` order, with the table's normal rule:
 - An event with `cause` = E is applied only if E is held, applied and not an FWW loser. A parked E
   (section 7, including `invalid-gid`) is not applied.
   Suppression is part of the fold: an event arriving later can flip it.
-- Causal revocation (S31c): an event type may revoke the side effects of another type on the same
-  gid (catalog `revokesCausesOf`). An event with `cause` = E is also suppressed when a held revoker
-  of E's type and gid sorts after E; E itself stays applied. `proposal.applyFailed` revokes what
-  `proposal.approved` caused: first-writer-wins decides the DECISION, the execution result after it
-  can still undo the approved change (Python `_finish` undoes the recorded strategy version when the
-  files cannot be written). A revoker carries no `cause`.
+- Causal revocation (S31c): an event type may revoke the side effects of one event of another type
+  (catalog `revokes {cause, field}`). An event with `cause` = E is also suppressed when a held
+  revoker with E's gid names E's eid in `field` and sorts after E; E itself stays applied.
+  `proposal.applyFailed {approval}` revokes what exactly that `proposal.approved` caused:
+  first-writer-wins decides the DECISION, the execution result after it can still undo the approved
+  change (Python `_finish` undoes the recorded strategy version when the files cannot be written). A
+  losing approver's failure names a suppressed approval and changes nothing. A revoker carries no
+  `cause`.
 - An FWW loser MUST NOT have done anything outside the log that the log cannot undo. Therefore:
   - connector fetch cursors live in the log (`connectorBinding.cursorAdvanced`, caused by the
     approval or auto-commit batch, M5): a suppressed approval rolls the cursor back, and the next
@@ -738,11 +740,13 @@ acknowledged:              DERIVED overlay from decisions (6.5)
   source}`; `payload` uses gids and blob refs (`account@`, `blob: {sha256, ext}`, never `account_id` or
   `staged`). `proposal.approved {result}` / `rejected {note|null}` / `failed {result}`: terminal FWW;
   side-effect events in the approval batch carry `cause`. `rejected.note` is the owner's note (Python
-  `result.note`, view `result = {note}`, `{}` without one). `proposal.applyFailed {result}` (S31c):
-  the approved change could not be completed after the decision (Python `approved -> failed`): GUARD,
-  only while the folded status is `approved`, sets `failed` and `result`, keeps `reviewed_at`; not FWW
-  (it follows the decision, it does not compete with it) and it revokes the approval's caused events
-  (6.6), so the strategy version the approval recorded leaves the view as it left Python. Approval is desktop only (D14); for
+  `result.note`, view `result = {note}`, `{}` without one). `proposal.applyFailed {result, approval:
+  eid}` (S31c): the approved change could not be completed after the decision (Python `approved ->
+  failed`); `approval` is the eid of the `proposal.approved` it reports. GUARD: only while that
+  approval is the applied (winning) decision of the row, it sets `failed` and `result` and keeps
+  `reviewed_at`; not FWW (it follows the decision, it does not compete with it) and it revokes that
+  approval's caused events (6.6), so the strategy version the approval recorded leaves the view as it
+  left Python. A failure of a losing approval (two desktops approved offline) changes nothing. Approval is desktop only (D14); for
   `import` and `budget_import` all three terminal types are emitted by the lease holder only (O3, O4).
   `applying` is a device-local lock state.
 - `connectorBinding.set` `{account@, connectorId, params, autoCommit}` (creates or re-creates);

@@ -2,8 +2,9 @@
 // - among the terminal transitions of one row (types with rule FWW) the lowest `(hlc, eid)` wins;
 //   the others are losers;
 // - an event with `cause` = E is applied only if E is held, applied and not a loser, and E is not
-//   revoked: no held revoker of E's type (catalog `revokesCausesOf`) with E's gid sorts after E.
+//   revoked: no held revoker (catalog `revokes`) with E's gid that names E's eid sorts after E.
 // An arriving event can flip earlier decisions either way; the caller re-folds what flipped.
+import type { Revocation } from "../events/v1/catalog.js";
 import type { EventLog, EventState } from "./log.js";
 import { compareOrd, type FoldEvent, ord } from "./types.js";
 
@@ -11,17 +12,26 @@ import { compareOrd, type FoldEvent, ord } from "./types.js";
 export interface SuppressionRules {
   /** Types whose terminal transitions are first-writer-wins. */
   readonly fww: ReadonlySet<string>;
-  /** Revoker type -> the type whose caused events it revokes (same gid, sorting after it). */
-  readonly revokers: ReadonlyMap<string, string>;
+  /** Revoker type -> the cause type it revokes and the payload field naming the cause's eid. */
+  readonly revokers: ReadonlyMap<string, Revocation>;
 }
 
-/** Revoked type -> its revoker types. */
-function revokersOf(rules: SuppressionRules): Map<string, string[]> {
-  const out = new Map<string, string[]>();
-  for (const [revoker, revoked] of rules.revokers) {
-    out.set(revoked, [...(out.get(revoked) ?? []), revoker]);
+/** Revoked (cause) type -> its revoker types with their field. */
+function revokersOf(rules: SuppressionRules): Map<string, { type: string; field: string }[]> {
+  const out = new Map<string, { type: string; field: string }[]>();
+  for (const [type, r] of rules.revokers) {
+    out.set(r.cause, [...(out.get(r.cause) ?? []), { type, field: r.field }]);
   }
   return out;
+}
+
+/** Whether `r` (a revoker of `field`) revokes the cause `c`: same gid, names c's eid, sorts after. */
+function revokes(
+  r: { gid: string; hlc: string; eid: string; data: Readonly<Record<string, unknown>> },
+  field: string,
+  c: { gid: string; hlc: string; eid: string },
+): boolean {
+  return r.gid === c.gid && r.data[field] === c.eid && ord(r) > ord(c);
 }
 
 export interface StateFlip {
@@ -76,7 +86,7 @@ export function updateSuppression(
     // A revoker re-decides the events its revoked event caused: load that event (its caused events
     // follow through `causedBy` on the next round).
     for (const e of [...pending.values()]) {
-      const revoked = rules.revokers.get(e.type);
+      const revoked = rules.revokers.get(e.type)?.cause;
       const key = `${revoked}|${e.gid}`;
       if (revoked === undefined || loadedRevoked.has(key)) continue;
       loadedRevoked.add(key);
@@ -90,15 +100,16 @@ export function updateSuppression(
     queue = next;
   }
 
-  // Revocation: a held revoker of the cause's type and gid that sorts after the cause.
+  // Revocation: a held revoker with the cause's gid, naming the cause's eid, sorting after it.
   const revokedMemo = new Map<string, boolean>();
   const revoked = (c: { type: string; gid: string; hlc: string; eid: string }): boolean => {
-    const types = revokerTypes.get(c.type);
-    if (types === undefined) return false;
+    const kinds = revokerTypes.get(c.type);
+    if (kinds === undefined) return false;
     const known = revokedMemo.get(c.eid);
     if (known !== undefined) return known;
-    const at = ord(c);
-    const out = log.terminalsOf(types, [c.gid]).some((r) => ord(r) > at);
+    const out = kinds.some((k) =>
+      log.terminalsOf([k.type], [c.gid]).some((r) => revokes(r, k.field, c)),
+    );
     revokedMemo.set(c.eid, out);
     return out;
   };
@@ -143,19 +154,22 @@ export function updateSuppression(
 export function recomputeAllSuppression(log: EventLog, rules: SuppressionRules): void {
   const fww = rules.fww;
   const held = log.allHeldStates();
-  // Positions in fold order: the last held revoker per (revoked type, gid).
-  const lastRevoker = new Map<string, number>();
-  held.forEach((e, i) => {
-    const revoked = rules.revokers.get(e.type);
-    if (revoked !== undefined) lastRevoker.set(`${revoked}|${e.gid}`, i);
-  });
-  const position = new Map<string, number>();
-  const kind = new Map<string, string>();
+  // Every held revoker, by (cause type, gid, named cause eid) (they are few: proposal failures).
+  const revokerList = [...rules.revokers.entries()].flatMap(([type, r]) =>
+    log.heldOfTypes([type]).map((e) => ({ e, r })),
+  );
+  const byCause = new Map<string, string[]>();
+  for (const { e, r } of revokerList) {
+    const named = e.data[r.field];
+    if (typeof named !== "string") continue;
+    const key = `${r.cause}|${e.gid}|${named}`;
+    byCause.set(key, [...(byCause.get(key) ?? []), ord(e)]);
+  }
+  const causes = new Map<string, { type: string; gid: string; hlc: string; eid: string }>();
   const decided = new Map<string, EventState>();
   const groupWinner = new Map<string, string>();
-  for (const [i, e] of held.entries()) {
-    position.set(e.eid, i);
-    kind.set(e.eid, `${e.type}|${e.gid}`);
+  for (const e of held) {
+    causes.set(e.eid, e);
     let to: EventState = "applied";
     if (fww.has(e.type)) {
       const w = groupWinner.get(e.gid);
@@ -166,9 +180,10 @@ export function recomputeAllSuppression(log: EventLog, rules: SuppressionRules):
     if (to === "applied" && e.cause !== null && decided.get(e.cause) !== "applied") {
       to = "suppressed";
     }
-    if (to === "applied" && e.cause !== null) {
-      const revoker = lastRevoker.get(kind.get(e.cause) ?? "");
-      if (revoker !== undefined && revoker > (position.get(e.cause) ?? Infinity)) to = "suppressed";
+    const c = e.cause === null ? undefined : causes.get(e.cause);
+    if (to === "applied" && c !== undefined) {
+      const at = ord(c);
+      if ((byCause.get(`${c.type}|${c.gid}|${c.eid}`) ?? []).some((r) => r > at)) to = "suppressed";
     }
     decided.set(e.eid, to);
     if (e.state !== to) log.setState(e.eid, to);

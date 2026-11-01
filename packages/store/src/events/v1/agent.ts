@@ -1,7 +1,7 @@
 // Reviews, proposals and connector bindings payloads (events.md 8.10).
 import { z } from "zod";
 import { empty, payload } from "./helpers.js";
-import { gid, jsonObject, nonEmpty, timestamp } from "./primitives.js";
+import { gid, jsonObject, nonEmpty, timestamp, ulid } from "./primitives.js";
 
 export const PROPOSAL_KINDS = ["strategy", "custom_rule", "import", "budget_import"] as const;
 
@@ -31,11 +31,12 @@ export const agentEvents = {
   "proposal.failed": payload({ result: jsonObject }),
   /**
    * The approved change could not be completed after the decision (Python `_finish`: the strategy
-   * files could not be written, the recorded version is undone): status approved -> failed with
-   * this result (GUARD: only while approved; FWW stays on the decision). It revokes the approval's
-   * caused side effects (events.md 6.6).
+   * files could not be written, the recorded version is undone). `approval` is the eid of the
+   * `proposal.approved` event this failure reports. GUARD: only while that approval is the applied
+   * (winning) decision, status approved -> failed with this result; it revokes exactly that
+   * approval's caused side effects (events.md 6.6). A losing approver's failure changes nothing.
    */
-  "proposal.applyFailed": payload({ result: jsonObject }),
+  "proposal.applyFailed": payload({ result: jsonObject, approval: ulid }),
 
   "connectorBinding.set": payload({
     account: gid,

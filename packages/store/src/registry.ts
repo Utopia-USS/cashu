@@ -15,7 +15,13 @@ import {
   type Materializer,
   type ModuleContributions,
 } from "./engine/types.js";
-import { type EventMeta, type EventType, META, PAYLOADS } from "./events/v1/catalog.js";
+import {
+  type EventMeta,
+  type EventType,
+  META,
+  PAYLOADS,
+  type Revocation,
+} from "./events/v1/catalog.js";
 import type { Read } from "./query.js";
 import { createTableSql, type TableDef } from "./sql/ddl.js";
 import type { Payload, Upcaster } from "./upcast.js";
@@ -113,9 +119,9 @@ export class EventRegistry {
 
   /** FWW types and causal revokers (events.md 6.6): the suppression stage's inputs. */
   suppressionRules(): SuppressionRules {
-    const revokers = new Map<string, string>();
+    const revokers = new Map<string, Revocation>();
     for (const d of this.#defs.values()) {
-      if (d.meta.revokesCausesOf !== undefined) revokers.set(d.type, d.meta.revokesCausesOf);
+      if (d.meta.revokes !== undefined) revokers.set(d.type, d.meta.revokes);
     }
     return { fww: this.fwwTypes(), revokers };
   }

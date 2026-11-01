@@ -115,6 +115,7 @@ def _unified(old: str | None, new: str | None, name: str) -> str:
 
 def _strategy_change(
     profile: Profile,
+    proposal_id: int,
     base: tuple[str | None, str | None],
     yaml_text: str,
     md_text: str | None,
@@ -151,11 +152,15 @@ def _strategy_change(
         replace_files(writes)
 
     def undo(session: Session) -> None:
+        from cashu.core import sync_outbox
         from cashu.modules.investments.models import InvStrategyVersion
 
         for version_id in created:
             row = session.get(InvStrategyVersion, version_id)
             if row is not None:
+                # The sync shipper covers this delete by the proposal's ``proposal.applyFailed``
+                # only when it is this approval's own version (S31c F5): name the proposal.
+                sync_outbox.emit_row(session, row, "undo", fields={"proposal_id": proposal_id})
                 session.delete(row)
         session.flush()
 
@@ -378,7 +383,7 @@ def _strategy_apply(profile: Profile, row: Proposal) -> dict:
     md = p.get("md") if p.get("md") is not None else current_md
     warnings = check_resulting(load_strategy(p.get("yaml") or "", md), before)
     return _strategy_change(
-        profile, (current_yaml, current_md), p["yaml"], p.get("md"), {"warnings": warnings}
+        profile, row.id, (current_yaml, current_md), p["yaml"], p.get("md"), {"warnings": warnings}
     )
 
 
@@ -758,6 +763,7 @@ def _rule_apply(profile: Profile, row: Proposal) -> dict:
     )
     return _strategy_change(
         profile,
+        row.id,
         (current_yaml, current_md),
         merged,
         None,

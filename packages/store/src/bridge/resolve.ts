@@ -50,6 +50,17 @@ export interface VaultInput {
   readonly current: () => CurrentRows;
   /** The Python data dir's side files. */
   readonly files: GenesisFiles;
+  /**
+   * Python `sync_clock` of one synced field of one local row: the event that last wrote it (an
+   * acked bridge event or an applied inbound one), undefined when none (P-A ack clocks).
+   */
+  readonly fieldClock: (table: string, localId: string, field: string) => FieldClock | undefined;
+}
+
+/** The (hlc, eid) of the event that last wrote a Python field. */
+interface FieldClock {
+  readonly hlc: string;
+  readonly eid: string;
 }
 
 /** Ports of the bridge: randomness and the leader question come from outside (no clock here). */

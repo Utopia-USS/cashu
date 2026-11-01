@@ -53,10 +53,19 @@ export interface EventMeta {
   emitter: Emitter;
   /**
    * Causal revocation (events.md 6.6): a held event of this type revokes the side effects caused by
-   * the earlier event of type `revokesCausesOf` with the same gid (they are suppressed); that event
-   * itself stays applied. `proposal.applyFailed` revokes what `proposal.approved` caused.
+   * one event of type `cause` with the same gid, named by eid in the payload field `field`, when it
+   * sorts after it (those effects are suppressed); that event itself stays applied.
+   * `proposal.applyFailed {approval}` revokes what that `proposal.approved` caused.
    */
-  revokesCausesOf?: string;
+  revokes?: Revocation;
+}
+
+/** Which caused events a revoker suppresses (events.md 6.6). */
+export interface Revocation {
+  /** The type of the cause whose effects are revoked. */
+  readonly cause: string;
+  /** The revoker's payload field holding that cause's eid. */
+  readonly field: string;
 }
 
 const m = (
@@ -64,13 +73,13 @@ const m = (
   rule: Rule,
   gid: GidStrategy,
   emitter: Emitter = "any",
-  revokesCausesOf?: string,
+  revokes?: Revocation,
 ): EventMeta => ({
   table,
   rule,
   gid,
   emitter,
-  ...(revokesCausesOf === undefined ? {} : { revokesCausesOf }),
+  ...(revokes === undefined ? {} : { revokes }),
 });
 
 export const PAYLOADS = {
@@ -177,13 +186,10 @@ export const META: Record<EventType, EventMeta> = {
   "proposal.rejected": m("proposals", "FWW", "ULID", "leader-for-imports"),
   "proposal.failed": m("proposals", "FWW", "ULID", "leader-for-imports"),
   // The execution result after an approval (S31c): not FWW (the decision is), GUARD on approved.
-  "proposal.applyFailed": m(
-    "proposals",
-    "GUARD",
-    "ULID",
-    "leader-for-imports",
-    "proposal.approved",
-  ),
+  "proposal.applyFailed": m("proposals", "GUARD", "ULID", "leader-for-imports", {
+    cause: "proposal.approved",
+    field: "approval",
+  }),
   "connectorBinding.set": m("connector_bindings", "LWW-F", "DET"),
   "connectorBinding.removed": m("connector_bindings", "SOFT", "DET"),
   "connectorBinding.cursorAdvanced": m("connector_bindings", "LWW-F", "DET", "leader"),

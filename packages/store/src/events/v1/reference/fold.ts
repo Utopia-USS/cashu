@@ -58,8 +58,10 @@ function ordered(events: readonly RefEvent[]): RefEvent[] {
 // --------------------------------------------------------------------------------------------- //
 
 const PROPOSAL_TERMINALS = new Set(["proposal.approved", "proposal.rejected", "proposal.failed"]);
-/** Causal revocation (S31c): an execution failure after the approval revokes what it caused. */
-const REVOKES: Readonly<Record<string, string>> = { "proposal.applyFailed": "proposal.approved" };
+/** Causal revocation (S31c): an execution failure revokes what the approval it names caused. */
+const REVOKES: Readonly<Record<string, { cause: string; field: string }>> = {
+  "proposal.applyFailed": { cause: "proposal.approved", field: "approval" },
+};
 
 function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
   const present = new Map(evs.map((e) => [e.eid, e]));
@@ -73,12 +75,16 @@ function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
   // `evs` is in fold order: a cause is revoked by a revoker of its type and gid at a later index.
   const index = new Map(evs.map((e, i) => [e.eid, i]));
   const revoked = (c: RefEvent): boolean =>
-    evs.some(
-      (r) =>
-        REVOKES[r.type] === c.type &&
+    evs.some((r) => {
+      const k = REVOKES[r.type];
+      return (
+        k !== undefined &&
+        k.cause === c.type &&
         r.gid === c.gid &&
-        (index.get(r.eid) ?? -1) > (index.get(c.eid) ?? -1),
-    );
+        r.data[k.field] === c.eid &&
+        (index.get(r.eid) ?? -1) > (index.get(c.eid) ?? -1)
+      );
+    });
   const memo = new Map<string, boolean>();
   const applied = (e: RefEvent): boolean => {
     const known = memo.get(e.eid);
@@ -355,6 +361,7 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   >();
   const valuations = new Map<string, string>();
   const proposals = new Map<string, string>();
+  const approvalOf = new Map<string, string>(); // proposal gid -> the eid that approved it
   const bindings = new Map<string, BindingRow>();
   const episodes = new Map<string, SignalEpisode>(); // by episode gid
   const openByKey = new Map<string, string>(); // resolved key -> open episode gid
@@ -685,10 +692,15 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
       case "proposal.approved":
       case "proposal.rejected":
       case "proposal.failed":
-        if (proposals.has(e.gid)) proposals.set(e.gid, e.type.slice("proposal.".length));
+        if (proposals.get(e.gid) === "pending") {
+          proposals.set(e.gid, e.type.slice("proposal.".length));
+          if (e.type === "proposal.approved") approvalOf.set(e.gid, e.eid);
+        }
         break;
-      case "proposal.applyFailed": // GUARD: only after an applied approval
-        if (proposals.get(e.gid) === "approved") proposals.set(e.gid, "failed");
+      case "proposal.applyFailed": // GUARD: only the approval that decided the row
+        if (proposals.get(e.gid) === "approved" && approvalOf.get(e.gid) === d.approval) {
+          proposals.set(e.gid, "failed");
+        }
         break;
 
       case "connectorBinding.set": {

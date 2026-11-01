@@ -25,6 +25,7 @@ EXPLICIT_SITES = {
     ("inv_decisions", "undo"),
     ("reviews", "undo"),
     ("transactions", "leg_delete"),
+    ("inv_strategy_versions", "undo"),  # an approval's own version undone (S31c F5)
 }
 
 

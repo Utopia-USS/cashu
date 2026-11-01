@@ -32,7 +32,7 @@ describe("proposal outcomes and the strategy version an approval caused (S31c)",
     const failed = a.make(
       "proposal.applyFailed",
       proposal,
-      { result: { error_code: "write_failed" } },
+      { result: { error_code: "write_failed" }, approval: approved.eid },
       { wall: 40 },
     );
     const before = a.make("strategy.versionSaved", ulid(1), { sha256: SHA_A }, { wall: 10 });
@@ -41,8 +41,116 @@ describe("proposal outcomes and the strategy version an approval caused (S31c)",
         "SELECT status, result, reviewed_at FROM proposals",
       );
     const rejected = b.make("proposal.rejected", proposal, { note: "nie teraz" }, { wall: 20 });
-    return { before, created, approved, caused, failed, rejected, proposalRow };
+    return { a, b, proposal, before, created, approved, caused, failed, rejected, proposalRow };
   };
+  const versions = (store: Parameters<Parameters<typeof converge>[1]>[0]) =>
+    rows(store, "inv_strategy_versions").map((v) => v.gid);
+  const statusOf = (store: Parameters<Parameters<typeof converge>[1]>[0]) =>
+    store.read<{ status: string }>("SELECT status FROM proposals").map((p) => p.status);
+
+  it("F1 race: the losing approver's write failure leaves the winner's version and status", () => {
+    const { a, b, proposal, before, created } = fixture();
+    // B approves first (hlc 10) and records its version; A approves later (hlc 12, loses FWW),
+    // its own write fails and it reports that failure for ITS approval (hlc 13).
+    const approvedB = b.make(
+      "proposal.approved",
+      proposal,
+      { result: { version: 2 } },
+      { wall: 8 },
+    );
+    const versionB = b.make(
+      "strategy.versionSaved",
+      ulid(3),
+      { sha256: SHA_B },
+      { wall: 9, cause: approvedB.eid },
+    );
+    const approvedA = a.make(
+      "proposal.approved",
+      proposal,
+      { result: { version: 2 } },
+      { wall: 12 },
+    );
+    const failedA = a.make(
+      "proposal.applyFailed",
+      proposal,
+      { result: { error_code: "write_failed" }, approval: approvedA.eid },
+      { wall: 13 },
+    );
+    converge([before, created, approvedB, versionB, approvedA, failedA], (store) => {
+      expect(versions(store)).toEqual([ulid(1), ulid(3)]);
+      expect(statusOf(store)).toEqual(["approved"]);
+    });
+  });
+
+  it("an applyFailed sorting before its approval neither revokes nor fails the proposal", () => {
+    const { a, proposal, before, created, approved, caused } = fixture();
+    const early = a.make(
+      "proposal.applyFailed",
+      proposal,
+      { result: { error_code: "write_failed" }, approval: approved.eid },
+      { wall: 20 },
+    );
+    converge([before, created, early, approved, caused], (store) => {
+      expect(versions(store)).toEqual([ulid(1), ulid(2)]);
+      expect(statusOf(store)).toEqual(["approved"]);
+    });
+  });
+
+  it("an applyFailed revokes only its own proposal's approval", () => {
+    const { a, before, created, approved, caused } = fixture();
+    const other = ulid(60);
+    const otherCreated = a.make(
+      "proposal.created",
+      other,
+      { kind: "strategy", summary: "s", reason: null, payload: {}, source: "mcp" },
+      { wall: 6 },
+    );
+    const otherApproved = a.make("proposal.approved", other, { result: {} }, { wall: 50 });
+    const otherVersion = a.make(
+      "strategy.versionSaved",
+      ulid(4),
+      { sha256: "c".repeat(64) },
+      { wall: 51, cause: otherApproved.eid },
+    );
+    const otherFailed = a.make(
+      "proposal.applyFailed",
+      other,
+      { result: { error_code: "write_failed" }, approval: otherApproved.eid },
+      { wall: 55 },
+    );
+    // An applyFailed of the other gid that names this proposal's approval is inert.
+    const crossed = a.make(
+      "proposal.applyFailed",
+      other,
+      { result: { error_code: "write_failed" }, approval: approved.eid },
+      { wall: 60 },
+    );
+    const events = [before, created, approved, caused, otherCreated, otherApproved, otherVersion];
+    converge([...events, otherFailed, crossed], (store) => {
+      expect(versions(store)).toEqual([ulid(1), ulid(2)]);
+      expect(
+        store
+          .read<{ gid: string; status: string }>("SELECT gid, status FROM proposals ORDER BY gid")
+          .map((p) => p.status),
+      ).toEqual(["approved", "failed"]);
+    });
+  });
+
+  it("two applyFailed events: the first fails the proposal, both revoke the same version once", () => {
+    const { a, before, created, approved, caused, failed, proposal } = fixture();
+    const again = a.make(
+      "proposal.applyFailed",
+      proposal,
+      { result: { error_code: "other" }, approval: approved.eid },
+      { wall: 45 },
+    );
+    converge([before, created, approved, caused, failed, again], (store) => {
+      expect(versions(store)).toEqual([ulid(1)]);
+      expect(store.read<{ result: string }>("SELECT result FROM proposals")[0]?.result).toBe(
+        JSON.stringify({ error_code: "write_failed" }),
+      );
+    });
+  });
 
   it("an approval whose files could not be written revokes its version, in every order", () => {
     const { before, created, approved, caused, failed, proposalRow } = fixture();

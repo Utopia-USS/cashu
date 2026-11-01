@@ -252,8 +252,9 @@ def test_a_file_failure_removes_the_version_and_keeps_the_old_files(setup, monke
 
 def test_a_file_failure_after_the_approval_is_captured_as_one_outcome_transaction(setup, monkeypatch):
     """S31c: under sync, approved -> failed and the undone version share one outbox transaction, so
-    the shipper maps it to ``proposal.applyFailed`` and the version delete is covered by it (the
-    approval's ``strategy.versionSaved`` is revoked, events.md 6.6). A rejection keeps its note."""
+    the shipper maps it to ``proposal.applyFailed``; the version's delete is an explicit ``undo``
+    naming the proposal, covered only for that approval's own version (F5; the approval's
+    ``strategy.versionSaved`` is revoked, events.md 6.6). A rejection keeps its note."""
     from cashu.core import sync_keys, sync_outbox
 
     monkeypatch.setenv("CASHU_SYNC", "1")
@@ -275,7 +276,9 @@ def test_a_file_failure_after_the_approval_is_captured_as_one_outcome_transactio
     assert failed[0]["prev"]["status"] == "approved"
     assert failed[0]["fields"]["result"]["error_code"] == "write_failed"
     version_ops = {r["op"]: r["txn"] for r in rows if r["table_name"] == "inv_strategy_versions"}
-    assert version_ops["insert"] == approved[0]["txn"] and version_ops["delete"] == failed[0]["txn"]
+    assert version_ops["insert"] == approved[0]["txn"] and version_ops["undo"] == failed[0]["txn"]
+    [undo] = [r for r in rows if r["table_name"] == "inv_strategy_versions" and r["op"] == "undo"]
+    assert undo["fields"] == {"proposal_id": proposal_id}  # F5: the delete names its proposal
 
     other_id, _ = _propose_strategy(host, slug)
     proposals.reject(_profile(_pid), other_id, note="  za wczesnie  ")

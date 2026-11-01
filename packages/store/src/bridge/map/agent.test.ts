@@ -3,6 +3,7 @@
 // Synthetic rows only.
 import { describe, expect, it } from "vitest";
 import { plan } from "../plan.js";
+import type { VaultInput } from "../resolve.js";
 import { DET, idsOf, outboxRow, T0, T1, testPorts, vaultInput } from "../testing/rows.js";
 
 const ACCOUNT = "01JQ0000000000000000000020";
@@ -21,10 +22,17 @@ const ids = idsOf({
 
 type Row = Parameters<typeof outboxRow>[0];
 
-function run(rows: readonly Row[], leader = true) {
+/** Python `sync_clock` of (proposals 9, status): the acked approval event's eid. */
+const ACKED_APPROVAL = "01JQ00000000000000000000A9";
+const clocks: VaultInput["fieldClock"] = (table, localId, field) =>
+  table === "proposals" && localId === "9" && field === "status"
+    ? { hlc: "x", eid: ACKED_APPROVAL }
+    : undefined;
+
+function run(rows: readonly Row[], leader = true, fieldClock: VaultInput["fieldClock"] = clocks) {
   return plan({
     rows: rows.map((p) => outboxRow(p)),
-    vaults: [vaultInput(ids)],
+    vaults: [vaultInput(ids, undefined, fieldClock)],
     ports: testPorts(leader),
   });
 }
@@ -167,12 +175,13 @@ describe("proposals", () => {
       issues: [],
       created_at: T1,
     };
+    // Python's explicit undo of the approval's own version names its proposal (F5).
     const undo: Row = {
       table: "inv_strategy_versions",
       localId: "4",
-      op: "delete",
+      op: "undo",
       gid: VERSION,
-      fields: versionRow,
+      fields: { proposal_id: 9 },
     };
     const fail = update(
       "proposals",
@@ -182,15 +191,42 @@ describe("proposals", () => {
       { status: "approved", result: { version: 2 } },
       PROPOSAL,
     );
+    // The approval was acked in an earlier plan: its eid comes from Python's status clock.
     const { plan: p, events } = shipped([fail, undo]);
-    expect(events.map((e) => [e.t, e.g, e.d.result, e.c])).toEqual([
-      ["proposal.applyFailed", PROPOSAL, { error_code: "write_failed" }, undefined],
+    expect(events.map((e) => [e.t, e.g, e.d.result, e.d.approval, e.c])).toEqual([
+      ["proposal.applyFailed", PROPOSAL, { error_code: "write_failed" }, ACKED_APPROVAL, undefined],
     ]);
     expect(p.counts.noEvent).toBe(1);
-    // A version delete outside such a transaction has no catalog event.
+    // An undo outside such a transaction, a plain delete, and an undo naming another proposal block.
     expect(run([undo])).toMatchObject({
       ok: false,
+      reason: "no-undo-event:inv_strategy_versions",
+    });
+    const plainDelete: Row = { ...undo, op: "delete", fields: versionRow };
+    expect(run([fail, plainDelete])).toMatchObject({
+      ok: false,
       reason: "no-delete-event:inv_strategy_versions",
+    });
+    const otherProposal: Row = { ...undo, fields: { proposal_id: 8 } };
+    expect(run([fail, otherProposal])).toMatchObject({
+      ok: false,
+      reason: "no-undo-event:inv_strategy_versions",
+    });
+    // The approval in the same plan (an earlier transaction) is named by its planned eid.
+    const approve = {
+      ...proposalUpdate(
+        { status: "approved", reviewed_at: T1, result: { version: 2 } },
+        { status: "applying", reviewed_at: null, result: {} },
+      ),
+      txn: "t0",
+    };
+    const both = shipped([approve, { ...fail, txn: "t2" }, { ...undo, txn: "t2" }]).events;
+    expect(both.map((e) => e.t)).toEqual(["proposal.approved", "proposal.applyFailed"]);
+    expect(both[1]?.d.approval).toBe(both[0]?.i);
+    // Neither in the plan nor acked: the failure cannot name its approval and blocks visibly.
+    expect(run([fail, undo], true, () => undefined)).toMatchObject({
+      ok: false,
+      reason: "unresolved:proposals:approval",
     });
   });
 

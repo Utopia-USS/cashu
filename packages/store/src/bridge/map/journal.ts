@@ -79,14 +79,23 @@ const strategyVersions: TableBridge<InvStrategyVersionRow> = {
     return eventsOf("inv_strategy_versions", mapped);
   },
   update: refuseAll("inv_strategy_versions"),
-  // Python deletes a version only as the undo of an approval whose files could not be written, in
-  // the transaction that marks the proposal approved -> failed (`_strategy_change.undo`): that is
-  // `proposal.applyFailed`, which revokes the approval's `strategy.versionSaved` (events.md 6.6), so
-  // the delete itself is a no-event row. Any other delete blocks (no catalog event).
-  delete: (c) => {
-    if (c.txn.some(isApplyFailed)) return [];
-    throw new BridgeBlock("no-delete-event:inv_strategy_versions");
+  // Python deletes a version only as the undo of an approval whose files could not be written
+  // (`_strategy_change.undo`), as an explicit `undo` naming its proposal, in the transaction that
+  // marks that proposal approved -> failed: `proposal.applyFailed` revokes the approval's
+  // `strategy.versionSaved` (events.md 6.6), so that undo is a no-event row, only when the named
+  // proposal is the one failing in this transaction (its own version, S31c F5). Any other delete or
+  // undo blocks (no catalog event).
+  explicit: {
+    undo: (c) => {
+      const proposal = String(c.row.fields.proposal_id ?? "");
+      const own = c.txn.some(
+        (r) => isApplyFailed(r) && r.profileId === c.row.profileId && r.localId === proposal,
+      );
+      if (own) return [];
+      throw new BridgeBlock("no-undo-event:inv_strategy_versions");
+    },
   },
+  explicitEvents: { undo: [] },
 };
 
 /** A proposal's approved -> failed change (the outbox row of `proposal.applyFailed`). */

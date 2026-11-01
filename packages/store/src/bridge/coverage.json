@@ -359,7 +359,7 @@
         "state": ["strategy.versionSaved"],
         "yaml_text": ["strategy.versionSaved"]
       },
-      "ops": ["insert", "update", "delete"]
+      "ops": ["insert", "update", "undo"]
     },
     "inv_theses": {
       "gid": "ulid",

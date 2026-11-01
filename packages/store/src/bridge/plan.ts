@@ -19,7 +19,7 @@ import { formatHlc } from "../events/v1/hlc-format.js";
 import { genesisDevice } from "../genesis/clock.js";
 import { checkEvent } from "../genesis/emit.js";
 import type { EventDraft } from "../genesis/map/context.js";
-import { BridgeBlock } from "./map/types.js";
+import { APPROVAL_OF_ROW, BridgeBlock } from "./map/types.js";
 import { mapRow } from "./map.js";
 import { type LogicalRow, mergeTxn } from "./merge.js";
 import { atOf, byTxn, type OutboxRow } from "./outbox.js";
@@ -97,6 +97,8 @@ interface VaultState {
   readonly events: UnstampedEvent[];
   readonly carries: (readonly CarriedColumns[])[];
   bytes: number;
+  /** Proposal gid -> the eid of its `proposal.approved` planned so far (APPROVAL_OF_ROW). */
+  readonly approvals: Map<string, string>;
 }
 
 const INSTRUMENT_TABLES: ReadonlySet<string> = new Set([
@@ -161,6 +163,7 @@ class Planner {
       events: [],
       carries: [],
       bytes: 0,
+      approvals: new Map(),
     }));
     this.#byProfile = new Map(this.#states.map((s) => [s.vm.input.profileId, s]));
     this.#maxEvents = input.maxFrameEvents ?? FRAME_EVENTS;
@@ -213,6 +216,9 @@ class Planner {
       }
     }
     for (const [s, w] of wired) {
+      for (const e of w.events) {
+        if (e.t === "proposal.approved" && typeof e.g === "string") s.approvals.set(e.g, e.i);
+      }
       s.events.push(...w.events);
       s.carries.push(...w.carries);
       s.bytes += w.events.reduce((n, e) => n + JSON.stringify(e).length + HLC_JSON, 0);
@@ -252,6 +258,7 @@ class Planner {
       this.counts.notLeader += 1;
       return false;
     });
+    for (const [i, d] of kept.entries()) kept[i] = this.#approvalNamed(s, d);
     validate(
       kept.map((d) => d.draft),
       s.vm,
@@ -295,6 +302,21 @@ class Planner {
       };
     });
     return { events, carries: ordered.map((d) => d.carries) };
+  }
+
+  /** `proposal.applyFailed` names the approval event of its proposal (APPROVAL_OF_ROW). */
+  #approvalNamed(s: VaultState, d: Drafted): Drafted {
+    if (d.draft.type !== "proposal.applyFailed" || d.draft.data.approval !== APPROVAL_OF_ROW) {
+      return d;
+    }
+    const row = d.carries.find((c) => c.table === "proposals");
+    const eid =
+      s.approvals.get(d.draft.gid) ??
+      (row === undefined
+        ? undefined
+        : s.vm.input.fieldClock("proposals", row.localId, "status")?.eid);
+    if (eid === undefined) throw new BridgeBlock("unresolved:proposals:approval");
+    return { ...d, draft: { ...d.draft, data: { ...d.draft.data, approval: eid } } };
   }
 
   batches(): VaultBatch[] {

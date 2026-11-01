@@ -208,6 +208,7 @@ export class Loop {
         return rows;
       },
       files: this.#d.reader.files,
+      fieldClock: this.#d.reader.fieldClock(v.profileId),
     }));
     const result = bridge.plan({ rows, vaults, ports: this.#d.ports });
     if (!result.ok) {
@@ -273,6 +274,7 @@ export class Loop {
           throw new bridge.BridgeBlock("cushion-needs-no-rows");
         },
         files: this.#d.reader.files,
+        fieldClock: this.#d.reader.fieldClock(v.profileId),
       };
       const at = new Date(this.#d.now()).toISOString();
       let ship: bridge.CushionShip | undefined;
