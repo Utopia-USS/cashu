@@ -23,8 +23,10 @@
 // groups and their payees). A payee's rows are found through the transactions materializer's
 // `fold_txn_keys.merchant_key` (the same `merchantKey` of the same row content).
 //
-// `is_internal_transfer` is read from the view (S24b's transfers deriver writes it, before this
-// one); when it lands, its changed rows must reach this deriver as dirty rows.
+// TRANSITIONAL(S24b): `is_internal_transfer` is read from the view and is always 0 until the
+// transfers deriver writes it (before this one): a one-sided pair leg (only the other leg carries
+// its account's IBAN) is categorized by the engine and may join a recurring group. S24b must make its
+// changed rows reach this deriver as dirty rows.
 import { budget, core, D } from "@cashu/domain";
 import { CONTRIBUTIONS, type DeriveContext, type Deriver } from "../../engine/types.js";
 import type { Read } from "../../query.js";
