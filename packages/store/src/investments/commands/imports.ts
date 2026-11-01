@@ -160,10 +160,11 @@ export const commitImport = defineCommand({
       });
     });
 
-    // 3. Broker position snapshots (DET per account, instrument and date): an overlapping re-import
-    //    of the same figures writes nothing (S31a F2); changed figures are written again.
-    //    PARITY(S22b): the fold keeps the first applied snapshot of a row key (CREATE, events.md 8.5)
-    //    while Python updates the row; the writer already emits the change (follow-up: LWW-F).
+    // 3. Broker position snapshots (DET per account, instrument and date), like Python's upsert and the
+    //    S31c shipper: a new row is `position.snapshotImported`; an overlapping re-import of the same
+    //    figures writes nothing (S31a F2); changed figures for a held row are
+    //    `position.snapshotUpdated` under the same DET gid, which the fold takes newest-wins by HLC
+    //    (events.md 8.5), so the later import's figures stand.
     // Two lines of one file for the same instrument and date: the last one wins (Python's upsert).
     const lastLines = new Map<string, BrokerPosition & { readonly instrument: string }>();
     for (const p of plan.positions) {
@@ -172,7 +173,10 @@ export const commitImport = defineCommand({
       lastLines.delete(key);
       lastLines.set(key, { ...p.position, instrument });
     }
-    const positions = [...lastLines.values()].filter((p) => !sameSnapshot(ctx, account, p));
+    const positions = [...lastLines.values()].flatMap((p) => {
+      const held = heldSnapshot(ctx, account, p);
+      return held === "same" ? [] : [{ ...p, held: held !== undefined }];
+    });
 
     // 4. Renames, once per (date, old, new).
     const renames: { g: string; rename: InstrumentRename }[] = [];
@@ -227,7 +231,7 @@ export const commitImport = defineCommand({
     for (const t of inserted) emitTxn(ctx, account, t);
     for (const p of positions) {
       ctx.emit(
-        "position.snapshotImported",
+        p.held ? "position.snapshotUpdated" : "position.snapshotImported",
         ctx.det("inv_position_snapshots", [account, p.instrument, p.asOf]),
         {
           account,
@@ -478,12 +482,16 @@ function setStatus(ctx: CommandContext, instrument: string, status: string): voi
   });
 }
 
-/** Whether the view already holds this snapshot row with the same figures (Python's no-op branch). */
-function sameSnapshot(
+/**
+ * The view's snapshot row of this (account, instrument, date): `same` when it holds the same figures
+ * (Python's no-op branch), `changed` when the figures differ (an update), undefined when none (a new
+ * row).
+ */
+function heldSnapshot(
   ctx: CommandContext,
   account: string,
   p: BrokerPosition & { readonly instrument: string },
-): boolean {
+): "same" | "changed" | undefined {
   const row = ctx.read<{
     quantity: string;
     currency: string;
@@ -498,15 +506,15 @@ function sameSnapshot(
     instrumentRoot(ctx.read, p.instrument),
     p.asOf,
   )[0];
-  if (row === undefined) return false;
+  if (row === undefined) return undefined;
   const same = (stored: string | null, value: Decimal | null) =>
     stored === null || value === null ? stored === value : D(stored).eq(value);
-  return (
+  const unchanged =
     same(row.quantity, p.quantity) &&
     row.currency === p.currency &&
     same(row.avg_price, p.avgPrice) &&
-    same(row.market_value, p.marketValue)
-  );
+    same(row.market_value, p.marketValue);
+  return unchanged ? "same" : "changed";
 }
 
 function renameExists(ctx: CommandContext, g: string): boolean {

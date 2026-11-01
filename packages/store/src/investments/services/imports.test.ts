@@ -472,9 +472,15 @@ describe("import service (test_invp_imports.py)", () => {
     expect(snapshotEvents(s.batches[1])).toEqual([]); // the same figures: nothing written or synced
     expect(latestPositionSnapshot(read(s.v), s.account).rows).toEqual(before);
     await importFile(s, canonicalCsv({ xmpl: 25 }), "history-3.csv");
-    // a changed figure is written again (the fold keeps the first one: PARITY(S22b), follow-up)
-    const changed = snapshotEvents(s.batches[2]);
-    expect(changed.map((e) => e.data.quantity)).toEqual(["25"]);
+    // A changed figure of a held row is `position.snapshotUpdated` (the shipper emits the same for
+    // Python's update, S31c) and the later import's figures stand in the view (Python updates them).
+    const updates = (s.batches[2] ?? []).filter((e) => e.type === "position.snapshotUpdated");
+    expect(updates.map((e) => e.data.quantity)).toEqual(["25"]);
+    expect(snapshotEvents(s.batches[2])).toEqual([]);
+    const after = latestPositionSnapshot(read(s.v), s.account).rows;
+    expect(
+      after.filter((r) => !before.some((b) => JSON.stringify(b) === JSON.stringify(r))),
+    ).toEqual([expect.objectContaining({ quantity: "25" })]);
   });
 
   it("test_a_reimport_with_the_same_importer_leaves_the_account_settings_alone", async () => {
