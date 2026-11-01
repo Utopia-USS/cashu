@@ -132,6 +132,7 @@ describe("backend translation scope", () => {
     "packages/sync/src/reader.ts",
     "packages/market/src/yahoo.ts",
     "apps/cli/src/index.ts",
+    "apps/host/src/cli/runner.ts",
     "apps/relay/src/index.ts",
     "apps/sync-daemon/src/index.ts",
     "apps/desktop/src/main.ts",

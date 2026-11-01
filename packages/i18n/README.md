@@ -4,7 +4,7 @@ The UI uses `lang()`, `catalog()` and `tr({ pl, en })` from `@cashu/i18n` with i
 `LanguageSource` (S33). Backend work uses an explicit `Translator` (S34). Never change the UI's
 global language to service a request: two requests can overlap across an `await`.
 
-`pnpm arch:check` enforces this in API, MCP, store, sync and market packages, CLI/relay/sync workers and
+`pnpm arch:check` enforces this in API, MCP, store, sync and market packages, CLI/host/relay/sync workers and
 Electron main/preload/utility code. Backend runtime imports/re-exports have an explicit allowlist:
 `createTranslator`, `createBackendI18n`, `parseLang`, `LANG_ENV`, `LANG_HEADER`, `LANGS`, `FALLBACK_LANG`,
 `matchLang`, `plCount`, `plForm`, `enCount`, `enForm` and `normalizeNumberInputForLanguage`. Type-only root imports
