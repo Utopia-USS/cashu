@@ -5,9 +5,11 @@
  */
 
 import type { Dataset, PythonDb } from "../sources/index.ts";
+import { produceBudgetAnalytics } from "./budget/analytics.ts";
 import { produceBudgetCategories } from "./budget/categories.ts";
 import { produceBudgetDedup } from "./budget/dedup.ts";
 import { produceIngestFixtures } from "./budget/ingestFixtures.ts";
+import { produceBudgetMonthClose } from "./budget/monthClose.ts";
 import { produceBudgetTransfers } from "./budget/transfers.ts";
 import { bridgeDir, readBridge } from "./core/bridge.ts";
 import { produceNetworth } from "./core/networth.ts";
@@ -96,6 +98,21 @@ export const PRODUCERS: readonly Producer[] = [
     datasets: ["demo"],
     inputs: [],
     produce: produceBudgetCategories,
+  },
+  {
+    check: "budget.analytics",
+    // lab has no bank transactions yet (R3): enable lab here once it does.
+    datasets: ["demo"],
+    inputs: [],
+    produce: produceBudgetAnalytics,
+  },
+  {
+    check: "budget.month_close",
+    // lab has no bank transactions yet (R3): enable lab here once it does.
+    datasets: ["demo"],
+    inputs: ["bridge-strategy"],
+    produce: (db, inputs) =>
+      produceBudgetMonthClose(db, readStrategyBridge(db.dataset, inputs.bridgeStrategyRoot)),
   },
   {
     check: "investments.valuation",
