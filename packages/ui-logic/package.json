@@ -27,6 +27,7 @@
     "./investments/v2/research/segments": "./src/investments/v2/research/segments.ts",
     "./investments/v2/research/storyLogic": "./src/investments/v2/research/storyLogic.ts",
     "./investments/v2/research/types": "./src/investments/v2/research/types.ts",
+    "./investments/v2/railLogic": "./src/investments/v2/railLogic.ts",
     "./investments/v2/reviewDeckLogic": "./src/investments/v2/reviewDeckLogic.ts",
     "./investments/v2/searchLogic": "./src/investments/v2/searchLogic.ts",
     "./investments/v2/strategiesLogic": "./src/investments/v2/strategiesLogic.ts",

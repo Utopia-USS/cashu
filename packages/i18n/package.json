@@ -49,6 +49,7 @@
     "./investments/v2/AssetPage.strings": "./src/investments/v2/AssetPage.strings.ts",
     "./investments/v2/Decide.strings": "./src/investments/v2/Decide.strings.ts",
     "./investments/v2/Home.strings": "./src/investments/v2/Home.strings.ts",
+    "./investments/v2/HomeRail.strings": "./src/investments/v2/HomeRail.strings.ts",
     "./investments/v2/InstLabel.strings": "./src/investments/v2/InstLabel.strings.ts",
     "./investments/v2/InstrumentSearch.strings": "./src/investments/v2/InstrumentSearch.strings.ts",
     "./investments/v2/Journal.strings": "./src/investments/v2/Journal.strings.ts",

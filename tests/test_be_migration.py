@@ -109,11 +109,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     before = legacy.table_counts(path)
     engine = db.make_engine(f"sqlite:///{path}")
     assert migrations.current_revision(engine) == "0007_alerts_watchlist"
-    assert (
-        migrations.upgrade_to_head(engine)
-        == migrations.head_revision()
-        == "0028_sync_inbound"
-    )
+    assert migrations.upgrade_to_head(engine) == migrations.head_revision() == "0028_sync_inbound"
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
     assert legacy.table_counts(backup) == before and not (_tables(backup) & NEW_TABLES)
@@ -123,7 +119,10 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     assert NEW_TABLES <= _tables(path) and all(after[t] == 0 for t in NEW_TABLES)
     assert _sql(path, "SELECT title, deleted_at FROM alerts") == [("Example level", None)]
     # appended by ALTER TABLE ADD COLUMN: the last column, no rebuild
-    assert [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")][-1] == "deleted_at"
+    assert [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")][-2:] == [
+        "deleted_at",
+        "tag",  # 0027
+    ]
     assert [r[1] for r in _sql(path, "PRAGMA table_info('accounts')")][-1] == "removed_at"  # 0010
     assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-2:] == [
         "read_at",  # 0011
@@ -650,6 +649,34 @@ def test_0026_backfills_exit_plan_changed_at_and_round_trips(tmp_path):
     _to(engine, "0025_topic_view_sources", down=True)
     assert "exit_plan_changed_at" not in [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
     assert _sql(path, "SELECT count(*) FROM inv_theses") == [(2,)]
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "head")
+    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    engine.dispose()
+
+
+def test_0027_adds_alert_tag_and_round_trips(tmp_path):
+    """The alert tag is appended (no rebuild) and starts null on existing alerts; the downgrade drops
+    it and keeps the alerts, and refuses while any alert carries a tag."""
+    path = _db_at(tmp_path, "0026_thesis_exit_plan_changed_at")
+    _insert_alert(path, _profile_id(path), "Example level")
+
+    def columns() -> list[str]:
+        return [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")]
+
+    assert "tag" not in columns()
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert columns()[-1] == "tag"
+    assert _sql(path, "SELECT title, tag FROM alerts") == [("Example level", None)]
+    _sql(path, "UPDATE alerts SET tag = 'cena'")
+    with pytest.raises(RuntimeError, match="alert tags exist"):
+        _to(engine, "0026_thesis_exit_plan_changed_at", down=True)
+    assert "tag" in columns()
+    _sql(path, "UPDATE alerts SET tag = NULL")
+    _to(engine, "0026_thesis_exit_plan_changed_at", down=True)
+    assert "tag" not in columns()
+    assert _sql(path, "SELECT title FROM alerts") == [("Example level",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
     assert migrations.current_revision(engine) == "0028_sync_inbound"

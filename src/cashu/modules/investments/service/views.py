@@ -1039,6 +1039,7 @@ def alert_dict(
         "severity": row.severity,
         "title": row.title,
         "note": row.note,
+        "tag": row.tag,
         "source": row.source,
         "created_by": row.created_by,
         "status": row.status,

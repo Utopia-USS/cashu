@@ -166,3 +166,42 @@ def test_tools_are_bound_to_their_profile(host):
     assert stranger.call("mute_alert", {"id": alert_id}).error_kind == "not_found"
     assert stranger.call("remove_from_watchlist", {"id": item_id}).error_kind == "not_found"
     assert mcp.call("alerts", {}).data["alerts"][0]["status"] == "active"
+
+
+def test_add_alert_takes_a_tag_and_alerts_lists_tags_in_use(host):
+    pid, mcp = host
+    assert mcp.call("alerts", {}).data["tags_in_use"] == []
+    result = mcp.call("add_alert", price_alert(tag=" Cena "))
+    assert result.ok, result.error
+    assert result.data["alert"]["tag"] == "cena"
+    assert mcp.call("add_alert", price_alert(tag="cena!")).error_kind is not None
+    mcp.call("add_alert", price_alert(title="PKO above 11", params={"level": 11}, tag="cena"))
+    mcp.call("add_alert", price_alert(title="PKO above 12", params={"level": 12}, tag="wybicie"))
+    muted = mcp.call(
+        "add_alert", price_alert(title="PKO above 13", params={"level": 13}, tag="rsi")
+    )
+    mcp.call("add_alert", price_alert(title="PKO above 14", params={"level": 14}))
+    mcp.call("mute_alert", {"id": muted.data["alert"]["alert_id"]})
+    with get_session() as s:
+        assert (
+            s.exec(select(InvAlert.tag).where(InvAlert.profile_id == pid)).all().count("cena") == 2
+        )
+    listed = mcp.call("alerts", {})
+    assert sorted(a["tag"] or "" for a in listed.data["alerts"]) == ["", "cena", "cena", "wybicie"]
+    # every non-deleted alert counts, whatever the status filter (the muted one too)
+    assert listed.data["tags_in_use"] == [
+        {"tag": "cena", "count": 2},
+        {"tag": "rsi", "count": 1},
+        {"tag": "wybicie", "count": 1},
+    ]
+
+    other, _ = seed_profile("Ewa Testowa", run_daily=False)
+    stranger = CashuMcp(other, today=TODAY)
+    assert stranger.call("alerts", {}).data["tags_in_use"] == []
+    stranger.call("add_alert", price_alert(tag="wolumen"))
+    assert stranger.call("alerts", {}).data["tags_in_use"] == [{"tag": "wolumen", "count": 1}]
+    assert {t["tag"] for t in mcp.call("alerts", {}).data["tags_in_use"]} == {
+        "cena",
+        "rsi",
+        "wybicie",
+    }

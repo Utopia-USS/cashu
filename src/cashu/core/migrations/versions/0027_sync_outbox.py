@@ -1,7 +1,7 @@
 """Sync outbox (S30, the strangler bridge to the event log): ``sync_outbox``, ``sync_ids``, ``sync_vaults``.
 
 Revision ID: 0027_sync_outbox
-Revises: 0026_thesis_exit_plan_changed_at
+Revises: 0027_alert_tag
 Create Date: 2026-10-31
 
 TRANSITIONAL(S49). Field-level changes of every synced table, written in the same transaction as the
@@ -21,7 +21,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0027_sync_outbox"
-down_revision: str | Sequence[str] | None = "0026_thesis_exit_plan_changed_at"
+down_revision: str | Sequence[str] | None = "0027_alert_tag"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

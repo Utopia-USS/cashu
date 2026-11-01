@@ -37,9 +37,10 @@ test("investments home renders hero, signals, alerts, research, chart", async ({
   const hero = page.getByRole("region", { name: "Wartość portfela" });
   await expect(hero).toContainText("zł");
   expect(await heroValue(page)).toBeGreaterThan(10_000);
-  await expect(page.locator("[data-signal]").first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "Sygnały" }).locator(".hlead")).not.toBeEmpty();
   await expect(page.getByText("Demo Global Equity UCITS ETF").first()).toBeVisible();
-  await expect(page.getByText("Demo Energia poniżej poziomu")).toBeVisible();
+  // Alerty lists only what is close or fired; every live alert is behind "Wszystkie (n)".
+  await expect(page.getByRole("region", { name: "Alerty" }).getByRole("button", { name: /^Wszystkie \(\d+\)$/ })).toBeVisible();
   // home v3 (Q6): the watchlist is the Obserwowane tab of Aktywa.
   const assets = page.getByRole("region", { name: "Aktywa" });
   await assets.getByRole("button", { name: /^Obserwowane \d+$/ }).click();

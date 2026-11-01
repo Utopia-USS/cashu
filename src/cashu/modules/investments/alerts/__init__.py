@@ -20,6 +20,7 @@ from .catalog import (
     ValidatedAlert,
     catalog_dicts,
     validate,
+    validate_tag,
     validate_text,
 )
 from .evaluate import (
@@ -59,5 +60,6 @@ __all__ = [
     "evaluate_alert",
     "is_alert_key",
     "validate",
+    "validate_tag",
     "validate_text",
 ]

@@ -56,6 +56,13 @@ Each numeric value needs a dated source. A value you cannot verify from a public
 Propose only when **every numeric threshold is met and verified**; descriptive criteria may be listed
 as not met. At most 2 new candidates per weekly run; prefer the ones that fit a bucket of the strategy.
 
+**Validity: 30 days.** Give every candidate note `expires_in_days: 30`. The home shows candidates
+without a date, so a candidate must not outlive the facts that made it one; an expired note leaves the
+list by itself. When it still meets every threshold after that, write a fresh note with current, dated
+values (the 30-day exclusion above has then lapsed). Put the plain sentence the owner reads first in
+`details.headline` (8-80 characters, the fact without numbers where words do, e.g. "Kurs 1/3 pod
+szczytem, a sprzedaż dalej rośnie"); the numbers stay in the criteria.
+
 ## The note
 
 | field | value |

@@ -70,7 +70,8 @@ All of these hold:
   "params": {"window_days": 30, "max_range_pct": 0.08, "direction": "any"},
   "polarity": "neutral",
   "severity": "info",
-  "title": "XYZ: wybicie z konsolidacji 30 sesji",
+  "title": "Wybicie z konsolidacji 30 sesji",
+  "tag": "wybicie",
   "note": "Po notatce z 4.10: wyniki III kwartału 12.11, termin wezwania 20.11. Alert z researchu.",
   "expires_in_days": 45
 }
@@ -80,8 +81,11 @@ All of these hold:
   `{"window_days": 20, "multiple": 2.5}`.
 - `polarity`: `neutral`; for `range_breakout` with `direction` `up` `positive`, `down` `negative`.
   `severity`: always `info` (the owner raises it to `action` if they want a notification).
-- `title` (at most 120 characters, Polish), as the app names them:
-  `{SYMBOL}: wybicie z konsolidacji {N} sesji`, `{SYMBOL}: wolumen {m}x średniej`.
+- `title` (at most 120 characters, Polish), without the ticker (the app shows it on a tile next to the
+  title): `Wybicie z konsolidacji {N} sesji`, `Wolumen {m}x średniej`.
+- `tag`: a short lowercase Polish label the app shows next to the title. Reuse one from `tags_in_use`
+  in `alerts` when it fits; otherwise `wybicie` (range_breakout) or `wolumen` (volume_spike). One
+  meaning, one tag: never a synonym of a tag already in use.
 - `note` (keep it under 300 characters, Polish): the reason, the dated fact or event from this run's
   note (`Po notatce z <d.m>: ...`). Facts and dates only.
 - `expires_in_days`: until about two weeks after the catalyst's date; without a dated catalyst 60.
