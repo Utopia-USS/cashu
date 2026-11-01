@@ -509,13 +509,25 @@ def commit(
         for planned_position in plan.positions:
             p = planned_position.position
             instrument_id = _resolve(p.instrument_id, mapping)
-            snap = s.exec(
+            existing = s.exec(
                 select(InvPositionSnapshot).where(
                     InvPositionSnapshot.account_id == account.id,
                     InvPositionSnapshot.instrument_id == instrument_id,
                     InvPositionSnapshot.as_of == p.as_of,
                 )
-            ).first() or InvPositionSnapshot(
+            ).first()
+            values = (p.quantity, str(p.currency), p.avg_price, p.market_value)
+            if existing is not None and (
+                existing.quantity,
+                existing.currency,
+                existing.avg_price,
+                existing.market_value,
+            ) == values:
+                # An overlapping re-import of the same figures keeps the first import's row as it is
+                # (batch and time included): nothing changed, so nothing is written or synced
+                # (``position.snapshotImported`` is first-import-wins, S31a F2).
+                continue
+            snap = existing or InvPositionSnapshot(
                 account_id=account.id,
                 instrument_id=instrument_id,
                 as_of=p.as_of,

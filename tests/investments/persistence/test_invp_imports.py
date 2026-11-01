@@ -289,3 +289,35 @@ def test_errors_are_reported_not_raised(setup):
     other_pid, _ = make_profile("Ktoś")
     with pytest.raises(imports.AccountNotFound):
         preview(other_pid, aid, canonical_csv())  # another profile's account
+
+
+def test_an_identical_overlapping_reimport_leaves_the_snapshots_alone(setup, monkeypatch):
+    """S31a F2: position snapshots are first-import-wins; re-importing the same figures must not touch
+    the rows (no new batch or time) nor the sync outbox. A changed figure still updates the row."""
+    from cashu.core import sync_outbox
+
+    monkeypatch.setenv("CASHU_SYNC", "1")
+    pid, _slug, aid = setup
+    first = import_file(pid, aid, canonical_csv())
+
+    def snapshots() -> dict:
+        with get_session() as s:
+            rows = s.exec(select(InvPositionSnapshot).order_by(InvPositionSnapshot.id)).all()
+            return {r.id: (r.quantity, r.import_batch_id, r.created_at) for r in rows}
+
+    def snapshot_rows() -> int:
+        with get_session() as s:
+            return len(sync_outbox.rows_of(s, table_name="inv_position_snapshots"))
+
+    before, captured = snapshots(), snapshot_rows()
+    assert captured == 3
+    again = import_file(pid, aid, canonical_csv(), name="history-2.csv")
+    assert again.batch_id != first.batch_id
+    assert snapshots() == before and snapshot_rows() == captured
+    changed = import_file(pid, aid, canonical_csv(xmpl_quantity=25), name="history-3.csv")
+    after = snapshots()
+    moved = [k for k in after if after[k] != before[k]]
+    assert len(moved) == 1 and after[moved[0]][0] == 25 and after[moved[0]][1] == changed.batch_id
+    with get_session() as s:
+        [upd] = [r for r in sync_outbox.rows_of(s, table_name="inv_position_snapshots") if r["op"] == "update"]
+    assert Decimal(str(upd["fields"]["quantity"])) == 25
