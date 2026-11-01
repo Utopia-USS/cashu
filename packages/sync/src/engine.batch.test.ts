@@ -1,11 +1,14 @@
 // The engine's batch API (S29c-B3, spec 9): every batch of a sync pass reaches the sink in ONE
 // `applyBatches` transaction, chunked at `maxBatchEvents` / `maxBatchBytes`; a sink failure applies
-// nothing (cursors unchanged) and the next pass re-delivers everything.
+// nothing (cursors unchanged) and the next pass re-delivers everything. A write is one atomic append:
+// a crash during a multi-frame write never leaves part of its frame group in the stream.
 import { describe, expect, it } from "vitest";
 import type { Transport } from "./carrier.js";
 import { createSyncEngine, type SyncEngineOptions } from "./engine.js";
 import { MemoryClockStore, MemoryTransport } from "./memory.js";
 import { insecureTestCodec, insecureTestGate, ManualClock, MemorySink } from "./testing/index.js";
+import { MemoryFolderFs } from "./transports/folder/testing/memory-fs.js";
+import { FolderTransport } from "./transports/folder/transport.js";
 
 const VAULT = "0123456789abcdef0123456789abcdef";
 const A = "daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -107,5 +110,83 @@ describe("engine batch API (one sink transaction per pull)", () => {
     expect(sink.transactions[0]).toEqual({ batches: 1, events: 40 });
     expect(sink.transactions.reduce((x, t) => x + t.events, 0)).toBe(45);
     expect(sink.transactions.length).toBeGreaterThan(2);
+  });
+});
+
+class Crash extends Error {}
+
+describe("atomic batch append (a write's frames in one append)", () => {
+  it("a crash during a multi-frame write leaves no partial frame group behind", async () => {
+    // The local log is a folder: an append writes a temp file and renames it over the segment.
+    // The power goes out right after the torn write's FIRST rename completed (a write appending
+    // frame by frame has then made only its first frame durable).
+    const fs = new MemoryFolderFs();
+    let renames = 0;
+    let crashAfter = 0;
+    const crashing = new Proxy(fs, {
+      get(target, prop, receiver) {
+        const v = Reflect.get(target, prop, receiver);
+        if (typeof v !== "function") return v;
+        return async (...args: unknown[]) => {
+          const out = await v.apply(target, args);
+          if (prop === "rename") {
+            renames += 1;
+            if (renames === crashAfter) throw new Crash("power loss");
+          }
+          return out;
+        };
+      },
+    });
+    const remote = new MemoryTransport();
+    const sink = new MemorySink();
+    const options = {
+      maxFrameEvents: 2,
+      local: new FolderTransport({ fs: crashing, owner: A }),
+      clockStore: new MemoryClockStore(),
+    };
+    const a = await open(A, remote, sink, options);
+    await a.write([ev("before")]);
+    const torn = Array.from({ length: 6 }, (_, i) => ev(`torn-${i}`));
+    crashAfter = renames + 1;
+    await expect(a.write(torn)).rejects.toThrow("power loss");
+    crashAfter = 0;
+
+    // Restart on the same disk: the torn write is in the stream whole (or not at all), and the
+    // stream goes on cleanly.
+    const again = await open(A, remote, sink, options);
+    const after = await again.write(Array.from({ length: 5 }, (_, i) => ev(`after-${i}`)));
+    expect(after.frames).toBe(3);
+    const own = await again.sync();
+    expect(own.rejected).toEqual([]);
+    const b = new MemorySink();
+    const pulled = await (await open(B, remote, b)).sync();
+    expect(pulled.rejected).toEqual([]);
+    expect(b.value("before")).toBeDefined();
+    const tornHeld = torn.filter((e) => b.value(e.g) !== undefined).length;
+    expect([0, torn.length]).toContain(tornHeld);
+    for (let i = 0; i < 5; i++) expect(b.value(`after-${i}`)).toBeDefined();
+    expect(sink.snapshot()).toBe(b.snapshot());
+  });
+
+  it("appends a multi-frame write with one append", async () => {
+    const local = new MemoryTransport();
+    let appends = 0;
+    const counting = new Proxy(local, {
+      get(target, prop, receiver) {
+        const v = Reflect.get(target, prop, receiver);
+        if (typeof v !== "function") return v;
+        return (...args: unknown[]) => {
+          if (prop === "append") appends += 1;
+          return v.apply(target, args);
+        };
+      },
+    });
+    const a = await open(A, new MemoryTransport(), new MemorySink(), {
+      local: counting,
+      maxFrameEvents: 10,
+    });
+    const w = await a.write(Array.from({ length: 65 }, (_, i) => ev(`bulk-${i}`)));
+    expect(w.frames).toBe(7);
+    expect(appends).toBe(1);
   });
 });

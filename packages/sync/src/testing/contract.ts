@@ -530,32 +530,36 @@ export function describeCarrierContract(carrier: CarrierUnderTest): void {
       );
 
       it(
-        "large batch: a frame group is applied atomically and segments roll over",
+        "large batch: a frame group is applied atomically, in one segment, and the next write rolls over",
         async () => {
           const ctx = await setup();
           const a = await TestDevice.create(ctx, A, {
             maxFrameEvents: 250,
-            maxSegmentBytes: 64 * 1024,
+            maxSegmentBytes: 16 * 1024,
           });
           const b = await TestDevice.create(ctx, B);
           const events = Array.from({ length: 5000 }, (_, i) => a.ev(`tx-${i}`, i));
           const w = await a.write(...events);
           expect(w.frames).toBe(20);
           expect(a.sink.size).toBe(5000);
+          // One write = one segment (an atomic append, past the soft cap); the next write rolls over.
+          const one = (await a.local.list(ctx.vault)).filter((s) => s.device === A);
+          expect(one.map((s) => s.seg)).toEqual([1]);
+          await a.write(a.ev("after", 1));
           await a.sync();
           const segs = (await a.local.list(ctx.vault)).filter((s) => s.device === A);
-          expect(segs.length).toBeGreaterThan(1);
-          const last = segs.reduce((x, y) => (y.seg > x.seg ? y : x));
-          b.remote.capSize(A, last.seg, last.size - 3);
+          expect(segs.map((s) => s.seg).sort()).toEqual([1, 2]);
+          const first = segs.find((s) => s.seg === 1) ?? { size: 0 };
+          b.remote.capSize(A, 1, first.size - 3);
           const partial = await b.sync();
           expect(partial.applied).toBe(0);
           expect(partial.rejected).toEqual([]);
           expect(b.sink.size).toBe(0);
-          b.remote.uncap(A, last.seg);
+          b.remote.uncap(A, 1);
           const full = await b.sync();
-          expect(full.batches).toBe(1);
-          expect(full.applied).toBe(5000);
-          expect(b.sink.deliveries.at(-1)?.hlcs.length).toBe(5000);
+          expect(full.batches).toBe(2);
+          expect(full.applied).toBe(5001);
+          expect(b.sink.deliveries.at(-2)?.hlcs.length).toBe(5000);
           expectConverged(a, b);
         },
         timeout,

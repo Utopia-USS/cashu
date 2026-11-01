@@ -4,6 +4,10 @@
 // - Writes: stamp (HLC) -> persist the clock -> seal every frame -> append to the own local segment ->
 //   apply from the local log through the same path as remote frames. The clock is saved before the
 //   append, so a persisted clock behind the device's own log means a rollback (events.md 3.2).
+// - Atomic writes (S29c-B3): every frame of one write lands in ONE segment through ONE append (the
+//   transport's append is all or nothing), so a crash never leaves part of a frame group in the
+//   device's stream, where it would stop that stream for good. The segment cap is soft: a write
+//   starts a new segment when it would cross the cap, and a write larger than the cap fills one.
 // - Pull: a foreign frame enters the local log only after the codec opened it and the gate verified
 //   its signed head (S29c phase B2), so the local copy never holds a tampered or forged frame; a
 //   rejected frame, or one whose writer is not known yet, is retried from the remote on the next pass
@@ -55,6 +59,7 @@ import {
 } from "./hlc.js";
 import { queueTask } from "./runtime.js";
 import {
+  concatBytes,
   decodePayload,
   encodePayload,
   frameBytes,
@@ -308,19 +313,20 @@ class OwnLogEngine implements SyncEngine {
       await this.#clockStore.save(this.#clock.state);
 
       const groups = this.#split(stamped);
+      const plains = groups.map((group, index) =>
+        encodePayload(
+          groups.length > 1 ? { events: group, part: [index, groups.length] } : { events: group },
+        ),
+      );
       const sealedFrames: { at: FramePosition; bytes: Uint8Array; chain: Uint8Array }[] = [];
       const cache = new Map<string, Opened>();
-      let seg = this.#ownSeg;
-      let size = this.#ownSize;
+      const total = plains.reduce((n, p) => n + LENGTH_BYTES + p.length, 0);
+      const fresh = this.#ownSize > 0 && this.#ownSize + total > this.#maxSegmentBytes;
+      const seg = fresh ? this.#ownSeg + 1 : this.#ownSeg;
+      const start = fresh ? 0 : this.#ownSize;
+      let size = start;
       let prev = this.#ownChain();
-      for (const [index, group] of groups.entries()) {
-        const plain = encodePayload(
-          groups.length > 1 ? { events: group, part: [index, groups.length] } : { events: group },
-        );
-        if (size > 0 && size + LENGTH_BYTES + plain.length > this.#maxSegmentBytes) {
-          seg += 1;
-          size = 0;
-        }
+      for (const plain of plains) {
         const at = { vault: this.vault, device: this.device, seg, offset: size };
         const { sealed, head } = await this.#codec.seal(plain, at, prev);
         if (sealed.length > MAX_SEALED_FRAME_BYTES) {
@@ -332,11 +338,21 @@ class OwnLogEngine implements SyncEngine {
         size += bytes.length;
         prev = head.chain;
       }
+      await this.#local.append(
+        this.vault,
+        this.device,
+        seg,
+        start,
+        concatBytes(sealedFrames.map((f) => f.bytes)),
+      );
+      this.#ownSeg = seg;
+      this.#ownSize = size;
       for (const f of sealedFrames) {
-        await this.#local.append(this.vault, this.device, f.at.seg, f.at.offset, f.bytes);
-        this.#ownSeg = f.at.seg;
-        this.#ownSize = f.at.offset + f.bytes.length;
-        this.#addChain(this.device, { seg: f.at.seg, end: this.#ownSize, chain: f.chain });
+        this.#addChain(this.device, {
+          seg,
+          end: f.at.offset + f.bytes.length,
+          chain: f.chain,
+        });
       }
 
       const pass = newPass();
