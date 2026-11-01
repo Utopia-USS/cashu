@@ -1,6 +1,13 @@
 /** Public API of the budget categorization sub-folder (Python `modules/budget/categorize`). */
 
 export {
+  type CloudMerchant,
+  type CloudRow,
+  cloudMerchants,
+  hasP2pMarker,
+  P2P_MARKERS,
+} from "./cloudGate.js";
+export {
   type CategorizeRow,
   type Categorizer,
   type CategoryClaimValue,

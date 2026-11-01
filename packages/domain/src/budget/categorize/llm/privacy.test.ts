@@ -3,9 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { looksLikePerson } from "../../../core/index.js";
+import { type CloudMerchant, cloudMerchants } from "../cloudGate.js";
 import { createCategorizer } from "../effective.js";
-import { txnMerchantKey } from "../engine.js";
-import { unknownMerchants } from "../llmPass.js";
 import { AUTO_CATEGORY_KEYS } from "../taxonomy.js";
 import { EMPTY_CONTEXT } from "../testing/engineRows.js";
 import { row } from "../testing/rows.js";
@@ -19,23 +18,14 @@ const PERSON = "Jan Testowy";
 
 describe("privacy guards (CLAUDE.md rule 3)", () => {
   it("the Anthropic body carries ids and merchant keys only", () => {
+    // a card payment (eligible) and a transfer to a person (counterparty IBAN: never eligible)
     const rows = [
-      row({
-        amount: AMOUNT,
-        date: DATE,
-        iban: IBAN,
-        reference: "SKLEP UNIKAT 77",
-        description: "opis",
-      }),
+      row({ amount: AMOUNT, date: DATE, reference: "SKLEP UNIKAT 77", description: "opis" }),
       row({ amount: AMOUNT, date: DATE, iban: IBAN, cp: PERSON, reference: "przelew" }),
     ];
     const c = createCategorizer(EMPTY_CONTEXT);
-    const unknown = unknownMerchants(
-      rows.map((r) => ({
-        amount: r.amount,
-        merchantKey: txnMerchantKey(r),
-        source: c.effective(r, new Set())?.source ?? null,
-      })),
+    const unknown = cloudMerchants(
+      rows.map((r) => ({ ...r, source: c.effective(r, new Set())?.source ?? null })),
     );
     const batches = anthropicMerchantBatches(unknown, AUTO_CATEGORY_KEYS);
     const text = JSON.stringify(batches);
@@ -67,15 +57,18 @@ describe("privacy guards (CLAUDE.md rule 3)", () => {
   it("a person-like merchant never reaches an Anthropic batch (FIX Q12)", () => {
     const merchants = ["JAN TESTOWY", "ANNA PROBNA", "BIEDRONKA 123", "SKLEP TEST SP. Z O.O."];
     expect(merchants.map((m) => looksLikePerson(m))).toEqual([true, true, false, false]);
-    const sent = anthropicMerchantBatches(merchants, AUTO_CATEGORY_KEYS).flatMap((b) =>
-      "ids" in b ? [...b.ids.values()] : [],
+    // the builder re-applies the per-string filter even to strings typed as gate output
+    const sent = anthropicMerchantBatches(merchants as CloudMerchant[], AUTO_CATEGORY_KEYS).flatMap(
+      (b) => ("ids" in b ? [...b.ids.values()] : []),
     );
     expect(sent).toEqual(["BIEDRONKA 123", "SKLEP TEST SP. Z O.O."]);
-    expect(anthropicMerchantBatches(["JAN TESTOWY"], AUTO_CATEGORY_KEYS)).toEqual([]);
+    expect(
+      anthropicMerchantBatches(["JAN TESTOWY"] as CloudMerchant[], AUTO_CATEGORY_KEYS),
+    ).toEqual([]);
   });
 
   it("a lone surrogate refuses its batch value-free", () => {
-    expect(anthropicMerchantBatches(["A\ud800B"], AUTO_CATEGORY_KEYS)).toEqual([
+    expect(anthropicMerchantBatches(["A\ud800B"] as CloudMerchant[], AUTO_CATEGORY_KEYS)).toEqual([
       { ok: false, reason: "malformed" },
     ]);
   });

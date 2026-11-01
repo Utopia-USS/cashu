@@ -1,6 +1,7 @@
 /** Checks of the LLM vectors (`budget-categorize-llm`, reclassify scenarios), tests only. */
 import { looksLikePerson } from "../../../core/index.js";
 import type { Mismatches } from "../../../testing/vectors.js";
+import { type CloudMerchant, cloudMerchants } from "../cloudGate.js";
 import { categorizeAll } from "../effective.js";
 import { categorize, txnMerchantKey } from "../engine.js";
 import type { Answer } from "../llm/port.js";
@@ -95,6 +96,7 @@ export interface LlmCounts {
   rulesCompared: number;
   q9Answers: number;
   cashUnknown: number;
+  gatedCases: number;
 }
 
 export const newCounts = (): LlmCounts => ({
@@ -106,12 +108,16 @@ export const newCounts = (): LlmCounts => ({
   rulesCompared: 0,
   q9Answers: 0,
   cashUnknown: 0,
+  gatedCases: 0,
 });
 
 /** Batches of one backend, the ids each carries and the bodies (anthropic: malformed batches dropped). */
 function tsBatches(backend: string, merchants: readonly string[], keys: readonly string[]) {
   if (backend === "ollama") return ollamaMerchantBatches(merchants, keys);
-  return anthropicMerchantBatches(merchants, keys).flatMap((b) => ("ids" in b ? [b] : []));
+  // Python's own merchant lists, past the structural gate (the builder still applies the per-string filters).
+  return anthropicMerchantBatches(merchants as CloudMerchant[], keys).flatMap((b) =>
+    "ids" in b ? [b] : [],
+  );
 }
 
 /** Merged answers of every batch with Python's ids; `malformed` counts failed batches. */
@@ -223,15 +229,23 @@ export function checkPassCases(cases: readonly PassCase[], m: Mismatches, c: Llm
       // D-09.4: Python keeps a cash row's stored source; TS gives it no category.
       if (r.onCashAccount && eff === null && stored === "default") c.cashUnknown++;
       const source = r.onCashAccount && eff === null ? stored : (eff?.source ?? null);
-      return { amount: r.amount, merchantKey: txnMerchantKey(r), source };
+      return { ...r, merchantKey: txnMerchantKey(r), source };
     });
     const unknown = unknownMerchants(unknownInput);
-    const batches = tsBatches(backend, unknown, AUTO_CATEGORY_KEYS);
+    // PRIVACY(D-09.5): the cloud backend gets only what the gate lets through (a subset of Python's list).
+    const cloud = cloudMerchants(unknownInput);
+    for (const mk of cloud) m.check(`#${n} cloud subset`, unknown.includes(mk), true);
+    const gated = backend === "anthropic" && cloud.length < unknown.length;
+    if (gated) c.gatedCases++;
+    const batches = tsBatches(
+      backend,
+      backend === "anthropic" ? cloud : unknown,
+      AUTO_CATEGORY_KEYS,
+    );
     const aborted = outcome.llm_error === true;
     const asked = requestedMerchants(backend, requests);
     m.check(`#${n} unknown`, aborted ? unknown.slice(0, asked.length) : unknown, asked);
-    const hasPerson = unknown.some((u) => looksLikePerson(u));
-    if (!(backend === "anthropic" && hasPerson)) {
+    if (!gated) {
       const sent = aborted ? batches.slice(0, requests.length) : batches;
       c.bodiesCompared += requests.length;
       m.check(

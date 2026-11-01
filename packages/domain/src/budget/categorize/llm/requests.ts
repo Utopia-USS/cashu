@@ -3,8 +3,8 @@
  * `classify_transactions`, `llm._build_payload`). Pure: the adapter (S09b) posts them.
  */
 
-import { looksLikePerson } from "../../../core/index.js";
 import { pyDumpsStrList } from "../../../pyJson.js";
+import { type CloudMerchant, isCloudSafeString } from "../cloudGate.js";
 import {
   ANTHROPIC_MERCHANT_PREFIX,
   anthropicSystemText,
@@ -100,17 +100,17 @@ export function ollamaTxnBatches(
 
 /**
  * `llm._build_payload` per batch for the cloud backend. The input is merchant strings only (the
- * privacy contract: no amounts, dates, IBANs or names are accepted). FIX(Q12, D-09.5d): a merchant
- * that looks like a person's name (a transfer to a person: `merchant_key` takes the counterparty
- * name first) is never sent; it stays `default` / `other`. A batch holding a lone surrogate (not
- * encodable, Python would fail it) is refused as `malformed`.
+ * privacy contract: no amounts, dates, IBANs or names are accepted), and only strings the cloud
+ * gate let through (`cloudMerchants`, typed `CloudMerchant`). PRIVACY(D-09.5): the per-string
+ * filters run again here (defence in depth); a filtered merchant stays `default` / `other`. A
+ * batch holding a lone surrogate (not encodable, Python would fail it) is refused as `malformed`.
  */
 export function anthropicMerchantBatches(
-  merchants: readonly string[],
+  merchants: readonly CloudMerchant[],
   categoryKeys: readonly string[],
   opts: BatchOptions = {},
 ): (MerchantBatch | { readonly ok: false; readonly reason: "malformed" })[] {
-  const unique = uniqueMerchants(merchants).filter((m) => !looksLikePerson(m));
+  const unique = uniqueMerchants(merchants).filter(isCloudSafeString);
   if (unique.length === 0 || categoryKeys.length === 0) return [];
   const model = opts.model ?? ANTHROPIC_DEFAULT_MODEL;
   const system = [
