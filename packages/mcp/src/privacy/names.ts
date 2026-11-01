@@ -169,14 +169,23 @@ const NOT_ALNUM = "^\\p{L}\\p{N}";
  */
 const NAME_GAP = `[${NOT_ALNUM}]+(?:[${LETTER}]+\\.?[${NOT_ALNUM}]+){0,2}?`;
 
+/** S37fix3: `maskFoldChar` is a pure function of one code point, called per code point. */
+const MASK_FOLD_CACHE = new Map<string, string>();
+
 /**
  * One character folded for name matching: soft hyphen removed, spaces and zero-width characters to
  * a space, lookalike letters to Latin, then `fold`.
  */
 function maskFoldChar(ch: string): string {
-  if (ch === "\u00ad") return "";
-  if (MASK_SPACE.has(ch) || ZS.test(ch)) return " ";
-  return foldChar(CONFUSABLES.get(ch) ?? ch);
+  const cached = MASK_FOLD_CACHE.get(ch);
+  if (cached !== undefined) return cached;
+  let folded: string;
+  if (ch === "\u00ad") folded = "";
+  else if (MASK_SPACE.has(ch) || ZS.test(ch)) folded = " ";
+  else folded = foldChar(CONFUSABLES.get(ch) ?? ch);
+  if (MASK_FOLD_CACHE.size >= 4096) MASK_FOLD_CACHE.clear();
+  MASK_FOLD_CACHE.set(ch, folded);
+  return folded;
 }
 
 /**
@@ -546,6 +555,7 @@ export class NameGuard {
     if (!text || this.names.size === 0) return text;
     const chars = Array.from(text);
     const folds = maskFolds(chars); // folded UTF-16 unit -> code point index in `text`
+    const starts: number[] = [];
     const spans: [number, number][] = [];
     this.maskPatterns ??= this.buildMaskPatterns();
     for (const [bounded, glued] of this.maskPatterns) {
@@ -557,21 +567,30 @@ export class NameGuard {
         for (let m = pattern.exec(folded); m !== null; m = pattern.exec(folded)) {
           const start = index[m.index] as number;
           const end = (index[m.index + m[0].length - 1] as number) + 1;
-          if (spans.some(([s, e]) => s < end && start < e)) {
+          // spans stay sorted and never overlap (S37fix3): the span starting last before `end` is
+          // the only one that can overlap, so a text full of names stays linear
+          const at = lowerBound(starts, end);
+          if (at > 0 && (spans[at - 1] as [number, number])[1] > start) {
             // overlaps a name already masked: look again one code point on, so a later
             // occurrence is not lost inside the rejected match
             pattern.lastIndex =
               m.index + ((folded.codePointAt(m.index) as number) > 0xffff ? 2 : 1);
             continue;
           }
-          spans.push([start, end]);
+          starts.splice(at, 0, start);
+          spans.splice(at, 0, [start, end]);
           pattern.lastIndex = m.index + m[0].length;
         }
       }
     }
-    spans.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
-    for (const [start, end] of spans) chars.splice(start, end - start, "[name]");
-    return chars.join("");
+    if (spans.length === 0) return text;
+    let out = "";
+    let last = 0;
+    for (const [start, end] of spans) {
+      out += `${chars.slice(last, start).join("")}[name]`;
+      last = end;
+    }
+    return out + chars.slice(last).join("");
   }
 
   /** The `g` patterns per name term: longest first, equal lengths in code point order (as Python sorts them). */
@@ -585,6 +604,18 @@ export class NameGuard {
     }
     return patterns;
   }
+}
+
+/** The first index of the sorted `values` whose value is not below `value` (Python `bisect_left`). */
+function lowerBound(values: readonly number[], value: number): number {
+  let lo = 0;
+  let hi = values.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if ((values[mid] as number) < value) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 export function isPayeeRef(value: string | null): boolean {

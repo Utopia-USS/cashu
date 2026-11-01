@@ -588,7 +588,7 @@ def adv_digits(rng: random.Random, n: int) -> str:
 
 
 def adv_fragment(rng: random.Random) -> str:
-    kind = rng.randrange(19)
+    kind = rng.randrange(20)
     sep = rng.choice(ADV_SEPARATORS)
     if kind == 0:  # card / account groups
         groups = [adv_digits(rng, rng.choice([2, 3, 4, 4, 4])) for _ in range(rng.randint(2, 7))]
@@ -668,6 +668,17 @@ def adv_fragment(rng: random.Random) -> str:
         glued = rng.choice([first + last, last + first, first + last + "ego", first + last + "123"])
         glued = glued.upper() if rng.random() < 0.5 else glued
         return glued.replace("s", "\u00df") if rng.random() < 0.2 else glued
+    if kind == 19:  # S37fix3: glued / slang scale words, ranges, glued numbers in links, chained e-mails
+        coefficient = rng.choice(["2", "dwa", "pięć", "kilka", "2,5", "12"])
+        return rng.choice([
+            coefficient + rng.choice(["tys", "tyś.", "mln", "koła", "stówy", "grand", " grand", "patyki"]),
+            coefficient + rng.choice(["-", " - ", "/", " lub ", " do ", " albo ", " or "]) + rng.choice(["3", "trzy", "trzech"])
+            + rng.choice([" tys.", " tysiące", " tysięcy", " mln", " dni"]),
+            rng.choice(["https://x.pl/", "(www.y.pl/", "xhttps://z/"]) + rng.choice(["a", "p", "id"])
+            + adv_digits(rng, rng.randint(1, 6)) + rng.choice(["", "b", "?k=1", ")"]),
+            "a.b@ex.pl" + rng.choice(["+", "."]) + rng.choice(["c@ex.pl", "x", ".d@e.pl"]),
+            rng.choice(["x", "X", "*", "•"]) * rng.randint(2, 40) + rng.choice(["", "1234", " 12"]),
+        ])
     return rng.choice(ADV_WORDS)  # kinds 14, 15: plain words
 
 
@@ -730,7 +741,9 @@ ORACLE_EXPRESSIONS = [
 def expressions_section(rng: random.Random) -> dict:
     metric_names = sorted(METRICS)
     units = {n: str(METRICS[n].unit.value) if METRICS[n].unit is not None else None for n in metric_names}
-    sources = list(ORACLE_EXPRESSIONS)
+    # the shared file's strict custom conditions (S37fix3): the TS test parses them from these trees
+    shared = [v["source"] for v in json.loads(SHARED.read_text("utf-8")).get("expressions", [])]
+    sources = list(ORACLE_EXPRESSIONS) + [x for x in shared if x not in ORACLE_EXPRESSIONS]
     numbers = ["0", "1", "100", "1.0", "100.00", "0.03", "5%", "20%", "45", "735", "5000", ".5", "1e3", "7"]
     for _ in range(1000):
         def operand():

@@ -117,16 +117,36 @@ const isAsciiAlpha = (ch: string | undefined): boolean =>
 const isNameChar = (ch: string | undefined): boolean =>
   isAsciiAlpha(ch) || isAsciiDigit(ch) || ch === "_";
 
+/** The number of code points of `text` (Python `len`) without splitting it. */
+function codePointCount(text: string): number {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    const unit = text.charCodeAt(i);
+    // a high surrogate followed by a low one is one code point
+    if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < text.length) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) i++;
+    }
+    count++;
+  }
+  return count;
+}
+
 /** Splits `source` into tokens ending with an END token. Throws `ExpressionError`. */
 export function tokenize(source: string): Token[] {
+  // S37fix3 E3 (S15a F3): the raw length is checked before the source is split into code points,
+  // so an oversized input costs one counting pass and no allocation (UTF-16 length >= code points)
+  if (source.length > MAX_EXPRESSION_LENGTH) {
+    const count = codePointCount(source);
+    if (count > MAX_EXPRESSION_LENGTH) {
+      throw new ExpressionError(
+        `Expression is too long (${count} characters, max ${MAX_EXPRESSION_LENGTH})`,
+        1,
+      );
+    }
+  }
   const chars = Array.from(source);
   const n = chars.length;
-  if (n > MAX_EXPRESSION_LENGTH) {
-    throw new ExpressionError(
-      `Expression is too long (${n} characters, max ${MAX_EXPRESSION_LENGTH})`,
-      1,
-    );
-  }
   const tokens: Token[] = [];
   let i = 0;
   while (i < n) {

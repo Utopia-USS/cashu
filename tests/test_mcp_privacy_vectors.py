@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +18,7 @@ from cashu.core.mcp.redaction import (
     leak_check,
     scrub_text,
 )
+from cashu.core.mcp.tools.messages import custom_condition, scrub_numbers
 
 VECTORS = json.loads((Path(__file__).parent / "mcp_privacy_vectors.json").read_text("utf-8"))
 GUARD = NameGuard(1, frozenset(VECTORS["guard_names"]))
@@ -101,3 +103,30 @@ def test_known_digit_only_symbols_stay(vector):
     )
     for mode, expected in vector["expect"].items():
         assert Redactor(mode, guard).apply({"s": L.symbol(vector["symbol"])}) == {"s": expected}
+
+
+@pytest.mark.parametrize(
+    "vector", VECTORS["expressions"], ids=lambda v: f"{v['finding']}:{v['source']!r}"
+)
+def test_strict_custom_condition_vectors(vector):
+    # S37fix3 E1 / E2 / E4: percent literals, glued numbers, text literals of a custom condition
+    out = custom_condition(SimpleNamespace(strict=True), vector["source"]).value
+    for secret in vector["absent"]:
+        assert secret not in out
+    assert out == vector["expect"]
+    sent = Redactor("strict", GUARD).apply(
+        {"expression": custom_condition(SimpleNamespace(strict=True), vector["source"])}
+    )
+    for secret in vector["absent"]:
+        assert secret not in sent["expression"]
+
+
+@pytest.mark.parametrize(
+    "vector", VECTORS["messages"], ids=lambda v: f"{v['finding']}:{v['text']!r}"
+)
+def test_strict_system_message_vectors(vector):
+    # S37fix3 E2: a strict system message never quotes a number
+    out = scrub_numbers(vector["text"])
+    for secret in vector["absent"]:
+        assert secret not in out
+    assert out == vector["expect"]

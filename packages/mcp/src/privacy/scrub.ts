@@ -58,7 +58,9 @@ const SEP = "[^\\p{L}\\p{N}]{1,5}";
 const ID_SEP = "(?: ?[/_\\-]{1,2} ?| {1,3}|[.,])";
 const RUN_SOURCE = `(?:(?<![${PY_W}])([A-Z]{2}))?(?<!${PY_D})(${PY_D}+(?:${SEP}${PY_D}+)*)`;
 const IBAN_SOURCE = `${WB_START}[A-Z]{2}${PY_D}{2}(?:${ID_SEP}?[A-Z0-9]{4}){3,8}(?:${ID_SEP}?[A-Z0-9]{1,4})?${WB_END}`;
-const MASKED_CARD_SOURCE = `(?<![${PY_W}*•])(?:${PY_D}{1,6}${ID_SEP}?)?(?:[*xX•]{2,}${ID_SEP}?){1,4}${PY_D}{2,6}(?!${PY_D})`;
+// S37fix3: a run of mask characters is taken whole (atomic, Python's possessive `{2,}+`), never
+// split between the groups: a long "xxxx..." word took polynomial time
+const MASKED_CARD_SOURCE = `(?<![${PY_W}*•])(?:${PY_D}{1,6}${ID_SEP}?)?(?:(?=([*xX•]{2,}))\\1${ID_SEP}?){1,4}${PY_D}{2,6}(?!${PY_D})`;
 const ALNUM_ID_SOURCE = `(?<![${PY_W}])[${PY_W}]{8,}(?![${PY_W}])`;
 const RUN = uRegex(RUN_SOURCE, "g");
 const IBAN = uRegex(IBAN_SOURCE, "g");
@@ -81,8 +83,11 @@ const ACCOUNT_WORD = uRegex(
     `(?:nr\\.? ?)?(${PY_D}[${PY_D} \\-]{4,}${PY_D})`,
   "g",
 );
+// S37fix3: an address starts only where a run of address characters starts (no rescan of a long
+// word from each of its letters: linear time); addresses chained right after one join it
+const EMAIL_ONE = `(?:@|\\(at\\)|\\[at\\])[${PY_W}\\-]+(?:\\.[${PY_W}\\-]+)+`;
 const EMAIL = uRegex(
-  `[${PY_W}.+\\-]+(?:@|\\(at\\)|\\[at\\])[${PY_W}\\-]+(?:\\.[${PY_W}\\-]+)+`,
+  `(?<![${PY_W}.+\\-])[${PY_W}.+\\-]+${EMAIL_ONE}(?:[.+][${PY_W}.+\\-]*${EMAIL_ONE})*`,
   "g",
 );
 // Money (strict): a number next to a currency (any upper-case 3-letter code, Polish / English
@@ -99,9 +104,11 @@ const NUM = `[\\-+]?${PY_D}(?:[${PY_D}${GROUP}]*${PY_D})?`;
 const MONEY_CUR = uRegex(`(?:${NUM} ?${CUR}(?![A-Za-z]))|(?:(?<![A-Za-z])${CUR} ?${NUM})`, "g");
 // S37fix2 W1 / W2: a scale word takes the whole number before it, digit groups included, across any
 // run of spaces ("2 tysiące", "3  miliony", "1,5 mln", "2 500 tysięcy", "5k", "2 tyś")
+// S37fix3: the other number of a range or an alternative joins it ("2-3 tys.", "2 do 3 tysięcy")
+const RANGE_JOIN = `(?:[${PY_WS}]*[\\-/][${PY_WS}]*|[${PY_WS}]+(?i:lub|albo|do|or|to)[${PY_WS}]+)`;
 const MULTIPLIED = uRegex(
-  `(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:${G}${PY_D}+)*[${PY_WS}]*` +
-    `(?i:${wordList("ty[sś]\\.?|tysi[aąeę]c\\w*|milion\\w*|miliard\\w*|bilion\\w*|mln|mld|k|m|mn|bn")})(?![${PY_W}])`,
+  `(?<![${PY_W}.,])(?:[\\-+]?${PY_D}+(?:${G}${PY_D}+)*${RANGE_JOIN})?[\\-+]?${PY_D}+(?:${G}${PY_D}+)*[${PY_WS}]*` +
+    `(?i:${wordList("ty[sś]\\.?|tysi[aąeę]c\\w*|milion\\w*|miliard\\w*|bilion\\w*|mln|mld|k|m|mn|bn|thousands?|millions?|billions?")})(?![${PY_W}])`,
   "g",
 );
 const NOT_PP = `[${PY_WS}]?pp${WB_END}`;
@@ -124,7 +131,11 @@ const MONEY_WORD = uRegex(
 );
 // S37fix2 N9: a number glued after letters ("kwota950", "nr1500") is a number too; a sign counts
 // only when no letter or digit stands before it ("COVID-19" keeps its dash)
-const ANY_NUMBER = uRegex(`(?:(?<![${PY_W}])[\\-+])?(?<!${PY_D})${PY_D}+(?:[.,]${PY_D}+)*`, "g");
+// S37fix3: an exponent is part of the number ("1e4%" is 10 000, not "1" and a kept "4%")
+const ANY_NUMBER = uRegex(
+  `(?:(?<![${PY_W}])[\\-+])?(?<!${PY_D})${PY_D}+(?:[.,]${PY_D}+)*(?:[eE][\\-+]?${PY_D}+)?`,
+  "g",
+);
 // S37fix2 N10: digit groups joined by one grouping character ("2 000", "3 000 %", "2_000 x",
 // "5•0000") are one number, masked whole by its significant digits, before a percent sign too
 const GROUPED_ANY = uRegex(`(?:(?<![${PY_W}])[\\-+])?(?<!${PY_D})${PY_D}+(?:${G}${PY_D}+)+`, "g");
@@ -152,18 +163,22 @@ const NUMBER_WORDS_SMALL = wordList(
     "dziewi[eę][cć]|dziewi[eę]ciu|p[oó][lł]|p[oó][lł]tor(?:a|ej)|kilka|kilku|kilkoma|par[eę]|paru|" +
     "paroma|one|two|three|four|five|six|seven|eight|nine|ten|half",
 );
-const NUMBER_WORDS_AFTER = wordList("ko[lł][oa]|bańk(?:a|i|ę|ą)|baniek|patyk\\w*");
-const NUMBER_WORD = `(?:${NUMBER_WORDS_BIG}|${NUMBER_WORDS_SMALL})(?![${PY_W}])`;
-const WORD_AFTER = `(?:${NUMBER_WORDS_BIG}|${NUMBER_WORDS_SMALL}|${NUMBER_WORDS_AFTER})(?![${PY_W}])`;
-const WORD_JOIN = `(?:[${PY_WS}]+(?:${PY_IC_I}|and)[${PY_WS}]+|[${PY_WS}]*[,\\-][${PY_WS}]*|[${PY_WS}]+)`;
-const DIGITS_BEFORE = `(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:${G}${PY_D}+)*${WORD_JOIN}`;
+// S37fix3: slang after a number also in English ("2 grand"); a scale abbreviation glued to a number
+// word ("dwatys", "pięćmln") is a scale word; a number in digits may be glued to the words ("2koła",
+// "2stówy"); words of a range or an alternative join the run ("dwa lub trzy tysiące")
+const NUMBER_WORDS_AFTER = wordList("ko[lł][oa]|bańk(?:a|i|ę|ą)|baniek|patyk\\w*|grands?");
+const GLUED_SCALE = `(?:${NUMBER_WORDS_SMALL})(?:ty[sś]\\.?|mln\\.?|mld\\.?)`;
+const NUMBER_WORD = `(?:${NUMBER_WORDS_BIG}|${GLUED_SCALE}|${NUMBER_WORDS_SMALL})(?![${PY_W}])`;
+const WORD_AFTER = `(?:${NUMBER_WORDS_BIG}|${GLUED_SCALE}|${NUMBER_WORDS_SMALL}|${NUMBER_WORDS_AFTER})(?![${PY_W}])`;
+const WORD_JOIN = `(?:[${PY_WS}]+(?:${PY_IC_I}|and|lub|albo|do|or|to|x)[${PY_WS}]+|[${PY_WS}]*[,/\\-][${PY_WS}]*|[${PY_WS}]+)`;
+const DIGITS_BEFORE = `(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:${G}${PY_D}+)*${WORD_JOIN}?`;
 const NUMBER_WORDS = uRegex(
   `(?i:(?:${DIGITS_BEFORE}|(?<![${PY_W}]))${NUMBER_WORD}(?:${WORD_JOIN}${WORD_AFTER})*` +
     `|${DIGITS_BEFORE}(?:${NUMBER_WORDS_AFTER})(?![${PY_W}])(?:${WORD_JOIN}${WORD_AFTER})*)`,
   "g",
 );
 const BIG_NUMBER_WORD = uRegex(
-  `(?i:(?<![${PY_W}])(?:${NUMBER_WORDS_BIG}|${NUMBER_WORDS_AFTER})(?![${PY_W}]))`,
+  `(?i:(?:(?<![${PY_W}])|(?<=${PY_D}))(?:${NUMBER_WORDS_BIG}|${GLUED_SCALE}|${NUMBER_WORDS_AFTER})(?![${PY_W}]))`,
 );
 // Kept in strict free text (S37fix R1, R2, N1, N5): a number with at most 3 integer digits and no
 // grouping right before a percent sign / percentage points (a decimal part of 1-2 digits allowed) or
@@ -181,8 +196,10 @@ const KEPT_PERCENT = uRegex(
     `(?= ?(?:%|pp${WB_END}|p\\.p\\.|pkt proc\\.))`,
   "g",
 );
+// S37fix3: "2 x tysiąc" is an amount, not a multiplier
 const KEPT_UNIT = uRegex(
-  `${NOT_GROUPED}[\\-+]?${PY_D}{1,3}(?= ?(?i:${KEPT_UNITS})(?![${PY_W}]))`,
+  `${NOT_GROUPED}[\\-+]?${PY_D}{1,3}(?= ?(?i:${KEPT_UNITS})(?![${PY_W}]))` +
+    `(?! ?(?i:x[${PY_WS}]+(?:${NUMBER_WORDS_BIG}|${GLUED_SCALE}))(?![${PY_W}]))`,
   "g",
 );
 const KEPT_POSITION = uRegex(
@@ -194,10 +211,32 @@ const CURRENCY_WORDS = `zł|zl|złot[${PY_W}]*|zlot[${PY_W}]*|grosz[${PY_W}]*|gr
 const CURRENCY_BEFORE = uRegex(
   `(?:(?i:${WB_START}(?:${CURRENCY_WORDS}))|[$€£]|${WB_START}[A-Z]{3}) {0,3}[\\-+]?${PY_END}`,
 );
+// sticky: matched at the end of the number (no slice of the rest of the text)
 const CURRENCY_AFTER = uRegex(
-  `^ {0,3}(?:(?:%|pp${WB_END}|p\\.p\\.|pkt proc\\.|(?i:${KEPT_UNITS}))(?![${PY_W}]))? {0,3}` +
+  ` {0,3}(?:(?:%|pp${WB_END}|p\\.p\\.|pkt proc\\.|(?i:${KEPT_UNITS}))(?![${PY_W}]))? {0,3}` +
     `(?:(?i:(?:${CURRENCY_WORDS}))(?![${PY_W}])|[$€£]|[A-Z]{3}(?![A-Za-z]))`,
+  "y",
 );
+const WORD_CHAR = uRegex(`^[${PY_W}]$`);
+
+/**
+ * Where the window before a kept number starts (S37fix3 D1): a currency ends at most 4 characters
+ * before the number, and the window goes back to the start of the word there, so the rule never
+ * reads the whole text before each number (linear for many kept numbers).
+ */
+function currencyWindow(text: string, start: number): number {
+  let window = Math.max(0, start - 5);
+  const unit = text.charCodeAt(window);
+  if (window > 0 && unit >= 0xdc00 && unit <= 0xdfff) window -= 1; // not inside a surrogate pair
+  while (window > 0) {
+    const low = text.charCodeAt(window - 1);
+    const pair = window > 1 && low >= 0xdc00 && low <= 0xdfff;
+    const size = pair ? 2 : 1;
+    if (!WORD_CHAR.test(text.slice(window - size, window))) break;
+    window -= size;
+  }
+  return window;
+}
 const ISIN_SOURCE = `${WB_START}[A-Z]{2}[A-Z0-9]{9}${PY_D}${WB_END}`;
 const ISIN = uRegex(ISIN_SOURCE, "g");
 const ISIN_FULL = uRegex(`^[A-Z]{2}[A-Z0-9]{9}${PY_D}$`);
@@ -264,8 +303,12 @@ function protectDates(work: WorkText, isins: ReadonlySet<string> = new Set()): S
 }
 
 function protectKeptNumbers(work: WorkText, saved: Saved[]): void {
-  const nearCurrency = (start: number, end: number): boolean =>
-    CURRENCY_BEFORE.test(work.text.slice(0, start)) || CURRENCY_AFTER.test(work.text.slice(end));
+  const nearCurrency = (start: number, end: number): boolean => {
+    const text = work.text;
+    if (CURRENCY_BEFORE.test(text.slice(currencyWindow(text, start), start))) return true;
+    CURRENCY_AFTER.lastIndex = end;
+    return CURRENCY_AFTER.test(text);
+  };
   const keep: WorkReplacer = (m) => {
     const start = m.index as number;
     if (nearCurrency(start, start + m[0].length)) return null;
@@ -334,22 +377,108 @@ const significant: WorkReplacer = (m) => {
  * amount. S37fix2 W3: only a link that starts the text or follows a space, "(", "<" or a quote
  * ("xhttps://" is not a link).
  */
-const IN_LINK = uRegex(`(?:^|(?<=[${PY_WS}(<"'“”„‘’«»]))(?:https?://|www\\.)[^${PY_WS}]*$`);
+const LINK_START = uRegex(`(?:^|(?<=[${PY_WS}(<"'“”„‘’«»]))(?:https?://|www\\.)`, "g");
+const SPACE = uRegex(`[${PY_WS}]`, "g");
 const LETTER_CHAR = /^\p{L}$/u;
+/** S37fix3: a glued number with 4+ digits is masked inside a link too ("https://x.pl/a4532b"). */
+const LINK_DIGITS = 4;
 
-const anyNumber: WorkReplacer = (m) => {
-  const start = m.index as number;
-  const before = (m.input as string).slice(0, start);
-  const previous = Array.from(before.slice(-2)).pop() ?? "";
-  if (LETTER_CHAR.test(previous) && IN_LINK.test(before)) return null;
-  return significant(m);
-};
+/** The first index of the sorted `values` whose value is above `value` (Python `bisect_right`). */
+function upperBound(values: readonly number[], value: number): number {
+  let lo = 0;
+  let hi = values.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if ((values[mid] as number) <= value) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Where the links of a text start, to tell whether a position lies inside one: a link start
+ * (`https://`, `http://`, `www.`) ends before the position, with no space after it. Built once per
+ * pass (S37fix3), never a rescan of the text before each number, so a long text stays linear.
+ */
+class LinkIndex {
+  private readonly ends: number[] = [];
+  /** The latest link start among the first k links by end. */
+  private readonly starts: number[] = [];
+  private readonly spaces: number[];
+
+  constructor(text: string) {
+    const found = Array.from(text.matchAll(LINK_START), (m) => {
+      const start = m.index as number;
+      return [start + m[0].length, start] as const;
+    }).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    let latest = -1;
+    for (const [end, start] of found) {
+      this.ends.push(end);
+      latest = Math.max(latest, start);
+      this.starts.push(latest);
+    }
+    this.spaces = Array.from(text.matchAll(SPACE), (m) => m.index as number);
+  }
+
+  inside(position: number): boolean {
+    const k = upperBound(this.ends, position);
+    if (k === 0) return false;
+    // the last space before `position` (bisect_left = upperBound of position - 1 on integers)
+    const j = upperBound(this.spaces, position - 1);
+    return (j > 0 ? (this.spaces[j - 1] as number) : -1) < (this.starts[k - 1] as number);
+  }
+}
+
+/** The `ANY_NUMBER` replacement for one pass over `text`. */
+function anyNumberIn(text: string): WorkReplacer {
+  let links: LinkIndex | null = null;
+  return (m) => {
+    const start = m.index as number;
+    const previous = Array.from(text.slice(Math.max(0, start - 2), start)).pop() ?? "";
+    if (LETTER_CHAR.test(previous) && digitCount(m[0]) < LINK_DIGITS) {
+      links ??= new LinkIndex(text);
+      if (links.inside(start)) return null;
+    }
+    return significant(m);
+  };
+}
 
 const numberWords: WorkReplacer = (m) => (BIG_NUMBER_WORD.test(m[0]) ? "[amount]" : null);
 
 /** Replace a match with its text before the last group (the number) and `replacement`. */
 function keepPrefix(replacement: string): WorkReplacer {
   return (m) => m[0].slice(0, m[0].length - (m[1] ?? "").length) + replacement;
+}
+
+/**
+ * S37fix3: every scrubbed string is cut to `MAX_SCRUB_CHARS` code points (the longest tool
+ * argument, `registry` `MAX_STRING`) before any rule reads it (the raw length is checked before the
+ * text is split into code points), and the rules run in linear time, so one long string cannot
+ * stall a call. The cut drops the word it splits and any digits or separators before it (no half of
+ * a number is left to slip under a threshold), then the whole word before that (the first half of
+ * a name split by the cut), and appends `TRUNCATED`.
+ */
+export const MAX_SCRUB_CHARS = 200_000;
+export const TRUNCATED = " [truncated]";
+const SPACE_CHAR = uRegex(`^[${PY_WS}]$`);
+
+function cap(text: string): readonly [string, boolean] {
+  if (text.length <= MAX_SCRUB_CHARS) return [text, false]; // UTF-16 length >= code points
+  let units = 0;
+  let count = 0;
+  while (units < text.length && count < MAX_SCRUB_CHARS) {
+    units += (text.codePointAt(units) as number) > 0xffff ? 2 : 1;
+    count += 1;
+  }
+  if (units >= text.length) return [text, false];
+  const chars = Array.from(text.slice(0, units));
+  let end = chars.length;
+  for (let pass = 0; pass < 2; pass++) {
+    // the split word, then the word before it (half of a name, S37fix3)
+    while (end > 0 && !SPACE_CHAR.test(chars[end - 1] as string)) end -= 1;
+    while (end > 0 && !LETTER_CHAR.test(chars[end - 1] as string)) end -= 1;
+  }
+  return [chars.slice(0, end).join(""), true];
 }
 
 export interface ScrubOptions {
@@ -364,7 +493,8 @@ export function scrubText(
   { strict, guard = null }: ScrubOptions,
 ): string | null {
   if (value === null) return null;
-  let text = value;
+  const [capped, cut] = cap(value);
+  let text = capped;
   if (strict && guard !== null) {
     // first, before any rewriting: an alias with a number ("IKE Oli 2030") must still match the
     // owner's label as typed (F7 review R6)
@@ -389,12 +519,12 @@ export function scrubText(
     work.sub(GROUPED_ANY, significant); // before the decimal rule: "1.2.3" is one number
     work.sub(GROUPED, "[amount]");
     work.sub(DECIMAL, "[amount]");
-    work.sub(ANY_NUMBER, anyNumber);
+    work.sub(ANY_NUMBER, anyNumberIn(work.text));
   }
   restoreDates(work, dates);
   text = work.render();
   if (guard !== null) text = guard.mask(text);
-  return text;
+  return cut ? text + TRUNCATED : text;
 }
 
 /** True when `text` still holds an identifier-like run (the leak check's string test). */

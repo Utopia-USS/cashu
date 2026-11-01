@@ -1,5 +1,5 @@
 {
- "about": "Shared synthetic adversarial vectors for the MCP privacy layer (S37fix). Read by tests/test_mcp_privacy_vectors.py (Python) and packages/mcp/src/privacy/sharedVectors.test.ts (TypeScript). Everything is invented: the Visa test card 4532 0151 1283 0366, the textbook IBAN PL61 1090 1014 0000 0712 1981 2874 and the names Anna Nowak / Jan Kowalski. 'absent': substrings the redacted text must not contain; 'expect': the exact text per mode; 'guard': scrub with the name guard; 'authored': agent / cashU text (R3, R4) with the owner-text result; 'symbols_known': symbol fields against the guard's known digit-only symbols (R5).",
+ "about": "Shared synthetic adversarial vectors for the MCP privacy layer (S37fix). Read by tests/test_mcp_privacy_vectors.py (Python) and packages/mcp/src/privacy/sharedVectors.test.ts (TypeScript). Everything is invented: the Visa test card 4532 0151 1283 0366, the textbook IBAN PL61 1090 1014 0000 0712 1981 2874 and the names Anna Nowak / Jan Kowalski. 'absent': substrings the redacted text must not contain; 'expect': the exact text per mode; 'guard': scrub with the name guard; 'authored': agent / cashU text (R3, R4) with the owner-text result; 'symbols_known': symbol fields against the guard's known digit-only symbols (R5). 'expressions': strict custom conditions (S37fix3 E1 / E2 / E4) with the exact strict text; 'messages': strict system messages (scrub_numbers, S37fix3 E2).",
  "guard_names": [
   "ANNA NOWAK",
   "JAN KOWALSKI"
@@ -3750,6 +3750,520 @@
    "expect": {
     "strict": "millionaire"
    }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "dwatys",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "pi\u0119\u0107mln",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "pi\u0119\u0107"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "kilkaty\u015b.",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "kilka"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "2ko\u0142a",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "2st\u00f3wy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "2ba\u0144ki",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "2patyki",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "2 grand",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "2grand",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL1",
+   "text": "po\u017cyczy\u0142em mu dwatys. na auto",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "po\u017cyczy\u0142em mu [amount] na auto"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "2-3 tys.",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "2 - 3 tys. z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount] z\u0142"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "2\u20133 tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "2/3 tysi\u0105ca",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "2 do 3 tysi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "2 lub 3 mln",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "2,5-3 mln z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2,5",
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount] z\u0142"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "dwa lub trzy tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa",
+    "trzy"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "dwa albo trzy tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa",
+    "trzy"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "od dw\u00f3ch do trzech tysi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dw\u00f3ch",
+    "trzech"
+   ],
+   "expect": {
+    "strict": "od [amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "2 lub trzy tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "trzy"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "two or three thousand",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "two",
+    "three"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL2",
+   "text": "dwa/trzy tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa",
+    "trzy"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 WL3",
+   "text": "zob. https://x.pl/a4532b",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "4532"
+   ],
+   "expect": {
+    "strict": "zob. https://x.pl/a[amount]b"
+   }
+  },
+  {
+   "finding": "S37fix3 WL3",
+   "text": "(https://x.pl/saldo52000)",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "52000"
+   ],
+   "expect": {
+    "strict": "(https://x.pl/[account])"
+   }
+  },
+  {
+   "finding": "S37fix3 WL3",
+   "text": "https://x.pl/a950?k=b1234",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1234"
+   ],
+   "expect": {
+    "strict": "https://x.pl/a950?k=b[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 email",
+   "text": "a.nowak@example.pl+jan@example.pl",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "nowak@",
+    "jan@"
+   ],
+   "expect": {
+    "strict": "[email]",
+    "amounts": "[email]"
+   }
+  },
+  {
+   "finding": "S37fix3 email",
+   "text": "anna@example.pl.jan@example.pl",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "anna@",
+    "jan@"
+   ],
+   "expect": {
+    "strict": "[email]@example.pl",
+    "amounts": "[email]@example.pl"
+   }
+  },
+  {
+   "finding": "S37fix3 keep",
+   "text": "grand prix",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "grand prix"
+   }
+  },
+  {
+   "finding": "S37fix3 keep",
+   "text": "jednak",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "jednak"
+   }
+  },
+  {
+   "finding": "S37fix3 keep",
+   "text": "https://x.pl/a950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "https://x.pl/a950"
+   }
+  },
+  {
+   "finding": "S37fix3 keep",
+   "text": "(https://x.pl/p11/)",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "(https://x.pl/p11/)"
+   }
+  },
+  {
+   "finding": "S37fix3 keep",
+   "text": "dwa do zera",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "dwa do zera"
+   }
+  },
+  {
+   "finding": "S37fix3 keep",
+   "text": "2-3 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "2-3 dni"
+   }
+  },
+  {
+   "finding": "S37fix3 re-check",
+   "text": "2 to 3 thousand",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 re-check",
+   "text": "2 x tysi\u0105c",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 re-check",
+   "text": "dwa x tysi\u0105c",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "S37fix3 re-check",
+   "text": "wzrost 1e4% w rok",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1e4",
+    "4%"
+   ],
+   "expect": {
+    "strict": "wzrost [amount]% w rok"
+   }
+  },
+  {
+   "finding": "S37fix3 keep",
+   "text": "2 x 3 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "2 x 3 dni"
+   }
   }
  ],
  "symbols": [
@@ -4237,6 +4751,205 @@
     "strict": "[amount]",
     "amounts": "123456"
    }
+  }
+ ],
+ "expressions": [
+  {
+   "finding": "S37fix3 E1",
+   "source": "cash_value < 80000%",
+   "absent": [
+    "80000"
+   ],
+   "expect": "cash_value < [amount]"
+  },
+  {
+   "finding": "S37fix3 E1",
+   "source": "weight * 12000000% > 900",
+   "absent": [
+    "12000000",
+    "900"
+   ],
+   "expect": "weight * [amount] > [amount]"
+  },
+  {
+   "finding": "S37fix3 E1",
+   "source": "monthly_contribution > 150000%",
+   "absent": [
+    "150000"
+   ],
+   "expect": "monthly_contribution > [amount]"
+  },
+  {
+   "finding": "S37fix3 E1",
+   "source": "bucket_value(\"core\") > 5000000%",
+   "absent": [
+    "5000000"
+   ],
+   "expect": "bucket_value(\"core\") > [amount]"
+  },
+  {
+   "finding": "S37fix3 E1",
+   "source": "cash_value > 1000% and weight < 999%",
+   "absent": [
+    "1000"
+   ],
+   "expect": "cash_value > [amount] and weight < 999%"
+  },
+  {
+   "finding": "S37fix3 E1",
+   "source": "cash_value < 0080000% or broken (",
+   "absent": [
+    "80000"
+   ],
+   "expect": "cash_value < [amount]% or broken ("
+  },
+  {
+   "finding": "S37fix3 E2",
+   "source": "cash_value < 800k",
+   "absent": [
+    "800"
+   ],
+   "expect": "cash_value < [amount]k"
+  },
+  {
+   "finding": "S37fix3 E2",
+   "source": "cash_value < 800PLN",
+   "absent": [
+    "800"
+   ],
+   "expect": "cash_value < [amount]PLN"
+  },
+  {
+   "finding": "S37fix3 E2",
+   "source": "cash_value < 800_000",
+   "absent": [
+    "800",
+    "000"
+   ],
+   "expect": "cash_value < [amount]"
+  },
+  {
+   "finding": "S37fix3 E2",
+   "source": "cash_value < 12.5k",
+   "absent": [
+    "12"
+   ],
+   "expect": "cash_value < [amount]k"
+  },
+  {
+   "finding": "S37fix3 E4",
+   "source": "holding_has_tag(\"buffer 800\") and weight < 0.5",
+   "absent": [
+    "800"
+   ],
+   "expect": "holding_has_tag(\"buffer [amount]\") and weight < 0.5"
+  },
+  {
+   "finding": "S37fix3 E4",
+   "source": "symbol == 'PL61109010140000071219812874'",
+   "absent": [
+    "1090",
+    "2874"
+   ],
+   "expect": "symbol == '[iban]'"
+  },
+  {
+   "finding": "S37fix3 E4",
+   "source": "tagged_weight(\"4532 0151 1283 0366\") > 10%",
+   "absent": [
+    "0151",
+    "0366"
+   ],
+   "expect": "tagged_weight(\"[number]\") > 10%"
+  },
+  {
+   "finding": "S37fix3 keep",
+   "source": "cash_weight > 10%",
+   "absent": [],
+   "expect": "cash_weight > 10%"
+  },
+  {
+   "finding": "S37fix3 keep",
+   "source": "weight < 12.5% and drawdown_from_high(252) >= 20%",
+   "absent": [],
+   "expect": "weight < 12.5% and drawdown_from_high(252) >= 20%"
+  },
+  {
+   "finding": "S37fix3 re-check",
+   "source": "cash_value < 1e4%",
+   "absent": [
+    "1e4"
+   ],
+   "expect": "cash_value < [amount]%"
+  },
+  {
+   "finding": "S37fix3 re-check",
+   "source": "weight < 1_000%",
+   "absent": [
+    "1_000",
+    "000%"
+   ],
+   "expect": "weight < [amount]%"
+  }
+ ],
+ "messages": [
+  {
+   "finding": "S37fix3 E2",
+   "text": "Invalid number \"800k...\" (column 14)",
+   "absent": [
+    "800"
+   ],
+   "expect": "Invalid number \"#\" (column 14)"
+  },
+  {
+   "finding": "S37fix3 E2",
+   "text": "Invalid number \"800PLN...\" (column 14)",
+   "absent": [
+    "800"
+   ],
+   "expect": "Invalid number \"#\" (column 14)"
+  },
+  {
+   "finding": "S37fix3 E2",
+   "text": "Names cannot start with \"_\" (got \"_800000\") (column 3)",
+   "absent": [
+    "800"
+   ],
+   "expect": "Names cannot start with \"_\" (got \"#\") (column 3)"
+  },
+  {
+   "finding": "S37fix3 E2",
+   "text": "cash_value is never \"buffer 800\"; did you mean \"bufor 800\"?",
+   "absent": [
+    "800"
+   ],
+   "expect": "cash_value is never \"#\"; did you mean \"#\"?"
+  },
+  {
+   "finding": "S37fix3 E2",
+   "text": "gap 800k and 800_000 and 1500% and kwota950",
+   "absent": [
+    "800",
+    "000",
+    "1500",
+    "950"
+   ],
+   "expect": "gap #k and #_# and #% and kwota#"
+  },
+  {
+   "finding": "S37fix3 keep",
+   "text": "IS3N drift 5 pp, 37.3% on 2026-03-02 at rules[3] line 12 column 4",
+   "absent": [],
+   "expect": "IS3N drift 5 pp, 37.3% on 2026-03-02 at rules[3] line 12 column 4"
+  },
+  {
+   "finding": "S37fix3 re-check",
+   "text": "got 1e4% and 2E-3",
+   "absent": [
+    "1e4",
+    "2E"
+   ],
+   "expect": "got #% and #"
   }
  ]
 }

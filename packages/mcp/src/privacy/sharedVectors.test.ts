@@ -6,10 +6,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import * as L from "./labels.js";
+import { customCondition, scrubNumbers } from "./messages.js";
 import { NameGuard } from "./names.js";
 import type { JsonValue } from "./pyJson.js";
 import { LeakDetected, leakCheck, Redactor, UnlabelledValue } from "./redactor.js";
 import { scrubText } from "./scrub.js";
+import { exprDepsFromVectors } from "./testing/vectors.js";
 
 type Mode = "strict" | "amounts";
 
@@ -41,6 +43,8 @@ interface Vectors {
   }[];
   readonly known_symbols: string[];
   readonly symbols_known: { finding: string; symbol: string; expect: Record<Mode, string> }[];
+  readonly expressions: { finding: string; source: string; absent: string[]; expect: string }[];
+  readonly messages: { finding: string; text: string; absent: string[]; expect: string }[];
 }
 
 const url = new URL("../../../../tests/mcp_privacy_vectors.json", import.meta.url);
@@ -146,4 +150,28 @@ it("keeps the original text outside the masked spans", () => {
   expect(scrubText(text, { strict: false })).toBe(
     `Za${thin}obiad${nbsp}- karta [number],\tdzięki!`,
   );
+});
+
+describe("strict custom conditions (S37fix3 E1 / E2 / E4)", () => {
+  const deps = exprDepsFromVectors();
+  it.each(VECTORS.expressions.map((v) => [`${v.finding}: ${v.source}`, v] as const))(
+    "%s",
+    (_id, v) => {
+      const out = customCondition({ strict: true }, v.source, deps).value as string;
+      for (const secret of v.absent) expect(out).not.toContain(secret);
+      expect(out).toBe(v.expect);
+      const sent = new Redactor({ privacy: "strict", guard: GUARD }).apply({
+        expression: customCondition({ strict: true }, v.source, deps),
+      }) as { expression: string };
+      for (const secret of v.absent) expect(sent.expression).not.toContain(secret);
+    },
+  );
+});
+
+describe("strict system messages (S37fix3 E2)", () => {
+  it.each(VECTORS.messages.map((v) => [`${v.finding}: ${v.text}`, v] as const))("%s", (_id, v) => {
+    const out = scrubNumbers(v.text);
+    for (const secret of v.absent) expect(out).not.toContain(secret);
+    expect(out).toBe(v.expect);
+  });
 });

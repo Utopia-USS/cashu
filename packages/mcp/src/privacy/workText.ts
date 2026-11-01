@@ -20,8 +20,20 @@ const REMOVED = String.fromCodePoint(0xad); // soft hyphen
 const ZS = /^\p{Zs}$/u;
 const PD = /^\p{Pd}$/u;
 
+/** S37fix3: `normChar` is a pure function of one code point, called per code point. */
+const NORM_CACHE = new Map<string, string>();
+
 /** One code point normalized for matching ("" when it is removed). */
 function normChar(ch: string): string {
+  const cached = NORM_CACHE.get(ch);
+  if (cached !== undefined) return cached;
+  const out = normCharUncached(ch);
+  if (NORM_CACHE.size >= 4096) NORM_CACHE.clear();
+  NORM_CACHE.set(ch, out);
+  return out;
+}
+
+function normCharUncached(ch: string): string {
   if (ch === REMOVED) return "";
   let out = "";
   for (const c of ch.normalize("NFKC")) {
@@ -45,6 +57,11 @@ export type Restored = readonly [string, readonly (number | null)[]];
 type WorkReplacement = string | null | Restored;
 export type WorkReplacer = (m: RegExpMatchArray) => WorkReplacement;
 
+/** `target.push(...items)` without spreading (a spread of 100k+ items overflows the stack). */
+function pushAll<T>(target: T[], items: readonly T[], from = 0, to = items.length): void {
+  for (let k = from; k < to; k++) target.push(items[k] as T);
+}
+
 export class WorkText {
   private readonly orig: readonly string[];
   private readonly removed: readonly boolean[];
@@ -52,6 +69,7 @@ export class WorkText {
   /** Per UTF-16 unit of `text`: the original code point index, or null for a replacement. */
   src: (number | null)[];
   private readonly touched = new Set<number>();
+  private changed = false;
 
   constructor(value: string) {
     this.orig = Array.from(value);
@@ -84,29 +102,34 @@ export class WorkText {
       const start = m.index as number;
       const end = start + m[0].length;
       out += this.text.slice(last, start);
-      src.push(...this.src.slice(last, start));
+      pushAll(src, this.src, last, start);
       if (mark) {
-        for (const s of this.src.slice(start, end)) if (s !== null) this.touched.add(s);
+        for (let k = start; k < end; k++) {
+          const s = this.src[k] as number | null;
+          if (s !== null) this.touched.add(s);
+        }
       }
       if (typeof r === "string") {
         out += r;
         for (let k = 0; k < r.length; k++) src.push(null);
       } else {
         out += r[0];
-        src.push(...r[1]);
+        pushAll(src, r[1]);
       }
       last = end;
       replaced = true;
     }
     if (!replaced) return;
+    this.changed = true;
     out += this.text.slice(last);
-    src.push(...this.src.slice(last));
+    pushAll(src, this.src, last);
     this.text = out;
     this.src = src;
   }
 
   /** The original text with the replacements in place. */
   render(): string {
+    if (!this.changed) return this.orig.join(""); // nothing replaced: the original text as it is
     let out = "";
     let prev: number | null = null;
     for (let k = 0; k < this.text.length; k++) {

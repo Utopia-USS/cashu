@@ -91,6 +91,21 @@ describe("test_rules_expr_security", () => {
     expect(compileError(source).message).toMatch(/Expression is too long/);
   });
 
+  // S37fix3 E3: the raw length is checked before the source is split into code points; the message
+  // still counts code points, as Python's len does
+  it("counts code points when it rejects a long expression before splitting it", () => {
+    const astral = "\u{1d400}";
+    expect(compileError(`"${astral.repeat(MAX_EXPRESSION_LENGTH - 2)}"`).message).not.toMatch(
+      /Expression is too long/,
+    );
+    expect(compileError(astral.repeat(MAX_EXPRESSION_LENGTH + 1)).message).toBe(
+      `Expression is too long (${MAX_EXPRESSION_LENGTH + 1} characters, max ${MAX_EXPRESSION_LENGTH})`,
+    );
+    expect(compileError("w".repeat(10_000_000)).message).toBe(
+      `Expression is too long (10000000 characters, max ${MAX_EXPRESSION_LENGTH})`,
+    );
+  });
+
   it("test_too_many_tokens", () => {
     const source = Array(60).fill("weight>1").join(" or ");
     expect(source.length).toBeLessThanOrEqual(MAX_EXPRESSION_LENGTH);
