@@ -542,8 +542,10 @@ async function main(argv: readonly string[]): Promise<number> {
     });
     daemon(c, ["run", "--once"], "phaseC");
     // The scenarios the first milestone avoided (review F2): an overlapping broker re-import, then a
-    // merge of an instrument the vault already holds; each shipped by `run --once`.
-    for (const phase of ["R", "M"] as const) {
+    // merge of an instrument the vault already holds; S31c: a re-import with changed figures (X),
+    // alert tags (T), a proposal rejected with a note and an approval that failed after the
+    // decision (P). Each shipped by `run --once`.
+    for (const phase of ["R", "X", "M", "T", "P"] as const) {
       const writes = lastJson(
         python(
           c,
@@ -606,6 +608,17 @@ async function main(argv: readonly string[]): Promise<number> {
         dev.store.read<{ n: number }>(
           "SELECT COUNT(*) AS n FROM (SELECT eid FROM event_log GROUP BY eid HAVING COUNT(*) > 1)",
         )[0]?.n ?? 0;
+      // S31c paths taken (counts by type and state, never payloads).
+      const s31c = Object.fromEntries(
+        dev.store
+          .read<{ k: string; n: number }>(
+            `SELECT type || ':' || state AS k, COUNT(*) AS n FROM event_log
+             WHERE type IN ('position.snapshotUpdated', 'proposal.applyFailed', 'proposal.rejected')
+                OR (type = 'strategy.versionSaved' AND state = 'suppressed')
+             GROUP BY type, state ORDER BY k`,
+          )
+          .map((x) => [x.k, x.n]),
+      );
       const raw = await rawScan(join(runDir, "remote"), r, sodium);
       const secret = r.gidSalt();
       verifier.push({
@@ -623,6 +636,7 @@ async function main(argv: readonly string[]): Promise<number> {
         rawDuplicates: raw.duplicates,
         rejected: synced.rejected.length,
         parked: synced.parked,
+        s31c,
       });
       await dev.close();
     }

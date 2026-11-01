@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scripted synthetic writes of the bridge harness (S31a spec 9.3 steps 3, 5, 7).
 
-    .venv/bin/python parity/python/bridge_writes.py --dataset lab|demo --phase A|B|C|R|M [--part 1|2|3]
+    .venv/bin/python parity/python/bridge_writes.py --dataset lab|demo --phase A|B|C|R|X|M|T|P [--part 1|2|3]
 
 Runs on the CURRENT data dir, which must be a run copy inside ``~/cashu-lab/parity/`` (never a dataset
 source): the harness starts it under golden.py ``safe_env`` with ``CASHU_DATA_DIR`` = the run's
@@ -19,8 +19,11 @@ traceback goes to ``<run>/bridge-writes.log``) and exits 1.
 Phases (spec 9.3): A = the main set (lab: investments; demo adds the budget, assets and loans writes and
 a small synthetic mBank CSV import written under the run dir); B = six more of the same kinds, in three parts of two (``--part``, one per crash point of the kill test); C = one
 local edit of the alert whose title phase A edited (the inbound-then-local sequence); R = an
-overlapping broker re-import (2 txns, after C); M = a merge of an instrument phase A watched, already
-shipped (1 txn, after R).
+overlapping broker re-import (2 txns, after C); X = a re-import of R's file with changed figures for
+two stored positions (1 txn, after R); M = a merge of an instrument phase A watched, already shipped
+(1 txn); T = alert tags: created, changed, cleared, set on a shipped alert (5 txns); P = proposal
+outcomes: a rejection with a note and an approval whose files cannot be written (approved -> failed,
+the version undone; 5 txns with the two proposals).
 """
 
 from __future__ import annotations
@@ -680,10 +683,11 @@ BROKER_HEADER = (
 )
 
 
-def _broker_file(r: Run, second: bool) -> bytes:
+def _broker_file(r: Run, second: bool, changed: bool = False) -> bytes:
     """A synthetic export in cashU's own broker format: two instruments bought, their positions on
     day D; the second file repeats every row of the first (D positions identical) and adds one buy
-    and the positions of a later day D2."""
+    and the positions of a later day D2. ``changed`` (phase X) is the second file again with other
+    figures for positions already stored: day D and day D2 of the first instrument moved."""
     d1 = (r.today - dt.timedelta(days=10)).isoformat()
     d2 = (r.today - dt.timedelta(days=3)).isoformat()
     t0 = (r.today - dt.timedelta(days=20)).isoformat()
@@ -694,25 +698,29 @@ def _broker_file(r: Run, second: bool) -> bytes:
         f"1,position,{d1},,,,BRTA,,BRIDGE TEST 5 SA,XWAR,10,,PLN,,,,,,,,",
         f"1,position,{d1},,,,BRTB,,BRIDGE TEST 6 SA,XWAR,20,,PLN,,,,,,,,",
     ]
-    if second:
+    if second or changed:
         rows += [
             f"1,txn,{d1},10:00,buy,BRIDGE-TEST-4,BRTA,,BRIDGE TEST 5 SA,XWAR,5,100.00,PLN,500.00,,,-500.00,,,,",
-            f"1,position,{d2},,,,BRTA,,BRIDGE TEST 5 SA,XWAR,15,,PLN,,,,,,,,",
+            f"1,position,{d2},,,,BRTA,,BRIDGE TEST 5 SA,XWAR,{16 if changed else 15},,PLN,,,,,,,,",
             f"1,position,{d2},,,,BRTB,,BRIDGE TEST 6 SA,XWAR,20,,PLN,,,,,,,,",
         ]
+    if changed:
+        rows[3] = f"1,position,{d1},,,,BRTA,,BRIDGE TEST 5 SA,XWAR,11,,PLN,,,,,,,,"
     return ("\n".join([BROKER_HEADER, *rows]) + "\n").encode("utf-8")
 
 
-def broker_reimport(r: Run) -> None:
-    """Two imports through the real importer (preview, then commit: the app's import flow) into the
-    profile's lowest-id brokerage account; the second overlaps the first."""
+def broker_reimport(r: Run, files: tuple[tuple[int, bool, bool], ...] = ((1, True, False),)) -> None:
+    """Imports through the real importer (preview, then commit: the app's import flow) into the
+    profile's lowest-id brokerage account; ``files`` = (n, second, changed) per import. Phase R: the
+    first file, then the second that overlaps it (same figures for day D); phase X: the second file
+    with changed figures for two stored positions."""
     from cashu.core.models import Profile
     from cashu.modules.investments.importing import ImportFile
     from cashu.modules.investments.service import imports
 
     aid = _account(r, "brokerage")
-    for n, second in ((1, False), (2, True)):
-        content = _broker_file(r, second)
+    for n, second, changed in files:
+        content = _broker_file(r, second, changed)
 
         def write(content=content, n=n) -> None:
             with _session() as s:
@@ -728,7 +736,107 @@ def broker_reimport(r: Run) -> None:
 
 
 def phase_r(r: Run) -> None:
-    r.step("broker_reimport", broker_reimport)
+    r.step("broker_reimport", lambda r: broker_reimport(r, ((1, False, False), (2, True, False))))
+
+
+def phase_x(r: Run) -> None:
+    """After R: an overlapping re-import with CHANGED figures (S31c item 2): two stored snapshots
+    take new quantities (``position.snapshotUpdated``), every transaction is a duplicate."""
+    r.step("broker_reimport_changed", lambda r: broker_reimport(r, ((3, True, True),)))
+
+
+# --------------------------------------------------------------------------- #
+# Phase T: alert tags; phase P: proposal outcomes (S31c items 1 and 3)
+# --------------------------------------------------------------------------- #
+
+
+def alert_tags(r: Run) -> None:
+    """A tagged alert created, retagged and another one's tag cleared, plus a tag on an alert the
+    vault already holds untagged (``alert.created.tag`` / ``alert.updated.tag``)."""
+    from cashu.modules.investments import api
+    from cashu.modules.investments.store import instruments
+
+    with _session() as s:
+        known = sorted(instruments.profile_instrument_ids(s, r.profile.id))
+    if not known:
+        raise Skip("no-instrument")
+    _first, existing = _alert_pair(r.profile.id)
+
+    def create(n: int, tag: str) -> int:
+        body = api.AlertBody(
+            kind="price_above",
+            title=f"bridge-test-tag-{n}",
+            params={"level": 1000000},
+            instrument_id=known[0],
+            tag=tag,
+        )
+        made = r.txn(f"alert_tag_create_{n}", lambda: api.alert_create(r.profile, body))
+        return made["id"]
+
+    def patch(step: str, alert_id: int, tag: str | None) -> None:
+        r.txn(step, lambda: api.alert_update(r.profile, alert_id, api.AlertPatchBody(tag=tag)))
+
+    one = create(1, "bridge-test")
+    patch("alert_tag_change", one, "bridge zmiana")
+    two = create(2, "bridge-drugi")
+    patch("alert_tag_clear", two, None)
+    patch("alert_tag_existing", existing, "bridge-stary")
+
+
+def phase_t(r: Run) -> None:
+    r.step("alert_tags", alert_tags)
+
+
+def proposal_outcomes(r: Run) -> None:
+    """Two strategy proposals (the current strategy.yaml plus a synthetic comment line): one rejected
+    with an owner note (``proposal.rejected {note}``), one approved whose files cannot be written
+    (scripted: the file replace raises), so Python marks it approved, then failed, and undoes the
+    recorded version (``proposal.applyFailed``, which revokes the approval's version)."""
+    from cashu.core import proposals
+    from cashu.core.mcp.server import CashuMcp
+    from cashu.core.mcp.tools import investments_proposals
+    from cashu.modules.investments.service import files
+
+    path = files.strategy_yaml_path(r.profile.slug)
+    if not path.is_file():
+        raise Skip("no-strategy")
+    current = path.read_text(encoding="utf-8")
+    host = CashuMcp(r.profile.id, today=r.today)
+
+    def propose(n: int) -> int:
+        yaml_text = current.rstrip("\n") + f"\n# bridge-test-{n}\n"
+        out = r.txn(f"proposal_create_{n}", lambda: host.call("propose_strategy", {"yaml": yaml_text}).data)
+        if not out.get("stored"):
+            raise Skip("proposal-not-stored")
+        return out["proposal_id"]
+
+    rejected = propose(1)
+    r.txn("proposal_reject", lambda: proposals.reject(r.profile, rejected, note="bridge-test-note"))
+    failing = propose(2)
+
+    def disk_full(_writes) -> None:
+        raise OSError(28, "No space left on device (bridge harness)")
+
+    real = investments_proposals.replace_files
+    investments_proposals.replace_files = disk_full
+    try:
+
+        def approve() -> None:
+            try:
+                proposals.approve(r.profile, failing)
+            except proposals.ProposalError as e:
+                if e.code != "write_failed":
+                    raise
+            else:
+                raise RuntimeError("the scripted file failure did not fail the approval")
+
+        r.txn("proposal_approve_failed", approve)
+    finally:
+        investments_proposals.replace_files = real
+
+
+def phase_p(r: Run) -> None:
+    r.step("proposal_outcomes", proposal_outcomes)
 
 
 def merge_shipped_instrument(r: Run) -> None:
@@ -796,7 +904,16 @@ def phase_m(r: Run) -> None:
     r.step("instrument_merge", merge_shipped_instrument)
 
 
-PHASES = {"A": phase_a, "B": phase_b, "C": phase_c, "R": phase_r, "M": phase_m}
+PHASES = {
+    "A": phase_a,
+    "B": phase_b,
+    "C": phase_c,
+    "R": phase_r,
+    "X": phase_x,
+    "M": phase_m,
+    "T": phase_t,
+    "P": phase_p,
+}
 
 
 # --------------------------------------------------------------------------- #
