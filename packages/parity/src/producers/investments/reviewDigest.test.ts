@@ -30,6 +30,7 @@ interface ContextVector {
 }
 interface TopicVariant {
   readonly mode: "collision" | "missing";
+  readonly lang: "pl" | "en";
   readonly topic_id: number;
   readonly sql_delta: string;
   readonly expected_bytes: string;
@@ -59,7 +60,7 @@ const providers: Readonly<Record<string, (db: PythonDb) => OutValue>> = {
   "investments.position_detail": producePositionDetail,
   "investments.allocation_view": produceAllocationView,
   "investments.strategy_status": produceStrategyStatus,
-  "investments.review_digest": produceReviewDigest,
+  "investments.review_digest": (db) => produceReviewDigest(db, "en"),
   "investments.accounts": produceAccounts,
   "investments.watchlist": produceWatchlist,
 };
@@ -86,13 +87,14 @@ function mismatchPaths(actual: string, expected: string): string[] {
 
 describe("genuine native view fixture", () => {
   it.each(fixture.topic_variants)(
-    "preserves Python topic-thesis Canon behavior: $mode",
+    "preserves Python topic-thesis Canon behavior: $mode $lang",
     (variant) =>
       run((db) => {
         const source = nativeViewSources(db).find((row) => row.profile.id === 1);
         if (source === undefined) throw new Error("synthetic topic profile is absent");
         const result = investmentsViews.readReviewDigest(source.vault.store, {
           ...source.request,
+          lang: variant.lang,
           macroCloses: source.macroCloses,
         });
         if (!result.ok) throw new Error("synthetic topic digest was refused");
@@ -121,7 +123,23 @@ describe("genuine native view fixture", () => {
         expect(db.keys.key("inv_theses", variant.topic_id)).toBe(variant.topic_key);
         expect(db.keys.dangling - before).toBe(variant.topic_dangling_refs);
         expect(variant.topic_dangling_refs).toBe(variant.mode === "missing" ? 1 : 0);
-        expect(dumps(produceReviewDigest(db))).toBe(variant.expected_bytes);
+        const wire = dumps(produceReviewDigest(db, variant.lang));
+        expect(wire).toBe(variant.expected_bytes);
+        if (variant.lang === "pl") {
+          const selected = db.investmentsViews.valuationDetails(1, 2);
+          expect(selected?.pe).toBe(12);
+          expect(selected?.forward_pe).toBe(12n);
+          expect(db.investmentsViews.valuationDetails(2, 2)).toBeNull();
+          const valuation = segments
+            .map((segment) => segment.valuation)
+            .find((row) => row?.note_id);
+          expect(valuation?.note_id).toBe(copiedSourceGid(source, "research_notes", 2));
+          expect(valuation?.note_id).not.toBe(copiedSourceGid(source, "research_notes", 3));
+          expect(valuation?.basis).toBe("00000000-0000-8000-8000-000000000123");
+          expect(wire).toContain('"pe":12.0');
+          expect(wire).toContain('"forward_pe":12');
+          expect(wire).not.toContain('"forward_pe":12.0');
+        }
         // Positive full-check dangling metadata is compatibility evidence, not a valid-oracle claim.
         expect(variant.check_dangling_refs).toBeGreaterThanOrEqual(variant.topic_dangling_refs);
       }, variant),

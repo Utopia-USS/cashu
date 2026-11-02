@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parents[2]
 TARGET = REPO / "packages/parity/src/producers/investments/fixtures/review-views.json"
 
 
-def generate(root: Path, *, topic_variant: str | None = None) -> dict:
+def generate(root: Path, *, topic_variant: str | None = None, lang: str = "en") -> dict:
     root = root.resolve()
     os.environ.update(
         CASHU_DATA_DIR=str(root / "data"),
@@ -395,6 +395,37 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
                     core_changed_at=fixed,
                 )
             )
+            if lang == "pl":
+                for note_id, dismissed in ((2, False), (3, True)):
+                    at = recent + (dt.timedelta(hours=1) if dismissed else dt.timedelta())
+                    session.add(
+                        m.InvResearchNote(
+                            id=note_id,
+                            profile_id=1,
+                            run_id=1,
+                            segment="equity_global",
+                            kind="news",
+                            polarity="neutral",
+                            strength=1,
+                            thesis_relation="neutral",
+                            title="Synthetic topic valuation",
+                            summary="Synthetic valuation summary",
+                            details={
+                                "valuation": {
+                                    "pe": 999.0 if dismissed else 12.0,
+                                    "forward_pe": 12,
+                                    "pe_avg_5y": 15.0,
+                                    "basis": "00000000-0000-8000-8000-000000000123",
+                                }
+                            },
+                            sources=[],
+                            observed_at=at,
+                            expires_at=at + dt.timedelta(days=30),
+                            created_at=at,
+                            updated_at=at,
+                            dismissed_at=at if dismissed else None,
+                        )
+                    )
         session.commit()
         for profile in profiles[:2]:
             text = yaml if profile.id == 1 else "version: 1\nbase_currency: PLN\nrules: []\n"
@@ -421,7 +452,7 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
         if topic_variant is not None:
             wanted = {"investments.review_digest"}
         dangling_before = ids.dangling
-        with use_language("en"):
+        with use_language(lang):
             expected = {check.name: check.run(ctx)[0] for check in CHECKS if check.name in wanted}
             expected_bytes = {name: canon.dumps(value) for name, value in expected.items()}
         check_dangling = ids.dangling - dangling_before
@@ -445,8 +476,8 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
         contexts = []
         try:
             calendar.calendar_view = lambda *_args, **_kwargs: feed
-            for lang in () if topic_variant is not None else ("en", "pl"):
-                with use_language(lang):
+            for context_lang in () if topic_variant is not None else ("en", "pl"):
+                with use_language(context_lang):
                     for profile in profiles[:2]:
                         tool = SimpleNamespace(
                             session=session, profile=profile, profile_id=profile.id, today=ctx.as_of
@@ -454,7 +485,7 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
                         contexts.append(
                             {
                                 "profile": profile.id,
-                                "lang": lang,
+                                "lang": context_lang,
                                 "calendar": feed,
                                 "expected": canon.Canon(ids).value(unlabel(review_context(tool))),
                             }
@@ -506,11 +537,19 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
         )
         result["topic_variant"] = {
             "mode": topic_variant,
+            "lang": lang,
             "topic_id": topic_id,
             "sql_delta": "\n".join(
                 line
                 for line in dump
-                if line.startswith(('INSERT INTO "inv_theses"', 'INSERT INTO "inv_topic_theses"'))
+                if line.startswith(
+                    (
+                        'INSERT INTO "inv_theses"',
+                        'INSERT INTO "inv_topic_theses"',
+                        'INSERT INTO "research_notes" VALUES(2,',
+                        'INSERT INTO "research_notes" VALUES(3,',
+                    )
+                )
             ),
             "expected_bytes": expected_bytes["investments.review_digest"],
             "topic_key": mapped["research"]["segments"][0]["thesis"]["id"],
@@ -528,8 +567,10 @@ def main() -> int:
         result = generate(Path(temporary))
         # Default generate() stays unchanged for the independently pinned 22 portfolio vectors.
         result["topic_variants"] = [
-            generate(Path(temporary) / mode, topic_variant=mode)["topic_variant"]
-            for mode in ("collision", "missing")
+            generate(Path(temporary) / f"{mode}-{lang}", topic_variant=mode, lang=lang)[
+                "topic_variant"
+            ]
+            for mode, lang in (("collision", "en"), ("missing", "en"), ("collision", "pl"))
         ]
         output = formatted(
             json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)

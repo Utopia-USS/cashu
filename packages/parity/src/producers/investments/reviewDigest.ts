@@ -14,11 +14,16 @@ import {
   nativeViewSources,
 } from "./viewSource.ts";
 
-export function produceReviewDigest(db: PythonDb): OutValue {
+/** The real Python golden pins its ambient UI language to Polish; synthetic callers may pin EN. */
+export function produceReviewDigest(
+  db: PythonDb,
+  lang: inv.views.ViewOptions["lang"] = "pl",
+): OutValue {
   return Object.fromEntries(
     nativeViewSources(db).map((source) => {
       const loaded = investmentsViews.reviewDigestInputs(source.vault.store, {
         ...source.request,
+        lang,
         macroCloses: source.macroCloses,
       });
       if (!loaded.ok) throw new Error(`native review input refused: ${loaded.reason}`);
@@ -51,10 +56,27 @@ export function produceReviewDigest(db: PythonDb): OutValue {
         .signalRuleRuns(source.profile.id)
         .find((row) => row.status === "ok" || row.status === "partial");
       const research: Record<string, unknown> = { ...input.research };
+      const valuationFloatPaths: (readonly string[])[] = [];
       if (Array.isArray(research.segments)) {
-        research.segments = research.segments.map((segment) => {
-          if (segment === null || typeof segment !== "object" || !("thesis" in segment))
-            return segment;
+        research.segments = research.segments.map((segment, index) => {
+          if (segment === null || typeof segment !== "object") return segment;
+          const valuation = "valuation" in segment ? segment.valuation : null;
+          if (valuation !== null) {
+            if (
+              typeof valuation !== "object" ||
+              !("note_id" in valuation) ||
+              typeof valuation.note_id !== "string"
+            )
+              throw new Error("native segment valuation note is not canonical text");
+            const noteId = copiedSourceId(source, valuation.note_id, "research_notes");
+            const raw = db.investmentsViews.valuationDetails(source.profile.id, noteId);
+            if (raw === null)
+              throw new Error("selected valuation note is absent from its copied owner");
+            valuationFloatPaths.push(
+              ...copiedJsonFloatPaths(raw, ["research", "segments", String(index), "valuation"]),
+            );
+          }
+          if (!("thesis" in segment)) return segment;
           const thesis = segment.thesis;
           if (thesis === null) return segment;
           if (typeof thesis !== "object" || !("id" in thesis) || typeof thesis.id !== "string")
@@ -149,6 +171,7 @@ export function produceReviewDigest(db: PythonDb): OutValue {
             floatPaths: [
               ...REVIEW_DIGEST_FLOAT_PATHS,
               ...copiedScalarFloatPaths(wireValue, source),
+              ...valuationFloatPaths,
               ...copiedJsonFloatPaths(last?.stats, ["last_review", "stats"]),
             ],
             literalIdPaths: ["events.*.bucket_id", "signals.*.*.payload.bucket_id"],

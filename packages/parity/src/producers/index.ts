@@ -227,7 +227,7 @@ export const PRODUCERS: readonly Producer[] = [
     check: "investments.review_digest",
     datasets: ["demo", "lab"],
     inputs: [],
-    produce: produceReviewDigest,
+    produce: (db) => produceReviewDigest(db),
   },
   {
     check: "investments.accounts",

@@ -33,6 +33,26 @@ export class InvestmentsViewsReader {
     return row === undefined ? null : textOrNull(row, "latest");
   }
 
+  /** Lexical JSON provenance for the exact native-selected topic valuation note, scoped to its owner. */
+  valuationDetails(profileId: number, noteId: number): Readonly<Record<string, unknown>> | null {
+    const row = this.query(
+      "SELECT details FROM research_notes WHERE profile_id = ? AND id = ?",
+      profileId,
+      noteId,
+    )[0];
+    if (row === undefined) return null;
+    const details = parsePyJson(text(row, "details"), (literal, integer) =>
+      integer ? BigInt(literal) : Number(literal),
+    );
+    if (typeof details !== "object" || details === null || Array.isArray(details))
+      throw new Error("selected valuation details is not an object");
+    const valuation = (details as Record<string, unknown>).valuation;
+    if (valuation === undefined || valuation === null) return null;
+    if (typeof valuation !== "object" || Array.isArray(valuation))
+      throw new Error("selected valuation payload is not an object");
+    return valuation as Readonly<Record<string, unknown>>;
+  }
+
   /** Public shared market reference data, deliberately not profile-scoped. */
   macroCloses(): MacroCloseSourceRow[] {
     return this.query(
