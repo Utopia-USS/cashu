@@ -1,9 +1,12 @@
 // The commands the host runs itself. S39 slices add theirs here and delete their lines from
 // delegated.ts in the same change.
 import { homedir, tmpdir } from "node:os";
+import type { StrategyFilesPort } from "@cashu/store/investments/services";
 import { currentRuntime, type HostRuntime, shippedSkillsSource } from "../runtime.js";
-import type { HostStores } from "../stores.js";
+import type { HostStores, OpenVault } from "../stores.js";
 import { vehicleCommands } from "./assets/vehicle.js";
+import type { CategorizeProvider } from "./budget/categorizeOllama.js";
+import { budgetCommands } from "./budget/index.js";
 import { printConsole } from "./core/console.js";
 import { skillsCommand } from "./core/skills.js";
 import { genesisCommand } from "./genesis/command.js";
@@ -18,11 +21,21 @@ export interface PortedDeps {
   readonly skillsSource?: string;
   /** Supplied only when Python is absent: mixed sessions retain Python financial ownership. */
   readonly nativeStores?: Pick<HostStores, "vaults">;
+  readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyFilesPort | null;
+  readonly classifier?: CategorizeProvider;
 }
 
 export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
   let runs = 0;
   return [
+    ...(deps.nativeStores === undefined
+      ? []
+      : budgetCommands({
+          stores: deps.nativeStores,
+          now: deps.now ?? Date.now,
+          strategyFiles: deps.strategyFiles,
+          classifier: deps.classifier,
+        })),
     ...(deps.nativeStores === undefined
       ? []
       : vehicleCommands({

@@ -56,7 +56,11 @@ const cellLength = (text: string): number =>
   cellSpans(text).reduce((sum, span) => sum + span.width, 0);
 const words = new RegExp(`[${PY_WS}]*[^${PY_WS}]+[${PY_WS}]*`, "gu");
 /** Rich divide_line: spaces follow their word and are cropped only when beyond the width. */
-export function wrapRanges(text: string, width: number): readonly (readonly [number, number])[] {
+export function wrapRanges(
+  text: string,
+  width: number,
+  fold = true,
+): readonly (readonly [number, number])[] {
   const breaks: number[] = [0];
   let offset = 0;
   for (const match of text.matchAll(words)) {
@@ -65,6 +69,11 @@ export function wrapRanges(text: string, width: number): readonly (readonly [num
     const length = cellLength(rstrip(word));
     if (width - offset >= length) offset += cellLength(word);
     else if (length > width) {
+      if (!fold) {
+        if (start) breaks.push(start);
+        offset = cellLength(word);
+        continue;
+      }
       const lines: { start: number; end: number; width: number }[] = [];
       let lineStart = 0;
       let size = 0;

@@ -16,12 +16,10 @@ export function supportsConsoleUnicode(io: Pick<CommandIo, "tty">): boolean {
   );
 }
 /** Styles are explicit spans; callers must not silently strip arbitrary legacy Rich markup. */
-function renderConsole(
-  text: string,
+export function consolePolicy(
   io: Pick<CommandIo, "tty" | "env">,
-  options: ConsoleOptions = {},
-): string {
-  const stream = options.stream ?? "stdout";
+  stream: "stdout" | "stderr" = "stdout",
+) {
   const terminal =
     io.tty.compatible ??
     (io.env.FORCE_COLOR === undefined ? io.tty[stream] : io.env.FORCE_COLOR !== "");
@@ -36,8 +34,17 @@ function renderConsole(
     width = parsed;
   }
   if (terminal && (io.env.TERM === "dumb" || io.env.TERM === "unknown")) width = 80;
+  return { ansi, noColor, width };
+}
+function renderConsole(
+  text: string,
+  io: Pick<CommandIo, "tty" | "env">,
+  options: ConsoleOptions = {},
+): string {
+  const { ansi, noColor, width } = consolePolicy(io, options.stream);
   if (width < 1) return "";
-  const spans = [...(options.spans ?? []), ...highlightConsole(text)];
+  // Rich markup styles override automatic highlighter colors on the same characters.
+  const spans = [...highlightConsole(text), ...(options.spans ?? [])];
   const output: string[] = [];
   let offset = 0;
   for (const line of text.split("\n")) {

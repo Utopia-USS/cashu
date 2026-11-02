@@ -328,44 +328,63 @@ export const setLlmCategories = defineCommand({
  * `invalid_amount` (not a finite number: FIX(Q14), Python would store NaN), `zero_amount`,
  * `bad_currency`. The day defaults to today (the injected clock).
  */
+const cashExpenseInput = z.object({
+  amount: z.union([z.string(), z.number()]),
+  title: z.string(),
+  category: z.string(),
+  currency: z.string().nullable().optional(),
+  onDate: calendarDate.nullable().optional(),
+});
+
+function cashExpenseRun(
+  ctx: CommandContext,
+  input: z.infer<typeof cashExpenseInput>,
+  preserveTitle: boolean,
+) {
+  if (!isCategoryKey(input.category)) return refuse("unknown_category");
+  const title = preserveTitle ? input.title : pyStrip(input.title);
+  if (!title) return refuse("empty_title");
+  let parsed: Decimal;
+  try {
+    parsed = Decimal.parse(
+      typeof input.amount === "number" ? floatRepr(input.amount) : pyStrip(input.amount),
+    );
+  } catch {
+    return refuse("invalid_amount");
+  }
+  const amount = cashExpenseAmount(parsed);
+  if (!amount.ok) return refuse(amount.reason);
+  const currency = input.currency
+    ? pyUpper(pyStrip(input.currency))
+    : budgetBaseCurrency(profileOf(ctx.read)?.baseCurrency);
+  if (!ISO_CURRENCY.test(currency)) return refuse("bad_currency");
+  const pool = ensureCashPool(ctx, currency);
+  const txn = ctx.newGid();
+  ctx.emit("txn.cashExpenseAdded", txn, {
+    account: pool.gid,
+    bookingDate: input.onDate ?? ctx.today(),
+    amount: plain(amount.amount),
+    currency: pool.currency,
+    title,
+    category: input.category,
+  });
+  return ok({ txn });
+}
+
 export const addCashExpense = defineCommand({
   id: "budget.addCashExpense",
-  input: z.object({
-    amount: z.union([z.string(), z.number()]),
-    title: z.string(),
-    category: z.string(),
-    currency: z.string().nullable().optional(),
-    onDate: calendarDate.nullable().optional(),
-  }),
+  input: cashExpenseInput,
   run(ctx, input) {
-    if (!isCategoryKey(input.category)) return refuse("unknown_category");
-    const title = pyStrip(input.title);
-    if (!title) return refuse("empty_title");
-    let parsed: Decimal;
-    try {
-      parsed = Decimal.parse(
-        typeof input.amount === "number" ? floatRepr(input.amount) : pyStrip(input.amount),
-      );
-    } catch {
-      return refuse("invalid_amount");
-    }
-    const amount = cashExpenseAmount(parsed);
-    if (!amount.ok) return refuse(amount.reason);
-    const currency = input.currency
-      ? pyUpper(pyStrip(input.currency))
-      : budgetBaseCurrency(profileOf(ctx.read)?.baseCurrency);
-    if (!ISO_CURRENCY.test(currency)) return refuse("bad_currency");
-    const pool = ensureCashPool(ctx, currency);
-    const txn = ctx.newGid();
-    ctx.emit("txn.cashExpenseAdded", txn, {
-      account: pool.gid,
-      bookingDate: input.onDate ?? ctx.today(),
-      amount: plain(amount.amount),
-      currency: pool.currency,
-      title,
-      category: input.category,
-    });
-    return ok({ txn });
+    return cashExpenseRun(ctx, input, false);
+  },
+});
+
+/** CLI `cash-add` preserves Python's verbatim nonempty title; the API command above still strips. */
+export const addCashExpenseCli = defineCommand({
+  id: "budget.addCashExpenseCli",
+  input: cashExpenseInput,
+  run(ctx, input) {
+    return cashExpenseRun(ctx, input, true);
   },
 });
 

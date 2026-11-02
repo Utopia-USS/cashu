@@ -10,6 +10,7 @@ export { assetsModule } from "./assets/index.js";
 export { setVehicle, vehicleAccount } from "./assets/vehicle.js";
 export {
   addCashExpense,
+  addCashExpenseCli,
   cacheLlmRules,
   deleteCashTransaction,
   importStatement,

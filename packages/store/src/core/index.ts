@@ -9,7 +9,7 @@ import { profilesMaterializer } from "./profiles.js";
 import { proposalsMaterializer } from "./proposals.js";
 
 export * from "./mcp-queries.js";
-export { enabledModuleIds, type ProfileView, profile } from "./queries.js";
+export { accountByGid, enabledModuleIds, type ProfileView, profile } from "./queries.js";
 
 export const coreModule: StoreModule = {
   id: "core",
