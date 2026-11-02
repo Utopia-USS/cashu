@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@cashu/domain": "workspace:*",
-    "@cashu/store": "workspace:*"
+    "@cashu/store": "workspace:*",
+    "@xmldom/xmldom": "0.9.12",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

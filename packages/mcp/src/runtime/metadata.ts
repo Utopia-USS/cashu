@@ -1,6 +1,7 @@
 import type { ToolMetadata } from "../registry.js";
 import { budgetTools } from "../tools/budget.js";
 import { coreTools } from "../tools/core.js";
+import { investmentTools } from "../tools/investments.js";
 import { loansTools } from "../tools/loans.js";
 import { DELEGATED_TOOLS, TOOL_ORDER } from "./delegated.generated.js";
 
@@ -9,7 +10,7 @@ export type { ToolMetadata } from "../registry.js";
 /** Native specs own migrated entries; the remaining contracts describe actual Python delegation. */
 export function mcpToolMetadata(): readonly ToolMetadata[] {
   const entries = [
-    ...[...coreTools(), ...budgetTools(), ...loansTools()].map(
+    ...[...coreTools(), ...budgetTools(), ...loansTools(), ...investmentTools()].map(
       ({ handler: _handler, ...metadata }) => metadata,
     ),
     ...DELEGATED_TOOLS,

@@ -1,0 +1,4014 @@
+{
+  "base": {
+    "amounts": {
+      "profile:3295a8f96a5050d2": {
+        "history_metrics()": {
+          "activity": {
+            "days_since_last_trade": 28,
+            "first_trade": "2026-09-02",
+            "gaps_over_180_days": 0,
+            "gaps_over_90_days": 0,
+            "last_trade": "2026-09-03",
+            "max_gap_days": 1,
+            "median_gap_days": 1,
+            "trades": 2
+          },
+          "buys_after_runup": {
+            "buys_after_runup": 0,
+            "buys_checked": 2,
+            "lookback_days": 90,
+            "threshold": 0.2
+          },
+          "concentration": [
+            {
+              "date": "2026-09-30",
+              "largest": 0.104364,
+              "positions": 2,
+              "top3": 0.125237
+            },
+            {
+              "date": "2026-10-01",
+              "largest": 0.104364,
+              "positions": 2,
+              "top3": 0.125237
+            }
+          ],
+          "deposits_per_year": [
+            {
+              "deposits": 2,
+              "withdrawals": 0,
+              "year": 2026
+            }
+          ],
+          "fees_pct_of_turnover": [
+            {
+              "currency": "PLN",
+              "fees_share": null
+            }
+          ],
+          "holding_days": {
+            "losers": 0,
+            "losers_median_days": null,
+            "winners": 0,
+            "winners_median_days": null
+          },
+          "performance": {
+            "as_of": "2026-10-01",
+            "base_currency": "PLN",
+            "benchmark": {
+              "covers_history": null,
+              "covers_to_date": null,
+              "excess_twr": null,
+              "excess_vs_simulation": null,
+              "id": null,
+              "last_priced": null,
+              "proxy": null,
+              "simulation_money_weighted": null,
+              "simulation_xirr": null,
+              "status": "not_configured",
+              "twr": null,
+              "twr_annualized": null
+            },
+            "data_quality": {
+              "implied_funding": true,
+              "incomplete_days": 0
+            },
+            "max_drawdown": {
+              "benchmark": null,
+              "benchmark_peak": null,
+              "benchmark_recovered": null,
+              "benchmark_trough": null,
+              "portfolio": -0.013921,
+              "portfolio_peak": "2026-09-14",
+              "portfolio_recovered": null,
+              "portfolio_trough": "2026-09-15"
+            },
+            "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+            "per_year": [
+              {
+                "benchmark": null,
+                "partial_year": true,
+                "portfolio_twr": 0.013749,
+                "year": 2026
+              }
+            ],
+            "profit_concentration": {
+              "benchmark_pnl_pct_of_contributions": null,
+              "instruments_negative": 0,
+              "instruments_positive": 2,
+              "pnl_pct_of_contributions": 0.013462,
+              "top1_share": 0.857143,
+              "top2_share": 1.0,
+              "top3_share": 1.0,
+              "top5_share": 1.0,
+              "without_top2_pct_of_contributions": 0.0
+            },
+            "return": {
+              "days": 31,
+              "money_weighted": 0.013726,
+              "twr": 0.013749,
+              "twr_annualized": null,
+              "xirr": null
+            },
+            "rolling_relative": [
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 12,
+                "share_outperforming": null,
+                "windows": 0
+              },
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 24,
+                "share_outperforming": null,
+                "windows": 0
+              },
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 36,
+                "share_outperforming": null,
+                "windows": 0
+              }
+            ],
+            "since": "2026-09-01"
+          },
+          "price_after_sales": [
+            {
+              "days": 30,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            },
+            {
+              "days": 90,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            },
+            {
+              "days": 180,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            }
+          ],
+          "sells_after_drawdown": {
+            "median_drawdown_at_sale": null,
+            "sells_at_or_below_threshold": 0,
+            "sells_checked": 0,
+            "threshold": 0.15
+          }
+        },
+        "portfolio_overview()": {
+          "accounts": [
+            {
+              "account": "XTB brokerage 1",
+              "broker": "xtb",
+              "currency": "PLN",
+              "last_import": null,
+              "share": 0.979127,
+              "snapshot_date": null,
+              "value": 1032.0,
+              "wrapper": "regular"
+            },
+            {
+              "account": "XTB brokerage 2",
+              "broker": "xtb",
+              "currency": "PLN",
+              "last_import": null,
+              "share": 0.020873,
+              "snapshot_date": null,
+              "value": 22.0,
+              "wrapper": "regular"
+            }
+          ],
+          "as_of": "2026-10-01",
+          "band": {
+            "absolute_band_pp": 5.0,
+            "min_trade_value": 0.0,
+            "relative_band": 0.25
+          },
+          "base_currency": "PLN",
+          "buckets": [
+            {
+              "band_note": "Nieaktualne ceny: 12,5 % portfela (maks 5,0 %)",
+              "bucket": "equity.eu",
+              "cash_history_gap": false,
+              "drift_pp": -67.4763,
+              "instruments": 2,
+              "out_of_band": null,
+              "target": 0.8,
+              "to_target": 711.2,
+              "value": 132.0,
+              "weight": 0.125237
+            },
+            {
+              "band_note": "Nieaktualne ceny: 12,5 % portfela (maks 5,0 %)",
+              "bucket": "cash",
+              "cash_history_gap": true,
+              "drift_pp": 67.4763,
+              "instruments": 0,
+              "out_of_band": null,
+              "target": 0.2,
+              "to_target": -711.2,
+              "value": 922.0,
+              "weight": 0.874763
+            }
+          ],
+          "by_asset_class": [
+            {
+              "key": "cash",
+              "value": 922.0,
+              "weight": 0.874763
+            },
+            {
+              "key": "equity",
+              "value": 132.0,
+              "weight": 0.125237
+            }
+          ],
+          "by_region": [
+            {
+              "key": "unknown",
+              "value": 132.0,
+              "weight": 0.125237
+            }
+          ],
+          "cash_accounts": 2,
+          "cash_weight": 0.874763,
+          "freshness": {
+            "fx_missing": [],
+            "fx_newest": "2026-10-03",
+            "newest_bar": "2026-09-25",
+            "stale": [
+              {
+                "label": "SYN1",
+                "price_date": "2026-09-25"
+              },
+              {
+                "label": "SYN2",
+                "price_date": "2026-09-25"
+              }
+            ],
+            "stale_count": 2,
+            "stale_weight": 0.125237,
+            "strategy": {
+              "changed": true,
+              "errors": 0,
+              "inactive_rules": 0,
+              "state": "valid",
+              "version": null,
+              "warnings": 0
+            }
+          },
+          "has_strategy": true,
+          "holdings_weight": 0.125237,
+          "last_run": {
+            "as_of": "2026-10-01",
+            "errors": 1,
+            "escalated_signals": 1,
+            "finished_at": "2026-09-30T10:00:00+00:00",
+            "new_signals": 0,
+            "status": "partial",
+            "trigger": "api"
+          },
+          "max_drift": {
+            "bucket": "equity.eu",
+            "drift_pp": -67.4763,
+            "out_of_band": null
+          },
+          "out_of_band": 0,
+          "realized": 0.0,
+          "signals": {
+            "action": 3,
+            "info": 0,
+            "new": 2
+          },
+          "total": 1054.0,
+          "unclassified": {
+            "instruments": [],
+            "value": 0.0,
+            "weight": 0.0
+          },
+          "unrealized": null,
+          "unrealized_pct": null,
+          "warnings": [
+            {
+              "kind": "cash_history_gap",
+              "message": "Cash history gap: PLN cash of 2 is -20 on 2026-10-01 (deposits missing from the history?); counted as 0"
+            },
+            {
+              "kind": "stale_price",
+              "message": "Stale price for 1: last close 2026-09-25 is 6 days old"
+            },
+            {
+              "kind": "stale_price",
+              "message": "Stale price for 2: last close 2026-09-25 is 6 days old"
+            }
+          ]
+        },
+        "positions()": {
+          "as_of": "2026-10-01",
+          "base_currency": "PLN",
+          "base_note": "weight: share of the portfolio total (holdings + cash) in base currency",
+          "cash": [
+            {
+              "account": "XTB brokerage 1",
+              "amount": 922.0,
+              "currency": "PLN",
+              "weight": 0.874763
+            },
+            {
+              "account": "XTB brokerage 2",
+              "amount": -20.0,
+              "currency": "PLN",
+              "weight": -0.018975
+            }
+          ],
+          "positions": [
+            {
+              "accounts": [
+                {
+                  "account": "XTB brokerage 1",
+                  "quantity": 10.0,
+                  "unrealized_pct": null,
+                  "value": 110.0,
+                  "weight": 0.104364
+                }
+              ],
+              "asset_class": "equity",
+              "bucket": "equity.eu",
+              "cost": 0.0,
+              "currency": "PLN",
+              "has_thesis": false,
+              "hints": [
+                {
+                  "code": "recommendation_maybe_outdated",
+                  "params": {
+                    "reasons": ["note_after", "alert_triggered", "age"]
+                  },
+                  "severity": "review"
+                },
+                {
+                  "code": "drawdown_review",
+                  "params": {
+                    "drawdown": 0.15,
+                    "threshold": 0.1
+                  },
+                  "severity": "review"
+                },
+                {
+                  "code": "no_thesis",
+                  "params": {},
+                  "severity": "review"
+                }
+              ],
+              "holding_days_avg": 29,
+              "holding_days_oldest": 29,
+              "instrument_id": "instrument:655137fd81546c0b",
+              "is_stale": true,
+              "isin": "[account]",
+              "lots": 1,
+              "name": "[name] owner name",
+              "needs_classification": false,
+              "open_signals": 3,
+              "owner_named": false,
+              "plan_freshness": {
+                "reasons": ["note_after", "alert_triggered", "age"],
+                "state": "maybe_outdated"
+              },
+              "price": 11.0,
+              "price_date": "2026-09-25",
+              "quantity": 10.0,
+              "realized": null,
+              "recommendation": "hold",
+              "region": null,
+              "symbol": "SYN1",
+              "tags": [],
+              "unrealized_pct": null,
+              "valuation_mode": "market",
+              "value": 110.0,
+              "weight": 0.104364
+            },
+            {
+              "accounts": [
+                {
+                  "account": "XTB brokerage 2",
+                  "quantity": 2.0,
+                  "unrealized_pct": null,
+                  "value": 22.0,
+                  "weight": 0.020873
+                }
+              ],
+              "asset_class": "equity",
+              "bucket": "equity.eu",
+              "cost": 0.0,
+              "currency": "PLN",
+              "has_thesis": false,
+              "hints": [
+                {
+                  "code": "no_thesis",
+                  "params": {},
+                  "severity": "review"
+                }
+              ],
+              "holding_days_avg": 28,
+              "holding_days_oldest": 28,
+              "instrument_id": "instrument:8a4642a4ba9d8943",
+              "is_stale": true,
+              "isin": "[account]",
+              "lots": 1,
+              "name": "[name] instrument 2",
+              "needs_classification": false,
+              "open_signals": 0,
+              "owner_named": false,
+              "plan_freshness": null,
+              "price": 11.0,
+              "price_date": "2026-09-25",
+              "quantity": 2.0,
+              "realized": null,
+              "recommendation": null,
+              "region": null,
+              "symbol": "SYN2",
+              "tags": [],
+              "unrealized_pct": null,
+              "valuation_mode": "market",
+              "value": 22.0,
+              "weight": 0.020873
+            }
+          ],
+          "total": 1054.0
+        },
+        "review_context()": {
+          "calendar": {
+            "events": [],
+            "stale": true
+          },
+          "card_sources": {
+            "calendar": "calendar.events of this tool",
+            "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+            "events": "research_notes(since) with strength >= 2 or a thesis relation",
+            "ideas": "research_context.candidates.open",
+            "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+            "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+            "world": "history_metrics / portfolio_overview for the move, research_context.macro for why"
+          },
+          "last_review": {
+            "agenda": [
+              {
+                "card": "events",
+                "note": "[name] agenda"
+              },
+              {
+                "card": null,
+                "note": null
+              }
+            ],
+            "done_at": "2026-09-25T23:30:00+00:00",
+            "notes": "[name] review"
+          },
+          "review": {
+            "cards": ["world", "positions", "events", "calendar", "decide"],
+            "day": "thursday",
+            "due": false,
+            "every": "2weeks",
+            "name": "Przegląd dwutygodniowy",
+            "next_on": "2026-10-15"
+          },
+          "since": "2026-09-26"
+        },
+        "signals(status=all)": {
+          "signals": [
+            {
+              "acknowledged": null,
+              "age_days": 30,
+              "closed": "2026-09-30T10:00:00+00:00",
+              "condition": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-01T08:00:00+00:00",
+              "kind": "custom",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_resolved",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "SYN1",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:cddce80dfd780165",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "resolved",
+              "values": []
+            },
+            {
+              "acknowledged": null,
+              "age_days": 1,
+              "closed": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-30T10:00:00+00:00",
+              "kind": "allocation_drift",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "measured": null,
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_owner",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "SYN1",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:0110ba8b68c6a2ca",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "active",
+              "threshold": null,
+              "unit": "pp"
+            },
+            {
+              "acknowledged": null,
+              "age_days": 1,
+              "closed": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-30T10:00:00+00:00",
+              "kind": "alert:price_above",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "alert:1",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "SYN1",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:907ef1a4f097d171",
+              "snoozed_until": "2026-10-02T00:00:00+00:00",
+              "source": "alert",
+              "status": "active"
+            },
+            {
+              "acknowledged": "2026-09-30T10:00:00+00:00",
+              "age_days": 30,
+              "closed": null,
+              "decisions": [
+                {
+                  "action": "held",
+                  "created_at": "2026-09-30T10:00:00+00:00",
+                  "reason": "[name] decision"
+                }
+              ],
+              "direction": null,
+              "first_seen": "2026-09-01T08:00:00+00:00",
+              "kind": "drawdown_from_high",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "measured": 0.15,
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_drawdown",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "SYN1",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:7a259574f030e150",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "acknowledged",
+              "threshold": 0.1,
+              "unit": "ratio"
+            }
+          ],
+          "status": "all"
+        },
+        "signals(status=history)": {
+          "signals": [
+            {
+              "acknowledged": null,
+              "age_days": 30,
+              "closed": "2026-09-30T10:00:00+00:00",
+              "condition": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-01T08:00:00+00:00",
+              "kind": "custom",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_resolved",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "SYN1",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:cddce80dfd780165",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "resolved",
+              "values": []
+            }
+          ],
+          "status": "history"
+        },
+        "signals(status=open)": {
+          "signals": [
+            {
+              "acknowledged": null,
+              "age_days": 1,
+              "closed": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-30T10:00:00+00:00",
+              "kind": "allocation_drift",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "measured": null,
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_owner",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "SYN1",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:0110ba8b68c6a2ca",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "active",
+              "threshold": null,
+              "unit": "pp"
+            },
+            {
+              "acknowledged": "2026-09-30T10:00:00+00:00",
+              "age_days": 30,
+              "closed": null,
+              "decisions": [
+                {
+                  "action": "held",
+                  "created_at": "2026-09-30T10:00:00+00:00",
+                  "reason": "[name] decision"
+                }
+              ],
+              "direction": null,
+              "first_seen": "2026-09-01T08:00:00+00:00",
+              "kind": "drawdown_from_high",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "measured": 0.15,
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_drawdown",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "SYN1",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:7a259574f030e150",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "acknowledged",
+              "threshold": 0.1,
+              "unit": "ratio"
+            },
+            {
+              "acknowledged": null,
+              "age_days": 1,
+              "closed": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-30T10:00:00+00:00",
+              "kind": "alert:price_above",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "alert:1",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "SYN1",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:907ef1a4f097d171",
+              "snoozed_until": "2026-10-02T00:00:00+00:00",
+              "source": "alert",
+              "status": "active"
+            }
+          ],
+          "status": "open"
+        },
+        "strategy_status()": {
+          "base_currency_note": null,
+          "changed": true,
+          "errors": 0,
+          "facts": {
+            "base_currency": "PLN",
+            "buckets": ["equity.eu", "cash"],
+            "contributions": null,
+            "horizon_years": null,
+            "notifications": {
+              "digest_weekday": "sunday",
+              "immediate": ["action"]
+            },
+            "rules": [
+              {
+                "cooldown_days": null,
+                "kind": "loss_from_cost",
+                "rule": "[name]_loss",
+                "severity": "info"
+              }
+            ],
+            "targets": [
+              {
+                "bucket": "equity.eu",
+                "target": 0.8
+              },
+              {
+                "bucket": "cash",
+                "target": 0.2
+              }
+            ]
+          },
+          "files_present": {
+            "md": false,
+            "yaml": true
+          },
+          "inactive_rules": [],
+          "issues": [],
+          "read_error": false,
+          "state": "valid",
+          "version": null,
+          "versions": [],
+          "warnings": 0
+        },
+        "theses()": {
+          "theses": []
+        }
+      },
+      "profile:725d1c48672bb0da": {
+        "history_metrics()": {
+          "error_kind": "module_disabled"
+        },
+        "portfolio_overview()": {
+          "error_kind": "module_disabled"
+        },
+        "positions()": {
+          "error_kind": "module_disabled"
+        },
+        "review_context()": {
+          "error_kind": "module_disabled"
+        },
+        "signals(status=all)": {
+          "error_kind": "module_disabled"
+        },
+        "signals(status=history)": {
+          "error_kind": "module_disabled"
+        },
+        "signals(status=open)": {
+          "error_kind": "module_disabled"
+        },
+        "strategy_status()": {
+          "error_kind": "module_disabled"
+        },
+        "theses()": {
+          "error_kind": "module_disabled"
+        }
+      },
+      "profile:c340430281162605": {
+        "history_metrics()": {
+          "activity": {
+            "days_since_last_trade": null,
+            "first_trade": null,
+            "gaps_over_180_days": 0,
+            "gaps_over_90_days": 0,
+            "last_trade": null,
+            "max_gap_days": null,
+            "median_gap_days": null,
+            "trades": 0
+          },
+          "buys_after_runup": {
+            "buys_after_runup": 0,
+            "buys_checked": 0,
+            "lookback_days": 90,
+            "threshold": 0.2
+          },
+          "concentration": [
+            {
+              "date": "2026-09-30",
+              "largest": null,
+              "positions": 0,
+              "top3": null
+            },
+            {
+              "date": "2026-10-01",
+              "largest": null,
+              "positions": 0,
+              "top3": null
+            }
+          ],
+          "deposits_per_year": [
+            {
+              "deposits": 1,
+              "withdrawals": 0,
+              "year": 2026
+            }
+          ],
+          "fees_pct_of_turnover": [],
+          "holding_days": {
+            "losers": 0,
+            "losers_median_days": null,
+            "winners": 0,
+            "winners_median_days": null
+          },
+          "performance": {
+            "as_of": "2026-10-01",
+            "base_currency": "PLN",
+            "benchmark": {
+              "covers_history": null,
+              "covers_to_date": null,
+              "excess_twr": null,
+              "excess_vs_simulation": null,
+              "id": null,
+              "last_priced": null,
+              "proxy": null,
+              "simulation_money_weighted": null,
+              "simulation_xirr": null,
+              "status": "not_configured",
+              "twr": null,
+              "twr_annualized": null
+            },
+            "data_quality": {
+              "implied_funding": false,
+              "incomplete_days": 0
+            },
+            "max_drawdown": {
+              "benchmark": null,
+              "benchmark_peak": null,
+              "benchmark_recovered": null,
+              "benchmark_trough": null,
+              "portfolio": 0.0,
+              "portfolio_peak": null,
+              "portfolio_recovered": null,
+              "portfolio_trough": null
+            },
+            "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+            "per_year": [
+              {
+                "benchmark": null,
+                "partial_year": true,
+                "portfolio_twr": 0.0,
+                "year": 2026
+              }
+            ],
+            "profit_concentration": {
+              "benchmark_pnl_pct_of_contributions": null,
+              "instruments_negative": 0,
+              "instruments_positive": 0,
+              "pnl_pct_of_contributions": 0.0,
+              "top1_share": null,
+              "top2_share": null,
+              "top3_share": null,
+              "top5_share": null,
+              "without_top2_pct_of_contributions": 0.0
+            },
+            "return": {
+              "days": 31,
+              "money_weighted": 0.0,
+              "twr": 0.0,
+              "twr_annualized": null,
+              "xirr": null
+            },
+            "rolling_relative": [
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 12,
+                "share_outperforming": null,
+                "windows": 0
+              },
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 24,
+                "share_outperforming": null,
+                "windows": 0
+              },
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 36,
+                "share_outperforming": null,
+                "windows": 0
+              }
+            ],
+            "since": "2026-09-01"
+          },
+          "price_after_sales": [
+            {
+              "days": 30,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            },
+            {
+              "days": 90,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            },
+            {
+              "days": 180,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            }
+          ],
+          "sells_after_drawdown": {
+            "median_drawdown_at_sale": null,
+            "sells_at_or_below_threshold": 0,
+            "sells_checked": 0,
+            "threshold": 0.15
+          }
+        },
+        "portfolio_overview()": {
+          "accounts": [
+            {
+              "account": "XTB brokerage 1",
+              "broker": "xtb",
+              "currency": "PLN",
+              "last_import": null,
+              "share": 1.0,
+              "snapshot_date": null,
+              "value": 40.0,
+              "wrapper": "regular"
+            }
+          ],
+          "as_of": "2026-10-01",
+          "band": {
+            "absolute_band_pp": null,
+            "min_trade_value": null,
+            "relative_band": null
+          },
+          "base_currency": "PLN",
+          "buckets": [],
+          "by_asset_class": [
+            {
+              "key": "cash",
+              "value": 40.0,
+              "weight": 1.0
+            }
+          ],
+          "by_region": [],
+          "cash_accounts": 1,
+          "cash_weight": 1.0,
+          "freshness": {
+            "fx_missing": [],
+            "fx_newest": "2026-10-03",
+            "newest_bar": null,
+            "stale": [],
+            "stale_count": 0,
+            "stale_weight": 0.0,
+            "strategy": {
+              "changed": true,
+              "errors": 0,
+              "inactive_rules": 0,
+              "state": "valid",
+              "version": null,
+              "warnings": 0
+            }
+          },
+          "has_strategy": true,
+          "holdings_weight": 0.0,
+          "last_run": null,
+          "max_drift": null,
+          "out_of_band": 0,
+          "realized": 0.0,
+          "signals": {
+            "action": 0,
+            "info": 0,
+            "new": 0
+          },
+          "total": 40.0,
+          "unclassified": {
+            "instruments": [],
+            "value": null,
+            "weight": null
+          },
+          "unrealized": null,
+          "unrealized_pct": null,
+          "warnings": []
+        },
+        "positions()": {
+          "as_of": "2026-10-01",
+          "base_currency": "PLN",
+          "base_note": "weight: share of the portfolio total (holdings + cash) in base currency",
+          "cash": [
+            {
+              "account": "XTB brokerage 1",
+              "amount": 40.0,
+              "currency": "PLN",
+              "weight": 1.0
+            }
+          ],
+          "positions": [],
+          "total": 40.0
+        },
+        "review_context()": {
+          "calendar": {
+            "events": [],
+            "stale": true
+          },
+          "card_sources": {
+            "calendar": "calendar.events of this tool",
+            "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+            "events": "research_notes(since) with strength >= 2 or a thesis relation",
+            "ideas": "research_context.candidates.open",
+            "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+            "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+            "world": "history_metrics / portfolio_overview for the move, research_context.macro for why"
+          },
+          "last_review": null,
+          "review": {
+            "cards": ["world", "sectors", "positions", "events", "ideas", "calendar", "decide"],
+            "day": "sunday",
+            "due": true,
+            "every": "week",
+            "name": "Przegląd tygodnia",
+            "next_on": "2026-10-04"
+          },
+          "since": "2026-09-24"
+        },
+        "signals(status=all)": {
+          "signals": [],
+          "status": "all"
+        },
+        "signals(status=history)": {
+          "signals": [],
+          "status": "history"
+        },
+        "signals(status=open)": {
+          "signals": [],
+          "status": "open"
+        },
+        "strategy_status()": {
+          "base_currency_note": null,
+          "changed": true,
+          "errors": 0,
+          "facts": {
+            "base_currency": "PLN",
+            "buckets": [],
+            "contributions": null,
+            "horizon_years": null,
+            "notifications": {
+              "digest_weekday": "sunday",
+              "immediate": ["action"]
+            },
+            "rules": [],
+            "targets": []
+          },
+          "files_present": {
+            "md": false,
+            "yaml": true
+          },
+          "inactive_rules": [],
+          "issues": [],
+          "read_error": false,
+          "state": "valid",
+          "version": null,
+          "versions": [],
+          "warnings": 0
+        },
+        "theses()": {
+          "theses": []
+        }
+      }
+    },
+    "strict": {
+      "profile:3295a8f96a5050d2": {
+        "history_metrics()": {
+          "activity": {
+            "days_since_last_trade": 28,
+            "first_trade": "2026-09-02",
+            "gaps_over_180_days": 0,
+            "gaps_over_90_days": 0,
+            "last_trade": "2026-09-03",
+            "max_gap_days": 1,
+            "median_gap_days": 1,
+            "trades": 2
+          },
+          "buys_after_runup": {
+            "buys_after_runup": 0,
+            "buys_checked": 2,
+            "lookback_days": 90,
+            "threshold": 0.2
+          },
+          "concentration": [
+            {
+              "date": "2026-09-30",
+              "largest": 0.104364,
+              "positions": 2,
+              "top3": 0.125237
+            },
+            {
+              "date": "2026-10-01",
+              "largest": 0.104364,
+              "positions": 2,
+              "top3": 0.125237
+            }
+          ],
+          "deposits_per_year": [
+            {
+              "deposits": 2,
+              "withdrawals": 0,
+              "year": 2026
+            }
+          ],
+          "fees_pct_of_turnover": [
+            {
+              "currency": "PLN",
+              "fees_share": null
+            }
+          ],
+          "holding_days": {
+            "losers": 0,
+            "losers_median_days": null,
+            "winners": 0,
+            "winners_median_days": null
+          },
+          "performance": {
+            "as_of": "2026-10-01",
+            "base_currency": "PLN",
+            "benchmark": {
+              "covers_history": null,
+              "covers_to_date": null,
+              "excess_twr": null,
+              "excess_vs_simulation": null,
+              "id": null,
+              "last_priced": null,
+              "proxy": null,
+              "simulation_money_weighted": null,
+              "simulation_xirr": null,
+              "status": "not_configured",
+              "twr": null,
+              "twr_annualized": null
+            },
+            "data_quality": {
+              "implied_funding": true,
+              "incomplete_days": 0
+            },
+            "max_drawdown": {
+              "benchmark": null,
+              "benchmark_peak": null,
+              "benchmark_recovered": null,
+              "benchmark_trough": null,
+              "portfolio": -0.013921,
+              "portfolio_peak": "2026-09-14",
+              "portfolio_recovered": null,
+              "portfolio_trough": "2026-09-15"
+            },
+            "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+            "per_year": [
+              {
+                "benchmark": null,
+                "partial_year": true,
+                "portfolio_twr": 0.013749,
+                "year": 2026
+              }
+            ],
+            "profit_concentration": {
+              "benchmark_pnl_pct_of_contributions": null,
+              "instruments_negative": 0,
+              "instruments_positive": 2,
+              "pnl_pct_of_contributions": 0.013462,
+              "top1_share": 0.857143,
+              "top2_share": 1.0,
+              "top3_share": 1.0,
+              "top5_share": 1.0,
+              "without_top2_pct_of_contributions": 0.0
+            },
+            "return": {
+              "days": 31,
+              "money_weighted": 0.013726,
+              "twr": 0.013749,
+              "twr_annualized": null,
+              "xirr": null
+            },
+            "rolling_relative": [
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 12,
+                "share_outperforming": null,
+                "windows": 0
+              },
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 24,
+                "share_outperforming": null,
+                "windows": 0
+              },
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 36,
+                "share_outperforming": null,
+                "windows": 0
+              }
+            ],
+            "since": "2026-09-01"
+          },
+          "price_after_sales": [
+            {
+              "days": 30,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            },
+            {
+              "days": 90,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            },
+            {
+              "days": 180,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            }
+          ],
+          "sells_after_drawdown": {
+            "median_drawdown_at_sale": null,
+            "sells_at_or_below_threshold": 0,
+            "sells_checked": 0,
+            "threshold": 0.15
+          }
+        },
+        "portfolio_overview()": {
+          "accounts": [
+            {
+              "account": "XTB brokerage 1",
+              "broker": "xtb",
+              "currency": "PLN",
+              "last_import": null,
+              "share": 0.979127,
+              "snapshot_date": null,
+              "wrapper": "regular"
+            },
+            {
+              "account": "XTB brokerage 2",
+              "broker": "xtb",
+              "currency": "PLN",
+              "last_import": null,
+              "share": 0.020873,
+              "snapshot_date": null,
+              "wrapper": "regular"
+            }
+          ],
+          "as_of": "2026-10-01",
+          "band": {
+            "absolute_band_pp": 5.0,
+            "relative_band": 0.25
+          },
+          "base_currency": "PLN",
+          "buckets": [
+            {
+              "band_note": "Nieaktualne ceny: 12,5 % portfela (maks 5,0 %)",
+              "bucket": "equity.eu",
+              "cash_history_gap": false,
+              "drift_pp": -67.4763,
+              "instruments": 2,
+              "out_of_band": null,
+              "target": 0.8,
+              "weight": 0.125237
+            },
+            {
+              "band_note": "Nieaktualne ceny: 12,5 % portfela (maks 5,0 %)",
+              "bucket": "cash",
+              "cash_history_gap": true,
+              "drift_pp": 67.4763,
+              "instruments": 0,
+              "out_of_band": null,
+              "target": 0.2,
+              "weight": 0.874763
+            }
+          ],
+          "by_asset_class": [
+            {
+              "key": "cash",
+              "weight": 0.874763
+            },
+            {
+              "key": "equity",
+              "weight": 0.125237
+            }
+          ],
+          "by_region": [
+            {
+              "key": "unknown",
+              "weight": 0.125237
+            }
+          ],
+          "cash_accounts": 2,
+          "cash_weight": 0.874763,
+          "freshness": {
+            "fx_missing": [],
+            "fx_newest": "2026-10-03",
+            "newest_bar": "2026-09-25",
+            "stale": [
+              {
+                "label": "[amount]",
+                "price_date": "2026-09-25"
+              },
+              {
+                "label": "[amount]",
+                "price_date": "2026-09-25"
+              }
+            ],
+            "stale_count": 2,
+            "stale_weight": 0.125237,
+            "strategy": {
+              "changed": true,
+              "errors": 0,
+              "inactive_rules": 0,
+              "state": "valid",
+              "version": null,
+              "warnings": 0
+            }
+          },
+          "has_strategy": true,
+          "holdings_weight": 0.125237,
+          "last_run": {
+            "as_of": "2026-10-01",
+            "errors": 1,
+            "escalated_signals": 1,
+            "finished_at": "2026-09-30T10:00:00+00:00",
+            "new_signals": 0,
+            "status": "partial",
+            "trigger": "api"
+          },
+          "max_drift": {
+            "bucket": "equity.eu",
+            "drift_pp": -67.4763,
+            "out_of_band": null
+          },
+          "out_of_band": 0,
+          "signals": {
+            "action": 3,
+            "info": 0,
+            "new": 2
+          },
+          "unclassified": {
+            "instruments": [],
+            "weight": 0.0
+          },
+          "unrealized_pct": null,
+          "warnings": [
+            {
+              "kind": "cash_history_gap",
+              "message": "Cash history gap: PLN cash of # is # on 2026-10-01 (deposits missing from the history?); counted as #"
+            },
+            {
+              "kind": "stale_price",
+              "message": "Stale price for #: last close 2026-09-25 is # days old"
+            },
+            {
+              "kind": "stale_price",
+              "message": "Stale price for #: last close 2026-09-25 is # days old"
+            }
+          ]
+        },
+        "positions()": {
+          "as_of": "2026-10-01",
+          "base_currency": "PLN",
+          "base_note": "weight: share of the portfolio total (holdings + cash) in base currency",
+          "cash": [
+            {
+              "account": "XTB brokerage 1",
+              "currency": "PLN",
+              "weight": 0.874763
+            },
+            {
+              "account": "XTB brokerage 2",
+              "currency": "PLN",
+              "weight": -0.018975
+            }
+          ],
+          "positions": [
+            {
+              "accounts": [
+                {
+                  "account": "XTB brokerage 1",
+                  "unrealized_pct": null,
+                  "weight": 0.104364
+                }
+              ],
+              "asset_class": "equity",
+              "bucket": "equity.eu",
+              "currency": "PLN",
+              "has_thesis": false,
+              "hints": [
+                {
+                  "code": "recommendation_maybe_outdated",
+                  "params": {
+                    "reasons": ["note_after", "alert_triggered", "age"]
+                  },
+                  "severity": "review"
+                },
+                {
+                  "code": "drawdown_review",
+                  "params": {
+                    "drawdown": 0.15,
+                    "threshold": 0.1
+                  },
+                  "severity": "review"
+                },
+                {
+                  "code": "no_thesis",
+                  "params": {},
+                  "severity": "review"
+                }
+              ],
+              "holding_days_avg": 29,
+              "holding_days_oldest": 29,
+              "instrument_id": "instrument:655137fd81546c0b",
+              "is_stale": true,
+              "isin": "[account]",
+              "lots": 1,
+              "name": "[name]",
+              "needs_classification": false,
+              "open_signals": 3,
+              "owner_named": false,
+              "plan_freshness": {
+                "reasons": ["note_after", "alert_triggered", "age"],
+                "state": "maybe_outdated"
+              },
+              "price_date": "2026-09-25",
+              "recommendation": "hold",
+              "region": null,
+              "symbol": "SYN1",
+              "tags": [],
+              "unrealized_pct": null,
+              "valuation_mode": "market",
+              "weight": 0.104364
+            },
+            {
+              "accounts": [
+                {
+                  "account": "XTB brokerage 2",
+                  "unrealized_pct": null,
+                  "weight": 0.020873
+                }
+              ],
+              "asset_class": "equity",
+              "bucket": "equity.eu",
+              "currency": "PLN",
+              "has_thesis": false,
+              "hints": [
+                {
+                  "code": "no_thesis",
+                  "params": {},
+                  "severity": "review"
+                }
+              ],
+              "holding_days_avg": 28,
+              "holding_days_oldest": 28,
+              "instrument_id": "instrument:8a4642a4ba9d8943",
+              "is_stale": true,
+              "isin": "[account]",
+              "lots": 1,
+              "name": "[name] instrument 2",
+              "needs_classification": false,
+              "open_signals": 0,
+              "owner_named": false,
+              "plan_freshness": null,
+              "price_date": "2026-09-25",
+              "recommendation": null,
+              "region": null,
+              "symbol": "SYN2",
+              "tags": [],
+              "unrealized_pct": null,
+              "valuation_mode": "market",
+              "weight": 0.020873
+            }
+          ]
+        },
+        "review_context()": {
+          "calendar": {
+            "events": [],
+            "stale": true
+          },
+          "card_sources": {
+            "calendar": "calendar.events of this tool",
+            "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+            "events": "research_notes(since) with strength >= 2 or a thesis relation",
+            "ideas": "research_context.candidates.open",
+            "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+            "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+            "world": "history_metrics / portfolio_overview for the move, research_context.macro for why"
+          },
+          "last_review": {
+            "agenda": [
+              {
+                "card": "events",
+                "note": "[name] agenda"
+              },
+              {
+                "card": null,
+                "note": null
+              }
+            ],
+            "done_at": "2026-09-25T23:30:00+00:00",
+            "notes": "[name] review"
+          },
+          "review": {
+            "cards": ["world", "positions", "events", "calendar", "decide"],
+            "day": "thursday",
+            "due": false,
+            "every": "2weeks",
+            "name": "Przegląd dwutygodniowy",
+            "next_on": "2026-10-15"
+          },
+          "since": "2026-09-26"
+        },
+        "signals(status=all)": {
+          "signals": [
+            {
+              "acknowledged": null,
+              "age_days": 30,
+              "closed": "2026-09-30T10:00:00+00:00",
+              "condition": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-01T08:00:00+00:00",
+              "kind": "custom",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_resolved",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "[amount]",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:cddce80dfd780165",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "resolved",
+              "values": []
+            },
+            {
+              "acknowledged": null,
+              "age_days": 1,
+              "closed": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-30T10:00:00+00:00",
+              "kind": "allocation_drift",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "measured": null,
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_owner",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "[amount]",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:0110ba8b68c6a2ca",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "active",
+              "threshold": null,
+              "unit": "pp"
+            },
+            {
+              "acknowledged": null,
+              "age_days": 1,
+              "closed": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-30T10:00:00+00:00",
+              "kind": "alert:price_above",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "alert:1",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "[amount]",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:907ef1a4f097d171",
+              "snoozed_until": "2026-10-02T00:00:00+00:00",
+              "source": "alert",
+              "status": "active"
+            },
+            {
+              "acknowledged": "2026-09-30T10:00:00+00:00",
+              "age_days": 30,
+              "closed": null,
+              "decisions": [
+                {
+                  "action": "held",
+                  "created_at": "2026-09-30T10:00:00+00:00",
+                  "reason": "[name] decision"
+                }
+              ],
+              "direction": null,
+              "first_seen": "2026-09-01T08:00:00+00:00",
+              "kind": "drawdown_from_high",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "measured": 0.15,
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_drawdown",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "[amount]",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:7a259574f030e150",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "acknowledged",
+              "threshold": 0.1,
+              "unit": "ratio"
+            }
+          ],
+          "status": "all"
+        },
+        "signals(status=history)": {
+          "signals": [
+            {
+              "acknowledged": null,
+              "age_days": 30,
+              "closed": "2026-09-30T10:00:00+00:00",
+              "condition": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-01T08:00:00+00:00",
+              "kind": "custom",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_resolved",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "[amount]",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:cddce80dfd780165",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "resolved",
+              "values": []
+            }
+          ],
+          "status": "history"
+        },
+        "signals(status=open)": {
+          "signals": [
+            {
+              "acknowledged": null,
+              "age_days": 1,
+              "closed": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-30T10:00:00+00:00",
+              "kind": "allocation_drift",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "measured": null,
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_owner",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "[amount]",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:0110ba8b68c6a2ca",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "active",
+              "threshold": null,
+              "unit": "pp"
+            },
+            {
+              "acknowledged": "2026-09-30T10:00:00+00:00",
+              "age_days": 30,
+              "closed": null,
+              "decisions": [
+                {
+                  "action": "held",
+                  "created_at": "2026-09-30T10:00:00+00:00",
+                  "reason": "[name] decision"
+                }
+              ],
+              "direction": null,
+              "first_seen": "2026-09-01T08:00:00+00:00",
+              "kind": "drawdown_from_high",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "measured": 0.15,
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "[name]_drawdown",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "[amount]",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:7a259574f030e150",
+              "snoozed_until": null,
+              "source": "rule",
+              "status": "acknowledged",
+              "threshold": 0.1,
+              "unit": "ratio"
+            },
+            {
+              "acknowledged": null,
+              "age_days": 1,
+              "closed": null,
+              "decisions": [],
+              "direction": null,
+              "first_seen": "2026-09-30T10:00:00+00:00",
+              "kind": "alert:price_above",
+              "last_seen": "2026-09-30T10:00:00+00:00",
+              "message": "[name] finding",
+              "polarity": "negative",
+              "rule": "alert:1",
+              "scope": {
+                "instrument_id": "instrument:655137fd81546c0b",
+                "label": "[amount]",
+                "symbol": null,
+                "type": "instrument"
+              },
+              "severity": "action",
+              "signal_id": "signal:907ef1a4f097d171",
+              "snoozed_until": "2026-10-02T00:00:00+00:00",
+              "source": "alert",
+              "status": "active"
+            }
+          ],
+          "status": "open"
+        },
+        "strategy_status()": {
+          "base_currency_note": null,
+          "changed": true,
+          "errors": 0,
+          "facts": {
+            "base_currency": "PLN",
+            "buckets": ["equity.eu", "cash"],
+            "contributions": null,
+            "horizon_years": null,
+            "notifications": {
+              "digest_weekday": "sunday",
+              "immediate": ["action"]
+            },
+            "rules": [
+              {
+                "cooldown_days": null,
+                "kind": "loss_from_cost",
+                "rule": "[name]_loss",
+                "severity": "info"
+              }
+            ],
+            "targets": [
+              {
+                "bucket": "equity.eu",
+                "target": 0.8
+              },
+              {
+                "bucket": "cash",
+                "target": 0.2
+              }
+            ]
+          },
+          "files_present": {
+            "md": false,
+            "yaml": true
+          },
+          "inactive_rules": [],
+          "issues": [],
+          "read_error": false,
+          "state": "valid",
+          "version": null,
+          "versions": [],
+          "warnings": 0
+        },
+        "theses()": {
+          "theses": []
+        }
+      },
+      "profile:725d1c48672bb0da": {
+        "history_metrics()": {
+          "error_kind": "module_disabled"
+        },
+        "portfolio_overview()": {
+          "error_kind": "module_disabled"
+        },
+        "positions()": {
+          "error_kind": "module_disabled"
+        },
+        "review_context()": {
+          "error_kind": "module_disabled"
+        },
+        "signals(status=all)": {
+          "error_kind": "module_disabled"
+        },
+        "signals(status=history)": {
+          "error_kind": "module_disabled"
+        },
+        "signals(status=open)": {
+          "error_kind": "module_disabled"
+        },
+        "strategy_status()": {
+          "error_kind": "module_disabled"
+        },
+        "theses()": {
+          "error_kind": "module_disabled"
+        }
+      },
+      "profile:c340430281162605": {
+        "history_metrics()": {
+          "activity": {
+            "days_since_last_trade": null,
+            "first_trade": null,
+            "gaps_over_180_days": 0,
+            "gaps_over_90_days": 0,
+            "last_trade": null,
+            "max_gap_days": null,
+            "median_gap_days": null,
+            "trades": 0
+          },
+          "buys_after_runup": {
+            "buys_after_runup": 0,
+            "buys_checked": 0,
+            "lookback_days": 90,
+            "threshold": 0.2
+          },
+          "concentration": [
+            {
+              "date": "2026-09-30",
+              "largest": null,
+              "positions": 0,
+              "top3": null
+            },
+            {
+              "date": "2026-10-01",
+              "largest": null,
+              "positions": 0,
+              "top3": null
+            }
+          ],
+          "deposits_per_year": [
+            {
+              "deposits": 1,
+              "withdrawals": 0,
+              "year": 2026
+            }
+          ],
+          "fees_pct_of_turnover": [],
+          "holding_days": {
+            "losers": 0,
+            "losers_median_days": null,
+            "winners": 0,
+            "winners_median_days": null
+          },
+          "performance": {
+            "as_of": "2026-10-01",
+            "base_currency": "PLN",
+            "benchmark": {
+              "covers_history": null,
+              "covers_to_date": null,
+              "excess_twr": null,
+              "excess_vs_simulation": null,
+              "id": null,
+              "last_priced": null,
+              "proxy": null,
+              "simulation_money_weighted": null,
+              "simulation_xirr": null,
+              "status": "not_configured",
+              "twr": null,
+              "twr_annualized": null
+            },
+            "data_quality": {
+              "implied_funding": false,
+              "incomplete_days": 0
+            },
+            "max_drawdown": {
+              "benchmark": null,
+              "benchmark_peak": null,
+              "benchmark_recovered": null,
+              "benchmark_trough": null,
+              "portfolio": 0.0,
+              "portfolio_peak": null,
+              "portfolio_recovered": null,
+              "portfolio_trough": null
+            },
+            "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+            "per_year": [
+              {
+                "benchmark": null,
+                "partial_year": true,
+                "portfolio_twr": 0.0,
+                "year": 2026
+              }
+            ],
+            "profit_concentration": {
+              "benchmark_pnl_pct_of_contributions": null,
+              "instruments_negative": 0,
+              "instruments_positive": 0,
+              "pnl_pct_of_contributions": 0.0,
+              "top1_share": null,
+              "top2_share": null,
+              "top3_share": null,
+              "top5_share": null,
+              "without_top2_pct_of_contributions": 0.0
+            },
+            "return": {
+              "days": 31,
+              "money_weighted": 0.0,
+              "twr": 0.0,
+              "twr_annualized": null,
+              "xirr": null
+            },
+            "rolling_relative": [
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 12,
+                "share_outperforming": null,
+                "windows": 0
+              },
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 24,
+                "share_outperforming": null,
+                "windows": 0
+              },
+              {
+                "latest_date": null,
+                "latest_excess": null,
+                "max_excess": null,
+                "min_excess": null,
+                "months": 36,
+                "share_outperforming": null,
+                "windows": 0
+              }
+            ],
+            "since": "2026-09-01"
+          },
+          "price_after_sales": [
+            {
+              "days": 30,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            },
+            {
+              "days": 90,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            },
+            {
+              "days": 180,
+              "median_change": null,
+              "sales": 0,
+              "share_rose": null
+            }
+          ],
+          "sells_after_drawdown": {
+            "median_drawdown_at_sale": null,
+            "sells_at_or_below_threshold": 0,
+            "sells_checked": 0,
+            "threshold": 0.15
+          }
+        },
+        "portfolio_overview()": {
+          "accounts": [
+            {
+              "account": "XTB brokerage 1",
+              "broker": "xtb",
+              "currency": "PLN",
+              "last_import": null,
+              "share": 1.0,
+              "snapshot_date": null,
+              "wrapper": "regular"
+            }
+          ],
+          "as_of": "2026-10-01",
+          "band": {
+            "absolute_band_pp": null,
+            "relative_band": null
+          },
+          "base_currency": "PLN",
+          "buckets": [],
+          "by_asset_class": [
+            {
+              "key": "cash",
+              "weight": 1.0
+            }
+          ],
+          "by_region": [],
+          "cash_accounts": 1,
+          "cash_weight": 1.0,
+          "freshness": {
+            "fx_missing": [],
+            "fx_newest": "2026-10-03",
+            "newest_bar": null,
+            "stale": [],
+            "stale_count": 0,
+            "stale_weight": 0.0,
+            "strategy": {
+              "changed": true,
+              "errors": 0,
+              "inactive_rules": 0,
+              "state": "valid",
+              "version": null,
+              "warnings": 0
+            }
+          },
+          "has_strategy": true,
+          "holdings_weight": 0.0,
+          "last_run": null,
+          "max_drift": null,
+          "out_of_band": 0,
+          "signals": {
+            "action": 0,
+            "info": 0,
+            "new": 0
+          },
+          "unclassified": {
+            "instruments": [],
+            "weight": null
+          },
+          "unrealized_pct": null,
+          "warnings": []
+        },
+        "positions()": {
+          "as_of": "2026-10-01",
+          "base_currency": "PLN",
+          "base_note": "weight: share of the portfolio total (holdings + cash) in base currency",
+          "cash": [
+            {
+              "account": "XTB brokerage 1",
+              "currency": "PLN",
+              "weight": 1.0
+            }
+          ],
+          "positions": []
+        },
+        "review_context()": {
+          "calendar": {
+            "events": [],
+            "stale": true
+          },
+          "card_sources": {
+            "calendar": "calendar.events of this tool",
+            "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+            "events": "research_notes(since) with strength >= 2 or a thesis relation",
+            "ideas": "research_context.candidates.open",
+            "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+            "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+            "world": "history_metrics / portfolio_overview for the move, research_context.macro for why"
+          },
+          "last_review": null,
+          "review": {
+            "cards": ["world", "sectors", "positions", "events", "ideas", "calendar", "decide"],
+            "day": "sunday",
+            "due": true,
+            "every": "week",
+            "name": "Przegląd tygodnia",
+            "next_on": "2026-10-04"
+          },
+          "since": "2026-09-24"
+        },
+        "signals(status=all)": {
+          "signals": [],
+          "status": "all"
+        },
+        "signals(status=history)": {
+          "signals": [],
+          "status": "history"
+        },
+        "signals(status=open)": {
+          "signals": [],
+          "status": "open"
+        },
+        "strategy_status()": {
+          "base_currency_note": null,
+          "changed": true,
+          "errors": 0,
+          "facts": {
+            "base_currency": "PLN",
+            "buckets": [],
+            "contributions": null,
+            "horizon_years": null,
+            "notifications": {
+              "digest_weekday": "sunday",
+              "immediate": ["action"]
+            },
+            "rules": [],
+            "targets": []
+          },
+          "files_present": {
+            "md": false,
+            "yaml": true
+          },
+          "inactive_rules": [],
+          "issues": [],
+          "read_error": false,
+          "state": "valid",
+          "version": null,
+          "versions": [],
+          "warnings": 0
+        },
+        "theses()": {
+          "theses": []
+        }
+      }
+    }
+  },
+  "edge": {
+    "expected": {
+      "amounts": {
+        "profile:3295a8f96a5050d2": {
+          "history_metrics()": {
+            "activity": {
+              "days_since_last_trade": 1,
+              "first_trade": "2026-09-26",
+              "gaps_over_180_days": 0,
+              "gaps_over_90_days": 0,
+              "last_trade": "2026-09-30",
+              "max_gap_days": 4,
+              "median_gap_days": 4,
+              "trades": 2
+            },
+            "buys_after_runup": {
+              "buys_after_runup": 0,
+              "buys_checked": 2,
+              "lookback_days": 90,
+              "threshold": 0.2
+            },
+            "concentration": [
+              {
+                "date": "2026-09-30",
+                "largest": 0.008272,
+                "positions": 2,
+                "top3": 0.009454
+              },
+              {
+                "date": "2026-10-01",
+                "largest": 0.008272,
+                "positions": 2,
+                "top3": 0.009454
+              }
+            ],
+            "deposits_per_year": [
+              {
+                "deposits": 2,
+                "withdrawals": 0,
+                "year": 2026
+              }
+            ],
+            "fees_pct_of_turnover": [
+              {
+                "currency": "PLN",
+                "fees_share": null
+              }
+            ],
+            "holding_days": {
+              "losers": 0,
+              "losers_median_days": null,
+              "winners": 0,
+              "winners_median_days": null
+            },
+            "performance": {
+              "as_of": "2026-10-01",
+              "base_currency": "PLN",
+              "benchmark": {
+                "covers_history": null,
+                "covers_to_date": null,
+                "excess_twr": null,
+                "excess_vs_simulation": null,
+                "id": null,
+                "last_priced": null,
+                "proxy": null,
+                "simulation_money_weighted": null,
+                "simulation_xirr": null,
+                "status": "not_configured",
+                "twr": null,
+                "twr_annualized": null
+              },
+              "data_quality": {
+                "implied_funding": true,
+                "incomplete_days": 0
+              },
+              "max_drawdown": {
+                "benchmark": null,
+                "benchmark_peak": null,
+                "benchmark_recovered": null,
+                "benchmark_trough": null,
+                "portfolio": -0.105394,
+                "portfolio_peak": "2026-08-31",
+                "portfolio_recovered": null,
+                "portfolio_trough": "2026-09-30"
+              },
+              "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+              "per_year": [
+                {
+                  "benchmark": null,
+                  "partial_year": true,
+                  "portfolio_twr": -0.105394,
+                  "year": 2026
+                }
+              ],
+              "profit_concentration": {
+                "benchmark_pnl_pct_of_contributions": null,
+                "instruments_negative": 1,
+                "instruments_positive": 0,
+                "pnl_pct_of_contributions": -0.105,
+                "top1_share": null,
+                "top2_share": null,
+                "top3_share": null,
+                "top5_share": null,
+                "without_top2_pct_of_contributions": 0.0
+              },
+              "return": {
+                "days": 31,
+                "money_weighted": -0.108667,
+                "twr": -0.105394,
+                "twr_annualized": null,
+                "xirr": null
+              },
+              "rolling_relative": [
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 12,
+                  "share_outperforming": null,
+                  "windows": 0
+                },
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 24,
+                  "share_outperforming": null,
+                  "windows": 0
+                },
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 36,
+                  "share_outperforming": null,
+                  "windows": 0
+                }
+              ],
+              "since": "2026-09-01"
+            },
+            "price_after_sales": [
+              {
+                "days": 30,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              },
+              {
+                "days": 90,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              },
+              {
+                "days": 180,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              }
+            ],
+            "sells_after_drawdown": {
+              "median_drawdown_at_sale": null,
+              "sells_at_or_below_threshold": 0,
+              "sells_checked": 0,
+              "threshold": 0.15
+            }
+          },
+          "portfolio_overview()": {
+            "accounts": [
+              {
+                "account": "XTB brokerage 1",
+                "broker": "xtb",
+                "currency": "PLN",
+                "last_import": null,
+                "share": 0.991728,
+                "snapshot_date": null,
+                "value": 923.1,
+                "wrapper": "regular"
+              },
+              {
+                "account": "XTB brokerage 2",
+                "broker": "xtb",
+                "currency": "PLN",
+                "last_import": null,
+                "share": 0.008272,
+                "snapshot_date": null,
+                "value": 7.7,
+                "wrapper": "regular"
+              }
+            ],
+            "as_of": "2026-10-01",
+            "band": {
+              "absolute_band_pp": 5.0,
+              "min_trade_value": 0.0,
+              "relative_band": 0.25
+            },
+            "base_currency": "PLN",
+            "buckets": [
+              {
+                "band_note": null,
+                "bucket": "equity.eu",
+                "cash_history_gap": false,
+                "drift_pp": -79.0546,
+                "instruments": 2,
+                "out_of_band": true,
+                "target": 0.8,
+                "to_target": 735.84,
+                "value": 8.8,
+                "weight": 0.009454
+              },
+              {
+                "band_note": "Koszyk cash: ujemna gotówka (brak wpłat w zaimportowanej historii), wartość nieznana",
+                "bucket": "cash",
+                "cash_history_gap": true,
+                "drift_pp": 79.0546,
+                "instruments": 0,
+                "out_of_band": null,
+                "target": 0.2,
+                "to_target": -735.84,
+                "value": 922.0,
+                "weight": 0.990546
+              }
+            ],
+            "by_asset_class": [
+              {
+                "key": "cash",
+                "value": 922.0,
+                "weight": 0.990546
+              },
+              {
+                "key": "equity",
+                "value": 8.8,
+                "weight": 0.009454
+              }
+            ],
+            "by_region": [
+              {
+                "key": "unknown",
+                "value": 8.8,
+                "weight": 0.009454
+              }
+            ],
+            "cash_accounts": 2,
+            "cash_weight": 0.990546,
+            "freshness": {
+              "fx_missing": [],
+              "fx_newest": "2026-10-03",
+              "newest_bar": "2026-09-25",
+              "stale": [
+                {
+                  "label": "SYN1",
+                  "price_date": "2026-09-25"
+                },
+                {
+                  "label": "SYN1",
+                  "price_date": "2026-09-25"
+                }
+              ],
+              "stale_count": 2,
+              "stale_weight": 0.009454,
+              "strategy": {
+                "changed": true,
+                "errors": 0,
+                "inactive_rules": 0,
+                "state": "valid",
+                "version": null,
+                "warnings": 0
+              }
+            },
+            "has_strategy": true,
+            "holdings_weight": 0.009454,
+            "last_run": {
+              "as_of": "2026-10-01",
+              "errors": 1,
+              "escalated_signals": 1,
+              "finished_at": "2026-09-30T10:00:00+00:00",
+              "new_signals": 0,
+              "status": "partial",
+              "trigger": "api"
+            },
+            "max_drift": {
+              "bucket": "equity.eu",
+              "drift_pp": -79.0546,
+              "out_of_band": true
+            },
+            "out_of_band": 1,
+            "realized": 0.0,
+            "signals": {
+              "action": 3,
+              "info": 0,
+              "new": 2
+            },
+            "total": 930.8,
+            "unclassified": {
+              "instruments": [],
+              "value": 0.0,
+              "weight": 0.0
+            },
+            "unrealized": null,
+            "unrealized_pct": null,
+            "warnings": [
+              {
+                "kind": "cash_history_gap",
+                "message": "Cash history gap: PLN cash of 2 is -20 on 2026-10-01 (deposits missing from the history?); counted as 0"
+              },
+              {
+                "kind": "stale_price",
+                "message": "Stale price for 1: last close 2026-09-25 is 6 days old"
+              }
+            ]
+          },
+          "positions()": {
+            "as_of": "2026-10-01",
+            "base_currency": "PLN",
+            "base_note": "weight: share of the portfolio total (holdings + cash) in base currency",
+            "cash": [
+              {
+                "account": "XTB brokerage 1",
+                "amount": 922.0,
+                "currency": "PLN",
+                "weight": 0.990546
+              },
+              {
+                "account": "XTB brokerage 2",
+                "amount": -20.0,
+                "currency": "PLN",
+                "weight": -0.021487
+              }
+            ],
+            "positions": [
+              {
+                "accounts": [
+                  {
+                    "account": "XTB brokerage 2",
+                    "quantity": 0.7,
+                    "unrealized_pct": null,
+                    "value": 7.7,
+                    "weight": 0.008272
+                  },
+                  {
+                    "account": "XTB brokerage 1",
+                    "quantity": 0.1,
+                    "unrealized_pct": null,
+                    "value": 1.1,
+                    "weight": 0.001182
+                  }
+                ],
+                "asset_class": "equity",
+                "bucket": "equity.eu",
+                "cost": 0.0,
+                "currency": "PLN",
+                "has_thesis": false,
+                "hints": [
+                  {
+                    "code": "recommendation_maybe_outdated",
+                    "params": {
+                      "reasons": ["note_after", "age"]
+                    },
+                    "severity": "review"
+                  },
+                  {
+                    "code": "no_thesis",
+                    "params": {},
+                    "severity": "review"
+                  }
+                ],
+                "holding_days_avg": 5,
+                "holding_days_oldest": 5,
+                "instrument_id": "instrument:655137fd81546c0b",
+                "is_stale": true,
+                "isin": "[account]",
+                "lots": 2,
+                "name": "[name] owner name",
+                "needs_classification": false,
+                "open_signals": 3,
+                "owner_named": false,
+                "plan_freshness": {
+                  "reasons": ["note_after", "age"],
+                  "state": "maybe_outdated"
+                },
+                "price": 11.0,
+                "price_date": "2026-09-25",
+                "quantity": 0.8,
+                "realized": null,
+                "recommendation": "hold",
+                "region": null,
+                "symbol": "SYN1",
+                "tags": [],
+                "unrealized_pct": null,
+                "valuation_mode": "market",
+                "value": 8.8,
+                "weight": 0.009454
+              }
+            ],
+            "total": 930.8
+          },
+          "review_context()": {
+            "calendar": {
+              "events": [],
+              "stale": true
+            },
+            "card_sources": {
+              "calendar": "calendar.events of this tool",
+              "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+              "events": "research_notes(since) with strength >= 2 or a thesis relation",
+              "ideas": "research_context.candidates.open",
+              "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+              "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+              "world": "history_metrics / portfolio_overview for the move, research_context.macro for why"
+            },
+            "last_review": {
+              "agenda": [
+                {
+                  "card": "events",
+                  "note": "[name] agenda"
+                },
+                {
+                  "card": null,
+                  "note": null
+                }
+              ],
+              "done_at": "2026-09-25T23:30:00+00:00",
+              "notes": "[name] review"
+            },
+            "review": {
+              "cards": ["world", "positions", "events", "calendar", "decide"],
+              "day": "thursday",
+              "due": false,
+              "every": "2weeks",
+              "name": "Przegląd dwutygodniowy",
+              "next_on": "2026-10-15"
+            },
+            "since": "2026-09-26"
+          },
+          "signals(status=all)": {
+            "error_kind": "unlabelled"
+          },
+          "signals(status=history)": {
+            "error_kind": "unlabelled"
+          },
+          "signals(status=open)": {
+            "signals": [
+              {
+                "acknowledged": null,
+                "age_days": 1,
+                "closed": null,
+                "decisions": [],
+                "direction": null,
+                "first_seen": "2026-09-30T10:00:00+00:00",
+                "kind": "allocation_drift",
+                "last_seen": "2026-09-30T10:00:00+00:00",
+                "measured": null,
+                "message": "[name] finding",
+                "polarity": "negative",
+                "rule": "[name]_owner",
+                "scope": {
+                  "instrument_id": "instrument:655137fd81546c0b",
+                  "label": "SYN1",
+                  "symbol": null,
+                  "type": "instrument"
+                },
+                "severity": "action",
+                "signal_id": "signal:0110ba8b68c6a2ca",
+                "snoozed_until": null,
+                "source": "rule",
+                "status": "active",
+                "threshold": null,
+                "unit": "pp"
+              },
+              {
+                "acknowledged": "2026-09-30T10:00:00+00:00",
+                "age_days": 30,
+                "closed": null,
+                "condition": "weight > 0.5",
+                "decisions": [
+                  {
+                    "action": "held",
+                    "created_at": "2026-09-30T10:00:00+00:00",
+                    "reason": "[name] decision"
+                  }
+                ],
+                "direction": null,
+                "first_seen": "2026-09-01T08:00:00+00:00",
+                "kind": "custom",
+                "last_seen": "2026-09-30T10:00:00+00:00",
+                "message": "[name] finding",
+                "polarity": "negative",
+                "rule": "[name]_drawdown",
+                "scope": {
+                  "instrument_id": "instrument:655137fd81546c0b",
+                  "label": "SYN1",
+                  "symbol": null,
+                  "type": "instrument"
+                },
+                "severity": "action",
+                "signal_id": "signal:7a259574f030e150",
+                "snoozed_until": null,
+                "source": "rule",
+                "status": "acknowledged",
+                "values": [
+                  {
+                    "measured": 1.0,
+                    "metric": "weight",
+                    "unit": "ratio"
+                  }
+                ]
+              },
+              {
+                "acknowledged": null,
+                "age_days": 1,
+                "closed": null,
+                "decisions": [],
+                "direction": null,
+                "first_seen": "2026-09-30T10:00:00+00:00",
+                "kind": "alert:price_above",
+                "last_seen": "2026-09-30T10:00:00+00:00",
+                "message": "[name] finding",
+                "polarity": "negative",
+                "rule": "alert:1",
+                "scope": {
+                  "instrument_id": "instrument:655137fd81546c0b",
+                  "label": "SYN1",
+                  "symbol": null,
+                  "type": "instrument"
+                },
+                "severity": "action",
+                "signal_id": "signal:907ef1a4f097d171",
+                "snoozed_until": "2026-10-02T00:00:00+00:00",
+                "source": "alert",
+                "status": "active"
+              }
+            ],
+            "status": "open"
+          },
+          "strategy_status()": {
+            "base_currency_note": null,
+            "changed": true,
+            "errors": 0,
+            "facts": {
+              "base_currency": "PLN",
+              "buckets": ["equity.eu", "cash"],
+              "contributions": null,
+              "horizon_years": null,
+              "notifications": {
+                "digest_weekday": "sunday",
+                "immediate": ["action"]
+              },
+              "rules": [
+                {
+                  "cooldown_days": null,
+                  "kind": "loss_from_cost",
+                  "rule": "[name]_loss",
+                  "severity": "info"
+                }
+              ],
+              "targets": [
+                {
+                  "bucket": "equity.eu",
+                  "target": 0.8
+                },
+                {
+                  "bucket": "cash",
+                  "target": 0.2
+                }
+              ]
+            },
+            "files_present": {
+              "md": false,
+              "yaml": true
+            },
+            "inactive_rules": [],
+            "issues": [],
+            "read_error": false,
+            "state": "valid",
+            "version": null,
+            "versions": [],
+            "warnings": 0
+          },
+          "theses()": {
+            "theses": []
+          }
+        },
+        "profile:725d1c48672bb0da": {
+          "history_metrics()": {
+            "error_kind": "module_disabled"
+          },
+          "portfolio_overview()": {
+            "error_kind": "module_disabled"
+          },
+          "positions()": {
+            "error_kind": "module_disabled"
+          },
+          "review_context()": {
+            "error_kind": "module_disabled"
+          },
+          "signals(status=all)": {
+            "error_kind": "module_disabled"
+          },
+          "signals(status=history)": {
+            "error_kind": "module_disabled"
+          },
+          "signals(status=open)": {
+            "error_kind": "module_disabled"
+          },
+          "strategy_status()": {
+            "error_kind": "module_disabled"
+          },
+          "theses()": {
+            "error_kind": "module_disabled"
+          }
+        },
+        "profile:c340430281162605": {
+          "history_metrics()": {
+            "activity": {
+              "days_since_last_trade": null,
+              "first_trade": null,
+              "gaps_over_180_days": 0,
+              "gaps_over_90_days": 0,
+              "last_trade": null,
+              "max_gap_days": null,
+              "median_gap_days": null,
+              "trades": 0
+            },
+            "buys_after_runup": {
+              "buys_after_runup": 0,
+              "buys_checked": 0,
+              "lookback_days": 90,
+              "threshold": 0.2
+            },
+            "concentration": [
+              {
+                "date": "2026-09-30",
+                "largest": null,
+                "positions": 0,
+                "top3": null
+              },
+              {
+                "date": "2026-10-01",
+                "largest": null,
+                "positions": 0,
+                "top3": null
+              }
+            ],
+            "deposits_per_year": [
+              {
+                "deposits": 1,
+                "withdrawals": 0,
+                "year": 2026
+              }
+            ],
+            "fees_pct_of_turnover": [],
+            "holding_days": {
+              "losers": 0,
+              "losers_median_days": null,
+              "winners": 0,
+              "winners_median_days": null
+            },
+            "performance": {
+              "as_of": "2026-10-01",
+              "base_currency": "PLN",
+              "benchmark": {
+                "covers_history": null,
+                "covers_to_date": null,
+                "excess_twr": null,
+                "excess_vs_simulation": null,
+                "id": null,
+                "last_priced": null,
+                "proxy": null,
+                "simulation_money_weighted": null,
+                "simulation_xirr": null,
+                "status": "not_configured",
+                "twr": null,
+                "twr_annualized": null
+              },
+              "data_quality": {
+                "implied_funding": false,
+                "incomplete_days": 0
+              },
+              "max_drawdown": {
+                "benchmark": null,
+                "benchmark_peak": null,
+                "benchmark_recovered": null,
+                "benchmark_trough": null,
+                "portfolio": 0.0,
+                "portfolio_peak": null,
+                "portfolio_recovered": null,
+                "portfolio_trough": null
+              },
+              "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+              "per_year": [
+                {
+                  "benchmark": null,
+                  "partial_year": true,
+                  "portfolio_twr": 0.0,
+                  "year": 2026
+                }
+              ],
+              "profit_concentration": {
+                "benchmark_pnl_pct_of_contributions": null,
+                "instruments_negative": 0,
+                "instruments_positive": 0,
+                "pnl_pct_of_contributions": 0.0,
+                "top1_share": null,
+                "top2_share": null,
+                "top3_share": null,
+                "top5_share": null,
+                "without_top2_pct_of_contributions": 0.0
+              },
+              "return": {
+                "days": 31,
+                "money_weighted": 0.0,
+                "twr": 0.0,
+                "twr_annualized": null,
+                "xirr": null
+              },
+              "rolling_relative": [
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 12,
+                  "share_outperforming": null,
+                  "windows": 0
+                },
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 24,
+                  "share_outperforming": null,
+                  "windows": 0
+                },
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 36,
+                  "share_outperforming": null,
+                  "windows": 0
+                }
+              ],
+              "since": "2026-09-01"
+            },
+            "price_after_sales": [
+              {
+                "days": 30,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              },
+              {
+                "days": 90,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              },
+              {
+                "days": 180,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              }
+            ],
+            "sells_after_drawdown": {
+              "median_drawdown_at_sale": null,
+              "sells_at_or_below_threshold": 0,
+              "sells_checked": 0,
+              "threshold": 0.15
+            }
+          },
+          "portfolio_overview()": {
+            "accounts": [
+              {
+                "account": "XTB brokerage 1",
+                "broker": "xtb",
+                "currency": "PLN",
+                "last_import": null,
+                "share": 1.0,
+                "snapshot_date": null,
+                "value": 40.0,
+                "wrapper": "regular"
+              }
+            ],
+            "as_of": "2026-10-01",
+            "band": {
+              "absolute_band_pp": null,
+              "min_trade_value": null,
+              "relative_band": null
+            },
+            "base_currency": "PLN",
+            "buckets": [],
+            "by_asset_class": [
+              {
+                "key": "cash",
+                "value": 40.0,
+                "weight": 1.0
+              }
+            ],
+            "by_region": [],
+            "cash_accounts": 1,
+            "cash_weight": 1.0,
+            "freshness": {
+              "fx_missing": [],
+              "fx_newest": "2026-10-03",
+              "newest_bar": null,
+              "stale": [],
+              "stale_count": 0,
+              "stale_weight": 0.0,
+              "strategy": {
+                "changed": true,
+                "errors": 0,
+                "inactive_rules": 0,
+                "state": "valid",
+                "version": null,
+                "warnings": 0
+              }
+            },
+            "has_strategy": true,
+            "holdings_weight": 0.0,
+            "last_run": null,
+            "max_drift": null,
+            "out_of_band": 0,
+            "realized": 0.0,
+            "signals": {
+              "action": 0,
+              "info": 0,
+              "new": 0
+            },
+            "total": 40.0,
+            "unclassified": {
+              "instruments": [],
+              "value": null,
+              "weight": null
+            },
+            "unrealized": null,
+            "unrealized_pct": null,
+            "warnings": []
+          },
+          "positions()": {
+            "as_of": "2026-10-01",
+            "base_currency": "PLN",
+            "base_note": "weight: share of the portfolio total (holdings + cash) in base currency",
+            "cash": [
+              {
+                "account": "XTB brokerage 1",
+                "amount": 40.0,
+                "currency": "PLN",
+                "weight": 1.0
+              }
+            ],
+            "positions": [],
+            "total": 40.0
+          },
+          "review_context()": {
+            "calendar": {
+              "events": [],
+              "stale": true
+            },
+            "card_sources": {
+              "calendar": "calendar.events of this tool",
+              "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+              "events": "research_notes(since) with strength >= 2 or a thesis relation",
+              "ideas": "research_context.candidates.open",
+              "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+              "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+              "world": "history_metrics / portfolio_overview for the move, research_context.macro for why"
+            },
+            "last_review": null,
+            "review": {
+              "cards": ["world", "sectors", "positions", "events", "ideas", "calendar", "decide"],
+              "day": "sunday",
+              "due": true,
+              "every": "week",
+              "name": "Przegląd tygodnia",
+              "next_on": "2026-10-04"
+            },
+            "since": "2026-09-24"
+          },
+          "signals(status=all)": {
+            "signals": [],
+            "status": "all"
+          },
+          "signals(status=history)": {
+            "signals": [],
+            "status": "history"
+          },
+          "signals(status=open)": {
+            "signals": [],
+            "status": "open"
+          },
+          "strategy_status()": {
+            "base_currency_note": null,
+            "changed": true,
+            "errors": 0,
+            "facts": {
+              "base_currency": "PLN",
+              "buckets": [],
+              "contributions": null,
+              "horizon_years": null,
+              "notifications": {
+                "digest_weekday": "sunday",
+                "immediate": ["action"]
+              },
+              "rules": [],
+              "targets": []
+            },
+            "files_present": {
+              "md": false,
+              "yaml": true
+            },
+            "inactive_rules": [],
+            "issues": [],
+            "read_error": false,
+            "state": "valid",
+            "version": null,
+            "versions": [],
+            "warnings": 0
+          },
+          "theses()": {
+            "theses": []
+          }
+        }
+      },
+      "strict": {
+        "profile:3295a8f96a5050d2": {
+          "history_metrics()": {
+            "activity": {
+              "days_since_last_trade": 1,
+              "first_trade": "2026-09-26",
+              "gaps_over_180_days": 0,
+              "gaps_over_90_days": 0,
+              "last_trade": "2026-09-30",
+              "max_gap_days": 4,
+              "median_gap_days": 4,
+              "trades": 2
+            },
+            "buys_after_runup": {
+              "buys_after_runup": 0,
+              "buys_checked": 2,
+              "lookback_days": 90,
+              "threshold": 0.2
+            },
+            "concentration": [
+              {
+                "date": "2026-09-30",
+                "largest": 0.008272,
+                "positions": 2,
+                "top3": 0.009454
+              },
+              {
+                "date": "2026-10-01",
+                "largest": 0.008272,
+                "positions": 2,
+                "top3": 0.009454
+              }
+            ],
+            "deposits_per_year": [
+              {
+                "deposits": 2,
+                "withdrawals": 0,
+                "year": 2026
+              }
+            ],
+            "fees_pct_of_turnover": [
+              {
+                "currency": "PLN",
+                "fees_share": null
+              }
+            ],
+            "holding_days": {
+              "losers": 0,
+              "losers_median_days": null,
+              "winners": 0,
+              "winners_median_days": null
+            },
+            "performance": {
+              "as_of": "2026-10-01",
+              "base_currency": "PLN",
+              "benchmark": {
+                "covers_history": null,
+                "covers_to_date": null,
+                "excess_twr": null,
+                "excess_vs_simulation": null,
+                "id": null,
+                "last_priced": null,
+                "proxy": null,
+                "simulation_money_weighted": null,
+                "simulation_xirr": null,
+                "status": "not_configured",
+                "twr": null,
+                "twr_annualized": null
+              },
+              "data_quality": {
+                "implied_funding": true,
+                "incomplete_days": 0
+              },
+              "max_drawdown": {
+                "benchmark": null,
+                "benchmark_peak": null,
+                "benchmark_recovered": null,
+                "benchmark_trough": null,
+                "portfolio": -0.105394,
+                "portfolio_peak": "2026-08-31",
+                "portfolio_recovered": null,
+                "portfolio_trough": "2026-09-30"
+              },
+              "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+              "per_year": [
+                {
+                  "benchmark": null,
+                  "partial_year": true,
+                  "portfolio_twr": -0.105394,
+                  "year": 2026
+                }
+              ],
+              "profit_concentration": {
+                "benchmark_pnl_pct_of_contributions": null,
+                "instruments_negative": 1,
+                "instruments_positive": 0,
+                "pnl_pct_of_contributions": -0.105,
+                "top1_share": null,
+                "top2_share": null,
+                "top3_share": null,
+                "top5_share": null,
+                "without_top2_pct_of_contributions": 0.0
+              },
+              "return": {
+                "days": 31,
+                "money_weighted": -0.108667,
+                "twr": -0.105394,
+                "twr_annualized": null,
+                "xirr": null
+              },
+              "rolling_relative": [
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 12,
+                  "share_outperforming": null,
+                  "windows": 0
+                },
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 24,
+                  "share_outperforming": null,
+                  "windows": 0
+                },
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 36,
+                  "share_outperforming": null,
+                  "windows": 0
+                }
+              ],
+              "since": "2026-09-01"
+            },
+            "price_after_sales": [
+              {
+                "days": 30,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              },
+              {
+                "days": 90,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              },
+              {
+                "days": 180,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              }
+            ],
+            "sells_after_drawdown": {
+              "median_drawdown_at_sale": null,
+              "sells_at_or_below_threshold": 0,
+              "sells_checked": 0,
+              "threshold": 0.15
+            }
+          },
+          "portfolio_overview()": {
+            "accounts": [
+              {
+                "account": "XTB brokerage 1",
+                "broker": "xtb",
+                "currency": "PLN",
+                "last_import": null,
+                "share": 0.991728,
+                "snapshot_date": null,
+                "wrapper": "regular"
+              },
+              {
+                "account": "XTB brokerage 2",
+                "broker": "xtb",
+                "currency": "PLN",
+                "last_import": null,
+                "share": 0.008272,
+                "snapshot_date": null,
+                "wrapper": "regular"
+              }
+            ],
+            "as_of": "2026-10-01",
+            "band": {
+              "absolute_band_pp": 5.0,
+              "relative_band": 0.25
+            },
+            "base_currency": "PLN",
+            "buckets": [
+              {
+                "band_note": null,
+                "bucket": "equity.eu",
+                "cash_history_gap": false,
+                "drift_pp": -79.0546,
+                "instruments": 2,
+                "out_of_band": true,
+                "target": 0.8,
+                "weight": 0.009454
+              },
+              {
+                "band_note": "Koszyk cash: ujemna gotówka (brak wpłat w zaimportowanej historii), wartość nieznana",
+                "bucket": "cash",
+                "cash_history_gap": true,
+                "drift_pp": 79.0546,
+                "instruments": 0,
+                "out_of_band": null,
+                "target": 0.2,
+                "weight": 0.990546
+              }
+            ],
+            "by_asset_class": [
+              {
+                "key": "cash",
+                "weight": 0.990546
+              },
+              {
+                "key": "equity",
+                "weight": 0.009454
+              }
+            ],
+            "by_region": [
+              {
+                "key": "unknown",
+                "weight": 0.009454
+              }
+            ],
+            "cash_accounts": 2,
+            "cash_weight": 0.990546,
+            "freshness": {
+              "fx_missing": [],
+              "fx_newest": "2026-10-03",
+              "newest_bar": "2026-09-25",
+              "stale": [
+                {
+                  "label": "[amount]",
+                  "price_date": "2026-09-25"
+                },
+                {
+                  "label": "[amount]",
+                  "price_date": "2026-09-25"
+                }
+              ],
+              "stale_count": 2,
+              "stale_weight": 0.009454,
+              "strategy": {
+                "changed": true,
+                "errors": 0,
+                "inactive_rules": 0,
+                "state": "valid",
+                "version": null,
+                "warnings": 0
+              }
+            },
+            "has_strategy": true,
+            "holdings_weight": 0.009454,
+            "last_run": {
+              "as_of": "2026-10-01",
+              "errors": 1,
+              "escalated_signals": 1,
+              "finished_at": "2026-09-30T10:00:00+00:00",
+              "new_signals": 0,
+              "status": "partial",
+              "trigger": "api"
+            },
+            "max_drift": {
+              "bucket": "equity.eu",
+              "drift_pp": -79.0546,
+              "out_of_band": true
+            },
+            "out_of_band": 1,
+            "signals": {
+              "action": 3,
+              "info": 0,
+              "new": 2
+            },
+            "unclassified": {
+              "instruments": [],
+              "weight": 0.0
+            },
+            "unrealized_pct": null,
+            "warnings": [
+              {
+                "kind": "cash_history_gap",
+                "message": "Cash history gap: PLN cash of # is # on 2026-10-01 (deposits missing from the history?); counted as #"
+              },
+              {
+                "kind": "stale_price",
+                "message": "Stale price for #: last close 2026-09-25 is # days old"
+              }
+            ]
+          },
+          "positions()": {
+            "as_of": "2026-10-01",
+            "base_currency": "PLN",
+            "base_note": "weight: share of the portfolio total (holdings + cash) in base currency",
+            "cash": [
+              {
+                "account": "XTB brokerage 1",
+                "currency": "PLN",
+                "weight": 0.990546
+              },
+              {
+                "account": "XTB brokerage 2",
+                "currency": "PLN",
+                "weight": -0.021487
+              }
+            ],
+            "positions": [
+              {
+                "accounts": [
+                  {
+                    "account": "XTB brokerage 2",
+                    "unrealized_pct": null,
+                    "weight": 0.008272
+                  },
+                  {
+                    "account": "XTB brokerage 1",
+                    "unrealized_pct": null,
+                    "weight": 0.001182
+                  }
+                ],
+                "asset_class": "equity",
+                "bucket": "equity.eu",
+                "currency": "PLN",
+                "has_thesis": false,
+                "hints": [
+                  {
+                    "code": "recommendation_maybe_outdated",
+                    "params": {
+                      "reasons": ["note_after", "age"]
+                    },
+                    "severity": "review"
+                  },
+                  {
+                    "code": "no_thesis",
+                    "params": {},
+                    "severity": "review"
+                  }
+                ],
+                "holding_days_avg": 5,
+                "holding_days_oldest": 5,
+                "instrument_id": "instrument:655137fd81546c0b",
+                "is_stale": true,
+                "isin": "[account]",
+                "lots": 2,
+                "name": "[name]",
+                "needs_classification": false,
+                "open_signals": 3,
+                "owner_named": false,
+                "plan_freshness": {
+                  "reasons": ["note_after", "age"],
+                  "state": "maybe_outdated"
+                },
+                "price_date": "2026-09-25",
+                "recommendation": "hold",
+                "region": null,
+                "symbol": "SYN1",
+                "tags": [],
+                "unrealized_pct": null,
+                "valuation_mode": "market",
+                "weight": 0.009454
+              }
+            ]
+          },
+          "review_context()": {
+            "calendar": {
+              "events": [],
+              "stale": true
+            },
+            "card_sources": {
+              "calendar": "calendar.events of this tool",
+              "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+              "events": "research_notes(since) with strength >= 2 or a thesis relation",
+              "ideas": "research_context.candidates.open",
+              "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+              "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+              "world": "history_metrics / portfolio_overview for the move, research_context.macro for why"
+            },
+            "last_review": {
+              "agenda": [
+                {
+                  "card": "events",
+                  "note": "[name] agenda"
+                },
+                {
+                  "card": null,
+                  "note": null
+                }
+              ],
+              "done_at": "2026-09-25T23:30:00+00:00",
+              "notes": "[name] review"
+            },
+            "review": {
+              "cards": ["world", "positions", "events", "calendar", "decide"],
+              "day": "thursday",
+              "due": false,
+              "every": "2weeks",
+              "name": "Przegląd dwutygodniowy",
+              "next_on": "2026-10-15"
+            },
+            "since": "2026-09-26"
+          },
+          "signals(status=all)": {
+            "error_kind": "unlabelled"
+          },
+          "signals(status=history)": {
+            "error_kind": "unlabelled"
+          },
+          "signals(status=open)": {
+            "signals": [
+              {
+                "acknowledged": null,
+                "age_days": 1,
+                "closed": null,
+                "decisions": [],
+                "direction": null,
+                "first_seen": "2026-09-30T10:00:00+00:00",
+                "kind": "allocation_drift",
+                "last_seen": "2026-09-30T10:00:00+00:00",
+                "measured": null,
+                "message": "[name] finding",
+                "polarity": "negative",
+                "rule": "[name]_owner",
+                "scope": {
+                  "instrument_id": "instrument:655137fd81546c0b",
+                  "label": "[amount]",
+                  "symbol": null,
+                  "type": "instrument"
+                },
+                "severity": "action",
+                "signal_id": "signal:0110ba8b68c6a2ca",
+                "snoozed_until": null,
+                "source": "rule",
+                "status": "active",
+                "threshold": null,
+                "unit": "pp"
+              },
+              {
+                "acknowledged": "2026-09-30T10:00:00+00:00",
+                "age_days": 30,
+                "closed": null,
+                "condition": "weight > [amount]",
+                "decisions": [
+                  {
+                    "action": "held",
+                    "created_at": "2026-09-30T10:00:00+00:00",
+                    "reason": "[name] decision"
+                  }
+                ],
+                "direction": null,
+                "first_seen": "2026-09-01T08:00:00+00:00",
+                "kind": "custom",
+                "last_seen": "2026-09-30T10:00:00+00:00",
+                "message": "[name] finding",
+                "polarity": "negative",
+                "rule": "[name]_drawdown",
+                "scope": {
+                  "instrument_id": "instrument:655137fd81546c0b",
+                  "label": "[amount]",
+                  "symbol": null,
+                  "type": "instrument"
+                },
+                "severity": "action",
+                "signal_id": "signal:7a259574f030e150",
+                "snoozed_until": null,
+                "source": "rule",
+                "status": "acknowledged",
+                "values": [
+                  {
+                    "measured": 1.0,
+                    "metric": "weight",
+                    "unit": "ratio"
+                  }
+                ]
+              },
+              {
+                "acknowledged": null,
+                "age_days": 1,
+                "closed": null,
+                "decisions": [],
+                "direction": null,
+                "first_seen": "2026-09-30T10:00:00+00:00",
+                "kind": "alert:price_above",
+                "last_seen": "2026-09-30T10:00:00+00:00",
+                "message": "[name] finding",
+                "polarity": "negative",
+                "rule": "alert:1",
+                "scope": {
+                  "instrument_id": "instrument:655137fd81546c0b",
+                  "label": "[amount]",
+                  "symbol": null,
+                  "type": "instrument"
+                },
+                "severity": "action",
+                "signal_id": "signal:907ef1a4f097d171",
+                "snoozed_until": "2026-10-02T00:00:00+00:00",
+                "source": "alert",
+                "status": "active"
+              }
+            ],
+            "status": "open"
+          },
+          "strategy_status()": {
+            "base_currency_note": null,
+            "changed": true,
+            "errors": 0,
+            "facts": {
+              "base_currency": "PLN",
+              "buckets": ["equity.eu", "cash"],
+              "contributions": null,
+              "horizon_years": null,
+              "notifications": {
+                "digest_weekday": "sunday",
+                "immediate": ["action"]
+              },
+              "rules": [
+                {
+                  "cooldown_days": null,
+                  "kind": "loss_from_cost",
+                  "rule": "[name]_loss",
+                  "severity": "info"
+                }
+              ],
+              "targets": [
+                {
+                  "bucket": "equity.eu",
+                  "target": 0.8
+                },
+                {
+                  "bucket": "cash",
+                  "target": 0.2
+                }
+              ]
+            },
+            "files_present": {
+              "md": false,
+              "yaml": true
+            },
+            "inactive_rules": [],
+            "issues": [],
+            "read_error": false,
+            "state": "valid",
+            "version": null,
+            "versions": [],
+            "warnings": 0
+          },
+          "theses()": {
+            "theses": []
+          }
+        },
+        "profile:725d1c48672bb0da": {
+          "history_metrics()": {
+            "error_kind": "module_disabled"
+          },
+          "portfolio_overview()": {
+            "error_kind": "module_disabled"
+          },
+          "positions()": {
+            "error_kind": "module_disabled"
+          },
+          "review_context()": {
+            "error_kind": "module_disabled"
+          },
+          "signals(status=all)": {
+            "error_kind": "module_disabled"
+          },
+          "signals(status=history)": {
+            "error_kind": "module_disabled"
+          },
+          "signals(status=open)": {
+            "error_kind": "module_disabled"
+          },
+          "strategy_status()": {
+            "error_kind": "module_disabled"
+          },
+          "theses()": {
+            "error_kind": "module_disabled"
+          }
+        },
+        "profile:c340430281162605": {
+          "history_metrics()": {
+            "activity": {
+              "days_since_last_trade": null,
+              "first_trade": null,
+              "gaps_over_180_days": 0,
+              "gaps_over_90_days": 0,
+              "last_trade": null,
+              "max_gap_days": null,
+              "median_gap_days": null,
+              "trades": 0
+            },
+            "buys_after_runup": {
+              "buys_after_runup": 0,
+              "buys_checked": 0,
+              "lookback_days": 90,
+              "threshold": 0.2
+            },
+            "concentration": [
+              {
+                "date": "2026-09-30",
+                "largest": null,
+                "positions": 0,
+                "top3": null
+              },
+              {
+                "date": "2026-10-01",
+                "largest": null,
+                "positions": 0,
+                "top3": null
+              }
+            ],
+            "deposits_per_year": [
+              {
+                "deposits": 1,
+                "withdrawals": 0,
+                "year": 2026
+              }
+            ],
+            "fees_pct_of_turnover": [],
+            "holding_days": {
+              "losers": 0,
+              "losers_median_days": null,
+              "winners": 0,
+              "winners_median_days": null
+            },
+            "performance": {
+              "as_of": "2026-10-01",
+              "base_currency": "PLN",
+              "benchmark": {
+                "covers_history": null,
+                "covers_to_date": null,
+                "excess_twr": null,
+                "excess_vs_simulation": null,
+                "id": null,
+                "last_priced": null,
+                "proxy": null,
+                "simulation_money_weighted": null,
+                "simulation_xirr": null,
+                "status": "not_configured",
+                "twr": null,
+                "twr_annualized": null
+              },
+              "data_quality": {
+                "implied_funding": false,
+                "incomplete_days": 0
+              },
+              "max_drawdown": {
+                "benchmark": null,
+                "benchmark_peak": null,
+                "benchmark_recovered": null,
+                "benchmark_trough": null,
+                "portfolio": 0.0,
+                "portfolio_peak": null,
+                "portfolio_recovered": null,
+                "portfolio_trough": null
+              },
+              "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+              "per_year": [
+                {
+                  "benchmark": null,
+                  "partial_year": true,
+                  "portfolio_twr": 0.0,
+                  "year": 2026
+                }
+              ],
+              "profit_concentration": {
+                "benchmark_pnl_pct_of_contributions": null,
+                "instruments_negative": 0,
+                "instruments_positive": 0,
+                "pnl_pct_of_contributions": 0.0,
+                "top1_share": null,
+                "top2_share": null,
+                "top3_share": null,
+                "top5_share": null,
+                "without_top2_pct_of_contributions": 0.0
+              },
+              "return": {
+                "days": 31,
+                "money_weighted": 0.0,
+                "twr": 0.0,
+                "twr_annualized": null,
+                "xirr": null
+              },
+              "rolling_relative": [
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 12,
+                  "share_outperforming": null,
+                  "windows": 0
+                },
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 24,
+                  "share_outperforming": null,
+                  "windows": 0
+                },
+                {
+                  "latest_date": null,
+                  "latest_excess": null,
+                  "max_excess": null,
+                  "min_excess": null,
+                  "months": 36,
+                  "share_outperforming": null,
+                  "windows": 0
+                }
+              ],
+              "since": "2026-09-01"
+            },
+            "price_after_sales": [
+              {
+                "days": 30,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              },
+              {
+                "days": 90,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              },
+              {
+                "days": 180,
+                "median_change": null,
+                "sales": 0,
+                "share_rose": null
+              }
+            ],
+            "sells_after_drawdown": {
+              "median_drawdown_at_sale": null,
+              "sells_at_or_below_threshold": 0,
+              "sells_checked": 0,
+              "threshold": 0.15
+            }
+          },
+          "portfolio_overview()": {
+            "accounts": [
+              {
+                "account": "XTB brokerage 1",
+                "broker": "xtb",
+                "currency": "PLN",
+                "last_import": null,
+                "share": 1.0,
+                "snapshot_date": null,
+                "wrapper": "regular"
+              }
+            ],
+            "as_of": "2026-10-01",
+            "band": {
+              "absolute_band_pp": null,
+              "relative_band": null
+            },
+            "base_currency": "PLN",
+            "buckets": [],
+            "by_asset_class": [
+              {
+                "key": "cash",
+                "weight": 1.0
+              }
+            ],
+            "by_region": [],
+            "cash_accounts": 1,
+            "cash_weight": 1.0,
+            "freshness": {
+              "fx_missing": [],
+              "fx_newest": "2026-10-03",
+              "newest_bar": null,
+              "stale": [],
+              "stale_count": 0,
+              "stale_weight": 0.0,
+              "strategy": {
+                "changed": true,
+                "errors": 0,
+                "inactive_rules": 0,
+                "state": "valid",
+                "version": null,
+                "warnings": 0
+              }
+            },
+            "has_strategy": true,
+            "holdings_weight": 0.0,
+            "last_run": null,
+            "max_drift": null,
+            "out_of_band": 0,
+            "signals": {
+              "action": 0,
+              "info": 0,
+              "new": 0
+            },
+            "unclassified": {
+              "instruments": [],
+              "weight": null
+            },
+            "unrealized_pct": null,
+            "warnings": []
+          },
+          "positions()": {
+            "as_of": "2026-10-01",
+            "base_currency": "PLN",
+            "base_note": "weight: share of the portfolio total (holdings + cash) in base currency",
+            "cash": [
+              {
+                "account": "XTB brokerage 1",
+                "currency": "PLN",
+                "weight": 1.0
+              }
+            ],
+            "positions": []
+          },
+          "review_context()": {
+            "calendar": {
+              "events": [],
+              "stale": true
+            },
+            "card_sources": {
+              "calendar": "calendar.events of this tool",
+              "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+              "events": "research_notes(since) with strength >= 2 or a thesis relation",
+              "ideas": "research_context.candidates.open",
+              "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+              "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+              "world": "history_metrics / portfolio_overview for the move, research_context.macro for why"
+            },
+            "last_review": null,
+            "review": {
+              "cards": ["world", "sectors", "positions", "events", "ideas", "calendar", "decide"],
+              "day": "sunday",
+              "due": true,
+              "every": "week",
+              "name": "Przegląd tygodnia",
+              "next_on": "2026-10-04"
+            },
+            "since": "2026-09-24"
+          },
+          "signals(status=all)": {
+            "signals": [],
+            "status": "all"
+          },
+          "signals(status=history)": {
+            "signals": [],
+            "status": "history"
+          },
+          "signals(status=open)": {
+            "signals": [],
+            "status": "open"
+          },
+          "strategy_status()": {
+            "base_currency_note": null,
+            "changed": true,
+            "errors": 0,
+            "facts": {
+              "base_currency": "PLN",
+              "buckets": [],
+              "contributions": null,
+              "horizon_years": null,
+              "notifications": {
+                "digest_weekday": "sunday",
+                "immediate": ["action"]
+              },
+              "rules": [],
+              "targets": []
+            },
+            "files_present": {
+              "md": false,
+              "yaml": true
+            },
+            "inactive_rules": [],
+            "issues": [],
+            "read_error": false,
+            "state": "valid",
+            "version": null,
+            "versions": [],
+            "warnings": 0
+          },
+          "theses()": {
+            "theses": []
+          }
+        }
+      }
+    },
+    "sql_delta": "\nUPDATE inv_transactions SET trade_date='2026-09-30', quantity='0.1' WHERE id=2;\nUPDATE inv_transactions SET instrument_id=1, trade_date='2026-09-26', quantity='0.7' WHERE id=6;\nUPDATE alerts SET deleted_at='2026-09-30 10:00:00.000000' WHERE id=1;\nUPDATE inv_signals SET kind='custom',payload='{\"values\":{\"weight\":true},\"when\":\"weight > 0.5\"}' WHERE id=1;\nUPDATE inv_signals SET rule_id='alert:lookalike',payload='{\"values\":{\"weight\":true,\"days_since_last_deposit\":false},\"when\":\"weight > 0.5\"}' WHERE id=4;\n"
+  }
+}

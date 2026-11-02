@@ -1,0 +1,5896 @@
+[
+  {
+    "bars": [],
+    "expected": {
+      "amounts": {
+        "note": "no investments history yet",
+        "trades": 0
+      },
+      "strict": {
+        "note": "no investments history yet",
+        "trades": 0
+      }
+    },
+    "label": "empty",
+    "rows": [],
+    "today": "2026-11-01"
+  },
+  {
+    "bars": [],
+    "expected": {
+      "amounts": {
+        "activity": {
+          "days_since_last_trade": null,
+          "first_trade": null,
+          "gaps_over_180_days": 0,
+          "gaps_over_90_days": 0,
+          "last_trade": null,
+          "max_gap_days": null,
+          "median_gap_days": null,
+          "trades": 0
+        },
+        "buys_after_runup": {
+          "buys_after_runup": 0,
+          "buys_checked": 0,
+          "lookback_days": 90,
+          "threshold": 0.2
+        },
+        "concentration": [
+          {
+            "date": "2026-03-31",
+            "largest": null,
+            "positions": 0,
+            "top3": null
+          },
+          {
+            "date": "2026-06-30",
+            "largest": null,
+            "positions": 0,
+            "top3": null
+          },
+          {
+            "date": "2026-09-30",
+            "largest": null,
+            "positions": 0,
+            "top3": null
+          },
+          {
+            "date": "2026-11-01",
+            "largest": null,
+            "positions": 0,
+            "top3": null
+          }
+        ],
+        "deposits_per_year": [
+          {
+            "deposits": 1,
+            "withdrawals": 0,
+            "year": 2026
+          }
+        ],
+        "fees_pct_of_turnover": [],
+        "holding_days": {
+          "losers": 0,
+          "losers_median_days": null,
+          "winners": 0,
+          "winners_median_days": null
+        },
+        "performance": {
+          "as_of": "2026-11-01",
+          "base_currency": "PLN",
+          "benchmark": {
+            "covers_history": null,
+            "covers_to_date": null,
+            "excess_twr": null,
+            "excess_vs_simulation": null,
+            "id": null,
+            "last_priced": null,
+            "proxy": null,
+            "simulation_money_weighted": null,
+            "simulation_xirr": null,
+            "status": "no_strategy",
+            "twr": null,
+            "twr_annualized": null
+          },
+          "data_quality": {
+            "implied_funding": false,
+            "incomplete_days": 0
+          },
+          "max_drawdown": {
+            "benchmark": null,
+            "benchmark_peak": null,
+            "benchmark_recovered": null,
+            "benchmark_trough": null,
+            "portfolio": 0.0,
+            "portfolio_peak": null,
+            "portfolio_recovered": null,
+            "portfolio_trough": null
+          },
+          "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+          "per_year": [
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": 0.0,
+              "year": 2026
+            }
+          ],
+          "profit_concentration": {
+            "benchmark_pnl_pct_of_contributions": null,
+            "instruments_negative": 0,
+            "instruments_positive": 0,
+            "pnl_pct_of_contributions": 0.0,
+            "top1_share": null,
+            "top2_share": null,
+            "top3_share": null,
+            "top5_share": null,
+            "without_top2_pct_of_contributions": 0.0
+          },
+          "return": {
+            "days": 305,
+            "money_weighted": 0.0,
+            "twr": 0.0,
+            "twr_annualized": null,
+            "xirr": null
+          },
+          "rolling_relative": [
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 12,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 24,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 36,
+              "share_outperforming": null,
+              "windows": 0
+            }
+          ],
+          "since": "2026-01-01"
+        },
+        "price_after_sales": [
+          {
+            "days": 30,
+            "median_change": null,
+            "sales": 0,
+            "share_rose": null
+          },
+          {
+            "days": 90,
+            "median_change": null,
+            "sales": 0,
+            "share_rose": null
+          },
+          {
+            "days": 180,
+            "median_change": null,
+            "sales": 0,
+            "share_rose": null
+          }
+        ],
+        "sells_after_drawdown": {
+          "median_drawdown_at_sale": null,
+          "sells_at_or_below_threshold": 0,
+          "sells_checked": 0,
+          "threshold": 0.15
+        }
+      },
+      "strict": {
+        "activity": {
+          "days_since_last_trade": null,
+          "first_trade": null,
+          "gaps_over_180_days": 0,
+          "gaps_over_90_days": 0,
+          "last_trade": null,
+          "max_gap_days": null,
+          "median_gap_days": null,
+          "trades": 0
+        },
+        "buys_after_runup": {
+          "buys_after_runup": 0,
+          "buys_checked": 0,
+          "lookback_days": 90,
+          "threshold": 0.2
+        },
+        "concentration": [
+          {
+            "date": "2026-03-31",
+            "largest": null,
+            "positions": 0,
+            "top3": null
+          },
+          {
+            "date": "2026-06-30",
+            "largest": null,
+            "positions": 0,
+            "top3": null
+          },
+          {
+            "date": "2026-09-30",
+            "largest": null,
+            "positions": 0,
+            "top3": null
+          },
+          {
+            "date": "2026-11-01",
+            "largest": null,
+            "positions": 0,
+            "top3": null
+          }
+        ],
+        "deposits_per_year": [
+          {
+            "deposits": 1,
+            "withdrawals": 0,
+            "year": 2026
+          }
+        ],
+        "fees_pct_of_turnover": [],
+        "holding_days": {
+          "losers": 0,
+          "losers_median_days": null,
+          "winners": 0,
+          "winners_median_days": null
+        },
+        "performance": {
+          "as_of": "2026-11-01",
+          "base_currency": "PLN",
+          "benchmark": {
+            "covers_history": null,
+            "covers_to_date": null,
+            "excess_twr": null,
+            "excess_vs_simulation": null,
+            "id": null,
+            "last_priced": null,
+            "proxy": null,
+            "simulation_money_weighted": null,
+            "simulation_xirr": null,
+            "status": "no_strategy",
+            "twr": null,
+            "twr_annualized": null
+          },
+          "data_quality": {
+            "implied_funding": false,
+            "incomplete_days": 0
+          },
+          "max_drawdown": {
+            "benchmark": null,
+            "benchmark_peak": null,
+            "benchmark_recovered": null,
+            "benchmark_trough": null,
+            "portfolio": 0.0,
+            "portfolio_peak": null,
+            "portfolio_recovered": null,
+            "portfolio_trough": null
+          },
+          "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+          "per_year": [
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": 0.0,
+              "year": 2026
+            }
+          ],
+          "profit_concentration": {
+            "benchmark_pnl_pct_of_contributions": null,
+            "instruments_negative": 0,
+            "instruments_positive": 0,
+            "pnl_pct_of_contributions": 0.0,
+            "top1_share": null,
+            "top2_share": null,
+            "top3_share": null,
+            "top5_share": null,
+            "without_top2_pct_of_contributions": 0.0
+          },
+          "return": {
+            "days": 305,
+            "money_weighted": 0.0,
+            "twr": 0.0,
+            "twr_annualized": null,
+            "xirr": null
+          },
+          "rolling_relative": [
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 12,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 24,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 36,
+              "share_outperforming": null,
+              "windows": 0
+            }
+          ],
+          "since": "2026-01-01"
+        },
+        "price_after_sales": [
+          {
+            "days": 30,
+            "median_change": null,
+            "sales": 0,
+            "share_rose": null
+          },
+          {
+            "days": 90,
+            "median_change": null,
+            "sales": 0,
+            "share_rose": null
+          },
+          {
+            "days": 180,
+            "median_change": null,
+            "sales": 0,
+            "share_rose": null
+          }
+        ],
+        "sells_after_drawdown": {
+          "median_drawdown_at_sale": null,
+          "sells_at_or_below_threshold": 0,
+          "sells_checked": 0,
+          "threshold": 0.15
+        }
+      }
+    },
+    "label": "cash_only",
+    "rows": [
+      {
+        "cashAmount": "1000",
+        "currency": "PLN",
+        "fee": "0",
+        "grossAmount": "0",
+        "price": null,
+        "quantity": null,
+        "symbol": null,
+        "tradeDate": "2026-01-01",
+        "type": "deposit"
+      }
+    ],
+    "today": "2026-11-01"
+  },
+  {
+    "bars": [
+      {
+        "close": "100",
+        "date": "2025-08-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-05-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-05-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-11-01",
+        "symbol": "ABC"
+      }
+    ],
+    "expected": {
+      "amounts": {
+        "activity": {
+          "days_since_last_trade": 61,
+          "first_trade": "2025-12-01",
+          "gaps_over_180_days": 0,
+          "gaps_over_90_days": 1,
+          "last_trade": "2026-09-01",
+          "max_gap_days": 122,
+          "median_gap_days": 90,
+          "trades": 4
+        },
+        "buys_after_runup": {
+          "buys_after_runup": 2,
+          "buys_checked": 2,
+          "lookback_days": 90,
+          "threshold": 0.2
+        },
+        "concentration": [
+          {
+            "date": "2025-12-31",
+            "largest": 0.126238,
+            "positions": 1,
+            "top3": 0.126238
+          },
+          {
+            "date": "2026-03-31",
+            "largest": 0.050021,
+            "positions": 1,
+            "top3": 0.050021
+          },
+          {
+            "date": "2026-06-30",
+            "largest": 0.0732,
+            "positions": 1,
+            "top3": 0.0732
+          },
+          {
+            "date": "2026-09-30",
+            "largest": 0.085124,
+            "positions": 1,
+            "top3": 0.085124
+          },
+          {
+            "date": "2026-11-01",
+            "largest": 0.085124,
+            "positions": 1,
+            "top3": 0.085124
+          }
+        ],
+        "deposits_per_year": [
+          {
+            "deposits": 1,
+            "withdrawals": 0,
+            "year": 2025
+          },
+          {
+            "deposits": 0,
+            "withdrawals": 1,
+            "year": 2026
+          }
+        ],
+        "fees_pct_of_turnover": [
+          {
+            "currency": "PLN",
+            "fees_share": 0.004762
+          }
+        ],
+        "holding_days": {
+          "losers": 1,
+          "losers_median_days": 90,
+          "winners": 1,
+          "winners_median_days": 274
+        },
+        "performance": {
+          "as_of": "2026-11-01",
+          "base_currency": "PLN",
+          "benchmark": {
+            "covers_history": null,
+            "covers_to_date": null,
+            "excess_twr": null,
+            "excess_vs_simulation": null,
+            "id": null,
+            "last_priced": null,
+            "proxy": null,
+            "simulation_money_weighted": null,
+            "simulation_xirr": null,
+            "status": "no_strategy",
+            "twr": null,
+            "twr_annualized": null
+          },
+          "data_quality": {
+            "implied_funding": false,
+            "incomplete_days": 0
+          },
+          "max_drawdown": {
+            "benchmark": null,
+            "benchmark_peak": null,
+            "benchmark_recovered": null,
+            "benchmark_trough": null,
+            "portfolio": -0.049713,
+            "portfolio_peak": "2025-11-30",
+            "portfolio_recovered": null,
+            "portfolio_trough": "2026-03-01"
+          },
+          "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+          "per_year": [
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": 0.0,
+              "year": 2025
+            },
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": -0.022777,
+              "year": 2026
+            }
+          ],
+          "profit_concentration": {
+            "benchmark_pnl_pct_of_contributions": null,
+            "instruments_negative": 0,
+            "instruments_positive": 1,
+            "pnl_pct_of_contributions": 0.0068,
+            "top1_share": 1.0,
+            "top2_share": 1.0,
+            "top3_share": 1.0,
+            "top5_share": 1.0,
+            "without_top2_pct_of_contributions": 0.0
+          },
+          "return": {
+            "days": 336,
+            "money_weighted": 0.006926,
+            "twr": -0.022777,
+            "twr_annualized": null,
+            "xirr": null
+          },
+          "rolling_relative": [
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 12,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 24,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 36,
+              "share_outperforming": null,
+              "windows": 0
+            }
+          ],
+          "since": "2025-12-01"
+        },
+        "price_after_sales": [
+          {
+            "days": 30,
+            "median_change": 0.0,
+            "sales": 2,
+            "share_rose": 0.0
+          },
+          {
+            "days": 90,
+            "median_change": 0.5,
+            "sales": 1,
+            "share_rose": 1.0
+          },
+          {
+            "days": 180,
+            "median_change": 1.0,
+            "sales": 1,
+            "share_rose": 1.0
+          }
+        ],
+        "sells_after_drawdown": {
+          "median_drawdown_at_sale": 0.254808,
+          "sells_at_or_below_threshold": 1,
+          "sells_checked": 2,
+          "threshold": 0.15
+        }
+      },
+      "strict": {
+        "activity": {
+          "days_since_last_trade": 61,
+          "first_trade": "2025-12-01",
+          "gaps_over_180_days": 0,
+          "gaps_over_90_days": 1,
+          "last_trade": "2026-09-01",
+          "max_gap_days": 122,
+          "median_gap_days": 90,
+          "trades": 4
+        },
+        "buys_after_runup": {
+          "buys_after_runup": 2,
+          "buys_checked": 2,
+          "lookback_days": 90,
+          "threshold": 0.2
+        },
+        "concentration": [
+          {
+            "date": "2025-12-31",
+            "largest": 0.126238,
+            "positions": 1,
+            "top3": 0.126238
+          },
+          {
+            "date": "2026-03-31",
+            "largest": 0.050021,
+            "positions": 1,
+            "top3": 0.050021
+          },
+          {
+            "date": "2026-06-30",
+            "largest": 0.0732,
+            "positions": 1,
+            "top3": 0.0732
+          },
+          {
+            "date": "2026-09-30",
+            "largest": 0.085124,
+            "positions": 1,
+            "top3": 0.085124
+          },
+          {
+            "date": "2026-11-01",
+            "largest": 0.085124,
+            "positions": 1,
+            "top3": 0.085124
+          }
+        ],
+        "deposits_per_year": [
+          {
+            "deposits": 1,
+            "withdrawals": 0,
+            "year": 2025
+          },
+          {
+            "deposits": 0,
+            "withdrawals": 1,
+            "year": 2026
+          }
+        ],
+        "fees_pct_of_turnover": [
+          {
+            "currency": "PLN",
+            "fees_share": 0.004762
+          }
+        ],
+        "holding_days": {
+          "losers": 1,
+          "losers_median_days": 90,
+          "winners": 1,
+          "winners_median_days": 274
+        },
+        "performance": {
+          "as_of": "2026-11-01",
+          "base_currency": "PLN",
+          "benchmark": {
+            "covers_history": null,
+            "covers_to_date": null,
+            "excess_twr": null,
+            "excess_vs_simulation": null,
+            "id": null,
+            "last_priced": null,
+            "proxy": null,
+            "simulation_money_weighted": null,
+            "simulation_xirr": null,
+            "status": "no_strategy",
+            "twr": null,
+            "twr_annualized": null
+          },
+          "data_quality": {
+            "implied_funding": false,
+            "incomplete_days": 0
+          },
+          "max_drawdown": {
+            "benchmark": null,
+            "benchmark_peak": null,
+            "benchmark_recovered": null,
+            "benchmark_trough": null,
+            "portfolio": -0.049713,
+            "portfolio_peak": "2025-11-30",
+            "portfolio_recovered": null,
+            "portfolio_trough": "2026-03-01"
+          },
+          "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+          "per_year": [
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": 0.0,
+              "year": 2025
+            },
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": -0.022777,
+              "year": 2026
+            }
+          ],
+          "profit_concentration": {
+            "benchmark_pnl_pct_of_contributions": null,
+            "instruments_negative": 0,
+            "instruments_positive": 1,
+            "pnl_pct_of_contributions": 0.0068,
+            "top1_share": 1.0,
+            "top2_share": 1.0,
+            "top3_share": 1.0,
+            "top5_share": 1.0,
+            "without_top2_pct_of_contributions": 0.0
+          },
+          "return": {
+            "days": 336,
+            "money_weighted": 0.006926,
+            "twr": -0.022777,
+            "twr_annualized": null,
+            "xirr": null
+          },
+          "rolling_relative": [
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 12,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 24,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 36,
+              "share_outperforming": null,
+              "windows": 0
+            }
+          ],
+          "since": "2025-12-01"
+        },
+        "price_after_sales": [
+          {
+            "days": 30,
+            "median_change": 0.0,
+            "sales": 2,
+            "share_rose": 0.0
+          },
+          {
+            "days": 90,
+            "median_change": 0.5,
+            "sales": 1,
+            "share_rose": 1.0
+          },
+          {
+            "days": 180,
+            "median_change": 1.0,
+            "sales": 1,
+            "share_rose": 1.0
+          }
+        ],
+        "sells_after_drawdown": {
+          "median_drawdown_at_sale": 0.254808,
+          "sells_at_or_below_threshold": 1,
+          "sells_checked": 2,
+          "threshold": 0.15
+        }
+      }
+    },
+    "label": "behavior",
+    "rows": [
+      {
+        "cashAmount": "5000",
+        "currency": "PLN",
+        "fee": "0",
+        "grossAmount": "0",
+        "price": null,
+        "quantity": null,
+        "symbol": null,
+        "tradeDate": "2025-12-01",
+        "type": "deposit"
+      },
+      {
+        "cashAmount": "-501",
+        "currency": "PLN",
+        "fee": "1",
+        "grossAmount": "500",
+        "price": "100",
+        "quantity": "5",
+        "symbol": "ABC",
+        "tradeDate": "2025-12-01",
+        "type": "buy"
+      },
+      {
+        "cashAmount": "159",
+        "currency": "PLN",
+        "fee": "1",
+        "grossAmount": "160",
+        "price": "80",
+        "quantity": "2",
+        "symbol": "ABC",
+        "tradeDate": "2026-03-01",
+        "type": "sell"
+      },
+      {
+        "cashAmount": "-322",
+        "currency": "PLN",
+        "fee": "2",
+        "grossAmount": "320",
+        "price": "160",
+        "quantity": "2",
+        "symbol": "ABC",
+        "tradeDate": "2026-07-01",
+        "type": "buy"
+      },
+      {
+        "cashAmount": "278",
+        "currency": "PLN",
+        "fee": "2",
+        "grossAmount": "280",
+        "price": "140",
+        "quantity": "2",
+        "symbol": "ABC",
+        "tradeDate": "2026-09-01",
+        "type": "sell"
+      },
+      {
+        "cashAmount": "-100",
+        "currency": "PLN",
+        "fee": "0",
+        "grossAmount": "0",
+        "price": null,
+        "quantity": null,
+        "symbol": null,
+        "tradeDate": "2026-01-01",
+        "type": "withdrawal"
+      }
+    ],
+    "today": "2026-11-01"
+  },
+  {
+    "bars": [
+      {
+        "close": "100",
+        "date": "2025-08-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-08-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-09-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2025-10-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-11-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2025-12-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-01-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "130",
+        "date": "2026-02-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "80",
+        "date": "2026-03-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-04-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "100",
+        "date": "2026-05-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-05-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-05-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "120",
+        "date": "2026-06-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-07-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "160",
+        "date": "2026-08-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-09-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-01",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-02",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-03",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-04",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-05",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-06",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-07",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-08",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-09",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-10",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-11",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-12",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-13",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-14",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-15",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-16",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-17",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-18",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-19",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-20",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-21",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-22",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-23",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-24",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-25",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-26",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-27",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-28",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-29",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-30",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-10-31",
+        "symbol": "ABC"
+      },
+      {
+        "close": "140",
+        "date": "2026-11-01",
+        "symbol": "ABC"
+      }
+    ],
+    "expected": {
+      "amounts": {
+        "activity": {
+          "days_since_last_trade": 29,
+          "first_trade": "2025-12-01",
+          "gaps_over_180_days": 0,
+          "gaps_over_90_days": 1,
+          "last_trade": "2026-09-01",
+          "max_gap_days": 122,
+          "median_gap_days": 90,
+          "trades": 4
+        },
+        "buys_after_runup": {
+          "buys_after_runup": 2,
+          "buys_checked": 2,
+          "lookback_days": 90,
+          "threshold": 0.2
+        },
+        "concentration": [
+          {
+            "date": "2025-12-31",
+            "largest": 0.126238,
+            "positions": 1,
+            "top3": 0.126238
+          },
+          {
+            "date": "2026-03-31",
+            "largest": 0.050021,
+            "positions": 1,
+            "top3": 0.050021
+          },
+          {
+            "date": "2026-06-30",
+            "largest": 0.0732,
+            "positions": 1,
+            "top3": 0.0732
+          },
+          {
+            "date": "2026-09-30",
+            "largest": 0.085124,
+            "positions": 1,
+            "top3": 0.085124
+          },
+          {
+            "date": "2026-09-30",
+            "largest": 0.085124,
+            "positions": 1,
+            "top3": 0.085124
+          }
+        ],
+        "deposits_per_year": [
+          {
+            "deposits": 1,
+            "withdrawals": 0,
+            "year": 2025
+          },
+          {
+            "deposits": 0,
+            "withdrawals": 1,
+            "year": 2026
+          }
+        ],
+        "fees_pct_of_turnover": [
+          {
+            "currency": "PLN",
+            "fees_share": 0.004762
+          }
+        ],
+        "holding_days": {
+          "losers": 1,
+          "losers_median_days": 90,
+          "winners": 1,
+          "winners_median_days": 274
+        },
+        "performance": {
+          "as_of": "2026-09-30",
+          "base_currency": "PLN",
+          "benchmark": {
+            "covers_history": null,
+            "covers_to_date": null,
+            "excess_twr": null,
+            "excess_vs_simulation": null,
+            "id": null,
+            "last_priced": null,
+            "proxy": null,
+            "simulation_money_weighted": null,
+            "simulation_xirr": null,
+            "status": "no_strategy",
+            "twr": null,
+            "twr_annualized": null
+          },
+          "data_quality": {
+            "implied_funding": false,
+            "incomplete_days": 0
+          },
+          "max_drawdown": {
+            "benchmark": null,
+            "benchmark_peak": null,
+            "benchmark_recovered": null,
+            "benchmark_trough": null,
+            "portfolio": -0.049713,
+            "portfolio_peak": "2025-11-30",
+            "portfolio_recovered": null,
+            "portfolio_trough": "2026-03-01"
+          },
+          "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+          "per_year": [
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": 0.0,
+              "year": 2025
+            },
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": -0.022777,
+              "year": 2026
+            }
+          ],
+          "profit_concentration": {
+            "benchmark_pnl_pct_of_contributions": null,
+            "instruments_negative": 0,
+            "instruments_positive": 1,
+            "pnl_pct_of_contributions": 0.0068,
+            "top1_share": 1.0,
+            "top2_share": 1.0,
+            "top3_share": 1.0,
+            "top5_share": 1.0,
+            "without_top2_pct_of_contributions": 0.0
+          },
+          "return": {
+            "days": 304,
+            "money_weighted": 0.006924,
+            "twr": -0.022777,
+            "twr_annualized": null,
+            "xirr": null
+          },
+          "rolling_relative": [
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 12,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 24,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 36,
+              "share_outperforming": null,
+              "windows": 0
+            }
+          ],
+          "since": "2025-12-01"
+        },
+        "price_after_sales": [
+          {
+            "days": 30,
+            "median_change": 0.0,
+            "sales": 1,
+            "share_rose": 0.0
+          },
+          {
+            "days": 90,
+            "median_change": 0.5,
+            "sales": 1,
+            "share_rose": 1.0
+          },
+          {
+            "days": 180,
+            "median_change": 1.0,
+            "sales": 1,
+            "share_rose": 1.0
+          }
+        ],
+        "sells_after_drawdown": {
+          "median_drawdown_at_sale": 0.254808,
+          "sells_at_or_below_threshold": 1,
+          "sells_checked": 2,
+          "threshold": 0.15
+        }
+      },
+      "strict": {
+        "activity": {
+          "days_since_last_trade": 29,
+          "first_trade": "2025-12-01",
+          "gaps_over_180_days": 0,
+          "gaps_over_90_days": 1,
+          "last_trade": "2026-09-01",
+          "max_gap_days": 122,
+          "median_gap_days": 90,
+          "trades": 4
+        },
+        "buys_after_runup": {
+          "buys_after_runup": 2,
+          "buys_checked": 2,
+          "lookback_days": 90,
+          "threshold": 0.2
+        },
+        "concentration": [
+          {
+            "date": "2025-12-31",
+            "largest": 0.126238,
+            "positions": 1,
+            "top3": 0.126238
+          },
+          {
+            "date": "2026-03-31",
+            "largest": 0.050021,
+            "positions": 1,
+            "top3": 0.050021
+          },
+          {
+            "date": "2026-06-30",
+            "largest": 0.0732,
+            "positions": 1,
+            "top3": 0.0732
+          },
+          {
+            "date": "2026-09-30",
+            "largest": 0.085124,
+            "positions": 1,
+            "top3": 0.085124
+          },
+          {
+            "date": "2026-09-30",
+            "largest": 0.085124,
+            "positions": 1,
+            "top3": 0.085124
+          }
+        ],
+        "deposits_per_year": [
+          {
+            "deposits": 1,
+            "withdrawals": 0,
+            "year": 2025
+          },
+          {
+            "deposits": 0,
+            "withdrawals": 1,
+            "year": 2026
+          }
+        ],
+        "fees_pct_of_turnover": [
+          {
+            "currency": "PLN",
+            "fees_share": 0.004762
+          }
+        ],
+        "holding_days": {
+          "losers": 1,
+          "losers_median_days": 90,
+          "winners": 1,
+          "winners_median_days": 274
+        },
+        "performance": {
+          "as_of": "2026-09-30",
+          "base_currency": "PLN",
+          "benchmark": {
+            "covers_history": null,
+            "covers_to_date": null,
+            "excess_twr": null,
+            "excess_vs_simulation": null,
+            "id": null,
+            "last_priced": null,
+            "proxy": null,
+            "simulation_money_weighted": null,
+            "simulation_xirr": null,
+            "status": "no_strategy",
+            "twr": null,
+            "twr_annualized": null
+          },
+          "data_quality": {
+            "implied_funding": false,
+            "incomplete_days": 0
+          },
+          "max_drawdown": {
+            "benchmark": null,
+            "benchmark_peak": null,
+            "benchmark_recovered": null,
+            "benchmark_trough": null,
+            "portfolio": -0.049713,
+            "portfolio_peak": "2025-11-30",
+            "portfolio_recovered": null,
+            "portfolio_trough": "2026-03-01"
+          },
+          "note": "values are fractions, not percent; twr is contributions-neutral, money_weighted and xirr follow the deposits; the benchmark simulation puts the same deposits on the same days into the proxy; excess = portfolio minus benchmark; rolling windows are cumulative, not annualized",
+          "per_year": [
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": 0.0,
+              "year": 2025
+            },
+            {
+              "benchmark": null,
+              "partial_year": true,
+              "portfolio_twr": -0.022777,
+              "year": 2026
+            }
+          ],
+          "profit_concentration": {
+            "benchmark_pnl_pct_of_contributions": null,
+            "instruments_negative": 0,
+            "instruments_positive": 1,
+            "pnl_pct_of_contributions": 0.0068,
+            "top1_share": 1.0,
+            "top2_share": 1.0,
+            "top3_share": 1.0,
+            "top5_share": 1.0,
+            "without_top2_pct_of_contributions": 0.0
+          },
+          "return": {
+            "days": 304,
+            "money_weighted": 0.006924,
+            "twr": -0.022777,
+            "twr_annualized": null,
+            "xirr": null
+          },
+          "rolling_relative": [
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 12,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 24,
+              "share_outperforming": null,
+              "windows": 0
+            },
+            {
+              "latest_date": null,
+              "latest_excess": null,
+              "max_excess": null,
+              "min_excess": null,
+              "months": 36,
+              "share_outperforming": null,
+              "windows": 0
+            }
+          ],
+          "since": "2025-12-01"
+        },
+        "price_after_sales": [
+          {
+            "days": 30,
+            "median_change": 0.0,
+            "sales": 1,
+            "share_rose": 0.0
+          },
+          {
+            "days": 90,
+            "median_change": 0.5,
+            "sales": 1,
+            "share_rose": 1.0
+          },
+          {
+            "days": 180,
+            "median_change": 1.0,
+            "sales": 1,
+            "share_rose": 1.0
+          }
+        ],
+        "sells_after_drawdown": {
+          "median_drawdown_at_sale": 0.254808,
+          "sells_at_or_below_threshold": 1,
+          "sells_checked": 2,
+          "threshold": 0.15
+        }
+      }
+    },
+    "label": "quarter_end",
+    "rows": [
+      {
+        "cashAmount": "5000",
+        "currency": "PLN",
+        "fee": "0",
+        "grossAmount": "0",
+        "price": null,
+        "quantity": null,
+        "symbol": null,
+        "tradeDate": "2025-12-01",
+        "type": "deposit"
+      },
+      {
+        "cashAmount": "-501",
+        "currency": "PLN",
+        "fee": "1",
+        "grossAmount": "500",
+        "price": "100",
+        "quantity": "5",
+        "symbol": "ABC",
+        "tradeDate": "2025-12-01",
+        "type": "buy"
+      },
+      {
+        "cashAmount": "159",
+        "currency": "PLN",
+        "fee": "1",
+        "grossAmount": "160",
+        "price": "80",
+        "quantity": "2",
+        "symbol": "ABC",
+        "tradeDate": "2026-03-01",
+        "type": "sell"
+      },
+      {
+        "cashAmount": "-322",
+        "currency": "PLN",
+        "fee": "2",
+        "grossAmount": "320",
+        "price": "160",
+        "quantity": "2",
+        "symbol": "ABC",
+        "tradeDate": "2026-07-01",
+        "type": "buy"
+      },
+      {
+        "cashAmount": "278",
+        "currency": "PLN",
+        "fee": "2",
+        "grossAmount": "280",
+        "price": "140",
+        "quantity": "2",
+        "symbol": "ABC",
+        "tradeDate": "2026-09-01",
+        "type": "sell"
+      },
+      {
+        "cashAmount": "-100",
+        "currency": "PLN",
+        "fee": "0",
+        "grossAmount": "0",
+        "price": null,
+        "quantity": null,
+        "symbol": null,
+        "tradeDate": "2026-01-01",
+        "type": "withdrawal"
+      }
+    ],
+    "today": "2026-09-30"
+  }
+]

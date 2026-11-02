@@ -17,6 +17,12 @@ export interface CsvOptions {
    * `\n` only), `"universal"` = `io.StringIO(text, newline="")` (at `\r\n`, `\r` and `\n`, kept).
    */
   readonly lines?: "lf" | "universal";
+  /** Optional structural-inspection bound; the completed limiting record is included. */
+  readonly maxRecords?: number;
+  /** Retain only these columns, while validating every discarded field as Python does. */
+  readonly maxColumns?: number;
+  /** Capture complete row widths independently of the retained-column bound. */
+  readonly collectWidths?: boolean;
 }
 
 export type CsvErrorReason =
@@ -27,7 +33,7 @@ export type CsvErrorReason =
 
 /** `lineNum` = the reader's `line_num` (lines consumed; on an error, the line that failed). */
 export type CsvResult =
-  | { ok: true; rows: string[][]; lineNum: number }
+  | { ok: true; rows: string[][]; lineNum: number; rowWidths?: readonly number[] }
   | { ok: false; lineNum: number; reason: CsvErrorReason };
 
 /** `csv.field_size_limit()` default, in code points. */
@@ -65,51 +71,65 @@ type State = (typeof State)[keyof typeof State];
 /** End of a source line (CPython's `EOL` sentinel). */
 const EOL = null;
 
-function splitLines(text: string, mode: "lf" | "universal"): string[] {
-  const out: string[] = [];
+function* splitLines(text: string, mode: "lf" | "universal"): Iterable<string> {
   let start = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);
     if (c === 0x0a) {
-      out.push(text.slice(start, i + 1));
+      yield text.slice(start, i + 1);
       start = i + 1;
     } else if (c === 0x0d && mode === "universal") {
       const end = text.charCodeAt(i + 1) === 0x0a ? i + 2 : i + 1;
-      out.push(text.slice(start, end));
+      yield text.slice(start, end);
       start = end;
       i = end - 1;
     }
   }
-  if (start < text.length) out.push(text.slice(start));
-  return out;
+  if (start < text.length) yield text.slice(start);
 }
 
 class Reader {
   private state: State = State.StartRecord;
   private fields: string[] = [];
   private field: string[] = [];
+  private fieldLength = 0;
+  private fieldCount = 0;
   readonly rows: string[][] = [];
+  readonly rowWidths: number[] = [];
   lineNum = 0;
 
   private readonly delimiter: string;
   private readonly quotechar: string;
   private readonly strict: boolean;
+  private readonly maxColumns: number;
+  private readonly collectWidths: boolean;
 
-  constructor(delimiter: string, quotechar: string, strict: boolean) {
+  constructor(
+    delimiter: string,
+    quotechar: string,
+    strict: boolean,
+    maxColumns = Number.POSITIVE_INFINITY,
+    collectWidths = false,
+  ) {
     this.delimiter = delimiter;
     this.quotechar = quotechar;
     this.strict = strict;
+    this.maxColumns = maxColumns;
+    this.collectWidths = collectWidths;
   }
 
   private save(): void {
-    this.fields.push(this.field.join(""));
+    this.fieldCount++;
+    if (this.fields.length < this.maxColumns) this.fields.push(this.field.join(""));
     this.field = [];
+    this.fieldLength = 0;
   }
 
   private add(c: string): CsvErrorReason | null {
     // PARITY(Q11): CPython refuses the character that would exceed the limit (code points).
-    if (this.field.length >= CSV_FIELD_LIMIT) return "field_limit";
-    this.field.push(c);
+    if (this.fieldLength >= CSV_FIELD_LIMIT) return "field_limit";
+    this.fieldLength++;
+    if (this.fields.length < this.maxColumns) this.field.push(c);
     return null;
   }
 
@@ -186,6 +206,8 @@ class Reader {
     if (error) return error;
     if (this.state === State.StartRecord) {
       this.rows.push(this.fields);
+      if (this.collectWidths) this.rowWidths.push(this.fieldCount);
+      this.fieldCount = 0;
       this.fields = [];
     }
     return null;
@@ -193,24 +215,39 @@ class Reader {
 
   /** End of input inside a record: `unexpected end of data` (strict) or the partial record. */
   finish(): CsvErrorReason | null {
-    if (this.field.length === 0 && this.state !== State.InQuotedField) return null;
+    if (this.fieldLength === 0 && this.state !== State.InQuotedField) return null;
     if (this.strict) return "unexpected_eof";
     this.save();
     this.rows.push(this.fields);
+    if (this.collectWidths) this.rowWidths.push(this.fieldCount);
+    this.fieldCount = 0;
     this.fields = [];
     return null;
   }
 }
 
-function run(lines: readonly string[], opts: CsvOptions): CsvResult {
-  const reader = new Reader(opts.delimiter, opts.quotechar ?? '"', opts.strict ?? false);
+function run(lines: Iterable<string>, opts: CsvOptions): CsvResult {
+  const reader = new Reader(
+    opts.delimiter,
+    opts.quotechar ?? '"',
+    opts.strict ?? false,
+    opts.maxColumns,
+    opts.collectWidths,
+  );
+  const success = (): CsvResult => ({
+    ok: true,
+    rows: reader.rows,
+    lineNum: reader.lineNum,
+    ...(opts.collectWidths ? { rowWidths: reader.rowWidths } : {}),
+  });
   for (const line of lines) {
     const reason = reader.feed(line);
     if (reason) return { ok: false, lineNum: reader.lineNum, reason };
+    if (reader.rows.length >= (opts.maxRecords ?? Number.POSITIVE_INFINITY)) return success();
   }
   const reason = reader.finish();
   if (reason) return { ok: false, lineNum: reader.lineNum, reason };
-  return { ok: true, rows: reader.rows, lineNum: reader.lineNum };
+  return success();
 }
 
 /** `list(csv.reader(io.StringIO(text[, newline=""]), delimiter=..., strict=...))`. */

@@ -11,6 +11,12 @@ export {
   loadNameSources,
   ownerNamed,
 } from "./providers/index.js";
+export type { InvestmentHistoryReads } from "./providers/investmentHistoryTypes.js";
+export {
+  type InvestmentReadRequests,
+  type InvestmentReads,
+  investmentReads,
+} from "./providers/investmentReads.js";
 export {
   allTools,
   enabledIn,
@@ -56,4 +62,5 @@ export {
 export type { NativeToolStore, ToolInventoryEntry } from "./runtime/types.js";
 export { budgetTools } from "./tools/budget.js";
 export { coreTools } from "./tools/core.js";
+export { investmentTools } from "./tools/investments.js";
 export { loansTools } from "./tools/loans.js";

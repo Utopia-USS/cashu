@@ -18,7 +18,17 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { market } from "@cashu/domain/investments";
 import { type AdminStatus, HOST_PROTOCOL } from "@cashu/host-protocol";
-import { budgetTools, coreTools, loansTools, NativeMcpServer } from "@cashu/mcp";
+import {
+  budgetTools,
+  coreTools,
+  type InvestmentHistoryReads,
+  type InvestmentReads,
+  investmentTools,
+  loansTools,
+  NativeMcpServer,
+  type NativeToolStore,
+  type ToolContext,
+} from "@cashu/mcp";
 import {
   type HostPathEnv,
   type HostSession,
@@ -38,7 +48,7 @@ import { writeLauncher } from "./launcher.js";
 import { takeWriterLease, type WriterLease } from "./lease.js";
 import { errorName, fileLog, type HostLog } from "./log.js";
 import { compositeBackend } from "./mcp/composite.js";
-import { budgetFileReader } from "./mcp/files.js";
+import { budgetFileReader, investmentFileReader, investmentMappingReader } from "./mcp/files.js";
 import { mcpFileHome, mcpNamedHome } from "./mcp/homes.js";
 import { nativeRuntime } from "./mcp/native.js";
 import { startPythonMcp } from "./mcp/python.js";
@@ -93,6 +103,9 @@ export interface LocalHostOptions {
   /** Device cache dependency, also used by synthetic oracle fixtures. */
   readonly mcpPrices?: market.PriceCache;
   readonly mcpFxNewest?: () => string | null;
+  /** Explicit coherent read authorities; native investment views are unavailable without them. */
+  readonly mcpInvestmentReads?: (context: ToolContext<NativeToolStore>) => InvestmentReads;
+  readonly mcpInvestmentHistory?: (context: ToolContext<NativeToolStore>) => InvestmentHistoryReads;
   /** Explicit legacy-file authority for packaged hosts or an external Python program. */
   readonly mcpLegacyDataDir?: string;
   /** Tests only: called at each crash point of the sync service's loop. */
@@ -377,6 +390,20 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                     dataDir: server.paths.dataDir,
                     legacyDataDir,
                   });
+            const investmentScope =
+              legacyDataDir === undefined
+                ? undefined
+                : {
+                    cwd: existsSync(open.cwd) ? open.cwd : server.paths.dataDir,
+                    home: mcpFileHome(runtime.env),
+                    namedHome: (name: string) => mcpNamedHome(name, runtime.env),
+                    dataDir: server.paths.dataDir,
+                    legacyDataDir,
+                  };
+            const readInvestmentFile =
+              investmentScope === undefined ? undefined : investmentFileReader(investmentScope);
+            const readInvestmentMapping =
+              investmentScope === undefined ? undefined : investmentMappingReader(investmentScope);
             // TRANSITIONAL(S22c): cached-market reads remain on the legacy source until a real
             // device cache is supplied. The restrictive bridge still enforces this vault's policy.
             const tools = coreTools().filter((tool) =>
@@ -396,6 +423,20 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
               ),
             );
             if (child === undefined) tools.push(...loansTools());
+            // TRANSITIONAL(S38c): delegated writers and native investment reads do not yet share
+            // coherent authority. File-only tools are independent of the financial write model.
+            tools.push(
+              ...investmentTools().filter((tool) =>
+                tool.name === "inspect_export" || tool.name === "validate_import"
+                  ? readInvestmentFile !== undefined
+                  : child === undefined &&
+                    (tool.name === "signals" ||
+                      tool.name === "theses" ||
+                      (tool.name === "history_metrics"
+                        ? options.mcpInvestmentHistory !== undefined
+                        : options.mcpInvestmentReads !== undefined)),
+              ),
+            );
             const inventory =
               child === undefined
                 ? TOOL_INVENTORY.filter((entry) => tools.some((tool) => tool.name === entry.name))
@@ -412,6 +453,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 prices: options.mcpPrices ?? null,
                 fxNewest: options.mcpFxNewest,
                 readBudgetImportFile: fileReader,
+                investmentReads: options.mcpInvestmentReads,
+                investmentHistory: options.mcpInvestmentHistory,
+                readInvestmentImportFile: readInvestmentFile,
+                readInvestmentMappingFile: readInvestmentMapping,
               }),
               tools,
             );

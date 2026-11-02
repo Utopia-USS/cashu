@@ -74,160 +74,6 @@ export const DELEGATED_TOOLS: readonly ToolMetadata[] = [
     also: [],
   },
   {
-    name: "portfolio_overview",
-    module: "investments",
-    description:
-      "Portfolio: bucket weights vs targets, drift in pp and band flags, unrealized %, cash weight, data freshness, last rule run, warnings, accounts (generated labels).",
-    properties: {},
-    required: [],
-    write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
-    name: "positions",
-    module: "investments",
-    description:
-      "Per instrument: symbol, name, weight, unrealized %, tags, bucket, valuation mode, holding days, open signals, thesis flag, the model recommendation (buy_asap | buy | hold | reduce | exit_asap | null), plan_freshness (state fresh | maybe_outdated | outdated and reason codes; null without a recommendation), hints (which of the owner's own rules apply now: code, severity rule|review|info, params as fractions; main first); cash weights per account.",
-    properties: {},
-    required: [],
-    write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
-    name: "signals",
-    module: "investments",
-    description:
-      "Rule and alert signals: rule, scope, measured vs threshold (as ratio / pp / days), severity, polarity (positive | negative | neutral), source (rule | alert | research | plan), snooze, age, decisions. status: open (default), history or all.",
-    properties: {
-      status: {
-        type: "string",
-        enum: ["open", "history", "all"],
-        default: "open",
-      },
-    },
-    required: [],
-    write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
-    name: "review_context",
-    module: "investments",
-    description:
-      "The owner's periodic review (strategy.yaml review:): name, every (week | 2weeks | month), day, cards in order (world, sectors, positions, events, ideas, calendar, decide), due, next_on; since = the last review's date (else 7 days ago), last_review {done_at, notes, agenda = the cards the owner sent to the agent {card, note}}; card_sources = which tool has each card's facts; calendar: the next 14 days (high-impact macro releases, earnings of held / watched US instruments, research note events), stale when a public feed could not be refreshed.",
-    properties: {},
-    required: [],
-    write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
-    name: "strategy_status",
-    module: "investments",
-    description:
-      "Strategy validation issues (line / column), rules, inactive rules, version history.",
-    properties: {},
-    required: [],
-    write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
-    name: "history_metrics",
-    module: "investments",
-    description:
-      "Retrospective metrics computed locally from the transaction history: activity gaps, deposits per year, sells after drawdowns, buys after run-ups, price change after sales, holding days of winners vs losers, fees as % of turnover, concentration over time.",
-    properties: {},
-    required: [],
-    write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
-    name: "theses",
-    module: "investments",
-    description:
-      "Position theses (entry type, thesis, invalidation, exit and size plans) with the model recommendation, optionally of one instrument (id, symbol or ISIN).",
-    properties: {
-      instrument: {
-        type: "string",
-        maxLength: 40,
-      },
-    },
-    required: [],
-    write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
-    name: "inspect_export",
-    module: "investments",
-    description:
-      "Structure of a broker export or bank statement file (CSV, TSV, JSON, XLSX): sheets, header row, columns, inferred types, row counts and masked sample rows (numbers as their format, free text as token shapes; amounts, identifiers and names never shown). The blind route: when the user hands you the file itself, read it directly.",
-    properties: {
-      path: {
-        type: "string",
-        maxLength: 1024,
-        description: "local file path",
-      },
-      max_samples: {
-        type: "integer",
-        minimum: 0,
-        maximum: 20,
-        default: 5,
-      },
-    },
-    required: ["path"],
-    write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: ["budget"],
-  },
-  {
-    name: "validate_import",
-    module: "investments",
-    description:
-      "Validate a cashu-format file (or a CSV with a mapping): counts and errors by kind with row numbers, no values. MCP never makes the app run code: convert other exports yourself first, or write a connector (propose_connector).",
-    properties: {
-      path: {
-        type: "string",
-        maxLength: 1024,
-        description: "local file path",
-      },
-      mapping: {
-        type: "string",
-        maxLength: 64000,
-        description: "generic CSV mapping: YAML text or a path to a .yaml/.yml file",
-      },
-    },
-    required: ["path"],
-    write: false,
-    refused: {
-      converter:
-        "MCP calls never make the app run code: run a one-off converter yourself (python3 <script> <export> <output.csv>) and pass the cashu-format output file as path, or write a connector (propose_connector), which the app runs only after the owner approves it in Ustawienia > Konektory",
-    },
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
     name: "set_recommendation",
     module: "investments",
     description:
@@ -1112,6 +958,162 @@ export const DELEGATED_TOOLS: readonly ToolMetadata[] = [
     required: [],
     write: false,
     refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: [],
+  },
+];
+export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
+  {
+    name: "portfolio_overview",
+    module: "investments",
+    description:
+      "Portfolio: bucket weights vs targets, drift in pp and band flags, unrealized %, cash weight, data freshness, last rule run, warnings, accounts (generated labels).",
+    properties: {},
+    required: [],
+    write: false,
+    refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: [],
+  },
+  {
+    name: "positions",
+    module: "investments",
+    description:
+      "Per instrument: symbol, name, weight, unrealized %, tags, bucket, valuation mode, holding days, open signals, thesis flag, the model recommendation (buy_asap | buy | hold | reduce | exit_asap | null), plan_freshness (state fresh | maybe_outdated | outdated and reason codes; null without a recommendation), hints (which of the owner's own rules apply now: code, severity rule|review|info, params as fractions; main first); cash weights per account.",
+    properties: {},
+    required: [],
+    write: false,
+    refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: [],
+  },
+  {
+    name: "signals",
+    module: "investments",
+    description:
+      "Rule and alert signals: rule, scope, measured vs threshold (as ratio / pp / days), severity, polarity (positive | negative | neutral), source (rule | alert | research | plan), snooze, age, decisions. status: open (default), history or all.",
+    properties: {
+      status: {
+        type: "string",
+        enum: ["open", "history", "all"],
+        default: "open",
+      },
+    },
+    required: [],
+    write: false,
+    refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: [],
+  },
+  {
+    name: "review_context",
+    module: "investments",
+    description:
+      "The owner's periodic review (strategy.yaml review:): name, every (week | 2weeks | month), day, cards in order (world, sectors, positions, events, ideas, calendar, decide), due, next_on; since = the last review's date (else 7 days ago), last_review {done_at, notes, agenda = the cards the owner sent to the agent {card, note}}; card_sources = which tool has each card's facts; calendar: the next 14 days (high-impact macro releases, earnings of held / watched US instruments, research note events), stale when a public feed could not be refreshed.",
+    properties: {},
+    required: [],
+    write: false,
+    refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: [],
+  },
+  {
+    name: "strategy_status",
+    module: "investments",
+    description:
+      "Strategy validation issues (line / column), rules, inactive rules, version history.",
+    properties: {},
+    required: [],
+    write: false,
+    refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: [],
+  },
+  {
+    name: "history_metrics",
+    module: "investments",
+    description:
+      "Retrospective metrics computed locally from the transaction history: activity gaps, deposits per year, sells after drawdowns, buys after run-ups, price change after sales, holding days of winners vs losers, fees as % of turnover, concentration over time.",
+    properties: {},
+    required: [],
+    write: false,
+    refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: [],
+  },
+  {
+    name: "theses",
+    module: "investments",
+    description:
+      "Position theses (entry type, thesis, invalidation, exit and size plans) with the model recommendation, optionally of one instrument (id, symbol or ISIN).",
+    properties: {
+      instrument: {
+        type: "string",
+        maxLength: 40,
+      },
+    },
+    required: [],
+    write: false,
+    refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: [],
+  },
+  {
+    name: "inspect_export",
+    module: "investments",
+    description:
+      "Structure of a broker export or bank statement file (CSV, TSV, JSON, XLSX): sheets, header row, columns, inferred types, row counts and masked sample rows (numbers as their format, free text as token shapes; amounts, identifiers and names never shown). The blind route: when the user hands you the file itself, read it directly.",
+    properties: {
+      path: {
+        type: "string",
+        maxLength: 1024,
+        description: "local file path",
+      },
+      max_samples: {
+        type: "integer",
+        minimum: 0,
+        maximum: 20,
+        default: 5,
+      },
+    },
+    required: ["path"],
+    write: false,
+    refused: {},
+    refusedValues: {},
+    nullable: [],
+    also: ["budget"],
+  },
+  {
+    name: "validate_import",
+    module: "investments",
+    description:
+      "Validate a cashu-format file (or a CSV with a mapping): counts and errors by kind with row numbers, no values. MCP never makes the app run code: convert other exports yourself first, or write a connector (propose_connector).",
+    properties: {
+      path: {
+        type: "string",
+        maxLength: 1024,
+        description: "local file path",
+      },
+      mapping: {
+        type: "string",
+        maxLength: 64000,
+        description: "generic CSV mapping: YAML text or a path to a .yaml/.yml file",
+      },
+    },
+    required: ["path"],
+    write: false,
+    refused: {
+      converter:
+        "MCP calls never make the app run code: run a one-off converter yourself (python3 <script> <export> <output.csv>) and pass the cashu-format output file as path, or write a connector (propose_connector), which the app runs only after the owner approves it in Ustawienia > Konektory",
+    },
     refusedValues: {},
     nullable: [],
     also: [],

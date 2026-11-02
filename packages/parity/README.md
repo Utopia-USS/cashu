@@ -36,13 +36,25 @@ bridge and `--bridge-mcp` option are removed. The five S38b dataset reads (`spen
 native handlers against folded vaults, including independent module/error handling and the real
 privacy boundary. Only after leak checking, typed loan references map through genesis identities
 to the oracle's natural keys; production wire references remain opaque gids, not Python integers.
-The remaining read tools, including native core reads, still replay Python labelled trees to prove
+The seven S38c financial read methods also execute native handlers: `portfolio_overview`, `positions`,
+`signals` (all three statuses), `review_context`, `strategy_status`, `history_metrics`, and `theses`.
+Their view/history ports use actual copied market facts and native calculations, never labelled
+answer replay. Investment refs are normalized through validated source identities only after the
+unchanged redactor and leak check. The declared `rule` field keeps Python's literal `alert:<counter>`
+spelling after this normalization; production uses opaque native alert refs. Thus identity-normalized
+parity bytes do not claim identical production identifiers.
+Remaining unported reads and native core reads still replay Python labelled trees to prove
 provider/redactor equivalence. Focused handler and real host tests cover native core separately.
-The file validator uses synthetic file/host tests; the blocked category writer is not read parity.
+File inspection and both validators use actual Python synthetic file/host tests; dataset checks do
+not supply file paths. The blocked category writer is not read parity.
 Mixed Python/native hosts retain the five financial reads on Python until write/ingestion contracts
 are resolved, preserving coherent merchant references and read-after-write results. Native-only
 hosts expose the five reads without the unavailable writer. Dataset parity exercises native bodies
 regardless of that temporary routing choice.
+Mixed hosts also keep financial investment reads with the Python writer. Native-only hosts expose
+stored signals/theses; calculated investment views and history require explicit coherent per-call
+market/strategy dependencies. File tools require the existing checked legacy-path authority. No
+dummy cache or fabricated successful calendar refresh enables production routing.
 `mcp.tool_schemas` uses native specs plus the generated contracts of remaining Python tools, in
 the exact Python registry order, with native module gating. Host integration
 tests compare the complete actual SDK tool list. Regenerate delegated contracts with

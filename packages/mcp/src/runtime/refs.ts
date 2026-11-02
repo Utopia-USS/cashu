@@ -2,7 +2,14 @@
 const KIND = /^[a-z][a-z0-9_]*$/;
 const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-export type EntityRefKind = "review" | "loan";
+export type EntityRefKind =
+  | "review"
+  | "loan"
+  | "instrument"
+  | "signal"
+  | "thesis"
+  | "alert"
+  | "account";
 
 // Letter-only payloads avoid identifier-like digit runs in the unchanged final leak check.
 // u carries the 26 canonical ULID ASCII bytes as nibbles; v carries 16 UUIDv8 bytes.

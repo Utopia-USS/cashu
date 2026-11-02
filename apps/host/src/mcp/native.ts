@@ -1,6 +1,8 @@
 // Host adapters for the native MCP boundary. Each session is bound to one loaded vault.
 import type { market } from "@cashu/domain/investments";
 import {
+  type InvestmentHistoryReads,
+  type InvestmentReads,
   loadAccountLabels,
   loadGuard,
   loadNameSources,
@@ -8,6 +10,7 @@ import {
   type NativeRuntime,
   type NativeToolStore,
   restrictivePrivacy,
+  type ToolContext,
   type ToolInventoryEntry,
   toolContext,
 } from "@cashu/mcp";
@@ -27,6 +30,13 @@ export interface NativeMcpOptions {
   readonly inventory: readonly ToolInventoryEntry[];
   readonly prices?: market.PriceCache | null;
   readonly fxNewest?: () => string | null;
+  readonly investmentReads?: (context: ToolContext<NativeToolStore>) => InvestmentReads;
+  readonly investmentHistory?: (context: ToolContext<NativeToolStore>) => InvestmentHistoryReads;
+  readonly readInvestmentImportFile?: (
+    path: string,
+    slug: string,
+  ) => { readonly name: string; readonly bytes: Uint8Array };
+  readonly readInvestmentMappingFile?: (path: string, slug: string) => string;
   readonly readBudgetImportFile?: (
     rawPath: string,
     profileSlug: string,
@@ -121,6 +131,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         const at = now();
         const today = localDay(at);
         const pending: v1.Envelope[] = [];
+        let context: ToolContext<NativeToolStore>;
         const store: NativeToolStore = {
           read,
           profile,
@@ -129,6 +140,30 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           prices: options.prices ?? null,
           fxNewest: options.fxNewest?.() ?? null,
           toolInventory: options.inventory,
+          get investments() {
+            return options.investmentReads?.(context);
+          },
+          get investmentHistory() {
+            return options.investmentHistory?.(context);
+          },
+          ...(options.readInvestmentImportFile === undefined
+            ? {}
+            : {
+                readInvestmentImportFile: (path: string) => {
+                  if (options.readInvestmentImportFile === undefined)
+                    throw new Error("missing file reader");
+                  return options.readInvestmentImportFile(path, profile.slug);
+                },
+              }),
+          ...(options.readInvestmentMappingFile === undefined
+            ? {}
+            : {
+                readInvestmentMappingFile: (path: string) => {
+                  if (options.readInvestmentMappingFile === undefined)
+                    throw new Error("missing mapping reader");
+                  return options.readInvestmentMappingFile(path, profile.slug);
+                },
+              }),
           ...(readBudgetImportFile === undefined
             ? {}
             : {
@@ -149,7 +184,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           },
         };
         const profileId = BigInt(`0x${vault.id}`);
-        const context = toolContext({
+        context = toolContext({
           store,
           profileId,
           privacy: restrictivePrivacy(current.privacy, ceiling),

@@ -9,16 +9,6 @@ import { mcpToolMetadata } from "@cashu/mcp";
 export const PYTHON_TOOLS: Readonly<Record<string, string>> = {
   // TRANSITIONAL(S38b): classification awaits the native learned-rule write contract.
   set_merchant_category: "S38b",
-  // TRANSITIONAL(S38c): investments read tools
-  portfolio_overview: "S38c",
-  positions: "S38c",
-  signals: "S38c",
-  review_context: "S38c",
-  strategy_status: "S38c",
-  history_metrics: "S38c",
-  theses: "S38c",
-  inspect_export: "S38c",
-  validate_import: "S38c",
   // TRANSITIONAL(S38d): investments write, alerts and watchlist tools
   set_recommendation: "S38d",
   set_recommendations: "S38d",

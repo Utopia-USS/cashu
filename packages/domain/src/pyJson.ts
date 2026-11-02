@@ -396,10 +396,19 @@ const asFloat: NumberReader = (text) => Number(text);
 
 /**
  * `json.loads(text, parse_float=..., parse_int=...)` with Python's defaults otherwise (both numbers
- * via `number`, a float unless given). Objects are plain records. Throws `PyJsonError`.
+ * via `number`, a float unless given). Objects are plain records unless `objectPairs` is supplied.
+ * The optional hook receives every ordered pair, including repeated keys. Throws `PyJsonError`.
  */
-export function parsePyJson(text: string, number: NumberReader = asFloat): unknown {
-  const scanned = scan(text, defaultReader(number));
+export function parsePyJson(
+  text: string,
+  number: NumberReader = asFloat,
+  objectPairs?: (pairs: readonly (readonly [string, unknown])[]) => unknown,
+): unknown {
+  const reader = defaultReader(number);
+  const scanned = scan(
+    text,
+    objectPairs === undefined ? reader : { ...reader, object: objectPairs },
+  );
   if (scanned.ok) return scanned.value;
   if (scanned.kind === "decode") {
     const { line, column } = lineColumn(text, scanned.pos);

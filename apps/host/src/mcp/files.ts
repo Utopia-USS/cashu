@@ -1,4 +1,4 @@
-// Host-only equivalent of Python checked_local_file for the read-only budget validator.
+// Host-only equivalent of Python checked_local_file, sharing the reviewed path/descriptor checks.
 import {
   closeSync,
   constants,
@@ -8,7 +8,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { basename, isAbsolute, join, sep } from "node:path";
+import { basename, extname, isAbsolute, join, sep } from "node:path";
 import { pyCasefold } from "@cashu/domain";
 import { ToolError } from "@cashu/mcp";
 import { resolveReal } from "@cashu/node-host";
@@ -28,10 +28,20 @@ function inside(path: string, root: string): boolean {
   const r = pathKey(root).replace(/[\\/]+$/, "");
   return p === r || p.startsWith(r + sep);
 }
-function tooLarge(): never {
-  throw new ToolError("file is too large (max 20 MB)");
+interface FilePolicy {
+  readonly extensions: readonly string[];
+  readonly maxBytes: number;
+  readonly profileOnly: boolean;
+  readonly systemLimit?: boolean;
 }
-export function budgetFileReader(scope: FileScope) {
+function checkedFileReader(scope: FileScope, policy: FilePolicy) {
+  const tooLarge = (): never => {
+    throw new ToolError(
+      policy.profileOnly ? "the mapping file is too large" : "file is too large (max 20 MB)",
+      "invalid",
+      { system: policy.systemLimit ?? false },
+    );
+  };
   return (raw: string, profileSlug: string): { name: string; bytes: Uint8Array } => {
     if (!raw || raw.includes("\0")) throw new ToolError("path is required");
     let path: string;
@@ -54,8 +64,8 @@ export function budgetFileReader(scope: FileScope) {
     }
     if (!statSync(path).isFile()) throw new ToolError("not a regular file");
     const name = basename(path);
-    if (!/\.(json|csv)$/i.test(name))
-      throw new ToolError("unsupported file type; allowed: json, csv");
+    if (!policy.extensions.includes(extname(name).slice(1).toLowerCase()))
+      throw new ToolError(`unsupported file type; allowed: ${policy.extensions.join(", ")}`);
     if (
       path
         .split(sep)
@@ -66,6 +76,10 @@ export function budgetFileReader(scope: FileScope) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(profileSlug))
       throw new ToolError("invalid profile folder");
     const own = resolveReal(join(scope.dataDir, "profiles", profileSlug));
+    if (policy.profileOnly && !inside(path, own))
+      throw new ToolError(
+        "this file must be in the profile's folder (profiles/<slug>/ in the data dir)",
+      );
     if (inside(path, resolveReal(scope.dataDir)) && !inside(path, own))
       throw new ToolError(
         "files inside the cashU data dir are not read (except the profile folder)",
@@ -81,7 +95,7 @@ export function budgetFileReader(scope: FileScope) {
     try {
       const info = fstatSync(fd);
       if (!info.isFile()) throw new ToolError("not a regular file");
-      if (info.size > MAX_BYTES) tooLarge();
+      if (info.size > policy.maxBytes) tooLarge();
       const currentPath = realpathSync.native(path);
       const current = statSync(currentPath);
       if (currentPath !== path || current.dev !== info.dev || current.ino !== info.ino)
@@ -89,16 +103,48 @@ export function budgetFileReader(scope: FileScope) {
       const chunks: Buffer[] = [];
       let total = 0;
       for (;;) {
-        const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, MAX_BYTES + 1 - total));
+        const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, policy.maxBytes + 1 - total));
         const count = readSync(fd, chunk, 0, chunk.length, null);
         if (count === 0) break;
         total += count;
-        if (total > MAX_BYTES) tooLarge();
+        if (total > policy.maxBytes) tooLarge();
         chunks.push(chunk.subarray(0, count));
       }
       return { name, bytes: Buffer.concat(chunks, total) };
     } finally {
       closeSync(fd);
+    }
+  };
+}
+export function budgetFileReader(scope: FileScope) {
+  return checkedFileReader(scope, {
+    extensions: ["json", "csv"],
+    maxBytes: MAX_BYTES,
+    profileOnly: false,
+  });
+}
+export function investmentFileReader(scope: FileScope) {
+  return checkedFileReader(scope, {
+    extensions: ["csv", "tsv", "txt", "json", "xlsx"],
+    maxBytes: MAX_BYTES,
+    profileOnly: false,
+    systemLimit: true,
+  });
+}
+export function investmentMappingReader(scope: FileScope) {
+  const read = checkedFileReader(scope, {
+    extensions: ["yaml", "yml"],
+    maxBytes: 256 * 1024,
+    profileOnly: true,
+  });
+  return (raw: string, profileSlug: string): string => {
+    try {
+      return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+        read(raw, profileSlug).bytes,
+      );
+    } catch (error) {
+      if (error instanceof ToolError) throw error;
+      throw new ToolError("the mapping file cannot be read");
     }
   };
 }

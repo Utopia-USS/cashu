@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import * as macro from "@cashu/domain/investments/macro";
 import {
+  decodeEntityRef,
   LeakDetected,
   leakCheck,
   loadAccountLabels,
@@ -24,9 +25,12 @@ import {
 import { mcpProfile } from "@cashu/store/core";
 import { type CanonObject, type CanonValue, parseCanonical } from "../../json.ts";
 import { DATASET_CLOCKS, type Dataset, goldenRoot, type PythonDb } from "../../sources/index.ts";
+import type { ProfileRow } from "../../sources/pythonDb.ts";
 import type { OutValue } from "../output.ts";
 import { genesisRun } from "../store/genesisRun.ts";
 import { GidKeys } from "../store/gidKeys.ts";
+import { bindInvestmentHistory } from "./historySource.ts";
+import { bindInvestmentReads } from "./investmentSource.ts";
 import { mergeMcpReads, nativeMcpReads } from "./nativeReads.ts";
 import { canonToOut, SyntheticIds, toCanonical, toLabelledTree } from "./rawTrees.ts";
 
@@ -101,6 +105,80 @@ function redactEntry(
   return toCanonical(data, ids);
 }
 
+/** Independent native outputs for one profile; no oracle tree or expected result is read. */
+export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: ProfileRow) {
+  const vaults = genesisRun(db).vaults;
+  const vault = vaults.get(profile.id);
+  if (vault === undefined) throw new Error("MCP provider parity: missing genesis vault");
+  // Match the Python oracle's caller identity only here. The host uses the stable vault id,
+  // since two native vaults may each have the same local profile row id.
+  const read = vault.store.read.bind(vault.store);
+  const guard = loadGuard(read, profile.id, PARITY_PAYEE_KEY);
+  const nativeProfile = mcpProfile(read);
+  if (nativeProfile === undefined) throw new Error("MCP parity: missing native profile");
+  const keys = new GidKeys(vault, db.keys);
+  const store: NativeToolStore = {
+    read,
+    profile: nativeProfile,
+    today: db.asOf,
+    now: () => Date.parse(`${DATASET_CLOCKS[db.dataset]}Z`),
+    prices: null,
+    fxNewest: null,
+    toolInventory: mcpToolMetadata(),
+    ...(nativeProfile.modules.includes("investments")
+      ? {
+          investments: bindInvestmentReads(db, profile.id),
+          investmentHistory: bindInvestmentHistory(db, profile.id),
+        }
+      : {}),
+    run: () => {
+      throw new Error("MCP read parity attempted a mutation");
+    },
+  };
+  const context = toolContext({
+    store,
+    profileId: profile.id,
+    privacy: mode,
+    today: db.asOf,
+    loadGuard: () => guard,
+    loadAccountLabels: () => loadAccountLabels(read),
+  });
+  const native = nativeMcpReads(
+    context,
+    new Set(nativeProfile.modules),
+    (gid) => {
+      const key = keys.ref("loans", gid);
+      if (key === null) throw new Error("MCP parity: missing native loan identity");
+      return key;
+    },
+    {
+      ref(kind, gid) {
+        const tables: Readonly<Record<string, string>> = {
+          instrument: "inv_instruments",
+          signal: "inv_signals",
+          thesis: "inv_theses",
+          alert: "alerts",
+        };
+        const table = tables[kind];
+        if (table === undefined) throw new Error("unsupported native reference kind");
+        const key = keys.ref(table, gid);
+        if (key === null) throw new Error("missing native investment identity");
+        return key;
+      },
+      rule(value) {
+        if (!/^alert:(?:u[a-p]{52}|v[a-p]{32})$/u.test(value)) return value;
+        const gid = decodeEntityRef("alert", value);
+        keys.ref("alerts", gid);
+        const source = keys.source(gid);
+        if (source === undefined || source.table !== "alerts")
+          throw new Error("missing native alert rule identity");
+        return `alert:${source.localId}`;
+      },
+    },
+  );
+  return { native, guard };
+}
+
 export function produceMcpRead(
   db: PythonDb,
   mode: PrivacyMode,
@@ -111,51 +189,16 @@ export function produceMcpRead(
     parseCanonical(readFileSync(rawGoldenPath(db.dataset, rawRoot), "utf8")),
     "mcp.read_raw",
   );
-  const perProfile = asObject(raw.get(mode), mode);
-  const summaryOk = macro.summaryOk;
-  const vaults = genesisRun(db).vaults;
-  const out: Record<string, OutValue> = {};
+  const perProfile = asObject(raw.get(mode), mode),
+    out: Record<string, OutValue> = {};
   for (const profile of db.profiles()) {
-    const pkey = db.keys.key("profiles", profile.id);
-    const calls = asObject(perProfile.get(pkey), "a profile of mcp.read_raw");
-    const vault = vaults.get(profile.id);
-    if (vault === undefined) throw new Error("MCP provider parity: missing genesis vault");
-    // Match the Python oracle's caller identity only here. The host uses the stable vault id,
-    // since two native vaults may each have the same local profile row id.
-    const read = vault.store.read.bind(vault.store);
-    const guard = loadGuard(read, profile.id, PARITY_PAYEE_KEY);
-    const nativeProfile = mcpProfile(read);
-    if (nativeProfile === undefined) throw new Error("MCP parity: missing native profile");
-    const keys = new GidKeys(vault, db.keys);
-    const store: NativeToolStore = {
-      read,
-      profile: nativeProfile,
-      today: db.asOf,
-      now: () => Date.parse(`${DATASET_CLOCKS[db.dataset]}Z`),
-      prices: null,
-      fxNewest: null,
-      toolInventory: mcpToolMetadata(),
-      run: () => {
-        throw new Error("MCP read parity attempted a mutation");
-      },
-    };
-    const context = toolContext({
-      store,
-      profileId: profile.id,
-      privacy: mode,
-      today: db.asOf,
-      loadGuard: () => guard,
-      loadAccountLabels: () => loadAccountLabels(read),
-    });
-    const native = nativeMcpReads(context, new Set(nativeProfile.modules), (gid) => {
-      const key = keys.ref("loans", gid);
-      if (key === null) throw new Error("MCP parity: missing native loan identity");
-      return key;
-    });
+    const pkey = db.keys.key("profiles", profile.id),
+      calls = asObject(perProfile.get(pkey), "a profile of mcp.read_raw");
+    const { native, guard } = nativeProfileMcpReads(db, mode, profile);
     out[pkey] = mergeMcpReads(calls, native, (entry) =>
       entry instanceof Map && isPassThrough(entry)
         ? canonToOut(entry)
-        : redactEntry(entry, mode, guard, summaryOk),
+        : redactEntry(entry, mode, guard, macro.summaryOk),
     );
   }
   if (Object.keys(out).length !== perProfile.size)

@@ -9,6 +9,36 @@ function asVector(r: CsvResult): unknown[] {
 }
 
 describe("csv.reader vectors (parity/python/vectors_budget.py)", () => {
+  it("bounds completed records and retained columns while preserving quoted newlines and discarded-field validation", () => {
+    expect(
+      readCsv('a,b,c,d\n"e\nf",g,h,i\n', { delimiter: ",", maxColumns: 0, collectWidths: true }),
+    ).toEqual({ ok: true, rows: [[], []], rowWidths: [4, 4], lineNum: 3 });
+    expect(
+      readCsv('a,b,c\n"line\nnext",x,y\nunterminated\rbad', {
+        delimiter: ",",
+        maxRecords: 2,
+        maxColumns: 2,
+      }),
+    ).toEqual({
+      ok: true,
+      rows: [
+        ["a", "b"],
+        ["line\nnext", "x"],
+      ],
+      lineNum: 3,
+    });
+    expect(
+      readCsv(`a,b,${"x".repeat(CSV_FIELD_LIMIT + 1)}\n`, { delimiter: ",", maxColumns: 2 }),
+    ).toMatchObject({ ok: false, reason: "field_limit" });
+    expect(readCsv('a,b\n"x\ny",z\n', { delimiter: "," })).toEqual({
+      ok: true,
+      rows: [
+        ["a", "b"],
+        ["x\ny", "z"],
+      ],
+      lineNum: 3,
+    });
+  });
   it("random texts, every delimiter, strict on / off, both line modes", () => {
     const m = new Mismatches();
     for (const row of vectors.rows) {

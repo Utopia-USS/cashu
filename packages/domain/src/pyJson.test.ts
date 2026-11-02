@@ -100,6 +100,23 @@ describe("parsePyJson (json.loads defaults, same scanner)", () => {
 });
 
 describe("pyDumpsStrList (json.dumps(list[dict[str, str]], ensure_ascii=False))", () => {
+  it("supports nested insertion-ordered object hooks without changing default records", () => {
+    const source = '{"2":1,"1":2,"2":3,"__proto__":{"constructor":4},"float":1.0}';
+    const native = parsePyJson(source) as Record<string, unknown>;
+    expect(native["2"]).toBe(3);
+    expect(Object.hasOwn(native, "__proto__")).toBe(true);
+    const ordered = parsePyJson(
+      source,
+      (text, integer) => ({ text, integer }),
+      (pairs) => new Map(pairs),
+    ) as Map<string, unknown>;
+    expect([...ordered.keys()]).toEqual(["2", "1", "__proto__", "float"]);
+    expect(ordered.get("2")).toEqual({ text: "3", integer: true });
+    expect(ordered.get("float")).toEqual({ text: "1.0", integer: false });
+    expect(ordered.get("__proto__")).toEqual(
+      new Map([["constructor", { text: "4", integer: true }]]),
+    );
+  });
   it("default separators, Python's escapes, non-ASCII kept", () => {
     expect(
       pyDumpsStrList([

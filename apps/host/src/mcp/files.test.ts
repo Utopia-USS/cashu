@@ -3,9 +3,37 @@ import { dirname, join } from "node:path";
 import { ToolError } from "@cashu/mcp";
 import { afterEach, expect, it } from "vitest";
 import { cleanup, tempDir } from "../testing/harness.js";
-import { budgetFileReader } from "./files.js";
+import { budgetFileReader, investmentFileReader, investmentMappingReader } from "./files.js";
 
 afterEach(cleanup);
+it("keeps budget extensions unchanged and grants only the explicit investment/profile-only mapping capabilities", () => {
+  const f = fixture(),
+    scope = { cwd: f.cwd, home: f.home, dataDir: f.dataDir, legacyDataDir: f.legacyDataDir };
+  const read = investmentFileReader(scope),
+    mapping = investmentMappingReader(scope);
+  for (const extension of ["csv", "tsv", "txt", "json", "xlsx"]) {
+    const path = f.file(join(f.cwd, `export.${extension}`));
+    expect(read(path, "demo").name).toBe(`export.${extension}`);
+    if (!["csv", "json"].includes(extension))
+      expect(() => f.read(path, "demo")).toThrow("unsupported file type");
+  }
+  const own = f.file(join(f.dataDir, "profiles", "demo", "map.yaml"));
+  expect(mapping(own, "demo")).toBe("synthetic");
+  expect(() => mapping(own, "other")).toThrow("must be in the profile's folder");
+  const outside = f.file(join(f.cwd, "map.yml"));
+  expect(() => mapping(outside, "demo")).toThrow("must be in the profile's folder");
+  const alias = join(f.dataDir, "profiles", "demo", "alias.yaml");
+  symlinkSync(outside, alias);
+  expect(() => mapping(alias, "demo")).toThrow("must be in the profile's folder");
+  truncateSync(own, 256 * 1024 + 1);
+  expect(() => mapping(own, "demo")).toThrow("mapping file is too large");
+  for (const path of [
+    f.file(join(f.dataDir, "profiles", "other", "private.xlsx")),
+    f.file(join(f.legacyDataDir, "private.xlsx")),
+    f.file(join(f.cwd, ".hidden", "private.xlsx")),
+  ])
+    expect(() => read(path, "demo")).toThrow();
+});
 function fixture() {
   const root = tempDir();
   const cwd = join(root, "workspace");
