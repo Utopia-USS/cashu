@@ -559,12 +559,53 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
     return result
 
 
+def member_order_vectors() -> list[dict]:
+    """Actual raw Python trend keys, including ties hidden by the rounded DTO."""
+    from cashu.modules.investments.domain import Currency, PriceBar
+    from cashu.modules.investments.performance.segment_attribution import segment_trends
+
+    end = dt.date(2026, 10, 1)
+    vectors = []
+    for mode, closes in (
+        ("exact_tie", ("11", "11")),
+        ("unequal_raw_same_rounded", ("10.000002", "10.000001")),
+        ("opposite_sign_tie", ("11", "9")),
+        ("missing_vs_zero", ("10", None)),
+        ("held_before_watched", ("10", "12")),
+    ):
+        held = {str(i): mode != "held_before_watched" or i == 2 for i in (2, 10)}
+        members = {str(i): ("equity_global", held[str(i)]) for i in (2, 10)}
+        prices = {
+            iid: [
+                PriceBar(
+                    iid, end - dt.timedelta(days=7), Decimal(10), "synthetic", currency=Currency.PLN
+                ),
+                PriceBar(iid, end, Decimal(close), "synthetic", currency=Currency.PLN),
+            ]
+            for iid, close in zip(members, closes, strict=True)
+            if close is not None
+        }
+        trend = segment_trends(members, prices, end)["equity_global"]
+        vectors.append(
+            {
+                "mode": mode,
+                "end": end.isoformat(),
+                "closes": dict(zip(("2", "10"), closes, strict=True)),
+                "held": held,
+                "raw": {str(m.instrument_id): list(m.returns) for m in trend.instruments},
+                "expected_order": [str(m.instrument_id) for m in trend.instruments],
+            }
+        )
+    return vectors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cashu-review-views-") as temporary:
         result = generate(Path(temporary))
+        result["member_order_vectors"] = member_order_vectors()
         # Default generate() stays unchanged for the independently pinned 22 portfolio vectors.
         result["topic_variants"] = [
             generate(Path(temporary) / f"{mode}-{lang}", topic_variant=mode, lang=lang)[

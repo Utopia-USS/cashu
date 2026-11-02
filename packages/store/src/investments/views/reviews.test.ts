@@ -150,6 +150,11 @@ describe("native review service clock and identity", () => {
     const input = reviewDigestInputs(store, request);
     const result = readReviewDigest(store, request);
     if (!input.ok || !result.ok) throw new Error("synthetic alias review was refused");
+    expect(input.segmentTrends).not.toBeNull();
+    expect(input.value).not.toHaveProperty("segmentTrends");
+    expect(result).not.toHaveProperty("segmentTrends");
+    expect(result.value).not.toHaveProperty("segmentTrends");
+    expect(result.value.research).not.toHaveProperty("trends");
     expect(input.value.runs[0]?.escalated).toEqual([a, a]);
     expect(result.value.signals.escalated.map((row) => row.id)).toEqual([a]);
     expect(

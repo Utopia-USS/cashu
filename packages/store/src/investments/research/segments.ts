@@ -166,7 +166,11 @@ export type SegmentsRequest = MarketInput & {
 };
 
 export type SegmentsResult =
-  | { readonly ok: true; readonly value: research.SegmentsPayload }
+  | {
+      readonly ok: true;
+      readonly value: research.SegmentsPayload;
+      readonly trends: research.Trends;
+    }
   | { readonly ok: false; readonly reason: "unknown_window" };
 
 /** Python `segments_view` (`GET /research/segments`). */
@@ -215,6 +219,7 @@ export function segmentsView(read: Read, req: SegmentsRequest): SegmentsResult {
   }
   return {
     ok: true,
+    trends,
     value: research.segmentsPayload({
       window,
       found,

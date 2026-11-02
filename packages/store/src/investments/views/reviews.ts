@@ -268,6 +268,7 @@ export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
   }
   const now = viewInstant(toStorage(clock.now));
   let segmentFacts: ReturnType<typeof research.digestSegments> | null = null;
+  let segmentTrends: research.Trends | null = null;
   if (computed !== null) {
     try {
       const projected = segmentsView(read, {
@@ -277,7 +278,10 @@ export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
         lang: request.lang,
         window: "1w",
       });
-      if (projected.ok) segmentFacts = research.digestSegments(projected.value);
+      if (projected.ok) {
+        segmentFacts = research.digestSegments(projected.value);
+        segmentTrends = projected.trends;
+      }
     } catch {
       /* Attribution is best-effort in the source contract. */
     }
@@ -302,6 +306,7 @@ export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
   const priceMoveBars = current.historyBars;
   return {
     ok: true as const,
+    segmentTrends,
     value: {
       current,
       previous,
@@ -353,7 +358,7 @@ export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
       research: digestResearch,
       priceMoveBars,
     } satisfies views.ReviewDigestInput,
-  };
+  } as const;
 }
 
 export function readReviewDigest(store: Store, request: ReviewDigestRequest) {

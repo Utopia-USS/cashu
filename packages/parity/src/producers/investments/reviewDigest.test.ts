@@ -1,6 +1,6 @@
 /** Complete actual Python view bytes over invented SQL only; no demo/lab dataset is read. */
 import { readFileSync } from "node:fs";
-import { investments as inv, parsePyJson } from "@cashu/domain";
+import { addDays, D, investments as inv, parsePyJson, toCurrency } from "@cashu/domain";
 import { investmentsViews } from "@cashu/store";
 import { afterEach, describe, expect, it } from "vitest";
 import { type PythonDb, withPythonDb } from "../../sources/pythonDb.ts";
@@ -11,7 +11,7 @@ import { produceAllocationView } from "./allocationView.ts";
 import { produceOverview } from "./overview.ts";
 import { producePositionDetail } from "./positionDetail.ts";
 import { producePositions } from "./positions.ts";
-import { produceReviewDigest } from "./reviewDigest.ts";
+import { copiedSegmentMembers, produceReviewDigest } from "./reviewDigest.ts";
 import { produceStrategyStatus } from "./strategyStatus.ts";
 import { viewOutput } from "./viewOutput.ts";
 import {
@@ -38,6 +38,14 @@ interface TopicVariant {
   readonly topic_dangling_refs: number;
   readonly check_dangling_refs: number;
 }
+interface MemberOrderVector {
+  readonly mode: string;
+  readonly end: string;
+  readonly closes: Readonly<Record<string, string | null>>;
+  readonly held: Readonly<Record<string, boolean>>;
+  readonly raw: Readonly<Record<string, readonly (number | null)[]>>;
+  readonly expected_order: readonly string[];
+}
 const fixture = JSON.parse(
   readFileSync(new URL("./fixtures/review-views.json", import.meta.url), "utf8"),
 ) as {
@@ -46,6 +54,7 @@ const fixture = JSON.parse(
   readonly expected_bytes: Readonly<Record<string, string>>;
   readonly contexts: readonly ContextVector[];
   readonly topic_variants: readonly TopicVariant[];
+  readonly member_order_vectors: readonly MemberOrderVector[];
 };
 let ds: SyntheticDataset | undefined;
 afterEach(() => ds?.dispose());
@@ -86,6 +95,121 @@ function mismatchPaths(actual: string, expected: string): string[] {
 }
 
 describe("genuine native view fixture", () => {
+  it.each(fixture.member_order_vectors)("uses exact raw member keys: $mode", (vector) =>
+    run((db) => {
+      const source = nativeViewSources(db)[0];
+      if (source === undefined) throw new Error("synthetic source is absent");
+      // Canonical order deliberately opposes Python textual local counter order.
+      const ids = new Map([
+        ["2", inv.asInstrumentId("00000000-0000-8000-8000-000000000002")],
+        ["10", inv.asInstrumentId("00000000-0000-8000-8000-000000000010")],
+      ]);
+      const sources = new Map(
+        [...ids].map(([localId, gid]) => [gid, { table: "inv_instruments", localId }]),
+      );
+      const boundary = { vault: { ...source.vault, sources } };
+      const trends = inv.performance.segmentTrends(
+        new Map(
+          [...ids].map(([localId, id]) => [id, ["equity_global", vector.held[localId]!] as const]),
+        ),
+        new Map(
+          [...ids].map(([localId, gid]) => {
+            const close = vector.closes[localId];
+            return [
+              gid,
+              close == null
+                ? []
+                : [
+                    inv.priceBar({
+                      instrumentId: gid,
+                      date: addDays(vector.end, -7),
+                      close: D("10"),
+                      currency: toCurrency("PLN"),
+                      source: "synthetic",
+                    }),
+                    inv.priceBar({
+                      instrumentId: gid,
+                      date: vector.end,
+                      close: D(close),
+                      currency: toCurrency("PLN"),
+                      source: "synthetic",
+                    }),
+                  ],
+            ];
+          }),
+        ),
+        vector.end,
+      );
+      const raw = trends.get("equity_global");
+      if (raw === undefined) throw new Error("synthetic trend is absent");
+      const local = (gid: string) => sources.get(inv.asInstrumentId(gid))?.localId;
+      for (const member of raw.instruments)
+        expect(member.returns).toEqual(vector.raw[local(member.instrumentId)!]);
+      const segment = {
+        segment: "equity_global",
+        member_instruments: raw.instruments.map((row) => ({
+          instrument_id: String(row.instrumentId),
+          label: null,
+          held: row.held,
+          return_1w: row.returns[0] === null ? null : inv.research.roundShare(row.returns[0]!),
+          return_4w: null,
+        })),
+      };
+      const metadata = { bySegment: trends, labels: new Map() };
+      const before = structuredClone([...trends]);
+      const beforeMembers = structuredClone(segment);
+      const adapted = copiedSegmentMembers(segment, metadata, boundary);
+      expect(adapted.member_instruments.map((row) => local(row.instrument_id))).toEqual(
+        vector.expected_order,
+      );
+      expect([...trends]).toEqual(before);
+      expect(segment).toEqual(beforeMembers);
+      expect(adapted).not.toBe(segment);
+      expect(adapted.member_instruments).not.toBe(segment.member_instruments);
+      for (const row of adapted.member_instruments)
+        expect(segment.member_instruments).not.toContain(row);
+      if (vector.mode === "exact_tie" || vector.mode === "opposite_sign_tie")
+        expect(raw.instruments.map((row) => local(row.instrumentId))).toEqual(["2", "10"]);
+      if (vector.mode === "unequal_raw_same_rounded") {
+        expect(segment.member_instruments[0]?.return_1w).toBe(
+          segment.member_instruments[1]?.return_1w,
+        );
+        expect(raw.instruments.map((row) => local(row.instrumentId))).toEqual(["2", "10"]);
+      }
+      expect(() =>
+        copiedSegmentMembers(
+          { ...segment, member_instruments: segment.member_instruments.slice(1) },
+          metadata,
+          boundary,
+        ),
+      ).toThrow(/coverage/);
+      expect(() =>
+        copiedSegmentMembers(
+          {
+            ...segment,
+            member_instruments: segment.member_instruments.map(
+              () => segment.member_instruments[0]!,
+            ),
+          },
+          metadata,
+          boundary,
+        ),
+      ).toThrow(/coverage/);
+      expect(() =>
+        copiedSegmentMembers(segment, metadata, {
+          vault: { ...boundary.vault, sources: new Map() },
+        }),
+      ).toThrow(/identity/);
+      expect(() =>
+        copiedSegmentMembers(segment, metadata, {
+          vault: {
+            ...boundary.vault,
+            sources: new Map([...sources].map(([id, row]) => [id, { ...row, table: "accounts" }])),
+          },
+        }),
+      ).toThrow(/table/);
+    }),
+  );
   it.each(fixture.topic_variants)(
     "preserves Python topic-thesis Canon behavior: $mode $lang",
     (variant) =>

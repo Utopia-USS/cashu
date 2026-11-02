@@ -14,6 +14,46 @@ import {
   nativeViewSources,
 } from "./viewSource.ts";
 
+/** Only the final Python source-counter tie differs from the native canonical-gid order. */
+export function copiedSegmentMembers<
+  T extends Pick<inv.research.SegmentRow, "segment" | "member_instruments">,
+>(segment: T, trends: inv.research.Trends | null, source: Parameters<typeof copiedSourceId>[0]): T {
+  const raw = trends?.bySegment.get(segment.segment)?.instruments ?? [];
+  const members = segment.member_instruments;
+  const byId = new Map(members.map((row) => [row.instrument_id, row]));
+  if (byId.size !== members.length || raw.length !== members.length)
+    throw new Error("native segment member coverage differs");
+  const sourceIds = new Map<string, string>();
+  for (const [index, row] of raw.entries()) {
+    const gid = String(row.instrumentId);
+    if (!byId.has(gid) || sourceIds.has(gid) || members[index]?.instrument_id !== gid)
+      throw new Error("native segment member identity or order differs");
+    sourceIds.set(gid, String(copiedSourceId(source, gid, "inv_instruments")));
+  }
+  const tied = (a: inv.performance.MemberMove, b: inv.performance.MemberMove) =>
+    a.held === b.held &&
+    ((a.returns[0] ?? null) === null) === ((b.returns[0] ?? null) === null) &&
+    Math.abs(a.returns[0] ?? 0) === Math.abs(b.returns[0] ?? 0);
+  const ordered = [...raw];
+  for (let start = 0; start < raw.length; ) {
+    const first = raw[start];
+    if (first === undefined) throw new Error("native segment member is absent");
+    let end = start + 1;
+    while (end < raw.length && tied(first, raw[end] as inv.performance.MemberMove)) end++;
+    const group = raw.slice(start, end).sort((a, b) => {
+      const left = sourceIds.get(String(a.instrumentId)) as string;
+      const right = sourceIds.get(String(b.instrumentId)) as string;
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
+    ordered.splice(start, end - start, ...group);
+    start = end;
+  }
+  return {
+    ...segment,
+    member_instruments: ordered.map((row) => ({ ...byId.get(String(row.instrumentId))! })),
+  };
+}
+
 /** The real Python golden pins its ambient UI language to Polish; synthetic callers may pin EN. */
 export function produceReviewDigest(
   db: PythonDb,
@@ -60,6 +100,7 @@ export function produceReviewDigest(
       if (Array.isArray(research.segments)) {
         research.segments = research.segments.map((segment, index) => {
           if (segment === null || typeof segment !== "object") return segment;
+          segment = copiedSegmentMembers(segment, loaded.segmentTrends, source);
           const valuation = "valuation" in segment ? segment.valuation : null;
           if (valuation !== null) {
             if (
