@@ -16,3 +16,4 @@ export * from "./portfolio/index.js";
 export * as research from "./research/index.js";
 export * from "./setup.js";
 export * from "./setup.strings.js";
+export * as views from "./views/index.js";

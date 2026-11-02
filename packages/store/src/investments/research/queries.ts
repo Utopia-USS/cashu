@@ -18,6 +18,7 @@ import { loadInstruments, vaultInstrumentGids } from "../queries/instruments.js"
 import { instrumentRoot, marks, type Read } from "../queries/shared.js";
 import { openSignals, type SignalView } from "../queries/signals.js";
 import { renames, transactions } from "../queries/transactions.js";
+import { newestFirst } from "../views/stableOrder.js";
 import {
   instantView,
   later,
@@ -55,19 +56,22 @@ export function runByGid(read: Read, gid: string): ResearchRun | undefined {
 
 /** Python `runs`: newest first. */
 export function runs(read: Read, limit = 20): ResearchRun[] {
-  return read<RunRow>(`${RUN_SQL} ORDER BY r.started_at DESC, r.id DESC LIMIT ?`, limit).map(toRun);
+  const rows = newestFirst(
+    read,
+    "researchRuns",
+    read<RunRow>(RUN_SQL).map(toRun),
+    (row) => row.startedAt,
+  );
+  return limit < 0 ? rows : rows.slice(0, limit);
 }
 
 /** Python `latest_run`: the newest run (of `status` when given). */
 export function latestRun(read: Read, status?: string): ResearchRun | undefined {
-  const r =
+  const rows =
     status === undefined
-      ? read<RunRow>(`${RUN_SQL} ORDER BY r.started_at DESC, r.id DESC LIMIT 1`)[0]
-      : read<RunRow>(
-          `${RUN_SQL} WHERE r.status = ? ORDER BY r.started_at DESC, r.id DESC LIMIT 1`,
-          status,
-        )[0];
-  return r === undefined ? undefined : toRun(r);
+      ? read<RunRow>(RUN_SQL)
+      : read<RunRow>(`${RUN_SQL} WHERE r.status = ?`, status);
+  return newestFirst(read, "researchRuns", rows.map(toRun), (row) => row.startedAt)[0];
 }
 
 /** Python `_last_activity`: the run's start or its newest note's storing time. */
@@ -114,9 +118,12 @@ export function runCounts(read: Read, run: ResearchRun): RunCounts {
 
 /** The `running` runs, newest first. */
 function runningRows(read: Read): ResearchRun[] {
-  return read<RunRow>(
-    `${RUN_SQL} WHERE r.status = 'running' ORDER BY r.started_at DESC, r.id DESC`,
-  ).map(toRun);
+  return newestFirst(
+    read,
+    "researchRuns",
+    read<RunRow>(`${RUN_SQL} WHERE r.status = 'running'`).map(toRun),
+    (row) => row.startedAt,
+  );
 }
 
 /** Python `running_run`: the newest running run that is not stale. */
@@ -178,10 +185,9 @@ export function noteByGid(read: Read, gid: string): ResearchNote | undefined {
 /** Notes by gid (unknown gids are absent). */
 export function notesByGid(read: Read, gids: readonly string[]): ResearchNote[] {
   if (gids.length === 0) return [];
-  return read<NoteRow>(
-    `${NOTE_SQL} WHERE n.gid IN (${marks(gids.length)}) ORDER BY n.id`,
-    ...gids,
-  ).map(toNote);
+  return read<NoteRow>(`${NOTE_SQL} WHERE n.gid IN (${marks(gids.length)}) ORDER BY n.id`, ...gids)
+    .map(toNote)
+    .sort(compareStoredNote);
 }
 
 /** Raw note rows with an extra SQL condition (internal building block). */
@@ -191,7 +197,29 @@ export function noteRows(
   params: readonly (string | number | null)[] = [],
   order = "n.id",
 ): ResearchNote[] {
-  return read<NoteRow>(`${NOTE_SQL} WHERE ${where} ORDER BY ${order}`, ...params).map(toNote);
+  const rows = read<NoteRow>(`${NOTE_SQL} WHERE ${where} ORDER BY ${order}`, ...params).map(toNote);
+  // Keep the existing research storing-rank contract, including observed-time presentation ties.
+  return rows.sort((a, b) =>
+    order === "n.id"
+      ? compareStoredNote(a, b)
+      : a.observedAt < b.observedAt
+        ? 1
+        : a.observedAt > b.observedAt
+          ? -1
+          : -compareStoredNote(a, b),
+  );
+}
+
+function compareStoredNote(a: ResearchNote, b: ResearchNote): number {
+  return a.createdAt < b.createdAt
+    ? -1
+    : a.createdAt > b.createdAt
+      ? 1
+      : a.gid < b.gid
+        ? -1
+        : a.gid > b.gid
+          ? 1
+          : 0;
 }
 
 export interface NotesFilter {

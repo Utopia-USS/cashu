@@ -10,11 +10,12 @@ import type { UiLang } from "@cashu/domain/core";
 import {
   type Instrument,
   type InstrumentId,
-  market,
+  type market,
   type PriceBar,
   type performance as perf,
   research,
 } from "@cashu/domain/investments";
+import { type MarketInput, resolveMarketInput } from "../marketInput.js";
 import { watchedInstrumentGids } from "../queries/alerts.js";
 import { loadInstruments } from "../queries/instruments.js";
 import type { Read } from "../queries/shared.js";
@@ -155,16 +156,14 @@ export function attribution(
   return found;
 }
 
-export interface SegmentsRequest {
+export type SegmentsRequest = MarketInput & {
   /** The vault's performance computation (`PerformanceService.computed`), ending on the view's day. */
   readonly computed: perf.ComputedPerformance;
-  /** The device's price cache (watched instruments' bars). */
-  readonly prices: market.PriceCache;
   readonly order?: market.PriceSourceOrder;
   readonly window?: string;
   readonly now: Instant;
   readonly lang: UiLang;
-}
+};
 
 export type SegmentsResult =
   | { readonly ok: true; readonly value: research.SegmentsPayload }
@@ -180,16 +179,15 @@ export function segmentsView(read: Read, req: SegmentsRequest): SegmentsResult {
   const inputs = found.inputs;
   const missing = watched.filter((g) => !inputs.instruments.has(g));
   const extraInstruments = new Map<InstrumentId, Instrument>();
-  for (const [g, inst] of loadInstruments(read, missing))
-    extraInstruments.set(g as InstrumentId, inst);
+  for (const inst of loadInstruments(read, missing).values()) extraInstruments.set(inst.id, inst);
   const unread = watched.filter((g) => !inputs.bars.has(g));
   const extraBars = new Map<InstrumentId, readonly PriceBar[]>();
   if (unread.length > 0) {
     const maxAge = inputs.policy.maxPriceAgeDays;
     const since = addDays(found.end, -(28 + maxAge + research.TREND_MARGIN_DAYS));
     const all = new Map([...inputs.instruments, ...extraInstruments]);
-    const cached = market.cachedMarketData(
-      req.prices,
+    const cached = resolveMarketInput(
+      req,
       unread.flatMap((g) => all.get(g) ?? []),
       req.order === undefined ? {} : { order: req.order },
     );

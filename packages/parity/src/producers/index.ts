@@ -15,14 +15,22 @@ import { produceBudgetTransfers } from "./budget/transfers.ts";
 import { produceNetworth } from "./core/networth.ts";
 import { produceNetworthSeries } from "./core/networthSeries.ts";
 import { produceOverview } from "./core/overview.ts";
+import { produceAccounts } from "./investments/accounts.ts";
 import { produceAlerts } from "./investments/alerts.ts";
+import { produceAllocationView } from "./investments/allocationView.ts";
 import { produceImportPlan } from "./investments/importPlan.ts";
+import { produceOverview as produceInvestmentsOverview } from "./investments/overview.ts";
 import { producePerformance } from "./investments/performance.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
+import { producePositionDetail } from "./investments/positionDetail.ts";
+import { producePositions } from "./investments/positions.ts";
+import { produceReviewDigest } from "./investments/reviewDigest.ts";
 import { produceRules } from "./investments/rules.ts";
 import { produceSignals } from "./investments/signals.ts";
 import { strategyInputs } from "./investments/strategy.ts";
 import { produceStrategyLoader } from "./investments/strategyLoader.ts";
+import { produceStrategyStatus } from "./investments/strategyStatus.ts";
+import { produceWatchlist } from "./investments/watchlist.ts";
 import { produceLoansValuation } from "./loans/valuation.ts";
 import { produceMcpRead, rawGoldenDir } from "./mcp/privacy.ts";
 import { produceMcpToolSchemas } from "./mcp/toolSchemas.ts";
@@ -184,6 +192,54 @@ export const PRODUCERS: readonly Producer[] = [
     datasets: ["demo", "lab"],
     inputs: [],
     produce: produceImportPlan,
+  },
+  {
+    check: "investments.overview",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceInvestmentsOverview,
+  },
+  {
+    check: "investments.positions",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: producePositions,
+  },
+  {
+    check: "investments.position_detail",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: producePositionDetail,
+  },
+  {
+    check: "investments.allocation_view",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceAllocationView,
+  },
+  {
+    check: "investments.strategy_status",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceStrategyStatus,
+  },
+  {
+    check: "investments.review_digest",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceReviewDigest,
+  },
+  {
+    check: "investments.accounts",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceAccounts,
+  },
+  {
+    check: "investments.watchlist",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceWatchlist,
   },
   {
     check: "mcp.read_strict",

@@ -100,6 +100,7 @@ export * as investmentsPerformance from "./investments/performance/index.js";
 export * as investmentsQueries from "./investments/queries/index.js";
 export * as investmentsResearch from "./investments/research/index.js";
 export * as investmentsServices from "./investments/services/index.js";
+export * as investmentsViews from "./investments/views/index.js";
 export { addLoan, setLoan, setPaymentMatching } from "./loans/commands.js";
 export { loansModule } from "./loans/index.js";
 export {

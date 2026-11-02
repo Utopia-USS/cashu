@@ -1,6 +1,8 @@
 // Signals and rule runs (Python `store/signals.py`): open signals, the newest close per dedup key for
 // cooldowns, rule runs and the "confirmed by the last good run" check. A signal gid may be an alias
 // of an episode (a concurrent open, events.md 8.7): `inv_signal_aliases` maps it to the episode row.
+
+import { byCreation, newestFirst } from "../views/stableOrder.js";
 import { gidOf, jsonList, jsonObject, type Read } from "./shared.js";
 
 export const OPEN_STATUSES = ["active", "acknowledged"] as const;
@@ -43,9 +45,23 @@ const OPEN_SQL = "s.status IN ('active', 'acknowledged')";
 
 /** Python `open_signal_rows`: the open (active / acknowledged) signals, in fold order. */
 export function openSignals(read: Read): SignalView[] {
-  return read<SignalRow>(
-    `SELECT ${SIGNAL_COLUMNS} FROM inv_signals s WHERE ${OPEN_SQL} ORDER BY s.id`,
-  ).map(toSignal);
+  return byCreation(
+    read,
+    "signals",
+    read<SignalRow>(
+      `SELECT ${SIGNAL_COLUMNS} FROM inv_signals s WHERE ${OPEN_SQL} ORDER BY s.id`,
+    ).map(toSignal),
+  );
+}
+
+/** All current episode rows, including closed history, newest creation anchor first. */
+export function allSignals(read: Read): SignalView[] {
+  return byCreation(
+    read,
+    "signals",
+    read<SignalRow>(`SELECT ${SIGNAL_COLUMNS} FROM inv_signals s`).map(toSignal),
+    true,
+  );
 }
 
 /** The episode row of signal `gid` (itself or an alias of it), whatever its status. */
@@ -141,7 +157,13 @@ const RUN_SQL = `SELECT gid, trigger, as_of AS asOf, status,
 
 /** Python `runs`: the newest rule runs first (started_at, then fold order). */
 export function ruleRuns(read: Read, limit = 20): RuleRun[] {
-  return read<RunRow>(`${RUN_SQL} ORDER BY started_at DESC, id DESC LIMIT ?`, limit).map(toRun);
+  const rows = newestFirst(
+    read,
+    "ruleRuns",
+    read<RunRow>(RUN_SQL).map(toRun),
+    (row) => row.startedAt,
+  );
+  return limit < 0 ? rows : rows.slice(0, limit);
 }
 
 /** Python `last_run`. */
@@ -153,9 +175,13 @@ export const GOOD_RUN_STATUSES = ["ok", "partial"] as const;
 
 /** Python `last_good_run_id`: the newest run that did not fail (`ok` / `partial`). */
 export function lastGoodRunGid(read: Read): string | undefined {
-  return read<{ gid: string }>(
-    `SELECT gid FROM inv_rule_runs WHERE status IN ('ok', 'partial')
-     ORDER BY started_at DESC, id DESC LIMIT 1`,
+  return newestFirst(
+    read,
+    "ruleRuns",
+    read<{ gid: string; startedAt: string }>(
+      `SELECT gid, started_at AS startedAt FROM inv_rule_runs WHERE status IN ('ok', 'partial')`,
+    ),
+    (row) => row.startedAt,
   )[0]?.gid;
 }
 

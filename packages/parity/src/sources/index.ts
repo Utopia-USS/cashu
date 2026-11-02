@@ -20,6 +20,12 @@ export type {
   InvTransactionRow,
 } from "./investments.ts";
 export type {
+  MacroCloseSourceRow,
+  ReviewSourceRow,
+  StrategyVersionSourceRow,
+} from "./investmentsViews.ts";
+export { InvestmentsViewsReader } from "./investmentsViews.ts";
+export type {
   AssetDetailRow,
   DepreciationRow,
   LoanRow,

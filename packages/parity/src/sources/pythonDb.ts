@@ -43,6 +43,7 @@ import type { SqlDriver } from "@cashu/store";
 import { type Dataset, datasetAsOf, datasetDir, labRoot } from "./datasets.ts";
 import { bool, int, type Row, text, textOrNull } from "./decode.ts";
 import { InvestmentsReader } from "./investments.ts";
+import { InvestmentsViewsReader } from "./investmentsViews.ts";
 import { LoansAssetsReader } from "./loansAssets.ts";
 import { NaturalKeys, type SqlRows, type SqlValue } from "./naturalKeys.ts";
 import { openReadOnlyDriver } from "./nodeSqliteDriver.ts";
@@ -217,6 +218,7 @@ export class PythonDb implements SqlRows {
   readonly keys: NaturalKeys;
   /** Typed readers of the investments module's tables (`investments.ts`). */
   readonly investments: InvestmentsReader;
+  readonly investmentsViews: InvestmentsViewsReader;
   /** Typed readers of the loans and assets modules' tables (`loansAssets.ts`). */
   readonly loansAssets: LoansAssetsReader;
   private readonly db: DatabaseSync;
@@ -253,6 +255,9 @@ export class PythonDb implements SqlRows {
     this.investments = new InvestmentsReader(
       (sql, ...params) => this.objects(sql, ...params),
       (profileId) => this.accounts(profileId, { includeRemoved: true }),
+    );
+    this.investmentsViews = new InvestmentsViewsReader((sql, ...params) =>
+      this.objects(sql, ...params),
     );
     this.loansAssets = new LoansAssetsReader((sql, ...params) => this.objects(sql, ...params));
   }

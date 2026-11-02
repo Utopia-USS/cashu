@@ -10,7 +10,7 @@ import {
   type Instrument,
   type InstrumentId,
   type ManualValuation,
-  market,
+  type market,
   type PriceBar,
   performance as perf,
   preloadRates,
@@ -18,6 +18,7 @@ import {
   toCurrency,
 } from "@cashu/domain/investments";
 import { profileOf } from "../../core/queries.js";
+import { type MarketInput, resolveMarketInput } from "../marketInput.js";
 import { instrumentByAlias, instrumentByIsin, loadInstruments } from "../queries/instruments.js";
 import type { Read } from "../queries/shared.js";
 import {
@@ -52,15 +53,13 @@ export function findProxy(read: Read, proxy: string): Instrument | undefined {
   return undefined;
 }
 
-export interface InputsRequest {
+export type InputsRequest = MarketInput & {
   /** The last day of the history (the service's `end`, today by default in the app). */
   readonly asOf: string;
   readonly strategy: perf.PerformanceStrategy;
-  /** The device's price cache (shared by every vault on the device). */
-  readonly prices: market.PriceCache;
   /** Provider preference for a tie in the cache (default: the domain's source order). */
   readonly order?: market.PriceSourceOrder;
-}
+};
 
 /** Python `service.load(session, profile, end)` over this vault's view and the price cache. */
 export function performanceInputs(read: Read, request: InputsRequest): perf.PerformanceInputs {
@@ -84,13 +83,13 @@ export function performanceInputs(read: Read, request: InputsRequest): perf.Perf
   if (proxyId !== undefined) ids.add(proxyId);
   // the profile's own view (valuation mode, status incl. frozen, classification overrides)
   const instruments = new Map<InstrumentId, Instrument>();
-  for (const [gid, i] of loadInstruments(read, ids)) instruments.set(gid as InstrumentId, i);
+  for (const i of loadInstruments(read, ids).values()) instruments.set(i.id, i);
 
   let first = end;
   for (const t of txns) if (t.tradeDate < first) first = t.tradeDate;
   const since = addDays(first, -perf.HISTORY_MARGIN_DAYS);
-  const cached = market.cachedMarketData(
-    request.prices,
+  const cached = resolveMarketInput(
+    request,
     instruments.values(),
     request.order === undefined ? {} : { order: request.order },
   );

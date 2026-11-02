@@ -58,6 +58,7 @@ export {
   bucketWord,
   decimalText,
   EMPTY_INSTRUMENT_FILTER,
+  filterAccepts,
   formatDecimal,
   formatPct,
   INSTRUMENT_FILTER_KEYS,
@@ -68,6 +69,7 @@ export {
   RATIO_EPSILON,
   readInstrumentFilter,
   shortSeriesProblem,
+  sortedLabels,
   staleCloseProblem,
   unclassifiedProblem,
 } from "./kinds/support.js";

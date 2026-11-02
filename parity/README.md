@@ -78,7 +78,7 @@ and hashes only; tracebacks go to `errors.log` next to the outputs.
 | `assets.depreciation` | `modules/assets/depreciation.py`, the assets manual rows |
 | `investments.overview`, `.positions`, `.position_detail`, `.signals`, `.alerts`, `.watchlist`, `.strategy_status`, `.accounts`, `.review_digest` | `modules/investments/service/views.py` |
 | `investments.valuation`, `investments.allocation` | `portfolio/valuation.py`, `portfolio/allocation.py` via `service/portfolio.build` (the pure pipeline; TS scope S13) |
-| `investments.allocation_view` | `service/views.allocation_view` on the same state (pure allocation_drift is ported; remaining view composition is S22a) |
+| `investments.allocation_view` | `service/views.allocation_view` on the same state (native view composition reuses the pure allocation_drift evaluator) |
 | `investments.performance` | `performance/service.py` (every range + attribution) |
 | `investments.rules` | `rules/engine.py` outcomes at `as_of` (pure, nothing persisted) |
 | `investments.strategy_loader` | `strategy/loader.py` on each profile's files and the bundled templates |
@@ -94,6 +94,18 @@ typed readers. Signals parity checks the stored view. Alerts parity additionally
 status and the current evaluator state, and includes the alert catalog. Neither view comparison proves
 command atomicity or lifecycle persistence: separate synthetic engine/lifecycle/store and alert CRUD /
 leader-pass tests exercise those contracts. S22c still owns complete daily scheduling and caller wiring.
+
+The eight native overview, positions, position-detail, allocation-view, strategy-status, review-digest,
+accounts and watchlist providers use the same native store assemblers and domain projectors as other
+callers. Their typed copied-source adapter supplies canonical identities, audited legacy ordering and
+versioned raw market snapshots without inventing provider aliases or consuming Python view results.
+Copied raw alert status, declared legacy display references/Canon quirks and int-versus-float wire
+distinctions stay at the parity boundary; native effective status and canonical identities have
+independent store tests.
+Separate synthetic Python projection vectors cover float presentation ties and distinct valuation,
+detail and chart history windows; real-store tests cover replay/rebuild ordering and alias joins.
+Native review context is also implemented and tested; MCP registration/privacy and production refresh,
+wake and scheduling remain separate scopes. Dataset parity does not establish those runtime contracts.
 
 ## Known intentional differences
 

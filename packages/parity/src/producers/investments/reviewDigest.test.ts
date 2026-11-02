@@ -1,0 +1,185 @@
+/** Complete actual Python view bytes over invented SQL only; no demo/lab dataset is read. */
+import { readFileSync } from "node:fs";
+import { investments as inv, parsePyJson } from "@cashu/domain";
+import { investmentsViews } from "@cashu/store";
+import { afterEach, describe, expect, it } from "vitest";
+import { type PythonDb, withPythonDb } from "../../sources/pythonDb.ts";
+import { type SyntheticDataset, syntheticDataset } from "../../sources/testing.ts";
+import { dumps, type OutValue } from "../output.ts";
+import { produceAccounts } from "./accounts.ts";
+import { produceAllocationView } from "./allocationView.ts";
+import { produceOverview } from "./overview.ts";
+import { producePositionDetail } from "./positionDetail.ts";
+import { producePositions } from "./positions.ts";
+import { produceReviewDigest } from "./reviewDigest.ts";
+import { produceStrategyStatus } from "./strategyStatus.ts";
+import { viewOutput } from "./viewOutput.ts";
+import {
+  copiedProjectionInput,
+  copiedSourceGid,
+  copiedWarningMessage,
+  nativeViewSources,
+} from "./viewSource.ts";
+import { produceWatchlist } from "./watchlist.ts";
+
+interface ContextVector {
+  readonly profile: number;
+  readonly lang: "en" | "pl";
+  readonly calendar: Pick<inv.market.CalendarView, "stale" | "events">;
+  readonly expected: unknown;
+}
+const fixture = JSON.parse(
+  readFileSync(new URL("./fixtures/review-views.json", import.meta.url), "utf8"),
+) as {
+  readonly sql: string;
+  readonly files: Readonly<Record<string, string>>;
+  readonly expected_bytes: Readonly<Record<string, string>>;
+  readonly contexts: readonly ContextVector[];
+};
+let ds: SyntheticDataset | undefined;
+afterEach(() => ds?.dispose());
+function run<T>(test: (db: PythonDb) => T): T {
+  ds = syntheticDataset(fixture.sql);
+  for (const [path, text] of Object.entries(fixture.files)) ds.writeFile(path, text);
+  return withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, test);
+}
+const providers: Readonly<Record<string, (db: PythonDb) => OutValue>> = {
+  "investments.overview": produceOverview,
+  "investments.positions": producePositions,
+  "investments.position_detail": producePositionDetail,
+  "investments.allocation_view": produceAllocationView,
+  "investments.strategy_status": produceStrategyStatus,
+  "investments.review_digest": produceReviewDigest,
+  "investments.accounts": produceAccounts,
+  "investments.watchlist": produceWatchlist,
+};
+
+function mismatchPaths(actual: string, expected: string): string[] {
+  const reader = (literal: string, integer: boolean) => ({ literal, integer });
+  const paths: string[] = [];
+  const walk = (a: unknown, b: unknown, path: string) => {
+    if (a === b) return;
+    if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) {
+      paths.push(path);
+      return;
+    }
+    for (const key of new Set([...Object.keys(a), ...Object.keys(b)]))
+      walk(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key],
+        `${path}.${key}`,
+      );
+  };
+  walk(parsePyJson(actual, reader), parsePyJson(expected, reader), "$");
+  return paths;
+}
+
+describe("genuine native view fixture", () => {
+  for (const [name, produce] of Object.entries(providers))
+    it(name, () =>
+      run((db) => {
+        const actual = dumps(produce(db)),
+          expected = fixture.expected_bytes[name];
+        if (expected === undefined) throw new Error("synthetic check oracle is absent");
+        if (actual !== expected)
+          console.warn(
+            `synthetic view mismatch paths ${name}: ${JSON.stringify(mismatchPaths(actual, expected))}`,
+          );
+        expect(actual, name).toBe(expected);
+      }),
+    );
+  it("keeps the copied raw-alert boundary separate from effective production facts", () =>
+    run((db) => {
+      const source = nativeViewSources(db).find((row) => row.profile.id === 1);
+      if (source === undefined) throw new Error("synthetic profile is absent");
+      const production = investmentsViews.portfolioViewInputs(
+        source.vault.store.read.bind(source.vault.store),
+        source.request,
+      );
+      if (!production.ok) throw new Error("synthetic input was refused");
+      const copied = copiedProjectionInput(db, source);
+      expect(production.value.facts.alerts[0]?.status).toBe("expired");
+      expect(copied.facts.alerts[0]?.status).toBe("triggered");
+      const holding = copied.state.valued.valued[0];
+      if (holding === undefined) throw new Error("synthetic held position is absent");
+      expect(source.marketData.data.series(holding.instrument.id)[0]?.source).toBe("synthetic_raw");
+      expect(db.investmentsViews.newestRateDate()).toBe("2026-10-03");
+      expect(nativeViewSources(db)).toHaveLength(2);
+    }));
+  it("matches the actual unlabelled deck and DATE wire rule in both explicit languages", () =>
+    run((db) => {
+      for (const vector of fixture.contexts) {
+        const source = nativeViewSources(db).find((row) => row.profile.id === vector.profile);
+        if (source === undefined) throw new Error("synthetic context profile is absent");
+        const calendar: inv.market.CalendarView = {
+          as_of: db.asOf,
+          from: db.asOf,
+          to: "2026-10-15",
+          fetched_at: null,
+          errors: [],
+          ...vector.calendar,
+        };
+        const value = investmentsViews.readReviewContext(
+          source.vault.store.read.bind(source.vault.store),
+          {
+            clock: investmentsViews.makeReviewClock(source.clock),
+            lang: vector.lang,
+            config: source.strategy.config,
+            calendar,
+          },
+        );
+        expect(JSON.parse(dumps(viewOutput(value, db, source.vault, { floatPaths: [] })))).toEqual(
+          vector.expected,
+        );
+      }
+    }));
+  it("keeps the production research-run identity correct when legacy run/signal counters coincide", () =>
+    run((db) => {
+      const source = nativeViewSources(db).find((row) => row.profile.id === 1);
+      if (source === undefined) throw new Error("synthetic profile is absent");
+      const result = investmentsViews.readReviewDigest(source.vault.store, {
+        ...source.request,
+        macroCloses: source.macroCloses,
+      });
+      if (!result.ok) throw new Error("synthetic digest was refused");
+      const run = result.value.research.run;
+      if (typeof run !== "object" || run === null || !("id" in run))
+        throw new Error("synthetic research run is absent");
+      expect(run.id).toBe(copiedSourceGid(source, "research_runs", 1));
+      expect(run.id).not.toBe(copiedSourceGid(source, "inv_signals", 1));
+      expect(result.value.events.find((event) => event.type === "data_warning")?.run_id).toBe(
+        copiedSourceGid(source, "inv_rule_runs", 2),
+      );
+      const market = result.value.research.market;
+      if (
+        market === null ||
+        typeof market !== "object" ||
+        !("stale" in market) ||
+        !Array.isArray(market.stale)
+      )
+        throw new Error("synthetic native market digest is absent");
+      expect(market.stale.every((gid) => typeof gid === "string")).toBe(true);
+      expect(market.stale).toEqual([...market.stale].sort());
+    }));
+  it("renders only declared warning references and preserves unrelated authored GID text", () =>
+    run((db) => {
+      const source = nativeViewSources(db).find((row) => row.profile.id === 1);
+      if (source === undefined) throw new Error("synthetic profile is absent");
+      const authored = copiedSourceGid(source, "inv_instruments", 1);
+      const warning = {
+        ...inv.invalidTransaction({
+          accountId: inv.asAccountId(copiedSourceGid(source, "accounts", 1)),
+          txnId: inv.asTxnId(copiedSourceGid(source, "inv_transactions", 2)),
+          date: "2026-10-01",
+          reason: `Unrelated authored context ${authored}`,
+        }),
+        context: { untouched: authored },
+      };
+      const message = copiedWarningMessage(warning, source);
+      expect(message).toBe(
+        `Ignored transaction 2 on 2026-10-01 for lots: Unrelated authored context ${authored}`,
+      );
+      expect(warning.context.untouched).toBe(authored);
+      expect(warning.txnId).toBe(copiedSourceGid(source, "inv_transactions", 2));
+    }));
+});

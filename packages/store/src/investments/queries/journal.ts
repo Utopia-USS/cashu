@@ -1,4 +1,6 @@
 // The decision journal and position theses (Python `store/journal.py`, read side).
+
+import { compareReadRank, creationRanks, newestFirst, rankOf } from "../views/stableOrder.js";
 import { gidOf, instrumentRoot, marks, type Read } from "./shared.js";
 
 export interface DecisionView {
@@ -44,10 +46,15 @@ export function decisions(
     where.push("d.instrument_id = (SELECT id FROM view_ids WHERE gid = ?)");
     params.push(instrumentRoot(read, filter.instrument));
   }
-  return read<DecisionView>(
-    `${DECISION_SQL} ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
+  return newestFirst(
+    read,
+    "decisions",
+    read<DecisionView>(
+      `${DECISION_SQL} ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
      ORDER BY d.created_at DESC, d.id DESC`,
-    ...params,
+      ...params,
+    ),
+    (row) => row.createdAt,
   );
 }
 
@@ -69,6 +76,15 @@ export function decisionSignalGids(
        JOIN inv_signals s ON s.id = l.signal_id
        WHERE d.gid IN (${marks(chunk.length)}) ORDER BY first DESC, s.id`,
       ...chunk,
+    );
+    const ranks = creationRanks(
+      read,
+      "signals",
+      rows.map((row) => row.signal),
+    );
+    rows.sort(
+      (a, b) =>
+        b.first - a.first || compareReadRank(rankOf(ranks, a.signal), rankOf(ranks, b.signal)),
     );
     for (const r of rows) out.get(r.decision)?.push(r.signal);
   }
@@ -98,12 +114,17 @@ const THESIS_SQL = `SELECT t.gid, ${gidOf("t.instrument_id")} AS instrument, t.e
 /** Python `theses`: newest first; `instrument` keeps that instrument's (members resolve). */
 export function theses(read: Read, instrument?: string): ThesisView[] {
   if (instrument === undefined) {
-    return read<ThesisView>(`${THESIS_SQL} ORDER BY t.created_at DESC, t.id DESC`);
+    return newestFirst(read, "theses", read<ThesisView>(THESIS_SQL), (row) => row.createdAt);
   }
-  return read<ThesisView>(
-    `${THESIS_SQL} WHERE t.instrument_id = (SELECT id FROM view_ids WHERE gid = ?)
+  return newestFirst(
+    read,
+    "theses",
+    read<ThesisView>(
+      `${THESIS_SQL} WHERE t.instrument_id = (SELECT id FROM view_ids WHERE gid = ?)
      ORDER BY t.created_at DESC, t.id DESC`,
-    instrumentRoot(read, instrument),
+      instrumentRoot(read, instrument),
+    ),
+    (row) => row.createdAt,
   );
 }
 

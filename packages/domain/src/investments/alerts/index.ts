@@ -4,5 +4,6 @@ export { CATALOG, catalogDicts } from "./catalog.js";
 export * from "./effectiveStatus.js";
 export { evaluateAlert } from "./evaluate.js";
 export { alertMessage } from "./messages.js";
+export { floatParameter } from "./parameters.js";
 export * from "./types.js";
 export * from "./validate.js";

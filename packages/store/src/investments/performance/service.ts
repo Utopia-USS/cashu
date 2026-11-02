@@ -9,9 +9,10 @@
 // tables by hand), the end date, the strategy values and the price cache's write counter
 // (`PriceCache.version`; prices are device-local caches, never view tables, so no materializer can
 // maintain the series itself). A hit costs a few counter reads, no SQL over the history.
-import { type market, performance as perf } from "@cashu/domain/investments";
+import { performance as perf } from "@cashu/domain/investments";
 import type { Store } from "../../materialize.js";
 import type { SqlValue } from "../../sql/driver.js";
+import { marketInputFingerprint } from "../marketInput.js";
 import { brokerageAccounts } from "../queries/transactions.js";
 import { type InputsRequest, performanceInputs } from "./inputs.js";
 
@@ -22,7 +23,7 @@ interface Entry {
   readonly store: Store;
   readonly tables: ReadonlySet<string>;
   readonly storeKey: string;
-  readonly prices: market.PriceCache;
+  readonly marketSource: object;
   readonly order: InputsRequest["order"];
   readonly computed: perf.ComputedPerformance;
 }
@@ -35,10 +36,10 @@ function strategyKey(strategy: perf.PerformanceStrategy): string {
 }
 
 /** A view request: the range and the brokerage accounts (gids) it is limited to (null = all). */
-export interface ViewRequest extends InputsRequest {
+export type ViewRequest = InputsRequest & {
   readonly range: string;
   readonly accounts?: readonly string[] | null;
-}
+};
 
 /** Expected refusals of a view (the API answers 422 / 404). */
 export type ViewResult<V> =
@@ -59,13 +60,14 @@ export class PerformanceService {
 
   /** Python `compute`: the full-history computation of the vault up to `asOf`, cached. */
   computed(store: Store, request: InputsRequest): perf.ComputedPerformance {
+    const market = marketInputFingerprint(request);
     const key = (tables: ReadonlySet<string>) =>
-      `${store.version(tables)}|${request.prices.version()}|${request.asOf}|${strategyKey(request.strategy)}`;
+      `${store.version(tables)}|${market.version}|${request.asOf}|${strategyKey(request.strategy)}`;
     const hit = this.#entries.get(store.vault);
     if (
       hit !== undefined &&
       hit.store === store &&
-      hit.prices === request.prices &&
+      hit.marketSource === market.source &&
       hit.order === request.order &&
       hit.storeKey === key(hit.tables)
     ) {
@@ -84,7 +86,7 @@ export class PerformanceService {
       store,
       tables,
       storeKey: key(tables),
-      prices: request.prices,
+      marketSource: market.source,
       order: request.order,
       computed,
     });

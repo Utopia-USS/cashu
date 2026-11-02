@@ -2,7 +2,6 @@
   "$comment": "Live scopes of the TS migration plan of record (scopes-v2): every id in flight, queued, planned or on hold. Done and dropped scopes are not listed. A TRANSITIONAL(<id>) marker must name a live scope or an external condition below, or `pnpm arch:check` fails. Closing a scope removes its markers and its entry here in the same change.",
   "live": {
     "S09b": "planned: LLM HTTP clients (ollama, anthropic merchant-only)",
-    "S22a": "planned: investments views",
     "S22b": "hold: remaining expired alert extension/clearing without rearm and expired-triggered active rearm delegate; expiry-state/counter decision and S57 dependency remain",
     "S22c": "planned: investments daily orchestration",
     "S28d": "hold: relay transport (owner decision D13)",
