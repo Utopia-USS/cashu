@@ -450,8 +450,19 @@
         },
         "review_context()": {
           "calendar": {
-            "events": [],
-            "stale": true
+            "events": [
+              {
+                "country": "US",
+                "date": "2026-10-02",
+                "held": null,
+                "instrument_id": null,
+                "kind": "macro",
+                "label": null,
+                "time": "12:30",
+                "title": "Public GDP announcement"
+              }
+            ],
+            "stale": false
           },
           "card_sources": {
             "calendar": "calendar.events of this tool",
@@ -1045,8 +1056,19 @@
         },
         "review_context()": {
           "calendar": {
-            "events": [],
-            "stale": true
+            "events": [
+              {
+                "country": "US",
+                "date": "2026-10-02",
+                "held": null,
+                "instrument_id": null,
+                "kind": "macro",
+                "label": null,
+                "time": "12:30",
+                "title": "Public GDP announcement"
+              }
+            ],
+            "stale": false
           },
           "card_sources": {
             "calendar": "calendar.events of this tool",
@@ -1532,8 +1554,19 @@
         },
         "review_context()": {
           "calendar": {
-            "events": [],
-            "stale": true
+            "events": [
+              {
+                "country": "US",
+                "date": "2026-10-02",
+                "held": null,
+                "instrument_id": null,
+                "kind": "macro",
+                "label": null,
+                "time": "[amount]:[amount]",
+                "title": "Public GDP announcement"
+              }
+            ],
+            "stale": false
           },
           "card_sources": {
             "calendar": "calendar.events of this tool",
@@ -2118,8 +2151,19 @@
         },
         "review_context()": {
           "calendar": {
-            "events": [],
-            "stale": true
+            "events": [
+              {
+                "country": "US",
+                "date": "2026-10-02",
+                "held": null,
+                "instrument_id": null,
+                "kind": "macro",
+                "label": null,
+                "time": "[amount]:[amount]",
+                "title": "Public GDP announcement"
+              }
+            ],
+            "stale": false
           },
           "card_sources": {
             "calendar": "calendar.events of this tool",
@@ -2588,8 +2632,19 @@
           },
           "review_context()": {
             "calendar": {
-              "events": [],
-              "stale": true
+              "events": [
+                {
+                  "country": "US",
+                  "date": "2026-10-02",
+                  "held": null,
+                  "instrument_id": null,
+                  "kind": "macro",
+                  "label": null,
+                  "time": "12:30",
+                  "title": "Public GDP announcement"
+                }
+              ],
+              "stale": false
             },
             "card_sources": {
               "calendar": "calendar.events of this tool",
@@ -2708,7 +2763,7 @@
                 "last_seen": "2026-09-30T10:00:00+00:00",
                 "message": "[name] finding",
                 "polarity": "negative",
-                "rule": "alert:1",
+                "rule": "alert:123456",
                 "scope": {
                   "instrument_id": "instrument:655137fd81546c0b",
                   "label": "SYN1",
@@ -2716,7 +2771,7 @@
                   "type": "instrument"
                 },
                 "severity": "action",
-                "signal_id": "signal:907ef1a4f097d171",
+                "signal_id": "signal:267734ff7ae8b885",
                 "snoozed_until": "2026-10-02T00:00:00+00:00",
                 "source": "alert",
                 "status": "active"
@@ -3048,8 +3103,19 @@
           },
           "review_context()": {
             "calendar": {
-              "events": [],
-              "stale": true
+              "events": [
+                {
+                  "country": "US",
+                  "date": "2026-10-02",
+                  "held": null,
+                  "instrument_id": null,
+                  "kind": "macro",
+                  "label": null,
+                  "time": "12:30",
+                  "title": "Public GDP announcement"
+                }
+              ],
+              "stale": false
             },
             "card_sources": {
               "calendar": "calendar.events of this tool",
@@ -3489,8 +3555,19 @@
           },
           "review_context()": {
             "calendar": {
-              "events": [],
-              "stale": true
+              "events": [
+                {
+                  "country": "US",
+                  "date": "2026-10-02",
+                  "held": null,
+                  "instrument_id": null,
+                  "kind": "macro",
+                  "label": null,
+                  "time": "[amount]:[amount]",
+                  "title": "Public GDP announcement"
+                }
+              ],
+              "stale": false
             },
             "card_sources": {
               "calendar": "calendar.events of this tool",
@@ -3609,7 +3686,7 @@
                 "last_seen": "2026-09-30T10:00:00+00:00",
                 "message": "[name] finding",
                 "polarity": "negative",
-                "rule": "alert:1",
+                "rule": "alert:[amount]",
                 "scope": {
                   "instrument_id": "instrument:655137fd81546c0b",
                   "label": "[amount]",
@@ -3617,7 +3694,7 @@
                   "type": "instrument"
                 },
                 "severity": "action",
-                "signal_id": "signal:907ef1a4f097d171",
+                "signal_id": "signal:267734ff7ae8b885",
                 "snoozed_until": "2026-10-02T00:00:00+00:00",
                 "source": "alert",
                 "status": "active"
@@ -3940,8 +4017,19 @@
           },
           "review_context()": {
             "calendar": {
-              "events": [],
-              "stale": true
+              "events": [
+                {
+                  "country": "US",
+                  "date": "2026-10-02",
+                  "held": null,
+                  "instrument_id": null,
+                  "kind": "macro",
+                  "label": null,
+                  "time": "[amount]:[amount]",
+                  "title": "Public GDP announcement"
+                }
+              ],
+              "stale": false
             },
             "card_sources": {
               "calendar": "calendar.events of this tool",
@@ -4009,6 +4097,9 @@
         }
       }
     },
-    "sql_delta": "\nUPDATE inv_transactions SET trade_date='2026-09-30', quantity='0.1' WHERE id=2;\nUPDATE inv_transactions SET instrument_id=1, trade_date='2026-09-26', quantity='0.7' WHERE id=6;\nUPDATE alerts SET deleted_at='2026-09-30 10:00:00.000000' WHERE id=1;\nUPDATE inv_signals SET kind='custom',payload='{\"values\":{\"weight\":true},\"when\":\"weight > 0.5\"}' WHERE id=1;\nUPDATE inv_signals SET rule_id='alert:lookalike',payload='{\"values\":{\"weight\":true,\"days_since_last_deposit\":false},\"when\":\"weight > 0.5\"}' WHERE id=4;\n"
+    "sql_delta": "\nUPDATE inv_transactions SET trade_date='2026-09-30', quantity='0.1' WHERE id=2;\nUPDATE inv_transactions SET instrument_id=1, trade_date='2026-09-26', quantity='0.7' WHERE id=6;\nUPDATE alerts SET id=123456, deleted_at='2026-09-30 10:00:00.000000' WHERE id=1;\nUPDATE inv_signals SET rule_id='alert:123456', dedup_key='alert:123456' WHERE id=2;\nUPDATE inv_signals SET kind='custom',payload='{\"values\":{\"weight\":true},\"when\":\"weight > 0.5\"}' WHERE id=1;\nUPDATE inv_signals SET rule_id='alert:lookalike',payload='{\"values\":{\"weight\":true,\"days_since_last_deposit\":false},\"when\":\"weight > 0.5\"}' WHERE id=4;\n"
+  },
+  "extra_files": {
+    "market/calendar.json": "{\"fetched_at\": \"2026-10-01T12:00:00+00:00\", \"from\": \"2026-10-01\", \"to\": \"2026-10-15\", \"macro\": [{\"date\": \"2026-10-02\", \"time\": \"12:30\", \"country\": \"US\", \"title\": \"Public GDP announcement\"}], \"earnings\": [], \"errors\": []}"
   }
 }

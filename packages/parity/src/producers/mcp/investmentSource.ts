@@ -18,8 +18,10 @@ function calendar(db: PythonDb, source: NativeViewSource): inv.market.CalendarVi
   const read = source.vault.store.read.bind(source.vault.store),
     today = source.clock.today;
   let feeds = inv.market.emptyFeeds(today, 14, ["offline"]);
-  const cached = db.files().read("market/calendar.json");
-  if (cached !== undefined) {
+  // Calendar feeds are device-local and outside genesis side files. dataFile copies the checked
+  // relative file into this run before reading it; it never opens the source database.
+  const cached = db.dataFile("market/calendar.json");
+  if (cached !== null) {
     try {
       const data = parsePyJson(new TextDecoder("utf-8", { fatal: true }).decode(cached));
       if (data !== null && typeof data === "object" && !Array.isArray(data))

@@ -23,6 +23,11 @@ it.each(["strict", "amounts"] as const)(
       const edge = expected.get("edge") as CanonObject;
       ds = syntheticDataset(source.sql + (scenario === "edge" ? `\n${edge.get("sql_delta")}` : ""));
       for (const [path, value] of Object.entries(source.files)) ds.writeFile(path, value);
+      const extraFiles = expected.get("extra_files") as CanonObject;
+      for (const [path, value] of extraFiles) {
+        if (typeof value !== "string") throw new Error("invalid synthetic side file");
+        ds.writeFile(path, value);
+      }
       withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, (db) => {
         const wanted = (
           scenario === "base" ? expected.get("base") : edge.get("expected")

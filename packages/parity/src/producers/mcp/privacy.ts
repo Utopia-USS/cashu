@@ -19,6 +19,7 @@ import {
   type NameGuard,
   type NativeToolStore,
   Redactor,
+  scrubText,
   toolContext,
   UnlabelledValue,
 } from "@cashu/mcp";
@@ -172,7 +173,12 @@ export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: 
         const source = keys.source(gid);
         if (source === undefined || source.table !== "alerts")
           throw new Error("missing native alert rule identity");
-        return `alert:${source.localId}`;
+        // Python labels this literal counter as text. Match its legacy masking only after the
+        // production opaque reference passed redaction/leak checking and source-table validation.
+        return scrubText(`alert:${source.localId}`, {
+          strict: context.strict,
+          guard: context.guard,
+        });
       },
     },
   );

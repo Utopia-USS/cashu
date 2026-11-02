@@ -67,7 +67,7 @@ function baseCurrency(baseOfProfile: string | null, inputs: StrategyInputs): inv
 }
 
 /** `service.load(session, profile, end)` over the read-only source. */
-function loadPerformance(
+export function loadPerformance(
   db: PythonDb,
   profile: { readonly id: number; readonly baseCurrency: string | null },
   inputs: StrategyInputs,

@@ -10,6 +10,7 @@ import io
 import json
 import os
 import sqlite3
+import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -52,6 +53,17 @@ def generate(root: Path):
     with sqlite3.connect(dbpath) as connection:
         connection.executescript(fixture["sql"])
     for name, value in fixture["files"].items():
+        path = data / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+    extra_files = {
+        "market/calendar.json": json.dumps({
+            "fetched_at": "2026-10-01T12:00:00+00:00", "from": "2026-10-01", "to": "2026-10-15",
+            "macro": [{"date": "2026-10-02", "time": "12:30", "country": "US", "title": "Public GDP announcement"}],
+            "earnings": [], "errors": [],
+        })
+    }
+    for name, value in extra_files.items():
         path = data / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(value)
@@ -117,7 +129,8 @@ def generate(root: Path):
     delta = """
 UPDATE inv_transactions SET trade_date='2026-09-30', quantity='0.1' WHERE id=2;
 UPDATE inv_transactions SET instrument_id=1, trade_date='2026-09-26', quantity='0.7' WHERE id=6;
-UPDATE alerts SET deleted_at='2026-09-30 10:00:00.000000' WHERE id=1;
+UPDATE alerts SET id=123456, deleted_at='2026-09-30 10:00:00.000000' WHERE id=1;
+UPDATE inv_signals SET rule_id='alert:123456', dedup_key='alert:123456' WHERE id=2;
 UPDATE inv_signals SET kind='custom',payload='{"values":{"weight":true},"when":"weight > 0.5"}' WHERE id=1;
 UPDATE inv_signals SET rule_id='alert:lookalike',payload='{"values":{"weight":true,"days_since_last_deposit":false},"when":"weight > 0.5"}' WHERE id=4;
 """
@@ -129,7 +142,7 @@ UPDATE inv_signals SET rule_id='alert:lookalike',payload='{"values":{"weight":tr
     performance.clear_cache()
     with Session(engine) as session:
         edge = capture(session)
-    results = {"base": baseline, "edge": {"sql_delta": delta, "expected": edge}}
+    results = {"base": baseline, "edge": {"sql_delta": delta, "expected": edge}, "extra_files": extra_files}
     samples = {
         "operations.csv": "Preamble;private owner\nDate;Type;Symbol;Name;Amount\n2026-01-02;BUY;ZXQ;Anna2000;-1 234,50\n2026-01-03;SELL;ZXQ;Łódź99;12,00\n",
         "no-header.tsv": "2026-01-02\t12345678901\tJan Kowalski\n2026-01-03\t98765432109\tanna@example.invalid\n",
@@ -259,7 +272,14 @@ def main():
         (INSPECT_TARGET, vectors),
         (IMPORT_TARGET, import_vectors),
     ):
-        output = json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        output = subprocess.run(
+            ["pnpm", "exec", "biome", "format", "--stdin-file-path", str(target)],
+            input=json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            text=True,
+            capture_output=True,
+            check=True,
+            cwd=ROOT,
+        ).stdout
         if args.check:
             if not target.exists() or target.read_text() != output:
                 raise SystemExit("MCP synthetic vectors are stale")
