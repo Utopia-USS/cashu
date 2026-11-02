@@ -27,6 +27,7 @@ import { signalReconciliationInput } from "./signalReconciliation.js";
 import { applySignalActions } from "./signals.js";
 
 export interface AlertPassInput {
+  readonly pendingWoken?: ReadonlySet<string>;
   readonly data: domain.AlertData;
   readonly now: DateTime;
   readonly config: StrategyConfig | null;
@@ -107,7 +108,7 @@ export function applyAlertChecks(ctx: CommandContext, input: AlertPassInput) {
         ruleId: signal.ruleId,
         dedupKey: signal.dedupKey,
         severity: parseSignalSeverity(signal.severity),
-        status: parseSignalStatus(signal.status),
+        status: parseSignalStatus(input.pendingWoken?.has(signal.gid) ? "active" : signal.status),
         lastSeenAt: storedTime(signal.lastSeenAt),
       })),
     outcomes,

@@ -39,6 +39,7 @@ export interface SignalIdentities {
 }
 
 export interface RuleSignalPass {
+  readonly pendingWoken?: ReadonlySet<string>;
   readonly strategy: StrategyStatus;
   readonly run: string | null;
   readonly at: DateTime;
@@ -101,7 +102,13 @@ export function applyRuleSignals(
     },
   };
   const config = usableConfig(input.strategy);
-  const open = openSignals(ctx.read).filter((signal) => strategySignal(signal.dedupKey));
+  const open = openSignals(ctx.read)
+    .filter((signal) => strategySignal(signal.dedupKey))
+    .map((signal) =>
+      input.pendingWoken?.has(signal.gid)
+        ? { ...signal, status: "active", snoozedUntil: null }
+        : signal,
+    );
   let outcomes: readonly RuleOutcome[] = [];
   const rules: Pick<RuleSpec, "id" | "cooldownDays">[] = [];
   if (config === null) {

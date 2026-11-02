@@ -4,6 +4,7 @@ export * from "./accounts.js";
 export * from "./alertEvaluation.js";
 export * from "./alerts.js";
 export * from "./alertWrites.js";
+export * from "./daily.js";
 export * from "./decisions.js";
 export * from "./derivedSignals.js";
 export * from "./imports.js";

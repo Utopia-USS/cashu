@@ -15,6 +15,7 @@ import { signalReconciliationInput } from "./signalReconciliation.js";
 import { applySignalActions } from "./signals.js";
 
 export interface PlanPassInput {
+  readonly pendingWoken?: ReadonlySet<string>;
   readonly facts: readonly plan.PlanFacts[];
   readonly now: DateTime;
   readonly run: string | null;
@@ -62,7 +63,7 @@ export function applyPlanChecks(ctx: CommandContext, input: PlanPassInput) {
         ruleId: signal.ruleId,
         dedupKey: signal.dedupKey,
         severity: parseSignalSeverity(signal.severity),
-        status: parseSignalStatus(signal.status),
+        status: parseSignalStatus(input.pendingWoken?.has(signal.gid) ? "active" : signal.status),
         lastSeenAt: storedTime(signal.lastSeenAt),
       })),
     outcomes,

@@ -94,7 +94,15 @@ export interface StrategyState {
 
 export type LoadStrategyOptions =
   | { readonly record?: false }
-  | { readonly record: true; readonly writer: EventWriter; readonly env: CommandEnv };
+  | {
+      readonly record: true;
+      readonly writer: EventWriter;
+      readonly env: CommandEnv;
+      /** Background orchestration rechecks authority after file awaits; owner loads omit this. */
+      readonly beforeRecord?: () => boolean;
+      /** Host's existing vault queue; only the synchronous post-file-read phase enters it. */
+      readonly runWrite?: <T>(work: () => T) => Promise<T>;
+    };
 
 /**
  * Python `load`: read and validate the profile's strategy files; with `record`, store a new version
@@ -107,41 +115,46 @@ export async function loadStrategy(
   options: LoadStrategyOptions = {},
 ): Promise<StrategyState> {
   const read = await readStrategyFiles(files);
-  let latest = latestStrategyVersion(store.read.bind(store)) ?? null;
-  const status = strategyStatus(read, latest);
-  let changed = status.changed;
-  const result = status.result;
-  if (options.record === true && read.yaml !== null && read.readError === null && changed) {
-    const out = runCommand(
-      store,
-      options.writer,
-      saveStrategyVersion,
-      { yamlText: read.yaml, mdText: read.md },
-      options.env,
-    );
-    if (!out.ok) throw new Error(`could not record the strategy version: ${out.reason}`);
-    latest = latestStrategyVersion(store.read.bind(store)) ?? null;
-    changed = latest?.sha256 !== status.sha256;
-  }
-  const proxy = result?.config?.benchmark?.proxy;
-  if (options.record === true && proxy) {
-    try {
-      ensureProxy({ store, writer: options.writer, env: options.env }, proxy);
-    } catch {
-      // Python logs it; the benchmark then stays proxy_not_found until a later load
+  const finish = () => {
+    let latest = latestStrategyVersion(store.read.bind(store)) ?? null;
+    const status = strategyStatus(read, latest);
+    let changed = status.changed;
+    const result = status.result;
+    if (options.record === true && options.beforeRecord?.() === false)
+      throw new Error("not_leader");
+    if (options.record === true && read.yaml !== null && read.readError === null && changed) {
+      const out = runCommand(
+        store,
+        options.writer,
+        saveStrategyVersion,
+        { yamlText: read.yaml, mdText: read.md },
+        options.env,
+      );
+      if (!out.ok) throw new Error(`could not record the strategy version: ${out.reason}`);
+      latest = latestStrategyVersion(store.read.bind(store)) ?? null;
+      changed = latest?.sha256 !== status.sha256;
     }
-  }
-  return {
-    state: status.state,
-    result,
-    config: usableConfig(status),
-    issues: result?.issues ?? [],
-    inactiveRules: result?.inactiveRules ?? [],
-    sha256: status.sha256,
-    version: latest,
-    changed: status.state === "missing" || status.readError !== null ? false : changed,
-    readError: status.readError,
+    const proxy = result?.config?.benchmark?.proxy;
+    if (options.record === true && proxy) {
+      try {
+        ensureProxy({ store, writer: options.writer, env: options.env }, proxy);
+      } catch {
+        // Python logs it; the benchmark then stays proxy_not_found until a later load
+      }
+    }
+    return {
+      state: status.state,
+      result,
+      config: usableConfig(status),
+      issues: result?.issues ?? [],
+      inactiveRules: result?.inactiveRules ?? [],
+      sha256: status.sha256,
+      version: latest,
+      changed: status.state === "missing" || status.readError !== null ? false : changed,
+      readError: status.readError,
+    };
   };
+  return options.record === true && options.runWrite ? options.runWrite(finish) : finish();
 }
 
 export type InitStrategyResult =

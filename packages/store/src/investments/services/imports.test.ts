@@ -617,6 +617,45 @@ describe("import service (S22b)", () => {
     expect(s.p.archived.size).toBe(0);
   });
 
+  it.each(["staging", "archive"] as const)(
+    "rechecks authority after %s await without financial effects",
+    async (lostAt) => {
+      const s = setup();
+      const staged = await previewAndStage(
+        { store: s.v.store, staging: s.p.staging, env: s.v.env },
+        { file: { name: "history.csv", content: canonicalCsv() }, account: s.account },
+      );
+      if (!staged.ok) throw new Error(staged.reason);
+      const out = await commitStaged(
+        {
+          store: s.v.store,
+          writer: s.writer,
+          env: s.v.env,
+          staging: {
+            ...s.p.staging,
+            async get(sha, ext) {
+              const value = await s.p.staging.get(sha, ext);
+              if (lostAt === "staging") s.v.env.holder = false;
+              return value;
+            },
+          },
+          archive: {
+            async put(content, ext) {
+              const value = await s.p.archive.put(content, ext);
+              if (lostAt === "archive") s.v.env.holder = false;
+              return value;
+            },
+          },
+        },
+        { fileId: staged.fileId, fileName: "history.csv", account: s.account },
+      );
+      expect(out).toEqual({ ok: false, reason: "not_leader" });
+      expect(s.batches).toHaveLength(0);
+      expect(s.p.archived.size).toBe(lostAt === "archive" ? 1 : 0);
+      expect(s.p.staged.size).toBe(1);
+    },
+  );
+
   it("a commit names a staged file by its sha256 only", async () => {
     const s = setup();
     const deps = {

@@ -98,6 +98,7 @@ export async function commitStaged(
   if (!deps.env.lease.isHolder()) return { ok: false, reason: "not_leader" };
   const ext = archiveExtension(request.fileName);
   const content = await deps.staging.get(request.fileId, ext);
+  if (!deps.env.lease.isHolder()) return { ok: false, reason: "not_leader" };
   if (content === null) return { ok: false, reason: "no_staged_file" };
   // Python never archives a file whose re-preview cannot commit: check before the blob is written
   // (the command checks again against the view it writes to).
