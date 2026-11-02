@@ -51,6 +51,25 @@ export function produceReviewDigest(db: PythonDb): OutValue {
         .signalRuleRuns(source.profile.id)
         .find((row) => row.status === "ok" || row.status === "partial");
       const research: Record<string, unknown> = { ...input.research };
+      if (Array.isArray(research.segments)) {
+        research.segments = research.segments.map((segment) => {
+          if (segment === null || typeof segment !== "object" || !("thesis" in segment))
+            return segment;
+          const thesis = segment.thesis;
+          if (thesis === null) return segment;
+          if (typeof thesis !== "object" || !("id" in thesis) || typeof thesis.id !== "string")
+            throw new Error("native segment thesis identity is not canonical text");
+          // Canon uses parent `thesis` -> inv_theses even for this topic-thesis path.
+          // Preserve that copied-source wire quirk without changing the native topic gid or guard.
+          return {
+            ...segment,
+            thesis: {
+              ...thesis,
+              id: BigInt(copiedSourceId(source, thesis.id, "inv_topic_theses")),
+            },
+          };
+        });
+      }
       for (const field of ["candidates", "highlights"]) {
         const rows = research[field];
         if (Array.isArray(rows))

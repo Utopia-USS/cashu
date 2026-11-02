@@ -28,6 +28,15 @@ interface ContextVector {
   readonly calendar: Pick<inv.market.CalendarView, "stale" | "events">;
   readonly expected: unknown;
 }
+interface TopicVariant {
+  readonly mode: "collision" | "missing";
+  readonly topic_id: number;
+  readonly sql_delta: string;
+  readonly expected_bytes: string;
+  readonly topic_key: string;
+  readonly topic_dangling_refs: number;
+  readonly check_dangling_refs: number;
+}
 const fixture = JSON.parse(
   readFileSync(new URL("./fixtures/review-views.json", import.meta.url), "utf8"),
 ) as {
@@ -35,11 +44,12 @@ const fixture = JSON.parse(
   readonly files: Readonly<Record<string, string>>;
   readonly expected_bytes: Readonly<Record<string, string>>;
   readonly contexts: readonly ContextVector[];
+  readonly topic_variants: readonly TopicVariant[];
 };
 let ds: SyntheticDataset | undefined;
 afterEach(() => ds?.dispose());
-function run<T>(test: (db: PythonDb) => T): T {
-  ds = syntheticDataset(fixture.sql);
+function run<T>(test: (db: PythonDb) => T, variant?: TopicVariant): T {
+  ds = syntheticDataset(`${fixture.sql}\n${variant?.sql_delta ?? ""}`);
   for (const [path, text] of Object.entries(fixture.files)) ds.writeFile(path, text);
   return withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, test);
 }
@@ -75,6 +85,47 @@ function mismatchPaths(actual: string, expected: string): string[] {
 }
 
 describe("genuine native view fixture", () => {
+  it.each(fixture.topic_variants)(
+    "preserves Python topic-thesis Canon behavior: $mode",
+    (variant) =>
+      run((db) => {
+        const source = nativeViewSources(db).find((row) => row.profile.id === 1);
+        if (source === undefined) throw new Error("synthetic topic profile is absent");
+        const result = investmentsViews.readReviewDigest(source.vault.store, {
+          ...source.request,
+          macroCloses: source.macroCloses,
+        });
+        if (!result.ok) throw new Error("synthetic topic digest was refused");
+        const segments = result.value.research.segments;
+        if (!Array.isArray(segments)) throw new Error("synthetic segments are absent");
+        const thesis = segments
+          .map((segment) => segment.thesis)
+          .find((row) => row?.segment === "equity_global");
+        expect(thesis?.id).toBe(copiedSourceGid(source, "inv_topic_theses", variant.topic_id));
+        if (variant.mode === "collision") {
+          expect(thesis.id).not.toBe(copiedSourceGid(source, "inv_theses", variant.topic_id));
+        }
+        // The general guard still rejects this table mismatch without the declared producer adapter.
+        expect(() =>
+          viewOutput(
+            { research: { segments: [{ thesis: { id: thesis.id } }] } },
+            db,
+            source.vault,
+            {
+              floatPaths: [],
+              bareIdTable: "inv_signals",
+            },
+          ),
+        ).toThrow(/reference table differs/);
+        const before = db.keys.dangling;
+        expect(db.keys.key("inv_theses", variant.topic_id)).toBe(variant.topic_key);
+        expect(db.keys.dangling - before).toBe(variant.topic_dangling_refs);
+        expect(variant.topic_dangling_refs).toBe(variant.mode === "missing" ? 1 : 0);
+        expect(dumps(produceReviewDigest(db))).toBe(variant.expected_bytes);
+        // Positive full-check dangling metadata is compatibility evidence, not a valid-oracle claim.
+        expect(variant.check_dangling_refs).toBeGreaterThanOrEqual(variant.topic_dangling_refs);
+      }, variant),
+  );
   for (const [name, produce] of Object.entries(providers))
     it(name, () =>
       run((db) => {

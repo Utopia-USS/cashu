@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import os
 import tempfile
+from collections import Counter
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +18,7 @@ REPO = Path(__file__).resolve().parents[2]
 TARGET = REPO / "packages/parity/src/producers/investments/fixtures/review-views.json"
 
 
-def generate(root: Path) -> dict:
+def generate(root: Path, *, topic_variant: str | None = None) -> dict:
     root = root.resolve()
     os.environ.update(
         CASHU_DATA_DIR=str(root / "data"),
@@ -367,6 +368,33 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
                 updated_at=recent,
             )
         )
+        if topic_variant is not None:
+            if topic_variant not in ("collision", "missing"):
+                raise ValueError("unknown synthetic topic-thesis variant")
+            if topic_variant == "collision":
+                session.add(
+                    m.InvThesis(
+                        id=1,
+                        profile_id=1,
+                        instrument_id=1,
+                        entry_type="trend",
+                        thesis="Synthetic instrument thesis",
+                        created_at=fixed,
+                        updated_at=fixed,
+                        core_changed_at=fixed,
+                    )
+                )
+            session.add(
+                m.InvTopicThesis(
+                    id=1 if topic_variant == "collision" else 2,
+                    profile_id=1,
+                    segment="equity_global",
+                    thesis="Synthetic topic thesis",
+                    created_at=fixed,
+                    updated_at=fixed,
+                    core_changed_at=fixed,
+                )
+            )
         session.commit()
         for profile in profiles[:2]:
             text = yaml if profile.id == 1 else "version: 1\nbase_currency: PLN\nrules: []\n"
@@ -390,9 +418,13 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
                 "strategy_status",
             )
         }
+        if topic_variant is not None:
+            wanted = {"investments.review_digest"}
+        dangling_before = ids.dangling
         with use_language("en"):
             expected = {check.name: check.run(ctx)[0] for check in CHECKS if check.name in wanted}
             expected_bytes = {name: canon.dumps(value) for name, value in expected.items()}
+        check_dangling = ids.dangling - dangling_before
         feed = {
             "stale": False,
             "events": [
@@ -413,7 +445,7 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
         contexts = []
         try:
             calendar.calendar_view = lambda *_args, **_kwargs: feed
-            for lang in ("en", "pl"):
+            for lang in () if topic_variant is not None else ("en", "pl"):
                 with use_language(lang):
                     for profile in profiles[:2]:
                         tool = SimpleNamespace(
@@ -441,19 +473,51 @@ review: {every: 2weeks, day: thursday, cards: [world, positions, events, calenda
             ]
         finally:
             connection.close()
+        # SQLAlchemy index sets have no stable creation order. Canonicalize only index DDL,
+        # retaining every complete statement and every non-index statement's position.
+        index_prefixes = ("CREATE INDEX ", "CREATE UNIQUE INDEX ")
+        ordered_indexes = iter(
+            sorted(statement for statement in dump if statement.startswith(index_prefixes))
+        )
+        ordered_dump = [
+            next(ordered_indexes) if statement.startswith(index_prefixes) else statement
+            for statement in dump
+        ]
+        assert Counter(ordered_dump) == Counter(dump)
+        dump = ordered_dump
         sql = [
             "PRAGMA foreign_keys = OFF;",
             *[f'DROP TABLE IF EXISTS "{table}";' for table in sorted(tables)],
             *dump,
             "PRAGMA foreign_keys = ON;",
         ]
-    return {
+    result = {
         "sql": "\n".join(sql),
         "files": side_files,
         "expected": expected,
         "expected_bytes": expected_bytes,
         "contexts": contexts,
     }
+    if topic_variant is not None:
+        topic_id = 1 if topic_variant == "collision" else 2
+        before = ids.dangling
+        mapped = canon.Canon(ids, {"id": "inv_signals"}).value(
+            {"research": {"segments": [{"thesis": {"id": topic_id}}]}}
+        )
+        result["topic_variant"] = {
+            "mode": topic_variant,
+            "topic_id": topic_id,
+            "sql_delta": "\n".join(
+                line
+                for line in dump
+                if line.startswith(('INSERT INTO "inv_theses"', 'INSERT INTO "inv_topic_theses"'))
+            ),
+            "expected_bytes": expected_bytes["investments.review_digest"],
+            "topic_key": mapped["research"]["segments"][0]["thesis"]["id"],
+            "topic_dangling_refs": ids.dangling - before,
+            "check_dangling_refs": check_dangling,
+        }
+    return result
 
 
 def main() -> int:
@@ -462,6 +526,11 @@ def main() -> int:
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cashu-review-views-") as temporary:
         result = generate(Path(temporary))
+        # Default generate() stays unchanged for the independently pinned 22 portfolio vectors.
+        result["topic_variants"] = [
+            generate(Path(temporary) / mode, topic_variant=mode)["topic_variant"]
+            for mode in ("collision", "missing")
+        ]
         output = formatted(
             json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
             + "\n",
