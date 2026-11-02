@@ -278,7 +278,9 @@ export class PythonDb implements SqlRows {
     const dir = join(this.runDir, "files");
     mkdirSync(dir, { recursive: true });
     const to = join(dir, createHash("sha256").update(relativePath).digest("hex"));
-    copyFileSync(from, to);
+    // A copied file retains source permissions, including 0444 on lab snapshots. Reuse the
+    // run's checked snapshot instead of overwriting that read-only copy for another profile.
+    if (!existsSync(to)) copyFileSync(from, to);
     return new Uint8Array(readFileSync(to));
   }
 

@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { existsSync, readdirSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   manifest,
@@ -16,6 +16,24 @@ afterEach(() => ds.dispose());
 const open = () => PythonDb.open({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot });
 
 describe("PythonDb", () => {
+  it("reuses an optional data-file snapshot when its copied source is read-only", () => {
+    ds = syntheticDataset(TWO_PROFILES);
+    ds.writeFile("market/calendar.json", '{"events":[]}\n');
+    const path = `${ds.dir}/market/calendar.json`;
+    chmodSync(path, 0o444); // Only this invented temporary fixture, never a real source snapshot.
+    const before = manifest(ds.dir);
+    withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, (db) => {
+      const first = db.dataFile("market/calendar.json");
+      expect(first).not.toBeNull();
+      expect(db.dataFile("market/calendar.json")).toEqual(first);
+      expect(db.dataFile("market/missing.json")).toBeNull();
+      expect(db.dataFile("../outside.json")).toBeNull();
+    });
+    expect(readFileSync(path, "utf8")).toBe('{"events":[]}\n');
+    expect(statSync(path).mode & 0o777).toBe(0o444);
+    expect(manifest(ds.dir)).toBe(before);
+  });
+
   it("reads a copy and leaves the source untouched", () => {
     ds = syntheticDataset(TWO_PROFILES);
     const before = manifest(ds.dir);
