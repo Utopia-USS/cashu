@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import dataclasses
 import datetime as dt
 import functools
+import hashlib
 import json
 import math
 import os
@@ -21,6 +23,239 @@ from gen_alert_view_vectors import formatted
 
 ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "packages/domain/src/investments/views/fixtures/portfolio-views.json"
+BASELINE_COMMIT = "b70470c52236451b90fbba996e71ccf49fd5aa06"
+# Pinned canonical input/output hashes from the committed, expanded 22-vector fixture.
+BASELINE_HASHES = [
+    {
+        "label": "household",
+        "view": "allocation_view",
+        "input": "024534146ec66ae6b64af06e899c0360232fbc3d6c2abf0b24320d32b1af79ac",
+        "expected": "a187447248d7817c5c0db10b3b6a1c7f104d993d18f87365f9305a08a78c9d52",
+    },
+    {
+        "label": "household",
+        "view": "accounts_view",
+        "input": "b3ce411db7047efc67d0005c6ace41c4727178fee2bc43379c5fd9ae8e203d35",
+        "expected": "791317395a67e3a195dd5d5fc6a63a29cc67c49e5ae39036211c3480ef46409b",
+    },
+    {
+        "label": "household",
+        "view": "overview",
+        "input": "024534146ec66ae6b64af06e899c0360232fbc3d6c2abf0b24320d32b1af79ac",
+        "expected": "f62e16afad248da2ab87444e65909e69516419b3ab6682c33b1c87b2cd698e50",
+    },
+    {
+        "label": "household",
+        "view": "allocation_view",
+        "input": "b850eeede10077ce0915c5e70679ba4991714e8e6b6e0c5c791a83235843ee95",
+        "expected": "0738ba443b95b46d81e76a4fc79a4ec2a91fddfe2902d881f802e2d3f147205b",
+    },
+    {
+        "label": "household",
+        "view": "accounts_view",
+        "input": "9727cb2cbb651338460742823dde930265ef917a2829ab200db4a7924c648693",
+        "expected": "2fa5b89d8a0ad276248d9f38f0a4782c40134221a8f8a0fcaff24a41ec3ab6d4",
+    },
+    {
+        "label": "household",
+        "view": "overview",
+        "input": "b850eeede10077ce0915c5e70679ba4991714e8e6b6e0c5c791a83235843ee95",
+        "expected": "a8c64f377ed91e4235330ea80ee46eb8df7ef9eefb0d13c662d42e3111261078",
+    },
+    {
+        "label": "household",
+        "view": "positions",
+        "input": "024534146ec66ae6b64af06e899c0360232fbc3d6c2abf0b24320d32b1af79ac",
+        "expected": "5cb7648bd7ea5a194f6cbb487676a6423faf68dc5a84c3ad85a831f48cca1c2f",
+    },
+    {
+        "label": "household",
+        "view": "positions",
+        "input": "b850eeede10077ce0915c5e70679ba4991714e8e6b6e0c5c791a83235843ee95",
+        "expected": "2780842d7eeb8ae64e58e06e72fa8e529921e57da0c0420e2b18bbe48f468ec4",
+    },
+    {
+        "label": "household",
+        "view": "position_detail",
+        "input": "838686d24b998dd948a8d9ae78a4bcae670be815bfeafeaa78edd8c805cd8a55",
+        "expected": "a9d39d6e61d0d3006abfc37ecb331e5f88f8b8976e2bdc622e9ed02db3c5b075",
+    },
+    {
+        "label": "household",
+        "view": "position_chart",
+        "input": "838686d24b998dd948a8d9ae78a4bcae670be815bfeafeaa78edd8c805cd8a55",
+        "expected": "f5f2a198919702d596861131e75b5bbbcdc684176cc41dc1a15c9210006c347f",
+    },
+    {
+        "label": "household",
+        "view": "position_detail",
+        "input": "ad52f2282102550b00d30ffb8185ab9e735c3fba430cfe24db4fa1d4f3bb7f99",
+        "expected": "2188b1bdbcc8fe9a03fb15df1db71e748a94b96b3a3b52486b104365edf49ef5",
+    },
+    {
+        "label": "household",
+        "view": "position_chart",
+        "input": "ad52f2282102550b00d30ffb8185ab9e735c3fba430cfe24db4fa1d4f3bb7f99",
+        "expected": "1ac53ad466f7b0042617fc238f489e1ba1bb29cdba15cbec25448ac5800717a2",
+    },
+    {
+        "label": "household",
+        "view": "watchlist_view",
+        "input": "024534146ec66ae6b64af06e899c0360232fbc3d6c2abf0b24320d32b1af79ac",
+        "expected": "7e88b2ab6d41f9d43a93bc0148285cd79be6608072c558dc08d8b826ec33d2fa",
+    },
+    {
+        "label": "household",
+        "view": "watchlist_view",
+        "input": "b850eeede10077ce0915c5e70679ba4991714e8e6b6e0c5c791a83235843ee95",
+        "expected": "67f5d8a1e856d260f53d958cdf4d0b604752811973834ebcb7db586805254481",
+    },
+    {
+        "label": "wire_float_tie",
+        "view": "positions",
+        "input": "67441546b67066a637920f8d6988a85dfb0e209bd58359ff7c874b66a9092b03",
+        "expected": "fedac2d2efc8be1dca6314a73c0020a7c8a2064e5b2e55736a6e7941a23c53dd",
+    },
+    {
+        "label": "future_price_metadata",
+        "view": "allocation_view",
+        "input": "2376d410703e70142fa5c92d8f08418c535b409f9a127f327feb0ae43fcf0cec",
+        "expected": "8aed106c1d487e9f88b0b2d387d9a0d89faa60921fe4f67b7e0b4191b042aa41",
+    },
+    {
+        "label": "future_price_metadata",
+        "view": "accounts_view",
+        "input": "db1f500b8d256c61435eae5ac72a15a07abc636152f6b844e0ed1b2b2fe543b2",
+        "expected": "897bf3f4b618968b52a2e2b5f8d3c44b829a9dadd7cfa9ef29b6f3fad4f9e240",
+    },
+    {
+        "label": "future_price_metadata",
+        "view": "overview",
+        "input": "2376d410703e70142fa5c92d8f08418c535b409f9a127f327feb0ae43fcf0cec",
+        "expected": "7a8770b5131c28550a30698bc5fd879c462ead5dd0e00e17a21d361689062da0",
+    },
+    {
+        "label": "future_price_metadata",
+        "view": "overview",
+        "input": "2e9b570438bae6931b3f3094a324afac8abcf61ee9f8fa60a2b6ddda4db38ca6",
+        "expected": "0f71d9a8eabbbd75e7edd49fdc67ed7319486ab0e881e1b7ee922188878280c7",
+    },
+    {
+        "label": "sparse_chart_history",
+        "view": "position_detail",
+        "input": "8a384cd2defd2f458e6340b31cb5aa82189c1dc0b5ba4852aea9275d7fd72beb",
+        "expected": "5545a80724ae2ebc07fb9b85ee524b2888cd9257ef2c7655367fbd56dd3ce632",
+    },
+    {
+        "label": "sparse_chart_history",
+        "view": "position_chart",
+        "input": "8a384cd2defd2f458e6340b31cb5aa82189c1dc0b5ba4852aea9275d7fd72beb",
+        "expected": "e8fc06045540a9a3b9b39608ce865b20e7dbefa14566527376b4fb0fcd8fae7a",
+    },
+    {
+        "label": "future_and_nullable_history",
+        "view": "position_detail",
+        "input": "5062c6f4fdd1dbcfc41c3c0d64edef81a8a8c20d955319da03f34a786c3cac21",
+        "expected": "5828c29de5885ec0f4d2b770e27f271e95272c47c0c84af28be59231fa5efc35",
+    },
+]
+
+
+def structural_hash(value):
+    text = json.dumps(
+        value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    )
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def compact_vectors(expanded):
+    """Pool only declared fixture input sections and typed PriceBar series, never authored payloads."""
+    names = ("state", "facts", "strategyFiles", "options", "chartBars", "detailBars", "historyWire")
+    pools = {name: [] for name in (*names, "priceBars", "barSeries")}
+    indexes = {name: {} for name in pools}
+
+    def intern(name, value):
+        key = structural_hash(value)
+        if key not in indexes[name]:
+            indexes[name][key] = len(pools[name])
+            pools[name].append(value)
+        return indexes[name][key]
+
+    def series(bars):
+        return intern("barSeries", [intern("priceBars", bar) for bar in bars])
+
+    def state(value):
+        data = copy.deepcopy(value)
+        market = data["market"].pop("bars")["$map"]
+        history = data.pop("historyBars")["$map"]
+        return intern(
+            "state",
+            {
+                "data": data,
+                "marketBarSeries": [[key, series(bars)] for key, bars in market],
+                "historyBarSeries": [[key, series(bars)] for key, bars in history],
+            },
+        )
+
+    inputs, input_indexes, cases = [], {}, []
+    for case in expanded["cases"]:
+        raw = case["input"]
+        stored = copy.deepcopy(raw)
+        for name in names:
+            if name not in raw:
+                continue
+            value = raw[name]
+            stored[name] = (
+                state(value)
+                if name == "state"
+                else intern(name, series(value) if name in ("chartBars", "detailBars") else value)
+            )
+        key = structural_hash(raw)
+        if key not in input_indexes:
+            input_indexes[key] = len(inputs)
+            inputs.append(stored)
+        cases.append({**case, "input": input_indexes[key]})
+    result = {"baselineCommit": BASELINE_COMMIT, "pools": pools, "inputs": inputs, "cases": cases}
+
+    def expand_series(index):
+        return [copy.deepcopy(pools["priceBars"][bar]) for bar in pools["barSeries"][index]]
+
+    def expand_input(index):
+        value = copy.deepcopy(inputs[index])
+        for name in names:
+            if name not in value:
+                continue
+            entry = copy.deepcopy(pools[name][value[name]])
+            if name == "state":
+                data = entry["data"]
+                data["market"]["bars"] = {
+                    "$map": [[key, expand_series(ref)] for key, ref in entry["marketBarSeries"]]
+                }
+                data["historyBars"] = {
+                    "$map": [[key, expand_series(ref)] for key, ref in entry["historyBarSeries"]]
+                }
+                value[name] = data
+            else:
+                value[name] = expand_series(entry) if name in ("chartBars", "detailBars") else entry
+        return value
+
+    hashes = []
+    for before, after in zip(expanded["cases"], cases, strict=True):
+        restored = expand_input(after["input"])
+        assert structural_hash(restored) == structural_hash(before["input"])
+        assert structural_hash(after["expected"]) == structural_hash(before["expected"])
+        hashes.append(
+            {
+                "label": after["label"],
+                "view": after["view"],
+                "input": structural_hash(restored),
+                "expected": structural_hash(after["expected"]),
+            }
+        )
+    assert hashes == BASELINE_HASHES, "expanded vector hashes differ from committed baseline"
+    assert len(cases) == 22 and len(inputs) == 12
+    result["proof"] = hashes
+    return result
 
 
 def camel(key):
@@ -551,7 +786,7 @@ def main():
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cashu-portfolio-view-") as root:
-        value = generate(Path(root))
+        value = compact_vectors(generate(Path(root)))
         text = formatted(json.dumps(value, ensure_ascii=False, allow_nan=False), TARGET)
         if args.check:
             if not TARGET.exists() or TARGET.read_text() != text:

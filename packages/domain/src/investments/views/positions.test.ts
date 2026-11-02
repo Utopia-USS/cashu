@@ -32,12 +32,58 @@ import { watchlistView } from "./watchlist.js";
 interface Vector {
   label: string;
   view: string;
-  input: Record<string, unknown>;
+  input: number;
   expected: unknown;
 }
 const vectors = JSON.parse(
   readFileSync(new URL("./fixtures/portfolio-views.json", import.meta.url), "utf8"),
-) as { cases: Vector[] };
+) as {
+  cases: Vector[];
+  inputs: Record<string, unknown>[];
+  pools: Record<InputSection | "priceBars" | "barSeries", unknown[]>;
+};
+type InputSection =
+  | "state"
+  | "facts"
+  | "strategyFiles"
+  | "options"
+  | "chartBars"
+  | "detailBars"
+  | "historyWire";
+interface StoredState {
+  data: Record<string, unknown>;
+  marketBarSeries: [string, number][];
+  historyBarSeries: [string, number][];
+}
+function pooled<T>(name: InputSection | "priceBars" | "barSeries", index: number): T {
+  const value = vectors.pools[name][index];
+  if (value === undefined) throw new Error("absent synthetic input pool entry");
+  return structuredClone(value) as T;
+}
+function expandedSeries(index: number): unknown[] {
+  return pooled<number[]>("barSeries", index).map((bar) => pooled("priceBars", bar));
+}
+/** Only the declared fixture fields are pooled; authored payload objects are never interpreted. */
+function expandedInput(index: number): Record<string, unknown> {
+  const value = structuredClone(vectors.inputs[index]);
+  if (value === undefined) throw new Error("absent synthetic input record");
+  const stored = pooled<StoredState>("state", value.state as number);
+  const state = stored.data,
+    market = state.market as Record<string, unknown>;
+  market.bars = { $map: stored.marketBarSeries.map(([id, ref]) => [id, expandedSeries(ref)]) };
+  state.historyBars = {
+    $map: stored.historyBarSeries.map(([id, ref]) => [id, expandedSeries(ref)]),
+  };
+  value.state = state;
+  for (const name of ["facts", "strategyFiles", "options", "historyWire"] as const) {
+    if (Object.hasOwn(value, name)) value[name] = pooled(name, value[name] as number);
+  }
+  for (const name of ["chartBars", "detailBars"] as const) {
+    if (Object.hasOwn(value, name))
+      value[name] = expandedSeries(pooled<number>(name, value[name] as number));
+  }
+  return value;
+}
 /** Tagged fixture values, not a production payload heuristic. */
 function decode(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(decode);
@@ -145,7 +191,7 @@ function history(value: unknown): PositionHistory {
   };
 }
 function input(v: Vector) {
-  const raw = decode(v.input) as Record<string, unknown>,
+  const raw = decode(expandedInput(v.input)) as Record<string, unknown>,
     status = strategyStatus(
       raw.strategyFiles as Parameters<typeof strategyStatus>[0],
       raw.strategyLatest as Parameters<typeof strategyStatus>[1],
