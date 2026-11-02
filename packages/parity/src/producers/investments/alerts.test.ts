@@ -12,6 +12,32 @@ const fixture = JSON.parse(
 let ds: SyntheticDataset | undefined;
 afterEach(() => ds?.dispose());
 
+it("preserves real tags on the current schema and mirrors the migration NULL default on old copies", () => {
+  ds = syntheticDataset(fixture.sql);
+  const read = () =>
+    withPythonDb({ dataset: "demo", sourceDir: ds?.dir, runRoot: ds?.runRoot }, (db) => ({
+      rows: db.investments.storedAlerts(1),
+      other: db.investments.storedAlerts(2),
+      output: JSON.parse(dumps(produceAlerts(db))) as Record<string, unknown>,
+    }));
+  const current = read();
+  expect(current.rows.find((r) => r.id === 1)?.tag).toBe("cena");
+  expect(current.rows).toHaveLength(11);
+  expect(current.other.map((r) => r.id)).toEqual([12]);
+  ds.exec("ALTER TABLE alerts DROP COLUMN tag");
+  const legacy = read();
+  expect(legacy.rows).toEqual(current.rows.map((r) => ({ ...r, tag: null })));
+  expect(legacy.other).toEqual(current.other.map((r) => ({ ...r, tag: null })));
+  const expected = Object.fromEntries(
+    Object.entries(current.output).map(([key, value]) => {
+      if (key === "alert_kinds") return [key, value];
+      const profile = value as { readonly alerts: readonly Record<string, unknown>[] };
+      return [key, { ...profile, alerts: profile.alerts.map((a) => ({ ...a, tag: null })) }];
+    }),
+  );
+  expect(legacy.output).toEqual(expected);
+});
+
 it("matches actual Python alerts_view and the complete catalog with native dynamic states", () => {
   ds = syntheticDataset(fixture.sql);
   withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, (db) => {

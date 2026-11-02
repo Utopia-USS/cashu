@@ -240,9 +240,12 @@ export class InvestmentsReader {
 
   /** Legacy stored status is retained here; production effective-status queries are separate. */
   storedAlerts(profileId: number): InvAlertRow[] {
+    // The Python oracle migrates its private copy. This raw copied source can predate
+    // 0027_alert_tag, whose only addition here is a nullable tag with a NULL default.
+    const hasTag = this.query("PRAGMA table_info(alerts)").some((r) => text(r, "name") === "tag");
     return this.query(
       `SELECT id, instrument_id, scope, kind, params, polarity, severity, title,
-      note, tag, source, created_by, status, cooldown_days, expires_at, snoozed_until,
+      note, ${hasTag ? "tag" : "NULL AS tag"}, source, created_by, status, cooldown_days, expires_at, snoozed_until,
       last_triggered_at, last_checked_at, last_value, created_at, updated_at FROM alerts
       WHERE profile_id = ? AND deleted_at IS NULL ORDER BY id`,
       profileId,
