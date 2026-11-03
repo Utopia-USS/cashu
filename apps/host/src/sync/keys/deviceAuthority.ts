@@ -10,14 +10,21 @@ export interface NativeVaultInventoryEntry {
   readonly deviceId: string;
   readonly vaultRoot: string;
   readonly state: "ready" | "provisioning" | "pairing" | "recovery";
-  /** A validated enrollment record is required by the host before this candidate is loaded. */
+  /** Workflow origin hint; admission comes from keys, certificates and authenticated history. */
   readonly enrollment: "creator" | "pairing" | "recovery";
   readonly legacyBridge?: { readonly profileId: number; readonly ordinal: number };
 }
 
 class AuthorityRefusal extends Error {
+  readonly code:
+    | "invalid_inventory"
+    | "missing_authority"
+    | "invalid_authority"
+    | "untrusted_identity"
+    | "incomplete_history"
+    | "profile_mismatch";
   constructor(
-    readonly code:
+    code:
       | "invalid_inventory"
       | "missing_authority"
       | "invalid_authority"
@@ -26,6 +33,7 @@ class AuthorityRefusal extends Error {
       | "profile_mismatch",
   ) {
     super(code);
+    this.code = code;
   }
 }
 
@@ -70,6 +78,32 @@ function validateNativeVaultInventory(entry: NativeVaultInventoryEntry, dataDir:
     }
   } catch {
     throw new AuthorityRefusal("invalid_inventory");
+  }
+}
+
+/** Validate the whole candidate inventory before any vault or metadata DB is opened. */
+export function validateNativeVaultInventorySet(
+  entries: readonly NativeVaultInventoryEntry[],
+  dataDir: string,
+): void {
+  const ids = new Set<string>();
+  const roots = new Set<string>();
+  const legacyStoreRoot = resolve(dataDir, "stores");
+  for (const entry of entries) {
+    validateNativeVaultInventory(entry, dataDir);
+    const root = realpathSync(entry.vaultRoot);
+    if (ids.has(entry.vaultId) || roots.has(root)) {
+      throw new AuthorityRefusal("invalid_inventory");
+    }
+    const legacy = relative(legacyStoreRoot, root);
+    if (
+      legacy === "" ||
+      (!legacy.startsWith(`..${sep}`) && legacy !== ".." && !isAbsolute(legacy))
+    ) {
+      throw new AuthorityRefusal("invalid_inventory");
+    }
+    ids.add(entry.vaultId);
+    roots.add(root);
   }
 }
 

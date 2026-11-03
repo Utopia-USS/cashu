@@ -12,6 +12,8 @@ import { useCommand, useQuery } from "@cashu/store-react";
 import { curvePreview, monthlyLoss, ratePct, valuationLabel } from "@cashu/ui-logic/assets/logic";
 import { cur0s, round0, TYPE_LABEL } from "@cashu/ui-logic/core/format";
 import { useState } from "react";
+import { O } from "../CommandOutcome.strings.js";
+import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { W } from "./OverviewWidgets.strings.js";
 
 const queries = overviewQueries({ prices: null });
@@ -102,6 +104,7 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
   const editCommand = useCommand(updateAssetDetails);
   const removeCommand = useCommand(removeOverviewAsset);
   const restoreCommand = useCommand(restoreOverviewAsset);
+  const durable = useDurableCommands();
   const [selected, setSelected] = useState<string | null>(null);
   const [newType, setNewType] = useState<string | null>(null);
   const [form, setForm] = useState<Form>({
@@ -139,7 +142,20 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
           cur0s(live.loss, target?.currency ?? form.currency),
         );
   const open = newType !== null || target !== null;
+  const protectDraft = () => {
+    if (
+      durable.uncertain("asset-create") ||
+      (target !== null &&
+        (durable.uncertain(`asset-edit:${target.gid}`) ||
+          durable.uncertain(`asset-remove:${target.gid}`)))
+    ) {
+      setError(O.unknown);
+      return true;
+    }
+    return false;
+  };
   const openNew = (type: string, currency: string) => {
+    if (protectDraft()) return;
     setSelected(null);
     setNewType(type);
     setForm({
@@ -157,6 +173,7 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     setError(null);
   };
   const openEdit = (gid: string) => {
+    if (protectDraft()) return;
     const row = rows.find((entry) => entry.gid === gid);
     if (!row) return;
     setNewType(null);
@@ -176,6 +193,7 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     setError(null);
   };
   const close = () => {
+    if (protectDraft()) return;
     setSelected(null);
     setNewType(null);
     setError(null);
@@ -203,7 +221,7 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     setError(null);
     try {
       if (target === null && newType !== null) {
-        const result = await create.run({
+        const result = await durable.run("asset-create", create, {
           name: form.name,
           type,
           currency: form.currency,
@@ -219,24 +237,23 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
               }
             : { value: amount as string, onDate: form.onDate }),
         });
-        if (!result.ok) {
-          setError(W.assetRefused);
+        if (result.kind !== "completed") {
+          setError(commandFailure(result, W.assetRefused));
           return;
         }
       } else if (target !== null) {
         if (target.kind === "vehicle") {
-          if (
-            purchasePrice === null ||
-            annualRate === null ||
-            !(
-              await editCommand.run({
-                account: target.gid,
-                depreciation: { purchasePrice, purchaseDate: form.purchaseDate, annualRate, floor },
-                ...(form.note !== (target.note ?? "") ? { note: form.note } : {}),
-              })
-            ).ok
-          ) {
+          if (purchasePrice === null || annualRate === null) {
             setError(W.assetRefused);
+            return;
+          }
+          const result = await durable.run(`asset-edit:${target.gid}`, editCommand, {
+            account: target.gid,
+            depreciation: { purchasePrice, purchaseDate: form.purchaseDate, annualRate, floor },
+            ...(form.note !== (target.note ?? "") ? { note: form.note } : {}),
+          });
+          if (result.kind !== "completed") {
+            setError(commandFailure(result, W.assetRefused));
             return;
           }
         } else {
@@ -244,18 +261,16 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
             amount !== null &&
             (target.amount === null || !target.amount.eq(D(amount)) || target.asOf !== form.onDate);
           const noteChanged = form.note !== (target.note ?? "");
-          if (
-            (valueChanged || noteChanged) &&
-            !(
-              await editCommand.run({
-                account: target.gid,
-                ...(valueChanged ? { value: amount as string, onDate: form.onDate } : {}),
-                ...(noteChanged ? { note: form.note } : {}),
-              })
-            ).ok
-          ) {
-            setError(W.assetRefused);
-            return;
+          if (valueChanged || noteChanged) {
+            const result = await durable.run(`asset-edit:${target.gid}`, editCommand, {
+              account: target.gid,
+              ...(valueChanged ? { value: amount as string, onDate: form.onDate } : {}),
+              ...(noteChanged ? { note: form.note } : {}),
+            });
+            if (result.kind !== "completed") {
+              setError(commandFailure(result, W.assetRefused));
+              return;
+            }
           }
         }
       } else {
@@ -270,9 +285,11 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
   const remove = async () => {
     if (target === null || !rows.some((row) => row.gid === target.gid)) return;
     try {
-      const result = await removeCommand.run({ account: target.gid });
-      if (!result.ok) {
-        setError(W.assetRefused);
+      const result = await durable.run(`asset-remove:${target.gid}`, removeCommand, {
+        account: target.gid,
+      });
+      if (result.kind !== "completed") {
+        setError(commandFailure(result, W.assetRefused));
         return;
       }
       setUndone(target.gid);
@@ -284,8 +301,11 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
   const undo = async () => {
     if (undone === null) return;
     try {
-      if ((await restoreCommand.run({ account: undone })).ok) setUndone(null);
-      else setError(W.assetRefused);
+      const result = await durable.run(`asset-restore:${undone}`, restoreCommand, {
+        account: undone,
+      });
+      if (result.kind === "completed") setUndone(null);
+      else setError(commandFailure(result, W.assetRefused));
     } catch {
       setError(W.assetRefused);
     }

@@ -7,6 +7,7 @@ import {
 import { useCommand, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { useState } from "react";
+import { commandFailure, type GuardedOutcome, useDurableCommands } from "../useDurableCommand.js";
 import {
   researchCalendarModel,
   researchDisplayDay,
@@ -69,6 +70,7 @@ export function useResearchScreen(options: ResearchScreenOptions) {
   const restore = useCommand(commands.restoreNote);
   const accept = useCommand(commands.acceptCandidate);
   const undo = useCommand(commands.undoAcceptCandidate);
+  const durable = useDurableCommands();
   const rows = "notes" in data ? (data.notes ?? []) : [];
   const runs = "runs" in data ? (data.runs ?? []) : [];
   const candidates = rows.filter((row) => row.kind === "candidate");
@@ -118,10 +120,10 @@ export function useResearchScreen(options: ResearchScreenOptions) {
   const openTopic = (key: string) => {
     if (!research.isNoteSegment(key)) return;
     setTopic(key);
-    void mark.run({ segment: key });
+    void durable.run(`mark-segment:${key}`, mark, { segment: key });
   };
   const openAsset = (instrument: string, gid?: string) => {
-    void mark.run({ instrument });
+    void durable.run(`mark-instrument:${instrument}`, mark, { instrument });
     options.onOpenAsset(instrument, gid);
   };
   const openNote = (gid: string) => {
@@ -129,11 +131,11 @@ export function useResearchScreen(options: ResearchScreenOptions) {
     if (!row) return;
     setNote(gid);
   };
-  const finish = async (promise: Promise<{ ok: boolean; reason?: string }>, success = S.saved) => {
+  const finish = async (promise: Promise<GuardedOutcome<unknown>>, success = S.saved) => {
     try {
       const result = await promise;
-      setNotice(result.ok ? success : `${S.refused}: ${result.reason ?? ""}`);
-      return result.ok;
+      setNotice(result.kind === "completed" ? success : commandFailure(result, S.refused));
+      return result.kind === "completed";
     } catch {
       setNotice(S.unknown);
       return false;
@@ -180,13 +182,15 @@ export function useResearchScreen(options: ResearchScreenOptions) {
     openTopic,
     openAsset,
     openNote,
-    dismiss: (gid: string) => finish(dismiss.run({ note: gid, lang: lang() })),
-    restore: (gid: string) => finish(restore.run({ note: gid, lang: lang() })),
+    dismiss: (gid: string) =>
+      finish(durable.run(`dismiss:${gid}`, dismiss, { note: gid, lang: lang() })),
+    restore: (gid: string) =>
+      finish(durable.run(`restore:${gid}`, restore, { note: gid, lang: lang() })),
     accept: (gid: string, instrument: string | null) =>
       instrument
-        ? finish(accept.run({ note: gid, lang: lang() }))
+        ? finish(durable.run(`accept:${gid}`, accept, { note: gid, lang: lang() }))
         : Promise.resolve(setNotice(S.resolutionUnavailable)),
-    undoAccept: (gid: string) => finish(undo.run({ note: gid })),
+    undoAccept: (gid: string) => finish(durable.run(`undo:${gid}`, undo, { note: gid })),
     busy:
       mark.isPending ||
       dismiss.isPending ||

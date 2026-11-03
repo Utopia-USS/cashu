@@ -3,7 +3,7 @@
 // when the last one leaves, the entry lingers briefly (a remount or a StrictMode double effect reuses
 // it) and is then released, which stops the live query. Every pushed value is structurally shared with
 // the previous one, and an unchanged value notifies nobody.
-import type { CommandResult } from "@cashu/store";
+import { mintUlid } from "@cashu/store";
 import { type Query, type QueryArgs, queryKey } from "@cashu/store/query";
 import type { UiAction, UiActionResult } from "@cashu/store/ui-actions";
 import { ALWAYS_ONLINE, type ConnectionSource } from "./connection.js";
@@ -11,6 +11,8 @@ import { replaceEqual } from "./structural.js";
 import type {
   Adapter,
   AnyCommand,
+  CommandAttempt,
+  CommandOutcome,
   QueryEntry,
   SnapshotState,
   StoreClient,
@@ -26,6 +28,7 @@ export interface CacheOptions {
   readonly idleMs?: number;
   /** The link to the store's process (default: always online, the in-process client). */
   readonly connection?: ConnectionSource;
+  readonly mintKey?: () => string;
 }
 
 function targetKey(target: Target): string {
@@ -201,6 +204,7 @@ export class QueryCache implements StoreClient {
   readonly lingerMs: number;
   readonly idleMs: number;
   readonly connection: ConnectionSource;
+  readonly mintKey: () => string;
   readonly #entries = new Map<string, Entry<unknown>>();
 
   constructor(adapter: Adapter, options: CacheOptions) {
@@ -209,6 +213,7 @@ export class QueryCache implements StoreClient {
     this.lingerMs = options.lingerMs ?? 1_000;
     this.idleMs = options.idleMs ?? 10_000;
     this.connection = options.connection ?? ALWAYS_ONLINE;
+    this.mintKey = options.mintKey ?? (() => mintUlid(Date.now()));
   }
 
   get vaults(): readonly string[] {
@@ -231,12 +236,47 @@ export class QueryCache implements StoreClient {
     return entry;
   }
 
-  run<I, R, In>(
+  async run<I, R, In>(
     target: Target,
     command: AnyCommand<I, R, In>,
     input: In,
-  ): Promise<CommandResult<R>> {
-    return this.adapter.run(target, command, input) as Promise<CommandResult<R>>;
+    suppliedAttempt?: CommandAttempt,
+  ): Promise<CommandOutcome<R>> {
+    let attempt: CommandAttempt;
+    try {
+      attempt =
+        suppliedAttempt ??
+        Object.freeze({
+          key: this.mintKey(),
+          target: Object.freeze({ ...target }),
+          command: command.id,
+        });
+    } catch {
+      return { kind: "not_started", reason: "key_unavailable" };
+    }
+    if (
+      attempt.command !== command.id ||
+      attempt.target.kind !== target.kind ||
+      (attempt.target.kind === "vault" &&
+        target.kind === "vault" &&
+        attempt.target.vault !== target.vault)
+    )
+      return { kind: "refused", reason: "attempt_scope_mismatch" };
+    try {
+      return (await this.adapter.run(target, command, input, attempt)) as CommandOutcome<R>;
+    } catch {
+      return { kind: "outcome_unknown", key: attempt.key, attempt };
+    }
+  }
+
+  async reconcile<R>(attempt: CommandAttempt): Promise<CommandOutcome<R>> {
+    if (this.adapter.reconcile === undefined)
+      return { kind: "outcome_unknown", key: attempt.key, attempt };
+    try {
+      return (await this.adapter.reconcile(attempt)) as CommandOutcome<R>;
+    } catch {
+      return { kind: "outcome_unknown", key: attempt.key, attempt };
+    }
   }
 
   /** A released entry subscribed again (a component kept it across the release): reopen it. */

@@ -1,7 +1,7 @@
 // The synchronous native tool boundary. The host owns queues and supplies a buffered command writer.
 import type { IsoDate } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
-import type { Command, CommandOutcome } from "@cashu/store";
+import type { Command, CommandResult } from "@cashu/store";
 import type { ProfileView } from "@cashu/store/core";
 import type { Read } from "@cashu/store/query";
 
@@ -26,7 +26,7 @@ export interface NativeToolStore {
   /** Profile-only YAML authority; deliberately separate from general import-file authority. */
   readonly readInvestmentMappingFile?: (rawPath: string) => string;
   readonly read: Read;
-  run<I, R>(command: Command<I, R>, input: unknown): CommandOutcome<R>;
+  run<I, R>(command: Command<I, R>, input: unknown): CommandResult<R> | Promise<CommandResult<R>>;
   readonly prices: market.PriceCache | null;
   readonly fxNewest: string | null;
   readonly profile: ProfileView;

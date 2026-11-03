@@ -9,6 +9,8 @@ import { useCommand, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
+import { O } from "../CommandOutcome.strings.js";
+import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { L } from "./Loans.strings.js";
 import { initialLoanForm, loanInput, useLoanForm } from "./useLoanForm.js";
 import {
@@ -46,15 +48,20 @@ export function useLoansScreen(today: string) {
   }, []);
   const create = useCommand(createUiLoan);
   const payment = useCommand(setUiLoanPayment);
+  const durable = useDurableCommands();
   const busy = create.isPending || payment.isPending;
   const current = rows.find((r) => r.id === selected) ?? rows[0] ?? null;
   const loanForm = useLoanForm(today, profile.facts.currency, async (value) => {
     setError(null);
     try {
-      const result = await create.run(loanInput(value));
+      const result = await durable.run("loan", create, loanInput(value));
       if (!mounted.current) return;
-      if (!result.ok) {
-        setError(result.reason === "loan_name_taken" ? L.taken : L.invalid);
+      if (result.kind !== "completed") {
+        setError(
+          result.kind === "refused" && result.reason === "loan_name_taken"
+            ? L.taken
+            : commandFailure(result, L.invalid),
+        );
         return;
       }
       setDrawer(null);
@@ -67,10 +74,14 @@ export function useLoansScreen(today: string) {
     if (!rows.some((row) => row.accountId === value.account)) return false;
     setError(null);
     try {
-      const result = await payment.run(paymentInput(value, clear));
+      const result = await durable.run(
+        `payment:${value.account}`,
+        payment,
+        paymentInput(value, clear),
+      );
       if (!mounted.current) return false;
-      if (!result.ok) {
-        setError(L.invalidPayment);
+      if (result.kind !== "completed") {
+        setError(commandFailure(result, L.invalidPayment));
         return false;
       }
       setDrawer(null);
@@ -90,6 +101,10 @@ export function useLoansScreen(today: string) {
   const { mode, text, iban } = paymentValues;
   const matchingLoan = rows.find((row) => row.accountId === paymentValues.account) ?? null;
   const close = () => {
+    if (durable.uncertain("loan") || durable.uncertain(`payment:${paymentValues.account}`)) {
+      setError(O.unknown);
+      return;
+    }
     if (!busy) {
       setDrawer(null);
       setError(null);
@@ -97,11 +112,19 @@ export function useLoansScreen(today: string) {
     }
   };
   const openLoan = () => {
+    if (durable.uncertain("loan") || durable.uncertain(`payment:${paymentValues.account}`)) {
+      setError(O.unknown);
+      return;
+    }
     loanForm.reset(initialLoanForm(today, profile.facts.currency));
     setError(null);
     setDrawer("loan");
   };
   const pickPayment = (account: string) => {
+    if (durable.uncertain(`payment:${paymentValues.account}`)) {
+      setError(O.unknown);
+      return;
+    }
     const row = rows.find((entry) => entry.accountId === account);
     const next = { ...initialPaymentForm, account, text: row?.paymentText ?? "" };
     setPaymentDefaults(next);
@@ -109,6 +132,10 @@ export function useLoansScreen(today: string) {
     setError(null);
   };
   const openPayment = () => {
+    if (durable.uncertain("loan") || durable.uncertain(`payment:${paymentValues.account}`)) {
+      setError(O.unknown);
+      return;
+    }
     const first = rows.find((row) => !row.paymentText && !row.paymentIbanTail) ?? current;
     if (first) {
       pickPayment(first.accountId);

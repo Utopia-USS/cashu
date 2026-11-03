@@ -52,4 +52,27 @@ describe("WriteQueue", () => {
     await q.idle();
     expect(q.pending).toBe(0);
   });
+
+  it("holds the queue until an asynchronous task settles and drains after close", async () => {
+    const q = new WriteQueue();
+    const order: string[] = [];
+    let release: () => void = () => {};
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = q.run(async () => {
+      order.push("first-start");
+      await barrier;
+      order.push("first-end");
+    });
+    const second = q.run(() => order.push("second"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(q.pending).toBe(2);
+    expect(order).toEqual(["first-start"]);
+    q.close();
+    const idle = q.idle().then(() => order.push("idle"));
+    release();
+    await Promise.all([first, second, idle]);
+    expect(order).toEqual(["first-start", "first-end", "second", "idle"]);
+  });
 });

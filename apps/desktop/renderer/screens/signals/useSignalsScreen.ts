@@ -23,6 +23,7 @@ import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
+import { type GuardedOutcome, useDurableCommands } from "../useDurableCommand.js";
 import {
   alertHistoryRows,
   alertSignalObserved,
@@ -39,6 +40,9 @@ export type SignalsNotice =
   | "skipped"
   | "partial"
   | "unknown"
+  | "unavailable"
+  | "previous_completed"
+  | "previous_refused"
   | "failed"
   | "cleanup"
   | "cache"
@@ -116,6 +120,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   const updateAlert = useCommand(alerts.update);
   const deleteAlert = useCommand(signalsOwnerCommands.deleteAlert);
   const restoreAlert = useCommand(signalsOwnerCommands.restoreAlert);
+  const durable = useDurableCommands();
   const searchAction = useUiAction(signalsSearch);
   const watchAction = useUiAction(signalsWatch);
   const removeWatchAction = useUiAction(signalsRemoveWatch);
@@ -179,27 +184,38 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
           reason: value.reason.trim() || null,
         };
         if (selected.instrument !== null) {
-          const result = await positionDecision.run({
+          const result = await durable.run(`position:${selected.key}`, positionDecision, {
             instrument: selected.instrument,
             signals: members.map((row) => row.gid),
             ...fields,
           });
-          if (result.ok) {
+          if (result.kind === "completed") {
             setUndoIds([result.value.decision]);
             setNotice("saved");
             setSelectedGroup(null);
           } else {
-            setRefusal(result.reason);
-            setNotice("failed");
+            if (result.kind === "refused") setRefusal(result.reason);
+            setNotice(
+              result.kind === "outcome_unknown"
+                ? "unknown"
+                : result.kind === "not_started"
+                  ? "unavailable"
+                  : result.kind === "previous_completed" || result.kind === "previous_refused"
+                    ? result.kind
+                    : "failed",
+            );
           }
         } else {
           const [first, ...rest] = members;
           if (!first) return;
           const steps = [
-            () => decide.run({ signal: first.gid, ...fields }),
+            () => durable.run(`decide:${first.gid}`, decide, { signal: first.gid, ...fields }),
             ...rest.map(
               (row) => () =>
-                acknowledge.run({ signal: row.gid, reason: `decision: ${fields.action}` }),
+                durable.run(`ack:${row.gid}`, acknowledge, {
+                  signal: row.gid,
+                  reason: `decision: ${fields.action}`,
+                }),
             ),
           ];
           const outcome = await saveSignalGroup(steps, () => active.current);
@@ -214,7 +230,11 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
                   ? "partial"
                   : outcome.status === "unknown"
                     ? "unknown"
-                    : "failed",
+                    : outcome.status === "unavailable" ||
+                        outcome.status === "previous_completed" ||
+                        outcome.status === "previous_refused"
+                      ? outcome.status
+                      : "failed",
           );
           if (outcome.status === "refused" || outcome.status === "partial")
             setRefusal(outcome.reason);
@@ -294,23 +314,27 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
       clearTimeout(timer);
     };
   }, [searchText, privacy]);
-  const run = async (
-    action: () => Promise<
-      { ok: true; value: { decision: string } } | { ok: false; reason: string }
-    >,
-  ) => {
+  const run = async (action: () => Promise<GuardedOutcome<{ decision: string }>>) => {
     if (inFlight.current || privacy) return;
     inFlight.current = true;
     setBusy(true);
     setRefusal(null);
     try {
       const result = await action();
-      if (result.ok) {
+      if (result.kind === "completed") {
         setUndoIds([result.value.decision]);
         setNotice("saved");
       } else {
-        setRefusal(result.reason);
-        setNotice("failed");
+        if (result.kind === "refused") setRefusal(result.reason);
+        setNotice(
+          result.kind === "outcome_unknown"
+            ? "unknown"
+            : result.kind === "not_started"
+              ? "unavailable"
+              : result.kind === "previous_completed" || result.kind === "previous_refused"
+                ? result.kind
+                : "failed",
+        );
       }
     } catch {
       setNotice("unknown");
@@ -325,7 +349,10 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     inFlight.current = true;
     setBusy(true);
     void saveSignalGroup(
-      group.live.map((row) => () => acknowledge.run({ signal: row.gid, reason: null })),
+      group.live.map(
+        (row) => () =>
+          durable.run(`ack:${row.gid}`, acknowledge, { signal: row.gid, reason: null }),
+      ),
       () => active.current,
     )
       .then((result) => {
@@ -340,7 +367,11 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
                 ? "partial"
                 : result.status === "unknown"
                   ? "unknown"
-                  : "failed",
+                  : result.status === "unavailable" ||
+                      result.status === "previous_completed" ||
+                      result.status === "previous_refused"
+                    ? result.status
+                    : "failed",
         );
         if (result.status === "partial" || result.status === "refused") setRefusal(result.reason);
       })
@@ -357,17 +388,26 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     try {
       for (const id of undoIds) {
         if (!active.current) break;
-        const result = await undo.run({ decision: id });
+        const result = await durable.run(`undo:${id}`, undo, { decision: id });
         if (!active.current) break;
-        if (!result.ok) {
-          setRefusal(result.reason);
+        if (result.kind !== "completed") {
+          if (result.kind === "refused") setRefusal(result.reason);
+          setNotice(
+            result.kind === "outcome_unknown"
+              ? "unknown"
+              : result.kind === "not_started"
+                ? "unavailable"
+                : result.kind === "previous_completed" || result.kind === "previous_refused"
+                  ? result.kind
+                  : "failed",
+          );
           break;
         }
         remaining.shift();
       }
       if (active.current) {
         setUndoIds(remaining);
-        setNotice(remaining.length ? "partial" : "saved");
+        if (remaining.length === 0) setNotice("saved");
       }
     } catch {
       if (active.current) setNotice("unknown");
@@ -381,13 +421,21 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     inFlight.current = true;
     setBusy(true);
     try {
-      const result = await undo.run({ decision });
-      if (result.ok) {
+      const result = await durable.run(`undo:${decision}`, undo, { decision });
+      if (result.kind === "completed") {
         setUndoIds((old) => old.filter((id) => id !== decision));
         setNotice("saved");
       } else {
-        setRefusal(result.reason);
-        setNotice("failed");
+        if (result.kind === "refused") setRefusal(result.reason);
+        setNotice(
+          result.kind === "outcome_unknown"
+            ? "unknown"
+            : result.kind === "not_started"
+              ? "unavailable"
+              : result.kind === "previous_completed" || result.kind === "previous_refused"
+                ? result.kind
+                : "failed",
+        );
       }
     } catch {
       setNotice("unknown");
@@ -492,7 +540,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     if (saved) setRemovedWatch(null);
   };
   const runAlertWrite = async (
-    write: () => Promise<{ ok: true } | { ok: false; reason: string }>,
+    write: () => Promise<GuardedOutcome<unknown>>,
     onSaved: () => void,
   ) => {
     if (inFlight.current || privacy) return;
@@ -502,11 +550,19 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     try {
       const result = await write();
       if (!active.current) return;
-      if (result.ok) {
+      if (result.kind === "completed") {
         onSaved();
       } else {
-        setRefusal(result.reason);
-        setNotice("failed");
+        if (result.kind === "refused") setRefusal(result.reason);
+        setNotice(
+          result.kind === "outcome_unknown"
+            ? "unknown"
+            : result.kind === "not_started"
+              ? "unavailable"
+              : result.kind === "previous_completed" || result.kind === "previous_refused"
+                ? result.kind
+                : "failed",
+        );
       }
     } catch {
       if (active.current) setNotice("unknown");
@@ -519,8 +575,15 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     runAlertWrite(
       () =>
         input.alert === null
-          ? createAlert.run(input.fields as Parameters<typeof createAlert.run>[0])
-          : updateAlert.run({ alert: input.alert, changes: input.fields }),
+          ? durable.run(
+              "alert-create",
+              createAlert,
+              input.fields as Parameters<typeof createAlert.run>[0],
+            )
+          : durable.run(`alert-update:${input.alert}`, updateAlert, {
+              alert: input.alert,
+              changes: input.fields,
+            }),
       () => {
         setEditingAlert(null);
         setNotice("saved");
@@ -528,7 +591,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     );
   const removeAlert = async (alert: string) => {
     await runAlertWrite(
-      () => deleteAlert.run({ alert }),
+      () => durable.run(`alert-delete:${alert}`, deleteAlert, { alert }),
       () => {
         setRemovedAlert(alert);
         setNotice("removed");
@@ -538,7 +601,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   const restoreDeletedAlert = async () => {
     if (removedAlert === null) return;
     await runAlertWrite(
-      () => restoreAlert.run({ alert: removedAlert }),
+      () => durable.run(`alert-restore:${removedAlert}`, restoreAlert, { alert: removedAlert }),
       () => {
         setRemovedAlert(null);
         setNotice("restored");
@@ -547,7 +610,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   };
   const setAlertState = async (alert: string, status: "active" | "muted") => {
     await runAlertWrite(
-      () => updateAlert.run({ alert, changes: { status } }),
+      () => durable.run(`alert-update:${alert}`, updateAlert, { alert, changes: { status } }),
       () => {
         setNotice("saved");
       },

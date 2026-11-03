@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { goldenRoot, isDataset, labRoot, withPythonDb } from "../sources/index.ts";
+import { goldenRoot, isDataset, labRoot, withPythonDbAsync } from "../sources/index.ts";
 import { readTreeState } from "../staleness.ts";
 import { inputDir, PRODUCERS } from "./index.ts";
 import { dumps, writeCheck } from "./output.ts";
@@ -36,7 +36,7 @@ function rows(value: unknown): number {
   return 1;
 }
 
-export function main(argv: string[]): number {
+export async function main(argv: string[]): Promise<number> {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -96,7 +96,7 @@ export function main(argv: string[]): number {
     useBridgeStoreSource(resolve(run));
   }
   const open = sourceDir === undefined ? { dataset } : { dataset, sourceDir: resolve(sourceDir) };
-  const status = withPythonDb(open, (db) => {
+  const status = await withPythonDbAsync(open, async (db) => {
     let status = 0;
     for (const p of selected) {
       if (!p.datasets.includes(dataset) && !values.force) {
@@ -106,7 +106,7 @@ export function main(argv: string[]): number {
         continue;
       }
       try {
-        const value = p.produce(db, inputs);
+        const value = await p.produce(db, inputs);
         writeCheck(out, p.check, value);
         const sha = createHash("sha256").update(dumps(value)).digest("hex");
         const dirs = Object.fromEntries(p.inputs.map((n) => [n, inputDir(n, dataset, inputs)]));
@@ -138,5 +138,5 @@ export function main(argv: string[]): number {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
 }

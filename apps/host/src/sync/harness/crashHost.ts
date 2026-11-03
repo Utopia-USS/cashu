@@ -14,6 +14,7 @@ const host = await startLocalHost({
   dataDir,
   home,
   build: "dev",
+  vaultSource: { kind: "synthetic-harness" },
   lingerMs: 60_000,
   syncAt(point) {
     if (point === target) process.kill(process.pid, "SIGKILL");

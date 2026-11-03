@@ -1,9 +1,10 @@
 import type { ResearchInputs } from "@cashu/store/investments/research-screen";
+import { commandFailure, type GuardedOutcome } from "../useDurableCommand.js";
 import { S } from "./Research.strings.js";
 import type { TopicFormValues } from "./types.js";
 
 type TopicRecord = ResearchInputs["topics"][number]["thesis"];
-type Outcome = { ok: boolean; reason?: string };
+type Outcome = GuardedOutcome<unknown>;
 
 /** Two owner commands, with a fresh scope check before the second write and every notice. */
 export async function saveTopicSequence(args: {
@@ -49,8 +50,8 @@ export async function saveTopicSequence(args: {
         ? await args.saveThesis({ segment: topic, thesis, invalidation: value.invalidation })
         : await args.deleteThesis({ segment: topic });
       if (!current()) return;
-      if (!first.ok) {
-        notice(`${S.refused}: ${first.reason ?? ""}`);
+      if (first.kind !== "completed") {
+        notice(commandFailure(first, S.refused));
         return;
       }
       firstSaved = true;
@@ -70,8 +71,14 @@ export async function saveTopicSequence(args: {
         ...(value.clearSources ? { sources: [] } : {}),
       });
       if (!current()) return;
-      if (!second.ok) {
-        notice(firstSaved ? S.partialSave : `${S.refused}: ${second.reason ?? ""}`);
+      if (second.kind !== "completed") {
+        notice(
+          second.kind === "outcome_unknown" || second.kind === "previous_completed"
+            ? commandFailure(second)
+            : firstSaved
+              ? S.partialSave
+              : commandFailure(second, S.refused),
+        );
         return;
       }
     } catch {

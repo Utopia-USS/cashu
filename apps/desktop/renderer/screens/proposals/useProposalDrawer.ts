@@ -71,6 +71,10 @@ export function useProposalDrawer(
         return;
       }
       const result = reply.value;
+      if (result.status === "outcome_unknown") {
+        setMessage("unknown");
+        return;
+      }
       if (result.status === "approved") {
         const effect = result.effect;
         const version =

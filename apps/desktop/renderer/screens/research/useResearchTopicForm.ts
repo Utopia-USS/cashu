@@ -3,6 +3,7 @@ import { researchScreenCommands } from "@cashu/store/investments/research-screen
 import { useCommand, useProfile } from "@cashu/store-react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useDurableCommands } from "../useDurableCommand.js";
 import { saveTopicSequence } from "./topic-save.js";
 import type { TopicFormValues } from "./types.js";
 
@@ -20,6 +21,7 @@ export function useResearchTopicForm(
   const saveThesis = useCommand(commands.saveTopicThesis);
   const deleteThesis = useCommand(commands.deleteTopicThesis);
   const setView = useCommand(commands.setTopicMarketView);
+  const durable = useDurableCommands();
   const [dirty, setDirty] = useState(false);
   const thesis = record?.thesis ?? "";
   const invalidation = record?.invalidation ?? "";
@@ -66,9 +68,9 @@ export function useResearchTopicForm(
       record,
       value,
       current,
-      saveThesis: (input) => saveThesis.run(input),
-      deleteThesis: (input) => deleteThesis.run(input),
-      setView: (input) => setView.run(input),
+      saveThesis: (input) => durable.run(`topic-thesis:${target.topic}`, saveThesis, input),
+      deleteThesis: (input) => durable.run(`topic-thesis:${target.topic}`, deleteThesis, input),
+      setView: (input) => durable.run(`topic-view:${target.topic}`, setView, input),
       notice,
       saved: () => setDirty(false),
     });

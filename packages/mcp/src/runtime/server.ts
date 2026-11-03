@@ -22,7 +22,7 @@ import {
   restrictivePrivacy,
   warnNative,
 } from "./boundary.js";
-import { finalizeNativeDelivery } from "./delivery.js";
+import { finalizeNativeDelivery, guardInputFingerprint } from "./delivery.js";
 import type { NativeToolStore } from "./types.js";
 
 export {
@@ -158,57 +158,101 @@ export class NativeMcpServer {
     name: string,
     arguments_: ToolArgs | null = null,
     ceiling?: Privacy,
+    requestKey?: string,
   ): Promise<NativeCallResult> {
     const spec = this.tools.get(name);
     const adapter = this.asyncTools.get(name);
     if (spec && adapter)
-      return runNativeAsyncCall(this, this.lifecycle, spec, adapter, arguments_, ceiling);
+      return runNativeAsyncCall(
+        this,
+        this.lifecycle,
+        spec,
+        adapter,
+        arguments_,
+        ceiling,
+        requestKey,
+      );
     const call = this.lifecycle.begin();
     let completed = false;
+    let guardInputs: string | undefined;
     try {
       return await this.audited(
         spec?.name ?? "(unknown)",
         arguments_,
         new Set(Object.keys(spec?.properties ?? {})),
         async () =>
-          this.runtime.execute(ceiling, (execution) => {
-            if (this.runtime.replaced()) return failure(APP_UPDATED, "app_updated");
-            if (call.stopped())
-              return failure("the MCP session is no longer active", "session_closed");
-            if (execution === undefined)
-              return failure("the profile of this server no longer exists", "profile_missing");
-            const { context, policy } = execution;
-            const privacy = restrictivePrivacy(policy.privacy, ceiling);
-            if (spec === undefined) return failure("unknown tool", "unknown_tool", privacy);
-            if (!enabledIn(spec, policy.modules))
-              return failure(
-                `tool ${spec.name} belongs to the module '${spec.module}', which is not enabled for this profile`,
-                "module_disabled",
-                privacy,
-              );
-            try {
-              const args = validateArguments(spec, arguments_);
-              const tree = spec.handler(context, args);
-              const redactor = new Redactor({ privacy, guard: context.guard, summaryOk });
-              const data = redactor.apply(tree);
-              if (data === null || typeof data !== "object" || Array.isArray(data))
-                throw new UnlabelledValue("a tool must return an object");
-              leakCheck(data, {
-                strict: redactor.strict,
-                isins: redactor.isins,
-                nonMoney: redactor.nonMoney,
-              });
-              execution.commit();
-              completed = true;
-              return { ok: true, privacy, data };
-            } catch (error) {
-              const rendered = renderNativeError(context, privacy, error);
-              if (rendered) return rendered;
-              throw error;
-            }
-          }),
+          this.runtime.execute(
+            ceiling,
+            async (execution) => {
+              if (this.runtime.replaced()) return failure(APP_UPDATED, "app_updated");
+              if (call.stopped())
+                return failure("the MCP session is no longer active", "session_closed");
+              if (execution === undefined)
+                return failure("the profile of this server no longer exists", "profile_missing");
+              const { context, policy } = execution;
+              const privacy = restrictivePrivacy(policy.privacy, ceiling);
+              if (spec === undefined) return failure("unknown tool", "unknown_tool", privacy);
+              if (!enabledIn(spec, policy.modules))
+                return failure(
+                  `tool ${spec.name} belongs to the module '${spec.module}', which is not enabled for this profile`,
+                  "module_disabled",
+                  privacy,
+                );
+              try {
+                guardInputs = guardInputFingerprint(context.guard);
+                const args = validateArguments(spec, arguments_);
+                const tree = await spec.handler(context, args);
+                const redactor = new Redactor({ privacy, guard: context.guard, summaryOk });
+                const data = redactor.apply(tree);
+                if (data === null || typeof data !== "object" || Array.isArray(data))
+                  throw new UnlabelledValue("a tool must return an object");
+                leakCheck(data, {
+                  strict: redactor.strict,
+                  isins: redactor.isins,
+                  nonMoney: redactor.nonMoney,
+                });
+                execution.commit();
+                completed = true;
+                return {
+                  ok: true,
+                  privacy,
+                  data,
+                  ...(execution.hasWritten?.() ? { requestKey: execution.writeKey?.() } : {}),
+                };
+              } catch (error) {
+                if (execution.hasWritten?.()) {
+                  completed = true;
+                  return {
+                    ...failure("write completed; response withheld", "response_withheld", privacy),
+                    requestKey: execution.writeKey?.(),
+                  };
+                }
+                const uncertainKey = execution.uncertainWriteKey?.();
+                if (uncertainKey !== undefined)
+                  return {
+                    ...failure(
+                      "write outcome unknown; inspect the original key",
+                      "outcome_unknown",
+                      "strict",
+                    ),
+                    requestKey: uncertainKey,
+                  };
+                const rendered = renderNativeError(context, privacy, error);
+                if (rendered) return rendered;
+                throw error;
+              }
+            },
+            requestKey,
+          ),
         (result) =>
-          finalizeNativeDelivery(this.runtime, spec, result, { completed }, call.stopped, ceiling),
+          finalizeNativeDelivery(
+            this.runtime,
+            spec,
+            result,
+            { completed, guardInputs, requireGuard: completed },
+            call.stopped,
+            ceiling,
+          ),
       );
     } finally {
       call.finish();

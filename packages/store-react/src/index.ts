@@ -3,6 +3,8 @@
 // relay to the local host) or ./local (`createSyncClient`, phone and tests).
 export type {
   AnyCommand,
+  CommandAttempt,
+  CommandOutcome,
   ConnectionStatus,
   StoreClient,
   Target,

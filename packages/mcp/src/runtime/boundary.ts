@@ -25,6 +25,10 @@ export interface DelegatedNameSources {
 export interface NativeExecution {
   readonly context: ToolContext<NativeToolStore>;
   readonly policy: NativePolicy;
+  /** True only after a durable write has a completed receipt. */
+  hasWritten?(): boolean;
+  writeKey?(): string | undefined;
+  uncertainWriteKey?(): string | undefined;
   commit(): void;
 }
 export interface AuditPort {
@@ -42,12 +46,21 @@ export interface NativeRuntime {
   readonly audit: AuditPort;
   readonly now: () => number;
   readonly replaced: () => boolean;
-  /** Executes synchronously under this vault's write queue, with freshly read policy. */
+  /** Executes with freshly read policy. Native writes own the vault queue separately. */
   execute<T>(
     ceiling: Privacy | undefined,
-    fn: (execution: NativeExecution | undefined) => T,
+    fn: (execution: NativeExecution | undefined) => T | Promise<T>,
+    requestKey?: string,
   ): Promise<T>;
   policy(): Promise<NativePolicy | undefined>;
+  /** Metadata-only status for an original durable write key in this authenticated vault. */
+  writeStatus?(
+    key: string,
+  ): Promise<
+    | { readonly kind: "outcome_unknown" }
+    | { readonly kind: "completed" }
+    | { readonly kind: "refused" | "not_started"; readonly reason: string }
+  >;
   /** Captures current policy and restrictive name sources in the same vault queue step. */
   delegation(): Promise<(NativePolicy & { readonly names: DelegatedNameSources }) | undefined>;
   warn(code: string): void;
@@ -58,6 +71,8 @@ export interface NativeCallResult {
   readonly data?: JsonValue;
   readonly error?: string;
   readonly errorKind?: string;
+  /** Opaque original key for reconciliation after an ambiguous durable write. */
+  readonly requestKey?: string;
 }
 export const failure = (
   error: string,
@@ -106,7 +121,10 @@ export function renderNativeError(
     } catch {
       message = "the error text was withheld by the privacy check";
     }
-    return failure(message, error.kind, privacy);
+    return {
+      ...failure(message, error.kind, privacy),
+      ...(error.requestKey ? { requestKey: error.requestKey } : {}),
+    };
   }
   if (error instanceof LeakDetected || error instanceof UnlabelledValue)
     return failure(

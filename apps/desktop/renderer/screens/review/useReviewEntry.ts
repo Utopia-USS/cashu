@@ -5,6 +5,7 @@ import { useUiEnv } from "@cashu/ui";
 import { parseServerTime } from "@cashu/ui-logic/core/time";
 import { useEffect, useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
+import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { useReviewMemory } from "./memory.js";
 import { reviewDisplayDay } from "./presentation.js";
 import { useReviewLifetime } from "./useReviewLifetime.js";
@@ -20,8 +21,9 @@ export function useReviewEntry(onOpened?: () => void) {
     privacy,
   });
   const undoCommand = useCommand(undoSavedReview);
+  const durable = useDurableCommands();
   const captureLifetime = useReviewLifetime(vault, privacy);
-  const [failure, setFailure] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
@@ -41,10 +43,10 @@ export function useReviewEntry(onOpened?: () => void) {
     if (!isCurrent()) return;
     if (!last || undoCommand.isPending || privacy) return;
     const memory = useReviewMemory.getState();
-    const result = await undoCommand.run({ review: last.gid });
+    const result = await durable.run(`undo:${last.gid}`, undoCommand, { review: last.gid });
     if (!isCurrent()) return;
-    if (!result.ok) {
-      setFailure(true);
+    if (result.kind !== "completed") {
+      setFailure(commandFailure(result));
       return;
     }
     useReviewMemory.setState({
@@ -55,7 +57,7 @@ export function useReviewEntry(onOpened?: () => void) {
         closing: last.notes ?? "",
       },
     });
-    setFailure(false);
+    setFailure(null);
     onOpened?.();
   };
   return {

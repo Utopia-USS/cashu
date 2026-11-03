@@ -12,8 +12,8 @@ const value = {
 };
 
 it("stops the second topic write and feedback when privacy or vault scope changes during the first", async () => {
-  let resolveFirst: (value: { ok: boolean }) => void = () => {};
-  const first = new Promise<{ ok: boolean }>((resolve) => {
+  let resolveFirst: (value: { kind: "completed"; value: null }) => void = () => {};
+  const first = new Promise<{ kind: "completed"; value: null }>((resolve) => {
     resolveFirst = resolve;
   });
   let current = true;
@@ -29,17 +29,17 @@ it("stops the second topic write and feedback when privacy or vault scope change
     },
     deleteThesis: async () => {
       calls.push("delete");
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     setView: async () => {
       calls.push("view");
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     notice: () => calls.push("notice"),
     saved: () => calls.push("saved"),
   });
   current = false;
-  resolveFirst({ ok: true });
+  resolveFirst({ kind: "completed" as const, value: null });
   await pending;
   expect(calls).toEqual(["thesis"]);
 });
@@ -52,9 +52,9 @@ it("reports a truthful partial save when the view write refuses after the thesis
     record: null,
     value,
     current: () => true,
-    saveThesis: async () => ({ ok: true }),
-    deleteThesis: async () => ({ ok: true }),
-    setView: async () => ({ ok: false, reason: "invalid_view" }),
+    saveThesis: async () => ({ kind: "completed" as const, value: null }),
+    deleteThesis: async () => ({ kind: "completed" as const, value: null }),
+    setView: async () => ({ kind: "refused" as const, reason: "invalid_view" }),
     notice: (message) => notices.push(message),
     saved: () => {
       saved = true;
@@ -76,11 +76,11 @@ it("keeps stored sources on an ordinary view edit and clears only on explicit re
     topic: "technology",
     record,
     current: () => true,
-    saveThesis: async () => ({ ok: true }),
-    deleteThesis: async () => ({ ok: true }),
+    saveThesis: async () => ({ kind: "completed" as const, value: null }),
+    deleteThesis: async () => ({ kind: "completed" as const, value: null }),
     setView: async (input: { sources?: readonly unknown[] }) => {
       sent.push(input);
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     notice: () => {},
     saved: () => {},
@@ -106,15 +106,15 @@ it("lets an owner edit only the market view while an agent draft stays pending",
     current: () => true,
     saveThesis: async () => {
       calls.push("thesis");
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     deleteThesis: async () => {
       calls.push("delete");
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     setView: async () => {
       calls.push("view");
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     notice: () => {},
     saved: () => {},
@@ -137,15 +137,15 @@ it("writes the owner thesis when explicitly confirming an unchanged agent draft"
     current: () => true,
     saveThesis: async () => {
       calls.push("thesis");
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     deleteThesis: async () => {
       calls.push("delete");
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     setView: async () => {
       calls.push("view");
-      return { ok: true };
+      return { kind: "completed" as const, value: null };
     },
     notice: () => {},
     saved: () => {},

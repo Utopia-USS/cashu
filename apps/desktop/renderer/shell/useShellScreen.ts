@@ -14,6 +14,7 @@ import type { StoreClient } from "@cashu/store-react/client";
 import { isIncognito, onIncognitoChange, setIncognito } from "@cashu/ui-logic/core/incognito";
 import { use, useState, useSyncExternalStore } from "react";
 import { S } from "../Desktop.strings.js";
+import { commandFailure, useDurableCommands } from "../screens/useDurableCommand.js";
 
 const queries = overviewQueries({ prices: null });
 const legacyQuery = legacyNavigation();
@@ -60,6 +61,7 @@ export function useShellScreen(args: {
   const vault = useProfile();
   const switchProfile = useCommand(setCurrentVault);
   const savePreferences = useCommand(setDevicePreferences);
+  const durable = useDurableCommands();
   const connection = useConnection();
   const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const [toast, setToast] = useState<string | null>(null);
@@ -89,9 +91,9 @@ export function useShellScreen(args: {
     isSwitching: switchProfile.isPending,
     onPrivacyChanged: setIncognito,
     onLanguagePicked: async (value: Lang) => {
-      const result = await savePreferences.run({ languagePin: value });
-      if (result.ok) setLanguage(value);
-      else setToast(S.refused);
+      const result = await durable.run("language", savePreferences, { languagePin: value });
+      if (result.kind === "completed") setLanguage(value);
+      else setToast(commandFailure(result, S.refused));
     },
     onProfilePicked: (next: string) => {
       const chosen = profiles.find((profile) => profile.vault === next);
@@ -100,9 +102,8 @@ export function useShellScreen(args: {
     },
     onRouteVaultPicked: async (next: string) => {
       if (!profiles.some((profile) => profile.vault === next)) return;
-      const result = await switchProfile.run({ vault: next });
-      setToast(result.ok ? S.changed : S.refused);
-      if (!result.ok) throw new Error("profile selection refused");
+      const result = await durable.run("profile-switch", switchProfile, { vault: next });
+      setToast(result.kind === "completed" ? S.changed : commandFailure(result, S.refused));
     },
     onToastDismissed: () => setToast(null),
   };

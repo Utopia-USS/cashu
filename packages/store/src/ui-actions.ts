@@ -13,5 +13,12 @@ export type UiActionResult<R> =
       readonly reason: string;
       readonly preparation: "none" | "retained";
     }
-  | { readonly status: "outcome_unknown"; readonly reason: "interrupted" | "unexpected_failure" }
-  | { readonly status: "not_started"; readonly reason: "disconnected" | "capability_unavailable" };
+  | {
+      readonly status: "outcome_unknown";
+      readonly reason: "interrupted" | "unexpected_failure";
+      readonly attempt?: { readonly key: string; readonly command: string };
+    }
+  | {
+      readonly status: "not_started";
+      readonly reason: "disconnected" | "capability_unavailable" | "pending_previous_attempt";
+    };

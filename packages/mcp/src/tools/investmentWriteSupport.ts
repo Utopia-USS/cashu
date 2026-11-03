@@ -72,8 +72,12 @@ export function instrument(
     matches.length > 1 ? "invalid" : "not_found",
   );
 }
-export function execute<I, V>(ctx: Context, command: Command<I, V>, input: unknown): V {
-  const out = ctx.store.run(command, input);
+export async function execute<I, V>(
+  ctx: Context,
+  command: Command<I, V>,
+  input: unknown,
+): Promise<V> {
+  const out = await ctx.store.run(command, input);
   if (!out.ok) {
     const messages: Record<string, string> = {
       needs_held: "reduce and exit_asap require a held instrument",

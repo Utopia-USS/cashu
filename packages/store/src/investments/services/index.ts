@@ -3,6 +3,7 @@
 
 export * from "./autorun.js";
 export * from "./daily.js";
+export * from "./durable.js";
 export * from "./import-proposals.js";
 export * from "./importPublication.js";
 export * from "./imports.js";

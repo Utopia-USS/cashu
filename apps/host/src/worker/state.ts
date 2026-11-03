@@ -62,6 +62,19 @@ const schema = z
         .strict(),
     ),
     digests: z.record(z.string(), z.iso.date()),
+    uncertain: z
+      .record(
+        z.string(),
+        z
+          .object({
+            job: z.enum(["investments.daily", "investments.backfill"]),
+            phase: z.enum(["prepared", "outcome_unknown"]),
+            command: z.string().min(1).max(128),
+            key: z.string().min(1).max(128),
+          })
+          .strict(),
+      )
+      .default({}),
   })
   .strict();
 const fail = (): never => {

@@ -50,7 +50,7 @@ try {
         const migrated = await client.run(DEVICE_TARGET, setDevicePreferences, {
           languagePin: pinned,
         });
-        if (migrated.ok) localStorage.removeItem("cashu.lang");
+        if (migrated.kind === "completed") localStorage.removeItem("cashu.lang");
       }
       installLanguageSource({
         pinned: () => pinned,

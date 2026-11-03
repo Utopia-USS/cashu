@@ -1,21 +1,46 @@
 /** Native services over actual loaded stores, with injected file/cache/network ownership. */
+
+import { randomBytes } from "node:crypto";
 import { parseDateTime } from "@cashu/domain";
 import { performance as perf, toCurrency } from "@cashu/domain/investments";
-import { type CommandEnv, investmentsPerformance } from "@cashu/store";
+import {
+  type Command,
+  type CommandEnv,
+  type DurableCommandResult,
+  investmentsPerformance,
+  mintUlid,
+  refuse,
+} from "@cashu/store";
 import { enabledModuleIds, mcpProfile } from "@cashu/store/core";
 import {
   collectPriceNeeds,
   type DailyVault,
+  DurableWriteUnknown,
   loadStrategy,
   PricesService,
   runDaily,
 } from "@cashu/store/investments/services";
+import { runHostVaultCommand } from "../commands.js";
 import type { OpenVault } from "../stores.js";
 import { guardedLease, WorkerAuthorityLost, workerGuard } from "./authority.js";
 import type { JobOutcome, WorkerBindings, WorkerHostContext } from "./contracts.js";
 import { localDay } from "./schedule.js";
 
-export function nativeInvestmentJobs(host: WorkerHostContext, bindings: WorkerBindings) {
+export interface WorkerWriteAttempts {
+  reserve(
+    vault: OpenVault,
+    job: "investments.daily" | "investments.backfill",
+    command: string,
+    key: string,
+  ): Promise<void>;
+  settle(vault: OpenVault, key: string): Promise<void>;
+}
+
+export function nativeInvestmentJobs(
+  host: WorkerHostContext,
+  bindings: WorkerBindings,
+  attempts?: WorkerWriteAttempts,
+) {
   const ports = bindings.investments;
   if (ports === undefined) return undefined;
   const prices = new PricesService(ports.dailyLock);
@@ -36,6 +61,53 @@ export function nativeInvestmentJobs(host: WorkerHostContext, bindings: WorkerBi
     lease: guardedLease(guard),
     ...(vault.env.random === undefined ? {} : { random: vault.env.random.bind(vault.env) }),
   });
+  const durableOf =
+    (vault: OpenVault, guard: () => void, job: "investments.daily" | "investments.backfill") =>
+    async <I, R>(command: Command<I, R>, input: unknown) => {
+      if (attempts === undefined)
+        return { kind: "not_started" as const, reason: "worker_attempt_bookkeeping_unavailable" };
+      const key = mintUlid(Date.now(), (n) => new Uint8Array(randomBytes(n)));
+      try {
+        await attempts.reserve(vault, job, command.id, key);
+      } catch (error) {
+        if (error instanceof DurableWriteUnknown) throw error;
+        // A failed reservation may have reached disk. Never dispatch or mint a second key.
+        throw new DurableWriteUnknown(key, command.id);
+      }
+      const guarded: Command<I, R> = {
+        ...command,
+        run(ctx, parsed) {
+          try {
+            guard();
+          } catch {
+            return refuse("worker_authority_lost");
+          }
+          return command.run(ctx, parsed);
+        },
+      };
+      let result: DurableCommandResult<R>;
+      try {
+        result = await runHostVaultCommand(vault, guarded, input, key, () => {
+          try {
+            guard();
+            return true;
+          } catch {
+            return false;
+          }
+        });
+      } catch {
+        throw new DurableWriteUnknown(key, command.id);
+      }
+      if (result.kind !== "outcome_unknown") {
+        try {
+          await attempts.settle(vault, key);
+        } catch {
+          // The completed result is known but its reservation may remain durable.
+          throw new DurableWriteUnknown(key, command.id);
+        }
+      }
+      return result;
+    };
   return {
     async daily(vaults: readonly OpenVault[]): Promise<ReadonlyMap<string, JobOutcome>> {
       const results = new Map<string, JobOutcome>(),
@@ -61,6 +133,9 @@ export function nativeInvestmentJobs(host: WorkerHostContext, bindings: WorkerBi
                 guard();
                 return work();
               }),
+            ...(vault.native === undefined
+              ? {}
+              : { durableWrite: durableOf(vault, guard, "investments.daily") }),
           });
         } catch (error) {
           results.set(vault.id, {
@@ -146,6 +221,9 @@ export function nativeInvestmentJobs(host: WorkerHostContext, bindings: WorkerBi
               guard();
               return work();
             }),
+          ...(vault.native === undefined
+            ? {}
+            : { durableWrite: durableOf(vault, guard, "investments.backfill") }),
         });
         guard();
         if (!result.ok && result.reason === "not_leader") throw new WorkerAuthorityLost();

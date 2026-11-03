@@ -2,10 +2,11 @@ import { market } from "@cashu/domain/investments";
 import { investmentsCommands } from "@cashu/store";
 import { ruleRuns } from "@cashu/store/investments/queries";
 import type { DailySources } from "@cashu/store/investments/services";
+import { DurableWriteUnknown } from "@cashu/store/investments/services";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, storeClient } from "../testing/harness.js";
 import { command, seedWorkerHolding, workerFixture } from "../testing/worker.js";
-import type { WorkerBindings } from "./contracts.js";
+import { emptyWorkerState, type WorkerBindings } from "./contracts.js";
 import { nativeInvestmentJobs } from "./investments.js";
 import { localDay } from "./schedule.js";
 import { HostWorker, startWorker } from "./service.js";
@@ -14,6 +15,85 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   cleanup();
+});
+
+it("keeps an uncertain durable key across restart and suppresses fresh daily work", async () => {
+  const f = await workerFixture();
+  const vault = f.vaults[0];
+  if (vault === undefined) throw new Error("synthetic vault absent");
+  const saved = emptyWorkerState();
+  saved.uncertain[vault.id] = {
+    job: "investments.daily",
+    phase: "prepared",
+    command: "investments.dailyEvaluation",
+    key: "01K9B2W0000000000000000000",
+  };
+  await f.bindings.state.save(saved);
+  // The append happens, then the process loses its outcome before updating worker state.
+  const jobs = nativeInvestmentJobs(f.context, f.bindings);
+  if (jobs === undefined) throw new Error("synthetic worker jobs absent");
+  await jobs.daily([vault]);
+  expect(ruleRuns(vault.store.read.bind(vault.store))).toHaveLength(1);
+  const worker = new HostWorker(f.context, f.bindings);
+  try {
+    await worker.tick(true);
+    expect(ruleRuns(vault.store.read.bind(vault.store))).toHaveLength(1);
+    expect((await f.bindings.state.load()).uncertain[vault.id]).toEqual(saved.uncertain[vault.id]);
+  } finally {
+    await worker.stop();
+    await f.close();
+  }
+});
+
+it("retains a prepared backfill key when shutdown precedes the unknown catch", async () => {
+  const f = await workerFixture();
+  const vault = f.vaults[0];
+  if (vault === undefined) throw new Error("synthetic vault absent");
+  let entered!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const worker = new HostWorker(f.context, f.bindings);
+  Object.defineProperty(worker, "investments", {
+    value: {
+      daily: async () => new Map([[vault.id, { status: "ok" }]]),
+      backfillEnabled: () => true,
+      async backfill() {
+        const state = await f.bindings.state.load();
+        state.uncertain[vault.id] = {
+          job: "investments.backfill",
+          phase: "prepared",
+          command: "investments.createInstrument",
+          key: "01K9B2W0000000000000000000",
+        };
+        await f.bindings.state.save(state);
+        entered();
+        await gate;
+        throw new DurableWriteUnknown("01K9B2W0000000000000000000", "investments.createInstrument");
+      },
+    },
+  });
+  try {
+    const tick = worker.tick(true);
+    await started;
+    const stopping = worker.stop();
+    release();
+    await Promise.all([tick, stopping]);
+    expect((await f.bindings.state.load()).uncertain[vault.id]).toEqual({
+      job: "investments.backfill",
+      phase: "prepared",
+      command: "investments.createInstrument",
+      key: "01K9B2W0000000000000000000",
+    });
+  } finally {
+    release();
+    await worker.stop();
+    await f.close();
+  }
 });
 
 it("starts immediately, evaluates the local slot on its60-second timer and tears the timer down", async () => {

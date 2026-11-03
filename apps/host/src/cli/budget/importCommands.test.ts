@@ -128,3 +128,49 @@ it("executes root and budget aliases over the real host socket and keeps mixed o
     }
   }
 });
+
+it("stops a directory import after a completed file when its vault selection changes", async () => {
+  const host = await startLocalHost({
+    ...testHostOptions(tempDir()),
+    launcher: false,
+    python: null,
+  });
+  const cwd = tempDir();
+  mkdirSync(join(cwd, "in"));
+  const fixture = join(ROOT, "connectors/mbank-csv/fixtures/mbank-zestawienie.csv");
+  copyFileSync(fixture, join(cwd, "in/a.csv"));
+  copyFileSync(fixture, join(cwd, "in/b.csv"));
+  const vault = [...host.stores.vaults.values()][0];
+  if (!vault) throw new Error("missing synthetic vault");
+  const vaults = host.stores.vaults as Map<string, typeof vault>;
+  const stderr: string[] = [];
+  let outputCount = 0;
+  const io: CommandIo = {
+    ...commandIo(cwd),
+    stdout() {
+      outputCount += 1;
+      if (outputCount === 1) vaults.set(vault.id, { ...vault });
+    },
+    stderr: (line) => stderr.push(line),
+  };
+  try {
+    expect(
+      await runImportCommand(
+        true,
+        ["in", "--bank=mbank"],
+        io,
+        { profile: "demo" },
+        {
+          stores: host.stores,
+          now: Date.now,
+        },
+      ),
+    ).toBe(1);
+    expect(outputCount).toBe(1);
+    expect(stderr).toEqual(["Import stopped (vault_changed). Completed earlier imports: 1.\n"]);
+    expect(vault.store.read("SELECT COUNT(*) AS n FROM import_batches")).toEqual([{ n: 1 }]);
+  } finally {
+    vaults.set(vault.id, vault);
+    await host.stop();
+  }
+});

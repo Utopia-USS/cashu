@@ -10,7 +10,7 @@ import {
 import { mcpProfile } from "@cashu/store/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { amount, count, type LabelledTree } from "../privacy/labels.js";
-import { toolContext, toolSpec } from "../registry.js";
+import { ToolError, toolContext, toolSpec } from "../registry.js";
 import { deferred } from "../testing/async.js";
 import { nativeFixture } from "../testing/native.js";
 import { NativeMcpServer, type NativeRuntime, restrictivePrivacy, resultText } from "./server.js";
@@ -123,8 +123,10 @@ describe("native MCP call boundary", () => {
       module: "core",
       description: "Synthetic synchronous write",
       write: true,
-      handler(ctx) {
-        const out = ctx.store.run(investmentsCommands.markReviewDone, { module: "investments" });
+      async handler(ctx) {
+        const out = await ctx.store.run(investmentsCommands.markReviewDone, {
+          module: "investments",
+        });
         if (!out.ok) throw new Error(out.reason);
         return { total: amount(D("123")) };
       },
@@ -167,9 +169,9 @@ describe("native MCP call boundary", () => {
       description: "Synthetic write",
       module: "core",
       write: true,
-      handler: (ctx) => {
+      handler: async (ctx) => {
         expect(
-          ctx.store.run(investmentsCommands.markReviewDone, { module: "investments" }).ok,
+          (await ctx.store.run(investmentsCommands.markReviewDone, { module: "investments" })).ok,
         ).toBe(true);
         return { wrong: "unlabelled" } as unknown as LabelledTree;
       },
@@ -178,6 +180,73 @@ describe("native MCP call boundary", () => {
     expect(result.errorKind).toBe("unlabelled");
     expect(s.f.store.read("SELECT COUNT(*) AS n FROM reviews")).toEqual([{ n: 0 }]);
     expect(s.audit).toEqual(["start:write:{}", "finish:strict:refused"]);
+  });
+  it("reports confirmed completion without exposing a response that fails privacy after append", async () => {
+    const s = setup();
+    const original = s.runtime.execute;
+    const key = "01K9B2W000000000000000000A";
+    let writes = 0;
+    const runtime: NativeRuntime = {
+      ...s.runtime,
+      execute: (ceiling, fn, requestKey) =>
+        original(
+          ceiling,
+          (execution) => {
+            if (!execution) return fn(undefined);
+            return fn({
+              ...execution,
+              context: {
+                ...execution.context,
+                store: {
+                  ...execution.context.store,
+                  run: (command, input) => {
+                    writes++;
+                    return Promise.resolve(s.f.run(command, input));
+                  },
+                },
+              },
+              hasWritten: () => writes > 0,
+              writeKey: () => requestKey,
+            });
+          },
+          requestKey,
+        ),
+    };
+    const spec = toolSpec<NativeToolStore>({
+      name: "write",
+      description: "Synthetic post-append privacy failure",
+      module: "core",
+      write: true,
+      async handler(ctx) {
+        const result = await ctx.store.run(investmentsCommands.markReviewDone, {
+          module: "investments",
+        });
+        if (!result.ok) throw new Error(result.reason);
+        return { wrong: "unlabelled" } as unknown as LabelledTree;
+      },
+    });
+    const result = await new NativeMcpServer(runtime, [spec]).call("write", {}, undefined, key);
+    expect(result).toMatchObject({ ok: false, errorKind: "response_withheld", requestKey: key });
+    expect(writes).toBe(1);
+    expect(s.f.store.read("SELECT COUNT(*) AS n FROM reviews")).toEqual([{ n: 1 }]);
+  });
+  it("keeps an ambiguous key typed through error rendering and final delivery", async () => {
+    const s = setup();
+    const key = "01K9B2W000000000000000000B";
+    const spec = toolSpec<NativeToolStore>({
+      name: "write",
+      description: "Synthetic unknown",
+      module: "core",
+      write: true,
+      async handler() {
+        throw new ToolError("write outcome unknown", "outcome_unknown", {
+          system: true,
+          requestKey: key,
+        });
+      },
+    });
+    const result = await new NativeMcpServer(s.runtime, [spec]).call("write", {}, undefined, key);
+    expect(result).toMatchObject({ ok: false, errorKind: "outcome_unknown", requestKey: key });
   });
   it("audits before a successful write and appends only after validation", async () => {
     const s = setup();

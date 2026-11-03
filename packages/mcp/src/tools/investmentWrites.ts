@@ -42,14 +42,14 @@ const services = (ctx: Context) => {
     throw new ToolError("native investment market context is unavailable", "unsupported");
   return service;
 };
-function recommend(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function recommend(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const id = instrument(ctx, args.instrument);
   if (
     (args.recommendation === "reduce" || args.recommendation === "exit_asap") &&
     !Q.heldSince(ctx.store.read, ctx.today).has(id)
   )
     throw new ToolError(`Plan '${args.recommendation}' needs a held instrument`);
-  const result = execute(ctx, recommendWithPlans(ctx.store.investmentWrites?.plans), {
+  const result = await execute(ctx, recommendWithPlans(ctx.store.investmentWrites?.plans), {
     today: ctx.today,
     scope: null,
     updates: [{ instrument: id, plan: args.recommendation, reason: args.reason }],
@@ -64,7 +64,7 @@ function recommend(ctx: Context, args: ToolArgs): L.LabelledTree {
     note: L.fixedText("model recommendation saved; no decision or transaction was recorded"),
   };
 }
-function recommendations(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function recommendations(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const updates = F.array(args.recommendations);
   if (updates.length > 250)
     throw new ToolError("too many recommendation updates (max 250)", "invalid_arguments");
@@ -139,7 +139,7 @@ function recommendations(ctx: Context, args: ToolArgs): L.LabelledTree {
   for (const update of parsed)
     if ((update.plan === "reduce" || update.plan === "exit_asap") && !held.has(update.instrument))
       throw new ToolError(`Plan '${update.plan}' needs a held instrument`);
-  const out = execute(ctx, recommendWithPlans(ctx.store.investmentWrites?.plans), {
+  const out = await execute(ctx, recommendWithPlans(ctx.store.investmentWrites?.plans), {
     today: ctx.today,
     scope: args.scope,
     updates: parsed,
@@ -155,11 +155,11 @@ function recommendations(ctx: Context, args: ToolArgs): L.LabelledTree {
     ),
   };
 }
-function decision(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function decision(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const id = reference("signal", args.signal_id),
     signal = Q.signalByGid(ctx.store.read, id);
   if (!signal) throw new ToolError("no such signal in this profile (see signals)", "not_found");
-  const out = execute(ctx, C.recordDecision, {
+  const out = await execute(ctx, C.recordDecision, {
     signals: [id],
     action: args.action,
     reason: args.reason ?? null,
@@ -172,7 +172,7 @@ function decision(ctx: Context, args: ToolArgs): L.LabelledTree {
     note: L.fixedText("recorded in the decision journal; no transaction was booked"),
   };
 }
-function thesis(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function thesis(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const id = instrument(ctx, args.instrument),
     values: Record<string, unknown> = { entryType: args.entry_type, thesis: args.thesis };
   for (const [from, to] of [
@@ -181,7 +181,7 @@ function thesis(ctx: Context, args: ToolArgs): L.LabelledTree {
     ["size_plan", "sizePlan"],
   ])
     if (from && to && args[from] != null) values[to] = args[from];
-  const out = execute(ctx, upsertThesisWithPlans(ctx.store.investmentWrites?.plans), {
+  const out = await execute(ctx, upsertThesisWithPlans(ctx.store.investmentWrites?.plans), {
     instrument: id,
     values,
   });
@@ -294,7 +294,7 @@ export function validateWatchArguments(
     throw new ToolError("unknown exchange");
   return { raw, explicit };
 }
-function addWatch(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function addWatch(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const { explicit } = validateWatchArguments(ctx, args);
   let id: string;
   try {
@@ -307,11 +307,11 @@ function addWatch(ctx: Context, args: ToolArgs): L.LabelledTree {
     );
   }
   const service = services(ctx);
-  const out = execute(ctx, addStoredWatchWithPlans(service.plans), {
+  const out = await execute(ctx, addStoredWatchWithPlans(service.plans), {
     instrument: id,
     note: args.note,
   });
-  const row = service.watchlist(out).find((r) => r.id === out.item);
+  const row = ctx.store.investmentWrites?.watchlist(out).find((r) => r.id === out.item);
   if (!row) throw new Error("prospective watch item missing");
   return {
     item: watchRow(ctx, row),
@@ -320,9 +320,11 @@ function addWatch(ctx: Context, args: ToolArgs): L.LabelledTree {
     warnings: [],
   };
 }
-function removeWatch(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function removeWatch(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const id = reference("watchlist", args.id);
-  const out = execute(ctx, removeWatchWithPlans(ctx.store.investmentWrites?.plans), { item: id });
+  const out = await execute(ctx, removeWatchWithPlans(ctx.store.investmentWrites?.plans), {
+    item: id,
+  });
   return { item_id: F.ref("watchlist", out.item), removed: L.flag(true) };
 }
 const issue = (
@@ -341,7 +343,7 @@ const issue = (
   line: L.count(i.line),
   column: L.count(i.column),
 });
-function strategy(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function strategy(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   if (typeof args.yaml !== "string" || !pyStrip(args.yaml)) throw new ToolError("yaml is empty");
   const { files, base } = currentFiles(ctx),
     yaml = String(args.yaml),
@@ -380,7 +382,7 @@ function strategy(ctx: Context, args: ToolArgs): L.LabelledTree {
     return result;
   }
   if (dry) return result;
-  const out = execute(ctx, createInvestmentProposal(files, base), {
+  const out = await execute(ctx, createInvestmentProposal(files, base), {
     kind: "strategy",
     summary: `Strategy: ${config?.rules.length ?? 0} rules, ${config?.allocation.buckets.length ?? 0} buckets`,
     reason: args.reason ?? null,
@@ -404,7 +406,7 @@ function strategy(ctx: Context, args: ToolArgs): L.LabelledTree {
     note: L.fixedText("stored as a proposal; the owner approves it in the app (Inwestycje)"),
   };
 }
-function rule(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function rule(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const { service, files, base } = currentFiles(ctx),
     dry = args.dry_run === true,
     prepared = prepareRuleCreation(base, String(args.kind_or_expression), F.object(args.params));
@@ -443,7 +445,7 @@ function rule(ctx: Context, args: ToolArgs): L.LabelledTree {
               : F.count(value);
   result.backtest = labelled;
   if (dry) return result;
-  const out = execute(ctx, createInvestmentProposal(files, base), {
+  const out = await execute(ctx, createInvestmentProposal(files, base), {
     kind: "custom_rule",
     reason: args.reason ?? null,
     summary: `Rule ${prepared.entry.id} (${prepared.entry.kind}): fired ${"episodes" in backtest ? backtest.episodes : 0}x in backtest`,
@@ -513,9 +515,9 @@ export function investmentWriteTools(): readonly ToolSpec<NativeToolStore>[] {
       {
         ...metadata,
         properties,
-        handler: (ctx: Context, args: ToolArgs) => {
+        handler: async (ctx: Context, args: ToolArgs) => {
           try {
-            return handler(ctx, args);
+            return await handler(ctx, args);
           } catch (e) {
             if (e instanceof StrategyProposalError) throw new ToolError(e.message, e.code);
             throw e;

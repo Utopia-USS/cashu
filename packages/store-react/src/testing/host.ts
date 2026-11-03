@@ -1,15 +1,17 @@
 // Test kit: an in-memory stand-in for the local host's store channel v2 (the real one is apps/host
 // storeChannel.ts, which a package cannot import) and for Electron main's relay in front of it. The
-// host serves real in-memory stores (memory.ts) and keeps `key -> result` like the host's request
-// table, so a re-sent command is answered from it. The relay can be cut (main lost the host) and
+// host serves real in-memory stores (memory.ts) and keeps `key -> result` for read-only lookup.
+// The relay can be cut (main lost the host) and
 // restored (a new session announces itself), as when the host is killed while the window is open.
 // Every message crosses as JSON text, as on the host socket. Synthetic data only.
+import { createHash } from "node:crypto";
 import {
   encodeValue,
   errorInfo,
   type JsonValue,
   type LinkState,
   STORE_PROTOCOL_VERSION,
+  type StoreTarget,
   type StoreToClient,
   type StoreToHost,
   storeToHostSchema,
@@ -20,7 +22,7 @@ import { watchQuery } from "@cashu/store/query";
 import type { AnyCommand, Channel } from "../client/types.js";
 import { type LocalStores, runLocal, sourceFor } from "../local/stores.js";
 
-type RunResult = Extract<StoreToClient, { t: "result" }>["result"];
+type RunOutcome = Extract<StoreToClient, { t: "result" }>["outcome"];
 
 export interface TestHostOptions {
   readonly stores: LocalStores;
@@ -38,7 +40,15 @@ interface Session {
 
 export class TestHost {
   /** The request table: idempotency key -> stored result. */
-  readonly keys = new Map<string, { readonly command: string; readonly result: RunResult }>();
+  readonly keys = new Map<
+    string,
+    {
+      readonly command: string;
+      readonly target: StoreTarget;
+      readonly inputFingerprint: string;
+      readonly outcome: RunOutcome;
+    }
+  >();
   /** Commands that ran (a replay from `keys` does not count). */
   applied = 0;
   /** Set to cut the relay right after the next command committed, before its reply goes out. */
@@ -109,12 +119,32 @@ export class TestHost {
     const run = (m: Extract<StoreToHost, { t: "run" }>) => {
       const command = this.#commands.get(m.command);
       if (command === undefined) {
-        post({ t: "failed", rid: m.rid, error: { name: "UnknownCommand", message: m.command } });
+        post({
+          t: "failed",
+          rid: m.rid,
+          generation: m.generation,
+          error: { name: "UnknownCommand", message: m.command },
+        });
         return;
       }
       const prior = this.keys.get(m.key);
       if (prior !== undefined) {
-        post({ t: "result", rid: m.rid, result: prior.result });
+        const sameTarget =
+          prior.target.kind === m.target.kind &&
+          (prior.target.kind !== "vault" ||
+            (m.target.kind === "vault" && prior.target.vault === m.target.vault));
+        post({
+          t: "result",
+          rid: m.rid,
+          generation: m.generation,
+          outcome:
+            prior.command === m.command &&
+            sameTarget &&
+            prior.inputFingerprint ===
+              createHash("sha256").update(JSON.stringify(m.input)).digest("hex")
+              ? prior.outcome
+              : { kind: "refused", reason: "request_key_conflict" },
+        });
         return;
       }
       let outcome: CommandResult<unknown>;
@@ -122,13 +152,18 @@ export class TestHost {
         outcome = runLocal(this.options.stores, m.target, command, m.input);
       } catch (error) {
         report(error, `command ${command.id}`);
-        post({ t: "failed", rid: m.rid, error: errorInfo(error) });
+        post({ t: "failed", rid: m.rid, generation: m.generation, error: errorInfo(error) });
         return;
       }
-      const result: RunResult = outcome.ok
-        ? { ok: true, value: encodeValue(outcome.value) }
-        : { ok: false, reason: outcome.reason };
-      this.keys.set(m.key, { command: command.id, result });
+      const result: RunOutcome = outcome.ok
+        ? { kind: "completed", value: encodeValue(outcome.value) }
+        : { kind: "refused", reason: outcome.reason };
+      this.keys.set(m.key, {
+        command: command.id,
+        target: m.target,
+        inputFingerprint: createHash("sha256").update(JSON.stringify(m.input)).digest("hex"),
+        outcome: result,
+      });
       this.applied += 1;
       const die = this.dieAfterNextCommit;
       if (die !== null) {
@@ -136,7 +171,22 @@ export class TestHost {
         die();
         return;
       }
-      post({ t: "result", rid: m.rid, result });
+      post({ t: "result", rid: m.rid, generation: m.generation, outcome: result });
+    };
+
+    const lookup = (m: Extract<StoreToHost, { t: "lookup" }>) => {
+      const prior = this.keys.get(m.key);
+      const sameTarget =
+        prior?.target.kind === m.target.kind &&
+        (prior?.target.kind !== "vault" ||
+          (m.target.kind === "vault" && prior.target.vault === m.target.vault));
+      const outcome: RunOutcome =
+        prior === undefined
+          ? { kind: "not_started", reason: "attempt_missing" }
+          : prior.command === m.command && sameTarget
+            ? prior.outcome
+            : { kind: "refused", reason: "request_key_conflict" };
+      post({ t: "lookupResult", rid: m.rid, generation: m.generation, outcome });
     };
 
     send({
@@ -155,6 +205,7 @@ export class TestHost {
         const m = parsed.data;
         if (m.t === "sub") subscribe(m);
         else if (m.t === "run") run(m);
+        else if (m.t === "lookup") lookup(m);
         else if (m.t === "unsub") {
           live.get(m.sid)?.();
           live.delete(m.sid);

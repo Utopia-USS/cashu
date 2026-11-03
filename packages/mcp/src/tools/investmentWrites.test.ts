@@ -457,8 +457,8 @@ describe("native MCP local investment writes", () => {
     const server = new NativeMcpServer(s.runtime, [
       {
         ...original,
-        handler: (ctx, args) => ({
-          actual: original.handler(ctx, args),
+        handler: async (ctx, args) => ({
+          actual: await original.handler(ctx, args),
           invalid: new Labelled("not a count", "count"),
         }),
       },

@@ -63,7 +63,7 @@ export interface NativeAsyncAdapter {
     context: ToolContext<NativeToolStore>,
     args: Readonly<ToolArgs>,
     ready: NativeAsyncValue,
-  ): NativeAsyncFinish;
+  ): NativeAsyncFinish | Promise<NativeAsyncFinish>;
   /** Bounded synchronous cache publication, outside the vault queue. */
   afterCommit?(data: NativeAsyncValue, io: NativeAsyncIo): void;
 }

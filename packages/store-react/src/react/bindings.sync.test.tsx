@@ -8,8 +8,8 @@ import { createSyncClient } from "../local/sync.js";
 import {
   accountGids,
   accountRows,
-  Bomb,
   ErrorBoundary,
+  explode,
   Fallback,
   Fragile,
   fallbackMounts,
@@ -103,7 +103,7 @@ describe("useQuery (sync adapter)", () => {
           type: "checking",
           currency: "PLN",
         });
-        expect(r.ok).toBe(true);
+        expect(r.kind).toBe("completed");
       });
     }
     const before = rows.result.current;
@@ -114,7 +114,7 @@ describe("useQuery (sync adapter)", () => {
     await act(async () => {
       expect(
         await rename.result.current.run({ account: before[1]?.gid as string, name: "Lokata 2" }),
-      ).toEqual({ ok: true, value: null });
+      ).toEqual({ kind: "completed", value: null });
     });
     const after = rows.result.current;
     expect(after).not.toBe(before);
@@ -158,22 +158,23 @@ describe("useCommand (sync adapter)", () => {
     const create = renderHook(() => useCommand(createProfile), { wrapper });
     await act(async () => {
       expect(await create.result.current.run({ slug: "x", name: "X" })).toEqual({
-        ok: false,
+        kind: "refused",
         reason: "exists",
       });
       expect(await create.result.current.run({ slug: 1 } as never)).toEqual({
-        ok: false,
+        kind: "refused",
         reason: "invalid_input",
       });
     });
     expect(create.result.current.isPending).toBe(false);
   });
 
-  it("throws an unexpected failure to the error boundary", async () => {
+  it("settles an unexpected local command failure", async () => {
     const { wrapper } = setup();
-    render(<Bomb />, { wrapper, onCaughtError: () => {} });
-    act(() => screen.getByRole("button").click());
-    expect((await screen.findByRole("alert")).textContent).toBe("boundary: command bug");
+    const command = renderHook(() => useCommand(explode), { wrapper });
+    await act(async () => {
+      expect((await command.result.current.run({})).kind).toBe("outcome_unknown");
+    });
   });
 
   it("throws a failing query to the error boundary", async () => {

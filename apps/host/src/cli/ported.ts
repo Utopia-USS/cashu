@@ -9,6 +9,7 @@ import type { HostStores, OpenVault } from "../stores.js";
 import { vehicleCommands } from "./assets/vehicle.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./budget/categorizeOllama.js";
 import { budgetCommands } from "./budget/index.js";
+import { commandStatusCommand } from "./commandStatus.js";
 import { printConsole } from "./core/console.js";
 import { skillsCommand } from "./core/skills.js";
 import { genesisCommand } from "./genesis/command.js";
@@ -34,6 +35,7 @@ export interface PortedDeps {
 export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
   let runs = 0;
   return [
+    ...(deps.nativeStores === undefined ? [] : [commandStatusCommand(deps.nativeStores)]),
     ...(deps.nativeStores === undefined
       ? []
       : budgetCommands({

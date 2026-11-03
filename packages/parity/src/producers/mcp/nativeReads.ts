@@ -120,50 +120,55 @@ function canonicalNative(
 }
 
 /** Mirrors the Python oracle's no-audit call boundary, using actual native handlers and providers. */
-export function nativeMcpReads(
+export async function nativeMcpReads(
   context: ToolContext<NativeToolStore>,
   modules: ReadonlySet<string>,
   loanKey: (gid: string) => string,
   investments?: InvestmentReferences,
-): Readonly<Record<string, OutValue>> {
-  return Object.fromEntries(
-    NATIVE_CALLS.map(({ name, call, args }) => {
-      const spec = specs.get(name);
-      if (spec === undefined || spec.write) throw new Error("native read manifest is incomplete");
-      if (!enabledIn(spec, modules)) return [call, { error_kind: "module_disabled" }];
-      try {
-        const tree = spec.handler(context, validateArguments(spec, args));
-        const redactor = new Redactor({
-          privacy: context.privacy,
-          guard: context.guard,
-          summaryOk,
-        });
-        const data = redactor.apply(tree);
-        if (data === null || typeof data !== "object" || Array.isArray(data))
-          throw new UnlabelledValue("a tool must return an object");
-        leakCheck(data, {
-          strict: redactor.strict,
-          isins: redactor.isins,
-          nonMoney: redactor.nonMoney,
-        });
-        return [call, canonicalNative(data, loanKey, investments)];
-      } catch (error) {
-        if (error instanceof ToolError) {
-          let message = scrubText(error.message, { strict: !error.system, guard: context.guard });
-          try {
-            leakCheck({ error: message }, { strict: true });
-          } catch (failure) {
-            if (!(failure instanceof LeakDetected)) throw failure;
-            message = "the error text was withheld by the privacy check";
-          }
-          return [call, { error_kind: error.kind, error: message }];
+): Promise<Readonly<Record<string, OutValue>>> {
+  const readOne = async ({
+    name,
+    call,
+    args,
+  }: NativeCall): Promise<readonly [string, OutValue]> => {
+    const spec = specs.get(name);
+    if (spec === undefined || spec.write) throw new Error("native read manifest is incomplete");
+    if (!enabledIn(spec, modules)) return [call, { error_kind: "module_disabled" }];
+    try {
+      const tree = await spec.handler(context, validateArguments(spec, args));
+      const redactor = new Redactor({
+        privacy: context.privacy,
+        guard: context.guard,
+        summaryOk,
+      });
+      const data = redactor.apply(tree);
+      if (data === null || typeof data !== "object" || Array.isArray(data))
+        throw new UnlabelledValue("a tool must return an object");
+      leakCheck(data, {
+        strict: redactor.strict,
+        isins: redactor.isins,
+        nonMoney: redactor.nonMoney,
+      });
+      return [call, canonicalNative(data, loanKey, investments)];
+    } catch (error) {
+      if (error instanceof ToolError) {
+        let message = scrubText(error.message, { strict: !error.system, guard: context.guard });
+        try {
+          leakCheck({ error: message }, { strict: true });
+        } catch (failure) {
+          if (!(failure instanceof LeakDetected)) throw failure;
+          message = "the error text was withheld by the privacy check";
         }
-        if (error instanceof UnlabelledValue) return [call, { error_kind: "unlabelled" }];
-        if (error instanceof LeakDetected) return [call, { error_kind: "privacy_check" }];
-        throw error;
+        return [call, { error_kind: error.kind, error: message }];
       }
-    }),
-  );
+      if (error instanceof UnlabelledValue) return [call, { error_kind: "unlabelled" }];
+      if (error instanceof LeakDetected) return [call, { error_kind: "privacy_check" }];
+      throw error;
+    }
+  };
+  const rows: Array<readonly [string, OutValue]> = [];
+  for (const entry of NATIVE_CALLS) rows.push(await readOne(entry));
+  return Object.fromEntries(rows);
 }
 
 /** Unknown/new variants of native calls cannot silently fall back to the labelled Python replay. */

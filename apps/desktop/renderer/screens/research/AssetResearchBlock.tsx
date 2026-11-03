@@ -7,6 +7,7 @@ import { useCommand, useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { useEffect, useRef, useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
+import { useDurableCommands } from "../useDurableCommand.js";
 import { AssetResearchSection } from "./AssetResearchSection.js";
 import { researchAssetModel } from "./presentation.js";
 
@@ -40,6 +41,7 @@ function BoundAssetResearch(props: Parameters<typeof AssetResearchBlock>[0]) {
   const { privacy } = useUiEnv();
   const data = useQuery(queries.screen, { today, lang: lang() });
   const mark = useCommand(commands.markRead);
+  const durable = useDurableCommands();
   const started = useRef(false);
   const [older, setOlder] = useState(false);
   const model = researchAssetModel(data, props.instrument, props.held, today, props.noteGid, older);
@@ -48,8 +50,8 @@ function BoundAssetResearch(props: Parameters<typeof AssetResearchBlock>[0]) {
       return;
     if (!data.notes.some((row) => row.instrument_id === props.instrument && row.unread)) return;
     started.current = true;
-    void mark.run({ instrument: props.instrument });
-  }, [data, privacy, props.instrument, mark]);
+    void durable.run(`mark:${props.instrument}`, mark, { instrument: props.instrument });
+  }, [data, privacy, props.instrument, mark, durable]);
   return model === null ? null : (
     <AssetResearchSection
       model={model}

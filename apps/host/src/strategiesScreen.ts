@@ -31,6 +31,7 @@ import {
   type UiActionBinding,
   type UiActionContext,
   type UiActionRegistration,
+  unknownUiCommand,
 } from "./uiActions.js";
 
 interface StrategyCreateAbsent {
@@ -308,13 +309,17 @@ export function strategiesScreen(options: {
       input: { yamlText: check.yaml, mdText: check.md },
       key: mintUlid(Date.now()),
     });
-    if (!result.ok) return refused(result.reason);
+    if (result.kind === "outcome_unknown") return unknownUiCommand(result, saveStrategyVersion.id);
+    if (result.kind === "not_started")
+      return { status: "not_started", reason: "capability_unavailable" };
+    if (result.kind === "refused") return refused(result.reason);
     try {
-      await context.execute({
+      const proxy = await context.execute({
         command: ensureReloadProxy.id,
         input: { yamlText: check.yaml, mdText: check.md },
         key: mintUlid(Date.now()),
       });
+      if (proxy.kind === "outcome_unknown") return unknownUiCommand(proxy, ensureReloadProxy.id);
     } catch {
       /* Proxy failure never undoes a successfully recorded version. */
     }
@@ -453,6 +458,7 @@ export function strategiesScreen(options: {
           }
           const image = await refresh(cap);
           const result = await reload(context, image.revision);
+          if (result.status === "outcome_unknown" || result.status === "not_started") return result;
           if (
             result.status === "completed" &&
             (result.value.status === "recorded" || result.value.status === "unchanged") &&

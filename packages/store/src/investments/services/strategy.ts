@@ -17,8 +17,9 @@ import {
 import { type CommandEnv, type EventWriter, runCommand } from "../../command.js";
 import type { Store } from "../../materialize.js";
 import { saveStrategyVersion } from "../commands/strategy.js";
-import { ensureProxy } from "../performance/backfill.js";
+import { ensureProxy, ensureProxyDurable } from "../performance/backfill.js";
 import { latestStrategyVersion, type StrategyVersionView } from "../queries/strategy.js";
+import { type DurableWrite, DurableWriteUnknown, requireDurable } from "./durable.js";
 
 export { MAX_STRATEGY_FILE_BYTES } from "../commands/strategy.js";
 
@@ -102,6 +103,7 @@ export type LoadStrategyOptions =
       readonly beforeRecord?: () => boolean;
       /** Host's existing vault queue; only the synchronous post-file-read phase enters it. */
       readonly runWrite?: <T>(work: () => T) => Promise<T>;
+      readonly durableWrite?: DurableWrite;
     };
 
 /**
@@ -115,6 +117,38 @@ export async function loadStrategy(
   options: LoadStrategyOptions = {},
 ): Promise<StrategyState> {
   const read = await readStrategyFiles(files);
+  if (options.record === true && options.durableWrite) {
+    const status = strategyStatus(read, latestStrategyVersion(store.read.bind(store)) ?? null);
+    if (options.beforeRecord?.() === false) throw new Error("not_leader");
+    if (read.yaml !== null && read.readError === null && status.changed)
+      await requireDurable(options.durableWrite, saveStrategyVersion, {
+        yamlText: read.yaml,
+        mdText: read.md,
+      });
+    const proxy = status.result?.config?.benchmark?.proxy;
+    if (proxy) {
+      try {
+        await ensureProxyDurable(store, proxy, options.durableWrite);
+      } catch (error) {
+        if (error instanceof DurableWriteUnknown) throw error;
+      }
+    }
+    const latest = latestStrategyVersion(store.read.bind(store)) ?? null;
+    return {
+      state: status.state,
+      result: status.result,
+      config: usableConfig(status),
+      issues: status.result?.issues ?? [],
+      inactiveRules: status.result?.inactiveRules ?? [],
+      sha256: status.sha256,
+      version: latest,
+      changed:
+        status.state === "missing" || status.readError !== null
+          ? false
+          : latest?.sha256 !== status.sha256,
+      readError: status.readError,
+    };
+  }
   const finish = () => {
     let latest = latestStrategyVersion(store.read.bind(store)) ?? null;
     const status = strategyStatus(read, latest);

@@ -7,11 +7,9 @@ import type { Query, QueryArgs } from "@cashu/store/query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { type ReactNode, Suspense } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RemoteStoreError } from "../client/errors.js";
 import { createPortClient } from "../client/port.js";
 import {
   accountRows,
-  Bomb,
   ErrorBoundary,
   explode,
   Fallback,
@@ -24,7 +22,7 @@ import { TestHost, testRelay } from "../testing/host.js";
 import { memoryStores, VAULT_A } from "../testing/memory.js";
 import { ProfileProvider } from "./ProfileProvider.js";
 import { StoreProvider } from "./StoreProvider.js";
-import { useCommand } from "./useCommand.js";
+import { type CommandHandle, useCommand } from "./useCommand.js";
 import { useQuery } from "./useQuery.js";
 
 const closers: (() => void)[] = [];
@@ -61,7 +59,7 @@ async function setup(options: { onError?: (e: unknown) => void } = {}) {
     pair.close();
     stores.close();
   });
-  return { stores, client, pair, wrapper, fallbacks: () => fallbackMounts.count };
+  return { stores, client, pair, host, wrapper, fallbacks: () => fallbackMounts.count };
 }
 
 /** Render a tree that suspends: in the act environment the retry must be awaited (React 19). */
@@ -82,6 +80,15 @@ function Name({ id }: { id: string }) {
       {`${name}${isPending ? " (saving)" : ""}`}
     </button>
   );
+}
+
+function CommandProbe({
+  onHandle,
+}: {
+  onHandle: (handle: CommandHandle<{ name: string }, null>) => void;
+}) {
+  onHandle(useCommand(renameProfile));
+  return null;
 }
 
 describe("useQuery (port adapter)", () => {
@@ -152,32 +159,65 @@ describe("useQuery (port adapter)", () => {
 });
 
 describe("useCommand (port adapter)", () => {
+  it("blocks a new key after unknown until the original attempt is reconciled", async () => {
+    const { wrapper, host, pair, client } = await setup();
+    let handle: CommandHandle<{ name: string }, null> | undefined;
+    await renderAsync(
+      <CommandProbe
+        onHandle={(current) => {
+          handle = current;
+        }}
+      />,
+      { wrapper },
+    );
+    if (handle === undefined) throw new Error("missing command handle");
+    const command = handle;
+    host.dieAfterNextCommit = () => pair.cut();
+    const first = command.run({ name: "Synthetic" });
+    await waitFor(() => expect(client.connection.getSnapshot()).toBe("connecting"));
+    const uncertain = await first;
+    if (uncertain.kind !== "outcome_unknown") throw new Error("missing attempt");
+    expect(await command.run({ name: "Different" })).toEqual({
+      kind: "not_started",
+      reason: "pending_previous_attempt",
+    });
+    expect(pair.sent.filter((message) => (message as { t: string }).t === "run")).toHaveLength(1);
+    pair.restore();
+    await waitFor(() => expect(client.connection.getSnapshot()).not.toBe("connecting"));
+    expect(await command.reconcile(uncertain.attempt)).toEqual({
+      kind: "completed",
+      value: null,
+    });
+    expect((await command.run({ name: "Different" })).kind).toBe("completed");
+    expect(pair.sent.filter((message) => (message as { t: string }).t === "run")).toHaveLength(2);
+  });
   it("returns the result union, with isPending over the round trip", async () => {
     const { client } = await setup();
     const target = { kind: "vault", vault: VAULT_A } as const;
     expect(await client.run(target, createProfile, { slug: "x", name: "X" })).toEqual({
-      ok: false,
+      kind: "refused",
       reason: "exists",
     });
     expect(await client.run(target, renameProfile, { name: "Ela" })).toEqual({
-      ok: true,
+      kind: "completed",
       value: null,
     });
   });
 
-  it("throws an unexpected failure to the error boundary", async () => {
-    const { wrapper } = await setup();
-    await renderAsync(<Bomb />, { wrapper, onCaughtError: () => {} });
-    const button = await screen.findByRole("button", { name: "go" });
-    act(() => button.click());
-    expect((await screen.findByRole("alert")).textContent).toBe("boundary: command bug");
+  it("settles a command failure without an error-boundary escape", async () => {
+    const { client } = await setup();
+    expect(await client.run({ kind: "vault", vault: VAULT_A }, explode, {})).toEqual({
+      kind: "not_started",
+      reason: "preinvoke_failure",
+    });
   });
 
   it("refuses a command the store process did not register", async () => {
     const { client } = await setup();
     const unknown = { ...renameProfile, id: "test.notRegistered" };
-    await expect(
-      client.run({ kind: "vault", vault: VAULT_A }, unknown, { name: "x" }),
-    ).rejects.toBeInstanceOf(RemoteStoreError);
+    expect(await client.run({ kind: "vault", vault: VAULT_A }, unknown, { name: "x" })).toEqual({
+      kind: "not_started",
+      reason: "preinvoke_failure",
+    });
   });
 });

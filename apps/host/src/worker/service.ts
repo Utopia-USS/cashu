@@ -1,6 +1,6 @@
 /** S40 host-lifetime worker. No default ownership, Python handover or closed-app wake binding. */
 import { enabledModuleIds } from "@cashu/store/core";
-import { lastOkDay } from "@cashu/store/investments/services";
+import { DurableWriteUnknown, lastOkDay } from "@cashu/store/investments/services";
 import type { OpenVault } from "../stores.js";
 import { WorkerAuthorityLost, workerGuard } from "./authority.js";
 import { syncWorkerBudget } from "./budget.js";
@@ -15,7 +15,7 @@ import {
   type WorkerState,
   type WorkerStatus,
 } from "./contracts.js";
-import { nativeInvestmentJobs } from "./investments.js";
+import { nativeInvestmentJobs, type WorkerWriteAttempts } from "./investments.js";
 import { deliverWorkerNotifications, sendWorkerDigest } from "./notifications.js";
 import { checkedSchedule, localDay, nextSlot, slotPassed, slotText } from "./schedule.js";
 
@@ -50,7 +50,9 @@ export class HostWorker {
     this.bindings = bindings;
     this.schedule = checkedSchedule(bindings?.schedule);
     this.investments =
-      bindings === undefined ? undefined : nativeInvestmentJobs(this.host, bindings);
+      bindings === undefined
+        ? undefined
+        : nativeInvestmentJobs(this.host, bindings, this.writeAttempts());
     this.stateName =
       bindings === undefined ? "off" : !this.host.jobsEnabled() ? "safe-mode" : "idle";
   }
@@ -126,6 +128,29 @@ export class HostWorker {
     await this.bindings.state.save(this.state);
     if (this.stopping || !this.host.jobsEnabled()) throw new WorkerAuthorityLost();
   }
+  private writeAttempts(): WorkerWriteAttempts {
+    return {
+      reserve: async (vault, job, command, key) => {
+        this.guard(vault, "investments.daily")();
+        const existing = this.state.uncertain[vault.id];
+        if (existing !== undefined) throw new DurableWriteUnknown(existing.key, existing.command);
+        this.state.uncertain[vault.id] = { job, phase: "prepared", command, key };
+        await this.save();
+        this.guard(vault, "investments.daily")();
+      },
+      settle: async (vault, key) => {
+        const pending = this.state.uncertain[vault.id];
+        if (pending?.key !== key) throw new Error("worker_attempt_key_mismatch");
+        delete this.state.uncertain[vault.id];
+        try {
+          await this.save();
+        } catch (error) {
+          this.state.uncertain[vault.id] = pending;
+          throw error;
+        }
+      },
+    };
+  }
   private guard(vault: OpenVault, job: WorkerJob): () => void {
     const bindings = this.bindings;
     if (bindings === undefined) throw new WorkerAuthorityLost();
@@ -142,6 +167,11 @@ export class HostWorker {
       due: OpenVault[] = [];
     for (const vault of vaults) {
       try {
+        if (
+          this.state.uncertain[vault.id] !== undefined &&
+          (job === "investments.daily" || job === "notifications" || job === "digest")
+        )
+          continue;
         const guard = this.guard(vault, job);
         guard();
         const old = this.state.runs[runKey(job, vault.id)];
@@ -275,12 +305,29 @@ export class HostWorker {
           try {
             outcomes = await this.investments.daily(due);
           } catch (error) {
+            if (error instanceof DurableWriteUnknown) {
+              const target = error.vault ?? due[0]?.id;
+              if (target !== undefined) {
+                this.state.uncertain[target] = {
+                  job: "investments.daily",
+                  phase: "outcome_unknown",
+                  command: error.commandId,
+                  key: error.key,
+                };
+                await this.save();
+              }
+            }
             outcomes = new Map(
               due.map((v) => [
                 v.id,
                 {
                   status: "failed",
-                  code: error instanceof WorkerAuthorityLost ? "authority_lost" : "daily_failed",
+                  code:
+                    error instanceof DurableWriteUnknown && v.id === (error.vault ?? due[0]?.id)
+                      ? "outcome_unknown"
+                      : error instanceof WorkerAuthorityLost
+                        ? "authority_lost"
+                        : "daily_failed",
                 },
               ]),
             );
@@ -358,6 +405,7 @@ export class HostWorker {
     if (investments === undefined || !investments.backfillEnabled()) return;
     for (const vault of vaults) {
       if (this.stopping) return;
+      if (this.state.uncertain[vault.id] !== undefined) continue;
       if (busyDaily.has(vault.id)) continue;
       const guard = this.guard(vault, "investments.daily");
       try {
@@ -398,10 +446,25 @@ export class HostWorker {
               ? { status: "failed", code: "backfill_failed" }
               : { status: "skipped", code: result === "busy" ? "busy" : "backfill_unavailable" };
       } catch (error) {
+        if (error instanceof DurableWriteUnknown) {
+          this.state.uncertain[vault.id] = {
+            job: "investments.backfill",
+            phase: "outcome_unknown",
+            command: error.commandId,
+            key: error.key,
+          };
+          // The prepared record was saved before dispatch. During shutdown it remains on disk.
+          if (!this.stopping && this.host.jobsEnabled()) await this.save();
+        }
         if (this.stopping || !this.host.jobsEnabled()) return;
         outcome = {
           status: "failed",
-          code: error instanceof WorkerAuthorityLost ? "authority_lost" : "backfill_failed",
+          code:
+            error instanceof DurableWriteUnknown
+              ? "outcome_unknown"
+              : error instanceof WorkerAuthorityLost
+                ? "authority_lost"
+                : "backfill_failed",
         };
       }
       this.state.backfills[vault.id] = {

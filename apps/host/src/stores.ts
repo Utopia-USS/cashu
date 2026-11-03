@@ -1,15 +1,15 @@
 // The stores this host opens: the device store and every vault the device holds, each with its write
-// queue and request-key table. Files are opened exclusively under the writer lease (WAL +
+// queue. Synthetic stores use view request tables; native vaults use separate private attempt
+// journals. Files are opened exclusively under the writer lease (WAL +
 // `locking_mode=EXCLUSIVE`): any other process opening one gets "database is locked" instead of
-// forking a device stream. A damaged vault database is discarded and reopened empty
-// (`Store.openOrRecover`; after a session that did not close cleanly the store runs `quick_check`).
+// forking a device stream. Only synthetic damaged views use Store.openOrRecover. Native views are
+// preserved on corruption and must be recovered from authenticated log history separately.
 //
-// TRANSITIONAL(S53b): vaults come from a synthetic source, as in S53's store process: a device id
+// TRANSITIONAL(S53b): the explicit harness uses S53's synthetic source: a device id
 // file, one database and one gid-salt file per vault under `<data dir>/stores/`, a demo vault seeded
-// on first run, commands applied straight to the view (HLC state saved with each batch). The real
-// source opens each vault the device holds with its gid salt from the OS keyring (S56e), its device
-// identity from pairing (S29), and writes through the sync engine's durable local append (S29c-B3),
-// which also replays a recovered view from the log.
+// on first run, commands applied straight to the view (HLC state saved with each batch). The native
+// source opens already provisioned vaults with injected exact KeyStore identity and encrypted local
+// logs; T44 still needs to bind the OS factory before ordinary production use.
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -32,13 +32,15 @@ import { currentVault, DeviceStore, setCurrentVault } from "@cashu/store/device"
 import { runQuery } from "@cashu/store/query";
 import type { WriterLease } from "./lease.js";
 import type { HostLog } from "./log.js";
+import { type NativeVaultSession, type NativeVaultSource, openNativeVault } from "./nativeVault.js";
 import { WriteQueue } from "./queue.js";
 import { RequestTable } from "./requests.js";
+import { validateNativeVaultInventorySet } from "./sync/keys/deviceAuthority.js";
 
 const HEX32 = /^[0-9a-f]{32}$/;
 
 /** One vault open on this device. */
-export interface OpenVault {
+interface BaseOpenVault {
   readonly id: string;
   readonly store: Store;
   readonly driver: SqlDriver;
@@ -46,8 +48,21 @@ export interface OpenVault {
   readonly writer: EventWriter;
   readonly env: CommandEnv;
   readonly queue: WriteQueue;
-  readonly requests: RequestTable;
 }
+
+export interface SyntheticOpenVault extends BaseOpenVault {
+  readonly mode: "synthetic";
+  readonly requests: RequestTable;
+  readonly native?: never;
+}
+
+interface NativeOpenVault extends BaseOpenVault {
+  readonly mode: "native";
+  readonly native: NativeVaultSession;
+  readonly requests?: never;
+}
+
+export type OpenVault = SyntheticOpenVault | NativeOpenVault;
 
 export interface OpenDevice {
   readonly store: DeviceStore;
@@ -63,9 +78,11 @@ export interface HostStores {
   readonly recovered: number;
   /** Write tasks queued or running, all stores together. */
   pending(): number;
+  /** Invalidates native session epochs before waiting for queued work to drain. */
+  invalidate(): void;
   /** Refuses new writes and resolves when every queue drained. */
   drain(): Promise<void>;
-  close(): void;
+  close(): void | Promise<void>;
 }
 
 export interface StoreFiles {
@@ -114,7 +131,7 @@ function openVault(
   device: string,
   lease: WriterLease,
   now: () => number,
-): { vault: OpenVault; recovered: boolean } {
+): { vault: SyntheticOpenVault; recovered: boolean } {
   const path = join(files.vaultDir, `${id}.db`);
   const salt = Uint8Array.from(Buffer.from(hexFile(join(files.vaultDir, `${id}.salt`), 32), "hex"));
   let driver: SqlDriver | undefined;
@@ -136,6 +153,7 @@ function openVault(
     recovered,
     vault: {
       id,
+      mode: "synthetic",
       store,
       driver: db,
       writer: {
@@ -149,6 +167,102 @@ function openVault(
       requests: new RequestTable(db, now),
     },
   };
+}
+
+/** Public reads pause while authenticated inbound sync is applying to the raw session Store. */
+function guardedNativeStore(session: NativeVaultSession): Store {
+  return new Proxy(session.store, {
+    get(target, property) {
+      if (property === "read")
+        return (...args: Parameters<Store["read"]>) => {
+          if (!session.isCurrent()) throw new Error("native_session_unavailable");
+          return target.read(...args);
+        };
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+/** Existing provisioned native vaults only. The inventory is checked as one set before opening. */
+export async function openNativeHostStores(
+  dataDir: string,
+  source: NativeVaultSource,
+  lease: WriterLease,
+  log: HostLog,
+  now: () => number = Date.now,
+): Promise<HostStores> {
+  if (source.inventory.length === 0) throw new Error("native_inventory_unavailable");
+  validateNativeVaultInventorySet(source.inventory, dataDir);
+  const native: NativeVaultSession[] = [];
+  let deviceStore: DeviceStore | undefined;
+  try {
+    for (const entry of source.inventory) {
+      native.push(await openNativeVault(entry, dataDir, source, lease, now));
+    }
+    const files = storeFiles(dataDir);
+    ensurePrivateDir(files.dir);
+    deviceStore = openDevice(files, lease, log);
+    const activeDevice = deviceStore;
+    const device: OpenDevice = {
+      store: activeDevice,
+      driver: activeDevice.driver,
+      queue: new WriteQueue(() => lease.assertHeld()),
+      requests: new RequestTable(activeDevice.driver, now),
+    };
+    const vaults = new Map<string, OpenVault>();
+    for (const session of native) {
+      const clockStore = metaClockStore(session.store.driver, session.device);
+      const restored = clockStore.load();
+      vaults.set(session.id, {
+        id: session.id,
+        mode: "native",
+        native: session,
+        store: guardedNativeStore(session),
+        driver: session.store.driver,
+        writer: {
+          append() {
+            throw new Error("durable_command_required");
+          },
+        },
+        env: {
+          device: session.device,
+          clock: { now },
+          hlc: new HybridClock(session.device, restored === undefined ? {} : { restore: restored }),
+          lease: { isHolder: () => session.isCurrent() },
+        },
+        queue: session.queue,
+      });
+    }
+    const selected = runQuery(deviceStore, currentVault, undefined).value;
+    const first = vaults.keys().next().value as string | undefined;
+    if ((selected === null || !vaults.has(selected)) && first !== undefined) {
+      const switched = deviceStore.run(setCurrentVault, { vault: first });
+      if (!switched.ok) throw new Error("native_selection_unavailable");
+    }
+    const queues = () => [device.queue, ...native.map((session) => session.queue)];
+    return {
+      device,
+      vaults,
+      recovered: 0,
+      pending: () => queues().reduce((count, queue) => count + queue.pending, 0),
+      invalidate() {
+        for (const session of native) session.invalidate();
+      },
+      async drain() {
+        for (const queue of queues()) queue.close();
+        await Promise.all(queues().map((queue) => queue.idle()));
+      },
+      async close() {
+        for (const session of native) await session.close();
+        activeDevice.close();
+      },
+    };
+  } catch (error) {
+    for (const session of native) await session.close();
+    deviceStore?.close();
+    throw error;
+  }
 }
 
 function openDevice(files: StoreFiles, lease: WriterLease, log: HostLog): DeviceStore {
@@ -190,7 +304,7 @@ export function openHostStores(
     requests: new RequestTable(deviceStore.driver, now),
   };
 
-  const vaults = new Map<string, OpenVault>();
+  const vaults = new Map<string, SyntheticOpenVault>();
   let recovered = 0;
   const close = () => {
     for (const v of vaults.values()) v.store.close();
@@ -226,7 +340,8 @@ export function openHostStores(
       const switched = deviceStore.run(setCurrentVault, { vault: first });
       if (!switched.ok) throw new Error(`the current vault was not set (${switched.reason})`);
     }
-    for (const t of [device, ...vaults.values()]) t.requests.prune();
+    device.requests.prune();
+    for (const vault of vaults.values()) vault.requests.prune();
   } catch (error) {
     close();
     throw error;
@@ -238,6 +353,7 @@ export function openHostStores(
     vaults,
     recovered,
     pending: () => queues().reduce((n, q) => n + q.pending, 0),
+    invalidate() {},
     async drain() {
       for (const q of queues()) q.close();
       await Promise.all(queues().map((q) => q.idle()));

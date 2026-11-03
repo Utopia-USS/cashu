@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
+import type { StoreToClient } from "@cashu/host-protocol/store";
 import { connectHost, HostBusyError } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import {
@@ -49,6 +50,13 @@ function readLog(dataDir: string, vault: string): LogRow[] {
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("local host", () => {
+  it("refuses ordinary open without a native provider before creating host files", async () => {
+    const dir = tempDir();
+    await expect(startLocalHost({ dataDir: dir, home: tempDir() })).rejects.toThrow(
+      "native_vault_provider_unavailable",
+    );
+    expect(existsSync(join(dir, "run"))).toBe(false);
+  });
   it("serves the store channel: vaults at ready, live queries, keyed commands", async () => {
     const dir = tempDir();
     const host = await startLocalHost(testHostOptions(dir));
@@ -107,15 +115,68 @@ describe("local host", () => {
     await client.run("core.renameProfile", { name: "Other" }, { vault });
     // The resend comes after another rename: re-applying it would rename back to "Once".
     expect(await client.run("core.renameProfile", { name: "Once" }, { vault, key })).toEqual(first);
-    await expect(client.run("core.setProfileSettings", {}, { vault, key })).rejects.toThrow(
-      "KeyReusedError",
-    );
+    expect(await client.run("core.setProfileSettings", {}, { vault, key })).toEqual({
+      ok: false,
+      reason: "request_key_conflict",
+    });
     const deviceKey = mintUlid(Date.now());
     const set = await client.run("device.setCurrentVault", { vault }, { key: deviceKey });
     expect(await client.run("device.setCurrentVault", { vault }, { key: deviceKey })).toEqual(set);
     client.close();
     await host.stop();
     expect(readLog(dir, vault).filter((r) => r.type === "profile.renamed")).toHaveLength(2);
+  });
+
+  it("keeps a lookup unknown while the original keyed write is waiting in the queue", async () => {
+    const dir = tempDir();
+    const host = await startLocalHost(testHostOptions(dir));
+    const client = await storeClient(dir);
+    const vault = client.vaults[0] as string;
+    const opened = host.stores.vaults.get(vault);
+    if (!opened) throw new Error("missing vault");
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const blocker = opened.queue.run(() => held);
+    const key = mintUlid(Date.now());
+    const replies: StoreToClient[] = [];
+    client.conn.onFrame((frame) => {
+      if (frame.t === "store") replies.push(frame.m as StoreToClient);
+    });
+    client.conn.send({
+      t: "store",
+      m: {
+        t: "run",
+        rid: 901,
+        generation: 0,
+        key,
+        target: { kind: "vault", vault },
+        command: "core.renameProfile",
+        input: { name: "Queued" },
+      },
+    });
+    client.conn.send({
+      t: "store",
+      m: {
+        t: "lookup",
+        rid: 900,
+        generation: 0,
+        key,
+        target: { kind: "vault", vault },
+        command: "core.renameProfile",
+      },
+    });
+    await expect
+      .poll(() => replies.find((reply) => reply.t === "lookupResult" && reply.rid === 900))
+      .toMatchObject({ outcome: { kind: "outcome_unknown" } });
+    release();
+    await blocker;
+    await expect
+      .poll(() => replies.find((reply) => reply.t === "result" && reply.rid === 901))
+      .toMatchObject({ outcome: { kind: "completed", value: null } });
+    client.close();
+    await host.stop();
   });
 
   it("refuses a foreign open of its stores and a second host", async () => {

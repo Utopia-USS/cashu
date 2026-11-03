@@ -2,7 +2,7 @@
 // device store and every vault open on this device; a `Target` names which one. Two adapters fill it:
 // in-process (the phone, tests: synchronous reads, never suspends) and a MessagePort that Electron main
 // relays to the local host (asynchronous first read, snapshots pushed afterwards).
-import type { Command, CommandResult } from "@cashu/store";
+import type { Command } from "@cashu/store";
 import type { DeviceCommand } from "@cashu/store/device";
 import type { Query, QueryArgs } from "@cashu/store/query";
 import type { UiAction, UiActionResult } from "@cashu/store/ui-actions";
@@ -19,6 +19,23 @@ export const DEVICE_TARGET: Target = Object.freeze({ kind: "device" });
 export type AnyCommand<I = unknown, R = unknown, In = unknown> =
   | Command<I, R, In>
   | DeviceCommand<I, R, In>;
+
+/** Opaque in-memory identity for a read-only reconciliation. It contains no command input. */
+export interface CommandAttempt {
+  readonly key: string;
+  readonly target: Target;
+  readonly command: string;
+}
+
+export type CommandOutcome<R> =
+  | { readonly kind: "completed"; readonly value: R }
+  | { readonly kind: "refused" | "not_started"; readonly reason: string }
+  | {
+      readonly kind: "outcome_unknown";
+      readonly key: string;
+      readonly attemptId?: string;
+      readonly attempt: CommandAttempt;
+    };
 
 /** Where a query run's result goes. */
 export interface Sink {
@@ -38,8 +55,13 @@ export interface Adapter {
   readonly vaults: readonly string[];
   /** Start a live query; the sync adapter delivers its first value before returning. */
   open(target: Target, query: Query<QueryArgs, unknown>, args: QueryArgs, sink: Sink): () => void;
-  /** Run a command; expected failures resolve as `{ ok: false }`, unexpected ones reject. */
-  run(target: Target, command: AnyCommand, input: unknown): Promise<CommandResult<unknown>>;
+  run(
+    target: Target,
+    command: AnyCommand,
+    input: unknown,
+    attempt: CommandAttempt,
+  ): Promise<CommandOutcome<unknown>>;
+  reconcile?(attempt: CommandAttempt): Promise<CommandOutcome<unknown>>;
 }
 
 /** The state of one snapshot, as `useSyncExternalStore` reads it (identity changes on every change). */
@@ -73,7 +95,9 @@ export interface StoreClient {
     target: Target,
     command: AnyCommand<I, R, In>,
     input: In,
-  ): Promise<CommandResult<R>>;
+    attempt?: CommandAttempt,
+  ): Promise<CommandOutcome<R>>;
+  reconcile<R>(attempt: CommandAttempt): Promise<CommandOutcome<R>>;
 }
 
 /** A message channel (a DOM / Node MessagePort), adapted by the app. */

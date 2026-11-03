@@ -462,8 +462,11 @@ describe("native research MCP tools", () => {
     if (!original) throw new Error("missing tool");
     const spec = {
       ...original,
-      handler: (ctx: ToolContext<NativeToolStore>, args: Readonly<Record<string, unknown>>) => ({
-        actual: original.handler(ctx, args),
+      handler: async (
+        ctx: ToolContext<NativeToolStore>,
+        args: Readonly<Record<string, unknown>>,
+      ) => ({
+        actual: await original.handler(ctx, args),
         invalid: new Labelled("not a count", "count"),
       }),
     };

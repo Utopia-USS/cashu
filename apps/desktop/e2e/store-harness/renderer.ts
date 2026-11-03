@@ -143,6 +143,19 @@ const live = {
     while (!results.has(id)) await new Promise((resolve) => setTimeout(resolve, 20));
     return results.get(id);
   },
+  async reconcile(id: number): Promise<unknown> {
+    const result = await this.result(id);
+    if (
+      result === null ||
+      typeof result !== "object" ||
+      !("kind" in result) ||
+      result.kind !== "outcome_unknown" ||
+      !("attempt" in result)
+    )
+      throw new Error("no unknown attempt");
+    const store = await client();
+    return store.reconcile(result.attempt as Parameters<QueryCache["reconcile"]>[0]);
+  },
   async nameBecomes(name: string): Promise<void> {
     const store = await client();
     if (target === null) throw new Error("open() first");

@@ -64,8 +64,8 @@ function researchError(reason: string): ToolError {
       : "invalid";
   return new ToolError(REFUSAL_MESSAGES[reason] ?? `research refused: ${reason}`, kind);
 }
-function execute<I, V>(ctx: Context, command: Command<I, V>, input: unknown): V {
-  const out = ctx.store.run(command, input);
+async function execute<I, V>(ctx: Context, command: Command<I, V>, input: unknown): Promise<V> {
+  const out = await ctx.store.run(command, input);
   if (!out.ok) {
     if (out.reason === "invalid_view") {
       const data = F.object(input),
@@ -169,7 +169,7 @@ function researchNotes(ctx: Context, args: ToolArgs): L.LabelledTree {
     ),
   };
 }
-function start(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function start(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const raw = F.object(args.scope);
   if (Object.hasOwn(raw, "themes"))
     throw new ToolError(
@@ -188,7 +188,7 @@ function start(ctx: Context, args: ToolArgs): L.LabelledTree {
     if (e instanceof research.ResearchInputError) throw new ToolError(e.message);
     throw e;
   }
-  const out = execute(ctx, capture(R.startResearchRun), {
+  const out = await execute(ctx, capture(R.startResearchRun), {
     scope: args.scope === undefined ? null : scope,
   });
   const data = out.emitted.find((e) => e.type === "researchRun.started")?.data;
@@ -212,7 +212,7 @@ function start(ctx: Context, args: ToolArgs): L.LabelledTree {
     ),
   };
 }
-function add(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function add(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const { instrument: reference, run_id, ...note } = args;
   try {
     research.validateNote(note, now(ctx));
@@ -221,7 +221,7 @@ function add(ctx: Context, args: ToolArgs): L.LabelledTree {
     throw e;
   }
   const target = reference === undefined ? null : instrument(ctx, reference);
-  const out = execute(ctx, addResearchNoteWithPlans(ctx.store.research?.plans), {
+  const out = await execute(ctx, addResearchNoteWithPlans(ctx.store.research?.plans), {
     note,
     instrument: target,
     run: run_id === undefined ? null : runId(ctx, run_id),
@@ -251,7 +251,7 @@ function add(ctx: Context, args: ToolArgs): L.LabelledTree {
     ),
   };
 }
-function finish(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function finish(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const run = runId(ctx, args.run_id);
   try {
     research.validateCounts(args.counts === undefined ? null : F.object(args.counts));
@@ -263,7 +263,7 @@ function finish(ctx: Context, args: ToolArgs): L.LabelledTree {
     ...child,
     lease: { isHolder: () => ctx.store.research?.isHolder(child.vault) === true },
   }));
-  const out = execute(ctx, command, {
+  const out = await execute(ctx, command, {
     run,
     status: args.status ?? "done",
     counts: args.counts ?? null,
@@ -295,10 +295,10 @@ function finish(ctx: Context, args: ToolArgs): L.LabelledTree {
     reason: F.text(counts.reason),
   };
 }
-function setTopic(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function setTopic(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const segment = String(args.segment),
     before = R.topicThesis(ctx.store.read, segment);
-  const out = execute(ctx, capture(R.setTopicMarketView), {
+  const out = await execute(ctx, capture(R.setTopicMarketView), {
     segment,
     assessment: args.assessment,
     outlook: args.outlook,
@@ -319,8 +319,8 @@ function setTopic(ctx: Context, args: ToolArgs): L.LabelledTree {
     view_sources: F.sources(changed?.sources ?? before?.viewSources),
   };
 }
-function upsertTopic(ctx: Context, args: ToolArgs): L.LabelledTree {
-  const out = execute(ctx, R.proposeTopicDraft, {
+async function upsertTopic(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
+  const out = await execute(ctx, R.proposeTopicDraft, {
     segment: args.segment,
     thesis: args.thesis,
     invalidation: args.invalidation ?? null,
@@ -334,14 +334,14 @@ function upsertTopic(ctx: Context, args: ToolArgs): L.LabelledTree {
     ),
   };
 }
-function setSegment(ctx: Context, args: ToolArgs): L.LabelledTree {
+async function setSegment(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const target = instrument(ctx, args.instrument);
   if (
     !R.heldInstrumentGids(ctx.store.read, ctx.today).has(target) &&
     !Q.watchedInstrumentGids(ctx.store.read).has(target)
   )
     throw new ToolError("only a held or watched instrument gets a segment", "conflict");
-  const out = execute(ctx, C.setInstrumentSegment, {
+  const out = await execute(ctx, C.setInstrumentSegment, {
     instrument: target,
     segment: args.segment,
     by: "agent",

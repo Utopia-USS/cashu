@@ -18,10 +18,12 @@ import {
   runCommand,
 } from "../../command.js";
 import { profileOf } from "../../core/queries.js";
+import { mintUlid } from "../../gid.js";
 import type { Store } from "../../materialize.js";
 import { type DailyEvaluationResult, dailyEvaluation } from "../commands/daily.js";
 import type { NotificationQueue } from "../local/notificationQueue.js";
 import type { LocalRunStatus } from "../local/runStatus.js";
+import { type DurableWrite, DurableWriteUnknown, requireDurable } from "./durable.js";
 import { collectPriceNeeds } from "./priceNeeds.js";
 import { type DailyPriceLock, type RefreshPriceDeps, refreshPriceNeeds } from "./prices.js";
 import { loadStrategy, type StrategyFilesPort, type StrategyState } from "./strategy.js";
@@ -35,6 +37,7 @@ export interface DailyVault {
   readonly lang: "pl" | "en";
   /** Existing per-vault host queue, bound by the caller. Never surrounds file or network awaits. */
   runWrite<T>(work: () => T): Promise<T>;
+  readonly durableWrite?: DurableWrite;
 }
 export interface DailyProfileResult {
   readonly vault: string;
@@ -102,6 +105,7 @@ export async function runDaily(
           env: v.env,
           beforeRecord: () => v.env.lease.isHolder(),
           runWrite: (work) => v.runWrite(work),
+          ...(v.durableWrite === undefined ? {} : { durableWrite: v.durableWrite }),
         });
         if (!v.env.lease.isHolder()) throw new Error("not_leader");
         const profile = profileOf(v.store.read.bind(v.store));
@@ -113,7 +117,16 @@ export async function runDaily(
           strategy.config?.baseCurrency ?? toCurrency(profile.baseCurrency),
         );
         ready.push({ v, strategy, startedAt, needs });
-      } catch {
+      } catch (error) {
+        if (error instanceof DurableWriteUnknown) {
+          error.vault = v.store.vault;
+          try {
+            deps.activity?.finished(v.store.vault, startedAt);
+          } catch {
+            // Device-local bookkeeping cannot replace the original durable key.
+          }
+          throw error;
+        }
         profiles.push({ vault: v.store.vault, status: "failed", error: "preparation_failed" });
         deps.activity?.finished(v.store.vault, startedAt);
       }
@@ -236,26 +249,35 @@ export async function runDaily(
               .filter((r) => needs.watched.has(r.instrumentId) && r.status === "error")
               .map((r) => `prices ${r.label}: ${r.message}`) ?? [],
         });
-        const out = await v.runWrite(() => {
-          if (!v.env.lease.isHolder()) return refuse("not_leader");
-          return runCommand(
-            v.store,
-            v.writer,
-            command,
-            { asOf: input.asOf, trigger: input.trigger },
-            v.env,
-          );
-        });
-        if (!out.ok) {
+        const out = v.durableWrite
+          ? await v.durableWrite(command, {
+              asOf: input.asOf,
+              trigger: input.trigger,
+              preparedId: mintUlid(v.env.clock.now(), v.env.random),
+            })
+          : await v.runWrite(() => {
+              if (!v.env.lease.isHolder()) return refuse("not_leader");
+              return runCommand(
+                v.store,
+                v.writer,
+                command,
+                { asOf: input.asOf, trigger: input.trigger },
+                v.env,
+              );
+            });
+        if ("kind" in out && out.kind === "outcome_unknown")
+          throw new DurableWriteUnknown(out.key, command.id);
+        if (("kind" in out && out.kind !== "completed") || ("ok" in out && !out.ok)) {
           profiles.push({ vault: v.store.vault, status: "refused", error: out.reason });
           continue;
         }
-        profiles.push({ vault: v.store.vault, status: out.value.status, result: out.value });
+        const value = out.value;
+        profiles.push({ vault: v.store.vault, status: value.status, result: value });
         // This is deliberately after append. A crash here can lose enqueue intent; no durability
         // equivalence is claimed without an approved intent protocol.
         if (deps.notifications) {
           try {
-            for (const intent of out.value.notificationIntents) {
+            for (const intent of value.notificationIntents) {
               deps.notifications.enqueue(
                 v.store.vault,
                 intent.signal,
@@ -270,22 +292,31 @@ export async function runDaily(
             };
           }
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof DurableWriteUnknown) {
+          error.vault = v.store.vault;
+          throw error;
+        }
         const failed = defineCommand({
           id: "investments.dailyFailed",
-          input: z.object({}),
-          run(ctx) {
+          input: z.object({
+            asOf: z.string(),
+            trigger: z.string(),
+            strategyVersion: z.string().nullable(),
+            startedAt: z.string(),
+          }),
+          run(ctx, failure) {
             if (!ctx.lease.isHolder()) return refuse("not_leader");
             const run = ctx.newGid();
             ctx.emit("ruleRun.finished", run, {
-              trigger: input.trigger,
-              asOf: input.asOf,
+              trigger: failure.trigger,
+              asOf: failure.asOf,
               status: "failed",
-              strategyVersion: strategy.version?.gid ?? null,
+              strategyVersion: failure.strategyVersion,
               stats: {},
               errors: ["evaluation_failed"],
               report: { new: [], escalated: [] },
-              startedAt,
+              startedAt: failure.startedAt,
               finishedAt: ctx.now(),
             });
             return ok({ run });
@@ -294,11 +325,23 @@ export async function runDaily(
         // A failed final append is a failed vault run. A second append can also fail; never mask it
         // as an accepted partial financial batch or stop another vault's independent evaluation.
         try {
-          await v.runWrite(() => {
-            if (!v.env.lease.isHolder()) return refuse("not_leader");
-            return runCommand(v.store, v.writer, failed, {}, v.env);
-          });
-        } catch {
+          const failedInput = {
+            asOf: input.asOf,
+            trigger: input.trigger,
+            strategyVersion: strategy.version?.gid ?? null,
+            startedAt,
+          };
+          if (v.durableWrite) await requireDurable(v.durableWrite, failed, failedInput);
+          else
+            await v.runWrite(() => {
+              if (!v.env.lease.isHolder()) return refuse("not_leader");
+              return runCommand(v.store, v.writer, failed, failedInput, v.env);
+            });
+        } catch (failure) {
+          if (failure instanceof DurableWriteUnknown) {
+            failure.vault = v.store.vault;
+            throw failure;
+          }
           /* Report failure below. */
         }
         profiles.push({ vault: v.store.vault, status: "failed", error: "evaluation_failed" });

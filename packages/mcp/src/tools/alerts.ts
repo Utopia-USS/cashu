@@ -231,7 +231,7 @@ export function alerts(ctx: Context, args: ToolArgs): L.LabelledTree {
     note: L.fixedText(ALERT_NOTE),
   };
 }
-export function addAlert(ctx: Context, args: ToolArgs): L.LabelledTree {
+export async function addAlert(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const target = args.instrument ? instrument(ctx, args.instrument, true) : null;
   let valid: A.ValidatedAlert;
   try {
@@ -273,7 +273,7 @@ export function addAlert(ctx: Context, args: ToolArgs): L.LabelledTree {
       },
     });
   }
-  const out = execute(ctx, capture(command), {
+  const out = await execute(ctx, capture(command), {
     kind: args.kind,
     params: args.params,
     polarity: args.polarity,
@@ -324,10 +324,10 @@ export function addAlert(ctx: Context, args: ToolArgs): L.LabelledTree {
     ),
   };
 }
-export function muteAlert(ctx: Context, args: ToolArgs): L.LabelledTree {
+export async function muteAlert(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const id = reference("alert", args.id);
   if (!Q.alertByGid(ctx.store.read, id, new Date(ctx.store.now()).toISOString()))
     throw new ToolError("no such alert in this profile (see alerts)", "not_found");
-  execute(ctx, C.updateAlert, { alert: id, changes: { status: "muted" } });
+  await execute(ctx, C.updateAlert, { alert: id, changes: { status: "muted" } });
   return { alert_id: F.ref("alert", id), status: L.category("muted") };
 }

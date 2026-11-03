@@ -82,7 +82,7 @@ describe("port client across a host restart", () => {
     // Another process changed the store while this window was cut off.
     const other = testRelay(new TestHost({ stores, queries: QUERIES, commands: COMMANDS }));
     const renamer = await createPortClient(other.client);
-    expect((await renamer.run(VAULT, renameProfile, { name: "Ola" })).ok).toBe(true);
+    expect((await renamer.run(VAULT, renameProfile, { name: "Ola" })).kind).toBe("completed");
     renamer.dispose();
     other.close();
     expect(name.current()).toBe("Ala");
@@ -93,7 +93,7 @@ describe("port client across a host restart", () => {
     expect(statuses).toEqual(["connecting", "starting", "recovered", "online"]);
   });
 
-  it("holds a command made while the host is gone and runs it once when it is back", async () => {
+  it("does not queue a command made while the host is gone", async () => {
     const { client, relay, host } = await setup();
     const name = watchName(client);
     await waitFor(() => expect(name.current()).toBe("Ala"));
@@ -103,32 +103,42 @@ describe("port client across a host restart", () => {
     const result = client.run(VAULT, renameProfile, { name: "Ela" });
     // Nothing went out while the link was down.
     expect(runsOf(relay.sent)).toHaveLength(0);
+    expect(await result).toEqual({ kind: "not_started", reason: "disconnected" });
     relay.restore();
-    expect(await result).toEqual({ ok: true, value: null });
-    expect(host.applied).toBe(1);
-    expect(runsOf(relay.sent)).toHaveLength(1);
-    await waitFor(() => expect(name.current()).toBe("Ela"));
+    expect(host.applied).toBe(0);
+    expect(runsOf(relay.sent)).toHaveLength(0);
+    expect(name.current()).toBe("Ala");
   });
 
-  it("re-sends a command whose reply was lost with the same key: answered, not applied twice", async () => {
+  it("settles a lost reply unknown and reconciles with a read-only lookup", async () => {
     const { client, relay, host } = await setup();
     host.dieAfterNextCommit = () => relay.cut();
     const result = client.run(VAULT, renameProfile, { name: "Ela" });
     await waitFor(() => expect(client.connection.getSnapshot()).toBe("connecting"));
     expect(host.applied).toBe(1);
 
+    const uncertain = await result;
+    expect(uncertain.kind).toBe("outcome_unknown");
+    if (uncertain.kind !== "outcome_unknown") throw new Error("missing attempt");
     relay.restore();
-    expect(await result).toEqual({ ok: true, value: null });
+    await waitFor(() => expect(client.connection.getSnapshot()).not.toBe("connecting"));
+    expect(await client.reconcile(uncertain.attempt)).toEqual({ kind: "completed", value: null });
     expect(host.applied).toBe(1);
     const sent = runsOf(relay.sent);
-    expect(sent).toHaveLength(2);
-    expect(sent[1]?.key).toBe(sent[0]?.key);
-    // A refusal is replayed the same way (the stored answer, not a second decision).
+    expect(sent).toHaveLength(1);
+    expect(relay.sent.filter((m) => (m as { t: string }).t === "lookup")).toHaveLength(1);
+    // A refusal is recovered without resending its mutation.
     host.dieAfterNextCommit = () => relay.cut();
     const refused = client.run(VAULT, createProfile, { slug: "x", name: "X" });
     await waitFor(() => expect(client.connection.getSnapshot()).toBe("connecting"));
+    const refusedUnknown = await refused;
+    if (refusedUnknown.kind !== "outcome_unknown") throw new Error("missing refused attempt");
     relay.restore();
-    expect(await refused).toEqual({ ok: false, reason: "exists" });
+    await waitFor(() => expect(client.connection.getSnapshot()).not.toBe("connecting"));
+    expect(await client.reconcile(refusedUnknown.attempt)).toEqual({
+      kind: "refused",
+      reason: "exists",
+    });
     expect(host.applied).toBe(2);
   });
 

@@ -2,9 +2,15 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join, normalize, resolve, sep } from "node:path";
 import { budget, core, ibanKey } from "@cashu/domain";
-import { importStatement, runCommand } from "@cashu/store";
+import { importStatement } from "@cashu/store";
 import { accountByGid, mcpAccounts, mcpProfile } from "@cashu/store/core";
 import type { HostStores, OpenVault } from "../../stores.js";
+import {
+  cliCommandKey,
+  reportCliCommandFailure,
+  reportCliProjectionUnavailable,
+  runCliVaultCommand,
+} from "../commandOutcome.js";
 import { printConsole, supportsConsoleUnicode } from "../core/console.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
 import { importInput, importTextSupported } from "./importInput.js";
@@ -156,58 +162,89 @@ export async function runImportCommand(
   }
   let inserted = 0;
   let started = false;
+  let completedWrites = 0;
+  const stopped = (reason: string): number => {
+    io.stderr(`Import stopped (${reason}). Completed earlier imports: ${completedWrites}.\n`);
+    return 1;
+  };
   for (const file of prepared) {
-    const outcome = await vault.queue.run(() => {
-      if (io.signal.aborted) return 130;
-      if (deps.stores.vaults.get(vault.id) !== vault || selected(deps, slug) !== vault) {
-        if (!started) return DELEGATE;
-        throw new Error("native import vault changed before append");
-      }
-      if (file.error) {
-        started = true;
-        const text = `${basename(file.path)}: ${file.error}`;
-        printConsole(io, text, { spans: [{ start: 0, end: text.length, style: { color: 31 } }] });
-        return 0;
-      }
-      if (!file.statement) throw new Error("native import has no parsed statement");
-      const key = file.statement.accountNumber ? ibanKey(file.statement.accountNumber) : null;
-      const changedAccount = mcpAccounts(vault.store.read.bind(vault.store)).some(
-        (account) =>
-          key &&
-          ibanKey(account.iban) === key &&
-          (account.bank !== file.statement?.bank || !importTextSupported(account.name)),
-      );
-      if (changedAccount) {
-        if (!started) return DELEGATE;
-        throw new Error("native import account changed before append");
-      }
-      const result = runCommand(
-        vault.store,
-        vault.writer,
-        importStatement,
-        {
-          statement: file.statement,
-          accountType: input.accountType,
-          accountName: input.name,
-          source: "csv",
-          filename: basename(file.path),
-          newestDayRule: false,
-        },
-        vault.env,
-      );
-      if (!result.ok) throw new Error("native import refused validated statement");
+    const commandKey = cliCommandKey();
+    if (io.signal.aborted) {
+      if (started)
+        io.stderr(`Import interrupted. Completed earlier imports: ${completedWrites}.\n`);
+      return 130;
+    }
+    if (deps.stores.vaults.get(vault.id) !== vault || selected(deps, slug) !== vault) {
+      if (!started) return DELEGATE;
+      return stopped("vault_changed");
+    }
+    if (file.error) {
       started = true;
-      const account = accountByGid(vault.store.read.bind(vault.store), result.value.account);
-      if (!account) throw new Error("native import did not materialize its account");
-      inserted += result.value.numInserted;
-      const filename = basename(file.path);
-      const text = directory
-        ? `${filename} -> ${account.bank} '${account.name}' [${account.currency}]: +${result.value.numInserted} (${result.value.numDuplicates} dup)`
-        : `${filename} -> ${account.bank} '${account.name}': seen ${result.value.numSeen}, inserted ${result.value.numInserted}, duplicates ${result.value.numDuplicates}`;
-      printConsole(io, text, { spans: [{ start: 0, end: filename.length, style: { color: 32 } }] });
-      return 0;
-    });
-    if (outcome !== 0) return outcome;
+      const text = `${basename(file.path)}: ${file.error}`;
+      printConsole(io, text, { spans: [{ start: 0, end: text.length, style: { color: 31 } }] });
+      continue;
+    }
+    if (!file.statement) throw new Error("native import has no parsed statement");
+    const key = file.statement.accountNumber ? ibanKey(file.statement.accountNumber) : null;
+    const changedAccount = mcpAccounts(vault.store.read.bind(vault.store)).some(
+      (account) =>
+        key &&
+        ibanKey(account.iban) === key &&
+        (account.bank !== file.statement?.bank || !importTextSupported(account.name)),
+    );
+    if (changedAccount) {
+      if (!started) return DELEGATE;
+      return stopped("account_changed");
+    }
+    const result = await runCliVaultCommand(
+      vault,
+      importStatement,
+      {
+        statement: file.statement,
+        accountType: input.accountType,
+        accountName: input.name,
+        source: "csv",
+        filename: basename(file.path),
+        newestDayRule: false,
+      },
+      commandKey,
+      () => {
+        if (deps.stores.vaults.get(vault.id) !== vault || selected(deps, slug) !== vault)
+          return false;
+        const accountKey = file.statement?.accountNumber
+          ? ibanKey(file.statement.accountNumber)
+          : null;
+        return !mcpAccounts(vault.store.read.bind(vault.store)).some(
+          (account) =>
+            accountKey &&
+            ibanKey(account.iban) === accountKey &&
+            (account.bank !== file.statement?.bank || !importTextSupported(account.name)),
+        );
+      },
+    );
+    if (result.kind !== "completed") {
+      io.stderr(`Completed earlier imports: ${completedWrites}.\n`);
+      return reportCliCommandFailure(io, result, commandKey, importStatement.id);
+    }
+    started = true;
+    completedWrites += 1;
+    let account: ReturnType<typeof accountByGid>;
+    try {
+      account = accountByGid(vault.store.read.bind(vault.store), result.value.account);
+    } catch {
+      io.stderr(`Completed imports: ${completedWrites}.\n`);
+      return reportCliProjectionUnavailable(io, commandKey, importStatement.id);
+    }
+    if (!account) {
+      io.stderr(`Completed imports: ${completedWrites}.\n`);
+      return reportCliProjectionUnavailable(io, commandKey, importStatement.id);
+    }
+    inserted += result.value.numInserted;
+    const filename = basename(file.path);
+    const text = directory
+      ? `${filename} -> ${account.bank} '${account.name}' [${account.currency}]: +${result.value.numInserted} (${result.value.numDuplicates} dup)`
+      : `${filename} -> ${account.bank} '${account.name}': seen ${result.value.numSeen}, inserted ${result.value.numInserted}, duplicates ${result.value.numDuplicates}`;
+    printConsole(io, text, { spans: [{ start: 0, end: filename.length, style: { color: 32 } }] });
   }
   if (directory) {
     if (prepared.length === 0) {

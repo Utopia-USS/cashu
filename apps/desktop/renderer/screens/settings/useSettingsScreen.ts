@@ -23,6 +23,7 @@ import { useUiEnv } from "@cashu/ui";
 import { hmLocal, localDay } from "@cashu/ui-logic/core/time";
 import { useForm } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
+import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { T } from "./Settings.strings.js";
 
 const registry = builtinRegistry();
@@ -117,6 +118,7 @@ export function useSettingsScreen(
   const setEnabled = useCommand(setModules);
   const setPrivacy = useCommand(setProfileSettings);
   const setPrefs = useCommand(setDevicePreferences);
+  const durable = useDurableCommands();
   const inspect = useUiAction(workspaceInspect);
   const apply = useUiAction(workspaceApply);
   const [notice, setNotice] = useState<string | null>(null);
@@ -148,13 +150,17 @@ export function useSettingsScreen(
           : T.invalidProfile,
     },
     onSubmit: async ({ value }) => {
-      const result = await save.run(value);
-      setNotice(result.ok ? T.saved : T.saveFailed);
+      const result = await durable.run("profile", save, value);
+      setNotice(result.kind === "completed" ? T.saved : commandFailure(result, T.saveFailed));
     },
   });
   useEffect(() => {
-    profileForm.reset({ name: current?.name ?? "", baseCurrency: current?.baseCurrency ?? "PLN" });
-  }, [profileForm, vault, current?.name, current?.baseCurrency]);
+    if (!durable.uncertain("profile"))
+      profileForm.reset({
+        name: current?.name ?? "",
+        baseCurrency: current?.baseCurrency ?? "PLN",
+      });
+  }, [profileForm, vault, current?.name, current?.baseCurrency, durable]);
   useEffect(() => {
     desiredModules.current = modules.filter((m) => m.enabled).map((m) => m.id);
   }, [vault, modules]);
@@ -295,27 +301,27 @@ export function useSettingsScreen(
     desiredModules.current = next;
     moduleQueue.current = moduleQueue.current
       .then(async () => {
-        const result = await setEnabled.run({ moduleIds: next });
-        if (!result.ok) setNotice(T.saveFailed);
+        const result = await durable.run("modules", setEnabled, { moduleIds: next });
+        if (result.kind !== "completed") setNotice(commandFailure(result, T.saveFailed));
       })
       .catch(() => setNotice(T.saveFailed));
   };
   const setMcpPrivacy = async (choice: "strict" | "amounts") => {
-    const result = await setPrivacy.run({ mcpPrivacy: choice });
-    setNotice(result.ok ? T.saved : T.saveFailed);
+    const result = await durable.run("mcp-privacy", setPrivacy, { mcpPrivacy: choice });
+    setNotice(result.kind === "completed" ? T.saved : commandFailure(result, T.saveFailed));
   };
   const setTheme = async (choice: "system" | "light" | "dark") => {
-    const result = await setPrefs.run({ theme: choice });
-    if (result.ok) {
+    const result = await durable.run("preferences", setPrefs, { theme: choice });
+    if (result.kind === "completed") {
       document.documentElement.classList.toggle("dark", choice === "dark");
       document.documentElement.classList.toggle("light", choice === "light");
     }
-    setNotice(result.ok ? T.saved : T.saveFailed);
+    setNotice(result.kind === "completed" ? T.saved : commandFailure(result, T.saveFailed));
   };
   const setLanguagePin = async (choice: "system" | "pl" | "en") => {
-    const result = await setPrefs.run({ languagePin: choice });
-    if (!result.ok) {
-      setNotice(T.saveFailed);
+    const result = await durable.run("preferences", setPrefs, { languagePin: choice });
+    if (result.kind !== "completed") {
+      setNotice(commandFailure(result, T.saveFailed));
       return;
     }
     setLanguage(choice === "system" ? null : choice);
@@ -332,8 +338,8 @@ export function useSettingsScreen(
       setNotice(T.updatesUnavailable);
       return;
     }
-    const saved = await setPrefs.run({ updatesAuto: enabled });
-    setNotice(saved.ok ? T.saved : T.saveFailed);
+    const saved = await durable.run("preferences", setPrefs, { updatesAuto: enabled });
+    setNotice(saved.kind === "completed" ? T.saved : commandFailure(saved, T.saveFailed));
   };
   const copyDataDir = async () => {
     if (hostInfo.availability !== "ready" || !hostInfo.dataDir) return;

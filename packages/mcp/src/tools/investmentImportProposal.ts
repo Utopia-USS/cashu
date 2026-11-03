@@ -191,7 +191,7 @@ export const investmentImportAdapter: NativeAsyncAdapter = {
     if (published.cleanupFailed) warn("mcp.import-stage-cleanup-failed");
     return ownedValue({ ...state, kind: "published", blob: published.blob });
   },
-  finish(ctx, args, ready) {
+  async finish(ctx, args, ready) {
     const { selected, io } = validate(ctx, args),
       state = object(ready),
       input = request(state, selected.gid, args);
@@ -202,7 +202,7 @@ export const investmentImportAdapter: NativeAsyncAdapter = {
       return { answer: blocked(pv) };
     }
     const blob = object(state.blob ?? null);
-    const saved = execute(
+    const saved = await execute(
       ctx,
       createInvestmentImportProposal(
         io.publication,

@@ -19,7 +19,12 @@ const metadata = [
   { name: "spending_breakdown", module: "budget", also: [] },
 ];
 function fixture(
-  options: { bridge?: boolean; acknowledge?: boolean; pythonPrivacy?: Privacy } = {},
+  options: {
+    bridge?: boolean;
+    acknowledge?: boolean;
+    pythonPrivacy?: Privacy;
+    nativeStatus?: boolean;
+  } = {},
 ) {
   let privacy: Privacy = "amounts";
   let modules = new Set(["budget"]);
@@ -98,6 +103,9 @@ function fixture(
     replaced: () => replaced,
     warn: (code) => audits.push(code),
     policy: async () => ({ privacy, modules }),
+    ...(options.nativeStatus
+      ? { writeStatus: async () => ({ kind: "outcome_unknown" as const }) }
+      : {}),
     delegation: async () => ({
       privacy,
       modules,
@@ -147,6 +155,7 @@ function fixture(
   };
   return {
     backend,
+    native,
     rpc,
     initialize,
     calls,
@@ -168,6 +177,62 @@ const body = (reply: Json) => reply.result as Json;
 const content = (reply: Json) => (body(reply).content as { text: string }[])[0]?.text;
 
 describe("mixed native/Python MCP", () => {
+  it("passes an explicit original ULID key and exposes metadata-only native status", async () => {
+    const f = fixture({ nativeStatus: true });
+    await f.initialize();
+    const key = "01K9B2W000000000000000000D";
+    const called = vi.spyOn(f.native, "call").mockResolvedValue({
+      ok: false,
+      privacy: "strict",
+      error: "write outcome unknown",
+      errorKind: "outcome_unknown",
+      requestKey: key,
+    });
+    const reply = body(
+      await f.rpc(1, "tools/call", {
+        name: "profile_overview",
+        _meta: { "cashu/idempotencyKey": key },
+      }),
+    );
+    expect(called.mock.calls[0]?.[3]).toBe(key);
+    expect(reply.isError).toBe(true);
+    expect(reply._meta).toEqual({ "cashu/writeOutcome": { kind: "outcome_unknown", key } });
+    const invalid = body(
+      await f.rpc(2, "tools/call", {
+        name: "profile_overview",
+        _meta: { "cashu/idempotencyKey": "invalid" },
+      }),
+    );
+    expect(invalid.isError).toBe(true);
+    const outOfRange = body(
+      await f.rpc(6, "tools/call", {
+        name: "profile_overview",
+        _meta: { "cashu/idempotencyKey": `8${key.slice(1)}` },
+      }),
+    );
+    expect(outOfRange.isError).toBe(true);
+    expect(called).toHaveBeenCalledTimes(1);
+    const delegated = body(
+      await f.rpc(5, "tools/call", {
+        name: "spending_breakdown",
+        _meta: { "cashu/idempotencyKey": key },
+      }),
+    );
+    expect(delegated.isError).toBe(true);
+    expect(f.calls).toHaveLength(0);
+    const tools = body(await f.rpc(3, "tools/list")).tools as Json[];
+    expect(tools.some((tool) => tool.name === "cashu_write_status")).toBe(true);
+    const status = body(
+      await f.rpc(4, "tools/call", {
+        name: "cashu_write_status",
+        arguments: { key },
+      }),
+    );
+    expect(status.structuredContent).toEqual({ kind: "outcome_unknown" });
+    expect(JSON.stringify(status)).not.toContain("eids");
+    expect(JSON.stringify(status)).not.toContain("receipt");
+    await f.backend.close();
+  });
   it("rejects malformed request envelopes before audit or execution", async () => {
     const f = fixture();
     await f.initialize();

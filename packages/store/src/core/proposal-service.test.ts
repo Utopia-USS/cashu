@@ -101,6 +101,62 @@ function fixture() {
 }
 
 describe("prepared proposal publication lifecycle", () => {
+  it("rechecks import holder authority inside the durable decision callback", async () => {
+    const f = fixture();
+    let appended = 0;
+    let published = 0;
+    const result = await executePreparedApproval(
+      {
+        ...f.deps,
+        isHolder: () => false,
+        runDurable: async (_command, _input, current) => {
+          if (!current()) return { kind: "refused", reason: "authority_lost" };
+          appended++;
+          throw new Error("unexpected synthetic append");
+        },
+      },
+      { ...f.effect, kind: "import" },
+      {
+        publish: async () => {
+          published++;
+        },
+        restore: async () => {},
+        discard: async () => {},
+      },
+    );
+    expect(result).toMatchObject({ status: "refused", reason: "authority_lost" });
+    expect(appended).toBe(0);
+    expect(published).toBe(0);
+  });
+
+  it("retains publication evidence when the durable approval result is unknown", async () => {
+    const f = fixture();
+    let published = false;
+    let discarded = false;
+    const outcome = await executePreparedApproval(
+      {
+        ...f.deps,
+        runDurable: async () => ({ kind: "outcome_unknown", key: "synthetic-key" }),
+      },
+      f.effect,
+      {
+        publish: async () => {
+          published = true;
+        },
+        restore: async () => {},
+        discard: async () => {
+          discarded = true;
+        },
+      },
+    );
+    expect(outcome).toEqual({
+      status: "outcome_unknown",
+      key: "synthetic-key",
+      command: "core.approvePrepared",
+    });
+    expect(published).toBe(false);
+    expect(discarded).toBe(false);
+  });
   it("holds both locks through publication and reconciliation outside the short write step", async () => {
     const f = fixture();
     const phases: string[] = [];

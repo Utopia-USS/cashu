@@ -1,5 +1,6 @@
 // Native tools replace their Python counterparts by name. Remaining tools use a restrictive private
 // policy bridge; an older Python child cannot silently ignore the host's per-call privacy ceiling.
+import { randomBytes } from "node:crypto";
 import {
   APP_UPDATED,
   BRIDGE_CAPABILITY,
@@ -18,9 +19,15 @@ import {
   type ToolInventoryEntry,
   type ToolMetadata,
 } from "@cashu/mcp";
+import { mintUlid } from "@cashu/store";
 import type { McpBackend } from "./session.js";
 
 type Json = Record<string, unknown>;
+const REQUEST_KEY_META = "cashu/idempotencyKey";
+const WRITE_OUTCOME_META = "cashu/writeOutcome";
+const WRITE_STATUS_TOOL = "cashu_write_status";
+const validRequestKey = (value: unknown): value is string =>
+  typeof value === "string" && /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/u.test(value);
 const object = (v: unknown): Json | undefined =>
   v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Json) : undefined;
 const validId = (value: unknown): value is string | number =>
@@ -42,8 +49,24 @@ function publicResult(result: NativeCallResult): Json {
         content: [{ type: "text", text: resultText(result.data ?? null) }],
         structuredContent: result.data,
         isError: false,
+        ...(result.requestKey === undefined
+          ? {}
+          : { _meta: { [WRITE_OUTCOME_META]: { kind: "completed", key: result.requestKey } } }),
       }
-    : { content: [{ type: "text", text: result.error ?? "error" }], isError: true };
+    : {
+        content: [{ type: "text", text: result.error ?? "error" }],
+        isError: true,
+        ...(result.requestKey === undefined
+          ? {}
+          : {
+              _meta: {
+                [WRITE_OUTCOME_META]: {
+                  kind: result.errorKind === "response_withheld" ? "completed" : "outcome_unknown",
+                  key: result.requestKey,
+                },
+              },
+            }),
+      };
 }
 export interface CompositeOptions {
   readonly native: NativeMcpServer;
@@ -176,6 +199,18 @@ export function compositeBackend(options: CompositeOptions): McpBackend {
       const row = own.get(entry.name) ?? descriptors.get(entry.name);
       return row === undefined ? [] : [row];
     });
+    if (policy && native.runtime.writeStatus)
+      listed.push({
+        name: WRITE_STATUS_TOOL,
+        description: "Read only status of an original cashU write key in this profile",
+        inputSchema: {
+          type: "object",
+          properties: { key: { type: "string", pattern: "^[0-7][0-9A-HJKMNP-TV-Z]{25}$" } },
+          required: ["key"],
+          additionalProperties: false,
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      });
     emit({ jsonrpc: "2.0", id: msg.id, result: { tools: listed } });
   }
   async function call(msg: Json) {
@@ -209,10 +244,51 @@ export function compositeBackend(options: CompositeOptions): McpBackend {
       emit({ jsonrpc: "2.0", id: msg.id, result: publicResult(invalid) });
       return;
     }
+    if (name === WRITE_STATUS_TOOL) {
+      const key = args?.key;
+      const result = await native.audited(name, args, new Set(["key"]), async () => {
+        if (!validRequestKey(key) || Object.keys(args ?? {}).length !== 1)
+          return failure("invalid write key", "invalid_arguments");
+        const status = await native.runtime.writeStatus?.(key);
+        return {
+          ok: true,
+          privacy: "strict",
+          data: status ?? { kind: "outcome_unknown" },
+        };
+      });
+      emit({ jsonrpc: "2.0", id: msg.id, result: publicResult(result) });
+      return;
+    }
     if (native.tools.has(name) || !metadata.has(name)) {
-      const result = await native.call(name, args, ceiling);
+      const supplied = object(params._meta)?.[REQUEST_KEY_META];
+      if (supplied !== undefined && !validRequestKey(supplied)) {
+        const invalid = await native.audited(
+          metadata.has(name) ? name : "(unknown)",
+          args,
+          new Set(Object.keys(metadata.get(name)?.properties ?? {})),
+          async () => failure("invalid idempotency key", "invalid_arguments"),
+        );
+        emit({
+          jsonrpc: "2.0",
+          id: msg.id,
+          result: publicResult(invalid),
+        });
+        return;
+      }
+      const key = supplied ?? mintUlid(Date.now(), (n) => new Uint8Array(randomBytes(n)));
+      const result = await native.call(name, args, ceiling, key);
       emit({ jsonrpc: "2.0", id: msg.id, result: publicResult(result) });
       if (result.errorKind === "app_updated") ending = true;
+      return;
+    }
+    if (object(params._meta)?.[REQUEST_KEY_META] !== undefined) {
+      const unsupported = await native.audited(
+        name,
+        args,
+        new Set(Object.keys(metadata.get(name)?.properties ?? {})),
+        async () => failure("idempotency keys require a native tool", "unsupported"),
+      );
+      emit({ jsonrpc: "2.0", id: msg.id, result: publicResult(unsupported) });
       return;
     }
     const entry = metadata.get(name) as ToolInventoryEntry &

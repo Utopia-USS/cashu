@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { S } from "../Desktop.strings.js";
 import type { ShellScreenState } from "./useShellScreen.js";
 
+const NATIVE_MODULES = new Set(["budget", "investments", "assets", "loans", "settings"]);
+
 export interface ShellViewProps {
   state: ShellScreenState;
   activeModule?: string;
@@ -88,14 +90,10 @@ export function ShellView({
               <button
                 key={id}
                 type="button"
-                disabled={
-                  !["budget", "loans", "assets", "settings"].includes(id) && !state.canOpenLegacy
-                }
+                disabled={!NATIVE_MODULES.has(id) && !state.canOpenLegacy}
                 aria-current={activeModule === id ? "page" : undefined}
                 title={
-                  state.canOpenLegacy || ["budget", "loans", "assets", "settings"].includes(id)
-                    ? undefined
-                    : S.legacyUnavailable
+                  state.canOpenLegacy || NATIVE_MODULES.has(id) ? undefined : S.legacyUnavailable
                 }
                 onClick={() => onLegacyOpened(id)}
                 className={`rounded-sm px-4 py-2 ${activeModule === id ? "bg-accent-muted text-accent" : "hover:bg-surface-sunken"}`}

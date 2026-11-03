@@ -1,16 +1,23 @@
-// Running one keyed command against one store, inside that store's write queue. The key lookup, the
-// command's events and the key's record are one transaction:
-//   1. a key already recorded answers with its stored result (nothing runs again);
-//   2. otherwise the command runs; for a vault command the key row is written by the writer right
-//      before the events are applied (same transaction), so the apply and its change notification
-//      are the last writes before COMMIT; a command that emitted nothing records its key after it ran.
-// The stored result is the crossing form (JSON value codec), encoded before the apply, so a value the
-// codec refuses fails the command before anything is written.
-import { encodeValue } from "@cashu/host-protocol/store";
-import { type Command, type CommandResult, type EventWriter, runCommand } from "@cashu/store";
+// The one keyed host command boundary. Synthetic device/view commands retain their atomic SQLite
+// request transaction. Native vault commands use a private may-append journal, then one encrypted
+// engine append, then a durable completed receipt. The portable executor owns its queue acquisition;
+// no caller may hold the same queue around a native run. The typed runHostVaultCommand is the
+// preferred API for async host surfaces.
+
+import { randomBytes } from "node:crypto";
+import { decodeValue, encodeValue, type JsonValue } from "@cashu/host-protocol/store";
+import {
+  type Command,
+  type CommandResult,
+  type DurableCommandResult,
+  type EventWriter,
+  executeDurableCommand,
+  mintUlid,
+  runCommand,
+} from "@cashu/store";
 import type { DeviceCommand } from "@cashu/store/device";
 import type { RunResult } from "./requests.js";
-import type { OpenDevice, OpenVault } from "./stores.js";
+import type { OpenDevice, OpenVault, SyntheticOpenVault } from "./stores.js";
 
 /** A key reused for another command: a client bug, refused loudly. */
 class KeyReusedError extends Error {
@@ -25,7 +32,7 @@ const crossing = (result: CommandResult<unknown>): RunResult =>
 
 /** Answers from the table when the key is known (same command), else undefined. */
 function stored(
-  target: OpenVault | OpenDevice,
+  target: SyntheticOpenVault | OpenDevice,
   key: string,
   command: string,
 ): RunResult | undefined {
@@ -36,18 +43,51 @@ function stored(
 }
 
 export interface KeyedRun {
-  readonly result: RunResult;
-  /** True when the result came from the table (a resend), not from running the command. */
+  readonly result: RunResult | DurableCommandResult<JsonValue>;
+  /** Synthetic request-table replay flag; native replay is represented by its durable result. */
   readonly replayed: boolean;
 }
 
-/** Runs a vault command once per key. Call inside the vault's write queue. */
+/** Low-level crossing form: synthetic caller holds queue, native caller does not. */
 export function runVaultCommand(
   vault: OpenVault,
   command: Command<unknown, unknown>,
   input: unknown,
   key: string,
-): KeyedRun {
+  current: () => boolean = () => true,
+): KeyedRun | Promise<KeyedRun> {
+  if (vault.native !== undefined) {
+    const native = vault.native;
+    const checked: Command<unknown, JsonValue> = {
+      ...command,
+      run(ctx, parsed) {
+        const result = command.run(ctx, parsed);
+        return result.ok ? { ok: true, value: encodeValue(result.value) } : result;
+      },
+    };
+    return executeDurableCommand(
+      {
+        vault: vault.id,
+        device: native.device,
+        store: native.store,
+        engine: native.engine,
+        clock: vault.env.clock,
+        lease: vault.env.lease,
+        attempts: native.attempts,
+        queue: {
+          run(id, task) {
+            if (id !== native.id) return Promise.reject(new Error("vault_mismatch"));
+            return native.queue.run(task);
+          },
+        },
+        isCurrent: () => native.isCurrent() && vault.native === native && current(),
+        newAttemptId: () => mintUlid(Date.now(), (n) => new Uint8Array(randomBytes(n))),
+      },
+      checked,
+      input,
+      key,
+    ).then((result) => ({ result, replayed: false }));
+  }
   return vault.driver.transaction(() => {
     const prior = stored(vault, key, command.id);
     if (prior !== undefined) return { result: prior, replayed: true };
@@ -75,6 +115,63 @@ export function runVaultCommand(
     if (!recorded) vault.requests.record(key, command.id, result);
     return { result, replayed: false };
   });
+}
+
+/** One public host command seam for async surfaces. It owns the only queue acquisition. */
+export async function runHostVaultCommand<I, R>(
+  vault: OpenVault,
+  command: Command<I, R>,
+  input: unknown,
+  key: string,
+  current: () => boolean = () => true,
+): Promise<DurableCommandResult<R>> {
+  try {
+    if (!current()) return { kind: "not_started", reason: "session_unavailable" };
+  } catch {
+    return { kind: "not_started", reason: "session_unavailable" };
+  }
+  try {
+    const task = (): KeyedRun | Promise<KeyedRun> =>
+      current()
+        ? runVaultCommand(vault, command as Command<unknown, unknown>, input, key, current)
+        : { result: { kind: "not_started", reason: "session_unavailable" }, replayed: false };
+    const keyed = vault.native === undefined ? await vault.queue.run(task) : await task();
+    const result = keyed.result;
+    if ("kind" in result) {
+      return result.kind === "completed"
+        ? { kind: "completed", value: decodeValue(result.value) as R, eids: result.eids }
+        : result;
+    }
+    return result.ok
+      ? { kind: "completed", value: decodeValue(result.value) as R, eids: [] }
+      : { kind: "refused", reason: result.reason };
+  } catch {
+    // Once dispatch was attempted, an exception may follow an append or a durable receipt.
+    return { kind: "outcome_unknown", key };
+  }
+}
+
+/** Read-only phase for status surfaces, including a completed receipt whose value expired. */
+export function lookupHostVaultCommandStatus(
+  vault: OpenVault,
+  commandId: string,
+  key: string,
+): "completed" | "refused" | "not_started" | "outcome_unknown" {
+  try {
+    if (vault.native !== undefined) {
+      if (!vault.native.isCurrent()) return "outcome_unknown";
+      const status = vault.native.attempts.status(vault.id, key, commandId);
+      if (status.phase === "completed") return "completed";
+      if (status.phase === "terminal") return status.result.kind;
+      return "outcome_unknown";
+    }
+    const saved = vault.requests.lookup(key);
+    if (saved === undefined) return "outcome_unknown";
+    if (saved.command !== commandId) return "refused";
+    return saved.result.ok ? "completed" : "refused";
+  } catch {
+    return "outcome_unknown";
+  }
 }
 
 /** Runs a device command once per key. Call inside the device store's write queue. */

@@ -41,4 +41,10 @@ export type {
   ProfileRow,
   TransactionRow,
 } from "./pythonDb.ts";
-export { manifest, PythonDb, SourceChangedError, withPythonDb } from "./pythonDb.ts";
+export {
+  manifest,
+  PythonDb,
+  SourceChangedError,
+  withPythonDb,
+  withPythonDbAsync,
+} from "./pythonDb.ts";

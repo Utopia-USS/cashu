@@ -6,7 +6,10 @@ import * as L from "../privacy/labels.js";
 import { type ToolArgs, type ToolContext, ToolError } from "../registry.js";
 import { encodeEntityRef } from "../runtime/refs.js";
 import type { NativeToolStore } from "../runtime/types.js";
-export function markReviewDone(ctx: ToolContext<NativeToolStore>, args: ToolArgs): L.LabelledTree {
+export async function markReviewDone(
+  ctx: ToolContext<NativeToolStore>,
+  args: ToolArgs,
+): Promise<L.LabelledTree> {
   const module = typeof args.module === "string" ? args.module : "investments";
   if (!enabledModuleIds(ctx.store.read).has(module))
     throw new ToolError(`module ${module} is not enabled for this profile`);
@@ -20,7 +23,7 @@ export function markReviewDone(ctx: ToolContext<NativeToolStore>, args: ToolArgs
       })),
     };
   if (module === "investments") Object.assign(stats, mcpReviewStats(ctx.store.read));
-  const result = ctx.store.run(investmentsCommands.markReviewDone, {
+  const result = await ctx.store.run(investmentsCommands.markReviewDone, {
     module,
     notes: args.notes ?? null,
     stats,

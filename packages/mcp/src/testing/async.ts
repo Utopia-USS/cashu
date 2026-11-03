@@ -50,15 +50,17 @@ export function asyncFixture() {
         }
       : undefined;
   };
-  const execute = <T>(
+  const execute = async <T>(
     ceiling: Parameters<NativeRuntime["execute"]>[0],
-    fn: (execution: NativeExecution | undefined) => T,
+    fn: (execution: NativeExecution | undefined) => T | Promise<T>,
+    _requestKey?: string,
     preparation = false,
   ): Promise<T> =>
-    queue(() => {
+    await queue(async () => {
       const current = policy();
-      if (!current || replaced) return fn(undefined);
+      if (!current || replaced) return await fn(undefined);
       const pending: v1.Envelope[] = [];
+      let ran = false;
       const base = f.context(restrictivePrivacy(current.privacy, ceiling));
       let context: ReturnType<typeof toolContext<NativeToolStore>>;
       let resolved: Services | undefined;
@@ -80,7 +82,8 @@ export function asyncFixture() {
         },
         run(command, input) {
           if (preparation) throw new Error("preparation cannot write");
-          if (pending.length) throw new Error("second buffered write");
+          if (ran) throw new Error("second buffered write");
+          ran = true;
           return runCommand(
             f.store,
             { append: (events) => pending.push(...events) },
@@ -101,7 +104,7 @@ export function asyncFixture() {
         },
         loadAccountLabels: () => base.accountLabels,
       });
-      return fn({
+      return await fn({
         context,
         policy: current,
         commit() {
@@ -131,6 +134,7 @@ export function asyncFixture() {
         execute(
           ceiling,
           (e) => fn(e === undefined ? undefined : { context: e.context, policy: e.policy }),
+          undefined,
           true,
         ),
     },

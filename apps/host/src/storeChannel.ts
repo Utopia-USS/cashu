@@ -65,6 +65,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
   const { stores, log } = options;
   const maxInFlight = options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT;
   const live = new Map<number, () => void>();
+  const liveMessages = new Map<number, Extract<StoreToHost, { t: "sub" }>>();
   const preparing = new Map<number, object>();
   const actionRequests = new Map<number, string>();
   let highestActionRid = -1;
@@ -79,6 +80,8 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     if (target.kind !== "vault") throw new TargetError("a vault target is required");
     const vault = stores.vaults.get(target.vault);
     if (vault === undefined) throw new TargetError("this vault is not open on this host");
+    if (vault.native !== undefined && !vault.native.isCurrent())
+      throw new TargetError("this vault is no longer admitted");
     return vault;
   };
   const sourceFor = (target: Target, query: Query<QueryArgs, unknown>): QuerySource => {
@@ -90,6 +93,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
 
   const subscribe = (m: Extract<StoreToHost, { t: "sub" }>, prepared = false) => {
     if (policy === null || m.generation !== policy.generation) return;
+    liveMessages.set(m.sid, m);
     live.get(m.sid)?.();
     live.delete(m.sid);
     if (!prepared) preparing.delete(m.sid);
@@ -176,6 +180,8 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     let last: string | undefined;
     const fail = (error: unknown) => {
       if (policy?.generation !== policyAtStart) return;
+      if (m.target.kind === "vault" && stores.vaults.get(m.target.vault)?.native?.isSyncing())
+        return;
       last = undefined;
       log.warn("store.query.failed", { query: query.id, error: errorName(error) });
       post({ t: "error", sid: m.sid, generation: m.generation, error: errorInfo(error) });
@@ -184,6 +190,17 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
       const stop = watchQuery(sourceFor(m.target, query), query, m.args as QueryArgs, {
         onValue(value) {
           if (policy?.generation !== policyAtStart) return;
+          if (m.target.kind === "vault") {
+            if (stores.vaults.get(m.target.vault)?.native?.isSyncing()) return;
+            try {
+              vaultOf(m.target);
+            } catch {
+              fail(new TargetError("query target is unavailable"));
+              live.get(m.sid)?.();
+              live.delete(m.sid);
+              return;
+            }
+          }
           let encoded: ReturnType<typeof encodeValue>;
           try {
             encoded = encodeValue(value);
@@ -203,6 +220,20 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
       fail(error);
     }
   };
+
+  const syncStops = [...stores.vaults.values()].flatMap((vault) =>
+    vault.native === undefined
+      ? []
+      : [
+          vault.native.onSyncSettled(() => {
+            if (closed) return;
+            for (const message of [...liveMessages.values()]) {
+              if (message.target.kind === "vault" && message.target.vault === vault.id)
+                subscribe(message);
+            }
+          }),
+        ],
+  );
 
   const action = (m: Extract<StoreToHost, { t: "action" }>) => {
     const handler = actions.get(m.action);
@@ -256,18 +287,14 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
           });
           return;
         }
-        if (result.status === "not_started") {
-          refuse(result.reason);
-        } else {
-          post({
-            t: "actionResult",
-            rid: m.rid,
-            result:
-              result.status === "completed"
-                ? { status: "completed", value: encodeValue(result.value) }
-                : result,
-          });
-        }
+        post({
+          t: "actionResult",
+          rid: m.rid,
+          result:
+            result.status === "completed"
+              ? { status: "completed", value: encodeValue(result.value) }
+              : result,
+        });
       })
       .catch(() => {
         log.warn("store.action.failed", { action: m.action });
@@ -284,17 +311,48 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
   };
 
   const run = (m: Extract<StoreToHost, { t: "run" }>) => {
+    if (policy === null || policy.privacy || policy.generation !== m.generation) {
+      post({
+        t: "result",
+        rid: m.rid,
+        generation: m.generation,
+        outcome: { kind: "not_started", reason: "policy_unavailable" },
+      });
+      return;
+    }
     const command = commands.get(m.command);
     if (command === undefined) {
-      post({ t: "failed", rid: m.rid, error: { name: "UnknownCommand", message: m.command } });
+      post({
+        t: "failed",
+        rid: m.rid,
+        generation: m.generation,
+        error: { name: "UnknownCommand", message: m.command },
+      });
       return;
     }
     if (inFlight >= maxInFlight) {
-      post({ t: "failed", rid: m.rid, error: { name: "Busy", message: "too many commands" } });
+      post({
+        t: "failed",
+        rid: m.rid,
+        generation: m.generation,
+        error: { name: "Busy", message: "too many commands" },
+      });
       return;
     }
+    if (command.id === "device.setCurrentVault") {
+      const requested = (m.input as { vault?: unknown } | null)?.vault;
+      if (requested !== null && (typeof requested !== "string" || !stores.vaults.has(requested))) {
+        post({
+          t: "result",
+          rid: m.rid,
+          generation: m.generation,
+          outcome: { kind: "refused", reason: "unknown_target" },
+        });
+        return;
+      }
+    }
     let target: OpenVault | OpenDevice;
-    let task: () => KeyedRun;
+    let task: () => KeyedRun | Promise<KeyedRun>;
     try {
       if (isDeviceCommand(command)) {
         if (m.target.kind !== "device")
@@ -308,29 +366,93 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
         task = () => runVaultCommand(vault, command, m.input, m.key);
       }
     } catch (error) {
-      post({ t: "failed", rid: m.rid, error: errorInfo(error) });
+      post({ t: "failed", rid: m.rid, generation: m.generation, error: errorInfo(error) });
       return;
     }
     inFlight += 1;
-    target.queue
-      .run(() => {
-        const done = task();
-        options.afterCommit?.();
+    const execution =
+      target === stores.device || ("mode" in target && target.mode === "synthetic")
+        ? target.queue.run(task)
+        : Promise.resolve().then(task);
+    execution
+      .then((done) => {
+        if (!("kind" in done.result) || done.result.kind === "completed") options.afterCommit?.();
         return done;
       })
       .then(
         ({ result, replayed }) => {
           if (replayed) log.info("store.command.replayed", { command: command.id });
-          post({ t: "result", rid: m.rid, result });
+          const outcome =
+            "kind" in result
+              ? result.kind === "completed"
+                ? { kind: "completed" as const, value: result.value }
+                : result.kind === "outcome_unknown"
+                  ? {
+                      kind: "outcome_unknown" as const,
+                      ...(result.attemptId === undefined ? {} : { attemptId: result.attemptId }),
+                    }
+                  : { kind: result.kind, reason: result.reason }
+              : result.ok
+                ? { kind: "completed" as const, value: result.value }
+                : { kind: "refused" as const, reason: result.reason };
+          post({ t: "result", rid: m.rid, generation: m.generation, outcome });
         },
         (error: unknown) => {
           log.warn("store.command.failed", { command: command.id, error: errorName(error) });
-          post({ t: "failed", rid: m.rid, error: errorInfo(error) });
+          post({
+            t: "result",
+            rid: m.rid,
+            generation: m.generation,
+            outcome:
+              error instanceof Error && error.name === "KeyReusedError"
+                ? { kind: "refused", reason: "request_key_conflict" }
+                : { kind: "outcome_unknown" },
+          });
         },
       )
       .finally(() => {
         inFlight -= 1;
       });
+  };
+
+  const lookup = (m: Extract<StoreToHost, { t: "lookup" }>) => {
+    if (policy === null || policy.privacy || policy.generation !== m.generation) {
+      post({
+        t: "lookupResult",
+        rid: m.rid,
+        generation: m.generation,
+        outcome: { kind: "outcome_unknown" },
+      });
+      return;
+    }
+    let outcome: Extract<StoreToClient, { t: "lookupResult" }>["outcome"];
+    try {
+      const target = m.target.kind === "device" ? stores.device : vaultOf(m.target);
+      if ("native" in target && target.native !== undefined) {
+        const status = target.native.attempts.status(target.id, m.key, m.command);
+        outcome =
+          status.phase === "absent"
+            ? { kind: "outcome_unknown" }
+            : status.phase === "terminal"
+              ? status.result
+              : status.phase === "completed" && status.receipt !== undefined
+                ? { kind: "completed", value: status.receipt.value }
+                : { kind: "outcome_unknown", attemptId: status.attemptId };
+      } else {
+        const prior = target.requests.lookup(m.key);
+        outcome =
+          prior === undefined
+            ? { kind: "outcome_unknown" }
+            : prior.command !== m.command
+              ? { kind: "refused", reason: "request_key_conflict" }
+              : prior.result.ok
+                ? { kind: "completed", value: prior.result.value }
+                : { kind: "refused", reason: prior.result.reason };
+      }
+    } catch {
+      outcome = { kind: "outcome_unknown" };
+    }
+    post({ t: "lookupResult", rid: m.rid, generation: m.generation, outcome });
   };
 
   session.onFrame((frame) => {
@@ -355,12 +477,16 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
         subscribe(m);
         return;
       case "unsub":
+        liveMessages.delete(m.sid);
         preparing.delete(m.sid);
         live.get(m.sid)?.();
         live.delete(m.sid);
         return;
       case "run":
         run(m);
+        return;
+      case "lookup":
+        lookup(m);
         return;
       case "action":
         action(m);
@@ -369,8 +495,10 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
   });
   session.onClose(() => {
     closed = true;
+    for (const stop of syncStops) stop();
     for (const stop of live.values()) stop();
     live.clear();
+    liveMessages.clear();
     preparing.clear();
   });
   post({ t: "ready", protocol: STORE_PROTOCOL_VERSION, vaults: [...stores.vaults.keys()] });

@@ -65,7 +65,12 @@ function call(ctx: ToolContext<NativeToolStore>, name: string, args: Record<stri
   const spec = investmentTools().find((t) => t.name === name);
   if (spec === undefined) throw new Error("missing tool");
   const redactor = new Redactor({ privacy: ctx.privacy, guard: ctx.guard }),
-    data = redactor.apply(spec.handler(ctx, validateArguments(spec, args)));
+    data = redactor.apply(
+      spec.handler(
+        ctx,
+        validateArguments(spec, args),
+      ) as import("../privacy/labels.js").LabelledTree,
+    );
   leakCheck(data, { strict: ctx.strict, isins: redactor.isins, nonMoney: redactor.nonMoney });
   return JSON.parse(pyDumps(data));
 }

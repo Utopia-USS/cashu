@@ -6,8 +6,8 @@
 //   starting     no host answered: main started one and waits for it
 //   connected    a session is up; the host's store `ready` follows
 //   unavailable  the host could not be reached or started; main keeps retrying
-// Store messages the renderer sends while the link is down are dropped by main; the client re-sends
-// its live subscriptions and unanswered runs (same idempotency keys) after the next `ready`.
+// Store messages the renderer sends while the link is down are dropped by main. On reconnect the
+// client restores live subscriptions; uncertain commands require a read-only same-key lookup.
 import { z } from "zod";
 import { storeToClientSchema } from "./messages.js";
 

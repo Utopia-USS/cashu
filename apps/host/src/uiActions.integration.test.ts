@@ -1,5 +1,6 @@
-import { decodeValue, type StoreToClient } from "@cashu/host-protocol/store";
+import type { StoreToClient } from "@cashu/host-protocol/store";
 import { mintUlid, renameProfile, runCommand, setModules } from "@cashu/store";
+import type { Read } from "@cashu/store/query";
 import { afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { startLocalHost } from "./host.js";
@@ -7,6 +8,98 @@ import { cleanup, storeClient, tempDir, testHostOptions } from "./testing/harnes
 import { defineUiAction, type UiActionRegistration } from "./uiActions.js";
 
 afterEach(cleanup);
+
+it("expires a beforeExecute read and retains the last key if the action throws after append", async () => {
+  const dir = tempDir();
+  const key = mintUlid(42);
+  let escapedRead: Read | undefined;
+  let executions = 0;
+  const action = defineUiAction({
+    id: "test.throwAfterAppend",
+    module: "budget",
+    input: z.strictObject({ name: z.string() }),
+    commands: [renameProfile],
+    bind: () => ({ generation: "test", capabilities: {}, isCurrent: () => true }),
+    beforeExecute(read) {
+      escapedRead = read;
+      return true;
+    },
+    async run(context, input) {
+      executions++;
+      const result = await context.execute({
+        command: renameProfile.id,
+        input: { name: input.name },
+        key,
+      });
+      expect(result.kind).toBe("completed");
+      throw new Error("synthetic failure after append");
+    },
+  });
+  const host = await startLocalHost({ ...testHostOptions(dir), python: null });
+  const vault = [...host.stores.vaults.values()][0];
+  if (!vault) throw new Error("missing synthetic vault");
+  try {
+    await vault.queue.run(() =>
+      runCommand(vault.store, vault.writer, setModules, { moduleIds: ["budget"] }, vault.env),
+    );
+    const first = await action.run(host.stores, vault.id, { name: "Synthetic changed" });
+    expect(first).toMatchObject({
+      status: "outcome_unknown",
+      attempt: { key, command: renameProfile.id },
+    });
+    expect(() => escapedRead?.("SELECT name FROM profiles")).toThrow("expired_action_read");
+    expect(await action.run(host.stores, vault.id, { name: "Synthetic changed" })).toEqual(first);
+    expect(await action.run(host.stores, vault.id, { name: "Different" })).toEqual({
+      status: "not_started",
+      reason: "pending_previous_attempt",
+    });
+    expect(executions).toBe(1);
+    expect(vault.store.read<{ name: string }>("SELECT name FROM profiles")).toEqual([
+      { name: "Synthetic changed" },
+    ]);
+  } finally {
+    await host.stop();
+  }
+});
+
+it("retains an uncertain action only for its original parsed input", async () => {
+  let dispatched = 0;
+  const action = defineUiAction({
+    id: "test.uncertain",
+    module: "budget",
+    input: z.strictObject({ value: z.number() }),
+    bind: () => ({ generation: "test", capabilities: {}, isCurrent: () => true }),
+    async run() {
+      dispatched++;
+      return {
+        status: "outcome_unknown" as const,
+        reason: "interrupted" as const,
+        attempt: { key: mintUlid(1), command: "synthetic.command" },
+      };
+    },
+  });
+  const host = await startLocalHost({
+    ...testHostOptions(tempDir()),
+    python: null,
+    uiActions: [action],
+  });
+  const vault = [...host.stores.vaults.values()][0];
+  if (!vault) throw new Error("missing synthetic vault");
+  try {
+    await vault.queue.run(() =>
+      runCommand(vault.store, vault.writer, setModules, { moduleIds: ["budget"] }, vault.env),
+    );
+    const first = await action.run(host.stores, vault.id, { value: 1 });
+    expect(await action.run(host.stores, vault.id, { value: 1 })).toEqual(first);
+    expect(await action.run(host.stores, vault.id, { value: 2 })).toEqual({
+      status: "not_started",
+      reason: "pending_previous_attempt",
+    });
+    expect(dispatched).toBe(1);
+  } finally {
+    await host.stop();
+  }
+});
 function deferred() {
   let resolve = () => {};
   const promise = new Promise<void>((done) => {
@@ -67,6 +160,7 @@ it("snapshots command identity before queueing and rejects stale privacy after a
     send({
       t: "run",
       rid,
+      generation: 0,
       key: mintUlid(rid),
       target: { kind: "vault", vault },
       command: renameProfile.id,
@@ -253,22 +347,19 @@ it("parks resumed private reads while public and pending reads recover across po
     send({
       t: "run",
       rid: 500,
+      generation: 1,
       key: mintUlid(500),
       target: { kind: "vault", vault },
       command: renameProfile.id,
       input: { name: "Public during privacy" },
     });
     await expect.poll(() => replies.some((m) => m.t === "result" && m.rid === 500)).toBe(true);
-    await expect
-      .poll(
-        () => replies.filter((m) => m.t === "value" && m.sid === 401 && m.generation === 1).length,
-      )
-      .toBeGreaterThan(beforeMutation);
-    const latestPublic = replies.findLast(
-      (m) => m.t === "value" && m.sid === 401 && m.generation === 1,
-    );
-    if (latestPublic?.t !== "value") throw new Error("missing public update");
-    expect(decodeValue(latestPublic.value)).toMatchObject({ name: "Public during privacy" });
+    expect(replies.find((m) => m.t === "result" && m.rid === 500)).toMatchObject({
+      outcome: { kind: "not_started", reason: "policy_unavailable" },
+    });
+    expect(
+      replies.filter((m) => m.t === "value" && m.sid === 401 && m.generation === 1),
+    ).toHaveLength(beforeMutation);
     send({ t: "uiPolicy", generation: 2, privacy: false });
     sub(400, 2, { private: true }, true);
     await expect

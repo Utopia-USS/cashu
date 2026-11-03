@@ -168,7 +168,7 @@ export const investmentWatchAdapter: NativeAsyncAdapter = {
       chart: { symbol: text(operation.symbol), quote: quoteDto(quote) },
     });
   },
-  finish(ctx, args, ready) {
+  async finish(ctx, args, ready) {
     const preparedRequest = request(ctx, args),
       io = ioOf(ctx);
     const resolution = prepareWatchResolution(
@@ -191,7 +191,7 @@ export const investmentWatchAdapter: NativeAsyncAdapter = {
         : "instrument" in preparedRequest.target
           ? { instrument: r.instrument }
           : { stored: r.instrument };
-    const saved = execute(ctx, addWatchWithPlans(service.plans), {
+    const saved = await execute(ctx, addWatchWithPlans(service.plans), {
       target,
       note: preparedRequest.note,
       source: "agent",
@@ -200,7 +200,10 @@ export const investmentWatchAdapter: NativeAsyncAdapter = {
       saved.createdInstrument && r.kind === "planned" && r.quote !== null
         ? r.quote.bars.map((b) => ({ ...b, instrumentId: asInstrumentId(saved.instrument) }))
         : undefined;
-    const row = service
+    const currentService = ctx.store.investmentWrites;
+    if (!currentService)
+      throw new ToolError("native investment market context is unavailable", "unsupported");
+    const row = currentService
       .watchlist({ ...saved, ...(bars === undefined ? {} : { verifiedBars: bars }) })
       .find((w) => w.id === saved.item);
     if (!row) throw new Error("prospective watch row missing");

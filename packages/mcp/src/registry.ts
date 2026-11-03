@@ -33,17 +33,23 @@ export const MAX_STRING = 200_000;
 /** A problem the agent can fix (bad argument, missing data). `kind` is a fixed audit code. */
 export class ToolError extends Error {
   readonly kind: string;
+  readonly requestKey?: string;
   /**
    * The message is cashU's own constant text (a fixed limit, no user input): strict amount masking
    * skips it; identifiers, names and the leak check still apply (S37fix R3).
    */
   readonly system: boolean;
 
-  constructor(message: string, kind = "invalid", { system = false }: { system?: boolean } = {}) {
+  constructor(
+    message: string,
+    kind = "invalid",
+    { system = false, requestKey }: { system?: boolean; requestKey?: string } = {},
+  ) {
     super(message);
     this.name = "ToolError";
     this.kind = kind;
     this.system = system;
+    this.requestKey = requestKey;
   }
 }
 
@@ -109,7 +115,10 @@ export interface ToolSpec<Store = unknown> {
   /** `"core"` or a module id. */
   readonly module: string;
   readonly description: string;
-  readonly handler: (ctx: ToolContext<Store>, args: ToolArgs) => LabelledTree;
+  readonly handler: (
+    ctx: ToolContext<Store>,
+    args: ToolArgs,
+  ) => LabelledTree | Promise<LabelledTree>;
   readonly properties: Readonly<Record<string, PropertySchema>>;
   readonly required: readonly string[];
   readonly write: boolean;

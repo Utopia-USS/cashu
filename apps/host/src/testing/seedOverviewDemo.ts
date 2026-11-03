@@ -136,6 +136,7 @@ if (process.argv[2] === "rename") {
   });
   const host = await startLocalHost({
     dataDir: target,
+    vaultSource: { kind: "synthetic-harness" },
     home: process.env.HOME,
     python: null,
     launcher: false,
@@ -264,6 +265,7 @@ if (process.argv[2] === "rename") {
   // it beside the two imported profiles to prove that profile/module boundaries drive the shell.
   const bootstrap = await startLocalHost({
     dataDir: target,
+    vaultSource: { kind: "synthetic-harness" },
     home: process.env.HOME,
     python: null,
     launcher: false,

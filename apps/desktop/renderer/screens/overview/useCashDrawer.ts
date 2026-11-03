@@ -4,6 +4,7 @@ import { addCashExpense, deleteCashTransaction } from "@cashu/store";
 import { overviewCashWallet } from "@cashu/store/overview";
 import { useCommand, useQuery } from "@cashu/store-react";
 import { useState } from "react";
+import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { W } from "./OverviewWidgets.strings.js";
 
 /** Native cash drawer actions stay on the authenticated vault captured by useCommand. */
@@ -11,6 +12,7 @@ export function useCashDrawer() {
   const wallet = useQuery(overviewCashWallet, {});
   const add = useCommand(addCashExpense);
   const remove = useCommand(deleteCashTransaction);
+  const durable = useDurableCommands();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [title, setTitle] = useState("");
@@ -33,14 +35,14 @@ export function useCashDrawer() {
     }
     setError(null);
     try {
-      const result = await add.run({
+      const result = await durable.run("cash-add", add, {
         amount,
         title: title.trim(),
         category,
         currency: wallet.currency,
       });
-      if (!result.ok) {
-        setError(W.cashRefused);
+      if (result.kind !== "completed") {
+        setError(commandFailure(result, W.cashRefused));
         return;
       }
       setAmount("");
@@ -54,7 +56,8 @@ export function useCashDrawer() {
     if (!wallet.transactions.some((row) => row.gid === gid)) return;
     setError(null);
     try {
-      if (!(await remove.run({ txn: gid })).ok) setError(W.cashRefused);
+      const result = await durable.run(`cash-remove:${gid}`, remove, { txn: gid });
+      if (result.kind !== "completed") setError(commandFailure(result, W.cashRefused));
     } catch {
       setError(W.cashRefused);
     }

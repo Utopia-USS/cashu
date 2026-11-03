@@ -1,8 +1,9 @@
 import { floatRepr, pyUpper } from "@cashu/domain";
 import { isCategoryKey } from "@cashu/domain/budget";
-import { addCashExpenseCli, runCommand } from "@cashu/store";
+import { addCashExpenseCli } from "@cashu/store";
 import { cashCliSnapshot } from "@cashu/store/budget/queries";
 import { mcpProfile } from "@cashu/store/core";
+import { cliCommandKey, reportCliCommandFailure, runCliVaultCommand } from "../commandOutcome.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
 import { cashAddInput, cashReadInput } from "./cashInput.js";
 import { cashAddLine, cashNoPool, cashReadOutput } from "./cashOutput.js";
@@ -51,31 +52,33 @@ async function addCash(
   const currency = input.currency ? pyUpper(input.currency) : null;
   if (currency !== null && !ISO_CURRENCY.test(currency)) return DELEGATE;
   // Python stores the title verbatim. The CLI command retains it; the API command still strips it.
-  return vault.queue.run(() => {
-    if (io.signal.aborted) return 130;
-    const slug = root.profile || io.env.CASHU_PROFILE;
-    if (
-      deps.stores.vaults.get(vault.id) !== vault ||
-      mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug
-    )
-      return DELEGATE;
-    const result = runCommand(
-      vault.store,
-      vault.writer,
-      addCashExpenseCli,
-      {
-        amount: floatRepr(input.amount),
-        title: input.title,
-        category: input.category,
-        currency,
-        onDate: input.date,
-      },
-      vault.env,
-    );
-    if (!result.ok) return DELEGATE;
-    cashAddLine(io, input.amount, input.title, input.category);
-    return 0;
-  });
+  const key = cliCommandKey();
+  const slug = root.profile || io.env.CASHU_PROFILE;
+  if (
+    deps.stores.vaults.get(vault.id) !== vault ||
+    mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug
+  )
+    return DELEGATE;
+  const result = await runCliVaultCommand(
+    vault,
+    addCashExpenseCli,
+    {
+      amount: floatRepr(input.amount),
+      title: input.title,
+      category: input.category,
+      currency,
+      onDate: input.date,
+    },
+    key,
+    () =>
+      deps.stores.vaults.get(vault.id) === vault &&
+      mcpProfile(vault.store.read.bind(vault.store))?.slug === slug,
+  );
+  if (result.kind === "refused" && result.reason === "cli_context_changed") return DELEGATE;
+  if (result.kind !== "completed")
+    return reportCliCommandFailure(io, result, key, addCashExpenseCli.id);
+  cashAddLine(io, input.amount, input.title, input.category);
+  return 0;
 }
 
 export function cashCommands(deps: BudgetCliDeps): PortedCommand[] {

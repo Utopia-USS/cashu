@@ -19,6 +19,7 @@ import {
   assertReplayedDeviceAuthority,
   loadDeviceAuthority,
   type NativeVaultInventoryEntry,
+  validateNativeVaultInventorySet,
 } from "./deviceAuthority.js";
 import { ProvenanceRefusal, SqlProvenanceStore } from "./sqlProvenance.js";
 
@@ -93,6 +94,21 @@ async function creator() {
 }
 
 describe("device authority foundation", () => {
+  it("rejects duplicate inventory and a collision with the old synthetic store root", async () => {
+    const c = await creator();
+    expect(() => validateNativeVaultInventorySet([c.input.entry], c.input.dataDir)).not.toThrow();
+    expect(() =>
+      validateNativeVaultInventorySet([c.input.entry, c.input.entry], c.input.dataDir),
+    ).toThrow("invalid_inventory");
+    mkdirSync(join(c.input.dataDir, "stores"));
+    expect(() =>
+      validateNativeVaultInventorySet(
+        [{ ...c.input.entry, vaultRoot: join(c.input.dataDir, "stores") }],
+        c.input.dataDir,
+      ),
+    ).toThrow("invalid_inventory");
+    c.driver.close();
+  });
   it("requires durable provenance for every held key and refuses an absent or swapped store", async () => {
     const c = await creator();
     const loaded = SqlProvenanceStore.open(c.driver, c.created.ring, "existing");

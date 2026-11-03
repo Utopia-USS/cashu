@@ -26,7 +26,7 @@ import type {
 } from "@cashu/store/investments/signals-screen";
 import type { ChangeSource } from "@cashu/store/query";
 import { z } from "zod";
-import { defineUiAction } from "./uiActions.js";
+import { defineUiAction, unknownUiCommand } from "./uiActions.js";
 
 type WatchAddResult = Omit<Extract<SignalsWatchResult, { ok: true }>["value"], "warnings">;
 
@@ -259,7 +259,10 @@ export function signalsScreenActions(options: {
               },
               key,
             });
-            if (!save.ok)
+            if (save.kind === "outcome_unknown") return unknownUiCommand(save, addCommand.id);
+            if (save.kind === "not_started")
+              return { status: "not_started" as const, reason: "capability_unavailable" as const };
+            if (save.kind === "refused")
               return {
                 status: "completed" as const,
                 value: { ok: false as const, reason: save.reason, params: {} },
@@ -375,7 +378,7 @@ export function signalsScreenActions(options: {
       return { status: "completed", value };
     },
   });
-  const remove = defineUiAction({
+  const remove = defineUiAction<z.infer<typeof removeInput>, SignalsScreenCapability, unknown>({
     id: "investments.signals.removeWatch",
     module: "investments",
     input: removeInput,
@@ -387,7 +390,10 @@ export function signalsScreenActions(options: {
         input,
         key: mintUlid(options.now()),
       });
-      return saved.ok
+      if (saved.kind === "outcome_unknown") return unknownUiCommand(saved, removeCommand.id);
+      if (saved.kind === "not_started")
+        return { status: "not_started", reason: "capability_unavailable" };
+      return saved.kind === "completed"
         ? { status: "completed", value: saved.value }
         : { status: "refused", reason: saved.reason, preparation: "none" };
     },
@@ -408,7 +414,11 @@ export function signalsScreenActions(options: {
         input,
         key: mintUlid(options.now()),
       });
-      if (!saved.ok) return { status: "refused", reason: saved.reason, preparation: "none" };
+      if (saved.kind === "outcome_unknown") return unknownUiCommand(saved, snoozeCommand.id);
+      if (saved.kind === "not_started")
+        return { status: "not_started", reason: "capability_unavailable" };
+      if (saved.kind === "refused")
+        return { status: "refused", reason: saved.reason, preparation: "none" };
       const value = saved.value as { signal: string };
       if (input.until === null)
         return {

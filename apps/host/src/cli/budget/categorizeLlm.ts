@@ -8,8 +8,9 @@ import {
   type CurrentCloudConfig,
   type ReviewedCloudConsent,
 } from "@cashu/llm";
-import { cacheLlmRules, runCommand } from "@cashu/store";
+import { cacheLlmRules } from "@cashu/store";
 import type { OpenVault } from "../../stores.js";
+import { cliCommandKey, reportCliCommandFailure, runCliVaultCommand } from "../commandOutcome.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { S } from "./categorize.strings.js";
@@ -158,41 +159,53 @@ export async function runMerchantClassification(
     throw error;
   }
   if (cloud && !answers.ok && answers.reason === "no_api_key") return refuseCloud();
-  return vault.queue.run(() => {
-    if (io.signal.aborted) return 130;
-    try {
-      assertClassifierCurrent(context, cloudGuard);
-    } catch {
-      io.stderr(`${io.t.tr(S.authorityChanged)}\n`);
-      return 1;
-    }
-    let cached = 0;
-    if (answers.ok) {
-      const result = runCommand(
-        vault.store,
-        vault.writer,
-        cacheLlmRules,
-        {
-          items: [...answers.answers].map(([merchantKey, answer]) => ({
-            merchantKey,
-            category: answer.category,
-          })),
-        },
-        vault.env,
-      );
-      if (!result.ok) throw new Error("native merchant classifier refused validated answers");
-      cached = result.value.cached;
-    }
-    const text = `Categorized ${initial.total} transactions.`;
-    printConsole(io, text, { spans: [{ start: 0, end: text.length, style: { color: 32 } }] });
-    if (answers.ok || merchants.length === 0)
-      printConsole(io, `  LLM: +${cached} rules (${merchants.length} unknown expense merchants)`);
-    else {
-      const error = cloud
-        ? io.t.tr(S.cloudEmpty)
-        : `LLM skipped: Ollama returned nothing (is it running? model '${options?.model}' pulled?)`;
-      printConsole(io, error, { spans: [{ start: 0, end: error.length, style: { color: 33 } }] });
-    }
-    return 0;
-  });
+  const key = cliCommandKey();
+  if (io.signal.aborted) return 130;
+  if (io.signal.aborted) return 130;
+  try {
+    assertClassifierCurrent(context, cloudGuard);
+  } catch {
+    io.stderr(`${io.t.tr(S.authorityChanged)}\n`);
+    return 1;
+  }
+  let cached = 0;
+  if (answers.ok) {
+    const result = await runCliVaultCommand(
+      vault,
+      cacheLlmRules,
+      {
+        items: [...answers.answers].map(([merchantKey, answer]) => ({
+          merchantKey,
+          category: answer.category,
+        })),
+      },
+      key,
+      () => {
+        try {
+          assertClassifierCurrent(context, cloudGuard);
+          return (
+            !io.signal.aborted &&
+            deps.stores.vaults.get(vault.id) === vault &&
+            initial.isCurrent(vault.id)
+          );
+        } catch {
+          return false;
+        }
+      },
+    );
+    if (result.kind !== "completed")
+      return reportCliCommandFailure(io, result, key, cacheLlmRules.id);
+    cached = result.value.cached;
+  }
+  const text = `Categorized ${initial.total} transactions.`;
+  printConsole(io, text, { spans: [{ start: 0, end: text.length, style: { color: 32 } }] });
+  if (answers.ok || merchants.length === 0)
+    printConsole(io, `  LLM: +${cached} rules (${merchants.length} unknown expense merchants)`);
+  else {
+    const error = cloud
+      ? io.t.tr(S.cloudEmpty)
+      : `LLM skipped: Ollama returned nothing (is it running? model '${options?.model}' pulled?)`;
+    printConsole(io, error, { spans: [{ start: 0, end: error.length, style: { color: 33 } }] });
+  }
+  return 0;
 }

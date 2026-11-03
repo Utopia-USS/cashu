@@ -1,8 +1,14 @@
 import { D, floatRepr } from "@cashu/domain";
 import type { BudgetSettings } from "@cashu/domain/budget";
-import { runCommand, setCushion } from "@cashu/store";
+import { setCushion } from "@cashu/store";
 import { budgetCliSettings } from "@cashu/store/budget/queries";
 import { mcpProfile } from "@cashu/store/core";
+import {
+  cliCommandKey,
+  reportCliCommandFailure,
+  reportCliProjectionUnavailable,
+  runCliVaultCommand,
+} from "../commandOutcome.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
 import { type BudgetCliDeps, budgetVault } from "./context.js";
 import { cushionInput } from "./cushionInput.js";
@@ -74,28 +80,38 @@ async function runCushion(
   )
     return DELEGATE;
   if (!input.changing) return cushionOutput(io, current) ? 0 : DELEGATE;
-  return vault.queue.run(() => {
-    if (io.signal.aborted) return 130;
-    const now = budgetCliSettings(vault.store.read.bind(vault.store));
-    const slug = root.profile || io.env.CASHU_PROFILE;
-    if (
-      deps.stores.vaults.get(vault.id) !== vault ||
-      mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug ||
-      now === null ||
-      (now.cushion.accountIds.length !== 0 && !input.off)
-    )
-      return DELEGATE;
-    const proposed = nextSettings(now, input);
-    // The legacy view cannot print an enabled rule without a target; refuse before appending.
-    if (proposed.enabled && proposed.targetAmount === null && proposed.targetMonths === null)
-      return DELEGATE;
-    const result = runCommand(vault.store, vault.writer, setCushion, proposed, vault.env);
-    if (!result.ok) return DELEGATE;
-    const updated = budgetCliSettings(vault.store.read.bind(vault.store));
-    if (updated === null || !cushionOutput(io, updated))
-      throw new Error("cushion projection unavailable");
-    return 0;
+  const key = cliCommandKey();
+  if (io.signal.aborted) return 130;
+  if (io.signal.aborted) return 130;
+  const now = budgetCliSettings(vault.store.read.bind(vault.store));
+  const slug = root.profile || io.env.CASHU_PROFILE;
+  if (
+    deps.stores.vaults.get(vault.id) !== vault ||
+    mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug ||
+    now === null ||
+    (now.cushion.accountIds.length !== 0 && !input.off)
+  )
+    return DELEGATE;
+  const proposed = nextSettings(now, input);
+  // The legacy view cannot print an enabled rule without a target; refuse before appending.
+  if (proposed.enabled && proposed.targetAmount === null && proposed.targetMonths === null)
+    return DELEGATE;
+  const result = await runCliVaultCommand(vault, setCushion, proposed, key, () => {
+    const latest = budgetCliSettings(vault.store.read.bind(vault.store));
+    return (
+      !io.signal.aborted &&
+      deps.stores.vaults.get(vault.id) === vault &&
+      mcpProfile(vault.store.read.bind(vault.store))?.slug === slug &&
+      latest !== null &&
+      (latest.cushion.accountIds.length === 0 || input.off) &&
+      JSON.stringify(nextSettings(latest, input)) === JSON.stringify(proposed)
+    );
   });
+  if (result.kind !== "completed") return reportCliCommandFailure(io, result, key, setCushion.id);
+  const updated = budgetCliSettings(vault.store.read.bind(vault.store));
+  if (updated === null || !cushionOutput(io, updated))
+    return reportCliProjectionUnavailable(io, key, setCushion.id);
+  return 0;
 }
 
 export function cushionCommand(deps: BudgetCliDeps): PortedCommand {

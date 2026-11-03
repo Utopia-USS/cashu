@@ -28,12 +28,20 @@ export function tempDir(prefix = "cashu-apphost-"): string {
 
 /** Options every in-process test host gets: a temp home for the real-location guard, a memory log. */
 export function testHostOptions(dataDir: string) {
-  return { dataDir, home: tempDir("cashu-home-"), log: memoryLog(), build: "test" };
+  return {
+    dataDir,
+    home: tempDir("cashu-home-"),
+    log: memoryLog(),
+    build: "test",
+    vaultSource: { kind: "synthetic-harness" as const },
+  };
 }
 
-type RunResult = Extract<StoreToClient, { t: "result" }>["result"];
+type RunResult =
+  | { readonly ok: true; readonly value: JsonValue }
+  | { readonly ok: false; readonly reason: string };
 
-/** A `ui` session speaking the store channel v4. */
+/** A `ui` session speaking the store channel v5 through the synthetic test harness. */
 export interface StoreClient {
   readonly conn: HostConnection;
   /** The vaults the host announced at `ready`. */
@@ -66,8 +74,16 @@ export async function storeClient(dataDir: string): Promise<StoreClient> {
     if (frame.t !== "store") return;
     const m = frame.m as StoreToClient;
     if (m.t === "ready") ready(m.vaults);
-    else if (m.t === "result") results.get(m.rid)?.(m.result);
-    else if (m.t === "failed")
+    else if (m.t === "result") {
+      const outcome = m.outcome;
+      results.get(m.rid)?.(
+        outcome.kind === "completed"
+          ? { ok: true, value: outcome.value }
+          : outcome.kind === "outcome_unknown"
+            ? new Error("outcome_unknown")
+            : { ok: false, reason: outcome.reason },
+      );
+    } else if (m.t === "failed")
       results.get(m.rid)?.(new Error(`${m.error.name}: ${m.error.message}`));
     else if (m.t === "value") subs.get(m.sid)?.(m.value);
     else if (m.t === "error") subs.get(m.sid)?.(new Error(m.error.name));
@@ -82,7 +98,10 @@ export async function storeClient(dataDir: string): Promise<StoreClient> {
     const rid = next++;
     const target =
       vault === undefined ? { kind: "device" as const } : { kind: "vault" as const, vault };
-    conn.send({ t: "store", m: { t: "run", rid, key, target, command, input } as never });
+    conn.send({
+      t: "store",
+      m: { t: "run", rid, generation: 0, key, target, command, input } as never,
+    });
     return rid;
   };
   return {

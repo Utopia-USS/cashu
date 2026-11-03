@@ -55,6 +55,18 @@ export const G = catalog({
     pl: "Nie potwierdzono wyniku. Sprawdź stan przed ponowieniem.",
     en: "The outcome is unconfirmed. Check the current state before retrying.",
   },
+  writeUnavailable: {
+    pl: "Zapis jest teraz niedostępny. Spróbuj ponownie po przywróceniu połączenia.",
+    en: "Saving is unavailable. Try again when the connection is restored.",
+  },
+  previousCompleted: {
+    pl: "Poprzednią zmianę potwierdzono. Sprawdź bieżący wybór przed zapisem.",
+    en: "The previous change is confirmed. Check your current choice before saving.",
+  },
+  previousRefused: {
+    pl: "Poprzedniej zmiany nie zapisano. Sprawdź bieżący wybór przed zapisem.",
+    en: "The previous change was refused. Check your current choice before saving.",
+  },
   failed: { pl: "Nie udało się zapisać.", en: "Could not save." },
   undo: { pl: "Cofnij", en: "Undo" },
   decide: { pl: "Zanotuj decyzję", en: "Record decision" },

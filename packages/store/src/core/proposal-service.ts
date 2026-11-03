@@ -1,4 +1,5 @@
-import { type CommandEnv, type EventWriter, refuse, runCommand } from "../command.js";
+import { type Command, type CommandEnv, type EventWriter, refuse, runCommand } from "../command.js";
+import type { DurableCommandResult } from "../command-durable.js";
 import type { Store } from "../materialize.js";
 import { approvePrepared, failApprovedProposal } from "./proposal-commands.js";
 import type { PreparedEffect } from "./proposal-execution.js";
@@ -42,12 +43,19 @@ export interface ApprovalExecutionDeps {
   readonly applyingLock: ProposalApplyingLock;
   /** A short, synchronous store write queue step; it never spans publication awaits. */
   readonly runWrite: <T>(work: () => T) => Promise<T>;
+  /** Native host owns the sole queue and durable attempt for each decision. */
+  readonly runDurable?: <I, R>(
+    command: Command<I, R>,
+    input: I,
+    current: () => boolean,
+  ) => Promise<DurableCommandResult<R>>;
   /** Genuine current vault and holder capabilities, rechecked across every await. */
   readonly isVaultCurrent: () => boolean;
   readonly isHolder: () => boolean;
 }
 
 export type ApprovalExecutionResult<R> =
+  | { readonly status: "outcome_unknown"; readonly key: string; readonly command: string }
   | { readonly status: "approved"; readonly approvalEid: string; readonly effect: R }
   | { readonly status: "refused"; readonly reason: string; readonly cleanupFailed: boolean }
   | { readonly status: "failed"; readonly approvalEid: string; readonly reason: "write_failed" }
@@ -108,13 +116,25 @@ export async function executePreparedApproval<R>(
       return false;
     }
   };
-  try {
+  const decide = async <I, T>(
+    command: Command<I, T>,
+    input: I,
+  ): Promise<DurableCommandResult<T>> => {
+    if (deps.runDurable) return deps.runDurable(command, input, current);
     const outcome = await deps.runWrite(() =>
       current()
-        ? runCommand(deps.store, deps.writer, approvePrepared(effect), {}, deps.env)
+        ? runCommand(deps.store, deps.writer, command, input, deps.env)
         : refuse("authority_lost"),
     );
-    if (!outcome.ok) return refused(outcome.reason);
+    return outcome.ok
+      ? { kind: "completed", value: outcome.value, eids: [] }
+      : { kind: "refused", reason: outcome.reason };
+  };
+  try {
+    const outcome = await decide(approvePrepared(effect), {});
+    if (outcome.kind === "outcome_unknown")
+      return { status: "outcome_unknown", key: outcome.key, command: approvePrepared(effect).id };
+    if (outcome.kind !== "completed") return refused(outcome.reason);
     const { approvalEid, effect: effectValue } = outcome.value;
     if (publication === undefined) return { status: "approved", approvalEid, effect: effectValue };
     try {
@@ -141,22 +161,14 @@ export async function executePreparedApproval<R>(
       let failedEvent = false;
       if (current()) {
         try {
-          const failed = await deps.runWrite(() =>
-            current()
-              ? runCommand(
-                  deps.store,
-                  deps.writer,
-                  failApprovedProposal,
-                  {
-                    proposalGid: effect.proposalGid,
-                    approvalEid,
-                    result: { error_code: "write_failed" },
-                  },
-                  deps.env,
-                )
-              : refuse("authority_lost"),
-          );
-          failedEvent = failed.ok;
+          const failed = await decide(failApprovedProposal, {
+            proposalGid: effect.proposalGid,
+            approvalEid,
+            result: { error_code: "write_failed" },
+          });
+          if (failed.kind === "outcome_unknown")
+            return { status: "outcome_unknown", key: failed.key, command: failApprovedProposal.id };
+          failedEvent = failed.kind === "completed";
         } catch {
           failedEvent = false;
         }

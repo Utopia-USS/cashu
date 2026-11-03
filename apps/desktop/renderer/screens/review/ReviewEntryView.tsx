@@ -49,7 +49,7 @@ export function ReviewEntryView({
           {R.undo}
         </button>
       )}
-      {state.failure && <p role="status">{R.failed}</p>}
+      {state.failure && <p role="status">{state.failure}</p>}
     </section>
   );
 }

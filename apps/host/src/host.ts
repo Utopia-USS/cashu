@@ -15,7 +15,7 @@
 // Everything is logged as codes and counts (log.ts). A clean exit clears the crash record.
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { parseDateTime } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
 import { type AdminStatus, HOST_PROTOCOL } from "@cashu/host-protocol";
@@ -49,6 +49,7 @@ import { mcpProfile } from "@cashu/store/core";
 import { NotificationQueue } from "@cashu/store/investments/local";
 import { PerformanceService } from "@cashu/store/investments/performance";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
+import type { SyncResult } from "@cashu/sync";
 import { handleAdmin } from "./admin.js";
 import { HANDOVER_EXIT, watchBundle } from "./bundle.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./cli/budget/categorizeOllama.js";
@@ -69,6 +70,7 @@ import { nativeRuntime } from "./mcp/native.js";
 import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
+import type { NativeVaultSource } from "./nativeVault.js";
 import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
 import { servedCommands, servedQueries } from "./registry.js";
 import {
@@ -86,9 +88,10 @@ import {
   signalsScreenClock,
 } from "./signalsScreen.js";
 import { serveStoreChannel } from "./storeChannel.js";
-import { type HostStores, openHostStores } from "./stores.js";
+import { type HostStores, openHostStores, openNativeHostStores } from "./stores.js";
 import { type StrategyScreenCapability, strategiesScreen } from "./strategiesScreen.js";
 import { bridgeCommand } from "./sync/command.js";
+import { validateNativeVaultInventorySet } from "./sync/keys/deviceAuthority.js";
 import type { CrashPoint } from "./sync/loop.js";
 import { SyncService } from "./sync/service.js";
 import { type UpdateProvider, updateScreen } from "./updateScreen.js";
@@ -100,10 +103,53 @@ const DEFAULT_LINGER_MS = 10 * 60 * 1000;
 const DEFAULT_BUNDLE_CHECK_MS = 60 * 1000;
 const DEFAULT_SLICE_EVENTS = 1_000;
 const CLEAN_EXIT = 0;
+const NATIVE_MCP_STORE_TOOLS = new Set([
+  "setup_status",
+  "mark_review_done",
+  "spending_breakdown",
+  "cashflow_summary",
+  "recurring_payments",
+  "uncategorized_merchants",
+  "loans_summary",
+  "signals",
+  "theses",
+  "alerts",
+  "add_alert",
+  "mute_alert",
+  "record_decision",
+  "research_notes",
+  "set_topic_market_view",
+  "upsert_topic_thesis",
+  "set_instrument_segment",
+]);
+const NATIVE_MCP_INVESTMENT_READS = new Set([
+  "portfolio_overview",
+  "positions",
+  "review_context",
+  "strategy_status",
+]);
+const NATIVE_MCP_RESEARCH = new Set([
+  "research_context",
+  "start_research_run",
+  "add_research_note",
+  "finish_research_run",
+]);
+const NATIVE_MCP_INVESTMENT_WRITES = new Set([
+  "set_recommendation",
+  "set_recommendations",
+  "upsert_thesis",
+  "watchlist",
+  "remove_from_watchlist",
+  "add_to_watchlist",
+]);
 
 type ExitReason = "stop" | "idle" | "signal" | "handover";
 
 export interface LocalHostOptions {
+  /** Explicit isolated test harness or an injected exact-vault native authority. */
+  readonly vaultSource?:
+    | { readonly kind: "synthetic-harness" }
+    | { readonly kind: "native"; readonly provider: NativeVaultSource };
   /** Checked S60 preparation authority, bound to the exact open vault. Absent by default. */
   readonly proposals?: ProposalApprovalProvider;
   /** Exact-vault checked workspace provider. Unbound means unavailable, never absent. */
@@ -191,10 +237,21 @@ export interface LocalHost {
    * commands of other sessions run between slices. Resolves with the applied count.
    */
   applySliced(vault: string, envelopes: readonly unknown[], sliceEvents?: number): Promise<number>;
+  /** Native-only authenticated inbound fold/push through the shared vault queue. */
+  syncVault(vault: string): Promise<SyncResult>;
 }
 
 /** Starts the data dir's host. Throws `HostBusyError` when another host holds the lock. */
 export async function startLocalHost(options: LocalHostOptions): Promise<LocalHost> {
+  if (options.vaultSource === undefined) throw new Error("native_vault_provider_unavailable");
+  if (options.vaultSource.kind === "native") {
+    if (options.vaultSource.provider.inventory.length === 0)
+      throw new Error("native_inventory_unavailable");
+    validateNativeVaultInventorySet(
+      options.vaultSource.provider.inventory,
+      resolve(options.dataDir),
+    );
+  }
   // TRANSITIONAL(S53b): the synthetic store source must never write into the owner's real cashU
   // data dir; the real vault source (keyring salts, paired identity) lifts this.
   refusePaths(
@@ -202,6 +259,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     options.home ?? homedir(),
   );
   const now = options.now ?? Date.now;
+  const nativeMode = options.vaultSource.kind === "native";
   const proposalManager = proposalScreen(options.proposals);
   const workspaceActions = settingsWorkspaceActions(options.workspace);
   const updates = updateScreen(options.updates);
@@ -306,7 +364,16 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   try {
     record = recordStart(server.paths.runDir, now());
     lease = takeWriterLease(server.lock);
-    stores = openHostStores(server.paths.dataDir, lease, log, now);
+    stores =
+      options.vaultSource.kind === "native"
+        ? await openNativeHostStores(
+            server.paths.dataDir,
+            options.vaultSource.provider,
+            lease,
+            log,
+            now,
+          )
+        : openHostStores(server.paths.dataDir, lease, log, now);
   } catch (error) {
     log.error("host.start-failed", { error: errorName(error) });
     await server.close();
@@ -341,19 +408,27 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const uiCommands = servedCommands({ strategy: investmentSources.strategy });
   const safeMode = record.safeMode;
   const runtime = options.runtime ?? currentRuntime();
-  const python =
-    options.python === undefined ? pythonProgram(runtime) : (options.python ?? undefined);
-  const capabilities = { jobs: !safeMode, network: !safeMode };
+  const python = nativeMode
+    ? undefined
+    : options.python === undefined
+      ? pythonProgram(runtime)
+      : (options.python ?? undefined);
+  const workerBound = !nativeMode || options.worker !== undefined;
+  const capabilities = { jobs: !safeMode && workerBound, network: !safeMode && workerBound };
   let syncService: SyncService | undefined;
-  const sync: Promise<SyncService | undefined> = SyncService.start({
-    dataDir: server.paths.dataDir,
-    home: options.home ?? homedir(),
-    lease,
-    log,
-    capabilities,
-    now,
-    ...(options.syncAt === undefined ? {} : { at: options.syncAt }),
-  }).then(
+  const sync: Promise<SyncService | undefined> = (
+    options.vaultSource.kind === "native"
+      ? Promise.resolve(undefined)
+      : SyncService.start({
+          dataDir: server.paths.dataDir,
+          home: options.home ?? homedir(),
+          lease,
+          log,
+          capabilities,
+          now,
+          ...(options.syncAt === undefined ? {} : { at: options.syncAt }),
+        })
+  ).then(
     (service) => {
       syncService = service;
       return service;
@@ -365,27 +440,37 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   );
   // TRANSITIONAL(S39c): Python owns financial mutations in mixed sessions. Native-only builds
   // bind the explicit profile to a loaded vault until the shared authority/catalog is available.
-  const ported = [
-    ...(options.ported ??
-      portedCommands({
+  const ported = nativeMode
+    ? portedCommands({
         runtime,
         now,
-        ...(python === undefined
-          ? {
-              nativeStores: stores,
-              investmentSources,
-              performance: investmentPerformance,
-              classifier: options.budgetClassifiers?.local,
-              cloudClassifier: options.budgetClassifiers?.cloud,
-            }
-          : {}),
-      })),
-    bridgeCommand(() => sync),
-  ];
+        nativeStores: stores,
+        investmentSources,
+        performance: investmentPerformance,
+        classifier: options.budgetClassifiers?.local,
+        cloudClassifier: options.budgetClassifiers?.cloud,
+      }).filter((command) => command.name !== "genesis" && command.name !== "skills")
+    : [
+        ...(options.ported ??
+          portedCommands({
+            runtime,
+            now,
+            ...(python === undefined
+              ? {
+                  nativeStores: stores,
+                  investmentSources,
+                  performance: investmentPerformance,
+                  classifier: options.budgetClassifiers?.local,
+                  cloudClassifier: options.budgetClassifiers?.cloud,
+                }
+              : {}),
+          })),
+        bridgeCommand(() => sync),
+      ];
   const portedNames = new Set(ported.map((command) => command.name));
-  const delegated = Object.fromEntries(
-    Object.entries(DELEGATED).filter(([name]) => !portedNames.has(name)),
-  );
+  const delegated = nativeMode
+    ? {}
+    : Object.fromEntries(Object.entries(DELEGATED).filter(([name]) => !portedNames.has(name)));
   if (options.launcher ?? true) {
     try {
       if (writeLauncher(server.paths.dataDir, shimProgram(runtime)))
@@ -418,7 +503,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     stores,
     now: () => now(),
     isCurrent: (vault) =>
-      stopping === undefined && !bundleReplaced && stores.vaults.get(vault.id) === vault,
+      stopping === undefined &&
+      !bundleReplaced &&
+      stores.vaults.get(vault.id) === vault &&
+      (vault.native === undefined || vault.native.isCurrent()),
     jobsEnabled: () => capabilities.jobs && stopping === undefined && !bundleReplaced,
     networkEnabled: () => capabilities.network && stopping === undefined && !bundleReplaced,
     uiCount: () => server.sessionCounts().ui,
@@ -455,6 +543,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     stopping ??= (async () => {
       const code = reason === "handover" ? HANDOVER_EXIT : CLEAN_EXIT;
       log.info("host.stopping", { reason, pendingWrites: stores.pending() });
+      stores.invalidate();
       server.beginStop();
       stopBundle();
       if (idleTimer !== undefined) clearTimeout(idleTimer);
@@ -468,7 +557,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       strategyManager?.close();
       images.close();
       await stores.drain();
-      stores.close();
+      await stores.close();
       // Before the lock goes: a successor host records its own start after taking the lock.
       record.clean();
       await server.close();
@@ -522,6 +611,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       const vault = stores.vaults.get(vaultId);
       if (vault === undefined)
         return Promise.reject(new Error("this vault is not open on this host"));
+      if (vault.mode === "native")
+        return Promise.reject(new Error("durable_apply_authority_unavailable"));
       const size = Math.max(1, Math.floor(sliceEvents));
       function* slices(): Generator<void, number> {
         let applied = 0;
@@ -532,6 +623,11 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         return applied;
       }
       return vault.queue.runSliced(slices());
+    },
+    syncVault(vaultId) {
+      const session = stores.vaults.get(vaultId)?.native;
+      if (session === undefined) return Promise.reject(new Error("native_sync_unavailable"));
+      return session.sync();
     },
   };
 
@@ -548,15 +644,25 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           stores,
           queries,
           commands: uiCommands,
-          actions: [
-            proposalManager,
-            updates.action,
-            ...workspaceActions,
-            ...(options.uiActions ?? []),
-            ...signalActions,
-            ...(importManager?.actions ?? []),
-            ...(strategyManager?.actions ?? []),
-          ],
+          actions: nativeMode
+            ? [
+                proposalManager,
+                ...(options.updates === undefined ? [] : [updates.action]),
+                ...(options.workspace === undefined ? [] : workspaceActions),
+                ...(options.uiActions ?? []),
+                ...(options.signals === undefined ? [] : signalActions),
+                ...(importManager?.actions ?? []),
+                ...(strategyManager?.actions ?? []),
+              ]
+            : [
+                proposalManager,
+                updates.action,
+                ...workspaceActions,
+                ...(options.uiActions ?? []),
+                ...signalActions,
+                ...(importManager?.actions ?? []),
+                ...(strategyManager?.actions ?? []),
+              ],
           prepareQuery: async (vault, query, args) => {
             if (query === "investments.strategies.screen") {
               const parsed = strategyScreenArgsSchema.safeParse(args);
@@ -611,6 +717,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
               return undefined;
             }
             const vault = matchingVaults[0];
+            if (nativeMode && (vault?.native === undefined || !vault.native.isCurrent()))
+              return undefined;
             const child =
               python === undefined
                 ? undefined
@@ -624,14 +732,15 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             // TRANSITIONAL(S53b): a profile with no native vault is still owned wholly by Python.
             // Never take this path for a native profile after a policy or bridge failure.
             if (vault === undefined) return child;
-            const legacyDataDir =
-              options.mcpLegacyDataDir ??
-              (runtime.checkout !== undefined &&
-              (python === undefined ||
-                (python.command === join(runtime.checkout, ".venv", "bin", "cashu") &&
-                  python.args.length === 0))
-                ? join(runtime.checkout, "data")
-                : undefined);
+            const legacyDataDir = nativeMode
+              ? undefined
+              : (options.mcpLegacyDataDir ??
+                (runtime.checkout !== undefined &&
+                (python === undefined ||
+                  (python.command === join(runtime.checkout, ".venv", "bin", "cashu") &&
+                    python.args.length === 0))
+                  ? join(runtime.checkout, "data")
+                  : undefined));
             const fileReader =
               legacyDataDir === undefined
                 ? undefined
@@ -701,6 +810,37 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                   (tool) => tool.name !== "watchlist" || options.mcpInvestmentWrites !== undefined,
                 ),
               );
+            const investmentAsync = options.mcpInvestmentAsync?.(vault.id);
+            if (nativeMode) {
+              const enabled = (name: string): boolean => {
+                if (NATIVE_MCP_STORE_TOOLS.has(name)) return true;
+                if (name === "profile_overview")
+                  return options.mcpPrices !== undefined && options.mcpFxNewest !== undefined;
+                if (name === "networth_breakdown") return options.mcpPrices !== undefined;
+                if (NATIVE_MCP_INVESTMENT_READS.has(name))
+                  return options.mcpInvestmentReads !== undefined;
+                if (name === "history_metrics") return options.mcpInvestmentHistory !== undefined;
+                if (NATIVE_MCP_RESEARCH.has(name)) return options.mcpResearch !== undefined;
+                if (NATIVE_MCP_INVESTMENT_WRITES.has(name)) {
+                  if (options.mcpInvestmentWrites === undefined) return false;
+                  if (name === "add_to_watchlist")
+                    return (
+                      investmentAsync?.vault === vault.id &&
+                      investmentAsync.watch?.vault === vault.id &&
+                      investmentAsync.watch.isCurrent()
+                    );
+                  return true;
+                }
+                if (name === "search_instruments")
+                  return (
+                    investmentAsync?.vault === vault.id &&
+                    investmentAsync.search?.vault === vault.id &&
+                    investmentAsync.search.isCurrent()
+                  );
+                return false;
+              };
+              tools.splice(0, tools.length, ...tools.filter((tool) => enabled(tool.name)));
+            }
             const inventory =
               child === undefined
                 ? TOOL_INVENTORY.filter((entry) => tools.some((tool) => tool.name === entry.name))
@@ -721,7 +861,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 investmentHistory: options.mcpInvestmentHistory,
                 research: options.mcpResearch,
                 investmentWrites: options.mcpInvestmentWrites,
-                investmentAsync: options.mcpInvestmentAsync?.(vault.id),
+                investmentAsync,
                 readInvestmentImportFile: readInvestmentFile,
                 readInvestmentMappingFile: readInvestmentMapping,
               }),

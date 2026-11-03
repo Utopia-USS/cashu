@@ -1,34 +1,29 @@
 // The asynchronous adapter: the desktop renderer talks to the local host over a MessagePort that
-// Electron main relays into its `ui` session (store channel v2, @cashu/host-protocol/store). A query is
-// subscribed by id (the host runs it and pushes a snapshot after every change that touched its tables),
-// so the first read waits one hop and `useQuery` suspends once; commands go by id with an idempotency
-// key minted once per command, and come back as their result union, or as a `RemoteStoreError` for an
-// unexpected failure.
+// Electron main relays into its `ui` session (store channel v5, @cashu/host-protocol/store). A query is
+// subscribed by id (the host runs it and pushes a snapshot after every change that touched its tables).
+// Commands settle on interruption and retain only an opaque in-memory attempt for read-only lookup.
 //
 // The host can go away while the window is open (killed, crashed, replaced by an update). Main then
 // says so with `link` messages and reconnects (starting a host when none answers). Meanwhile the
-// snapshots stay as they are (stale) and new subscriptions and commands wait. When the new session
-// announces itself (`ready`), every live subscription is sent again and every command still waiting
-// for its answer is sent again with the same key: the host answers a command it already committed from
-// its request table, so a command is never lost and never applied twice.
+// snapshots stay as they are (stale); offline commands return not_started. On ready, live queries
+// resubscribe. An uncertain command is never automatically submitted again.
 
 import {
   decodeValue,
-  type JsonValue,
   type LinkState,
   type RelayToClient,
+  type RunOutcomeWire,
   relayToClientSchema,
   STORE_PROTOCOL_VERSION,
   type StoreToHost,
   toJson,
 } from "@cashu/host-protocol/store";
-import type { CommandResult } from "@cashu/store";
-import { mintUlid } from "@cashu/store";
+import { currentVault } from "@cashu/store/device";
 import type { UiActionResult } from "@cashu/store/ui-actions";
 import { type CacheOptions, QueryCache } from "./cache.js";
 import { ConnectionState, type ConnectionStatus } from "./connection.js";
 import { RemoteStoreError } from "./errors.js";
-import type { Adapter, Channel, Sink } from "./types.js";
+import type { Adapter, Channel, CommandAttempt, CommandOutcome, Sink } from "./types.js";
 
 export interface PortClientOptions extends Omit<CacheOptions, "async" | "connection"> {
   readonly uiPrivacy?: { getSnapshot(): boolean; subscribe(listener: () => void): () => void };
@@ -57,6 +52,7 @@ const LINK_STATUS: Readonly<Record<Exclude<LinkState, "connected">, ConnectionSt
 };
 
 type Run = Extract<StoreToHost, { t: "run" }>;
+type Lookup = Extract<StoreToHost, { t: "lookup" }>;
 type Sub = Extract<StoreToHost, { t: "sub" }>;
 
 /** Connect through the relay; resolves once the host announced itself (`ready`). */
@@ -69,7 +65,6 @@ export function createPortClient(
     ((error: unknown) => {
       throw error;
     });
-  const mintKey = options.mintKey ?? (() => mintUlid(Date.now()));
   const recoveredMs = options.recoveredMs ?? DEFAULT_RECOVERED_MS;
   const connection = new ConnectionState("connecting");
   if (options.onStatus) connection.subscribe(() => options.onStatus?.(connection.getSnapshot()));
@@ -78,9 +73,17 @@ export function createPortClient(
   const runs = new Map<
     number,
     {
-      readonly message: Run;
-      resolve(r: CommandResult<unknown>): void;
-      reject(e: unknown): void;
+      readonly attempt: CommandAttempt;
+      readonly generation: number;
+      resolve(r: CommandOutcome<unknown>): void;
+    }
+  >();
+  const lookups = new Map<
+    number,
+    {
+      readonly attempt: CommandAttempt;
+      readonly generation: number;
+      resolve(r: CommandOutcome<unknown>): void;
     }
   >();
   const actions = new Map<number, (result: UiActionResult<unknown>) => void>();
@@ -89,9 +92,41 @@ export function createPortClient(
   let live = false;
   let lost = false;
   let recoveredTimer: ReturnType<typeof setTimeout> | undefined;
-  let privacy = options.uiPrivacy?.getSnapshot() ?? true;
+  let privacy = options.uiPrivacy?.getSnapshot() ?? false;
   let policyGeneration = 0;
+  let currentVaults: readonly string[] = [];
+  let selectedVault: string | null | undefined;
   let client: QueryCache | null = null;
+  let disposed = false;
+  let stopChannel: (() => void) | undefined;
+  const unknown = (attempt: CommandAttempt, attemptId?: string): CommandOutcome<unknown> => ({
+    kind: "outcome_unknown",
+    key: attempt.key,
+    attempt,
+    ...(attemptId ? { attemptId } : {}),
+  });
+  const interrupt = () => {
+    for (const pending of runs.values()) pending.resolve(unknown(pending.attempt));
+    for (const pending of lookups.values()) pending.resolve(unknown(pending.attempt));
+    runs.clear();
+    lookups.clear();
+  };
+  const selectVault = (vault: string | null) => {
+    if (selectedVault === vault) return;
+    selectedVault = vault;
+    for (const [rid, pending] of runs) {
+      if (pending.attempt.target.kind !== "vault" || pending.attempt.target.vault === vault)
+        continue;
+      runs.delete(rid);
+      pending.resolve(unknown(pending.attempt));
+    }
+    for (const [rid, pending] of lookups) {
+      if (pending.attempt.target.kind !== "vault" || pending.attempt.target.vault === vault)
+        continue;
+      lookups.delete(rid);
+      pending.resolve(unknown(pending.attempt));
+    }
+  };
   const post = (message: StoreToHost) => {
     if (live) channel.post(message);
   };
@@ -101,6 +136,7 @@ export function createPortClient(
     if (current === privacy) return;
     privacy = current;
     policyGeneration += 1;
+    interrupt();
     const existing = [...subs.entries()];
     const interrupted = [...actions.values()];
     actions.clear();
@@ -120,6 +156,7 @@ export function createPortClient(
     if (state === "connected") return; // the session's `ready` follows
     if (live) lost = true;
     live = false;
+    interrupt();
     for (const resolve of actions.values())
       resolve({ status: "outcome_unknown", reason: "interrupted" });
     actions.clear();
@@ -129,6 +166,9 @@ export function createPortClient(
 
   return new Promise((resolveClient) => {
     const onReady = (vaults: readonly string[]) => {
+      if (client !== null) interrupt();
+      currentVaults = vaults;
+      selectedVault = undefined;
       live = true;
       if (client !== null) policyGeneration += 1;
       sendPolicy();
@@ -136,12 +176,21 @@ export function createPortClient(
         connection.set("online");
         const adapter: Adapter = {
           dispose() {
+            if (disposed) return;
+            disposed = true;
+            live = false;
             stopPrivacy?.();
+            stopChannel?.();
+            clearTimeout(recoveredTimer);
+            interrupt();
+            subs.clear();
             for (const resolve of actions.values())
               resolve({ status: "outcome_unknown", reason: "interrupted" });
             actions.clear();
           },
-          vaults,
+          get vaults() {
+            return currentVaults;
+          },
           invoke(target, action, input) {
             if (!live) return Promise.resolve({ status: "not_started", reason: "disconnected" });
             if (target.kind !== "vault")
@@ -179,25 +228,78 @@ export function createPortClient(
               if (subs.delete(sid)) post({ t: "unsub", sid });
             };
           },
-          run(target, command, input) {
-            const rid = nextId++;
-            let payload: JsonValue;
+          run(target, command, input, attempt) {
+            if (!live || disposed)
+              return Promise.resolve({ kind: "not_started", reason: "disconnected" });
+            if (
+              attempt.command !== command.id ||
+              attempt.target.kind !== target.kind ||
+              (attempt.target.kind === "vault" &&
+                target.kind === "vault" &&
+                attempt.target.vault !== target.vault)
+            )
+              return Promise.resolve({ kind: "refused", reason: "attempt_scope_mismatch" });
+            let payload: Run["input"];
             try {
               payload = toJson(input);
-            } catch (error) {
-              return Promise.reject(error);
+            } catch {
+              return Promise.resolve({ kind: "refused", reason: "unsupported_input" });
             }
+            const rid = nextId++;
             const message: Run = {
               t: "run",
               rid,
-              key: mintKey(),
-              target,
-              command: command.id,
+              generation: policyGeneration,
+              key: attempt.key,
+              target: attempt.target,
+              command: attempt.command,
               input: payload,
             };
-            return new Promise((resolve, reject) => {
-              runs.set(rid, { message, resolve, reject });
-              post(message);
+            return new Promise((resolve) => {
+              runs.set(rid, { attempt, generation: policyGeneration, resolve });
+              try {
+                post(message);
+              } catch {
+                runs.delete(rid);
+                resolve(unknown(attempt));
+              }
+            });
+          },
+          reconcile(attempt) {
+            if (!live || disposed || privacy) return Promise.resolve(unknown(attempt));
+            if (attempt.target.kind === "vault" && !currentVaults.includes(attempt.target.vault))
+              return Promise.resolve(unknown(attempt));
+            if (
+              attempt.target.kind === "vault" &&
+              selectedVault === undefined &&
+              [...subs.values()].some(
+                (subscription) => subscription.message.query === currentVault.id,
+              )
+            )
+              return Promise.resolve(unknown(attempt));
+            if (
+              attempt.target.kind === "vault" &&
+              selectedVault !== undefined &&
+              selectedVault !== attempt.target.vault
+            )
+              return Promise.resolve(unknown(attempt));
+            const rid = nextId++;
+            const message: Lookup = {
+              t: "lookup",
+              rid,
+              generation: policyGeneration,
+              key: attempt.key,
+              target: attempt.target,
+              command: attempt.command,
+            };
+            return new Promise((resolve) => {
+              lookups.set(rid, { attempt, generation: policyGeneration, resolve });
+              try {
+                post(message);
+              } catch {
+                lookups.delete(rid);
+                resolve(unknown(attempt));
+              }
             });
           },
         };
@@ -218,7 +320,6 @@ export function createPortClient(
         subs.set(sid, { sink: subscription.sink, message });
         post(message);
       }
-      for (const { message } of runs.values()) post(message);
       if (lost) {
         lost = false;
         connection.set("recovered");
@@ -228,7 +329,22 @@ export function createPortClient(
       }
     };
 
+    const decodeOutcome = (
+      outcome: RunOutcomeWire,
+      attempt: CommandAttempt,
+    ): CommandOutcome<unknown> => {
+      switch (outcome.kind) {
+        case "completed":
+          return { kind: "completed", value: decodeValue(outcome.value) };
+        case "refused":
+        case "not_started":
+          return outcome;
+        case "outcome_unknown":
+          return unknown(attempt, outcome.attemptId);
+      }
+    };
     const handle = (message: RelayToClient): void => {
+      if (disposed) return;
       switch (message.t) {
         case "actionResult": {
           const resolve = actions.get(message.rid);
@@ -248,8 +364,18 @@ export function createPortClient(
           onReady(message.vaults);
           return;
         case "value":
-          if (message.generation === policyGeneration)
-            subs.get(message.sid)?.sink.value(decodeValue(message.value));
+          if (message.generation === policyGeneration) {
+            const subscription = subs.get(message.sid);
+            if (subscription !== undefined) {
+              const value = decodeValue(message.value);
+              if (
+                subscription.message.query === currentVault.id &&
+                (value === null || typeof value === "string")
+              )
+                selectVault(value);
+              subscription.sink.value(value);
+            }
+          }
           return;
         case "error":
           if (message.generation === policyGeneration)
@@ -258,24 +384,62 @@ export function createPortClient(
         case "result": {
           const pending = runs.get(message.rid);
           runs.delete(message.rid);
-          pending?.resolve(
-            message.result.ok
-              ? { ok: true, value: decodeValue(message.result.value) }
-              : { ok: false, reason: message.result.reason },
-          );
+          if (pending) {
+            if (
+              message.generation !== pending.generation ||
+              message.generation !== policyGeneration ||
+              !live ||
+              privacy
+            )
+              pending.resolve(unknown(pending.attempt));
+            else {
+              try {
+                pending.resolve(decodeOutcome(message.outcome, pending.attempt));
+              } catch {
+                pending.resolve(unknown(pending.attempt));
+              }
+            }
+          }
+          return;
+        }
+        case "lookupResult": {
+          const pending = lookups.get(message.rid);
+          lookups.delete(message.rid);
+          if (pending) {
+            if (
+              message.generation !== pending.generation ||
+              message.generation !== policyGeneration ||
+              !live ||
+              privacy
+            )
+              pending.resolve(unknown(pending.attempt));
+            else {
+              try {
+                pending.resolve(decodeOutcome(message.outcome, pending.attempt));
+              } catch {
+                pending.resolve(unknown(pending.attempt));
+              }
+            }
+          }
           return;
         }
         case "failed": {
           const pending = runs.get(message.rid);
           runs.delete(message.rid);
-          pending?.reject(new RemoteStoreError(message.error));
+          if (pending)
+            pending.resolve(
+              message.generation === pending.generation && live
+                ? { kind: "not_started", reason: "preinvoke_failure" }
+                : unknown(pending.attempt),
+            );
           return;
         }
       }
     };
-    channel.listen((raw) => {
+    stopChannel = channel.listen((raw) => {
       const parsed = relayToClientSchema.safeParse(raw);
       if (!parsed.success) {
+        interrupt();
         onProtocolError(
           new Error(`invalid store channel message (protocol ${STORE_PROTOCOL_VERSION})`),
         );

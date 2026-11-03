@@ -21,6 +21,7 @@ import {
 import { NotificationQueue } from "../local/notificationQueue.js";
 import { openSignals, ruleRuns, signalByGid } from "../queries/signals.js";
 import { type DailyVault, runDaily } from "./daily.js";
+import type { DurableWriteUnknown } from "./durable.js";
 import oracle from "./fixtures/daily.json" with { type: "json" };
 import { DailyPriceLock } from "./prices.js";
 import { loadStrategy, type StrategyFilesPort } from "./strategy.js";
@@ -127,6 +128,31 @@ function cache(s: ReturnType<typeof setup>) {
   );
 }
 describe("daily native composition", () => {
+  it("preserves an unknown durable evaluation and does not append a fresh failure", async () => {
+    const s = setup();
+    let calls = 0;
+    const row: DailyVault = {
+      ...s.row,
+      files: files(null),
+      runWrite: async () => {
+        throw new Error("outer_queue_entered");
+      },
+      durableWrite: async (command) => {
+        calls++;
+        expect(command.id).toBe("investments.dailyEvaluation");
+        return { kind: "outcome_unknown", key: "01K9B2W0000000000000000000" };
+      },
+    };
+    await expect(
+      runDaily({ vaults: [row], lock: s.lock, prices: s.prices }, input),
+    ).rejects.toMatchObject({
+      key: "01K9B2W0000000000000000000",
+      commandId: "investments.dailyEvaluation",
+      vault: row.store.vault,
+    } satisfies Partial<DurableWriteUnknown>);
+    expect(calls).toBe(1);
+    expect(ruleRuns(s.v.store.read.bind(s.v.store))).toHaveLength(0);
+  });
   it("rechecks queued preparation authority before version or benchmark proxy writes", async () => {
     const s = setup();
     const queue = new ControlledQueue();

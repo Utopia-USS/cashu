@@ -7,6 +7,7 @@ import { useCommand, useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
+import { commandFailure, type GuardedOutcome, useDurableCommands } from "../useDurableCommand.js";
 import { researchNoteDates, researchNoteFacts } from "./presentation.js";
 import { S } from "./Research.strings.js";
 import { ResearchNoteView } from "./ResearchNoteView.js";
@@ -44,11 +45,12 @@ function BoundNote(props: Parameters<typeof ResearchNoteReader>[0]) {
   const restore = useCommand(commands.restoreNote);
   const accept = useCommand(commands.acceptCandidate);
   const undo = useCommand(commands.undoAcceptCandidate);
+  const durable = useDurableCommands();
   const [notice, setNotice] = useState<string | null>(null);
-  const run = async (job: Promise<{ ok: boolean; reason?: string }>) => {
+  const run = async (job: Promise<GuardedOutcome<unknown>>) => {
     try {
       const outcome = await job;
-      setNotice(outcome.ok ? S.saved : `${S.refused}: ${outcome.reason ?? ""}`);
+      setNotice(outcome.kind === "completed" ? S.saved : commandFailure(outcome, S.refused));
     } catch {
       setNotice(S.unknown);
     }
@@ -85,17 +87,17 @@ function BoundNote(props: Parameters<typeof ResearchNoteReader>[0]) {
         onOpenAsset={props.onOpenAsset}
         onOpenTopic={props.onOpenTopic}
         onDismiss={(gid) => {
-          void run(dismiss.run({ note: gid, lang: lang() }));
+          void run(durable.run(`dismiss:${gid}`, dismiss, { note: gid, lang: lang() }));
         }}
         onRestore={(gid) => {
-          void run(restore.run({ note: gid, lang: lang() }));
+          void run(durable.run(`restore:${gid}`, restore, { note: gid, lang: lang() }));
         }}
         onAccept={(gid, instrument) => {
           if (!instrument) setNotice(S.resolutionUnavailable);
-          else void run(accept.run({ note: gid, lang: lang() }));
+          else void run(durable.run(`accept:${gid}`, accept, { note: gid, lang: lang() }));
         }}
         onUndoAccept={(gid) => {
-          void run(undo.run({ note: gid }));
+          void run(durable.run(`undo:${gid}`, undo, { note: gid }));
         }}
         busy={dismiss.isPending || restore.isPending || accept.isPending || undo.isPending}
       />

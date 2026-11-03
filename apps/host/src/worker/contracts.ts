@@ -44,6 +44,16 @@ export interface WorkerState {
   backfills: Record<string, JobRun>;
   budget: Record<string, BudgetBook>;
   digests: Record<string, string>;
+  /** Opaque durable identity only. A user or recovery flow must reconcile before a new write. */
+  uncertain: Record<
+    string,
+    {
+      job: "investments.daily" | "investments.backfill";
+      phase: "prepared" | "outcome_unknown";
+      command: string;
+      key: string;
+    }
+  >;
 }
 export interface WorkerStatePort {
   load(): Promise<WorkerState>;
@@ -127,5 +137,6 @@ export const emptyWorkerState = (): WorkerState => ({
   backfills: {},
   budget: {},
   digests: {},
+  uncertain: {},
 });
 export const runKey = (job: WorkerJob, vault: string): string => JSON.stringify([job, vault]);

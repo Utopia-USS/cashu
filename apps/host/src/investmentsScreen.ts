@@ -25,7 +25,7 @@ import {
 } from "@cashu/store/investments/services";
 import { canonicalAccountFilter } from "@cashu/store/investments/views";
 import { z } from "zod";
-import { defineUiAction } from "./uiActions.js";
+import { defineUiAction, unknownUiCommand } from "./uiActions.js";
 
 export interface InvestmentImportCapability {
   readonly vault: string;
@@ -237,7 +237,10 @@ export function investmentImportActions(options: {
       );
       stage.archive = published.blob;
       const result = await context.execute({ command: preparedCommit.id, input, key: stage.key });
-      if (!result.ok)
+      if (result.kind === "outcome_unknown") return unknownUiCommand(result, preparedCommit.id);
+      if (result.kind === "not_started")
+        return { status: "not_started", reason: "capability_unavailable" };
+      if (result.kind === "refused")
         return {
           status: "completed",
           value: {

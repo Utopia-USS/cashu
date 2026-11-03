@@ -111,7 +111,7 @@ function redactEntry(
 }
 
 /** Independent native outputs for one profile; no oracle tree or expected result is read. */
-export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: ProfileRow) {
+export async function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: ProfileRow) {
   const vaults = genesisRun(db).vaults;
   const vault = vaults.get(profile.id);
   if (vault === undefined) throw new Error("MCP provider parity: missing genesis vault");
@@ -160,7 +160,7 @@ export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: 
     research = bindResearchReads(db, profile.id, context);
     investmentWrites = bindInvestmentWriteReads(db, profile.id, context);
   }
-  const native = nativeMcpReads(
+  const native = await nativeMcpReads(
     context,
     new Set(nativeProfile.modules),
     (gid) => {
@@ -204,11 +204,11 @@ export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: 
   return { native, guard };
 }
 
-export function produceMcpRead(
+export async function produceMcpRead(
   db: PythonDb,
   mode: PrivacyMode,
   rawRoot: string = goldenRoot(),
-): OutValue {
+): Promise<OutValue> {
   debugDataset = db.dataset;
   const raw = asObject(
     parseCanonical(readFileSync(rawGoldenPath(db.dataset, rawRoot), "utf8")),
@@ -219,7 +219,7 @@ export function produceMcpRead(
   for (const profile of db.profiles()) {
     const pkey = db.keys.key("profiles", profile.id),
       calls = asObject(perProfile.get(pkey), "a profile of mcp.read_raw");
-    const { native, guard } = nativeProfileMcpReads(db, mode, profile);
+    const { native, guard } = await nativeProfileMcpReads(db, mode, profile);
     out[pkey] = mergeMcpReads(calls, native, (entry) =>
       entry instanceof Map && isPassThrough(entry)
         ? canonToOut(entry)

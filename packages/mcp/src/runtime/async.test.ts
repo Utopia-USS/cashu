@@ -53,8 +53,8 @@ function fixture(
       entered[index]?.resolve();
       return await (answers[index]?.promise ?? Promise.reject(new Error("invalid test phase")));
     },
-    finish(ctx, args) {
-      const result = ctx.store.run(C.markReviewDone, { module: "investments" });
+    async finish(ctx, args) {
+      const result = await ctx.store.run(C.markReviewDone, { module: "investments" });
       if (!result.ok) throw new Error(result.reason);
       const answer = {
         saved: L.flag(true),

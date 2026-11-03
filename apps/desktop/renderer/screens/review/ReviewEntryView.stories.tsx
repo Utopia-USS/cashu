@@ -9,7 +9,7 @@ const state = {
   canUndo: false,
   undo: async () => {},
   busy: false,
-  failure: false,
+  failure: null,
 };
 export default {
   title: "Desktop/Review/Entry",

@@ -84,6 +84,7 @@ export async function workerFixture(
     vaults: map,
     recovered: 0,
     pending: () => hosts.reduce((n, h) => n + h.stores.pending(), 0),
+    invalidate: () => {},
     drain: async () => {
       await Promise.all(hosts.map((h) => h.stores.drain()));
     },

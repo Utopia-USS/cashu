@@ -14,6 +14,8 @@ export { deepEqual, replaceEqual } from "./structural.js";
 export {
   type AnyCommand,
   type Channel,
+  type CommandAttempt,
+  type CommandOutcome,
   DEVICE_TARGET,
   type QueryEntry,
   type SnapshotState,

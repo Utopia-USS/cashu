@@ -21,6 +21,8 @@ import { txnType } from "@cashu/ui-logic/investments/labels";
 import { weekChange } from "@cashu/ui-logic/investments/v2/logic";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
+import { O } from "../CommandOutcome.strings.js";
+import { commandFailure, type GuardedOutcome, useDurableCommands } from "../useDurableCommand.js";
 import { I } from "./Portfolio.strings.js";
 import {
   assetChartPresentation,
@@ -112,6 +114,7 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
   const updateThesis = useCommand(thesisCommands.update);
   const watchNote = useCommand(updateUiWatchNote);
   const classify = useCommand(classifyUiInstrument);
+  const durable = useDurableCommands();
   const previewAction = useUiAction(investmentImportPreview);
   const commitAction = useUiAction(investmentImportCommit);
   const [importPreview, setImportPreview] = useState<ImportPreviewDto | null>(null);
@@ -139,6 +142,10 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
     },
     onSubmit: async ({ value }): Promise<void> => {
       if (submitting.current || privacy) return;
+      if (importUncertain) {
+        setError(I.importUnknown);
+        return;
+      }
       submitting.current = true;
       setError(null);
       setImportOutcome(null);
@@ -200,18 +207,15 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
     classify.isPending ||
     previewAction.isPending ||
     commitAction.isPending;
-  const save = async <T>(
-    run: () => Promise<{ ok: true; value: T } | { ok: false; reason: string }>,
-    after?: (value: T) => void,
-  ) => {
+  const save = async <T>(run: () => Promise<GuardedOutcome<T>>, after?: (value: T) => void) => {
     if (submitting.current || privacy) return;
     submitting.current = true;
     setError(null);
     try {
       const result = await run();
       if (!mounted.current) return;
-      if (!result.ok) {
-        setError(I.errorCode(result.reason));
+      if (result.kind !== "completed") {
+        setError(result.kind === "refused" ? I.errorCode(result.reason) : commandFailure(result));
         return;
       }
       setDrawer(null);
@@ -225,12 +229,12 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
     {
       transaction: (value) =>
         save(
-          () => transaction.run(value),
+          () => durable.run("transaction", transaction, value),
           (value) => {
             if (value.warnings.length) setNotice(I.savedWarning);
           },
         ),
-      account: (value) => save(() => addAccount.run(value)),
+      account: (value) => save(() => durable.run("account", addAccount, value)),
       thesis: (value) => {
         const values = {
           entryType: value.entryType,
@@ -241,13 +245,19 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
         };
         return value.id
           ? save(() =>
-              updateThesis.run({ id: value.id, values, reviewed: value.reviewed === "yes" }),
+              durable.run("thesis", updateThesis, {
+                id: value.id,
+                values,
+                reviewed: value.reviewed === "yes",
+              }),
             )
-          : save(() => createThesis.run({ instrument: value.instrument, ...values }));
+          : save(() =>
+              durable.run("thesis", createThesis, { instrument: value.instrument, ...values }),
+            );
       },
       note: (value) =>
         save(() =>
-          watchNote.run({
+          durable.run("note", watchNote, {
             item: value.item,
             note: value.note,
             tags: value.tags
@@ -256,7 +266,8 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
               .filter(Boolean),
           }),
         ),
-      classification: (value) => save(() => classify.run(classificationInput(value))),
+      classification: (value) =>
+        save(() => durable.run("classification", classify, classificationInput(value))),
     },
     metadata.brokers,
   );
@@ -280,13 +291,25 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
           typeof window !== "undefined" && window.matchMedia?.("(max-width: 640px)").matches,
         )
       : null;
+  const protectDraft = () => {
+    if (["transaction", "account", "thesis", "note", "classification"].some(durable.uncertain)) {
+      setError(O.unknown);
+      return true;
+    }
+    if (importUncertain) {
+      setError(I.importUnknown);
+      return true;
+    }
+    return false;
+  };
   const close = () => {
-    if (!busy) {
+    if (!protectDraft() && !busy) {
       setDrawer(null);
       setError(null);
     }
   };
   const openImport = (selectedAccount?: string) => {
+    if (protectDraft()) return;
     const values = {
       account: selectedAccount ?? account ?? portfolio.accounts[0]?.gid ?? "",
       importer: "auto",
@@ -304,6 +327,7 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
     setDrawer("import");
   };
   const openTransaction = (instrument = selected) => {
+    if (protectDraft()) return;
     const selectedAccount =
       portfolio.accounts.find((row) => row.gid === account) ?? portfolio.accounts[0];
     forms.loadTransaction({
@@ -320,11 +344,13 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
     setDrawer("transaction");
   };
   const openAccount = () => {
+    if (protectDraft()) return;
     forms.loadAccount({ ...accountDefaults, currency: base });
     setError(null);
     setDrawer("account");
   };
   const openThesis = (id: string | null) => {
+    if (protectDraft()) return;
     if (asset.status !== "ready") return;
     const row = asset.detail.theses.find((row) => row.id === id);
     forms.loadThesis(
@@ -345,6 +371,7 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
     setDrawer("thesis");
   };
   const openNote = () => {
+    if (protectDraft()) return;
     if (asset.status !== "ready" || portfolio.status !== "ready") return;
     const row = portfolio.watch.find((row) => row.instrument_id === selected);
     if (!row) return;
@@ -358,6 +385,7 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
     setDrawer("note");
   };
   const openClassification = (id: string) => {
+    if (protectDraft()) return;
     if (portfolio.status !== "ready") return;
     const instrument =
       portfolio.positions.positions.find((row) => row.instrument.id === id)?.instrument ??
@@ -436,7 +464,9 @@ export function usePortfolioScreen(options: PortfolioScreenOptions) {
     table,
     setTable,
     drawer,
-    setDrawer,
+    setDrawer: (next: PortfolioDrawer) => {
+      if (!protectDraft()) setDrawer(next);
+    },
     error,
     notice,
     busy,

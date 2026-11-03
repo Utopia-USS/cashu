@@ -1,4 +1,5 @@
 import { UiEnvProvider } from "@cashu/ui";
+import { hmLocal, localDay } from "@cashu/ui-logic/core/time";
 import { useForm } from "@tanstack/react-form";
 import { SettingsView } from "./SettingsView.js";
 import type { SettingsScreenState } from "./useSettingsScreen.js";
@@ -116,6 +117,30 @@ function SyntheticSettings({ unavailable = false }: { unavailable?: boolean }) {
               },
             ],
           },
+        },
+    worker: unavailable
+      ? null
+      : {
+          state: "idle",
+          schedule: "07:30",
+          nextRunAt: "2026-11-04T07:30:00Z",
+          nextRunDay: localDay("2026-11-04T07:30:00Z"),
+          nextRunTime: hmLocal("2026-11-04T07:30:00Z"),
+          lastTickAt: "2026-11-03T07:30:00Z",
+          lastTickDay: localDay("2026-11-03T07:30:00Z"),
+          lastTickTime: hmLocal("2026-11-03T07:30:00Z"),
+          jobs: [
+            {
+              job: "investments.daily",
+              vault: "5f0c3a9e81d24b7690ae13c7d2f4b856",
+              profileName: "Synthetic Household",
+              status: "ok",
+              startedAt: "2026-11-03T07:30:00Z",
+              startedDay: localDay("2026-11-03T07:30:00Z"),
+              startedTime: hmLocal("2026-11-03T07:30:00Z"),
+              finishedAt: "2026-11-03T07:30:01Z",
+            },
+          ],
         },
     onHostInfoRefreshed() {},
     onDataDirCopied: async () => {},

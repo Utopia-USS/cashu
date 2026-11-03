@@ -65,19 +65,25 @@ const decision = (value: string) =>
 const notice = (value: string) =>
   value === "unknown"
     ? G.unknown
-    : value === "partial"
-      ? G.savedPartial
-      : value === "skipped"
-        ? G.alreadySettled
-        : value === "cleanup"
-          ? G.savedCleanup
-          : value === "cache"
-            ? G.savedCache
-            : value === "watch_warning"
-              ? G.savedWatchWarning
-              : value === "failed"
-                ? G.failed
-                : G.saved;
+    : value === "unavailable"
+      ? G.writeUnavailable
+      : value === "previous_completed"
+        ? G.previousCompleted
+        : value === "previous_refused"
+          ? G.previousRefused
+          : value === "partial"
+            ? G.savedPartial
+            : value === "skipped"
+              ? G.alreadySettled
+              : value === "cleanup"
+                ? G.savedCleanup
+                : value === "cache"
+                  ? G.savedCache
+                  : value === "watch_warning"
+                    ? G.savedWatchWarning
+                    : value === "failed"
+                      ? G.failed
+                      : G.saved;
 const runStatus = (value: string) =>
   (
     ({ ok: G.runOk, partial: G.runPartial, failed: G.runFailed, running: G.runRunning }) as Record<

@@ -5,11 +5,13 @@ import type { InvestmentWidgets } from "@cashu/store/overview";
 import { useCommand } from "@cashu/store-react";
 import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import { useState } from "react";
+import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { W } from "./OverviewWidgets.strings.js";
 
 export function useInvestmentPlan(investment: InvestmentWidgets, today: string) {
   const create = useCommand(createPlannedDeposit);
   const cancel = useCommand(cancelPlannedDeposit);
+  const durable = useDurableCommands();
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today);
   const [error, setError] = useState<string | null>(null);
@@ -44,15 +46,15 @@ export function useInvestmentPlan(investment: InvestmentWidgets, today: string) 
     }
     setError(null);
     try {
-      const result = await create.run({
+      const result = await durable.run("plan-create", create, {
         amount: parsed,
         plannedDate: date,
         currency: investment.monthPlan.currency,
         account: null,
         note: null,
       });
-      if (!result.ok) {
-        setError(W.planRefused);
+      if (result.kind !== "completed") {
+        setError(commandFailure(result, W.planRefused));
         return;
       }
       setAmount("");
@@ -64,7 +66,8 @@ export function useInvestmentPlan(investment: InvestmentWidgets, today: string) 
     if (investment.status !== "available" || !investment.openPlans.some((plan) => plan.gid === gid))
       return;
     try {
-      if (!(await cancel.run({ plan: gid })).ok) setError(W.planRefused);
+      const result = await durable.run(`plan-cancel:${gid}`, cancel, { plan: gid });
+      if (result.kind !== "completed") setError(commandFailure(result, W.planRefused));
     } catch {
       setError(W.planRefused);
     }

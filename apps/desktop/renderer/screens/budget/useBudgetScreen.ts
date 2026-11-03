@@ -13,6 +13,8 @@ import {
 import { useCommand, useQuery } from "@cashu/store-react";
 import { type SeriesColor, useUiEnv } from "@cashu/ui";
 import { useEffect, useState } from "react";
+import { O } from "../CommandOutcome.strings.js";
+import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { B } from "./Budget.strings.js";
 import { type CushionFormValues, useCushionForm } from "./useCushionForm.js";
 
@@ -93,6 +95,7 @@ export function useBudgetScreen(args: {
   const categoryCommand = useCommand(setTransactionCategory);
   const merchantCommand = useCommand(setDesktopMerchantCategory);
   const cushionCommand = useCommand(setCushion);
+  const durable = useDurableCommands();
   const [message, setMessage] = useState<string | null>(null);
   const [offer, setOffer] = useState<{
     merchantKey: string;
@@ -109,7 +112,7 @@ export function useBudgetScreen(args: {
   const [allCategories, setAllCategories] = useState(false);
   const offerContext = `${currency}:${mode}:${anchor}:${f.drill ?? ""}`;
   useEffect(() => {
-    if (message === null) return;
+    if (message === null || message === O.unknown) return;
     const timer = setTimeout(() => {
       setMessage(null);
       setOffer(null);
@@ -130,7 +133,7 @@ export function useBudgetScreen(args: {
   const form = useCushionForm(
     currency,
     async (value) => {
-      const result = await cushionCommand.run({
+      const result = await durable.run("cushion", cushionCommand, {
         ...value,
         targetAmount:
           value.targetMode === "amount"
@@ -139,14 +142,19 @@ export function useBudgetScreen(args: {
         targetMonths: value.targetMode === "months" ? value.targetMonths : null,
         monthlyMax: value.monthlyMax.replace(/\s/g, "").replace(",", "."),
       });
-      if (result.ok) {
+      if (result.kind === "completed") {
         setCushionOpen(false);
         setMessage(B.saved);
-      } else setMessage(B.refused);
+      } else setMessage(commandFailure(result, B.refused));
     },
     cushionDefaults,
   );
   const openCushion = () => {
+    if (durable.uncertain("cushion")) {
+      setMessage(O.unknown);
+      setCushionOpen(true);
+      return;
+    }
     if (!rule) {
       setMessage(B.unsupported);
       return;
@@ -173,9 +181,9 @@ export function useBudgetScreen(args: {
   const markCategory = async (txn: string, category: string) => {
     const row = drill.find((item) => item.key === txn);
     if (!row) return;
-    const result = await categoryCommand.run({ txn, category });
-    if (!result.ok) {
-      setMessage(B.refused);
+    const result = await durable.run(`category:${txn}`, categoryCommand, { txn, category });
+    if (result.kind !== "completed") {
+      setMessage(commandFailure(result, B.refused));
       return;
     }
     setMessage(B.saved);
@@ -191,12 +199,15 @@ export function useBudgetScreen(args: {
     );
   };
   const markMerchant = async (merchantKey: string, category: string) => {
-    const result = await merchantCommand.run({ merchantKey, category });
-    if (result.ok) {
+    const result = await durable.run(`merchant:${merchantKey}`, merchantCommand, {
+      merchantKey,
+      category,
+    });
+    if (result.kind === "completed") {
       setMessage(B.updated(result.value.updated));
       setSaved((prev) => ({ ...prev, [merchantKey]: category }));
       setOffer(null);
-    } else setMessage(B.refused);
+    } else setMessage(commandFailure(result, B.refused));
   };
   const total = spending.total;
   const small = spending.rows.filter(
@@ -311,12 +322,19 @@ export function useBudgetScreen(args: {
     categoryRows,
     saved,
     openCategories: () => {
+      if (durable.anyUncertain()) {
+        setMessage(O.unknown);
+        return;
+      }
       setCategoryRows(unassigned);
       setSaved({});
       setCategoriesOpen(true);
       setMessage(null);
     },
-    closeCategories: () => setCategoriesOpen(false),
+    closeCategories: () => {
+      if (durable.anyUncertain()) setMessage(O.unknown);
+      else setCategoriesOpen(false);
+    },
     shiftClose: (delta: number) => {
       if (!close.close) return;
       const [year, month] = close.close.month.split("-").map(Number);
@@ -330,7 +348,10 @@ export function useBudgetScreen(args: {
     form,
     cushionOpen,
     openCushion,
-    closeCushion: () => setCushionOpen(false),
+    closeCushion: () => {
+      if (durable.uncertain("cushion")) setMessage(O.unknown);
+      else setCushionOpen(false);
+    },
     accounts: settings.accounts,
     importOpen,
     setImportOpen,

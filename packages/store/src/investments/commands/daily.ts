@@ -58,7 +58,12 @@ export interface DailySignalSummary {
 export function dailyEvaluation(deps: DailyEvaluation) {
   return defineCommand({
     id: "investments.dailyEvaluation",
-    input: z.object({ asOf: calendarDate, trigger: z.string().min(1) }),
+    input: z.object({
+      asOf: calendarDate,
+      trigger: z.string().min(1),
+      /** Opaque identity of the prepared market/strategy/claim snapshot for durable replay. */
+      preparedId: z.string().optional(),
+    }),
     run(ctx, input) {
       if (!ctx.lease.isHolder()) return refuse("not_leader");
       const startedAt = ctx.now();

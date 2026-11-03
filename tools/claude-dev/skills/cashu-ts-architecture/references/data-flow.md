@@ -47,13 +47,20 @@ One path for local and remote changes, so the UI never has two sources of truth.
   driver is synchronous (`createSyncClient`) and it never suspends.
 - Clients: `createSyncClient(stores)` (`@cashu/store-react/local`, phone and tests: the engine in
   process) and `createPortClient(channel)` (`@cashu/store-react/client`, desktop renderer). The host
-  serves the store channel v2 (`@cashu/host-protocol/store`, apps/host `storeChannel.ts`):
+  serves the store channel v5 (`@cashu/host-protocol/store`, apps/host `storeChannel.ts`):
   zod-validated messages both ways, only registered query / command ids, a JSON value codec (`Decimal`,
   `Money`, `Date`, bytes, bigint tagged), a snapshot pushed only when its encoded value changed, and an
-  idempotency key on every command (recorded with its events, so a re-sent command is answered, not
-  re-applied). Across a host restart the client keeps its snapshots (stale; `useConnection()` gives
-  `connecting` / `starting` / `recovered` / `unavailable` / `online`) and re-sends its live queries
-  and unanswered commands after the new session's `ready`.
+  original idempotency key on every command. `run` replies carry a typed `completed`, `refused`,
+  `not_started`, or `outcome_unknown` result. A lost reply stays unknown until the client sends a
+  read-only `lookup` for the original key, target, and command; it never resends the mutation
+  automatically. Missing, pending, expired, or unavailable attempt metadata cannot prove the command
+  did not run and remains unknown. A stored completed receipt can be returned only while its value is
+  available; after expiry a separate metadata status may report completion without inventing a value.
+  `run`, `lookup`, and replies carry the UI policy generation, and stale replies are discarded after
+  privacy or selected-vault changes. Across a host restart the client keeps its snapshots (stale;
+  `useConnection()` gives `connecting` / `starting` / `recovered` / `unavailable` / `online`) and
+  restores live queries after the new session's `ready`. Unanswered mutations remain unknown for
+  explicit reconciliation.
 - A query is a typed object from `packages/store/src/<module>/queries.ts` (typed builder, row decoder
   returning domain types: `Money`, gids). The UI never sees raw rows.
 - **Invalidation is by tables, tracked by the store**: the store records each prepared query's read

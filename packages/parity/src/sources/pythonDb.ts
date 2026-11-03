@@ -461,3 +461,16 @@ export function withPythonDb<T>(opts: OpenOptions, fn: (db: PythonDb) => T): T {
   db.close();
   return result;
 }
+
+/** Keep the read-only source copy open until an async producer and its checks have settled. */
+export async function withPythonDbAsync<T>(
+  opts: OpenOptions,
+  fn: (db: PythonDb) => Promise<T>,
+): Promise<T> {
+  const db = PythonDb.open(opts);
+  try {
+    return await fn(db);
+  } finally {
+    db.close();
+  }
+}

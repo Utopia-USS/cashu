@@ -20,6 +20,7 @@ import {
   failure,
   type NativeCallBoundary,
   type NativeCallResult,
+  type NativeExecution,
   renderNativeError,
   restrictivePrivacy,
   warnNative,
@@ -56,6 +57,7 @@ export async function runNativeAsyncCall(
   adapter: NativeAsyncAdapter,
   raw: ToolArgs | null,
   ceiling: Privacy | undefined,
+  requestKey?: string,
 ): Promise<NativeCallResult> {
   // Snapshot before audit.start's first await; argument mutation cannot change an authorized call.
   let args: ToolArgs | null = null;
@@ -115,6 +117,47 @@ export async function runNativeAsyncCall(
       throw error;
     }
   };
+  const guardedAsync = async <T>(
+    execution: NativePreparationExecution | undefined,
+    fn: (context: NativePreparationExecution["context"]) => Promise<T>,
+  ): Promise<T | NativeCallResult> => {
+    const pending = guarded(execution, fn);
+    try {
+      return await pending;
+    } catch (error) {
+      if (!execution) throw error;
+      const writable = execution as NativeExecution;
+      if (writable.hasWritten?.()) {
+        completed = true;
+        return {
+          ...failure("write completed; response withheld", "response_withheld", "strict"),
+          requestKey: writable.writeKey?.(),
+        };
+      }
+      const uncertainKey = writable.uncertainWriteKey?.();
+      if (uncertainKey !== undefined)
+        return {
+          ...failure(
+            "write outcome unknown; inspect the original key",
+            "outcome_unknown",
+            "strict",
+          ),
+          requestKey: uncertainKey,
+        };
+      try {
+        guardInputs = guardInputFingerprint(execution.context.guard);
+      } catch {
+        return fixedFailure(
+          "the response was withheld because the privacy context is unavailable",
+          "privacy_check",
+          "strict",
+        );
+      }
+      const rendered = renderNativeError(execution.context, floor ?? "strict", error);
+      if (rendered) return rendered;
+      throw error;
+    }
+  };
   try {
     return await server.audited(
       spec.name,
@@ -168,61 +211,73 @@ export async function runNativeAsyncCall(
             continue;
           }
           const ready = ownedValue(step.ready);
-          const finished = await runtime.execute(floor, (execution) =>
-            guarded(execution, () => {
-              if (!execution || !validated) throw new Error("missing native async execution");
-              if (previousIo && !adapter.current(execution.context, previousIo))
-                throw new ToolError("the external capability is no longer current", "unavailable", {
-                  system: true,
-                });
-              const prepared = adapter.finish(execution.context, validated, ready);
-              if (
-                prepared.prospectiveNames &&
-                prepared.prospectiveNames.profileId !== execution.context.profileId
-              )
-                throw new Error("prospective guard profile mismatch");
-              const guard = prepared.prospectiveNames
-                ? execution.context.guard.withProspectiveSources(
-                    execution.context.profileId,
-                    prepared.prospectiveNames.providers,
-                  )
-                : execution.context.guard;
-              const redact = (tree: Parameters<Redactor["apply"]>[0]) => {
-                const redactor = new Redactor({ privacy: floor ?? "strict", guard, summaryOk });
-                const data = redactor.apply(tree);
-                if (data === null || typeof data !== "object" || Array.isArray(data))
-                  throw new UnlabelledValue("a tool must return an object");
-                leakCheck(data, {
-                  strict: redactor.strict,
-                  isins: redactor.isins,
-                  nonMoney: redactor.nonMoney,
-                });
-                return data;
-              };
-              const data = redact(prepared.answer);
-              const warning =
-                prepared.cacheFailureAnswer === undefined
-                  ? undefined
-                  : redact(prepared.cacheFailureAnswer);
-              if (prepared.afterCommit && (!warning || !adapter.afterCommit))
-                throw new Error("cache publication requires a validated warning answer");
-              const effect =
-                prepared.afterCommit === undefined
-                  ? undefined
-                  : { data: ownedValue(prepared.afterCommit.data), io: prepared.afterCommit.io };
-              if (call.stopped())
-                throw new ToolError("the MCP session is no longer active", "session_closed", {
-                  system: true,
-                });
-              guardInputs = guardInputFingerprint(guard);
-              execution.commit();
-              completed = true;
-              return {
-                result: { ok: true, privacy: floor ?? "strict", data } as NativeCallResult,
-                warning,
-                effect,
-              };
-            }),
+          const finished = await runtime.execute(
+            floor,
+            (execution) =>
+              guardedAsync(execution, async () => {
+                if (!execution || !validated) throw new Error("missing native async execution");
+                if (previousIo && !adapter.current(execution.context, previousIo))
+                  throw new ToolError(
+                    "the external capability is no longer current",
+                    "unavailable",
+                    {
+                      system: true,
+                    },
+                  );
+                const prepared = await adapter.finish(execution.context, validated, ready);
+                if (
+                  prepared.prospectiveNames &&
+                  prepared.prospectiveNames.profileId !== execution.context.profileId
+                )
+                  throw new Error("prospective guard profile mismatch");
+                const guard = prepared.prospectiveNames
+                  ? execution.context.guard.withProspectiveSources(
+                      execution.context.profileId,
+                      prepared.prospectiveNames.providers,
+                    )
+                  : execution.context.guard;
+                const redact = (tree: Parameters<Redactor["apply"]>[0]) => {
+                  const redactor = new Redactor({ privacy: floor ?? "strict", guard, summaryOk });
+                  const data = redactor.apply(tree);
+                  if (data === null || typeof data !== "object" || Array.isArray(data))
+                    throw new UnlabelledValue("a tool must return an object");
+                  leakCheck(data, {
+                    strict: redactor.strict,
+                    isins: redactor.isins,
+                    nonMoney: redactor.nonMoney,
+                  });
+                  return data;
+                };
+                const data = redact(prepared.answer);
+                const warning =
+                  prepared.cacheFailureAnswer === undefined
+                    ? undefined
+                    : redact(prepared.cacheFailureAnswer);
+                if (prepared.afterCommit && (!warning || !adapter.afterCommit))
+                  throw new Error("cache publication requires a validated warning answer");
+                const effect =
+                  prepared.afterCommit === undefined
+                    ? undefined
+                    : { data: ownedValue(prepared.afterCommit.data), io: prepared.afterCommit.io };
+                if (call.stopped())
+                  throw new ToolError("the MCP session is no longer active", "session_closed", {
+                    system: true,
+                  });
+                guardInputs = guardInputFingerprint(guard);
+                execution.commit();
+                completed = true;
+                return {
+                  result: {
+                    ok: true,
+                    privacy: floor ?? "strict",
+                    data,
+                    ...(execution.hasWritten?.() ? { requestKey: execution.writeKey?.() } : {}),
+                  } as NativeCallResult,
+                  warning,
+                  effect,
+                };
+              }),
+            requestKey,
           );
           if (isResult(finished)) return finished;
           if (finished.effect) {

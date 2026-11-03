@@ -1,10 +1,16 @@
 // Full-context classification is local-only, explicitly authorized, and appended as one batch.
 import { addDays, budget, type IsoDate, pyStrip, unicodeDecimal } from "@cashu/domain";
-import { runCommand, setLlmCategories } from "@cashu/store";
+import { setLlmCategories } from "@cashu/store";
 import { budgetBook, budgetEngineContext } from "@cashu/store/budget/queries";
 import { mcpProfile } from "@cashu/store/core";
 import { vaultPaymentPatterns } from "@cashu/store/overview";
 import type { OpenVault } from "../../stores.js";
+import {
+  cliCommandKey,
+  reportCliCommandFailure,
+  reportCliProjectionUnavailable,
+  runCliVaultCommand,
+} from "../commandOutcome.js";
 import { printConsole, supportsConsoleUnicode } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { S } from "./categorize.strings.js";
@@ -257,62 +263,71 @@ export async function runReclassifyCommand(
     );
     return 1;
   }
-  return vault.queue.run(() => {
-    if (io.signal.aborted) return 130;
-    if (
-      deps.stores.vaults.get(vault.id) !== vault ||
-      mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug ||
-      (networkNeeded && !hasClassifierAuthority(provider, vault.id))
-    ) {
-      io.stderr(`${io.t.tr(S.authorityChanged)}\n`);
-      return 1;
-    }
-    if (
-      !initial.input.isCurrent(vault.id) ||
-      deps.classifier !== provider ||
-      prepared.some((band) => {
-        const current = ollamaOptions(io, band.model);
-        return current?.url !== band.config?.url || current?.model !== band.config?.model;
-      })
-    ) {
-      io.stderr(`${io.t.tr(S.contextChanged)}\n`);
-      return 1;
-    }
-    if (snapshot(vault).stamp !== initial.stamp) {
-      io.stderr(`${io.t.tr(S.contextChanged)}\n`);
-      return 1;
-    }
-    const result = runCommand(
-      vault.store,
-      vault.writer,
-      setLlmCategories,
-      { items: claims },
-      vault.env,
-    );
-    if (!result.ok || result.value.set !== claims.length)
-      throw new Error("native classification refused unchanged planned rows");
-    const model =
-      cutoff === undefined
-        ? prepared[0]?.config?.model
-        : `${input.recentModel} (recent) + ${input.oldModel} (older)`;
-    printConsole(io, "");
-    const prefix = "Reclassification done";
-    printConsole(
-      io,
-      `${prefix} (model ${model}): ${targets} transactions in ${groups} groups, LLM ${result.value.set}, fallback ${fallback}, by your rules / loan patterns ${configured}.`,
-      { spans: [{ start: 0, end: prefix.length, style: { color: 32 } }] },
-    );
-    const table = richTable(
-      io,
-      [{ header: "category" }, { header: "count", justify: "right" }],
-      [...distribution]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 25)
-        .map(([key, count]) => [key, String(count)]),
-      "Category distribution",
-    );
-    if (table === null) throw new Error("native classification table exceeded validated width");
-    io.stdout(table);
-    return 0;
-  });
+  const key = cliCommandKey();
+  if (io.signal.aborted) return 130;
+  if (io.signal.aborted) return 130;
+  if (
+    deps.stores.vaults.get(vault.id) !== vault ||
+    mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug ||
+    (networkNeeded && !hasClassifierAuthority(provider, vault.id))
+  ) {
+    io.stderr(`${io.t.tr(S.authorityChanged)}\n`);
+    return 1;
+  }
+  if (
+    !initial.input.isCurrent(vault.id) ||
+    deps.classifier !== provider ||
+    prepared.some((band) => {
+      const current = ollamaOptions(io, band.model);
+      return current?.url !== band.config?.url || current?.model !== band.config?.model;
+    })
+  ) {
+    io.stderr(`${io.t.tr(S.contextChanged)}\n`);
+    return 1;
+  }
+  if (snapshot(vault).stamp !== initial.stamp) {
+    io.stderr(`${io.t.tr(S.contextChanged)}\n`);
+    return 1;
+  }
+  const result = await runCliVaultCommand(
+    vault,
+    setLlmCategories,
+    { items: claims },
+    key,
+    () =>
+      !io.signal.aborted &&
+      deps.stores.vaults.get(vault.id) === vault &&
+      mcpProfile(vault.store.read.bind(vault.store))?.slug === slug &&
+      initial.input.isCurrent(vault.id) &&
+      deps.classifier === provider &&
+      (!networkNeeded || hasClassifierAuthority(provider, vault.id)) &&
+      snapshot(vault).stamp === initial.stamp,
+  );
+  if (result.kind !== "completed")
+    return reportCliCommandFailure(io, result, key, setLlmCategories.id);
+  if (result.value.set !== claims.length)
+    return reportCliProjectionUnavailable(io, key, setLlmCategories.id);
+  const model =
+    cutoff === undefined
+      ? prepared[0]?.config?.model
+      : `${input.recentModel} (recent) + ${input.oldModel} (older)`;
+  printConsole(io, "");
+  const prefix = "Reclassification done";
+  printConsole(
+    io,
+    `${prefix} (model ${model}): ${targets} transactions in ${groups} groups, LLM ${result.value.set}, fallback ${fallback}, by your rules / loan patterns ${configured}.`,
+    { spans: [{ start: 0, end: prefix.length, style: { color: 32 } }] },
+  );
+  const table = richTable(
+    io,
+    [{ header: "category" }, { header: "count", justify: "right" }],
+    [...distribution]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 25)
+      .map(([key, count]) => [key, String(count)]),
+    "Category distribution",
+  );
+  if (table === null) throw new Error("native classification table exceeded validated width");
+  io.stdout(table);
+  return 0;
 }

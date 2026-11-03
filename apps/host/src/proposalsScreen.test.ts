@@ -1,11 +1,102 @@
-import { ok, runCommand } from "@cashu/store";
+import { commandFingerprint, ok, runCommand } from "@cashu/store";
 import { createProposal, type PreparedEffect } from "@cashu/store/core";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "./host.js";
-import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
+import {
+  bindApprovalIntent,
+  type ProposalApprovalProvider,
+  proposalScreen,
+} from "./proposalsScreen.js";
 import { cleanup, tempDir, testHostOptions } from "./testing/harness.js";
 
 afterEach(cleanup);
+
+it("binds an approval closure to proposal and prepared-object identity", () => {
+  const command = {
+    id: "core.approvePrepared",
+    input: { parse: () => ({}) },
+    run: () => ok("synthetic"),
+  } as unknown as import("@cashu/store").Command<Record<string, never>, string>;
+  const proposal = "0".repeat(26);
+  const first = bindApprovalIntent(command, {}, proposal, "11111111-1111-4111-8111-111111111111");
+  const second = bindApprovalIntent(command, {}, proposal, "22222222-2222-4222-8222-222222222222");
+  const parsed = first.command.input.parse(first.input);
+  expect(commandFingerprint("a".repeat(32), first.command.id, parsed)).not.toBe(
+    commandFingerprint("a".repeat(32), second.command.id, second.command.input.parse(second.input)),
+  );
+  expect(first.command.run({} as never, { ...first.input, proposalGid: "1".repeat(26) })).toEqual({
+    ok: false,
+    reason: "wrong_preparation",
+  });
+});
+
+it("retains the original unknown proposal attempt without re-dispatch", async () => {
+  const host = await startLocalHost({
+    ...testHostOptions(tempDir()),
+    python: null,
+    launcher: false,
+  });
+  const vault = [...host.stores.vaults.values()][0];
+  if (!vault) throw new Error("missing synthetic vault");
+  const created = await vault.queue.run(() =>
+    runCommand(
+      vault.store,
+      vault.writer,
+      createProposal,
+      {
+        kind: "strategy",
+        summary: "Synthetic",
+        reason: null,
+        payload: {},
+        source: "synthetic",
+      },
+      vault.env,
+    ),
+  );
+  if (!created.ok) throw new Error("synthetic proposal refused");
+  const another = await vault.queue.run(() =>
+    runCommand(
+      vault.store,
+      vault.writer,
+      createProposal,
+      {
+        kind: "strategy",
+        summary: "Another synthetic proposal",
+        reason: null,
+        payload: {},
+        source: "synthetic",
+      },
+      vault.env,
+    ),
+  );
+  if (!another.ok) throw new Error("second synthetic proposal refused");
+  const action = proposalScreen();
+  const originalAppend = vault.writer.append;
+  let calls = 0;
+  vault.writer.append = () => {
+    calls++;
+    throw new Error("synthetic ambiguous append");
+  };
+  try {
+    const request = { gid: created.value.proposalGid, decision: "reject" };
+    const first = await action.run(host.stores, vault.id, request);
+    expect(first).toMatchObject({
+      status: "outcome_unknown",
+      attempt: { command: "core.rejectProposal" },
+    });
+    expect(await action.run(host.stores, vault.id, request)).toEqual(first);
+    expect(
+      await action.run(host.stores, vault.id, {
+        gid: another.value.proposalGid,
+        decision: "reject",
+      }),
+    ).toEqual({ status: "not_started", reason: "pending_previous_attempt" });
+    expect(calls).toBe(1);
+  } finally {
+    vault.writer.append = originalAppend;
+    await host.stop();
+  }
+});
 
 it("returns real S60 approved, refused cleanup, failed and recovery receipts for canonical proposals", async () => {
   const host = await startLocalHost({

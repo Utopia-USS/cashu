@@ -39,6 +39,7 @@ import { loadInstrument, loadInstruments } from "../queries/instruments.js";
 import type { Read } from "../queries/shared.js";
 import { marks } from "../queries/shared.js";
 import { renames, transactions } from "../queries/transactions.js";
+import { type DurableWrite, requireDurable } from "../services/durable.js";
 import { findProxy } from "./inputs.js";
 
 export interface BackfillDeps {
@@ -56,6 +57,7 @@ export interface BackfillDeps {
   readonly order?: market.PriceSourceOrder;
   /** Host queue for short synchronous writes only. No source request runs inside it. */
   readonly runWrite?: <T>(work: () => T) => Promise<T>;
+  readonly durableWrite?: DurableWrite;
   /** Loaded-vault/input authority, separate from the fetch lease. */
   readonly isCurrent?: () => boolean;
 }
@@ -177,6 +179,7 @@ export async function runBackfill(deps: BackfillDeps): Promise<BackfillResult> {
   running.add(deps.cache);
   try {
     const runWrite = deps.runWrite?.bind(deps),
+      durableWrite = deps.durableWrite?.bind(deps),
       isCurrent = deps.isCurrent?.bind(deps);
     const guarded: BackfillDeps = {
       store: deps.store,
@@ -189,6 +192,7 @@ export async function runBackfill(deps: BackfillDeps): Promise<BackfillResult> {
       ...(deps.refresher === undefined ? {} : { refresher: deps.refresher }),
       ...(deps.order === undefined ? {} : { order: deps.order }),
       ...(runWrite === undefined ? {} : { runWrite }),
+      ...(durableWrite === undefined ? {} : { durableWrite }),
       ...(isCurrent === undefined ? {} : { isCurrent }),
       sources: {
         prices: {
@@ -250,7 +254,9 @@ async function run(deps: BackfillDeps): Promise<perf.BackfillReport> {
   const added = new Set<string>();
   const bench = strategy.strategy === null ? null : strategy.benchmark;
   if (plan.first !== null && bench !== null) {
-    const ensured = await writeCurrent(deps, () => ensureProxy(deps, bench.proxy));
+    const ensured = deps.durableWrite
+      ? await ensureProxyDurable(deps.store, bench.proxy, deps.durableWrite)
+      : await writeCurrent(deps, () => ensureProxy(deps, bench.proxy));
     const proxy = ensured.instrument;
     if (ensured.status === "added") added.add(bench.proxy.trim().toUpperCase());
     if (proxy === null || isReferenceOnly(read, cache, proxy)) {
@@ -369,6 +375,41 @@ function createProxy(
   return stored;
 }
 
+export async function ensureProxyDurable(
+  store: Store,
+  proxy: string,
+  write: DurableWrite,
+): Promise<EnsuredProxy> {
+  const found = findProxy(store.read.bind(store), proxy);
+  if (found !== undefined) return { status: "found", instrument: found };
+  const planned = perf.referenceInstrument(proxy);
+  if (planned === null) return { status: "unresolved", instrument: null };
+  const instrument = await createProxyDurable(store, planned, write);
+  return { status: "added", instrument };
+}
+
+async function createProxyDurable(
+  store: Store,
+  planned: Instrument,
+  write: DurableWrite,
+): Promise<Instrument> {
+  const value = await requireDurable(write, createInstrument, {
+    name: planned.name,
+    currency: planned.currency,
+    assetClass: planned.assetClass,
+    symbol: planned.symbol ?? "",
+    mic: planned.mic ?? "",
+    aliases: planned.aliases.map((a) => ({
+      namespace: a.namespace,
+      value: a.value,
+      guessed: a.guessed,
+    })),
+  });
+  const stored = loadInstrument(store.read.bind(store), value.gid, { shared: true });
+  if (stored === undefined) throw new Error("the registered benchmark proxy is not in the view");
+  return stored;
+}
+
 /** Python `_resolve_proxies`. */
 async function resolveProxies(
   deps: BackfillDeps,
@@ -414,7 +455,9 @@ async function resolveProxies(
       stored = existing; // registered offline: its other aliases may work
       status = null;
     } else if (existing === null) {
-      stored = await writeCurrent(deps, () => createProxy(deps, answer.instrument));
+      stored = deps.durableWrite
+        ? await createProxyDurable(deps.store, answer.instrument, deps.durableWrite)
+        : await writeCurrent(deps, () => createProxy(deps, answer.instrument));
       status = "added";
     } else {
       stored = existing;
@@ -425,20 +468,39 @@ async function resolveProxies(
       ) {
         // a reference proxy registered with the market's usual currency: the source quotes it in
         // another one (nothing references it yet, so it is safe to fix)
-        const out = await writeCurrent(deps, () => {
-          // A host command may have added a real reference while this short write was queued.
-          const current = loadInstrument(read, existing.id, { shared: true });
-          if (current === undefined || !isReferenceOnly(read, deps.cache, current)) return null;
-          return runCommand(
-            deps.store,
-            deps.writer,
-            settleProxyCurrency,
-            { instrument: existing.id, currency: answer.instrument.currency },
-            deps.env,
-          );
-        });
-        if (out !== null && !out.ok)
-          throw new Error(`could not settle the proxy currency: ${out.reason}`);
+        if (deps.durableWrite) {
+          const guardedSettle = {
+            ...settleProxyCurrency,
+            run(
+              ctx: Parameters<typeof settleProxyCurrency.run>[0],
+              input: Parameters<typeof settleProxyCurrency.run>[1],
+            ) {
+              const current = loadInstrument(ctx.read, input.instrument, { shared: true });
+              if (current === undefined || !isReferenceOnly(ctx.read, deps.cache, current))
+                return ok(null);
+              return settleProxyCurrency.run(ctx, input);
+            },
+          };
+          await requireDurable(deps.durableWrite, guardedSettle, {
+            instrument: existing.id,
+            currency: answer.instrument.currency,
+          });
+        } else {
+          const out = await writeCurrent(deps, () => {
+            // A host command may have added a real reference while this short write was queued.
+            const current = loadInstrument(read, existing.id, { shared: true });
+            if (current === undefined || !isReferenceOnly(read, deps.cache, current)) return null;
+            return runCommand(
+              deps.store,
+              deps.writer,
+              settleProxyCurrency,
+              { instrument: existing.id, currency: answer.instrument.currency },
+              deps.env,
+            );
+          });
+          if (out !== null && !out.ok)
+            throw new Error(`could not settle the proxy currency: ${out.reason}`);
+        }
         stored = loadInstrument(read, existing.id, { shared: true }) ?? existing;
       }
     }

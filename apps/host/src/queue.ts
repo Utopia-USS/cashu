@@ -1,13 +1,16 @@
 // One write queue per store (each vault, the device store): commands, applies and job writes of every
-// session run one at a time, so this device's stream has one appender and never interleaves. A step is
-// synchronous (node:sqlite), so it is atomic with respect to the event loop.
+// session run one at a time, so this device's stream has one appender and never interleaves. An
+// asynchronous step holds the queue until it settles; a synchronous SQLite transaction must still
+// complete before any await.
 //
 // Long work (a genesis-size apply, a rebuild) is a sliced job: one slice (one transaction) per step.
 // After a slice the job goes to the back of the queue, so a command another session sent meanwhile
 // runs before the next slice: a big batch never starves the others. The queue yields to the event loop
 // between steps (setImmediate), so socket reads keep arriving while it drains.
 
-type Step = () => { readonly done: boolean; readonly value?: unknown };
+type Step = () =>
+  | { readonly done: boolean; readonly value?: unknown }
+  | Promise<{ readonly done: boolean; readonly value?: unknown }>;
 
 interface Job {
   readonly step: Step;
@@ -27,6 +30,7 @@ export class WriteQueue {
   readonly #idle: (() => void)[] = [];
   readonly #beforeStep: () => void;
   #running = false;
+  #active = false;
   #closed = false;
 
   /** `beforeStep` runs before every step and may throw to fail it (the writer lease check). */
@@ -36,12 +40,12 @@ export class WriteQueue {
 
   /** Jobs queued or running. */
   get pending(): number {
-    return this.#jobs.length;
+    return this.#jobs.length + Number(this.#active);
   }
 
   /** Runs `task` as one step after everything queued before it. */
-  run<T>(task: () => T): Promise<T> {
-    return this.#push(() => ({ done: true, value: task() })) as Promise<T>;
+  run<T>(task: () => T | Promise<T>): Promise<T> {
+    return this.#push(async () => ({ done: true, value: await task() })) as Promise<T>;
   }
 
   /**
@@ -72,12 +76,12 @@ export class WriteQueue {
       this.#jobs.push({ step, resolve, reject });
       if (!this.#running) {
         this.#running = true;
-        setImmediate(() => this.#pump());
+        setImmediate(() => void this.#pump());
       }
     });
   }
 
-  #pump(): void {
+  async #pump(): Promise<void> {
     const job = this.#jobs.shift();
     if (job === undefined) {
       this.#running = false;
@@ -86,12 +90,15 @@ export class WriteQueue {
     }
     try {
       this.#beforeStep();
-      const r = job.step();
+      this.#active = true;
+      const r = await job.step();
       if (r.done) job.resolve(r.value);
       else this.#jobs.push(job);
     } catch (error) {
       job.reject(error);
+    } finally {
+      this.#active = false;
     }
-    setImmediate(() => this.#pump());
+    setImmediate(() => void this.#pump());
   }
 }

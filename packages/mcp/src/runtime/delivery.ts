@@ -51,19 +51,29 @@ export async function finalizeNativeDelivery(
   current?: (execution: NativePreparationExecution) => boolean,
 ): Promise<NativeCallResult> {
   const withheld = (): NativeCallResult =>
-    proof.completed
+    result.errorKind === "outcome_unknown" && result.requestKey !== undefined
       ? {
-          ok: true,
-          privacy: "strict",
-          data: { completed: true, note: "completed; response withheld" },
-        }
-      : !result.ok && (proof.fixedRefusal || !proof.requireGuard)
-        ? { ...result, privacy: "strict" }
-        : failure(
-            "the response was withheld because current access could not be verified",
-            "privacy_check",
+          ...failure(
+            "write outcome unknown; inspect the original key",
+            "outcome_unknown",
             "strict",
-          );
+          ),
+          requestKey: result.requestKey,
+        }
+      : proof.completed
+        ? {
+            ok: true,
+            privacy: "strict",
+            data: { completed: true, note: "completed; response withheld" },
+            requestKey: result.requestKey,
+          }
+        : !result.ok && (proof.fixedRefusal || !proof.requireGuard)
+          ? { ...result, privacy: "strict" }
+          : failure(
+              "the response was withheld because current access could not be verified",
+              "privacy_check",
+              "strict",
+            );
   const check = (execution: NativePreparationExecution | undefined): NativeCallResult => {
     if (runtime.replaced() || stopped() || !execution) return withheld();
     if (spec && !enabledIn(spec, execution.policy.modules)) return withheld();

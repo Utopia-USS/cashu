@@ -63,16 +63,6 @@ export function Fallback() {
   return <p>loading</p>;
 }
 
-/** A button running the buggy command. */
-export function Bomb() {
-  const { run } = useCommand(explode);
-  return (
-    <button type="button" onClick={() => void run({})}>
-      go
-    </button>
-  );
-}
-
 /** Shows `fragileName`; its button renames the profile so that the query fails. */
 export function Fragile() {
   const name = useQuery(fragileName);

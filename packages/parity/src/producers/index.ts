@@ -63,7 +63,7 @@ export interface Producer {
   readonly inputs: readonly InputName[];
   /** Datasets it is enabled for (a lab check may wait for a later port). */
   readonly datasets: readonly Dataset[];
-  readonly produce: (db: PythonDb, inputs: ProduceInputs) => OutValue;
+  readonly produce: (db: PythonDb, inputs: ProduceInputs) => OutValue | Promise<OutValue>;
 }
 
 export const PRODUCERS: readonly Producer[] = [

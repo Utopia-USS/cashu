@@ -6,8 +6,10 @@ const KID = /^[0-9a-f]{32}$/;
 const DEVICE = /^[0-9a-f]{32}$/;
 
 export class ProvenanceRefusal extends Error {
-  constructor(readonly code: "missing_provenance" | "corrupt_provenance" | "provenance_mismatch") {
+  readonly code: "missing_provenance" | "corrupt_provenance" | "provenance_mismatch";
+  constructor(code: "missing_provenance" | "corrupt_provenance" | "provenance_mismatch") {
     super(code);
+    this.code = code;
   }
 }
 

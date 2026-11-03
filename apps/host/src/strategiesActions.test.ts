@@ -210,7 +210,7 @@ describe("strategy UI action boundaries", () => {
       await f.host.stop();
     }
   });
-  it("full files followed by a record failure remain files-created-not-recorded", async () => {
+  it("full files followed by an ambiguous record failure remain unknown", async () => {
     const f = await fixture(true);
     f.creator({
       async create(name, text) {
@@ -225,8 +225,8 @@ describe("strategy UI action boundaries", () => {
     };
     try {
       expect(await f.run("init")).toMatchObject({
-        status: "completed",
-        value: { status: "files_created_not_recorded", written: ["strategy.yaml", "strategy.md"] },
+        status: "outcome_unknown",
+        reason: "interrupted",
       });
       expect(f.texts.size).toBe(2);
       expect(f.vault.store.read("SELECT gid FROM inv_strategy_versions")).toHaveLength(0);

@@ -19,6 +19,7 @@ import { useForm } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
+import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { useReviewMemory } from "./memory.js";
 import {
   presentReviewIdea,
@@ -92,6 +93,7 @@ export function useReviewScreen(props: ReviewScreenProps) {
     dismiss = useCommand(research.dismissNote),
     restore = useCommand(research.restoreNote),
     undoCandidate = useCommand(research.undoAcceptCandidate);
+  const durable = useDurableCommands();
   const form = useForm({
     validators: { onChange: z.object({ closing: reviewNotesSchema }) },
     defaultValues: {
@@ -152,14 +154,14 @@ export function useReviewScreen(props: ReviewScreenProps) {
     completed.current.set(item.key, done);
     try {
       if (action !== "snooze" && action !== "ack" && item.instrument !== null) {
-        const result = await position.run({
+        const result = await durable.run(`position:${item.key}`, position, {
           instrument: item.instrument,
           signals: [...item.signals],
           action,
           reason: R.ownerReason,
         });
-        if (!result.ok) {
-          if (isCurrent()) setNotice(R.failed);
+        if (result.kind !== "completed") {
+          if (isCurrent()) setNotice(commandFailure(result, R.failed));
           return;
         }
       } else if (action === "snooze") {
@@ -192,8 +194,11 @@ export function useReviewScreen(props: ReviewScreenProps) {
           item.signals
             .filter((signal) => !done.has(signal))
             .map((signal) => async () => {
-              const result = await acknowledge.run({ signal, reason: R.ownerReason });
-              if (result.ok && result.value.decision !== null) done.add(signal);
+              const result = await durable.run(`ack:${signal}`, acknowledge, {
+                signal,
+                reason: R.ownerReason,
+              });
+              if (result.kind === "completed" && result.value.decision !== null) done.add(signal);
               return result;
             }),
           isCurrent,
@@ -208,7 +213,15 @@ export function useReviewScreen(props: ReviewScreenProps) {
         if (outcome.status !== "saved" && outcome.status !== "skipped") {
           if (isCurrent()) {
             setNotice(
-              outcome.status === "unknown" ? R.unknown : receipts.size ? R.partial : R.failed,
+              outcome.status === "unknown"
+                ? R.unknown
+                : outcome.status === "unavailable"
+                  ? commandFailure({ kind: "not_started", reason: "unavailable" })
+                  : outcome.status === "previous_completed"
+                    ? commandFailure({ kind: "previous_completed" })
+                    : receipts.size
+                      ? R.partial
+                      : R.failed,
             );
             if (outcome.status === "unknown")
               setUnknownItems((previous) => new Set([...previous, item.key]));
@@ -235,24 +248,25 @@ export function useReviewScreen(props: ReviewScreenProps) {
     try {
       const result =
         action === "watch"
-          ? await accept.run({ note, lang: lang() })
+          ? await durable.run(`candidate:${note}`, accept, { note, lang: lang() })
           : action === "dismiss"
-            ? await dismiss.run({ note, lang: lang() })
+            ? await durable.run(`candidate:${note}`, dismiss, { note, lang: lang() })
             : (
                   data.status === "current"
                     ? data.candidateStates.find((row) => row.id === note)?.accepted
                     : candidateChoices[note] === "watch"
                 )
-              ? await undoCandidate.run({ note })
-              : await restore.run({ note, lang: lang() });
+              ? await durable.run(`candidate:${note}`, undoCandidate, { note })
+              : await durable.run(`candidate:${note}`, restore, { note, lang: lang() });
       if (!isCurrent()) return;
-      if (!result.ok) {
+      if (result.kind !== "completed") {
         setNotice(
-          result.reason === "unresolved_instrument" ||
-            result.reason === "candidate_unresolved" ||
-            result.reason === "no_instrument"
+          result.kind === "refused" &&
+            (result.reason === "unresolved_instrument" ||
+              result.reason === "candidate_unresolved" ||
+              result.reason === "no_instrument")
             ? R.unavailable
-            : R.failed,
+            : commandFailure(result, R.failed),
         );
         return;
       }
@@ -280,7 +294,7 @@ export function useReviewScreen(props: ReviewScreenProps) {
         setNotice(R.noteTooLong);
         return;
       }
-      const result = await finish.run({
+      const result = await durable.run("finish", finish, {
         notes: closing || null,
         session: {
           cards: session.snapshot.cards.map((id) => ({
@@ -298,8 +312,8 @@ export function useReviewScreen(props: ReviewScreenProps) {
         },
       });
       if (!isCurrent()) return;
-      if (!result.ok) {
-        setNotice(R.failed);
+      if (result.kind !== "completed") {
+        setNotice(commandFailure(result, R.failed));
         return;
       }
       useReviewMemory.setState({

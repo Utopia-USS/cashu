@@ -99,10 +99,10 @@ function fixture() {
   };
 }
 
-it("native read answers follow the actual store and ignore changed raw oracle values/errors", () => {
+it("native read answers follow the actual store and ignore changed raw oracle values/errors", async () => {
   const f = fixture();
   try {
-    const disabled = f.reads();
+    const disabled = await f.reads();
     expect(disabled["spending_breakdown()"]).toEqual({ error_kind: "module_disabled" });
     const calls: CanonObject = new Map(
       Object.keys(disabled).map((key) => [key, new Map([["error_kind", "oracle-placeholder"]])]),
@@ -111,7 +111,7 @@ it("native read answers follow the actual store and ignore changed raw oracle va
     expect(mergeMcpReads(calls, disabled, replay)).toEqual(disabled);
     expect(replay).not.toHaveBeenCalled();
     f.run(setModules, { moduleIds: ["budget"] });
-    const enabled = f.reads();
+    const enabled = await f.reads();
     expect(enabled["spending_breakdown()"]).not.toEqual(disabled["spending_breakdown()"]);
     expect(enabled["spending_breakdown()"]).toMatchObject({ currency: "PLN" });
     calls.set("spending_breakdown()", new Map([["forged", "not a native answer"]]));
@@ -125,10 +125,10 @@ it("native read answers follow the actual store and ignore changed raw oracle va
   }
 });
 
-it("missing native coverage or a new native argument variant refuses replay", () => {
+it("missing native coverage or a new native argument variant refuses replay", async () => {
   const f = fixture();
   try {
-    const native = f.reads();
+    const native = await f.reads();
     const calls: CanonObject = new Map(Object.keys(native).map((key) => [key, null]));
     const replay = vi.fn(() => null);
     calls.set("spending_breakdown(period=2026)", null);
@@ -189,7 +189,7 @@ it("actual native alert/watchlist reads ignore poisoned labelled oracle trees", 
       })),
       parseDateTime("2026-10-01T12:00:00Z"),
     );
-    const native = f.reads((ctx) =>
+    const native = await f.reads((ctx) =>
       investmentWriteServices(ctx, {
         portfolio: {
           vault: asProfileId(f.vault),

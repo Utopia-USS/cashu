@@ -2,6 +2,7 @@
 import { D } from "@cashu/domain";
 import { importStatement, openAccount } from "@cashu/store";
 import { enabledModuleIds } from "@cashu/store/core";
+import type { LabelledTree } from "../privacy/labels.js";
 import { pyDumps } from "../privacy/pyJson.js";
 import { leakCheck, Redactor } from "../privacy/redactor.js";
 import { enabledIn, type ToolContext, validateArguments } from "../registry.js";
@@ -21,7 +22,7 @@ export function callTool(
   if (!enabledIn(spec, enabledModuleIds(ctx.store.read))) throw new Error("tool disabled");
   const values = validateArguments(spec, args);
   const redactor = new Redactor({ privacy: ctx.privacy, guard: ctx.guard });
-  const output = redactor.apply(spec.handler(ctx, values));
+  const output = redactor.apply(spec.handler(ctx, values) as LabelledTree);
   leakCheck(output, { strict: ctx.strict, isins: redactor.isins, nonMoney: redactor.nonMoney });
   return JSON.parse(pyDumps(output));
 }

@@ -22,7 +22,21 @@ function call(ctx: ToolContext<NativeToolStore>, name: string, args: Record<stri
   const spec = coreTools().find((t) => t.name === name);
   if (!spec) throw new Error("missing synthetic tool");
   const redactor = new Redactor({ privacy: ctx.privacy, guard: ctx.guard });
-  const output = redactor.apply(spec.handler(ctx, args));
+  const output = redactor.apply(
+    spec.handler(ctx, args) as import("../privacy/labels.js").LabelledTree,
+  );
+  leakCheck(output, { strict: ctx.strict, isins: redactor.isins, nonMoney: redactor.nonMoney });
+  return JSON.parse(pyDumps(output));
+}
+async function callAsync(
+  ctx: ToolContext<NativeToolStore>,
+  name: string,
+  args: Record<string, unknown> = {},
+) {
+  const spec = coreTools().find((t) => t.name === name);
+  if (!spec) throw new Error("missing synthetic tool");
+  const redactor = new Redactor({ privacy: ctx.privacy, guard: ctx.guard });
+  const output = redactor.apply(await spec.handler(ctx, args));
   leakCheck(output, { strict: ctx.strict, isins: redactor.isins, nonMoney: redactor.nonMoney });
   return JSON.parse(pyDumps(output));
 }
@@ -177,7 +191,7 @@ it("values brokerage history using actual cached prices and reports cache freshn
     last_run: null,
   });
 });
-it("records a review with typed global reference, real counts and the owner agenda", () => {
+it("records a review with typed global reference, real counts and the owner agenda", async () => {
   const f = fixture();
   const opened = f.run(investmentsCommands.applySignalActions, {
     run: null,
@@ -203,7 +217,7 @@ it("records a review with typed global reference, real counts and the owner agen
       reason: "synthetic",
     }).ok,
   ).toBe(true);
-  const result = call(f.context("strict"), "mark_review_done", {
+  const result = await callAsync(f.context("strict"), "mark_review_done", {
     notes: "Owner note",
     agenda: [{ card: "world", note: "  Follow up  " }],
   });
@@ -222,11 +236,13 @@ it("records a review with typed global reference, real counts and the owner agen
   expect(stored?.notes).toBe("Owner note");
   expect(f.committed()).toBe(1);
   f.advance(1);
-  expect(call(f.context(), "mark_review_done").stats.decisions_since_last_review).toBe(0);
+  expect((await callAsync(f.context(), "mark_review_done")).stats.decisions_since_last_review).toBe(
+    0,
+  );
 });
-it("refuses a review of a disabled module before running a command", () => {
+it("refuses a review of a disabled module before running a command", async () => {
   const f = fixture();
-  expect(() => call(f.context(), "mark_review_done", { module: "assets" })).toThrow(
+  await expect(callAsync(f.context(), "mark_review_done", { module: "assets" })).rejects.toThrow(
     "module assets is not enabled",
   );
   expect(f.committed()).toBe(0);

@@ -1,4 +1,6 @@
 // Host adapters for the native MCP boundary. Each session is bound to one loaded vault.
+
+import { randomBytes } from "node:crypto";
 import type { market } from "@cashu/domain/investments";
 import {
   type InvestmentAsyncCapabilities,
@@ -15,12 +17,14 @@ import {
   type ResearchServices,
   restrictivePrivacy,
   type ToolContext,
+  ToolError,
   type ToolInventoryEntry,
   toolContext,
 } from "@cashu/mcp";
-import { runCommand, type v1 } from "@cashu/store";
+import { mintUlid, runCommand, type v1 } from "@cashu/store";
 import { mcpAccounts, mcpProfile } from "@cashu/store/core";
 import { finishMcpCall, startMcpCall } from "@cashu/store/device";
+import { runHostVaultCommand } from "../commands.js";
 import type { HostLog } from "../log.js";
 import type { HostStores, OpenVault } from "../stores.js";
 
@@ -72,13 +76,16 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           modules: new Set(profile.modules),
         };
   };
-  const execute = <T>(
+  const execute = async <T>(
     ceiling: Parameters<NativeRuntime["execute"]>[0],
-    fn: (execution: NativeExecution | undefined) => T,
+    fn: (execution: NativeExecution | undefined) => T | Promise<T>,
+    requestKey?: string,
     preparation = false,
   ): Promise<T> =>
-    vault.queue.run(() => {
-      const complete = (value: T): T => {
+    await (vault.native === undefined
+      ? vault.queue.run.bind(vault.queue)
+      : <V>(task: () => V) => Promise.resolve().then(task))(() => {
+      const complete = (value: T | Promise<T>): T | Promise<T> => {
         if (
           preparation &&
           value !== null &&
@@ -96,18 +103,58 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         }
         return value;
       };
-      if (options.replaced() || stores.vaults.get(vault.id) !== vault)
+      if (
+        options.replaced() ||
+        stores.vaults.get(vault.id) !== vault ||
+        (vault.native !== undefined && !vault.native.isCurrent())
+      )
         return complete(fn(undefined));
       const profile = mcpProfile(read);
       const current = policy();
       if (profile === undefined || current === undefined) return complete(fn(undefined));
       const profileSlug = profile.slug;
+      const currentForIo = () => {
+        if (
+          options.replaced() ||
+          stores.vaults.get(vault.id) !== vault ||
+          (vault.native !== undefined && !vault.native.isCurrent())
+        )
+          return false;
+        try {
+          const freshProfile = mcpProfile(read);
+          const fresh = policy();
+          return (
+            freshProfile?.slug === profileSlug &&
+            fresh !== undefined &&
+            fresh.privacy === current.privacy &&
+            fresh.modules.size === current.modules.size &&
+            [...current.modules].every((module) => fresh.modules.has(module))
+          );
+        } catch {
+          return false;
+        }
+      };
+      const currentForWrite = () => active && vault.native !== undefined && currentForIo();
       const at = now();
       const today = localDay(at);
       const pending: v1.Envelope[] = [];
+      let ran = false;
+      let writePending = false;
+      let writeCompleted = false;
+      let writeUncertain = false;
+      let dispatchedKey: string | undefined;
       let active = true;
+      const assertContextCurrent = () => {
+        if (
+          !active ||
+          options.replaced() ||
+          stores.vaults.get(vault.id) !== vault ||
+          (vault.native !== undefined && !currentForWrite())
+        )
+          throw new Error("native MCP context is no longer active");
+      };
       const scopedRead: typeof read = (...args) => {
-        if (!active) throw new Error("native queue context is no longer active");
+        assertContextCurrent();
         return read(...args);
       };
       let context: ToolContext<NativeToolStore>;
@@ -118,6 +165,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
       const store: NativeToolStore = {
         read: scopedRead,
         get investmentAsync() {
+          assertContextCurrent();
           const candidate = options.investmentAsync;
           if (
             candidate &&
@@ -136,6 +184,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         fxNewest: options.fxNewest?.() ?? null,
         toolInventory: options.inventory,
         get investmentWrites() {
+          assertContextCurrent();
           if (!investmentWritesResolved) {
             const candidate = options.investmentWrites?.(context);
             if (
@@ -152,6 +201,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           return investmentWrites;
         },
         get research() {
+          assertContextCurrent();
           if (!researchResolved) {
             const candidate = options.research?.(context);
             if (
@@ -165,15 +215,18 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           return research;
         },
         get investments() {
+          assertContextCurrent();
           return options.investmentReads?.(context);
         },
         get investmentHistory() {
+          assertContextCurrent();
           return options.investmentHistory?.(context);
         },
         ...(readInvestmentImportFile === undefined
           ? {}
           : {
               readInvestmentImportFile: (path: string) => {
+                if (!currentForIo()) throw new Error("native MCP import authority changed");
                 if (readInvestmentImportFile === undefined) throw new Error("missing file reader");
                 return readInvestmentImportFile(path, profileSlug);
               },
@@ -182,6 +235,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           ? {}
           : {
               readInvestmentMappingFile: (path: string) => {
+                if (!currentForIo()) throw new Error("native MCP mapping authority changed");
                 if (readInvestmentMappingFile === undefined)
                   throw new Error("missing mapping reader");
                 return readInvestmentMappingFile(path, profileSlug);
@@ -190,13 +244,56 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         ...(readBudgetImportFile === undefined
           ? {}
           : {
-              readBudgetImportFile: (rawPath: string) => readBudgetImportFile(rawPath, profileSlug),
+              readBudgetImportFile: (rawPath: string) => {
+                assertContextCurrent();
+                return readBudgetImportFile(rawPath, profileSlug);
+              },
             }),
         run(command, input) {
-          if (!active || preparation) throw new Error("native preparation cannot write");
-          // Current core writes are one command each. A second read-dependent command needs an overlay.
-          if (pending.length > 0)
-            throw new Error("multiple native MCP write commands require an overlay");
+          if (preparation) throw new Error("native preparation cannot write");
+          assertContextCurrent();
+          if (ran) throw new Error("multiple native MCP write commands require an overlay");
+          ran = true;
+          if (vault.native !== undefined) {
+            writePending = true;
+            writeUncertain = true;
+            const key = requestKey ?? mintUlid(now(), (n) => new Uint8Array(randomBytes(n)));
+            dispatchedKey = key;
+            return runHostVaultCommand(vault, command, input, key, currentForWrite)
+              .then((outcome) => {
+                const result = outcome;
+                if (result.kind === "completed") {
+                  writeCompleted = true;
+                  writeUncertain = false;
+                  return { ok: true as const, value: result.value };
+                }
+                if (result.kind === "outcome_unknown")
+                  throw new ToolError(
+                    "write outcome unknown; inspect the original key",
+                    "outcome_unknown",
+                    { system: true, requestKey: result.key },
+                  );
+                if (result.reason === "request_key_conflict")
+                  throw new ToolError(
+                    "this key belongs to an earlier write; inspect its original status",
+                    "outcome_unknown",
+                    { system: true, requestKey: key },
+                  );
+                writeUncertain = false;
+                return { ok: false as const, reason: result.reason };
+              })
+              .catch((error) => {
+                if (error instanceof ToolError && error.kind === "outcome_unknown") throw error;
+                throw new ToolError(
+                  "write outcome unknown; inspect the original key",
+                  "outcome_unknown",
+                  { system: true, requestKey: key },
+                );
+              })
+              .finally(() => {
+                writePending = false;
+              });
+          }
           return runCommand(
             vault.store,
             { append: (events) => pending.push(...events) },
@@ -217,32 +314,77 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
       });
       let committed = false;
       try {
-        return complete(
+        const result = complete(
           fn({
             context,
             policy: current,
+            hasWritten: () => writeCompleted,
+            writeKey: () => dispatchedKey,
+            uncertainWriteKey: () => (writeUncertain ? dispatchedKey : undefined),
             commit() {
               if (committed) throw new Error("native call committed twice");
-              if (preparation || !active) throw new Error("native preparation cannot commit");
+              if (preparation) throw new Error("native preparation cannot commit");
+              assertContextCurrent();
+              if (writePending) throw new Error("native MCP write was not awaited");
               if (options.replaced() || stores.vaults.get(vault.id) !== vault)
                 throw new Error("host replaced before append");
-              if (pending.length > 0) vault.writer.append(pending);
+              if (vault.native === undefined && pending.length > 0) vault.writer.append(pending);
               committed = true;
             },
           }),
         );
-      } finally {
+        return Promise.resolve(result).finally(() => {
+          active = false;
+        });
+      } catch (error) {
         active = false;
+        throw error;
       }
     });
   return {
     now,
     replaced: options.replaced,
     warn: (code) => options.log.warn(code),
-    policy: () => vault.queue.run(() => (options.replaced() ? undefined : policy())),
+    policy: () =>
+      vault.queue.run(() =>
+        options.replaced() ||
+        stores.vaults.get(vault.id) !== vault ||
+        (vault.native !== undefined && !vault.native.isCurrent())
+          ? undefined
+          : policy(),
+      ),
+    ...(vault.native === undefined
+      ? {}
+      : {
+          writeStatus: (key: string) =>
+            vault.queue
+              .run(async () => {
+                if (
+                  options.replaced() ||
+                  stores.vaults.get(vault.id) !== vault ||
+                  !vault.native?.isCurrent() ||
+                  policy() === undefined
+                )
+                  return { kind: "outcome_unknown" as const };
+                try {
+                  const status = await vault.native.attempts.lookup(vault.id, key);
+                  if (status.phase === "completed") return { kind: "completed" as const };
+                  if (status.phase === "terminal") return status.result;
+                  return { kind: "outcome_unknown" as const };
+                } catch {
+                  return { kind: "outcome_unknown" as const };
+                }
+              })
+              .catch(() => ({ kind: "outcome_unknown" as const })),
+        }),
     delegation: () =>
       vault.queue.run(() => {
-        if (options.replaced()) return undefined;
+        if (
+          options.replaced() ||
+          stores.vaults.get(vault.id) !== vault ||
+          (vault.native !== undefined && !vault.native.isCurrent())
+        )
+          return undefined;
         const current = policy();
         const profile = mcpProfile(read);
         if (!current || !profile) return undefined;
@@ -305,6 +447,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
                 ? undefined
                 : { context: execution.context, policy: execution.policy },
             ),
+          undefined,
           true,
         ),
     },

@@ -19,6 +19,7 @@ try {
     dataDir,
     home,
     build: "fault",
+    vaultSource: { kind: "synthetic-harness" },
     lingerMs: Number(linger ?? "60000"),
     afterCommit() {
       commits += 1;
