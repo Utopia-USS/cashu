@@ -407,14 +407,12 @@ function reviewSignalFact(row: SignalV2) {
   };
 }
 function subjectsOf(open: SignalV2[]): Subject[] {
-  return reviewDomain
-    .reviewSignalSubjects(open.map(reviewSignalFact))
-    .map((sub) => ({
-      key: sub.key,
-      instrumentId: sub.instrument,
-      live: sub.live.map((s) => s.row),
-      ladder: sub.ladder.map((s) => s.row),
-    }));
+  return reviewDomain.reviewSignalSubjects(open.map(reviewSignalFact)).map((sub) => ({
+    key: sub.key,
+    instrumentId: sub.instrument,
+    live: sub.live.map((s) => s.row),
+    ladder: sub.ladder.map((s) => s.row),
+  }));
 }
 
 /** What waits for the owner (see the section comment): subject items grouped risk / chance / mixed / plan and the
