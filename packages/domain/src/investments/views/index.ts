@@ -4,6 +4,7 @@ export * from "./accounts.js";
 export * from "./allocation.js";
 export * from "./assetPresentation.js";
 export * from "./attention.js";
+export * from "./decisionPresentation.js";
 export * from "./overview.js";
 export * from "./positionChart.js";
 export * from "./positionDetail.js";

@@ -23,7 +23,8 @@
     "./ui-actions": "./src/ui-actions.ts",
     "./investments/screen-sources": "./src/investments/desktop/sources.ts",
     "./investments/strategies-screen": "./src/investments/desktop-strategies/index.ts",
-    "./investments/screen": "./src/investments/desktop/screen.ts"
+    "./investments/screen": "./src/investments/desktop/screen.ts",
+    "./investments/signals-screen": "./src/investments/desktop-signals/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
