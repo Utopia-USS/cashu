@@ -46,6 +46,7 @@ import {
   startHost,
 } from "@cashu/node-host";
 import { mcpProfile } from "@cashu/store/core";
+import { NotificationQueue } from "@cashu/store/investments/local";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
 import { handleAdmin } from "./admin.js";
 import { HANDOVER_EXIT, watchBundle } from "./bundle.js";
@@ -67,7 +68,7 @@ import { nativeRuntime } from "./mcp/native.js";
 import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
-import { SERVED_COMMANDS, servedQueries } from "./registry.js";
+import { servedCommands, servedQueries } from "./registry.js";
 import {
   currentRuntime,
   type HostRuntime,
@@ -75,6 +76,11 @@ import {
   pythonProgram,
   shimProgram,
 } from "./runtime.js";
+import {
+  type SignalsScreenCapability,
+  signalsScreenActions,
+  signalsScreenClock,
+} from "./signalsScreen.js";
 import { serveStoreChannel } from "./storeChannel.js";
 import { type HostStores, openHostStores } from "./stores.js";
 import { type StrategyScreenCapability, strategiesScreen } from "./strategiesScreen.js";
@@ -96,6 +102,10 @@ export interface LocalHostOptions {
   readonly strategyImages?: ReturnType<typeof currentStrategyImages>;
   readonly investments?: import("@cashu/store/investments/screen").InvestmentScreenSources;
   readonly investmentImports?: { bind(vault: string): InvestmentImportCapability | null };
+  /** Optional public-market provider; local Signals actions need no remote provider. */
+  readonly signals?: { bind(vault: string): SignalsScreenCapability | null };
+  readonly research?: import("@cashu/store/investments/research-screen").ResearchScreenSources;
+  readonly review?: import("@cashu/store/investments/review-screen").ReviewScreenSources;
   readonly mcpInvestmentAsync?: (vault: string) => InvestmentAsyncCapabilities | undefined;
   readonly uiActions?: import("./storeChannel.js").StoreChannelOptions["actions"];
   readonly prepareUiQuery?: import("./storeChannel.js").StoreChannelOptions["prepareQuery"];
@@ -180,6 +190,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     options.home ?? homedir(),
   );
   const now = options.now ?? Date.now;
+  const investmentClock = signalsScreenClock(now);
   const importManager =
     options.investmentImports === undefined
       ? null
@@ -220,6 +231,23 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     ...options.overview,
     prices: options.overview?.prices ?? null,
     investments: investmentSources,
+    signals: {
+      strategy: investmentSources.strategy,
+      market: investmentSources.market,
+      clock: investmentClock,
+    },
+    research: {
+      ...options.research,
+      strategy: investmentSources.strategy,
+      market: investmentSources.market,
+      clock: investmentClock,
+    },
+    review: {
+      ...options.review,
+      strategy: investmentSources.strategy,
+      market: investmentSources.market,
+      clock: investmentClock,
+    },
     strategies: {
       strategy: images.source,
       ...(strategyManager === null ? {} : { documents: strategyManager.source }),
@@ -256,6 +284,33 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     await server.close();
     throw error;
   }
+  const signalQueue = new NotificationQueue(stores.device.driver);
+  const localSignals = new Map<string, SignalsScreenCapability>();
+  const bindSignals = (vault: string): SignalsScreenCapability | null => {
+    if (options.signals !== undefined) return options.signals.bind(vault);
+    const opened = stores.vaults.get(vault);
+    if (opened === undefined) return null;
+    let cap = localSignals.get(vault);
+    if (cap === undefined) {
+      cap = {
+        vault,
+        generation: `local:${vault}`,
+        isCurrent: () => stores.vaults.get(vault) === opened,
+        notifications: signalQueue,
+        ...((options.mcpPrices ?? options.overview?.prices)
+          ? { prices: options.mcpPrices ?? options.overview?.prices ?? undefined }
+          : {}),
+      };
+      localSignals.set(vault, cap);
+    }
+    return cap;
+  };
+  const signalActions = signalsScreenActions({
+    bind: bindSignals,
+    now,
+    timeZone: () => investmentClock.current().timeZone,
+  });
+  const uiCommands = servedCommands({ strategy: investmentSources.strategy });
   const safeMode = record.safeMode;
   const runtime = options.runtime ?? currentRuntime();
   const python =
@@ -460,9 +515,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         serveStoreChannel(session, {
           stores,
           queries,
-          commands: SERVED_COMMANDS,
+          commands: uiCommands,
           actions: [
             ...(options.uiActions ?? []),
+            ...signalActions,
             ...(importManager?.actions ?? []),
             ...(strategyManager?.actions ?? []),
           ],

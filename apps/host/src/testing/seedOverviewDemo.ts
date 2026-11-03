@@ -15,9 +15,13 @@ import { assertUnchanged, copyRun, manifest, runFiles } from "../cli/genesis/cop
 import { initKeys, readKeys } from "../cli/genesis/keys.js";
 import { startLocalHost } from "../host.js";
 import { currentStrategyImages } from "../investmentScreenSources.js";
+import { type ResearchScreenCapability, researchScreenSources } from "../researchScreen.js";
 import { storeFiles } from "../stores.js";
 import type { StrategyScreenCapability } from "../strategiesScreen.js";
 import { storeClient } from "./harness.js";
+import { seedResearchDemo, syntheticResearchCapability } from "./researchDemo.js";
+import { reviewDemoSources, seedReviewDemo } from "./reviewDemo.js";
+import { seedSignalsDemo } from "./signalsDemo.js";
 import { syntheticStrategyDocuments } from "./strategyDocuments.js";
 
 function isolatedPaths() {
@@ -103,8 +107,14 @@ if (process.argv[2] === "rename") {
   const driver = openNodeSqlite(cachePath);
   const prices = new investmentsLocal.SqlPriceCache(driver);
   const imported = readKeys(join(target, "overview-demo-keys.json"));
+  const reviewVault = imported.get("demo-anna")?.vault;
   let alive = true;
   const capabilities = new Map<string, StrategyScreenCapability>();
+  const researchCapabilities = new Map<string, ResearchScreenCapability>();
+  const researchSources =
+    process.env.CASHU_E2E_RESEARCH === "1"
+      ? researchScreenSources((vault) => researchCapabilities.get(vault) ?? null)
+      : null;
   for (const [slug, key] of imported) {
     if (checkedProfileSlug(slug) === null) throw new Error("invalid synthetic profile segment");
     const path = join(target, "profiles", slug);
@@ -130,6 +140,12 @@ if (process.argv[2] === "rename") {
     launcher: false,
     strategyImages: images,
     strategies: { bind: (vault) => capabilities.get(vault) ?? null },
+    ...(researchSources === null ? {} : { research: researchSources }),
+    ...(process.env.CASHU_E2E_REVIEW === "1" && reviewVault
+      ? {
+          review: reviewDemoSources(reviewVault, new Date().toISOString().slice(0, 10)),
+        }
+      : {}),
     investments: {
       strategy: images.source,
       market: {
@@ -184,17 +200,49 @@ if (process.argv[2] === "rename") {
       files: await readStrategyFiles(cap.files),
     });
   }
+  if (process.env.CASHU_E2E_RESEARCH === "1") {
+    const vault = imported.get("demo-anna")?.vault;
+    const opened = vault === undefined ? undefined : host.stores.vaults.get(vault);
+    if (vault === undefined || opened === undefined)
+      throw new Error("synthetic research vault is absent");
+    const selected = await seedResearchDemo(opened);
+    researchCapabilities.set(
+      vault,
+      syntheticResearchCapability(
+        vault,
+        randomUUID(),
+        () => alive,
+        join(target, "profiles", "demo-anna"),
+        selected.symbol,
+      ),
+    );
+    researchSources?.changed();
+  }
+  if (process.env.CASHU_E2E_SIGNALS === "1") {
+    const vault = imported.get("demo-anna")?.vault;
+    const opened = vault === undefined ? undefined : host.stores.vaults.get(vault);
+    if (opened === undefined) throw new Error("synthetic Signals vault is absent");
+    await seedSignalsDemo(opened, new Date().toISOString().slice(0, 10));
+  }
+  if (process.env.CASHU_E2E_REVIEW === "1") {
+    const vault = imported.get("demo-anna")?.vault;
+    const opened = vault === undefined ? undefined : host.stores.vaults.get(vault);
+    if (opened === undefined) throw new Error("synthetic review vault is absent");
+    await seedReviewDemo(opened, prices, new Date().toISOString().slice(0, 10));
+  }
   const ready = join(target, "overview-ready");
   const readyStage = join(target, `overview-ready-${process.pid}`);
   writeFileSync(readyStage, `${process.pid}\n`, { mode: 0o600, flag: "wx" });
   renameSync(readyStage, ready);
   process.once("SIGTERM", () => {
     alive = false;
+    researchSources?.close();
     rmSync(ready, { force: true });
     void host.stop();
   });
   process.once("SIGINT", () => {
     alive = false;
+    researchSources?.close();
     void host.stop();
   });
   await host.exit;

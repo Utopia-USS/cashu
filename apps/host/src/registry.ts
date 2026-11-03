@@ -26,6 +26,16 @@ import {
 } from "@cashu/store/budget/queries";
 import { profile } from "@cashu/store/core";
 import { currentVault, type DeviceCommand, setCurrentVault } from "@cashu/store/device";
+import {
+  researchScreenCommands,
+  researchScreenQueries,
+} from "@cashu/store/investments/research-screen";
+import {
+  reviewPositionDecision,
+  reviewScreenQueries,
+  saveReview,
+  undoSavedReview,
+} from "@cashu/store/investments/review-screen";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
 import {
   addUiManualTransaction,
@@ -35,6 +45,12 @@ import {
   uiThesisCommands,
   updateUiWatchNote,
 } from "@cashu/store/investments/screen";
+import {
+  conditionalOwnerAcknowledge,
+  signalsAlertCommands,
+  signalsOwnerCommands,
+  signalsQueries,
+} from "@cashu/store/investments/signals-screen";
 import { strategiesQueries } from "@cashu/store/investments/strategies-screen";
 import { createUiLoan, loansScreen, setUiLoanPayment } from "@cashu/store/loans/screen";
 import {
@@ -57,6 +73,9 @@ export function servedQueries(
     readonly sources?: OverviewSources;
     readonly investments?: InvestmentScreenSources;
     readonly strategies?: Parameters<typeof strategiesQueries>[0];
+    readonly signals?: Parameters<typeof signalsQueries>[0];
+    readonly research?: Parameters<typeof researchScreenQueries>[0];
+    readonly review?: Parameters<typeof reviewScreenQueries>[0];
   } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
   return [
@@ -82,10 +101,18 @@ export function servedQueries(
     ...Object.values(overviewQueries(env, env.sources)),
     ...Object.values(investmentDesktopQueries(env.investments)),
     ...Object.values(strategiesQueries(env.strategies)),
+    ...Object.values(signalsQueries(env.signals)),
+    ...Object.values(researchScreenQueries(env.research)),
+    ...Object.values(reviewScreenQueries(env.review)),
   ];
 }
 
 export const SERVED_COMMANDS: readonly AnyCommand[] = [
+  ...Object.values(signalsOwnerCommands),
+  saveReview,
+  undoSavedReview,
+  reviewPositionDecision,
+  conditionalOwnerAcknowledge,
   addUiManualTransaction,
   createUiBrokerageAccount,
   classifyUiInstrument,
@@ -109,6 +136,19 @@ export const SERVED_COMMANDS: readonly AnyCommand[] = [
   createOverviewAsset,
   cancelPlannedDeposit,
 ] as readonly AnyCommand[];
+
+export function servedCommands(
+  sources: {
+    readonly strategy?: Parameters<typeof signalsAlertCommands>[0];
+    readonly researchPlans?: Parameters<typeof researchScreenCommands>[0];
+  } = {},
+): readonly AnyCommand[] {
+  return [
+    ...SERVED_COMMANDS,
+    ...Object.values(signalsAlertCommands(sources.strategy)),
+    ...Object.values(researchScreenCommands(sources.researchPlans)),
+  ] as readonly AnyCommand[];
+}
 
 export function isDeviceCommand(command: AnyCommand): command is DeviceCommand<unknown, unknown> {
   return "scope" in command && command.scope === "device";

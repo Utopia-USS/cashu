@@ -25,6 +25,8 @@ import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
 import { useCashDrawer } from "./screens/overview/useCashDrawer.js";
 import { useInvestmentPlan } from "./screens/overview/useInvestmentPlan.js";
 import { useOverviewScreen } from "./screens/overview/useOverviewScreen.js";
+import { ResearchScreen } from "./screens/research/ResearchScreen.js";
+import { SignalsPageScreen } from "./screens/signals/SignalsPageScreen.js";
 import { StrategiesScreen } from "./screens/strategies/StrategiesScreen.js";
 import { resolveProfileRoute } from "./shell/profileRoute.js";
 import { ProfileRouteSync } from "./shell/profileRouteSync.js";
@@ -443,6 +445,20 @@ const investmentSearch = z.object({
   account: investmentEntityIdSchema.optional(),
   period: z.enum(["1m", "3m", "ytd", "1y", "3y", "max"]).default("1y"),
   view: z.enum(["chart", "table"]).default("chart"),
+  review: z.literal("1").optional(),
+  signals: z.literal("1").optional(),
+  note: investmentEntityIdSchema.optional(),
+});
+const investmentPageSearch = z.object({
+  vault: search.shape.vault,
+  instrument: investmentEntityIdSchema.optional(),
+  alert: investmentEntityIdSchema.optional(),
+});
+const researchSearch = z.object({
+  vault: search.shape.vault,
+  tab: z.enum(["topics", "mine", "notes", "calendar", "candidates", "runs"]).optional(),
+  topic: z.string().max(120).optional(),
+  note: investmentEntityIdSchema.optional(),
 });
 const portfolioRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -480,6 +496,122 @@ const strategiesRoute = createRoute({
   ),
   errorComponent: RouteFailure,
 });
+const alertsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/investments.alerts",
+  validateSearch: (raw) => investmentPageSearch.parse(raw),
+  component: InvestmentPageRoute,
+  errorComponent: RouteFailure,
+});
+const watchlistRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/investments.watchlist",
+  validateSearch: (raw) => investmentPageSearch.parse(raw),
+  component: InvestmentPageRoute,
+  errorComponent: RouteFailure,
+});
+const journalRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/investments.journal",
+  validateSearch: (raw) => investmentPageSearch.parse(raw),
+  component: InvestmentPageRoute,
+  errorComponent: RouteFailure,
+});
+const researchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/investments.research",
+  validateSearch: (raw) => researchSearch.parse(raw),
+  component: ResearchRoute,
+  errorComponent: RouteFailure,
+});
+function investmentEnabled() {
+  return useQuery(overviewQueries({ prices: null }).moduleStates).some(
+    (module) => module.id === "investments" && module.enabled,
+  );
+}
+function InvestmentPageRoute() {
+  const { slug } = useParams({ strict: false });
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const selected = useSearch({ strict: false }) as z.infer<typeof investmentPageSearch>;
+  const vault = useProfile();
+  const enabled = investmentEnabled();
+  if (!enabled) return <p className="p-6">{S.setup}</p>;
+  const page = pathname.endsWith("investments.alerts")
+    ? "alerts"
+    : pathname.endsWith("investments.watchlist")
+      ? "watchlist"
+      : "journal";
+  return (
+    <SignalsPageScreen
+      page={page}
+      initialInstrument={selected.instrument}
+      onClose={() =>
+        void router.navigate({
+          to: "/$slug/investments.portfolio",
+          params: { slug: slug ?? "" },
+          search: { vault, period: "1y", view: "chart" },
+        })
+      }
+      onOpenAsset={(instrument) =>
+        void router.navigate({
+          to: "/$slug/assets/$instrument",
+          params: { slug: slug ?? "", instrument },
+          search: { vault, period: "1y", view: "chart" },
+        })
+      }
+      onOpenReview={() =>
+        void router.navigate({
+          to: "/$slug/investments.portfolio",
+          params: { slug: slug ?? "" },
+          search: { vault, period: "1y", view: "chart", review: "1" },
+        })
+      }
+      onOpenNote={(note) =>
+        note &&
+        void router.navigate({
+          to: "/$slug/investments.research",
+          params: { slug: slug ?? "" },
+          search: { vault, note },
+        })
+      }
+    />
+  );
+}
+function ResearchRoute() {
+  const { slug } = researchRoute.useParams();
+  const selected = researchRoute.useSearch();
+  const vault = useProfile();
+  const enabled = investmentEnabled();
+  if (!enabled) return <p className="p-6">{S.setup}</p>;
+  return (
+    <ResearchScreen
+      initialTab={selected.tab}
+      initialTopic={selected.topic}
+      initialNote={selected.note}
+      onBack={() =>
+        void router.navigate({
+          to: "/$slug/investments.portfolio",
+          params: { slug },
+          search: { vault, period: "1y", view: "chart" },
+        })
+      }
+      onOpenAsset={(instrument, note) =>
+        void router.navigate({
+          to: "/$slug/assets/$instrument",
+          params: { slug, instrument },
+          search: { vault, period: "1y", view: "chart", note },
+        })
+      }
+      onSettings={() =>
+        void router.navigate({
+          to: "/$slug/investments.strategies",
+          params: { slug },
+          search: { vault },
+        })
+      }
+    />
+  );
+}
 
 function PortfolioRoute() {
   const { slug, instrument } = useParams({ strict: false });
@@ -510,6 +642,31 @@ function PortfolioRoute() {
   return (
     <PortfolioScreen
       {...(instrument === undefined ? {} : { instrument })}
+      review={selected.review === "1"}
+      signalsOpen={selected.signals === "1"}
+      noteGid={selected.note}
+      onReviewClosed={() => navigate({ review: undefined })}
+      onReviewOpened={() => navigate({ review: "1" })}
+      onSignalsClosed={() => navigate({ signals: undefined })}
+      onSignalsPageOpened={(page) =>
+        void router.navigate({
+          to:
+            page === "alerts"
+              ? "/$slug/investments.alerts"
+              : page === "watchlist"
+                ? "/$slug/investments.watchlist"
+                : "/$slug/investments.journal",
+          params: { slug: slug ?? "" },
+          search: { vault },
+        })
+      }
+      onResearchOpened={(tab, topic, note) =>
+        void router.navigate({
+          to: "/$slug/investments.research",
+          params: { slug: slug ?? "" },
+          search: { vault, tab: tab as z.infer<typeof researchSearch>["tab"], topic, note },
+        })
+      }
       account={selected.account ?? null}
       range={selected.period}
       table={selected.view === "table"}
@@ -535,6 +692,19 @@ function PortfolioRoute() {
             params: { slug: slug ?? "" },
             search: { vault },
           });
+        else if (tab === "investments.signals")
+          void router.navigate({
+            to: "/$slug/investments.portfolio",
+            params: { slug: slug ?? "" },
+            search: { vault, period: selected.period, view: selected.view, signals: "1" },
+          });
+        else if (tab === "investments.research")
+          void router.navigate({
+            to: "/$slug/investments.research",
+            params: { slug: slug ?? "" },
+            search: { vault },
+          });
+        else if (tab === "investments.review") navigate({ review: "1" });
         else legacy.open(tab);
       }}
     />
@@ -560,6 +730,10 @@ export const router = createRouter({
     portfolioRoute,
     investmentAssetRoute,
     strategiesRoute,
+    alertsRoute,
+    watchlistRoute,
+    journalRoute,
+    researchRoute,
   ]),
   history: createHashHistory(),
 });

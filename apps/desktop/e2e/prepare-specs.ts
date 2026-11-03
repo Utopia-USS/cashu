@@ -55,6 +55,7 @@ export function prepareSpecs(): string {
   writeFileSync(join(GENERATED, "fixtures.ts"), fixtures);
   cpSync(join(HERE, "electron-test.ts"), join(GENERATED, "electron-test.ts"));
   cpSync(join(HERE, "strategies-support.ts"), join(GENERATED, "strategies-support.ts"));
+  cpSync(join(HERE, "review-support.ts"), join(GENERATED, "review-support.ts"));
   cpSync(join(HERE, "desktop-specs"), specs, { recursive: true });
   return specs;
 }
