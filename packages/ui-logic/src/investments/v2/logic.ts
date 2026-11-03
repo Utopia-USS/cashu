@@ -3,7 +3,7 @@
 // from 30-day closes, re-entry gap, change-log grouping, performance facts. Pure; the frontend's `npm test`
 // imports it (frontend/tests).
 
-import { views as reviewDomain } from "@cashu/domain/investments";
+import * as reviewDomain from "@cashu/domain/investments/review-deck";
 import { inEveryLang, intlLocale, lang } from "@cashu/i18n";
 import { describePerfNote } from "../../core/messages.js";
 import { localDay, parseServerTime, serverDate } from "../../core/time.js";

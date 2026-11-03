@@ -1,5 +1,11 @@
 /** Review selection and statistics, independent of transport identities and UI language. */
-import { addDays } from "../../dates.js";
+
+/** A UTC calendar shift keeps this neutral helper usable at the legacy ES2020 browser floor. */
+function weekBefore(day: string): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 7);
+  return date.toISOString().slice(0, 10);
+}
 
 export type ReviewCardId =
   | "world"
@@ -42,7 +48,7 @@ export function reviewChangeSince(
     if (point.date <= since) k = i;
   });
   const a = points[k],
-    b = points.at(-1);
+    b = points[points.length - 1];
   if (points.length < 2 || !a || !b) return { pct: null, money: null, bench: null, from: null };
   const ratio = (x: number | null, y: number | null) =>
     x === null || y === null || x === -1 ? null : (1 + y) / (1 + x) - 1;
@@ -61,7 +67,7 @@ export function reviewWeeklySigma(
   const returns: number[] = [];
   let j = 0;
   pts.forEach((point, i) => {
-    const cut = addDays(point.date, -7);
+    const cut = weekBefore(point.date);
     while (j + 1 < i && (pts[j + 1]?.date ?? "~") <= cut) j++;
     const base = pts[j];
     if (base && base.date <= cut && base.twr !== -1)

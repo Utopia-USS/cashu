@@ -3,7 +3,7 @@
 // Pozycje, Wydarzenia, Okazje, Kalendarz, Do decyzji last (what needs the owner closes the review), then the
 // summary. Verdicts are facts in plain Polish.
 
-import { views as reviewDomain } from "@cashu/domain/investments";
+import * as reviewDomain from "@cashu/domain/investments/review-deck";
 import { proposalSummary } from "../../core/messages.js";
 import { parseServerTime } from "../../core/time.js";
 import { pct, pctTarget } from "../labels.js";
