@@ -44,6 +44,10 @@ export class MemorySink implements EventSink {
     return new Map(this.#cursors);
   }
 
+  needsUpgrade(): boolean {
+    return this.#parked.length > 0;
+  }
+
   applyBatches(batches: readonly InboundBatch[]): ApplyOutcome[] {
     const saved = {
       cursors: new Map(this.#cursors),

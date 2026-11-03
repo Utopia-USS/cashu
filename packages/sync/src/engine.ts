@@ -43,6 +43,8 @@ import type {
   GateStateStore,
   InboundBatch,
   LeaseTransport,
+  LocalRecoveryResult,
+  LocalStreamRecovery,
   RejectedFrame,
   SegmentCursor,
   SegmentInfo,
@@ -52,6 +54,7 @@ import type {
   UnstampedEvent,
   VaultId,
   WireEvent,
+  WriteOptions,
   WriteResult,
 } from "./carrier.js";
 import { propagationBound, START_CURSOR } from "./carrier.js";
@@ -140,6 +143,28 @@ interface ChainEntry {
   readonly chain: Uint8Array;
 }
 
+interface RecoveryFrame {
+  readonly at: FramePosition;
+  readonly end: SegmentCursor;
+  readonly sealed: Uint8Array;
+  readonly size: number;
+  readonly prev: Uint8Array;
+  opened?: Opened;
+  events?: readonly WireEvent[];
+  part?: readonly [number, number];
+}
+
+interface RecoveryStream {
+  readonly device: DeviceId;
+  readonly frames: RecoveryFrame[];
+  heldEnd: SegmentCursor;
+  inspectedThrough: SegmentCursor;
+  reason?: string;
+  suppressed: boolean;
+  parked: boolean;
+  accepted: boolean;
+}
+
 /** Rounds of pull + apply in one `sync()` while the registry changes and streams wait. */
 const MAX_ROUNDS = 4;
 
@@ -158,6 +183,7 @@ interface Pass {
   applied: number;
   duplicates: number;
   parked: number;
+  parkedDevices: Set<DeviceId>;
   needsUpgrade: boolean;
   offlineRemotes: number;
   rejected: RejectedFrame[];
@@ -184,6 +210,7 @@ function newPass(): Pass {
     applied: 0,
     duplicates: 0,
     parked: 0,
+    parkedDevices: new Set(),
     needsUpgrade: false,
     offlineRemotes: 0,
     rejected: [],
@@ -257,6 +284,8 @@ class OwnLogEngine implements SyncEngine {
   readonly #chains = new Map<DeviceId, ChainEntry[]>();
   /** False until the gate has seen every frame of the local log once (after start). */
   #primed = false;
+  /** `takeRebuild` consumes its flag; the old sink remains stale across recovery retries. */
+  #recoveryViewStale = false;
 
   constructor(o: SyncEngineOptions, restored: { wall: number; counter: number } | undefined) {
     this.vault = o.vault;
@@ -317,7 +346,7 @@ class OwnLogEngine implements SyncEngine {
     if (lastHlc === undefined || lastHlc > this.#clock.last) this.#rolledBack = true;
   }
 
-  write(events: readonly UnstampedEvent[]): Promise<WriteResult> {
+  write(events: readonly UnstampedEvent[], options?: WriteOptions): Promise<WriteResult> {
     return this.#run(async () => {
       this.#assertOpen();
       if (this.#rolledBack) {
@@ -326,6 +355,15 @@ class OwnLogEngine implements SyncEngine {
       if (events.length === 0) throw new SyncError("invalid-event", "empty batch");
       if (!events.every(isUnstampedEvent)) {
         throw new SyncError("invalid-event", "invalid event in batch");
+      }
+      if (options?.afterHlc !== undefined) {
+        let warning: ClockWarning | undefined;
+        try {
+          warning = this.#clock.receive(options.afterHlc);
+        } catch {
+          throw new SyncError("invalid-event", "invalid high-water mark");
+        }
+        if (warning) throw new SyncError("remote-far-future", "high-water mark is too far ahead");
       }
       const stamped: WireEvent[] = events.map((e) => ({ ...e, h: this.#clock.tick() }));
       await this.#clockStore.save(this.#clock.state);
@@ -382,6 +420,310 @@ class OwnLogEngine implements SyncEngine {
       const first = stamped[0]?.h ?? "";
       const last = stamped.at(-1)?.h ?? "";
       return { events: stamped.length, frames: sealedFrames.length, first, last };
+    });
+  }
+
+  recoverLocal(): Promise<LocalRecoveryResult> {
+    return this.#run(async () => {
+      this.#assertOpen();
+      const pass = newPass();
+      const original = await this.#sink.cursors();
+      const inventory = await this.#local.list(this.vault);
+      const streams = new Map<DeviceId, RecoveryStream>();
+      const streamFor = (device: DeviceId): RecoveryStream => {
+        let stream = streams.get(device);
+        if (!stream) {
+          stream = {
+            device,
+            frames: [],
+            heldEnd: START_CURSOR,
+            inspectedThrough: START_CURSOR,
+            suppressed: false,
+            parked: false,
+            accepted: false,
+          };
+          streams.set(device, stream);
+        }
+        return stream;
+      };
+      for (const device of original.keys()) streamFor(device);
+      for (const segment of inventory) streamFor(segment.device);
+
+      // A signed local gate snapshot records heads this installation held. It is an anchor, not
+      // permission to skip any bytes in this audit. Invalid snapshots are only caches to ignore.
+      if (this.#gateState?.loadEvidence && this.#gate.importEvidence) {
+        this.#gate.importEvidence(await this.#gateState.loadEvidence());
+        this.#evidenceLoaded = true;
+      }
+      let anchors: readonly FrameHead[] = [];
+      if (this.#gateState?.load && this.#gate.importState) {
+        try {
+          const state = await this.#gateState.load();
+          const imported = state === undefined ? undefined : this.#gate.importState(state);
+          if (imported) {
+            anchors = imported.heldHeads ?? [...imported.positions.values()];
+            for (const head of anchors) streamFor(head.device);
+            if (!this.#primed) imported.restore();
+          }
+        } catch {
+          // A missing or damaged cache never establishes readiness on its own.
+        }
+      }
+
+      for (const stream of streams.values()) {
+        const segments = inventory.filter((s) => s.device === stream.device).sort(bySegment);
+        const last = segments.at(-1);
+        if (last) stream.heldEnd = { seg: last.seg, offset: last.size };
+        let expected = 1;
+        let prev = this.#codec.genesis(this.vault, stream.device, 1);
+        for (const s of segments) {
+          if (s.seg !== expected || !Number.isSafeInteger(s.size) || s.size < 0) {
+            stream.reason = "segment-gap";
+            break;
+          }
+          let bytes: Uint8Array;
+          try {
+            bytes = await this.#local.read(this.vault, stream.device, s.seg, 0);
+          } catch {
+            stream.reason = "short-read";
+            break;
+          }
+          if (bytes.length !== s.size) {
+            stream.reason = "short-read";
+            break;
+          }
+          const scan = scanFrames(bytes, 0);
+          for (const f of scan.frames) {
+            const at = { vault: this.vault, device: stream.device, seg: s.seg, offset: f.offset };
+            const before = prev;
+            try {
+              prev = this.#codec.link(f.sealed, at, prev);
+            } catch {
+              stream.reason = "chain-unknown";
+              break;
+            }
+            stream.frames.push({
+              at,
+              end: { seg: s.seg, offset: f.end },
+              sealed: f.sealed,
+              size: f.end - f.offset,
+              prev: before,
+            });
+          }
+          if (stream.reason) break;
+          if (scan.tail !== "none") {
+            stream.reason = scan.tail === "too-large" ? "too-large" : "partial";
+            break;
+          }
+          expected += 1;
+        }
+      }
+
+      // Trust statements can introduce a writer whose earlier held frame initially waited.
+      // Each successful round signs off at least one new frame, so a frame-count bound is sound.
+      const observed = new Set<RecoveryFrame>();
+      const frameCount = [...streams.values()].reduce((n, s) => n + s.frames.length, 0);
+      let progress = false;
+      for (let round = 0; round <= frameCount; round++) {
+        progress = false;
+        for (const stream of streams.values()) {
+          for (const frame of stream.frames) {
+            if (observed.has(frame)) continue;
+            let opened: Opened;
+            try {
+              opened = await this.#open(frame.sealed, frame.at, frame.prev, pass);
+            } catch (e) {
+              stream.reason ??= rejectionCode(e);
+              break;
+            }
+            const decoded = decodePayload(opened.plain, stream.device);
+            if (!decoded.ok) {
+              stream.reason ??= decoded.code;
+              break;
+            }
+            const verdict = this.#gate.authenticate(opened.head, decoded.payload.events);
+            if (!verdict.ok) {
+              if (!verdict.wait) stream.reason ??= verdict.code;
+              break;
+            }
+            frame.opened = opened;
+            frame.events = decoded.payload.events;
+            frame.part = decoded.payload.part;
+            stream.inspectedThrough = frame.end;
+            this.#gate.observe(opened.head, decoded.payload.events);
+            observed.add(frame);
+            progress = true;
+          }
+        }
+        if (observed.size === frameCount || !progress) break;
+      }
+      for (const stream of streams.values()) {
+        if (stream.frames.some((f) => !observed.has(f))) stream.reason ??= "writer-unknown";
+      }
+
+      // A snapshot's locally held heads must still be present. Gossip/remote attestation is not
+      // a local durability anchor and is intentionally excluded from this check.
+      let anchorMismatch = false;
+      for (const anchor of anchors) {
+        const stream = streamFor(anchor.device);
+        const match = stream.frames.some(
+          (frame) =>
+            frame.opened?.head.seg === anchor.seg &&
+            frame.opened.head.offset === anchor.offset &&
+            equalBytes(frame.opened.head.chain, anchor.chain) &&
+            equalBytes(frame.opened.head.sig, anchor.sig),
+        );
+        if (!match) {
+          stream.reason ??= "local-anchor-missing";
+          anchorMismatch = true;
+        }
+      }
+      for (const device of this.#gate.recoveryEvidenceDevices?.() ?? []) streamFor(device);
+
+      const deliver: {
+        stream: RecoveryStream;
+        events: readonly WireEvent[];
+        end: SegmentCursor;
+        bytes: number;
+      }[] = [];
+      for (const stream of streams.values()) {
+        const validEnds = new Set<string>([`${START_CURSOR.seg}:${START_CURSOR.offset}`]);
+        let group:
+          | { events: WireEvent[]; count: number; next: number; bytes: number; suppressed: boolean }
+          | undefined;
+        let crossedSuppression = false;
+        for (const frame of stream.frames) {
+          if (!observed.has(frame)) break;
+          const opened = frame.opened as Opened;
+          const events = frame.events as readonly WireEvent[];
+          const decision = this.#gate.accept(opened.head, events);
+          if (decision.changed) pass.gateChanged = true;
+          const suppressed =
+            !decision.verdict.ok &&
+            (decision.verdict.code === "revoked_writer" || decision.verdict.code === "forked");
+          if (!decision.verdict.ok && !suppressed) {
+            stream.reason ??= decision.verdict.code;
+            break;
+          }
+          if (suppressed) stream.suppressed = true;
+          else this.#noteJudged(opened.head);
+          const part = frame.part;
+          let batch: readonly WireEvent[] | undefined;
+          let bytes = frame.size;
+          if (!part) {
+            if (group) {
+              stream.reason ??= "incomplete-group";
+              break;
+            }
+            batch = events;
+          } else if (part[0] === 0 && !group) {
+            group = { events: [...events], count: part[1], next: 1, bytes, suppressed };
+          } else if (
+            group &&
+            part[0] === group.next &&
+            part[1] === group.count &&
+            (events[0]?.h ?? "") > (group.events.at(-1)?.h ?? "")
+          ) {
+            group.events.push(...events);
+            group.next += 1;
+            group.bytes += bytes;
+            group.suppressed ||= suppressed;
+          } else {
+            stream.reason ??= "malformed";
+            break;
+          }
+          let batchSuppressed = suppressed;
+          if (group && group.next === group.count) {
+            batch = group.events;
+            bytes = group.bytes;
+            batchSuppressed = group.suppressed;
+            group = undefined;
+          }
+          if (!batch) continue;
+          if (batchSuppressed) {
+            crossedSuppression = true;
+            continue;
+          }
+          validEnds.add(`${frame.end.seg}:${frame.end.offset}`);
+          stream.accepted = true;
+          const cursor = original.get(stream.device) ?? START_CURSOR;
+          if (comparePositions(frame.end, cursor) > 0) {
+            if (crossedSuppression) {
+              stream.reason ??= "suppressed-gap";
+              break;
+            }
+            deliver.push({ stream, events: batch, end: frame.end, bytes });
+          }
+        }
+        if (group && !stream.reason) stream.reason = "incomplete-group";
+        const cursor = original.get(stream.device) ?? START_CURSOR;
+        if (!stream.reason && !validEnds.has(`${cursor.seg}:${cursor.offset}`)) {
+          stream.reason = "cursor-not-accepted";
+          this.#recoveryViewStale = true;
+        }
+        if (stream.reason === "suppressed-gap") this.#recoveryViewStale = true;
+      }
+
+      // Cursor proofs precede any sink write. A partial replay remains quarantined by the host.
+      for (const item of deliver) {
+        if (item.stream.reason) continue;
+        await this.#collect(
+          item.stream.device,
+          item.stream.device === this.device,
+          item.events,
+          item.end,
+          item.bytes,
+          pass,
+        );
+      }
+      await this.#flush(pass);
+      for (const device of pass.parkedDevices) streamFor(device).parked = true;
+      if (pass.clockDirty) await this.#clockStore.save(this.#clock.state);
+      if (this.#gate.takeRebuild() || pass.staleView) this.#recoveryViewStale = true;
+      const finalCursors = await this.#sink.cursors();
+      const reports: LocalStreamRecovery[] = [...streams.values()]
+        .sort((a, b) => a.device.localeCompare(b.device))
+        .map((stream) => {
+          const appliedThrough = finalCursors.get(stream.device) ?? START_CURSOR;
+          const base = {
+            device: stream.device,
+            inspectedThrough: stream.inspectedThrough,
+            heldEnd: stream.heldEnd,
+            appliedThrough,
+          };
+          if (stream.reason)
+            return { ...base, disposition: "unresolved_tail" as const, reason: stream.reason };
+          return {
+            ...base,
+            disposition: stream.suppressed
+              ? ("authenticated_suppressed" as const)
+              : stream.parked
+                ? ("authenticated_parked" as const)
+                : ("authenticated_accepted" as const),
+          };
+        });
+      const incomplete = reports.some((s) => s.disposition === "unresolved_tail");
+      const complete =
+        !incomplete && !this.#recoveryViewStale && !this.#rolledBack && !anchorMismatch;
+      this.#primed = complete;
+      await this.#saveEvidence();
+      if (complete) await this.#saveGate();
+      let parkedInSink: boolean | null = null;
+      if (this.#sink.needsUpgrade) {
+        try {
+          parkedInSink = await this.#sink.needsUpgrade();
+        } catch {
+          parkedInSink = null;
+        }
+      }
+      const unreadableFrame = reports.some((s) => s.reason === "frame-format");
+      return {
+        complete,
+        streams: reports,
+        needsUpgrade: pass.needsUpgrade || unreadableFrame ? true : parkedInSink,
+        requiresViewRebuild: this.#recoveryViewStale,
+        rolledBack: this.#rolledBack || anchorMismatch,
+      };
     });
   }
 
@@ -1037,7 +1379,10 @@ class OwnLogEngine implements SyncEngine {
       pass.applied += outcome.applied;
       pass.duplicates += outcome.duplicates;
       pass.parked += outcome.parked;
-      if (outcome.parked > 0) pass.needsUpgrade = true;
+      if (outcome.parked > 0) {
+        pass.needsUpgrade = true;
+        pass.parkedDevices.add(batch.device);
+      }
       for (const e of batch.events) pass.types.add(e.t);
       if (batch.own) continue;
       for (const e of batch.events) {

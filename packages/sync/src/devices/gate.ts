@@ -202,6 +202,15 @@ export class DeviceFrameGate implements FrameGate {
     return out;
   }
 
+  recoveryEvidenceDevices(): readonly DeviceId[] {
+    const devices = new Set<DeviceId>();
+    for (const record of this.#evidence) {
+      const pair = decodeEvidence(record);
+      if (pair?.every((head) => this.#genuine(head))) devices.add(pair[0].device);
+    }
+    return [...devices].sort();
+  }
+
   /**
    * Restores fork proofs from the evidence record (before the snapshot and the replay): each one
    * that decodes as two heads of one writer at one end with different chains is attested; its
@@ -248,9 +257,13 @@ export class DeviceFrameGate implements FrameGate {
     }
   }
 
-  importState(
-    state: string,
-  ): { readonly positions: ReadonlyMap<DeviceId, FrameHead>; restore(): void } | undefined {
+  importState(state: string):
+    | {
+        readonly positions: ReadonlyMap<DeviceId, FrameHead>;
+        readonly heldHeads?: readonly FrameHead[];
+        restore(): void;
+      }
+    | undefined {
     const devices = this.#devices;
     const snapshot = decodeGateState(
       state,
@@ -262,6 +275,7 @@ export class DeviceFrameGate implements FrameGate {
     if (!snapshot) return undefined;
     return {
       positions: new Map(snapshot.positions.map((h) => [h.device, h])),
+      heldHeads: snapshot.heads.map(({ head }) => head),
       restore: () => {
         this.heads.restore(snapshot.keys, snapshot.heads);
         this.ingest(snapshot.statements);

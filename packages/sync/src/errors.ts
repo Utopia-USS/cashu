@@ -4,6 +4,8 @@
 export type SyncErrorCode =
   /** The physical clock is behind the persisted HLC by more than the drift limit (events.md 3.3). */
   | "clock-behind"
+  /** A supplied folded high-water mark is too far ahead to merge before a local write. */
+  | "remote-far-future"
   /** The persisted clock is behind this device's own events in the log: restored backup or cloned disk. */
   | "rolled-back"
   /** An event handed to `write` does not have the wire shape the engine needs. */

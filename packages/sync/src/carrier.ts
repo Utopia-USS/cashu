@@ -98,6 +98,8 @@ export interface EventSink {
    * batch is the one a sequential apply would give. A throw means nothing was applied.
    */
   applyBatches(batches: readonly InboundBatch[]): Awaitable<readonly ApplyOutcome[]>;
+  /** Existing parked events behind a persisted cursor, when the sink can report them. */
+  needsUpgrade?(): Awaitable<boolean>;
   /** Drop the view, parked events and cursors (rebuild, events.md 7.9). */
   reset(): Awaitable<void>;
 }
@@ -222,9 +224,16 @@ export interface FrameGate {
    * (chains and signatures of the frames there) before it calls `restore`; it then replays only the
    * frames after them.
    */
-  importState?(
-    state: string,
-  ): { readonly positions: ReadonlyMap<DeviceId, FrameHead>; restore(): void } | undefined;
+  importState?(state: string):
+    | {
+        readonly positions: ReadonlyMap<DeviceId, FrameHead>;
+        /** Heads this device previously held locally, as recorded in its signed snapshot. */
+        readonly heldHeads?: readonly FrameHead[];
+        restore(): void;
+      }
+    | undefined;
+  /** Writers in authenticated fork evidence, for recovery reporting only. */
+  recoveryEvidenceDevices?(): readonly DeviceId[];
   /** Evidence (proven forks) found since the last call: the engine appends it to its record. */
   takeEvidence?(): readonly string[];
   /** The evidence record, restored after a start before the snapshot and any replay. */
@@ -310,6 +319,37 @@ export interface WriteResult {
   readonly last: Hlc;
 }
 
+export interface WriteOptions {
+  /** Folded view high-water mark to receive inside the engine's serialized write. */
+  readonly afterHlc?: Hlc;
+}
+
+export type LocalRecoveryDisposition =
+  | "authenticated_accepted"
+  | "authenticated_suppressed"
+  | "authenticated_parked"
+  | "unresolved_tail";
+
+export interface LocalStreamRecovery {
+  readonly device: DeviceId;
+  readonly inspectedThrough: SegmentCursor;
+  readonly heldEnd: SegmentCursor;
+  readonly appliedThrough: SegmentCursor;
+  /** Accepted means the sink cursor is sound, not that domain materialization changed the view. */
+  readonly disposition: LocalRecoveryDisposition;
+  /** Value-free reason for the first unresolved position. */
+  readonly reason?: string;
+}
+
+export interface LocalRecoveryResult {
+  readonly complete: boolean;
+  readonly streams: readonly LocalStreamRecovery[];
+  /** Null when an opaque sink cannot report previously parked events. */
+  readonly needsUpgrade: boolean | null;
+  readonly requiresViewRebuild: boolean;
+  readonly rolledBack: boolean;
+}
+
 export interface SyncResult {
   /** True when the pass rebuilt the view because data it held was no longer accepted (D8). */
   readonly rebuilt: boolean;
@@ -364,7 +404,9 @@ export interface SyncEngine {
   /** The lease transport report of the last `sync()` pass (`eventual` before the first one). */
   leaseTransport(): LeaseTransport;
   /** Stamp, append to the own segment as one atomic batch (frame or frame group), apply locally. */
-  write(events: readonly UnstampedEvent[]): Promise<WriteResult>;
+  write(events: readonly UnstampedEvent[], options?: WriteOptions): Promise<WriteResult>;
+  /** Audit and replay the held local log without network access or a destructive view reset. */
+  recoverLocal(): Promise<LocalRecoveryResult>;
   /** Push own bytes, pull and verify foreign frames, apply everything new. */
   sync(): Promise<SyncResult>;
   /** Reset the sink and replay the whole local log (schema change, app upgrade). */
