@@ -85,7 +85,9 @@ test("native budget tabs use the real generated demo vault, update categories an
     await cushion.getByRole("textbox", { name: "Cel", exact: true }).fill("777");
     // A real device setting push can arrive while the modal owns focus.
     await page.evaluate(() => {
-      const label = [...document.querySelectorAll("label")].find((node) => node.textContent?.includes("Ukryj kwoty"));
+      const label = [...document.querySelectorAll("label")].find((node) =>
+        node.textContent?.includes("Ukryj kwoty"),
+      );
       const toggle = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
       if (!toggle) throw new Error("privacy control absent");
       toggle.click();
