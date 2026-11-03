@@ -60,15 +60,17 @@ export interface StrategyPublicationDeps {
 }
 
 export class StrategyPublicationError extends Error {
+  readonly code:
+    | "unavailable"
+    | "base_changed"
+    | "winner_changed"
+    | "user_changed"
+    | "journal_invalid";
   constructor(
-    readonly code:
-      | "unavailable"
-      | "base_changed"
-      | "winner_changed"
-      | "user_changed"
-      | "journal_invalid",
+    code: "unavailable" | "base_changed" | "winner_changed" | "user_changed" | "journal_invalid",
   ) {
     super(code);
+    this.code = code;
     this.name = "StrategyPublicationError";
   }
 }

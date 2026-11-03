@@ -5,11 +5,10 @@ import { issueText, type StrategyLoadResult } from "@cashu/domain/investments/st
 import { isPyMap, PyDate, type PyPlain, pyStr, safeLoadYaml } from "@cashu/domain/pyYaml";
 
 export class StrategyProposalError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
+  readonly code: string;
+  constructor(code: string, message: string) {
     super(message);
+    this.code = code;
     this.name = "StrategyProposalError";
   }
 }
