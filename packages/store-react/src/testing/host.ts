@@ -64,14 +64,19 @@ export class TestHost {
       live.get(m.sid)?.();
       const query = this.#queries.get(m.query);
       if (query === undefined) {
-        post({ t: "error", sid: m.sid, error: { name: "UnknownQuery", message: m.query } });
+        post({
+          t: "error",
+          sid: m.sid,
+          generation: m.generation,
+          error: { name: "UnknownQuery", message: m.query },
+        });
         return;
       }
       let last: string | undefined;
       const fail = (error: unknown) => {
         last = undefined;
         report(error, `query ${query.id}`);
-        post({ t: "error", sid: m.sid, error: errorInfo(error) });
+        post({ t: "error", sid: m.sid, generation: m.generation, error: errorInfo(error) });
       };
       try {
         const stop = watchQuery(
@@ -90,7 +95,7 @@ export class TestHost {
               const text = JSON.stringify(encoded);
               if (text === last) return;
               last = text;
-              post({ t: "value", sid: m.sid, value: encoded });
+              post({ t: "value", sid: m.sid, generation: m.generation, value: encoded });
             },
             onError: fail,
           },

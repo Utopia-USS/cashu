@@ -57,6 +57,6 @@ it("seeds actual privacy before first work, drops private delivery on toggle and
   });
   receive({ t: "ready", protocol: STORE_PROTOCOL_VERSION, vaults: [vault] });
   expect(sent.filter((message) => message.t === "action")).toHaveLength(1);
-  expect(sent.at(-1)).toEqual({ t: "uiPolicy", generation: 1, privacy: true });
+  expect(sent.at(-1)).toEqual({ t: "uiPolicy", generation: 2, privacy: true });
   client.dispose();
 });

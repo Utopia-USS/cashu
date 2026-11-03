@@ -14,7 +14,9 @@ describe("desktop relay messages", () => {
         vaults: ["0".repeat(32)],
       }),
     ).toMatchObject({ t: "ready" });
-    expect(relayToClientSchema.parse({ t: "value", sid: 3, value: { a: 1 } })).toMatchObject({
+    expect(
+      relayToClientSchema.parse({ t: "value", sid: 3, generation: 0, value: { a: 1 } }),
+    ).toMatchObject({
       t: "value",
     });
   });

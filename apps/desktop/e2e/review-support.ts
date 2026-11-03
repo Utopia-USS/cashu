@@ -28,18 +28,21 @@ export async function readNativeReview(dataDir: string, vault: string) {
       connection.onFrame((frame) => {
         if (frame.t !== "store") return;
         const message = frame.m as StoreToClient;
-        if (message.t === "ready")
+        if (message.t === "ready") {
+          connection.send({ t: "store", m: { t: "uiPolicy", generation: 0, privacy: false } });
           connection.send({
             t: "store",
             m: {
               t: "sub",
               sid: 100,
+              generation: 0,
+              resume: false,
               target: { kind: "vault", vault },
               query: "investments.review.screen",
               args: { today: new Date().toISOString().slice(0, 10), lang: "pl", open: true },
             },
           });
-        else if (message.t === "value" && message.sid === 100) {
+        } else if (message.t === "value" && message.sid === 100) {
           const result = shape.safeParse(decodeValue(message.value));
           if (result.success) resolve(result.data);
           else reject(new Error("synthetic_review_projection_invalid"));

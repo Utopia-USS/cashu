@@ -91,6 +91,7 @@ export function createPortClient(
   let recoveredTimer: ReturnType<typeof setTimeout> | undefined;
   let privacy = options.uiPrivacy?.getSnapshot() ?? true;
   let policyGeneration = 0;
+  let client: QueryCache | null = null;
   const post = (message: StoreToHost) => {
     if (live) channel.post(message);
   };
@@ -100,11 +101,19 @@ export function createPortClient(
     if (current === privacy) return;
     privacy = current;
     policyGeneration += 1;
-    sendPolicy();
-    for (const { message } of subs.values()) post(message);
-    for (const resolve of actions.values())
-      resolve({ status: "outcome_unknown", reason: "interrupted" });
+    const existing = [...subs.entries()];
+    const interrupted = [...actions.values()];
     actions.clear();
+    for (const resolve of interrupted)
+      resolve({ status: "outcome_unknown", reason: "interrupted" });
+    sendPolicy();
+    client?.resetSnapshots();
+    for (const [sid, subscription] of existing) {
+      if (subs.get(sid) !== subscription) continue;
+      const message: Sub = { ...subscription.message, generation: policyGeneration, resume: true };
+      subs.set(sid, { sink: subscription.sink, message });
+      post(message);
+    }
   });
 
   const onLink = (state: LinkState) => {
@@ -119,10 +128,9 @@ export function createPortClient(
   };
 
   return new Promise((resolveClient) => {
-    let client: QueryCache | null = null;
-
     const onReady = (vaults: readonly string[]) => {
       live = true;
+      if (client !== null) policyGeneration += 1;
       sendPolicy();
       if (client === null) {
         connection.set("online");
@@ -156,7 +164,15 @@ export function createPortClient(
           },
           open(target, query, args, sink) {
             const sid = nextId++;
-            const message: Sub = { t: "sub", sid, target, query: query.id, args: toJson(args) };
+            const message: Sub = {
+              t: "sub",
+              sid,
+              generation: policyGeneration,
+              resume: false,
+              target,
+              query: query.id,
+              args: toJson(args),
+            };
             subs.set(sid, { sink, message });
             post(message);
             return () => {
@@ -190,7 +206,18 @@ export function createPortClient(
         return;
       }
       // A new session (the host came back, or a new host took over): it knows nothing of ours.
-      for (const { message } of subs.values()) post(message);
+      const existing = [...subs.entries()];
+      client.resetSnapshots();
+      for (const [sid, subscription] of existing) {
+        if (subs.get(sid) !== subscription) continue;
+        const message: Sub = {
+          ...subscription.message,
+          generation: policyGeneration,
+          resume: true,
+        };
+        subs.set(sid, { sink: subscription.sink, message });
+        post(message);
+      }
       for (const { message } of runs.values()) post(message);
       if (lost) {
         lost = false;
@@ -221,10 +248,12 @@ export function createPortClient(
           onReady(message.vaults);
           return;
         case "value":
-          subs.get(message.sid)?.sink.value(decodeValue(message.value));
+          if (message.generation === policyGeneration)
+            subs.get(message.sid)?.sink.value(decodeValue(message.value));
           return;
         case "error":
-          subs.get(message.sid)?.sink.error(new RemoteStoreError(message.error));
+          if (message.generation === policyGeneration)
+            subs.get(message.sid)?.sink.error(new RemoteStoreError(message.error));
           return;
         case "result": {
           const pending = runs.get(message.rid);

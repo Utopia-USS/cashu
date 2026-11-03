@@ -89,12 +89,18 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
   };
 
   const subscribe = (m: Extract<StoreToHost, { t: "sub" }>, prepared = false) => {
+    if (policy === null || m.generation !== policy.generation) return;
     live.get(m.sid)?.();
     live.delete(m.sid);
     if (!prepared) preparing.delete(m.sid);
     const query = queries.get(m.query);
     if (query === undefined) {
-      post({ t: "error", sid: m.sid, error: { name: "UnknownQuery", message: m.query } });
+      post({
+        t: "error",
+        sid: m.sid,
+        generation: m.generation,
+        error: { name: "UnknownQuery", message: m.query },
+      });
       return;
     }
     let privateRead = false;
@@ -105,22 +111,30 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
       post({
         t: "error",
         sid: m.sid,
+        generation: m.generation,
         error: { name: "UnknownTarget", message: "query target is unavailable" },
       });
       return;
     }
     if (privateRead && (policy === null || policy.privacy)) {
-      post({
-        t: "error",
-        sid: m.sid,
-        error: { name: "PrivacyRestricted", message: "private query is unavailable" },
-      });
+      if (!m.resume)
+        post({
+          t: "error",
+          sid: m.sid,
+          generation: m.generation,
+          error: { name: "PrivacyRestricted", message: "private query is unavailable" },
+        });
       return;
     }
-    const policyAtStart = policy?.generation;
+    const policyAtStart = m.generation;
     if (!prepared && options.prepareQuery && m.target.kind === "vault") {
       if (inFlight >= maxInFlight) {
-        post({ t: "error", sid: m.sid, error: { name: "Busy", message: "too many requests" } });
+        post({
+          t: "error",
+          sid: m.sid,
+          generation: m.generation,
+          error: { name: "Busy", message: "too many requests" },
+        });
         return;
       }
       const generation = {};
@@ -149,6 +163,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
             post({
               t: "error",
               sid: m.sid,
+              generation: m.generation,
               error: { name: "QueryPreparationFailed", message: "query preparation failed" },
             });
           },
@@ -163,7 +178,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
       if (policy?.generation !== policyAtStart) return;
       last = undefined;
       log.warn("store.query.failed", { query: query.id, error: errorName(error) });
-      post({ t: "error", sid: m.sid, error: errorInfo(error) });
+      post({ t: "error", sid: m.sid, generation: m.generation, error: errorInfo(error) });
     };
     try {
       const stop = watchQuery(sourceFor(m.target, query), query, m.args as QueryArgs, {
@@ -179,7 +194,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
           const text = JSON.stringify(encoded);
           if (text === last) return;
           last = text;
-          post({ t: "value", sid: m.sid, value: encoded });
+          post({ t: "value", sid: m.sid, generation: m.generation, value: encoded });
         },
         onError: fail,
       });

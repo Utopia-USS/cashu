@@ -1,13 +1,14 @@
-// The store channel, v2: the desktop renderer's store protocol (S53 `@cashu/store-react/protocol`
+// The store channel, v4: the desktop renderer's store protocol (S53 `@cashu/store-react/protocol`
 // v1) carried in `store` frames of a `ui` session. The message shapes are v1's, with two changes:
 // values are JSON (codec.ts) instead of structured clones, and `run` carries an idempotency `key`
 // (a ULID the client mints once per command). The host stores `key -> result` in the vault DB in the
 // same transaction as the command's events; a client that lost the reply (host crash, dropped socket)
-// sends the same `run` again and gets the stored result instead of a second application.
+// sends the same `run` again and gets the stored result instead of a second application. Query
+// replies carry the UI policy generation so a privacy transition cannot deliver a queued old value.
 import { z } from "zod";
 
 /** Bumped on any incompatible change of the store channel; both ends refuse another version. */
-export const STORE_PROTOCOL_VERSION = 3;
+export const STORE_PROTOCOL_VERSION = 4;
 
 const json = z.json();
 const vault = z.string().regex(/^[0-9a-f]{32}$/);
@@ -32,7 +33,15 @@ export type ErrorInfo = z.infer<typeof errorInfoSchema>;
 
 export const storeToHostSchema = z.discriminatedUnion("t", [
   z.object({ t: z.literal("uiPolicy"), generation: id, privacy: z.boolean() }),
-  z.object({ t: z.literal("sub"), sid: id, target: targetSchema, query: name, args: json }),
+  z.object({
+    t: z.literal("sub"),
+    sid: id,
+    generation: id,
+    resume: z.boolean(),
+    target: targetSchema,
+    query: name,
+    args: json,
+  }),
   z.object({ t: z.literal("unsub"), sid: id }),
   z.object({
     t: z.literal("run"),
@@ -58,8 +67,8 @@ export const storeToClientSchema = z.discriminatedUnion("t", [
     protocol: z.literal(STORE_PROTOCOL_VERSION),
     vaults: z.array(vault),
   }),
-  z.object({ t: z.literal("value"), sid: id, value: json }),
-  z.object({ t: z.literal("error"), sid: id, error: errorInfoSchema }),
+  z.object({ t: z.literal("value"), sid: id, generation: id, value: json }),
+  z.object({ t: z.literal("error"), sid: id, generation: id, error: errorInfoSchema }),
   z.object({
     t: z.literal("result"),
     rid: id,

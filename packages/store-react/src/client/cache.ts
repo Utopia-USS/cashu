@@ -48,7 +48,7 @@ function settledThenable(): Thenable {
 
 class Entry<R> implements QueryEntry<R> {
   #state: SnapshotState<R> = { status: "pending" };
-  #ready: Thenable;
+  #ready!: Thenable;
   #settle: { resolve(): void; reject(error: unknown): void } | null = null;
   #close: (() => void) | null = null;
   #refs = 0;
@@ -62,6 +62,10 @@ class Entry<R> implements QueryEntry<R> {
     private readonly query: Query<QueryArgs, R>,
     private readonly args: QueryArgs,
   ) {
+    this.#makePending();
+  }
+
+  #makePending(): void {
     let settle: { resolve(): void; reject(error: unknown): void } | null = null;
     const ready: Thenable = new Promise<void>((resolve, reject) => {
       settle = { resolve, reject };
@@ -82,6 +86,17 @@ class Entry<R> implements QueryEntry<R> {
         settle?.reject(error);
       },
     };
+  }
+
+  /** Discard a snapshot from the old UI policy before a new subscription can deliver. */
+  reset(): void {
+    this.#settle?.resolve();
+    this.#state = { status: "pending" };
+    this.#makePending();
+  }
+
+  notify(): void {
+    this.#notify();
   }
 
   get ready(): PromiseLike<void> {
@@ -232,6 +247,13 @@ export class QueryCache implements StoreClient {
 
   forget(entry: Entry<unknown>): void {
     if (this.#entries.get(entry.key) === entry) this.#entries.delete(entry.key);
+  }
+
+  /** A privacy policy change invalidates every snapshot, including errors and private values. */
+  resetSnapshots(): void {
+    const entries = [...this.#entries.values()];
+    for (const entry of entries) entry.reset();
+    for (const entry of entries) entry.notify();
   }
 
   /** Release every live query (the app or test is shutting down). */

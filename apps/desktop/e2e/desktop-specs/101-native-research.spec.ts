@@ -30,11 +30,14 @@ async function readNativeResearchTopics(dataDir: string, vault: string) {
         const message = frame.m as StoreToClient;
         if (message.t === "ready") {
           if (!message.vaults.includes(vault)) reject(new Error("synthetic_research_vault_absent"));
+          connection.send({ t: "store", m: { t: "uiPolicy", generation: 0, privacy: false } });
           connection.send({
             t: "store",
             m: {
               t: "sub",
               sid: 101,
+              generation: 0,
+              resume: false,
               target: { kind: "vault", vault },
               query: "investments.research.screen",
               args: { today: new Date().toISOString().slice(0, 10), lang: "pl" },

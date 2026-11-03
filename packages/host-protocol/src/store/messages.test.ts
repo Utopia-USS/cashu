@@ -9,7 +9,7 @@ import {
 const VAULT = "0123456789abcdef0123456789abcdef";
 const KEY = "01JBQX8Z5W3N4R6T7V8Y9A0BCD";
 
-describe("store channel v2 messages", () => {
+describe("store channel v4 messages", () => {
   it("requires an idempotency key on every run", () => {
     const run = {
       t: "run",
@@ -29,17 +29,39 @@ describe("store channel v2 messages", () => {
     }
   });
 
-  it("keeps v1's shapes for subscriptions and replies, with protocol 2 and JSON values", () => {
+  it("requires a policy generation and resume bit on subscriptions and replies", () => {
+    const sub = {
+      t: "sub",
+      sid: 2,
+      target: { kind: "device" },
+      query: "q",
+      args: null,
+    };
+    expect(storeToHostSchema.safeParse(sub).success).toBe(false);
+    expect(storeToHostSchema.safeParse({ ...sub, generation: 0 }).success).toBe(false);
+    expect(storeToHostSchema.safeParse({ ...sub, generation: 0, resume: false }).success).toBe(
+      true,
+    );
+    expect(storeToHostSchema.safeParse({ ...sub, generation: -1, resume: true }).success).toBe(
+      false,
+    );
+    expect(storeToClientSchema.safeParse({ t: "value", sid: 1, value: null }).success).toBe(false);
     expect(
-      storeToHostSchema.safeParse({
-        t: "sub",
-        sid: 2,
-        target: { kind: "device" },
-        query: "q",
-        args: null,
+      storeToClientSchema.safeParse({ t: "error", sid: 1, error: { name: "Error", message: "x" } })
+        .success,
+    ).toBe(false);
+    expect(
+      storeToClientSchema.safeParse({ t: "value", sid: 1, generation: 0, value: null }).success,
+    ).toBe(true);
+    expect(
+      storeToClientSchema.safeParse({
+        t: "error",
+        sid: 1,
+        generation: 0,
+        error: { name: "Error", message: "x" },
       }).success,
     ).toBe(true);
-    expect(storeToClientSchema.safeParse({ t: "ready", protocol: 1, vaults: [] }).success).toBe(
+    expect(storeToClientSchema.safeParse({ t: "ready", protocol: 3, vaults: [] }).success).toBe(
       false,
     );
     expect(
@@ -56,7 +78,9 @@ describe("store channel v2 messages", () => {
         result: { ok: true, value: { "~cashu": "undefined" } },
       }).success,
     ).toBe(true);
-    expect(storeToClientSchema.safeParse({ t: "value", sid: 1, value: 1n }).success).toBe(false);
+    expect(
+      storeToClientSchema.safeParse({ t: "value", sid: 1, generation: 0, value: 1n }).success,
+    ).toBe(false);
   });
 
   it("carries an error's name and message only", () => {

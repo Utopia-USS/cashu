@@ -33,7 +33,7 @@ export function testHostOptions(dataDir: string) {
 
 type RunResult = Extract<StoreToClient, { t: "result" }>["result"];
 
-/** A `ui` session speaking the store channel v2. */
+/** A `ui` session speaking the store channel v4. */
 export interface StoreClient {
   readonly conn: HostConnection;
   /** The vaults the host announced at `ready`. */
@@ -76,6 +76,7 @@ export async function storeClient(dataDir: string): Promise<StoreClient> {
     for (const settle of results.values()) settle(new Error("closed"));
   });
   const vaults = await announced;
+  conn.send({ t: "store", m: { t: "uiPolicy", generation: 0, privacy: false } });
   let next = 1;
   const send = (command: string, input: unknown, key: string, vault?: string) => {
     const rid = next++;
@@ -109,7 +110,10 @@ export async function storeClient(dataDir: string): Promise<StoreClient> {
           if (values.length === 1) resolve({ first: v, values });
         });
         const t = target === "device" ? { kind: "device" } : { kind: "vault", vault: target };
-        conn.send({ t: "store", m: { t: "sub", sid, target: t, query, args } as never });
+        conn.send({
+          t: "store",
+          m: { t: "sub", sid, generation: 0, resume: false, target: t, query, args } as never,
+        });
       });
     },
     close: () => conn.close(),
