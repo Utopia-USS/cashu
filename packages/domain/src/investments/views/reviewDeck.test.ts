@@ -48,7 +48,7 @@ describe("source Review deck selection", () => {
   });
   it("retains top six sectors plus material FX, event score cap and candidate expiry", () => {
     expect(
-      reviewSectorRows(
+      reviewSectorRows<{ weight: number | null; contribution: number }>(
         Array.from({ length: 8 }, (_, i) => ({ weight: 0.1, contribution: i / 100 })),
         null,
         { weight: null, contribution: 0.001 },
