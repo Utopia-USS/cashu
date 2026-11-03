@@ -79,3 +79,16 @@ export function proposalExecution(read: Read, gid: string): ExecutionSnapshot | 
     approvalEid: row.approval_eid,
   };
 }
+
+/** Whether this exact approval eid still wins and has not been revoked by applyFailed. */
+export function isEffectiveProposalApproval(read: Read, approvalEid: string): boolean {
+  return (
+    read<{ present: number }>(
+      `SELECT 1 AS present
+         FROM fold_proposal_approval a JOIN proposals p ON p.gid = a.gid
+        WHERE a.eid = ? AND p.status = 'approved'
+        LIMIT 1`,
+      approvalEid,
+    ).length !== 0
+  );
+}

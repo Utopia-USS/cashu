@@ -54,9 +54,9 @@ export async function prepareStrategyApproval(deps: PrepareStrategyApprovalDeps)
     throw new StrategyProposalError("proposal_changed", "the proposal is not current");
   if (proposal.kind !== "strategy" && proposal.kind !== "custom_rule")
     throw new StrategyProposalError("invalid", "not a strategy proposal");
-  let base: StrategyFileImage;
+  let rawBase: StrategyFileImage;
   try {
-    base = await deps.files.read();
+    rawBase = await deps.files.read();
   } catch {
     throw new StrategyProposalError(
       proposal.kind === "strategy" ? "strategy_unreadable" : "strategy_missing",
@@ -65,6 +65,10 @@ export async function prepareStrategyApproval(deps: PrepareStrategyApprovalDeps)
   }
   if (!authority())
     throw new StrategyProposalError("unavailable", "strategy file authority unavailable");
+  // Python Path.read_text normalizes universal newlines before digest/merge/version recording.
+  // Keep the raw image separately so publication recovery never loses the owner's original bytes.
+  const normalize = (text: string | null) => text?.replace(/\r\n?/gu, "\n") ?? null;
+  const base: StrategyFileImage = { yaml: normalize(rawBase.yaml), md: normalize(rawBase.md) };
   const before = base.yaml === null ? null : loadStrategy(base.yaml, base.md);
   const payload = proposal.payload;
   let yamlText: string;
@@ -104,8 +108,8 @@ export async function prepareStrategyApproval(deps: PrepareStrategyApprovalDeps)
       journal: deps.journal,
       isVaultCurrent: () => deps.isVaultCurrent(),
     },
-    base,
-    { yaml: yamlText, md: finalMdText },
+    rawBase,
+    { yaml: yamlText, md: mdText === null ? rawBase.md : mdText },
   );
   if (!authority())
     throw new StrategyProposalError("unavailable", "strategy file authority unavailable");

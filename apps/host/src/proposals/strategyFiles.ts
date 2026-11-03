@@ -31,7 +31,8 @@ const JOURNAL_LIMIT = 20 * 1024 * 1024;
 const JOURNAL_NAME = ".proposal-publication.json";
 const nofollow = constants.O_NOFOLLOW ?? 0;
 const nonblock = constants.O_NONBLOCK ?? 0;
-const decoder = new TextDecoder("utf-8", { fatal: true });
+// Python read_text(encoding="utf-8") keeps an initial U+FEFF in digest and rollback source text.
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 export interface StrategyDirectoryAuthority {
   readonly vault: string;
@@ -122,6 +123,7 @@ function readBounded(path: string, limit: number): string | null {
     }
     const now = lstatSync(path);
     if (!now.isFile() || now.dev !== info.dev || now.ino !== info.ino) unavailable();
+    // Private recovery keeps exact bytes; the planner separately computes Python's semantic read.
     return decoder.decode(Buffer.concat(chunks, total));
   } catch {
     return unavailable();
@@ -180,6 +182,8 @@ const journalSchema = z.strictObject({
   baselineVersion: z.string().nullable(),
   managed,
   pending: z.strictObject({ before: managed, after: managed }).nullable(),
+  // Older private journals omit receipts. The existing byte cap bounds the complete history.
+  receipts: z.array(managed).optional(),
 });
 
 /** Returns two ports over the same pinned profile directory; call only with a real injected authority. */

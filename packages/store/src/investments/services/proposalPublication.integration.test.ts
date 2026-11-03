@@ -63,7 +63,7 @@ class MemoryFiles implements StrategyPublicationFiles {
   }
   async read(): Promise<StrategyFileImage> {
     this.readCalls += 1;
-    return { ...this.image };
+    return this.readSync();
   }
   readSync(): StrategyFileImage {
     return { ...this.image };
@@ -215,6 +215,43 @@ describe("strategy proposal file publication and folded lifecycle", () => {
     expect(latestStrategyVersion(f.store.read.bind(f.store))?.mdText).toBe(base.md);
   });
 
+  it("uses Python-normalized base digest while publishing and reconciling raw CRLF text", async () => {
+    const rawMd = "Synthetic\r\nnote\r";
+    const semanticMd = "Synthetic\nnote\n";
+    const base = { yaml: VALID_YAML_A.replace(/\n/gu, "\r\n"), md: rawMd };
+    const f = fixture(base);
+    const proposed = VALID_YAML_B.replace(/\n/gu, "\r\n");
+    const created = f.create(
+      base,
+      { yaml: proposed, md: rawMd },
+      {
+        base_sha256: strategyDigest(VALID_YAML_A, semanticMd),
+        yaml: proposed,
+        md: null,
+      },
+    );
+    const proposal = proposalExecution(f.store.read.bind(f.store), created.proposalGid);
+    if (proposal === undefined) throw new Error("synthetic proposal missing");
+    const planned = await prepareStrategyApproval({
+      store: f.store,
+      proposal,
+      files: f.files,
+      journal: f.journal,
+      isVaultCurrent: () => f.files.current,
+    });
+    const result = await executePreparedApproval(f.deps, planned.effect, planned.publication);
+    expect(result.status).toBe("approved");
+    expect(f.files.image.yaml).toBe(proposed);
+    expect(f.files.image.md).toBe(rawMd);
+    expect(f.files.readSync().yaml).toBe(proposed);
+    expect(f.journal.saved?.managed.image.yaml).toBe(proposed);
+    expect(f.journal.saved?.managed.image.md).toBe(rawMd);
+    expect(latestStrategyVersion(f.store.read.bind(f.store))?.yamlText).toBe(proposed);
+    expect(latestStrategyVersion(f.store.read.bind(f.store))?.mdText).toBe(semanticMd);
+    await planned.publication.reconcile?.();
+    expect(f.files.image.yaml).toBe(proposed);
+  });
+
   it("uses the stored proposal when a retained display payload changes during preparation", async () => {
     const base = { yaml: VALID_YAML_A, md: null };
     const f = fixture(base);
@@ -362,6 +399,213 @@ describe("strategy proposal file publication and folded lifecycle", () => {
     expect(f.files.image).toEqual(base);
     expect(latestStrategyVersion(f.store.read.bind(f.store))?.yamlText).toBe(YAML_A);
     expect(f.journal.saved?.baseline).toEqual(base);
+  });
+
+  it("keeps a no-op stored-version approval until its exact receipt is revoked", async () => {
+    const liveBase = { yaml: VALID_YAML_B, md: null };
+    const f = fixture(liveBase);
+    const stored = runCommand(
+      f.store,
+      f.writer,
+      saveStrategyVersion,
+      { yamlText: VALID_YAML_A, mdText: null },
+      f.env,
+    );
+    expect(stored.ok).toBe(true);
+    const created = f.create(
+      liveBase,
+      { yaml: VALID_YAML_A, md: null },
+      {
+        base_sha256: strategyDigest(liveBase.yaml, liveBase.md),
+        yaml: VALID_YAML_A,
+        md: null,
+      },
+    );
+    const proposal = proposalExecution(f.store.read.bind(f.store), created.proposalGid);
+    if (proposal === undefined) throw new Error("synthetic proposal missing");
+    const planned = await prepareStrategyApproval({
+      store: f.store,
+      proposal,
+      files: f.files,
+      journal: f.journal,
+      isVaultCurrent: () => f.files.current,
+    });
+    const result = await executePreparedApproval(f.deps, planned.effect, planned.publication);
+    expect(result.status).toBe("approved");
+    if (result.status !== "approved") return;
+    expect(result.effect.recorded).toBe(false);
+    expect(f.files.image.yaml).toBe(VALID_YAML_A);
+    await planned.publication.reconcile?.();
+    expect(f.files.image.yaml).toBe(VALID_YAML_A);
+    const failed = runCommand(
+      f.store,
+      f.writer,
+      failApprovedProposal,
+      {
+        proposalGid: created.proposalGid,
+        approvalEid: result.approvalEid,
+        result: { error_code: "synthetic_late_failure" },
+      },
+      f.env,
+    );
+    expect(failed.ok).toBe(true);
+    await planned.publication.reconcile?.();
+    expect(f.files.image).toEqual(liveBase);
+    expect(latestStrategyVersion(f.store.read.bind(f.store))?.yamlText).toBe(VALID_YAML_A);
+  });
+
+  it("restores an earlier effective version without changing its kept raw MD line endings", async () => {
+    const rawMd = "Synthetic\r\nnote\r";
+    const semanticMd = "Synthetic\nnote\n";
+    const f = fixture({ yaml: VALID_YAML_A, md: rawMd });
+    let last: {
+      gid: string;
+      eid: string;
+      reconcile: () => Promise<void>;
+    } | null = null;
+    for (const yaml of [VALID_YAML_B, VALID_YAML_A]) {
+      const base = { ...f.files.image };
+      const created = f.create(
+        base,
+        { yaml, md: rawMd },
+        {
+          base_sha256: strategyDigest(base.yaml ?? "", semanticMd),
+          yaml,
+          md: null,
+        },
+      );
+      const proposal = proposalExecution(f.store.read.bind(f.store), created.proposalGid);
+      if (proposal === undefined) throw new Error("synthetic proposal missing");
+      const planned = await prepareStrategyApproval({
+        store: f.store,
+        proposal,
+        files: f.files,
+        journal: f.journal,
+        isVaultCurrent: () => f.files.current,
+      });
+      const result = await executePreparedApproval(f.deps, planned.effect, planned.publication);
+      expect(result.status).toBe("approved");
+      if (result.status === "approved")
+        last = {
+          gid: created.proposalGid,
+          eid: result.approvalEid,
+          reconcile: async () => {
+            await planned.publication.reconcile?.();
+          },
+        };
+    }
+    if (last === null) throw new Error("synthetic approvals missing");
+    expect(
+      runCommand(
+        f.store,
+        f.writer,
+        failApprovedProposal,
+        {
+          proposalGid: last.gid,
+          approvalEid: last.eid,
+          result: { error_code: "synthetic_late_failure" },
+        },
+        f.env,
+      ).ok,
+    ).toBe(true);
+    await last.reconcile();
+    expect(f.files.image).toEqual({ yaml: VALID_YAML_B, md: rawMd });
+    expect(latestStrategyVersion(f.store.read.bind(f.store))?.mdText).toBe(semanticMd);
+  });
+
+  it("keeps an earlier no-op receipt after a later version loses, then restores the unmanaged base", async () => {
+    const unmanaged = { yaml: VALID_YAML_B, md: "Invented retained note" };
+    const f = fixture(unmanaged);
+    const stored = runCommand(
+      f.store,
+      f.writer,
+      saveStrategyVersion,
+      { yamlText: VALID_YAML_A, mdText: unmanaged.md },
+      f.env,
+    );
+    expect(stored.ok).toBe(true);
+    const first = f.create(
+      unmanaged,
+      { yaml: VALID_YAML_A, md: unmanaged.md },
+      {
+        base_sha256: strategyDigest(unmanaged.yaml, unmanaged.md),
+        yaml: VALID_YAML_A,
+        md: null,
+      },
+    );
+    const firstSnapshot = proposalExecution(f.store.read.bind(f.store), first.proposalGid);
+    if (firstSnapshot === undefined) throw new Error("synthetic first proposal missing");
+    const firstPlan = await prepareStrategyApproval({
+      store: f.store,
+      proposal: firstSnapshot,
+      files: f.files,
+      journal: f.journal,
+      isVaultCurrent: () => f.files.current,
+    });
+    const firstResult = await executePreparedApproval(
+      f.deps,
+      firstPlan.effect,
+      firstPlan.publication,
+    );
+    expect(firstResult.status).toBe("approved");
+    if (firstResult.status !== "approved") return;
+    expect(firstResult.effect.recorded).toBe(false);
+
+    const second = f.create(
+      { ...f.files.image },
+      { yaml: VALID_YAML_B, md: unmanaged.md },
+      {
+        base_sha256: strategyDigest(VALID_YAML_A, unmanaged.md),
+        yaml: VALID_YAML_B,
+        md: null,
+      },
+    );
+    const secondSnapshot = proposalExecution(f.store.read.bind(f.store), second.proposalGid);
+    if (secondSnapshot === undefined) throw new Error("synthetic second proposal missing");
+    const secondPlan = await prepareStrategyApproval({
+      store: f.store,
+      proposal: secondSnapshot,
+      files: f.files,
+      journal: f.journal,
+      isVaultCurrent: () => f.files.current,
+    });
+    const secondResult = await executePreparedApproval(
+      f.deps,
+      secondPlan.effect,
+      secondPlan.publication,
+    );
+    expect(secondResult.status).toBe("approved");
+    if (secondResult.status !== "approved") return;
+    expect(
+      runCommand(
+        f.store,
+        f.writer,
+        failApprovedProposal,
+        {
+          proposalGid: second.proposalGid,
+          approvalEid: secondResult.approvalEid,
+          result: { error_code: "synthetic_late_failure" },
+        },
+        f.env,
+      ).ok,
+    ).toBe(true);
+    await secondPlan.publication.reconcile?.();
+    expect(f.files.image).toEqual({ yaml: VALID_YAML_A, md: unmanaged.md });
+    expect(
+      runCommand(
+        f.store,
+        f.writer,
+        failApprovedProposal,
+        {
+          proposalGid: first.proposalGid,
+          approvalEid: firstResult.approvalEid,
+          result: { error_code: "synthetic_late_failure" },
+        },
+        f.env,
+      ).ok,
+    ).toBe(true);
+    await secondPlan.publication.reconcile?.();
+    expect(f.files.image).toEqual(unmanaged);
   });
 
   it("refuses to overwrite an unknown user edit while reconciling", async () => {

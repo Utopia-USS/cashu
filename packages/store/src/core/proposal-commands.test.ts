@@ -11,6 +11,7 @@ import {
 } from "./proposal-commands.js";
 import {
   type ExecutionSnapshot,
+  isEffectiveProposalApproval,
   type PreparedEffect,
   proposalExecution,
 } from "./proposal-execution.js";
@@ -101,6 +102,7 @@ describe("proposal approval commands", () => {
     expect(out.events[1]?.cause).toBe(out.value.approvalEid);
     expect(out.events[0]?.data).toEqual({ result: { child: out.value.effect.childGid } });
     expect(proposalExecution(read(store), gid)?.approvalEid).toBe(out.value.approvalEid);
+    expect(isEffectiveProposalApproval(read(store), out.value.approvalEid)).toBe(true);
     expect(proposalExecution(read(store), out.value.effect.childGid)?.status).toBe("pending");
     expect(
       run(store, env, failApprovedProposal, {
@@ -116,6 +118,7 @@ describe("proposal approval commands", () => {
     });
     expect(failed.ok).toBe(true);
     expect(proposalExecution(read(store), gid)?.status).toBe("failed");
+    expect(isEffectiveProposalApproval(read(store), out.value.approvalEid)).toBe(false);
     expect(proposalExecution(read(store), out.value.effect.childGid)).toBeUndefined();
   });
 

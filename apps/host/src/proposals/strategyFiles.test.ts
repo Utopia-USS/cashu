@@ -104,6 +104,12 @@ describe("injected private strategy publication files", () => {
       isCurrent: () => true,
     });
     expect(await restarted.journal.read()).toEqual(value);
+    const withReceipts: StrategyPublicationJournal = {
+      ...value,
+      receipts: [{ ...value.managed, approvalEid: "synthetic-approval" }],
+    };
+    await f.journal.write(withReceipts);
+    expect(await restarted.journal.read()).toEqual(withReceipts);
     expect(existsSync(join(f.directory, ".proposal-publication.json.approving"))).toBe(false);
   });
 
@@ -178,5 +184,29 @@ describe("injected private strategy publication files", () => {
     authority.isCurrent = () => false;
     await ports.journal.write(journal(f.files.vault));
     expect((await ports.journal.read())?.vault).toBe(f.files.vault);
+  });
+
+  it("preserves UTF-8 BOM and original line endings through the private journal and restore", async () => {
+    const f = fixture();
+    const base = { yaml: "\uFEFFsynthetic\r\nyaml\r", md: "\uFEFFsynthetic\rnote\r\n" };
+    privateFile(join(f.directory, STRATEGY_YAML), base.yaml);
+    privateFile(join(f.directory, STRATEGY_MD), base.md);
+    expect(await f.files.read()).toEqual(base);
+    const initial = journal(f.files.vault);
+    await f.journal.write({
+      ...initial,
+      baseline: base,
+      baselineDigests: strategyFileDigests(base),
+      managed: { ...initial.managed, image: base, digests: strategyFileDigests(base) },
+    });
+    expect((await f.journal.read())?.baseline).toEqual(base);
+    const changed = await f.files.stage(STRATEGY_YAML, "changed");
+    await f.files.install(STRATEGY_YAML, changed);
+    const restored = await f.files.stage(STRATEGY_YAML, base.yaml);
+    await f.files.install(STRATEGY_YAML, restored);
+    expect(f.files.readSync()).toEqual(base);
+    expect(readFileSync(join(f.directory, STRATEGY_YAML)).subarray(0, 3)).toEqual(
+      Buffer.from([0xef, 0xbb, 0xbf]),
+    );
   });
 });

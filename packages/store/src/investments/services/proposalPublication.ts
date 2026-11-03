@@ -1,6 +1,6 @@
 // Device-local compensating publication. These private images never enter events or diagnostics.
 import { sha256Hex } from "@cashu/domain";
-import { proposalExecution } from "../../core/proposal-execution.js";
+import { isEffectiveProposalApproval, proposalExecution } from "../../core/proposal-execution.js";
 import type { ApprovalPublication } from "../../core/proposal-service.js";
 import type { Store } from "../../materialize.js";
 import type { SavedStrategyVersion } from "../commands/strategy.js";
@@ -16,7 +16,7 @@ export interface StrategyFileDigests {
   readonly md: string | null;
 }
 
-/** Real authority supplies bounded private reads, including a synchronous guarded-record recheck. */
+/** Bounded raw UTF-8 reads preserve exact private recovery images, including line endings. */
 export interface StrategyPublicationFiles {
   readonly vault: string;
   isCurrent(): boolean;
@@ -43,6 +43,8 @@ export interface StrategyPublicationJournal {
   readonly baselineVersion: string | null;
   readonly managed: ManagedImage;
   readonly pending: { readonly before: ManagedImage; readonly after: ManagedImage } | null;
+  /** Private raw targets remain recoverable when a later version/approval loses. Never evict. */
+  readonly receipts?: readonly ManagedImage[];
 }
 export interface PrivateStrategyJournal {
   readonly vault: string;
@@ -135,6 +137,7 @@ export async function prepareStrategyPublication(
     (saved.vault !== deps.store.vault ||
       !validImage(saved.baseline, saved.baselineDigests) ||
       !validImage(saved.managed.image, saved.managed.digests) ||
+      saved.receipts?.some((receipt) => !validImage(receipt.image, receipt.digests)) ||
       (saved.pending !== null &&
         (!validImage(saved.pending.before.image, saved.pending.before.digests) ||
           !validImage(saved.pending.after.image, saved.pending.after.digests))))
@@ -181,7 +184,24 @@ export async function prepareStrategyPublication(
     if (!known(before)) throw new StrategyPublicationError("user_changed");
     // Preserve an existing mixed-rename intent before recovery; all its known states remain safe.
     const prior = managed(before, journal.managed.approvalEid, journal.managed.version);
-    await writeJournal({ ...journal, pending: { before: prior, after } });
+    const receipts = new Map<string, ManagedImage>();
+    for (const receipt of [
+      ...(journal.receipts ?? []),
+      journal.managed,
+      journal.pending?.after,
+      after,
+    ]) {
+      if (receipt === undefined || receipt.approvalEid === null) continue;
+      const key = JSON.stringify([receipt.approvalEid, receipt.version]);
+      receipts.delete(key);
+      receipts.set(key, receipt);
+    }
+    // The adapter's private size bound refuses rather than discarding historical recovery data.
+    await writeJournal({
+      ...journal,
+      receipts: [...receipts.values()],
+      pending: { before: prior, after },
+    });
     guard();
     const temps = new Map<StrategyFileName, object>();
     let failure: unknown;
@@ -261,23 +281,43 @@ export async function prepareStrategyPublication(
     reconcile: async () => {
       check();
       const version = latestStrategyVersion(deps.store.read.bind(deps.store));
-      const image =
-        version === undefined || version.gid === journal.baselineVersion
-          ? journal.baseline
-          : { yaml: version.yamlText, md: version.mdText };
       const expectedVersion = version?.gid ?? null;
+      const receipts = [
+        journal.pending?.after,
+        journal.managed,
+        ...(journal.receipts ?? []).toReversed(),
+      ].filter(
+        (image): image is ManagedImage => image !== undefined && image.version === expectedVersion,
+      );
+      const effective = (image: ManagedImage) =>
+        image.approvalEid !== null &&
+        isEffectiveProposalApproval(deps.store.read.bind(deps.store), image.approvalEid);
+      const effectiveReceipts = receipts.map(effective);
+      // A no-op save may publish stored S0 over unmanaged S0' without creating a new version.
+      // Its still-effective receipt must win over the captured S0' baseline until rejected.
+      const receipt = receipts.find(
+        (image, index) => image.version === expectedVersion && effectiveReceipts[index],
+      );
+      const image =
+        receipt !== undefined
+          ? receipt.image
+          : version === undefined || version.gid === journal.baselineVersion
+            ? journal.baseline
+            : { yaml: version.yamlText, md: version.mdText };
       const guard = () => {
         check();
         if (
           (latestStrategyVersion(deps.store.read.bind(deps.store))?.gid ?? null) !== expectedVersion
         )
           throw new StrategyPublicationError("winner_changed");
+        if (receipts.some((image, index) => effective(image) !== effectiveReceipts[index]))
+          throw new StrategyPublicationError("winner_changed");
       };
       const current = await read();
       guard();
       if (!known(current)) throw new StrategyPublicationError("user_changed");
       if (same(current, image) && journal.pending === null) return;
-      await transition(managed(image, null, expectedVersion), guard);
+      await transition(receipt ?? managed(image, null, expectedVersion), guard);
     },
   };
 }
