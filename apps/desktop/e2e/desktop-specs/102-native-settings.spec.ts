@@ -111,6 +111,12 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
         location.assign(next.href);
       });
     await openSettings();
+    const settingsNav = page.getByRole("navigation", { name: "Moduły" }).getByRole("button", {
+      name: "Ustawienia",
+      exact: true,
+    });
+    await expect(settingsNav).toBeEnabled();
+    await expect(settingsNav).toHaveAttribute("aria-current", "page");
     const profile = page.getByRole("region", { name: "Profil", exact: true });
     await expect(profile).toBeVisible();
     const original = await readStore<Profile>(dataDir, anna, "core.profile");

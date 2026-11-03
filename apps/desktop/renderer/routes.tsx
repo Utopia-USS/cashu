@@ -12,7 +12,15 @@ import {
   useParams,
   useSearch,
 } from "@tanstack/react-router";
-import { createContext, startTransition, use, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  startTransition,
+  use,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { z } from "zod";
 import { S } from "./Desktop.strings.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
@@ -72,29 +80,53 @@ function openLegacy(slug: string, tab: string) {
   location.assign(url.href);
 }
 
-function ShellRoute() {
-  const updateNotice = useUpdateNotice();
-  const [proposal, setProposal] = useState<{
-    gid: string;
-    vault: string;
-    privacy: boolean;
-    onResumed?: () => void;
-  } | null>(null);
-  const state = useShellScreen({
-    onProfileOpened: ({ slug, vault }) => {
-      setProposal(null);
-      void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
-    },
-  });
-  const openProposal = (gid: string, onResumed?: () => void) => {
-    if (state.privacy) return false;
-    setProposal({ gid, vault: state.vault, privacy: state.privacy, onResumed });
-    return true;
-  };
-  const closeProposal = () => {
+/** Route-owned proposal selection resets when the vault or owner policy scope changes. */
+function ProposalScope({
+  vault,
+  privacy,
+  children,
+}: {
+  vault: string;
+  privacy: boolean;
+  children: ReactNode;
+}) {
+  const [proposal, setProposal] = useState<{ gid: string; onResumed?: () => void } | null>(null);
+  const close = () => {
     proposal?.onResumed?.();
     setProposal(null);
   };
+  return (
+    <ProposalNavigation
+      value={{
+        open: (gid, onResumed) => {
+          if (privacy) return false;
+          setProposal({ gid, onResumed });
+          return true;
+        },
+      }}
+    >
+      {children}
+      {proposal && (
+        <ProposalDrawerScreen
+          key={`${vault}:${privacy}:${proposal.gid}`}
+          gid={proposal.gid}
+          onClose={close}
+          onOutcome={(outcome) => {
+            if (outcome.status === "approved" || outcome.status === "rejected") close();
+          }}
+        />
+      )}
+    </ProposalNavigation>
+  );
+}
+
+function ShellRoute() {
+  const updateNotice = useUpdateNotice();
+  const state = useShellScreen({
+    onProfileOpened: ({ slug, vault }) => {
+      void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
+    },
+  });
   const params = useParams({ strict: false });
   const pathname = useLocation({ select: (location) => location.pathname });
   const requested = useSearch({ strict: false });
@@ -104,18 +136,13 @@ function ShellRoute() {
       : resolveProfileRoute(state.profiles, params.slug, requested.vault);
   const routeSync = useRef<ProfileRouteSync | null>(null);
   if (routeSync.current === null) routeSync.current = new ProfileRouteSync();
-  const currentVault = state.vault;
-  const onRouteVaultPicked = state.onRouteVaultPicked;
   useEffect(() => {
     routeSync.current?.update(
       selection?.kind === "ready" ? selection.profile.vault : null,
-      currentVault,
-      (vault) => {
-        if (vault !== currentVault) setProposal(null);
-        return onRouteVaultPicked(vault);
-      },
+      state.vault,
+      state.onRouteVaultPicked,
     );
-  }, [selection, currentVault, onRouteVaultPicked]);
+  }, [selection, state.vault, state.onRouteVaultPicked]);
   const openModule = (module: string) => {
     if (state.profile === null) return;
     const slug = state.profile.slug;
@@ -150,15 +177,13 @@ function ShellRoute() {
     },
   };
   return (
-    <ProposalNavigation value={{ open: openProposal }}>
+    <ProposalScope
+      key={`${state.vault}:${state.privacy}`}
+      vault={state.vault}
+      privacy={state.privacy}
+    >
       <ShellView
-        state={{
-          ...state,
-          onPrivacyChanged: (privacy) => {
-            setProposal(null);
-            state.onPrivacyChanged(privacy);
-          },
-        }}
+        state={state}
         onOverviewOpened={() => {
           if (state.profile !== null)
             void router.navigate({
@@ -168,15 +193,17 @@ function ShellRoute() {
             });
         }}
         activeModule={
-          pathname.includes("/budget/")
-            ? "budget"
-            : pathname.endsWith("/loans.list") || pathname.endsWith("/setup/loans")
-              ? "loans"
-              : pathname.endsWith("/setup/assets")
-                ? "assets"
-                : pathname.includes("/investments.") || pathname.includes("/assets/")
-                  ? "investments"
-                  : "overview"
+          pathname.endsWith("/settings")
+            ? "settings"
+            : pathname.includes("/budget/")
+              ? "budget"
+              : pathname.endsWith("/loans.list") || pathname.endsWith("/setup/loans")
+                ? "loans"
+                : pathname.endsWith("/setup/assets")
+                  ? "assets"
+                  : pathname.includes("/investments.") || pathname.includes("/assets/")
+                    ? "investments"
+                    : "overview"
         }
         onLegacyOpened={openModule}
       >
@@ -196,17 +223,7 @@ function ShellRoute() {
         </LegacyNavigation>
       </ShellView>
       <UpdateNoticeView state={updateNotice} />
-      {proposal && proposal.vault === state.vault && proposal.privacy === state.privacy && (
-        <ProposalDrawerScreen
-          key={`${proposal.vault}:${proposal.privacy}:${proposal.gid}`}
-          gid={proposal.gid}
-          onClose={closeProposal}
-          onOutcome={(outcome) => {
-            if (outcome.status === "approved" || outcome.status === "rejected") closeProposal();
-          }}
-        />
-      )}
-    </ProposalNavigation>
+    </ProposalScope>
   );
 }
 

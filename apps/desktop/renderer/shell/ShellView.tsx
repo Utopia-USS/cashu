@@ -88,10 +88,12 @@ export function ShellView({
               <button
                 key={id}
                 type="button"
-                disabled={!["budget", "loans", "assets"].includes(id) && !state.canOpenLegacy}
+                disabled={
+                  !["budget", "loans", "assets", "settings"].includes(id) && !state.canOpenLegacy
+                }
                 aria-current={activeModule === id ? "page" : undefined}
                 title={
-                  state.canOpenLegacy || ["budget", "loans", "assets"].includes(id)
+                  state.canOpenLegacy || ["budget", "loans", "assets", "settings"].includes(id)
                     ? undefined
                     : S.legacyUnavailable
                 }
