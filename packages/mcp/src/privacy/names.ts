@@ -379,6 +379,21 @@ export class NameGuard {
     this.symbols = new Set(init.symbols ?? []);
   }
 
+  /** Actual prospective source inputs only, composed under the final synchronous call boundary. */
+  withProspectiveSources(profileId: number | bigint, providers: readonly NameSources[]): NameGuard {
+    if (profileId !== this.profileId) throw new Error("prospective guard profile mismatch");
+    const additional = collectGuard({ profileId, profileName: null, accountNames: [], providers });
+    return new NameGuard({
+      profileId,
+      names: [...this.names, ...additional.names],
+      privatePayees: [...this.privatePayees, ...additional.privatePayees],
+      strictAliases: [...this.strictAliases, ...additional.strictAliases],
+      symbols: [...this.symbols, ...additional.symbols],
+      // Share the original lazy/cached key lookup without making key bytes public.
+      secret: () => this.payeeSecret(),
+    });
+  }
+
   /** `text` with every owner-typed alias replaced by its public name (case-insensitive, whole words, longest first). */
   swapAliases(text: string): string {
     if (!text || this.strictAliases.length === 0) return text;
@@ -423,19 +438,21 @@ export class NameGuard {
     return false;
   }
 
-  payeeRef(merchant: string): string {
+  private payeeSecret(): Uint8Array {
     if (this.secret === null) {
       const source = this.secretSource;
       if (source === null) throw new Error("no payee key: pass NameGuardInit.secret");
       this.secret = typeof source === "function" ? source() : source;
     }
+    return this.secret;
+  }
+
+  payeeRef(merchant: string): string {
+    const secret = this.payeeSecret();
     const message = `${this.profileId}:${normalize(merchant)}`;
     if (LONE_SURROGATE.test(message))
       throw new TypeError("a merchant name with a lone surrogate cannot be encoded");
-    const digest = createHmac("sha256", this.secret)
-      .update(message, "utf8")
-      .digest("hex")
-      .slice(0, 10);
+    const digest = createHmac("sha256", secret).update(message, "utf8").digest("hex").slice(0, 10);
     let letters = "";
     for (const h of digest) letters += HEX_TO_LETTERS[Number.parseInt(h, 16)];
     return REF_PREFIX + letters;

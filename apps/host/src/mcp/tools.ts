@@ -9,10 +9,6 @@ import { mcpToolMetadata } from "@cashu/mcp";
 export const PYTHON_TOOLS: Readonly<Record<string, string>> = {
   // TRANSITIONAL(S38b): classification awaits the native learned-rule write contract.
   set_merchant_category: "S38b",
-  // TRANSITIONAL(S38d): async network lookup and checked encrypted import publication.
-  // Native add_to_watchlist is currently the existing-instrument branch; remote resolution remains S38d.
-  propose_import: "S38d",
-  search_instruments: "S38d",
   // TRANSITIONAL(S38f): connector tools
   test_connector: "S38f",
   propose_connector: "S38f",

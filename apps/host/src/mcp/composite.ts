@@ -126,6 +126,7 @@ export function compositeBackend(options: CompositeOptions): McpBackend {
     pending.clear();
     if (!closed) {
       closed = true;
+      native.invalidateAsync();
       onExit(code);
     }
   });
@@ -409,6 +410,7 @@ export function compositeBackend(options: CompositeOptions): McpBackend {
     },
     async close() {
       closed = true;
+      native.invalidateAsync();
       await python?.close();
       for (const resolve of pending.values())
         resolve({ error: { code: -32603, message: "Session closed" } });
@@ -417,6 +419,7 @@ export function compositeBackend(options: CompositeOptions): McpBackend {
     },
     async prepareHandover() {
       ending = true;
+      native.invalidateAsync();
       // Do not wait for a network-backed Python tool before draining native refusals. Its outcome
       // is unknown, so the response is withheld rather than claiming the call was never run.
       for (const resolve of pending.values())

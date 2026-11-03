@@ -3,6 +3,7 @@ import { D, type DateTime, toUtc } from "@cashu/domain";
 import {
   asInstrumentId,
   effectivePlan,
+  type Instrument,
   type InstrumentId,
   instrumentLabel,
   openedOn,
@@ -33,6 +34,7 @@ export interface PlanFactsInput {
   readonly pendingTheses?: ReadonlyMap<string, ThesisView>;
   /** Complete prospective membership, captured from the watch command's actual effect. */
   readonly pendingWatched?: ReadonlySet<string>;
+  readonly pendingInstruments?: ReadonlyMap<string, Instrument>;
 }
 export function planFacts(read: Read, input: PlanFactsInput): plan.PlanFacts[] {
   const grouped = new Map<InstrumentId, ValuedHolding[]>();
@@ -63,7 +65,7 @@ export function planFacts(read: Read, input: PlanFactsInput): plan.PlanFacts[] {
     input.pendingTheses,
   );
   return ids.flatMap((id) => {
-    const inst = loadInstrument(read, id);
+    const inst = input.pendingInstruments?.get(id) ?? loadInstrument(read, id);
     if (inst === undefined) return [];
     const held = grouped.get(id);
     const status = health.get(id);

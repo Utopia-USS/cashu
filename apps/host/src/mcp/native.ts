@@ -1,6 +1,7 @@
 // Host adapters for the native MCP boundary. Each session is bound to one loaded vault.
 import type { market } from "@cashu/domain/investments";
 import {
+  type InvestmentAsyncCapabilities,
   type InvestmentHistoryReads,
   type InvestmentReads,
   type InvestmentWriteServices,
@@ -8,6 +9,7 @@ import {
   loadGuard,
   loadNameSources,
   loadPayeeSecret,
+  type NativeExecution,
   type NativeRuntime,
   type NativeToolStore,
   type ResearchServices,
@@ -23,6 +25,7 @@ import type { HostLog } from "../log.js";
 import type { HostStores, OpenVault } from "../stores.js";
 
 export interface NativeMcpOptions {
+  readonly investmentAsync?: InvestmentAsyncCapabilities;
   readonly stores: HostStores;
   readonly vault: OpenVault;
   readonly dataDir: string;
@@ -57,6 +60,8 @@ const unique = (values: readonly string[]): string[] => [...new Set(values)];
 export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
   const { vault, stores, now } = options;
   const readBudgetImportFile = options.readBudgetImportFile;
+  const readInvestmentImportFile = options.readInvestmentImportFile;
+  const readInvestmentMappingFile = options.readInvestmentMappingFile;
   const read = vault.store.read.bind(vault.store);
   const policy = () => {
     const profile = mcpProfile(read);
@@ -67,6 +72,169 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           modules: new Set(profile.modules),
         };
   };
+  const execute = <T>(
+    ceiling: Parameters<NativeRuntime["execute"]>[0],
+    fn: (execution: NativeExecution | undefined) => T,
+    preparation = false,
+  ): Promise<T> =>
+    vault.queue.run(() => {
+      const complete = (value: T): T => {
+        if (
+          preparation &&
+          value !== null &&
+          (typeof value === "object" || typeof value === "function") &&
+          "then" in value
+        ) {
+          void Promise.resolve(value).catch(() => {
+            try {
+              options.log.warn("mcp.prepare-callback-failed");
+            } catch {
+              /* diagnostic only */
+            }
+          });
+          throw new Error("native preparation callbacks must be synchronous");
+        }
+        return value;
+      };
+      if (options.replaced() || stores.vaults.get(vault.id) !== vault)
+        return complete(fn(undefined));
+      const profile = mcpProfile(read);
+      const current = policy();
+      if (profile === undefined || current === undefined) return complete(fn(undefined));
+      const profileSlug = profile.slug;
+      const at = now();
+      const today = localDay(at);
+      const pending: v1.Envelope[] = [];
+      let active = true;
+      const scopedRead: typeof read = (...args) => {
+        if (!active) throw new Error("native queue context is no longer active");
+        return read(...args);
+      };
+      let context: ToolContext<NativeToolStore>;
+      let research: ResearchServices | undefined;
+      let researchResolved = false;
+      let investmentWrites: InvestmentWriteServices | undefined;
+      let investmentWritesResolved = false;
+      const store: NativeToolStore = {
+        read: scopedRead,
+        get investmentAsync() {
+          const candidate = options.investmentAsync;
+          if (
+            candidate &&
+            (candidate.vault !== vault.id ||
+              (candidate.search && candidate.search.vault !== vault.id) ||
+              (candidate.watch && candidate.watch.vault !== vault.id) ||
+              (candidate.imports && candidate.imports.vault !== vault.id))
+          )
+            throw new Error("native async vault binding is inconsistent");
+          return candidate;
+        },
+        profile,
+        today,
+        now: () => at,
+        prices: options.prices ?? null,
+        fxNewest: options.fxNewest?.() ?? null,
+        toolInventory: options.inventory,
+        get investmentWrites() {
+          if (!investmentWritesResolved) {
+            const candidate = options.investmentWrites?.(context);
+            if (
+              candidate !== undefined &&
+              (candidate.vault !== vault.store.vault ||
+                candidate.plans.vault !== vault.store.vault ||
+                (candidate.strategyFiles !== undefined &&
+                  candidate.strategyFiles.vault !== vault.store.vault))
+            )
+              throw new Error("native investment-write vault binding is inconsistent");
+            investmentWrites = candidate;
+            investmentWritesResolved = true;
+          }
+          return investmentWrites;
+        },
+        get research() {
+          if (!researchResolved) {
+            const candidate = options.research?.(context);
+            if (
+              candidate !== undefined &&
+              (candidate.vault !== vault.store.vault || candidate.plans.vault !== vault.store.vault)
+            )
+              throw new Error("native research vault binding is inconsistent");
+            research = candidate;
+            researchResolved = true;
+          }
+          return research;
+        },
+        get investments() {
+          return options.investmentReads?.(context);
+        },
+        get investmentHistory() {
+          return options.investmentHistory?.(context);
+        },
+        ...(readInvestmentImportFile === undefined
+          ? {}
+          : {
+              readInvestmentImportFile: (path: string) => {
+                if (readInvestmentImportFile === undefined) throw new Error("missing file reader");
+                return readInvestmentImportFile(path, profileSlug);
+              },
+            }),
+        ...(readInvestmentMappingFile === undefined
+          ? {}
+          : {
+              readInvestmentMappingFile: (path: string) => {
+                if (readInvestmentMappingFile === undefined)
+                  throw new Error("missing mapping reader");
+                return readInvestmentMappingFile(path, profileSlug);
+              },
+            }),
+        ...(readBudgetImportFile === undefined
+          ? {}
+          : {
+              readBudgetImportFile: (rawPath: string) => readBudgetImportFile(rawPath, profileSlug),
+            }),
+        run(command, input) {
+          if (!active || preparation) throw new Error("native preparation cannot write");
+          // Current core writes are one command each. A second read-dependent command needs an overlay.
+          if (pending.length > 0)
+            throw new Error("multiple native MCP write commands require an overlay");
+          return runCommand(
+            vault.store,
+            { append: (events) => pending.push(...events) },
+            command,
+            input,
+            { ...vault.env, clock: { now: () => at } },
+          );
+        },
+      };
+      const profileId = BigInt(`0x${vault.id}`);
+      context = toolContext({
+        store,
+        profileId,
+        privacy: restrictivePrivacy(current.privacy, ceiling),
+        today,
+        loadGuard: () => loadGuard(scopedRead, profileId, () => loadPayeeSecret(options.dataDir)),
+        loadAccountLabels: () => loadAccountLabels(scopedRead),
+      });
+      let committed = false;
+      try {
+        return complete(
+          fn({
+            context,
+            policy: current,
+            commit() {
+              if (committed) throw new Error("native call committed twice");
+              if (preparation || !active) throw new Error("native preparation cannot commit");
+              if (options.replaced() || stores.vaults.get(vault.id) !== vault)
+                throw new Error("host replaced before append");
+              if (pending.length > 0) vault.writer.append(pending);
+              committed = true;
+            },
+          }),
+        );
+      } finally {
+        active = false;
+      }
+    });
   return {
     now,
     replaced: options.replaced,
@@ -126,121 +294,19 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           if (!result.ok) throw new Error("audit finish refused");
         }),
     },
-    execute: (ceiling, fn) =>
-      vault.queue.run(() => {
-        if (options.replaced()) return fn(undefined);
-        const profile = mcpProfile(read);
-        const current = policy();
-        if (profile === undefined || current === undefined) return fn(undefined);
-        const at = now();
-        const today = localDay(at);
-        const pending: v1.Envelope[] = [];
-        let context: ToolContext<NativeToolStore>;
-        let research: ResearchServices | undefined;
-        let researchResolved = false;
-        let investmentWrites: InvestmentWriteServices | undefined;
-        let investmentWritesResolved = false;
-        const store: NativeToolStore = {
-          read,
-          profile,
-          today,
-          now: () => at,
-          prices: options.prices ?? null,
-          fxNewest: options.fxNewest?.() ?? null,
-          toolInventory: options.inventory,
-          get investmentWrites() {
-            if (!investmentWritesResolved) {
-              const candidate = options.investmentWrites?.(context);
-              if (
-                candidate !== undefined &&
-                (candidate.vault !== vault.store.vault ||
-                  candidate.plans.vault !== vault.store.vault ||
-                  (candidate.strategyFiles !== undefined &&
-                    candidate.strategyFiles.vault !== vault.store.vault))
-              )
-                throw new Error("native investment-write vault binding is inconsistent");
-              investmentWrites = candidate;
-              investmentWritesResolved = true;
-            }
-            return investmentWrites;
-          },
-          get research() {
-            if (!researchResolved) {
-              const candidate = options.research?.(context);
-              if (
-                candidate !== undefined &&
-                (candidate.vault !== vault.store.vault ||
-                  candidate.plans.vault !== vault.store.vault)
-              )
-                throw new Error("native research vault binding is inconsistent");
-              research = candidate;
-              researchResolved = true;
-            }
-            return research;
-          },
-          get investments() {
-            return options.investmentReads?.(context);
-          },
-          get investmentHistory() {
-            return options.investmentHistory?.(context);
-          },
-          ...(options.readInvestmentImportFile === undefined
-            ? {}
-            : {
-                readInvestmentImportFile: (path: string) => {
-                  if (options.readInvestmentImportFile === undefined)
-                    throw new Error("missing file reader");
-                  return options.readInvestmentImportFile(path, profile.slug);
-                },
-              }),
-          ...(options.readInvestmentMappingFile === undefined
-            ? {}
-            : {
-                readInvestmentMappingFile: (path: string) => {
-                  if (options.readInvestmentMappingFile === undefined)
-                    throw new Error("missing mapping reader");
-                  return options.readInvestmentMappingFile(path, profile.slug);
-                },
-              }),
-          ...(readBudgetImportFile === undefined
-            ? {}
-            : {
-                readBudgetImportFile: (rawPath: string) =>
-                  readBudgetImportFile(rawPath, profile.slug),
-              }),
-          run(command, input) {
-            // Current core writes are one command each. A second read-dependent command needs an overlay.
-            if (pending.length > 0)
-              throw new Error("multiple native MCP write commands require an overlay");
-            return runCommand(
-              vault.store,
-              { append: (events) => pending.push(...events) },
-              command,
-              input,
-              { ...vault.env, clock: { now: () => at } },
-            );
-          },
-        };
-        const profileId = BigInt(`0x${vault.id}`);
-        context = toolContext({
-          store,
-          profileId,
-          privacy: restrictivePrivacy(current.privacy, ceiling),
-          today,
-          loadGuard: () => loadGuard(read, profileId, () => loadPayeeSecret(options.dataDir)),
-          loadAccountLabels: () => loadAccountLabels(read),
-        });
-        let committed = false;
-        return fn({
-          context,
-          policy: current,
-          commit() {
-            if (committed) throw new Error("native call committed twice");
-            if (options.replaced()) throw new Error("host replaced before append");
-            if (pending.length > 0) vault.writer.append(pending);
-            committed = true;
-          },
-        });
-      }),
+    execute,
+    preparations: {
+      execute: (ceiling, fn) =>
+        execute(
+          ceiling,
+          (execution) =>
+            fn(
+              execution === undefined
+                ? undefined
+                : { context: execution.context, policy: execution.policy },
+            ),
+          true,
+        ),
+    },
   };
 }

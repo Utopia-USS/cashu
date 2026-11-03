@@ -1,7 +1,7 @@
-/** Native local investment writes. Remote lookup and import publication remain separate capabilities. */
+/** Native investment contracts; the async runtime owns awaited lookup and checked publication. */
 
 import { pyLen, pyStrip, tryCurrency } from "@cashu/domain";
-import { PLAN_VALUES } from "@cashu/domain/investments";
+import { type Instrument, PLAN_VALUES } from "@cashu/domain/investments";
 import { exchangeForHint } from "@cashu/domain/investments/importing";
 import { strategyDigest } from "@cashu/domain/investments/strategy";
 import { investmentsCommands as C, investmentsResearch as R } from "@cashu/store";
@@ -20,10 +20,12 @@ import {
 import * as L from "../privacy/labels.js";
 import { systemText } from "../privacy/messages.js";
 import type { InvestmentWriteServices } from "../providers/investmentWriteTypes.js";
-import { type ToolArgs, ToolError, type ToolSpec } from "../registry.js";
+import { type ToolArgs, type ToolContext, ToolError, type ToolSpec } from "../registry.js";
 import { DELEGATED_TOOLS } from "../runtime/delegated.generated.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { addAlert, alerts, instrumentFields, muteAlert, price } from "./alerts.js";
+import { proposeInvestmentImport } from "./investmentImportProposal.js";
+import { searchInstruments } from "./investmentSearch.js";
 import { hintParams } from "./investmentsRead.js";
 import {
   type Context,
@@ -190,18 +192,19 @@ function thesis(ctx: Context, args: ToolArgs): L.LabelledTree {
     entry_type: L.category(out.entryType),
   };
 }
-function watchRow(
+export function watchRow(
   ctx: Context,
   row: ReturnType<InvestmentWriteServices["watchlist"]>[number],
+  prospective?: Instrument,
 ): L.LabelledTree {
-  const inst = Q.loadInstrument(ctx.store.read, row.instrument_id),
+  const inst = Q.loadInstrument(ctx.store.read, row.instrument_id) ?? prospective,
     privateName = inst !== undefined && R.ownerNamed(inst),
     p = row.price,
     nearest = row.alerts.nearest,
     fresh = row.instrument?.plan_freshness;
   return {
     item_id: F.ref("watchlist", row.id),
-    instrument: instrumentFields(ctx, row.instrument_id),
+    instrument: instrumentFields(ctx, row.instrument_id, prospective),
     note: L.text(row.note),
     tags: row.tags.map(L.category),
     source: L.category(row.source),
@@ -254,8 +257,10 @@ function watchlist(ctx: Context): L.LabelledTree {
     ),
   };
 }
-function addWatch(ctx: Context, args: ToolArgs): L.LabelledTree {
-  // Deliberately bounded local path. The full source resolver can await public search/chart work.
+export function validateWatchArguments(
+  ctx: ToolContext<Pick<NativeToolStore, "read">>,
+  args: ToolArgs,
+) {
   if (typeof args.note === "string") {
     const checked = C.cleanNote(args.note);
     if (!checked.ok) throw new ToolError("note is too long (max 1000 characters)");
@@ -287,6 +292,10 @@ function addWatch(ctx: Context, args: ToolArgs): L.LabelledTree {
     exchangeForHint(args.exchange) === null
   )
     throw new ToolError("unknown exchange");
+  return { raw, explicit };
+}
+function addWatch(ctx: Context, args: ToolArgs): L.LabelledTree {
+  const { explicit } = validateWatchArguments(ctx, args);
   let id: string;
   try {
     id = instrument(ctx, args.symbol_or_isin, true);
@@ -453,6 +462,8 @@ function rule(ctx: Context, args: ToolArgs): L.LabelledTree {
   };
 }
 const HANDLERS: Readonly<Record<string, ToolSpec<NativeToolStore>["handler"]>> = {
+  propose_import: proposeInvestmentImport,
+  search_instruments: searchInstruments,
   set_recommendation: recommend,
   set_recommendations: recommendations,
   record_decision: decision,

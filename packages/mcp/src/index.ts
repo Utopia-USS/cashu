@@ -11,6 +11,14 @@ export {
   loadNameSources,
   ownerNamed,
 } from "./providers/index.js";
+export {
+  type InvestmentAsyncCapabilities,
+  type InvestmentSearchAnswer,
+  type InvestmentSearchIo,
+  type InvestmentWatchIo,
+  investmentSearchIo,
+  investmentWatchIo,
+} from "./providers/investmentAsyncTypes.js";
 export type { InvestmentHistoryReads } from "./providers/investmentHistoryTypes.js";
 export {
   type InvestmentReadRequests,
@@ -42,6 +50,14 @@ export {
   toolSpec,
   validateArguments,
 } from "./registry.js";
+export type {
+  NativeAsyncAdapter,
+  NativeAsyncIo,
+  NativeAsyncValue,
+  NativePreparationExecution,
+  NativePreparationRuntime,
+  NativePreparationStore,
+} from "./runtime/async.js";
 export { mcpToolMetadata, type ToolMetadata } from "./runtime/metadata.js";
 export { decodeEntityRef, type EntityRefKind, encodeEntityRef } from "./runtime/refs.js";
 export {
@@ -69,7 +85,10 @@ export {
 export type { NativeToolStore, ToolInventoryEntry } from "./runtime/types.js";
 export { budgetTools } from "./tools/budget.js";
 export { coreTools } from "./tools/core.js";
+export { investmentImportAdapter } from "./tools/investmentImportProposal.js";
+export { investmentSearchAdapter } from "./tools/investmentSearch.js";
 export { investmentTools } from "./tools/investments.js";
+export { investmentWatchAdapter } from "./tools/investmentWatch.js";
 export { investmentWriteTools } from "./tools/investmentWrites.js";
 export { loansTools } from "./tools/loans.js";
 export { researchTools } from "./tools/research.js";

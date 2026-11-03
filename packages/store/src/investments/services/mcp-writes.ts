@@ -1,27 +1,27 @@
 /** MCP mutation composition: base effects and best-effort plan checks share one append. */
 
 import type { DateTime } from "@cashu/domain";
-import { parseDateTime, pyLen, pySplit, toStorage, utcIso } from "@cashu/domain";
+import { parseDateTime, pyLen, pySplit, utcIso } from "@cashu/domain";
 import { asInstrumentId, type InstrumentId } from "@cashu/domain/investments";
 import { z } from "zod";
-import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
+import { defineCommand, ok, refuse } from "../../command.js";
 import { PLAN_VALUES } from "../../events/v1/investments.js";
 import { calendarDate, gid } from "../../events/v1/primitives.js";
-import { stageDerivedSignals } from "../commands/derivedSignals.js";
 import { setInstrumentPlan } from "../commands/instruments.js";
 import { createThesis, updateThesis } from "../commands/journal.js";
-import { applyPlanChecks } from "../commands/planSignals.js";
 import { addToWatchlist, removeFromWatchlist } from "../commands/watchlist.js";
 import { alerts, watchedInstrumentGids, watchlistItem } from "../queries/alerts.js";
 import { heldSince } from "../queries/holdings.js";
-import { loadInstruments, vaultInstrumentGids } from "../queries/instruments.js";
-import { type ThesisView, theses } from "../queries/journal.js";
-import { type PlanFactsInput, planFacts } from "../queries/planFacts.js";
+import { loadInstrument, loadInstruments, vaultInstrumentGids } from "../queries/instruments.js";
+import { theses } from "../queries/journal.js";
 import type { Read } from "../queries/shared.js";
 import { instrumentRoot } from "../queries/shared.js";
 import { researchable } from "../research/queries.js";
 import { byCreation } from "../views/stableOrder.js";
+import { captureInstrumentEffect } from "./instrument-effects.js";
+import { syncPlans } from "./plan-effects.js";
 import type { ResearchPlanInputs } from "./research-plans.js";
+import { captureThesisEffect } from "./thesis-effects.js";
 
 /** Source alerts_view ranks status first and insertion chronology second, never domain timestamps. */
 export function mcpAlertRows(read: Read, now: DateTime) {
@@ -35,43 +35,6 @@ export function mcpAlertRows(read: Read, now: DateTime) {
   return byCreation(read, "alerts", alerts(read, now), true).sort(
     (a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9),
   );
-}
-
-/** Every derived draft is discarded on failure or loss of the genuine injected authority. */
-function syncPlans(
-  ctx: CommandContext,
-  inputs: ResearchPlanInputs | undefined,
-  instruments: Iterable<string>,
-  pending: Pick<PlanFactsInput, "pendingPlan" | "pendingTheses" | "pendingWatched"> = {},
-) {
-  const holder = () => {
-    try {
-      return inputs?.vault === ctx.vault && inputs.isHolder(ctx.vault) === true;
-    } catch {
-      return false;
-    }
-  };
-  if (inputs === undefined || !holder()) return;
-  const now = parseDateTime(ctx.now());
-  const staged = stageDerivedSignals({ ...ctx, lease: { isHolder: holder } }, (child) => {
-    const valued = inputs.buildValued(child.read, now);
-    if (valued.snapshot.profileId !== ctx.vault || !holder()) return refuse("invalid_identity");
-    for (const instrument of new Set(instruments)) {
-      const only = asInstrumentId(instrument);
-      const facts = planFacts(child.read, { valued, now, only, ...pending });
-      const out = applyPlanChecks(child, {
-        facts,
-        now,
-        only,
-        run: null,
-        config: inputs.config,
-        lang: inputs.lang,
-      });
-      if (!out.ok) return out;
-    }
-    return ok({});
-  });
-  if (staged.ok && holder()) staged.flush();
 }
 
 const recommendation = z.strictObject({
@@ -185,50 +148,8 @@ export function upsertThesisWithPlans(inputs?: ResearchPlanInputs) {
       const instrument = instrumentRoot(ctx.read, input.instrument);
       if (!vaultInstrumentGids(ctx.read).has(instrument)) return refuse("no_instrument");
       const before = theses(ctx.read, instrument)[0];
-      let prospective: ThesisView | undefined;
-      const at = toStorage(parseDateTime(ctx.now()));
-      const child: CommandContext = {
-        ...ctx,
-        emit(type, target, data, options) {
-          if (type === "thesis.created")
-            prospective = {
-              gid: target,
-              instrument,
-              entryType: String(data.entryType),
-              thesis: String(data.thesis),
-              invalidation: data.invalidation as string | null,
-              exitPlan: data.exitPlan as string | null,
-              sizePlan: data.sizePlan as string | null,
-              reviewedAt: null,
-              createdAt: at,
-              updatedAt: at,
-              coreChangedAt: at,
-              exitPlanChangedAt: data.exitPlan ? at : null,
-            };
-          else if (type === "thesis.updated" && before !== undefined) {
-            const fields = ["entryType", "thesis", "invalidation", "exitPlan", "sizePlan"] as const;
-            const values = Object.fromEntries(
-              fields.filter((key) => key in data).map((key) => [key, data[key]]),
-            );
-            const coreChanged = ["entryType", "thesis", "invalidation"].some(
-              (key) => key in data && data[key] !== before[key as keyof ThesisView],
-            );
-            const exitChanged = "exitPlan" in data && data.exitPlan !== before.exitPlan;
-            prospective = {
-              ...before,
-              ...values,
-              updatedAt: at,
-              coreChangedAt: coreChanged ? at : before.coreChangedAt,
-              exitPlanChangedAt: exitChanged
-                ? data.exitPlan
-                  ? at
-                  : null
-                : before.exitPlanChangedAt,
-            };
-          } else throw new Error("unexpected thesis effect");
-          return ctx.emit(type, target, data, options);
-        },
-      };
+      const effect = captureThesisEffect(ctx, before);
+      const child = effect.context;
       const out =
         before === undefined
           ? createThesis.run(child, createThesis.input.parse({ instrument, ...input.values }))
@@ -237,7 +158,7 @@ export function upsertThesisWithPlans(inputs?: ResearchPlanInputs) {
               updateThesis.input.parse({ id: before.gid, values: input.values }),
             );
       if (!out.ok) return out;
-      const row = prospective ?? before;
+      const row = effect.row() ?? before;
       if (row === undefined) throw new Error("thesis effect was not prepared");
       syncPlans(ctx, inputs, [instrument], { pendingTheses: new Map([[instrument, row]]) });
       return ok({
@@ -267,6 +188,28 @@ export function addStoredWatchWithPlans(inputs?: ResearchPlanInputs) {
         pendingWatched: new Set([...watchedInstrumentGids(ctx.read), instrument]),
       });
       return out;
+    },
+  });
+}
+/** Full native command, with prospective facts captured from its actual winning effects. */
+export function addWatchWithPlans(inputs?: ResearchPlanInputs) {
+  return defineCommand({
+    id: "investments.mcp.addWatch",
+    input: addToWatchlist.input,
+    run(ctx, input) {
+      const effect = captureInstrumentEffect(ctx);
+      const out = addToWatchlist.run(effect.context, input);
+      if (!out.ok) return out;
+      const instrument = out.value.instrument;
+      const created = effect.row(instrument);
+      const prospectiveInstrument = created ?? loadInstrument(ctx.read, instrument);
+      if (!prospectiveInstrument || out.value.createdInstrument !== (created !== undefined))
+        throw new Error("watch prospective instrument mismatch");
+      syncPlans(ctx, inputs, [instrument], {
+        pendingWatched: new Set([...watchedInstrumentGids(ctx.read), instrument]),
+        ...(created === undefined ? {} : { pendingInstruments: new Map([[instrument, created]]) }),
+      });
+      return ok({ ...out.value, prospectiveInstrument });
     },
   });
 }

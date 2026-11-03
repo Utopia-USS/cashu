@@ -11,6 +11,7 @@ import { mcpProfile } from "@cashu/store/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { amount, count, type LabelledTree } from "../privacy/labels.js";
 import { toolContext, toolSpec } from "../registry.js";
+import { deferred } from "../testing/async.js";
 import { nativeFixture } from "../testing/native.js";
 import { NativeMcpServer, type NativeRuntime, restrictivePrivacy, resultText } from "./server.js";
 import type { NativeToolStore } from "./types.js";
@@ -106,6 +107,41 @@ function setup() {
 }
 
 describe("native MCP call boundary", () => {
+  it("withholds a completed synchronous response after audit privacy tightening without replay", async () => {
+    const s = setup(),
+      entered = deferred<void>(),
+      release = deferred<void>();
+    s.f.run(setProfileSettings, { mcpPrivacy: "amounts" });
+    const finish = s.runtime.audit.finish.bind(s.runtime.audit);
+    s.runtime.audit.finish = async (...args) => {
+      entered.resolve();
+      await release.promise;
+      await finish(...args);
+    };
+    const spec = toolSpec<NativeToolStore>({
+      name: "write",
+      module: "core",
+      description: "Synthetic synchronous write",
+      write: true,
+      handler(ctx) {
+        const out = ctx.store.run(investmentsCommands.markReviewDone, { module: "investments" });
+        if (!out.ok) throw new Error(out.reason);
+        return { total: amount(D("123")) };
+      },
+    });
+    const pending = new NativeMcpServer(s.runtime, [spec]).call("write");
+    await entered.promise;
+    expect(s.f.store.read("SELECT COUNT(*) AS n FROM reviews")).toEqual([{ n: 1 }]);
+    s.f.run(setProfileSettings, { mcpPrivacy: "strict" });
+    release.resolve();
+    expect(await pending).toEqual({
+      ok: true,
+      privacy: "strict",
+      data: { completed: true, note: "completed; response withheld" },
+    });
+    expect(s.audit).toEqual(["start:write:{}", "commit", "finish:amounts:ok"]);
+    expect(s.f.store.read("SELECT COUNT(*) AS n FROM reviews")).toEqual([{ n: 1 }]);
+  });
   it("rereads policy/modules and applies a restrictive ceiling to the handler context", async () => {
     const s = setup();
     const spec = toolSpec<NativeToolStore>({

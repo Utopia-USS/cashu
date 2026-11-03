@@ -12,6 +12,7 @@ export interface ToolInventoryEntry {
 }
 
 export interface NativeToolStore {
+  readonly investmentAsync?: import("../providers/investmentAsyncTypes.js").InvestmentAsyncCapabilities;
   readonly investmentWrites?: import("../providers/investmentWriteTypes.js").InvestmentWriteServices;
   readonly research?: import("../providers/researchTypes.js").ResearchServices;
   /** Supplied only when the host establishes native market/strategy read authority. */

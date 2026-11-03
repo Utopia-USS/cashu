@@ -254,11 +254,11 @@ describe("native MCP local investment writes", () => {
     ).toBe("invalid_arguments");
     expect(s.batches.length).toBe(before);
   });
-  it("registers twelve genuine bodies with only declared native reference adaptations", () => {
+  it("registers fourteen contracts with bounded async families and declared native reference adaptations", () => {
     const tools = investmentWriteTools();
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(14);
     expect(tools.some((t) => t.name === "search_instruments" || t.name === "propose_import")).toBe(
-      false,
+      true,
     );
     for (const tool of tools) {
       const source = DELEGATED_TOOLS.find((t) => t.name === tool.name);

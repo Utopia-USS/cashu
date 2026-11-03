@@ -39,7 +39,11 @@ export function reference(kind: EntityRefKind, raw: unknown): string {
     throw new ToolError(`no such ${kind} in this profile`, "not_found");
   }
 }
-export function instrument(ctx: Context, raw: unknown, broad = false): string {
+export function instrument(
+  ctx: ToolContext<Pick<NativeToolStore, "read">>,
+  raw: unknown,
+  broad = false,
+): string {
   if (typeof raw !== "string")
     throw new ToolError("no such instrument in this profile", "not_found");
   const ref =

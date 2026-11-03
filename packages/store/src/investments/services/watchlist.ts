@@ -166,7 +166,12 @@ const fail = (reason: string, params: Readonly<Record<string, unknown>> = {}): W
 });
 const done = <T>(value: T): Outcome<T> => ({ ok: true, value });
 
-type Resolution =
+export type WatchQuote = Pick<
+  market.ChartQuote,
+  "symbol" | "currency" | "instrumentType" | "longName" | "bars"
+>;
+
+export type WatchResolution =
   | { readonly kind: "stored"; readonly instrument: string }
   | {
       readonly kind: "planned";
@@ -174,12 +179,13 @@ type Resolution =
       /** Set where Python inserts with `_insert_once` (a pick): the holder of this alias wins. */
       readonly yahooSymbol: string | null;
       /** The verifying chart answer (its bars go to the price cache when the instrument is created). */
-      readonly quote: market.ChartQuote | null;
+      readonly quote: WatchQuote | null;
       /** Warnings of a created instrument (none when another instrument turned out to hold it). */
       readonly warnings: readonly WatchWarning[];
     };
 
-const stored = (instrument: string): Outcome<Resolution> => done({ kind: "stored", instrument });
+const stored = (instrument: string): Outcome<WatchResolution> =>
+  done({ kind: "stored", instrument });
 
 function clean(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
@@ -252,17 +258,43 @@ export function cleanPick(pick: SearchPick): Outcome<CleanPick> {
  * Python `_verify`: the Yahoo chart of `symbol` (PICK_HISTORY_DAYS of daily bars up to `today`), null
  * when it cannot be verified (a failing source, an unknown symbol, no bars): never a failed add.
  */
-async function verify(
-  port: WatchlistMarket,
+export interface WatchResolutionAnswers {
+  readonly unavailable?: boolean;
+  readonly search?: { readonly query: string; readonly hits: readonly market.SearchHit[] };
+  readonly chart?: { readonly symbol: string; readonly quote: WatchQuote | null };
+}
+export type WatchResolutionOperation =
+  | { readonly kind: "search"; readonly query: string }
+  | {
+      readonly kind: "chart";
+      readonly symbol: string;
+      readonly start: CalendarDate;
+      readonly end: CalendarDate;
+    };
+export interface WatchResolutionIo extends WatchFailure {
+  readonly reason: "remote_required";
+  readonly operation: WatchResolutionOperation;
+}
+export function needsWatchIo(result: WatchFailure): result is WatchResolutionIo {
+  return result.reason === "remote_required" && "operation" in result;
+}
+const need = (operation: WatchResolutionOperation): WatchResolutionIo => ({
+  ok: false,
+  reason: "remote_required",
+  params: {},
+  operation,
+});
+function verify(
+  answers: WatchResolutionAnswers,
   symbol: string,
   today: CalendarDate,
-): Promise<market.ChartQuote | null> {
-  try {
-    const quote = await port.chart(symbol, addDays(today, -PICK_HISTORY_DAYS), today);
-    return quote !== null && quote.bars.length > 0 ? quote : null;
-  } catch {
-    return null; // unverified, never a failed add (Python logs it)
+): Outcome<WatchQuote | null> {
+  if (answers.chart?.symbol === symbol) {
+    const quote = answers.chart.quote;
+    return done(quote !== null && quote.bars.length > 0 ? quote : null);
   }
+  if (answers.unavailable) return done(null);
+  return need({ kind: "chart", symbol, start: addDays(today, -PICK_HISTORY_DAYS), end: today });
 }
 
 /**
@@ -273,8 +305,8 @@ async function verify(
 function createPick(
   read: Read,
   pick: CleanPick,
-  quote: market.ChartQuote | null,
-): Outcome<Resolution> {
+  quote: WatchQuote | null,
+): Outcome<WatchResolution> {
   const metaType = quote?.instrumentType ? pyUpper(quote.instrumentType) : "";
   const crypto = pick.assetClass === AssetClass.CRYPTO || metaType === "CRYPTOCURRENCY";
   let [ticker, info] = market.yahooMarket(pick.yahooSymbol, crypto ? "CRYPTOCURRENCY" : metaType);
@@ -319,18 +351,19 @@ function createPick(
  * Python `resolve_pick`: a stored instrument with that Yahoo alias (no network; a guessed alias stays
  * guessed), else a new one verified against the chart first.
  */
-async function resolvePick(
+function resolvePick(
   read: Read,
-  port: WatchlistMarket,
+  answers: WatchResolutionAnswers,
   pick: SearchPick,
   today: CalendarDate,
-): Promise<Outcome<Resolution>> {
+): Outcome<WatchResolution> {
   const cleaned = cleanPick(pick);
   if (!cleaned.ok) return cleaned;
   const found = storedByYahoo(read, [cleaned.value.yahooSymbol]).get(cleaned.value.yahooSymbol);
   if (found !== undefined) return stored(found);
-  const quote = await verify(port, cleaned.value.yahooSymbol, today);
-  return createPick(read, cleaned.value, quote);
+  const verified = verify(answers, cleaned.value.yahooSymbol, today);
+  if (!verified.ok) return verified;
+  return createPick(read, cleaned.value, verified.value);
 }
 
 /**
@@ -338,20 +371,17 @@ async function resolvePick(
  * the currency (an unknown ISIN), one listing on a known market becomes a pick (an exact Yahoo symbol
  * first); several fail naming them (`several_listings`); none (or no search) is null.
  */
-async function searchFallback(
+function searchFallback(
   read: Read,
-  port: WatchlistMarket,
+  answers: WatchResolutionAnswers,
   text: string,
   isin: boolean,
   today: CalendarDate,
-): Promise<Outcome<Resolution | null>> {
+): Outcome<WatchResolution | null> {
   let hits: readonly market.SearchHit[] = [];
   if (pyLen(text) >= REMOTE_MIN) {
-    try {
-      hits = await port.search(text);
-    } catch {
-      hits = []; // the search is unavailable: the caller fails with its own reason
-    }
+    if (answers.search?.query === text) hits = answers.search.hits;
+    else if (!answers.unavailable) return need({ kind: "search", query: text });
   }
   const known = hits.filter((h) => market.isKnownMarket(h) && h.yahooSymbol);
   const wanted = pyUpper(text);
@@ -366,7 +396,7 @@ async function searchFallback(
   }
   const [only] = matching;
   if (matching.length === 1 && only !== undefined) {
-    return resolvePick(read, port, pickOfHit(only), today);
+    return resolvePick(read, answers, pickOfHit(only), today);
   }
   if (matching.length > 1) {
     return fail("several_listings", {
@@ -389,12 +419,12 @@ type TextTarget = Extract<WatchRequestTarget, { readonly text: string | null }>;
  * or `exchange` (a listing with its market is verified like a pick); its currency comes from the
  * market or `currency`. Only where none of that works the remote search is asked.
  */
-async function resolveText(
+function resolveText(
   read: Read,
-  port: WatchlistMarket,
+  answers: WatchResolutionAnswers,
   target: TextTarget,
   today: CalendarDate,
-): Promise<Outcome<Resolution>> {
+): Outcome<WatchResolution> {
   const text = clean(target.text);
   if (text === null) return fail("symbol_required");
   if (!SYMBOL.test(text)) return fail("symbol_invalid");
@@ -411,7 +441,7 @@ async function resolveText(
     const found = instrumentByIsin(read, upper);
     if (found !== undefined) return stored(found.id);
     if (wanted === null) {
-      const searched = await searchFallback(read, port, upper, true, today);
+      const searched = searchFallback(read, answers, upper, true, today);
       if (!searched.ok) return searched;
       if (searched.value !== null) return done(searched.value);
       return fail("unknown_isin", { isin: upper });
@@ -461,7 +491,7 @@ async function resolveText(
   const currency = wanted ?? info?.currency ?? null;
   if (currency === null) {
     if (exchangeText === null && !text.includes(":") && !text.includes(".")) {
-      const searched = await searchFallback(read, port, text, false, today);
+      const searched = searchFallback(read, answers, text, false, today);
       if (!searched.ok) return searched;
       if (searched.value !== null) return done(searched.value);
     }
@@ -471,7 +501,9 @@ async function resolveText(
   if (yahoo && info !== null && wanted === null) {
     // a new listing with its market: verified like a pick (the real quote currency, a confirmed
     // alias and bars)
-    const quote = await verify(port, yahoo, today);
+    const verified = verify(answers, yahoo, today);
+    if (!verified.ok) return verified;
+    const quote = verified.value;
     if (quote !== null) {
       const pick = cleanPick({ yahooSymbol: yahoo, ticker, name: displayName, mic: info.mic });
       if (!pick.ok) return pick;
@@ -507,6 +539,59 @@ async function resolveText(
   });
 }
 
+/** A synchronous decision over current local facts and previously owned public answers. */
+export function prepareWatchResolution(
+  read: Read,
+  request: WatchAddRequest,
+  answers: WatchResolutionAnswers = {},
+): Outcome<WatchResolution> {
+  if (request.note != null) {
+    const checked = cleanNote(request.note);
+    if (!checked.ok) return fail(checked.reason);
+  }
+  if (request.tags != null) {
+    const checked = cleanTags(request.tags);
+    if (!checked.ok) return fail(checked.reason);
+  }
+  if (watchlist(read).length >= MAX_ITEMS) return fail("watchlist_full", { max: MAX_ITEMS });
+  const target = request.target;
+  if ("pick" in target) return resolvePick(read, answers, target.pick, request.today);
+  if ("instrument" in target) return stored(target.instrument);
+  return resolveText(read, answers, target, request.today);
+}
+
+/** Existing convenience service keeps its write semantics; MCP uses only the pure decision helper. */
+async function resolveService(
+  read: Read,
+  port: WatchlistMarket,
+  request: WatchAddRequest,
+): Promise<Outcome<WatchResolution>> {
+  let answers: WatchResolutionAnswers = {};
+  for (let phase = 0; phase <= 2; phase++) {
+    const result = prepareWatchResolution(read, request, answers);
+    if (result.ok || !needsWatchIo(result)) return result;
+    const operation = result.operation;
+    if (operation.kind === "search") {
+      let hits: readonly market.SearchHit[] = [];
+      try {
+        hits = await port.search(operation.query);
+      } catch {
+        /* source unavailable */
+      }
+      answers = { ...answers, search: { query: operation.query, hits } };
+    } else {
+      let quote: market.ChartQuote | null = null;
+      try {
+        quote = await port.chart(operation.symbol, operation.start, operation.end);
+      } catch {
+        /* unverified */
+      }
+      answers = { ...answers, chart: { symbol: operation.symbol, quote } };
+    }
+  }
+  return fail("remote_phase_limit");
+}
+
 function nowOf(env: CommandEnv): DateTime {
   return parseDateTime(new Date(env.clock.now()).toISOString());
 }
@@ -522,21 +607,8 @@ export async function addToWatchlistService(
   request: WatchAddRequest,
 ): Promise<WatchAddOutcome> {
   const read: Read = (sql, ...params) => deps.store.read(sql, ...params);
-  if (request.note != null) {
-    const checked = cleanNote(request.note);
-    if (!checked.ok) return fail(checked.reason);
-  }
-  if (request.tags != null) {
-    const checked = cleanTags(request.tags);
-    if (!checked.ok) return fail(checked.reason);
-  }
-  if (watchlist(read).length >= MAX_ITEMS) return fail("watchlist_full", { max: MAX_ITEMS });
-
   const t = request.target;
-  let resolution: Outcome<Resolution>;
-  if ("pick" in t) resolution = await resolvePick(read, deps.market, t.pick, request.today);
-  else if ("instrument" in t) resolution = done({ kind: "stored", instrument: t.instrument });
-  else resolution = await resolveText(read, deps.market, t, request.today);
+  const resolution = await resolveService(read, deps.market, request);
   if (!resolution.ok) return resolution;
   const r = resolution.value;
   const target: WatchTargetRef =

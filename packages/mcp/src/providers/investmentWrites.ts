@@ -2,7 +2,7 @@
 import { parseDateTime } from "@cashu/domain";
 import { asInstrumentId, market, plan, views } from "@cashu/domain/investments";
 import { investmentsViews } from "@cashu/store";
-import { loadInstrument } from "@cashu/store/investments/queries";
+import { loadInstrument, vaultInstrumentGids } from "@cashu/store/investments/queries";
 import { backtestProposalRule } from "@cashu/store/investments/services";
 import type { ToolContext } from "../registry.js";
 import type { NativeToolStore } from "../runtime/types.js";
@@ -47,9 +47,14 @@ export function investmentWriteServices(
       },
     },
     watchlist(pending) {
+      const prospective = pending?.prospectiveInstrument;
+      if (prospective !== undefined && prospective.id !== pending?.instrument)
+        throw new Error("prospective watch identity mismatch");
+      const newSubject =
+        prospective !== undefined && !vaultInstrumentGids(ctx.store.read).has(prospective.id);
       const out = investmentsViews.portfolioViewInputs(ctx.store.read, {
         ...request,
-        ...(pending === undefined
+        ...(pending === undefined || newSubject
           ? {}
           : {
               instrumentIds: [...(request.instrumentIds ?? []), asInstrumentId(pending.instrument)],
@@ -67,18 +72,40 @@ export function investmentWriteServices(
       };
       // A saved instrument becomes watched now. P2 hints are facts-based; plan-check signals are
       // deliberately excluded from the strategy-rule signal kinds used by P2/P3 annotations.
-      const subjects = out.value.facts.subjects.map((subject) =>
+      let state = out.value.state;
+      let facts = out.value.facts;
+      if (newSubject && prospective) {
+        const series =
+          pending.verifiedBars ??
+          (request.marketData === undefined
+            ? market.cachedMarketData(request.prices, [prospective]).series(prospective.id)
+            : request.marketData.data.series(prospective.id));
+        state = {
+          ...state,
+          instruments: new Map([...state.instruments, [prospective.id, prospective]]),
+          historyBars: new Map([
+            ...state.historyBars,
+            [prospective.id, series.filter((bar) => bar.date <= ctx.today)],
+          ]),
+        };
+        facts = investmentsViews.readFacts(ctx.store.read, {
+          portfolio: state,
+          clock: request.clock,
+        });
+      }
+      const subjects = facts.subjects.map((subject) =>
         subject.instrument.id === watched.instrumentId
           ? { ...subject, hintsWanted: true }
           : subject,
       );
       return views.watchlistView({
         ...out.value,
+        state,
         annotations: plan.annotateSubjects(subjects, request.clock, request.lang),
         facts: {
-          ...out.value.facts,
+          ...facts,
           subjects,
-          watched: [...out.value.facts.watched.filter((row) => row.id !== watched.id), watched],
+          watched: [...facts.watched.filter((row) => row.id !== watched.id), watched],
         },
       });
     },

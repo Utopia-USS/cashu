@@ -1,6 +1,6 @@
 /** Genuine per-call inputs for synchronous investment writes; no network or publication capability. */
 
-import type { PriceBar } from "@cashu/domain/investments";
+import type { Instrument, PriceBar } from "@cashu/domain/investments";
 import type { RuleSpec } from "@cashu/domain/investments/rules";
 import type { StrategyConfig } from "@cashu/domain/investments/strategy";
 import type { investmentsCommands, investmentsViews } from "@cashu/store";
@@ -21,7 +21,10 @@ export interface InvestmentWriteServices {
   readonly strategyFiles?: ProposalCreationFiles;
   alertBars(instrument: string): readonly PriceBar[];
   watchlist(
-    pending?: investmentsCommands.WatchAddResult,
+    pending?: investmentsCommands.WatchAddResult & {
+      readonly prospectiveInstrument?: Instrument;
+      readonly verifiedBars?: readonly PriceBar[];
+    },
   ): Extract<ReturnType<typeof investmentsViews.readWatchlist>, { ok: true }>["value"];
   backtest(rule: RuleSpec, config: StrategyConfig): RuleBacktestReport;
 }

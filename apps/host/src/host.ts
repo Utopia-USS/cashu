@@ -21,10 +21,14 @@ import { type AdminStatus, HOST_PROTOCOL } from "@cashu/host-protocol";
 import {
   budgetTools,
   coreTools,
+  type InvestmentAsyncCapabilities,
   type InvestmentHistoryReads,
   type InvestmentReads,
   type InvestmentWriteServices,
+  investmentImportAdapter,
+  investmentSearchAdapter,
   investmentTools,
+  investmentWatchAdapter,
   investmentWriteTools,
   loansTools,
   NativeMcpServer,
@@ -118,6 +122,7 @@ export interface LocalHostOptions {
   /** Write `<data dir>/bin/cashu` at start (default true). */
   readonly launcher?: boolean;
   /** Device cache dependency, also used by synthetic oracle fixtures. */
+  readonly mcpInvestmentAsync?: (vault: string) => InvestmentAsyncCapabilities | undefined;
   readonly mcpPrices?: market.PriceCache;
   readonly mcpFxNewest?: () => string | null;
   /** Explicit coherent read authorities; native investment views are unavailable without them. */
@@ -418,9 +423,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         serveMcpSession(session, {
           log,
           start: (profile, open) => {
-            const vault = [...stores.vaults.values()].find(
+            const matchingVaults = [...stores.vaults.values()].filter(
               (v) => mcpProfile(v.store.read.bind(v.store))?.slug === profile,
             );
+            if (matchingVaults.length > 1) {
+              log.warn("mcp.profile.ambiguous");
+              return undefined;
+            }
+            const vault = matchingVaults[0];
             const child =
               python === undefined
                 ? undefined
@@ -531,10 +541,22 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 investmentHistory: options.mcpInvestmentHistory,
                 research: options.mcpResearch,
                 investmentWrites: options.mcpInvestmentWrites,
+                investmentAsync: options.mcpInvestmentAsync?.(vault.id),
                 readInvestmentImportFile: readInvestmentFile,
                 readInvestmentMappingFile: readInvestmentMapping,
               }),
               tools,
+              [
+                ...(tools.some((tool) => tool.name === "search_instruments")
+                  ? [investmentSearchAdapter]
+                  : []),
+                ...(tools.some((tool) => tool.name === "add_to_watchlist")
+                  ? [investmentWatchAdapter]
+                  : []),
+                ...(tools.some((tool) => tool.name === "propose_import")
+                  ? [investmentImportAdapter]
+                  : []),
+              ],
             );
             return compositeBackend({ native, python: child, inventory, profile });
           },

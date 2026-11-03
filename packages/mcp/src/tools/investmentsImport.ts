@@ -12,7 +12,7 @@ const SCRIPTS = new Set(
     " ",
   ),
 );
-function refuseScript(value: string | undefined, what: string): void {
+export function refuseScript(value: string | undefined, what: string): void {
   if (
     value !== undefined &&
     !value.includes("\n") &&
@@ -31,7 +31,7 @@ function importValueFree(message: string): string {
       "#",
     );
 }
-function byKind(issues: readonly importing.ImportWarning[]): L.LabelledTree {
+export function byKind(issues: readonly importing.ImportWarning[]): L.LabelledTree {
   const groups = new Map<string, importing.ImportWarning[]>();
   for (const issue of issues) {
     const items = groups.get(issue.kind) ?? [];

@@ -1,44 +1,50 @@
 // Native MCP call boundary: reread policy, audit first, redact before committing buffered writes.
 import { summaryOk } from "@cashu/domain/investments/macro";
 
-import { type Outcome, summarizeArgs } from "../privacy/audit.js";
+import { summarizeArgs } from "../privacy/audit.js";
 import { type JsonValue, pyDumps } from "../privacy/pyJson.js";
-import {
-  LeakDetected,
-  leakCheck,
-  type Privacy,
-  Redactor,
-  UnlabelledValue,
-} from "../privacy/redactor.js";
-import { scrubText } from "../privacy/scrub.js";
+import { leakCheck, type Privacy, Redactor, UnlabelledValue } from "../privacy/redactor.js";
 import {
   enabledIn,
   inputSchema,
   type ToolArgs,
-  type ToolContext,
-  ToolError,
   type ToolSpec,
   validateArguments,
 } from "../registry.js";
+import type { NativeAsyncAdapter } from "./async.js";
+import { NativeAsyncLifecycle, runNativeAsyncCall } from "./asyncCall.js";
+import {
+  APP_UPDATED,
+  failure,
+  type NativeCallResult,
+  type NativeRuntime,
+  renderNativeError,
+  restrictivePrivacy,
+  warnNative,
+} from "./boundary.js";
+import { finalizeNativeDelivery } from "./delivery.js";
 import type { NativeToolStore } from "./types.js";
+
+export {
+  APP_UPDATED,
+  type AuditPort,
+  BRIDGE_CAPABILITY,
+  CEILING_KEY,
+  type DelegatedNameSources,
+  EFFECTIVE_PRIVACY_KEY,
+  failure,
+  NAME_GUARD_APPLIED_KEY,
+  NAME_GUARD_KEY,
+  type NativeCallResult,
+  type NativeExecution,
+  type NativeRuntime,
+  privacyCeiling,
+  restrictivePrivacy,
+} from "./boundary.js";
+export type { NativePolicy } from "./policy.js";
 
 export const INSTRUCTIONS =
   "cashU: local personal finance data of ONE profile. Every answer passes a privacy layer: in 'strict' mode you get shares and percentages, never absolute amounts; identifiers (account numbers, IBANs, person names) are never sent in any mode. Call profile_overview first: it says which modules are enabled and the privacy level. Write tools only create records or proposals; the owner approves proposals in the app. Do not ask the user for raw exports or database files.";
-export const APP_UPDATED =
-  "cashU was updated while this MCP server was running, so this server stops now and nothing was run. Reconnect it (Claude Code: /mcp) to use the new version, then repeat the call.";
-export const CEILING_KEY = "cashu/privacyCeiling";
-export const EFFECTIVE_PRIVACY_KEY = "cashu/effectivePrivacy";
-export const BRIDGE_CAPABILITY = "cashu/hostPolicyV1";
-export const NAME_GUARD_KEY = "cashu/nameGuard";
-export const NAME_GUARD_APPLIED_KEY = "cashu/nameGuardApplied";
-/** Restrictive raw sources only: no replacement targets, symbols, secrets or profile identifiers. */
-export interface DelegatedNameSources {
-  readonly persons: readonly string[];
-  readonly strongNames: readonly string[];
-  readonly privatePayees: readonly string[];
-  readonly strictNames: readonly string[];
-}
-
 export interface ToolDescriptor {
   readonly name: string;
   readonly description: string;
@@ -62,51 +68,6 @@ export function toolDescriptor(
     annotations: { readOnlyHint: !spec.write, destructiveHint: false, openWorldHint: false },
   };
 }
-export interface NativePolicy {
-  readonly privacy: Privacy;
-  readonly modules: ReadonlySet<string>;
-}
-export interface NativeExecution {
-  readonly context: ToolContext<NativeToolStore>;
-  readonly policy: NativePolicy;
-  commit(): void;
-}
-export interface AuditPort {
-  start(tool: string, args: Readonly<Record<string, string | number>>): Promise<number>;
-  finish(
-    id: number,
-    privacy: Privacy,
-    outcome: Exclude<Outcome, "started">,
-    errorKind: string | null,
-    duration: number,
-  ): Promise<void>;
-}
-export interface NativeRuntime {
-  readonly audit: AuditPort;
-  readonly now: () => number;
-  readonly replaced: () => boolean;
-  /** Executes synchronously under this vault's write queue, with freshly read policy. */
-  execute<T>(
-    ceiling: Privacy | undefined,
-    fn: (execution: NativeExecution | undefined) => T,
-  ): Promise<T>;
-  policy(): Promise<NativePolicy | undefined>;
-  /** Captures current policy and restrictive name sources in the same vault queue step. */
-  delegation(): Promise<(NativePolicy & { readonly names: DelegatedNameSources }) | undefined>;
-  warn(code: string): void;
-}
-export interface NativeCallResult {
-  readonly ok: boolean;
-  readonly privacy: Privacy;
-  readonly data?: JsonValue;
-  readonly error?: string;
-  readonly errorKind?: string;
-}
-export const failure = (
-  error: string,
-  errorKind: string,
-  privacy: Privacy = "strict",
-): NativeCallResult => ({ ok: false, error, errorKind, privacy });
 const REFUSED = new Set([
   "privacy_check",
   "unlabelled",
@@ -116,27 +77,33 @@ const REFUSED = new Set([
   "invalid_policy",
 ]);
 
-/** Undefined means no ceiling; an explicitly invalid value is refused, never ignored. */
-export function privacyCeiling(meta: unknown): Privacy | undefined {
-  if (meta === undefined || meta === null) return undefined;
-  if (typeof meta !== "object" || Array.isArray(meta))
-    throw new ToolError("invalid private policy metadata", "invalid_policy", { system: true });
-  if (!Object.hasOwn(meta, CEILING_KEY)) return undefined;
-  const value = (meta as Record<string, unknown>)[CEILING_KEY];
-  if (value !== "strict" && value !== "amounts")
-    throw new ToolError("invalid private policy metadata", "invalid_policy", { system: true });
-  return value;
-}
-export const restrictivePrivacy = (a: Privacy, b?: Privacy): Privacy =>
-  a === "strict" || b === "strict" ? "strict" : "amounts";
-
 export class NativeMcpServer {
   readonly tools: ReadonlyMap<string, ToolSpec<NativeToolStore>>;
   readonly runtime: NativeRuntime;
-  constructor(runtime: NativeRuntime, tools: readonly ToolSpec<NativeToolStore>[]) {
+  private readonly asyncTools: ReadonlyMap<string, NativeAsyncAdapter>;
+  private readonly lifecycle = new NativeAsyncLifecycle();
+  constructor(
+    runtime: NativeRuntime,
+    tools: readonly ToolSpec<NativeToolStore>[],
+    adapters: readonly NativeAsyncAdapter[] = [],
+  ) {
     this.runtime = runtime;
+    this.asyncTools = new Map(adapters.map((adapter) => [adapter.name, adapter]));
+    if (this.asyncTools.size !== adapters.length) throw new Error("duplicate async tool");
+    for (const adapter of adapters) {
+      if (
+        !tools.some((tool) => tool.name === adapter.name) ||
+        !Number.isSafeInteger(adapter.maxIoPhases) ||
+        adapter.maxIoPhases < 1 ||
+        adapter.maxIoPhases > 2
+      )
+        throw new Error("invalid async native registration");
+    }
     this.tools = new Map(tools.map((spec) => [spec.name, spec]));
     if (this.tools.size !== tools.length) throw new Error("duplicate native tool");
+  }
+  invalidateAsync(): void {
+    this.lifecycle.invalidate();
   }
   async list(): Promise<ToolDescriptor[]> {
     if (this.runtime.replaced()) return [];
@@ -152,6 +119,7 @@ export class NativeMcpServer {
     arguments_: ToolArgs | null,
     known: ReadonlySet<string>,
     action: () => Promise<NativeCallResult>,
+    finalize?: (result: NativeCallResult) => Promise<NativeCallResult>,
   ): Promise<NativeCallResult> {
     if (this.runtime.replaced()) return failure(APP_UPDATED, "app_updated");
     const started = this.runtime.now();
@@ -170,7 +138,7 @@ export class NativeMcpServer {
     try {
       result = this.runtime.replaced() ? failure(APP_UPDATED, "app_updated") : await action();
     } catch {
-      this.runtime.warn("mcp.internal");
+      warnNative(this.runtime, "mcp.internal");
       result = failure("internal error (details are in the app's log)", "internal");
     }
     try {
@@ -182,9 +150,9 @@ export class NativeMcpServer {
         Math.max(0, Math.trunc(this.runtime.now() - started)),
       );
     } catch {
-      this.runtime.warn("mcp.audit-finish-failed");
+      warnNative(this.runtime, "mcp.audit-finish-failed");
     }
-    return result;
+    return finalize ? finalize(result) : result;
   }
   async call(
     name: string,
@@ -192,64 +160,59 @@ export class NativeMcpServer {
     ceiling?: Privacy,
   ): Promise<NativeCallResult> {
     const spec = this.tools.get(name);
-    return this.audited(
-      spec?.name ?? "(unknown)",
-      arguments_,
-      new Set(Object.keys(spec?.properties ?? {})),
-      async () =>
-        this.runtime.execute(ceiling, (execution) => {
-          if (this.runtime.replaced()) return failure(APP_UPDATED, "app_updated");
-          if (execution === undefined)
-            return failure("the profile of this server no longer exists", "profile_missing");
-          const { context, policy } = execution;
-          const privacy = restrictivePrivacy(policy.privacy, ceiling);
-          if (spec === undefined) return failure("unknown tool", "unknown_tool", privacy);
-          if (!enabledIn(spec, policy.modules))
-            return failure(
-              `tool ${spec.name} belongs to the module '${spec.module}', which is not enabled for this profile`,
-              "module_disabled",
-              privacy,
-            );
-          try {
-            const args = validateArguments(spec, arguments_);
-            const tree = spec.handler(context, args);
-            const redactor = new Redactor({ privacy, guard: context.guard, summaryOk });
-            const data = redactor.apply(tree);
-            if (data === null || typeof data !== "object" || Array.isArray(data))
-              throw new UnlabelledValue("a tool must return an object");
-            leakCheck(data, {
-              strict: redactor.strict,
-              isins: redactor.isins,
-              nonMoney: redactor.nonMoney,
-            });
-            execution.commit();
-            return { ok: true, privacy, data };
-          } catch (error) {
-            if (error instanceof ToolError) {
-              let guard = null;
-              try {
-                guard = context.guard;
-              } catch {
-                /* A failed guard must never expose the exception. */
-              }
-              let message = scrubText(error.message, { strict: !error.system, guard });
-              try {
-                leakCheck({ error: message }, { strict: true });
-              } catch {
-                message = "the error text was withheld by the privacy check";
-              }
-              return failure(message, error.kind, privacy);
-            }
-            if (error instanceof LeakDetected || error instanceof UnlabelledValue)
+    const adapter = this.asyncTools.get(name);
+    if (spec && adapter)
+      return runNativeAsyncCall(this, this.lifecycle, spec, adapter, arguments_, ceiling);
+    const call = this.lifecycle.begin();
+    let completed = false;
+    try {
+      return await this.audited(
+        spec?.name ?? "(unknown)",
+        arguments_,
+        new Set(Object.keys(spec?.properties ?? {})),
+        async () =>
+          this.runtime.execute(ceiling, (execution) => {
+            if (this.runtime.replaced()) return failure(APP_UPDATED, "app_updated");
+            if (call.stopped())
+              return failure("the MCP session is no longer active", "session_closed");
+            if (execution === undefined)
+              return failure("the profile of this server no longer exists", "profile_missing");
+            const { context, policy } = execution;
+            const privacy = restrictivePrivacy(policy.privacy, ceiling);
+            if (spec === undefined) return failure("unknown tool", "unknown_tool", privacy);
+            if (!enabledIn(spec, policy.modules))
               return failure(
-                "the answer was withheld by the privacy check (nothing was sent or saved)",
-                error instanceof LeakDetected ? "privacy_check" : "unlabelled",
+                `tool ${spec.name} belongs to the module '${spec.module}', which is not enabled for this profile`,
+                "module_disabled",
                 privacy,
               );
-            throw error;
-          }
-        }),
-    );
+            try {
+              const args = validateArguments(spec, arguments_);
+              const tree = spec.handler(context, args);
+              const redactor = new Redactor({ privacy, guard: context.guard, summaryOk });
+              const data = redactor.apply(tree);
+              if (data === null || typeof data !== "object" || Array.isArray(data))
+                throw new UnlabelledValue("a tool must return an object");
+              leakCheck(data, {
+                strict: redactor.strict,
+                isins: redactor.isins,
+                nonMoney: redactor.nonMoney,
+              });
+              execution.commit();
+              completed = true;
+              return { ok: true, privacy, data };
+            } catch (error) {
+              const rendered = renderNativeError(context, privacy, error);
+              if (rendered) return rendered;
+              throw error;
+            }
+          }),
+        (result) =>
+          finalizeNativeDelivery(this.runtime, spec, result, { completed }, call.stopped, ceiling),
+      );
+    } finally {
+      call.finish();
+    }
   }
 }
 
