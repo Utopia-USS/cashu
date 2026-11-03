@@ -36,7 +36,9 @@ export default async function globalSetup() {
     CASHU_APP_BUNDLE: "none",
     CASHU_AUTO_DAILY: "0",
     PYTHON_KEYRING_BACKEND: "memory_keyring.MemoryKeyring",
-    PYTHONPATH: [join(REPO, "frontend", "e2e"), join(REPO, "src"), process.env.PYTHONPATH].filter(Boolean).join(":"),
+    PYTHONPATH: [join(REPO, "frontend", "e2e"), join(REPO, "src"), process.env.PYTHONPATH]
+      .filter(Boolean)
+      .join(":"),
   };
   Object.assign(process.env, isolation);
   delete process.env.CASHU_DATABASE_URL;
@@ -53,7 +55,12 @@ export default async function globalSetup() {
   }
   const seed = spawnSync(
     python,
-    [join(APP_DIR, "e2e", "seed-demo.py"), join(REPO, "scripts", "demo_data.py"), "--data-dir", isolation.CASHU_DATA_DIR],
+    [
+      join(APP_DIR, "e2e", "seed-demo.py"),
+      join(REPO, "scripts", "demo_data.py"),
+      "--data-dir",
+      isolation.CASHU_DATA_DIR,
+    ],
     {
       env: process.env,
       encoding: "utf8",
