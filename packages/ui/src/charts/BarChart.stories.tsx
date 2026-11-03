@@ -41,3 +41,22 @@ export const PrivacyMode: Story<BarChartProps> = {
   args: { ...ValueLabels.args },
   decorators: [privacyMode],
 };
+
+/** Grouped mode uses labels as category length authority; legacy values must be empty. */
+export const GroupedCashflow: Story<BarChartProps> = {
+  args: {
+    values: [],
+    labels: ["Jan", "Feb"],
+    series: [
+      { name: "Income", values: [100, 120], color: 1 },
+      { name: "Expenses", values: [80, 140], color: 2 },
+    ],
+    line: { name: "Net", values: [20, -20], color: 3 },
+    accessibleSummary:
+      "Jan: income 100, expenses 80, net 20; Feb: income 120, expenses 140, net -20",
+    tooltip: (i) => ({
+      title: ["Jan", "Feb"][i] ?? "",
+      rows: [{ name: "Net", value: i === 0 ? "20" : "-20" }],
+    }),
+  },
+};

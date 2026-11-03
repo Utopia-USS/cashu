@@ -16,7 +16,14 @@ export function donutScene(p: DonutProps): Built {
   const nodes: SceneNode[] = [];
   arcs.forEach((d, i) => {
     const seg = p.segments[i];
-    if (d && seg) nodes.push({ k: "path", d, fill: seriesRole(seg.color), evenOdd: true });
+    if (d && seg)
+      nodes.push({
+        k: "path",
+        d,
+        fill: seriesRole(seg.color),
+        evenOdd: true,
+        ...(p.onSegmentSelected ? { activation: { index: i, label: seg.name } } : {}),
+      });
   });
   const total = p.segments.reduce((a, s) => (s.value > 0 ? a + s.value : a), 0);
   const parts = p.segments

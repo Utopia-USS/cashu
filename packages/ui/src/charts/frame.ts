@@ -11,6 +11,7 @@ export interface ChartFrameProps {
   height: number;
   layout?: Layout;
   label: string;
+  onActivate?: ((index: number) => void) | undefined;
   build: (width: number) => Built;
   /** Tooltip for a focused index, already privacy-masked; makes a scrubbable scene interactive. */
   tooltip?: ((i: number) => ChartTip) | undefined;

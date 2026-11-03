@@ -24,7 +24,9 @@
     "@cashu/store-react": "workspace:*",
     "@cashu/ui": "workspace:*",
     "@cashu/ui-logic": "workspace:*",
+    "@tanstack/react-form": "1.33.5",
     "@tanstack/react-router": "^1.0.0",
+    "@tanstack/react-virtual": "3.14.25",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "^4.6.7"
@@ -37,6 +39,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "babel-plugin-react-compiler": "^1.0.0",
     "electron": "45.1.0",
+    "jsdom": "26.1.0",
     "rolldown": "1.2.16",
     "vite": "^5.4.11"
   },

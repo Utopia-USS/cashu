@@ -50,3 +50,10 @@ export function mcpBudgetFreshness(read: Read): { newest: string | null; count: 
     FROM transactions t JOIN accounts a ON a.id = t.account_id`)[0] ?? { newest: null, count: 0 }
   );
 }
+
+export { setDesktopMerchantCategory } from "./desktop-commands.js";
+export {
+  type BudgetDesktopSources,
+  budgetDesktopQueries,
+  type UncategorizedMerchant,
+} from "./desktop-queries.js";

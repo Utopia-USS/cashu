@@ -1,5 +1,6 @@
-import { profileIdentity } from "@cashu/store/overview";
+import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import { useProfile, useQuery } from "@cashu/store-react";
+import { useUiEnv } from "@cashu/ui";
 import {
   createHashHistory,
   createRootRoute,
@@ -12,6 +13,8 @@ import {
 import { createContext, startTransition, use, useEffect, useRef } from "react";
 import { z } from "zod";
 import { S } from "./Desktop.strings.js";
+import { BudgetView } from "./screens/budget/BudgetView.js";
+import { type BudgetTab, useBudgetScreen } from "./screens/budget/useBudgetScreen.js";
 import { OverviewView } from "./screens/overview/OverviewView.js";
 import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
 import { useCashDrawer } from "./screens/overview/useCashDrawer.js";
@@ -22,6 +25,8 @@ import { ProfileRouteSync } from "./shell/profileRouteSync.js";
 import { ShellView } from "./shell/ShellView.js";
 import { useCalendarDay } from "./shell/useCalendarDay.js";
 import { useShellScreen } from "./shell/useShellScreen.js";
+
+const budgetCurrencyByVault = new Map<string, string>();
 
 const LEGACY_TABS: Record<string, string> = {
   overview: "overview",
@@ -83,7 +88,16 @@ function ShellRoute() {
             search: { vault: state.vault },
           });
       }}
-      onLegacyOpened={legacy.open}
+      activeModule={params.tab !== undefined ? "budget" : "overview"}
+      onLegacyOpened={(module) => {
+        if (module === "budget" && state.profile !== null)
+          void router.navigate({
+            to: "/$slug/budget/$tab",
+            params: { slug: state.profile.slug, tab: "expenses" },
+            search: { vault: state.vault, currency: budgetCurrencyByVault.get(state.vault) },
+          });
+        else legacy.open(module);
+      }}
     >
       <LegacyNavigation value={legacy}>
         {selection !== null &&
@@ -161,6 +175,17 @@ const search = z.object({
     .string()
     .regex(/^[0-9a-f]{32}$/)
     .optional(),
+  mode: z.enum(["month", "quarter", "year", "all"]).optional(),
+  anchor: z.number().int().min(0).max(120000).optional(),
+  gran: z.enum(["monthly", "quarterly", "yearly"]).optional(),
+  range: z.number().int().min(0).max(240).optional(),
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional(),
+  drill: z.string().max(100).optional(),
+  sort: z.enum(["date", "amount"]).optional(),
+  order: z.enum(["asc", "desc"]).optional(),
   currency: z
     .string()
     .regex(/^[A-Z]{3}$/)
@@ -227,8 +252,85 @@ function OverviewBound({
   );
 }
 
+const budgetRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/budget/$tab",
+  validateSearch: (raw) => search.parse(raw),
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
+  errorComponent: RouteFailure,
+  component: BudgetRoute,
+});
+const budgetModuleQuery = overviewQueries({ prices: null }).moduleStates;
+
+function BudgetRoute() {
+  const { privacy } = useUiEnv();
+  const enabled = useQuery(budgetModuleQuery).some((module) => module.id === "budget");
+  const { slug, tab } = budgetRoute.useParams();
+  const filters = budgetRoute.useSearch();
+  const vault = useProfile();
+  if (!enabled) return <p className="p-6">{S.setup}</p>;
+  if (!["expenses", "flows", "subs"].includes(tab)) return <RouteFailure />;
+  return (
+    <BudgetBound
+      key={`${vault}:${privacy}`}
+      slug={slug}
+      tab={tab as BudgetTab}
+      vault={vault}
+      filters={filters}
+    />
+  );
+}
+function BudgetBound({
+  slug,
+  tab,
+  vault,
+  filters,
+}: {
+  slug: string;
+  tab: BudgetTab;
+  vault: string;
+  filters: ReturnType<typeof budgetRoute.useSearch>;
+}) {
+  const legacy = use(LegacyNavigation);
+  const today = useCalendarDay();
+  const modules = useQuery(profileIdentity);
+  const state = useBudgetScreen({
+    today,
+    tab,
+    filters,
+    change: (next) =>
+      startTransition(() => {
+        if (next.currency) budgetCurrencyByVault.set(vault, next.currency);
+        void router.navigate({
+          to: "/$slug/budget/$tab",
+          params: { slug, tab },
+          search: { ...next, vault },
+        });
+      }),
+  });
+  if (modules === null) return <p>{S.noProfile}</p>;
+  return (
+    <BudgetView
+      state={state}
+      canOpenLegacy={legacy.allowed}
+      onLegacyOpened={() => legacy.open("budget")}
+      onTabPicked={(next) => {
+        void router.navigate({
+          to: "/$slug/budget/$tab",
+          params: { slug, tab: next },
+          search: { ...filters, vault },
+        });
+      }}
+    />
+  );
+}
+
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([startRoute, overviewRoute]),
+  routeTree: rootRoute.addChildren([startRoute, overviewRoute, budgetRoute]),
   history: createHashHistory(),
 });
 declare module "@tanstack/react-router" {

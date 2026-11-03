@@ -3,7 +3,7 @@
 import { S } from "./charts.strings.js";
 import { barLayout } from "./geometry.js";
 import { MIN_WIDTH } from "./lineScene.js";
-import type { Built, ChartRole, SceneNode } from "./scene.js";
+import { type Built, type ChartRole, type SceneNode, seriesRole } from "./scene.js";
 import type { BarChartProps } from "./types.js";
 import { hides, wholeNumber } from "./values.js";
 
@@ -28,6 +28,7 @@ function barsSummary(p: BarChartProps, privacy: boolean): string {
 }
 
 export function barScene(p: BarChartProps, width: number, privacy: boolean): Built {
+  if (p.series !== undefined) return groupedScene(p, width, privacy);
   const hidden = hides(p.valueKind, privacy);
   const w = Math.max(width, MIN_WIDTH);
   const h = p.height ?? 120;
@@ -77,5 +78,94 @@ export function barScene(p: BarChartProps, width: number, privacy: boolean): Bui
     scene: { width: w, height: h, gradients: [], nodes },
     scrub: null,
     summary: barsSummary(p, privacy),
+  };
+}
+
+/** Grouped categories share one zero-inclusive domain; labels are the only length authority. */
+function groupedScene(p: BarChartProps, width: number, privacy: boolean): Built {
+  const n = p.labels?.length ?? 0;
+  const series = p.series ?? [];
+  if (
+    p.values.length !== 0 ||
+    series.length === 0 ||
+    series.some((row) => row.values.length !== n) ||
+    (p.line && p.line.values.length !== n)
+  )
+    throw new RangeError("invalid grouped chart lengths");
+  const all = [...series.flatMap((row) => row.values), ...(p.line?.values ?? [])];
+  if (all.some((value) => !Number.isFinite(value)))
+    throw new RangeError("invalid grouped chart value");
+  const w = Math.max(width, MIN_WIDTH),
+    h = p.height ?? 120;
+  const top = 12,
+    bottom = h - 24;
+  const lo = Math.min(0, ...all),
+    hi = Math.max(0, ...all);
+  const span = hi - lo || 1;
+  const y = (value: number) => bottom - ((value - lo) / span) * (bottom - top);
+  const step = n ? w / n : w;
+  const groupWidth = step * 0.75,
+    barWidth = groupWidth / series.length;
+  const cx = (index: number) => step * (index + 0.5);
+  const nodes: SceneNode[] = [{ k: "line", x1: 0, x2: w, y1: y(0), y2: y(0), stroke: "grid" }];
+  for (let index = 0; index < n; index++) {
+    series.forEach((row, position) => {
+      const value = row.values[index] ?? 0;
+      nodes.push({
+        k: "rect",
+        x: cx(index) - groupWidth / 2 + position * barWidth,
+        y: Math.min(y(0), y(value)),
+        w: barWidth * 0.9,
+        h: Math.abs(y(value) - y(0)),
+        rx: 2,
+        fill: seriesRole(row.color),
+      });
+    });
+    nodes.push({
+      k: "text",
+      x: cx(index),
+      y: h - 4,
+      text: p.labels?.[index] ?? "",
+      anchor: "middle",
+      tone: "muted",
+    });
+  }
+  if (p.line)
+    nodes.push({
+      k: "path",
+      d: p.line.values
+        .map((value, index) => `${index ? "L" : "M"}${cx(index)},${y(value)}`)
+        .join(" "),
+      stroke: seriesRole(p.line.color),
+      width: 2,
+    });
+  const hidden = hides(p.valueKind, privacy);
+  const summary =
+    n === 0
+      ? `${p.label}: ${S.noData}`
+      : hidden
+        ? `${p.label}: ${S.hidden}`
+        : (p.accessibleSummary ??
+          `${p.label}: ${p.labels?.map((label, i) => `${label}: ${[...series, ...(p.line ? [p.line] : [])].map((row) => `${row.name} ${(p.format ?? wholeNumber)(row.values[i] ?? 0)}`).join(", ")}`).join("; ")}`);
+  return {
+    scene: { width: w, height: h, gradients: [], nodes },
+    summary,
+    scrub:
+      n > 0
+        ? {
+            n,
+            x0: cx(0),
+            x1: cx(n - 1),
+            focus: (index) => ({
+              x: cx(index),
+              top,
+              bottom,
+              tipY: top,
+              dots: p.line
+                ? [{ cy: y(p.line.values[index] ?? 0), fill: seriesRole(p.line.color) }]
+                : [],
+            }),
+          }
+        : null,
   };
 }

@@ -37,7 +37,15 @@ function labelPosition(t: TextNode, sceneWidth: number) {
   return { left: t.x - CENTER_BOX / 2, width: CENTER_BOX, top, textAlign: "center" as const };
 }
 
-function Mark({ node, color }: { node: SceneNode; color: (r: ChartRole) => string | undefined }) {
+function Mark({
+  node,
+  color,
+  onActivate,
+}: {
+  node: SceneNode;
+  color: (r: ChartRole) => string | undefined;
+  onActivate?: ((index: number) => void) | undefined;
+}) {
   switch (node.k) {
     case "line":
       return (
@@ -55,6 +63,9 @@ function Mark({ node, color }: { node: SceneNode; color: (r: ChartRole) => strin
       return (
         <Path
           d={node.d}
+          accessible={node.activation !== undefined}
+          accessibilityLabel={node.activation?.label}
+          onPress={node.activation ? () => onActivate?.(node.activation?.index ?? 0) : undefined}
           stroke={node.stroke ? color(node.stroke) : undefined}
           fill={
             node.fill == null
@@ -99,7 +110,15 @@ function Mark({ node, color }: { node: SceneNode; color: (r: ChartRole) => strin
   }
 }
 
-function SvgScene({ scene, color }: { scene: Scene; color: (r: ChartRole) => string | undefined }) {
+function SvgScene({
+  scene,
+  color,
+  onActivate,
+}: {
+  scene: Scene;
+  color: (r: ChartRole) => string | undefined;
+  onActivate?: ((index: number) => void) | undefined;
+}) {
   const { width: w, height: h } = scene;
   return (
     <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
@@ -123,7 +142,7 @@ function SvgScene({ scene, color }: { scene: Scene; color: (r: ChartRole) => str
       )}
       {scene.nodes.map((node, k) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: scene nodes have no identity beyond their order
-        <Mark key={k} node={node} color={color} />
+        <Mark key={k} node={node} color={color} onActivate={onActivate} />
       ))}
     </Svg>
   );
@@ -140,6 +159,7 @@ export function ChartFrame({
   center,
   decorative,
   inline,
+  onActivate,
 }: ChartFrameProps) {
   const [measured, setMeasured] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -156,6 +176,12 @@ export function ChartFrame({
     if (scrub) setHover(nearestIndex(e.nativeEvent.locationX, scrub.n, scrub.x0, scrub.x1));
   };
   const onAccessibilityAction = (e: AccessibilityActionEvent) => {
+    if (onActivate && e.nativeEvent.actionName.startsWith("segment-")) {
+      const index = Number(e.nativeEvent.actionName.slice(8));
+      if (built?.scene.nodes.some((node) => node.k === "path" && node.activation?.index === index))
+        onActivate(index);
+      return;
+    }
     if (!scrub) return;
     const delta = { increment: 1, decrement: -1 }[e.nativeEvent.actionName];
     if (delta != null) setHover((cur) => stepIndex(cur, delta, scrub.n));
@@ -176,7 +202,19 @@ export function ChartFrame({
           accessibilityActions: [{ name: "increment" }, { name: "decrement" }],
           onAccessibilityAction,
         }
-      : { accessible: true, accessibilityRole: "image" as const, accessibilityLabel: summary };
+      : onActivate
+        ? {
+            accessible: true,
+            accessibilityRole: "image" as const,
+            accessibilityLabel: summary,
+            accessibilityActions: built?.scene.nodes.flatMap((node) =>
+              node.k === "path" && node.activation
+                ? [{ name: `segment-${node.activation.index}`, label: node.activation.label }]
+                : [],
+            ),
+            onAccessibilityAction,
+          }
+        : { accessible: true, accessibilityRole: "image" as const, accessibilityLabel: summary };
   const scene = built?.scene;
   const right = focus != null && scene != null && focus.x > scene.width * 0.6;
 
@@ -189,17 +227,17 @@ export function ChartFrame({
       onLayout={
         fixed == null ? (e) => setMeasured(Math.round(e.nativeEvent.layout.width)) : undefined
       }
-      onStartShouldSetResponder={() => scrub != null}
-      onMoveShouldSetResponder={() => scrub != null}
-      onResponderGrant={pick}
-      onResponderMove={pick}
-      onResponderRelease={() => setHover(null)}
-      onResponderTerminate={() => setHover(null)}
+      onStartShouldSetResponder={scrub ? () => true : undefined}
+      onMoveShouldSetResponder={scrub ? () => true : undefined}
+      onResponderGrant={scrub ? pick : undefined}
+      onResponderMove={scrub ? pick : undefined}
+      onResponderRelease={scrub ? () => setHover(null) : undefined}
+      onResponderTerminate={scrub ? () => setHover(null) : undefined}
       {...a11y}
     >
       {scene && (
-        <View pointerEvents="none" className="absolute inset-0">
-          <SvgScene scene={scene} color={color} />
+        <View pointerEvents={onActivate ? "box-none" : "none"} className="absolute inset-0">
+          <SvgScene scene={scene} color={color} onActivate={onActivate} />
           {focus && (
             <Svg width={scene.width} height={scene.height} className="absolute inset-0">
               <Line

@@ -12,9 +12,18 @@ import {
   removeOverviewAsset,
   renameProfile,
   restoreOverviewAsset,
+  setCushion,
   setProfileSettings,
+  setTransactionCategory,
   updateAssetDetails,
 } from "@cashu/store";
+import {
+  budgetDesktopQueries,
+  budgetScreenCashflow,
+  budgetScreenCurrencies,
+  budgetScreenSpending,
+  setDesktopMerchantCategory,
+} from "@cashu/store/budget/queries";
 import { profile } from "@cashu/store/core";
 import { currentVault, type DeviceCommand, setCurrentVault } from "@cashu/store/device";
 import {
@@ -23,6 +32,7 @@ import {
   overviewCashWallet,
   overviewQueries,
   profileIdentity,
+  vaultPaymentPatterns,
 } from "@cashu/store/overview";
 import type { Query, QueryArgs } from "@cashu/store/query";
 
@@ -40,8 +50,21 @@ export function servedQueries(
     currentVault,
     profile,
     profileIdentity,
+    vaultPaymentPatterns,
     legacyNavigation(env.legacyIdentity),
     overviewCashWallet,
+    budgetScreenCashflow,
+    budgetScreenCurrencies,
+    budgetScreenSpending,
+    ...Object.values(
+      budgetDesktopQueries({
+        ...(env.sources?.registry ? { registry: env.sources.registry } : {}),
+        ...(env.sources?.plannedContribution
+          ? { plannedContribution: env.sources.plannedContribution }
+          : {}),
+        paymentPatterns: (read) => vaultPaymentPatterns(read, env.sources),
+      }),
+    ),
     ...Object.values(overviewQueries(env, env.sources)),
   ];
 }
@@ -51,6 +74,9 @@ export const SERVED_COMMANDS: readonly AnyCommand[] = [
   createProfile,
   renameProfile,
   setProfileSettings,
+  setCushion,
+  setDesktopMerchantCategory,
+  setTransactionCategory,
   addCashExpense,
   deleteCashTransaction,
   updateAssetDetails,

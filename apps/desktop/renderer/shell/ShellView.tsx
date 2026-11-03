@@ -6,12 +6,19 @@ import type { ShellScreenState } from "./useShellScreen.js";
 
 export interface ShellViewProps {
   state: ShellScreenState;
+  activeModule?: string;
   onOverviewOpened(): void;
   onLegacyOpened(tab: string): void;
   children: ReactNode;
 }
 
-export function ShellView({ state, onOverviewOpened, onLegacyOpened, children }: ShellViewProps) {
+export function ShellView({
+  state,
+  onOverviewOpened,
+  onLegacyOpened,
+  children,
+  activeModule = "overview",
+}: ShellViewProps) {
   return (
     <UiEnvProvider privacy={state.privacy} locale={state.locale}>
       <div className="min-h-screen bg-surface text-body text-fg">
@@ -61,9 +68,9 @@ export function ShellView({ state, onOverviewOpened, onLegacyOpened, children }:
         >
           <button
             type="button"
-            aria-current="page"
+            aria-current={activeModule === "overview" ? "page" : undefined}
             onClick={onOverviewOpened}
-            className="rounded-sm bg-accent-muted px-4 py-2 text-accent"
+            className={`rounded-sm px-4 py-2 ${activeModule === "overview" ? "bg-accent-muted text-accent" : "hover:bg-surface-sunken"}`}
           >
             {S.overview}
           </button>
@@ -81,10 +88,11 @@ export function ShellView({ state, onOverviewOpened, onLegacyOpened, children }:
               <button
                 key={id}
                 type="button"
-                disabled={!state.canOpenLegacy}
+                disabled={id !== "budget" && !state.canOpenLegacy}
+                aria-current={activeModule === id ? "page" : undefined}
                 title={state.canOpenLegacy ? undefined : S.legacyUnavailable}
                 onClick={() => onLegacyOpened(id)}
-                className="rounded-sm px-4 py-2 hover:bg-surface-sunken"
+                className={`rounded-sm px-4 py-2 ${activeModule === id ? "bg-accent-muted text-accent" : "hover:bg-surface-sunken"}`}
               >
                 {label}
               </button>

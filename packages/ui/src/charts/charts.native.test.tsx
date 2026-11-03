@@ -110,3 +110,39 @@ describe("BarChart, Donut, Sparkline (native)", () => {
     expect(screen.queryByRole("image")).toBeNull();
   });
 });
+
+describe("interactive donut (native)", () => {
+  it("dispatches host accessibility actions to the same segment intent as actual arc presses", async () => {
+    const selected: number[] = [];
+    const Donut = donutStories.default.component;
+    await render(
+      <Donut
+        label="Spending"
+        segments={[{ name: "Food", value: 2, color: 1 }]}
+        onSegmentSelected={(i) => selected.push(i)}
+      />,
+    );
+    const host = screen.getByLabelText("Spending: Food 100%");
+    await fireEvent(host, "accessibilityAction", { nativeEvent: { actionName: "segment-0" } });
+    const arc = screen.getByLabelText("Food");
+    expect(selected).toEqual([0]);
+    const touch = {
+      currentTarget: 1,
+      persist: () => {},
+      nativeEvent: {
+        target: 1,
+        identifier: 1,
+        pageX: 20,
+        pageY: 20,
+        locationX: 20,
+        locationY: 20,
+        timestamp: 100,
+        touches: [{ identifier: 1, pageX: 20, pageY: 20 }],
+        changedTouches: [{ identifier: 1, pageX: 20, pageY: 20 }],
+      },
+    };
+    await fireEvent(arc, "responderGrant", touch);
+    await fireEvent(arc, "responderRelease", touch);
+    expect(selected).toEqual([0, 0]);
+  });
+});

@@ -16,6 +16,7 @@ export function Donut(props: DonutProps) {
       height={size}
       layout={props.layout}
       label={props.label}
+      onActivate={props.onSegmentSelected}
       build={() => donutScene(props)}
       center={
         center && {

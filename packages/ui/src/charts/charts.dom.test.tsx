@@ -135,3 +135,25 @@ describe("BarChart, Donut, Sparkline, AreaChart (web)", () => {
     expect(container.querySelector(`path[fill="url(#${gradient?.id})"]`)).not.toBeNull();
   });
 });
+
+describe("interactive donut (web)", () => {
+  it("activates the actual named arc by pointer, Enter and Space", () => {
+    const selected: number[] = [];
+    render(
+      <donutStories.default.component
+        label="Spending"
+        segments={[{ name: "Food", color: 1, value: 2 }]}
+        onSegmentSelected={(i) => selected.push(i)}
+      />,
+    );
+    const arc = screen.getByRole("button", { name: "Food" });
+    expect(arc.closest("svg")?.getAttribute("role")).toBe("group");
+    expect(arc.closest('[role="img"]')).toBeNull();
+    arc.focus();
+    expect(document.activeElement).toBe(arc);
+    fireEvent.click(arc);
+    fireEvent.keyDown(arc, { key: "Enter" });
+    fireEvent.keyDown(arc, { key: " " });
+    expect(selected).toEqual([0, 0, 0]);
+  });
+});

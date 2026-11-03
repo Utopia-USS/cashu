@@ -42,3 +42,7 @@ export const Empty: Story<DonutProps> = {
     ],
   },
 };
+
+export const Interactive: Story<DonutProps> = {
+  args: { onSegmentSelected: () => {} },
+};

@@ -210,3 +210,62 @@ describe("maskTip", () => {
     expect(maskTip(tip, true).rows.map((r) => r.value)).toEqual([MASK, "5%"]);
   });
 });
+
+describe("grouped bars", () => {
+  const props = {
+    label: "Flows",
+    values: [],
+    labels: ["A", "B"],
+    series: [
+      { name: "Income", values: [100, 120], color: 1 as const },
+      { name: "Expense", values: [80, 140], color: 2 as const },
+    ],
+    line: { name: "Net", values: [20, -20], color: 3 as const },
+    accessibleSummary: "exact monetary summary",
+    valueKind: "amount" as const,
+  };
+  it("draws side-by-side bars and net on a common zero-inclusive domain", () => {
+    const result = barScene(props, 400, false);
+    const rects = result.scene.nodes.filter((node) => node.k === "rect");
+    expect(rects).toHaveLength(4);
+    expect(rects[0]?.x).toBeLessThan(rects[1]?.x ?? 0);
+    expect(result.scene.nodes.some((node) => node.k === "path" && node.stroke === "series3")).toBe(
+      true,
+    );
+    expect(result.summary).toBe("exact monetary summary");
+    expect(barScene(props, 400, true).summary).not.toContain("exact monetary");
+    expect(result.scrub?.n).toBe(2);
+    const { accessibleSummary: _exact, ...fallback } = props;
+    expect(barScene(fallback, 400, false).summary).toContain("Net -20");
+    expect(
+      barScene(
+        {
+          ...props,
+          labels: [],
+          series: [{ name: "Income", color: 1, values: [] }],
+          line: { name: "Net", color: 3, values: [] },
+        },
+        400,
+        false,
+      ).summary,
+    ).toBe("Flows: no data");
+  });
+  it("refuses mismatched categories, dual data sources and nonfinite geometry", () => {
+    expect(() => barScene({ ...props, values: [1] }, 400, false)).toThrow(
+      "invalid grouped chart lengths",
+    );
+    expect(() => barScene({ ...props, line: { ...props.line, values: [1] } }, 400, false)).toThrow(
+      "invalid grouped chart lengths",
+    );
+    expect(() =>
+      barScene(
+        {
+          ...props,
+          series: [{ ...props.series[0], name: "bad", color: 1, values: [1, Number.NaN] }],
+        },
+        400,
+        false,
+      ),
+    ).toThrow("invalid grouped chart value");
+  });
+});

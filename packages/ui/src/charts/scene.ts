@@ -62,6 +62,7 @@ interface LineNode {
 
 interface PathNode {
   k: "path";
+  activation?: { index: number; label: string };
   d: string;
   stroke?: ChartRole;
   /** A role, or the id of one of the scene's gradients. */

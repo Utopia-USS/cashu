@@ -50,7 +50,15 @@ const FILL: Record<ChartRole, string> = {
 
 const cls = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
 
-function Node({ node, prefix }: { node: SceneNode; prefix: string }) {
+function Node({
+  node,
+  prefix,
+  onActivate,
+}: {
+  node: SceneNode;
+  prefix: string;
+  onActivate?: ((index: number) => void) | undefined;
+}) {
   switch (node.k) {
     case "line":
       return (
@@ -66,7 +74,7 @@ function Node({ node, prefix }: { node: SceneNode; prefix: string }) {
       );
     case "path": {
       const gradient = typeof node.fill === "object" ? node.fill.gradient : null;
-      return (
+      const path = (
         <path
           d={node.d}
           className={cls(
@@ -81,6 +89,26 @@ function Node({ node, prefix }: { node: SceneNode; prefix: string }) {
           strokeLinecap={node.stroke ? "round" : undefined}
           opacity={node.opacity}
         />
+      );
+      if (!node.activation) return path;
+      const activation = node.activation;
+      return (
+        // biome-ignore lint/a11y/useSemanticElements: an SVG group cannot contain an HTML button; the arc has button semantics and full keyboard activation.
+        <g
+          role="button"
+          tabIndex={0}
+          aria-label={activation.label}
+          className="cursor-pointer focus-visible:outline-2 focus-visible:outline-focus"
+          onClick={() => onActivate?.(activation.index)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onActivate?.(activation.index);
+            }
+          }}
+        >
+          {path}
+        </g>
       );
     }
     case "rect":
@@ -129,8 +157,10 @@ function SvgScene({
   label,
   onPointerMove,
   onPointerLeave,
+  onActivate,
 }: {
   scene: Scene;
+  onActivate?: ((index: number) => void) | undefined;
   prefix: string;
   focus: Focus | null;
   /** The image's name when the frame is a group (interactive); otherwise the frame carries it. */
@@ -147,7 +177,7 @@ function SvgScene({
       className="block overflow-visible"
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
-      role={label != null ? "img" : undefined}
+      role={label != null ? (onActivate ? "group" : "img") : undefined}
       aria-label={label ?? undefined}
       aria-hidden={label == null ? true : undefined}
     >
@@ -175,7 +205,7 @@ function SvgScene({
       {scene.nodes.map((node, k) => (
         // A scene is rebuilt whole; the node order is fixed per input, so the index is a stable key.
         // biome-ignore lint/suspicious/noArrayIndexKey: scene nodes have no identity beyond their order
-        <Node key={k} node={node} prefix={prefix} />
+        <Node key={k} node={node} prefix={prefix} onActivate={onActivate} />
       ))}
       {focus && (
         <g>
@@ -231,6 +261,7 @@ export function ChartFrame({
   center,
   decorative,
   inline,
+  onActivate,
 }: ChartFrameProps) {
   const { ref, width } = useMeasuredWidth(fixed);
   const [hover, setHover] = useState<number | null>(null);
@@ -268,7 +299,7 @@ export function ChartFrame({
           onKeyDown,
           onBlur: () => setHover(null),
         }
-      : { role: "img", "aria-label": summary };
+      : { role: onActivate ? "group" : "img", "aria-label": summary };
   const right = focus != null && built != null && focus.x > built.scene.width * 0.6;
 
   return (
@@ -289,13 +320,17 @@ export function ChartFrame({
           scene={built.scene}
           prefix={prefix}
           focus={focus}
-          label={scrub ? summary : null}
+          label={scrub || onActivate ? summary : null}
+          onActivate={onActivate}
           onPointerMove={scrub ? onPointerMove : undefined}
           onPointerLeave={scrub ? () => setHover(null) : undefined}
         />
       )}
       {center && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden>
+        <div
+          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
+          aria-hidden
+        >
           <span className="text-title font-strong tabular-nums text-fg">{center.title}</span>
           {center.caption && <span className="text-caption text-fg-muted">{center.caption}</span>}
         </div>

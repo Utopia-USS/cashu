@@ -90,7 +90,13 @@ export interface AreaChartProps extends ChartBase {
 }
 
 export interface BarChartProps extends ChartBase {
+  /** Legacy single-series data. Must be empty in grouped mode. */
   values: number[];
+  /** Grouped mode: labels defines the category count; every series and line must match it. */
+  series?: { name: string; values: number[]; color: SeriesColor }[];
+  line?: { name: string; values: number[]; color: SeriesColor };
+  accessibleSummary?: string;
+  tooltip?: (index: number) => ChartTip;
   /** Category label under each bar (month). */
   labels?: (string | null)[];
   /** A dashed plan line with its label on the left. */
@@ -114,6 +120,8 @@ export interface DonutSegment {
 
 export interface DonutProps {
   label: string;
+  /** Intent from an actual arc; omitted means a noninteractive chart. */
+  onSegmentSelected?: (index: number) => void;
   segments: DonutSegment[];
   size?: number;
   /** Centre text: a headline value and a caption; `amount` hides the value in privacy mode. */
