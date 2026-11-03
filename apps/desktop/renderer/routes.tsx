@@ -22,6 +22,7 @@ import {
   useState,
 } from "react";
 import { z } from "zod";
+import { useOpenCreation } from "./creationContext.js";
 import { S } from "./Desktop.strings.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
 import { BudgetView } from "./screens/budget/BudgetView.js";
@@ -121,6 +122,7 @@ function ProposalScope({
 }
 
 function ShellRoute() {
+  const openCreation = useOpenCreation();
   const updateNotice = useUpdateNotice();
   const state = useShellScreen({
     onProfileOpened: ({ slug, vault }) => {
@@ -184,6 +186,7 @@ function ShellRoute() {
     >
       <ShellView
         state={state}
+        onAddProfile={openCreation}
         onOverviewOpened={() => {
           if (state.profile !== null)
             void router.navigate({

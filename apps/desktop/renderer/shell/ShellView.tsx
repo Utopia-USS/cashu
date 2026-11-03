@@ -11,6 +11,7 @@ export interface ShellViewProps {
   activeModule?: string;
   onOverviewOpened(): void;
   onLegacyOpened(tab: string): void;
+  onAddProfile?: () => void;
   children: ReactNode;
 }
 
@@ -18,6 +19,7 @@ export function ShellView({
   state,
   onOverviewOpened,
   onLegacyOpened,
+  onAddProfile,
   children,
   activeModule = "overview",
 }: ShellViewProps) {
@@ -43,6 +45,15 @@ export function ShellView({
                 ))}
               </select>
             </label>
+            {onAddProfile && (
+              <button
+                type="button"
+                onClick={onAddProfile}
+                className="rounded-sm border border-border bg-surface px-4 py-2"
+              >
+                {S.addProfile}
+              </button>
+            )}
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"

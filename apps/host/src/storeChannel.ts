@@ -24,6 +24,10 @@ import type { HostStores, OpenDevice, OpenVault } from "./stores.js";
 import type { UiActionRegistration } from "./uiActions.js";
 
 export interface StoreChannelOptions {
+  /** Exact UI-role host RPCs, separate from store channel v5. */
+  readonly onRequest?: (
+    frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
+  ) => void;
   /** Classifies prose-bearing document reads; policy can only refuse private delivery. */
   readonly privateQuery?: (query: string, args: QueryArgs) => boolean;
   readonly actions?: readonly UiActionRegistration[];
@@ -456,6 +460,10 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
   };
 
   session.onFrame((frame) => {
+    if (frame.t === "req" && options.onRequest !== undefined) {
+      options.onRequest(frame);
+      return;
+    }
     if (frame.t !== "store") {
       session.close();
       return;

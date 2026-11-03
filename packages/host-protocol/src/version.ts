@@ -12,8 +12,9 @@ export interface ProtocolVersion {
  * The version this build speaks. Bump `major` only for a change old peers cannot ignore.
  * 1.1: optional `admin.status` fields (safeMode, vaults, pendingWrites) and `admin.handover`.
  * 1.2: the shim's `cli.*` methods (feature `cli.exec`) and `mcp` session notes (feature `mcp.lines`).
+ * 1.3: exact UI-role native Create RPCs (feature `native.creation.v1`).
  */
-export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 2 };
+export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 3 };
 
 export const protocolVersionSchema = z.object({
   major: z.number().int().min(0).max(65_535),

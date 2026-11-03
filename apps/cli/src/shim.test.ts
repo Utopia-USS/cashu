@@ -133,6 +133,15 @@ describe("cashu shim: host admin and failures", () => {
     },
     SLOW,
   );
+
+  it("refuses the synthetic host fixture outside a fresh temporary HOME", async () => {
+    const e = env({ HOME: "/" });
+    const run = await runShim(["stats"], e, { cwd: tempDir() });
+    expect(run.code).not.toBe(0);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toContain("CLI test interposer: HOME is outside the temporary directory");
+    expect(hostPid(e.CASHU_DATA_DIR as string)).toBeUndefined();
+  });
 });
 
 /** An MCP client over a shim process: send messages, await lines. */

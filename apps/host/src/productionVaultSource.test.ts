@@ -78,20 +78,33 @@ it("requires a preflight and a live exact host lock before any OS KeyStore is op
   await expect(factory.open(lock)).rejects.toThrow("native_host_lock_required");
 });
 
-it("ordinary run reports setup required before host files, and validates a supplied bundle stamp", async () => {
+it("ordinary run serves clean setup under a host lock and validates a supplied bundle stamp", async () => {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "cashu-t44-new-")));
   created.push(dataDir);
   const errors: string[] = [];
+  let signal: (() => void) | undefined;
+  let markServing: () => void = () => {};
+  const serving = new Promise<void>((resolve) => {
+    markServing = resolve;
+  });
   const io = {
     env: {},
-    stdout: () => undefined,
+    stdout: (line: string) => {
+      if (line.startsWith("cashu-host: serving")) markServing();
+    },
     stderr: (line: string) => errors.push(line),
-    onSignal: () => undefined,
+    onSignal: (handler: () => void) => {
+      signal = handler;
+    },
     build: "test",
   };
-  expect(await main(["run", "--data-dir", dataDir], io)).toBe(70);
-  expect(errors.at(-1)).toBe("cashu-host: native vault setup required");
-  expect(existsSync(join(dataDir, "run"))).toBe(false);
+  const running = main(["run", "--data-dir", dataDir], io);
+  await serving;
+  expect(errors).toEqual([]);
+  expect(existsSync(join(dataDir, "run"))).toBe(true);
+  expect(signal).toBeTypeOf("function");
+  signal?.();
+  expect(await running).toBe(0);
   expect(await main(["run", "--data-dir", dataDir, "--bundle", join(dataDir, "absent")], io)).toBe(
     64,
   );

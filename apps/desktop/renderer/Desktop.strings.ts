@@ -9,6 +9,7 @@ export const S = catalog({
   loans: { pl: "Kredyty", en: "Loans" },
   settings: { pl: "Ustawienia", en: "Settings" },
   profile: { pl: "Profil", en: "Profile" },
+  addProfile: { pl: "Dodaj profil", en: "Add profile" },
   privacy: { pl: "Ukryj kwoty", en: "Hide amounts" },
   language: { pl: "Język", en: "Language" },
   waiting: { pl: "Otwieranie danych lokalnych…", en: "Opening local data…" },

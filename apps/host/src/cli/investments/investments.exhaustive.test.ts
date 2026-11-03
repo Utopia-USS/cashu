@@ -70,12 +70,11 @@ function python(
   return JSON.parse(result.stdout) as { code: number; stdout: string; stderr: string }[];
 }
 
-function pythonRender(
-  kind: "positions" | "performance" | "search",
-  data: unknown,
+function pythonRenderBatch(
+  jobs: readonly (readonly ["positions" | "performance" | "search", unknown])[],
   cwd: string,
   terminal = false,
-): string {
+): string[] {
   const env = {
     PATH: process.env.PATH ?? "",
     HOME: tempDir(),
@@ -98,37 +97,40 @@ from cashu.modules.investments.service import views
 from cashu.modules.investments.performance import service
 from cashu.modules.investments.service import instrument_search
 from types import SimpleNamespace
-kind,data=json.loads(sys.stdin.read())
-out=io.StringIO()
-cliutil.console=Console(file=out,force_terminal=${terminal ? "True" : "False"},width=${terminal ? 120 : 80},color_system=${terminal ? "'standard'" : "None"})
+jobs=json.loads(sys.stdin.read())
 cliutil.profile=lambda session,create=False: object()
 c.init_db=lambda:None
 c.get_session=lambda:contextlib.nullcontext(object())
 p.init_db=lambda:None
 p.get_session=lambda:contextlib.nullcontext(object())
 views.account_filter=lambda session,profile,account:None
-if kind=='positions':
-    views.positions=lambda *args,**kwargs:data
-    c.positions_cmd()
-elif kind=='search':
-    a.init_db=lambda:None
-    a.get_session=lambda:contextlib.nullcontext(object())
-    instrument_search.search_detached=lambda *args,**kwargs:SimpleNamespace(query=data['query'],local=[SimpleNamespace(**hit) for hit in data['local']],remote=[],remote_status='skipped')
-    a.search_cmd('syn',True)
-else:
-    service.performance_view=lambda *args,**kwargs:data['view']
-    service.attribution_view=lambda *args,**kwargs:data['attribution']
-    p.performance_cmd('1m',None,True)
-print(json.dumps(out.getvalue()))`;
+rendered=[]
+for kind,data in jobs:
+    out=io.StringIO()
+    cliutil.console=Console(file=out,force_terminal=${terminal ? "True" : "False"},width=${terminal ? 120 : 80},color_system=${terminal ? "'standard'" : "None"})
+    if kind=='positions':
+        views.positions=lambda *args,**kwargs:data
+        c.positions_cmd()
+    elif kind=='search':
+        a.init_db=lambda:None
+        a.get_session=lambda:contextlib.nullcontext(object())
+        instrument_search.search_detached=lambda *args,**kwargs:SimpleNamespace(query=data['query'],local=[SimpleNamespace(**hit) for hit in data['local']],remote=[],remote_status='skipped')
+        a.search_cmd('syn',True)
+    else:
+        service.performance_view=lambda *args,**kwargs:data['view']
+        service.attribution_view=lambda *args,**kwargs:data['attribution']
+        p.performance_cmd('1m',None,True)
+    rendered.append(out.getvalue())
+print(json.dumps(rendered))`;
   const run = spawnSync(PYTHON, ["-c", code], {
     cwd,
     env,
-    input: JSON.stringify([kind, data]),
+    input: JSON.stringify(jobs),
     encoding: "utf8",
     timeout: 30_000,
   });
   expect(run.status, run.stderr).toBe(0);
-  return JSON.parse(run.stdout) as string;
+  return JSON.parse(run.stdout) as string[];
 }
 
 it.skipIf(!existsSync(PYTHON))(
@@ -378,32 +380,8 @@ it("renders a folded multi-currency vault with current strategy and market input
         })),
         total: positionView.value.total.toFloat(),
       };
-      expect(rendered.get("positions")).toBe(pythonRender("positions", positionData, tempDir()));
-      const terminalPositions = io(tempDir(), true);
-      expect(
-        await runTree(
-          ["-p", "demo", "invest", "positions"],
-          terminalPositions.io,
-          investmentCommands(deps),
-          {},
-        ),
-      ).toEqual({ kind: "exit", code: 0 });
-      expect(terminalPositions.output.stdout).toBe(
-        pythonRender("positions", positionData, tempDir(), true),
-      );
       const search = projectInstrumentSearch({ read, asOf: "2026-10-31" }, "syn");
       expect(search.local).toHaveLength(1);
-      expect(rendered.get("search")).toBe(pythonRender("search", search, tempDir()));
-      const terminalSearch = io(tempDir(), true);
-      expect(
-        await runTree(
-          ["-p", "demo", "invest", "search", "--local", "syn"],
-          terminalSearch.io,
-          investmentCommands(deps),
-          {},
-        ),
-      ).toEqual({ kind: "exit", code: 0 });
-      expect(terminalSearch.output.stdout).toBe(pythonRender("search", search, tempDir(), true));
       const request = {
         prices,
         asOf: "2026-10-31",
@@ -419,13 +397,38 @@ it("renders a folded multi-currency vault with current strategy and market input
       const attribution = deps.performance.attributionView(vault.store, request);
       expect(view.ok && attribution.ok).toBe(true);
       if (!view.ok || !attribution.ok) throw new Error("missing synthetic performance");
-      expect(rendered.get("performance")).toBe(
-        pythonRender(
-          "performance",
-          { view: view.value, attribution: attribution.value },
-          tempDir(),
+      const jobs = [
+        ["positions", positionData],
+        ["search", search],
+        ["performance", { view: view.value, attribution: attribution.value }],
+      ] as const;
+      // Two Python interpreters preserve the original plain/terminal environments while keeping
+      // this one test below the shared 5 s limit. Each interpreter renders all three oracle views.
+      const plain = pythonRenderBatch(jobs, tempDir());
+      const terminal = pythonRenderBatch(jobs, tempDir(), true);
+      expect(rendered.get("positions")).toBe(plain[0]);
+      const terminalPositions = io(tempDir(), true);
+      expect(
+        await runTree(
+          ["-p", "demo", "invest", "positions"],
+          terminalPositions.io,
+          investmentCommands(deps),
+          {},
         ),
-      );
+      ).toEqual({ kind: "exit", code: 0 });
+      expect(terminalPositions.output.stdout).toBe(terminal[0]);
+      expect(rendered.get("search")).toBe(plain[1]);
+      const terminalSearch = io(tempDir(), true);
+      expect(
+        await runTree(
+          ["-p", "demo", "invest", "search", "--local", "syn"],
+          terminalSearch.io,
+          investmentCommands(deps),
+          {},
+        ),
+      ).toEqual({ kind: "exit", code: 0 });
+      expect(terminalSearch.output.stdout).toBe(terminal[1]);
+      expect(rendered.get("performance")).toBe(plain[2]);
       const terminalPerformance = io(tempDir(), true);
       expect(
         await runTree(
@@ -435,14 +438,7 @@ it("renders a folded multi-currency vault with current strategy and market input
           {},
         ),
       ).toEqual({ kind: "exit", code: 0 });
-      expect(terminalPerformance.output.stdout).toBe(
-        pythonRender(
-          "performance",
-          { view: view.value, attribution: attribution.value },
-          tempDir(),
-          true,
-        ),
-      );
+      expect(terminalPerformance.output.stdout).toBe(terminal[2]);
     }
     const refused = io(tempDir());
     expect(

@@ -102,7 +102,35 @@ export {
   type Role,
   roleSchema,
 } from "./messages.js";
-export { roleAllows } from "./roles.js";
+export {
+  type NativeCreationCommitParams,
+  type NativeCreationCommitResult,
+  type NativeCreationCurrentParams,
+  type NativeCreationCurrentResult,
+  type NativeCreationInspectParams,
+  type NativeCreationInspectResult,
+  type NativeCreationPrepareParams,
+  type NativeCreationPrepareResult,
+  type NativeCreationReady,
+  type NativeCreationStatus,
+  nativeCreationCommitParamsSchema,
+  nativeCreationCommitResultSchema,
+  nativeCreationCurrentParamsSchema,
+  nativeCreationCurrentResultSchema,
+  nativeCreationInspectParamsSchema,
+  nativeCreationInspectResultSchema,
+  nativeCreationPrepareParamsSchema,
+  nativeCreationPrepareResultSchema,
+  nativeCreationRefusalCodeSchema,
+  nativeCreationStageSchema,
+  nativeCreationStatusSchema,
+} from "./nativeCreation.js";
+export {
+  NATIVE_CREATION_FEATURE,
+  NATIVE_CREATION_METHODS,
+  roleAllows,
+  uiCreationAllowed,
+} from "./roles.js";
 export {
   compatible,
   HOST_PROTOCOL,

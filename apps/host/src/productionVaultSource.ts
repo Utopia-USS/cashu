@@ -19,6 +19,11 @@ export class ProductionVaultSourceFactory {
     this.#createKeyStore = createKeyStore;
   }
 
+  /** The host's Create and opener must use the same constrained OS KeyStore provider. */
+  creationKeyStoreFactory(): typeof createProductionKeyStore {
+    return this.#createKeyStore;
+  }
+
   preflight(): void {
     this.#preflightFingerprint = readExistingNativeInventory(this.#dataDir).fingerprint;
   }

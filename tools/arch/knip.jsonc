@@ -33,11 +33,18 @@
       "entry": [
         "src/cli.ts",
         "src/testing/faultHost.ts",
+        "src/testing/nativeCreationHost.ts",
         "src/testing/seedOverviewDemo.ts",
+        "src/testing/syntheticCliHost.ts",
         "src/sync/harness/main.ts",
         "src/sync/harness/crashHost.ts",
         "src/sync/testing/fakeCashu.ts"
       ],
+      "project": ["src/**/*.ts"]
+    },
+    "apps/cli": {
+      // Loaded by a test-only Node --import path before the real shim entry.
+      "entry": ["src/testing/hostInterposer.ts"],
       "project": ["src/**/*.ts"]
     },
     "apps/desktop": {

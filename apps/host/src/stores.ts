@@ -265,6 +265,39 @@ export async function openNativeHostStores(
   }
 }
 
+/** A real device-local store with no vault authority. Used only for first-run native setup. */
+export function openNativeSetupStores(
+  dataDir: string,
+  lease: WriterLease,
+  log: HostLog,
+  now: () => number = Date.now,
+): HostStores {
+  const files = storeFiles(dataDir);
+  ensurePrivateDir(files.dir);
+  const deviceStore = openDevice(files, lease, log);
+  const queue = new WriteQueue(() => lease.assertHeld());
+  const device: OpenDevice = {
+    store: deviceStore,
+    driver: deviceStore.driver,
+    queue,
+    requests: new RequestTable(deviceStore.driver, now),
+  };
+  return {
+    device,
+    vaults: new Map(),
+    recovered: 0,
+    pending: () => queue.pending,
+    invalidate() {},
+    async drain() {
+      queue.close();
+      await queue.idle();
+    },
+    close() {
+      deviceStore.close();
+    },
+  };
+}
+
 function openDevice(files: StoreFiles, lease: WriterLease, log: HostLog): DeviceStore {
   const connect = () => {
     const driver = openNodeSqlite(privateDbFile(files.deviceDb), { exclusive: lease.lock() });

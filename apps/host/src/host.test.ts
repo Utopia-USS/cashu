@@ -328,7 +328,7 @@ describe("local host", () => {
     await host.sync;
     expect(await main(["status", "--data-dir", dir], io)).toBe(0);
     const status = out.pop();
-    expect(status).toMatch(/running \(pid \d+, build test, protocol 1\.2\)[\s\S]*vaults {4}1/);
+    expect(status).toMatch(/running \(pid \d+, build test, protocol 1\.3\)[\s\S]*vaults {4}1/);
     expect(status).toContain("sync      off, pending ?, last run never");
     expect(await main(["stop", "--data-dir", dir], io)).toBe(0);
     expect(await host.exit).toBe(0);

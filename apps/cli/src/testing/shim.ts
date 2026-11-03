@@ -8,12 +8,15 @@ import { fileURLToPath } from "node:url";
 const REPO = fileURLToPath(new URL("../../../../", import.meta.url));
 const SHIM = join(REPO, "apps/cli/src/index.ts");
 const RESOLVE_TS = join(REPO, "tools/node-ts/resolveTs.ts");
+const HOST_INTERPOSER = join(REPO, "apps/cli/src/testing/hostInterposer.ts");
 export const FAKE_PYTHON = join(REPO, "apps/host/test-fixtures/fake-python-cli.mjs");
 export const NODE_ARGS = [
   "--no-warnings",
   "--experimental-strip-types",
   "--import",
   RESOLVE_TS,
+  "--import",
+  HOST_INTERPOSER,
   SHIM,
 ];
 

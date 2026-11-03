@@ -9,6 +9,26 @@ const NAMESPACE: Readonly<Record<Role, string | undefined>> = {
   admin: "admin.",
 };
 
+export const NATIVE_CREATION_FEATURE = "native.creation.v1";
+export const NATIVE_CREATION_METHODS = [
+  "native.creation.prepare",
+  "native.creation.commit",
+  "native.creation.inspect",
+  "native.creation.current",
+] as const;
+
+export function uiCreationAllowed(
+  method: string,
+  protocolMinor: number,
+  features: readonly string[],
+): boolean {
+  return (
+    protocolMinor >= 3 &&
+    features.includes(NATIVE_CREATION_FEATURE) &&
+    NATIVE_CREATION_METHODS.some((allowed) => method === allowed)
+  );
+}
+
 /** True when a session of `role` may send `frame`. */
 export function roleAllows(role: Role, frame: ClientFrame): boolean {
   switch (frame.t) {
@@ -17,6 +37,7 @@ export function roleAllows(role: Role, frame: ClientFrame): boolean {
     case "mcp":
       return role === "mcp";
     case "req": {
+      if (role === "ui") return NATIVE_CREATION_METHODS.some((method) => frame.method === method);
       const prefix = NAMESPACE[role];
       return prefix !== undefined && frame.method.startsWith(prefix);
     }

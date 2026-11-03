@@ -3,6 +3,17 @@ import { appendFileSync, chmodSync, existsSync, renameSync, statSync } from "nod
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  nativeCreationCommitParamsSchema,
+  nativeCreationCommitResultSchema,
+  nativeCreationCurrentParamsSchema,
+  nativeCreationCurrentResultSchema,
+  nativeCreationInspectParamsSchema,
+  nativeCreationInspectResultSchema,
+  nativeCreationPrepareParamsSchema,
+  nativeCreationPrepareResultSchema,
+  uiCreationAllowed,
+} from "@cashu/host-protocol";
+import {
   activateHost,
   connectOrStart,
   hostRunPaths,
@@ -276,6 +287,53 @@ ipcMain.handle("cashu:service-set-enabled", async (event, enabled: unknown) => {
 // The data dir's host (apps/host): connected to as a `ui` client per renderer frame and started on
 // demand by the verified service when available, otherwise detached. It exits when idle.
 const HOST_BUILD = `desktop-${app.isPackaged ? app.getVersion() : "dev"}`;
+
+// The page never chooses a host method, path or key name. Each call uses a fresh authenticated UI
+// session so it cannot race the renderer's store relay handler.
+function creationIpc(method: "prepare" | "commit" | "inspect" | "current") {
+  const paramsSchema = {
+    prepare: nativeCreationPrepareParamsSchema,
+    commit: nativeCreationCommitParamsSchema,
+    inspect: nativeCreationInspectParamsSchema,
+    current: nativeCreationCurrentParamsSchema,
+  }[method];
+  const resultSchema = {
+    prepare: nativeCreationPrepareResultSchema,
+    commit: nativeCreationCommitResultSchema,
+    inspect: nativeCreationInspectResultSchema,
+    current: nativeCreationCurrentResultSchema,
+  }[method];
+  ipcMain.handle(`cashu:creation-${method}`, async (event, raw: unknown) => {
+    if (!desktop.exposesBridgeTo(fromMainFrame(event))) throw new Error("creation_unavailable");
+    const parsedParams = paramsSchema.safeParse(raw);
+    if (!parsedParams.success) throw new Error("creation_invalid_params");
+    const connection = (
+      await connectOrStart({
+        dataDir,
+        role: "ui",
+        build: HOST_BUILD,
+        start: async () => {
+          await activateHost(hostService, startHost);
+        },
+      })
+    ).connection;
+    try {
+      const full = `native.creation.${method}`;
+      if (!uiCreationAllowed(full, connection.host.protocol.minor, connection.host.features))
+        throw new Error("creation_unavailable");
+      const parsedResult = resultSchema.safeParse(await connection.call(full, parsedParams.data));
+      if (!parsedResult.success) throw new Error("creation_invalid_result");
+      return parsedResult.data;
+    } finally {
+      connection.close();
+    }
+  });
+}
+
+creationIpc("prepare");
+creationIpc("commit");
+creationIpc("inspect");
+creationIpc("current");
 
 function startHost(): void {
   if (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY))) {

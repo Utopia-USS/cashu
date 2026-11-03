@@ -24,6 +24,15 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     setEnabled: (enabled: boolean): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:service-set-enabled", enabled),
   });
+  electron.contextBridge.exposeInMainWorld("cashuCreation", {
+    prepare: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:creation-prepare", input),
+    commit: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:creation-commit", input),
+    inspect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:creation-inspect", input),
+    current: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:creation-current", {}),
+  });
   electron.contextBridge.exposeInMainWorld("pywebview", {
     api: {
       token: (): Promise<string | null> => electron.ipcRenderer.invoke("cashu:token"),

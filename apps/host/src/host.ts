@@ -18,7 +18,20 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseDateTime } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
-import { type AdminStatus, HOST_PROTOCOL } from "@cashu/host-protocol";
+import {
+  type AdminStatus,
+  HOST_PROTOCOL,
+  NATIVE_CREATION_FEATURE,
+  nativeCreationCommitParamsSchema,
+  nativeCreationCommitResultSchema,
+  nativeCreationCurrentParamsSchema,
+  nativeCreationCurrentResultSchema,
+  nativeCreationInspectParamsSchema,
+  nativeCreationInspectResultSchema,
+  nativeCreationPrepareParamsSchema,
+  nativeCreationPrepareResultSchema,
+  uiCreationAllowed,
+} from "@cashu/host-protocol";
 import {
   budgetTools,
   coreTools,
@@ -70,6 +83,8 @@ import { nativeRuntime } from "./mcp/native.js";
 import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
+import { createNativeCreationService } from "./nativeCreation.js";
+import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import type { NativeVaultSource } from "./nativeVault.js";
 import type { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
@@ -89,7 +104,12 @@ import {
   signalsScreenClock,
 } from "./signalsScreen.js";
 import { serveStoreChannel } from "./storeChannel.js";
-import { type HostStores, openHostStores, openNativeHostStores } from "./stores.js";
+import {
+  type HostStores,
+  openHostStores,
+  openNativeHostStores,
+  openNativeSetupStores,
+} from "./stores.js";
 import { type StrategyScreenCapability, strategiesScreen } from "./strategiesScreen.js";
 import { bridgeCommand } from "./sync/command.js";
 import { validateNativeVaultInventorySet } from "./sync/keys/deviceAuthority.js";
@@ -260,7 +280,12 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       resolve(options.dataDir),
     );
   }
-  if (options.vaultSource.kind === "native-production") options.vaultSource.factory.preflight();
+  const startup =
+    options.vaultSource.kind === "native-production"
+      ? classifyNativeCreationStartup(resolve(options.dataDir))
+      : null;
+  if (startup === "ready" && options.vaultSource.kind === "native-production")
+    options.vaultSource.factory.preflight();
   const now = options.now ?? Date.now;
   const nativeMode = options.vaultSource.kind !== "synthetic-harness";
   const proposalManager = proposalScreen(options.proposals);
@@ -349,6 +374,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     build,
     features: [
       "store.v2",
+      ...(options.vaultSource.kind === "native-production" ? [NATIVE_CREATION_FEATURE] : []),
       "admin.handover",
       "cli.exec",
       "mcp.lines",
@@ -364,11 +390,24 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   let record: StartRecord;
   let stores: HostStores;
   let lease: WriterLease;
+  let creation: ReturnType<typeof createNativeCreationService> | undefined;
   try {
     record = recordStart(server.paths.runDir, now());
     lease = takeWriterLease(server.lock);
+    if (options.vaultSource.kind === "native-production") {
+      const checked = classifyNativeCreationStartup(server.paths.dataDir);
+      if (checked !== startup) throw new Error("native_inventory_changed");
+      creation = createNativeCreationService({
+        dataDir: server.paths.dataDir,
+        lock: server.lock,
+        now,
+        createKeyStore: options.vaultSource.factory.creationKeyStoreFactory(),
+      });
+      // Authenticate completed anchors before native sessions take exclusive SQLite opens.
+      await creation.primeVerifiedCompleted();
+    }
     const source =
-      options.vaultSource.kind === "native-production"
+      options.vaultSource.kind === "native-production" && startup === "ready"
         ? { kind: "native" as const, provider: await options.vaultSource.factory.open(server.lock) }
         : options.vaultSource;
     if (source.kind === "native") {
@@ -378,7 +417,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     stores =
       source.kind === "native"
         ? await openNativeHostStores(server.paths.dataDir, source.provider, lease, log, now)
-        : openHostStores(server.paths.dataDir, lease, log, now);
+        : source.kind === "native-production"
+          ? openNativeSetupStores(server.paths.dataDir, lease, log, now)
+          : openHostStores(server.paths.dataDir, lease, log, now);
   } catch (error) {
     log.error("host.start-failed", { error: errorName(error) });
     await server.close();
@@ -504,6 +545,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   let idleDeadline: number | undefined;
   let sessions = 0;
   let bundleReplaced = false;
+  const creationRequests = new Set<Promise<void>>();
   const workerContext: WorkerHostContext = {
     stores,
     now: () => now(),
@@ -558,6 +600,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       // The sync service's current iteration finishes and its vaults close while the lock is held.
       await (await sync)?.stop();
       await worker.stop();
+      await Promise.allSettled([...creationRequests]);
+      await creation?.drain();
       importManager?.close();
       strategyManager?.close();
       images.close();
@@ -584,7 +628,12 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     const check = () => {
       idleTimer = undefined;
       if (sessions > 0 || stopping !== undefined) return;
-      if (stores.pending() > 0 || worker.pending > 0) {
+      if (
+        stores.pending() > 0 ||
+        worker.pending > 0 ||
+        creation?.pending() ||
+        creationRequests.size > 0
+      ) {
         idleTimer = setTimeout(check, 1000);
         return;
       }
@@ -601,6 +650,93 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           bundleReplaced = true;
           void stop("handover");
         });
+
+  const serveCreationRequest = (
+    session: HostSession,
+    frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
+  ) => {
+    // Existing UI sessions survive beginStop until drain completes. Close the admission gate before
+    // the drain snapshot, so no new Create work can run after shutdown releases HostLock.
+    if (server.stopping || stopping !== undefined || bundleReplaced) {
+      session.send({
+        t: "res",
+        id: frame.id,
+        outcome: { ok: false, error: { code: "stopping", message: "host is stopping" } },
+      });
+      return;
+    }
+    if (
+      creation === undefined ||
+      !uiCreationAllowed(frame.method, session.protocol.minor, [NATIVE_CREATION_FEATURE])
+    ) {
+      session.send({
+        t: "res",
+        id: frame.id,
+        outcome: { ok: false, error: { code: "unknown-method", message: "method unavailable" } },
+      });
+      return;
+    }
+    let verifiedReady = false;
+    const request = Promise.resolve()
+      .then(async () => {
+        let result: unknown;
+        switch (frame.method) {
+          case "native.creation.prepare": {
+            const parsed = nativeCreationPrepareParamsSchema.safeParse(frame.params);
+            result = parsed.success
+              ? nativeCreationPrepareResultSchema.parse(await creation.prepare(parsed.data))
+              : { kind: "refused", code: "invalid_input" };
+            break;
+          }
+          case "native.creation.commit": {
+            const parsed = nativeCreationCommitParamsSchema.safeParse(frame.params);
+            result = parsed.success
+              ? nativeCreationCommitResultSchema.parse(await creation.commit(parsed.data))
+              : { kind: "refused", code: "invalid_input" };
+            verifiedReady = (result as { kind: string }).kind === "ready";
+            break;
+          }
+          case "native.creation.inspect":
+            result = nativeCreationInspectResultSchema.parse(
+              await creation.inspect(nativeCreationInspectParamsSchema.parse(frame.params)),
+            );
+            break;
+          case "native.creation.current":
+            result = nativeCreationCurrentResultSchema.parse(
+              await creation.current(nativeCreationCurrentParamsSchema.parse(frame.params)),
+            );
+            break;
+          default:
+            throw new Error("unknown_method");
+        }
+        try {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: { ok: true, result: result as import("@cashu/host-protocol/store").JsonValue },
+          });
+        } catch {
+          // A disconnected caller reconciles with read-only inspect/current.
+        }
+        if (verifiedReady) setTimeout(() => void stop("handover"), 0);
+      })
+      .catch(() => {
+        try {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: { ok: false, error: { code: "failed", message: "creation request failed" } },
+          });
+        } catch {
+          // The client may already be gone.
+        }
+      })
+      .finally(() => {
+        creationRequests.delete(request);
+        armIdle();
+      });
+    creationRequests.add(request);
+  };
 
   const host: LocalHost = {
     server,
@@ -646,6 +782,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     switch (session.role) {
       case "ui":
         serveStoreChannel(session, {
+          ...(creation === undefined
+            ? {}
+            : { onRequest: (frame) => serveCreationRequest(session, frame) }),
           stores,
           queries,
           commands: uiCommands,
