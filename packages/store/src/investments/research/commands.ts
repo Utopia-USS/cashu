@@ -476,194 +476,201 @@ export interface AddedNote {
   readonly warnings: readonly string[];
 }
 
-export const addResearchNote = defineCommand({
-  id: "investments.research.addNote",
-  input: z.object({
-    /** The raw note (MCP / API arguments); validated here with `research.validateNote`. */
-    note: jsonRecord,
-    /** An instrument reference: gid, symbol, ISIN or alias (Python `resolve_reference`). */
-    instrument: z.string().nullable().default(null),
-    run: gid.nullable().default(null),
-    createdBy: z.enum(research.RESEARCH_CREATORS as ["agent", "user"]).default("agent"),
-    lang: z.enum(LANGS).default("pl"),
-  }),
-  /**
-   * Python `add_note` (after `validate_note` and `resolve_reference`): the run, the per-run limit,
-   * the scope, the thesis relation, candidate rules, duplicates, one segment note per segment and
-   * ISO week, near duplicates and the weekly novelty limits; a qualifying note creates or joins the
-   * research signal of its instrument / segment / theme and week.
-   */
-  run(ctx, input) {
-    const now = nowOf(ctx);
-    let data: research.NoteInput;
-    try {
-      data = research.validateNote(input.note, now);
-    } catch (e) {
-      if (e instanceof research.ResearchInputError) return refuse("invalid_note");
-      throw e;
-    }
-    let instrument: string | null = null;
-    if (input.instrument !== null) {
-      const r = resolveReference(ctx.read, input.instrument);
-      if (!r.ok) return refuse(r.reason);
-      instrument = r.instrument;
-    }
-    const failed = failStaleRuns(ctx, now);
-    let run: ResearchRun | undefined;
-    if (input.run !== null) {
-      run = runByGid(ctx.read, input.run);
-      if (run === undefined) return refuse("no_run");
-      if (run.status !== "running" || failed.has(run.gid)) return refuse("run_not_running");
-    } else {
-      run = runningRun(ctx.read, now);
-    }
-    if (run !== undefined) {
-      const stored =
-        ctx.read<{ n: number }>(
-          "SELECT COUNT(*) AS n FROM research_notes WHERE run_id = (SELECT id FROM view_ids WHERE gid = ?)",
-          run.gid,
-        )[0]?.n ?? 0;
-      if (stored >= MAX_NOTES_PER_RUN) return refuse("run_full");
-    }
-    const theme = storedTheme(ctx, data.theme);
-    if (
-      data.segment !== null &&
-      (instrument !== null || data.candidate !== null || data.kind === research.CANDIDATE_KIND)
-    ) {
-      return refuse("segment_only");
-    }
-    const held = heldInstrumentGids(ctx.read, ctx.today());
-    const watched = watchedInstrumentGids(ctx.read);
-    const owned = new Set([...held, ...watched]);
-    let candidateKey: string | null = null;
-    const details: Record<string, unknown> = { ...(data.details ?? {}) };
-    if (data.kind === research.CANDIDATE_KIND) {
-      if (instrument !== null) {
-        if (owned.has(instrument)) return refuse("candidate_held");
-        const inst = loadInstrument(ctx.read, instrument);
-        candidateKey = ((inst ? inst.isin || inst.symbol : null) || instrument).toUpperCase();
-      } else if (data.candidate !== null) {
-        candidateKey = research.candidateKey(data.candidate);
-        if (candidateMatch(ctx, candidateKey, owned)) return refuse("candidate_held");
+/** Prospective row hook for same-batch derived checks; default standalone behavior is unchanged. */
+export function researchNoteCommand(afterAdded?: (ctx: CommandContext, row: ResearchNote) => void) {
+  return defineCommand({
+    id: "investments.research.addNote",
+    input: z.object({
+      /** The raw note (MCP / API arguments); validated here with `research.validateNote`. */
+      note: jsonRecord,
+      /** An instrument reference: gid, symbol, ISIN or alias (Python `resolve_reference`). */
+      instrument: z.string().nullable().default(null),
+      run: gid.nullable().default(null),
+      createdBy: z.enum(research.RESEARCH_CREATORS as ["agent", "user"]).default("agent"),
+      lang: z.enum(LANGS).default("pl"),
+    }),
+    /**
+     * Python `add_note` (after `validate_note` and `resolve_reference`): the run, the per-run limit,
+     * the scope, the thesis relation, candidate rules, duplicates, one segment note per segment and
+     * ISO week, near duplicates and the weekly novelty limits; a qualifying note creates or joins the
+     * research signal of its instrument / segment / theme and week.
+     */
+    run(ctx, input) {
+      const now = nowOf(ctx);
+      let data: research.NoteInput;
+      try {
+        data = research.validateNote(input.note, now);
+      } catch (e) {
+        if (e instanceof research.ResearchInputError) return refuse("invalid_note");
+        throw e;
+      }
+      let instrument: string | null = null;
+      if (input.instrument !== null) {
+        const r = resolveReference(ctx.read, input.instrument);
+        if (!r.ok) return refuse(r.reason);
+        instrument = r.instrument;
+      }
+      const failed = failStaleRuns(ctx, now);
+      let run: ResearchRun | undefined;
+      if (input.run !== null) {
+        run = runByGid(ctx.read, input.run);
+        if (run === undefined) return refuse("no_run");
+        if (run.status !== "running" || failed.has(run.gid)) return refuse("run_not_running");
       } else {
-        return refuse("candidate_without_instrument");
+        run = runningRun(ctx.read, now);
       }
-      const key = candidateKey;
-      const blocked = noteRows(ctx.read, "n.kind = 'candidate' AND n.cooldown_until > ?", [
-        instantView(now),
-      ]).find(
-        (r) =>
-          (key && r.candidateKey === key) || (instrument !== null && r.instrument === instrument),
-      );
-      if (blocked !== undefined) return refuse("candidate_cooldown");
-      const proposed = notes(ctx.read, now, { kinds: [research.CANDIDATE_KIND] }).find(
-        (r) =>
-          !truthy(r.details?.accepted_at) &&
-          ((key && r.candidateKey === key) || (instrument !== null && r.instrument === instrument)),
-      );
-      if (proposed !== undefined) return refuse("candidate_proposed");
-      if (data.candidate !== null) details.candidate = research.candidateJson(data.candidate);
-    } else if (instrument === null && theme === null && data.segment === null) {
-      return refuse("no_scope");
-    }
-    if (data.thesisRelation !== "none" && data.segment !== null) {
-      const topic = topicThesis(ctx.read, data.segment);
-      if (topic === undefined) return refuse("topic_without_thesis");
-      if (topic.draft) return refuse("topic_thesis_draft");
-    } else if (data.thesisRelation !== "none") {
-      if (instrument === null) return refuse("relation_needs_thesis");
-      if (theses(ctx.read, instrument).length === 0) return refuse("instrument_without_thesis");
-    }
-    const duplicate = duplicateOf(ctx, data, instrument, theme, candidateKey, now);
-    if (duplicate !== undefined) {
-      return refuse(duplicate.dismissedAt !== null ? "duplicate_dismissed" : "duplicate");
-    }
-    const observed = data.observedAt ?? now;
-    const brief = hasBrief(data.details);
-    if (data.segment !== null && !(brief && run !== undefined && isFullRefresh(run))) {
-      if (segmentWeekNote(ctx, data.segment, observed, now, brief) !== undefined) {
-        return refuse(brief ? "segment_week_brief" : "segment_week");
+      if (run !== undefined) {
+        const stored =
+          ctx.read<{ n: number }>(
+            "SELECT COUNT(*) AS n FROM research_notes WHERE run_id = (SELECT id FROM view_ids WHERE gid = ?)",
+            run.gid,
+          )[0]?.n ?? 0;
+        if (stored >= MAX_NOTES_PER_RUN) return refuse("run_full");
       }
-    }
-    if (nearDuplicateOf(ctx, data, instrument, candidateKey, now) !== null) {
-      return refuse("near_duplicate");
-    }
-    if (
-      input.createdBy === AGENT &&
-      (run === undefined || (isWeekly(run) && !isFullRefresh(run)))
-    ) {
-      const problem = noveltyProblem(ctx, data, instrument, now);
-      if (problem !== null) return refuse(problem);
-    }
-    const warnings: string[] = [];
-    if (instrument !== null && !owned.has(instrument)) warnings.push("not_held_or_watched");
+      const theme = storedTheme(ctx, data.theme);
+      if (
+        data.segment !== null &&
+        (instrument !== null || data.candidate !== null || data.kind === research.CANDIDATE_KIND)
+      ) {
+        return refuse("segment_only");
+      }
+      const held = heldInstrumentGids(ctx.read, ctx.today());
+      const watched = watchedInstrumentGids(ctx.read);
+      const owned = new Set([...held, ...watched]);
+      let candidateKey: string | null = null;
+      const details: Record<string, unknown> = { ...(data.details ?? {}) };
+      if (data.kind === research.CANDIDATE_KIND) {
+        if (instrument !== null) {
+          if (owned.has(instrument)) return refuse("candidate_held");
+          const inst = loadInstrument(ctx.read, instrument);
+          candidateKey = ((inst ? inst.isin || inst.symbol : null) || instrument).toUpperCase();
+        } else if (data.candidate !== null) {
+          candidateKey = research.candidateKey(data.candidate);
+          if (candidateMatch(ctx, candidateKey, owned)) return refuse("candidate_held");
+        } else {
+          return refuse("candidate_without_instrument");
+        }
+        const key = candidateKey;
+        const blocked = noteRows(ctx.read, "n.kind = 'candidate' AND n.cooldown_until > ?", [
+          instantView(now),
+        ]).find(
+          (r) =>
+            (key && r.candidateKey === key) || (instrument !== null && r.instrument === instrument),
+        );
+        if (blocked !== undefined) return refuse("candidate_cooldown");
+        const proposed = notes(ctx.read, now, { kinds: [research.CANDIDATE_KIND] }).find(
+          (r) =>
+            !truthy(r.details?.accepted_at) &&
+            ((key && r.candidateKey === key) ||
+              (instrument !== null && r.instrument === instrument)),
+        );
+        if (proposed !== undefined) return refuse("candidate_proposed");
+        if (data.candidate !== null) details.candidate = research.candidateJson(data.candidate);
+      } else if (instrument === null && theme === null && data.segment === null) {
+        return refuse("no_scope");
+      }
+      if (data.thesisRelation !== "none" && data.segment !== null) {
+        const topic = topicThesis(ctx.read, data.segment);
+        if (topic === undefined) return refuse("topic_without_thesis");
+        if (topic.draft) return refuse("topic_thesis_draft");
+      } else if (data.thesisRelation !== "none") {
+        if (instrument === null) return refuse("relation_needs_thesis");
+        if (theses(ctx.read, instrument).length === 0) return refuse("instrument_without_thesis");
+      }
+      const duplicate = duplicateOf(ctx, data, instrument, theme, candidateKey, now);
+      if (duplicate !== undefined) {
+        return refuse(duplicate.dismissedAt !== null ? "duplicate_dismissed" : "duplicate");
+      }
+      const observed = data.observedAt ?? now;
+      const brief = hasBrief(data.details);
+      if (data.segment !== null && !(brief && run !== undefined && isFullRefresh(run))) {
+        if (segmentWeekNote(ctx, data.segment, observed, now, brief) !== undefined) {
+          return refuse(brief ? "segment_week_brief" : "segment_week");
+        }
+      }
+      if (nearDuplicateOf(ctx, data, instrument, candidateKey, now) !== null) {
+        return refuse("near_duplicate");
+      }
+      if (
+        input.createdBy === AGENT &&
+        (run === undefined || (isWeekly(run) && !isFullRefresh(run)))
+      ) {
+        const problem = noveltyProblem(ctx, data, instrument, now);
+        if (problem !== null) return refuse(problem);
+      }
+      const warnings: string[] = [];
+      if (instrument !== null && !owned.has(instrument)) warnings.push("not_held_or_watched");
 
-    const note = ctx.newGid();
-    const expires = research.noteExpiresAt(data, now);
-    const sources = research.noteSourcesJson(data);
-    const stored = Object.keys(details).length > 0 ? details : null;
-    ctx.emit("note.added", note, {
-      run: run?.gid ?? null,
-      instrument,
-      theme,
-      segment: data.segment,
-      kind: data.kind,
-      polarity: data.polarity,
-      strength: data.strength,
-      thesisRelation: data.thesisRelation,
-      thesisField: data.thesisField,
-      title: data.title,
-      summary: data.summary,
-      sources,
-      details: stored,
-      candidateKey,
-      signal: null,
-      observedAt: instantEvent(observed),
-      expiresAt: instantEvent(expires),
-      createdBy: input.createdBy,
-      stamps: { created_at: instantEvent(now), updated_at: instantEvent(now) },
-    });
-    const row: ResearchNote = {
-      gid: note,
-      id: Number.MAX_SAFE_INTEGER,
-      run: run?.gid ?? null,
-      instrument,
-      theme,
-      segment: data.segment,
-      kind: data.kind,
-      polarity: data.polarity,
-      strength: data.strength,
-      thesisRelation: data.thesisRelation,
-      thesisField: data.thesisField,
-      title: data.title,
-      summary: data.summary,
-      sources,
-      details: stored,
-      candidateKey,
-      signal: null,
-      observedAt: observed,
-      expiresAt: expires,
-      createdBy: input.createdBy,
-      dismissedAt: null,
-      cooldownUntil: null,
-      createdAt: now,
-      updatedAt: now,
-      readAt: input.createdBy === AGENT ? null : now,
-    };
-    const record = signalRecord(row, 0);
-    const key = research.noteKey(record);
-    let signal: SyncResult | null = null;
-    if (key !== null && research.severityOf(record, now) !== null) {
-      signal = syncResearchSignal(ctx, key, {
-        now,
-        lang: input.lang,
-        notify: notifyPolicy(ctx.read),
-        overlay: new Map([[note, row]]),
+      const note = ctx.newGid();
+      const expires = research.noteExpiresAt(data, now);
+      const sources = research.noteSourcesJson(data);
+      const stored = Object.keys(details).length > 0 ? details : null;
+      ctx.emit("note.added", note, {
+        run: run?.gid ?? null,
+        instrument,
+        theme,
+        segment: data.segment,
+        kind: data.kind,
+        polarity: data.polarity,
+        strength: data.strength,
+        thesisRelation: data.thesisRelation,
+        thesisField: data.thesisField,
+        title: data.title,
+        summary: data.summary,
+        sources,
+        details: stored,
+        candidateKey,
+        signal: null,
+        observedAt: instantEvent(observed),
+        expiresAt: instantEvent(expires),
+        createdBy: input.createdBy,
+        stamps: { created_at: instantEvent(now), updated_at: instantEvent(now) },
       });
-    }
-    return ok<AddedNote>({ note, signal, warnings });
-  },
-});
+      const row: ResearchNote = {
+        gid: note,
+        id: Number.MAX_SAFE_INTEGER,
+        run: run?.gid ?? null,
+        instrument,
+        theme,
+        segment: data.segment,
+        kind: data.kind,
+        polarity: data.polarity,
+        strength: data.strength,
+        thesisRelation: data.thesisRelation,
+        thesisField: data.thesisField,
+        title: data.title,
+        summary: data.summary,
+        sources,
+        details: stored,
+        candidateKey,
+        signal: null,
+        observedAt: observed,
+        expiresAt: expires,
+        createdBy: input.createdBy,
+        dismissedAt: null,
+        cooldownUntil: null,
+        createdAt: now,
+        updatedAt: now,
+        readAt: input.createdBy === AGENT ? null : now,
+      };
+      const record = signalRecord(row, 0);
+      const key = research.noteKey(record);
+      let signal: SyncResult | null = null;
+      if (key !== null && research.severityOf(record, now) !== null) {
+        signal = syncResearchSignal(ctx, key, {
+          now,
+          lang: input.lang,
+          notify: notifyPolicy(ctx.read),
+          overlay: new Map([[note, row]]),
+        });
+      }
+      afterAdded?.(ctx, row);
+      return ok<AddedNote>({ note, signal, warnings });
+    },
+  });
+}
+
+export const addResearchNote = researchNoteCommand();
 
 // ------------------------------------------------------------------ read marks
 

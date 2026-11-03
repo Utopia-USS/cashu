@@ -18,7 +18,7 @@ import { loadInstruments, vaultInstrumentGids } from "../queries/instruments.js"
 import { instrumentRoot, marks, type Read } from "../queries/shared.js";
 import { openSignals, type SignalView } from "../queries/signals.js";
 import { renames, transactions } from "../queries/transactions.js";
-import { newestFirst } from "../views/stableOrder.js";
+import { byCreation, newestFirst } from "../views/stableOrder.js";
 import {
   instantView,
   later,
@@ -185,9 +185,11 @@ export function noteByGid(read: Read, gid: string): ResearchNote | undefined {
 /** Notes by gid (unknown gids are absent). */
 export function notesByGid(read: Read, gids: readonly string[]): ResearchNote[] {
   if (gids.length === 0) return [];
-  return read<NoteRow>(`${NOTE_SQL} WHERE n.gid IN (${marks(gids.length)}) ORDER BY n.id`, ...gids)
-    .map(toNote)
-    .sort(compareStoredNote);
+  return byCreation(
+    read,
+    "researchNotes",
+    read<NoteRow>(`${NOTE_SQL} WHERE n.gid IN (${marks(gids.length)})`, ...gids).map(toNote),
+  );
 }
 
 /** Raw note rows with an extra SQL condition (internal building block). */
@@ -198,28 +200,11 @@ export function noteRows(
   order = "n.id",
 ): ResearchNote[] {
   const rows = read<NoteRow>(`${NOTE_SQL} WHERE ${where} ORDER BY ${order}`, ...params).map(toNote);
-  // Keep the existing research storing-rank contract, including observed-time presentation ties.
-  return rows.sort((a, b) =>
-    order === "n.id"
-      ? compareStoredNote(a, b)
-      : a.observedAt < b.observedAt
-        ? 1
-        : a.observedAt > b.observedAt
-          ? -1
-          : -compareStoredNote(a, b),
-  );
-}
-
-function compareStoredNote(a: ResearchNote, b: ResearchNote): number {
-  return a.createdAt < b.createdAt
-    ? -1
-    : a.createdAt > b.createdAt
-      ? 1
-      : a.gid < b.gid
-        ? -1
-        : a.gid > b.gid
-          ? 1
-          : 0;
+  // Genesis creation anchors retain source insertion order; native anchors survive replay.
+  // Observation time remains the primary presentation order, independently of created_at.
+  return order === "n.id"
+    ? byCreation(read, "researchNotes", rows)
+    : newestFirst(read, "researchNotes", rows, (row) => row.observedAt);
 }
 
 export interface NotesFilter {

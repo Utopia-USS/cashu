@@ -9,6 +9,9 @@ export type EntityRefKind =
   | "signal"
   | "thesis"
   | "alert"
+  | "run"
+  | "note"
+  | "watchlist"
   | "account";
 
 // Letter-only payloads avoid identifier-like digit runs in the unchanged final leak check.

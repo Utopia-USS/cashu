@@ -14,6 +14,7 @@ export * from "./proposalBacktest.js";
 export * from "./proposalPublication.js";
 export * from "./proposalRuleText.js";
 export * from "./proposalStrategy.js";
+export * from "./research-plans.js";
 export * from "./staging.js";
 export * from "./strategy.js";
 export * from "./strategy-docs.js";

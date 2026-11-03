@@ -24,15 +24,6 @@ export const PYTHON_TOOLS: Readonly<Record<string, string>> = {
   search_instruments: "S38d",
   add_to_watchlist: "S38d",
   remove_from_watchlist: "S38d",
-  // TRANSITIONAL(S38e): research tools
-  research_context: "S38e",
-  research_notes: "S38e",
-  start_research_run: "S38e",
-  add_research_note: "S38e",
-  set_topic_market_view: "S38e",
-  upsert_topic_thesis: "S38e",
-  finish_research_run: "S38e",
-  set_instrument_segment: "S38e",
   // TRANSITIONAL(S38f): connector tools
   test_connector: "S38f",
   propose_connector: "S38f",

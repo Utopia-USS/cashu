@@ -9,6 +9,7 @@ import {
   loadPayeeSecret,
   type NativeRuntime,
   type NativeToolStore,
+  type ResearchServices,
   restrictivePrivacy,
   type ToolContext,
   type ToolInventoryEntry,
@@ -32,6 +33,7 @@ export interface NativeMcpOptions {
   readonly fxNewest?: () => string | null;
   readonly investmentReads?: (context: ToolContext<NativeToolStore>) => InvestmentReads;
   readonly investmentHistory?: (context: ToolContext<NativeToolStore>) => InvestmentHistoryReads;
+  readonly research?: (context: ToolContext<NativeToolStore>) => ResearchServices;
   readonly readInvestmentImportFile?: (
     path: string,
     slug: string,
@@ -132,6 +134,8 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         const today = localDay(at);
         const pending: v1.Envelope[] = [];
         let context: ToolContext<NativeToolStore>;
+        let research: ResearchServices | undefined;
+        let researchResolved = false;
         const store: NativeToolStore = {
           read,
           profile,
@@ -140,6 +144,20 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           prices: options.prices ?? null,
           fxNewest: options.fxNewest?.() ?? null,
           toolInventory: options.inventory,
+          get research() {
+            if (!researchResolved) {
+              const candidate = options.research?.(context);
+              if (
+                candidate !== undefined &&
+                (candidate.vault !== vault.store.vault ||
+                  candidate.plans.vault !== vault.store.vault)
+              )
+                throw new Error("native research vault binding is inconsistent");
+              research = candidate;
+              researchResolved = true;
+            }
+            return research;
+          },
           get investments() {
             return options.investmentReads?.(context);
           },

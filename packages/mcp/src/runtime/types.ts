@@ -12,6 +12,7 @@ export interface ToolInventoryEntry {
 }
 
 export interface NativeToolStore {
+  readonly research?: import("../providers/researchTypes.js").ResearchServices;
   /** Supplied only when the host establishes native market/strategy read authority. */
   readonly investments?: import("../providers/investmentReadTypes.js").InvestmentReads;
   readonly investmentHistory?: import("../providers/investmentHistoryTypes.js").InvestmentHistoryReads;

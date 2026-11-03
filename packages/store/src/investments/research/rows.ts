@@ -6,7 +6,8 @@
 // `signal` is its episode (`inv_signal_aliases`), else the named gid while the open is not held.
 import type { IsoDate } from "@cashu/domain";
 import { research } from "@cashu/domain/investments";
-import { gidOf, jsonList, jsonObject } from "../queries/shared.js";
+import { gidOf, jsonList, jsonObject, type Read } from "../queries/shared.js";
+import { compareReadRank, creationRanks } from "../views/stableOrder.js";
 
 type Instant = research.Instant;
 
@@ -255,19 +256,25 @@ export function hasBrief(details: Readonly<Record<string, unknown>> | null): boo
 }
 
 /**
- * Dense ranks (1, 2, ...) of notes in storing order (`created_at`, then gid): the convergent stand-in
- * for Python's autoincrement id where the pure code breaks ties by id (Python's ids follow the
- * storing order; genesis gids are keyed hashes, so gid order alone would not).
+ * Dense comparison ranks from actual applied creation anchors, never timestamps or local ids.
+ * A new prospective note has no applied anchor yet: its explicit command overlay orders it after
+ * persisted notes, matching the serialized append. Replacements retain their original anchor.
  */
 export function noteRanks(
-  notes: Iterable<{ readonly gid: string; readonly createdAt: Instant }>,
+  read: Read,
+  notes: Iterable<{ readonly gid: string }>,
+  pending?: ReadonlyMap<string, ResearchNote>,
 ): Map<string, number> {
-  const unique = new Map<string, Instant>();
-  for (const n of notes) unique.set(n.gid, n.createdAt);
-  const ordered = [...unique].sort(([ga, ca], [gb, cb]) =>
-    ca !== cb ? (ca < cb ? -1 : 1) : ga < gb ? -1 : ga > gb ? 1 : 0,
+  const gids = new Set([...notes].map((row) => row.gid));
+  const ranks = creationRanks(read, "researchNotes", [...gids]);
+  for (const gid of gids)
+    if (!ranks.has(gid) && !pending?.has(gid))
+      throw new Error("note is missing its applied creation anchor or prospective overlay");
+  const stored = [...ranks.values()].sort(compareReadRank).map((row) => row.gid);
+  const prospective = [...(pending?.keys() ?? [])].filter(
+    (gid) => gids.has(gid) && !ranks.has(gid),
   );
-  return new Map(ordered.map(([g], i) => [g, i + 1]));
+  return new Map([...stored, ...prospective].map((gid, i) => [gid, i + 1]));
 }
 
 /** What the domain scoring reads from a note (`views.scored`), with `id` = its storing rank. */

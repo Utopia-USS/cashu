@@ -107,7 +107,7 @@ export function notesBySegment(read: Read, now: Instant): Map<string, Notes> {
   const rows = noteRows(read, "n.segment IS NOT NULL AND n.observed_at >= ?", [
     instantView(now - BigInt(reach) * DAY),
   ]);
-  const ranks = noteRanks(rows);
+  const ranks = noteRanks(read, rows);
   const key = (r: ResearchNote) => [r.observedAt, ranks.get(r.gid) ?? 0] as const;
   const newer = (a: ResearchNote | undefined, b: ResearchNote) => {
     if (a === undefined) return true;

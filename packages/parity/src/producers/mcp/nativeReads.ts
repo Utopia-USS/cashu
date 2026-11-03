@@ -1,4 +1,6 @@
 /** Native S38b read bodies. No labelled oracle tree contributes to these five answers. */
+
+import { summaryOk } from "@cashu/domain/investments/macro";
 import {
   budgetTools,
   decodeEntityRef,
@@ -11,6 +13,7 @@ import {
   loansTools,
   type NativeToolStore,
   Redactor,
+  researchTools,
   scrubText,
   type ToolContext,
   ToolError,
@@ -33,6 +36,8 @@ const NATIVE_READS = [
   "strategy_status",
   "history_metrics",
   "theses",
+  "research_context",
+  "research_notes",
 ] as const;
 interface NativeCall {
   readonly name: string;
@@ -50,7 +55,10 @@ const NATIVE_CALLS = NATIVE_READS.flatMap<NativeCall>((name) =>
 );
 const NATIVE_NAMES: ReadonlySet<string> = new Set(NATIVE_READS);
 const specs = new Map(
-  [...budgetTools(), ...loansTools(), ...investmentTools()].map((spec) => [spec.name, spec]),
+  [...budgetTools(), ...loansTools(), ...investmentTools(), ...researchTools()].map((spec) => [
+    spec.name,
+    spec,
+  ]),
 );
 export interface InvestmentReferences {
   ref(kind: EntityRefKind, gid: string): string;
@@ -74,6 +82,10 @@ function canonicalNative(
       signal_id: "signal",
       thesis_id: "thesis",
       alert_id: "alert",
+      run_id: "run",
+      running_run_id: "run",
+      note_id: "note",
+      item_id: "watchlist",
     };
     const kind = field === undefined ? undefined : kinds[field];
     if (kind !== undefined) {
@@ -110,7 +122,11 @@ export function nativeMcpReads(
       if (!enabledIn(spec, modules)) return [call, { error_kind: "module_disabled" }];
       try {
         const tree = spec.handler(context, validateArguments(spec, args));
-        const redactor = new Redactor({ privacy: context.privacy, guard: context.guard });
+        const redactor = new Redactor({
+          privacy: context.privacy,
+          guard: context.guard,
+          summaryOk,
+        });
         const data = redactor.apply(tree);
         if (data === null || typeof data !== "object" || Array.isArray(data))
           throw new UnlabelledValue("a tool must return an object");

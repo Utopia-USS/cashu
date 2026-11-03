@@ -6,6 +6,7 @@ const ENTITIES = {
   theses: ["inv_theses", "thesis.created"],
   ruleRuns: ["inv_rule_runs", "ruleRun.finished"],
   researchRuns: ["research_runs", "researchRun.started"],
+  researchNotes: ["research_notes", "note.added"],
   signals: ["inv_signals", "signal.opened"],
   reviews: ["reviews", "review.done"],
   decisions: ["inv_decisions", "decision.recorded"],

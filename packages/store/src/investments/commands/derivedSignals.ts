@@ -30,6 +30,9 @@ export function stageDerivedSignals<R>(
   try {
     const child: CommandContext = {
       ...ctx,
+      emitDeferred() {
+        throw new TypeError("unsupported derived effect");
+      },
       emit(type, target, data, options) {
         if (!(TYPES as readonly string[]).includes(type) || options?.cause !== undefined)
           throw new TypeError("unsupported derived effect");

@@ -11,6 +11,7 @@ import {
   type ValuedHolding,
   type ValuedPortfolio,
 } from "@cashu/domain/investments";
+import type { ResearchNote } from "../research/rows.js";
 import { healthByInstrument } from "../research/views.js";
 import { watchlist } from "./alerts.js";
 import { loadInstrument } from "./instruments.js";
@@ -26,6 +27,8 @@ export interface PlanFactsInput {
   readonly now: DateTime;
   readonly only?: InstrumentId;
   readonly pendingPlan?: PendingPlan;
+  /** A new note is not in the pre-append SQL view yet. */
+  readonly pendingResearchNotes?: ReadonlyMap<string, ResearchNote>;
 }
 export function planFacts(read: Read, input: PlanFactsInput): plan.PlanFacts[] {
   const grouped = new Map<InstrumentId, ValuedHolding[]>();
@@ -50,6 +53,7 @@ export function planFacts(read: Read, input: PlanFactsInput): plan.PlanFacts[] {
     read,
     ids,
     research.utcInstant(now.date, now.hour, now.minute, now.second, now.microsecond),
+    input.pendingResearchNotes,
   );
   return ids.flatMap((id) => {
     const inst = loadInstrument(read, id);

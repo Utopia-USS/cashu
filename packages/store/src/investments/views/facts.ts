@@ -191,7 +191,7 @@ export function readFacts(read: Read, request: ReadFactsRequest): LiveReadFacts 
         ),
       );
     }
-  const ranks = noteRanks(notes);
+  const ranks = noteRanks(read, notes);
   const subjects: views.AnnotationSubject[] = ids.map((id) => {
     const instrument = instruments.get(id);
     const found = health.get(id);

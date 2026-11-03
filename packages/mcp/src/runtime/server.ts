@@ -1,4 +1,5 @@
 // Native MCP call boundary: reread policy, audit first, redact before committing buffered writes.
+import { summaryOk } from "@cashu/domain/investments/macro";
 
 import { type Outcome, summarizeArgs } from "../privacy/audit.js";
 import { type JsonValue, pyDumps } from "../privacy/pyJson.js";
@@ -212,7 +213,7 @@ export class NativeMcpServer {
           try {
             const args = validateArguments(spec, arguments_);
             const tree = spec.handler(context, args);
-            const redactor = new Redactor({ privacy, guard: context.guard });
+            const redactor = new Redactor({ privacy, guard: context.guard, summaryOk });
             const data = redactor.apply(tree);
             if (data === null || typeof data !== "object" || Array.isArray(data))
               throw new UnlabelledValue("a tool must return an object");

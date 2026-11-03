@@ -75,7 +75,7 @@ function weekNotes(
 export function syncResearchSignal(ctx: CommandContext, key: string, o: SyncOptions): SyncResult {
   const overlay = o.overlay ?? new Map<string, ResearchNote>();
   const all = weekNotes(ctx, key, overlay);
-  const ranks = noteRanks(all);
+  const ranks = noteRanks(ctx.read, all, overlay);
   const byRank = new Map([...ranks].map(([g, r]) => [r, g]));
   const records = all.map((n) => signalRecord(n, ranks.get(n.gid) as number));
   const mine = all.filter(

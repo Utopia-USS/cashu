@@ -19,6 +19,7 @@ import {
   type NameGuard,
   type NativeToolStore,
   Redactor,
+  type ResearchServices,
   scrubText,
   toolContext,
   UnlabelledValue,
@@ -34,6 +35,7 @@ import { bindInvestmentHistory } from "./historySource.ts";
 import { bindInvestmentReads } from "./investmentSource.ts";
 import { mergeMcpReads, nativeMcpReads } from "./nativeReads.ts";
 import { canonToOut, SyntheticIds, toCanonical, toLabelledTree } from "./rawTrees.ts";
+import { bindResearchReads } from "./researchSource.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..", "..");
 
@@ -118,7 +120,11 @@ export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: 
   const nativeProfile = mcpProfile(read);
   if (nativeProfile === undefined) throw new Error("MCP parity: missing native profile");
   const keys = new GidKeys(vault, db.keys);
+  let research: ResearchServices | undefined;
   const store: NativeToolStore = {
+    get research() {
+      return research;
+    },
     read,
     profile: nativeProfile,
     today: db.asOf,
@@ -144,6 +150,8 @@ export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: 
     loadGuard: () => guard,
     loadAccountLabels: () => loadAccountLabels(read),
   });
+  if (nativeProfile.modules.includes("investments"))
+    research = bindResearchReads(db, profile.id, context);
   const native = nativeMcpReads(
     context,
     new Set(nativeProfile.modules),
@@ -159,6 +167,9 @@ export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: 
           signal: "inv_signals",
           thesis: "inv_theses",
           alert: "alerts",
+          run: "research_runs",
+          note: "research_notes",
+          watchlist: "watchlist_items",
         };
         const table = tables[kind];
         if (table === undefined) throw new Error("unsupported native reference kind");

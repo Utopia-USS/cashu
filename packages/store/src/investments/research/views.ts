@@ -284,6 +284,7 @@ export function healthByInstrument(
   read: Read,
   ids: Iterable<string>,
   now: Instant,
+  pendingNotes?: ReadonlyMap<string, ResearchNote>,
 ): Map<
   string,
   { health: research.HealthResult; thesis: ThesisView | undefined; noteIds: string[] }
@@ -294,8 +295,18 @@ export function healthByInstrument(
     { health: research.HealthResult; thesis: ThesisView | undefined; noteIds: string[] }
   >();
   if (wanted.size === 0) return out;
-  const rows = recentNotes(read, now - BigInt(HISTORY_DAYS) * DAY);
-  const ranks = noteRanks(rows);
+  const since = now - BigInt(HISTORY_DAYS) * DAY;
+  const stored = recentNotes(read, since);
+  const rows =
+    pendingNotes === undefined
+      ? stored
+      : [
+          ...new Map([
+            ...stored.map((row) => [row.gid, row] as const),
+            ...[...pendingNotes].filter(([, row]) => row.observedAt >= since),
+          ]).values(),
+        ];
+  const ranks = noteRanks(read, rows, pendingNotes);
   const byRank = new Map([...ranks].map(([g, r]) => [r, g]));
   const byInstrument = new Map<string, ResearchNote[]>();
   for (const r of rows) {
@@ -400,7 +411,7 @@ export function researchSummary(read: Read, o: SummaryOptions) {
   const held = new Set(o.weights.keys());
   const watched = watchedInstrumentGids(read);
   const rows = recentNotes(read, now - BigInt(HISTORY_DAYS) * DAY);
-  const ranks = noteRanks(rows);
+  const ranks = noteRanks(read, rows);
   const byRank = new Map([...ranks].map(([g, r]) => [r, g]));
   const byInstrument = new Map<string, ResearchNote[]>();
   for (const r of rows) {
@@ -539,7 +550,7 @@ export function researchDigest(read: Read, o: DigestOptions) {
   const start = o.since ?? now - 7n * DAY;
   const from = earlier(start, now) - BigInt(HISTORY_DAYS) * DAY;
   const rows = recentNotes(read, from);
-  const ranks = noteRanks(rows);
+  const ranks = noteRanks(read, rows);
   const byRank = new Map([...ranks].map(([g, r]) => [r, g]));
   const fresh = rows.filter((r) => r.createdAt >= start);
   const active = fresh.filter((r) => r.dismissedAt === null);

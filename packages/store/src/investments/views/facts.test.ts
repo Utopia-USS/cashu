@@ -80,7 +80,9 @@ describe("annotation note selection and synced unread", () => {
         lang: "en",
       });
       const subject = facts.subjects.find((row) => row.instrument.id === h.first);
-      expect(subject?.notes.map((row) => row.id)).toEqual([windowNote, invalidating, community]);
+      // Backdated created_at affects selection, never the applied note creation order.
+      expect(subject?.notes.map((row) => row.id)).toEqual([invalidating, windowNote, community]);
+      expect(subject?.notes.map((row) => row.scored.id)).toEqual([1, 2, 3]);
       const note = subject?.notes.find((row) => row.id === community);
       expect(research.noteWeight(note?.scored.kind ?? "", note?.scored.strength ?? 0)).toBe(1);
       expect(

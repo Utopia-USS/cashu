@@ -27,6 +27,8 @@ import {
   loansTools,
   NativeMcpServer,
   type NativeToolStore,
+  type ResearchServices,
+  researchTools,
   type ToolContext,
 } from "@cashu/mcp";
 import {
@@ -119,6 +121,8 @@ export interface LocalHostOptions {
   /** Explicit coherent read authorities; native investment views are unavailable without them. */
   readonly mcpInvestmentReads?: (context: ToolContext<NativeToolStore>) => InvestmentReads;
   readonly mcpInvestmentHistory?: (context: ToolContext<NativeToolStore>) => InvestmentHistoryReads;
+  /** Explicit vault-scoped strategy, portfolio and plan authority for native research tools. */
+  readonly mcpResearch?: (context: ToolContext<NativeToolStore>) => ResearchServices;
   /** Explicit legacy-file authority for packaged hosts or an external Python program. */
   readonly mcpLegacyDataDir?: string;
   /** Tests only: called at each crash point of the sync service's loop. */
@@ -491,6 +495,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                         : options.mcpInvestmentReads !== undefined)),
               ),
             );
+            if (child === undefined)
+              tools.push(
+                ...researchTools().filter((tool) =>
+                  tool.name === "research_context" || tool.name === "add_research_note"
+                    ? options.mcpResearch !== undefined
+                    : true,
+                ),
+              );
             const inventory =
               child === undefined
                 ? TOOL_INVENTORY.filter((entry) => tools.some((tool) => tool.name === entry.name))
@@ -509,6 +521,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 readBudgetImportFile: fileReader,
                 investmentReads: options.mcpInvestmentReads,
                 investmentHistory: options.mcpInvestmentHistory,
+                research: options.mcpResearch,
                 readInvestmentImportFile: readInvestmentFile,
                 readInvestmentMappingFile: readInvestmentMapping,
               }),

@@ -6,6 +6,7 @@
  */
 
 export * from "./contract.js";
+export * from "./exposure.js";
 export * from "./instant.js";
 export * from "./keys.js";
 export { datetimeFromIsoformat, parseMoment } from "./moment.js";

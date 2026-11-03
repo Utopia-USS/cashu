@@ -17,6 +17,8 @@ export {
   type InvestmentReads,
   investmentReads,
 } from "./providers/investmentReads.js";
+export { researchServices } from "./providers/research.js";
+export type { ResearchRequests, ResearchServices } from "./providers/researchTypes.js";
 export {
   allTools,
   enabledIn,
@@ -64,3 +66,4 @@ export { budgetTools } from "./tools/budget.js";
 export { coreTools } from "./tools/core.js";
 export { investmentTools } from "./tools/investments.js";
 export { loansTools } from "./tools/loans.js";
+export { researchTools } from "./tools/research.js";
