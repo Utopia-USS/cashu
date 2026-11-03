@@ -1,8 +1,11 @@
 /// <reference types="node" />
 import { appendFileSync, chmodSync, existsSync, renameSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  adminHandoverResultSchema,
+  adminStatusResultSchema,
   NOTIFICATION_INTENT_FEATURE,
   NOTIFICATION_INTENT_METHOD,
   nativeCreationCommitParamsSchema,
@@ -17,12 +20,25 @@ import {
   uiCreationAllowed,
 } from "@cashu/host-protocol";
 import {
+  acquireHostLock,
   activateHost,
+  assertUpdateHandoverComplete,
+  cancelUpdateAdmission,
+  clearUpdateAdmissionAfterReplacement,
+  commitUpdateDispatch,
+  connectHost,
   connectOrStart,
+  HostConnectError,
+  type HostLock,
   hostRunPaths,
+  publishUpdateAdmission,
+  readUpdateAdmission,
+  recoverPreparedUpdateAdmission,
   type ServiceStatus,
   spawnDetachedHost,
+  waitForHostLock,
 } from "@cashu/node-host";
+import { packagedBuildId, readBundleIdentity } from "@cashu/node-host/bundle-identity";
 import { nativeImage, shell } from "electron/common";
 import {
   app,
@@ -30,13 +46,16 @@ import {
   ipcMain,
   Menu,
   MessageChannelMain,
+  protocol,
   screen,
   session,
   Tray,
 } from "electron/main";
 import { DesktopApp, type WindowHandle } from "./app.js";
+import { APP_ENTRY, appAssetResponse } from "./appProtocol.js";
 import {
   checkDataDir,
+  defaultDataDir,
   ENV,
   LOG_FILE,
   MIN_SIZE,
@@ -58,6 +77,10 @@ import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { Sidecar, sidecarSpec, verifyDataDir } from "./sidecar.js";
 import { ensurePrivateDir, loadState, rememberedPort, rememberPort, statePath } from "./state.js";
 import { pickLang, t } from "./strings.js";
+import { releaseAuthority } from "./update/authority.js";
+import { startMainUpdateBridge } from "./update/bridge.js";
+import { createElectronUpdateController } from "./update/electron.js";
+import { updatePreferences } from "./update/preferences.js";
 import { windowSize } from "./window.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -81,8 +104,8 @@ const problem = checkDataDir({
 });
 if (problem) fatal(problem);
 
-const spec = sidecarSpec(root, env);
-if (env[ENV.skipDataDirCheck] !== "1") {
+const spec = app.isPackaged ? null : sidecarSpec(root, env);
+if (spec && env[ENV.skipDataDirCheck] !== "1") {
   const mismatch = verifyDataDir(spec, dataDir, env);
   if (mismatch) fatal(mismatch);
 }
@@ -136,6 +159,7 @@ function toHandle(window: BrowserWindow): WindowHandle {
 }
 
 const desktop = new DesktopApp({
+  staticEntry: app.isPackaged ? APP_ENTRY : undefined,
   // TRANSITIONAL(S53b): real-vault identity is not enabled by selecting the native renderer.
   rendererPath:
     env.CASHU_DESKTOP_NATIVE_OVERVIEW === "1" ? "/assets/desktop/index.html" : undefined,
@@ -171,8 +195,9 @@ const desktop = new DesktopApp({
     void window.loadURL(loadingUrl);
     return toHandle(window);
   },
-  createSidecar: (onExit) =>
-    new Sidecar({
+  createSidecar: (onExit) => {
+    if (!spec) throw new Error("Packaged Python awaits S62 admission");
+    return new Sidecar({
       spec,
       dataDir,
       baseEnv: env,
@@ -182,7 +207,8 @@ const desktop = new DesktopApp({
         log(message);
         onExit(message);
       },
-    }),
+    });
+  },
   createTray(items, onAction) {
     if (env[ENV.noTray] === "1") return null;
     let image = nativeImage.createFromPath(iconPath);
@@ -247,6 +273,9 @@ function fromMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEven
 ipcMain.on("cashu:bridge-allowed", (event) => {
   event.returnValue = desktop.exposesBridgeTo(fromMainFrame(event));
 });
+ipcMain.on("cashu:legacy-bridge-allowed", (event) => {
+  event.returnValue = !app.isPackaged && desktop.exposesBridgeTo(fromMainFrame(event));
+});
 
 ipcMain.handle("cashu:token", (event) => {
   const token = desktop.tokenFor(fromMainFrame(event));
@@ -272,7 +301,11 @@ ipcMain.handle("cashu:service-status", async (event) => {
   return serviceStatus();
 });
 ipcMain.handle("cashu:service-set-enabled", async (event, enabled: unknown) => {
-  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || typeof enabled !== "boolean") {
+  if (
+    !desktop.exposesBridgeTo(fromMainFrame(event)) ||
+    typeof enabled !== "boolean" ||
+    !hostAdmissionOpen
+  ) {
     return { state: "unavailable" };
   }
   return visibleServiceStatus(await (enabled ? hostService.enable() : hostService.disable()));
@@ -301,7 +334,151 @@ ipcMain.handle("cashu:notifications-request-permission", async (event) => {
 
 // The data dir's host (apps/host): connected to as a `ui` client per renderer frame and started on
 // demand by the verified service when available, otherwise detached. It exits when idle.
-const HOST_BUILD = `desktop-${app.isPackaged ? app.getVersion() : "dev"}`;
+const HOST_BUILD = app.isPackaged
+  ? (() => {
+      const identity = readBundleIdentity(dirname(dirname(dirname(process.execPath))));
+      if (identity.kind !== "present") throw new Error("packaged_bundle_identity_unavailable");
+      return packagedBuildId(app.getVersion(), identity.contentDigest);
+    })()
+  : "desktop-dev";
+let hostAdmissionOpen = true;
+let updaterBridge: Awaited<ReturnType<typeof startMainUpdateBridge>> | null = null;
+let updaterController: ReturnType<typeof createElectronUpdateController> | null = null;
+let updateHoldLock: HostLock | null = null;
+
+async function boundedAdminCall(
+  connection: Awaited<ReturnType<typeof connectHost>>,
+  method: "admin.status" | "admin.handover",
+) {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      connection.call(method),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("admin_timeout")), 5_000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function drainForUpdate(targetVersion: string): Promise<
+  | {
+      kind: "ready";
+      cancel(): Promise<boolean>;
+      commitDispatch(): Promise<"committed" | "prepared" | "unknown">;
+    }
+  | { kind: "refused" | "unknown" }
+> {
+  if (!hostAdmissionOpen) return { kind: "refused" };
+  const identity = readBundleIdentity(dirname(dirname(dirname(process.execPath))));
+  if (identity.kind !== "present") return { kind: "refused" };
+  hostAdmissionOpen = false;
+  relays.closeAll();
+  let published = false;
+  let lock: HostLock | undefined;
+  try {
+    let connection: Awaited<ReturnType<typeof connectHost>> | null = null;
+    try {
+      connection = await connectHost({ dataDir, role: "admin", build: HOST_BUILD });
+    } catch (error) {
+      if (!(error instanceof HostConnectError) || error.kind !== "unavailable") throw error;
+    }
+    let admissionId: string;
+    if (!connection) {
+      ensurePrivateDir(hostRunPaths(dataDir).runDir);
+      lock = acquireHostLock(hostRunPaths(dataDir).lockPath);
+      if (!lock) return { kind: "unknown" };
+      admissionId = publishUpdateAdmission(
+        dataDir,
+        identity.fingerprint,
+        app.getVersion(),
+        targetVersion,
+      ).id;
+      published = true;
+    } else {
+      try {
+        const status = adminStatusResultSchema.parse(
+          await boundedAdminCall(connection, "admin.status"),
+        );
+        if (
+          status.build !== HOST_BUILD ||
+          status.dataDir !== hostRunPaths(dataDir).dataDirId ||
+          status.stopping
+        ) {
+          hostAdmissionOpen = true;
+          return { kind: "refused" };
+        }
+        const expected = {
+          pid: status.pid,
+          startedAt: status.startedAt,
+          build: status.build,
+          dataDirId: status.dataDir,
+        };
+        admissionId = publishUpdateAdmission(
+          dataDir,
+          identity.fingerprint,
+          app.getVersion(),
+          targetVersion,
+        ).id;
+        published = true;
+        const ack: unknown = await boundedAdminCall(connection, "admin.handover");
+        adminHandoverResultSchema.parse(ack);
+        if (!ack || typeof ack !== "object" || Object.keys(ack).length !== 1)
+          throw new Error("handover_ack_invalid");
+        lock = await waitForHostLock(dataDir, admissionId, 30_000);
+        if (!lock) return { kind: "unknown" };
+        assertUpdateHandoverComplete(lock, dataDir, admissionId, expected);
+      } finally {
+        connection.close();
+      }
+    }
+    if (!lock) return { kind: "unknown" };
+    updateHoldLock = lock;
+    return {
+      kind: "ready",
+      async cancel() {
+        if (!lock?.held) return false;
+        try {
+          cancelUpdateAdmission(lock, dataDir, admissionId);
+        } catch {
+          return false;
+        } finally {
+          lock.release();
+          updateHoldLock = null;
+        }
+        hostAdmissionOpen = true;
+        mainWindow?.webContents.reload();
+        return true;
+      },
+      async commitDispatch() {
+        if (!lock?.held) return "unknown";
+        try {
+          commitUpdateDispatch(lock, dataDir, admissionId);
+          return "committed";
+        } catch {
+          try {
+            const marker = readUpdateAdmission(dataDir);
+            return marker?.id === admissionId && marker.phase === "prepared"
+              ? "prepared"
+              : "unknown";
+          } catch {
+            return "unknown";
+          }
+        }
+      },
+    };
+  } catch {
+    return { kind: "unknown" };
+  } finally {
+    if (lock && lock !== updateHoldLock) lock.release();
+    if (!published) {
+      hostAdmissionOpen = true;
+      mainWindow?.webContents.reload();
+    }
+  }
+}
 
 // The page never chooses a host method, path or key name. Each call uses a fresh authenticated UI
 // session so it cannot race the renderer's store relay handler.
@@ -320,6 +497,7 @@ function creationIpc(method: "prepare" | "commit" | "inspect" | "current") {
   }[method];
   ipcMain.handle(`cashu:creation-${method}`, async (event, raw: unknown) => {
     if (!desktop.exposesBridgeTo(fromMainFrame(event))) throw new Error("creation_unavailable");
+    if (!hostAdmissionOpen) throw new Error("creation_unavailable");
     const parsedParams = paramsSchema.safeParse(raw);
     if (!parsedParams.success) throw new Error("creation_invalid_params");
     const connection = (
@@ -351,6 +529,7 @@ creationIpc("inspect");
 creationIpc("current");
 
 function startHost(): void {
+  if (!hostAdmissionOpen) throw new Error("host admission closed");
   if (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY))) {
     throw new Error("bundled host unavailable");
   }
@@ -376,6 +555,7 @@ async function resolveNotificationClick(
   pair: NotificationResponsePair,
 ): Promise<ResolvedNotification | null> {
   try {
+    if (!hostAdmissionOpen) return null;
     const connection = (
       await connectOrStart({
         dataDir,
@@ -421,8 +601,9 @@ const relays = new HostRelays(
   (port) =>
     new HostRelay({
       port,
-      connect: async (onStarting) =>
-        (
+      connect: async (onStarting) => {
+        if (!hostAdmissionOpen) throw new Error("host admission closed");
+        return (
           await connectOrStart({
             dataDir,
             role: "ui",
@@ -432,7 +613,8 @@ const relays = new HostRelays(
               await activateHost(hostService, startHost);
             },
           })
-        ).connection,
+        ).connection;
+      },
       log,
     }),
 );
@@ -443,7 +625,7 @@ const watchedPages = new Set<number>();
 // one end and relays it to its own host session for that frame; the other end goes back to that frame.
 ipcMain.on("cashu:store-port", (event) => {
   const frame = event.senderFrame;
-  if (frame === null || !desktop.exposesBridgeTo(fromMainFrame(event))) {
+  if (!hostAdmissionOpen || frame === null || !desktop.exposesBridgeTo(fromMainFrame(event))) {
     log("store port request from a page outside the app refused");
     return;
   }
@@ -484,6 +666,8 @@ app.on("before-quit", (event) => {
   notificationClickRouter.dispose();
   releaseResponseHandler();
   relays.closeAll();
+  void updaterBridge?.close();
+  updaterController?.dispose();
   void desktop.shutdown().finally(() => {
     shutDown = true;
     app.quit();
@@ -517,6 +701,114 @@ if (!hasLock) {
   app.quit();
 } else {
   app.whenReady().then(async () => {
+    if (app.isPackaged) {
+      protocol.handle("app", (request) => appAssetResponse(request.url, process.resourcesPath));
+      const bundle = dirname(dirname(dirname(process.execPath)));
+      const identity = readBundleIdentity(bundle);
+      const authority = releaseAuthority(
+        {
+          isPackaged: true,
+          execPath: process.execPath,
+          resourcesPath: process.resourcesPath,
+          dataDir,
+          expectedDataDir: defaultDataDir(process.platform, homedir(), env),
+        },
+        drainForUpdate,
+      );
+      try {
+        const pending = readUpdateAdmission(dataDir);
+        if (pending) {
+          hostAdmissionOpen = false;
+          const gate = await authority.check();
+          if (gate.ok && identity.kind === "present") {
+            let expectedHost:
+              | { pid: number; startedAt: string; build: string; dataDirId: string }
+              | undefined;
+            if (pending.phase === "prepared") {
+              if (
+                pending.fromFingerprint !== identity.fingerprint ||
+                pending.fromVersion !== app.getVersion()
+              )
+                throw new Error("prepared_identity_mismatch");
+              let connection: Awaited<ReturnType<typeof connectHost>> | null = null;
+              try {
+                connection = await connectHost({ dataDir, role: "admin", build: HOST_BUILD });
+              } catch (error) {
+                if (!(error instanceof HostConnectError) || error.kind !== "unavailable")
+                  throw error;
+              }
+              if (connection) {
+                try {
+                  const status = adminStatusResultSchema.parse(
+                    await boundedAdminCall(connection, "admin.status"),
+                  );
+                  if (
+                    status.build !== HOST_BUILD ||
+                    status.dataDir !== hostRunPaths(dataDir).dataDirId ||
+                    status.stopping
+                  )
+                    throw new Error("prepared_host_mismatch");
+                  expectedHost = {
+                    pid: status.pid,
+                    startedAt: status.startedAt,
+                    build: status.build,
+                    dataDirId: status.dataDir,
+                  };
+                  const ack: unknown = await boundedAdminCall(connection, "admin.handover");
+                  adminHandoverResultSchema.parse(ack);
+                  if (!ack || typeof ack !== "object" || Object.keys(ack).length !== 1)
+                    throw new Error("prepared_handover_ack_invalid");
+                } finally {
+                  connection.close();
+                }
+              }
+            }
+            const lock = await waitForHostLock(dataDir, pending.id, 30_000);
+            if (lock) {
+              try {
+                if (pending.phase === "prepared") {
+                  if (expectedHost)
+                    assertUpdateHandoverComplete(lock, dataDir, pending.id, expectedHost);
+                  recoverPreparedUpdateAdmission(
+                    lock,
+                    dataDir,
+                    identity.fingerprint,
+                    app.getVersion(),
+                  );
+                } else {
+                  clearUpdateAdmissionAfterReplacement(
+                    lock,
+                    dataDir,
+                    identity.fingerprint,
+                    app.getVersion(),
+                  );
+                }
+                hostAdmissionOpen = true;
+              } finally {
+                lock.release();
+              }
+            }
+          }
+        }
+      } catch (error) {
+        hostAdmissionOpen = false;
+        log(`update barrier: ${error instanceof Error ? error.name : "unknown"}`);
+      }
+      updaterController = createElectronUpdateController(
+        authority,
+        updatePreferences(dataDir),
+        app.getVersion(),
+      );
+      await updaterController.initialize();
+      if (identity.kind === "present" && updaterController.status().availability === "ready") {
+        updaterBridge = await startMainUpdateBridge(
+          updaterController,
+          dataDir,
+          HOST_BUILD,
+          identity.fingerprint,
+        );
+      }
+    }
     const hardened = session.defaultSession;
     hardened.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     hardened.setPermissionCheckHandler(() => false);

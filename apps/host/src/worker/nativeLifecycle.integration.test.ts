@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { investmentsLocal, mintUlid, renameProfile } from "@cashu/store";
@@ -212,10 +212,8 @@ it("safe-mode native startup suppresses the worker and network capability", asyn
   }
 });
 
-it("bundle handover drains native queued work before releasing the host lock", async () => {
+it("graceful handover drains native queued work before releasing the host lock", async () => {
   const fixture = await nativeVaultFixture();
-  const bundle = join(fixture.dataDir, "synthetic-bundle-stamp");
-  writeFileSync(bundle, "v1");
   const options = {
     dataDir: fixture.dataDir,
     home: fixture.home,
@@ -224,7 +222,7 @@ it("bundle handover drains native queued work before releasing the host lock", a
     python: null,
     vaultSource: fixture.vaultSource,
   } as const;
-  const host = await startLocalHost({ ...options, bundlePath: bundle, bundleCheckMs: 20 });
+  const host = await startLocalHost(options);
   const gate = deferred();
   let next: Awaited<ReturnType<typeof startLocalHost>> | undefined;
   try {
@@ -240,8 +238,7 @@ it("bundle handover drains native queued work before releasing the host lock", a
       return 1;
     });
     await started;
-    writeFileSync(`${bundle}.next`, "v2-longer");
-    renameSync(`${bundle}.next`, bundle);
+    void host.stop("handover");
     await expect.poll(() => host.status().stopping).toBe(true);
     expect(host.lease.held).toBe(true);
     gate.release();

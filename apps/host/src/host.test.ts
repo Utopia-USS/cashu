@@ -254,19 +254,10 @@ describe("local host", () => {
     await after.stop();
   });
 
-  it("hands over with exit 75 when its bundle file is replaced", async () => {
+  it("hands over with exit 75 and releases the host lock", async () => {
     const dir = tempDir();
-    const bundle = join(tempDir(), "Info.plist");
-    writeFileSync(bundle, "v1");
-    const host = await startLocalHost({
-      ...testHostOptions(dir),
-      bundlePath: bundle,
-      bundleCheckMs: 20,
-    });
-    await wait(50);
-    writeFileSync(`${bundle}.new`, "v2 longer");
-    const { renameSync } = await import("node:fs");
-    renameSync(`${bundle}.new`, bundle);
+    const host = await startLocalHost(testHostOptions(dir));
+    void host.stop("handover");
     expect(await host.exit).toBe(75);
     // The lock is free for the new bundle's host.
     const next = await startLocalHost(testHostOptions(dir));
@@ -328,7 +319,7 @@ describe("local host", () => {
     await host.sync;
     expect(await main(["status", "--data-dir", dir], io)).toBe(0);
     const status = out.pop();
-    expect(status).toMatch(/running \(pid \d+, build test, protocol 1\.4\)[\s\S]*vaults {4}1/);
+    expect(status).toMatch(/running \(pid \d+, build test, protocol 1\.5\)[\s\S]*vaults {4}1/);
     expect(status).toContain("sync      off, pending ?, last run never");
     expect(await main(["stop", "--data-dir", dir], io)).toBe(0);
     expect(await host.exit).toBe(0);

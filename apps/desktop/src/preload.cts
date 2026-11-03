@@ -49,11 +49,13 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
       return () => electron.ipcRenderer.removeListener("cashu:notification-target", listener);
     },
   });
-  electron.contextBridge.exposeInMainWorld("pywebview", {
-    api: {
-      token: (): Promise<string | null> => electron.ipcRenderer.invoke("cashu:token"),
-    },
-  });
+  if (electron.ipcRenderer.sendSync("cashu:legacy-bridge-allowed") === true) {
+    electron.contextBridge.exposeInMainWorld("pywebview", {
+      api: {
+        token: (): Promise<string | null> => electron.ipcRenderer.invoke("cashu:token"),
+      },
+    });
+  }
 
   // Store port: the renderer's store channel, which the main process relays to the local host. A
   // MessagePort cannot cross the context bridge, so the page asks with

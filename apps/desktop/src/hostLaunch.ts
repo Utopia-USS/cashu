@@ -31,6 +31,19 @@ export interface HostLaunch {
 }
 
 export function hostLaunch(input: HostLaunchInput): HostLaunch {
+  const env = { ...input.env };
+  if (input.isPackaged) {
+    for (const key of Object.keys(env)) {
+      if (
+        key.startsWith("PYTHON") ||
+        key.startsWith("_PYI_") ||
+        key.startsWith("PYINSTALLER_") ||
+        key.startsWith("DYLD_") ||
+        key.startsWith("LD_")
+      )
+        delete env[key];
+    }
+  }
   const entry = input.isPackaged
     ? [join(input.resourcesPath, PACKAGED_HOST_ENTRY)]
     : [
@@ -48,6 +61,11 @@ export function hostLaunch(input: HostLaunchInput): HostLaunch {
       input.dataDir,
       ...(input.isPackaged ? ["--bundle", join(input.resourcesPath, PACKAGED_HOST_ENTRY)] : []),
     ],
-    env: { ...input.env, ELECTRON_RUN_AS_NODE: "1", CASHU_BUILD: input.build },
+    env: {
+      ...env,
+      CASHU_DATA_DIR: input.dataDir,
+      ELECTRON_RUN_AS_NODE: "1",
+      CASHU_BUILD: input.build,
+    },
   };
 }

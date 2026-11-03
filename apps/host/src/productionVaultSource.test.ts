@@ -108,5 +108,5 @@ it("ordinary run serves clean setup under a host lock and validates a supplied b
   expect(await main(["run", "--data-dir", dataDir, "--bundle", join(dataDir, "absent")], io)).toBe(
     64,
   );
-  expect(errors.at(-1)).toContain("--bundle must name an existing canonical regular file");
+  expect(errors.at(-1)).toContain("source host cannot claim a packaged bundle");
 });

@@ -14,8 +14,9 @@ export interface ProtocolVersion {
  * 1.2: the shim's `cli.*` methods (feature `cli.exec`) and `mcp` session notes (feature `mcp.lines`).
  * 1.3: exact UI-role native Create RPCs (feature `native.creation.v1`).
  * 1.4: exact UI-role one-use notification intent resolution (feature `native.notification.intent.v1`).
+ * 1.5: verified packaged content-build match for ui/cli/mcp handshakes; admin stays cross-build.
  */
-export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 4 };
+export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 5 };
 
 export const protocolVersionSchema = z.object({
   major: z.number().int().min(0).max(65_535),

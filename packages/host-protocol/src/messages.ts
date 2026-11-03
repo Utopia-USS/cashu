@@ -76,6 +76,7 @@ const readySchema = z.object({ t: z.literal("ready") });
 export const REFUSAL_REASONS = [
   "protocol",
   "data-dir",
+  "build",
   "role",
   "auth",
   "stopping",
@@ -90,6 +91,7 @@ export type RefusalReason = (typeof REFUSAL_REASONS)[number];
 export const REFUSAL_MESSAGES: Readonly<Record<RefusalReason, string>> = {
   protocol: "incompatible host protocol: restart the background service after updating cashU",
   "data-dir": "this host serves another data dir",
+  build: "this app and host are different installed builds",
   role: "the hello does not fit its role",
   auth: "authentication failed",
   stopping: "the host is stopping",

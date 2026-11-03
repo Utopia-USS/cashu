@@ -14,6 +14,7 @@
 //      was replaced (handover); a signal or `admin.stop` exits 0.
 // Everything is logged as codes and counts (log.ts). A clean exit clears the crash record.
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseDateTime } from "@cashu/domain";
@@ -59,16 +60,19 @@ import {
   type HostPathEnv,
   type HostSession,
   type RunningHost,
+  readUpdateAdmission,
+  recordUpdateHandoverComplete,
   refusePaths,
   startHost,
 } from "@cashu/node-host";
+import { readBundleIdentity, watchBundleIdentity } from "@cashu/node-host/bundle-identity";
 import { mcpProfile } from "@cashu/store/core";
 import { NotificationQueue } from "@cashu/store/investments/local";
 import { PerformanceService } from "@cashu/store/investments/performance";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
 import type { SyncResult } from "@cashu/sync";
 import { handleAdmin } from "./admin.js";
-import { HANDOVER_EXIT, watchBundle } from "./bundle.js";
+import { HANDOVER_EXIT } from "./bundle.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./cli/budget/categorizeOllama.js";
 import { DELEGATED } from "./cli/delegated.js";
 import { portedCommands } from "./cli/ported.js";
@@ -131,9 +135,9 @@ import { startWorker } from "./worker/service.js";
 import type { WorkspaceProvider } from "./workspace/index.js";
 
 const DEFAULT_LINGER_MS = 10 * 60 * 1000;
-const DEFAULT_BUNDLE_CHECK_MS = 60 * 1000;
 const DEFAULT_SLICE_EVENTS = 1_000;
 const CLEAN_EXIT = 0;
+const requireNative = createRequire(import.meta.url);
 const NATIVE_MCP_STORE_TOOLS = new Set([
   "setup_status",
   "mark_review_done",
@@ -217,7 +221,7 @@ export interface LocalHostOptions {
   readonly build?: string;
   /** How long an idle host (no session, nothing queued) stays before it exits 0. */
   readonly lingerMs?: number;
-  /** A file of the bundle this host runs from; its replacement triggers a handover (exit 75). */
+  /** Verified .app bundle path; its replacement triggers a handover (exit 75). */
   readonly bundlePath?: string;
   readonly bundleCheckMs?: number;
   readonly pathEnv?: HostPathEnv;
@@ -279,12 +283,31 @@ export interface LocalHost {
 /** Starts the data dir's host. Throws `HostBusyError` when another host holds the lock. */
 export async function startLocalHost(options: LocalHostOptions): Promise<LocalHost> {
   if (options.vaultSource === undefined) throw new Error("native_vault_provider_unavailable");
-  // TRANSITIONAL(S47): the unsigned lab host cannot open the installed app's default data dir.
-  // S47 supplies the packaged identity gate before this restriction can be lifted for native use.
-  refusePaths(
-    { dataDir: { label: "data dir", path: options.dataDir }, outputs: [] },
-    options.home ?? homedir(),
-  );
+  if (
+    options.vaultSource.kind === "native-production" &&
+    existsSync(join(options.dataDir, "cashu.db"))
+  )
+    throw new Error("legacy_python_db_awaits_s62");
+  if (options.bundlePath !== undefined) {
+    const identity = readBundleIdentity(options.bundlePath);
+    if (
+      identity.kind !== "present" ||
+      options.vaultSource.kind === "synthetic-harness" ||
+      process.env.ELECTRON_RUN_AS_NODE !== "1" ||
+      resolve(process.execPath) !== join(identity.canonicalPath, "Contents", "MacOS", "cashU") ||
+      resolve(currentRuntime().dir) !== join(identity.canonicalPath, "Contents", "Resources")
+    )
+      throw new Error("bundle_identity_unavailable");
+    const notification = requireNative(
+      join(identity.canonicalPath, "Contents", "Resources", "native", "CashUNotifications.node"),
+    ) as { identity(): { verified: boolean } };
+    if (notification.identity().verified !== true) throw new Error("bundle_identity_unavailable");
+  } else {
+    refusePaths(
+      { dataDir: { label: "data dir", path: options.dataDir }, outputs: [] },
+      options.home ?? homedir(),
+    );
+  }
   if (options.vaultSource.kind === "native") {
     if (options.vaultSource.provider.inventory.length === 0)
       throw new Error("native_inventory_unavailable");
@@ -652,7 +675,23 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       await stores.close();
       // Before the lock goes: a successor host records its own start after taking the lock.
       record.clean();
-      await server.close();
+      try {
+        if (reason === "handover" && readUpdateAdmission(options.dataDir, options.pathEnv)) {
+          recordUpdateHandoverComplete(
+            server.lock,
+            options.dataDir,
+            {
+              pid: process.pid,
+              startedAt: server.startedAt.toISOString(),
+              build,
+              dataDirId: server.paths.dataDirId,
+            },
+            options.pathEnv,
+          );
+        }
+      } finally {
+        await server.close();
+      }
       log.info("host.stopped", { reason, code });
       resolveExit(code);
       return code;
@@ -688,7 +727,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const stopBundle =
     options.bundlePath === undefined
       ? () => {}
-      : watchBundle(options.bundlePath, options.bundleCheckMs ?? DEFAULT_BUNDLE_CHECK_MS, () => {
+      : watchBundleIdentity(options.bundlePath, options.bundleCheckMs ?? 15_000, () => {
           log.info("host.bundle-replaced");
           bundleReplaced = true;
           void stop("handover");

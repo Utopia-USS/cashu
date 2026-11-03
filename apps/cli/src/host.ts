@@ -3,7 +3,8 @@
 // (`node <strip-types flags> apps/host/src/cli.ts`), else the bundle's `host.mjs` next to the shim's
 // bundle with the same runtime (the app's binary in Node mode, S47). Never a fallback: when no host can
 // be started the caller reports it and stops (exit 69).
-import { realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Role } from "@cashu/host-protocol";
 import {
@@ -14,6 +15,11 @@ import {
   hostRunPaths,
   spawnDetachedHost,
 } from "@cashu/node-host";
+import {
+  bundlePathFromEntry,
+  packagedBuildId,
+  readBundleIdentity,
+} from "@cashu/node-host/bundle-identity";
 
 /** A relative `--import` path made absolute (Node resolves it against the cwd of the start). */
 const absoluteSpecifier = (spec: string, cwd: string) =>
@@ -51,13 +57,45 @@ export function shimBuild(
   env: Readonly<Record<string, string | undefined>>,
 ): ShimBuild {
   const real = realpathSync(self);
-  // apps/cli/src/<file>.ts -> the repo root
-  const fromSource = real.endsWith(".ts");
+  const sourceRoot = resolve(dirname(real), "..", "..", "..");
+  const fromSource =
+    real === join(sourceRoot, "apps", "cli", "src", "index.ts") &&
+    existsSync(join(sourceRoot, "pnpm-workspace.yaml")) &&
+    existsSync(join(sourceRoot, "packages", "node-host", "package.json"));
   return {
     self: real,
-    checkout: fromSource ? resolve(dirname(real), "..", "..", "..") : undefined,
-    build: env.CASHU_BUILD ?? "dev",
+    checkout: fromSource ? sourceRoot : undefined,
+    build: fromSource ? (env.CASHU_BUILD ?? "dev") : packagedShimBuild(real, process.execPath, env),
   };
+}
+
+function packagedShimBuild(
+  self: string,
+  execPath: string,
+  env: Readonly<Record<string, string | undefined>>,
+): string {
+  const bundle = bundlePathFromEntry(self);
+  const identity = bundle ? readBundleIdentity(bundle) : { kind: "invalid" as const };
+  if (
+    identity.kind !== "present" ||
+    self !== join(identity.canonicalPath, "Contents", "Resources", "shim.mjs") ||
+    realpathSync(execPath) !== join(identity.canonicalPath, "Contents", "MacOS", "cashU") ||
+    env.ELECTRON_RUN_AS_NODE !== "1"
+  )
+    throw new Error("packaged_shim_identity_unavailable");
+  const version = execFileSync(
+    "/usr/bin/plutil",
+    [
+      "-extract",
+      "CFBundleShortVersionString",
+      "raw",
+      "-o",
+      "-",
+      join(identity.canonicalPath, "Contents", "Info.plist"),
+    ],
+    { encoding: "utf8", timeout: 5_000 },
+  ).trim();
+  return packagedBuildId(version, identity.contentDigest);
 }
 
 /** The command line that runs the host of `dataDir`. */
@@ -73,7 +111,23 @@ export function hostCommand(
       ? join(dirname(build.self), "host.mjs")
       : join(build.checkout, "apps", "host", "src", "cli.ts");
   const flags = build.checkout === undefined ? [] : sourceRunFlags(execArgv, cwd);
-  return { command: execPath, args: [...flags, entry, "run", "--data-dir", dataDir] };
+  return {
+    command: execPath,
+    args: [
+      ...flags,
+      entry,
+      "run",
+      "--data-dir",
+      dataDir,
+      ...(build.checkout === undefined ? ["--bundle", entry] : []),
+    ],
+  };
+}
+
+function assertPackagedShim(target: HostTarget): void {
+  if (target.build.checkout !== undefined) return;
+  if (packagedShimBuild(target.build.self, target.execPath, target.env) !== target.build.build)
+    throw new Error("packaged_shim_build_mismatch");
 }
 
 export interface HostTarget {
@@ -95,6 +149,7 @@ export async function reachHost(
   role: Role,
   profile?: string,
 ): Promise<HostConnection> {
+  assertPackagedShim(target);
   const { command, args } = hostCommand(
     target.build,
     target.dataDir,
@@ -120,6 +175,7 @@ export async function existingHost(
   target: HostTarget,
   role: Role,
 ): Promise<HostConnection | undefined> {
+  assertPackagedShim(target);
   try {
     return await connectHost({ dataDir: target.dataDir, role, build: target.build.build });
   } catch (error) {

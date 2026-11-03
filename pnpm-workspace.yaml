@@ -23,6 +23,8 @@ allowBuilds:
   # dbus-next's optional usocket is used for abstract Unix addresses and FD passing. cashU's
   # Linux notifier accepts only unix:path session buses; dbus-next falls back to node:net there.
   usocket: false
+  # Windows installer helper only selects a bundled 7z binary; the macOS S47 build never invokes it.
+  electron-winstaller: false
 # TRANSITIONAL(arch-tools): dependency-cruiser parses TypeScript with the classic compiler API, which
 # TS 7 (tsgo) no longer ships. Declaring the peer lets it resolve the TS 6 that tools/arch installs for
 # parsing only. Remove (with the TS 6 pin) once dependency-cruiser and typescript-eslint read TS 7.

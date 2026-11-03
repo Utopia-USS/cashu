@@ -10,6 +10,7 @@ import {
 } from "@cashu/node-host";
 import { defaultDataDir, realResolve } from "../config.js";
 import { currentMacRuntime, MacHostService, type MainProcessAgentBridge } from "./mac.js";
+import { nativeMacAgentBridge } from "./native.js";
 
 const unavailable: ServiceStatus = { state: "unavailable", reason: "service_not_bound" };
 
@@ -101,15 +102,19 @@ function fixedLauncherReady(): boolean {
   }
 }
 
-export function desktopHostService(dataDir: string, packaged: boolean): HostService {
+export function desktopHostService(
+  dataDir: string,
+  packaged: boolean,
+  resourcesPath = process.resourcesPath,
+): HostService {
   return createDesktopHostService({
     platform: process.platform,
     packaged,
     dataDir,
     home: homedir(),
     env: process.env,
+    bridge: packaged ? nativeMacAgentBridge(resourcesPath) : undefined,
     launcherReady: packaged && process.platform === "linux" && fixedLauncherReady(),
-    // S47 must supply a trusted in-process ServiceManagement bridge. No inferred native binding.
   });
 }
 

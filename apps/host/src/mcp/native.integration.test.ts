@@ -1,7 +1,6 @@
 // Real host socket plus isolated Python oracle. Both stores contain the same synthetic profile;
 // the cache is explicitly supplied so every core handler runs natively, not via S22c fallback.
 
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -9,6 +8,7 @@ import { market } from "@cashu/domain/investments";
 import { mcpToolMetadata, toolDescriptor } from "@cashu/mcp";
 import { connectHost } from "@cashu/node-host";
 import { openAccount, runCommand, setModules, setProfileSettings } from "@cashu/store";
+import { finishMcpCall, startMcpCall } from "@cashu/store/device";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startLocalHost } from "../host.js";
 import { currentRuntime } from "../runtime.js";
@@ -225,17 +225,13 @@ describe.skipIf(!HAS_PYTHON)("native core over the real MCP host", () => {
   });
 });
 
-it("flushes a queued call's replacement refusal before actual bundle handover closes its session", async () => {
+it("flushes a queued call's refusal before graceful handover closes its session", async () => {
   const dataDir = tempDir();
-  const bundle = join(dataDir, "synthetic-bundle");
-  writeFileSync(bundle, "old");
   const h = await startLocalHost({
     ...testHostOptions(dataDir),
     launcher: false,
     python: null,
     mcpPrices: new market.InMemoryPriceCache(),
-    bundlePath: bundle,
-    bundleCheckMs: 5,
   });
   const conn = await connectHost({ dataDir, role: "mcp", profile: "demo", build: "test" });
   const c = client(
@@ -263,14 +259,17 @@ it("flushes a queued call's replacement refusal before actual bundle handover cl
     await initialize(c);
     const answer = c.call("tools/call", { name: "setup_status", arguments: { module: "budget" } });
     await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
-    writeFileSync(bundle, "replaced bundle");
+    void h.stop("handover");
     await vi.waitFor(() => expect(h.status().stopping).toBe(true));
     release();
     const reply = result(await answer);
     expect(reply.isError).toBe(true);
-    expect((reply.content as { text: string }[])[0]?.text).toContain("updated");
+    expect((reply.content as { text: string }[])[0]?.text).toContain("no longer active");
     expect(await h.exit).toBe(75);
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls.map(([command]) => command.id)).toEqual([
+      startMcpCall.id,
+      finishMcpCall.id,
+    ]);
   } finally {
     release();
     conn.close();

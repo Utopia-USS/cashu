@@ -47,6 +47,27 @@ function run(clientToken: Uint8Array, h = hello()) {
 }
 
 describe("handshake", () => {
+  it("matches verified packaged content builds for writers while retaining cross-build admin", () => {
+    const first = `desktop-1.2.3-${"a".repeat(64)}`;
+    const second = `desktop-1.2.3-${"b".repeat(64)}`;
+    expect(HOST_PROTOCOL.minor).toBe(5);
+    for (const role of ["ui", "cli", "mcp"] as const) {
+      const h = hello({ role, ...(role === "mcp" ? { profile: "demo-anna" } : {}), build: first });
+      const accepted = answerHello(h, host({ build: first }), nonce());
+      expect(accepted.ok).toBe(true);
+      const rejected = answerHello(h, host({ build: second }), nonce());
+      expect(rejected).toMatchObject({ ok: false, reply: { reason: "build" } });
+      if (accepted.ok) {
+        expect(answerChallenge({ ...accepted.reply, build: second }, h, token)).toEqual({
+          kind: "refused",
+          reason: "build",
+        });
+      }
+    }
+    const admin = hello({ role: "admin", build: first });
+    expect(answerHello(admin, host({ build: second }), nonce()).ok).toBe(true);
+    expect(answerHello(hello(), host(), nonce()).ok).toBe(true);
+  });
   it("authenticates both sides and binds role and profile", () => {
     const h = hello({ role: "mcp", profile: "demo-anna" });
     const { outcome, step } = run(token, h);

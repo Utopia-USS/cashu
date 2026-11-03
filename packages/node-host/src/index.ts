@@ -46,6 +46,18 @@ export {
 } from "./host/server.js";
 export { type SpawnHostOptions, spawnDetachedHost } from "./host/spawn.js";
 export {
+  assertUpdateHandoverComplete,
+  cancelUpdateAdmission,
+  clearUpdateAdmissionAfterReplacement,
+  commitUpdateDispatch,
+  publishUpdateAdmission,
+  readUpdateAdmission,
+  recordUpdateHandoverComplete,
+  recoverPreparedUpdateAdmission,
+  UpdateAdmissionError,
+  waitForHostLock,
+} from "./host/updateAdmission.js";
+export {
   type NodeLanguageOptions,
   type NodeLanguageSource,
   nodeLanguageSource,

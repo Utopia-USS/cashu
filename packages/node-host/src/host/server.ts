@@ -31,6 +31,7 @@ import {
   type HostRunPaths,
   hostRunPaths,
 } from "./paths.js";
+import { assertHostAdmission } from "./updateAdmission.js";
 
 /** Exit code of a host that found another host holding the lock (spawn races end this way). */
 export const HOST_BUSY_EXIT = 3;
@@ -158,6 +159,7 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
 
   const server = createServer(accept);
   try {
+    assertHostAdmission(lock, options.dataDir, options.pathEnv);
     if (paths.socketDir !== paths.runDir) ensurePrivateDir(paths.socketDir);
     // Safe only because we hold the lock: a stale socket of a dead host, or a squatter's.
     rmSync(paths.socketPath, { force: true });

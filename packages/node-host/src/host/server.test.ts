@@ -115,6 +115,29 @@ const connectError = async (p: Promise<unknown>) => {
 };
 
 describe("host socket", () => {
+  it("refuses a different packaged content build for writer roles but permits admin", async () => {
+    const dir = trackDir(tempDir());
+    const first = `desktop-1.0.0-${"a".repeat(64)}`;
+    const second = `desktop-1.0.0-${"b".repeat(64)}`;
+    const h = await startHost({ dataDir: dir, build: first, onSession: () => undefined });
+    hosts.push(h);
+    for (const role of ["ui", "cli", "mcp"] as const) {
+      expect(
+        await connectError(
+          connectHost({
+            dataDir: dir,
+            role,
+            build: second,
+            ...(role === "mcp" ? { profile: "demo-anna" } : {}),
+          }),
+        ),
+      ).toEqual({ kind: "refused", reason: "build" });
+    }
+    const admin = await connectHost({ dataDir: dir, role: "admin", build: second });
+    admin.close();
+    const own = await connectHost({ dataDir: dir, role: "ui", build: first });
+    own.close();
+  });
   it("publishes a private socket, token and discovery file; never TCP", async () => {
     const dir = trackDir(tempDir());
     const { h } = await host(dir);

@@ -8,6 +8,9 @@ it("registers early response capture before a delayed ordinary main import", asy
     complete = resolve;
   });
   const running = dispatchDesktopEntry([], {
+    registerAppScheme: () => {
+      order.push("scheme");
+    },
     registerEarlyResponses: () => {
       order.push("delegate");
     },
@@ -19,7 +22,7 @@ it("registers early response capture before a delayed ordinary main import", asy
       throw new Error("helper must not load");
     },
   });
-  expect(order).toEqual(["delegate", "main"]);
+  expect(order).toEqual(["scheme", "delegate", "main"]);
   complete();
   expect(await running).toBeNull();
 });
@@ -28,6 +31,9 @@ it("runs only the exact helper mode and rejects malformed helper argv", async ()
   for (const args of [["--notify-helper"], ["--notify-helper", "extra"]]) {
     const order: string[] = [];
     const code = await dispatchDesktopEntry(args, {
+      registerAppScheme: () => {
+        order.push("scheme");
+      },
       registerEarlyResponses: () => {
         order.push("delegate");
       },

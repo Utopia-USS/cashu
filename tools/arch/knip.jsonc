@@ -51,6 +51,8 @@
       "entry": [
         "src/entry.ts",
         "src/preload.cts",
+        // Loaded only by the disposable build/t46 Electron provider probe.
+        "src/update/localhostProbe.ts",
         "renderer/main.tsx",
         "renderer/**/*.stories.tsx",
         "scripts/*.mjs",
@@ -65,7 +67,9 @@
       // Loading its Playwright config would run prepareSpecs() (writes a spec tree); list e2e/ instead.
       "playwright": false,
       // macOS system tool the quit spec calls, not an npm package.
-      "ignoreBinaries": ["pgrep"]
+      "ignoreBinaries": ["pgrep"],
+      // Invoked by scripts/package-macos.mjs through its CLI, not imported as a module.
+      "ignoreDependencies": ["electron-builder"]
     },
     "frontend": {
       "entry": [

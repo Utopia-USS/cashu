@@ -28,6 +28,19 @@ export function sameOrigin(url: string, origin: string): boolean {
   const a = parse(url);
   const b = parse(origin);
   if (!a || !b) return false;
+  if (b.protocol === "app:") {
+    return (
+      a.protocol === "app:" &&
+      a.hostname === "cashu" &&
+      b.hostname === "cashu" &&
+      !a.username &&
+      !a.password &&
+      !a.port &&
+      !b.username &&
+      !b.password &&
+      !b.port
+    );
+  }
   return a.protocol === b.protocol && a.hostname === b.hostname && portOf(a) === portOf(b);
 }
 

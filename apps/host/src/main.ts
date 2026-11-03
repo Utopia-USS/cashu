@@ -7,12 +7,20 @@
 // The data dir is `--data-dir <absolute path>` or CASHU_DATA_DIR; nothing else is guessed until the
 // shim's data dir resolution lands (S56d). Output is English for operators; the shim maps exit codes to
 // its localized texts (S56d).
+import { execFileSync } from "node:child_process";
 import { lstatSync, realpathSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
 import { connectHost, HostBusyError, HostConnectError, RefusalError } from "@cashu/node-host";
+import {
+  bundlePathFromEntry,
+  packagedBuildId,
+  readBundleIdentity,
+} from "@cashu/node-host/bundle-identity";
 import { startLocalHost } from "./host.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
+import { currentRuntime } from "./runtime.js";
+import { hostUpdateBridge } from "./updateBridge.js";
 
 const USAGE_EXIT = 64;
 const NOT_RUNNING_EXIT = 3;
@@ -37,6 +45,10 @@ interface Args {
   readonly dataDir: string;
   readonly lingerMs?: number;
   readonly bundle?: string;
+}
+
+export function requiresPackagedIdentity(checkout: string | undefined): boolean {
+  return checkout === undefined;
 }
 
 function parse(argv: readonly string[], env: MainEnv["env"]): Args | string {
@@ -74,6 +86,57 @@ async function admin(dataDir: string, build: string) {
   }
 }
 
+function checkedRuntime(
+  args: Args,
+  io: MainEnv,
+): { bundle?: string; build: string; fingerprint?: string } {
+  if (!requiresPackagedIdentity(currentRuntime().checkout)) {
+    if (args.bundle !== undefined)
+      throw new RefusalError("source host cannot claim a packaged bundle");
+    return { build: io.build };
+  }
+  try {
+    const ownEntry = realpathSync.native(import.meta.filename);
+    const argvEntry = process.argv[1] ?? "";
+    const stat = lstatSync(ownEntry);
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      argvEntry !== ownEntry ||
+      (args.bundle !== undefined && args.bundle !== ownEntry)
+    )
+      throw new Error("invalid bundle stamp");
+    const bundle = bundlePathFromEntry(ownEntry);
+    const identity = bundle ? readBundleIdentity(bundle) : { kind: "invalid" as const };
+    if (
+      identity.kind !== "present" ||
+      ownEntry !== `${identity.canonicalPath}/Contents/Resources/host.mjs` ||
+      realpathSync.native(process.execPath) !== `${identity.canonicalPath}/Contents/MacOS/cashU` ||
+      io.env.ELECTRON_RUN_AS_NODE !== "1"
+    )
+      throw new Error("invalid bundle identity");
+    const version = execFileSync(
+      "/usr/bin/plutil",
+      [
+        "-extract",
+        "CFBundleShortVersionString",
+        "raw",
+        "-o",
+        "-",
+        join(identity.canonicalPath, "Contents", "Info.plist"),
+      ],
+      { encoding: "utf8", timeout: 5_000 },
+    ).trim();
+    return {
+      bundle,
+      build: packagedBuildId(version, identity.contentDigest),
+      fingerprint: identity.fingerprint,
+    };
+  } catch {
+    throw new RefusalError("packaged host identity is unavailable");
+  }
+}
+
 /** Runs one command; resolves with the exit code. */
 export async function main(argv: readonly string[], io: MainEnv): Promise<number> {
   const args = parse(argv, io.env);
@@ -82,37 +145,36 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
     return USAGE_EXIT;
   }
   try {
+    const runtime = checkedRuntime(args, io);
     switch (args.command) {
       case "run": {
-        if (args.bundle !== undefined) {
-          try {
-            const stat = lstatSync(args.bundle);
-            if (
-              !stat.isFile() ||
-              stat.isSymbolicLink() ||
-              realpathSync(args.bundle) !== args.bundle
-            )
-              throw new Error("invalid bundle stamp");
-          } catch {
-            throw new RefusalError("--bundle must name an existing canonical regular file");
-          }
+        const updateBridge =
+          runtime.fingerprint === undefined
+            ? undefined
+            : hostUpdateBridge(args.dataDir, runtime.build, runtime.fingerprint);
+        try {
+          const host = await startLocalHost({
+            dataDir: args.dataDir,
+            build: runtime.build,
+            ...(updateBridge === undefined ? {} : { updates: updateBridge }),
+            vaultSource: {
+              kind: "native-production",
+              factory: new ProductionVaultSourceFactory(args.dataDir),
+            },
+            ...(args.lingerMs === undefined ? {} : { lingerMs: args.lingerMs }),
+            ...(runtime.bundle === undefined ? {} : { bundlePath: runtime.bundle }),
+          });
+          io.onSignal(() => void host.stop("signal"));
+          io.stdout(
+            `cashu-host: serving (pid ${process.pid}${host.safeMode ? ", safe mode" : ""})`,
+          );
+          return await host.exit;
+        } finally {
+          updateBridge?.close();
         }
-        const host = await startLocalHost({
-          dataDir: args.dataDir,
-          build: io.build,
-          vaultSource: {
-            kind: "native-production",
-            factory: new ProductionVaultSourceFactory(args.dataDir),
-          },
-          ...(args.lingerMs === undefined ? {} : { lingerMs: args.lingerMs }),
-          ...(args.bundle === undefined ? {} : { bundlePath: args.bundle }),
-        });
-        io.onSignal(() => void host.stop("signal"));
-        io.stdout(`cashu-host: serving (pid ${process.pid}${host.safeMode ? ", safe mode" : ""})`);
-        return await host.exit;
       }
       case "status": {
-        const conn = await admin(args.dataDir, io.build);
+        const conn = await admin(args.dataDir, runtime.build);
         if (conn === undefined) {
           io.stdout("cashu-host: not running");
           return NOT_RUNNING_EXIT;
@@ -147,7 +209,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
         }
       }
       case "stop": {
-        const conn = await admin(args.dataDir, io.build);
+        const conn = await admin(args.dataDir, runtime.build);
         if (conn === undefined) {
           io.stdout("cashu-host: not running");
           return 0;

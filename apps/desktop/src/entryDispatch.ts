@@ -2,6 +2,7 @@
 export async function dispatchDesktopEntry(
   args: readonly string[],
   actions: {
+    registerAppScheme?(): void;
     registerEarlyResponses(): void;
     loadMain(): Promise<unknown>;
     runHelper(): Promise<number>;
@@ -15,6 +16,7 @@ export async function dispatchDesktopEntry(
     }
   }
   if (args.includes("--notify-helper")) return 2;
+  actions.registerAppScheme?.();
   actions.registerEarlyResponses();
   await actions.loadMain();
   return null;

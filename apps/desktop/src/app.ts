@@ -26,6 +26,8 @@ export interface TrayHandle {
 }
 
 export interface DesktopDeps {
+  /** Packaged native renderer, served by the trusted app protocol without starting Python. */
+  staticEntry?: string;
   /** Same trusted sidecar origin; unported SPA routes remain available at its root. */
   rendererPath?: string;
   lang: Lang;
@@ -65,7 +67,7 @@ export class DesktopApp {
   constructor(private readonly deps: DesktopDeps) {}
 
   get origin(): string | null {
-    return this.info?.origin ?? null;
+    return this.deps.staticEntry ?? this.info?.origin ?? null;
   }
 
   get windowHandle(): WindowHandle | null {
@@ -91,6 +93,17 @@ export class DesktopApp {
       if (action === "open") this.focusWindow();
       else this.requestQuit();
     });
+
+    if (this.deps.staticEntry) {
+      try {
+        await window.loadUrl(this.links.ready(window, this.deps.staticEntry));
+        return "started";
+      } catch (e) {
+        this.error = e instanceof Error ? e.message : String(e);
+        await this.showError(window, this.error);
+        return "failed";
+      }
+    }
 
     const sidecar = this.deps.createSidecar((message) => {
       if (this.quitting) return;
@@ -151,7 +164,9 @@ export class DesktopApp {
 
   /** `window.pywebview.api.token()`: the token, for the app's own origin only. */
   tokenFor(senderUrl: string | null | undefined): string | null {
-    return this.info ? tokenForSender(senderUrl, this.info.origin, this.info.token) : null;
+    return this.info && !this.deps.staticEntry
+      ? tokenForSender(senderUrl, this.info.origin, this.info.token)
+      : null;
   }
 
   requestQuit(): void {

@@ -30,6 +30,11 @@ import {
 import { compatible, type ProtocolVersion } from "./version.js";
 
 const LABEL = "cashu-host/1";
+const PACKAGED_BUILD = /^desktop-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-[a-f0-9]{64}$/;
+const packagedBuildMismatch = (role: Role, clientBuild: string, hostBuild: string) =>
+  role !== "admin" &&
+  (PACKAGED_BUILD.test(clientBuild) || PACKAGED_BUILD.test(hostBuild)) &&
+  clientBuild !== hostBuild;
 
 /** The token bytes from its file text (hex); undefined when the text is not a token. */
 export function parseToken(text: string): Uint8Array | undefined {
@@ -119,6 +124,8 @@ export function answerHello(raw: unknown, host: HostIdentity, ns: string): Hello
   }
   const hello = parsed.data;
   if (hello.dataDir !== host.dataDir) return { ok: false, reply: refusal("data-dir") };
+  if (packagedBuildMismatch(hello.role, hello.build, host.build))
+    return { ok: false, reply: refusal("build") };
   if (host.stopping) return { ok: false, reply: refusal("stopping") };
   return {
     ok: true,
@@ -218,6 +225,8 @@ export function answerChallenge(raw: unknown, hello: Hello, token: Uint8Array): 
   const expected = hostProof(token, { nc: hello.nc, ns: msg.ns, dataDir: hello.dataDir });
   if (!proofsEqual(msg.proof, expected)) return { kind: "unverified" };
   if (!compatible(msg.protocol, hello.protocol)) return { kind: "refused", reason: "protocol" };
+  if (packagedBuildMismatch(hello.role, hello.build, msg.build))
+    return { kind: "refused", reason: "build" };
   return {
     kind: "auth",
     host: { protocol: msg.protocol, build: msg.build, features: msg.features },
