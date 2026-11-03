@@ -595,6 +595,11 @@ describe("queries", () => {
       "core.hero",
       "core.moduleSetup",
       "core.moduleStates",
+      "core.overviewAccounts",
+      "core.budgetWidgets",
+      "core.overviewAssets",
+      "core.overviewLoans",
+      "core.overviewInvestments",
     ]);
   });
 });
