@@ -41,7 +41,10 @@ it("serves genuine overview, suppresses unchanged cache wakes and releases exter
     expect((await client.subscribe("core.legacyNavigation", vault.id)).first).toBe(false);
     const values = await client.subscribe("core.hero", vault.id, { today: "2026-10-01" });
     const summary = await client.subscribe("core.summary", vault.id, { today: "2026-10-01" });
-    const series = await client.subscribe("core.netWorthSeries", vault.id, { today: "2026-10-01", lang: "en" });
+    const series = await client.subscribe("core.netWorthSeries", vault.id, {
+      today: "2026-10-01",
+      lang: "en",
+    });
     expect(summary.first).toMatchObject({ breakdown: { byType: {} } });
     expect(series.first).toMatchObject({ currency: "PLN", points: [] });
     const net = () =>

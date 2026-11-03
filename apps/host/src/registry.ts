@@ -12,9 +12,17 @@ export type AnyCommand = Command<unknown, unknown> | DeviceCommand<unknown, unkn
 
 /** Process-local providers are bound here, never supplied by the renderer. */
 export function servedQueries(
-  env: Parameters<typeof overviewQueries>[0] & { readonly legacyIdentity?: Parameters<typeof legacyNavigation>[0] } = { prices: null },
+  env: Parameters<typeof overviewQueries>[0] & {
+    readonly legacyIdentity?: Parameters<typeof legacyNavigation>[0];
+  } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
-  return [currentVault, profile, profileIdentity, legacyNavigation(env.legacyIdentity), ...Object.values(overviewQueries(env))];
+  return [
+    currentVault,
+    profile,
+    profileIdentity,
+    legacyNavigation(env.legacyIdentity),
+    ...Object.values(overviewQueries(env)),
+  ];
 }
 
 export const SERVED_QUERIES = servedQueries();
