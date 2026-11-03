@@ -50,3 +50,21 @@ export {
   type NodeLanguageSource,
   nodeLanguageSource,
 } from "./language.js";
+export { type ActivationOutcome, activateHost } from "./service/activation.js";
+export {
+  quoteSystemdArg,
+  SYSTEMD_LAUNCHER,
+  SYSTEMD_SERVICE,
+  SYSTEMD_TIMER,
+  type SystemdFiles,
+  SystemdHostService,
+  type SystemdRunner,
+  type SystemdRuntime,
+  systemdUnitTexts,
+} from "./service/systemd.js";
+export type {
+  HostService,
+  ServiceState,
+  ServiceStatus,
+  StartOutcome,
+} from "./service/types.js";

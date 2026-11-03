@@ -76,6 +76,7 @@ export {
 } from "./keys.js";
 export {
   type BlobFiles,
+  checkName,
   createSafeStorageKeyStore,
   createSecureStoreKeyStore,
   deviceIdentityName,
@@ -83,11 +84,13 @@ export {
   keyringName,
   loadDeviceIdentity,
   loadKeyring,
+  openKeyStoreValue,
   type SafeStorageLike,
   type SecureStoreLike,
   type SecureStoreOptions,
   saveDeviceIdentity,
   saveKeyring,
+  sealKeyStoreValue,
 } from "./keystore.js";
 export {
   createRecoveryKey,

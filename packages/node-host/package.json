@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./sqlite": "./src/sqlite.ts"
+    "./keyring": "./src/keyring/production.ts",
+    "./sqlite": "./src/sqlite.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -16,6 +18,7 @@
   "dependencies": {
     "@cashu/host-protocol": "workspace:*",
     "@cashu/store": "workspace:*",
-    "@cashu/sync": "workspace:*"
+    "@cashu/sync": "workspace:*",
+    "@napi-rs/keyring": "2.1.2"
   }
 }

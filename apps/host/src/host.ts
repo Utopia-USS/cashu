@@ -71,6 +71,7 @@ import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
 import type { NativeVaultSource } from "./nativeVault.js";
+import type { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
 import { servedCommands, servedQueries } from "./registry.js";
 import {
@@ -149,7 +150,8 @@ export interface LocalHostOptions {
   /** Explicit isolated test harness or an injected exact-vault native authority. */
   readonly vaultSource?:
     | { readonly kind: "synthetic-harness" }
-    | { readonly kind: "native"; readonly provider: NativeVaultSource };
+    | { readonly kind: "native"; readonly provider: NativeVaultSource }
+    | { readonly kind: "native-production"; readonly factory: ProductionVaultSourceFactory };
   /** Checked S60 preparation authority, bound to the exact open vault. Absent by default. */
   readonly proposals?: ProposalApprovalProvider;
   /** Exact-vault checked workspace provider. Unbound means unavailable, never absent. */
@@ -244,6 +246,12 @@ export interface LocalHost {
 /** Starts the data dir's host. Throws `HostBusyError` when another host holds the lock. */
 export async function startLocalHost(options: LocalHostOptions): Promise<LocalHost> {
   if (options.vaultSource === undefined) throw new Error("native_vault_provider_unavailable");
+  // TRANSITIONAL(S47): the unsigned lab host cannot open the installed app's default data dir.
+  // S47 supplies the packaged identity gate before this restriction can be lifted for native use.
+  refusePaths(
+    { dataDir: { label: "data dir", path: options.dataDir }, outputs: [] },
+    options.home ?? homedir(),
+  );
   if (options.vaultSource.kind === "native") {
     if (options.vaultSource.provider.inventory.length === 0)
       throw new Error("native_inventory_unavailable");
@@ -252,14 +260,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       resolve(options.dataDir),
     );
   }
-  // TRANSITIONAL(S53b): the synthetic store source must never write into the owner's real cashU
-  // data dir; the real vault source (keyring salts, paired identity) lifts this.
-  refusePaths(
-    { dataDir: { label: "data dir", path: options.dataDir }, outputs: [] },
-    options.home ?? homedir(),
-  );
+  if (options.vaultSource.kind === "native-production") options.vaultSource.factory.preflight();
   const now = options.now ?? Date.now;
-  const nativeMode = options.vaultSource.kind === "native";
+  const nativeMode = options.vaultSource.kind !== "synthetic-harness";
   const proposalManager = proposalScreen(options.proposals);
   const workspaceActions = settingsWorkspaceActions(options.workspace);
   const updates = updateScreen(options.updates);
@@ -364,15 +367,17 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   try {
     record = recordStart(server.paths.runDir, now());
     lease = takeWriterLease(server.lock);
+    const source =
+      options.vaultSource.kind === "native-production"
+        ? { kind: "native" as const, provider: await options.vaultSource.factory.open(server.lock) }
+        : options.vaultSource;
+    if (source.kind === "native") {
+      if (source.provider.inventory.length === 0) throw new Error("native_inventory_unavailable");
+      validateNativeVaultInventorySet(source.provider.inventory, server.paths.dataDir);
+    }
     stores =
-      options.vaultSource.kind === "native"
-        ? await openNativeHostStores(
-            server.paths.dataDir,
-            options.vaultSource.provider,
-            lease,
-            log,
-            now,
-          )
+      source.kind === "native"
+        ? await openNativeHostStores(server.paths.dataDir, source.provider, lease, log, now)
         : openHostStores(server.paths.dataDir, lease, log, now);
   } catch (error) {
     log.error("host.start-failed", { error: errorName(error) });
@@ -417,7 +422,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const capabilities = { jobs: !safeMode && workerBound, network: !safeMode && workerBound };
   let syncService: SyncService | undefined;
   const sync: Promise<SyncService | undefined> = (
-    options.vaultSource.kind === "native"
+    nativeMode
       ? Promise.resolve(undefined)
       : SyncService.start({
           dataDir: server.paths.dataDir,

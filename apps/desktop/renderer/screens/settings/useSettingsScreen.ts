@@ -23,6 +23,7 @@ import { useUiEnv } from "@cashu/ui";
 import { hmLocal, localDay } from "@cashu/ui-logic/core/time";
 import { useForm } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
+import { createServiceStatusCoordinator, type DesktopServiceStatus } from "../../serviceBridge.js";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { T } from "./Settings.strings.js";
 
@@ -86,6 +87,24 @@ export function useSettingsScreen(
   const audit = useQuery(mcpAudit, { vault, since, privacy: ownerIncognito });
   const [hostPoll, setHostPoll] = useState(0);
   const hostInfo = useQuery(hostSettingsInfo, { poll: hostPoll, privacy: ownerIncognito });
+  const [service, setService] = useState<DesktopServiceStatus>({ state: "unavailable" });
+  const [serviceBusy, setServiceBusy] = useState(false);
+  const [serviceFlow] = useState(() => createServiceStatusCoordinator(setService));
+  useEffect(() => {
+    void serviceFlow.poll();
+    return () => serviceFlow.invalidate();
+  }, [hostPoll, serviceFlow]);
+  async function onServiceEnabled(enabled: boolean): Promise<void> {
+    if (serviceFlow.busy || !["off", "enabled", "requires_approval"].includes(service.state))
+      return;
+    if (service.state === "requires_approval" && enabled) return;
+    setServiceBusy(true);
+    try {
+      await serviceFlow.toggle(enabled);
+    } finally {
+      setServiceBusy(false);
+    }
+  }
   const auditDisplay = {
     ...audit,
     calls: audit.calls.map((call) => ({
@@ -413,6 +432,11 @@ export function useSettingsScreen(
     onProposalOpened,
     preferences,
     hostInfo,
+    service,
+    serviceNextWakeDay: localDay(service.nextWake ?? null),
+    serviceNextWakeTime: hmLocal(service.nextWake ?? null),
+    serviceBusy,
+    onServiceEnabled,
     worker: workerDisplay,
     onHostInfoRefreshed: () => setHostPoll((value) => value + 1),
     onDataDirCopied: copyDataDir,

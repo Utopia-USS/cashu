@@ -7,10 +7,12 @@
 // The data dir is `--data-dir <absolute path>` or CASHU_DATA_DIR; nothing else is guessed until the
 // shim's data dir resolution lands (S56d). Output is English for operators; the shim maps exit codes to
 // its localized texts (S56d).
+import { lstatSync, realpathSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
 import { connectHost, HostBusyError, HostConnectError, RefusalError } from "@cashu/node-host";
 import { startLocalHost } from "./host.js";
+import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 
 const USAGE_EXIT = 64;
 const NOT_RUNNING_EXIT = 3;
@@ -82,9 +84,26 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
   try {
     switch (args.command) {
       case "run": {
+        if (args.bundle !== undefined) {
+          try {
+            const stat = lstatSync(args.bundle);
+            if (
+              !stat.isFile() ||
+              stat.isSymbolicLink() ||
+              realpathSync(args.bundle) !== args.bundle
+            )
+              throw new Error("invalid bundle stamp");
+          } catch {
+            throw new RefusalError("--bundle must name an existing canonical regular file");
+          }
+        }
         const host = await startLocalHost({
           dataDir: args.dataDir,
           build: io.build,
+          vaultSource: {
+            kind: "native-production",
+            factory: new ProductionVaultSourceFactory(args.dataDir),
+          },
           ...(args.lingerMs === undefined ? {} : { lingerMs: args.lingerMs }),
           ...(args.bundle === undefined ? {} : { bundlePath: args.bundle }),
         });
@@ -155,6 +174,19 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
     if (error instanceof HostConnectError) {
       io.stderr(`cashu-host: ${error.message}`);
       return FAILURE_EXIT;
+    }
+    if (error instanceof Error) {
+      const inventoryMessage: Record<string, string> = {
+        native_setup_required: "native vault setup required",
+        native_provisioning_pending: "native vault provisioning is incomplete",
+        native_inventory_invalid: "native vault inventory is invalid",
+        native_inventory_changed: "native vault inventory changed during startup",
+      };
+      const message = inventoryMessage[error.message];
+      if (message) {
+        io.stderr(`cashu-host: ${message}`);
+        return FAILURE_EXIT;
+      }
     }
     io.stderr(`cashu-host: failed (${error instanceof Error ? error.name : "error"})`);
     return FAILURE_EXIT;

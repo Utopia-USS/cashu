@@ -13,10 +13,12 @@ import {
   keyringName,
   loadDeviceIdentity,
   loadKeyring,
+  openKeyStoreValue,
   type SafeStorageLike,
   type SecureStoreLike,
   saveDeviceIdentity,
   saveKeyring,
+  sealKeyStoreValue,
 } from "./keystore.js";
 import { InMemoryKeyStore } from "./testing.js";
 import { ctx, newRing, samplePlain, sodium, writerOf } from "./testkit.js";
@@ -90,6 +92,18 @@ async function roundtrip(store: KeyStore) {
 }
 
 describe("KeyStore adapters", () => {
+  it("keeps the S27 sealed-v1 byte vector and name AAD", () => {
+    const key = Uint8Array.from({ length: 32 }, (_, i) => i);
+    const nonce = Uint8Array.from({ length: 24 }, (_, i) => i + 32);
+    const fixed = { ...sodium, randomBytes: () => nonce };
+    const value = Uint8Array.of(0, 1, 2, 253, 254, 255);
+    const blob = sealKeyStoreValue(fixed, key, "cashu.test.vector", value);
+    expect(Buffer.from(blob).toString("hex")).toBe(
+      "01202122232425262728292a2b2c2d2e2f30313233343536371d584f3685c892f1fb0931b6842b7cbb0c9b999a328c",
+    );
+    expect(openKeyStoreValue(sodium, key, "cashu.test.vector", blob)).toEqual(value);
+    expect(() => openKeyStoreValue(sodium, key, "cashu.test.other", blob)).toThrow();
+  });
   it("in memory", async () => {
     await roundtrip(new InMemoryKeyStore());
   });

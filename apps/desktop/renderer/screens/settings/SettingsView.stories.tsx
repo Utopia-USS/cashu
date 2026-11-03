@@ -4,7 +4,13 @@ import { useForm } from "@tanstack/react-form";
 import { SettingsView } from "./SettingsView.js";
 import type { SettingsScreenState } from "./useSettingsScreen.js";
 
-function SyntheticSettings({ unavailable = false }: { unavailable?: boolean }) {
+function SyntheticSettings({
+  unavailable = false,
+  approval = false,
+}: {
+  unavailable?: boolean;
+  approval?: boolean;
+}) {
   const profileForm = useForm({
     defaultValues: { name: "Synthetic Household", baseCurrency: "PLN" },
     onSubmit: async () => {},
@@ -143,6 +149,11 @@ function SyntheticSettings({ unavailable = false }: { unavailable?: boolean }) {
           ],
         },
     onHostInfoRefreshed() {},
+    service: { state: unavailable ? "unavailable" : approval ? "requires_approval" : "off" },
+    serviceNextWakeDay: null,
+    serviceNextWakeTime: "",
+    serviceBusy: false,
+    onServiceEnabled: async () => {},
     onDataDirCopied: async () => {},
     updater: { availability: "unavailable" },
     updaterBusy: false,
@@ -164,3 +175,4 @@ function SyntheticSettings({ unavailable = false }: { unavailable?: boolean }) {
 export default { title: "Desktop/Settings/Full", component: SyntheticSettings };
 export const Ready = { render: () => <SyntheticSettings /> };
 export const UnboundProviders = { render: () => <SyntheticSettings unavailable /> };
+export const ApprovalRequired = { render: () => <SyntheticSettings approval /> };

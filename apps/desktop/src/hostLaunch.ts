@@ -41,7 +41,13 @@ export function hostLaunch(input: HostLaunchInput): HostLaunch {
       ];
   return {
     command: input.execPath,
-    args: [...entry, "run", "--data-dir", input.dataDir],
+    args: [
+      ...entry,
+      "run",
+      "--data-dir",
+      input.dataDir,
+      ...(input.isPackaged ? ["--bundle", join(input.resourcesPath, PACKAGED_HOST_ENTRY)] : []),
+    ],
     env: { ...input.env, ELECTRON_RUN_AS_NODE: "1", CASHU_BUILD: input.build },
   };
 }

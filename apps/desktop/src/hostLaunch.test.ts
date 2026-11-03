@@ -37,6 +37,8 @@ describe("hostLaunch", () => {
       "run",
       "--data-dir",
       "/lab/data",
+      "--bundle",
+      "/apps/cashU.app/Contents/Resources/host.mjs",
     ]);
   });
 

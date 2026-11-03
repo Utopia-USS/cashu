@@ -110,6 +110,49 @@ export interface SecureStoreOptions {
 const KEK_ITEM = "cashu.keystore.kek";
 const SEALED_VERSION = 1;
 
+/** S27 sealed-v1 bytes and AAD, shared by mobile and the Node host. */
+export function sealKeyStoreValue(
+  sodium: Sodium,
+  kek: Uint8Array,
+  name: string,
+  value: Uint8Array,
+): Uint8Array {
+  checkName(name);
+  if (kek.length !== KEY_BYTES) throw new CryptoError("keystore_corrupt");
+  const nonce = sodium.randomBytes(NONCE_BYTES);
+  const aad = concat(Uint8Array.of(SEALED_VERSION), utf8(name));
+  return concat(Uint8Array.of(SEALED_VERSION), nonce, sodium.aeadEncrypt(value, aad, nonce, kek));
+}
+
+export function openKeyStoreValue(
+  sodium: Sodium,
+  kek: Uint8Array,
+  name: string,
+  blob: Uint8Array,
+): Uint8Array {
+  checkName(name);
+  if (
+    kek.length !== KEY_BYTES ||
+    blob.length < 1 + NONCE_BYTES + TAG_BYTES ||
+    blob[0] !== SEALED_VERSION
+  ) {
+    throw new CryptoError("keystore_corrupt");
+  }
+  const aad = concat(Uint8Array.of(SEALED_VERSION), utf8(name));
+  try {
+    return sodium.aeadDecrypt(
+      blob.subarray(1 + NONCE_BYTES),
+      aad,
+      blob.subarray(1, 1 + NONCE_BYTES),
+      kek,
+    );
+  } catch (e) {
+    if (e instanceof CryptoError && e.code === "auth_failed")
+      throw new CryptoError("keystore_corrupt");
+    throw e;
+  }
+}
+
 /**
  * Mobile store: the Keychain (expo-secure-store) holds ONE random 32-byte key-encryption key; each
  * value is sealed with XChaCha20-Poly1305 under it (AAD = 0x01 | the name, so blobs cannot be
@@ -164,7 +207,6 @@ export function createSecureStoreKeyStore(
     inFlight = run;
     return run;
   };
-  const aad = (name: string) => concat(Uint8Array.of(SEALED_VERSION), utf8(name));
   return {
     async get(name) {
       checkName(name);
@@ -173,26 +215,13 @@ export function createSecureStoreKeyStore(
       // A blob without its key (e.g. a restored backup on a new phone) cannot be read.
       const key = await loadKek(false);
       if (!key) throw new CryptoError("keystore_unavailable");
-      if (blob.length < 1 + NONCE_BYTES + TAG_BYTES || blob[0] !== SEALED_VERSION) {
-        throw new CryptoError("keystore_corrupt");
-      }
-      const nonce = blob.subarray(1, 1 + NONCE_BYTES);
-      try {
-        return sodium.aeadDecrypt(blob.subarray(1 + NONCE_BYTES), aad(name), nonce, key.expose());
-      } catch (e) {
-        if (e instanceof CryptoError && e.code === "auth_failed") {
-          throw new CryptoError("keystore_corrupt");
-        }
-        throw e;
-      }
+      return openKeyStoreValue(sodium, key.expose(), name, blob);
     },
     async set(name, value) {
       checkName(name);
       const key = await loadKek(true);
       if (!key) throw new CryptoError("keystore_unavailable");
-      const nonce = sodium.randomBytes(NONCE_BYTES);
-      const cipher = sodium.aeadEncrypt(value, aad(name), nonce, key.expose());
-      await files.write(name, concat(Uint8Array.of(SEALED_VERSION), nonce, cipher));
+      await files.write(name, sealKeyStoreValue(sodium, key.expose(), name, value));
     },
     async delete(name) {
       checkName(name);

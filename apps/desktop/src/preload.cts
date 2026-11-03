@@ -19,6 +19,11 @@ interface PageWindow {
 }
 
 if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
+  electron.contextBridge.exposeInMainWorld("cashuService", {
+    status: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:service-status"),
+    setEnabled: (enabled: boolean): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:service-set-enabled", enabled),
+  });
   electron.contextBridge.exposeInMainWorld("pywebview", {
     api: {
       token: (): Promise<string | null> => electron.ipcRenderer.invoke("cashu:token"),

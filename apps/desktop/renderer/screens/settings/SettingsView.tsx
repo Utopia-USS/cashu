@@ -658,6 +658,13 @@ function DataSection({ state }: { state: SettingsScreenState }) {
 }
 function WorkerSection({ state }: { state: SettingsScreenState }) {
   const worker = state.worker;
+  const serviceLabel = {
+    off: T.serviceOff,
+    enabled: T.serviceEnabled,
+    requires_approval: T.serviceApproval,
+    unavailable: T.serviceUnavailable,
+    error: T.serviceError,
+  }[state.service.state];
   const stateLabel =
     worker?.state === "off"
       ? T.workerOff
@@ -674,6 +681,36 @@ function WorkerSection({ state }: { state: SettingsScreenState }) {
                 : T.workerUnavailable;
   return (
     <div className="grid gap-3">
+      <h3 className="font-semibold">{T.serviceTitle}</h3>
+      <p role="status">{serviceLabel}</p>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={state.service.state === "enabled"}
+          disabled={
+            state.serviceBusy ||
+            (state.service.state !== "off" && state.service.state !== "enabled")
+          }
+          onChange={(event) => void state.onServiceEnabled(event.target.checked)}
+        />
+        {T.serviceToggle}
+      </label>
+      {state.service.state === "requires_approval" && (
+        <button
+          className={button}
+          type="button"
+          disabled={state.serviceBusy}
+          onClick={() => void state.onServiceEnabled(false)}
+        >
+          {T.serviceCancelApproval}
+        </button>
+      )}
+      {state.service.state === "enabled" && state.serviceNextWakeDay && (
+        <p>
+          {T.serviceNextWake}:{" "}
+          <SettingsTimestamp day={state.serviceNextWakeDay} time={state.serviceNextWakeTime} />
+        </p>
+      )}
       <p>{stateLabel}</p>
       {worker && worker.state !== "off" && (
         <>

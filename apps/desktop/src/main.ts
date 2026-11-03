@@ -2,7 +2,13 @@
 import { appendFileSync, chmodSync, existsSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { connectOrStart, hostRunPaths, spawnDetachedHost } from "@cashu/node-host";
+import {
+  activateHost,
+  connectOrStart,
+  hostRunPaths,
+  type ServiceStatus,
+  spawnDetachedHost,
+} from "@cashu/node-host";
 import { nativeImage, shell } from "electron/common";
 import {
   app,
@@ -27,11 +33,12 @@ import {
   USER_DATA_SUBDIR,
 } from "./config.js";
 import { shouldRegisterProtocol } from "./deeplink.js";
-import { hostLaunch } from "./hostLaunch.js";
+import { hostLaunch, PACKAGED_HOST_ENTRY } from "./hostLaunch.js";
 import { HostRelay, HostRelays, type RelayPort } from "./hostRelay.js";
 import { linkFromArgv } from "./links.js";
 import { Notifier } from "./notify.js";
 import { ALLOW, EXTERNAL, navigationDecision, redactToken } from "./security.js";
+import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { Sidecar, sidecarSpec, verifyDataDir } from "./sidecar.js";
 import { ensurePrivateDir, loadState, rememberedPort, rememberPort, statePath } from "./state.js";
 import { pickLang, t } from "./strings.js";
@@ -240,13 +247,40 @@ ipcMain.handle("cashu:token", (event) => {
   return token;
 });
 
+// Registration belongs to the OS, not the host worker snapshot. The page can request only a
+// boolean transition and never supplies an agent label, executable, bundle or data directory.
+const hostService = desktopHostService(dataDir, app.isPackaged);
+function visibleServiceStatus(status: ServiceStatus) {
+  return {
+    state: status.state,
+    ...(status.reason ? { reason: status.reason } : {}),
+    ...(status.state === "enabled" ? { nextWake: nextDailyWake() } : {}),
+  };
+}
+async function serviceStatus() {
+  return visibleServiceStatus(await hostService.status());
+}
+ipcMain.handle("cashu:service-status", async (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event))) return { state: "unavailable" };
+  return serviceStatus();
+});
+ipcMain.handle("cashu:service-set-enabled", async (event, enabled: unknown) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || typeof enabled !== "boolean") {
+    return { state: "unavailable" };
+  }
+  return visibleServiceStatus(await (enabled ? hostService.enable() : hostService.disable()));
+});
+
 // ---- the renderer's store channel, relayed to the local host (S56b) -----------------------------
 
-// The data dir's host (apps/host): connected to as a `ui` client per renderer frame, started on demand
-// (detached, it outlives the window and exits by itself when idle). Never a launch agent or login item.
+// The data dir's host (apps/host): connected to as a `ui` client per renderer frame and started on
+// demand by the verified service when available, otherwise detached. It exits when idle.
 const HOST_BUILD = `desktop-${app.isPackaged ? app.getVersion() : "dev"}`;
 
 function startHost(): void {
+  if (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY))) {
+    throw new Error("bundled host unavailable");
+  }
   const launch = hostLaunch({
     root,
     dataDir,
@@ -270,9 +304,9 @@ const relays = new HostRelays(
             dataDir,
             role: "ui",
             build: HOST_BUILD,
-            start: () => {
+            start: async () => {
               onStarting();
-              startHost();
+              await activateHost(hostService, startHost);
             },
           })
         ).connection,
