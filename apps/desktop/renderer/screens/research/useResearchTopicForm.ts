@@ -9,14 +9,6 @@ import type { TopicFormValues } from "./types.js";
 
 type TopicRecord = ResearchInputs["topics"][number]["thesis"];
 const commands = researchScreenCommands();
-const defaults = (record: TopicRecord): TopicFormValues => ({
-  thesis: record?.thesis ?? "",
-  invalidation: record?.invalidation ?? "",
-  assessment: record?.assessment ?? "",
-  outlook: record?.outlook ?? "",
-  clearSources: false,
-  confirmDraft: false,
-});
 
 /** Owner topic writes are sequential. A changed UI scope cannot initiate the second command. */
 export function useResearchTopicForm(
@@ -30,23 +22,33 @@ export function useResearchTopicForm(
   const deleteThesis = useCommand(commands.deleteTopicThesis);
   const setView = useCommand(commands.setTopicMarketView);
   const [dirty, setDirty] = useState(false);
+  const thesis = record?.thesis ?? "";
+  const invalidation = record?.invalidation ?? "";
+  const assessment = record?.assessment ?? "";
+  const outlook = record?.outlook ?? "";
   const defaultValues = useMemo(
-    () => defaults(record),
-    [
-      topic,
-      record?.id,
-      record?.updated_at,
-      record?.thesis,
-      record?.invalidation,
-      record?.assessment,
-      record?.outlook,
-    ],
+    (): TopicFormValues => ({
+      thesis,
+      invalidation,
+      assessment,
+      outlook,
+      clearSources: false,
+      confirmDraft: false,
+    }),
+    [thesis, invalidation, assessment, outlook],
   );
   const loadedTopic = useRef(topic);
   const mounted = useRef(true);
   const scope = useRef({ vault, privacy, topic, topicEpoch: 0 });
-  const topicEpoch = scope.current.topicEpoch + (scope.current.topic === topic ? 0 : 1);
-  scope.current = { vault, privacy, topic, topicEpoch };
+  useLayoutEffect(() => {
+    const prior = scope.current;
+    scope.current = {
+      vault,
+      privacy,
+      topic,
+      topicEpoch: prior.topicEpoch + (prior.topic === topic ? 0 : 1),
+    };
+  });
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -56,7 +58,7 @@ export function useResearchTopicForm(
   const save = async (value: TopicFormValues) => {
     if (!topic || privacy) return;
     notice(null);
-    const target = { vault, topic, topicEpoch };
+    const target = { vault, topic, topicEpoch: scope.current.topicEpoch };
     const current = () =>
       mounted.current &&
       scope.current.vault === target.vault &&
@@ -87,7 +89,7 @@ export function useResearchTopicForm(
     }
     if (dirty) return;
     form.reset(defaultValues);
-  }, [topic, defaultValues, dirty]);
+  }, [topic, defaultValues, dirty, form]);
   return {
     values,
     setValues(next: TopicFormValues) {

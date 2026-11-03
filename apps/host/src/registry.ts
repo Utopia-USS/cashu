@@ -107,7 +107,7 @@ export function servedQueries(
   ];
 }
 
-export const SERVED_COMMANDS: readonly AnyCommand[] = [
+const SERVED_COMMANDS: readonly AnyCommand[] = [
   ...Object.values(signalsOwnerCommands),
   saveReview,
   undoSavedReview,

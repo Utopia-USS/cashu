@@ -8,10 +8,10 @@ import type { ResearchNote, ResearchRun } from "./types.js";
 export const researchDisplayDay = (instant: string | null | undefined): string | null =>
   localDay(instant);
 
-export const researchField = (value: unknown, key: string) =>
+const researchField = (value: unknown, key: string) =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
 
-export const researchStringField = (value: unknown, key: string): string | null => {
+const researchStringField = (value: unknown, key: string): string | null => {
   const found = researchField(value, key);
   return typeof found === "string" ? found : null;
 };

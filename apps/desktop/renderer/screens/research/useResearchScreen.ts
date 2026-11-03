@@ -25,7 +25,7 @@ import { useResearchTopicForm } from "./useResearchTopicForm.js";
 const queries = researchScreenQueries();
 const commands = researchScreenCommands();
 export type ResearchTab = "topics" | "mine" | "notes" | "calendar" | "candidates" | "runs";
-export const RESEARCH_TABS: readonly ResearchTab[] = [
+const RESEARCH_TABS: readonly ResearchTab[] = [
   "topics",
   "mine",
   "notes",

@@ -373,17 +373,18 @@ function SignalLine({ state, row }: { state: SignalsScreenState; row: SignalRow 
 }
 function DecisionDialog({ state }: { state: SignalsScreenState }) {
   const group = state.selected;
+  const groupKey = group?.key ?? null;
   const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (!group) return;
+    if (groupKey === null) return;
     opener.current = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     return () => {
       const target = opener.current;
       if (target && document.contains(target)) target.focus();
     };
-  }, [group?.key]);
+  }, [groupKey]);
   if (!group) return null;
   const form = state.decisionForm;
   return (

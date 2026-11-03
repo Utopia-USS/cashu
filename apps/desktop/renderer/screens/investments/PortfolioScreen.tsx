@@ -82,9 +82,10 @@ function PortfolioHome({
     onClose: props.onSignalsClosed,
     onOpenNote: (note) => props.onResearchOpened?.(undefined, undefined, note ?? undefined),
   });
+  const { setDialogOpen } = signals;
   useEffect(() => {
-    if (props.signalsOpen) signals.setDialogOpen(true);
-  }, [props.signalsOpen, signals.setDialogOpen]);
+    if (props.signalsOpen) setDialogOpen(true);
+  }, [props.signalsOpen, setDialogOpen]);
   const research = useQuery(researchQueries.screen, { today: useCalendarDay(), lang: lang() });
   const review = useReviewEntry(props.onReviewOpened);
   const openAsset = (gid: string, note?: string) =>

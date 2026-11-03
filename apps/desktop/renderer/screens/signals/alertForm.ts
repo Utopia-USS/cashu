@@ -42,7 +42,7 @@ export function alertDraft(row: AlertRow | null, catalog: ReadySignals["catalog"
     ),
   };
 }
-export function alertParams(
+function alertParams(
   draft: AlertDraft,
   row: AlertRow | null,
   catalog: ReadySignals["catalog"],

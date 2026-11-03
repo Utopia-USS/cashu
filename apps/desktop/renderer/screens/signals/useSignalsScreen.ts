@@ -21,7 +21,8 @@ import { csvLine } from "@cashu/ui-logic/core/csv";
 import { localDay } from "@cashu/ui-logic/core/time";
 import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import { useForm, useStore } from "@tanstack/react-form";
-import { useEffect, useRef, useState } from "react";
+// biome-ignore lint/style/noRestrictedImports: TanStack Form needs stable defaultValues across unrelated renders; Electron99 exercises the persisted decision form.
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import {
   alertHistoryRows,
@@ -135,15 +136,30 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     total: data?.context.status === "ready" ? data.context.overview.kpis.value.total : D("0"),
     base: data?.context.status === "ready" ? data.context.overview.base_currency : "PLN",
   });
-  const decisionForm = useForm({
-    defaultValues: {
-      action: "held",
+  const selectedKey = selected?.key ?? null;
+  const suggestedAction =
+    suggestion.choice === "buy"
+      ? "bought"
+      : suggestion.choice === "sell"
+        ? "sold"
+        : suggestion.choice === "later"
+          ? "other"
+          : "held";
+  const suggestedQuantity = suggestion.quantity?.toString() ?? "";
+  const suggestedPrice = suggestion.price?.toString() ?? "";
+  const decisionDefaults = useMemo(
+    () => ({
+      action: suggestedAction,
       account: "",
-      quantity: "",
-      price: "",
-      currency: "",
+      quantity: suggestedQuantity,
+      price: suggestedPrice,
+      currency: suggestion.currency,
       reason: "",
-    },
+    }),
+    [suggestedAction, suggestedQuantity, suggestedPrice, suggestion.currency],
+  );
+  const decisionForm = useForm({
+    defaultValues: decisionDefaults,
     onSubmit: async ({ value }) => {
       if (data === null || selected === null || inFlight.current || privacy) return;
       const members = selected.live;
@@ -234,43 +250,27 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
                 },
         })
       : null;
+  const initializedGroup = useRef<string | null>(null);
   useEffect(() => {
-    if (selected === null) return;
-    decisionForm.reset({
-      action:
-        suggestion.choice === "buy"
-          ? "bought"
-          : suggestion.choice === "sell"
-            ? "sold"
-            : suggestion.choice === "later"
-              ? "other"
-              : "held",
-      account: "",
-      quantity: suggestion.quantity?.toString() ?? "",
-      price: suggestion.price?.toString() ?? "",
-      currency: suggestion.currency,
-      reason: "",
-    });
-  }, [selectedGroup]);
-  useEffect(() => {
-    if (privacy) {
-      setSearchResult(null);
-      setSearchText("");
-      setEditingAlert(null);
-      setSelectedGroup(null);
-      setUndoIds([]);
-    }
-  }, [privacy]);
-  useEffect(() => {
-    if (!searchText.trim() || privacy) {
-      setSearchResult(null);
+    if (selectedKey === null) {
+      initializedGroup.current = null;
       return;
     }
+    if (initializedGroup.current === selectedKey) return;
+    initializedGroup.current = selectedKey;
+    decisionForm.reset(decisionDefaults);
+  }, [selectedKey, decisionForm, decisionDefaults]);
+  const searchRun = useRef(searchAction.run);
+  useLayoutEffect(() => {
+    searchRun.current = searchAction.run;
+  }, [searchAction.run]);
+  useEffect(() => {
+    if (!searchText.trim() || privacy) return;
     let live = true;
     const timer = setTimeout(() => {
       setSearchBusy(true);
-      void searchAction
-        .run({ query: searchText })
+      void searchRun
+        .current({ query: searchText })
         .then((result) => {
           if (live && result.status === "completed" && result.value.query === searchText.trim())
             setSearchResult(result.value);
@@ -631,8 +631,11 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     journalInstrument,
     setJournalInstrument,
     searchText,
-    setSearchText,
-    searchResult,
+    setSearchText: (value: string) => {
+      setSearchResult(null);
+      setSearchText(value);
+    },
+    searchResult: privacy || searchResult?.query !== searchText.trim() ? null : searchResult,
     searchBusy,
     addWatch,
     removeWatch,

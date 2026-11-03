@@ -45,6 +45,7 @@
         "src/main.ts",
         "src/preload.cts",
         "renderer/main.tsx",
+        "renderer/**/*.stories.tsx",
         "scripts/*.mjs",
         "e2e/**/*.ts"
       ],

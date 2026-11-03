@@ -524,7 +524,7 @@ const researchRoute = createRoute({
   component: ResearchRoute,
   errorComponent: RouteFailure,
 });
-function investmentEnabled() {
+function useInvestmentEnabled() {
   return useQuery(overviewQueries({ prices: null }).moduleStates).some(
     (module) => module.id === "investments" && module.enabled,
   );
@@ -534,7 +534,7 @@ function InvestmentPageRoute() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const selected = useSearch({ strict: false }) as z.infer<typeof investmentPageSearch>;
   const vault = useProfile();
-  const enabled = investmentEnabled();
+  const enabled = useInvestmentEnabled();
   if (!enabled) return <p className="p-6">{S.setup}</p>;
   const page = pathname.endsWith("investments.alerts")
     ? "alerts"
@@ -581,7 +581,7 @@ function ResearchRoute() {
   const { slug } = researchRoute.useParams();
   const selected = researchRoute.useSearch();
   const vault = useProfile();
-  const enabled = investmentEnabled();
+  const enabled = useInvestmentEnabled();
   if (!enabled) return <p className="p-6">{S.setup}</p>;
   return (
     <ResearchScreen
