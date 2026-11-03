@@ -7,6 +7,8 @@ import { type ConsoleSpan, type ConsoleStyle, highlightConsole } from "./console
 export interface ConsoleOptions {
   readonly stream?: "stdout" | "stderr";
   readonly spans?: readonly ConsoleSpan[];
+  /** Rich Console(highlight=False): preserve explicit spans but skip automatic syntax colors. */
+  readonly highlight?: boolean;
 }
 /** Native cell widths use Unicode 17; older explicit versions need the legacy renderer. */
 export function supportsConsoleUnicode(io: Pick<CommandIo, "tty">): boolean {
@@ -44,7 +46,10 @@ function renderConsole(
   const { ansi, noColor, width } = consolePolicy(io, options.stream);
   if (width < 1) return "";
   // Rich markup styles override automatic highlighter colors on the same characters.
-  const spans = [...highlightConsole(text), ...(options.spans ?? [])];
+  const spans = [
+    ...(options.highlight === false ? [] : highlightConsole(text)),
+    ...(options.spans ?? []),
+  ];
   const output: string[] = [];
   let offset = 0;
   for (const line of text.split("\n")) {

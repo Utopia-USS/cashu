@@ -8,6 +8,10 @@ export interface TableColumn {
   readonly header: string;
   readonly justify?: "left" | "right";
 }
+export interface TableOptions {
+  /** Zero-based body row and column positions styled as Rich Text(bold=True). */
+  readonly boldCells?: readonly { readonly row: number; readonly column: number }[];
+}
 const rightSpaces = new RegExp(`[${PY_WS}]+$`, "u");
 function width(text: string): number {
   return cellSpans(text).reduce((n, cell) => n + cell.width, 0);
@@ -107,6 +111,7 @@ export function richTable(
   columns: readonly TableColumn[],
   rows: readonly (readonly string[])[],
   title?: string,
+  options: TableOptions = {},
 ): string | null {
   if (!columns.length || rows.some((row) => row.length !== columns.length)) return null;
   if ([title ?? "", ...columns.map((c) => c.header), ...rows.flat()].some((text) => !plain(text)))
@@ -119,6 +124,14 @@ export function richTable(
   const total = widths.reduce((n, value) => n + value, 0) + columns.length + 1;
   const border = (left: string, join: string, right: string, line: string) =>
     `${left}${widths.map((n) => line.repeat(n)).join(join)}${right}\n`;
+  const bold = new Set((options.boldCells ?? []).map(({ row, column }) => `${row}:${column}`));
+  const styleBody = (content: string, row: number, column: number) => {
+    if (!bold.has(`${row}:${column}`) || !policy.ansi) return content;
+    const leading = /^\s*/u.exec(content)?.[0] ?? "";
+    const trailing = /\s*$/u.exec(content)?.[0] ?? "";
+    const body = content.slice(leading.length, content.length - trailing.length);
+    return `${leading}${styled(body, 1, true)}${trailing}`;
+  };
   let out = "";
   if (title)
     for (const [start, end] of wrapRanges(title, total)) {
@@ -132,7 +145,7 @@ export function richTable(
       )}\n`;
     }
   out += border("┏", "┳", "┓", "━");
-  const renderRow = (row: readonly string[], header: boolean): string => {
+  const renderRow = (row: readonly string[], header: boolean, rowIndex = -1): string => {
     const cells = columns.map((column, i) =>
       cellLines(row[i] ?? "", sizes[i] ?? 1, column.justify ?? "left"),
     );
@@ -150,7 +163,7 @@ export function richTable(
             ? styled(" ", 1, policy.ansi) +
                 styled(content, 1, policy.ansi) +
                 styled(" ", 1, policy.ansi)
-            : ` ${content} `;
+            : ` ${styleBody(content, rowIndex, i)} `;
         })
         .join(header ? "┃" : "│");
       result += `${header ? "┃" : "│"}\n`;
@@ -162,7 +175,7 @@ export function richTable(
     true,
   );
   out += border("┡", "╇", "┩", "━");
-  for (const row of rows) out += renderRow(row, false);
+  for (const [index, row] of rows.entries()) out += renderRow(row, false, index);
   out += border("└", "┴", "┘", "─");
   return out;
 }
