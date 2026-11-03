@@ -2,8 +2,7 @@ import type { ResearchInputs } from "@cashu/store/investments/research-screen";
 import { researchScreenCommands } from "@cashu/store/investments/research-screen";
 import { useCommand, useProfile } from "@cashu/store-react";
 import { useForm, useStore } from "@tanstack/react-form";
-// biome-ignore lint/style/noRestrictedImports: TanStack Form resets untouched fields when defaultValues identity changes; Electron101 covers the required stable form defaults.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { saveTopicSequence } from "./topic-save.js";
 import type { TopicFormValues } from "./types.js";
 
@@ -26,17 +25,14 @@ export function useResearchTopicForm(
   const invalidation = record?.invalidation ?? "";
   const assessment = record?.assessment ?? "";
   const outlook = record?.outlook ?? "";
-  const defaultValues = useMemo(
-    (): TopicFormValues => ({
-      thesis,
-      invalidation,
-      assessment,
-      outlook,
-      clearSources: false,
-      confirmDraft: false,
-    }),
-    [thesis, invalidation, assessment, outlook],
-  );
+  const defaultValues: TopicFormValues = {
+    thesis,
+    invalidation,
+    assessment,
+    outlook,
+    clearSources: false,
+    confirmDraft: false,
+  };
   const loadedTopic = useRef(topic);
   const mounted = useRef(true);
   const scope = useRef({ vault, privacy, topic, topicEpoch: 0 });
@@ -84,12 +80,26 @@ export function useResearchTopicForm(
     if (loadedTopic.current !== topic) {
       loadedTopic.current = topic;
       setDirty(false);
-      form.reset(defaultValues);
+      form.reset({
+        thesis,
+        invalidation,
+        assessment,
+        outlook,
+        clearSources: false,
+        confirmDraft: false,
+      });
       return;
     }
     if (dirty) return;
-    form.reset(defaultValues);
-  }, [topic, defaultValues, dirty, form]);
+    form.reset({
+      thesis,
+      invalidation,
+      assessment,
+      outlook,
+      clearSources: false,
+      confirmDraft: false,
+    });
+  }, [topic, thesis, invalidation, assessment, outlook, dirty, form]);
   return {
     values,
     setValues(next: TopicFormValues) {

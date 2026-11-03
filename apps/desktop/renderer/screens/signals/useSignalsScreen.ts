@@ -21,8 +21,7 @@ import { csvLine } from "@cashu/ui-logic/core/csv";
 import { localDay } from "@cashu/ui-logic/core/time";
 import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import { useForm, useStore } from "@tanstack/react-form";
-// biome-ignore lint/style/noRestrictedImports: TanStack Form needs stable defaultValues across unrelated renders; Electron99 exercises the persisted decision form.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import {
   alertHistoryRows,
@@ -63,6 +62,9 @@ export interface SignalsScreenOptions {
 }
 
 type Signal = ReadySignals["signals"][number];
+function decisionDefaults(action: string, quantity: string, price: string, currency: string) {
+  return { action, account: "", quantity, price, currency, reason: "" };
+}
 export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   const { privacy } = useUiEnv();
   const today = useCalendarDay();
@@ -98,6 +100,11 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   const [searchText, setSearchText] = useState("");
   const [searchResult, setSearchResult] = useState<InstrumentSearchResult | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
+  const changeSearchText = (value: string) => {
+    setSearchResult(null);
+    setSearchBusy(false);
+    setSearchText(value);
+  };
   const [editingAlert, setEditingAlert] = useState<string | "new" | null>(null);
   const [removedWatch, setRemovedWatch] = useState<ReadySignals["watchlist"][number] | null>(null);
   const [removedAlert, setRemovedAlert] = useState<string | null>(null);
@@ -147,19 +154,13 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
           : "held";
   const suggestedQuantity = suggestion.quantity?.toString() ?? "";
   const suggestedPrice = suggestion.price?.toString() ?? "";
-  const decisionDefaults = useMemo(
-    () => ({
-      action: suggestedAction,
-      account: "",
-      quantity: suggestedQuantity,
-      price: suggestedPrice,
-      currency: suggestion.currency,
-      reason: "",
-    }),
-    [suggestedAction, suggestedQuantity, suggestedPrice, suggestion.currency],
-  );
   const decisionForm = useForm({
-    defaultValues: decisionDefaults,
+    defaultValues: decisionDefaults(
+      suggestedAction,
+      suggestedQuantity,
+      suggestedPrice,
+      suggestion.currency,
+    ),
     onSubmit: async ({ value }) => {
       if (data === null || selected === null || inFlight.current || privacy) return;
       const members = selected.live;
@@ -258,8 +259,17 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     }
     if (initializedGroup.current === selectedKey) return;
     initializedGroup.current = selectedKey;
-    decisionForm.reset(decisionDefaults);
-  }, [selectedKey, decisionForm, decisionDefaults]);
+    decisionForm.reset(
+      decisionDefaults(suggestedAction, suggestedQuantity, suggestedPrice, suggestion.currency),
+    );
+  }, [
+    selectedKey,
+    decisionForm,
+    suggestedAction,
+    suggestedQuantity,
+    suggestedPrice,
+    suggestion.currency,
+  ]);
   const searchRun = useRef(searchAction.run);
   useLayoutEffect(() => {
     searchRun.current = searchAction.run;
@@ -422,8 +432,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
         ...(tags === undefined ? {} : { tags }),
       });
       if (result.status === "completed" && result.value.ok) {
-        setSearchText("");
-        setSearchResult(null);
+        changeSearchText("");
         setNotice(
           result.value.value.cacheStatus === "unconfirmed"
             ? "cache"
@@ -631,10 +640,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     journalInstrument,
     setJournalInstrument,
     searchText,
-    setSearchText: (value: string) => {
-      setSearchResult(null);
-      setSearchText(value);
-    },
+    setSearchText: changeSearchText,
     searchResult: privacy || searchResult?.query !== searchText.trim() ? null : searchResult,
     searchBusy,
     addWatch,
