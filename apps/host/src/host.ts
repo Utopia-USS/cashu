@@ -46,6 +46,7 @@ import {
   startHost,
 } from "@cashu/node-host";
 import { mcpProfile } from "@cashu/store/core";
+import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
 import { handleAdmin } from "./admin.js";
 import { HANDOVER_EXIT, watchBundle } from "./bundle.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./cli/budget/categorizeOllama.js";
@@ -76,6 +77,7 @@ import {
 } from "./runtime.js";
 import { serveStoreChannel } from "./storeChannel.js";
 import { type HostStores, openHostStores } from "./stores.js";
+import { type StrategyScreenCapability, strategiesScreen } from "./strategiesScreen.js";
 import { bridgeCommand } from "./sync/command.js";
 import type { CrashPoint } from "./sync/loop.js";
 import { SyncService } from "./sync/service.js";
@@ -90,6 +92,7 @@ const CLEAN_EXIT = 0;
 type ExitReason = "stop" | "idle" | "signal" | "handover";
 
 export interface LocalHostOptions {
+  readonly strategies?: { bind(vault: string): StrategyScreenCapability | null };
   readonly strategyImages?: ReturnType<typeof currentStrategyImages>;
   readonly investments?: import("@cashu/store/investments/screen").InvestmentScreenSources;
   readonly investmentImports?: { bind(vault: string): InvestmentImportCapability | null };
@@ -181,7 +184,16 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     options.investmentImports === undefined
       ? null
       : investmentImportActions({ ...options.investmentImports, now });
-  const images = options.strategyImages ?? currentStrategyImages(() => false);
+  const images =
+    options.strategyImages ??
+    currentStrategyImages((vault, generation) => {
+      const capability = options.strategies?.bind(vault);
+      return capability?.generation === generation && capability.isCurrent();
+    });
+  const strategyManager =
+    options.strategies === undefined
+      ? null
+      : strategiesScreen({ ...options.strategies, publish: images.publish, revoke: images.revoke });
   const investmentSources = {
     ...options.investments,
     clock: {
@@ -190,7 +202,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
     },
-    ...(options.investments?.strategy === undefined && options.strategyImages !== undefined
+    ...(options.investments?.strategy === undefined &&
+    (options.strategies !== undefined || options.strategyImages !== undefined)
       ? { strategy: images.source }
       : {}),
     ...(options.investmentImports === undefined
@@ -207,6 +220,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     ...options.overview,
     prices: options.overview?.prices ?? null,
     investments: investmentSources,
+    strategies: {
+      strategy: images.source,
+      ...(strategyManager === null ? {} : { documents: strategyManager.source }),
+    },
   });
   const build = options.build ?? "dev";
   const lingerMs = options.lingerMs ?? DEFAULT_LINGER_MS;
@@ -361,6 +378,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       await (await sync)?.stop();
       await worker.stop();
       importManager?.close();
+      strategyManager?.close();
       images.close();
       await stores.drain();
       stores.close();
@@ -443,9 +461,30 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           stores,
           queries,
           commands: SERVED_COMMANDS,
-          actions: [...(options.uiActions ?? []), ...(importManager?.actions ?? [])],
-          prepareQuery: options.prepareUiQuery,
-          privateQuery: options.privateUiQuery,
+          actions: [
+            ...(options.uiActions ?? []),
+            ...(importManager?.actions ?? []),
+            ...(strategyManager?.actions ?? []),
+          ],
+          prepareQuery: async (vault, query, args) => {
+            if (query === "investments.strategies.screen") {
+              const parsed = strategyScreenArgsSchema.safeParse(args);
+              if (!parsed.success) throw new Error("invalid_query_input");
+              if (!parsed.data.privacy)
+                await strategyManager?.prepare(vault, parsed.data.selection);
+            }
+            await options.prepareUiQuery?.(vault, query, args);
+          },
+          privateQuery: (query, args) => {
+            const parsed =
+              query === "investments.strategies.screen"
+                ? strategyScreenArgsSchema.safeParse(args)
+                : null;
+            return (
+              (parsed !== null && (!parsed.success || !parsed.data.privacy)) ||
+              options.privateUiQuery?.(query, args) === true
+            );
+          },
           log,
           ...(options.maxInFlight === undefined ? {} : { maxInFlight: options.maxInFlight }),
           ...(options.afterCommit === undefined ? {} : { afterCommit: options.afterCommit }),

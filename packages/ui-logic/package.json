@@ -13,6 +13,7 @@
     "./core/format": "./src/core/format.ts",
     "./core/incognito": "./src/core/incognito.ts",
     "./core/messages": "./src/core/messages.ts",
+    "./core/markdown": "./src/core/markdown.ts",
     "./core/messages.strings": "./src/core/messages.strings.ts",
     "./core/time": "./src/core/time.ts",
     "./investments/labels": "./src/investments/labels.ts",

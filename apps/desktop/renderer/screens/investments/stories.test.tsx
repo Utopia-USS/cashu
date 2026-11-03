@@ -2,6 +2,9 @@ import { setLanguageForTests } from "@cashu/i18n";
 import { type ComponentType, createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
+import * as markdown from "../strategies/MarkdownDocument.stories.js";
+import * as strategies from "../strategies/StrategiesView.stories.js";
+import * as settings from "../strategies/StrategySettingsView.stories.js";
 import * as asset from "./AssetDetailView.stories.js";
 import * as imports from "./ImportStepsView.stories.js";
 import * as drawers from "./PortfolioDrawersView.stories.js";
@@ -18,7 +21,16 @@ it.each(["en", "pl"] as const)(
   "renders all actual investment and strategy story phases in %s",
   (language) => {
     setLanguageForTests(language);
-    for (const module of [asset, drawers, imports, portfolio, transactions]) {
+    for (const module of [
+      asset,
+      drawers,
+      imports,
+      portfolio,
+      transactions,
+      strategies,
+      markdown,
+      settings,
+    ]) {
       const meta = module.default as unknown as Meta;
       for (const [name, value] of Object.entries(module)) {
         if (name === "default") continue;

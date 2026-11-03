@@ -35,6 +35,7 @@ import {
   uiThesisCommands,
   updateUiWatchNote,
 } from "@cashu/store/investments/screen";
+import { strategiesQueries } from "@cashu/store/investments/strategies-screen";
 import { createUiLoan, loansScreen, setUiLoanPayment } from "@cashu/store/loans/screen";
 import {
   legacyNavigation,
@@ -55,6 +56,7 @@ export function servedQueries(
     readonly legacyIdentity?: Parameters<typeof legacyNavigation>[0];
     readonly sources?: OverviewSources;
     readonly investments?: InvestmentScreenSources;
+    readonly strategies?: Parameters<typeof strategiesQueries>[0];
   } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
   return [
@@ -79,6 +81,7 @@ export function servedQueries(
     ),
     ...Object.values(overviewQueries(env, env.sources)),
     ...Object.values(investmentDesktopQueries(env.investments)),
+    ...Object.values(strategiesQueries(env.strategies)),
   ];
 }
 

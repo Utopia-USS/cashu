@@ -25,6 +25,7 @@ import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
 import { useCashDrawer } from "./screens/overview/useCashDrawer.js";
 import { useInvestmentPlan } from "./screens/overview/useInvestmentPlan.js";
 import { useOverviewScreen } from "./screens/overview/useOverviewScreen.js";
+import { StrategiesScreen } from "./screens/strategies/StrategiesScreen.js";
 import { resolveProfileRoute } from "./shell/profileRoute.js";
 import { ProfileRouteSync } from "./shell/profileRouteSync.js";
 import { ShellView } from "./shell/ShellView.js";
@@ -467,6 +468,18 @@ const investmentAssetRoute = createRoute({
   ),
   errorComponent: RouteFailure,
 });
+const strategiesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/investments.strategies",
+  validateSearch: (raw) => search.pick({ vault: true }).parse(raw),
+  component: StrategiesRoute,
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
+  errorComponent: RouteFailure,
+});
 
 function PortfolioRoute() {
   const { slug, instrument } = useParams({ strict: false });
@@ -515,8 +528,24 @@ function PortfolioRoute() {
           },
         });
       }}
-      openAdjacent={(tab) => legacy.open(tab)}
+      openAdjacent={(tab) => {
+        if (tab === "investments.strategies")
+          void router.navigate({
+            to: "/$slug/investments.strategies",
+            params: { slug: slug ?? "" },
+            search: { vault },
+          });
+        else legacy.open(tab);
+      }}
     />
+  );
+}
+function StrategiesRoute() {
+  const modules = useQuery(overviewQueries({ prices: null }).moduleStates);
+  return modules.some((module) => module.id === "investments" && module.enabled) ? (
+    <StrategiesScreen />
+  ) : (
+    <p className="p-6">{S.setup}</p>
   );
 }
 
@@ -530,6 +559,7 @@ export const router = createRouter({
     assetsStartRoute,
     portfolioRoute,
     investmentAssetRoute,
+    strategiesRoute,
   ]),
   history: createHashHistory(),
 });

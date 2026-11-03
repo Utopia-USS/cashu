@@ -22,6 +22,7 @@
     "./query": "./src/query.ts",
     "./ui-actions": "./src/ui-actions.ts",
     "./investments/screen-sources": "./src/investments/desktop/sources.ts",
+    "./investments/strategies-screen": "./src/investments/desktop-strategies/index.ts",
     "./investments/screen": "./src/investments/desktop/screen.ts"
   },
   "scripts": {

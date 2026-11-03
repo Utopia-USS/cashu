@@ -10,17 +10,15 @@ import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, investmentsLocal, Store } from "@cashu/store";
 import { GENESIS_CHUNK, genesis } from "@cashu/store/genesis";
 import { combinedChanges } from "@cashu/store/investments/screen-sources";
-import {
-  checkedProfileSlug,
-  readStrategyFiles,
-  type StrategyFilesPort,
-} from "@cashu/store/investments/services";
+import { checkedProfileSlug, readStrategyFiles } from "@cashu/store/investments/services";
 import { assertUnchanged, copyRun, manifest, runFiles } from "../cli/genesis/copy.js";
 import { initKeys, readKeys } from "../cli/genesis/keys.js";
 import { startLocalHost } from "../host.js";
 import { currentStrategyImages } from "../investmentScreenSources.js";
 import { storeFiles } from "../stores.js";
+import type { StrategyScreenCapability } from "../strategiesScreen.js";
 import { storeClient } from "./harness.js";
+import { syntheticStrategyDocuments } from "./strategyDocuments.js";
 
 function isolatedPaths() {
   const root = process.env.E2E_ROOT;
@@ -106,34 +104,20 @@ if (process.argv[2] === "rename") {
   const prices = new investmentsLocal.SqlPriceCache(driver);
   const imported = readKeys(join(target, "overview-demo-keys.json"));
   let alive = true;
-  const capabilities = new Map<
-    string,
-    { generation: string; files: StrategyFilesPort; isCurrent(): boolean }
-  >();
-  const copied = runFiles(target);
+  const capabilities = new Map<string, StrategyScreenCapability>();
   for (const [slug, key] of imported) {
     if (checkedProfileSlug(slug) === null) throw new Error("invalid synthetic profile segment");
-    capabilities.set(key.vault, {
-      generation: randomUUID(),
-      isCurrent: () => alive,
-      files: {
-        async read(name) {
-          const bytes = copied.read(`profiles/${slug}/${name}`);
-          return bytes === undefined
-            ? null
-            : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
-                .decode(bytes)
-                .replaceAll("\r\n", "\n")
-                .replaceAll("\r", "\n");
-        },
-        async exists(name) {
-          return copied.read(`profiles/${slug}/${name}`) !== undefined;
-        },
-        async write() {
-          throw new Error("synthetic strategy reader is read-only");
-        },
-      },
-    });
+    const path = join(target, "profiles", slug);
+    mkdirSync(path, { recursive: true, mode: 0o700 });
+    capabilities.set(
+      key.vault,
+      await syntheticStrategyDocuments({
+        root: realpathSync(path),
+        vault: key.vault,
+        generation: randomUUID(),
+        isCurrent: () => alive,
+      }),
+    );
   }
   const images = currentStrategyImages((vault, generation) => {
     const cap = capabilities.get(vault);
@@ -145,6 +129,7 @@ if (process.argv[2] === "rename") {
     python: null,
     launcher: false,
     strategyImages: images,
+    strategies: { bind: (vault) => capabilities.get(vault) ?? null },
     investments: {
       strategy: images.source,
       market: {
