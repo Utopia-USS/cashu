@@ -19,7 +19,10 @@
     "./bridge": "./src/bridge/index.ts",
     "./genesis": "./src/genesis/index.ts",
     "./overview": "./src/overview/index.ts",
-    "./query": "./src/query.ts"
+    "./query": "./src/query.ts",
+    "./ui-actions": "./src/ui-actions.ts",
+    "./investments/screen-sources": "./src/investments/desktop/sources.ts",
+    "./investments/screen": "./src/investments/desktop/screen.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

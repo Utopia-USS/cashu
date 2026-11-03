@@ -3,6 +3,7 @@ import {
   createPortClient,
   messagePortChannel,
 } from "@cashu/store-react/client";
+import { isIncognito, onIncognitoChange } from "@cashu/ui-logic/core/incognito";
 
 /** The existing preload/main own-origin relay; the page receives no filesystem or IPC authority. */
 function requestStorePort(): Promise<MessagePort> {
@@ -31,5 +32,8 @@ function requestStorePort(): Promise<MessagePort> {
 }
 
 export async function desktopClient(onStatus?: (status: ConnectionStatus) => void) {
-  return createPortClient(messagePortChannel(await requestStorePort()), { onStatus });
+  return createPortClient(messagePortChannel(await requestStorePort()), {
+    onStatus,
+    uiPrivacy: { getSnapshot: isIncognito, subscribe: onIncognitoChange },
+  });
 }

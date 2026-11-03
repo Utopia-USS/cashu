@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { errorInfo, storeToClientSchema, storeToHostSchema } from "./messages.js";
+import {
+  errorInfo,
+  STORE_PROTOCOL_VERSION,
+  storeToClientSchema,
+  storeToHostSchema,
+} from "./messages.js";
 
 const VAULT = "0123456789abcdef0123456789abcdef";
 const KEY = "01JBQX8Z5W3N4R6T7V8Y9A0BCD";
@@ -38,7 +43,11 @@ describe("store channel v2 messages", () => {
       false,
     );
     expect(
-      storeToClientSchema.safeParse({ t: "ready", protocol: 2, vaults: [VAULT] }).success,
+      storeToClientSchema.safeParse({
+        t: "ready",
+        protocol: STORE_PROTOCOL_VERSION,
+        vaults: [VAULT],
+      }).success,
     ).toBe(true);
     expect(
       storeToClientSchema.safeParse({

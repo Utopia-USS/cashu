@@ -16,6 +16,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseDateTime } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
 import { type AdminStatus, HOST_PROTOCOL } from "@cashu/host-protocol";
 import {
@@ -53,6 +54,8 @@ import { portedCommands } from "./cli/ported.js";
 import { serveCliSession } from "./cli/runner.js";
 import type { PortedCommand } from "./cli/tree.js";
 import { recordStart, type StartRecord } from "./crashLoop.js";
+import { currentStrategyImages } from "./investmentScreenSources.js";
+import { type InvestmentImportCapability, investmentImportActions } from "./investmentsScreen.js";
 import { writeLauncher } from "./launcher.js";
 import { takeWriterLease, type WriterLease } from "./lease.js";
 import { errorName, fileLog, type HostLog } from "./log.js";
@@ -87,6 +90,13 @@ const CLEAN_EXIT = 0;
 type ExitReason = "stop" | "idle" | "signal" | "handover";
 
 export interface LocalHostOptions {
+  readonly strategyImages?: ReturnType<typeof currentStrategyImages>;
+  readonly investments?: import("@cashu/store/investments/screen").InvestmentScreenSources;
+  readonly investmentImports?: { bind(vault: string): InvestmentImportCapability | null };
+  readonly mcpInvestmentAsync?: (vault: string) => InvestmentAsyncCapabilities | undefined;
+  readonly uiActions?: import("./storeChannel.js").StoreChannelOptions["actions"];
+  readonly prepareUiQuery?: import("./storeChannel.js").StoreChannelOptions["prepareQuery"];
+  readonly privateUiQuery?: import("./storeChannel.js").StoreChannelOptions["privateQuery"];
   /** Explicit per-vault capabilities only. Production authority/consent/credential binding is separate. */
   readonly budgetClassifiers?: {
     readonly local?: CategorizeProvider;
@@ -122,7 +132,6 @@ export interface LocalHostOptions {
   /** Write `<data dir>/bin/cashu` at start (default true). */
   readonly launcher?: boolean;
   /** Device cache dependency, also used by synthetic oracle fixtures. */
-  readonly mcpInvestmentAsync?: (vault: string) => InvestmentAsyncCapabilities | undefined;
   readonly mcpPrices?: market.PriceCache;
   readonly mcpFxNewest?: () => string | null;
   /** Explicit coherent read authorities; native investment views are unavailable without them. */
@@ -168,7 +177,37 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     options.home ?? homedir(),
   );
   const now = options.now ?? Date.now;
-  const queries = servedQueries(options.overview);
+  const importManager =
+    options.investmentImports === undefined
+      ? null
+      : investmentImportActions({ ...options.investmentImports, now });
+  const images = options.strategyImages ?? currentStrategyImages(() => false);
+  const investmentSources = {
+    ...options.investments,
+    clock: {
+      current: () => ({
+        now: parseDateTime(new Date(now()).toISOString()),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    },
+    ...(options.investments?.strategy === undefined && options.strategyImages !== undefined
+      ? { strategy: images.source }
+      : {}),
+    ...(options.investmentImports === undefined
+      ? {}
+      : {
+          importAvailable: (read: import("@cashu/store/query").Read) => {
+            const vault = read<{ gid: string }>("SELECT gid FROM profiles")[0]?.gid;
+            const capability = vault === undefined ? null : options.investmentImports?.bind(vault);
+            return capability != null && capability.vault === vault && capability.isCurrent();
+          },
+        }),
+  };
+  const queries = servedQueries({
+    ...options.overview,
+    prices: options.overview?.prices ?? null,
+    investments: investmentSources,
+  });
   const build = options.build ?? "dev";
   const lingerMs = options.lingerMs ?? DEFAULT_LINGER_MS;
   let dispatch: (session: HostSession) => void = (session) => session.close();
@@ -321,6 +360,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       // The sync service's current iteration finishes and its vaults close while the lock is held.
       await (await sync)?.stop();
       await worker.stop();
+      importManager?.close();
+      images.close();
       await stores.drain();
       stores.close();
       // Before the lock goes: a successor host records its own start after taking the lock.
@@ -402,6 +443,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           stores,
           queries,
           commands: SERVED_COMMANDS,
+          actions: [...(options.uiActions ?? []), ...(importManager?.actions ?? [])],
+          prepareQuery: options.prepareUiQuery,
+          privateQuery: options.privateUiQuery,
           log,
           ...(options.maxInFlight === undefined ? {} : { maxInFlight: options.maxInFlight }),
           ...(options.afterCommit === undefined ? {} : { afterCommit: options.afterCommit }),

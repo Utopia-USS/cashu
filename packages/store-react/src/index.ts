@@ -15,3 +15,4 @@ export { type CommandHandle, useCommand } from "./react/useCommand.js";
 export { useConnection } from "./react/useConnection.js";
 export { useProfile } from "./react/useProfile.js";
 export { useQuery } from "./react/useQuery.js";
+export { useUiAction } from "./react/useUiAction.js";

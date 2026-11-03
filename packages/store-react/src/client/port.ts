@@ -24,12 +24,14 @@ import {
 } from "@cashu/host-protocol/store";
 import type { CommandResult } from "@cashu/store";
 import { mintUlid } from "@cashu/store";
+import type { UiActionResult } from "@cashu/store/ui-actions";
 import { type CacheOptions, QueryCache } from "./cache.js";
 import { ConnectionState, type ConnectionStatus } from "./connection.js";
 import { RemoteStoreError } from "./errors.js";
 import type { Adapter, Channel, Sink } from "./types.js";
 
 export interface PortClientOptions extends Omit<CacheOptions, "async" | "connection"> {
+  readonly uiPrivacy?: { getSnapshot(): boolean; subscribe(listener: () => void): () => void };
   /**
    * A message from the relay that does not validate (a version skew or a bug). Default: thrown from
    * the message handler, where the renderer's global error handler records it.
@@ -81,19 +83,37 @@ export function createPortClient(
       reject(e: unknown): void;
     }
   >();
+  const actions = new Map<number, (result: UiActionResult<unknown>) => void>();
   let nextId = 0;
   /** True between a session's `ready` and the next link loss: only then do messages go out. */
   let live = false;
   let lost = false;
   let recoveredTimer: ReturnType<typeof setTimeout> | undefined;
+  let privacy = options.uiPrivacy?.getSnapshot() ?? true;
+  let policyGeneration = 0;
   const post = (message: StoreToHost) => {
     if (live) channel.post(message);
   };
+  const sendPolicy = () => post({ t: "uiPolicy", generation: policyGeneration, privacy });
+  const stopPrivacy = options.uiPrivacy?.subscribe(() => {
+    const current = options.uiPrivacy?.getSnapshot() ?? true;
+    if (current === privacy) return;
+    privacy = current;
+    policyGeneration += 1;
+    sendPolicy();
+    for (const { message } of subs.values()) post(message);
+    for (const resolve of actions.values())
+      resolve({ status: "outcome_unknown", reason: "interrupted" });
+    actions.clear();
+  });
 
   const onLink = (state: LinkState) => {
     if (state === "connected") return; // the session's `ready` follows
     if (live) lost = true;
     live = false;
+    for (const resolve of actions.values())
+      resolve({ status: "outcome_unknown", reason: "interrupted" });
+    actions.clear();
     clearTimeout(recoveredTimer);
     connection.set(LINK_STATUS[state]);
   };
@@ -103,10 +123,37 @@ export function createPortClient(
 
     const onReady = (vaults: readonly string[]) => {
       live = true;
+      sendPolicy();
       if (client === null) {
         connection.set("online");
         const adapter: Adapter = {
+          dispose() {
+            stopPrivacy?.();
+            for (const resolve of actions.values())
+              resolve({ status: "outcome_unknown", reason: "interrupted" });
+            actions.clear();
+          },
           vaults,
+          invoke(target, action, input) {
+            if (!live) return Promise.resolve({ status: "not_started", reason: "disconnected" });
+            if (target.kind !== "vault")
+              return Promise.resolve({
+                status: "refused",
+                reason: "invalid_target",
+                preparation: "none",
+              });
+            const payload = toJson(input);
+            const rid = nextId++;
+            return new Promise((resolve) => {
+              actions.set(rid, resolve);
+              try {
+                post({ t: "action", rid, target, action: action.id, input: payload });
+              } catch {
+                actions.delete(rid);
+                resolve({ status: "outcome_unknown", reason: "unexpected_failure" });
+              }
+            });
+          },
           open(target, query, args, sink) {
             const sid = nextId++;
             const message: Sub = { t: "sub", sid, target, query: query.id, args: toJson(args) };
@@ -156,6 +203,17 @@ export function createPortClient(
 
     const handle = (message: RelayToClient): void => {
       switch (message.t) {
+        case "actionResult": {
+          const resolve = actions.get(message.rid);
+          actions.delete(message.rid);
+          const result = message.result;
+          resolve?.(
+            result.status === "completed"
+              ? { status: "completed", value: decodeValue(result.value) }
+              : result,
+          );
+          return;
+        }
         case "link":
           onLink(message.state);
           return;

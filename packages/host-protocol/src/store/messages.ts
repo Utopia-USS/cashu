@@ -7,7 +7,7 @@
 import { z } from "zod";
 
 /** Bumped on any incompatible change of the store channel; both ends refuse another version. */
-export const STORE_PROTOCOL_VERSION = 2;
+export const STORE_PROTOCOL_VERSION = 3;
 
 const json = z.json();
 const vault = z.string().regex(/^[0-9a-f]{32}$/);
@@ -31,6 +31,7 @@ export const errorInfoSchema = z.object({
 export type ErrorInfo = z.infer<typeof errorInfoSchema>;
 
 export const storeToHostSchema = z.discriminatedUnion("t", [
+  z.object({ t: z.literal("uiPolicy"), generation: id, privacy: z.boolean() }),
   z.object({ t: z.literal("sub"), sid: id, target: targetSchema, query: name, args: json }),
   z.object({ t: z.literal("unsub"), sid: id }),
   z.object({
@@ -39,6 +40,13 @@ export const storeToHostSchema = z.discriminatedUnion("t", [
     key: idempotencyKeySchema,
     target: targetSchema,
     command: name,
+    input: json,
+  }),
+  z.object({
+    t: z.literal("action"),
+    rid: id,
+    target: z.object({ kind: z.literal("vault"), vault }),
+    action: name,
     input: json,
   }),
 ]);
@@ -61,6 +69,22 @@ export const storeToClientSchema = z.discriminatedUnion("t", [
     ]),
   }),
   z.object({ t: z.literal("failed"), rid: id, error: errorInfoSchema }),
+  z.object({
+    t: z.literal("actionResult"),
+    rid: id,
+    result: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("completed"), value: json }),
+      z.object({
+        status: z.literal("refused"),
+        reason: name,
+        preparation: z.enum(["none", "retained"]),
+      }),
+      z.object({
+        status: z.literal("outcome_unknown"),
+        reason: z.enum(["interrupted", "unexpected_failure"]),
+      }),
+    ]),
+  }),
 ]);
 export type StoreToClient = z.infer<typeof storeToClientSchema>;
 

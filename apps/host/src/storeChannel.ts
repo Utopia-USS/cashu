@@ -1,4 +1,4 @@
-// The store channel v2 of one `ui` session (`@cashu/host-protocol/store` in `store` frames): live
+// The store channel v3 of one `ui` session (`@cashu/host-protocol/store` in `store` frames): live
 // queries pushed on change, keyed commands through the target's write queue. Only registered query /
 // command ids run; a vault target must be open on this host; every message is validated (the renderer
 // is not trusted). A snapshot is pushed only when its encoded value changed. A session may have at
@@ -21,8 +21,13 @@ import { type KeyedRun, runDeviceCommand, runVaultCommand } from "./commands.js"
 import { errorName, type HostLog } from "./log.js";
 import { type AnyCommand, isDeviceCommand } from "./registry.js";
 import type { HostStores, OpenDevice, OpenVault } from "./stores.js";
+import type { UiActionRegistration } from "./uiActions.js";
 
 export interface StoreChannelOptions {
+  /** Classifies prose-bearing document reads; policy can only refuse private delivery. */
+  readonly privateQuery?: (query: string, args: QueryArgs) => boolean;
+  readonly actions?: readonly UiActionRegistration[];
+  readonly prepareQuery?: (vault: string, query: string, args: QueryArgs) => Promise<void>;
   readonly stores: HostStores;
   readonly queries: readonly Query<QueryArgs, unknown>[];
   readonly commands: readonly AnyCommand[];
@@ -56,11 +61,16 @@ type Target = StoreTarget;
 export function serveStoreChannel(session: HostSession, options: StoreChannelOptions): void {
   const queries = byId(options.queries);
   const commands = byId(options.commands);
+  const actions = byId(options.actions ?? []);
   const { stores, log } = options;
   const maxInFlight = options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT;
   const live = new Map<number, () => void>();
+  const preparing = new Map<number, object>();
+  const actionRequests = new Map<number, string>();
+  let highestActionRid = -1;
   let inFlight = 0;
   let closed = false;
+  let policy: { readonly generation: number; readonly privacy: boolean } | null = null;
   const post = (m: StoreToClient) => {
     if (!closed) session.send({ t: "store", m });
   };
@@ -78,16 +88,79 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     return target.kind === "device" ? stores.device.store : vaultOf(target).store;
   };
 
-  const subscribe = (m: Extract<StoreToHost, { t: "sub" }>) => {
+  const subscribe = (m: Extract<StoreToHost, { t: "sub" }>, prepared = false) => {
     live.get(m.sid)?.();
     live.delete(m.sid);
+    if (!prepared) preparing.delete(m.sid);
     const query = queries.get(m.query);
     if (query === undefined) {
       post({ t: "error", sid: m.sid, error: { name: "UnknownQuery", message: m.query } });
       return;
     }
+    let privateRead = false;
+    try {
+      sourceFor(m.target, query);
+      privateRead = options.privateQuery?.(query.id, m.args as QueryArgs) ?? false;
+    } catch {
+      post({
+        t: "error",
+        sid: m.sid,
+        error: { name: "UnknownTarget", message: "query target is unavailable" },
+      });
+      return;
+    }
+    if (privateRead && (policy === null || policy.privacy)) {
+      post({
+        t: "error",
+        sid: m.sid,
+        error: { name: "PrivacyRestricted", message: "private query is unavailable" },
+      });
+      return;
+    }
+    const policyAtStart = policy?.generation;
+    if (!prepared && options.prepareQuery && m.target.kind === "vault") {
+      if (inFlight >= maxInFlight) {
+        post({ t: "error", sid: m.sid, error: { name: "Busy", message: "too many requests" } });
+        return;
+      }
+      const generation = {};
+      const vault = vaultOf(m.target);
+      preparing.set(m.sid, generation);
+      const prepare = options.prepareQuery;
+      const targetId = m.target.vault;
+      inFlight += 1;
+      Promise.resolve()
+        .then(() => prepare(targetId, query.id, m.args as QueryArgs))
+        .then(
+          () => {
+            if (
+              closed ||
+              policy?.generation !== policyAtStart ||
+              preparing.get(m.sid) !== generation ||
+              stores.vaults.get(vault.id) !== vault
+            )
+              return;
+            preparing.delete(m.sid);
+            subscribe(m, true);
+          },
+          () => {
+            if (closed || preparing.get(m.sid) !== generation) return;
+            preparing.delete(m.sid);
+            post({
+              t: "error",
+              sid: m.sid,
+              error: { name: "QueryPreparationFailed", message: "query preparation failed" },
+            });
+          },
+        )
+        .finally(() => {
+          inFlight -= 1;
+        });
+      return;
+    }
     let last: string | undefined;
     const fail = (error: unknown) => {
+      if (policy?.generation !== policyAtStart) return;
       last = undefined;
       log.warn("store.query.failed", { query: query.id, error: errorName(error) });
       post({ t: "error", sid: m.sid, error: errorInfo(error) });
@@ -95,6 +168,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     try {
       const stop = watchQuery(sourceFor(m.target, query), query, m.args as QueryArgs, {
         onValue(value) {
+          if (policy?.generation !== policyAtStart) return;
           let encoded: ReturnType<typeof encodeValue>;
           try {
             encoded = encodeValue(value);
@@ -113,6 +187,85 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     } catch (error) {
       fail(error);
     }
+  };
+
+  const action = (m: Extract<StoreToHost, { t: "action" }>) => {
+    const handler = actions.get(m.action);
+    const refuse = (reason: string) =>
+      post({
+        t: "actionResult",
+        rid: m.rid,
+        result: { status: "refused", reason, preparation: "none" },
+      });
+    if (handler === undefined) {
+      refuse("unknown_action");
+      return;
+    }
+    if (policy === null || policy.privacy) {
+      refuse("privacy_restricted");
+      return;
+    }
+    const policyAtStart = policy.generation;
+    const fingerprint = JSON.stringify([m.target, m.action, m.input]);
+    const prior = actionRequests.get(m.rid);
+    if (prior !== undefined) {
+      if (prior !== fingerprint) refuse("request_reused");
+      return;
+    }
+    if (m.rid <= highestActionRid) {
+      refuse("request_reused");
+      return;
+    }
+    if (inFlight >= maxInFlight) {
+      refuse("busy");
+      return;
+    }
+    actionRequests.set(m.rid, fingerprint);
+    highestActionRid = m.rid;
+    inFlight += 1;
+    Promise.resolve()
+      .then(() =>
+        handler.run(
+          stores,
+          m.target.vault,
+          m.input,
+          () => !closed && policy?.generation === policyAtStart && !policy.privacy,
+        ),
+      )
+      .then((result) => {
+        if (policy?.generation !== policyAtStart) {
+          post({
+            t: "actionResult",
+            rid: m.rid,
+            result: { status: "outcome_unknown", reason: "interrupted" },
+          });
+          return;
+        }
+        if (result.status === "not_started") {
+          refuse(result.reason);
+        } else {
+          post({
+            t: "actionResult",
+            rid: m.rid,
+            result:
+              result.status === "completed"
+                ? { status: "completed", value: encodeValue(result.value) }
+                : result,
+          });
+        }
+      })
+      .catch(() => {
+        log.warn("store.action.failed", { action: m.action });
+        post({
+          t: "actionResult",
+          rid: m.rid,
+          result: { status: "outcome_unknown", reason: "unexpected_failure" },
+        });
+      })
+      .finally(() => {
+        inFlight -= 1;
+        actionRequests.delete(m.rid);
+      });
   };
 
   const run = (m: Extract<StoreToHost, { t: "run" }>) => {
@@ -178,15 +331,24 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     }
     const m = parsed.data;
     switch (m.t) {
+      case "uiPolicy":
+        if (policy !== null && m.generation <= policy.generation) return;
+        policy = { generation: m.generation, privacy: m.privacy };
+        preparing.clear();
+        return;
       case "sub":
         subscribe(m);
         return;
       case "unsub":
+        preparing.delete(m.sid);
         live.get(m.sid)?.();
         live.delete(m.sid);
         return;
       case "run":
         run(m);
+        return;
+      case "action":
+        action(m);
         return;
     }
   });
@@ -194,6 +356,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     closed = true;
     for (const stop of live.values()) stop();
     live.clear();
+    preparing.clear();
   });
   post({ t: "ready", protocol: STORE_PROTOCOL_VERSION, vaults: [...stores.vaults.keys()] });
 }

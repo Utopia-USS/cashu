@@ -5,6 +5,7 @@
 // the previous one, and an unchanged value notifies nobody.
 import type { CommandResult } from "@cashu/store";
 import { type Query, type QueryArgs, queryKey } from "@cashu/store/query";
+import type { UiAction, UiActionResult } from "@cashu/store/ui-actions";
 import { ALWAYS_ONLINE, type ConnectionSource } from "./connection.js";
 import { replaceEqual } from "./structural.js";
 import type {
@@ -175,6 +176,11 @@ class Entry<R> implements QueryEntry<R> {
 }
 
 export class QueryCache implements StoreClient {
+  invoke<I, R>(target: Target, action: UiAction<I, R>, input: I): Promise<UiActionResult<R>> {
+    if (this.adapter.invoke === undefined)
+      return Promise.resolve({ status: "not_started", reason: "capability_unavailable" });
+    return this.adapter.invoke(target, action, input) as Promise<UiActionResult<R>>;
+  }
   readonly adapter: Adapter;
   readonly async: boolean;
   readonly lingerMs: number;
@@ -230,6 +236,7 @@ export class QueryCache implements StoreClient {
 
   /** Release every live query (the app or test is shutting down). */
   dispose(): void {
+    this.adapter.dispose?.();
     for (const entry of [...this.#entries.values()]) entry.release();
   }
 }

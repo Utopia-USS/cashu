@@ -150,9 +150,15 @@ export class TestHost {
         const m = parsed.data;
         if (m.t === "sub") subscribe(m);
         else if (m.t === "run") run(m);
-        else {
+        else if (m.t === "unsub") {
           live.get(m.sid)?.();
           live.delete(m.sid);
+        } else if (m.t === "action") {
+          post({
+            t: "actionResult",
+            rid: m.rid,
+            result: { status: "refused", reason: "capability_unavailable", preparation: "none" },
+          });
         }
       },
       stop() {

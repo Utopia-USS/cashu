@@ -1,4 +1,5 @@
 import type { ClientFrame, HostFrame } from "@cashu/host-protocol";
+import { STORE_PROTOCOL_VERSION } from "@cashu/host-protocol/store";
 import { describe, expect, it, vi } from "vitest";
 import { HostRelay, HostRelays, type RelayConnection, type RelayPort } from "./hostRelay.js";
 
@@ -63,7 +64,7 @@ class FakeConnection implements RelayConnection {
   }
 }
 
-const READY = { t: "ready", protocol: 2, vaults: [] };
+const READY = { t: "ready", protocol: STORE_PROTOCOL_VERSION, vaults: [] };
 
 /** A host that answers connects from a queue of outcomes. */
 function hostOf(outcomes: ("ok" | "start" | "fail")[]) {

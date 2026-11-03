@@ -26,6 +26,15 @@ import {
 } from "@cashu/store/budget/queries";
 import { profile } from "@cashu/store/core";
 import { currentVault, type DeviceCommand, setCurrentVault } from "@cashu/store/device";
+import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
+import {
+  addUiManualTransaction,
+  classifyUiInstrument,
+  createUiBrokerageAccount,
+  investmentDesktopQueries,
+  uiThesisCommands,
+  updateUiWatchNote,
+} from "@cashu/store/investments/screen";
 import { createUiLoan, loansScreen, setUiLoanPayment } from "@cashu/store/loans/screen";
 import {
   legacyNavigation,
@@ -45,6 +54,7 @@ export function servedQueries(
   env: Parameters<typeof overviewQueries>[0] & {
     readonly legacyIdentity?: Parameters<typeof legacyNavigation>[0];
     readonly sources?: OverviewSources;
+    readonly investments?: InvestmentScreenSources;
   } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
   return [
@@ -68,10 +78,16 @@ export function servedQueries(
       }),
     ),
     ...Object.values(overviewQueries(env, env.sources)),
+    ...Object.values(investmentDesktopQueries(env.investments)),
   ];
 }
 
 export const SERVED_COMMANDS: readonly AnyCommand[] = [
+  addUiManualTransaction,
+  createUiBrokerageAccount,
+  classifyUiInstrument,
+  updateUiWatchNote,
+  ...Object.values(uiThesisCommands()),
   setCurrentVault,
   createProfile,
   renameProfile,

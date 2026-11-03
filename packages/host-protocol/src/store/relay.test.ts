@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { STORE_PROTOCOL_VERSION } from "./messages.js";
 import { LINK_STATES, relayToClientSchema } from "./relay.js";
 
 describe("desktop relay messages", () => {
@@ -7,7 +8,11 @@ describe("desktop relay messages", () => {
       expect(relayToClientSchema.parse({ t: "link", state })).toEqual({ t: "link", state });
     }
     expect(
-      relayToClientSchema.parse({ t: "ready", protocol: 2, vaults: ["0".repeat(32)] }),
+      relayToClientSchema.parse({
+        t: "ready",
+        protocol: STORE_PROTOCOL_VERSION,
+        vaults: ["0".repeat(32)],
+      }),
     ).toMatchObject({ t: "ready" });
     expect(relayToClientSchema.parse({ t: "value", sid: 3, value: { a: 1 } })).toMatchObject({
       t: "value",

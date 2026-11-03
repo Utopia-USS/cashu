@@ -5,6 +5,7 @@
 import type { Command, CommandResult } from "@cashu/store";
 import type { DeviceCommand } from "@cashu/store/device";
 import type { Query, QueryArgs } from "@cashu/store/query";
+import type { UiAction, UiActionResult } from "@cashu/store/ui-actions";
 import type { ConnectionSource } from "./connection.js";
 
 /** The store a query or command runs against: the device store, or one vault's store. */
@@ -27,6 +28,12 @@ export interface Sink {
 
 /** What the snapshot cache needs from a transport. */
 export interface Adapter {
+  dispose?(): void;
+  invoke?(
+    target: Target,
+    action: UiAction<unknown, unknown>,
+    input: unknown,
+  ): Promise<UiActionResult<unknown>>;
   /** Vaults open on this device (the profiles a user can switch between). */
   readonly vaults: readonly string[];
   /** Start a live query; the sync adapter delivers its first value before returning. */
@@ -55,6 +62,7 @@ export interface QueryEntry<R> {
 }
 
 export interface StoreClient {
+  invoke?<I, R>(target: Target, action: UiAction<I, R>, input: I): Promise<UiActionResult<R>>;
   readonly vaults: readonly string[];
   /** Whether a first read waits for another process (the desktop renderer) and may suspend. */
   readonly async: boolean;

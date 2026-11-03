@@ -1,3 +1,4 @@
+import { investmentEntityIdSchema } from "@cashu/store/investments/screen-sources";
 import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import { useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
@@ -17,6 +18,7 @@ import { S } from "./Desktop.strings.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
 import { BudgetView } from "./screens/budget/BudgetView.js";
 import { type BudgetTab, useBudgetScreen } from "./screens/budget/useBudgetScreen.js";
+import { PortfolioScreen } from "./screens/investments/PortfolioScreen.js";
 import { LoansScreen } from "./screens/loans/LoansScreen.js";
 import { OverviewView } from "./screens/overview/OverviewView.js";
 import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
@@ -93,6 +95,12 @@ function ShellRoute() {
       void router.navigate({ to: "/$slug/loans.list", params: { slug }, search: { vault } });
     else if (module === "assets")
       void router.navigate({ to: "/$slug/setup/assets", params: { slug }, search: { vault } });
+    else if (module === "investments")
+      void router.navigate({
+        to: "/$slug/investments.portfolio",
+        params: { slug },
+        search: { vault, period: "1y", view: "chart" },
+      });
     else if (state.canOpenLegacy) openLegacy(slug, module);
     else state.onLegacyRefused();
   };
@@ -122,7 +130,9 @@ function ShellRoute() {
             ? "loans"
             : pathname.endsWith("/setup/assets")
               ? "assets"
-              : "overview"
+              : pathname.includes("/investments.") || pathname.includes("/assets/")
+                ? "investments"
+                : "overview"
       }
       onLegacyOpened={openModule}
     >
@@ -274,7 +284,7 @@ function OverviewBound({
           });
         })
       }
-      nativeModules={["budget", "loans", "assets"]}
+      nativeModules={["budget", "loans", "assets", "investments"]}
       onModuleOpened={legacy.openModule}
     />
   );
@@ -424,6 +434,92 @@ function AssetsStartRoute() {
   );
 }
 
+const investmentSearch = z.object({
+  vault: z
+    .string()
+    .regex(/^[0-9a-f]{32}$/)
+    .optional(),
+  account: investmentEntityIdSchema.optional(),
+  period: z.enum(["1m", "3m", "ytd", "1y", "3y", "max"]).default("1y"),
+  view: z.enum(["chart", "table"]).default("chart"),
+});
+const portfolioRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/investments.portfolio",
+  validateSearch: (raw) => investmentSearch.parse(raw),
+  component: PortfolioRoute,
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
+  errorComponent: RouteFailure,
+});
+const investmentAssetRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/assets/$instrument",
+  validateSearch: (raw) => investmentSearch.parse(raw),
+  component: PortfolioRoute,
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
+  errorComponent: RouteFailure,
+});
+
+function PortfolioRoute() {
+  const { slug, instrument } = useParams({ strict: false });
+  const selected = useSearch({ strict: false }) as z.infer<typeof investmentSearch>;
+  const vault = useProfile();
+  const modules = useQuery(overviewQueries({ prices: null }).moduleStates);
+  const legacy = use(LegacyNavigation);
+  if (!modules.some((module) => module.id === "investments" && module.enabled))
+    return <p className="p-6">{S.setup}</p>;
+  if (instrument !== undefined && !investmentEntityIdSchema.safeParse(instrument).success)
+    return <p className="p-6">{S.setup}</p>;
+  const navigate = (patch: Partial<z.infer<typeof investmentSearch>>) => {
+    startTransition(() => {
+      if (instrument === undefined)
+        void router.navigate({
+          to: "/$slug/investments.portfolio",
+          params: { slug: slug ?? "" },
+          search: { ...selected, ...patch, vault },
+        });
+      else
+        void router.navigate({
+          to: "/$slug/assets/$instrument",
+          params: { slug: slug ?? "", instrument },
+          search: { ...selected, ...patch, vault },
+        });
+    });
+  };
+  return (
+    <PortfolioScreen
+      {...(instrument === undefined ? {} : { instrument })}
+      account={selected.account ?? null}
+      range={selected.period}
+      table={selected.view === "table"}
+      onAccountPicked={(account) => navigate({ account: account ?? undefined })}
+      onRangePicked={(period) => navigate({ period: investmentSearch.shape.period.parse(period) })}
+      onTablePicked={(table) => navigate({ view: table ? "table" : "chart" })}
+      openPage={(next) => {
+        void router.navigate({
+          to: "/$slug/assets/$instrument",
+          params: { slug: slug ?? "", instrument: next },
+          search: {
+            vault,
+            period: selected.period,
+            view: selected.view,
+            ...(selected.account === undefined ? {} : { account: selected.account }),
+          },
+        });
+      }}
+      openAdjacent={(tab) => legacy.open(tab)}
+    />
+  );
+}
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     startRoute,
@@ -432,6 +528,8 @@ export const router = createRouter({
     loansRoute,
     loansSetupRoute,
     assetsStartRoute,
+    portfolioRoute,
+    investmentAssetRoute,
   ]),
   history: createHashHistory(),
 });

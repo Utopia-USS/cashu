@@ -1,5 +1,7 @@
 /** Explicit synthetic Electron acceptance setup. Never a production data source or launcher. */
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { budget, D, parseDateTime } from "@cashu/domain";
@@ -7,14 +9,16 @@ import { asProfileId, market, toCurrency } from "@cashu/domain/investments";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, investmentsLocal, Store } from "@cashu/store";
 import { GENESIS_CHUNK, genesis } from "@cashu/store/genesis";
+import { combinedChanges } from "@cashu/store/investments/screen-sources";
 import {
   checkedProfileSlug,
-  loadStrategy,
-  type StrategyState,
+  readStrategyFiles,
+  type StrategyFilesPort,
 } from "@cashu/store/investments/services";
 import { assertUnchanged, copyRun, manifest, runFiles } from "../cli/genesis/copy.js";
 import { initKeys, readKeys } from "../cli/genesis/keys.js";
 import { startLocalHost } from "../host.js";
+import { currentStrategyImages } from "../investmentScreenSources.js";
 import { storeFiles } from "../stores.js";
 import { storeClient } from "./harness.js";
 
@@ -101,36 +105,81 @@ if (process.argv[2] === "rename") {
   const driver = openNodeSqlite(cachePath);
   const prices = new investmentsLocal.SqlPriceCache(driver);
   const imported = readKeys(join(target, "overview-demo-keys.json"));
-  const strategies = new Map<string, StrategyState>();
+  let alive = true;
+  const capabilities = new Map<
+    string,
+    { generation: string; files: StrategyFilesPort; isCurrent(): boolean }
+  >();
+  const copied = runFiles(target);
+  for (const [slug, key] of imported) {
+    if (checkedProfileSlug(slug) === null) throw new Error("invalid synthetic profile segment");
+    capabilities.set(key.vault, {
+      generation: randomUUID(),
+      isCurrent: () => alive,
+      files: {
+        async read(name) {
+          const bytes = copied.read(`profiles/${slug}/${name}`);
+          return bytes === undefined
+            ? null
+            : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+                .decode(bytes)
+                .replaceAll("\r\n", "\n")
+                .replaceAll("\r", "\n");
+        },
+        async exists(name) {
+          return copied.read(`profiles/${slug}/${name}`) !== undefined;
+        },
+        async write() {
+          throw new Error("synthetic strategy reader is read-only");
+        },
+      },
+    });
+  }
+  const images = currentStrategyImages((vault, generation) => {
+    const cap = capabilities.get(vault);
+    return cap?.generation === generation && cap.isCurrent();
+  });
   const host = await startLocalHost({
     dataDir: target,
     home: process.env.HOME,
     python: null,
     launcher: false,
+    strategyImages: images,
+    investments: {
+      strategy: images.source,
+      market: {
+        changes: prices,
+        current: (read) => {
+          const vault = read<{ gid: string }>("SELECT gid FROM profiles")[0]?.gid;
+          return vault !== undefined && capabilities.get(vault)?.isCurrent() ? { prices } : null;
+        },
+        newestRateDate: () => prices.newestFxDate(),
+      },
+    },
     overview: {
       prices,
-      changes: prices,
+      changes: combinedChanges(prices, images.source.changes),
       legacyIdentity: (vault, slug) => imported.get(slug)?.vault === vault,
       sources: {
         plannedContribution: (read) => {
-          const vault = read<{ gid: string }>("SELECT gid FROM profiles")[0]?.gid;
-          const strategy = vault === undefined ? null : (strategies.get(vault) ?? null);
-          return strategy === null
+          const strategy = images.source.current(read);
+          return strategy.status !== "current"
             ? null
-            : budget.plannedContribution(strategy.state, strategy.config);
+            : budget.plannedContribution(strategy.state.state, strategy.state.config);
         },
         investmentRequest: (read, context) => {
           const vault = read<{ gid: string }>("SELECT gid FROM profiles")[0]?.gid;
-          const strategy = vault === undefined ? null : (strategies.get(vault) ?? null);
-          if (vault === undefined || strategy === null || context.prices === null) return null;
+          const strategy = images.source.current(read);
+          if (vault === undefined || strategy.status !== "current" || context.prices === null)
+            return null;
           return {
             vault: asProfileId(vault),
             asOf: context.today,
             lang: context.lang,
-            strategy,
+            strategy: strategy.state,
             prices: context.prices,
             forOwner: true,
-            newestRateDate: null,
+            newestRateDate: prices.newestFxDate(),
             clock: {
               now: parseDateTime(new Date().toISOString()),
               today: context.today,
@@ -141,38 +190,30 @@ if (process.argv[2] === "rename") {
       },
     },
   });
-  const copied = runFiles(target);
-  for (const [slug, key] of imported) {
-    if (checkedProfileSlug(slug) === null) throw new Error("invalid synthetic profile segment");
-    const vault = host.stores.vaults.get(key.vault);
-    if (vault === undefined) throw new Error("synthetic strategy vault is absent");
-    strategies.set(
-      key.vault,
-      await loadStrategy(vault.store, {
-        read: async (name) => {
-          const bytes = copied.read(`profiles/${slug}/${name}`);
-          return bytes === undefined
-            ? null
-            : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
-                .decode(bytes)
-                .replaceAll("\r\n", "\n")
-                .replaceAll("\r", "\n");
-        },
-        write: async () => {
-          throw new Error("synthetic strategy reader is read-only");
-        },
-        exists: async (name) => copied.read(`profiles/${slug}/${name}`) !== undefined,
-      }),
-    );
+  for (const [vault, cap] of capabilities) {
+    if (!host.stores.vaults.has(vault)) throw new Error("synthetic strategy vault is absent");
+    images.publish({
+      vault,
+      generation: cap.generation,
+      revision: randomUUID(),
+      files: await readStrategyFiles(cap.files),
+    });
   }
-  writeFileSync(join(target, "overview-ready"), "ok\n", { mode: 0o600, flag: "wx" });
+  const ready = join(target, "overview-ready");
+  const readyStage = join(target, `overview-ready-${process.pid}`);
+  writeFileSync(readyStage, `${process.pid}\n`, { mode: 0o600, flag: "wx" });
+  renameSync(readyStage, ready);
   process.once("SIGTERM", () => {
+    alive = false;
+    rmSync(ready, { force: true });
     void host.stop();
   });
   process.once("SIGINT", () => {
+    alive = false;
     void host.stop();
   });
   await host.exit;
+  rmSync(ready, { force: true });
   driver.close();
 } else {
   if (existsSync(target)) throw new Error("synthetic overview target must be new");
