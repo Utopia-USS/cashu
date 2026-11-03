@@ -1,0 +1,137 @@
+import { ok, runCommand } from "@cashu/store";
+import { createProposal, type PreparedEffect } from "@cashu/store/core";
+import { afterEach, expect, it } from "vitest";
+import { startLocalHost } from "./host.js";
+import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
+import { cleanup, tempDir, testHostOptions } from "./testing/harness.js";
+
+afterEach(cleanup);
+
+it("returns real S60 approved, refused cleanup, failed and recovery receipts for canonical proposals", async () => {
+  const host = await startLocalHost({
+    ...testHostOptions(tempDir()),
+    python: null,
+    launcher: false,
+  });
+  const vault = [...host.stores.vaults.values()][0];
+  if (!vault) throw new Error("missing synthetic vault");
+  let mode: "approve" | "refuse" | "fail" | "recovery" = "approve";
+  let current = true;
+  let held = false;
+  const lock = {
+    tryAcquire: () =>
+      held
+        ? null
+        : () => {
+            held = false;
+          },
+  };
+  const provider: ProposalApprovalProvider = {
+    bind: (id) =>
+      id === vault.id
+        ? {
+            generation: "synthetic-current",
+            dailyLock: lock,
+            isCurrent: () => current,
+            isHolder: () => true,
+            async prepare(snapshot) {
+              const effect: PreparedEffect<{ version: number }> = {
+                proposalGid: snapshot.gid,
+                kind: snapshot.kind,
+                recheck: () => (mode === "refuse" ? "base_changed" : null),
+                apply: () => ok({ version: 7 }),
+                approvalResult: (result) => ({ version: result.version }),
+              };
+              return {
+                effect,
+                publication: {
+                  publish: async () => {
+                    if (mode === "fail" || mode === "recovery")
+                      throw new Error("synthetic publication failure");
+                  },
+                  restore: async () => {
+                    if (mode === "recovery") throw new Error("synthetic restore failure");
+                  },
+                  discard: async () => {
+                    if (mode === "refuse") throw new Error("synthetic discard failure");
+                  },
+                },
+              };
+            },
+          }
+        : null,
+  };
+  const action = proposalScreen(provider);
+  const make = async () => {
+    const created = await vault.queue.run(() =>
+      runCommand(
+        vault.store,
+        vault.writer,
+        createProposal,
+        {
+          kind: "strategy",
+          summary: "Synthetic proposal",
+          reason: null,
+          payload: { base_sha256: "synthetic" },
+          source: "synthetic",
+        },
+        vault.env,
+      ),
+    );
+    if (!created.ok) throw new Error(created.reason);
+    return created.value.proposalGid;
+  };
+  const review = (gid: string, decision: "approve" | "reject" = "approve") =>
+    action.run(host.stores, vault.id, { gid, decision });
+  try {
+    const approvedGid = await make();
+    expect(await review(approvedGid)).toMatchObject({
+      status: "completed",
+      value: { status: "approved", effect: { version: 7 } },
+    });
+    expect(
+      vault.store.read<{ status: string }>(
+        "SELECT status FROM proposals WHERE gid = ?",
+        approvedGid,
+      )[0]?.status,
+    ).toBe("approved");
+    expect(await review(approvedGid)).toMatchObject({ status: "refused", reason: "not_pending" });
+    mode = "refuse";
+    const refusedGid = await make();
+    expect(await review(refusedGid)).toMatchObject({
+      status: "completed",
+      value: { status: "refused", reason: "base_changed", cleanupFailed: true },
+    });
+    mode = "fail";
+    const failedGid = await make();
+    expect(await review(failedGid)).toMatchObject({
+      status: "completed",
+      value: { status: "failed", reason: "write_failed" },
+    });
+    expect(
+      vault.store.read<{ status: string }>(
+        "SELECT status FROM proposals WHERE gid = ?",
+        failedGid,
+      )[0]?.status,
+    ).toBe("failed");
+    mode = "recovery";
+    const recoveryGid = await make();
+    expect(await review(recoveryGid)).toMatchObject({
+      status: "completed",
+      value: { status: "recovery_needed", reason: "restore_failed" },
+    });
+    current = false;
+    expect(await review(await make())).toMatchObject({
+      status: "refused",
+      reason: "capability_unavailable",
+    });
+    current = true;
+    const rejectedGid = await make();
+    expect(await review(rejectedGid, "reject")).toMatchObject({
+      status: "completed",
+      value: { status: "rejected", proposalGid: rejectedGid },
+    });
+  } finally {
+    await host.stop();
+  }
+});
