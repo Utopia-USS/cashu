@@ -150,9 +150,9 @@ describe("OllamaClassifier", () => {
       }),
       { url: "http://localhost:11434", model: "synthetic" },
     );
-    await expect(classifier.classifyMerchants(["invented merchant"], ["food"])).rejects.toBeInstanceOf(
-      ClassifierAuthorityLost,
-    );
+    await expect(
+      classifier.classifyMerchants(["invented merchant"], ["food"]),
+    ).rejects.toBeInstanceOf(ClassifierAuthorityLost);
     expect(calls).toBe(0);
   });
 });
