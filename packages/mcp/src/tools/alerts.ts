@@ -3,6 +3,7 @@ import { addDays, D, Decimal, parseDateTime } from "@cashu/domain";
 import {
   alerts as A,
   instrumentLabel,
+  type Instrument,
   market,
   parseSignalSeverity,
 } from "@cashu/domain/investments";
@@ -40,8 +41,9 @@ const KINDS = [
 ];
 const ALERT_NOTE =
   "alerts are conditions on stored prices and weights, checked by the daily run; a triggered alert is a signal (rule alert:<id>) with the alert's polarity and severity; threshold and weights are fractions (0.1 = 10%), levels are in the instrument's currency; range_breakout: max_range_pct and range_pct are fractions, state gives the range of the last window; volume_spike: multiple, last_value and state.ratio are multiples of the average volume (2.5 = 2.5x)";
-export function instrumentFields(ctx: Context, id: string | null): L.LabelledTree {
-  const inst = id === null ? undefined : Q.loadInstrument(ctx.store.read, id);
+export function instrumentFields(ctx: Context, id: string | null, prospective?: Instrument): L.LabelledTree {
+  if (prospective && prospective.id !== id) throw new Error("prospective instrument binding mismatch");
+  const inst = id === null ? undefined : (Q.loadInstrument(ctx.store.read, id) ?? prospective);
   if (!inst) return { instrument_id: L.ref(null) };
   const privateName = ownerNamed(inst);
   return {
