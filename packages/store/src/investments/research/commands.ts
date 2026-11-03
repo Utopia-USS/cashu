@@ -728,75 +728,87 @@ export const markResearchRead = defineCommand({
 
 // ------------------------------------------------------------------ dismiss / restore
 
-export const dismissResearchNote = defineCommand({
-  id: "investments.research.dismissNote",
-  input: z.object({ note: gid, lang: z.enum(LANGS).default("pl") }),
-  /**
-   * Python `dismiss` (idempotent): the note's signal resolves when no other note keeps it open
-   * (`note_dismissed`); a dismissed candidate is not proposed again for 90 days.
-   */
-  run(ctx, input) {
-    const now = nowOf(ctx);
-    const row = noteByGid(ctx.read, input.note);
-    if (row === undefined) return refuse("no_note");
-    if (row.dismissedAt !== null) return ok({ note: row.gid, signal: NO_SYNC });
-    const cooldown = row.kind === research.CANDIDATE_KIND ? now + CANDIDATE_COOLDOWN : null;
-    ctx.emit("note.dismissed", row.gid, {
-      cooldownUntil: cooldown === null ? null : instantEvent(cooldown),
-      stamps: { dismissed_at: instantEvent(now), updated_at: instantEvent(now) },
-    });
-    const next: ResearchNote = {
-      ...row,
-      dismissedAt: now,
-      cooldownUntil: cooldown,
-      updatedAt: now,
-    };
-    const key = research.noteKey(signalRecord(next, 0));
-    let signal = NO_SYNC;
-    if (key !== null && row.signal !== null) {
-      signal = syncResearchSignal(ctx, key, {
-        now,
-        lang: input.lang,
-        notify: notifyPolicy(ctx.read),
-        reason: research.CLOSED_DISMISSED,
-        overlay: new Map([[row.gid, next]]),
+export function dismissResearchNoteCommand(
+  afterDismissed?: (ctx: CommandContext, row: ResearchNote) => void,
+) {
+  return defineCommand({
+    id: "investments.research.dismissNote",
+    input: z.object({ note: gid, lang: z.enum(LANGS).default("pl") }),
+    /**
+     * Python `dismiss` (idempotent): the note's signal resolves when no other note keeps it open
+     * (`note_dismissed`); a dismissed candidate is not proposed again for 90 days.
+     */
+    run(ctx, input) {
+      const now = nowOf(ctx);
+      const row = noteByGid(ctx.read, input.note);
+      if (row === undefined) return refuse("no_note");
+      if (row.dismissedAt !== null) return ok({ note: row.gid, signal: NO_SYNC });
+      const cooldown = row.kind === research.CANDIDATE_KIND ? now + CANDIDATE_COOLDOWN : null;
+      ctx.emit("note.dismissed", row.gid, {
+        cooldownUntil: cooldown === null ? null : instantEvent(cooldown),
+        stamps: { dismissed_at: instantEvent(now), updated_at: instantEvent(now) },
       });
-    }
-    return ok({ note: row.gid, signal });
-  },
-});
+      const next: ResearchNote = {
+        ...row,
+        dismissedAt: now,
+        cooldownUntil: cooldown,
+        updatedAt: now,
+      };
+      afterDismissed?.(ctx, next);
+      const key = research.noteKey(signalRecord(next, 0));
+      let signal = NO_SYNC;
+      if (key !== null && row.signal !== null) {
+        signal = syncResearchSignal(ctx, key, {
+          now,
+          lang: input.lang,
+          notify: notifyPolicy(ctx.read),
+          reason: research.CLOSED_DISMISSED,
+          overlay: new Map([[row.gid, next]]),
+        });
+      }
+      return ok({ note: row.gid, signal });
+    },
+  });
+}
+export const dismissResearchNote = dismissResearchNoteCommand();
 
-export const restoreResearchNote = defineCommand({
-  id: "investments.research.restoreNote",
-  input: z.object({ note: gid, lang: z.enum(LANGS).default("pl") }),
-  /**
-   * Python `restore`: undo a dismissal within 15 minutes (a note that is not dismissed is a no-op);
-   * the signal the dismissal resolved reopens (same episode), then follows the notes.
-   */
-  run(ctx, input) {
-    const now = nowOf(ctx);
-    const row = noteByGid(ctx.read, input.note);
-    if (row === undefined) return refuse("no_note");
-    if (row.dismissedAt === null) return ok({ note: row.gid, signal: NO_SYNC });
-    if (now - row.dismissedAt > RESTORE_WINDOW) return refuse("undo_expired");
-    ctx.emit("note.restored", row.gid, { stamps: { updated_at: instantEvent(now) } });
-    const next: ResearchNote = { ...row, dismissedAt: null, cooldownUntil: null, updatedAt: now };
-    const reopened = reopenDismissed(ctx, next, now, RESTORE_WINDOW);
-    const record = signalRecord(next, 0);
-    const key = research.noteKey(record);
-    let signal = NO_SYNC;
-    if (key !== null && research.severityOf(record, now) !== null) {
-      signal = syncResearchSignal(ctx, key, {
-        now,
-        lang: input.lang,
-        notify: notifyPolicy(ctx.read),
-        overlay: new Map([[row.gid, next]]),
-        ...(reopened === undefined ? {} : { open: reopened }),
-      });
-    }
-    return ok({ note: row.gid, signal });
-  },
-});
+export function restoreResearchNoteCommand(
+  afterRestored?: (ctx: CommandContext, row: ResearchNote) => void,
+) {
+  return defineCommand({
+    id: "investments.research.restoreNote",
+    input: z.object({ note: gid, lang: z.enum(LANGS).default("pl") }),
+    /**
+     * Python `restore`: undo a dismissal within 15 minutes (a note that is not dismissed is a no-op);
+     * the signal the dismissal resolved reopens (same episode), then follows the notes.
+     */
+    run(ctx, input) {
+      const now = nowOf(ctx);
+      const row = noteByGid(ctx.read, input.note);
+      if (row === undefined) return refuse("no_note");
+      if (row.dismissedAt === null) return ok({ note: row.gid, signal: NO_SYNC });
+      if (now - row.dismissedAt > RESTORE_WINDOW) return refuse("undo_expired");
+      ctx.emit("note.restored", row.gid, { stamps: { updated_at: instantEvent(now) } });
+      const next: ResearchNote = { ...row, dismissedAt: null, cooldownUntil: null, updatedAt: now };
+      afterRestored?.(ctx, next);
+      const reopened = reopenDismissed(ctx, next, now, RESTORE_WINDOW);
+      const record = signalRecord(next, 0);
+      const key = research.noteKey(record);
+      let signal = NO_SYNC;
+      if (key !== null && research.severityOf(record, now) !== null) {
+        signal = syncResearchSignal(ctx, key, {
+          now,
+          lang: input.lang,
+          notify: notifyPolicy(ctx.read),
+          overlay: new Map([[row.gid, next]]),
+          ...(reopened === undefined ? {} : { open: reopened }),
+        });
+      }
+      return ok({ note: row.gid, signal });
+    },
+  });
+}
+export const restoreResearchNote = restoreResearchNoteCommand();
 
 // ------------------------------------------------------------------ housekeeping
 

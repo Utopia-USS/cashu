@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createProfile } from "../../core/commands.js";
 import { setInstrumentPlan } from "../commands/instruments.js";
 import { createThesis } from "../commands/journal.js";
+import { researchScreenCommands } from "../desktop-research/commands.js";
 import { openSignals } from "../queries/signals.js";
 import { researchNoteCommand } from "../research/commands.js";
 import { noteByGid } from "../research/queries.js";
@@ -171,5 +172,32 @@ describe("research note and immediate plan checks", () => {
     });
     expect(out.ok).toBe(true);
     expect(h.inputs.buildValued).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the actual prospective dismissal and restoration in the owner append", async () => {
+    const h = await fixture();
+    try {
+      const added = h.v.value(addResearchNoteWithPlans(h.inputs), {
+        note: h.note,
+        instrument: "ABC",
+      });
+      const commands = researchScreenCommands(h.inputs);
+      const before = (h.inputs.buildValued as ReturnType<typeof vi.fn>).mock.calls.length;
+      const dismissed = h.v.run(commands.dismissNote, { note: added.note, lang: "en" });
+      expect(dismissed.ok).toBe(true);
+      expect(noteByGid(h.read, added.note)?.dismissedAt).not.toBeNull();
+      expect((h.inputs.buildValued as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
+        before,
+      );
+      const after = (h.inputs.buildValued as ReturnType<typeof vi.fn>).mock.calls.length;
+      const restored = h.v.run(commands.restoreNote, { note: added.note, lang: "en" });
+      expect(restored.ok).toBe(true);
+      expect(noteByGid(h.read, added.note)?.dismissedAt).toBeNull();
+      expect((h.inputs.buildValued as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
+        after,
+      );
+    } finally {
+      h.v.store.close();
+    }
   });
 });
