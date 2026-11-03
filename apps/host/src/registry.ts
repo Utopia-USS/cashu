@@ -26,6 +26,7 @@ import {
 } from "@cashu/store/budget/queries";
 import { profile } from "@cashu/store/core";
 import { currentVault, type DeviceCommand, setCurrentVault } from "@cashu/store/device";
+import { createUiLoan, loansScreen, setUiLoanPayment } from "@cashu/store/loans/screen";
 import {
   legacyNavigation,
   type OverviewSources,
@@ -53,6 +54,7 @@ export function servedQueries(
     vaultPaymentPatterns,
     legacyNavigation(env.legacyIdentity),
     overviewCashWallet,
+    loansScreen,
     budgetScreenCashflow,
     budgetScreenCurrencies,
     budgetScreenSpending,
@@ -75,6 +77,8 @@ export const SERVED_COMMANDS: readonly AnyCommand[] = [
   renameProfile,
   setProfileSettings,
   setCushion,
+  createUiLoan,
+  setUiLoanPayment,
   setDesktopMerchantCategory,
   setTransactionCategory,
   addCashExpense,

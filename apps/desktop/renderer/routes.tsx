@@ -7,14 +7,17 @@ import {
   createRoute,
   createRouter,
   Outlet,
+  useLocation,
   useParams,
   useSearch,
 } from "@tanstack/react-router";
 import { createContext, startTransition, use, useEffect, useRef } from "react";
 import { z } from "zod";
 import { S } from "./Desktop.strings.js";
+import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
 import { BudgetView } from "./screens/budget/BudgetView.js";
 import { type BudgetTab, useBudgetScreen } from "./screens/budget/useBudgetScreen.js";
+import { LoansScreen } from "./screens/loans/LoansScreen.js";
 import { OverviewView } from "./screens/overview/OverviewView.js";
 import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
 import { useCashDrawer } from "./screens/overview/useCashDrawer.js";
@@ -36,9 +39,14 @@ const LEGACY_TABS: Record<string, string> = {
   loans: "loans.list",
   settings: "settings",
 };
-const LegacyNavigation = createContext<{ allowed: boolean; open(tab: string): void }>({
+const LegacyNavigation = createContext<{
+  allowed: boolean;
+  open(tab: string): void;
+  openModule(module: string): void;
+}>({
   allowed: false,
   open: () => {},
+  openModule: () => {},
 });
 
 /** TRANSITIONAL(S55z): unported SPA pages retain their own routes and deep-link search. */
@@ -56,6 +64,7 @@ function ShellRoute() {
     },
   });
   const params = useParams({ strict: false });
+  const pathname = useLocation({ select: (location) => location.pathname });
   const requested = useSearch({ strict: false });
   const selection =
     params.slug === undefined
@@ -70,7 +79,25 @@ function ShellRoute() {
       state.onRouteVaultPicked,
     );
   }, [selection, state.vault, state.onRouteVaultPicked]);
+  const openModule = (module: string) => {
+    if (state.profile === null) return;
+    const slug = state.profile.slug;
+    const vault = state.vault;
+    if (module === "budget")
+      void router.navigate({
+        to: "/$slug/budget/$tab",
+        params: { slug, tab: "expenses" },
+        search: { vault, currency: budgetCurrencyByVault.get(vault) },
+      });
+    else if (module === "loans")
+      void router.navigate({ to: "/$slug/loans.list", params: { slug }, search: { vault } });
+    else if (module === "assets")
+      void router.navigate({ to: "/$slug/setup/assets", params: { slug }, search: { vault } });
+    else if (state.canOpenLegacy) openLegacy(slug, module);
+    else state.onLegacyRefused();
+  };
   const legacy = {
+    openModule,
     allowed: state.canOpenLegacy,
     open: (tab: string) => {
       if (state.profile !== null && state.canOpenLegacy) openLegacy(state.profile.slug, tab);
@@ -88,16 +115,16 @@ function ShellRoute() {
             search: { vault: state.vault },
           });
       }}
-      activeModule={params.tab !== undefined ? "budget" : "overview"}
-      onLegacyOpened={(module) => {
-        if (module === "budget" && state.profile !== null)
-          void router.navigate({
-            to: "/$slug/budget/$tab",
-            params: { slug: state.profile.slug, tab: "expenses" },
-            search: { vault: state.vault, currency: budgetCurrencyByVault.get(state.vault) },
-          });
-        else legacy.open(module);
-      }}
+      activeModule={
+        pathname.includes("/budget/")
+          ? "budget"
+          : pathname.endsWith("/loans.list") || pathname.endsWith("/setup/loans")
+            ? "loans"
+            : pathname.endsWith("/setup/assets")
+              ? "assets"
+              : "overview"
+      }
+      onLegacyOpened={openModule}
     >
       <LegacyNavigation value={legacy}>
         {selection !== null &&
@@ -247,7 +274,8 @@ function OverviewBound({
           });
         })
       }
-      onModuleOpened={legacy.open}
+      nativeModules={["budget", "loans", "assets"]}
+      onModuleOpened={legacy.openModule}
     />
   );
 }
@@ -268,7 +296,9 @@ const budgetModuleQuery = overviewQueries({ prices: null }).moduleStates;
 
 function BudgetRoute() {
   const { privacy } = useUiEnv();
-  const enabled = useQuery(budgetModuleQuery).some((module) => module.id === "budget");
+  const enabled = useQuery(budgetModuleQuery).some(
+    (module) => module.id === "budget" && module.enabled,
+  );
   const { slug, tab } = budgetRoute.useParams();
   const filters = budgetRoute.useSearch();
   const vault = useProfile();
@@ -329,8 +359,80 @@ function BudgetBound({
   );
 }
 
+const loansRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/loans.list",
+  validateSearch: (raw) => search.parse(raw),
+  component: LoansRoute,
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
+  errorComponent: RouteFailure,
+});
+const loansSetupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/setup/loans",
+  validateSearch: (raw) => search.parse(raw),
+  component: LoansSetupRoute,
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
+  errorComponent: RouteFailure,
+});
+const assetsStartRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/setup/assets",
+  validateSearch: (raw) => search.parse(raw),
+  component: AssetsStartRoute,
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
+  errorComponent: RouteFailure,
+});
+function LoansRoute() {
+  const enabled = useQuery(budgetModuleQuery).some(
+    (module) => module.id === "loans" && module.enabled,
+  );
+  return enabled ? <LoansScreen /> : <p className="p-6">{S.setup}</p>;
+}
+function LoansSetupRoute() {
+  const enabled = useQuery(budgetModuleQuery).some(
+    (module) => module.id === "loans" && module.enabled,
+  );
+  return enabled ? <LoansScreen setup /> : <p className="p-6">{S.setup}</p>;
+}
+function AssetsStartRoute() {
+  const { slug } = assetsStartRoute.useParams();
+  const vault = useProfile();
+  const enabled = useQuery(budgetModuleQuery).some(
+    (module) => module.id === "assets" && module.enabled,
+  );
+  return enabled ? (
+    <AssetsStartScreen
+      onSaved={() => {
+        void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
+      }}
+    />
+  ) : (
+    <p className="p-6">{S.setup}</p>
+  );
+}
+
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([startRoute, overviewRoute, budgetRoute]),
+  routeTree: rootRoute.addChildren([
+    startRoute,
+    overviewRoute,
+    budgetRoute,
+    loansRoute,
+    loansSetupRoute,
+    assetsStartRoute,
+  ]),
   history: createHashHistory(),
 });
 declare module "@tanstack/react-router" {

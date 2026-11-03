@@ -19,6 +19,7 @@ const chartChoice =
 
 export interface OverviewViewProps {
   canOpenLegacy: boolean;
+  nativeModules?: readonly string[];
   cash: CashDrawerState;
   assets: AssetDrawerState;
   investmentPlan: InvestmentPlanState;
@@ -34,9 +35,11 @@ export function OverviewView({
   assets,
   investmentPlan,
   canOpenLegacy,
+  nativeModules = [],
   onCurrencyPicked,
   onModuleOpened,
 }: OverviewViewProps) {
+  const canOpenModule = (module: string) => canOpenLegacy || nativeModules.includes(module);
   const month = state.budget.month;
   const barWidth = (amount: Decimal) =>
     month === null || month.income.isZero()
@@ -401,7 +404,7 @@ export function OverviewView({
             <span className="flex gap-2">
               <button
                 type="button"
-                disabled={!canOpenLegacy}
+                disabled={!canOpenModule(module.id)}
                 onClick={() => onModuleOpened(module.id)}
               >
                 {W.continueSetup}
@@ -433,8 +436,8 @@ export function OverviewView({
                 <span>{W.stepsDone(module.done, module.total)}</span>
                 <button
                   type="button"
-                  disabled={!canOpenLegacy}
-                  title={canOpenLegacy ? undefined : S.legacyUnavailable}
+                  disabled={!canOpenModule(module.id)}
+                  title={canOpenModule(module.id) ? undefined : S.legacyUnavailable}
                   onClick={() => onModuleOpened(module.id)}
                 >
                   {W.continueSetup}
@@ -448,8 +451,8 @@ export function OverviewView({
             <button
               key={module.id}
               type="button"
-              disabled={!canOpenLegacy}
-              title={canOpenLegacy ? undefined : S.legacyUnavailable}
+              disabled={!canOpenModule(module.id)}
+              title={canOpenModule(module.id) ? undefined : S.legacyUnavailable}
               onClick={() => onModuleOpened(module.id)}
               className="flex items-center justify-between rounded-md border border-border bg-surface-raised p-4 text-left hover:bg-surface-sunken"
             >

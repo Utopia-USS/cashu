@@ -14,19 +14,8 @@ export interface AssetsWidgetViewProps {
 
 /** Manual positions and their native edit drawer. Financial values remain Decimals in the View. */
 export function AssetsWidgetView({ state, today, baseCurrency, privacy }: AssetsWidgetViewProps) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const [all, setAll] = useState(false);
-  useEffect(() => {
-    const element = dialog.current;
-    if (state.open && !privacy && !element?.open) element?.showModal();
-    if (!state.open && element?.open) element.close();
-    if (privacy && element?.open) element.close();
-    if (privacy && state.open) state.close();
-  }, [state, privacy]);
   const shown = all ? state.displayRows : state.displayRows.slice(0, 5);
-  const target = state.target;
-  const form = state.form;
-  const vehicle = target?.kind === "vehicle" || (target === null && form.type === "vehicle");
   return (
     <section
       className="rounded-lg border border-border bg-surface-raised p-6"
@@ -111,6 +100,30 @@ export function AssetsWidgetView({ state, today, baseCurrency, privacy }: Assets
           </button>
         )}
       </div>
+      <AssetDrawerView state={state} today={today} privacy={privacy} />
+    </section>
+  );
+}
+
+/** Shared native asset dialog used by Overview and assets first steps. */
+export function AssetDrawerView({
+  state,
+  today,
+  privacy,
+}: Pick<AssetsWidgetViewProps, "state" | "today" | "privacy">) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    if (state.open && !privacy && !element?.open) element?.showModal();
+    if (!state.open && element?.open) element.close();
+    if (privacy && element?.open) element.close();
+    if (privacy && state.open) state.close();
+  }, [state, privacy]);
+  const target = state.target;
+  const form = state.form;
+  const vehicle = target?.kind === "vehicle" || (target === null && form.type === "vehicle");
+  return (
+    <>
       {!privacy && (
         <dialog
           ref={dialog}
@@ -266,6 +279,6 @@ export function AssetsWidgetView({ state, today, baseCurrency, privacy }: Assets
           </form>
         </dialog>
       )}
-    </section>
+    </>
   );
 }

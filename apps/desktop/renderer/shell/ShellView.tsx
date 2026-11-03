@@ -88,9 +88,13 @@ export function ShellView({
               <button
                 key={id}
                 type="button"
-                disabled={id !== "budget" && !state.canOpenLegacy}
+                disabled={!["budget", "loans", "assets"].includes(id) && !state.canOpenLegacy}
                 aria-current={activeModule === id ? "page" : undefined}
-                title={state.canOpenLegacy ? undefined : S.legacyUnavailable}
+                title={
+                  state.canOpenLegacy || ["budget", "loans", "assets"].includes(id)
+                    ? undefined
+                    : S.legacyUnavailable
+                }
                 onClick={() => onLegacyOpened(id)}
                 className={`rounded-sm px-4 py-2 ${activeModule === id ? "bg-accent-muted text-accent" : "hover:bg-surface-sunken"}`}
               >
