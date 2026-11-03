@@ -12,24 +12,27 @@ import { produceBudgetMonthClose } from "./monthClose.ts";
 // a transfer to its own savings account (a matched pair left uncategorized), a cash leg mirroring an ATM withdrawal into
 // the pool; a savings balance before September. Profile 2 (base EUR, no rows). Invented values.
 const SEED = `
-INSERT INTO profiles VALUES (1, 'test-a', 'Test A', 'PLN', 'strict', NULL);
-INSERT INTO profiles VALUES (2, 'test-b', 'Test B', 'EUR', 'strict', NULL);
-INSERT INTO profile_modules VALUES (1, 'budget', 1, NULL), (1, 'investments', 1, NULL),
-  (2, 'budget', 1, NULL);
+INSERT INTO profiles VALUES (1, 'test-a', 'Test A', 'PLN', 'strict', '2026-01-01 00:00:00');
+INSERT INTO profiles VALUES (2, 'test-b', 'Test B', 'EUR', 'strict', '2026-01-01 00:00:00');
+INSERT INTO profile_modules VALUES (1, 'budget', 1, '2026-01-01 00:00:00'), (1, 'investments', 1, '2026-01-01 00:00:00'),
+  (2, 'budget', 1, '2026-01-01 00:00:00');
 INSERT INTO accounts VALUES
-  (1, 'mbank', 'Konto Test', '10000000000000000000000001', 'csv:1', 'PLN', 'checking', 1, NULL, 1, NULL),
-  (2, 'erste', 'Oszczednosci Test', '10000000000000000000000002', 'csv:2', 'PLN', 'savings', 1, NULL, 1, NULL),
-  (3, 'manual', 'Gotówka', NULL, 'cash:PLN', 'PLN', 'cash', 1, NULL, 1, NULL);
-INSERT INTO balances VALUES (1, 2, '2026-08-31', '1000.00', 'PLN', 'CSV', NULL);
-INSERT INTO transactions VALUES
-  (1, 1, '2026-07-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h1', 0, NULL, 0, 'subscriptions', 'keyword', NULL),
-  (2, 1, '2026-08-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h2', 0, NULL, 0, 'subscriptions', 'keyword', NULL),
-  (3, 1, '2026-09-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h3', 0, NULL, 0, 'subscriptions', 'keyword', 'NR 3'),
-  (4, 1, '2026-09-10', NULL, '5000.00', 'PLN', 'PRACODAWCA TEST', NULL, 'PENSJA', 'PENSJA', 'CSV', 'h4', 0, NULL, 0, 'income_salary', 'keyword', NULL),
-  (5, 1, '2026-09-11', NULL, '-500.00', 'PLN', NULL, '10000000000000000000000002', 'P', 'P', 'CSV', 'h5', 0, 'g1', 1, NULL, NULL, NULL),
-  (6, 2, '2026-09-11', NULL, '500.00', 'PLN', NULL, '10000000000000000000000001', 'P', 'P', 'CSV', 'h6', 0, 'g1', 1, NULL, NULL, NULL),
-  (7, 1, '2026-09-15', NULL, '-100.00', 'PLN', NULL, NULL, 'BANKOMAT', 'BANKOMAT', 'CSV', 'h7', 0, NULL, 0, 'cash_withdrawal', 'manual_txn', NULL),
-  (8, 3, '2026-09-15', NULL, '100.00', 'PLN', 'Wypłata gotówki', NULL, 'BANKOMAT', 'Wypłata gotówki', 'MANUAL', 'cashleg:7', 0, NULL, 0, 'cash_withdrawal', 'cash_leg', NULL);
+  (1, 'mbank', 'Konto Test', '10000000000000000000000001', 'csv:1', 'PLN', 'checking', 1, '2026-01-01 00:00:00', 1, NULL),
+  (2, 'erste', 'Oszczednosci Test', '10000000000000000000000002', 'csv:2', 'PLN', 'savings', 1, '2026-01-01 00:00:00', 1, NULL),
+  (3, 'manual', 'Gotówka', NULL, 'cash:PLN', 'PLN', 'cash', 1, '2026-01-01 00:00:00', 1, NULL);
+INSERT INTO balances VALUES (1, 2, '2026-08-31', '1000.00', 'PLN', 'CSV', '2026-08-31 00:00:00');
+INSERT INTO transactions (id, account_id, booking_date, value_date, amount, currency,
+  counterparty_name, counterparty_iban, description, reference, source, dedup_hash,
+  occurrence, transfer_group_id, is_internal_transfer, category, category_source,
+  bank_transaction_id, created_at) VALUES
+  (1, 1, '2026-07-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h1', 0, NULL, 0, 'subscriptions', 'keyword', NULL, '2026-07-07 00:00:00'),
+  (2, 1, '2026-08-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h2', 0, NULL, 0, 'subscriptions', 'keyword', NULL, '2026-08-07 00:00:00'),
+  (3, 1, '2026-09-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h3', 0, NULL, 0, 'subscriptions', 'keyword', 'NR 3', '2026-09-07 00:00:00'),
+  (4, 1, '2026-09-10', NULL, '5000.00', 'PLN', 'PRACODAWCA TEST', NULL, 'PENSJA', 'PENSJA', 'CSV', 'h4', 0, NULL, 0, 'income_salary', 'keyword', NULL, '2026-09-10 00:00:00'),
+  (5, 1, '2026-09-11', NULL, '-500.00', 'PLN', NULL, '10000000000000000000000002', 'P', 'P', 'CSV', 'h5', 0, 'g1', 1, NULL, NULL, NULL, '2026-09-11 00:00:00'),
+  (6, 2, '2026-09-11', NULL, '500.00', 'PLN', NULL, '10000000000000000000000001', 'P', 'P', 'CSV', 'h6', 0, 'g1', 1, NULL, NULL, NULL, '2026-09-11 00:00:00'),
+  (7, 1, '2026-09-15', NULL, '-100.00', 'PLN', NULL, NULL, 'BANKOMAT', 'BANKOMAT', 'CSV', 'h7', 0, NULL, 0, 'cash_withdrawal', 'manual_txn', NULL, '2026-09-15 00:00:00'),
+  (8, 3, '2026-09-15', NULL, '100.00', 'PLN', 'Wypłata gotówki', NULL, 'BANKOMAT', 'Wypłata gotówki', 'MANUAL', 'cashleg:7', 0, NULL, 0, 'cash_withdrawal', 'cash_leg', NULL, '2026-09-15 00:00:00');
 `;
 
 const STRATEGIES = (key: string): StrategyInputsByProfile =>
@@ -49,7 +52,7 @@ const STRATEGIES = (key: string): StrategyInputsByProfile =>
 
 describe("budget.analytics producer", () => {
   it("writes cashflow, spending, drill-down and recurring per profile and currency", () => {
-    const ds = syntheticDataset(SEED);
+    const ds = syntheticDataset(SEED, { schema: "genesis" });
     try {
       const out = withPythonDb(
         { dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot },
@@ -114,7 +117,7 @@ describe("budget.analytics producer", () => {
 
 describe("budget.month_close producer", () => {
   it("reads budget.json, values the cushion and compares the plan only with investments on", () => {
-    const ds = syntheticDataset(SEED);
+    const ds = syntheticDataset(SEED, { schema: "genesis" });
     ds.writeFile(
       "profiles/test-a/budget.json",
       JSON.stringify({ cushion: { enabled: true, target_amount: 3000, account_ids: [2] } }),

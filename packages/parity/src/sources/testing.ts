@@ -4,7 +4,7 @@
  * columns the readers select (the real schema has more). Invented values only.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -82,15 +82,30 @@ export interface SyntheticDataset {
 }
 
 /** A fresh dataset dir with the schema and `seed` SQL applied (WAL mode, like the app's database). */
-export function syntheticDataset(seed: string): SyntheticDataset {
+export function syntheticDataset(
+  seed: string,
+  options: { readonly schema?: "reader" | "genesis" } = {},
+): SyntheticDataset {
   const root = mkdtempSync(join(tmpdir(), "cashu-parity-source-"));
   const dir = join(root, "data");
   const runRoot = join(root, "runs");
   mkdirSync(dir);
   const db = new DatabaseSync(join(dir, "cashu.db"));
   db.exec("PRAGMA journal_mode = WAL");
-  db.exec(SCHEMA);
-  db.exec("INSERT INTO alembic_version VALUES ('0026_test')");
+  if (options.schema === "genesis") {
+    // Actual complete supported DDL, as in producers/store/determinism.test.ts. A reader-only
+    // miniature cannot be made a valid genesis source by merely changing its revision stamp.
+    db.exec(
+      readFileSync(
+        new URL("../../../store/src/genesis/testing/python-schema/0025.sql", import.meta.url),
+        "utf8",
+      ),
+    );
+    db.exec("INSERT INTO alembic_version VALUES ('0025_topic_view_sources')");
+  } else {
+    db.exec(SCHEMA);
+    db.exec("INSERT INTO alembic_version VALUES ('0026_test')");
+  }
   db.exec(seed);
   db.close();
   return {

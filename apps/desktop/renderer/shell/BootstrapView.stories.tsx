@@ -2,7 +2,7 @@ import { BootstrapView } from "./BootstrapView.js";
 export default {
   title: "Desktop/Bootstrap",
   component: BootstrapView,
-  args: { phase: "waiting", onRetried: () => {} },
+  args: { phase: "waiting" as const, onRetried: () => {} },
 };
 export const Waiting = {};
-export const Failed = { args: { phase: "failed" } };
+export const Failed = { args: { phase: "failed" as const } };

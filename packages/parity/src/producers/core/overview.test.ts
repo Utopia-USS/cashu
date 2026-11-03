@@ -9,33 +9,36 @@ import { dumps } from "../output.ts";
 import { produceOverview } from "./overview.ts";
 
 const SEED = `
-INSERT INTO profiles VALUES (1, 'test-b', 'Test B', 'PLN', 'strict', NULL);
-INSERT INTO profile_modules VALUES (1, 'budget', 1, NULL), (1, 'loans', 1, NULL),
-  (1, 'assets', 1, NULL), (1, 'investments', 1, NULL);
+INSERT INTO profiles VALUES (1, 'test-b', 'Test B', 'PLN', 'strict', '2025-01-01 00:00:00');
+INSERT INTO profile_modules VALUES (1, 'budget', 1, '2025-01-01 00:00:00'), (1, 'loans', 1, '2025-01-01 00:00:00'),
+  (1, 'assets', 1, '2025-01-01 00:00:00'), (1, 'investments', 1, '2025-01-01 00:00:00');
 INSERT INTO accounts VALUES
-  (1, 'mbank', 'Konto Test', NULL, 'csv:1', 'PLN', 'checking', 1, NULL, 1, NULL),
-  (2, 'pekao', 'Stare Konto', NULL, 'csv:2', 'PLN', 'checking', 1, NULL, 1, '2026-01-01 00:00:00'),
-  (3, 'manual', 'Kredyt Test', NULL, 'manual:kredyt', 'PLN', 'loan', 1, NULL, 1, NULL),
-  (4, 'manual', 'Dom Test', NULL, 'manual:dom', 'PLN', 'property', 1, NULL, 1, NULL),
-  (5, 'manual', 'Auto Test', NULL, 'manual:auto', 'PLN', 'vehicle', 1, NULL, 1, '2026-02-01 00:00:00'),
-  (6, 'xtb', 'Rachunek Test', NULL, 'xtb:1', 'PLN', 'brokerage', 1, NULL, 1, NULL);
+  (1, 'mbank', 'Konto Test', NULL, 'csv:1', 'PLN', 'checking', 1, '2025-01-01 00:00:00', 1, NULL),
+  (2, 'pekao', 'Stare Konto', NULL, 'csv:2', 'PLN', 'checking', 1, '2025-01-01 00:00:00', 1, '2026-01-01 00:00:00'),
+  (3, 'manual', 'Kredyt Test', NULL, 'manual:kredyt', 'PLN', 'loan', 1, '2025-01-01 00:00:00', 1, NULL),
+  (4, 'manual', 'Dom Test', NULL, 'manual:dom', 'PLN', 'property', 1, '2025-01-01 00:00:00', 1, NULL),
+  (5, 'manual', 'Auto Test', NULL, 'manual:auto', 'PLN', 'vehicle', 1, '2025-01-01 00:00:00', 1, '2026-02-01 00:00:00'),
+  (6, 'xtb', 'Rachunek Test', NULL, 'xtb:1', 'PLN', 'brokerage', 1, '2025-01-01 00:00:00', 1, NULL);
 INSERT INTO balances VALUES
-  (1, 1, '2026-09-01', '1000.00', 'PLN', 'CSV', NULL),
-  (2, 4, '2026-06-01', '500000', 'PLN', 'MANUAL', NULL);
-INSERT INTO loans (id, account_id, principal, annual_rate, term_months, start_date, updated_at)
-  VALUES (1, 3, '12000', '0', 24, '2025-01-01', '2026-01-01 00:00:00.000000');
-INSERT INTO transactions VALUES
+  (1, 1, '2026-09-01', '1000.00', 'PLN', 'CSV', '2026-09-01 00:00:00'),
+  (2, 4, '2026-06-01', '500000', 'PLN', 'MANUAL', '2026-06-01 00:00:00');
+INSERT INTO loans (id, account_id, principal, annual_rate, term_months, start_date, created_at, updated_at)
+  VALUES (1, 3, '12000', '0', 24, '2025-01-01', '2025-01-01 00:00:00', '2026-01-01 00:00:00.000000');
+INSERT INTO transactions (id, account_id, booking_date, value_date, amount, currency,
+  counterparty_name, counterparty_iban, description, reference, source, dedup_hash,
+  occurrence, transfer_group_id, is_internal_transfer, category, category_source,
+  bank_transaction_id, created_at) VALUES
   (1, 1, '2026-08-02', NULL, '-20.00', 'PLN', NULL, NULL, 'SKLEP TEST', NULL, 'CSV', 'h1', 0,
-   NULL, 0, 'other', 'default', NULL),
+   NULL, 0, 'other', 'default', NULL, '2026-08-02 00:00:00'),
   (2, 1, '2026-08-03', NULL, '3000.00', 'PLN', NULL, NULL, 'PENSJA TEST', NULL, 'CSV', 'h2', 0,
-   NULL, 0, 'salary', 'keyword', NULL);
+   NULL, 0, 'salary', 'keyword', NULL, '2026-08-03 00:00:00');
 `;
 
 type Tree = Record<string, Record<string, unknown>>;
 
 let ds: SyntheticDataset;
 beforeEach(() => {
-  ds = syntheticDataset(SEED);
+  ds = syntheticDataset(SEED, { schema: "genesis" });
 });
 afterEach(() => ds.dispose());
 
@@ -50,7 +53,7 @@ interface SetupOut {
   readonly state: string;
   readonly steps: { readonly status: string }[];
 }
-const setupOf = (p: Tree, key: string) => (p.setup ?? {})[key] as SetupOut;
+const setupOf = (p: Tree, key: string) => p.setup?.[key] as SetupOut;
 const stateOf = (p: Tree, key: string) => setupOf(p, key).state;
 const statuses = (p: Tree, key: string) => setupOf(p, key).steps.map((s) => s.status);
 

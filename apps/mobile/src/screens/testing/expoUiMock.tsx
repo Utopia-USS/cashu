@@ -7,9 +7,9 @@ function Container({ children, testID }: { children?: ReactNode; testID?: string
   return <View testID={testID}>{children}</View>;
 }
 
-export const Host = Container;
-export const Column = Container;
-export const Row = Container;
+const Host = Container;
+const Column = Container;
+const Row = Container;
 
 interface ItemProps {
   label: string;
@@ -37,9 +37,9 @@ function MockPicker({ selectedValue, onValueChange, enabled, children, testID }:
     </View>
   );
 }
-export const Picker = Object.assign(MockPicker, { Item: (_props: ItemProps) => null });
+const Picker = Object.assign(MockPicker, { Item: (_props: ItemProps) => null });
 
-export function Button({
+function Button({
   label,
   children,
   onPress,
@@ -64,3 +64,5 @@ export function Button({
     </Pressable>
   );
 }
+
+export default { Host, Column, Row, Picker, Button };

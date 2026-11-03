@@ -16,12 +16,12 @@
     "e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
+    "@cashu/domain": "workspace:*",
     "@cashu/host-protocol": "workspace:*",
     "@cashu/i18n": "workspace:*",
     "@cashu/node-host": "workspace:*",
     "@cashu/store": "workspace:*",
     "@cashu/store-react": "workspace:*",
-    "@cashu/domain": "workspace:*",
     "@cashu/ui": "workspace:*",
     "@cashu/ui-logic": "workspace:*",
     "@tanstack/react-router": "^1.0.0",
@@ -31,13 +31,13 @@
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
-    "electron": "45.1.0",
-    "rolldown": "1.2.16",
     "@tailwindcss/vite": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "^4.3.4",
     "babel-plugin-react-compiler": "^1.0.0",
+    "electron": "45.1.0",
+    "rolldown": "1.2.16",
     "vite": "^5.4.11"
   },
   "main": "dist/main.js",

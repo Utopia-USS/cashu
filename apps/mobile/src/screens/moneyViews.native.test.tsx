@@ -12,7 +12,7 @@ import moneyMeta, {
   Negative,
 } from "./money/MoneyView.stories";
 
-jest.mock("@expo/ui", () => require("./testing/expoUiMock"));
+jest.mock("@expo/ui", () => require("./testing/expoUiMock").default);
 
 const cases: [string, ComponentType<never>, object][] = [
   ["money multiple currencies", moneyMeta.component, MultipleCurrencies.args],

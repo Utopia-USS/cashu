@@ -24,5 +24,5 @@ function ControlsGallery({ empty = false }: { empty?: boolean }) {
 }
 
 export default { title: "Mobile/Native controls", component: ControlsGallery };
-export const RetainedHistory = {};
+export const RetainedHistory = { args: { empty: false } };
 export const Empty = { args: { empty: true } };

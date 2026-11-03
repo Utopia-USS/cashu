@@ -20,7 +20,7 @@ import Database from "better-sqlite3";
 import { createMoneyQueries, type MoneyQueryContext } from "../../services/moneyQueries";
 import type { Services } from "../../services/services";
 
-export const MONEY_VAULT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa261";
+const MONEY_VAULT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa261";
 export const MONEY_VAULT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbb262";
 const DEVICE = "ccccccccccccccccccccccccccccc263";
 export const MONEY_OWN_A = "PL10114000000000000000001234";

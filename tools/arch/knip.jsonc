@@ -33,6 +33,7 @@
       "entry": [
         "src/cli.ts",
         "src/testing/faultHost.ts",
+        "src/testing/seedOverviewDemo.ts",
         "src/sync/harness/main.ts",
         "src/sync/harness/crashHost.ts",
         "src/sync/testing/fakeCashu.ts"
@@ -40,8 +41,19 @@
       "project": ["src/**/*.ts"]
     },
     "apps/desktop": {
-      "entry": ["src/main.ts", "src/preload.cts", "scripts/*.mjs", "e2e/**/*.ts"],
-      "project": ["src/**/*.{ts,tsx,cts}", "scripts/**/*.mjs", "e2e/**/*.ts"],
+      "entry": [
+        "src/main.ts",
+        "src/preload.cts",
+        "renderer/main.tsx",
+        "scripts/*.mjs",
+        "e2e/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx,cts}",
+        "renderer/**/*.{ts,tsx}",
+        "scripts/**/*.mjs",
+        "e2e/**/*.ts"
+      ],
       // Loading its Playwright config would run prepareSpecs() (writes a spec tree); list e2e/ instead.
       "playwright": false,
       // macOS system tool the quit spec calls, not an npm package.

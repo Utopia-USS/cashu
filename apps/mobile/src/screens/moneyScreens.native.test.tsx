@@ -30,7 +30,7 @@ import {
 
 const mockPush = jest.fn();
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush }) }));
-jest.mock("@expo/ui", () => require("./testing/expoUiMock"));
+jest.mock("@expo/ui", () => require("./testing/expoUiMock").default);
 
 const closers: (() => void)[] = [];
 beforeEach(() => setLanguageForTests("en"));

@@ -34,7 +34,7 @@ const LegacyNavigation = createContext<{ allowed: boolean; open(tab: string): vo
 });
 
 /** TRANSITIONAL(S55z): unported SPA pages retain their own routes and deep-link search. */
-export function openLegacy(slug: string, tab: string) {
+function openLegacy(slug: string, tab: string) {
   const url = new URL("/", location.origin);
   url.searchParams.set("native", "1");
   url.hash = `/${encodeURIComponent(slug)}/${LEGACY_TABS[tab] ?? tab}`;
@@ -163,7 +163,7 @@ const search = z.object({
     .regex(/^[A-Z]{3}$/)
     .optional(),
 });
-export const overviewRoute = createRoute({
+const overviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/overview",
   validateSearch: (raw) => search.parse(raw),

@@ -3,15 +3,32 @@ import { UiEnvProvider } from "@cashu/ui";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import { useState } from "react";
 import type { PeriodChoice } from "../money-contracts";
+import meta, { Empty, RetainedHistory } from "./Controls.stories";
 import { CurrencyPicker } from "./CurrencyPicker";
 import { PeriodPicker } from "./PeriodPicker";
 
-jest.mock("@expo/ui", () => require("../testing/expoUiMock"));
+jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
 
 afterEach(() => {
   cleanup();
   setLanguageForTests("en");
 });
+
+it.each([RetainedHistory, Empty])(
+  "renders the actual controls CSF story with its supplied state",
+  async (story) => {
+    setLanguageForTests("en");
+    await render(
+      <UiEnvProvider privacy={false} locale="en-US">
+        <meta.component {...story.args} />
+      </UiEnvProvider>,
+    );
+    expect(screen.getByText("Currency")).toBeTruthy();
+    expect(screen.getByText("Period")).toBeTruthy();
+    if (story.args.empty) expect(screen.getByText("No currencies")).toBeTruthy();
+    else expect(screen.getByTestId("money-currency").props.selectedValue).toBe("PLN");
+  },
+);
 
 it("selects only a different currency supplied by the genuine hook contract", async () => {
   const changed = jest.fn();

@@ -8,7 +8,7 @@ import meta, {
   MultipleCategories,
 } from "./SpendingView.stories";
 
-jest.mock("@expo/ui", () => require("../testing/expoUiMock"));
+jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
 
 beforeEach(() => setLanguageForTests("en"));
 

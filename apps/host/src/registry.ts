@@ -25,8 +25,6 @@ export function servedQueries(
   ];
 }
 
-export const SERVED_QUERIES = servedQueries();
-
 export const SERVED_COMMANDS: readonly AnyCommand[] = [
   setCurrentVault,
   createProfile,
