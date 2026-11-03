@@ -38,6 +38,17 @@ it("serves genuine overview, suppresses unchanged cache wakes and releases exter
   try {
     const vault = [...host.stores.vaults.values()][0];
     if (vault === undefined) throw new Error("synthetic vault absent");
+    for (const oldId of [
+      "assets.addManualPosition",
+      "assets.setVehicle",
+      "assets.revalue",
+      "assets.setDepreciation",
+      "assets.setNote",
+      "core.removeAccount",
+      "core.restoreAccount",
+    ]) {
+      await expect(client.run(oldId, {}, { vault: vault.id })).rejects.toThrow("UnknownCommand");
+    }
     expect((await client.subscribe("core.legacyNavigation", vault.id)).first).toBe(false);
     const values = await client.subscribe("core.hero", vault.id, { today: "2026-10-01" });
     const summary = await client.subscribe("core.summary", vault.id, { today: "2026-10-01" });

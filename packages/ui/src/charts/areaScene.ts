@@ -98,14 +98,17 @@ export function areaScene(p: AreaChartProps, width: number, privacy: boolean): B
     });
   }
 
-  const summary = chartSummary(
-    p.label,
-    [
-      ...input.map((l) => seriesSummary(l.name, l.values, fmt, hidden)),
-      input.length > 1 ? seriesSummary(S.total, totals, fmt, hidden) : null,
-    ],
-    xLabels,
-  );
+  const summary =
+    !hidden && p.accessibleSummary !== undefined
+      ? chartSummary(p.label, [p.accessibleSummary], xLabels)
+      : chartSummary(
+          p.label,
+          [
+            ...input.map((l) => seriesSummary(l.name, l.values, fmt, hidden)),
+            input.length > 1 ? seriesSummary(S.total, totals, fmt, hidden) : null,
+          ],
+          xLabels,
+        );
   const scrub: Scrub | null =
     p.tooltip && n >= 2
       ? {

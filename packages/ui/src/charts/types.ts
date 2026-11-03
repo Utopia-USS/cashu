@@ -78,6 +78,8 @@ export interface AreaChartProps extends ChartBase {
   layers: AreaLayer[];
   /** The total line (default: the sum of the layers at each point). */
   totals?: number[];
+  /** Exact caller-provided summary when geometry uses approximate floating point values. */
+  accessibleSummary?: string;
   xLabels?: { i: number; text: string }[];
   yFormat?: (v: number) => string;
   valueKind?: ValueKind;

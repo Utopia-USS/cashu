@@ -2,11 +2,16 @@
 import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve, sep } from "node:path";
-import { D, parseDateTime } from "@cashu/domain";
-import { market, toCurrency } from "@cashu/domain/investments";
+import { budget, D, parseDateTime } from "@cashu/domain";
+import { asProfileId, market, toCurrency } from "@cashu/domain/investments";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, investmentsLocal, Store } from "@cashu/store";
 import { GENESIS_CHUNK, genesis } from "@cashu/store/genesis";
+import {
+  checkedProfileSlug,
+  loadStrategy,
+  type StrategyState,
+} from "@cashu/store/investments/services";
 import { assertUnchanged, copyRun, manifest, runFiles } from "../cli/genesis/copy.js";
 import { initKeys, readKeys } from "../cli/genesis/keys.js";
 import { startLocalHost } from "../host.js";
@@ -53,11 +58,50 @@ if (process.argv[2] === "rename") {
   } finally {
     client.close();
   }
+} else if (process.argv[2] === "cross-profile") {
+  const keys = readKeys(join(target, "overview-demo-keys.json"));
+  const owner = keys.get("demo-anna")?.vault;
+  const other = keys.get("demo-piotr")?.vault;
+  if (owner === undefined || other === undefined || owner === other)
+    throw new Error("synthetic vault pair is absent");
+  const client = await storeClient(target);
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const before = await client.subscribe("core.overviewAssets", other, { today });
+    const created = await client.run(
+      "assets.createOverviewAsset",
+      {
+        name: "Synthetic drawer scope",
+        type: "property",
+        value: "1",
+        currency: "PLN",
+        onDate: today,
+      },
+      { vault: owner },
+    );
+    if (!created.ok) throw new Error("synthetic scoped asset create refused");
+    const account = (created.value as { account?: unknown }).account;
+    if (typeof account !== "string") throw new Error("synthetic asset identity absent");
+    const crossed = await client.run(
+      "assets.updateDetails",
+      { account, value: "2", onDate: today },
+      { vault: other },
+    );
+    if (crossed.ok || crossed.reason !== "no_asset")
+      throw new Error("cross-profile asset edit was not refused");
+    const after = await client.subscribe("core.overviewAssets", other, { today });
+    if (JSON.stringify(before.first) !== JSON.stringify(after.first) || before.values.length !== 1)
+      throw new Error("foreign vault view changed");
+    process.stdout.write("scoped drawer commands: pass\n");
+  } finally {
+    client.close();
+  }
 } else if (process.argv[2] === "serve") {
   if (!existsSync(cachePath)) throw new Error("synthetic overview cache is absent");
   const driver = openNodeSqlite(cachePath);
   const prices = new investmentsLocal.SqlPriceCache(driver);
   const imported = readKeys(join(target, "overview-demo-keys.json"));
+  const strategies = new Map<string, StrategyState>();
   const host = await startLocalHost({
     dataDir: target,
     home: process.env.HOME,
@@ -67,8 +111,61 @@ if (process.argv[2] === "rename") {
       prices,
       changes: prices,
       legacyIdentity: (vault, slug) => imported.get(slug)?.vault === vault,
+      sources: {
+        plannedContribution: (read) => {
+          const vault = read<{ gid: string }>("SELECT gid FROM profiles")[0]?.gid;
+          const strategy = vault === undefined ? null : (strategies.get(vault) ?? null);
+          return strategy === null
+            ? null
+            : budget.plannedContribution(strategy.state, strategy.config);
+        },
+        investmentRequest: (read, context) => {
+          const vault = read<{ gid: string }>("SELECT gid FROM profiles")[0]?.gid;
+          const strategy = vault === undefined ? null : (strategies.get(vault) ?? null);
+          if (vault === undefined || strategy === null || context.prices === null) return null;
+          return {
+            vault: asProfileId(vault),
+            asOf: context.today,
+            lang: context.lang,
+            strategy,
+            prices: context.prices,
+            forOwner: true,
+            newestRateDate: null,
+            clock: {
+              now: parseDateTime(new Date().toISOString()),
+              today: context.today,
+              timeZone: "Europe/Warsaw",
+            },
+          };
+        },
+      },
     },
   });
+  const copied = runFiles(target);
+  for (const [slug, key] of imported) {
+    if (checkedProfileSlug(slug) === null) throw new Error("invalid synthetic profile segment");
+    const vault = host.stores.vaults.get(key.vault);
+    if (vault === undefined) throw new Error("synthetic strategy vault is absent");
+    strategies.set(
+      key.vault,
+      await loadStrategy(vault.store, {
+        read: async (name) => {
+          const bytes = copied.read(`profiles/${slug}/${name}`);
+          return bytes === undefined
+            ? null
+            : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+                .decode(bytes)
+                .replaceAll("\r\n", "\n")
+                .replaceAll("\r", "\n");
+        },
+        write: async () => {
+          throw new Error("synthetic strategy reader is read-only");
+        },
+        exists: async (name) => copied.read(`profiles/${slug}/${name}`) !== undefined,
+      }),
+    );
+  }
+  writeFileSync(join(target, "overview-ready"), "ok\n", { mode: 0o600, flag: "wx" });
   process.once("SIGTERM", () => {
     void host.stop();
   });

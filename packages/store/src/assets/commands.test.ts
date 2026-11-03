@@ -5,7 +5,14 @@ import { describe, expect, it } from "vitest";
 import { createProfile, removeAccount } from "../core/commands.js";
 import { run, testEnv } from "../testing/commands.js";
 import { openTestStore } from "../testing/store.js";
-import { addManualPosition, cleanNote, revalue, setDepreciation, setNote } from "./commands.js";
+import {
+  addManualPosition,
+  cleanNote,
+  revalue,
+  setDepreciation,
+  setNote,
+  updateAssetDetails,
+} from "./commands.js";
 
 function setup() {
   const store = openTestStore();
@@ -15,6 +22,39 @@ function setup() {
 }
 
 describe("assets commands", () => {
+  it("edits valuation and note in one append, and refuses an invalid note without an append", () => {
+    const { store, env } = setup();
+    const opened = run(store, env, addManualPosition, {
+      name: "Synthetic home",
+      type: "property",
+      value: "100",
+      note: "before",
+    });
+    if (!opened.ok) throw new Error("synthetic asset refused");
+    const before = store.read("SELECT COUNT(*) AS n FROM event_log")[0];
+    expect(
+      run(store, env, updateAssetDetails, {
+        account: opened.value.account,
+        value: "110",
+        note: "x".repeat(501),
+      }),
+    ).toEqual({ ok: false, reason: "note_too_long" });
+    expect(store.read("SELECT COUNT(*) AS n FROM event_log")[0]).toEqual(before);
+    const edited = run(store, env, updateAssetDetails, {
+      account: opened.value.account,
+      value: "110",
+      onDate: "2026-11-01",
+      note: "after",
+    });
+    expect(edited.ok && edited.events.map((event) => event.type)).toEqual([
+      "balance.recorded",
+      "assetDetails.noteSet",
+    ]);
+    expect(store.read("SELECT amount FROM balances WHERE date = '2026-11-01'")).toEqual([
+      { amount: "110" },
+    ]);
+    expect(store.read("SELECT note FROM asset_details")).toEqual([{ note: "after" }]);
+  });
   it("a position: account + manual balance (today) + note; the same name updates it", () => {
     const { store, env } = setup();
     const a = run(store, env, addManualPosition, {

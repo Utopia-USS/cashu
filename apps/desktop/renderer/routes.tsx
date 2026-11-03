@@ -13,6 +13,9 @@ import { createContext, startTransition, use, useEffect, useRef } from "react";
 import { z } from "zod";
 import { S } from "./Desktop.strings.js";
 import { OverviewView } from "./screens/overview/OverviewView.js";
+import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
+import { useCashDrawer } from "./screens/overview/useCashDrawer.js";
+import { useInvestmentPlan } from "./screens/overview/useInvestmentPlan.js";
 import { useOverviewScreen } from "./screens/overview/useOverviewScreen.js";
 import { resolveProfileRoute } from "./shell/profileRoute.js";
 import { ProfileRouteSync } from "./shell/profileRouteSync.js";
@@ -180,12 +183,35 @@ function OverviewRoute() {
   const { currency } = overviewRoute.useSearch();
   const { slug } = overviewRoute.useParams();
   const vault = useProfile();
+  return <OverviewBound key={vault} vault={vault} slug={slug} currency={currency} />;
+}
+
+/** A profile switch discards drawer drafts before commands can bind to the newly selected vault. */
+function OverviewBound({
+  vault,
+  slug,
+  currency,
+}: {
+  vault: string;
+  slug: string;
+  currency?: string;
+}) {
   const legacy = use(LegacyNavigation);
   const today = useCalendarDay();
-  const state = useOverviewScreen({ today, ...(currency === undefined ? {} : { currency }) });
+  const state = useOverviewScreen({
+    today,
+    vault,
+    ...(currency === undefined ? {} : { currency }),
+  });
+  const cash = useCashDrawer();
+  const assets = useAssetDrawer(today, state.net?.currency ?? state.currency);
+  const investmentPlan = useInvestmentPlan(state.investment, today);
   return (
     <OverviewView
       state={state}
+      cash={cash}
+      assets={assets}
+      investmentPlan={investmentPlan}
       canOpenLegacy={legacy.allowed}
       onCurrencyPicked={(next) =>
         startTransition(() => {

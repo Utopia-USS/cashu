@@ -5,8 +5,14 @@ export {
   revalue,
   setDepreciation,
   setNote,
+  updateAssetDetails,
 } from "./assets/commands.js";
 export { assetsModule } from "./assets/index.js";
+export {
+  createOverviewAsset,
+  removeOverviewAsset,
+  restoreOverviewAsset,
+} from "./assets/overview.js";
 export { setVehicle, vehicleAccount } from "./assets/vehicle.js";
 export {
   addCashExpense,
@@ -96,6 +102,7 @@ export {
   metaGateStateStore,
 } from "./hlc.js";
 export * as investmentsCommands from "./investments/commands/index.js";
+export { cancelPlannedDeposit, createPlannedDeposit } from "./investments/commands/planned.js";
 export { investmentsModule } from "./investments/index.js";
 export * as investmentsLocal from "./investments/local/index.js";
 export * as investmentsPerformance from "./investments/performance/index.js";

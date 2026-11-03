@@ -1,11 +1,12 @@
 // One atomic vehicle write, including the valuation Python computes before its session commits.
 import { assets, D } from "@cashu/domain";
 import { z } from "zod";
-import { defineCommand, ok } from "../command.js";
+import { defineCommand, ok, refuse } from "../command.js";
 import { decimalInput, ensureAccount } from "../core/commands.js";
 import { accountByExternalKey, accountByGid, profileOf } from "../core/queries.js";
 import { calendarDate } from "../events/v1/primitives.js";
 import type { Read } from "../query.js";
+import { cleanNote, emitNote } from "./commands.js";
 
 /** The live account holding this vehicle name; a removed holder starts a new account. */
 export function vehicleAccount(read: Read, name: string) {
@@ -27,8 +28,11 @@ export const setVehicle = defineCommand({
       .optional(),
     /** The caller's local calendar date; the event clock is UTC. */
     asOf: calendarDate,
+    note: z.string().nullable().optional(),
   }),
   run(ctx, input) {
+    const note = cleanNote(input.note);
+    if (note === "too_long") return refuse("note_too_long");
     // An invalid curve must not leave a newly created account or replace existing terms.
     const value = assets.depreciatedValue(
       D(input.purchasePrice),
@@ -51,6 +55,7 @@ export const setVehicle = defineCommand({
       annualRate: input.annualRate,
       floor: input.floor ?? null,
     });
+    if (input.note !== undefined) emitNote(ctx, account.gid, note);
     return ok({
       account: account.gid,
       created: account.created,
