@@ -1,9 +1,12 @@
 /** Actual store mutation and derived-state proofs; synthetic profiles only. */
-import { asProfileId, market } from "@cashu/domain/investments";
+import { parseDateTime } from "@cashu/domain";
+import { asInstrumentId, asProfileId, market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
+import { defineCommand, ok } from "../../command.js";
 import { createProfile } from "../../core/commands.js";
 import { createInstrument, setInstrumentPlan } from "../commands/instruments.js";
 import { createThesis } from "../commands/journal.js";
+import { applyPlanChecks } from "../commands/planSignals.js";
 import { addToWatchlist } from "../commands/watchlist.js";
 import { allInstruments, loadInstrument } from "../queries/instruments.js";
 import { theses } from "../queries/journal.js";
@@ -12,6 +15,7 @@ import { added, investor, TODAY } from "../research/testing/fixtures.js";
 import { portfolioAt } from "../views/portfolio.js";
 import {
   addStoredWatchWithPlans,
+  addWatchWithPlans,
   recommendWithPlans,
   removeWatchWithPlans,
   upsertThesisWithPlans,
@@ -51,6 +55,77 @@ async function fixture() {
   return { ...h, inputs };
 }
 describe("MCP local investment mutation composition", () => {
+  it("keeps a new watched instrument and its prospective plan signal in one real batch", async () => {
+    const h = await fixture();
+    const planned = {
+      name: "Synthetic pending listing",
+      currency: "PLN",
+      assetClass: "equity",
+      symbol: "NEWP",
+      mic: "XWAR",
+      needsClassification: true,
+      aliases: [{ namespace: "yahoo", value: "NEWP.WA", guessed: false }],
+    };
+    const base = h.v.run(addWatchWithPlans(h.inputs), {
+      target: { planned, yahooSymbol: "NEWP.WA" },
+      source: "user",
+    });
+    expect(base.ok).toBe(true);
+    if (!base.ok) return;
+    expect(base.value.createdInstrument).toBe(true);
+    expect(loadInstrument(h.read, base.value.instrument)?.id).toBe(base.value.instrument);
+
+    const prospective = defineCommand({
+      id: "test.pendingPlanSignal",
+      input: addToWatchlist.input,
+      run(ctx, input) {
+        const saved = addToWatchlist.run(ctx, input);
+        if (!saved.ok) return saved;
+        const id = asInstrumentId(saved.value.instrument);
+        const derived = applyPlanChecks(ctx, {
+          facts: [
+            {
+              instrumentId: id,
+              label: "Synthetic pending thesis",
+              symbol: "NEWQ",
+              plan: "buy",
+              health: "invalidated",
+              hasExitPlan: true,
+              unrealized: null,
+              held: false,
+            },
+          ],
+          now: parseDateTime(ctx.now()),
+          run: null,
+          config: h.inputs.config,
+          lang: "en",
+          only: id,
+          pendingCanonical: new Set([id]),
+        });
+        return derived.ok ? ok(saved.value) : derived;
+      },
+    });
+    const out = h.v.run(prospective, {
+      target: {
+        planned: {
+          ...planned,
+          symbol: "NEWQ",
+          aliases: [{ namespace: "yahoo", value: "NEWQ.WA", guessed: false }],
+        },
+        yahooSymbol: "NEWQ.WA",
+      },
+      source: "user",
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.events.map((event) => event.type)).toContain("signal.opened");
+    expect(
+      openSignals(h.read).some(
+        (signal) =>
+          signal.instrument === out.value.instrument && signal.ruleId === "plan:plan_vs_thesis",
+      ),
+    ).toBe(true);
+  });
   it("refuses incomplete or duplicate coverage before any recommendation changes", async () => {
     const h = await fixture(),
       before = allInstruments(h.read).map((i) => [i.id, i.plan]);

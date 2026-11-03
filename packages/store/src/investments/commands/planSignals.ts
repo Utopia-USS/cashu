@@ -22,15 +22,18 @@ export interface PlanPassInput {
   readonly config: StrategyConfig | null;
   readonly lang: "pl" | "en";
   readonly only?: InstrumentId;
+  /** Canonical instrument created earlier in this same command batch, captured from its real effect. */
+  readonly pendingCanonical?: ReadonlySet<InstrumentId>;
 }
 export function applyPlanChecks(ctx: CommandContext, input: PlanPassInput) {
   if (!ctx.lease.isHolder()) return refuse("not_leader");
-  if (input.only !== undefined && instrumentGid(ctx.read, input.only) !== input.only)
-    return refuse("invalid_identity");
+  const canonical = (id: InstrumentId) =>
+    instrumentGid(ctx.read, id) === id || input.pendingCanonical?.has(id) === true;
+  if (input.only !== undefined && !canonical(input.only)) return refuse("invalid_identity");
   if (
     input.facts.some(
       (fact) =>
-        instrumentGid(ctx.read, fact.instrumentId) !== fact.instrumentId ||
+        !canonical(fact.instrumentId) ||
         (input.only !== undefined && fact.instrumentId !== input.only),
     )
   )

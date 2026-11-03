@@ -1,5 +1,5 @@
 /** Live owner surfaces stay readable even when valuation or current-file authority is unavailable. */
-import { parseDateTime } from "@cashu/domain";
+import { parseDateTime, utcIso } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
 import { alerts as alertDomain, asProfileId } from "@cashu/domain/investments";
 import { enabledModuleIds } from "../../core/queries.js";
@@ -8,6 +8,7 @@ import {
   type CurrentStrategySource,
   combinedChanges,
   type InvestmentMarketSource,
+  type InvestmentScreenClock,
   investmentInstrumentDto,
   investmentPositionDto,
 } from "../desktop/sources.js";
@@ -27,6 +28,9 @@ import { readSignalRows } from "./reads.js";
 export interface SignalsScreenSources {
   readonly strategy?: CurrentStrategySource;
   readonly market?: InvestmentMarketSource;
+  readonly clock?: InvestmentScreenClock & {
+    readonly changes: import("../../query.js").ChangeSource;
+  };
 }
 export type SignalsArgs = {
   readonly now: string;
@@ -87,12 +91,16 @@ export function signalsQueries(sources: SignalsScreenSources = {}) {
         ...[
           ...(sources.strategy ? [sources.strategy.changes] : []),
           ...(sources.market ? [sources.market.changes] : []),
+          ...(sources.clock ? [sources.clock.changes] : []),
         ],
       ),
       run(read, args: SignalsArgs) {
         if (args.privacy) return { status: "unavailable" as const, reason: "privacy" };
         if (!enabledModuleIds(read).has("investments"))
           return { status: "unavailable" as const, reason: "module_disabled" };
+        const instant = sources.clock?.current();
+        const now = instant === undefined ? args.now : utcIso(instant.now);
+        const effectiveArgs = { ...args, now, timeZone: instant?.timeZone ?? args.timeZone };
         const journal = decisions(read);
         const links = decisionSignalGids(
           read,
@@ -101,10 +109,11 @@ export function signalsQueries(sources: SignalsScreenSources = {}) {
         const instruments = loadInstruments(read, vaultInstrumentGids(read));
         return {
           status: "ready" as const,
-          signals: readSignalRows(read, args.now, "all"),
-          open: readSignalRows(read, args.now, "open"),
-          alerts: readAlertRows(read, args.now, args.today, sources.market?.current(read) ?? null),
-          counts: alertCounts(read, args.now),
+          asOf: now,
+          signals: readSignalRows(read, now, "all"),
+          open: readSignalRows(read, now, "open"),
+          alerts: readAlertRows(read, now, args.today, sources.market?.current(read) ?? null),
+          counts: alertCounts(read, now),
           catalog: alertDomain.catalogDicts(),
           decisions: journal.map((row) => ({ ...row, signals: links.get(row.gid) ?? [] })),
           accounts: brokerageAccounts(read),
@@ -113,7 +122,7 @@ export function signalsQueries(sources: SignalsScreenSources = {}) {
           watchlist: watchlist(read),
           held: [...heldSince(read, args.today).keys()],
           lastRun: lastRun(read) ?? null,
-          context: valuationContext(read, args, sources),
+          context: valuationContext(read, effectiveArgs, sources),
         };
       },
     }),

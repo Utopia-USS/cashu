@@ -1,0 +1,278 @@
+/** Synthetic presentation fixtures only. Stories never connect to a vault or host. */
+import { D, toCurrency } from "@cashu/domain";
+import { alerts, asInstrumentId, instrument as makeInstrument } from "@cashu/domain/investments";
+import type { ReadySignals, SignalRow } from "@cashu/store/investments/signals-screen";
+import { useForm } from "@tanstack/react-form";
+import { signalGroups } from "./presentation.js";
+import type { SignalsScreenState } from "./useSignalsScreen.js";
+
+const now = "2026-11-03T12:00:00Z";
+const instrument = "00000000-0000-8000-8000-000000000101";
+const episode = "00000000-0000-8000-8000-000000000102";
+const alertId = "00000000-0000-8000-8000-000000000103";
+const decisionId = "00000000-0000-8000-8000-000000000104";
+const itemId = "00000000-0000-8000-8000-000000000105";
+const syntheticInstrument = makeInstrument({
+  id: asInstrumentId(instrument),
+  name: "Synthetic instrument",
+  currency: toCurrency("PLN"),
+  assetClass: "equity",
+  symbol: "SYN",
+});
+
+const signal: SignalRow = {
+  gid: episode,
+  ruleId: `alert:${alertId}`,
+  kind: "alert:price_above",
+  dedupKey: "synthetic",
+  severity: "action",
+  polarity: "positive",
+  status: "active",
+  message: "Synthetic price crossed 148 PLN",
+  instrument,
+  account: null,
+  payload: {
+    alert_kind: "price_above",
+    close: "148.625",
+    currency: "PLN",
+    title: "Synthetic price alert",
+  },
+  firstSeenAt: now,
+  lastSeenAt: now,
+  createdRun: null,
+  lastRun: null,
+  acknowledgedAt: null,
+  closedAt: null,
+  snoozedUntil: null,
+  source: "alert",
+  instrumentLabel: "SYN",
+  messageCode: null,
+  messageParams: null,
+  alert: alertId,
+  note: null,
+  snoozed: false,
+  current: true,
+  decisions: [],
+};
+const decision = {
+  gid: decisionId,
+  signal: episode,
+  signals: [episode],
+  instrument,
+  account: null,
+  action: "held",
+  quantity: null,
+  price: null,
+  currency: null,
+  reason: "Review next week",
+  createdAt: now,
+};
+const alert = {
+  gid: alertId,
+  instrument,
+  scope: "instrument",
+  kind: "price_above",
+  params: { level: "145" },
+  polarity: "positive",
+  severity: "action",
+  title: "Synthetic price alert",
+  note: null,
+  tag: null,
+  source: "user",
+  createdBy: "app",
+  status: "triggered",
+  cooldownDays: 14,
+  expiresAt: null,
+  snoozedUntil: null,
+  lastTriggeredAt: now,
+  lastCheckedAt: now,
+  lastValue: "148.625",
+  createdAt: now,
+  updatedAt: now,
+  deletedAt: null,
+  instrumentDetail: syntheticInstrument,
+  unit: "price",
+  state: null,
+  stateUnavailable: false,
+  signal: {
+    gid: episode,
+    status: "active",
+    message: signal.message,
+    messageCode: null,
+    messageParams: null,
+    firstSeenAt: now,
+  },
+};
+const watch = {
+  id: itemId,
+  instrument_id: instrument,
+  instrument: {
+    id: instrument,
+    name: "Synthetic instrument",
+    symbol: "SYN",
+    currency: "PLN",
+    plan: "buy",
+    plan_freshness: { state: "fresh" },
+  },
+  note: "Synthetic watch note",
+  tags: ["demo"],
+  source: "user",
+  added_at: now,
+  held: false,
+  price_source: true,
+  price: {
+    close: D("148.625"),
+    date: "2026-11-03",
+    currency: "PLN",
+    stale: false,
+    change_1d: 0.012,
+    change_1m: 0.038,
+    high_52w: D("151"),
+    high_52w_date: "2026-10-31",
+    from_high_52w: -0.016,
+    bars: 30,
+  },
+  closes_30d: [
+    { date: "2026-10-31", close: D("143") },
+    { date: "2026-11-03", close: D("148.625") },
+  ],
+  alerts: { count: 1, live: 1, triggered: 1, nearest: null },
+  research_unread: 0,
+  hints: [],
+};
+
+export function signalsStorySnapshot(): ReadySignals {
+  return {
+    status: "ready",
+    asOf: now,
+    signals: [signal],
+    open: [signal],
+    alerts: [alert],
+    counts: { active: 0, triggered: 1, snoozed: 0, muted: 0, expired: 0, agentLive: 0 },
+    catalog: alerts.catalogDicts(),
+    decisions: [decision],
+    accounts: [],
+    instruments: [syntheticInstrument],
+    theses: [],
+    watchlist: [
+      {
+        gid: itemId,
+        instrument,
+        note: watch.note,
+        tags: watch.tags,
+        source: "user",
+        addedAt: now,
+        removedAt: null,
+      },
+    ],
+    held: [],
+    lastRun: {
+      gid: "00000000-0000-8000-8000-000000000106",
+      trigger: "scheduled",
+      asOf: "2026-11-03",
+      status: "partial",
+      strategyVersion: null,
+      stats: {},
+      errors: [],
+      report: {},
+      startedAt: now,
+      finishedAt: now,
+    },
+    context: {
+      status: "ready",
+      revision: "synthetic",
+      positions: { positions: [] },
+      allocation: {
+        buckets: [
+          { bucket_id: "equity", generic: true, value: D("1000"), target: 0.6, drift_pp: 1 },
+        ],
+      },
+      overview: { base_currency: "PLN", kpis: { value: { total: D("1000") } } },
+      watchlist: [watch],
+      contributionDay: 10,
+    } as unknown as ReadySignals["context"],
+  } as ReadySignals;
+}
+
+export function useSignalsStoryState(privacy = false): SignalsScreenState {
+  const data = privacy ? null : signalsStorySnapshot();
+  const decisionForm = useForm({
+    defaultValues: {
+      action: "held",
+      account: "",
+      quantity: "",
+      price: "",
+      currency: "",
+      reason: "",
+    },
+    onSubmit: () => {},
+  });
+  const groups = data ? signalGroups(data.open, data.held, "all") : [];
+  return {
+    data,
+    privacy,
+    today: "2026-11-03",
+    groups,
+    filter: "all",
+    cursor: episode,
+    dialogOpen: false,
+    selected: null,
+    selectedGroup: null,
+    decisionForm,
+    decisionValues: decisionForm.state.values,
+    suggestion: {
+      choice: "none",
+      quantity: null,
+      quantityUnavailable: null,
+      price: null,
+      currency: "PLN",
+    },
+    estimate: null,
+    busy: false,
+    notice: null,
+    refusal: null,
+    undoIds: [],
+    undoSnooze: null,
+    alertStatus: "all",
+    alertSource: "all",
+    shownAlerts: data?.alerts ?? [],
+    editingAlert: null,
+    removedAlert: null,
+    history: data?.signals ?? [],
+    journal: data?.signals ?? [],
+    journalDecisions: data?.decisions ?? [],
+    journalFilter: "all",
+    journalInstrument: "",
+    searchText: "",
+    searchResult: null,
+    searchBusy: false,
+    removedWatch: null,
+    next: "2026-11-10",
+    options: {},
+    setDialogOpen() {},
+    setFilter() {},
+    setCursor() {},
+    setSelectedGroup() {},
+    setAlertStatus() {},
+    setAlertSource() {},
+    setEditingAlert() {},
+    setJournalFilter() {},
+    setJournalInstrument() {},
+    setSearchText() {},
+    async undoDecisions() {},
+    async undoOne() {},
+    async snooze() {},
+    acknowledgeGroup() {},
+    async run() {},
+    async addWatch() {
+      return false;
+    },
+    async removeWatch() {},
+    async restoreWatch() {},
+    async saveAlert() {},
+    async removeAlert() {},
+    async restoreDeletedAlert() {},
+    async setAlertState() {},
+    exportHistory() {},
+  } as SignalsScreenState;
+}

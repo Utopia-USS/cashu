@@ -1,6 +1,6 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
 import { Amount, BarChart, DateText, Donut, LineChart, Money, Percent, Sparkline } from "@cashu/ui";
-import { useRef } from "react";
+import { type ReactNode, useRef } from "react";
 import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { I } from "./Portfolio.strings.js";
 import type { PortfolioScreenState } from "./usePortfolioScreen.js";
@@ -11,7 +11,13 @@ const card = "rounded-lg border border-border bg-surface-raised p-4";
 const ratio = (value: number | null) => (value === null ? null : D(String(value)));
 
 /** Native portfolio composition; financial results arrive already computed from the tracked query. */
-export function PortfolioView({ state }: { state: PortfolioScreenState }) {
+export function PortfolioView({
+  state,
+  homeRail,
+}: {
+  state: PortfolioScreenState;
+  homeRail?: ReactNode;
+}) {
   const data = state.portfolio;
   return (
     <main className="grid gap-6 p-6" data-testid="native-portfolio">
@@ -70,6 +76,7 @@ export function PortfolioView({ state }: { state: PortfolioScreenState }) {
           ))}
         </select>
       </label>
+      {homeRail}
       {data.status !== "ready" ? (
         <section className={card}>
           <p>{data.accounts.length === 0 ? I.empty : I.unavailable}</p>

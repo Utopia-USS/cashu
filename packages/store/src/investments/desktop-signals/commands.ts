@@ -1,9 +1,15 @@
 /** Closed owner command list; evaluation authority is neither required nor acquired here. */
 import { type Command, refuse } from "../../command.js";
 import { enabledModuleIds } from "../../core/queries.js";
-import { deleteAlert, restoreAlert } from "../commands/alertWrites.js";
+import {
+  createAlertWithBuckets,
+  deleteAlert,
+  restoreAlert,
+  updateAlertWithBuckets,
+} from "../commands/alertWrites.js";
 import { acknowledgeSignal, decidePosition, decideSignal } from "../commands/decisions.js";
 import { undoDecision } from "../commands/journal.js";
+import type { CurrentStrategySource } from "../desktop/sources.js";
 
 function ownerCommand<I, R, In>(command: Command<I, R, In>): Command<I, R, In> {
   return {
@@ -24,3 +30,27 @@ export const signalsOwnerCommands = {
   deleteAlert: ownerCommand(deleteAlert),
   restoreAlert: ownerCommand(restoreAlert),
 };
+
+/** The current file image supplies generic bucket authority at command execution time. */
+export function signalsAlertCommands(strategy?: CurrentStrategySource) {
+  const currentBuckets = (read: Parameters<CurrentStrategySource["current"]>[0]) => {
+    const image = strategy?.current(read);
+    if (image === undefined || image.status !== "current") return null;
+    const buckets = image.state.config?.allocation.buckets ?? [];
+    return new Set(buckets.map((bucket) => bucket.id));
+  };
+  return {
+    create: ownerCommand(
+      (() => {
+        const source = createAlertWithBuckets(currentBuckets);
+        return {
+          ...source,
+          run(ctx: Parameters<typeof source.run>[0], input: Parameters<typeof source.run>[1]) {
+            return source.run(ctx, { ...input, source: "user", createdBy: "app" });
+          },
+        };
+      })(),
+    ),
+    update: ownerCommand(updateAlertWithBuckets(currentBuckets)),
+  };
+}

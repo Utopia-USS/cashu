@@ -12,6 +12,7 @@ import { loadStrategy } from "@cashu/domain/investments/strategy";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
 import { gid, timestamp } from "../../events/v1/primitives.js";
+import type { Read } from "../../query.js";
 import { type AlertMutation, alertMutation } from "../queries/alertMutation.js";
 import { alertByGid, LIVE_ALERT_STATUSES, liveAgentAlerts } from "../queries/alerts.js";
 import { vaultInstrumentGids } from "../queries/instruments.js";
@@ -47,19 +48,24 @@ function choice(value: unknown, fallback: string, choices: readonly string[]): s
   if (typeof value !== "string" || !choices.includes(value)) throw new TypeError("invalid choice");
   return value;
 }
+type KnownBuckets = ReadonlySet<string> | ((read: Read) => ReadonlySet<string> | null);
 function validBuckets(
   ctx: CommandContext,
   refs: readonly string[],
-  known?: ReadonlySet<string>,
-): boolean {
+  known?: KnownBuckets,
+): true | "unknown_bucket" | "current_files_unavailable" {
   if (!refs.length) return true;
-  if (known !== undefined) return refs.every((ref) => known.has(ref));
+  if (known !== undefined) {
+    const current = typeof known === "function" ? known(ctx.read) : known;
+    if (current === null) return "current_files_unavailable";
+    return refs.every((ref) => current.has(ref)) ? true : "unknown_bucket";
+  }
   const stored = latestStrategyVersion(ctx.read);
-  if (stored === undefined) return false;
+  if (stored === undefined) return "unknown_bucket";
   const result = loadStrategy(stored.yamlText, stored.mdText);
   const config = result.config ?? result.partial;
   const storedKnown = new Set(config?.allocation.buckets.map((bucket) => bucket.id) ?? []);
-  return refs.every((ref) => storedKnown.has(ref));
+  return refs.every((ref) => storedKnown.has(ref)) ? true : "unknown_bucket";
 }
 const createInput = z.strictObject({
   kind: z.string(),
@@ -78,8 +84,8 @@ const createInput = z.strictObject({
   createdBy: z.string().min(1).default("app"),
 });
 
-export function createAlertWithBuckets(known?: ReadonlySet<string>) {
-  const buckets = known === undefined ? undefined : new Set(known);
+export function createAlertWithBuckets(known?: KnownBuckets) {
+  const buckets = known === undefined || typeof known === "function" ? known : new Set(known);
   return defineCommand({
     id: "investments.createAlert",
     input: createInput,
@@ -99,7 +105,8 @@ export function createAlertWithBuckets(known?: ReadonlySet<string>) {
           (instrument !== null && !vaultInstrumentGids(ctx.read).has(instrument))
         )
           return refuse("no_instrument");
-        if (!validBuckets(ctx, valid.bucketRefs, buckets)) return refuse("unknown_bucket");
+        const bucketCheck = validBuckets(ctx, valid.bucketRefs, buckets);
+        if (bucketCheck !== true) return refuse(bucketCheck);
         if (input.source === "agent" && liveAgentAlerts(ctx.read, now) >= 50)
           return refuse("agent_alert_limit");
         const payload = {
@@ -152,99 +159,105 @@ const UPDATABLE = new Set([
   "snoozeDays",
   "snoozedUntil",
 ]);
-export const updateAlert = defineCommand({
-  id: "investments.updateAlert",
-  input: z.strictObject({ alert: gid, changes: z.record(z.string(), z.unknown()) }),
-  run(ctx, input) {
-    const row = alertMutation(ctx.read, input.alert);
-    if (row === undefined || row.deletedAt !== null) return refuse("no_alert");
-    if (Object.keys(input.changes).some((key) => !UPDATABLE.has(key)))
-      return refuse("unknown_field");
-    const c = input.changes;
-    const now = parseDateTime(ctx.now());
-    const expired = alertByGid(ctx.read, row.gid, now)?.status === "expired";
-    if (expired && ("expiresAt" in c || "expiresInDays" in c) && c.status !== "active")
-      return refuse("delegate_expired_extension");
-    if (expired && row.triggered && c.status === "active") return refuse("delegate_expired_rearm");
-    try {
-      const patch: Record<string, unknown> = {};
-      if ("title" in c || "note" in c) {
-        const [title, note] = domain.validateText(
-          "title" in c ? c.title : row.title,
-          "note" in c ? c.note : row.note,
-        );
-        patch.title = title;
-        patch.note = note;
-      }
-      if ("tag" in c) patch.tag = domain.validateTag(c.tag);
-      if ("params" in c) {
-        const valid = domain.validateAlert(row.kind, c.params, {
-          scope: row.scope,
-          hasInstrument: row.instrument !== null,
-        });
-        if (!validBuckets(ctx, valid.bucketRefs)) return refuse("unknown_bucket");
-        patch.params = valid.params;
-      }
-      if ("polarity" in c)
-        patch.polarity = choice(c.polarity, row.polarity, ["positive", "negative", "neutral"]);
-      if ("severity" in c) patch.severity = choice(c.severity, row.severity, ["info", "action"]);
-      if ("cooldownDays" in c) patch.cooldownDays = cooldown(c.cooldownDays);
-      if (c.expiresInDays != null) patch.expiresAt = future(null, c.expiresInDays, now);
-      else if ("expiresAt" in c) patch.expiresAt = future(c.expiresAt, null, now);
-      let status: string | undefined;
-      let until: string | null = null;
-      if ("status" in c || "snoozeDays" in c || "snoozedUntil" in c) {
-        status =
-          c.status == null && ("snoozeDays" in c || "snoozedUntil" in c)
-            ? "snoozed"
-            : (c.status as string);
-        if (!["active", "muted", "snoozed"].includes(status)) return refuse("alert_invalid");
-        if (status === "snoozed") {
-          if (
-            c.snoozeDays != null &&
-            (typeof c.snoozeDays !== "number" ||
-              !Number.isInteger(c.snoozeDays) ||
-              c.snoozeDays < 1 ||
-              c.snoozeDays > 365)
-          )
-            return refuse("alert_invalid");
-          until = future(c.snoozedUntil, c.snoozeDays, now);
-          if (until === null) return refuse("alert_invalid");
+export function updateAlertWithBuckets(known?: KnownBuckets) {
+  const buckets = known === undefined || typeof known === "function" ? known : new Set(known);
+  return defineCommand({
+    id: "investments.updateAlert",
+    input: z.strictObject({ alert: gid, changes: z.record(z.string(), z.unknown()) }),
+    run(ctx, input) {
+      const row = alertMutation(ctx.read, input.alert);
+      if (row === undefined || row.deletedAt !== null) return refuse("no_alert");
+      if (Object.keys(input.changes).some((key) => !UPDATABLE.has(key)))
+        return refuse("unknown_field");
+      const c = input.changes;
+      const now = parseDateTime(ctx.now());
+      const expired = alertByGid(ctx.read, row.gid, now)?.status === "expired";
+      if (expired && ("expiresAt" in c || "expiresInDays" in c) && c.status !== "active")
+        return refuse("delegate_expired_extension");
+      if (expired && row.triggered && c.status === "active")
+        return refuse("delegate_expired_rearm");
+      try {
+        const patch: Record<string, unknown> = {};
+        if ("title" in c || "note" in c) {
+          const [title, note] = domain.validateText(
+            "title" in c ? c.title : row.title,
+            "note" in c ? c.note : row.note,
+          );
+          patch.title = title;
+          patch.note = note;
         }
-        if (status === "active") {
-          const expires = "expiresAt" in patch ? patch.expiresAt : row.expiresAt;
-          if (typeof expires === "string" && toStorage(expires) <= toStorage(now))
-            return refuse("alert_expired");
+        if ("tag" in c) patch.tag = domain.validateTag(c.tag);
+        if ("params" in c) {
+          const valid = domain.validateAlert(row.kind, c.params, {
+            scope: row.scope,
+            hasInstrument: row.instrument !== null,
+          });
+          const bucketCheck = validBuckets(ctx, valid.bucketRefs, buckets);
+          if (bucketCheck !== true) return refuse(bucketCheck);
+          patch.params = valid.params;
         }
+        if ("polarity" in c)
+          patch.polarity = choice(c.polarity, row.polarity, ["positive", "negative", "neutral"]);
+        if ("severity" in c) patch.severity = choice(c.severity, row.severity, ["info", "action"]);
+        if ("cooldownDays" in c) patch.cooldownDays = cooldown(c.cooldownDays);
+        if (c.expiresInDays != null) patch.expiresAt = future(null, c.expiresInDays, now);
+        else if ("expiresAt" in c) patch.expiresAt = future(c.expiresAt, null, now);
+        let status: string | undefined;
+        let until: string | null = null;
+        if ("status" in c || "snoozeDays" in c || "snoozedUntil" in c) {
+          status =
+            c.status == null && ("snoozeDays" in c || "snoozedUntil" in c)
+              ? "snoozed"
+              : (c.status as string);
+          if (!["active", "muted", "snoozed"].includes(status)) return refuse("alert_invalid");
+          if (status === "snoozed") {
+            if (
+              c.snoozeDays != null &&
+              (typeof c.snoozeDays !== "number" ||
+                !Number.isInteger(c.snoozeDays) ||
+                c.snoozeDays < 1 ||
+                c.snoozeDays > 365)
+            )
+              return refuse("alert_invalid");
+            until = future(c.snoozedUntil, c.snoozeDays, now);
+            if (until === null) return refuse("alert_invalid");
+          }
+          if (status === "active") {
+            const expires = "expiresAt" in patch ? patch.expiresAt : row.expiresAt;
+            if (typeof expires === "string" && toStorage(expires) <= toStorage(now))
+              return refuse("alert_expired");
+          }
+        }
+        // Validation completes before the first emit, including the implicit updated_at bump.
+        if (Object.keys(patch).length > 0 || status === undefined)
+          ctx.emit("alert.updated", row.gid, {
+            ...(Object.keys(patch).length ? patch : { title: row.title }),
+            stamps: { updated_at: eventTime(now) },
+          });
+        if (status !== undefined) {
+          ctx.emit("alert.statusSet", row.gid, {
+            status,
+            snoozedUntil: until,
+            stamps: { updated_at: eventTime(now) },
+          });
+          if (status === "muted" || status === "snoozed")
+            closeAlertSignal(ctx, row.gid, status === "muted" ? "mute" : "snooze", eventTime(now));
+        }
+        return ok({ alert: row.gid });
+      } catch (error) {
+        if (
+          error instanceof domain.AlertValidationError ||
+          error instanceof TypeError ||
+          error instanceof RangeError ||
+          error instanceof PyValueError
+        )
+          return refuse("alert_invalid");
+        throw error;
       }
-      // Validation completes before the first emit, including the implicit updated_at bump.
-      if (Object.keys(patch).length > 0 || status === undefined)
-        ctx.emit("alert.updated", row.gid, {
-          ...(Object.keys(patch).length ? patch : { title: row.title }),
-          stamps: { updated_at: eventTime(now) },
-        });
-      if (status !== undefined) {
-        ctx.emit("alert.statusSet", row.gid, {
-          status,
-          snoozedUntil: until,
-          stamps: { updated_at: eventTime(now) },
-        });
-        if (status === "muted" || status === "snoozed")
-          closeAlertSignal(ctx, row.gid, status === "muted" ? "mute" : "snooze", eventTime(now));
-      }
-      return ok({ alert: row.gid });
-    } catch (error) {
-      if (
-        error instanceof domain.AlertValidationError ||
-        error instanceof TypeError ||
-        error instanceof RangeError ||
-        error instanceof PyValueError
-      )
-        return refuse("alert_invalid");
-      throw error;
-    }
-  },
-});
+    },
+  });
+}
+export const updateAlert = updateAlertWithBuckets();
 
 export const deleteAlert = defineCommand({
   id: "investments.deleteAlert",

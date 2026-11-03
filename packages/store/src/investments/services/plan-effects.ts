@@ -31,11 +31,15 @@ export function syncPlans(
     if (valued.snapshot.profileId !== ctx.vault || !holder()) return refuse("invalid_identity");
     for (const instrument of new Set(instruments)) {
       const only = asInstrumentId(instrument);
+      const pendingCanonical = new Set(
+        [...(pending.pendingInstruments?.keys() ?? [])].map(asInstrumentId),
+      );
       const facts = planFacts(child.read, { valued, now, only, ...pending });
       const out = applyPlanChecks(child, {
         facts,
         now,
         only,
+        pendingCanonical,
         run: null,
         config: inputs.config,
         lang: inputs.lang,
