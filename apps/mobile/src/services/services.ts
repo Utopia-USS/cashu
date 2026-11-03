@@ -1,6 +1,6 @@
 // The app's stable services, built once at startup: the device store and the demo vault's store
 // (in-process, sync SQLite) behind @cashu/store-react's synchronous client, the first-launch fixture
-// load, and the crypto self-test. Debug scaffold (S41): the vault, its salt and this device's id are
+// load, the read-only money queries and the crypto self-test. S41 scaffold: the vault, salt and device id are
 // synthetic; pairing, the real keyring and the sync engine's local append arrive with S29.
 import { HybridClock, type Store, storeWriter } from "@cashu/store";
 import { currentVault, setCurrentVault } from "@cashu/store/device";
@@ -13,6 +13,7 @@ import { createMobileKeyStore } from "../platform/keystore";
 import { nativeLibsodium } from "../platform/sodium";
 import { openDeviceStore, openVaultStore } from "../platform/sqlite";
 import { type CryptoSelfTest, runCryptoSelfTest } from "../selftest/cryptoSelfTest";
+import { createMoneyQueries, type MoneyQueries } from "./moneyQueries";
 
 /** TRANSITIONAL(S44): this device's id until pairing mints the device identity. */
 const SCAFFOLD_DEVICE = "d2000000000000000000000000000041";
@@ -20,6 +21,8 @@ const SCAFFOLD_DEVICE = "d2000000000000000000000000000041";
 export interface Services {
   /** The store client of every screen (`StoreProvider`). */
   readonly client: StoreClient;
+  /** Vault queries with an explicit price source; this scaffold has last-trade valuation only. */
+  readonly moneyQueries: MoneyQueries;
   /** The demo vault's store, for the debug screen's engine-level status and rebuild. */
   readonly store: Store;
   /** Store open time (ms), including the integrity check after an unclean session. */
@@ -73,6 +76,13 @@ export function bootServices(): Services {
   const cryptoSelfTest = new Promise<void>((resolve) => setTimeout(resolve, 0)).then(() =>
     runCryptoSelfTest({ lib: nativeLibsodium, keyStore: createMobileKeyStore }),
   );
-  services = { client, store, openMs, firstLoad, cryptoSelfTest };
+  services = {
+    client,
+    store,
+    moneyQueries: createMoneyQueries({ prices: null }),
+    openMs,
+    firstLoad,
+    cryptoSelfTest,
+  };
   return services;
 }

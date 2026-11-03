@@ -5,14 +5,22 @@
  * the year of the reference date), the drill-down of every category (by date, and the top three by
  * amount); the recurring and active recurring payments and the not-a-subscription categories.
  *
- * Every number comes from `@cashu/domain` budget analytics over the stored rows (`book.ts`); the
- * recurring list's engine context is the categorization producer's (own IBANs of every account, the
- * profile's merchant rules and loan payment patterns, the modules' text rules).
+ * Currency/reference metadata, cashflow and spending use the actual S42a screen Query.run closures
+ * over the genesis-folded native vault. Remaining drill-down/recurring fields retain the existing
+ * domain adapter over copied source facts (`book.ts`). No Python output contributes to native query
+ * inputs; the unchanged check schema compares those results with the independent Python oracle.
  */
 
 import { budget, core } from "@cashu/domain";
+import {
+  budgetScreenCashflow,
+  budgetScreenCurrencies,
+  budgetScreenSpending,
+} from "@cashu/store/budget/queries";
+import type { Read } from "@cashu/store/query";
 import type { PythonDb } from "../../sources/index.ts";
 import type { OutValue } from "../output.ts";
+import { genesisRun } from "../store/genesisRun.ts";
 import { budgetBook } from "./book.ts";
 
 const REGISTRY = core.builtinRegistry();
@@ -62,8 +70,12 @@ function recurringOut(rows: readonly budget.RecurringCandidate[]): OutValue {
   }));
 }
 
-function periodsOut(book: budget.BudgetBook, currency: string): Record<string, OutValue> {
-  const ref = budget.referenceDate(book);
+function periodsOut(
+  read: Read,
+  today: string,
+  currency: string,
+  ref: string | null,
+): Record<string, OutValue> {
   const out: Record<string, OutValue> = {};
   if (ref === null) return out;
   const year = Number(ref.slice(0, 4));
@@ -71,28 +83,63 @@ function periodsOut(book: budget.BudgetBook, currency: string): Record<string, O
   for (let back = 0; back < 3; back++) {
     const [y, m] = budget.shiftMonth(year, month, -back);
     out[budget.monthLabel(y, m)] = spendOut(
-      budget.spendingByCategory(book, currency, { year: y, month: m }),
+      budgetScreenSpending.run(read, {
+        today,
+        currency,
+        period: { year: y, month: m },
+        lang: "pl",
+      }).rows,
     );
   }
   const quarter = Math.floor((month - 1) / 3) + 1;
   out[`${year}-Q${quarter}`] = spendOut(
-    budget.spendingByCategory(book, currency, { year, quarter }),
+    budgetScreenSpending.run(read, {
+      today,
+      currency,
+      period: { year, quarter },
+      lang: "pl",
+    }).rows,
   );
-  out[String(year)] = spendOut(budget.spendingByCategory(book, currency, { year }));
+  out[String(year)] = spendOut(
+    budgetScreenSpending.run(read, {
+      today,
+      currency,
+      period: { year },
+      lang: "pl",
+    }).rows,
+  );
   return out;
 }
 
 function profileOut(db: PythonDb, profileId: number, baseCurrency: string | null): OutValue {
   const book = budgetBook(db, profileId, baseCurrency);
+  const vault = genesisRun(db).vaults.get(profileId);
+  if (vault === undefined) throw new Error("native budget query vault is absent");
+  const read = vault.store.read.bind(vault.store);
+  const today = db.asOf;
+  const nativeCurrencies = budgetScreenCurrencies.run(read, { today });
   const perCurrency: Record<string, OutValue> = {};
-  const currencies = budget.budgetCurrencies(book);
+  const currencies = nativeCurrencies.currencies;
   for (const { currency } of currencies) {
     const all = budget.spendingByCategory(book, currency);
     perCurrency[currency] = {
-      cashflow: cashflowOut(budget.monthlyCashflow(book, currency)),
+      cashflow: cashflowOut(
+        budgetScreenCashflow.run(read, {
+          today,
+          currency,
+          period: {},
+        }).rows,
+      ),
       cashflow_with_internal: cashflowOut(budget.monthlyCashflow(book, currency, true)),
-      spending_all: spendOut(all),
-      spending_periods: periodsOut(book, currency),
+      spending_all: spendOut(
+        budgetScreenSpending.run(read, {
+          today,
+          currency,
+          period: {},
+          lang: "pl",
+        }).rows,
+      ),
+      spending_periods: periodsOut(read, today, currency, nativeCurrencies.referenceDate),
       category_transactions: all.map((row) => ({
         category: row.category,
         rows: drillOut(budget.categoryTransactions(book, row.category, currency)),
@@ -118,14 +165,14 @@ function profileOut(db: PythonDb, profileId: number, baseCurrency: string | null
   };
   const recurring = budget.recurringPayments(book, ctx, NOT_SUBSCRIPTION);
   return {
-    base_currency: book.baseCurrency,
+    base_currency: nativeCurrencies.baseCurrency,
     currencies: currencies.map((c) => ({
       currency: c.currency,
       transactions: BigInt(c.transactions),
       first: c.first,
       last: c.last,
     })),
-    reference_date: budget.referenceDate(book),
+    reference_date: nativeCurrencies.referenceDate,
     per_currency: perCurrency,
     recurring: recurringOut(recurring),
     active_recurring: recurringOut(budget.activeRecurring(recurring, book)),

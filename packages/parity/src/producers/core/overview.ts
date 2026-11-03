@@ -5,16 +5,18 @@
  * module's blank-page status in both languages and the profile's module states. The values are the
  * route's JSON floats (`f()` = `float(Decimal)`).
  *
- * Every number and text comes from `@cashu/domain` (core overview, budget analytics, module setup
- * steps) over the read-only source; only the setup facts are counted here from the source's rows, as
- * each module's `setup.py` counts them.
+ * Net-worth/series run the actual overview query closures over genesis-folded vaults with genuine
+ * copied market facts. Unrelated setup/month/subscription fields retain their existing copied-fact
+ * adapters. No expected Python output is a native query input.
  */
 
 import { assets, budget, core, D, type Decimal, investments, loans, ZERO } from "@cashu/domain";
+import { overviewQueries, type ShellSummarySnapshot } from "@cashu/store/overview";
 import type { PythonDb } from "../../sources/index.ts";
 import { budgetBook } from "../budget/book.ts";
 import { type OutValue, pyFloat } from "../output.ts";
-import { profileBook } from "./book.ts";
+import { genesisRun } from "../store/genesisRun.ts";
+import { copiedOverviewPrices } from "./overviewMarket.ts";
 
 const REGISTRY = core.builtinRegistry();
 const NOT_SUBSCRIPTION = budget.subscriptionExclusions(REGISTRY);
@@ -30,7 +32,7 @@ const f = (d: Decimal): OutValue => pyFloat(d.toFloat());
 const fRecord = (r: Readonly<Record<string, Decimal>>): OutValue =>
   Object.fromEntries(Object.entries(r).map(([k, v]) => [k, f(v)]));
 
-function breakdownOut(bd: core.NetWorthBreakdown): OutValue {
+function breakdownOut(bd: ShellSummarySnapshot["breakdown"]): OutValue {
   return {
     currency: bd.currency,
     assets: f(bd.assets),
@@ -39,7 +41,7 @@ function breakdownOut(bd: core.NetWorthBreakdown): OutValue {
     property: f(bd.propertyValue),
     mortgage: f(bd.mortgage),
     home_equity: f(bd.homeEquity),
-    by_type: Object.fromEntries([...bd.byType].map(([k, v]) => [k, f(v)])),
+    by_type: Object.fromEntries(Object.entries(bd.byType).map(([k, v]) => [k, f(v)])),
   };
 }
 
@@ -151,8 +153,11 @@ function profileOut(
   db: PythonDb,
   p: { id: number; slug: string; baseCurrency: string | null },
 ): OutValue {
-  const { book } = profileBook(db, REGISTRY, p.id);
-  const summary = core.netWorthSummary(book, p.baseCurrency);
+  const vault = genesisRun(db).vaults.get(p.id);
+  if (vault === undefined) throw new Error("native overview query vault is absent");
+  const read = vault.store.read.bind(vault.store);
+  const queries = overviewQueries({ prices: copiedOverviewPrices(db) });
+  const summary = queries.summary.run(read, { today: db.asOf });
   const bBook = budgetBook(db, p.id, p.baseCurrency);
   const ctx: budget.EngineContext = {
     ownIbans: core.ownIbans(bBook.accounts),
@@ -174,12 +179,7 @@ function profileOut(
     granularity: string,
     scope: string,
     lang: core.UiLang = "pl",
-  ) =>
-    core.seriesView(
-      book,
-      core.seriesRequest({ currency, granularity, scope, baseCurrency: p.baseCurrency }),
-      lang,
-    );
+  ) => queries.netWorthSeries.run(read, { today: db.asOf, currency, granularity, scope, lang });
   const currencies = [
     ...new Set(db.accounts(p.id, { includeRemoved: true }).map((a) => a.currency)),
   ].sort();
