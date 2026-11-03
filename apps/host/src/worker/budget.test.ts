@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup } from "../testing/harness.js";
+import { workerFixture } from "../testing/worker.js";
 import {
   BANK_BACKOFF_MS,
   BANK_INTERVAL_MS,
@@ -10,7 +11,6 @@ import {
 } from "./budget.js";
 import type { BudgetSyncPort, WorkerBindings, WorkerStatePort } from "./contracts.js";
 import { HostWorker } from "./service.js";
-import { workerFixture } from "./testing.js";
 
 afterEach(cleanup);
 function budgetBindings(

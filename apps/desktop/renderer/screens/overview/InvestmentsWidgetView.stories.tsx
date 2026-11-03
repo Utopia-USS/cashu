@@ -74,7 +74,7 @@ export default {
   args: ready,
 };
 export const Ready = {};
-export const Unavailable = { args: { ...ready, investment: { status: "unavailable" } } };
+export const Unavailable = { args: { ...ready, investment: { status: "unavailable" as const } } };
 export const ZeroStart = { args: { ...ready, investment: { ...ready.investment, value: D("0") } } };
 export const Privacy = {
   args: { ...ready, privacy: true },

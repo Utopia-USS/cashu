@@ -1,5 +1,5 @@
 /** S56 section 8: one local daily slot, including start and wake ticks; no missed-day replay. */
-export const DEFAULT_SCHEDULE = Object.freeze({ hour: 7, minute: 30 });
+const DEFAULT_SCHEDULE = Object.freeze({ hour: 7, minute: 30 });
 export interface LocalSlot {
   readonly hour: number;
   readonly minute: number;

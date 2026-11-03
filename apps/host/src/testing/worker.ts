@@ -12,10 +12,10 @@ import {
 import { DailyPriceLock, type StrategyFilesPort } from "@cashu/store/investments/services";
 import { startLocalHost } from "../host.js";
 import type { HostStores, OpenVault } from "../stores.js";
-import { tempDir, testHostOptions } from "../testing/harness.js";
-import type { WorkerBindings, WorkerHostContext, WorkerJob } from "./contracts.js";
-import { localDay } from "./schedule.js";
-import { privateWorkerState } from "./state.js";
+import type { WorkerBindings, WorkerHostContext, WorkerJob } from "../worker/contracts.js";
+import { localDay } from "../worker/schedule.js";
+import { privateWorkerState } from "../worker/state.js";
+import { tempDir, testHostOptions } from "./harness.js";
 
 export async function seedWorkerHolding(vault: OpenVault, time: number): Promise<string> {
   const account = await command(vault, investmentsCommands.addBrokerageAccount, {

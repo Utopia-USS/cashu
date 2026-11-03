@@ -20,13 +20,13 @@ export const JOBS = [
   "digest",
 ] as const;
 export type WorkerJob = (typeof JOBS)[number];
-export type JobStatus = "ok" | "partial" | "failed" | "skipped";
+type JobStatus = "ok" | "partial" | "failed" | "skipped";
 export interface JobOutcome {
   readonly status: JobStatus;
   readonly code?: string;
   readonly stats?: Readonly<Record<string, number>>;
 }
-export interface JobRun extends JobOutcome {
+interface JobRun extends JobOutcome {
   readonly day: string;
   readonly startedAt: string;
   readonly finishedAt: string | null;
@@ -58,10 +58,10 @@ export interface WorkerHostContext {
   networkEnabled(): boolean;
   uiCount(): number;
 }
-export interface WorkerAuthority {
+interface WorkerAuthority {
   isHolder(): boolean;
 }
-export interface ExclusiveJobOwnership {
+interface ExclusiveJobOwnership {
   /** Already-exclusive local runtime ownership, supplied after a genuine drain/handover. */
   isExclusive(job: WorkerJob): boolean;
 }
@@ -91,7 +91,7 @@ export interface BudgetSyncPort {
     readonly errors?: readonly string[];
   }>;
 }
-export interface InvestmentWorkerPorts {
+interface InvestmentWorkerPorts {
   readonly prices: TransactionalPriceCache;
   /** Same instance used by daily, UI prices and proposal publication. */
   readonly dailyLock: DailyPriceLock;

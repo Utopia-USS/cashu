@@ -2,6 +2,23 @@
 import { setLanguageForTests } from "@cashu/i18n";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it } from "vitest";
+import assets, {
+  Empty as EmptyAssets,
+  Open as OpenAssets,
+  Privacy as PrivateAssets,
+  Ready as ReadyAssets,
+} from "./screens/overview/AssetsWidgetView.stories.js";
+import cashDrawer, {
+  Empty as EmptyCash,
+  Privacy as PrivateCash,
+  Ready as ReadyCash,
+} from "./screens/overview/CashDrawerView.stories.js";
+import investments, {
+  Privacy as PrivateInvestments,
+  Ready as ReadyInvestments,
+  Unavailable as UnavailableInvestments,
+  ZeroStart,
+} from "./screens/overview/InvestmentsWidgetView.stories.js";
 import overview, {
   Empty,
   LegacyUnavailable,
@@ -44,6 +61,52 @@ it("renders actual Overview CSF states and masks exact accessible amounts in its
   expect(hidden).not.toContain("12,000");
   expect(hidden).not.toContain("11,000");
   expect(hidden).toContain("hidden");
+});
+
+it("renders asset, cash and investment widget stories from synthetic state", () => {
+  expect(renderToStaticMarkup(<assets.component {...assets.args} {...ReadyAssets} />)).toContain(
+    "Synthetic property",
+  );
+  expect(
+    renderToStaticMarkup(<assets.component {...assets.args} {...EmptyAssets.args} />),
+  ).toContain("overview-assets-title");
+  expect(
+    renderToStaticMarkup(<assets.component {...assets.args} {...OpenAssets.args} />),
+  ).toContain("Synthetic property");
+  expect(
+    renderToStaticMarkup(<assets.component {...assets.args} {...PrivateAssets.args} />),
+  ).not.toContain("Synthetic property");
+  expect(
+    renderToStaticMarkup(
+      <cashDrawer.component {...cashDrawer.args} {...ReadyCash} privacy={false} />,
+    ),
+  ).toContain("Synthetic purchase");
+  expect(
+    renderToStaticMarkup(
+      <cashDrawer.component {...cashDrawer.args} {...EmptyCash.args} privacy={false} />,
+    ),
+  ).toContain("groceries");
+  expect(
+    renderToStaticMarkup(
+      PrivateCash.decorators[0]?.(() => <cashDrawer.component {...cashDrawer.args} privacy />),
+    ),
+  ).not.toContain("Synthetic purchase");
+  expect(
+    renderToStaticMarkup(<investments.component {...investments.args} {...ReadyInvestments} />),
+  ).toContain("overview-investments-title");
+  expect(
+    renderToStaticMarkup(
+      <investments.component {...investments.args} {...UnavailableInvestments.args} />,
+    ),
+  ).toContain('aria-label="Investments"');
+  expect(
+    renderToStaticMarkup(<investments.component {...investments.args} {...ZeroStart.args} />),
+  ).toContain("overview-investments-title");
+  expect(
+    renderToStaticMarkup(
+      PrivateInvestments.decorators[0]?.(() => <investments.component {...investments.args} />),
+    ),
+  ).toContain("overview-investments-title");
 });
 
 it("renders actual shell CSF states without enabling disabled legacy navigation", () => {

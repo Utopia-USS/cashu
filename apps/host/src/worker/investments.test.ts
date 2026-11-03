@@ -2,9 +2,9 @@ import { D, parseDateTime } from "@cashu/domain";
 import { Currencies, market, priceBar } from "@cashu/domain/investments";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup } from "../testing/harness.js";
+import { seedWorkerHolding, workerFixture } from "../testing/worker.js";
 import type { WorkerBindings } from "./contracts.js";
 import { nativeInvestmentJobs } from "./investments.js";
-import { seedWorkerHolding, workerFixture } from "./testing.js";
 
 afterEach(() => {
   vi.restoreAllMocks();

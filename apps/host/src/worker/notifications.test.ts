@@ -3,11 +3,11 @@ import { investmentsCommands } from "@cashu/store";
 import { openSignals, strategyVersions } from "@cashu/store/investments/queries";
 import { afterEach, expect, it } from "vitest";
 import { cleanup } from "../testing/harness.js";
+import { command, seedWorkerHolding, workerFixture } from "../testing/worker.js";
 import type { WorkerBindings, WorkerNotification, WorkerNotifier } from "./contracts.js";
 import { deliverWorkerNotifications } from "./notifications.js";
 import { localDay } from "./schedule.js";
 import { HostWorker } from "./service.js";
-import { command, seedWorkerHolding, workerFixture } from "./testing.js";
 
 afterEach(cleanup);
 const weekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];

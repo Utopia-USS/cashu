@@ -22,7 +22,7 @@ export function AssetsWidgetView({ state, today, baseCurrency, privacy }: Assets
     if (!state.open && element?.open) element.close();
     if (privacy && element?.open) element.close();
     if (privacy && state.open) state.close();
-  }, [state.open, privacy]);
+  }, [state, privacy]);
   const shown = all ? state.displayRows : state.displayRows.slice(0, 5);
   const target = state.target;
   const form = state.form;

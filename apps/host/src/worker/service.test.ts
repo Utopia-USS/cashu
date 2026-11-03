@@ -4,11 +4,11 @@ import { ruleRuns } from "@cashu/store/investments/queries";
 import type { DailySources } from "@cashu/store/investments/services";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, storeClient } from "../testing/harness.js";
+import { command, seedWorkerHolding, workerFixture } from "../testing/worker.js";
 import type { WorkerBindings } from "./contracts.js";
 import { nativeInvestmentJobs } from "./investments.js";
 import { localDay } from "./schedule.js";
 import { HostWorker, startWorker } from "./service.js";
-import { command, seedWorkerHolding, workerFixture } from "./testing.js";
 
 afterEach(() => {
   vi.useRealTimers();

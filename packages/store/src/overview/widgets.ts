@@ -41,7 +41,7 @@ export function overviewAccounts(read: Read, book: core.NetWorthBook): OverviewA
   });
 }
 
-export interface CashWalletRow {
+interface CashWalletRow {
   readonly gid: string;
   readonly date: IsoDate;
   readonly amount: Decimal;
