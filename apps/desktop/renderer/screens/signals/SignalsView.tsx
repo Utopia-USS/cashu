@@ -229,7 +229,7 @@ function GroupList({
       </h3>
       <section
         ref={ref}
-        className="max-h-[70vh] overflow-auto"
+        className="max-h-96 overflow-auto"
         aria-label={scope === "portfolio" ? G.portfolio : G.watched}
       >
         <div className="relative" style={{ height: virtual.totalSize }}>
@@ -403,7 +403,7 @@ function DecisionDialog({ state }: { state: SignalsScreenState }) {
         onKeyDown={(event) => {
           if (event.key === "Escape") state.setSelectedGroup(null);
         }}
-        className="relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg border border-border bg-surface-raised p-5"
+        className="relative max-h-full w-full max-w-xl overflow-auto rounded-lg border border-border bg-surface-raised p-5"
       >
         <header className="flex items-center justify-between">
           <h2>
@@ -805,7 +805,7 @@ function AlertsPage({ state, editor }: { state: SignalsScreenState; editor?: Rea
         {rows.length === 0 ? (
           <p>{G.noRows}</p>
         ) : (
-          <div ref={ref} className="max-h-[30rem] overflow-auto">
+          <div ref={ref} className="max-h-96 overflow-auto">
             <div className="relative" style={{ height: virtual.totalSize }}>
               {virtual.items.map((item) => {
                 const row = rows[item.index];
@@ -1094,7 +1094,7 @@ function WatchlistPage({ state }: { state: SignalsScreenState }) {
         ) : rows.length === 0 ? (
           <p>{G.noRows}</p>
         ) : (
-          <div ref={ref} className="max-h-[35rem] overflow-auto">
+          <div ref={ref} className="max-h-96 overflow-auto">
             <div className="relative" style={{ height: virtual.totalSize }}>
               {virtual.items.map((item) => {
                 const row = rows[item.index];
@@ -1259,7 +1259,7 @@ function JournalPage({ state }: { state: SignalsScreenState }) {
       {rows.length === 0 ? (
         <p>{G.noRows}</p>
       ) : (
-        <div ref={ref} className="max-h-[60vh] overflow-auto">
+        <div ref={ref} className="max-h-96 overflow-auto">
           <div className="relative" style={{ height: virtual.totalSize }}>
             {virtual.items.map((item) => {
               const entry = rows[item.index];
