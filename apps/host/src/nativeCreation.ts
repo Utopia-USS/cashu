@@ -550,6 +550,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
           sink: store.sink(),
           clockStore: metaClockStore(store.driver, deviceId),
           gateState: metaGateStateStore(store.driver, deviceId),
+          gossipEid: () => mintUlid(now(), (n) => sodium.randomBytes(n)),
         });
         const eid = () => mintUlid(now(), (n) => sodium.randomBytes(n));
         const addedEid = eid();

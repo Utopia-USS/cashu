@@ -159,6 +159,14 @@ export {
   type TrustRoot,
 } from "./registry.js";
 export {
+  acknowledgeRevocationPreview,
+  previewRevocation,
+  type RevocationPermit,
+  type RevocationPreview,
+  type RevocationPreviewRequest,
+  type RevocationPreviewResult,
+} from "./revocationPolicy.js";
+export {
   type AffectedDevice,
   applyWrap,
   DEFAULT_RATE_LIMIT,

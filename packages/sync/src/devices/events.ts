@@ -13,9 +13,11 @@ import type { InboundBatch, SegmentCursor, UnstampedEvent } from "../carrier.js"
 import {
   type DeviceIdentity,
   decodeHead,
+  encodeHead,
   isDeviceId,
   RECOVERY_SIGNER_ID,
   type RecoveryIdentity,
+  type SignedHead,
 } from "../crypto/index.js";
 import type { Hlc } from "../hlc.js";
 import {
@@ -43,6 +45,7 @@ export const LEASE_RELEASED = "lease.released";
 export const LEASE_PINNED = "lease.pinned";
 export const LEASE_FETCHED = "lease.fetched";
 export const RECOVERY_CHANGED = "device.recoveryChanged";
+export const HEADS_GOSSIPED = "device.headsGossiped";
 
 /** Every event type this module defines is at schema version 1. */
 export const DEVICE_EVENT_VERSION = 1;
@@ -54,6 +57,8 @@ const MAX_LIST = 256;
 export const MAX_DEVICES = 1024;
 /** Devices one claim or renewal may waive from the catch-up requirement (lease.ts, R3a). */
 export const MAX_WAIVE = 64;
+/** Limit one gossip event to a single small frame, independent of engine frame split settings. */
+const MAX_GOSSIP_HEADS = 16;
 const CERT_HEX = 2 * (1 + 16 + 16 + 32 + 32 + 64);
 const MAX_WRAP_HEX = 2 * 64 * 1024;
 
@@ -107,6 +112,54 @@ export interface DeviceAddedData {
   /** Who signed this statement: the writer, or `RECOVERY_SIGNER_ID` at vault creation. */
   readonly signer: string;
   readonly sig: string;
+}
+
+export interface HeadsGossipedData {
+  /** Canonically ordered, unique writer-signed data-stream heads. */
+  readonly heads: readonly string[];
+  readonly signer: string;
+  readonly sig: string;
+}
+
+/** The outer frame writer must equal this signer; the heads retain their original signatures. */
+export function buildHeadsGossiped(
+  signer: DeviceIdentity,
+  vaultId: string,
+  eid: string,
+  heads: readonly SignedHead[],
+): UnstampedEvent {
+  const encoded = heads.map(encodeHead);
+  if (
+    encoded.length < 1 ||
+    encoded.length > MAX_GOSSIP_HEADS ||
+    encoded.some((h) => decodeHead(h)?.stream !== 1) ||
+    encoded.some((h, i) => i > 0 && h <= (encoded[i - 1] ?? ""))
+  ) {
+    throw new RangeError("gossip heads must be 1-16 sorted distinct data-stream heads");
+  }
+  return signed(signer, "cashu/gossip/v1", vaultId, HEADS_GOSSIPED, eid, {
+    heads: encoded,
+    signer: signer.deviceId,
+  });
+}
+
+export function decodeHeadsGossiped(
+  data: Readonly<Record<string, unknown>>,
+): HeadsGossipedData | undefined {
+  if (!hasExactly(data, ["heads", "signer", "sig"])) return undefined;
+  const { heads, signer, sig } = data;
+  if (
+    !Array.isArray(heads) ||
+    heads.length < 1 ||
+    heads.length > MAX_GOSSIP_HEADS ||
+    !heads.every((h) => decodeHead(h)?.stream === 1) ||
+    !heads.every((h, i) => i === 0 || h > heads[i - 1]) ||
+    typeof signer !== "string" ||
+    !isDeviceId(signer) ||
+    !isSig(sig)
+  )
+    return undefined;
+  return { heads: heads as string[], signer, sig };
 }
 
 export interface RevokedEntry {

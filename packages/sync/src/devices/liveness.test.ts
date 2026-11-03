@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { buildLeaseFetched } from "./events.js";
 import { devices, pin, reportFetch, view } from "./leaseSim.js";
 import { LEADER_SILENCE_WARNING_MS, leaderLiveness } from "./liveness.js";
-import { newEid, type SimDevice, START_CURSOR } from "./testkit.js";
+import { newEid, prepareReviewedRevocation, type SimDevice, START_CURSOR } from "./testkit.js";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -109,7 +109,8 @@ describe("liveness of the pinned fetch leader", () => {
   it("a revoked leader leaves the vault leaderless: warn at once, no force needed", async () => {
     const { a, b, c, recovery } = await pinnedVault();
     // A certified everyone, so revoking it takes the words, which re-certify the others.
-    const r = b.devices.prepareRevocation(
+    const r = prepareReviewedRevocation(
+      b,
       [{ device: a.id, cut: b.cursors.get(a.id) ?? START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       recovery,

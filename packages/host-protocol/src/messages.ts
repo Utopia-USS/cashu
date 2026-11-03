@@ -20,7 +20,7 @@ export const dataDirIdSchema = hex(32);
 export const ROLES = ["ui", "mcp", "cli", "admin"] as const;
 export const roleSchema = z.enum(ROLES);
 /**
- * - `ui`: the store channel and the exact `native.creation.*` Create methods;
+ * - `ui`: the store channel and exact `native.creation.*` and `native.devices.*` methods;
  * - `mcp`: MCP lines for exactly one profile, fixed at hello, and `mcp.*` requests (`mcp.open`);
  * - `cli`: `cli.*` requests only;
  * - `admin`: `admin.*` requests (status, stop).

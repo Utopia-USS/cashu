@@ -80,7 +80,7 @@ export function runVaultCommand(
             return native.queue.run(task);
           },
         },
-        isCurrent: () => native.isCurrent() && vault.native === native && current(),
+        isCurrent: () => native.canRunSideEffects() && vault.native === native && current(),
         newAttemptId: () => mintUlid(Date.now(), (n) => new Uint8Array(randomBytes(n))),
       },
       checked,

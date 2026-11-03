@@ -2,6 +2,7 @@
 // adapters (S28b folder + crypto codec, S28d relay); the contract suite lives in `@cashu/sync/testing`.
 export const PACKAGE_NAME = "@cashu/sync";
 
+export { ownBatchDigest } from "./batchProof.js";
 export * from "./carrier.js";
 export * from "./carriers/index.js";
 export * as crypto from "./crypto/index.js";

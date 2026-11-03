@@ -18,6 +18,7 @@ import {
   optInAutoHandover,
   pairDevice,
   prepareConsented,
+  prepareReviewedRevocation,
   sodium,
 } from "./testkit.js";
 
@@ -305,7 +306,8 @@ describe("fetch lease", () => {
     // up to the lower of the watermark and A's cut (C applied it before revoking A).
     c.pull();
     // A certified everyone, so revoking it needs the recovery words (they re-certify the others).
-    const r = c.devices.prepareRevocation(
+    const r = prepareReviewedRevocation(
+      c,
       [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       vault.recovery,

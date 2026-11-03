@@ -28,6 +28,7 @@ import { NotificationSignalFocus } from "./notificationFocusContext.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
 import { BudgetView } from "./screens/budget/BudgetView.js";
 import { type BudgetTab, useBudgetScreen } from "./screens/budget/useBudgetScreen.js";
+import { DevicesScreen } from "./screens/devices/DevicesScreen.js";
 import { PortfolioScreen } from "./screens/investments/PortfolioScreen.js";
 import { LoansScreen } from "./screens/loans/LoansScreen.js";
 import { OverviewView } from "./screens/overview/OverviewView.js";
@@ -637,6 +638,7 @@ function SettingsBound({
   const strategies = useStrategiesScreen(onProposalOpened);
   return (
     <SettingsView
+      devicesPanel={<DevicesScreen />}
       state={state}
       section={section}
       strategyPanel={

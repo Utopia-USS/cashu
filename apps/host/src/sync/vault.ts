@@ -15,6 +15,7 @@ import {
   builtinModules,
   metaClockStore,
   metaGateStateStore,
+  mintUlid,
   type SqlDriver,
   Store,
   type VaultSalt,
@@ -131,6 +132,7 @@ export async function openVault(o: VaultOptions): Promise<OpenVault> {
       clockStore: metaClockStore(store.driver, identity.deviceId),
       // S29c-B3: the gate's snapshot, so a restart replays only the log's new tail.
       gateState: metaGateStateStore(store.driver, identity.deviceId),
+      gossipEid: () => mintUlid(Date.now(), (n) => o.sodium.randomBytes(n)),
     });
   } catch (error) {
     store.close();

@@ -27,6 +27,7 @@ import {
   optInAutoHandover,
   pairDevice,
   prepareConsented,
+  prepareReviewedRevocation,
   type SimDevice,
   START_CURSOR,
   sodium,
@@ -58,7 +59,8 @@ function revoke(
   recertify: readonly SimDevice[] = [],
 ) {
   if (recovery) {
-    return revoker.devices.prepareRevocation(
+    return prepareReviewedRevocation(
+      revoker,
       [{ device: target.id, cut: revoker.cursors.get(target.id) ?? START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       recovery,
@@ -86,9 +88,11 @@ function claim(d: SimDevice): UnstampedEvent {
 describe("H2: who may revoke a device", () => {
   it("a device-signed revocation of another device without its consent is refused up front (authority_required)", async () => {
     const { a, desk } = await household();
-    const result = a.devices.prepareRevocation(
+    const result = prepareReviewedRevocation(
+      a,
       [{ device: desk.id, cut: a.cursors.get(desk.id) ?? START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
+      { consent: {} },
     );
     expect(result).toEqual({ ok: false, reason: "authority_required", unconsented: [desk.id] });
   });

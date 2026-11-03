@@ -48,6 +48,7 @@ it("keeps the original MCP key unknown after an invoked native engine write fail
       } as unknown as NativeVaultSession["engine"],
       epoch: {},
       isCurrent: () => true,
+      canRunSideEffects: () => true,
     } as NativeVaultSession;
     const vault = { ...original, mode: "native", native } as OpenVault;
     (host.stores.vaults as Map<string, OpenVault>).set(vault.id, vault);

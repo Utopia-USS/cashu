@@ -14,6 +14,7 @@ import {
   newEid,
   pairDevice,
   prepareConsented,
+  prepareReviewedRevocation,
   type SimDevice,
   START_CURSOR,
   START_TIME,
@@ -41,7 +42,8 @@ function revokeWithWords(
   words: NonNullable<SimDevice["words"]>,
   recertify: readonly string[] = [],
 ) {
-  return a.devices.prepareRevocation(
+  return prepareReviewedRevocation(
+    a,
     [{ device: r.id, cut: a.cursors.get(r.id) ?? START_CURSOR }],
     { revoke: newEid(), rotate: newEid(), recertify: newEid },
     words,

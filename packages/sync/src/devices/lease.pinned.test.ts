@@ -28,6 +28,7 @@ import {
   hlcAt,
   newEid,
   prepareConsented,
+  prepareReviewedRevocation,
   type SimDevice,
   START_CURSOR,
   sodium,
@@ -299,7 +300,8 @@ describe("S1: sibling pins never make the old leader hand over twice", () => {
     syncAll([a, b, c]);
     expect([a, b, c].filter(holds)).toEqual([c]);
     // The owner retires the old desktop (it certified everyone: words, re-certifying the others).
-    const r = b.devices.prepareRevocation(
+    const r = prepareReviewedRevocation(
+      b,
       [{ device: a.id, cut: b.cursors.get(a.id) ?? START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       recovery,

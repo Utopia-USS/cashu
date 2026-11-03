@@ -33,6 +33,18 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
       electron.ipcRenderer.invoke("cashu:creation-inspect", input),
     current: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:creation-current", {}),
   });
+  electron.contextBridge.exposeInMainWorld("cashuDevices", {
+    list: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-list", input),
+    revokePreview: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-revokePreview", input),
+    revokeCommit: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-revokeCommit", input),
+    revokeInspect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-revokeInspect", input),
+    revokeCancel: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-revokeCancel", input),
+  });
   electron.contextBridge.exposeInMainWorld("cashuNotifications", {
     status: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:notifications-status"),
     requestPermission: (): Promise<unknown> =>

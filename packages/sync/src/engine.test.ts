@@ -1,6 +1,7 @@
 // Engine behaviour outside the carrier contract: input validation, lifecycle, a local log that is
 // itself a synced folder (partial frames in `local`), a newer frame format.
 import { describe, expect, it } from "vitest";
+import { ownBatchDigest } from "./batchProof.js";
 import type { SyncEngine, Transport } from "./carrier.js";
 import { createSyncEngine } from "./engine.js";
 import { SyncError } from "./errors.js";
@@ -101,6 +102,85 @@ describe("SyncEngine", () => {
     expect(sink.size).toBe(20);
     const hlcs = sink.deliveries.flatMap((d) => d.hlcs);
     expect(hlcs).toEqual([...hlcs].sort());
+  });
+
+  it("counts each configured offline remote once across pull and delivery", async () => {
+    const offline = new FaultInjector(new MemoryTransport());
+    offline.setOnline(false);
+    const e = await engine(A, new MemoryTransport(), [offline]);
+    await e.write([ev("e1")]);
+    expect((await e.sync()).offlineRemotes).toBe(1);
+    expect((await e.sync()).offlineRemotes).toBe(1);
+  });
+
+  it("blocks every own write and push after a commit-then-throw until the same engine rebases", async () => {
+    const durable = new MemoryTransport();
+    const remote = new MemoryTransport();
+    let throwAfterCommit = true;
+    const local: Transport = {
+      consistency: durable.consistency,
+      list: (vault) => durable.list(vault),
+      read: (vault, device, seg, from) => durable.read(vault, device, seg, from),
+      append: async (vault, device, seg, at, bytes) => {
+        await durable.append(vault, device, seg, at, bytes);
+        if (throwAfterCommit) {
+          throwAfterCommit = false;
+          throw new Error("injected commit-then-throw");
+        }
+      },
+    };
+    const e = await engine(A, local, [remote]);
+    await expect(e.write([ev("uncertain-1")])).rejects.toThrow("injected commit-then-throw");
+    expect(await codeOf(e.write([ev("blocked-business")]))).toBe("own-tail-uncertain");
+    const whileUncertain = await e.sync();
+    expect(whileUncertain.gossip?.ownTailUncertain).toBe(true);
+    expect(await remote.list(VAULT)).toEqual([]);
+    expect((await e.recoverLocal()).complete).toBe(true);
+    await e.write([ev("after-rebase")]);
+    await e.sync();
+    expect((await remote.list(VAULT))[0]?.size).toBe((await durable.list(VAULT))[0]?.size);
+  });
+
+  it("proves an exact accepted one-frame own batch without storing its payload", async () => {
+    const e = await engine(A, new MemoryTransport());
+    const expected = [ev("proof-1"), ev("proof-2")];
+    const proof = { eids: expected.map((item) => item.i), digest: ownBatchDigest(expected) };
+    expect(await e.inspectOwnBatch(proof)).toBe("absent");
+    await e.write(expected);
+    expect(await e.inspectOwnBatch(proof)).toBe("committed");
+    expect(await e.inspectOwnBatch({ ...proof, digest: "0".repeat(64) })).toBe("unknown");
+    expect(await e.inspectOwnBatch({ eids: ["different"], digest: proof.digest })).toBe("absent");
+  });
+
+  it("refuses same-EID wrong payload, split frames, foreign writer, and incomplete own history as batch proof", async () => {
+    const remote = new MemoryTransport();
+    const aLocal = new MemoryTransport();
+    const a = await engine(A, aLocal, [remote]);
+    const b = await engine(B, new MemoryTransport(), [remote]);
+    const expected = [ev("exact-1"), ev("exact-2")] as const;
+    const proof = { eids: expected.map((item) => item.i), digest: ownBatchDigest(expected) };
+    await b.write(expected);
+    await b.sync();
+    await a.sync();
+    expect(await a.inspectOwnBatch(proof)).toBe("absent");
+    await a.write([{ ...expected[0], d: { value: "changed" } }, expected[1]]);
+    expect(await a.inspectOwnBatch(proof)).toBe("unknown");
+
+    const split = await engine(A, new MemoryTransport());
+    await split.write([expected[0] as ReturnType<typeof ev>]);
+    await split.write([expected[1] as ReturnType<typeof ev>]);
+    expect(await split.inspectOwnBatch(proof)).toBe("unknown");
+    const partial = new MemoryTransport();
+    const incomplete = await engine(A, partial);
+    await incomplete.write([ev("complete")]);
+    const size = (await partial.list(VAULT))[0]?.size ?? 0;
+    await partial.append(VAULT, A, 1, size, Uint8Array.of(0, 0, 1));
+    expect(
+      await incomplete.inspectOwnBatch({
+        eids: ["complete"],
+        digest: ownBatchDigest([ev("complete")]),
+      }),
+    ).toBe("unknown");
   });
 
   it("waits on a partial frame in a local log that is a synced folder", async () => {

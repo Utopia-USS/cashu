@@ -21,8 +21,11 @@ import { parseDateTime } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
 import {
   type AdminStatus,
+  deviceListParamsSchema,
+  deviceListResultSchema,
   HOST_PROTOCOL,
   NATIVE_CREATION_FEATURE,
+  NATIVE_DEVICES_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
   NOTIFICATION_INTENT_METHOD,
   nativeCreationCommitParamsSchema,
@@ -35,7 +38,16 @@ import {
   nativeCreationPrepareResultSchema,
   notificationResolveParamsSchema,
   notificationResolveResultSchema,
+  revokeCancelParamsSchema,
+  revokeCancelResultSchema,
+  revokeCommitParamsSchema,
+  revokeCommitResultSchema,
+  revokeInspectParamsSchema,
+  revokeInspectResultSchema,
+  revokePreviewParamsSchema,
+  revokePreviewResultSchema,
   uiCreationAllowed,
+  uiDevicesAllowed,
 } from "@cashu/host-protocol";
 import {
   budgetTools,
@@ -79,6 +91,7 @@ import { portedCommands } from "./cli/ported.js";
 import { serveCliSession } from "./cli/runner.js";
 import type { PortedCommand } from "./cli/tree.js";
 import { recordStart, type StartRecord } from "./crashLoop.js";
+import { createDeviceService } from "./devices/service.js";
 import { currentStrategyImages } from "./investmentScreenSources.js";
 import { type InvestmentImportCapability, investmentImportActions } from "./investmentsScreen.js";
 import { writeLauncher } from "./launcher.js";
@@ -411,6 +424,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     features: [
       "store.v2",
       ...(options.vaultSource.kind === "native-production" ? [NATIVE_CREATION_FEATURE] : []),
+      ...(nativeMode ? [NATIVE_DEVICES_FEATURE] : []),
       ...(nativeMode ? [NOTIFICATION_INTENT_FEATURE] : []),
       "admin.handover",
       "cli.exec",
@@ -592,6 +606,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   let sessions = 0;
   let bundleReplaced = false;
   const creationRequests = new Set<Promise<void>>();
+  const devices = createDeviceService(stores, now);
   // This ledger is pinned under the real host lock and survives host restart. It is also passed
   // to the eventual S40 notifier binding, so submit and click resolution use the same authority.
   const notificationAuthority: IntentVaultAuthority = {
@@ -611,7 +626,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       stopping === undefined &&
       !bundleReplaced &&
       stores.vaults.get(vault.id) === vault &&
-      (vault.native === undefined || vault.native.isCurrent()),
+      (vault.native === undefined || vault.native.canRunSideEffects()),
     jobsEnabled: () => capabilities.jobs && stopping === undefined && !bundleReplaced,
     networkEnabled: () => capabilities.network && stopping === undefined && !bundleReplaced,
     uiCount: () => server.sessionCounts().ui,
@@ -666,6 +681,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       await (await sync)?.stop();
       await worker.stop();
       notifications?.dispose();
+      devices.close();
       await Promise.allSettled([...creationRequests]);
       await creation?.drain();
       importManager?.close();
@@ -714,6 +730,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         stores.pending() > 0 ||
         worker.pending > 0 ||
         creation?.pending() ||
+        devices.pending() > 0 ||
         creationRequests.size > 0
       ) {
         idleTimer = setTimeout(check, 1000);
@@ -811,6 +828,96 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           });
         } catch {
           // The client may already be gone.
+        }
+      })
+      .finally(() => {
+        creationRequests.delete(request);
+        armIdle();
+      });
+    creationRequests.add(request);
+  };
+
+  const serveDevicesRequest = (
+    session: HostSession,
+    frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
+  ) => {
+    if (
+      !nativeMode ||
+      server.stopping ||
+      stopping !== undefined ||
+      bundleReplaced ||
+      !uiDevicesAllowed(frame.method, session.protocol.minor, [NATIVE_DEVICES_FEATURE])
+    ) {
+      session.send({
+        t: "res",
+        id: frame.id,
+        outcome: { ok: false, error: { code: "unknown-method", message: "method unavailable" } },
+      });
+      return;
+    }
+    const request = Promise.resolve()
+      .then(async () => {
+        let result: unknown;
+        let requiresReopen = false;
+        switch (frame.method) {
+          case "native.devices.list": {
+            const input = deviceListParamsSchema.safeParse(frame.params);
+            result = input.success
+              ? deviceListResultSchema.parse(await devices.list(input.data))
+              : { kind: "refused", code: "invalid_input" };
+            break;
+          }
+          case "native.devices.revokePreview": {
+            const input = revokePreviewParamsSchema.safeParse(frame.params);
+            result = input.success
+              ? revokePreviewResultSchema.parse(await devices.preview(input.data))
+              : { kind: "refused", code: "invalid_input" };
+            break;
+          }
+          case "native.devices.revokeCommit": {
+            const input = revokeCommitParamsSchema.safeParse(frame.params);
+            result = input.success
+              ? revokeCommitResultSchema.parse(await devices.commit(input.data))
+              : { kind: "refused", code: "invalid_input" };
+            requiresReopen = (result as { kind: string }).kind === "outcome_unknown";
+            break;
+          }
+          case "native.devices.revokeInspect": {
+            const input = revokeInspectParamsSchema.safeParse(frame.params);
+            result = input.success
+              ? revokeInspectResultSchema.parse(await devices.inspect(input.data))
+              : { kind: "refused", code: "invalid_input" };
+            break;
+          }
+          case "native.devices.revokeCancel": {
+            const input = revokeCancelParamsSchema.safeParse(frame.params);
+            result = input.success
+              ? revokeCancelResultSchema.parse(await devices.cancel(input.data))
+              : { kind: "refused", code: "invalid_input" };
+            break;
+          }
+          default:
+            result = { kind: "refused", code: "invalid_input" };
+        }
+        try {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: { ok: true, result: result as import("@cashu/host-protocol/store").JsonValue },
+          });
+        } finally {
+          if (requiresReopen) setTimeout(() => void stop("handover"), 0);
+        }
+      })
+      .catch(() => {
+        try {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: { ok: true, result: { kind: "refused", code: "unavailable" } },
+          });
+        } catch {
+          /* caller disconnected */
         }
       })
       .finally(() => {
@@ -918,13 +1025,15 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     switch (session.role) {
       case "ui":
         serveStoreChannel(session, {
-          ...(creation === undefined && notificationIntents === undefined
+          ...(creation === undefined && notificationIntents === undefined && !nativeMode
             ? {}
             : {
                 onRequest: (frame) =>
                   frame.method === NOTIFICATION_INTENT_METHOD
                     ? serveNotificationRequest(session, frame)
-                    : serveCreationRequest(session, frame),
+                    : frame.method.startsWith("native.devices.")
+                      ? serveDevicesRequest(session, frame)
+                      : serveCreationRequest(session, frame),
               }),
           stores,
           queries,
@@ -1005,7 +1114,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             if (nativeMode && (vault?.native === undefined || !vault.native.isCurrent()))
               return undefined;
             const child =
-              python === undefined
+              python === undefined || (nativeMode && !vault?.native?.canRunSideEffects())
                 ? undefined
                 : startPythonMcp({
                     program: python,

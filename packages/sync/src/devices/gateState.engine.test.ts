@@ -12,10 +12,12 @@ import {
   createRecoveryKey,
   createVaultWithRecovery,
   type DeviceIdentity,
+  decodeHead,
   encodeHead,
   type Keyring,
   recoveryIdentity,
   signHead,
+  verifyContextSignature,
 } from "../crypto/index.js";
 import { createSyncEngine } from "../engine.js";
 import { MemoryClockStore, MemoryTransport } from "../memory.js";
@@ -24,6 +26,7 @@ import { ManualClock, MemorySink } from "../testing/index.js";
 import { concat, fromHex, lp, toHex, utf8 } from "./bytes.js";
 import { buildDeviceAdded, buildDeviceRevoked } from "./events.js";
 import { DeviceFrameGate } from "./gate.js";
+import { decodeLegacyGateAnchors } from "./gateState.js";
 import { MemoryProvenanceStore } from "./provenance.js";
 import { newEid, sodium } from "./testkit.js";
 import { VaultDevices } from "./vaultDevices.js";
@@ -95,6 +98,8 @@ async function node(
     return (
       imported && {
         positions: imported.positions,
+        heldHeads: imported.heldHeads,
+        replayOnly: imported.replayOnly,
         restore: () => {
           counter.restored += 1;
           imported.restore();
@@ -177,6 +182,122 @@ function summary(n: Awaited<ReturnType<typeof node>>) {
 }
 
 describe("persisted gate state", () => {
+  it("authenticates signed v1 anchors, replays the full log, and refuses an empty rolled-back local store", async () => {
+    const w = await world();
+    const original = JSON.parse((w.a.disk.state.value ?? "{}").split("\n")[0] ?? "{}") as Record<
+      string,
+      unknown
+    >;
+    const codec = createOwnLogCodec({ sodium, ring: w.a.devices.ring, signer: w.a.identity });
+    const previous = new Map<string, Uint8Array>();
+    const historicalHeads: [string, string[]][] = [];
+    const segments = [...(await w.a.disk.local.list(w.vaultId))].sort(
+      (a, b) => a.device.localeCompare(b.device) || a.seg - b.seg,
+    );
+    for (const segment of segments) {
+      if (segment.seg < 1) continue;
+      let prev = previous.get(segment.device) ?? codec.genesis(w.vaultId, segment.device, 1);
+      const bytes = await w.a.disk.local.read(w.vaultId, segment.device, segment.seg, 0);
+      for (const frame of scanFrames(bytes, 0).frames) {
+        const opened = await codec.open(
+          frame.sealed,
+          {
+            vault: w.vaultId,
+            device: segment.device,
+            seg: segment.seg,
+            offset: frame.offset,
+          },
+          prev,
+        );
+        prev = opened.head.chain;
+        historicalHeads.push([encodeHead(opened.head), []]);
+      }
+      previous.set(segment.device, prev);
+    }
+    expect(historicalHeads.length).toBeGreaterThan(FRAMES - 1);
+    // Exact historical v1 encoder field order and full held-head inventory.
+    const legacy: Record<string, unknown> = {
+      v: 1,
+      vault: original.vault,
+      device: original.device,
+      positions: original.positions,
+      keys: original.keys,
+      heads: historicalHeads,
+      statements: original.statements,
+      applied: original.applied,
+    };
+    const json = JSON.stringify(legacy);
+    const signature = w.a.identity.sign(
+      "cashu/state/v1",
+      concat(lp(utf8(w.vaultId)), lp(utf8(w.ids[0].deviceId)), utf8(json)),
+    );
+    const signed = `${json}\n${toHex(signature)}`;
+    expect(
+      decodeLegacyGateAnchors(
+        signed,
+        w.vaultId,
+        w.ids[0].deviceId,
+        w.a.identity.signPublicKey,
+        verifyContextSignature,
+      ),
+    ).toBeDefined();
+
+    const state = new MemoryGateState();
+    state.value = signed;
+    const disk = { ...w.a.disk, sink: new MemorySink(), state };
+    const replayed = await w.restart(disk);
+    await replayed.engine.sync();
+    expect(replayed.counter.restored).toBe(0);
+    expect(replayed.counter.opens).toBeGreaterThanOrEqual(FRAMES);
+    expect(replayed.disk.sink.value("c1")).toBeUndefined();
+    expect(replayed.disk.sink.value("b12")).toBe("b12");
+    expect(JSON.parse((state.value ?? "{}").split("\n")[0] ?? "{}").v).toBe(2);
+
+    const missingState = new MemoryGateState();
+    missingState.value = signed;
+    const missing = await w.restart({
+      ...w.a.disk,
+      local: new MemoryTransport(),
+      sink: new MemorySink(),
+      state: missingState,
+    });
+    await expect(missing.engine.sync()).rejects.toMatchObject({ code: "rolled-back" });
+    await expect(missing.engine.write([set("blocked")])).rejects.toMatchObject({
+      code: "rolled-back",
+    });
+  });
+
+  it("retains exact applied and held heads when the accepted cursor is behind the verified tail", async () => {
+    const w = await world();
+    const cId = w.ids[2].deviceId;
+    const applied = w.a.devices.guard.entries().find(([device]) => device === cId)?.[1];
+    const held = w.a.gate.heads.held(cId);
+    expect(applied).toBeDefined();
+    expect(held).toBeDefined();
+    if (!applied) throw new Error("missing synthetic applied cursor");
+    expect(applied).not.toEqual(held);
+    const raw = JSON.parse((w.a.disk.state.value ?? "{}").split("\n")[0] ?? "{}") as {
+      heads: [string, string[]][];
+    };
+    const retained = raw.heads.map(([encoded]) => decodeHead(encoded));
+    expect(
+      retained.some(
+        (head) =>
+          head?.device === cId && head.seg === applied?.seg && head.offset === applied?.offset,
+      ),
+    ).toBe(true);
+    expect(
+      retained.some(
+        (head) => head?.device === cId && head.seg === held?.seg && head.offset === held?.offset,
+      ),
+    ).toBe(true);
+    const reopened = await w.restart(w.a.disk);
+    await reopened.engine.sync();
+    expect(reopened.counter.restored).toBe(1);
+    expect(reopened.gate.heads.headAt(cId, applied)).toBeDefined();
+    expect(reopened.gate.heads.held(cId)).toEqual(held);
+  });
+
   it("a restart restores the snapshot and replays only the new tail", async () => {
     const w = await world();
     expect(w.a.disk.state.value).toBeDefined();

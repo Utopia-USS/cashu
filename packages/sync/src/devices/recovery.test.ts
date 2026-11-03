@@ -23,6 +23,7 @@ import {
   newEid,
   pairDevice,
   prepareConsented,
+  prepareReviewedRevocation,
   SimDevice,
   sodium,
 } from "./testkit.js";
@@ -59,13 +60,15 @@ describe("recovery (n3)", () => {
     expect(policy.acceptEpoch(a.id, { ...a.ring.active, epoch: 2 })).toBe(false);
     expect(policy.refusal).toBe("epoch_above_revocations");
 
-    const result = n.devices.prepareRevocation(
+    const result = prepareReviewedRevocation(
+      n,
       [a, b].map((d) => ({ device: d.id, cut: n.cursors.get(d.id) ?? START_CURSOR })),
       { revoke: newEid(), rotate: newEid() },
       vault.recovery,
     );
     if (!result.ok) throw new Error(result.reason);
-    expect(result.change.recipients).toEqual([RECOVERY_SIGNER_ID]);
+    // The old-key frame includes a signed self wrap so a cold reopen can recover the rotation.
+    expect(result.change.recipients).toEqual([n.id, RECOVERY_SIGNER_ID]);
     // A restored device introduces itself in its first frame: its recovery-issued certificate in its
     // own `device.added` (S29c phase B2: other devices verify its frames' signed heads with it).
     n.write([

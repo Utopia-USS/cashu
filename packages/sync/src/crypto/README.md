@@ -74,9 +74,10 @@ checks it only with its own key when it reads the snapshot back after a restart.
   reused device id: see "S29c phase B2: signed heads" below for what the chain and the heads detect
   and what remains (withholding without any later attestation, D10).
 - **Revocation depends on freshness**: storage colluding with a revoked device can still withhold the
-  revocation and its rotation wraps from an honest device that never sees any later head of the
-  revoker (head gossip is deferred, D10); the revoker's later heads in other statements (cuts) show
-  a withheld tail (`DeviceFrameGate.behind`).
+  revocation and its rotation wraps from an honest device that receives no later authenticated head.
+  Bounded `device.headsGossiped` events and later heads in other statements expose a withheld tail
+  through `DeviceFrameGate.behind`; unresolved old-head history and capacity overflow remain explicit
+  pending states. A carrier that withholds all later attestations cannot prove freshness (D10).
 
 ### S29 (pairing, registry, rotation, revocation)
 
@@ -120,8 +121,11 @@ checks it only with its own key when it reads the snapshot back after a restart.
   several devices at once is one event, epoch + 1). `active` is the highest (epoch, generation, kid):
   epoch first, so a device that never saw a revocation cannot override the revocation key by rotating
   past its generation at a lower epoch.
-  Revoking = rotate with epoch + 1 and wrap the new kid for every remaining device and for
-  `recoveryRecipient(ring)`, listing them all as `recipients`. A concurrent plain rotation at the same
+  Revoking = rotate with epoch + 1 and wrap the new kid for every remaining device, including the
+  surviving writer, and for `recoveryRecipient(ring)`, listing them all as signed `recipients`.
+  The writer's self wrap is in the same old-key frame, so a cold reopen after accepted append but
+  before durable ring save can recover the key. Historical rotations without a self wrap remain
+  readable under their original format. A concurrent plain rotation at the same
   generation has the lower epoch and loses. A malicious device that is still trusted can claim at most
   epoch + 1 (`epoch_gap` beyond), and at epoch + 1 it ties the revoker and can grind its kid to win.
   So `acceptEpoch(sender, entry)` is REQUIRED for every unwrap except pairing: it refuses an epoch above
@@ -472,12 +476,13 @@ Risk list (S29c, after phase B2):
 - CLOSED: rewritten frames of a device's own stream (A1b), a revoked device forging a trusted
   writer's frames (m6), the forged self-revocation through a minted key, truncation of a closed
   segment and reorder / splice (the chain), the rewritten-frame precondition of P2 / V2.
-- Residual, D10 (head gossip deferred): withholding is detected only through heads other statements
-  carry (revocation cuts today). Storage that withholds a device's whole tail, or replaces a
-  device's ENTIRE stream from its first frame under a key minted while the thief was trusted, looks
-  like a device that has not synced, to a reader that holds no later attested head of it. The
-  stream-key and conflict rules keep such a stream from counting while the thief is undecided;
-  mitigation: the caps above, revoking the thief with the words, and head gossip later.
+- Residual, D10: bounded head gossip and other authenticated statements detect withholding when a
+  reader obtains a later attested head. An unavailable exact old-head lookup stays pending, and
+  bounded-state overflow is visible rather than treated as a checked frontier. Storage that withholds
+  every later attestation can still hide a whole tail, or an entire stream replaced from its first
+  frame under a key minted while the thief was trusted can look unsynced to a reader with no contrary
+  attestation. The stream-key and conflict rules keep an undecided thief's stream from counting; the
+  owner can revoke with the words after explicit unseen-write review.
 - Residual, cut before an acknowledgement (honest, B1 review): an owner revoking the old leader with
   the words from a device that has not pulled its acknowledgement yet can place the cut before it,
   voiding the hand-over while a stale sibling pin exists. The two flow rules above exclude it in the

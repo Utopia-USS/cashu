@@ -1,5 +1,7 @@
 // Which session frames each role may send. The host closes a session that sends anything else (an
 // unknown method of an allowed namespace is answered `unknown-method` by the host's dispatcher).
+
+import { NATIVE_DEVICES_METHODS } from "./devices/messages.js";
 import type { ClientFrame, Role } from "./messages.js";
 import { NOTIFICATION_INTENT_METHOD } from "./notificationIntent.js";
 
@@ -41,7 +43,8 @@ export function roleAllows(role: Role, frame: ClientFrame): boolean {
       if (role === "ui")
         return (
           frame.method === NOTIFICATION_INTENT_METHOD ||
-          NATIVE_CREATION_METHODS.some((method) => frame.method === method)
+          NATIVE_CREATION_METHODS.some((method) => frame.method === method) ||
+          NATIVE_DEVICES_METHODS.some((method) => frame.method === method)
         );
       const prefix = NAMESPACE[role];
       return prefix !== undefined && frame.method.startsWith(prefix);

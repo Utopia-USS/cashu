@@ -14,7 +14,13 @@ import {
   view,
   visibilityOf,
 } from "./leaseSim.js";
-import { hlcAt, newEid, type SimDevice, START_CURSOR } from "./testkit.js";
+import {
+  hlcAt,
+  newEid,
+  prepareReviewedRevocation,
+  type SimDevice,
+  START_CURSOR,
+} from "./testkit.js";
 
 function sibling(d: SimDevice, leader: SimDevice, prev: string, wall: number): string {
   const eid = newEid();
@@ -176,7 +182,8 @@ it("a post-cut release cannot acknowledge a pending pin", async () => {
   b.push();
   a.sync();
   c.sync();
-  const r = c.devices.prepareRevocation(
+  const r = prepareReviewedRevocation(
+    c,
     [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
     { revoke: newEid(), rotate: newEid(), recertify: newEid },
     recovery,
@@ -274,7 +281,8 @@ it("a retired old leader's pre-cut ACK protects an auto claim from a late siblin
   const autoHolds = (d: SimDevice) => holdsLease(view(d), d.local(), boundedConfig);
   expect(autoHolds(b)).toBe(true);
   c.sync();
-  const r = c.devices.prepareRevocation(
+  const r = prepareReviewedRevocation(
+    c,
     [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
     { revoke: newEid(), rotate: newEid(), recertify: newEid },
     recovery,
@@ -297,7 +305,8 @@ it("a pin after old leader revocation waits until force, then waits for the new 
   pin(b, "pinned", b); // P waits for A
   b.push();
   c.sync();
-  const r = c.devices.prepareRevocation(
+  const r = prepareReviewedRevocation(
+    c,
     [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
     { revoke: newEid(), rotate: newEid(), recertify: newEid },
     recovery,
@@ -343,7 +352,8 @@ it("a descendant pre-cut ACK stays stable after revoking the old leader", async 
   b.sync();
   expect(holds(b)).toBe(true);
   c.sync();
-  const r = c.devices.prepareRevocation(
+  const r = prepareReviewedRevocation(
+    c,
     [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
     { revoke: newEid(), rotate: newEid(), recertify: newEid },
     recovery,
@@ -364,7 +374,8 @@ it("no-ACK revocation with two unseen sibling pins never creates two holders", a
   remote.flush();
   for (const d of [a, b, c]) d.sync();
   pin(b, "pinned", b); // P is local to B; C has not seen it
-  const r = c.devices.prepareRevocation(
+  const r = prepareReviewedRevocation(
+    c,
     [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
     { revoke: newEid(), rotate: newEid(), recertify: newEid },
     recovery,

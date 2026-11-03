@@ -50,6 +50,11 @@ import { PairingInviter, PairingJoiner } from "./pairing.js";
 import { type PairingLink, runInviter, runJoiner } from "./pairingLink.js";
 import { comparePositions } from "./positions.js";
 import { MemoryProvenanceStore } from "./provenance.js";
+import {
+  acknowledgeRevocationPreview,
+  previewRevocation,
+  type RevocationPreviewRequest,
+} from "./revocationPolicy.js";
 import { recordPairingProvenance } from "./rotation.js";
 import { memoizedVerifier, type StatementVerifier } from "./statements.js";
 import { VaultDevices } from "./vaultDevices.js";
@@ -806,6 +811,44 @@ export function consentsOf(
   return out;
 }
 
+/** Synthetic owner review in protocol tests. Production uses a host-bound, expiring challenge. */
+export function prepareReviewedRevocation(
+  revoker: SimDevice,
+  proposed: readonly RevokedEntry[],
+  eids: { readonly revoke: string; readonly rotate: string; readonly recertify?: () => string },
+  authority: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
+  selection: { readonly recertify?: readonly string[] } = {},
+) {
+  const targets = proposed.map((entry) => ({ device: entry.device, applied: entry.cut }));
+  const request: RevocationPreviewRequest = {
+    targets,
+    revokeEid: eids.revoke,
+    attemptId: newEid(),
+    authority:
+      "consent" in authority
+        ? { kind: "consent", signatures: authority.consent }
+        : { kind: "recovery" },
+    selection: { recertify: selection.recertify ?? [] },
+  };
+  const observed = previewRevocation(revoker.devices, revoker.gate, request);
+  if (!observed.ok) return { ok: false as const, reason: "revocation_admission_required" as const };
+  const permit = acknowledgeRevocationPreview(observed.preview, {
+    warning: "acknowledged",
+    ...(observed.preview.requiresLocalStartConfirmation
+      ? { localStart: "local_never_seen" as const }
+      : {}),
+  });
+  if (!permit) return { ok: false as const, reason: "revocation_admission_required" as const };
+  return revoker.devices.prepareRevocation(
+    revoker.gate,
+    request,
+    permit,
+    eids,
+    authority,
+    selection,
+  );
+}
+
 /**
  * Prepares the honest revoke flow (nothing is written): with the targets' consent when it counts
  * (H2 / H5': the revoker did not certify them), else with the owner's recovery words.
@@ -818,20 +861,20 @@ export function prepareConsented(
   recertify: readonly SimDevice[] = [],
 ) {
   const selection = { recertify: recertify.map((d) => d.id) };
-  // Consent path (cut-before-ack rule 2): each target states its own last position and head.
-  const own = targets.map((t) => t.gate.ownEntry());
+  // Consent covers the exact cut and head held by the revoker; no target-supplied cut bypasses
+  // the checked local observation.
+  const own = targets.map((t) =>
+    revoker.gate.revocationEntry(t.id, revoker.cursors.get(t.id) ?? START_CURSOR),
+  );
   const eid = newEid();
   const consent = consentsOf(targets, revoker.ring.vaultId, eid, own, revoker.id);
   const eids = { revoke: eid, rotate: newEid(), recertify: newEid };
-  const result = revoker.devices.prepareRevocation(own, eids, { consent }, selection);
+  const result = prepareReviewedRevocation(revoker, own, eids, { consent }, selection);
   const words = recovery ?? revoker.words;
   if (!result.ok && result.reason === "authority_required" && words) {
     // Words path (rule 1): the revoker's own view of each target, never below its last lease event.
-    const entries = targets.map((t) =>
-      revoker.gate.revocationEntry(t.id, revoker.cursors.get(t.id) ?? START_CURSOR),
-    );
     const words2 = { revoke: newEid(), rotate: eids.rotate, recertify: newEid };
-    return revoker.devices.prepareRevocation(entries, words2, words, selection);
+    return prepareReviewedRevocation(revoker, own, words2, words, selection);
   }
   return result;
 }

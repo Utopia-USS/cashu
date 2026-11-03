@@ -8,6 +8,7 @@ import {
   genesisChain,
   type Keyring,
   openFrame,
+  RECOVERY_SIGNER_ID,
   recoveryRecipient,
   rotateKeyring,
   sealFrame,
@@ -18,17 +19,19 @@ import {
   buildDeviceRevoked,
   buildKeysRotated,
   buildLeaseClaim,
+  decodeKeysRotated,
 } from "./events.js";
 import { DeviceFrameGate } from "./gate.js";
 import { devicesNeedingRebuild } from "./guard.js";
 import { foldLease } from "./lease.js";
-import { type PreparedChange, prepareRotation } from "./rotation.js";
+import { applyWrap, type PreparedChange, prepareRotation } from "./rotation.js";
 import {
   createSimVault,
   hlcAt,
   newEid,
   pairDevice,
   prepareConsented,
+  prepareReviewedRevocation,
   revokedWithConsent,
   type SimDevice,
   sodium,
@@ -119,6 +122,70 @@ async function threeDevices() {
 }
 
 describe("revocation", () => {
+  it("a signed self wrap restores the next key from an old ring and tampering is refused", async () => {
+    const { a, b } = await threeDevices();
+    const old = a.ring.clone(sodium);
+    const forged = a.ring.clone(sodium);
+    try {
+      const result = a.devices.prepareRotation(newEid());
+      if (!result.ok || !result.change.key) throw new Error("rotation unavailable");
+      const event = result.change.events[0];
+      const wraps = event?.d.wraps as Record<string, string> | undefined;
+      const selfHex = wraps?.[a.id];
+      if (!selfHex) throw new Error("signed self wrap missing");
+      expect(Object.keys(wraps ?? {}).sort()).toEqual([...result.change.recipients].sort());
+      expect(result.change.recipients).toContain(a.id);
+      expect(result.change.recipients).toContain(b.id);
+      expect(old.get(result.change.key.kid)).toBeUndefined();
+      const wire = Buffer.from(selfHex, "hex");
+      const restored = applyWrap({ ...a.devices.keyContext(), ring: old }, wire);
+      expect(restored.status).toBe("applied");
+      const held = old.get(result.change.key.kid);
+      expect(
+        held !== undefined &&
+          held.generation === result.change.key.generation &&
+          held.epoch === result.change.key.epoch,
+      ).toBe(true);
+
+      const changed = wire.slice();
+      changed[changed.length - 1] = (changed[changed.length - 1] ?? 0) ^ 1;
+      const refused = applyWrap({ ...a.devices.keyContext(), ring: forged }, changed);
+      expect(refused.status).toBe("refused");
+      expect(forged.get(result.change.key.kid)).toBeUndefined();
+      result.change.discard();
+    } finally {
+      old.wipe();
+      forged.wipe();
+    }
+  });
+
+  it("continues to accept a historical signed rotation without a self wrap", async () => {
+    const { a, b } = await threeDevices();
+    const recipient = a.devices.registry.trusted.get(b.id);
+    if (!recipient) throw new Error("trusted synthetic recipient missing");
+    const recipients = [b.id, RECOVERY_SIGNER_ID];
+    const kid = a.ring.active.kid;
+    const peerWire = wrapKeys(sodium, a.ring, a.identity, recipient, [kid], recipients);
+    const recoveryWire = wrapKeys(
+      sodium,
+      a.ring,
+      a.identity,
+      recoveryRecipient(a.ring),
+      [kid],
+      recipients,
+    );
+    const event = buildKeysRotated(
+      newEid(),
+      new Map([
+        [b.id, peerWire],
+        [RECOVERY_SIGNER_ID, recoveryWire],
+      ]),
+    );
+    const decoded = decodeKeysRotated(event.d);
+    expect(decoded !== undefined && decoded.wraps[a.id] === undefined).toBe(true);
+    expect(applyWrap(b.devices.keyContext(), peerWire).status).toBe("known");
+  });
+
   it("revoke then rotate: the revoked device cannot read new frames nor get its frames accepted", async () => {
     const { a, b, r } = await threeDevices();
     // R writes one legitimate batch before the revocation; everyone applied it.
@@ -395,12 +462,15 @@ describe("revocation", () => {
 
   it("revoking itself writes the revocation only; the others rotate", async () => {
     const { a, b, r } = await threeDevices();
-    const result = r.devices.prepareRevocation(
-      [{ device: r.id, cut: { seg: 1, offset: 1_000_000 } }],
+    const result = prepareReviewedRevocation(
+      r,
+      [r.gate.ownEntry()],
       {
         revoke: newEid(),
         rotate: newEid(),
       },
+      { consent: {} },
+      {},
     );
     if (!result.ok) throw new Error(result.reason);
     expect(result.change.key).toBeUndefined();

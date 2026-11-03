@@ -15,6 +15,7 @@ import {
   mulberry32,
   newEid,
   pairDevice,
+  prepareReviewedRevocation,
   type SimDevice,
   START_CURSOR,
   sodium,
@@ -44,7 +45,8 @@ export async function deliveryOrderRun(seed: number): Promise<void> {
       const eid = newEid();
       const consent =
         rand() < 0.5 ? consentsOf([target], actor.ring.vaultId, eid, entries, actor.id) : {};
-      const honest = actor.devices.prepareRevocation(
+      const honest = prepareReviewedRevocation(
+        actor,
         entries,
         { revoke: eid, rotate: newEid(), recertify: newEid },
         { consent },

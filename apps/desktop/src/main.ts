@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import {
   adminHandoverResultSchema,
   adminStatusResultSchema,
+  deviceListParamsSchema,
+  deviceListResultSchema,
   NOTIFICATION_INTENT_FEATURE,
   NOTIFICATION_INTENT_METHOD,
   nativeCreationCommitParamsSchema,
@@ -17,7 +19,16 @@ import {
   nativeCreationPrepareParamsSchema,
   nativeCreationPrepareResultSchema,
   notificationResolveResultSchema,
+  revokeCancelParamsSchema,
+  revokeCancelResultSchema,
+  revokeCommitParamsSchema,
+  revokeCommitResultSchema,
+  revokeInspectParamsSchema,
+  revokeInspectResultSchema,
+  revokePreviewParamsSchema,
+  revokePreviewResultSchema,
   uiCreationAllowed,
+  uiDevicesAllowed,
 } from "@cashu/host-protocol";
 import {
   acquireHostLock,
@@ -527,6 +538,57 @@ creationIpc("prepare");
 creationIpc("commit");
 creationIpc("inspect");
 creationIpc("current");
+
+function devicesIpc(
+  method: "list" | "revokePreview" | "revokeCommit" | "revokeInspect" | "revokeCancel",
+) {
+  const paramsSchema = {
+    list: deviceListParamsSchema,
+    revokePreview: revokePreviewParamsSchema,
+    revokeCommit: revokeCommitParamsSchema,
+    revokeInspect: revokeInspectParamsSchema,
+    revokeCancel: revokeCancelParamsSchema,
+  }[method];
+  const resultSchema = {
+    list: deviceListResultSchema,
+    revokePreview: revokePreviewResultSchema,
+    revokeCommit: revokeCommitResultSchema,
+    revokeInspect: revokeInspectResultSchema,
+    revokeCancel: revokeCancelResultSchema,
+  }[method];
+  ipcMain.handle(`cashu:devices-${method}`, async (event, raw: unknown) => {
+    if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !hostAdmissionOpen)
+      throw new Error("devices_unavailable");
+    const params = paramsSchema.safeParse(raw);
+    if (!params.success) throw new Error("devices_invalid_params");
+    const connection = (
+      await connectOrStart({
+        dataDir,
+        role: "ui",
+        build: HOST_BUILD,
+        start: async () => {
+          await activateHost(hostService, startHost);
+        },
+      })
+    ).connection;
+    try {
+      const full = `native.devices.${method}`;
+      if (!uiDevicesAllowed(full, connection.host.protocol.minor, connection.host.features))
+        throw new Error("devices_unavailable");
+      const result = resultSchema.safeParse(await connection.call(full, params.data));
+      if (!result.success) throw new Error("devices_invalid_result");
+      return result.data;
+    } finally {
+      connection.close();
+    }
+  });
+}
+
+devicesIpc("list");
+devicesIpc("revokePreview");
+devicesIpc("revokeCommit");
+devicesIpc("revokeInspect");
+devicesIpc("revokeCancel");
 
 function startHost(): void {
   if (!hostAdmissionOpen) throw new Error("host admission closed");

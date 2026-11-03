@@ -11,6 +11,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { crypto } from "@cashu/sync";
@@ -26,8 +27,7 @@ afterEach(() => {
 });
 const sodium = await crypto.loadNodeSodium();
 function fixture() {
-  mkdirSync(resolve("build"), { recursive: true });
-  const root = mkdtempSync(resolve("build", "t44-test-"));
+  const root = mkdtempSync(join(tmpdir(), "t44-test-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });

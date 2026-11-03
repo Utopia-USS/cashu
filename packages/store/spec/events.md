@@ -1,6 +1,6 @@
-# cashU event catalog v1.2 (normative)
+# cashU event catalog v1.3 (normative)
 
-Status: v1.2 (scope S04, 2026-10-31), after the independent review and its v1.1 re-check
+Status: v1.3 (S29c-B4, 2026-11-03), building on v1.2 (scope S04, 2026-10-31), after the independent review and its v1.1 re-check
 (`~/cashu-lab/checkpoints/S04-review.md`) and the lead's decisions on both. Consumers: S23 store-core,
 S24/S25 materializers, S26 genesis, S28a carrier contract, S29 devices / lease, S30 Python outbox,
 S31a/b bridge.
@@ -764,8 +764,64 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 
 `device.*`, `lease.*` (S29) and `snapshot.*` (S32) are defined by those scopes (schemas and folds:
 `packages/sync/src/devices/events.ts`, `leaseFold.ts`, `lease.ts`). Reserved `device.*`: `added`,
-`revoked`, `keysRotated`, `recoveryChanged`. Reserved `lease.*`: `claimed`, `renewed`, `released`,
+`revoked`, `keysRotated`, `recoveryChanged`, `headsGossiped`. Reserved `lease.*`: `claimed`, `renewed`, `released`,
 `pinned`, `fetched`.
+
+#### v1.3 device head gossip (S29c-B4)
+
+`device.headsGossiped` remains payload `v: 1`; the catalog bump reserves the new event type without
+changing frame, signed-head, key, or older event bytes. Its payload is exactly
+`{heads: string[], signer: deviceId, sig: lower-case Ed25519 signature}`. `heads` contains 1-16
+strictly increasing, unique, lower-case canonical encoded signed heads of data stream 1 in this
+vault. Each inner head retains its writer signature. The outer `signer` MUST be the frame writer,
+trusted at the statement's actual position. The outer signature uses domain `cashu/gossip/v1` over
+`statementBody(vault, "device.headsGossiped", eid, {heads, signer})`: length-prefixed UTF-8 vault,
+type and eid, then length-prefixed canonical JSON of the unsigned payload. A signature valid in a
+registry or lease context MUST NOT validate here. Wrong vault, stream, cursor, writer, key, chain,
+signature, order, duplicate or size is refused. An unknown inner writer key waits for authenticated
+key resolution; a forged or ambiguous one creates no attestation or candidate.
+
+The frame gate publishes inner attestations only after the outer frame passes revocation and fork
+admission at that exact position. A post-cut gossip frame from a revoked writer contributes no head,
+fork proof, freeze or candidate. A signed head attests the writer's chain endpoint; it does not prove
+that a remote carrier currently serves its frames. `behind` and unresolved fork/overflow are visible
+states, not a claim of full synchronization. Gossip never counts as a lease acknowledgement or owner
+force. Every revoke warns that unseen writes may be excluded. A local start cursor without a trusted
+head requires an explicit one-use local observation confirmation; a non-start cut without an exact
+trusted head is an integrity refusal. Recovery or exact target consent remains mandatory authority.
+
+Only a locally inspected non-gossip frame head or an authenticated inner head is eligible for
+automatic emission. A gossip-only outer frame head is not. Each device emits a strictly later
+per-writer frontier or one previously unpublished same-position fork alternative, excluding its own
+writer. One dedicated gossip-only frame may follow an inbound pass when candidates exist; the engine
+then performs one bounded remote push. A verified own-log gossip event is the local emission receipt;
+remote delivery is tracked separately and can remain pending. An uncertain own append fences all
+writes until authenticated `recoverLocal` rebases the writer's segment, size, chain, clock and gossip
+receipts. Replaying a v1 gate snapshot requires full authenticated log replay into v2 state. The v2
+snapshot carries compact attestations/receipts, `anchors` and `freezeFloors`, while independent
+append-only fork evidence persists. `anchors` holds at most one encoded, signed data-stream head per
+writer: the highest matching pre-conflict head found by complete authenticated history lookup.
+Restore rechecks its signature/key and matches the exact local frame. `freezeFloors` holds at most
+one `[deviceId, seg, offset]` per writer, the monotonic agreed cut after a proven fork, so a later
+refold cannot relax the freeze. Both fields are covered by the snapshot's `cashu/state/v1` signature.
+An authenticated v1 snapshot contributes only position and held-head durability anchors and always
+forces full replay; a missing anchor is rollback and refuses writes. An invalid snapshot signature
+is a cache miss, never authority.
+Late same-position fork checks use exact-end authenticated history; unavailable history or a cap
+overflow is reported and cannot silently clear evidence or claim a checked frontier. Older readers
+may ignore the new reserved event but cannot be advertised as B4 protected. Mixed older lease actors
+must be upgraded or paused before multi-device use because the preceding rule-6 fix changed
+revocation and auto-exit behavior.
+
+Every new `device.keysRotated` batch that the writer can survive includes a signed wrap addressed
+to that writer in the same frame, sealed with the preceding data key. Its authenticated recipient
+list names the writer exactly once, the recovery recipient, and each remaining trusted recipient;
+the wrap map has exactly those recipients and excludes revoked devices. This allows a cold reopen
+after accepted append but before durable ring save to recover the new key from the authenticated
+old-key frame. A writer confirms that this replay has supplied the expected key before merging its
+prepared clone, saves the ring durably, and only then marks the keyed attempt completed. Readers
+continue to accept historical `device.keysRotated` events without a self wrap; this rule adds a
+recovery property to newly authored rotations and does not change the older wire format.
 
 The store skips `device.*` and `lease.*` events (`packages/store/src/statements.ts`): they are sync
 statements the frame gate reads from the encrypted log, so a store neither folds, holds, parks nor

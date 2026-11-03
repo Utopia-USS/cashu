@@ -113,7 +113,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
       const current = policy();
       if (profile === undefined || current === undefined) return complete(fn(undefined));
       const profileSlug = profile.slug;
-      const currentForIo = () => {
+      const currentForRead = () => {
         if (
           options.replaced() ||
           stores.vaults.get(vault.id) !== vault ||
@@ -134,6 +134,8 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           return false;
         }
       };
+      const currentForIo = () =>
+        currentForRead() && (vault.native === undefined || vault.native.canRunSideEffects());
       const currentForWrite = () => active && vault.native !== undefined && currentForIo();
       const at = now();
       const today = localDay(at);
@@ -144,6 +146,10 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
       let writeUncertain = false;
       let dispatchedKey: string | undefined;
       let active = true;
+      const assertReadContextCurrent = () => {
+        if (!active || !currentForRead())
+          throw new Error("native MCP read context is no longer active");
+      };
       const assertContextCurrent = () => {
         if (
           !active ||
@@ -154,7 +160,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           throw new Error("native MCP context is no longer active");
       };
       const scopedRead: typeof read = (...args) => {
-        assertContextCurrent();
+        assertReadContextCurrent();
         return read(...args);
       };
       let context: ToolContext<NativeToolStore>;
@@ -324,7 +330,8 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
             commit() {
               if (committed) throw new Error("native call committed twice");
               if (preparation) throw new Error("native preparation cannot commit");
-              assertContextCurrent();
+              if (ran || pending.length > 0) assertContextCurrent();
+              else assertReadContextCurrent();
               if (writePending) throw new Error("native MCP write was not awaited");
               if (options.replaced() || stores.vaults.get(vault.id) !== vault)
                 throw new Error("host replaced before append");
@@ -382,7 +389,7 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         if (
           options.replaced() ||
           stores.vaults.get(vault.id) !== vault ||
-          (vault.native !== undefined && !vault.native.isCurrent())
+          (vault.native !== undefined && !vault.native.canRunSideEffects())
         )
           return undefined;
         const current = policy();

@@ -21,6 +21,7 @@ import {
   mulberry32,
   newEid,
   pairDevice,
+  prepareReviewedRevocation,
   type SimDevice,
   SimRemote,
   type SimVisibility,
@@ -344,7 +345,8 @@ export async function siblingRun(
     if (!attacked && minute >= attackAt && (!retire || handedOver)) {
       attacked = true;
       if (retire) {
-        const r = b.devices.prepareRevocation(
+        const r = prepareReviewedRevocation(
+          b,
           [{ device: a.id, cut: b.cursors.get(a.id) ?? START_CURSOR }],
           { revoke: newEid(), rotate: newEid(), recertify: newEid },
           recovery,

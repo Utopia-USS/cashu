@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { frameLoad } from "../segment.js";
+import { acknowledgeRevocationPreview, previewRevocation } from "./revocationPolicy.js";
 import { prepareRevocation, prepareRotation } from "./rotation.js";
 import { createSimVault, newEid, pairDevice, type SimDevice, START_CURSOR } from "./testkit.js";
 
@@ -25,15 +26,49 @@ async function vault() {
 describe("a prepared batch fits one frame", () => {
   it("refuses a revocation that would not fit one frame, and keeps the ring unchanged", async () => {
     const { a, r, ipad, recovery } = await vault();
-    const targets = [{ device: r.id, cut: a.cursors.get(r.id) ?? START_CURSOR }];
+    const targets = [{ device: r.id, applied: a.cursors.get(r.id) ?? START_CURSOR }];
     const eids = { revoke: newEid(), rotate: newEid(), recertify: newEid };
+    const selection = { recertify: [ipad.id] };
+    const reviewed = (recertify: readonly string[]) => {
+      const request = {
+        targets,
+        revokeEid: eids.revoke,
+        attemptId: newEid(),
+        authority: { kind: "recovery" as const },
+        selection: { recertify },
+      };
+      const observed = previewRevocation(a.devices, a.gate, request);
+      if (!observed.ok) throw new Error(observed.reason);
+      const permit = acknowledgeRevocationPreview(observed.preview, {
+        warning: "acknowledged",
+        ...(observed.preview.requiresLocalStartConfirmation
+          ? { localStart: "local_never_seen" as const }
+          : {}),
+      });
+      if (!permit) throw new Error("missing revocation permit");
+      return { request, permit };
+    };
     const kids = a.devices.ring.entries().map((e) => e.kid);
     // Revocation + re-certification of the iPad + rotation = 3 events.
     const tight = { ...a.devices.keyContext(), frameLimits: { events: 2, bytes: 1 << 20 } };
-    const refused = prepareRevocation(tight, targets, eids, recovery, { recertify: [ipad.id] });
+    const tightReview = reviewed(selection.recertify);
+    const refused = prepareRevocation(
+      tight,
+      a.gate,
+      tightReview.request,
+      tightReview.permit,
+      eids,
+      recovery,
+      selection,
+    );
     expect(refused).toMatchObject({ ok: false, reason: "batch_too_large", events: 3 });
     const small = { ...a.devices.keyContext(), frameLimits: { events: 10, bytes: 200 } };
-    expect(prepareRevocation(small, targets, eids, recovery)).toMatchObject({
+    const smallReview = reviewed([]);
+    expect(
+      prepareRevocation(small, a.gate, smallReview.request, smallReview.permit, eids, recovery, {
+        recertify: [],
+      }),
+    ).toMatchObject({
       ok: false,
       reason: "batch_too_large",
     });
@@ -44,9 +79,16 @@ describe("a prepared batch fits one frame", () => {
     expect(a.devices.ring.entries().map((e) => e.kid)).toEqual(kids);
 
     // With the engine defaults it fits one frame.
-    const ok = prepareRevocation(a.devices.keyContext(), targets, eids, recovery, {
-      recertify: [ipad.id],
-    });
+    const finalReview = reviewed(selection.recertify);
+    const ok = prepareRevocation(
+      a.devices.keyContext(),
+      a.gate,
+      finalReview.request,
+      finalReview.permit,
+      eids,
+      recovery,
+      selection,
+    );
     if (!ok.ok) throw new Error(ok.reason);
     expect(frameLoad(ok.change.events).events).toBe(3);
     ok.change.commit();

@@ -31,6 +31,8 @@
 //   finds each head's frame in the local log, with the same chain and signature) and replays only
 //   the frames after those heads; a snapshot that fails any check is ignored (full replay).
 // - Every public operation runs serialized on one queue.
+
+import { ownBatchDigest } from "./batchProof.js";
 import type {
   AppliedInfo,
   ClockStore,
@@ -58,6 +60,7 @@ import type {
   WriteResult,
 } from "./carrier.js";
 import { propagationBound, START_CURSOR } from "./carrier.js";
+import { decodeHead, encodeHead } from "./crypto/index.js";
 import { isTransportUnavailable, rejectionCode, SyncError, TransportError } from "./errors.js";
 import {
   type ClockWarning,
@@ -100,6 +103,8 @@ export interface SyncEngineOptions {
   readonly codec: FrameCodec;
   /** Verifies signed heads and decides data acceptance (devices/gate.ts `DeviceFrameGate`). */
   readonly gate: FrameGate;
+  /** Host-bound secure ULID source for one dedicated gossip event; absent disables emission. */
+  readonly gossipEid?: () => string;
   readonly sink: EventSink;
   readonly clockStore: ClockStore;
   /** Where the gate's state snapshot is kept (absent: every start replays the whole local log). */
@@ -169,6 +174,7 @@ interface RecoveryStream {
 const MAX_ROUNDS = 4;
 
 interface Pass {
+  gossipEmitted: boolean;
   cache: Map<string, Opened>;
   /** A stream waited for its writer to become known. */
   waited: boolean;
@@ -199,6 +205,7 @@ interface Pass {
 
 function newPass(): Pass {
   return {
+    gossipEmitted: false,
     cache: new Map(),
     waited: false,
     gateChanged: false,
@@ -257,6 +264,7 @@ class OwnLogEngine implements SyncEngine {
   readonly #remotes: readonly Transport[];
   readonly #codec: FrameCodec;
   readonly #gate: FrameGate;
+  readonly #gossipEid: (() => string) | undefined;
   readonly #sink: EventSink;
   readonly #clockStore: ClockStore;
   readonly #gateState: GateStateStore | undefined;
@@ -278,6 +286,9 @@ class OwnLogEngine implements SyncEngine {
   #tail: Promise<unknown> = Promise.resolve();
   #closed = false;
   #rolledBack = false;
+  #ownTailUncertain = false;
+  #gossipDeliveryPending = false;
+  #lastGossipAt = Number.NEGATIVE_INFINITY;
   #ownSeg = 1;
   #ownSize = 0;
   /** Chain after every frame of the local log, per device, in stream order (data stream). */
@@ -292,8 +303,10 @@ class OwnLogEngine implements SyncEngine {
     this.device = o.device;
     this.#local = o.local;
     this.#remotes = o.remotes ?? [];
+    this.#gossipDeliveryPending = this.#remotes.length > 0;
     this.#codec = o.codec;
     this.#gate = o.gate;
+    this.#gossipEid = o.gossipEid;
     this.#sink = o.sink;
     this.#clockStore = o.clockStore;
     this.#gateState = o.gateState;
@@ -347,53 +360,74 @@ class OwnLogEngine implements SyncEngine {
   }
 
   write(events: readonly UnstampedEvent[], options?: WriteOptions): Promise<WriteResult> {
-    return this.#run(async () => {
-      this.#assertOpen();
-      if (this.#rolledBack) {
-        throw new SyncError("rolled-back", "this device's log is ahead of its clock; re-pair it");
-      }
-      if (events.length === 0) throw new SyncError("invalid-event", "empty batch");
-      if (!events.every(isUnstampedEvent)) {
-        throw new SyncError("invalid-event", "invalid event in batch");
-      }
-      if (options?.afterHlc !== undefined) {
-        let warning: ClockWarning | undefined;
-        try {
-          warning = this.#clock.receive(options.afterHlc);
-        } catch {
-          throw new SyncError("invalid-event", "invalid high-water mark");
-        }
-        if (warning) throw new SyncError("remote-far-future", "high-water mark is too far ahead");
-      }
-      const stamped: WireEvent[] = events.map((e) => ({ ...e, h: this.#clock.tick() }));
-      await this.#clockStore.save(this.#clock.state);
+    return this.#run(() => this.#writeInQueue(events, options));
+  }
 
-      const groups = this.#split(stamped);
-      const plains = groups.map((group, index) =>
-        encodePayload(
-          groups.length > 1 ? { events: group, part: [index, groups.length] } : { events: group },
-        ),
-      );
-      const sealedFrames: { at: FramePosition; bytes: Uint8Array; chain: Uint8Array }[] = [];
-      const cache = new Map<string, Opened>();
-      const total = plains.reduce((n, p) => n + LENGTH_BYTES + p.length, 0);
-      const fresh = this.#ownSize > 0 && this.#ownSize + total > this.#maxSegmentBytes;
-      const seg = fresh ? this.#ownSeg + 1 : this.#ownSeg;
-      const start = fresh ? 0 : this.#ownSize;
-      let size = start;
-      let prev = this.#ownChain();
-      for (const plain of plains) {
-        const at = { vault: this.vault, device: this.device, seg, offset: size };
-        const { sealed, head } = await this.#codec.seal(plain, at, prev);
-        if (sealed.length > MAX_SEALED_FRAME_BYTES) {
-          throw new SyncError("frame-too-large", "an event is larger than the frame limit");
-        }
-        const bytes = frameBytes(sealed);
-        sealedFrames.push({ at, bytes, chain: head.chain });
-        cache.set(posKey(at), { plain, head });
-        size += bytes.length;
-        prev = head.chain;
+  writeAdmission(): "ready" | "own-tail-uncertain" | "authority-unresolved" | "rolled-back" {
+    if (this.#ownTailUncertain) return "own-tail-uncertain";
+    if (this.#gate.gossipStatus?.().authorityUncertain) return "authority-unresolved";
+    if (this.#rolledBack) return "rolled-back";
+    return "ready";
+  }
+
+  async #writeInQueue(
+    events: readonly UnstampedEvent[],
+    options?: WriteOptions,
+  ): Promise<WriteResult> {
+    this.#assertOpen();
+    if (this.#ownTailUncertain) {
+      throw new SyncError("own-tail-uncertain", "own log needs authenticated recovery");
+    }
+    if (!this.#primed && this.#gate.needsReplay()) await this.#applyLocal(newPass());
+    if (this.#gate.gossipStatus?.().authorityUncertain) {
+      throw new SyncError("authority-unresolved", "authenticated head history needs resolution");
+    }
+    if (this.#rolledBack) {
+      throw new SyncError("rolled-back", "this device's log is ahead of its clock; re-pair it");
+    }
+    if (events.length === 0) throw new SyncError("invalid-event", "empty batch");
+    if (!events.every(isUnstampedEvent)) {
+      throw new SyncError("invalid-event", "invalid event in batch");
+    }
+    if (options?.afterHlc !== undefined) {
+      let warning: ClockWarning | undefined;
+      try {
+        warning = this.#clock.receive(options.afterHlc);
+      } catch {
+        throw new SyncError("invalid-event", "invalid high-water mark");
       }
+      if (warning) throw new SyncError("remote-far-future", "high-water mark is too far ahead");
+    }
+    const stamped: WireEvent[] = events.map((e) => ({ ...e, h: this.#clock.tick() }));
+    await this.#clockStore.save(this.#clock.state);
+
+    const groups = this.#split(stamped);
+    const plains = groups.map((group, index) =>
+      encodePayload(
+        groups.length > 1 ? { events: group, part: [index, groups.length] } : { events: group },
+      ),
+    );
+    const sealedFrames: { at: FramePosition; bytes: Uint8Array; chain: Uint8Array }[] = [];
+    const cache = new Map<string, Opened>();
+    const total = plains.reduce((n, p) => n + LENGTH_BYTES + p.length, 0);
+    const fresh = this.#ownSize > 0 && this.#ownSize + total > this.#maxSegmentBytes;
+    const seg = fresh ? this.#ownSeg + 1 : this.#ownSeg;
+    const start = fresh ? 0 : this.#ownSize;
+    let size = start;
+    let prev = this.#ownChain();
+    for (const plain of plains) {
+      const at = { vault: this.vault, device: this.device, seg, offset: size };
+      const { sealed, head } = await this.#codec.seal(plain, at, prev);
+      if (sealed.length > MAX_SEALED_FRAME_BYTES) {
+        throw new SyncError("frame-too-large", "an event is larger than the frame limit");
+      }
+      const bytes = frameBytes(sealed);
+      sealedFrames.push({ at, bytes, chain: head.chain });
+      cache.set(posKey(at), { plain, head });
+      size += bytes.length;
+      prev = head.chain;
+    }
+    try {
       await this.#local.append(
         this.vault,
         this.device,
@@ -420,310 +454,403 @@ class OwnLogEngine implements SyncEngine {
       const first = stamped[0]?.h ?? "";
       const last = stamped.at(-1)?.h ?? "";
       return { events: stamped.length, frames: sealedFrames.length, first, last };
-    });
+    } catch (error) {
+      // A transport may commit and then throw. No writer may use the old offset or chain.
+      this.#ownTailUncertain = true;
+      throw error;
+    }
   }
 
   recoverLocal(): Promise<LocalRecoveryResult> {
-    return this.#run(async () => {
-      this.#assertOpen();
-      const pass = newPass();
-      const original = await this.#sink.cursors();
-      const inventory = await this.#local.list(this.vault);
-      const streams = new Map<DeviceId, RecoveryStream>();
-      const streamFor = (device: DeviceId): RecoveryStream => {
-        let stream = streams.get(device);
-        if (!stream) {
-          stream = {
-            device,
-            frames: [],
-            heldEnd: START_CURSOR,
-            inspectedThrough: START_CURSOR,
-            suppressed: false,
-            parked: false,
-            accepted: false,
-          };
-          streams.set(device, stream);
-        }
-        return stream;
-      };
-      for (const device of original.keys()) streamFor(device);
-      for (const segment of inventory) streamFor(segment.device);
+    return this.#run(() => this.#recoverLocalInQueue());
+  }
 
-      // A signed local gate snapshot records heads this installation held. It is an anchor, not
-      // permission to skip any bytes in this audit. Invalid snapshots are only caches to ignore.
-      if (this.#gateState?.loadEvidence && this.#gate.importEvidence) {
-        this.#gate.importEvidence(await this.#gateState.loadEvidence());
-        this.#evidenceLoaded = true;
+  async #recoverLocalInQueue(): Promise<LocalRecoveryResult> {
+    this.#assertOpen();
+    const pass = newPass();
+    const original = await this.#sink.cursors();
+    const inventory = await this.#local.list(this.vault);
+    const streams = new Map<DeviceId, RecoveryStream>();
+    const streamFor = (device: DeviceId): RecoveryStream => {
+      let stream = streams.get(device);
+      if (!stream) {
+        stream = {
+          device,
+          frames: [],
+          heldEnd: START_CURSOR,
+          inspectedThrough: START_CURSOR,
+          suppressed: false,
+          parked: false,
+          accepted: false,
+        };
+        streams.set(device, stream);
       }
-      let anchors: readonly FrameHead[] = [];
-      if (this.#gateState?.load && this.#gate.importState) {
+      return stream;
+    };
+    for (const device of original.keys()) streamFor(device);
+    for (const segment of inventory) streamFor(segment.device);
+
+    // A signed local gate snapshot records heads this installation held. It is an anchor, not
+    // permission to skip any bytes in this audit. Invalid snapshots are only caches to ignore.
+    if (this.#gateState?.loadEvidence && this.#gate.importEvidence) {
+      this.#gate.importEvidence(await this.#gateState.loadEvidence());
+      this.#evidenceLoaded = true;
+    }
+    let anchors: readonly FrameHead[] = [];
+    if (this.#gateState?.load && this.#gate.importState) {
+      try {
+        const state = await this.#gateState.load();
+        const imported = state === undefined ? undefined : this.#gate.importState(state);
+        if (imported) {
+          anchors = imported.heldHeads ?? [...imported.positions.values()];
+          for (const head of anchors) streamFor(head.device);
+          if (!this.#primed && !imported.replayOnly) imported.restore();
+        }
+      } catch {
+        // A missing or damaged cache never establishes readiness on its own.
+      }
+    }
+
+    for (const stream of streams.values()) {
+      const segments = inventory.filter((s) => s.device === stream.device).sort(bySegment);
+      const last = segments.at(-1);
+      if (last) stream.heldEnd = { seg: last.seg, offset: last.size };
+      let expected = 1;
+      let prev = this.#codec.genesis(this.vault, stream.device, 1);
+      for (const s of segments) {
+        if (s.seg !== expected || !Number.isSafeInteger(s.size) || s.size < 0) {
+          stream.reason = "segment-gap";
+          break;
+        }
+        let bytes: Uint8Array;
         try {
-          const state = await this.#gateState.load();
-          const imported = state === undefined ? undefined : this.#gate.importState(state);
-          if (imported) {
-            anchors = imported.heldHeads ?? [...imported.positions.values()];
-            for (const head of anchors) streamFor(head.device);
-            if (!this.#primed) imported.restore();
-          }
+          bytes = await this.#local.read(this.vault, stream.device, s.seg, 0);
         } catch {
-          // A missing or damaged cache never establishes readiness on its own.
+          stream.reason = "short-read";
+          break;
         }
-      }
-
-      for (const stream of streams.values()) {
-        const segments = inventory.filter((s) => s.device === stream.device).sort(bySegment);
-        const last = segments.at(-1);
-        if (last) stream.heldEnd = { seg: last.seg, offset: last.size };
-        let expected = 1;
-        let prev = this.#codec.genesis(this.vault, stream.device, 1);
-        for (const s of segments) {
-          if (s.seg !== expected || !Number.isSafeInteger(s.size) || s.size < 0) {
-            stream.reason = "segment-gap";
-            break;
-          }
-          let bytes: Uint8Array;
+        if (bytes.length !== s.size) {
+          stream.reason = "short-read";
+          break;
+        }
+        const scan = scanFrames(bytes, 0);
+        for (const f of scan.frames) {
+          const at = { vault: this.vault, device: stream.device, seg: s.seg, offset: f.offset };
+          const before = prev;
           try {
-            bytes = await this.#local.read(this.vault, stream.device, s.seg, 0);
+            prev = this.#codec.link(f.sealed, at, prev);
           } catch {
-            stream.reason = "short-read";
+            stream.reason = "chain-unknown";
             break;
           }
-          if (bytes.length !== s.size) {
-            stream.reason = "short-read";
-            break;
-          }
-          const scan = scanFrames(bytes, 0);
-          for (const f of scan.frames) {
-            const at = { vault: this.vault, device: stream.device, seg: s.seg, offset: f.offset };
-            const before = prev;
-            try {
-              prev = this.#codec.link(f.sealed, at, prev);
-            } catch {
-              stream.reason = "chain-unknown";
-              break;
-            }
-            stream.frames.push({
-              at,
-              end: { seg: s.seg, offset: f.end },
-              sealed: f.sealed,
-              size: f.end - f.offset,
-              prev: before,
-            });
-          }
-          if (stream.reason) break;
-          if (scan.tail !== "none") {
-            stream.reason = scan.tail === "too-large" ? "too-large" : "partial";
-            break;
-          }
-          expected += 1;
+          stream.frames.push({
+            at,
+            end: { seg: s.seg, offset: f.end },
+            sealed: f.sealed,
+            size: f.end - f.offset,
+            prev: before,
+          });
         }
+        if (stream.reason) break;
+        if (scan.tail !== "none") {
+          stream.reason = scan.tail === "too-large" ? "too-large" : "partial";
+          break;
+        }
+        expected += 1;
       }
+    }
 
-      // Trust statements can introduce a writer whose earlier held frame initially waited.
-      // Each successful round signs off at least one new frame, so a frame-count bound is sound.
-      const observed = new Set<RecoveryFrame>();
-      const frameCount = [...streams.values()].reduce((n, s) => n + s.frames.length, 0);
-      let progress = false;
-      for (let round = 0; round <= frameCount; round++) {
-        progress = false;
-        for (const stream of streams.values()) {
-          for (const frame of stream.frames) {
-            if (observed.has(frame)) continue;
-            let opened: Opened;
-            try {
-              opened = await this.#open(frame.sealed, frame.at, frame.prev, pass);
-            } catch (e) {
-              stream.reason ??= rejectionCode(e);
-              break;
-            }
-            const decoded = decodePayload(opened.plain, stream.device);
-            if (!decoded.ok) {
-              stream.reason ??= decoded.code;
-              break;
-            }
-            const verdict = this.#gate.authenticate(opened.head, decoded.payload.events);
-            if (!verdict.ok) {
-              if (!verdict.wait) stream.reason ??= verdict.code;
-              break;
-            }
-            frame.opened = opened;
-            frame.events = decoded.payload.events;
-            frame.part = decoded.payload.part;
-            stream.inspectedThrough = frame.end;
-            this.#gate.observe(opened.head, decoded.payload.events);
-            observed.add(frame);
-            progress = true;
-          }
-        }
-        if (observed.size === frameCount || !progress) break;
-      }
+    // Trust statements can introduce a writer whose earlier held frame initially waited.
+    // Each successful round signs off at least one new frame, so a frame-count bound is sound.
+    const observed = new Set<RecoveryFrame>();
+    const frameCount = [...streams.values()].reduce((n, s) => n + s.frames.length, 0);
+    let progress = false;
+    for (let round = 0; round <= frameCount; round++) {
+      progress = false;
       for (const stream of streams.values()) {
-        if (stream.frames.some((f) => !observed.has(f))) stream.reason ??= "writer-unknown";
-      }
-
-      // A snapshot's locally held heads must still be present. Gossip/remote attestation is not
-      // a local durability anchor and is intentionally excluded from this check.
-      let anchorMismatch = false;
-      for (const anchor of anchors) {
-        const stream = streamFor(anchor.device);
-        const match = stream.frames.some(
-          (frame) =>
-            frame.opened?.head.seg === anchor.seg &&
-            frame.opened.head.offset === anchor.offset &&
-            equalBytes(frame.opened.head.chain, anchor.chain) &&
-            equalBytes(frame.opened.head.sig, anchor.sig),
-        );
-        if (!match) {
-          stream.reason ??= "local-anchor-missing";
-          anchorMismatch = true;
-        }
-      }
-      for (const device of this.#gate.recoveryEvidenceDevices?.() ?? []) streamFor(device);
-
-      const deliver: {
-        stream: RecoveryStream;
-        events: readonly WireEvent[];
-        end: SegmentCursor;
-        bytes: number;
-      }[] = [];
-      for (const stream of streams.values()) {
-        const validEnds = new Set<string>([`${START_CURSOR.seg}:${START_CURSOR.offset}`]);
-        let group:
-          | { events: WireEvent[]; count: number; next: number; bytes: number; suppressed: boolean }
-          | undefined;
-        let crossedSuppression = false;
         for (const frame of stream.frames) {
-          if (!observed.has(frame)) break;
-          const opened = frame.opened as Opened;
-          const events = frame.events as readonly WireEvent[];
-          const decision = this.#gate.accept(opened.head, events);
-          if (decision.changed) pass.gateChanged = true;
-          const suppressed =
-            !decision.verdict.ok &&
-            (decision.verdict.code === "revoked_writer" || decision.verdict.code === "forked");
-          if (!decision.verdict.ok && !suppressed) {
-            stream.reason ??= decision.verdict.code;
+          if (observed.has(frame)) continue;
+          let opened: Opened;
+          try {
+            opened = await this.#open(frame.sealed, frame.at, frame.prev, pass);
+          } catch (e) {
+            stream.reason ??= rejectionCode(e);
             break;
           }
-          if (suppressed) stream.suppressed = true;
-          else this.#noteJudged(opened.head);
-          const part = frame.part;
-          let batch: readonly WireEvent[] | undefined;
-          let bytes = frame.size;
-          if (!part) {
-            if (group) {
-              stream.reason ??= "incomplete-group";
-              break;
-            }
-            batch = events;
-          } else if (part[0] === 0 && !group) {
-            group = { events: [...events], count: part[1], next: 1, bytes, suppressed };
-          } else if (
-            group &&
-            part[0] === group.next &&
-            part[1] === group.count &&
-            (events[0]?.h ?? "") > (group.events.at(-1)?.h ?? "")
-          ) {
-            group.events.push(...events);
-            group.next += 1;
-            group.bytes += bytes;
-            group.suppressed ||= suppressed;
-          } else {
-            stream.reason ??= "malformed";
+          const decoded = decodePayload(opened.plain, stream.device);
+          if (!decoded.ok) {
+            stream.reason ??= decoded.code;
             break;
           }
-          let batchSuppressed = suppressed;
-          if (group && group.next === group.count) {
-            batch = group.events;
-            bytes = group.bytes;
-            batchSuppressed = group.suppressed;
-            group = undefined;
+          const verdict = this.#gate.authenticate(opened.head, decoded.payload.events);
+          if (!verdict.ok) {
+            if (!verdict.wait) stream.reason ??= verdict.code;
+            break;
           }
-          if (!batch) continue;
-          if (batchSuppressed) {
-            crossedSuppression = true;
-            continue;
-          }
-          validEnds.add(`${frame.end.seg}:${frame.end.offset}`);
-          stream.accepted = true;
-          const cursor = original.get(stream.device) ?? START_CURSOR;
-          if (comparePositions(frame.end, cursor) > 0) {
-            if (crossedSuppression) {
-              stream.reason ??= "suppressed-gap";
-              break;
-            }
-            deliver.push({ stream, events: batch, end: frame.end, bytes });
-          }
+          frame.opened = opened;
+          frame.events = decoded.payload.events;
+          frame.part = decoded.payload.part;
+          stream.inspectedThrough = frame.end;
+          this.#gate.observe(opened.head, decoded.payload.events);
+          observed.add(frame);
+          progress = true;
         }
-        if (group && !stream.reason) stream.reason = "incomplete-group";
-        const cursor = original.get(stream.device) ?? START_CURSOR;
-        if (!stream.reason && !validEnds.has(`${cursor.seg}:${cursor.offset}`)) {
-          stream.reason = "cursor-not-accepted";
-          this.#recoveryViewStale = true;
-        }
-        if (stream.reason === "suppressed-gap") this.#recoveryViewStale = true;
       }
+      if (observed.size === frameCount || !progress) break;
+    }
+    for (const stream of streams.values()) {
+      if (stream.frames.some((f) => !observed.has(f))) stream.reason ??= "writer-unknown";
+    }
 
-      // Cursor proofs precede any sink write. A partial replay remains quarantined by the host.
-      for (const item of deliver) {
-        if (item.stream.reason) continue;
-        await this.#collect(
-          item.stream.device,
-          item.stream.device === this.device,
-          item.events,
-          item.end,
-          item.bytes,
-          pass,
-        );
+    // A snapshot's locally held heads must still be present. Gossip/remote attestation is not
+    // a local durability anchor and is intentionally excluded from this check.
+    let anchorMismatch = false;
+    for (const anchor of anchors) {
+      const stream = streamFor(anchor.device);
+      const match = stream.frames.some(
+        (frame) =>
+          frame.opened?.head.seg === anchor.seg &&
+          frame.opened.head.offset === anchor.offset &&
+          equalBytes(frame.opened.head.chain, anchor.chain) &&
+          equalBytes(frame.opened.head.sig, anchor.sig),
+      );
+      if (!match) {
+        stream.reason ??= "local-anchor-missing";
+        anchorMismatch = true;
       }
-      await this.#flush(pass);
-      for (const device of pass.parkedDevices) streamFor(device).parked = true;
-      if (pass.clockDirty) await this.#clockStore.save(this.#clock.state);
-      if (this.#gate.takeRebuild() || pass.staleView) this.#recoveryViewStale = true;
-      const finalCursors = await this.#sink.cursors();
-      const reports: LocalStreamRecovery[] = [...streams.values()]
-        .sort((a, b) => a.device.localeCompare(b.device))
-        .map((stream) => {
-          const appliedThrough = finalCursors.get(stream.device) ?? START_CURSOR;
-          const base = {
-            device: stream.device,
-            inspectedThrough: stream.inspectedThrough,
-            heldEnd: stream.heldEnd,
-            appliedThrough,
-          };
-          if (stream.reason)
-            return { ...base, disposition: "unresolved_tail" as const, reason: stream.reason };
-          return {
-            ...base,
-            disposition: stream.suppressed
-              ? ("authenticated_suppressed" as const)
-              : stream.parked
-                ? ("authenticated_parked" as const)
-                : ("authenticated_accepted" as const),
-          };
-        });
-      const incomplete = reports.some((s) => s.disposition === "unresolved_tail");
-      const complete =
-        !incomplete && !this.#recoveryViewStale && !this.#rolledBack && !anchorMismatch;
-      this.#primed = complete;
-      await this.#saveEvidence();
-      if (complete) await this.#saveGate();
-      let parkedInSink: boolean | null = null;
-      if (this.#sink.needsUpgrade) {
-        try {
-          parkedInSink = await this.#sink.needsUpgrade();
-        } catch {
-          parkedInSink = null;
+    }
+    for (const device of this.#gate.recoveryEvidenceDevices?.() ?? []) streamFor(device);
+
+    const deliver: {
+      stream: RecoveryStream;
+      events: readonly WireEvent[];
+      end: SegmentCursor;
+      bytes: number;
+    }[] = [];
+    for (const stream of streams.values()) {
+      const validEnds = new Set<string>([`${START_CURSOR.seg}:${START_CURSOR.offset}`]);
+      let group:
+        | { events: WireEvent[]; count: number; next: number; bytes: number; suppressed: boolean }
+        | undefined;
+      let crossedSuppression = false;
+      for (const frame of stream.frames) {
+        if (!observed.has(frame)) break;
+        const opened = frame.opened as Opened;
+        const events = frame.events as readonly WireEvent[];
+        const decision = this.#gate.accept(opened.head, events);
+        if (decision.changed) pass.gateChanged = true;
+        const suppressed =
+          !decision.verdict.ok &&
+          (decision.verdict.code === "revoked_writer" || decision.verdict.code === "forked");
+        if (!decision.verdict.ok && !suppressed) {
+          stream.reason ??= decision.verdict.code;
+          break;
+        }
+        if (suppressed) stream.suppressed = true;
+        else this.#noteJudged(opened.head);
+        const part = frame.part;
+        let batch: readonly WireEvent[] | undefined;
+        let bytes = frame.size;
+        if (!part) {
+          if (group) {
+            stream.reason ??= "incomplete-group";
+            break;
+          }
+          batch = events;
+        } else if (part[0] === 0 && !group) {
+          group = { events: [...events], count: part[1], next: 1, bytes, suppressed };
+        } else if (
+          group &&
+          part[0] === group.next &&
+          part[1] === group.count &&
+          (events[0]?.h ?? "") > (group.events.at(-1)?.h ?? "")
+        ) {
+          group.events.push(...events);
+          group.next += 1;
+          group.bytes += bytes;
+          group.suppressed ||= suppressed;
+        } else {
+          stream.reason ??= "malformed";
+          break;
+        }
+        let batchSuppressed = suppressed;
+        if (group && group.next === group.count) {
+          batch = group.events;
+          bytes = group.bytes;
+          batchSuppressed = group.suppressed;
+          group = undefined;
+        }
+        if (!batch) continue;
+        if (batchSuppressed) {
+          crossedSuppression = true;
+          continue;
+        }
+        validEnds.add(`${frame.end.seg}:${frame.end.offset}`);
+        stream.accepted = true;
+        const cursor = original.get(stream.device) ?? START_CURSOR;
+        if (comparePositions(frame.end, cursor) > 0) {
+          if (crossedSuppression) {
+            stream.reason ??= "suppressed-gap";
+            break;
+          }
+          deliver.push({ stream, events: batch, end: frame.end, bytes });
         }
       }
-      const unreadableFrame = reports.some((s) => s.reason === "frame-format");
-      return {
-        complete,
-        streams: reports,
-        needsUpgrade: pass.needsUpgrade || unreadableFrame ? true : parkedInSink,
-        requiresViewRebuild: this.#recoveryViewStale,
-        rolledBack: this.#rolledBack || anchorMismatch,
-      };
+      if (group && !stream.reason) stream.reason = "incomplete-group";
+      const cursor = original.get(stream.device) ?? START_CURSOR;
+      if (!stream.reason && !validEnds.has(`${cursor.seg}:${cursor.offset}`)) {
+        stream.reason = "cursor-not-accepted";
+        this.#recoveryViewStale = true;
+      }
+      if (stream.reason === "suppressed-gap") this.#recoveryViewStale = true;
+    }
+
+    // Cursor proofs precede any sink write. A partial replay remains quarantined by the host.
+    for (const item of deliver) {
+      if (item.stream.reason) continue;
+      await this.#collect(
+        item.stream.device,
+        item.stream.device === this.device,
+        item.events,
+        item.end,
+        item.bytes,
+        pass,
+      );
+    }
+    await this.#flush(pass);
+    for (const device of pass.parkedDevices) streamFor(device).parked = true;
+    if (pass.clockDirty) await this.#clockStore.save(this.#clock.state);
+    if (this.#gate.takeRebuild() || pass.staleView) this.#recoveryViewStale = true;
+    const finalCursors = await this.#sink.cursors();
+    const reports: LocalStreamRecovery[] = [...streams.values()]
+      .sort((a, b) => a.device.localeCompare(b.device))
+      .map((stream) => {
+        const appliedThrough = finalCursors.get(stream.device) ?? START_CURSOR;
+        const base = {
+          device: stream.device,
+          inspectedThrough: stream.inspectedThrough,
+          heldEnd: stream.heldEnd,
+          appliedThrough,
+        };
+        if (stream.reason)
+          return { ...base, disposition: "unresolved_tail" as const, reason: stream.reason };
+        return {
+          ...base,
+          disposition: stream.suppressed
+            ? ("authenticated_suppressed" as const)
+            : stream.parked
+              ? ("authenticated_parked" as const)
+              : ("authenticated_accepted" as const),
+        };
+      });
+    const incomplete = reports.some((s) => s.disposition === "unresolved_tail");
+    const complete =
+      !incomplete && !this.#recoveryViewStale && !this.#rolledBack && !anchorMismatch;
+    let ownTailRebased = false;
+    if (complete && this.#ownTailUncertain) {
+      const own = streams.get(this.device);
+      const ownLastHlc = own?.frames.at(-1)?.events?.at(-1)?.h;
+      if (ownLastHlc !== undefined && ownLastHlc > this.#clock.last) {
+        this.#rolledBack = true;
+      } else {
+        const ownSegments = inventory.filter((s) => s.device === this.device && s.seg >= 1);
+        await this.#indexStream(this.device, ownSegments);
+        const last = [...ownSegments].sort(bySegment).at(-1);
+        this.#ownSeg = last?.seg ?? 1;
+        this.#ownSize = last?.size ?? 0;
+        ownTailRebased = true;
+      }
+    }
+    this.#primed = complete && !this.#rolledBack;
+    await this.#saveEvidence();
+    if (this.#primed) await this.#saveGate();
+    if (ownTailRebased) this.#ownTailUncertain = false;
+    let parkedInSink: boolean | null = null;
+    if (this.#sink.needsUpgrade) {
+      try {
+        parkedInSink = await this.#sink.needsUpgrade();
+      } catch {
+        parkedInSink = null;
+      }
+    }
+    const unreadableFrame = reports.some((s) => s.reason === "frame-format");
+    return {
+      complete: this.#primed,
+      streams: reports,
+      needsUpgrade: pass.needsUpgrade || unreadableFrame ? true : parkedInSink,
+      requiresViewRebuild: this.#recoveryViewStale,
+      rolledBack: this.#rolledBack || anchorMismatch,
+    };
+  }
+
+  inspectOwnBatch(expected: {
+    readonly eids: readonly string[];
+    readonly digest: string;
+  }): Promise<"committed" | "absent" | "unknown"> {
+    return this.#run(async () => {
+      if (
+        expected.eids.length === 0 ||
+        new Set(expected.eids).size !== expected.eids.length ||
+        !/^[0-9a-f]{64}$/.test(expected.digest)
+      ) {
+        return "unknown";
+      }
+      const recovered = await this.#recoverLocalInQueue();
+      if (!recovered.complete) return "unknown";
+      const ownReport = recovered.streams.find((s) => s.device === this.device);
+      if (ownReport && ownReport.disposition !== "authenticated_accepted") return "unknown";
+      const applied = (await this.#sink.cursors()).get(this.device) ?? START_CURSOR;
+      const own = [...(await this.#local.list(this.vault))]
+        .filter((s) => s.device === this.device && s.seg >= 1)
+        .sort(bySegment);
+      let prev = this.#codec.genesis(this.vault, this.device, 1);
+      let sawAny = false;
+      let matched = false;
+      let position = 1;
+      for (const segment of own) {
+        if (segment.seg !== position) return "unknown";
+        const bytes = await this.#local.read(this.vault, this.device, segment.seg, 0);
+        if (bytes.length !== segment.size) return "unknown";
+        const scan = scanFrames(bytes, 0);
+        if (scan.tail !== "none") return "unknown";
+        for (const frame of scan.frames) {
+          const at = {
+            vault: this.vault,
+            device: this.device,
+            seg: segment.seg,
+            offset: frame.offset,
+          };
+          let opened: Opened;
+          try {
+            opened = await this.#codec.open(frame.sealed, at, prev);
+          } catch {
+            return "unknown";
+          }
+          prev = opened.head.chain;
+          const decoded = decodePayload(opened.plain, this.device);
+          if (!decoded.ok || !this.#gate.authenticate(opened.head, decoded.payload.events).ok)
+            return "unknown";
+          const events = decoded.payload.events;
+          if (!events.some((e) => expected.eids.includes(e.i))) continue;
+          sawAny = true;
+          const end = { seg: segment.seg, offset: frame.end };
+          if (decoded.payload.part || comparePositions(end, applied) > 0) return "unknown";
+          if (
+            events.length !== expected.eids.length ||
+            events.some((e, i) => e.i !== expected.eids[i])
+          )
+            return "unknown";
+          try {
+            if (ownBatchDigest(events) !== expected.digest) return "unknown";
+          } catch {
+            return "unknown";
+          }
+          if (matched) return "unknown";
+          matched = true;
+        }
+        position += 1;
+      }
+      return matched ? "committed" : sawAny ? "unknown" : "absent";
     });
   }
 
@@ -737,17 +864,23 @@ class OwnLogEngine implements SyncEngine {
       this.#leaseTransport = { kind: "eventual" };
       const bounded: { propagationMs: number; pullAt: number; pushAt: number }[] = [];
       let boundedOffline = false;
-      for (const remote of this.#remotes) {
+      let allDelivered = true;
+      const offlineRemoteIndices = new Set<number>();
+      for (const [index, remote] of this.#remotes.entries()) {
         const bound = propagationBound(remote.consistency);
         const pullAt = this.#physical.now();
         try {
-          await this.#replicate(remote, pass);
+          if (!(await this.#replicate(remote, pass, !this.#ownTailUncertain))) allDelivered = false;
           if (bound !== undefined) {
             bounded.push({ propagationMs: bound, pullAt, pushAt: this.#physical.now() });
           }
         } catch (e) {
           if (!isTransportUnavailable(e)) throw e;
-          pass.offlineRemotes += 1;
+          if (!offlineRemoteIndices.has(index)) {
+            offlineRemoteIndices.add(index);
+            pass.offlineRemotes += 1;
+          }
+          allDelivered = false;
           if (bound !== undefined) boundedOffline = true;
         }
       }
@@ -778,6 +911,46 @@ class OwnLogEngine implements SyncEngine {
           : { kind: "eventual" };
       await this.#applyLocal(pass);
       await this.#rebuildIfNeeded(pass);
+      await this.#resolveHistoricalLookups(pass);
+      if (!this.#ownTailUncertain && !pass.rolledBack) this.#gossipDeliveryPending = !allDelivered;
+      if (
+        !this.#ownTailUncertain &&
+        !this.#rolledBack &&
+        this.#gossipEid &&
+        this.#gate.prepareGossip
+      ) {
+        const now = this.#physical.now();
+        if (now - this.#lastGossipAt >= 60_000) {
+          const eid = this.#gossipEid();
+          if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(eid)) {
+            throw new SyncError("invalid-config", "gossip id factory returned an invalid ULID");
+          }
+          const event = this.#gate.prepareGossip(eid);
+          if (event) {
+            await this.#writeInQueue([event]);
+            this.#lastGossipAt = now;
+            pass.gossipEmitted = true;
+            this.#gossipDeliveryPending = this.#remotes.length > 0;
+          }
+        }
+      }
+      if (this.#gossipDeliveryPending && !this.#ownTailUncertain) {
+        let delivered = true;
+        for (const [index, remote] of this.#remotes.entries()) {
+          try {
+            if (!(await this.#replicate(remote, pass))) delivered = false;
+          } catch (e) {
+            if (!isTransportUnavailable(e)) throw e;
+            delivered = false;
+            if (!offlineRemoteIndices.has(index)) {
+              offlineRemoteIndices.add(index);
+              pass.offlineRemotes += 1;
+            }
+          }
+        }
+        await this.#applyLocal(pass);
+        this.#gossipDeliveryPending = !delivered;
+      }
       await this.#saveGate();
       return this.#finish(pass);
     });
@@ -794,6 +967,12 @@ class OwnLogEngine implements SyncEngine {
   }
 
   leaseTransport(): LeaseTransport {
+    if (
+      this.#ownTailUncertain ||
+      this.#rolledBack ||
+      this.#gate.gossipStatus?.().authorityUncertain
+    )
+      return { kind: "eventual" };
     return this.#leaseTransport;
   }
 
@@ -848,6 +1027,17 @@ class OwnLogEngine implements SyncEngine {
     if (pass.clockDirty) await this.#clockStore.save(this.#clock.state);
     this.#emit(pass);
     return {
+      gossip: {
+        emitted: pass.gossipEmitted,
+        deliveryPending:
+          this.#gossipDeliveryPending ||
+          (this.#gate.gossipStatus?.().pending ?? 0) > 0 ||
+          (this.#gate.gossipStatus?.().historyPending ?? false),
+        overflow: this.#gate.gossipStatus?.().overflow ?? false,
+        pendingHeads: this.#gate.gossipStatus?.().pending ?? 0,
+        historyPending: this.#gate.gossipStatus?.().historyPending ?? false,
+        ownTailUncertain: this.#ownTailUncertain,
+      },
       rebuilt: pass.rebuilt,
       pushedBytes: pass.pushedBytes,
       pulledFrames: pass.pulledFrames,
@@ -963,7 +1153,7 @@ class OwnLogEngine implements SyncEngine {
   }
 
   /** Push own bytes to `remote`, pull verified foreign frames from it into the local log. */
-  async #replicate(remote: Transport, pass: Pass, push = true): Promise<void> {
+  async #replicate(remote: Transport, pass: Pass, push = true): Promise<boolean> {
     const [remoteList, localList] = await Promise.all([
       remote.list(this.vault),
       this.#local.list(this.vault),
@@ -1045,7 +1235,7 @@ class OwnLogEngine implements SyncEngine {
       }
     }
 
-    if (!push) return;
+    if (!push || this.#rolledBack || this.#ownTailUncertain) return !this.#rolledBack;
     const own = localList.filter((s) => s.device === this.device).sort(bySegment);
     for (const s of own) {
       const theirs = remoteSize.get(`${s.device}/${s.seg}`) ?? 0;
@@ -1056,11 +1246,100 @@ class OwnLogEngine implements SyncEngine {
       } catch (e) {
         // Someone else changed our segment between list and append (a lost ack, or a clone);
         // the next pass re-lists and decides (rollback check above).
-        if (e instanceof TransportError && e.code === "offset-conflict") break;
+        if (e instanceof TransportError && e.code === "offset-conflict") return false;
         throw e;
       }
       pass.pushedBytes += bytes.length;
     }
+    return true;
+  }
+
+  /** Exact-end lookup against authenticated local frames, bounded to four requests per pass. */
+  async #resolveHistoricalLookups(pass: Pass): Promise<void> {
+    const requests = this.#gate.takeHistoricalLookups?.() ?? [];
+    if (
+      requests.length === 0 ||
+      !this.#gate.historicalHeadsInFrame ||
+      !this.#gate.resolveHistoricalLookup
+    )
+      return;
+    const segments = [...(await this.#local.list(this.vault))]
+      .filter((s) => s.seg >= 1)
+      .sort(bySegment);
+    const byWriter = new Map<DeviceId, SegmentInfo[]>();
+    for (const segment of segments) {
+      const list = byWriter.get(segment.device) ?? [];
+      list.push(segment);
+      byWriter.set(segment.device, list);
+    }
+    for (const [writer, list] of byWriter) {
+      if (!this.#chains.has(writer)) await this.#indexStream(writer, list);
+    }
+    const found = new Map(requests.map((r) => [r.candidate, new Set<string>()]));
+    const matching = new Map<string, FrameHead>();
+    for (const [writer, list] of byWriter) {
+      let prev = this.#codec.genesis(this.vault, writer, 1);
+      let expected = 1;
+      for (const segment of list) {
+        if (segment.seg !== expected) return;
+        const bytes = await this.#local.read(this.vault, writer, segment.seg, 0);
+        if (bytes.length !== segment.size) return;
+        const scan = scanFrames(bytes, 0);
+        if (scan.tail !== "none") return;
+        for (const frame of scan.frames) {
+          const at = { vault: this.vault, device: writer, seg: segment.seg, offset: frame.offset };
+          let opened: Opened;
+          try {
+            opened = await this.#open(frame.sealed, at, prev, pass);
+          } catch {
+            return;
+          }
+          prev = opened.head.chain;
+          const decoded = decodePayload(opened.plain, writer);
+          if (!decoded.ok || !this.#gate.authenticate(opened.head, decoded.payload.events).ok)
+            return;
+          for (const request of requests) {
+            const historical = this.#gate.historicalHeadsInFrame(
+              opened.head,
+              decoded.payload.events,
+              request.device,
+              request.end,
+            );
+            if (!historical) return;
+            for (const head of historical) {
+              const decodedHead = decodeHead(head);
+              if (!decodedHead) continue;
+              const position = comparePositions(decodedHead, request.end);
+              if (position === 0) {
+                const exact = found.get(request.candidate);
+                if (!exact || exact.size >= 64) return;
+                exact.add(head);
+              } else if (position < 0) {
+                const held = this.#chains
+                  .get(request.device)
+                  ?.find(
+                    (entry) => entry.seg === decodedHead.seg && entry.end === decodedHead.offset,
+                  );
+                if (!held || !equalBytes(held.chain, decodedHead.chain)) continue;
+                const prior = matching.get(request.candidate);
+                if (!prior || comparePositions(decodedHead, prior) > 0)
+                  matching.set(request.candidate, decodedHead);
+              }
+            }
+          }
+        }
+        expected += 1;
+      }
+    }
+    for (const request of requests) {
+      this.#gate.resolveHistoricalLookup(request.candidate, [
+        ...(found.get(request.candidate) ?? []),
+        ...(matching.has(request.candidate)
+          ? [encodeHead(matching.get(request.candidate) as FrameHead)]
+          : []),
+      ]);
+    }
+    await this.#saveEvidence();
   }
 
   /**
@@ -1304,9 +1583,16 @@ class OwnLogEngine implements SyncEngine {
     if (state === undefined) return undefined;
     const imported = this.#gate.importState(state);
     if (!imported) return undefined;
-    for (const [device, head] of imported.positions) {
-      if (!(await this.#matchesLog(device, head, pass))) return undefined;
+    for (const head of imported.heldHeads ?? [...imported.positions.values()]) {
+      if (!(await this.#matchesLog(head.device, head, pass))) {
+        if (imported.replayOnly) {
+          this.#rolledBack = true;
+          throw new SyncError("rolled-back", "signed legacy state anchors a missing local frame");
+        }
+        return undefined;
+      }
     }
+    if (imported.replayOnly) return undefined;
     imported.restore();
     this.#judged = new Map(imported.positions);
     this.#savedKey = this.#judgedKey();

@@ -31,17 +31,28 @@ import {
   type Sodium,
   verifyCertificates,
 } from "../crypto/index.js";
-import { acceptedHead } from "./acceptance.js";
+import { accepted, acceptedHead } from "./acceptance.js";
 import { equalBytes, fromHex } from "./bytes.js";
 import {
+  buildHeadsGossiped,
   DEVICE_ADDED,
   DEVICE_REVOKED,
   decodeDeviceAdded,
   decodeDeviceRevoked,
+  decodeHeadsGossiped,
+  HEADS_GOSSIPED,
   type LogEvent,
   type RevokedEntry,
+  statementBody,
 } from "./events.js";
-import { decodeEvidence, decodeGateState, encodeEvidence, encodeGateState } from "./gateState.js";
+import {
+  decodeEvidence,
+  decodeGateState,
+  decodeLegacyGateAnchors,
+  encodeEvidence,
+  encodeGateState,
+} from "./gateState.js";
+import { GossipLedger, MAX_GOSSIP_HISTORY } from "./gossip.js";
 import type { FrameRejection } from "./guard.js";
 import { type BehindReport, type ForkReport, StreamIndex } from "./heads.js";
 import { comparePositions } from "./positions.js";
@@ -54,6 +65,19 @@ export interface DeviceFrameGateOptions {
   /** Shared with the devices state when it has one (signature results are cached). */
   readonly verify?: StatementVerifier;
 }
+
+export type CheckedRevocationEntry =
+  | {
+      readonly kind: "trusted_head";
+      readonly entry: RevokedEntry & { readonly head: string };
+      readonly leaseFloor?: SegmentCursor;
+    }
+  | {
+      readonly kind: "local_start_no_head";
+      readonly entry: RevokedEntry & { readonly head?: never };
+      readonly leaseFloor?: SegmentCursor;
+    }
+  | { readonly kind: "integrity_error"; readonly code: "head_missing_at_non_start" };
 
 /** The log events of a frame's wire events (writer and position from the head). */
 export function logEventsOf(head: FrameHead, events: readonly WireEvent[]): LogEvent[] {
@@ -79,6 +103,15 @@ export class DeviceFrameGate implements FrameGate {
   readonly rejections: FrameRejection[] = [];
   /** Every `device.*` / `lease.*` event ingested, by copy (the snapshot replays them). */
   readonly #statements = new Map<string, LogEvent>();
+  /** Bounded verified-frame staging; gossip is admitted only after the current guard decision. */
+  readonly #gossip = new Map<string, LogEvent>();
+  readonly #gossipLatest = new Map<string, SignedHead>();
+  readonly #historicalLookups = new Map<string, SignedHead>();
+  readonly #historicalResolved = new Set<string>();
+  readonly #matchingAnchors = new Map<string, SignedHead>();
+  readonly #freezeFloor = new Map<string, SegmentCursor>();
+  #unknownPending = 0;
+  readonly #ledger = new GossipLedger();
   /** Fork proofs held (recorded or imported), and those not handed out for persistence yet. */
   readonly #evidence = new Set<string>();
   #newEvidence: string[] = [];
@@ -140,20 +173,22 @@ export class DeviceFrameGate implements FrameGate {
    */
   ingest(events: readonly LogEvent[]): IngestReport {
     for (const e of events) {
-      if (e.type.startsWith("device.") || e.type.startsWith("lease.")) {
+      if (e.type === HEADS_GOSSIPED) {
+        const data = e.v === 1 ? decodeHeadsGossiped(e.data) : undefined;
+        if (!data) continue;
+        this.#gossip.set(statementKey(e), e);
+      } else if (e.type.startsWith("device.") || e.type.startsWith("lease.")) {
         this.#statements.set(statementKey(e), e);
       }
     }
-    for (const e of events) {
-      if (e.type !== DEVICE_REVOKED) continue;
-      for (const entry of decodeDeviceRevoked(e.data)?.devices ?? []) {
-        const head = entry.head === undefined ? undefined : decodeHead(entry.head);
-        if (head) this.heads.attest(head);
-      }
-    }
     const report = this.#devices.ingest(events);
+    this.#refreshAttestations();
     const frozen = this.#devices.freeze(this.#freezes());
-    if (frozen !== undefined) this.#recordProofs();
+    if (frozen && frozen.rejectedFrames.length > 0) {
+      this.rejections.push(...frozen.rejectedFrames);
+      this.#rebuild = true;
+    }
+    this.#recordProofs();
     const rejected = [...report.rejectedFrames, ...(frozen?.rejectedFrames ?? [])];
     if (rejected.length > 0) {
       this.rejections.push(...rejected);
@@ -164,6 +199,164 @@ export class DeviceFrameGate implements FrameGate {
       rejectedFrames: rejected,
       registryChanged: report.registryChanged || frozen !== undefined,
     };
+  }
+
+  /** A bounded request to inspect authenticated older log history for a late same-end alternative. */
+  takeHistoricalLookups(): readonly {
+    readonly device: string;
+    readonly end: SegmentCursor;
+    readonly candidate: string;
+  }[] {
+    return [...this.#historicalLookups].slice(0, 4).map(([candidate, head]) => ({
+      device: head.device,
+      end: { seg: head.seg, offset: head.offset },
+      candidate,
+    }));
+  }
+
+  /** Called only after the engine scanned and authenticated its complete local log. */
+  resolveHistoricalLookup(candidate: string, found: readonly string[]): void {
+    const head = this.#historicalLookups.get(candidate);
+    if (!head) return;
+    const currentAnchor = this.#matchingAnchors.get(head.device);
+    let best =
+      currentAnchor && comparePositions(currentAnchor, head) < 0 ? currentAnchor : undefined;
+    for (const encoded of found) {
+      const other = decodeHead(encoded);
+      if (!other || !this.#gossipGenuine(other)) continue;
+      if (other.device !== head.device) continue;
+      if (comparePositions(other, head) < 0) {
+        if (!best || comparePositions(other, best) > 0) best = other;
+        continue;
+      }
+      if (other.seg !== head.seg || other.offset !== head.offset) continue;
+      if (encodeHead(other) === candidate || encodeHead(other) === encodeHead(head)) continue;
+      if (this.#evidence.size >= MAX_GOSSIP_HISTORY) {
+        this.#ledger.markOverflow();
+        return;
+      }
+      const record = encodeEvidence([head, other]);
+      if (!this.#evidence.has(record)) {
+        this.#evidence.add(record);
+        this.#newEvidence.push(record);
+      }
+    }
+    if (best) {
+      this.#matchingAnchors.set(head.device, best);
+      this.heads.observe(best);
+    }
+    this.#historicalLookups.delete(candidate);
+    this.#historicalResolved.add(candidate);
+    this.#refreshAttestations();
+    this.#devices.freeze(this.#freezes());
+  }
+
+  /** Historical lookup sees only admitted gossiper statements and genuine inner heads. */
+  historicalHeadsInFrame(
+    frame: FrameHead,
+    events: readonly WireEvent[],
+    device: string,
+    end: SegmentCursor,
+  ): readonly string[] | undefined {
+    const at = { device: frame.device, end: { seg: frame.seg, offset: frame.offset } };
+    const out: string[] = [];
+    if (
+      frame.device === device &&
+      frame.stream === 1 &&
+      frame.seg === end.seg &&
+      frame.offset === end.offset &&
+      this.#gossipGenuine(frame)
+    ) {
+      out.push(encodeHead(frame));
+    }
+    if (!this.#devices.guard.check(at).ok) {
+      const previouslyAccepted = this.#devices.guard
+        .entries()
+        .find(([writer]) => writer === frame.device)?.[1];
+      const relevant = events.some((event) => {
+        if (event.t !== HEADS_GOSSIPED || event.v !== 1) return false;
+        return (decodeHeadsGossiped(event.d)?.heads ?? []).some((encoded) => {
+          const head = decodeHead(encoded);
+          return head?.device === device && comparePositions(head, end) <= 0;
+        });
+      });
+      if (previouslyAccepted && comparePositions(frame, previouslyAccepted) <= 0 && relevant)
+        return undefined;
+      return out;
+    }
+    for (const e of logEventsOf(frame, events)) {
+      if (e.type !== HEADS_GOSSIPED || e.v !== 1) continue;
+      const data = decodeHeadsGossiped(e.data);
+      if (!data || data.signer !== e.writer) continue;
+      const source = {
+        kind: "statement" as const,
+        keys: this.#devices.registry.decisionKeys,
+        device: e.writer,
+        position: e.position,
+        revoked: this.#devices.registry.revoked,
+      };
+      if (
+        !accepted(
+          this.#verify,
+          "cashu/gossip/v1",
+          statementBody(this.#devices.ring.vaultId, e.type, e.eid, e.data),
+          fromHex(data.sig),
+          source,
+        )
+      )
+        continue;
+      for (const encoded of data.heads) {
+        const head = decodeHead(encoded);
+        if (
+          head &&
+          head.device === device &&
+          comparePositions(head, end) <= 0 &&
+          this.#gossipGenuine(head)
+        )
+          out.push(encoded);
+      }
+    }
+    return out;
+  }
+
+  #pruneGossip(): void {
+    const seen = new Map<string, string>();
+    for (const [key, event] of this.#gossip) {
+      const data = decodeHeadsGossiped(event.data);
+      const semantic = data ? `${event.writer}|${data.heads.join(",")}` : key;
+      const priorKey = seen.get(semantic);
+      if (priorKey) {
+        const prior = this.#gossip.get(priorKey);
+        if (
+          prior &&
+          !this.#devices.guard.check({ device: prior.writer, end: prior.position }).ok &&
+          this.#devices.guard.check({ device: event.writer, end: event.position }).ok
+        ) {
+          this.#gossip.delete(priorKey);
+          seen.set(semantic, key);
+        } else {
+          this.#gossip.delete(key);
+          continue;
+        }
+      } else seen.set(semantic, key);
+      if (
+        data?.heads.every((encoded) => {
+          const head = decodeHead(encoded);
+          const latest = head && this.#gossipLatest.get(head.device);
+          return head && latest && comparePositions(head, latest) < 0;
+        })
+      ) {
+        this.#gossip.delete(key);
+      }
+    }
+    if (this.#gossip.size > MAX_GOSSIP_HISTORY) {
+      this.#ledger.markOverflow();
+      while (this.#gossip.size > MAX_GOSSIP_HISTORY) {
+        const oldest = this.#gossip.keys().next().value;
+        if (oldest === undefined) break;
+        this.#gossip.delete(oldest);
+      }
+    }
   }
 
   observe(head: FrameHead, events: readonly WireEvent[]): void {
@@ -184,7 +377,156 @@ export class DeviceFrameGate implements FrameGate {
       };
     }
     this.#devices.guard.record(at);
-    return { verdict: { ok: true }, changed: report.registryChanged };
+    if (head.stream === 1 && !events.every((e) => e.t === HEADS_GOSSIPED)) {
+      this.#ledger.ordinary(head);
+    }
+    this.#refreshAttestations();
+    const frozen = this.#devices.freeze(this.#freezes());
+    this.#recordProofs();
+    return { verdict: { ok: true }, changed: report.registryChanged || frozen !== undefined };
+  }
+
+  /** Strictly admitted gossip or source-log overflow must be visible to callers. */
+  gossipStatus(): {
+    readonly overflow: boolean;
+    readonly pending: number;
+    readonly historyPending: boolean;
+    readonly authorityUncertain: boolean;
+    readonly retained: number;
+  } {
+    return {
+      overflow: this.#ledger.overflow,
+      pending: this.gossipCandidates().length,
+      historyPending: this.#historicalLookups.size > 0 || this.#unknownPending > 0,
+      authorityUncertain: this.#historicalLookups.size > 0 || this.#ledger.overflow,
+      retained: this.#gossip.size,
+    };
+  }
+
+  gossipCandidates(): SignedHead[] {
+    const attested = this.heads
+      .attestedDevices()
+      .flatMap((d) => this.heads.attestations(d).filter((h) => this.#genuine(h)));
+    return this.#ledger.candidates(
+      this.#devices.deviceId,
+      attested,
+      this.heads.proofs((h) => this.#genuine(h)),
+    );
+  }
+
+  prepareGossip(eid: string): ReturnType<typeof buildHeadsGossiped> | undefined {
+    if (
+      this.#ledger.overflow ||
+      this.#historicalLookups.size > 0 ||
+      this.#unknownPending > 0 ||
+      !this.#devices.registry.isTrusted(this.#devices.deviceId)
+    ) {
+      return undefined;
+    }
+    const heads = this.gossipCandidates().slice(0, 16);
+    if (heads.length === 0) return undefined;
+    return buildHeadsGossiped(
+      this.#devices.keyContext().identity,
+      this.#devices.ring.vaultId,
+      eid,
+      heads,
+    );
+  }
+
+  #refreshAttestations(): void {
+    this.heads.clearAttestations();
+    this.#unknownPending = 0;
+    const evidencedHeads = new Set<string>();
+    for (const e of this.#statements.values()) {
+      if (e.type !== DEVICE_REVOKED) continue;
+      for (const entry of decodeDeviceRevoked(e.data)?.devices ?? []) {
+        const head = entry.head === undefined ? undefined : decodeHead(entry.head);
+        if (head) this.heads.attest(head);
+      }
+    }
+    for (const record of this.#evidence) {
+      for (const head of decodeEvidence(record) ?? []) {
+        evidencedHeads.add(encodeHead(head));
+        this.heads.attest(head);
+      }
+    }
+    for (const head of this.#matchingAnchors.values()) this.heads.attest(head);
+    for (const e of this.#gossip.values()) {
+      const data = decodeHeadsGossiped(e.data);
+      if (
+        !data ||
+        data.signer !== e.writer ||
+        !this.#devices.guard.check({ device: e.writer, end: e.position }).ok
+      ) {
+        continue;
+      }
+      const source = {
+        kind: "statement" as const,
+        keys: this.#devices.registry.decisionKeys,
+        device: e.writer,
+        position: e.position,
+        revoked: this.#devices.registry.revoked,
+      };
+      if (
+        !accepted(
+          this.#verify,
+          "cashu/gossip/v1",
+          statementBody(this.#devices.ring.vaultId, e.type, e.eid, e.data),
+          fromHex(data.sig),
+          source,
+        )
+      ) {
+        continue;
+      }
+      for (const encoded of data.heads) {
+        const head = decodeHead(encoded);
+        if (!head) continue;
+        if (!this.#gossipGenuine(head)) {
+          if (this.#devices.registry.authorKeys(head.device).length === 0)
+            this.#unknownPending += 1;
+          continue;
+        }
+        const latest = this.#gossipLatest.get(head.device);
+        const frontier = latest
+          ? { seg: latest.seg, offset: latest.offset }
+          : (this.heads.held(head.device) ?? this.#ledger.frontier(head.device));
+        const heldAt = this.heads.headAt(head.device, { seg: head.seg, offset: head.offset });
+        const relation = frontier ? comparePositions(head, frontier) : 1;
+        const sameEndConflict =
+          relation === 0 &&
+          ((heldAt !== undefined && !equalBytes(heldAt.chain, head.chain)) ||
+            (latest !== undefined && !equalBytes(latest.chain, head.chain)));
+        if (
+          frontier &&
+          (relation < 0 || sameEndConflict) &&
+          !this.#historicalResolved.has(encoded) &&
+          !evidencedHeads.has(encoded) &&
+          (!heldAt || !equalBytes(heldAt.chain, head.chain) || sameEndConflict)
+        ) {
+          if (this.#historicalLookups.size >= 64) this.#ledger.markOverflow();
+          else this.#historicalLookups.set(encoded, head);
+        }
+        if (!latest || comparePositions(head, latest) > 0)
+          this.#gossipLatest.set(head.device, head);
+        if (this.#historicalLookups.has(encoded)) continue;
+        this.heads.attest(head);
+      }
+      if (
+        e.writer === this.#devices.deviceId &&
+        data.heads.every((h) => {
+          const head = decodeHead(h);
+          return head !== undefined && this.#gossipGenuine(head);
+        })
+      )
+        this.#ledger.receipt(data.heads);
+    }
+    this.#pruneGossip();
+    const retained = new Set(
+      [...this.#gossip.values()].flatMap((event) => decodeHeadsGossiped(event.data)?.heads ?? []),
+    );
+    for (const encoded of this.#historicalResolved) {
+      if (!retained.has(encoded)) this.#historicalResolved.delete(encoded);
+    }
   }
 
   /**
@@ -221,6 +563,10 @@ export class DeviceFrameGate implements FrameGate {
     for (const record of records) {
       const pair = decodeEvidence(record);
       if (!pair || this.#evidence.has(record)) continue;
+      if (this.#evidence.size >= MAX_GOSSIP_HISTORY) {
+        this.#ledger.markOverflow();
+        continue;
+      }
       this.#evidence.add(record);
       for (const head of pair) this.heads.attest(head);
       added = true;
@@ -232,6 +578,10 @@ export class DeviceFrameGate implements FrameGate {
     for (const pair of this.heads.proofs((h) => this.#genuine(h))) {
       const record = encodeEvidence(pair);
       if (this.#evidence.has(record)) continue;
+      if (this.#evidence.size >= MAX_GOSSIP_HISTORY) {
+        this.#ledger.markOverflow();
+        continue;
+      }
       this.#evidence.add(record);
       this.#newEvidence.push(record);
     }
@@ -239,6 +589,7 @@ export class DeviceFrameGate implements FrameGate {
 
   exportState(positions: ReadonlyMap<DeviceId, FrameHead>): string | undefined {
     const devices = this.#devices;
+    if (this.#historicalLookups.size > 0 || this.#unknownPending > 0) return undefined;
     try {
       return encodeGateState(
         devices.ring.vaultId,
@@ -246,9 +597,20 @@ export class DeviceFrameGate implements FrameGate {
         {
           positions: [...positions.values()],
           keys: this.heads.exportKeys(),
-          heads: this.heads.exportHeads(),
+          heads: this.heads.exportHeads([
+            ...devices.guard.entries(),
+            ...devices.frozen.entries(),
+            ...[...this.#matchingAnchors.values()].map((head): readonly [string, SegmentCursor] => [
+              head.device,
+              { seg: head.seg, offset: head.offset },
+            ]),
+          ]),
           statements: [...this.#statements.values()],
           applied: devices.guard.entries(),
+          gossip: [...this.#gossip.values()],
+          anchors: [...this.#matchingAnchors.values()],
+          freezeFloors: [...this.#freezeFloor.entries()],
+          ledger: this.#ledger.export(),
         },
         (body) => devices.signLocalState(body),
       );
@@ -261,6 +623,7 @@ export class DeviceFrameGate implements FrameGate {
     | {
         readonly positions: ReadonlyMap<DeviceId, FrameHead>;
         readonly heldHeads?: readonly FrameHead[];
+        readonly replayOnly?: boolean;
         restore(): void;
       }
     | undefined {
@@ -272,14 +635,34 @@ export class DeviceFrameGate implements FrameGate {
       devices.signPublicKey,
       this.#verify,
     );
-    if (!snapshot) return undefined;
+    if (!snapshot) {
+      const legacy = decodeLegacyGateAnchors(
+        state,
+        devices.ring.vaultId,
+        devices.deviceId,
+        devices.signPublicKey,
+        this.#verify,
+      );
+      if (!legacy) return undefined;
+      return {
+        positions: new Map(legacy.positions.map((head) => [head.device, head])),
+        heldHeads: legacy.heldHeads,
+        replayOnly: true,
+        restore: () => {},
+      };
+    }
     return {
       positions: new Map(snapshot.positions.map((h) => [h.device, h])),
       heldHeads: snapshot.heads.map(({ head }) => head),
       restore: () => {
         this.heads.restore(snapshot.keys, snapshot.heads);
+        for (const head of snapshot.anchors) this.#matchingAnchors.set(head.device, head);
+        for (const [writer, end] of snapshot.freezeFloors) this.#freezeFloor.set(writer, end);
+        for (const e of snapshot.gossip) this.#gossip.set(statementKey(e), e);
+        this.#ledger.restore(snapshot.ledger);
         this.ingest(snapshot.statements);
         for (const [device, end] of snapshot.applied) devices.guard.record({ device, end });
+        this.#refreshAttestations();
         this.#rebuild = false;
       },
     };
@@ -316,6 +699,28 @@ export class DeviceFrameGate implements FrameGate {
     return { device: target, cut, ...(head === undefined ? {} : { head }) };
   }
 
+  /** A local observation for the revoke preview and final admission check. */
+  checkedRevocationEntry(target: string, applied: SegmentCursor): CheckedRevocationEntry {
+    const leaseFloor = this.#devices.lastLeaseEventOf(target);
+    const cut = leaseFloor && comparePositions(leaseFloor, applied) > 0 ? leaseFloor : applied;
+    const head = this.heads.headAt(target, cut);
+    if (head && this.#genuine(head)) {
+      return {
+        kind: "trusted_head",
+        entry: { device: target, cut, head: encodeHead(head) },
+        ...(leaseFloor ? { leaseFloor } : {}),
+      };
+    }
+    if (cut.seg !== 1 || cut.offset !== 0 || this.heads.held(target)) {
+      return { kind: "integrity_error", code: "head_missing_at_non_start" };
+    }
+    return {
+      kind: "local_start_no_head",
+      entry: { device: target, cut },
+      ...(leaseFloor ? { leaseFloor } : {}),
+    };
+  }
+
   /**
    * This device's own entry for a revocation it consents to (cut-before-ack rule 2): the cut is its
    * own last stream position, with its own signed head there, so nothing it wrote (an
@@ -330,7 +735,14 @@ export class DeviceFrameGate implements FrameGate {
 
   /** Writers proven forked and the prefix they are frozen at (lead decision D5: tell the owner). */
   forks(): ForkReport[] {
-    return this.heads.forks((h) => this.#genuine(h));
+    for (const report of this.heads.forks((h) => this.#genuine(h))) {
+      const prior = this.#freezeFloor.get(report.device);
+      if (!prior || comparePositions(report.agreed, prior) < 0)
+        this.#freezeFloor.set(report.device, report.agreed);
+    }
+    return [...this.#freezeFloor.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([device, agreed]) => ({ device, agreed }));
   }
 
   /** Writers that other devices attest further ahead than this device holds (withholding?). */
@@ -349,6 +761,19 @@ export class DeviceFrameGate implements FrameGate {
     return (
       acceptedHead(this.#verify, this.#devices.ring.vaultId, head, { kind: "author", keys }) !==
       undefined
+    );
+  }
+
+  /** Gossip never treats an ambiguous certified key as a verified inner source. */
+  #gossipGenuine(head: SignedHead): boolean {
+    const bound = this.heads.boundKey(head.device, head.stream);
+    const keys = bound ? [bound] : this.#devices.registry.authorKeys(head.device);
+    if (keys.length !== 1) return false;
+    return (
+      acceptedHead(this.#verify, this.#devices.ring.vaultId, head, {
+        kind: "author",
+        keys,
+      }) !== undefined
     );
   }
 

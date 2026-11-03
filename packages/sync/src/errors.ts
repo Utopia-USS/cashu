@@ -15,7 +15,11 @@ export type SyncErrorCode =
   /** The engine was closed. */
   | "closed"
   /** Options handed to the engine are invalid (bad vault or device id). */
-  | "invalid-config";
+  | "invalid-config"
+  /** The own append may have landed; no further own write is safe until local recovery rebases it. */
+  | "own-tail-uncertain"
+  /** An authenticated historical claim may change the authority prefix after exact lookup. */
+  | "authority-unresolved";
 
 export class SyncError extends Error {
   readonly code: SyncErrorCode;

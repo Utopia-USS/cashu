@@ -36,6 +36,32 @@ export {
   cliStdinNoteSchema,
   cliStdinParamsSchema,
 } from "./cli.js";
+export {
+  type DeviceListParams,
+  type DeviceListResult,
+  deviceListParamsSchema,
+  deviceListResultSchema,
+  deviceRefusalSchema,
+  NATIVE_DEVICES_FEATURE,
+  NATIVE_DEVICES_METHODS,
+  type RevokeCancelParams,
+  type RevokeCancelResult,
+  type RevokeCommitParams,
+  type RevokeCommitResult,
+  type RevokeInspectParams,
+  type RevokeInspectResult,
+  type RevokePreviewParams,
+  type RevokePreviewResult,
+  revokeCancelParamsSchema,
+  revokeCancelResultSchema,
+  revokeCommitParamsSchema,
+  revokeCommitResultSchema,
+  revokeInspectParamsSchema,
+  revokeInspectResultSchema,
+  revokePreviewParamsSchema,
+  revokePreviewResultSchema,
+  uiDevicesAllowed,
+} from "./devices/messages.js";
 export { DISCOVERY_FORMAT, discoverySchema, type HostDiscovery } from "./discovery.js";
 export {
   encodeFrame,

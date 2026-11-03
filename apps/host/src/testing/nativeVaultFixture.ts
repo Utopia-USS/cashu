@@ -28,6 +28,8 @@ export interface NativeVaultFixture {
   readonly home: string;
   readonly vaultId: string;
   readonly profileSlug: string;
+  readonly recoveryWords: string;
+  readonly peerDevice?: string;
   readonly vaultSource: {
     readonly kind: "native";
     readonly provider: {
@@ -41,14 +43,21 @@ export interface NativeVaultFixture {
 }
 
 export async function nativeVaultFixture(
-  options: { readonly modules?: readonly string[]; readonly profileSlug?: string } = {},
+  options: {
+    readonly modules?: readonly string[];
+    readonly profileSlug?: string;
+    readonly pairPeer?: boolean;
+  } = {},
 ): Promise<NativeVaultFixture> {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "cashu-native-fixture-")));
   const home = join(dataDir, "test-home");
   mkdirSync(home);
   const sodium = await crypto.loadNodeSodium();
   const identity = crypto.createDeviceIdentity(sodium);
-  const recovery = crypto.recoveryIdentity(sodium, crypto.createRecoveryKey(sodium).phrase);
+  const recoveryPhrase = crypto.createRecoveryKey(sodium).phrase;
+  const recoveryWords = recoveryPhrase.reveal();
+  const recovery = crypto.recoveryIdentity(sodium, recoveryPhrase);
+  const peer = options.pairPeer ? crypto.createDeviceIdentity(sodium) : undefined;
   const created = crypto.createVaultWithRecovery(sodium, recovery, identity);
   const vaultId = created.ring.vaultId;
   const profileSlug = options.profileSlug ?? "synthetic";
@@ -144,6 +153,24 @@ export async function nativeVaultFixture(
     );
     if (!prepared.ok) throw new Error(prepared.reason);
     await engine.write(prepared.events.map(toUnstampedEvent));
+    if (peer) {
+      const peerSubject = {
+        deviceId: peer.deviceId,
+        signPublicKey: peer.signPublicKey,
+        boxPublicKey: peer.box.publicKey,
+      };
+      const peerCertificate = crypto.certifyDevice(sodium, identity, peerSubject, vaultId);
+      await engine.write([
+        devices.buildDeviceAdded(
+          identity,
+          vaultId,
+          "01K9B2W0000000000000000003",
+          peerSubject,
+          "synthetic peer",
+          peerCertificate,
+        ),
+      ]);
+    }
     await engine.close();
     engine = undefined;
     store.close();
@@ -157,6 +184,8 @@ export async function nativeVaultFixture(
       home,
       vaultId,
       profileSlug,
+      recoveryWords,
+      ...(peer ? { peerDevice: peer.deviceId } : {}),
       vaultSource: {
         kind: "native",
         provider: {
@@ -179,6 +208,7 @@ export async function nativeVaultFixture(
     throw error;
   } finally {
     identity.wipe();
+    peer?.wipe();
     recovery.wipe();
     created.ring.wipe();
   }

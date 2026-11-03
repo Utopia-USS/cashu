@@ -122,6 +122,17 @@ export class SqlAttemptJournal implements CommandAttemptPort<JsonValue> {
     if (result.changes !== 1) throw new Error("attempt_not_pending");
   }
 
+  /** Only after a complete authenticated own-tail inspection proves the batch absent. */
+  async markNotStarted(attemptId: string): Promise<void> {
+    const result = this.#driver
+      .prepare(`UPDATE host_attempts
+        SET phase='terminal', terminal_kind='not_started',
+          terminal_reason='authenticated_batch_absent'
+        WHERE attempt_id=? AND phase='may_append'`)
+      .run(attemptId);
+    if (result.changes !== 1) throw new Error("attempt_not_pending");
+  }
+
   async recordTerminal(
     record: AttemptRecord & {
       readonly result: { readonly kind: "refused" | "not_started"; readonly reason: string };
@@ -161,6 +172,34 @@ export class SqlAttemptJournal implements CommandAttemptPort<JsonValue> {
           eids: decoded.eids,
         };
       });
+  }
+
+  /** Bounded public operation handles for UI reattachment; never exposes proof, EIDs or keys. */
+  recentOperations(
+    vault: string,
+    commandId: string,
+  ): readonly { readonly operationId: string; readonly phase: "may_append" | "completed" }[] {
+    const rows = this.#driver
+      .prepare(`SELECT attempt_id, phase FROM host_attempts
+        WHERE vault=? AND command_id=? AND
+          (phase='may_append' OR (phase='completed' AND completed_at>=?))
+        ORDER BY attempt_id DESC LIMIT 16`)
+      .all<{ attempt_id: string; phase: string }>(vault, commandId, this.#now() - TTL_MS);
+    return rows.map((row) => {
+      if (row.phase !== "may_append" && row.phase !== "completed")
+        throw new Error("corrupt_attempt");
+      return { operationId: row.attempt_id, phase: row.phase };
+    });
+  }
+
+  /** A keyed revoke must be reconciled before any new side effect in this vault. */
+  hasPending(vault: string, commandId: string): boolean {
+    const row = this.#driver
+      .prepare(
+        "SELECT COUNT(*) AS count FROM host_attempts WHERE vault=? AND command_id=? AND phase='may_append'",
+      )
+      .get<{ count: number }>(vault, commandId);
+    return (row?.count ?? 0) > 0;
   }
 
   /** Only the response body expires. The key, binding, phase and EIDs stay forever. */

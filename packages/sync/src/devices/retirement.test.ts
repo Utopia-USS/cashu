@@ -17,6 +17,7 @@ import {
   createSimVault,
   newEid,
   pairDevice,
+  prepareReviewedRevocation,
   revokedWithConsent,
   type SimDevice,
   START_CURSOR,
@@ -184,28 +185,35 @@ describe("self-retirement (lead decision: kept, with conditions)", () => {
     const desk = await pairDevice(a, "desktop");
     const phone = await pairDevice(desk, "work phone");
     syncAll([a, b, desk, phone]);
-    const self = [{ device: desk.id, cut: START_CURSOR }];
+    const self = [desk.gate.ownEntry()];
     const eids = () => ({ revoke: newEid(), rotate: newEid(), recertify: newEid });
     // Without a choice the orphan is listed and left untrusted (W1: nothing is automatic) ...
-    const plain = desk.devices.prepareRevocation(self, eids());
+    const plain = prepareReviewedRevocation(desk, self, eids(), { consent: {} });
     if (!plain.ok) throw new Error(plain.reason);
     expect(plain.change.affected).toMatchObject([
       { device: phone.id, recertified: false, reason: "not_selected", pairedBy: desk.id },
     ]);
     plain.change.discard();
     // ... and re-certifying it needs a sibling or the words: alone, the desktop is refused.
-    const refused = desk.devices.prepareRevocation(self, eids(), undefined, {
-      recertify: [phone.id],
-    });
+    const refused = prepareReviewedRevocation(
+      desk,
+      self,
+      eids(),
+      { consent: {} },
+      {
+        recertify: [phone.id],
+      },
+    );
     expect(refused).toMatchObject({ ok: false, reason: "recovery_required" });
     if (refused.ok || refused.reason !== "recovery_required") throw new Error("expected a refusal");
     expect(refused.affected.map((x) => x.device)).toEqual([phone.id]);
     // A sibling (the phone B) retires the desktop on its consent: the desktop wipes its keys.
-    const entries = [{ device: desk.id, cut: b.cursors.get(desk.id) ?? START_CURSOR }];
+    const entries = [b.gate.revocationEntry(desk.id, b.cursors.get(desk.id) ?? START_CURSOR)];
     const ids = eids();
     const consent = desk.devices.consentToRetirement(ids.revoke, entries, b.id);
     expect(() => desk.identity.sign("cashu/registry/v1", new Uint8Array(1))).toThrow();
-    const result = b.devices.prepareRevocation(
+    const result = prepareReviewedRevocation(
+      b,
       entries,
       ids,
       { consent: { [desk.id]: consent } },
@@ -229,8 +237,9 @@ describe("self-retirement (lead decision: kept, with conditions)", () => {
     syncAll([a, b, desk, phone]);
     const words = a.words;
     if (!words) throw new Error("the test vault knows its words");
-    const result = desk.devices.prepareRevocation(
-      [{ device: desk.id, cut: START_CURSOR }],
+    const result = prepareReviewedRevocation(
+      desk,
+      [desk.gate.ownEntry()],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       words,
       { recertify: [phone.id] },

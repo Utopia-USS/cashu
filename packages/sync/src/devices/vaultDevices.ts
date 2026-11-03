@@ -24,6 +24,7 @@ import {
   type LogEvent,
   type RevokedEntry,
 } from "./events.js";
+import type { DeviceFrameGate } from "./gate.js";
 import { FrameGuard, type FrameRejection } from "./guard.js";
 import { foldLease, isLeaseEvent, type LeaseView } from "./lease.js";
 import { comparePositions, positionKey } from "./positions.js";
@@ -38,6 +39,7 @@ import {
   sameRecoveryKeys,
 } from "./recoveryChange.js";
 import { foldRegistry, isRegistryEvent, type Registry } from "./registry.js";
+import type { RevocationPermit, RevocationPreviewRequest } from "./revocationPolicy.js";
 import {
   applyWrap,
   type KeyContext,
@@ -423,17 +425,19 @@ export class VaultDevices {
   }
 
   prepareRevocation(
-    targets: readonly RevokedEntry[],
+    gate: DeviceFrameGate,
+    request: RevocationPreviewRequest,
+    permit: RevocationPermit,
     eids: {
       readonly revoke: string;
       readonly rotate: string;
       readonly recertify?: () => string;
     },
-    authority?: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
-    selection: { readonly recertify?: readonly string[] } = {},
+    authority: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
+    selection: { readonly recertify?: readonly string[] },
   ): PrepareResult {
     return this.#onCommit(
-      prepareRevocation(this.keyContext(), targets, eids, authority, selection),
+      prepareRevocation(this.keyContext(), gate, request, permit, eids, authority, selection),
     );
   }
 

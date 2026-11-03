@@ -229,7 +229,7 @@ export async function openNativeHostStores(
           device: session.device,
           clock: { now },
           hlc: new HybridClock(session.device, restored === undefined ? {} : { restore: restored }),
-          lease: { isHolder: () => session.isCurrent() },
+          lease: { isHolder: () => session.canRunSideEffects() },
         },
         queue: session.queue,
       });

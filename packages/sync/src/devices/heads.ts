@@ -100,13 +100,26 @@ export class StreamIndex {
     });
   }
 
-  /** Every verified data-stream head held, with the other chains seen at its end (snapshot). */
-  exportHeads(): { readonly head: SignedHead; readonly others: readonly string[] }[] {
+  /** Compact latest held head per writer; older exact ends are looked up in authenticated local log. */
+  exportHeads(
+    required: readonly (readonly [string, SegmentCursor])[] = [],
+  ): { readonly head: SignedHead; readonly others: readonly string[] }[] {
     const out: { head: SignedHead; others: string[] }[] = [];
-    for (const byEnd of this.#chains.values()) {
-      for (const known of byEnd.values())
-        out.push({ head: known.head, others: known.chains.slice(1) });
+    const included = new Set<string>();
+    const add = (device: string, end: SegmentCursor): void => {
+      const key = `${device}|${positionKey(end)}`;
+      if (included.has(key)) return;
+      const known = this.#chains.get(device)?.get(positionKey(end));
+      if (!known) return;
+      out.push({ head: known.head, others: known.chains.slice(1) });
+      included.add(key);
+    };
+    for (const [device, byEnd] of this.#chains) {
+      const latest = this.#held.get(device);
+      if (!latest) continue;
+      if (byEnd.has(positionKey(latest))) add(device, latest);
     }
+    for (const [device, end] of required) add(device, end);
     return out;
   }
 
@@ -142,6 +155,11 @@ export class StreamIndex {
       head,
     );
     this.#attested.set(head.device, byHex);
+  }
+
+  /** Rebuild attestations after registry/cut changes; no rejected gossip survives a refold. */
+  clearAttestations(): void {
+    this.#attested.clear();
   }
 
   /** Devices with attestations, sorted. */

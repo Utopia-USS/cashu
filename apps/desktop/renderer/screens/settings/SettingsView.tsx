@@ -24,6 +24,7 @@ const sections = [
   "data",
   "worker",
   "secrets",
+  "devices",
   "app",
 ] as const;
 const card = "rounded-lg border border-border bg-surface-raised p-5";
@@ -46,10 +47,12 @@ export function SettingsView({
   state,
   section,
   strategyPanel,
+  devicesPanel,
 }: {
   state: SettingsScreenState;
   section?: string;
   strategyPanel?: React.ReactNode;
+  devicesPanel?: React.ReactNode;
 }) {
   const [active, setActive] = useState<string>(
     section && sections.some((s) => s === section) ? section : "profile",
@@ -93,7 +96,7 @@ export function SettingsView({
             }}
             className={`block w-full rounded-sm px-3 py-2 text-left hover:bg-surface-sunken ${active === id ? "bg-accent-muted font-semibold" : ""}`}
           >
-            {SECTION[id]}
+            {id === "devices" ? T.devicesTitle : SECTION[id]}
           </button>
         ))}
       </nav>
@@ -131,6 +134,9 @@ export function SettingsView({
         </Card>
         <Card id="secrets" title={SECTION.secrets}>
           <SecretsSection />
+        </Card>
+        <Card id="devices" title={T.devicesTitle}>
+          {devicesPanel ?? <p>{T.unavailable}</p>}
         </Card>
         <Card id="app" title={SECTION.app}>
           <AppSection state={state} />

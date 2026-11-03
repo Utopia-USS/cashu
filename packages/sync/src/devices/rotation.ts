@@ -9,7 +9,8 @@
 //   wrapped (signed) for every trusted device and the recovery recipient, all listed as recipients.
 //   The caller writes the returned events in ONE batch first, sealed under the still-active old key
 //   (a recipient cannot open a frame under a key it has not unwrapped yet), and calls `commit()`
-//   after the batch is written, which adds the key to the live ring.
+//   after the batch is written, which adds the key to the live ring. The signed self wrap in the
+//   old-key frame also lets a cold reader recover the key if the process exits before ring save.
 // - The S29 rule after every merge (`rotationReason`): rotate again when the active key's epoch is
 //   below the revocation count (a revocation whose rotation is missing or was refused, two concurrent
 //   revocations), when its sender is no longer trusted, or when its signed recipients include a
@@ -35,14 +36,15 @@ import {
 } from "../crypto/index.js";
 import { DEFAULT_MAX_FRAME_BYTES, DEFAULT_MAX_FRAME_EVENTS, frameLoad } from "../segment.js";
 import { unwrapFromTrusted } from "./acceptance.js";
-import {
-  buildDeviceAdded,
-  buildDeviceRevoked,
-  buildKeysRotated,
-  type RevokedEntry,
-} from "./events.js";
+import { buildDeviceAdded, buildDeviceRevoked, buildKeysRotated } from "./events.js";
 import type { KeyProvenance, ProvenanceStore } from "./provenance.js";
 import type { Registry } from "./registry.js";
+import {
+  consumeRevocationPermit,
+  type RevocationGate,
+  type RevocationPermit,
+  type RevocationPreviewRequest,
+} from "./revocationPolicy.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -315,7 +317,8 @@ export type PrepareResult =
       readonly ok: false;
       readonly reason: "recovery_required";
       readonly affected: readonly AffectedDevice[];
-    };
+    }
+  | { readonly ok: false; readonly reason: "revocation_admission_required" };
 
 function rotateOnClone(
   ctx: KeyContext,
@@ -332,9 +335,7 @@ function rotateOnClone(
     const entry = rotateKeyring(ctx.sodium, clone, {
       epoch: rotationEpoch(ctx.ring, revocationCount),
     });
-    const devices = [...trusted.values()]
-      .filter((d) => d.deviceId !== me)
-      .sort((a, b) => (a.deviceId < b.deviceId ? -1 : 1));
+    const devices = [...trusted.values()].sort((a, b) => (a.deviceId < b.deviceId ? -1 : 1));
     const recipients = [...devices.map((d) => d.deviceId), RECOVERY_SIGNER_ID];
     const wraps = new Map<string, Uint8Array>();
     for (const d of devices) {
@@ -348,7 +349,7 @@ function rotateOnClone(
     const record: KeyProvenance = {
       ...key,
       sender: me,
-      recipients: [...recipients, me],
+      recipients: [...recipients],
       source: "own",
       receivedAt: ctx.now,
     };
@@ -397,8 +398,9 @@ export function prepareRotation(ctx: KeyContext, eid: string): PrepareResult {
 }
 
 /**
- * Revokes `targets` (each with its cut: the revoker's applied cursor of that device's stream) and
- * rotates with the incremented epoch, wrapping only for the devices that remain trusted.
+ * Revokes the targets admitted by a checked, one-use preview and rotates with the incremented
+ * epoch, wrapping only for the devices that remain trusted. The final builder recomputes the
+ * current applied cursor, held lease floor and exact trusted head before any event is minted.
  *
  * Re-certification (S29c): every remaining device whose only valid chain ran through a target is
  * re-certified IN THE SAME BATCH, by this device, or by the recovery identity when it is given. The
@@ -412,7 +414,9 @@ export function prepareRotation(ctx: KeyContext, eid: string): PrepareResult {
  */
 export function prepareRevocation(
   ctx: KeyContext,
-  targets: readonly RevokedEntry[],
+  gate: RevocationGate,
+  request: RevocationPreviewRequest,
+  permit: RevocationPermit,
   eids: {
     readonly revoke: string;
     readonly rotate: string;
@@ -424,13 +428,30 @@ export function prepareRevocation(
    * stolen device, a revoker whose chain runs through a target, restoring from the words), or the
    * targets' consents (devices in the owner's hands, signed on each target for `eids.revoke`).
    */
-  authority?: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
+  authority: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
   /**
    * The orphans the owner chose to re-certify (W1): default none. The S44 UI shows every orphan
    * (`affected`) unchecked on the words path; the consent path may pre-check them (`suggested`).
    */
-  selection: { readonly recertify?: readonly string[] } = {},
+  selection: { readonly recertify?: readonly string[] },
 ): PrepareResult {
+  const devices = gate.devices;
+  if (
+    devices.registry !== ctx.registry ||
+    devices.ring !== ctx.ring ||
+    devices.deviceId !== ctx.identity.deviceId
+  )
+    return { ok: false, reason: "revocation_admission_required" };
+  const targets = consumeRevocationPermit(
+    devices,
+    gate,
+    request,
+    permit,
+    eids.revoke,
+    authority,
+    selection,
+  );
+  if (!targets) return { ok: false, reason: "revocation_admission_required" };
   const { registry } = ctx;
   const me = ctx.identity.deviceId;
   if (!registry.isTrusted(me)) return { ok: false, reason: "not_trusted" };

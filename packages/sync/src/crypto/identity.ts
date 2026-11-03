@@ -22,6 +22,7 @@ const INSPECT = Symbol.for("nodejs.util.inspect.custom");
  *   `device.recoveryChanged`); `cashu/lease/v1`: fetch-lease statements; `cashu/pairing/v1`: pairing
  *   messages (challenge, welcome). Bodies are built by `devices/` from length-prefixed fields and
  *   canonical JSON; `cashu/head/v1`: signed stream heads, one per frame (head.ts, S29c phase B2);
+ *   `cashu/gossip/v1`: heads a device reports through its own accepted data stream;
  *   `cashu/state/v1`: a device's own local state snapshot (the frame gate's, S29c-B3), checked only
  *   with that device's own key when it reads the snapshot back.
  */
@@ -30,6 +31,7 @@ export type SigningContext =
   | "cashu/cert/v1"
   | "cashu/registry/v1"
   | "cashu/lease/v1"
+  | "cashu/gossip/v1"
   | "cashu/pairing/v1"
   | "cashu/head/v1"
   | "cashu/state/v1";
@@ -39,6 +41,7 @@ const SIGNING_CONTEXTS: ReadonlySet<string> = new Set<SigningContext>([
   "cashu/cert/v1",
   "cashu/registry/v1",
   "cashu/lease/v1",
+  "cashu/gossip/v1",
   "cashu/pairing/v1",
   "cashu/head/v1",
   "cashu/state/v1",

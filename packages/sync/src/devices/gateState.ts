@@ -23,9 +23,11 @@ import { decodeHead, encodeHead, type SignedHead } from "../crypto/index.js";
 import { accepted, acceptedHead } from "./acceptance.js";
 import { concat, fromHex, isHex, isRecord, lp, toHex, utf8 } from "./bytes.js";
 import type { LogEvent } from "./events.js";
+import { decodeHeadsGossiped, HEADS_GOSSIPED } from "./events.js";
+import { MAX_GOSSIP_HISTORY } from "./gossip.js";
 import type { StatementVerifier } from "./statements.js";
 
-const VERSION = 1;
+const VERSION = 2;
 const SIG_HEX = 128;
 
 export interface GateSnapshot {
@@ -37,6 +39,18 @@ export interface GateSnapshot {
     string,
     { readonly seg: number; readonly offset: number },
   ])[];
+  readonly gossip: readonly LogEvent[];
+  readonly anchors: readonly SignedHead[];
+  readonly freezeFloors: readonly (readonly [
+    string,
+    { readonly seg: number; readonly offset: number },
+  ])[];
+  readonly ledger: {
+    readonly frontiers: readonly string[];
+    readonly proofs: readonly string[];
+    readonly ordinary: readonly string[];
+    readonly overflow: boolean;
+  };
 }
 
 function signedBody(vaultId: string, deviceId: string, json: string): Uint8Array {
@@ -59,6 +73,10 @@ export function encodeGateState(
     heads: snapshot.heads.map((h) => [encodeHead(h.head), h.others]),
     statements: snapshot.statements,
     applied: snapshot.applied.map(([d, at]) => [d, at.seg, at.offset]),
+    gossip: snapshot.gossip,
+    anchors: snapshot.anchors.map(encodeHead),
+    freezeFloors: snapshot.freezeFloors.map(([device, end]) => [device, end.seg, end.offset]),
+    ledger: snapshot.ledger,
   });
   return `${json}\n${toHex(sign(signedBody(vaultId, deviceId, json)))}`;
 }
@@ -144,19 +162,168 @@ export function decodeGateState(
     return head && others ? { head, others } : undefined;
   });
   const statements = all(raw.statements, logEvent);
+  const gossip = all(raw.gossip, logEvent);
+  const anchors = all(raw.anchors, decodeHead);
+  const freezeFloors = all(
+    raw.freezeFloors,
+    (value): [string, { seg: number; offset: number }] | undefined =>
+      Array.isArray(value) && isDevice(value[0]) && isPosInt(value[1]) && isPosInt(value[2])
+        ? [value[0], { seg: value[1], offset: value[2] }]
+        : undefined,
+  );
+  const ledger = isRecord(raw.ledger) ? raw.ledger : undefined;
+  const frontiers = all(ledger?.frontiers, (value) =>
+    decodeHead(value) ? (value as string) : undefined,
+  );
+  const proofs = all(ledger?.proofs, (value) =>
+    decodeHead(value) ? (value as string) : undefined,
+  );
+  const ordinary = all(ledger?.ordinary, (value) =>
+    decodeHead(value) ? (value as string) : undefined,
+  );
   const applied = all(raw.applied, (a): [string, { seg: number; offset: number }] | undefined =>
     Array.isArray(a) && isDevice(a[0]) && isPosInt(a[1]) && isPosInt(a[2])
       ? [a[0], { seg: a[1], offset: a[2] }]
       : undefined,
   );
-  if (!positions || !keys || !heads || !statements || !applied) return undefined;
+  if (
+    !positions ||
+    !keys ||
+    !heads ||
+    !statements ||
+    !applied ||
+    !gossip ||
+    !anchors ||
+    !freezeFloors ||
+    !frontiers ||
+    !proofs ||
+    !ordinary ||
+    typeof ledger?.overflow !== "boolean"
+  )
+    return undefined;
+  if (
+    keys.length > 2048 ||
+    heads.length > 4096 ||
+    gossip.length > MAX_GOSSIP_HISTORY ||
+    anchors.length > 1024 ||
+    freezeFloors.length > 1024 ||
+    proofs.length > MAX_GOSSIP_HISTORY ||
+    frontiers.length > 1024 ||
+    ordinary.length > 1024
+  )
+    return undefined;
+  if (gossip.some((e) => e.type !== HEADS_GOSSIPED || e.v !== 1 || !decodeHeadsGossiped(e.data)))
+    return undefined;
+  if ([frontiers, proofs, ordinary].some((xs) => new Set(xs).size !== xs.length)) return undefined;
+  if (new Set(freezeFloors.map(([device]) => device)).size !== freezeFloors.length)
+    return undefined;
   const bound = new Map(keys.map(([d, stream, key]) => [`${d}|${stream}`, key]));
+  for (const encoded of [...frontiers, ...proofs, ...ordinary]) {
+    const head = decodeHead(encoded);
+    const key = head && bound.get(`${head.device}|1`);
+    if (
+      head?.stream !== 1 ||
+      !key ||
+      !acceptedHead(verify, vaultId, head, { kind: "author", keys: [key] })
+    )
+      return undefined;
+  }
+  const stored = new Set<string>();
+  for (const head of anchors) {
+    const key = bound.get(`${head.device}|1`);
+    if (
+      head.stream !== 1 ||
+      !key ||
+      !acceptedHead(verify, vaultId, head, { kind: "author", keys: [key] })
+    )
+      return undefined;
+  }
+  for (const { head } of heads) {
+    const key = bound.get(`${head.device}|1`);
+    if (head.stream !== 1 || !key) return undefined;
+    if (!acceptedHead(verify, vaultId, head, { kind: "author", keys: [key] })) return undefined;
+    stored.add(`${head.device}|${head.seg}:${head.offset}`);
+  }
+  for (const [device, end] of applied) {
+    if ((end.seg !== 1 || end.offset !== 0) && !stored.has(`${device}|${end.seg}:${end.offset}`))
+      return undefined;
+  }
   for (const head of positions) {
     const key = bound.get(`${head.device}|1`);
     if (head.stream !== 1 || !key) return undefined;
     if (!acceptedHead(verify, vaultId, head, { kind: "author", keys: [key] })) return undefined;
   }
-  return { positions, keys, heads, statements, applied };
+  return {
+    positions,
+    keys,
+    heads,
+    statements,
+    applied,
+    gossip,
+    anchors,
+    freezeFloors,
+    ledger: { frontiers, proofs, ordinary, overflow: ledger.overflow },
+  };
+}
+
+/** Authenticated v1 positions are durability anchors, never a restorable v2 gate state. */
+export function decodeLegacyGateAnchors(
+  text: string,
+  vaultId: string,
+  deviceId: string,
+  signKey: Uint8Array,
+  verify: StatementVerifier,
+):
+  | { readonly positions: readonly SignedHead[]; readonly heldHeads: readonly SignedHead[] }
+  | undefined {
+  const cut = text.lastIndexOf("\n");
+  if (cut < 0) return undefined;
+  const json = text.slice(0, cut);
+  const sigHex = text.slice(cut + 1);
+  if (sigHex.length !== SIG_HEX || !isHex(sigHex)) return undefined;
+  if (
+    !accepted(verify, "cashu/state/v1", signedBody(vaultId, deviceId, json), fromHex(sigHex), {
+      kind: "self",
+      signKey,
+    })
+  )
+    return undefined;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(raw) || raw.v !== 1 || raw.vault !== vaultId || raw.device !== deviceId)
+    return undefined;
+  const positions = all(raw.positions, decodeHead);
+  const keys = all(raw.keys, (k): [string, 0 | 1, Uint8Array] | undefined =>
+    Array.isArray(k) && isDevice(k[0]) && (k[1] === 0 || k[1] === 1) && isHex(k[2], 32)
+      ? [k[0], k[1], fromHex(k[2])]
+      : undefined,
+  );
+  const heads = all(raw.heads, (h) => (Array.isArray(h) ? decodeHead(h[0]) : undefined));
+  if (!positions || !keys || !heads) return undefined;
+  const bound = new Map(keys.map(([device, stream, key]) => [`${device}|${stream}`, key]));
+  for (const head of [...positions, ...heads]) {
+    const key = bound.get(`${head.device}|1`);
+    if (
+      head.stream !== 1 ||
+      !key ||
+      !acceptedHead(verify, vaultId, head, { kind: "author", keys: [key] })
+    )
+      return undefined;
+  }
+  const latest = new Map<string, SignedHead>();
+  for (const head of heads) {
+    const prior = latest.get(head.device);
+    if (!prior || head.seg > prior.seg || (head.seg === prior.seg && head.offset > prior.offset))
+      latest.set(head.device, head);
+  }
+  const anchors = new Map(
+    [...positions, ...latest.values()].map((head) => [encodeHead(head), head]),
+  );
+  return { positions, heldHeads: [...anchors.values()] };
 }
 
 /**
@@ -164,7 +331,8 @@ export function decodeGateState(
  * writer at one end with different chains, as `<head hex> <head hex>`.
  */
 export function encodeEvidence(pair: readonly [SignedHead, SignedHead]): string {
-  return `${encodeHead(pair[0])} ${encodeHead(pair[1])}`;
+  const [first, second] = pair.map(encodeHead).sort();
+  return `${first} ${second}`;
 }
 
 /** Strict decode of `encodeEvidence`: undefined unless it is such a pair. */

@@ -1,6 +1,7 @@
 import { catalog } from "@cashu/i18n";
 
 export const T = catalog({
+  devicesTitle: { pl: "Urządzenia", en: "Devices" },
   unavailable: {
     pl: "Ta funkcja jest niedostępna w bieżącym środowisku.",
     en: "This feature is unavailable in the current environment.",

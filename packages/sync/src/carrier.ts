@@ -184,6 +184,27 @@ export type GateVerdict =
  * keys a writer has.
  */
 export interface FrameGate {
+  /** One bounded authenticated gossip event, or undefined when there is no new eligible head. */
+  prepareGossip?(eid: string): UnstampedEvent | undefined;
+  /** Visible capacity/status report; overflow must not be mistaken for a fully shared frontier. */
+  gossipStatus?(): {
+    readonly overflow: boolean;
+    readonly pending: number;
+    readonly historyPending: boolean;
+    readonly authorityUncertain: boolean;
+  };
+  takeHistoricalLookups?(): readonly {
+    readonly device: DeviceId;
+    readonly end: SegmentCursor;
+    readonly candidate: string;
+  }[];
+  historicalHeadsInFrame?(
+    frame: FrameHead,
+    events: readonly WireEvent[],
+    device: DeviceId,
+    end: SegmentCursor,
+  ): readonly string[] | undefined;
+  resolveHistoricalLookup?(candidate: string, found: readonly string[]): void;
   /**
    * Whether `head` (just opened, chain recomputed by the codec) was signed by its writer. `events`
    * are the frame's decoded events (empty for manifest records or an unreadable payload): a stream's
@@ -229,6 +250,8 @@ export interface FrameGate {
         readonly positions: ReadonlyMap<DeviceId, FrameHead>;
         /** Heads this device previously held locally, as recorded in its signed snapshot. */
         readonly heldHeads?: readonly FrameHead[];
+        /** Signed legacy state anchors the local log but must replay all frames. */
+        readonly replayOnly?: boolean;
         restore(): void;
       }
     | undefined;
@@ -351,6 +374,15 @@ export interface LocalRecoveryResult {
 }
 
 export interface SyncResult {
+  /** Own gossip receipt is durable locally; remote delivery may still be pending. */
+  readonly gossip?: {
+    readonly emitted: boolean;
+    readonly deliveryPending: boolean;
+    readonly overflow: boolean;
+    readonly pendingHeads: number;
+    readonly historyPending: boolean;
+    readonly ownTailUncertain: boolean;
+  };
   /** True when the pass rebuilt the view because data it held was no longer accepted (D8). */
   readonly rebuilt: boolean;
   /** Own bytes pushed to remotes. */
@@ -401,10 +433,17 @@ export type LeaseTransport =
 export interface SyncEngine {
   readonly vault: VaultId;
   readonly device: DeviceId;
+  /** Read-only authority and own-tail admission for side effects before an engine write. */
+  writeAdmission(): "ready" | "own-tail-uncertain" | "authority-unresolved" | "rolled-back";
   /** The lease transport report of the last `sync()` pass (`eventual` before the first one). */
   leaseTransport(): LeaseTransport;
   /** Stamp, append to the own segment as one atomic batch (frame or frame group), apply locally. */
   write(events: readonly UnstampedEvent[], options?: WriteOptions): Promise<WriteResult>;
+  /** Authenticated exact own one-frame batch proof for a private prepared-attempt journal. */
+  inspectOwnBatch(expected: {
+    readonly eids: readonly string[];
+    readonly digest: string;
+  }): Promise<"committed" | "absent" | "unknown">;
   /** Audit and replay the held local log without network access or a destructive view reset. */
   recoverLocal(): Promise<LocalRecoveryResult>;
   /** Push own bytes, pull and verify foreign frames, apply everything new. */
