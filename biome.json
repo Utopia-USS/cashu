@@ -318,6 +318,7 @@
     {
       "includes": [
         "packages/market/src/**",
+        "packages/llm/src/**",
         "!**/*.test.ts",
         "!**/*.test.tsx",
         "!**/*.stories.tsx",
@@ -331,9 +332,9 @@
               "level": "error",
               "options": {
                 "deniedGlobals": {
-                  "fetch": "Market sources never reach the network on their own: every request goes through MarketHttp over the fetch the app root injects (tests pass a fake).",
-                  "XMLHttpRequest": "Market sources never reach the network on their own: every request goes through MarketHttp over the fetch the app root injects (tests pass a fake).",
-                  "WebSocket": "Market sources never reach the network on their own: every request goes through MarketHttp over the fetch the app root injects (tests pass a fake)."
+                  "fetch": "Leader HTTP sources use only the fetch the app root injects (tests pass a fake).",
+                  "XMLHttpRequest": "Leader HTTP sources use only the fetch the app root injects (tests pass a fake).",
+                  "WebSocket": "Leader HTTP sources use only the fetch the app root injects (tests pass a fake)."
                 }
               }
             },
@@ -376,6 +377,10 @@
                   },
                   {
                     "group": [
+                      "@cashu/llm",
+                      "@cashu/llm/**",
+                      "@cashu/market",
+                      "@cashu/market/**",
                       "@cashu/sync",
                       "@cashu/sync/**",
                       "@cashu/store",
@@ -401,7 +406,7 @@
                       "@cashu/host-protocol",
                       "@cashu/host-protocol/**"
                     ],
-                    "message": "packages/market may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
+                    "message": "packages/market and packages/llm may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
                   {
                     "group": [
@@ -419,7 +424,7 @@
                       "react-dom",
                       "react-dom/**"
                     ],
-                    "message": "packages/market runs in the leader's store process (desktop) but stays platform free: no node:*, Electron, React Native, Expo or DOM imports. fetch, sleep and the clocks come in through MarketHttp and the source options, wired at the app root."
+                    "message": "Leader HTTP packages stay platform free: no node:*, Electron, React Native, Expo or DOM imports. Fetch, cancellation and clocks come from the app root."
                   },
                   {
                     "group": ["react", "react/**", "react-*", "@types/react", "@types/react/**"],

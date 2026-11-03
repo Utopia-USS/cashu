@@ -8,6 +8,7 @@ export {
   type CashCliSnapshot,
   cashCliSnapshot,
 } from "./cli-queries.js";
+export { classifierMerchants } from "./queries.js";
 export { budgetBook, budgetEngineContext } from "./read-models.js";
 export {
   type BudgetCashflowScreen,

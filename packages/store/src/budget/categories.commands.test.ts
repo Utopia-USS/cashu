@@ -22,7 +22,7 @@ import {
   setMerchantCategory,
   setTransactionCategory,
 } from "./commands.js";
-import { classifierMerchants } from "./queries.js";
+import { classifierMerchants } from "./mcp-queries.js";
 
 const IBAN = "PL10114000000000000000001234";
 const OWN = "PL10124000000000000000003334";

@@ -17,6 +17,8 @@ const LAYERS = {
   sync: ["domain"],
   // Leader-only market data over HTTP (Yahoo, stooq, NBP) behind an injected fetch.
   market: ["domain"],
+  // Leader-only local/cloud classifier HTTP transports behind injected authority and fetch.
+  llm: ["domain"],
   store: ["domain", "sync"],
   // React bindings over the store (useQuery, useCommand, providers) and the renderer's store client,
   // which speaks the host's store channel v2 (@cashu/host-protocol/store) through Electron main's relay.

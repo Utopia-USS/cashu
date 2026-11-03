@@ -3,7 +3,7 @@ import type { StrategyFilesPort } from "@cashu/store/investments/services";
 import type { HostStores, OpenVault } from "../../stores.js";
 import { supportsConsoleUnicode } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
-import type { CategorizeProvider } from "./categorizeOllama.js";
+import type { CategorizeProvider, CloudCategorizeProvider } from "./categorizeOllama.js";
 
 export interface BudgetCliDeps {
   readonly stores: Pick<HostStores, "vaults">;
@@ -12,6 +12,7 @@ export interface BudgetCliDeps {
   readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyFilesPort | null;
   /** A coherent local classifier transport and actual vault-holder check. */
   readonly classifier?: CategorizeProvider;
+  readonly cloudClassifier?: CloudCategorizeProvider;
 }
 
 /** A native CLI financial read or write always names one already-open vault. */

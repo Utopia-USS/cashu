@@ -39,6 +39,7 @@ import {
 import { mcpProfile } from "@cashu/store/core";
 import { handleAdmin } from "./admin.js";
 import { HANDOVER_EXIT, watchBundle } from "./bundle.js";
+import type { CategorizeProvider, CloudCategorizeProvider } from "./cli/budget/categorizeOllama.js";
 import { DELEGATED } from "./cli/delegated.js";
 import { portedCommands } from "./cli/ported.js";
 import { serveCliSession } from "./cli/runner.js";
@@ -76,6 +77,11 @@ const CLEAN_EXIT = 0;
 type ExitReason = "stop" | "idle" | "signal" | "handover";
 
 export interface LocalHostOptions {
+  /** Explicit per-vault capabilities only. Production authority/consent/credential binding is separate. */
+  readonly budgetClassifiers?: {
+    readonly local?: CategorizeProvider;
+    readonly cloud?: CloudCategorizeProvider;
+  };
   /** Actual device cache and its committed changes. Without a cache, overview uses last trades.
    * Persistent production cache lifecycle remains TRANSITIONAL(S53b). */
   readonly overview?: Parameters<typeof servedQueries>[0];
@@ -201,7 +207,13 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       portedCommands({
         runtime,
         now,
-        ...(python === undefined ? { nativeStores: stores } : {}),
+        ...(python === undefined
+          ? {
+              nativeStores: stores,
+              classifier: options.budgetClassifiers?.local,
+              cloudClassifier: options.budgetClassifiers?.cloud,
+            }
+          : {}),
       })),
     bridgeCommand(() => sync),
   ];

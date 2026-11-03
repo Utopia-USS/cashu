@@ -1,5 +1,17 @@
 import type { TranslationVariants } from "@cashu/i18n";
 export const S = {
+  cloudRisk: {
+    pl: "Kategoryzacja w chmurze wysyła do Anthropic dopuszczone nazwy sprzedawców z płatności kartą. Nazwa sprzedawcy może zawierać imię i nazwisko osoby prowadzącej firmę. Dodatkowe szczegóły transakcji nie są dołączane. Domyślnie działa lokalna Ollama.",
+    en: "Cloud categorization sends eligible merchant names from card payments to Anthropic. A merchant name may include the personal name of a sole trader. No additional transaction details are included. Local Ollama remains the default.",
+  } satisfies TranslationVariants<string>,
+  cloudUnavailable: {
+    pl: "Kategoryzacja w chmurze jest niedostępna: wymagane są aktualne uprawnienia, świadoma zgoda dla tego profilu i dane uwierzytelniające.",
+    en: "Cloud categorization is unavailable: current authority, reviewed consent for this profile and credentials are required.",
+  } satisfies TranslationVariants<string>,
+  cloudEmpty: {
+    pl: "Pominięto kategoryzację w chmurze: brak poprawnych odpowiedzi modelu.",
+    en: "Cloud categorization skipped: no valid model answers.",
+  } satisfies TranslationVariants<string>,
   authorityChanged: {
     pl: "Nie zastosowano odpowiedzi modelu: zmienił się profil lub uprawnienie do pobierania.",
     en: "The model answers were not applied: the profile or fetch authority changed.",

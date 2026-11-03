@@ -20,6 +20,7 @@
     "@cashu/domain": "workspace:*",
     "@cashu/host-protocol": "workspace:*",
     "@cashu/i18n": "workspace:*",
+    "@cashu/llm": "workspace:*",
     "@cashu/mcp": "workspace:*",
     "@cashu/node-host": "workspace:*",
     "@cashu/store": "workspace:*",

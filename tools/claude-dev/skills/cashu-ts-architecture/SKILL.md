@@ -30,6 +30,7 @@ silence a rule to get green.
 | Host protocol | `packages/host-protocol` | domain | frames, handshake, roles and the store channel v2 between the local host and its clients |
 | Sync | `packages/sync` | domain | log, crypto, transports, lease |
 | Market | `packages/market` | domain | leader-only market data over HTTP (Yahoo, stooq, NBP, calendar feeds) behind an injected `fetch` |
+| LLM | `packages/llm` | domain | leader-only local and cloud classifier HTTP transports behind injected authority, fetch, cancellation and consent |
 | Domain | `packages/domain` | nothing (no npm, no node built-ins) | pure functions and types |
 
 Details, module folders, exports maps, where processes run: [layers.md](references/layers.md).

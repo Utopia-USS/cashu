@@ -5,7 +5,7 @@ import type { StrategyFilesPort } from "@cashu/store/investments/services";
 import { currentRuntime, type HostRuntime, shippedSkillsSource } from "../runtime.js";
 import type { HostStores, OpenVault } from "../stores.js";
 import { vehicleCommands } from "./assets/vehicle.js";
-import type { CategorizeProvider } from "./budget/categorizeOllama.js";
+import type { CategorizeProvider, CloudCategorizeProvider } from "./budget/categorizeOllama.js";
 import { budgetCommands } from "./budget/index.js";
 import { printConsole } from "./core/console.js";
 import { skillsCommand } from "./core/skills.js";
@@ -23,6 +23,7 @@ export interface PortedDeps {
   readonly nativeStores?: Pick<HostStores, "vaults">;
   readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyFilesPort | null;
   readonly classifier?: CategorizeProvider;
+  readonly cloudClassifier?: CloudCategorizeProvider;
 }
 
 export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
@@ -35,6 +36,7 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
           now: deps.now ?? Date.now,
           strategyFiles: deps.strategyFiles,
           classifier: deps.classifier,
+          cloudClassifier: deps.cloudClassifier,
         })),
     ...(deps.nativeStores === undefined
       ? []

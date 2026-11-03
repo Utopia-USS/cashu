@@ -11,9 +11,11 @@ import { S } from "./categorize.strings.js";
 import {
   type CategorizeDeps,
   ClassifierAuthorityLost,
+  hasClassifierAuthority,
   OllamaClassifier,
   ollamaOptions,
 } from "./categorizeOllama.js";
+import { classifierInput } from "./classifierInput.js";
 import { importTextSupported } from "./importInput.js";
 import { richTable } from "./richTable.js";
 
@@ -111,7 +113,7 @@ export async function runReclassifyCommand(
     (v) => mcpProfile(v.store.read.bind(v.store))?.slug === slug,
   );
   const vault = matches.length === 1 ? matches[0] : undefined;
-  if (!vault || (provider && !provider.isHolder(vault.id))) return DELEGATE;
+  if (!vault || (provider && !hasClassifierAuthority(provider, vault.id))) return DELEGATE;
   const clock = new Date(deps.now());
   const today: IsoDate = `${String(clock.getFullYear()).padStart(4, "0")}-${String(clock.getMonth() + 1).padStart(2, "0")}-${String(clock.getDate()).padStart(2, "0")}`;
   let cutoff: IsoDate | undefined;
@@ -125,10 +127,11 @@ export async function runReclassifyCommand(
       io.signal.aborted ||
       deps.stores.vaults.get(vault.id) !== vault ||
       mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug ||
-      (provider && !provider.isHolder(vault.id))
+      (provider && !hasClassifierAuthority(provider, vault.id))
     )
       return null;
-    return snapshot(vault);
+    const input = classifierInput(vault, slug, deps.stores.vaults);
+    return input === null ? null : { ...snapshot(vault), input };
   });
   if (initial === null) return io.signal.aborted ? 130 : DELEGATE;
   const bands =
@@ -147,7 +150,7 @@ export async function runReclassifyCommand(
     }),
   }));
   const networkNeeded = prepared.some((band) => band.plan.groups.length > 0);
-  if (networkNeeded && !provider?.isHolder(vault.id)) return DELEGATE;
+  if (networkNeeded && !hasClassifierAuthority(provider, vault.id)) return DELEGATE;
   if (
     prepared.some(
       (band) =>
@@ -190,10 +193,25 @@ export async function runReclassifyCommand(
         band.plan.groups.length === 0
           ? new Map<string, budget.Answer>()
           : await new OllamaClassifier(
-              provider as NonNullable<typeof provider>,
+              {
+                fetch: (request, init) => {
+                  if (!provider) throw new ClassifierAuthorityLost();
+                  return provider.fetch(request, init);
+                },
+                isHolder: (id) =>
+                  deps.classifier === provider && hasClassifierAuthority(provider, id),
+              },
               vault.id,
               io,
               band.config,
+              (id) => {
+                const current = ollamaOptions(io, band.model);
+                return (
+                  initial.input.isCurrent(id) &&
+                  current?.url === band.config?.url &&
+                  current?.model === band.config?.model
+                );
+              },
             ).classifyTransactions(
               band.plan.groups.map((g) => [g.id, g.context] as const),
               band.plan.allowedKeys,
@@ -234,7 +252,9 @@ export async function runReclassifyCommand(
   } catch (error) {
     if (!(error instanceof ClassifierAuthorityLost)) throw error;
     if (io.signal.aborted) return 130;
-    io.stderr(`${io.t.tr(S.authorityChanged)}\n`);
+    io.stderr(
+      `${io.t.tr(initial.input.isCurrent(vault.id) ? S.authorityChanged : S.contextChanged)}\n`,
+    );
     return 1;
   }
   return vault.queue.run(() => {
@@ -242,9 +262,20 @@ export async function runReclassifyCommand(
     if (
       deps.stores.vaults.get(vault.id) !== vault ||
       mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug ||
-      (networkNeeded && !provider?.isHolder(vault.id))
+      (networkNeeded && !hasClassifierAuthority(provider, vault.id))
     ) {
       io.stderr(`${io.t.tr(S.authorityChanged)}\n`);
+      return 1;
+    }
+    if (
+      !initial.input.isCurrent(vault.id) ||
+      deps.classifier !== provider ||
+      prepared.some((band) => {
+        const current = ollamaOptions(io, band.model);
+        return current?.url !== band.config?.url || current?.model !== band.config?.model;
+      })
+    ) {
+      io.stderr(`${io.t.tr(S.contextChanged)}\n`);
       return 1;
     }
     if (snapshot(vault).stamp !== initial.stamp) {
