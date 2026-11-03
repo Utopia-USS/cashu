@@ -767,6 +767,30 @@ function WorkerSection({ state }: { state: SettingsScreenState }) {
         </>
       )}
       <p className="text-caption text-fg-muted">{T.workerSchedulerUnavailable}</p>
+      <div className="mt-3 grid gap-2 border-t border-border pt-3">
+        <h3 className="font-semibold">{T.notificationPermissionTitle}</h3>
+        <p role="status">
+          {
+            {
+              allowed: T.notificationPermissionAllowed,
+              denied: T.notificationPermissionDenied,
+              pending: T.notificationPermissionPending,
+              system: T.notificationPermissionSystem,
+              unavailable: T.notificationPermissionUnavailable,
+            }[state.notificationPermission]
+          }
+        </p>
+        {state.notificationPermission === "pending" && (
+          <button
+            className={button}
+            type="button"
+            disabled={state.notificationPermissionBusy}
+            onClick={() => void state.onNotificationPermissionRequested()}
+          >
+            {T.notificationPermissionRequest}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

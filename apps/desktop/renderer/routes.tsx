@@ -24,6 +24,7 @@ import {
 import { z } from "zod";
 import { useOpenCreation } from "./creationContext.js";
 import { S } from "./Desktop.strings.js";
+import { NotificationSignalFocus } from "./notificationFocusContext.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
 import { BudgetView } from "./screens/budget/BudgetView.js";
 import { type BudgetTab, useBudgetScreen } from "./screens/budget/useBudgetScreen.js";
@@ -770,6 +771,7 @@ function PortfolioRoute() {
   const modules = useQuery(overviewQueries({ prices: null }).moduleStates);
   const legacy = use(LegacyNavigation);
   const proposals = use(ProposalNavigation);
+  const notificationSignal = use(NotificationSignalFocus);
   if (!modules.some((module) => module.id === "investments" && module.enabled))
     return <p className="p-6">{S.setup}</p>;
   if (instrument !== undefined && !investmentEntityIdSchema.safeParse(instrument).success)
@@ -795,6 +797,11 @@ function PortfolioRoute() {
       {...(instrument === undefined ? {} : { instrument })}
       review={selected.review === "1"}
       signalsOpen={selected.signals === "1"}
+      signalFocusId={
+        selected.signals === "1" && notificationSignal?.vault === vault
+          ? notificationSignal.signalId
+          : undefined
+      }
       noteGid={selected.note}
       onReviewClosed={() => navigate({ review: undefined })}
       onReviewOpened={() => navigate({ review: "1" })}

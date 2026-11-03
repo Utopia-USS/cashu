@@ -3,6 +3,8 @@ import { appendFileSync, chmodSync, existsSync, renameSync, statSync } from "nod
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  NOTIFICATION_INTENT_FEATURE,
+  NOTIFICATION_INTENT_METHOD,
   nativeCreationCommitParamsSchema,
   nativeCreationCommitResultSchema,
   nativeCreationCurrentParamsSchema,
@@ -11,6 +13,7 @@ import {
   nativeCreationInspectResultSchema,
   nativeCreationPrepareParamsSchema,
   nativeCreationPrepareResultSchema,
+  notificationResolveResultSchema,
   uiCreationAllowed,
 } from "@cashu/host-protocol";
 import {
@@ -27,7 +30,6 @@ import {
   ipcMain,
   Menu,
   MessageChannelMain,
-  Notification,
   screen,
   session,
   Tray,
@@ -47,7 +49,10 @@ import { shouldRegisterProtocol } from "./deeplink.js";
 import { hostLaunch, PACKAGED_HOST_ENTRY } from "./hostLaunch.js";
 import { HostRelay, HostRelays, type RelayPort } from "./hostRelay.js";
 import { linkFromArgv } from "./links.js";
-import { Notifier } from "./notify.js";
+import { createNotificationClickRouter } from "./notification/clickRouter.js";
+import { notificationIntake } from "./notification/early.js";
+import { loadNativeNotificationCenter, releaseResponseHandler } from "./notification/native.js";
+import type { NotificationResponsePair } from "./notification/responses.js";
 import { ALLOW, EXTERNAL, navigationDecision, redactToken } from "./security.js";
 import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { Sidecar, sidecarSpec, verifyDataDir } from "./sidecar.js";
@@ -157,8 +162,10 @@ const desktop = new DesktopApp({
       },
     });
     mainWindow = window;
+    window.webContents.on("did-start-navigation", () => notificationClickRouter.setUnready());
     window.on("closed", () => {
       mainWindow = null;
+      notificationClickRouter.setUnready();
     });
     pinNavigation(window);
     void window.loadURL(loadingUrl);
@@ -222,17 +229,6 @@ function openExternal(url: string): void {
   shell.openExternal(url).catch(() => log("could not open a link in the browser"));
 }
 
-// ---- notifications (main process; the worker of S40 will post through this) ---------------------
-
-export const notifier = new Notifier({
-  supported: () => Notification.isSupported(),
-  create: (options) => new Notification(options),
-  onClick: (url) => {
-    if (url) desktop.links.open(url);
-    desktop.focusWindow();
-  },
-});
-
 // ---- token bridge (PK1): the page asks, the main process answers for the app's origin only ------
 
 /** The sender is the main window's top frame (no iframe, no other window). */
@@ -280,6 +276,25 @@ ipcMain.handle("cashu:service-set-enabled", async (event, enabled: unknown) => {
     return { state: "unavailable" };
   }
   return visibleServiceStatus(await (enabled ? hostService.enable() : hostService.disable()));
+});
+
+ipcMain.handle("cashu:notifications-status", async (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event))) return "unavailable";
+  if (process.platform === "linux") return "system";
+  try {
+    return (await loadNativeNotificationCenter()?.permissionStatus()) ?? "unavailable";
+  } catch {
+    return "unavailable";
+  }
+});
+ipcMain.handle("cashu:notifications-request-permission", async (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event))) return "unavailable";
+  if (process.platform === "linux") return "system";
+  try {
+    return (await loadNativeNotificationCenter()?.requestPermission()) ?? "unavailable";
+  } catch {
+    return "unavailable";
+  }
 });
 
 // ---- the renderer's store channel, relayed to the local host (S56b) -----------------------------
@@ -352,6 +367,56 @@ function startHost(): void {
   log("local host started");
 }
 
+type ResolvedNotification = Extract<
+  import("@cashu/host-protocol").NotificationResolveResult,
+  { kind: "target" }
+>;
+
+async function resolveNotificationClick(
+  pair: NotificationResponsePair,
+): Promise<ResolvedNotification | null> {
+  try {
+    const connection = (
+      await connectOrStart({
+        dataDir,
+        role: "ui",
+        build: HOST_BUILD,
+        start: async () => {
+          await activateHost(hostService, startHost);
+        },
+      })
+    ).connection;
+    try {
+      if (
+        connection.host.protocol.minor < 4 ||
+        !connection.host.features.includes(NOTIFICATION_INTENT_FEATURE)
+      )
+        return null;
+      const raw = await connection.call(NOTIFICATION_INTENT_METHOD, pair);
+      const result = notificationResolveResultSchema.safeParse(raw);
+      return result.success && result.data.kind === "target" ? result.data : null;
+    } finally {
+      connection.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+const notificationClickRouter = createNotificationClickRouter<ResolvedNotification>({
+  resolve: resolveNotificationClick,
+  focus: () => desktop.focusWindow(),
+  start: () => mainWindow?.webContents.send("cashu:notification-pending"),
+  publish: (target) =>
+    mainWindow?.webContents.send("cashu:notification-target", target ?? { kind: "unavailable" }),
+});
+
+ipcMain.on("cashu:notification-ready", (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event))) return;
+  notificationClickRouter.setReady();
+  notificationIntake.bind(notificationClickRouter.enqueue);
+});
+
 const relays = new HostRelays(
   (port) =>
     new HostRelay({
@@ -415,6 +480,9 @@ let shutDown = false;
 app.on("before-quit", (event) => {
   if (shutDown) return;
   event.preventDefault();
+  notificationIntake.dispose();
+  notificationClickRouter.dispose();
+  releaseResponseHandler();
   relays.closeAll();
   void desktop.shutdown().finally(() => {
     shutDown = true;

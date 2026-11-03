@@ -15,7 +15,7 @@ import {
   signalsSnooze,
   signalsWatch,
 } from "@cashu/store/investments/signals-screen";
-import { useCommand, useQuery, useUiAction } from "@cashu/store-react";
+import { isStale, useCommand, useConnection, useQuery, useUiAction } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { csvLine } from "@cashu/ui-logic/core/csv";
 import { localDay } from "@cashu/ui-logic/core/time";
@@ -24,6 +24,7 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { type GuardedOutcome, useDurableCommands } from "../useDurableCommand.js";
+import { notificationSignalGroup } from "./notificationFocus.js";
 import {
   alertHistoryRows,
   alertSignalObserved,
@@ -71,6 +72,7 @@ function decisionDefaults(action: string, quantity: string, price: string, curre
 }
 export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   const { privacy } = useUiEnv();
+  const connection = useConnection();
   const today = useCalendarDay();
   const snapshot = useQuery(query, {
     // The open host supplies current time and a subscribed change source. This fallback is stable.
@@ -126,6 +128,21 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   const removeWatchAction = useUiAction(signalsRemoveWatch);
   const snoozeAction = useUiAction(signalsSnooze);
   const data = snapshot.status === "ready" ? snapshot : null;
+  const focusedSignal = useRef<string | null>(null);
+  useEffect(() => {
+    const signalId = options.initialSignal;
+    if (signalId === undefined || signalId === null) {
+      focusedSignal.current = null;
+      return;
+    }
+    if (data === null || privacy || isStale(connection)) return;
+    if (focusedSignal.current === signalId) return;
+    focusedSignal.current = signalId;
+    const group = notificationSignalGroup(data, signalId);
+    setFilter("all");
+    setCursor(group === null ? null : signalId);
+    setSelectedGroup(group);
+  }, [options.initialSignal, data, privacy, connection]);
   const groups = data === null ? [] : signalGroups(data.open, data.held, filter);
   const selected = groups.find((group) => group.key === selectedGroup) ?? null;
   const openMembers = selected?.live ?? [];

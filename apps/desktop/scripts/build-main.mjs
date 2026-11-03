@@ -1,4 +1,5 @@
-// Bundles the Electron main process (src/main.ts) into dist/main.js. Main imports workspace packages
+// Bundles the side-effect-free Electron entry (src/entry.ts) into dist/main.js. It dispatches the
+// exact notification helper mode before importing the ordinary main process. Main imports workspace packages
 // (@cashu/node-host for connect-or-start, @cashu/host-protocol for the frames) as TypeScript sources
 // (their exports maps point at src/*.ts with NodeNext `.js` specifiers), which plain tsc output cannot
 // load at run time; rolldown resolves and transpiles them into one ES module. node:* and electron stay
@@ -20,10 +21,16 @@ for (const entry of readdirSync(dist, { withFileTypes: true })) {
 }
 
 await build({
-  input: join(app, "src", "main.ts"),
+  input: join(app, "src", "entry.ts"),
   platform: "node",
   external: [/^node:/, /^electron(\/.*)?$/],
   resolve: { extensionAlias: { ".js": [".ts", ".tsx", ".js"] } },
-  output: { file: join(dist, "main.js"), format: "esm", sourcemap: true },
+  output: {
+    dir: dist,
+    entryFileNames: "main.js",
+    chunkFileNames: "[name]-[hash].js",
+    format: "esm",
+    sourcemap: true,
+  },
   logLevel: "warn",
 });

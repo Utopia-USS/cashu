@@ -19,6 +19,7 @@ import { type PortfolioScreenOptions, usePortfolioScreen } from "./usePortfolioS
 type PortfolioExtras = {
   review?: boolean;
   signalsOpen?: boolean;
+  signalFocusId?: string;
   noteGid?: string | null;
   onReviewClosed?(): void;
   onReviewOpened?(): void;
@@ -78,6 +79,7 @@ function PortfolioHome({
 }: Props & { state: ReturnType<typeof usePortfolioScreen> }) {
   const { privacy } = useUiEnv();
   const signals = useSignalsScreen({
+    initialSignal: props.signalFocusId,
     onOpenAsset: props.openPage,
     onOpenReview: props.onReviewOpened,
     onOpenPage: props.onSignalsPageOpened,

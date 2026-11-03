@@ -33,6 +33,22 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
       electron.ipcRenderer.invoke("cashu:creation-inspect", input),
     current: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:creation-current", {}),
   });
+  electron.contextBridge.exposeInMainWorld("cashuNotifications", {
+    status: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:notifications-status"),
+    requestPermission: (): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:notifications-request-permission"),
+    onPending: (handler: () => void) => {
+      const listener = () => handler();
+      electron.ipcRenderer.on("cashu:notification-pending", listener);
+      return () => electron.ipcRenderer.removeListener("cashu:notification-pending", listener);
+    },
+    onTarget: (handler: (target: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, target: unknown) => handler(target);
+      electron.ipcRenderer.on("cashu:notification-target", listener);
+      electron.ipcRenderer.send("cashu:notification-ready");
+      return () => electron.ipcRenderer.removeListener("cashu:notification-target", listener);
+    },
+  });
   electron.contextBridge.exposeInMainWorld("pywebview", {
     api: {
       token: (): Promise<string | null> => electron.ipcRenderer.invoke("cashu:token"),

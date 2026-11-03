@@ -18,6 +18,7 @@ import { type CreationBridge, creationBridge } from "./creationBridge.js";
 import { CreationContext } from "./creationContext.js";
 import { CreationTransition } from "./creationTransition.js";
 import { S } from "./Desktop.strings.js";
+import { NotificationRouteController } from "./NotificationRouteController.js";
 import { RouteFailure, router } from "./routes.js";
 import { CreationScreen } from "./screens/onboarding/CreationScreen.js";
 
@@ -184,44 +185,46 @@ export function App({ client }: { client: StoreClient }) {
             </p>
           }
         >
-          <CreationContext
-            value={() => {
-              lifetime.current.clearExpected();
-              setAdditional(true);
-            }}
-          >
-            <ProfileProvider
-              fallback={
-                client.vaults.length === 0 ? (
-                  <CreationScreen
-                    key={`first:${privacy}`}
-                    mode="first"
+          <NotificationRouteController>
+            <CreationContext
+              value={() => {
+                lifetime.current.clearExpected();
+                setAdditional(true);
+              }}
+            >
+              <ProfileProvider
+                fallback={
+                  client.vaults.length === 0 ? (
+                    <CreationScreen
+                      key={`first:${privacy}`}
+                      mode="first"
+                      bridge={bridge}
+                      onReady={onReady}
+                    />
+                  ) : (
+                    <p className="p-6">{S.noProfile}</p>
+                  )
+                }
+              >
+                <div aria-hidden={additional || undefined} inert={additional}>
+                  <RouterProvider key={connectionEpoch} router={router} />
+                </div>
+                {additional && (
+                  <AdditionalCreationOverlay
+                    privacy={privacy}
                     bridge={bridge}
                     onReady={onReady}
+                    onClosed={() => {
+                      lifetime.current.clearExpected();
+                      setAdditional(false);
+                    }}
+                    onLifetimeEnded={endLifetime}
+                    onVaultChanged={onVaultChanged}
                   />
-                ) : (
-                  <p className="p-6">{S.noProfile}</p>
-                )
-              }
-            >
-              <div aria-hidden={additional || undefined} inert={additional}>
-                <RouterProvider key={connectionEpoch} router={router} />
-              </div>
-              {additional && (
-                <AdditionalCreationOverlay
-                  privacy={privacy}
-                  bridge={bridge}
-                  onReady={onReady}
-                  onClosed={() => {
-                    lifetime.current.clearExpected();
-                    setAdditional(false);
-                  }}
-                  onLifetimeEnded={endLifetime}
-                  onVaultChanged={onVaultChanged}
-                />
-              )}
-            </ProfileProvider>
-          </CreationContext>
+                )}
+              </ProfileProvider>
+            </CreationContext>
+          </NotificationRouteController>
         </Suspense>
       </RootBoundary>
     </StoreProvider>

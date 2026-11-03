@@ -126,6 +126,28 @@ export {
   nativeCreationStatusSchema,
 } from "./nativeCreation.js";
 export {
+  NOTIFICATION_INTENT_FEATURE,
+  NOTIFICATION_INTENT_METHOD,
+  type NotificationResolveParams,
+  type NotificationResolveResult,
+  notificationResolveParamsSchema,
+  notificationResolveResultSchema,
+} from "./notificationIntent.js";
+export {
+  NOTIFY_ACK_MAX_BYTES,
+  NOTIFY_FRAME_MAX_BYTES,
+  NOTIFY_VERSION,
+  type NotifyAck,
+  type NotifyAckStatus,
+  type NotifyFrame,
+  type NotifyKind,
+  type NotifyLocale,
+  parseNotifyAck,
+  parseNotifyFrame,
+  serializeNotifyAck,
+  serializeNotifyFrame,
+} from "./notify.js";
+export {
   NATIVE_CREATION_FEATURE,
   NATIVE_CREATION_METHODS,
   roleAllows,

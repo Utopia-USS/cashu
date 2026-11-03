@@ -18,6 +18,10 @@ import { commandFailure, useDurableCommands } from "../screens/useDurableCommand
 
 const queries = overviewQueries({ prices: null });
 const legacyQuery = legacyNavigation();
+const profileSources = new WeakMap<
+  StoreClient,
+  { inventory: string; source: ReturnType<typeof openProfiles> }
+>();
 
 function openProfiles(client: StoreClient) {
   const entries = client.vaults.map((vault) => ({
@@ -41,11 +45,22 @@ function openProfiles(client: StoreClient) {
   };
 }
 
+function profileSource(client: StoreClient, inventory: string) {
+  const cached = profileSources.get(client);
+  if (cached?.inventory === inventory) return cached.source;
+  const source = openProfiles(client);
+  profileSources.set(client, { inventory, source });
+  return source;
+}
+
 export function useShellScreen(args: {
   onProfileOpened(profile: { slug: string; vault: string }): void;
 }) {
   const client = useStoreClient();
-  const [source] = useState(() => openProfiles(client));
+  const connection = useConnection();
+  // The port client replaces its open-vault inventory after a host reconnect.
+  const inventory = client.vaults.join(":");
+  const source = profileSource(client, inventory);
   const snapshots = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   for (const { entry } of source.entries) use(entry.ready);
   const profiles = snapshots.flatMap((state, index) => {
@@ -62,7 +77,6 @@ export function useShellScreen(args: {
   const switchProfile = useCommand(setCurrentVault);
   const savePreferences = useCommand(setDevicePreferences);
   const durable = useDurableCommands();
-  const connection = useConnection();
   const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const [toast, setToast] = useState<string | null>(null);
   return {

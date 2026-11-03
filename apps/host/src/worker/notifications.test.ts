@@ -17,10 +17,12 @@ function strategy(digest: string, count = 5): string {
 class Notifier implements WorkerNotifier {
   readonly name = "synthetic";
   readonly messages: WorkerNotification[] = [];
-  fail = false;
+  state: "accepted" | "rejected" | "unknown" = "accepted";
   async send(message: WorkerNotification) {
     this.messages.push(message);
-    return { ok: !this.fail };
+    return this.state === "rejected"
+      ? { state: "rejected" as const, reason: "denied" as const }
+      : { state: this.state };
   }
 }
 async function holding(f: Awaited<ReturnType<typeof workerFixture>>) {
@@ -45,7 +47,7 @@ async function holding(f: Awaited<ReturnType<typeof workerFixture>>) {
   );
 }
 it.each(["pl", "en"] as const)(
-  "delivers actual queued rules with max-three overflow, exact %s copy and no duplicate delivery",
+  "delivers queued rules with max-three overflow, generic %s requests and no duplicate delivery",
   async (language) => {
     const tomorrow = weekdays[(new Date().getDay() + 1) % 7] ?? "sunday";
     const f = await workerFixture({ yaml: strategy(tomorrow) });
@@ -59,12 +61,16 @@ it.each(["pl", "en"] as const)(
       await worker.tick();
       expect(openSignals(vault.store.read.bind(vault.store))).toHaveLength(5);
       expect(notifier.messages).toHaveLength(4);
-      expect(notifier.messages[3]?.message).toBe(
-        language === "pl" ? "Jeszcze 2 sygnały" : "2 signals more",
-      );
-      expect(notifier.messages[0]?.subtitle).toBe(
-        language === "pl" ? "Sygnał do działania" : "Action signal",
-      );
+      expect(notifier.messages.map(({ kind, locale }) => ({ kind, locale }))).toEqual([
+        ...Array.from({ length: 3 }, () => ({ kind: "signal", locale: language })),
+        { kind: "signalsSummary", locale: language },
+      ]);
+      for (const message of notifier.messages)
+        expect(Object.keys(message).sort()).toEqual(
+          message.kind === "signal"
+            ? ["kind", "locale", "signalId", "vaultId"]
+            : ["kind", "locale", "vaultId"],
+        );
       expect(f.notifications.pending(vault.id)).toEqual([]);
       await worker.tick(true);
       expect(notifier.messages).toHaveLength(4);
@@ -81,18 +87,40 @@ it("releases observed failed claims, rolls back failed digest markers and sends 
   if (vault === undefined) throw new Error("synthetic vault absent");
   await holding(f);
   const notifier = new Notifier();
-  notifier.fail = true;
+  notifier.state = "rejected";
   const bindings: WorkerBindings = { ...f.bindings, notifier },
     worker = new HostWorker(f.context, bindings);
   try {
     await worker.tick();
     expect(f.notifications.pending(vault.id)).toHaveLength(1);
     expect((await bindings.state.load()).digests[vault.id]).toBeUndefined();
-    notifier.fail = false;
+    notifier.state = "accepted";
     await worker.tick(true);
     expect(f.notifications.pending(vault.id)).toEqual([]);
     expect((await bindings.state.load()).digests[vault.id]).toBe(localDay(f.time()));
-    expect(notifier.messages.at(-1)?.message).toBe("1 signal to review");
+    expect(notifier.messages.at(-1)?.kind).toBe("reviewDigest");
+    const count = notifier.messages.length;
+    await worker.tick(true);
+    expect(notifier.messages).toHaveLength(count);
+  } finally {
+    await worker.stop();
+    await f.close();
+  }
+});
+it("retains claims and the digest marker when platform submission is uncertain", async () => {
+  const today = weekdays[new Date().getDay()] ?? "sunday";
+  const f = await workerFixture({ yaml: strategy(today, 1) });
+  const vault = f.vaults[0];
+  if (vault === undefined) throw new Error("synthetic vault absent");
+  await holding(f);
+  const notifier = new Notifier();
+  notifier.state = "unknown";
+  const bindings: WorkerBindings = { ...f.bindings, notifier };
+  const worker = new HostWorker(f.context, bindings);
+  try {
+    await worker.tick();
+    expect(f.notifications.pending(vault.id)).toEqual([]);
+    expect((await bindings.state.load()).digests[vault.id]).toBe(localDay(f.time()));
     const count = notifier.messages.length;
     await worker.tick(true);
     expect(notifier.messages).toHaveLength(count);

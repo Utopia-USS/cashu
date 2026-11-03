@@ -49,7 +49,7 @@
     },
     "apps/desktop": {
       "entry": [
-        "src/main.ts",
+        "src/entry.ts",
         "src/preload.cts",
         "renderer/main.tsx",
         "renderer/**/*.stories.tsx",

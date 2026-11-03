@@ -76,15 +76,23 @@ interface ExclusiveJobOwnership {
   isExclusive(job: WorkerJob): boolean;
 }
 export interface WorkerNotification {
-  readonly title: string;
-  readonly subtitle: string;
-  readonly message: string;
-  readonly group: string;
-  readonly url?: string;
+  readonly vaultId: string;
+  readonly kind: "signal" | "signalsSummary" | "reviewDigest" | "generic";
+  readonly signalId?: string;
+  readonly locale: "pl" | "en";
 }
+export type WorkerNotificationResult =
+  | { readonly state: "accepted" }
+  | { readonly state: "unknown" }
+  | {
+      /** Only when the adapter proves OS submission has not started. */
+      readonly state: "rejected";
+      readonly reason: "denied" | "pending" | "unavailable" | "invalid";
+    };
 export interface WorkerNotifier {
   readonly name: string;
-  send(notification: WorkerNotification): Promise<{ readonly ok: boolean }>;
+  /** Once platform invocation may have started, every exception and missing ACK is unknown. */
+  send(notification: WorkerNotification): Promise<WorkerNotificationResult>;
 }
 export interface BudgetSyncPort {
   configured(vault: OpenVault): boolean;
@@ -121,8 +129,6 @@ export interface WorkerBindings {
   readonly offline?: boolean;
   readonly schedule?: { readonly hour: number; readonly minute: number };
   language(vault: OpenVault): "pl" | "en";
-  /** S56f cold-launch routing is separately bound; no inferred legacy profile identity. */
-  notificationUrl?(vault: OpenVault, target: "investments" | "review" | string): string | undefined;
 }
 export interface WorkerStatus {
   readonly state: "off" | "safe-mode" | "idle" | "running" | "stopped" | "error";

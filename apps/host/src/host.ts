@@ -22,6 +22,8 @@ import {
   type AdminStatus,
   HOST_PROTOCOL,
   NATIVE_CREATION_FEATURE,
+  NOTIFICATION_INTENT_FEATURE,
+  NOTIFICATION_INTENT_METHOD,
   nativeCreationCommitParamsSchema,
   nativeCreationCommitResultSchema,
   nativeCreationCurrentParamsSchema,
@@ -30,6 +32,8 @@ import {
   nativeCreationInspectResultSchema,
   nativeCreationPrepareParamsSchema,
   nativeCreationPrepareResultSchema,
+  notificationResolveParamsSchema,
+  notificationResolveResultSchema,
   uiCreationAllowed,
 } from "@cashu/host-protocol";
 import {
@@ -86,6 +90,12 @@ import { TOOL_INVENTORY } from "./mcp/tools.js";
 import { createNativeCreationService } from "./nativeCreation.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import type { NativeVaultSource } from "./nativeVault.js";
+import {
+  type HostNotificationCapability,
+  hostNotificationCapability,
+} from "./notificationCapability.js";
+import { privateNotificationIntents } from "./notifications/intentLedger.js";
+import { type IntentVaultAuthority, resolveNotificationIntent } from "./notifications/resolve.js";
 import type { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
 import { servedCommands, servedQueries } from "./registry.js";
@@ -196,7 +206,10 @@ export interface LocalHostOptions {
     readonly cloud?: CloudCategorizeProvider;
   };
   /** Injected only after genuine per-job ownership and per-vault authority are available. */
-  readonly worker?: (context: WorkerHostContext) => WorkerBindings;
+  readonly worker?: (
+    context: WorkerHostContext,
+    notifications?: HostNotificationCapability,
+  ) => WorkerBindings;
   /** Actual device cache and its committed changes. Without a cache, overview uses last trades.
    * Persistent production cache lifecycle remains TRANSITIONAL(S53b). */
   readonly overview?: Parameters<typeof servedQueries>[0];
@@ -375,6 +388,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     features: [
       "store.v2",
       ...(options.vaultSource.kind === "native-production" ? [NATIVE_CREATION_FEATURE] : []),
+      ...(nativeMode ? [NOTIFICATION_INTENT_FEATURE] : []),
       "admin.handover",
       "cli.exec",
       "mcp.lines",
@@ -391,6 +405,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   let stores: HostStores;
   let lease: WriterLease;
   let creation: ReturnType<typeof createNativeCreationService> | undefined;
+  let notificationIntents: ReturnType<typeof privateNotificationIntents> | undefined;
   try {
     record = recordStart(server.paths.runDir, now());
     lease = takeWriterLease(server.lock);
@@ -420,6 +435,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         : source.kind === "native-production"
           ? openNativeSetupStores(server.paths.dataDir, lease, log, now)
           : openHostStores(server.paths.dataDir, lease, log, now);
+    // Construction checks the private directory while the host lock is held. A bad ledger
+    // prevents a native host from advertising click resolution.
+    if (nativeMode)
+      notificationIntents = privateNotificationIntents(
+        server.paths.dataDir,
+        () => server.lock.held && !server.stopping,
+        now,
+      );
   } catch (error) {
     log.error("host.start-failed", { error: errorName(error) });
     await server.close();
@@ -546,6 +569,18 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   let sessions = 0;
   let bundleReplaced = false;
   const creationRequests = new Set<Promise<void>>();
+  // This ledger is pinned under the real host lock and survives host restart. It is also passed
+  // to the eventual S40 notifier binding, so submit and click resolution use the same authority.
+  const notificationAuthority: IntentVaultAuthority = {
+    isAdmittedAndUnlocked: (vault) =>
+      stores.vaults.get(vault.id) === vault &&
+      vault.mode === "native" &&
+      vault.native.isCurrent() &&
+      stopping === undefined &&
+      !bundleReplaced &&
+      !server.stopping &&
+      server.lock.held,
+  };
   const workerContext: WorkerHostContext = {
     stores,
     now: () => now(),
@@ -559,8 +594,15 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     uiCount: () => server.sessionCounts().ui,
   };
   let workerBindings: WorkerBindings | undefined;
+  const notifications =
+    notificationIntents === undefined
+      ? undefined
+      : hostNotificationCapability(
+          notificationIntents,
+          () => stopping === undefined && !bundleReplaced && !server.stopping && server.lock.held,
+        );
   try {
-    workerBindings = options.worker?.(workerContext);
+    workerBindings = options.worker?.(workerContext, notifications);
   } catch (error) {
     log.warn("worker.binding-failed", { error: errorName(error) });
   }
@@ -600,6 +642,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       // The sync service's current iteration finishes and its vaults close while the lock is held.
       await (await sync)?.stop();
       await worker.stop();
+      notifications?.dispose();
       await Promise.allSettled([...creationRequests]);
       await creation?.drain();
       importManager?.close();
@@ -738,6 +781,60 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     creationRequests.add(request);
   };
 
+  const serveNotificationRequest = (
+    session: HostSession,
+    frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
+  ) => {
+    const parsed = notificationResolveParamsSchema.safeParse(frame.params);
+    const bound = notificationIntents;
+    const request = Promise.resolve()
+      .then(async () => {
+        const target =
+          session.protocol.minor >= 4 &&
+          !server.stopping &&
+          stopping === undefined &&
+          !bundleReplaced &&
+          parsed.success &&
+          bound !== undefined
+            ? await resolveNotificationIntent(
+                bound,
+                stores,
+                notificationAuthority,
+                parsed.data.requestId,
+                parsed.data.intentToken,
+                now,
+              )
+            : null;
+        const result = notificationResolveResultSchema.parse(
+          target === null
+            ? { kind: "unavailable" }
+            : {
+                kind: "target",
+                vaultId: target.vaultId,
+                target: target.kind,
+                ...(target.kind === "signal" ? { signalId: target.signalId } : {}),
+              },
+        );
+        session.send({ t: "res", id: frame.id, outcome: { ok: true, result } });
+      })
+      .catch(() => {
+        try {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: { ok: true, result: { kind: "unavailable" } },
+          });
+        } catch {
+          /* Disconnected callers never receive a token-bearing error. */
+        }
+      })
+      .finally(() => {
+        creationRequests.delete(request);
+        armIdle();
+      });
+    creationRequests.add(request);
+  };
+
   const host: LocalHost = {
     server,
     lease,
@@ -782,9 +879,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     switch (session.role) {
       case "ui":
         serveStoreChannel(session, {
-          ...(creation === undefined
+          ...(creation === undefined && notificationIntents === undefined
             ? {}
-            : { onRequest: (frame) => serveCreationRequest(session, frame) }),
+            : {
+                onRequest: (frame) =>
+                  frame.method === NOTIFICATION_INTENT_METHOD
+                    ? serveNotificationRequest(session, frame)
+                    : serveCreationRequest(session, frame),
+              }),
           stores,
           queries,
           commands: uiCommands,

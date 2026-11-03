@@ -1,19 +1,23 @@
 /** Existing local queue claims precede OS delivery; no notifier transport or permission bypass. */
 import { DEFAULT_NOTIFICATIONS, isoNumber } from "@cashu/domain/investments/strategy";
-import { createTranslator } from "@cashu/i18n";
-import { mcpProfile } from "@cashu/store/core";
 import {
   type NotificationQueue,
   notificationDisposition,
   type QueuedNotification,
 } from "@cashu/store/investments/local";
-import { workerNotificationState, workerReviewCount } from "@cashu/store/investments/queries";
+import { workerNotificationState } from "@cashu/store/investments/queries";
 import { loadStrategy } from "@cashu/store/investments/services";
 import type { OpenVault } from "../stores.js";
 import { WorkerAuthorityLost } from "./authority.js";
-import type { JobOutcome, WorkerBindings, WorkerNotifier, WorkerState } from "./contracts.js";
+import type {
+  JobOutcome,
+  WorkerBindings,
+  WorkerNotification,
+  WorkerNotificationResult,
+  WorkerNotifier,
+  WorkerState,
+} from "./contracts.js";
 import { localDay } from "./schedule.js";
-import { S } from "./worker.strings.js";
 
 interface NotificationDeps {
   readonly vault: OpenVault;
@@ -22,6 +26,17 @@ interface NotificationDeps {
   readonly queue: NotificationQueue;
   readonly now: () => number;
   readonly guard: () => void;
+}
+/** A thrown adapter cannot prove whether submission occurred. Keep the exact queue claim. */
+async function attempt(
+  notifier: WorkerNotifier,
+  notification: WorkerNotification,
+): Promise<WorkerNotificationResult> {
+  try {
+    return await notifier.send(notification);
+  } catch {
+    return { state: "unknown" };
+  }
 }
 async function policy(deps: Pick<NotificationDeps, "bindings" | "vault" | "guard">) {
   deps.guard();
@@ -35,18 +50,15 @@ export async function deliverWorkerNotifications(deps: NotificationDeps): Promis
   const { vault, queue, notifier } = deps;
   const guard = () => deps.guard(),
     now = () => new Date(deps.now()).toISOString();
-  const t = createTranslator(deps.bindings.language(vault));
+  const locale = deps.bindings.language(vault);
   const work = <T>(read: () => T) =>
     vault.queue.run(() => {
       guard();
       return read();
     });
-  const profile = await work(() => mcpProfile(vault.store.read.bind(vault.store)));
-  guard();
-  const title = t.tr(S.title)(profile?.name || profile?.slug || "");
   const rows = await work(() => queue.pending(vault.id));
   guard();
-  const stats = { delivered: 0, summarized: 0, skipped: 0, failed: 0 };
+  const stats = { delivered: 0, summarized: 0, skipped: 0, failed: 0, unknown: 0 };
   const currentPolicy = await policy(deps);
   const examine = (row: QueuedNotification, channel?: string, claimedAt?: string) =>
     work(() => {
@@ -75,30 +87,28 @@ export async function deliverWorkerNotifications(deps: NotificationDeps): Promis
       }
       if (channel !== undefined && !queue.claim(vault.id, row.id, claimedAt ?? now(), channel))
         return undefined;
-      return facts?.message;
+      return facts !== undefined;
     });
   const due: QueuedNotification[] = [];
   for (const row of rows) {
-    if ((await examine(row)) !== undefined) due.push(row);
+    if ((await examine(row)) === true) due.push(row);
     guard();
   }
   for (const row of due.slice(0, 3)) {
     const claimedAt = now(),
-      message = await examine(row, notifier.name, claimedAt);
+      present = await examine(row, notifier.name, claimedAt);
+    // If authority is lost after the durable claim but before submit, leave the claim retained.
+    // Releasing it here could duplicate a concurrent or uncertain OS attempt.
     guard();
-    if (message === undefined) continue;
-    const url = deps.bindings.notificationUrl?.(vault, row.signal);
-    const delivered = await notifier.send({
-      title,
-      subtitle: t.tr(
-        row.severity === "action" ? S.action : row.severity === "info" ? S.info : S.signal,
-      ),
-      message,
-      group: `cashu-signal-${row.signal}`,
-      ...(url === undefined ? {} : { url }),
+    if (present !== true) continue;
+    const delivered = await attempt(notifier, {
+      vaultId: vault.id,
+      kind: "signal",
+      signalId: row.signal,
+      locale,
     });
     guard();
-    if (!delivered.ok) {
+    if (delivered.state === "rejected") {
       await work(() => queue.release(vault.id, row.id, claimedAt));
       stats.failed++;
       return {
@@ -107,33 +117,37 @@ export async function deliverWorkerNotifications(deps: NotificationDeps): Promis
         stats,
       };
     }
-    stats.delivered++;
+    if (delivered.state === "unknown") stats.unknown++;
+    else stats.delivered++;
   }
   const claimed: { row: QueuedNotification; at: string }[] = [];
   for (const row of due.slice(3)) {
     const at = now();
-    if ((await examine(row, `${notifier.name}:summary`, at)) !== undefined)
-      claimed.push({ row, at });
+    if ((await examine(row, `${notifier.name}:summary`, at)) === true) claimed.push({ row, at });
     guard();
   }
   if (claimed.length !== 0) {
-    const url = deps.bindings.notificationUrl?.(vault, "investments");
-    const result = await notifier.send({
-      title,
-      subtitle: t.tr(S.newSignals),
-      message: t.tr(S.more)(claimed.length),
-      group: `cashu-signals-${vault.id}`,
-      ...(url === undefined ? {} : { url }),
+    const result = await attempt(notifier, {
+      vaultId: vault.id,
+      kind: "signalsSummary",
+      locale,
     });
     guard();
-    if (result.ok) stats.summarized = claimed.length;
-    else {
+    if (result.state === "rejected") {
       for (const item of claimed) await work(() => queue.release(vault.id, item.row.id, item.at));
       stats.failed = claimed.length;
-    }
+    } else if (result.state === "unknown") stats.unknown += claimed.length;
+    else stats.summarized = claimed.length;
   }
   return {
-    status: stats.failed === 0 ? "ok" : stats.delivered === 0 ? "failed" : "partial",
+    status:
+      stats.failed === 0
+        ? stats.unknown === 0
+          ? "ok"
+          : "partial"
+        : stats.delivered === 0
+          ? "failed"
+          : "partial",
     stats,
   };
 }
@@ -147,18 +161,8 @@ export async function sendWorkerDigest(
   const { vault } = deps;
   const guard = () => deps.guard();
   const time = deps.now(),
-    day = localDay(time),
-    t = createTranslator(deps.bindings.language(vault));
+    day = localDay(time);
   const currentPolicy = await policy(deps);
-  const facts = await vault.queue.run(() => {
-    guard();
-    const read = vault.store.read.bind(vault.store);
-    return {
-      profile: mcpProfile(read),
-      count: workerReviewCount(read, new Date(time).toISOString()),
-    };
-  });
-  guard();
   if ((new Date(time).getDay() || 7) !== isoNumber(currentPolicy.digestWeekday))
     return { status: "skipped", code: "digest_not_due" };
   if (deps.state.digests[vault.id] === day)
@@ -166,24 +170,22 @@ export async function sendWorkerDigest(
   const previous = deps.state.digests[vault.id];
   deps.state.digests[vault.id] = day;
   await deps.save();
+  // The marker remains if authority disappears before submit; reconciliation is explicit.
   guard();
-  const url = deps.bindings.notificationUrl?.(vault, "review");
-  const result = await deps.notifier.send({
-    title: t.tr(S.title)(facts.profile?.name || facts.profile?.slug || ""),
-    subtitle: t.tr(S.weekly),
-    message: t.tr(S.digest)(facts.count),
-    group: `cashu-digest-${vault.id}`,
-    ...(url === undefined ? {} : { url }),
+  const result = await attempt(deps.notifier, {
+    vaultId: vault.id,
+    kind: "reviewDigest",
+    locale: deps.bindings.language(vault),
   });
   guard();
-  if (!result.ok) {
+  if (result.state === "rejected") {
     if (previous === undefined) delete deps.state.digests[vault.id];
     else deps.state.digests[vault.id] = previous;
     await deps.save();
   }
   return {
-    status: result.ok ? "ok" : "failed",
-    ...(result.ok ? {} : { code: "digest_failed" }),
-    stats: { signals: facts.count },
+    status: result.state === "accepted" ? "ok" : result.state === "unknown" ? "partial" : "failed",
+    ...(result.state === "rejected" ? { code: "digest_failed" } : {}),
+    stats: { unknown: result.state === "unknown" ? 1 : 0 },
   };
 }

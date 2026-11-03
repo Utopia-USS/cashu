@@ -169,6 +169,22 @@ export const T = catalog({
     en: "Could not check or change the service",
   },
   serviceNextWake: { pl: "Następne planowane uruchomienie", en: "Next scheduled start" },
+  notificationPermissionTitle: { pl: "Powiadomienia systemowe", en: "System notifications" },
+  notificationPermissionAllowed: { pl: "Dozwolone", en: "Allowed" },
+  notificationPermissionDenied: {
+    pl: "Zablokowane. Zmień uprawnienie w ustawieniach systemu.",
+    en: "Blocked. Change permission in system settings.",
+  },
+  notificationPermissionPending: { pl: "Wymaga zgody", en: "Permission needed" },
+  notificationPermissionSystem: {
+    pl: "Uprawnieniami zarządza system. Dostępność zależy od usługi powiadomień.",
+    en: "Managed by the system. Availability depends on the notification service.",
+  },
+  notificationPermissionUnavailable: {
+    pl: "Niedostępne w tym środowisku",
+    en: "Unavailable in this environment",
+  },
+  notificationPermissionRequest: { pl: "Poproś o zgodę", en: "Request permission" },
   workerNoRuns: { pl: "Brak zapisanych przebiegów.", en: "No recorded runs." },
   workerNextRun: { pl: "Następny przebieg", en: "Next run" },
   workerLastRun: { pl: "Ostatni przebieg", en: "Last run" },

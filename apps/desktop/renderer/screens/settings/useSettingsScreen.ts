@@ -23,6 +23,11 @@ import { useUiEnv } from "@cashu/ui";
 import { hmLocal, localDay } from "@cashu/ui-logic/core/time";
 import { useForm } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
+import {
+  type NotificationPermissionStatus,
+  readNotificationPermission,
+  requestNotificationPermission,
+} from "../../notificationBridge.js";
 import { createServiceStatusCoordinator, type DesktopServiceStatus } from "../../serviceBridge.js";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { T } from "./Settings.strings.js";
@@ -89,6 +94,27 @@ export function useSettingsScreen(
   const hostInfo = useQuery(hostSettingsInfo, { poll: hostPoll, privacy: ownerIncognito });
   const [service, setService] = useState<DesktopServiceStatus>({ state: "unavailable" });
   const [serviceBusy, setServiceBusy] = useState(false);
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermissionStatus>("unavailable");
+  const [notificationPermissionBusy, setNotificationPermissionBusy] = useState(false);
+  useEffect(() => {
+    let current = true;
+    void readNotificationPermission().then((status) => {
+      if (current) setNotificationPermission(status);
+    });
+    return () => {
+      current = false;
+    };
+  }, [hostPoll]);
+  async function onNotificationPermissionRequested(): Promise<void> {
+    if (notificationPermissionBusy || notificationPermission !== "pending") return;
+    setNotificationPermissionBusy(true);
+    try {
+      setNotificationPermission(await requestNotificationPermission());
+    } finally {
+      setNotificationPermissionBusy(false);
+    }
+  }
   const [serviceFlow] = useState(() => createServiceStatusCoordinator(setService));
   useEffect(() => {
     void serviceFlow.poll();
@@ -437,6 +463,9 @@ export function useSettingsScreen(
     serviceNextWakeTime: hmLocal(service.nextWake ?? null),
     serviceBusy,
     onServiceEnabled,
+    notificationPermission,
+    notificationPermissionBusy,
+    onNotificationPermissionRequested,
     worker: workerDisplay,
     onHostInfoRefreshed: () => setHostPoll((value) => value + 1),
     onDataDirCopied: copyDataDir,
