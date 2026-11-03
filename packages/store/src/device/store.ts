@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS mcp_calls_vault ON mcp_calls(vault, id)`;
 class RefusedRollback extends Error {}
 
 /** Keys of `device_settings` (values are validated by the commands that write them). */
-export type DeviceSettingKey = "currentVault";
+export type DeviceSettingKey = "currentVault" | "languagePin" | "theme" | "updatesAuto";
 
 export interface DeviceCommandContext {
   /** Read-only SQL on the device tables. */

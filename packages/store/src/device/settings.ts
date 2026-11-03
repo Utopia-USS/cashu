@@ -31,3 +31,46 @@ export const setCurrentVault = defineDeviceCommand({
     return { ok: true, value: null } as const;
   },
 });
+
+const languagePin = z.enum(["system", "pl", "en"]);
+const theme = z.enum(["system", "light", "dark"]);
+
+/** Local UI preferences; null means an older installation has not saved that choice yet. */
+export const devicePreferences = defineQuery({
+  id: "device.preferences",
+  scope: "device",
+  run(read): {
+    readonly languagePin: z.infer<typeof languagePin> | null;
+    readonly theme: z.infer<typeof theme> | null;
+    readonly updatesAuto: boolean | null;
+  } {
+    const language = languagePin.safeParse(setting(read, "languagePin"));
+    const appearance = theme.safeParse(setting(read, "theme"));
+    const updates = setting(read, "updatesAuto");
+    return {
+      languagePin: language.success ? language.data : null,
+      theme: appearance.success ? appearance.data : null,
+      updatesAuto: updates === "1" ? true : updates === "0" ? false : null,
+    };
+  },
+});
+
+export const setDevicePreferences = defineDeviceCommand({
+  id: "device.setPreferences",
+  input: z.object({
+    languagePin: languagePin.optional(),
+    theme: theme.optional(),
+    updatesAuto: z.boolean().optional(),
+  }),
+  run(ctx, input) {
+    for (const [key, value] of [
+      ["languagePin", input.languagePin],
+      ["theme", input.theme],
+      ["updatesAuto", input.updatesAuto === undefined ? undefined : input.updatesAuto ? "1" : "0"],
+    ] as const) {
+      if (value === undefined) continue;
+      if (setting(ctx.read, key) !== value) ctx.setSetting(key, value);
+    }
+    return { ok: true, value: null } as const;
+  },
+});
