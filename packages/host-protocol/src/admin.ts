@@ -46,6 +46,35 @@ export const syncStatusSchema = z.object({
 });
 export type SyncStatus = z.infer<typeof syncStatusSchema>;
 
+/** Optional native worker metadata. Vaults are ordinal-only; no profile names or financial rows. */
+export const workerStatusSchema = z.object({
+  state: z.enum(["off", "safe-mode", "idle", "running", "stopped", "error"]),
+  schedule: z.string().max(64),
+  nextRunAt: z.iso.datetime().nullable(),
+  lastTickAt: z.iso.datetime().nullable(),
+  jobs: z
+    .array(
+      z.object({
+        job: z.enum([
+          "connectors.fetch",
+          "investments.daily",
+          "budget.sync",
+          "notifications",
+          "digest",
+        ]),
+        ordinal: z.number().int().nonnegative(),
+        day: z.iso.date(),
+        startedAt: z.iso.datetime(),
+        finishedAt: z.iso.datetime().nullable(),
+        status: z.enum(["ok", "partial", "failed", "skipped"]),
+        code: z.string().max(64).optional(),
+        stats: z.record(z.string().max(64), z.number().int().nonnegative()).optional(),
+      }),
+    )
+    .max(10_000),
+});
+export type WorkerStatus = z.infer<typeof workerStatusSchema>;
+
 export const adminStatusResultSchema = z.object({
   pid: z.number().int().positive(),
   build: z.string().min(1).max(200),
@@ -63,6 +92,8 @@ export const adminStatusResultSchema = z.object({
   pendingWrites: z.number().int().nonnegative().optional(),
   /** Feature `sync.status` (S56c): the host's outbox bridge and sync carrier service. */
   sync: syncStatusSchema.optional(),
+  /** Feature `worker.status` (S40): injection-only native job state. */
+  worker: workerStatusSchema.optional(),
 });
 export type AdminStatus = z.infer<typeof adminStatusResultSchema>;
 

@@ -15,6 +15,8 @@ export {
   type SyncStatus,
   syncStatusSchema,
   syncVaultStatusSchema,
+  type WorkerStatus,
+  workerStatusSchema,
 } from "./admin.js";
 export {
   CLI_ENV_KEYS,

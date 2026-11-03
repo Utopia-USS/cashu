@@ -68,6 +68,8 @@ import { type HostStores, openHostStores } from "./stores.js";
 import { bridgeCommand } from "./sync/command.js";
 import type { CrashPoint } from "./sync/loop.js";
 import { SyncService } from "./sync/service.js";
+import type { WorkerBindings, WorkerHostContext } from "./worker/contracts.js";
+import { startWorker } from "./worker/service.js";
 
 const DEFAULT_LINGER_MS = 10 * 60 * 1000;
 const DEFAULT_BUNDLE_CHECK_MS = 60 * 1000;
@@ -82,6 +84,8 @@ export interface LocalHostOptions {
     readonly local?: CategorizeProvider;
     readonly cloud?: CloudCategorizeProvider;
   };
+  /** Injected only after genuine per-job ownership and per-vault authority are available. */
+  readonly worker?: (context: WorkerHostContext) => WorkerBindings;
   /** Actual device cache and its committed changes. Without a cache, overview uses last trades.
    * Persistent production cache lifecycle remains TRANSITIONAL(S53b). */
   readonly overview?: Parameters<typeof servedQueries>[0];
@@ -158,7 +162,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const server = await startHost({
     dataDir: options.dataDir,
     build,
-    features: ["store.v2", "admin.handover", "cli.exec", "mcp.lines", "sync.status"],
+    features: [
+      "store.v2",
+      "admin.handover",
+      "cli.exec",
+      "mcp.lines",
+      "sync.status",
+      "worker.status",
+    ],
     ...(options.pathEnv === undefined ? {} : { pathEnv: options.pathEnv }),
     onSession: (session) => dispatch(session),
   });
@@ -246,22 +257,43 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   });
   let stopping: Promise<number> | undefined;
   let idleTimer: NodeJS.Timeout | undefined;
+  let idleDeadline: number | undefined;
   let sessions = 0;
   let bundleReplaced = false;
+  const workerContext: WorkerHostContext = {
+    stores,
+    now: () => now(),
+    isCurrent: (vault) =>
+      stopping === undefined && !bundleReplaced && stores.vaults.get(vault.id) === vault,
+    jobsEnabled: () => capabilities.jobs && stopping === undefined && !bundleReplaced,
+    networkEnabled: () => capabilities.network && stopping === undefined && !bundleReplaced,
+    uiCount: () => server.sessionCounts().ui,
+  };
+  let workerBindings: WorkerBindings | undefined;
+  try {
+    workerBindings = options.worker?.(workerContext);
+  } catch (error) {
+    log.warn("worker.binding-failed", { error: errorName(error) });
+  }
+  const worker = startWorker(workerContext, workerBindings);
 
-  const status = (): AdminStatus => ({
-    pid: process.pid,
-    build,
-    protocol: HOST_PROTOCOL,
-    startedAt: server.startedAt.toISOString(),
-    dataDir: server.paths.dataDirId,
-    sessions: server.sessionCounts(),
-    stopping: server.stopping,
-    safeMode,
-    vaults: stores.vaults.size,
-    pendingWrites: stores.pending(),
-    ...(syncService === undefined ? {} : { sync: syncService.status() }),
-  });
+  const status = (): AdminStatus => {
+    const currentWorker = worker.status();
+    return {
+      pid: process.pid,
+      build,
+      protocol: HOST_PROTOCOL,
+      startedAt: server.startedAt.toISOString(),
+      dataDir: server.paths.dataDirId,
+      sessions: server.sessionCounts(),
+      stopping: server.stopping,
+      safeMode,
+      vaults: stores.vaults.size,
+      pendingWrites: stores.pending(),
+      ...(syncService === undefined ? {} : { sync: syncService.status() }),
+      worker: { ...currentWorker, jobs: [...currentWorker.jobs] },
+    };
+  };
 
   const stop = (reason: ExitReason = "stop"): Promise<number> => {
     stopping ??= (async () => {
@@ -275,6 +307,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       await Promise.all([...mcpServers].map((b) => b.close()));
       // The sync service's current iteration finishes and its vaults close while the lock is held.
       await (await sync)?.stop();
+      await worker.stop();
       await stores.drain();
       stores.close();
       // Before the lock goes: a successor host records its own start after taking the lock.
@@ -290,16 +323,21 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const armIdle = () => {
     if (idleTimer !== undefined) clearTimeout(idleTimer);
     idleTimer = undefined;
-    if (sessions > 0 || stopping !== undefined) return;
-    idleTimer = setTimeout(() => {
+    if (sessions > 0 || stopping !== undefined) {
+      idleDeadline = undefined;
+      return;
+    }
+    idleDeadline ??= Date.now() + lingerMs;
+    const check = () => {
       idleTimer = undefined;
       if (sessions > 0 || stopping !== undefined) return;
-      if (stores.pending() > 0) {
-        armIdle();
+      if (stores.pending() > 0 || worker.pending > 0) {
+        idleTimer = setTimeout(check, 1000);
         return;
       }
       void stop("idle");
-    }, lingerMs);
+    };
+    idleTimer = setTimeout(check, Math.max(0, idleDeadline - Date.now()));
   };
 
   const stopBundle =

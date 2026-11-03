@@ -21,3 +21,4 @@ export * from "./signals.js";
 export * from "./strategy.js";
 export * from "./transactions.js";
 export * from "./watchlist.js";
+export * from "./worker.js";

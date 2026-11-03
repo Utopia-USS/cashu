@@ -54,6 +54,46 @@ export interface BackfillDeps {
   readonly profile: string;
   readonly refresher?: market.RefresherOptions;
   readonly order?: market.PriceSourceOrder;
+  /** Host queue for short synchronous writes only. No source request runs inside it. */
+  readonly runWrite?: <T>(work: () => T) => Promise<T>;
+  /** Loaded-vault/input authority, separate from the fetch lease. */
+  readonly isCurrent?: () => boolean;
+}
+
+class BackfillAuthorityLost extends Error {}
+function checkCurrent(deps: BackfillDeps): void {
+  try {
+    if (deps.env.lease.isHolder() && (deps.isCurrent === undefined || deps.isCurrent())) return;
+  } catch {
+    /* A throwing capability refuses before the next source or write. */
+  }
+  throw new BackfillAuthorityLost();
+}
+async function writeCurrent<T>(deps: BackfillDeps, work: () => T): Promise<T> {
+  const run = () => {
+    checkCurrent(deps);
+    const result = work();
+    checkCurrent(deps);
+    return result;
+  };
+  checkCurrent(deps);
+  const value = deps.runWrite === undefined ? run() : await deps.runWrite(run);
+  checkCurrent(deps);
+  return value;
+}
+function applyReport(
+  deps: BackfillDeps,
+  report: market.FetchReport,
+  instruments: readonly Instrument[],
+): market.CacheWriteStats {
+  const cache = deps.cache as market.PriceCache & { batch?<T>(work: () => T): T };
+  const apply = () => {
+    checkCurrent(deps);
+    const result = market.applyFetchReport(cache, report, instruments, nowOf(deps.env));
+    checkCurrent(deps);
+    return result;
+  };
+  return cache.batch === undefined ? apply() : cache.batch(apply);
 }
 
 export type BackfillResult =
@@ -110,23 +150,6 @@ function nowOf(env: CommandEnv): DateTime {
   return parseDateTime(new Date(env.clock.now()).toISOString());
 }
 
-/** Python `market.upsert_bars` of one instrument's bars (as a one-item fetch report). */
-function writeBars(
-  cache: market.PriceCache,
-  instrument: Instrument,
-  bars: readonly PriceBar[],
-  now: DateTime,
-  asOf: CalendarDate,
-): number {
-  const item = market.instrumentFetch({
-    instrumentId: instrument.id,
-    label: instrumentLabel(instrument),
-    status: market.FetchStatus.OK,
-    bars,
-  });
-  return market.applyFetchReport(cache, market.fetchReport(asOf, [item]), [instrument], now).bars;
-}
-
 /** Bars a split re-fetch replaces (Python's deleted rows: one per instrument and day). */
 function replacedBy(
   cache: market.PriceCache,
@@ -145,11 +168,55 @@ function replacedBy(
 
 /** Python `run_backfill` for one vault. Refused off the lease and while another backfill runs. */
 export async function runBackfill(deps: BackfillDeps): Promise<BackfillResult> {
-  if (!deps.env.lease.isHolder()) return { ok: false, reason: "not_leader" };
+  try {
+    checkCurrent(deps);
+  } catch {
+    return { ok: false, reason: "not_leader" };
+  }
   if (running.has(deps.cache)) return { ok: false, reason: "busy" };
   running.add(deps.cache);
   try {
-    return { ok: true, value: await run(deps) };
+    const runWrite = deps.runWrite?.bind(deps),
+      isCurrent = deps.isCurrent?.bind(deps);
+    const guarded: BackfillDeps = {
+      store: deps.store,
+      writer: deps.writer,
+      env: deps.env,
+      cache: deps.cache,
+      strategy: deps.strategy,
+      asOf: deps.asOf,
+      profile: deps.profile,
+      ...(deps.refresher === undefined ? {} : { refresher: deps.refresher }),
+      ...(deps.order === undefined ? {} : { order: deps.order }),
+      ...(runWrite === undefined ? {} : { runWrite }),
+      ...(isCurrent === undefined ? {} : { isCurrent }),
+      sources: {
+        prices: {
+          id: deps.sources.prices.id,
+          async fetch(...args) {
+            checkCurrent(deps);
+            const result = await deps.sources.prices.fetch(...args);
+            checkCurrent(deps);
+            return result;
+          },
+        },
+        fx: {
+          id: deps.sources.fx.id,
+          async rates(...args) {
+            checkCurrent(deps);
+            const result = await deps.sources.fx.rates(...args);
+            checkCurrent(deps);
+            return result;
+          },
+        },
+      },
+    };
+    const value = await run(guarded);
+    checkCurrent(deps);
+    return { ok: true, value };
+  } catch (error) {
+    if (error instanceof BackfillAuthorityLost) return { ok: false, reason: "not_leader" };
+    throw error;
   } finally {
     running.delete(deps.cache);
   }
@@ -183,7 +250,7 @@ async function run(deps: BackfillDeps): Promise<perf.BackfillReport> {
   const added = new Set<string>();
   const bench = strategy.strategy === null ? null : strategy.benchmark;
   if (plan.first !== null && bench !== null) {
-    const ensured = ensureProxy(deps, bench.proxy); // registers a market symbol offline
+    const ensured = await writeCurrent(deps, () => ensureProxy(deps, bench.proxy));
     const proxy = ensured.instrument;
     if (ensured.status === "added") added.add(bench.proxy.trim().toUpperCase());
     if (proxy === null || isReferenceOnly(read, cache, proxy)) {
@@ -208,6 +275,7 @@ async function run(deps: BackfillDeps): Promise<perf.BackfillReport> {
     return report;
   }
   await resolveProxies(deps, plan, proxies, added, report);
+  checkCurrent(deps);
   const refresher = new market.MarketDataRefresher(
     deps.sources.prices,
     deps.sources.fx,
@@ -227,6 +295,7 @@ async function run(deps: BackfillDeps): Promise<perf.BackfillReport> {
     };
     report.instruments.push(result);
     await backfillInstrument(deps, instrument, result, plan, refresher);
+    checkCurrent(deps);
   }
   const instruments = [...plan.instruments.values()];
   const stored = market.cachedMarketData(
@@ -239,7 +308,8 @@ async function run(deps: BackfillDeps): Promise<perf.BackfillReport> {
   );
   const currencies = [...plan.currencies.keys()].sort();
   const fxReport = await refresher.refresh(stored, [], currencies, asOf, { fxHistoryFrom });
-  report.ratesWritten = market.applyFetchReport(cache, fxReport, [], nowOf(deps.env)).rates;
+  checkCurrent(deps);
+  report.ratesWritten = (await writeCurrent(deps, () => applyReport(deps, fxReport, []))).rates;
   report.fx = fxReport.fx.map((f) => ({
     currency: f.currency,
     status: f.status,
@@ -326,6 +396,7 @@ async function resolveProxies(
     let answer = probed.get(key);
     if (answer === undefined) {
       answer = await perf.probeProxy(deps.sources.prices, key, guess, deps.asOf);
+      checkCurrent(deps);
       probed.set(key, answer);
     }
     const existing = findProxy(read, key) ?? null;
@@ -343,7 +414,7 @@ async function resolveProxies(
       stored = existing; // registered offline: its other aliases may work
       status = null;
     } else if (existing === null) {
-      stored = createProxy(deps, answer.instrument);
+      stored = await writeCurrent(deps, () => createProxy(deps, answer.instrument));
       status = "added";
     } else {
       stored = existing;
@@ -354,14 +425,20 @@ async function resolveProxies(
       ) {
         // a reference proxy registered with the market's usual currency: the source quotes it in
         // another one (nothing references it yet, so it is safe to fix)
-        const out = runCommand(
-          deps.store,
-          deps.writer,
-          settleProxyCurrency,
-          { instrument: existing.id, currency: answer.instrument.currency },
-          deps.env,
-        );
-        if (!out.ok) throw new Error(`could not settle the proxy currency: ${out.reason}`);
+        const out = await writeCurrent(deps, () => {
+          // A host command may have added a real reference while this short write was queued.
+          const current = loadInstrument(read, existing.id, { shared: true });
+          if (current === undefined || !isReferenceOnly(read, deps.cache, current)) return null;
+          return runCommand(
+            deps.store,
+            deps.writer,
+            settleProxyCurrency,
+            { instrument: existing.id, currency: answer.instrument.currency },
+            deps.env,
+          );
+        });
+        if (out !== null && !out.ok)
+          throw new Error(`could not settle the proxy currency: ${out.reason}`);
         stored = loadInstrument(read, existing.id, { shared: true }) ?? existing;
       }
     }
@@ -410,11 +487,13 @@ async function backfillInstrument(
     let bars: PriceBar[] = [];
     try {
       const answer = await deps.sources.prices.fetch(instrument, needFrom, headEnd);
+      checkCurrent(deps);
       bars = answer.bars.filter(
         (b) =>
           b.instrumentId === instrument.id && needFrom <= b.date && b.date <= (headEnd as string),
       );
     } catch (error) {
+      checkCurrent(deps);
       result.status = "error";
       result.messages.push(
         error instanceof market.SourceException
@@ -424,7 +503,15 @@ async function backfillInstrument(
       freshOnly = false;
     }
     if (bars.length > 0) {
-      result.barsWritten += writeBars(cache, instrument, bars, nowOf(deps.env), asOf);
+      result.barsWritten += await writeCurrent(deps, () => {
+        const item = market.instrumentFetch({
+          instrumentId: instrument.id,
+          label: instrumentLabel(instrument),
+          status: market.FetchStatus.OK,
+          bars,
+        });
+        return applyReport(deps, market.fetchReport(asOf, [item]), [instrument]).bars;
+      });
     } else if (result.status !== "error") {
       result.messages.push(`no bars for ${needFrom}..${headEnd}`);
       if (first === null) {
@@ -438,8 +525,11 @@ async function backfillInstrument(
   const tail = await refresher.refresh(stored, [instrument], [], asOf, {
     ...(split === undefined ? {} : { splitDates: new Map([[instrument.id, split]]) }),
   });
+  checkCurrent(deps);
   const replaced = replacedBy(cache, tail, instrument);
-  result.barsWritten += market.applyFetchReport(cache, tail, [instrument], nowOf(deps.env)).bars;
+  result.barsWritten += (
+    await writeCurrent(deps, () => applyReport(deps, tail, [instrument]))
+  ).bars;
   result.barsReplaced += replaced;
   for (const item of tail.instruments) {
     if (item.message) result.messages.push(item.message);
