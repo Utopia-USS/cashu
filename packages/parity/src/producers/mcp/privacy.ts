@@ -11,6 +11,7 @@ import { join, resolve } from "node:path";
 import * as macro from "@cashu/domain/investments/macro";
 import {
   decodeEntityRef,
+  type InvestmentWriteServices,
   LeakDetected,
   leakCheck,
   loadAccountLabels,
@@ -33,6 +34,7 @@ import { genesisRun } from "../store/genesisRun.ts";
 import { GidKeys } from "../store/gidKeys.ts";
 import { bindInvestmentHistory } from "./historySource.ts";
 import { bindInvestmentReads } from "./investmentSource.ts";
+import { bindInvestmentWriteReads } from "./investmentWriteSource.ts";
 import { mergeMcpReads, nativeMcpReads } from "./nativeReads.ts";
 import { canonToOut, SyntheticIds, toCanonical, toLabelledTree } from "./rawTrees.ts";
 import { bindResearchReads } from "./researchSource.ts";
@@ -121,7 +123,11 @@ export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: 
   if (nativeProfile === undefined) throw new Error("MCP parity: missing native profile");
   const keys = new GidKeys(vault, db.keys);
   let research: ResearchServices | undefined;
+  let investmentWrites: InvestmentWriteServices | undefined;
   const store: NativeToolStore = {
+    get investmentWrites() {
+      return investmentWrites;
+    },
     get research() {
       return research;
     },
@@ -150,8 +156,10 @@ export function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: 
     loadGuard: () => guard,
     loadAccountLabels: () => loadAccountLabels(read),
   });
-  if (nativeProfile.modules.includes("investments"))
+  if (nativeProfile.modules.includes("investments")) {
     research = bindResearchReads(db, profile.id, context);
+    investmentWrites = bindInvestmentWriteReads(db, profile.id, context);
+  }
   const native = nativeMcpReads(
     context,
     new Set(nativeProfile.modules),

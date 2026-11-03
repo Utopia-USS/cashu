@@ -55,7 +55,7 @@ const NOTE = {
     },
   ],
 };
-async function setup(privacy = "strict") {
+async function setup(privacy = "strict", withProvider = true) {
   const f = nativeFixture();
   fixtures.push(f);
   const account = value(f, C.addBrokerageAccount, {
@@ -174,6 +174,7 @@ async function setup(privacy = "strict") {
             original.macro().map((card) => ({ ...card, summary: "Anna Nowak ma 123456789 zł." })),
         };
       }
+      if (!withProvider) services = undefined;
       return fn({
         context,
         policy: p,
@@ -505,6 +506,16 @@ describe("native research MCP tools", () => {
         .read<{ rule_id: string }>("SELECT rule_id FROM inv_signals")
         .filter((row) => row.rule_id.startsWith("plan:")),
     ).toHaveLength(0);
+  });
+  it("permits a valid base note and research signal without an optional plan provider", async () => {
+    const s = await setup("strict", false);
+    const out = await s.server.call("add_research_note", { ...NOTE, instrument: "ABC" });
+    expect(out.ok).toBe(true);
+    expect(s.batches).toHaveLength(1);
+    expect(s.batches[0]?.some((event) => event.type === "note.added")).toBe(true);
+    const signals = s.f.store.read<{ rule_id: string }>("SELECT rule_id FROM inv_signals");
+    expect(signals.some((row) => row.rule_id.startsWith("research:"))).toBe(true);
+    expect(signals.some((row) => row.rule_id.startsWith("plan:"))).toBe(false);
   });
 });
 for (const vector of vectors.exposure)

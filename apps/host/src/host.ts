@@ -23,7 +23,9 @@ import {
   coreTools,
   type InvestmentHistoryReads,
   type InvestmentReads,
+  type InvestmentWriteServices,
   investmentTools,
+  investmentWriteTools,
   loansTools,
   NativeMcpServer,
   type NativeToolStore,
@@ -123,6 +125,8 @@ export interface LocalHostOptions {
   readonly mcpInvestmentHistory?: (context: ToolContext<NativeToolStore>) => InvestmentHistoryReads;
   /** Explicit vault-scoped strategy, portfolio and plan authority for native research tools. */
   readonly mcpResearch?: (context: ToolContext<NativeToolStore>) => ResearchServices;
+  /** Explicit per-call vault/plan/file authority for optional investment write services. */
+  readonly mcpInvestmentWrites?: (context: ToolContext<NativeToolStore>) => InvestmentWriteServices;
   /** Explicit legacy-file authority for packaged hosts or an external Python program. */
   readonly mcpLegacyDataDir?: string;
   /** Tests only: called at each crash point of the sync service's loop. */
@@ -498,9 +502,13 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             if (child === undefined)
               tools.push(
                 ...researchTools().filter((tool) =>
-                  tool.name === "research_context" || tool.name === "add_research_note"
-                    ? options.mcpResearch !== undefined
-                    : true,
+                  tool.name === "research_context" ? options.mcpResearch !== undefined : true,
+                ),
+              );
+            if (child === undefined)
+              tools.push(
+                ...investmentWriteTools().filter(
+                  (tool) => tool.name !== "watchlist" || options.mcpInvestmentWrites !== undefined,
                 ),
               );
             const inventory =
@@ -522,6 +530,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 investmentReads: options.mcpInvestmentReads,
                 investmentHistory: options.mcpInvestmentHistory,
                 research: options.mcpResearch,
+                investmentWrites: options.mcpInvestmentWrites,
                 readInvestmentImportFile: readInvestmentFile,
                 readInvestmentMappingFile: readInvestmentMapping,
               }),

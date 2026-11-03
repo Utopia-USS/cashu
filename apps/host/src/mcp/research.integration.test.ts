@@ -165,11 +165,7 @@ it.each([false, true])(
           .map((row) => row.name)
           .filter((name) => NAMES.includes(name))
           .sort(),
-      ).toEqual(
-        NAMES.filter(
-          (name) => available || !["research_context", "add_research_note"].includes(name),
-        ).sort(),
-      );
+      ).toEqual(NAMES.filter((name) => available || name !== "research_context").sort());
       const call = async (name: string, args: Json = {}) => {
         const response = await client.call("tools/call", { name, arguments: args });
         const result = response.result as { isError?: boolean; structuredContent?: Json };

@@ -15,6 +15,7 @@ import type { ResearchNote } from "../research/rows.js";
 import { healthByInstrument } from "../research/views.js";
 import { watchlist } from "./alerts.js";
 import { loadInstrument } from "./instruments.js";
+import type { ThesisView } from "./journal.js";
 import { instrumentGid, type Read } from "./shared.js";
 
 export interface PendingPlan {
@@ -29,6 +30,9 @@ export interface PlanFactsInput {
   readonly pendingPlan?: PendingPlan;
   /** A new note is not in the pre-append SQL view yet. */
   readonly pendingResearchNotes?: ReadonlyMap<string, ResearchNote>;
+  readonly pendingTheses?: ReadonlyMap<string, ThesisView>;
+  /** Complete prospective membership, captured from the watch command's actual effect. */
+  readonly pendingWatched?: ReadonlySet<string>;
 }
 export function planFacts(read: Read, input: PlanFactsInput): plan.PlanFacts[] {
   const grouped = new Map<InstrumentId, ValuedHolding[]>();
@@ -44,8 +48,10 @@ export function planFacts(read: Read, input: PlanFactsInput): plan.PlanFacts[] {
     if (input.only === undefined || id === input.only)
       grouped.set(id, [...(grouped.get(id) ?? []), holding]);
   }
-  const watched = watchlist(read)
-    .map((row) => asInstrumentId(row.instrument))
+  const watched = [
+    ...(input.pendingWatched ?? new Set(watchlist(read).map((row) => row.instrument))),
+  ]
+    .map(asInstrumentId)
     .filter((id) => !grouped.has(id) && (input.only === undefined || id === input.only));
   const ids = [...[...grouped.keys()].sort(), ...[...new Set(watched)].sort()];
   const now = toUtc(input.now);
@@ -54,6 +60,7 @@ export function planFacts(read: Read, input: PlanFactsInput): plan.PlanFacts[] {
     ids,
     research.utcInstant(now.date, now.hour, now.minute, now.second, now.microsecond),
     input.pendingResearchNotes,
+    input.pendingTheses,
   );
   return ids.flatMap((id) => {
     const inst = loadInstrument(read, id);

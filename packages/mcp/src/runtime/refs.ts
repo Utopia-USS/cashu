@@ -12,7 +12,9 @@ export type EntityRefKind =
   | "run"
   | "note"
   | "watchlist"
-  | "account";
+  | "account"
+  | "decision"
+  | "proposal";
 
 // Letter-only payloads avoid identifier-like digit runs in the unchanged final leak check.
 // u carries the 26 canonical ULID ASCII bytes as nibbles; v carries 16 UUIDv8 bytes.

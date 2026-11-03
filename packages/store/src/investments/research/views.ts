@@ -285,6 +285,7 @@ export function healthByInstrument(
   ids: Iterable<string>,
   now: Instant,
   pendingNotes?: ReadonlyMap<string, ResearchNote>,
+  pendingTheses?: ReadonlyMap<string, ThesisView>,
 ): Map<
   string,
   { health: research.HealthResult; thesis: ThesisView | undefined; noteIds: string[] }
@@ -315,6 +316,7 @@ export function healthByInstrument(
     }
   }
   const thesesOf = thesesByInstrument(read);
+  for (const [instrument, thesis] of pendingTheses ?? []) thesesOf.set(instrument, thesis);
   const covered = coveredRecently(read, now);
   for (const g of wanted) {
     const notes = (byInstrument.get(g) ?? []).map((r) => scoredNote(r, ranks.get(r.gid) as number));

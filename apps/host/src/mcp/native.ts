@@ -3,6 +3,7 @@ import type { market } from "@cashu/domain/investments";
 import {
   type InvestmentHistoryReads,
   type InvestmentReads,
+  type InvestmentWriteServices,
   loadAccountLabels,
   loadGuard,
   loadNameSources,
@@ -34,6 +35,7 @@ export interface NativeMcpOptions {
   readonly investmentReads?: (context: ToolContext<NativeToolStore>) => InvestmentReads;
   readonly investmentHistory?: (context: ToolContext<NativeToolStore>) => InvestmentHistoryReads;
   readonly research?: (context: ToolContext<NativeToolStore>) => ResearchServices;
+  readonly investmentWrites?: (context: ToolContext<NativeToolStore>) => InvestmentWriteServices;
   readonly readInvestmentImportFile?: (
     path: string,
     slug: string,
@@ -136,6 +138,8 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         let context: ToolContext<NativeToolStore>;
         let research: ResearchServices | undefined;
         let researchResolved = false;
+        let investmentWrites: InvestmentWriteServices | undefined;
+        let investmentWritesResolved = false;
         const store: NativeToolStore = {
           read,
           profile,
@@ -144,6 +148,22 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           prices: options.prices ?? null,
           fxNewest: options.fxNewest?.() ?? null,
           toolInventory: options.inventory,
+          get investmentWrites() {
+            if (!investmentWritesResolved) {
+              const candidate = options.investmentWrites?.(context);
+              if (
+                candidate !== undefined &&
+                (candidate.vault !== vault.store.vault ||
+                  candidate.plans.vault !== vault.store.vault ||
+                  (candidate.strategyFiles !== undefined &&
+                    candidate.strategyFiles.vault !== vault.store.vault))
+              )
+                throw new Error("native investment-write vault binding is inconsistent");
+              investmentWrites = candidate;
+              investmentWritesResolved = true;
+            }
+            return investmentWrites;
+          },
           get research() {
             if (!researchResolved) {
               const candidate = options.research?.(context);

@@ -17,6 +17,11 @@ export {
   type InvestmentReads,
   investmentReads,
 } from "./providers/investmentReads.js";
+export { investmentWriteServices } from "./providers/investmentWrites.js";
+export type {
+  InvestmentWriteRequests,
+  InvestmentWriteServices,
+} from "./providers/investmentWriteTypes.js";
 export { researchServices } from "./providers/research.js";
 export type { ResearchRequests, ResearchServices } from "./providers/researchTypes.js";
 export {
@@ -65,5 +70,6 @@ export type { NativeToolStore, ToolInventoryEntry } from "./runtime/types.js";
 export { budgetTools } from "./tools/budget.js";
 export { coreTools } from "./tools/core.js";
 export { investmentTools } from "./tools/investments.js";
+export { investmentWriteTools } from "./tools/investmentWrites.js";
 export { loansTools } from "./tools/loans.js";
 export { researchTools } from "./tools/research.js";

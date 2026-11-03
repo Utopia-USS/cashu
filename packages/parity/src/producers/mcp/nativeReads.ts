@@ -7,6 +7,7 @@ import {
   type EntityRefKind,
   enabledIn,
   investmentTools,
+  investmentWriteTools,
   type JsonValue,
   LeakDetected,
   leakCheck,
@@ -38,6 +39,8 @@ const NATIVE_READS = [
   "theses",
   "research_context",
   "research_notes",
+  "alerts",
+  "watchlist",
 ] as const;
 interface NativeCall {
   readonly name: string;
@@ -51,14 +54,22 @@ const NATIVE_CALLS = NATIVE_READS.flatMap<NativeCall>((name) =>
         call: `signals(status=${status})`,
         args: { status },
       }))
-    : [{ name, call: `${name}()`, args: {} }],
+    : name === "alerts"
+      ? [
+          { name, call: "alerts()", args: {} },
+          { name, call: "alerts(status=all)", args: { status: "all" } },
+        ]
+      : [{ name, call: `${name}()`, args: {} }],
 );
 const NATIVE_NAMES: ReadonlySet<string> = new Set(NATIVE_READS);
 const specs = new Map(
-  [...budgetTools(), ...loansTools(), ...investmentTools(), ...researchTools()].map((spec) => [
-    spec.name,
-    spec,
-  ]),
+  [
+    ...budgetTools(),
+    ...loansTools(),
+    ...investmentTools(),
+    ...investmentWriteTools(),
+    ...researchTools(),
+  ].map((spec) => [spec.name, spec]),
 );
 export interface InvestmentReferences {
   ref(kind: EntityRefKind, gid: string): string;

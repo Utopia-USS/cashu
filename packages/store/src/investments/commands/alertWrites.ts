@@ -47,14 +47,19 @@ function choice(value: unknown, fallback: string, choices: readonly string[]): s
   if (typeof value !== "string" || !choices.includes(value)) throw new TypeError("invalid choice");
   return value;
 }
-function validBuckets(ctx: CommandContext, refs: readonly string[]): boolean {
+function validBuckets(
+  ctx: CommandContext,
+  refs: readonly string[],
+  known?: ReadonlySet<string>,
+): boolean {
   if (!refs.length) return true;
+  if (known !== undefined) return refs.every((ref) => known.has(ref));
   const stored = latestStrategyVersion(ctx.read);
   if (stored === undefined) return false;
   const result = loadStrategy(stored.yamlText, stored.mdText);
   const config = result.config ?? result.partial;
-  const known = new Set(config?.allocation.buckets.map((bucket) => bucket.id) ?? []);
-  return refs.every((ref) => known.has(ref));
+  const storedKnown = new Set(config?.allocation.buckets.map((bucket) => bucket.id) ?? []);
+  return refs.every((ref) => storedKnown.has(ref));
 }
 const createInput = z.strictObject({
   kind: z.string(),
@@ -73,61 +78,65 @@ const createInput = z.strictObject({
   createdBy: z.string().min(1).default("app"),
 });
 
-export const createAlert = defineCommand({
-  id: "investments.createAlert",
-  input: createInput,
-  run(ctx, input) {
-    const now = parseDateTime(ctx.now());
-    try {
-      const valid = domain.validateAlert(input.kind, input.params, {
-        scope: input.scope,
-        hasInstrument: input.instrument !== null,
-      });
-      const [title, note] = domain.validateText(input.title, input.note ?? null);
-      const tag = domain.validateTag(input.tag ?? null);
-      const instrument =
-        input.instrument === null ? null : instrumentGid(ctx.read, input.instrument);
-      if (
-        instrument === undefined ||
-        (instrument !== null && !vaultInstrumentGids(ctx.read).has(instrument))
-      )
-        return refuse("no_instrument");
-      if (!validBuckets(ctx, valid.bucketRefs)) return refuse("unknown_bucket");
-      if (input.source === "agent" && liveAgentAlerts(ctx.read, now) >= 50)
-        return refuse("agent_alert_limit");
-      const payload = {
-        instrument,
-        kind: valid.kind,
-        scope: valid.scope,
-        params: valid.params,
-        title,
-        note,
-        tag,
-        polarity: choice(input.polarity, "neutral", ["positive", "negative", "neutral"]),
-        severity: choice(input.severity, "info", ["info", "action"]),
-        cooldownDays: cooldown(input.cooldownDays),
-        expiresAt: future(input.expiresAt, input.expiresInDays, now),
-        source: input.source,
-        createdBy: input.createdBy,
-      };
-      const alert = ctx.newGid();
-      ctx.emit("alert.created", alert, {
-        ...payload,
-        stamps: { created_at: eventTime(now), updated_at: eventTime(now) },
-      });
-      return ok({ alert });
-    } catch (error) {
-      if (
-        error instanceof domain.AlertValidationError ||
-        error instanceof TypeError ||
-        error instanceof RangeError ||
-        error instanceof PyValueError
-      )
-        return refuse("alert_invalid");
-      throw error;
-    }
-  },
-});
+export function createAlertWithBuckets(known?: ReadonlySet<string>) {
+  const buckets = known === undefined ? undefined : new Set(known);
+  return defineCommand({
+    id: "investments.createAlert",
+    input: createInput,
+    run(ctx, input) {
+      const now = parseDateTime(ctx.now());
+      try {
+        const valid = domain.validateAlert(input.kind, input.params, {
+          scope: input.scope,
+          hasInstrument: input.instrument !== null,
+        });
+        const [title, note] = domain.validateText(input.title, input.note ?? null);
+        const tag = domain.validateTag(input.tag ?? null);
+        const instrument =
+          input.instrument === null ? null : instrumentGid(ctx.read, input.instrument);
+        if (
+          instrument === undefined ||
+          (instrument !== null && !vaultInstrumentGids(ctx.read).has(instrument))
+        )
+          return refuse("no_instrument");
+        if (!validBuckets(ctx, valid.bucketRefs, buckets)) return refuse("unknown_bucket");
+        if (input.source === "agent" && liveAgentAlerts(ctx.read, now) >= 50)
+          return refuse("agent_alert_limit");
+        const payload = {
+          instrument,
+          kind: valid.kind,
+          scope: valid.scope,
+          params: valid.params,
+          title,
+          note,
+          tag,
+          polarity: choice(input.polarity, "neutral", ["positive", "negative", "neutral"]),
+          severity: choice(input.severity, "info", ["info", "action"]),
+          cooldownDays: cooldown(input.cooldownDays),
+          expiresAt: future(input.expiresAt, input.expiresInDays, now),
+          source: input.source,
+          createdBy: input.createdBy,
+        };
+        const alert = ctx.newGid();
+        ctx.emit("alert.created", alert, {
+          ...payload,
+          stamps: { created_at: eventTime(now), updated_at: eventTime(now) },
+        });
+        return ok({ alert });
+      } catch (error) {
+        if (
+          error instanceof domain.AlertValidationError ||
+          error instanceof TypeError ||
+          error instanceof RangeError ||
+          error instanceof PyValueError
+        )
+          return refuse("alert_invalid");
+        throw error;
+      }
+    },
+  });
+}
+export const createAlert = createAlertWithBuckets();
 
 const UPDATABLE = new Set([
   "title",

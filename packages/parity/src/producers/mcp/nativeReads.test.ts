@@ -1,12 +1,24 @@
-import { loadAccountLabels, loadGuard, type NativeToolStore, toolContext } from "@cashu/mcp";
+import { addDays, D, parseDateTime } from "@cashu/domain";
+import { asProfileId, market, toCurrency } from "@cashu/domain/investments";
+import {
+  type InvestmentWriteServices,
+  investmentWriteServices,
+  loadAccountLabels,
+  loadGuard,
+  type NativeToolStore,
+  type ToolContext,
+  toolContext,
+} from "@cashu/mcp";
 import {
   betterSqlite3Driver,
   builtinModules,
+  investmentsCommands as C,
   type Command,
   type CommandEnv,
   createProfile,
   HybridClock,
   runCommand,
+  investmentsServices as S,
   Store,
   setModules,
   storeWriter,
@@ -16,7 +28,7 @@ import { mcpProfile } from "@cashu/store/core";
 import Database from "better-sqlite3";
 import { expect, it, vi } from "vitest";
 import type { CanonObject } from "../../json.ts";
-import { dumps } from "../output.ts";
+import { dumps, PyFloat } from "../output.ts";
 import { mergeMcpReads, nativeMcpReads } from "./nativeReads.ts";
 
 function fixture() {
@@ -45,11 +57,17 @@ function fixture() {
   run(createProfile, { slug: "synthetic", name: "Test Household", modules: [] });
   return {
     run,
-    reads: () => {
+    store,
+    vault,
+    reads: (bind?: (context: ToolContext<NativeToolStore>) => InvestmentWriteServices) => {
       const read = store.read.bind(store);
       const profile = mcpProfile(read);
       if (profile === undefined) throw new Error("missing synthetic profile");
+      let investmentWrites: InvestmentWriteServices | undefined;
       const native: NativeToolStore = {
+        get investmentWrites() {
+          return investmentWrites;
+        },
         read,
         profile,
         prices: null,
@@ -69,6 +87,7 @@ function fixture() {
         loadGuard: () => loadGuard(read, 1, new Uint8Array(32).fill(3)),
         loadAccountLabels: () => loadAccountLabels(read),
       });
+      investmentWrites = bind?.(context);
       return nativeMcpReads(context, new Set(profile.modules), () => {
         throw new Error("empty fixture has no loan references");
       });
@@ -117,6 +136,102 @@ it("missing native coverage or a new native argument variant refuses replay", ()
     calls.delete("spending_breakdown(period=2026)");
     calls.delete("loans_summary()");
     expect(() => mergeMcpReads(calls, native, replay)).toThrow("coverage is incomplete");
+    expect(replay).not.toHaveBeenCalled();
+  } finally {
+    f.close();
+  }
+});
+
+it("actual native alert/watchlist reads ignore poisoned labelled oracle trees", async () => {
+  const f = fixture();
+  try {
+    f.run(setModules, { moduleIds: ["investments"] });
+    f.run(C.addToWatchlist, {
+      target: {
+        planned: {
+          name: "Synthetic public listing",
+          symbol: "SYNTH",
+          currency: "PLN",
+          assetClass: "equity",
+          aliases: [{ namespace: "yahoo", value: "SYNTH.WA" }],
+        },
+      },
+    });
+    const instrument = f.store.read<{ gid: string }>(
+      "SELECT gid FROM inv_instruments WHERE symbol = 'SYNTH'",
+    )[0]?.gid;
+    if (!instrument) throw new Error("missing synthetic native instrument");
+    f.run(C.createAlert, {
+      instrument,
+      kind: "range_breakout",
+      params: { window_days: 10, max_range_pct: 0.08, direction: "up" },
+      title: "Synthetic condition",
+      source: "agent",
+      createdBy: "mcp",
+    });
+    const strategy = await S.loadStrategy(f.store, {
+      read: async (name) => (name === "strategy.yaml" ? "version: 1\nbase_currency: PLN\n" : null),
+      write: async () => {},
+      exists: async () => true,
+    });
+    const prices = new market.InMemoryPriceCache();
+    prices.upsertBars(
+      market.marketSymbol("yahoo", "SYNTH.WA"),
+      Array.from({ length: 11 }, (_, index) => ({
+        date: addDays("2026-10-01", index - 10),
+        close: D(index === 10 ? "105" : "100"),
+        open: null,
+        high: null,
+        low: null,
+        volume: null,
+        currency: toCurrency("PLN"),
+        fetchedAt: null,
+      })),
+      parseDateTime("2026-10-01T12:00:00Z"),
+    );
+    const native = f.reads((ctx) =>
+      investmentWriteServices(ctx, {
+        portfolio: {
+          vault: asProfileId(f.vault),
+          asOf: ctx.today,
+          clock: {
+            today: ctx.today,
+            now: parseDateTime(new Date(ctx.store.now()).toISOString()),
+            timeZone: "UTC",
+          },
+          strategy,
+          lang: "pl",
+          forOwner: false,
+          prices,
+        },
+        isHolder: () => false,
+      }),
+    );
+    expect(native["alerts()"]).toMatchObject({
+      alerts: [
+        {
+          title: "Synthetic condition",
+          state: {
+            range_low: new PyFloat(100),
+            range_high: new PyFloat(100),
+            range_pct: new PyFloat(0),
+            window_days: 10n,
+          },
+        },
+      ],
+    });
+    expect(native["watchlist()"]).toMatchObject({ items: [{ instrument: { symbol: "SYNTH" } }] });
+    const calls: CanonObject = new Map(
+      Object.keys(native).map((key) => [
+        key,
+        new Map([["error_kind", "poisoned-expected-result"]]),
+      ]),
+    );
+    calls.set("alerts()", new Map([["redacted", new Map([["alerts", ["not native facts"]]])]]));
+    calls.set("alerts(status=all)", new Map([["error_kind", "forged-oracle-error"]]));
+    calls.set("watchlist()", new Map([["redacted", new Map([["items", []]])]]));
+    const replay = vi.fn(() => ({ poisoned: true }));
+    expect(dumps(mergeMcpReads(calls, native, replay))).toBe(dumps(native));
     expect(replay).not.toHaveBeenCalled();
   } finally {
     f.close();

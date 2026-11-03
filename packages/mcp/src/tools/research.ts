@@ -221,8 +221,6 @@ function add(ctx: Context, args: ToolArgs): L.LabelledTree {
     throw e;
   }
   const target = reference === undefined ? null : instrument(ctx, reference);
-  if (target !== null && ctx.store.research === undefined)
-    throw new ToolError("native research plan context is unavailable", "unsupported");
   const out = execute(ctx, addResearchNoteWithPlans(ctx.store.research?.plans), {
     note,
     instrument: target,

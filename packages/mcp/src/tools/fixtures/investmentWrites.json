@@ -1,0 +1,972 @@
+{
+  "amounts": {
+    "errors": {
+      "coverage_before_held": {
+        "error": "recommendation coverage incomplete: expected 2, covered 1, missing 1; see research_context for rows with recommendation null",
+        "error_kind": "incomplete_coverage"
+      },
+      "duplicate": {
+        "error": "recommendations[1] duplicates an instrument",
+        "error_kind": "invalid_arguments"
+      },
+      "enum": {
+        "error": "recommendations[0].recommendation must be one of: buy_asap, buy, hold, reduce, exit_asap",
+        "error_kind": "invalid_arguments"
+      },
+      "held_after_coverage": {
+        "error": "Plan 'reduce' needs a held instrument",
+        "error_kind": "invalid"
+      },
+      "outside": {
+        "error": "recommendations[0] is outside the selected watchlist scope",
+        "error_kind": "invalid_arguments"
+      }
+    },
+    "reason_vectors": [
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+        },
+        "label": "astral_boundary",
+        "plan": "buy",
+        "reason": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+      },
+      {
+        "expected": {
+          "accepted": false,
+          "plan": "buy",
+          "reason": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+        },
+        "label": "astral_over",
+        "plan": "buy",
+        "reason": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": "Current source facts"
+        },
+        "label": "nel",
+        "plan": "buy",
+        "reason": "  Currentsource\tfacts  "
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": "A B"
+        },
+        "label": "raw_vs_collapsed",
+        "plan": "buy",
+        "reason": "A                                                                                                                                                                                                                                                                                                            B"
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": null
+        },
+        "label": "empty",
+        "plan": "buy",
+        "reason": ""
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": null
+        },
+        "label": "null_reason",
+        "plan": "buy",
+        "reason": null
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": null,
+          "reason": null
+        },
+        "label": "clear_plan",
+        "plan": null,
+        "reason": "Discarded reason"
+      }
+    ],
+    "responses": {
+      "add_alert": {
+        "alert": {
+          "alert_id": "alert",
+          "cooldown_days": null,
+          "created_at": "2026-11-01T12:00:00.123000+00:00",
+          "created_by": "mcp",
+          "expires_at": null,
+          "instrument": {
+            "currency": "PLN",
+            "instrument_id": "instrument",
+            "isin": "[account]",
+            "label": "ABC",
+            "owner_named": false,
+            "symbol": "ABC"
+          },
+          "kind": "price_below",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": null,
+          "params": {
+            "level": 90.0
+          },
+          "polarity": "negative",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "agent",
+          "state": null,
+          "status": "active",
+          "tag": "cena",
+          "title": "Synthetic price condition",
+          "unit": "price"
+        },
+        "limits": {
+          "agent_live": 1,
+          "agent_max": 50
+        },
+        "note": "created as active (source agent); the daily run checks it, the owner sees it badged in the app and can mute or delete it"
+      },
+      "add_watch": {
+        "created_instrument": false,
+        "item": {
+          "added_at": "2026-11-01T12:00:00.123000+00:00",
+          "alerts": {
+            "count": 1,
+            "live": 0,
+            "nearest": null,
+            "triggered": 0
+          },
+          "change_1d": null,
+          "change_1m": null,
+          "from_high_52w": null,
+          "held": true,
+          "high_52w": null,
+          "hints": [],
+          "instrument": {
+            "currency": "PLN",
+            "instrument_id": "instrument",
+            "isin": "[account]",
+            "label": "ABC",
+            "owner_named": false,
+            "symbol": "ABC"
+          },
+          "item_id": "item",
+          "last_close": null,
+          "note": "Synthetic watch note",
+          "plan_freshness": {
+            "reasons": [],
+            "state": "fresh"
+          },
+          "price_date": null,
+          "price_source": true,
+          "recommendation": "buy",
+          "source": "agent",
+          "stale": null,
+          "tags": []
+        },
+        "restored": false,
+        "warnings": []
+      },
+      "alerts": {
+        "alerts": [
+          {
+            "alert_id": "alert",
+            "cooldown_days": null,
+            "created_at": "2026-11-01T12:00:00.123000+00:00",
+            "created_by": "mcp",
+            "expires_at": null,
+            "instrument": {
+              "currency": "PLN",
+              "instrument_id": "instrument",
+              "isin": "[account]",
+              "label": "ABC",
+              "owner_named": false,
+              "symbol": "ABC"
+            },
+            "kind": "price_below",
+            "last_checked_at": null,
+            "last_triggered_at": null,
+            "last_value": null,
+            "note": null,
+            "params": {
+              "level": 90.0
+            },
+            "polarity": "negative",
+            "scope": "instrument",
+            "severity": "info",
+            "signal": null,
+            "snoozed_until": null,
+            "source": "agent",
+            "state": null,
+            "status": "active",
+            "tag": "cena",
+            "title": "Synthetic price condition",
+            "unit": "price"
+          }
+        ],
+        "kinds": [
+          "price_above",
+          "price_below",
+          "change_pct",
+          "drawdown_from_high",
+          "new_high",
+          "sma_cross",
+          "weight_above",
+          "weight_below",
+          "custom",
+          "range_breakout",
+          "volume_spike"
+        ],
+        "limits": {
+          "agent_live": 1,
+          "agent_max": 50
+        },
+        "note": "alerts are conditions on stored prices and weights, checked by the daily run; a triggered alert is a signal (rule alert:<id>) with the alert's polarity and severity; threshold and weights are fractions (0.1 = 10%), levels are in the instrument's currency; range_breakout: max_range_pct and range_pct are fractions, state gives the range of the last window; volume_spike: multiple, last_value and state.ratio are multiples of the average volume (2.5 = 2.5x)",
+        "tags_in_use": [
+          {
+            "count": 1,
+            "tag": "cena"
+          }
+        ]
+      },
+      "coverage": {
+        "covered": 1,
+        "expected": 1,
+        "missing": 0,
+        "note": "complete model recommendation coverage saved; no decision or transaction was recorded",
+        "scope": "held",
+        "updated": 0
+      },
+      "decision": {
+        "action": "held",
+        "decision_id": "decision",
+        "note": "recorded in the decision journal; no transaction was booked",
+        "signal_id": "signal",
+        "signal_status": "acknowledged"
+      },
+      "mute": {
+        "alert_id": "alert",
+        "status": "muted"
+      },
+      "recommend": {
+        "generated_at": "2026-11-01T12:00:00.123000+00:00",
+        "instrument_id": "instrument",
+        "note": "model recommendation saved; no decision or transaction was recorded",
+        "reason_saved": true,
+        "recommendation": "buy"
+      },
+      "remove_watch": {
+        "item_id": "item",
+        "removed": true
+      },
+      "rule": {
+        "backtest": {
+          "episodes": 0,
+          "evaluated": 44,
+          "fired_dates": [],
+          "fired_outcomes": 0,
+          "first_fired": null,
+          "from": "2026-01-01",
+          "instruments": [],
+          "last_fired": null,
+          "note": "raw evaluations: cooldown_days is not applied; a rule never fires on missing data",
+          "points_fired": 0,
+          "points_skipped": 0,
+          "scopes_fired": 0,
+          "skip_reasons": [],
+          "step_days": 7,
+          "to": "2026-11-01"
+        },
+        "dry_run": false,
+        "issues": [],
+        "kind": "cash_level",
+        "note": "stored as a proposal; the owner approves it in the app (Inwestycje)",
+        "proposal_id": "rule_proposal",
+        "rule_id": "agent_cash_level_1",
+        "scope": null,
+        "stored": true,
+        "valid": true
+      },
+      "rule_dry": {
+        "backtest": {
+          "episodes": 0,
+          "evaluated": 44,
+          "fired_dates": [],
+          "fired_outcomes": 0,
+          "first_fired": null,
+          "from": "2026-01-01",
+          "instruments": [],
+          "last_fired": null,
+          "note": "raw evaluations: cooldown_days is not applied; a rule never fires on missing data",
+          "points_fired": 0,
+          "points_skipped": 0,
+          "scopes_fired": 0,
+          "skip_reasons": [],
+          "step_days": 7,
+          "to": "2026-11-01"
+        },
+        "dry_run": true,
+        "issues": [],
+        "kind": "cash_level",
+        "rule_id": "agent_cash_level_1",
+        "scope": null,
+        "stored": false,
+        "valid": true
+      },
+      "rule_invalid": {
+        "dry_run": true,
+        "issues": [
+          {
+            "column": 14,
+            "line": null,
+            "message": "Expression ended unexpectedly; expected a value",
+            "path": "params.when",
+            "severity": "error"
+          }
+        ],
+        "kind": "custom",
+        "note": "not stored: fix the errors and propose again",
+        "rule_id": "agent_custom_1",
+        "scope": "portfolio",
+        "stored": false,
+        "valid": false
+      },
+      "strategy": {
+        "buckets": [],
+        "dry_run": false,
+        "issues": [],
+        "md_diff": null,
+        "note": "stored as a proposal; the owner approves it in the app (Inwestycje)",
+        "proposal_id": "strategy_proposal",
+        "rules": 0,
+        "state": "valid",
+        "stored": true,
+        "valid": true,
+        "warnings": [],
+        "yaml_diff": {
+          "lines_added": 0,
+          "lines_removed": 0
+        }
+      },
+      "strategy_dry": {
+        "buckets": [],
+        "dry_run": true,
+        "issues": [],
+        "md_diff": null,
+        "rules": 0,
+        "state": "valid",
+        "stored": false,
+        "valid": true,
+        "warnings": [],
+        "yaml_diff": {
+          "lines_added": 0,
+          "lines_removed": 0
+        }
+      },
+      "strategy_invalid": {
+        "dry_run": true,
+        "error_code": "invalid_strategy",
+        "issues": [
+          {
+            "code": "strategy.version_unsupported",
+            "column": 10,
+            "line": 1,
+            "message": "Unsupported version 99 (supported: 1)",
+            "path": "version",
+            "severity": "error"
+          },
+          {
+            "code": "strategy.base_currency_required",
+            "column": 1,
+            "line": 1,
+            "message": "base_currency is required (e.g. PLN)",
+            "path": "base_currency",
+            "severity": "error"
+          }
+        ],
+        "md_diff": null,
+        "note": "not stored: fix the errors (line / column above) and propose again",
+        "state": "invalid",
+        "stored": false,
+        "valid": false,
+        "warnings": [],
+        "yaml_diff": {
+          "lines_added": 1,
+          "lines_removed": 3
+        }
+      },
+      "thesis": {
+        "created": true,
+        "entry_type": "trend",
+        "instrument_id": "instrument",
+        "thesis_id": "thesis"
+      },
+      "thesis_update": {
+        "created": false,
+        "entry_type": "trend",
+        "instrument_id": "instrument",
+        "thesis_id": "thesis"
+      },
+      "watchlist": {
+        "items": [
+          {
+            "added_at": "2026-11-01T12:00:00.123000+00:00",
+            "alerts": {
+              "count": 1,
+              "live": 0,
+              "nearest": null,
+              "triggered": 0
+            },
+            "change_1d": null,
+            "change_1m": null,
+            "from_high_52w": null,
+            "held": true,
+            "high_52w": null,
+            "hints": [],
+            "instrument": {
+              "currency": "PLN",
+              "instrument_id": "instrument",
+              "isin": "[account]",
+              "label": "ABC",
+              "owner_named": false,
+              "symbol": "ABC"
+            },
+            "item_id": "item",
+            "last_close": null,
+            "note": "Synthetic watch note",
+            "plan_freshness": {
+              "reasons": [],
+              "state": "fresh"
+            },
+            "price_date": null,
+            "price_source": true,
+            "recommendation": "buy",
+            "source": "agent",
+            "stale": null,
+            "tags": []
+          }
+        ],
+        "note": "watched instruments join the daily price refresh; changes and distances are fractions (0.05 = 5%) from stored closes, never forecasts"
+      }
+    },
+    "state": {
+      "decisions": 1,
+      "recommendation": "buy",
+      "signal_status": "acknowledged",
+      "theses": 1
+    },
+    "wire": "{\"add_alert\": {\"alert\": {\"alert_id\": \"alert\", \"cooldown_days\": null, \"created_at\": \"2026-11-01T12:00:00.123000+00:00\", \"created_by\": \"mcp\", \"expires_at\": null, \"instrument\": {\"currency\": \"PLN\", \"instrument_id\": \"instrument\", \"isin\": \"[account]\", \"label\": \"ABC\", \"owner_named\": false, \"symbol\": \"ABC\"}, \"kind\": \"price_below\", \"last_checked_at\": null, \"last_triggered_at\": null, \"last_value\": null, \"note\": null, \"params\": {\"level\": 90.0}, \"polarity\": \"negative\", \"scope\": \"instrument\", \"severity\": \"info\", \"signal\": null, \"snoozed_until\": null, \"source\": \"agent\", \"state\": null, \"status\": \"active\", \"tag\": \"cena\", \"title\": \"Synthetic price condition\", \"unit\": \"price\"}, \"limits\": {\"agent_live\": 1, \"agent_max\": 50}, \"note\": \"created as active (source agent); the daily run checks it, the owner sees it badged in the app and can mute or delete it\"}, \"add_watch\": {\"created_instrument\": false, \"item\": {\"added_at\": \"2026-11-01T12:00:00.123000+00:00\", \"alerts\": {\"count\": 1, \"live\": 0, \"nearest\": null, \"triggered\": 0}, \"change_1d\": null, \"change_1m\": null, \"from_high_52w\": null, \"held\": true, \"high_52w\": null, \"hints\": [], \"instrument\": {\"currency\": \"PLN\", \"instrument_id\": \"instrument\", \"isin\": \"[account]\", \"label\": \"ABC\", \"owner_named\": false, \"symbol\": \"ABC\"}, \"item_id\": \"item\", \"last_close\": null, \"note\": \"Synthetic watch note\", \"plan_freshness\": {\"reasons\": [], \"state\": \"fresh\"}, \"price_date\": null, \"price_source\": true, \"recommendation\": \"buy\", \"source\": \"agent\", \"stale\": null, \"tags\": []}, \"restored\": false, \"warnings\": []}, \"alerts\": {\"alerts\": [{\"alert_id\": \"alert\", \"cooldown_days\": null, \"created_at\": \"2026-11-01T12:00:00.123000+00:00\", \"created_by\": \"mcp\", \"expires_at\": null, \"instrument\": {\"currency\": \"PLN\", \"instrument_id\": \"instrument\", \"isin\": \"[account]\", \"label\": \"ABC\", \"owner_named\": false, \"symbol\": \"ABC\"}, \"kind\": \"price_below\", \"last_checked_at\": null, \"last_triggered_at\": null, \"last_value\": null, \"note\": null, \"params\": {\"level\": 90.0}, \"polarity\": \"negative\", \"scope\": \"instrument\", \"severity\": \"info\", \"signal\": null, \"snoozed_until\": null, \"source\": \"agent\", \"state\": null, \"status\": \"active\", \"tag\": \"cena\", \"title\": \"Synthetic price condition\", \"unit\": \"price\"}], \"kinds\": [\"price_above\", \"price_below\", \"change_pct\", \"drawdown_from_high\", \"new_high\", \"sma_cross\", \"weight_above\", \"weight_below\", \"custom\", \"range_breakout\", \"volume_spike\"], \"limits\": {\"agent_live\": 1, \"agent_max\": 50}, \"note\": \"alerts are conditions on stored prices and weights, checked by the daily run; a triggered alert is a signal (rule alert:<id>) with the alert's polarity and severity; threshold and weights are fractions (0.1 = 10%), levels are in the instrument's currency; range_breakout: max_range_pct and range_pct are fractions, state gives the range of the last window; volume_spike: multiple, last_value and state.ratio are multiples of the average volume (2.5 = 2.5x)\", \"tags_in_use\": [{\"count\": 1, \"tag\": \"cena\"}]}, \"coverage\": {\"covered\": 1, \"expected\": 1, \"missing\": 0, \"note\": \"complete model recommendation coverage saved; no decision or transaction was recorded\", \"scope\": \"held\", \"updated\": 0}, \"decision\": {\"action\": \"held\", \"decision_id\": \"decision\", \"note\": \"recorded in the decision journal; no transaction was booked\", \"signal_id\": \"signal\", \"signal_status\": \"acknowledged\"}, \"mute\": {\"alert_id\": \"alert\", \"status\": \"muted\"}, \"recommend\": {\"generated_at\": \"2026-11-01T12:00:00.123000+00:00\", \"instrument_id\": \"instrument\", \"note\": \"model recommendation saved; no decision or transaction was recorded\", \"reason_saved\": true, \"recommendation\": \"buy\"}, \"remove_watch\": {\"item_id\": \"item\", \"removed\": true}, \"rule\": {\"backtest\": {\"episodes\": 0, \"evaluated\": 44, \"fired_dates\": [], \"fired_outcomes\": 0, \"first_fired\": null, \"from\": \"2026-01-01\", \"instruments\": [], \"last_fired\": null, \"note\": \"raw evaluations: cooldown_days is not applied; a rule never fires on missing data\", \"points_fired\": 0, \"points_skipped\": 0, \"scopes_fired\": 0, \"skip_reasons\": [], \"step_days\": 7, \"to\": \"2026-11-01\"}, \"dry_run\": false, \"issues\": [], \"kind\": \"cash_level\", \"note\": \"stored as a proposal; the owner approves it in the app (Inwestycje)\", \"proposal_id\": \"rule_proposal\", \"rule_id\": \"agent_cash_level_1\", \"scope\": null, \"stored\": true, \"valid\": true}, \"rule_dry\": {\"backtest\": {\"episodes\": 0, \"evaluated\": 44, \"fired_dates\": [], \"fired_outcomes\": 0, \"first_fired\": null, \"from\": \"2026-01-01\", \"instruments\": [], \"last_fired\": null, \"note\": \"raw evaluations: cooldown_days is not applied; a rule never fires on missing data\", \"points_fired\": 0, \"points_skipped\": 0, \"scopes_fired\": 0, \"skip_reasons\": [], \"step_days\": 7, \"to\": \"2026-11-01\"}, \"dry_run\": true, \"issues\": [], \"kind\": \"cash_level\", \"rule_id\": \"agent_cash_level_1\", \"scope\": null, \"stored\": false, \"valid\": true}, \"rule_invalid\": {\"dry_run\": true, \"issues\": [{\"column\": 14, \"line\": null, \"message\": \"Expression ended unexpectedly; expected a value\", \"path\": \"params.when\", \"severity\": \"error\"}], \"kind\": \"custom\", \"note\": \"not stored: fix the errors and propose again\", \"rule_id\": \"agent_custom_1\", \"scope\": \"portfolio\", \"stored\": false, \"valid\": false}, \"strategy\": {\"buckets\": [], \"dry_run\": false, \"issues\": [], \"md_diff\": null, \"note\": \"stored as a proposal; the owner approves it in the app (Inwestycje)\", \"proposal_id\": \"strategy_proposal\", \"rules\": 0, \"state\": \"valid\", \"stored\": true, \"valid\": true, \"warnings\": [], \"yaml_diff\": {\"lines_added\": 0, \"lines_removed\": 0}}, \"strategy_dry\": {\"buckets\": [], \"dry_run\": true, \"issues\": [], \"md_diff\": null, \"rules\": 0, \"state\": \"valid\", \"stored\": false, \"valid\": true, \"warnings\": [], \"yaml_diff\": {\"lines_added\": 0, \"lines_removed\": 0}}, \"strategy_invalid\": {\"dry_run\": true, \"error_code\": \"invalid_strategy\", \"issues\": [{\"code\": \"strategy.version_unsupported\", \"column\": 10, \"line\": 1, \"message\": \"Unsupported version 99 (supported: 1)\", \"path\": \"version\", \"severity\": \"error\"}, {\"code\": \"strategy.base_currency_required\", \"column\": 1, \"line\": 1, \"message\": \"base_currency is required (e.g. PLN)\", \"path\": \"base_currency\", \"severity\": \"error\"}], \"md_diff\": null, \"note\": \"not stored: fix the errors (line / column above) and propose again\", \"state\": \"invalid\", \"stored\": false, \"valid\": false, \"warnings\": [], \"yaml_diff\": {\"lines_added\": 1, \"lines_removed\": 3}}, \"thesis\": {\"created\": true, \"entry_type\": \"trend\", \"instrument_id\": \"instrument\", \"thesis_id\": \"thesis\"}, \"thesis_update\": {\"created\": false, \"entry_type\": \"trend\", \"instrument_id\": \"instrument\", \"thesis_id\": \"thesis\"}, \"watchlist\": {\"items\": [{\"added_at\": \"2026-11-01T12:00:00.123000+00:00\", \"alerts\": {\"count\": 1, \"live\": 0, \"nearest\": null, \"triggered\": 0}, \"change_1d\": null, \"change_1m\": null, \"from_high_52w\": null, \"held\": true, \"high_52w\": null, \"hints\": [], \"instrument\": {\"currency\": \"PLN\", \"instrument_id\": \"instrument\", \"isin\": \"[account]\", \"label\": \"ABC\", \"owner_named\": false, \"symbol\": \"ABC\"}, \"item_id\": \"item\", \"last_close\": null, \"note\": \"Synthetic watch note\", \"plan_freshness\": {\"reasons\": [], \"state\": \"fresh\"}, \"price_date\": null, \"price_source\": true, \"recommendation\": \"buy\", \"source\": \"agent\", \"stale\": null, \"tags\": []}], \"note\": \"watched instruments join the daily price refresh; changes and distances are fractions (0.05 = 5%) from stored closes, never forecasts\"}}"
+  },
+  "diffs": [
+    {
+      "expected": {
+        "lines_added": 2,
+        "lines_removed": 0
+      },
+      "next": "alpha\nbeta\n",
+      "old": null
+    },
+    {
+      "expected": {
+        "lines_added": 1,
+        "lines_removed": 1
+      },
+      "next": "++literal\ny\n",
+      "old": "--literal\nx\n"
+    },
+    {
+      "expected": {
+        "lines_added": 210,
+        "lines_removed": 210
+      },
+      "next": "keep\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\n",
+      "old": "x\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nkeep\n"
+    },
+    {
+      "expected": {
+        "lines_added": 0,
+        "lines_removed": 0
+      },
+      "next": "alpha\nbeta\ngamma\n",
+      "old": "alpha beta\r\ngamma\n"
+    }
+  ],
+  "strict": {
+    "errors": {
+      "coverage_before_held": {
+        "error": "recommendation coverage incomplete: expected 2, covered 1, missing 1; see research_context for rows with recommendation null",
+        "error_kind": "incomplete_coverage"
+      },
+      "duplicate": {
+        "error": "recommendations[1] duplicates an instrument",
+        "error_kind": "invalid_arguments"
+      },
+      "enum": {
+        "error": "recommendations[0].recommendation must be one of: buy_asap, buy, hold, reduce, exit_asap",
+        "error_kind": "invalid_arguments"
+      },
+      "held_after_coverage": {
+        "error": "Plan 'reduce' needs a held instrument",
+        "error_kind": "invalid"
+      },
+      "outside": {
+        "error": "recommendations[0] is outside the selected watchlist scope",
+        "error_kind": "invalid_arguments"
+      }
+    },
+    "reason_vectors": [
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+        },
+        "label": "astral_boundary",
+        "plan": "buy",
+        "reason": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+      },
+      {
+        "expected": {
+          "accepted": false,
+          "plan": "buy",
+          "reason": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+        },
+        "label": "astral_over",
+        "plan": "buy",
+        "reason": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": "Current source facts"
+        },
+        "label": "nel",
+        "plan": "buy",
+        "reason": "  Currentsource\tfacts  "
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": "A B"
+        },
+        "label": "raw_vs_collapsed",
+        "plan": "buy",
+        "reason": "A                                                                                                                                                                                                                                                                                                            B"
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": null
+        },
+        "label": "empty",
+        "plan": "buy",
+        "reason": ""
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": "buy",
+          "reason": null
+        },
+        "label": "null_reason",
+        "plan": "buy",
+        "reason": null
+      },
+      {
+        "expected": {
+          "accepted": true,
+          "plan": null,
+          "reason": null
+        },
+        "label": "clear_plan",
+        "plan": null,
+        "reason": "Discarded reason"
+      }
+    ],
+    "responses": {
+      "add_alert": {
+        "alert": {
+          "alert_id": "alert",
+          "cooldown_days": null,
+          "created_at": "2026-11-01T12:00:00.123000+00:00",
+          "created_by": "mcp",
+          "expires_at": null,
+          "instrument": {
+            "currency": "PLN",
+            "instrument_id": "instrument",
+            "isin": "[account]",
+            "label": "ABC",
+            "owner_named": false,
+            "symbol": "ABC"
+          },
+          "kind": "price_below",
+          "last_checked_at": null,
+          "last_triggered_at": null,
+          "last_value": null,
+          "note": null,
+          "params": {
+            "level": 90.0
+          },
+          "polarity": "negative",
+          "scope": "instrument",
+          "severity": "info",
+          "signal": null,
+          "snoozed_until": null,
+          "source": "agent",
+          "state": null,
+          "status": "active",
+          "tag": "cena",
+          "title": "Synthetic price condition",
+          "unit": "price"
+        },
+        "limits": {
+          "agent_live": 1,
+          "agent_max": 50
+        },
+        "note": "created as active (source agent); the daily run checks it, the owner sees it badged in the app and can mute or delete it"
+      },
+      "add_watch": {
+        "created_instrument": false,
+        "item": {
+          "added_at": "2026-11-01T12:00:00.123000+00:00",
+          "alerts": {
+            "count": 1,
+            "live": 0,
+            "nearest": null,
+            "triggered": 0
+          },
+          "change_1d": null,
+          "change_1m": null,
+          "from_high_52w": null,
+          "held": true,
+          "high_52w": null,
+          "hints": [],
+          "instrument": {
+            "currency": "PLN",
+            "instrument_id": "instrument",
+            "isin": "[account]",
+            "label": "ABC",
+            "owner_named": false,
+            "symbol": "ABC"
+          },
+          "item_id": "item",
+          "last_close": null,
+          "note": "Synthetic watch note",
+          "plan_freshness": {
+            "reasons": [],
+            "state": "fresh"
+          },
+          "price_date": null,
+          "price_source": true,
+          "recommendation": "buy",
+          "source": "agent",
+          "stale": null,
+          "tags": []
+        },
+        "restored": false,
+        "warnings": []
+      },
+      "alerts": {
+        "alerts": [
+          {
+            "alert_id": "alert",
+            "cooldown_days": null,
+            "created_at": "2026-11-01T12:00:00.123000+00:00",
+            "created_by": "mcp",
+            "expires_at": null,
+            "instrument": {
+              "currency": "PLN",
+              "instrument_id": "instrument",
+              "isin": "[account]",
+              "label": "ABC",
+              "owner_named": false,
+              "symbol": "ABC"
+            },
+            "kind": "price_below",
+            "last_checked_at": null,
+            "last_triggered_at": null,
+            "last_value": null,
+            "note": null,
+            "params": {
+              "level": 90.0
+            },
+            "polarity": "negative",
+            "scope": "instrument",
+            "severity": "info",
+            "signal": null,
+            "snoozed_until": null,
+            "source": "agent",
+            "state": null,
+            "status": "active",
+            "tag": "cena",
+            "title": "Synthetic price condition",
+            "unit": "price"
+          }
+        ],
+        "kinds": [
+          "price_above",
+          "price_below",
+          "change_pct",
+          "drawdown_from_high",
+          "new_high",
+          "sma_cross",
+          "weight_above",
+          "weight_below",
+          "custom",
+          "range_breakout",
+          "volume_spike"
+        ],
+        "limits": {
+          "agent_live": 1,
+          "agent_max": 50
+        },
+        "note": "alerts are conditions on stored prices and weights, checked by the daily run; a triggered alert is a signal (rule alert:<id>) with the alert's polarity and severity; threshold and weights are fractions (0.1 = 10%), levels are in the instrument's currency; range_breakout: max_range_pct and range_pct are fractions, state gives the range of the last window; volume_spike: multiple, last_value and state.ratio are multiples of the average volume (2.5 = 2.5x)",
+        "tags_in_use": [
+          {
+            "count": 1,
+            "tag": "cena"
+          }
+        ]
+      },
+      "coverage": {
+        "covered": 1,
+        "expected": 1,
+        "missing": 0,
+        "note": "complete model recommendation coverage saved; no decision or transaction was recorded",
+        "scope": "held",
+        "updated": 0
+      },
+      "decision": {
+        "action": "held",
+        "decision_id": "decision",
+        "note": "recorded in the decision journal; no transaction was booked",
+        "signal_id": "signal",
+        "signal_status": "acknowledged"
+      },
+      "mute": {
+        "alert_id": "alert",
+        "status": "muted"
+      },
+      "recommend": {
+        "generated_at": "2026-11-01T12:00:00.123000+00:00",
+        "instrument_id": "instrument",
+        "note": "model recommendation saved; no decision or transaction was recorded",
+        "reason_saved": true,
+        "recommendation": "buy"
+      },
+      "remove_watch": {
+        "item_id": "item",
+        "removed": true
+      },
+      "rule": {
+        "backtest": {
+          "episodes": 0,
+          "evaluated": 44,
+          "fired_dates": [],
+          "fired_outcomes": 0,
+          "first_fired": null,
+          "from": "2026-01-01",
+          "instruments": [],
+          "last_fired": null,
+          "note": "raw evaluations: cooldown_days is not applied; a rule never fires on missing data",
+          "points_fired": 0,
+          "points_skipped": 0,
+          "scopes_fired": 0,
+          "skip_reasons": [],
+          "step_days": 7,
+          "to": "2026-11-01"
+        },
+        "dry_run": false,
+        "issues": [],
+        "kind": "cash_level",
+        "note": "stored as a proposal; the owner approves it in the app (Inwestycje)",
+        "proposal_id": "rule_proposal",
+        "rule_id": "agent_cash_level_1",
+        "scope": null,
+        "stored": true,
+        "valid": true
+      },
+      "rule_dry": {
+        "backtest": {
+          "episodes": 0,
+          "evaluated": 44,
+          "fired_dates": [],
+          "fired_outcomes": 0,
+          "first_fired": null,
+          "from": "2026-01-01",
+          "instruments": [],
+          "last_fired": null,
+          "note": "raw evaluations: cooldown_days is not applied; a rule never fires on missing data",
+          "points_fired": 0,
+          "points_skipped": 0,
+          "scopes_fired": 0,
+          "skip_reasons": [],
+          "step_days": 7,
+          "to": "2026-11-01"
+        },
+        "dry_run": true,
+        "issues": [],
+        "kind": "cash_level",
+        "rule_id": "agent_cash_level_1",
+        "scope": null,
+        "stored": false,
+        "valid": true
+      },
+      "rule_invalid": {
+        "dry_run": true,
+        "issues": [
+          {
+            "column": 14,
+            "line": null,
+            "message": "Expression ended unexpectedly; expected a value",
+            "path": "params.when",
+            "severity": "error"
+          }
+        ],
+        "kind": "custom",
+        "note": "not stored: fix the errors and propose again",
+        "rule_id": "agent_custom_1",
+        "scope": "portfolio",
+        "stored": false,
+        "valid": false
+      },
+      "strategy": {
+        "buckets": [],
+        "dry_run": false,
+        "issues": [],
+        "md_diff": null,
+        "note": "stored as a proposal; the owner approves it in the app (Inwestycje)",
+        "proposal_id": "strategy_proposal",
+        "rules": 0,
+        "state": "valid",
+        "stored": true,
+        "valid": true,
+        "warnings": [],
+        "yaml_diff": {
+          "lines_added": 0,
+          "lines_removed": 0
+        }
+      },
+      "strategy_dry": {
+        "buckets": [],
+        "dry_run": true,
+        "issues": [],
+        "md_diff": null,
+        "rules": 0,
+        "state": "valid",
+        "stored": false,
+        "valid": true,
+        "warnings": [],
+        "yaml_diff": {
+          "lines_added": 0,
+          "lines_removed": 0
+        }
+      },
+      "strategy_invalid": {
+        "dry_run": true,
+        "error_code": "invalid_strategy",
+        "issues": [
+          {
+            "code": "strategy.version_unsupported",
+            "column": 10,
+            "line": 1,
+            "message": "Unsupported version # (supported: #)",
+            "path": "version",
+            "severity": "error"
+          },
+          {
+            "code": "strategy.base_currency_required",
+            "column": 1,
+            "line": 1,
+            "message": "base_currency is required (e.g. PLN)",
+            "path": "base_currency",
+            "severity": "error"
+          }
+        ],
+        "md_diff": null,
+        "note": "not stored: fix the errors (line / column above) and propose again",
+        "state": "invalid",
+        "stored": false,
+        "valid": false,
+        "warnings": [],
+        "yaml_diff": {
+          "lines_added": 1,
+          "lines_removed": 3
+        }
+      },
+      "thesis": {
+        "created": true,
+        "entry_type": "trend",
+        "instrument_id": "instrument",
+        "thesis_id": "thesis"
+      },
+      "thesis_update": {
+        "created": false,
+        "entry_type": "trend",
+        "instrument_id": "instrument",
+        "thesis_id": "thesis"
+      },
+      "watchlist": {
+        "items": [
+          {
+            "added_at": "2026-11-01T12:00:00.123000+00:00",
+            "alerts": {
+              "count": 1,
+              "live": 0,
+              "nearest": null,
+              "triggered": 0
+            },
+            "change_1d": null,
+            "change_1m": null,
+            "from_high_52w": null,
+            "held": true,
+            "high_52w": null,
+            "hints": [],
+            "instrument": {
+              "currency": "PLN",
+              "instrument_id": "instrument",
+              "isin": "[account]",
+              "label": "ABC",
+              "owner_named": false,
+              "symbol": "ABC"
+            },
+            "item_id": "item",
+            "last_close": null,
+            "note": "Synthetic watch note",
+            "plan_freshness": {
+              "reasons": [],
+              "state": "fresh"
+            },
+            "price_date": null,
+            "price_source": true,
+            "recommendation": "buy",
+            "source": "agent",
+            "stale": null,
+            "tags": []
+          }
+        ],
+        "note": "watched instruments join the daily price refresh; changes and distances are fractions (0.05 = 5%) from stored closes, never forecasts"
+      }
+    },
+    "state": {
+      "decisions": 1,
+      "recommendation": "buy",
+      "signal_status": "acknowledged",
+      "theses": 1
+    },
+    "wire": "{\"add_alert\": {\"alert\": {\"alert_id\": \"alert\", \"cooldown_days\": null, \"created_at\": \"2026-11-01T12:00:00.123000+00:00\", \"created_by\": \"mcp\", \"expires_at\": null, \"instrument\": {\"currency\": \"PLN\", \"instrument_id\": \"instrument\", \"isin\": \"[account]\", \"label\": \"ABC\", \"owner_named\": false, \"symbol\": \"ABC\"}, \"kind\": \"price_below\", \"last_checked_at\": null, \"last_triggered_at\": null, \"last_value\": null, \"note\": null, \"params\": {\"level\": 90.0}, \"polarity\": \"negative\", \"scope\": \"instrument\", \"severity\": \"info\", \"signal\": null, \"snoozed_until\": null, \"source\": \"agent\", \"state\": null, \"status\": \"active\", \"tag\": \"cena\", \"title\": \"Synthetic price condition\", \"unit\": \"price\"}, \"limits\": {\"agent_live\": 1, \"agent_max\": 50}, \"note\": \"created as active (source agent); the daily run checks it, the owner sees it badged in the app and can mute or delete it\"}, \"add_watch\": {\"created_instrument\": false, \"item\": {\"added_at\": \"2026-11-01T12:00:00.123000+00:00\", \"alerts\": {\"count\": 1, \"live\": 0, \"nearest\": null, \"triggered\": 0}, \"change_1d\": null, \"change_1m\": null, \"from_high_52w\": null, \"held\": true, \"high_52w\": null, \"hints\": [], \"instrument\": {\"currency\": \"PLN\", \"instrument_id\": \"instrument\", \"isin\": \"[account]\", \"label\": \"ABC\", \"owner_named\": false, \"symbol\": \"ABC\"}, \"item_id\": \"item\", \"last_close\": null, \"note\": \"Synthetic watch note\", \"plan_freshness\": {\"reasons\": [], \"state\": \"fresh\"}, \"price_date\": null, \"price_source\": true, \"recommendation\": \"buy\", \"source\": \"agent\", \"stale\": null, \"tags\": []}, \"restored\": false, \"warnings\": []}, \"alerts\": {\"alerts\": [{\"alert_id\": \"alert\", \"cooldown_days\": null, \"created_at\": \"2026-11-01T12:00:00.123000+00:00\", \"created_by\": \"mcp\", \"expires_at\": null, \"instrument\": {\"currency\": \"PLN\", \"instrument_id\": \"instrument\", \"isin\": \"[account]\", \"label\": \"ABC\", \"owner_named\": false, \"symbol\": \"ABC\"}, \"kind\": \"price_below\", \"last_checked_at\": null, \"last_triggered_at\": null, \"last_value\": null, \"note\": null, \"params\": {\"level\": 90.0}, \"polarity\": \"negative\", \"scope\": \"instrument\", \"severity\": \"info\", \"signal\": null, \"snoozed_until\": null, \"source\": \"agent\", \"state\": null, \"status\": \"active\", \"tag\": \"cena\", \"title\": \"Synthetic price condition\", \"unit\": \"price\"}], \"kinds\": [\"price_above\", \"price_below\", \"change_pct\", \"drawdown_from_high\", \"new_high\", \"sma_cross\", \"weight_above\", \"weight_below\", \"custom\", \"range_breakout\", \"volume_spike\"], \"limits\": {\"agent_live\": 1, \"agent_max\": 50}, \"note\": \"alerts are conditions on stored prices and weights, checked by the daily run; a triggered alert is a signal (rule alert:<id>) with the alert's polarity and severity; threshold and weights are fractions (0.1 = 10%), levels are in the instrument's currency; range_breakout: max_range_pct and range_pct are fractions, state gives the range of the last window; volume_spike: multiple, last_value and state.ratio are multiples of the average volume (2.5 = 2.5x)\", \"tags_in_use\": [{\"count\": 1, \"tag\": \"cena\"}]}, \"coverage\": {\"covered\": 1, \"expected\": 1, \"missing\": 0, \"note\": \"complete model recommendation coverage saved; no decision or transaction was recorded\", \"scope\": \"held\", \"updated\": 0}, \"decision\": {\"action\": \"held\", \"decision_id\": \"decision\", \"note\": \"recorded in the decision journal; no transaction was booked\", \"signal_id\": \"signal\", \"signal_status\": \"acknowledged\"}, \"mute\": {\"alert_id\": \"alert\", \"status\": \"muted\"}, \"recommend\": {\"generated_at\": \"2026-11-01T12:00:00.123000+00:00\", \"instrument_id\": \"instrument\", \"note\": \"model recommendation saved; no decision or transaction was recorded\", \"reason_saved\": true, \"recommendation\": \"buy\"}, \"remove_watch\": {\"item_id\": \"item\", \"removed\": true}, \"rule\": {\"backtest\": {\"episodes\": 0, \"evaluated\": 44, \"fired_dates\": [], \"fired_outcomes\": 0, \"first_fired\": null, \"from\": \"2026-01-01\", \"instruments\": [], \"last_fired\": null, \"note\": \"raw evaluations: cooldown_days is not applied; a rule never fires on missing data\", \"points_fired\": 0, \"points_skipped\": 0, \"scopes_fired\": 0, \"skip_reasons\": [], \"step_days\": 7, \"to\": \"2026-11-01\"}, \"dry_run\": false, \"issues\": [], \"kind\": \"cash_level\", \"note\": \"stored as a proposal; the owner approves it in the app (Inwestycje)\", \"proposal_id\": \"rule_proposal\", \"rule_id\": \"agent_cash_level_1\", \"scope\": null, \"stored\": true, \"valid\": true}, \"rule_dry\": {\"backtest\": {\"episodes\": 0, \"evaluated\": 44, \"fired_dates\": [], \"fired_outcomes\": 0, \"first_fired\": null, \"from\": \"2026-01-01\", \"instruments\": [], \"last_fired\": null, \"note\": \"raw evaluations: cooldown_days is not applied; a rule never fires on missing data\", \"points_fired\": 0, \"points_skipped\": 0, \"scopes_fired\": 0, \"skip_reasons\": [], \"step_days\": 7, \"to\": \"2026-11-01\"}, \"dry_run\": true, \"issues\": [], \"kind\": \"cash_level\", \"rule_id\": \"agent_cash_level_1\", \"scope\": null, \"stored\": false, \"valid\": true}, \"rule_invalid\": {\"dry_run\": true, \"issues\": [{\"column\": 14, \"line\": null, \"message\": \"Expression ended unexpectedly; expected a value\", \"path\": \"params.when\", \"severity\": \"error\"}], \"kind\": \"custom\", \"note\": \"not stored: fix the errors and propose again\", \"rule_id\": \"agent_custom_1\", \"scope\": \"portfolio\", \"stored\": false, \"valid\": false}, \"strategy\": {\"buckets\": [], \"dry_run\": false, \"issues\": [], \"md_diff\": null, \"note\": \"stored as a proposal; the owner approves it in the app (Inwestycje)\", \"proposal_id\": \"strategy_proposal\", \"rules\": 0, \"state\": \"valid\", \"stored\": true, \"valid\": true, \"warnings\": [], \"yaml_diff\": {\"lines_added\": 0, \"lines_removed\": 0}}, \"strategy_dry\": {\"buckets\": [], \"dry_run\": true, \"issues\": [], \"md_diff\": null, \"rules\": 0, \"state\": \"valid\", \"stored\": false, \"valid\": true, \"warnings\": [], \"yaml_diff\": {\"lines_added\": 0, \"lines_removed\": 0}}, \"strategy_invalid\": {\"dry_run\": true, \"error_code\": \"invalid_strategy\", \"issues\": [{\"code\": \"strategy.version_unsupported\", \"column\": 10, \"line\": 1, \"message\": \"Unsupported version # (supported: #)\", \"path\": \"version\", \"severity\": \"error\"}, {\"code\": \"strategy.base_currency_required\", \"column\": 1, \"line\": 1, \"message\": \"base_currency is required (e.g. PLN)\", \"path\": \"base_currency\", \"severity\": \"error\"}], \"md_diff\": null, \"note\": \"not stored: fix the errors (line / column above) and propose again\", \"state\": \"invalid\", \"stored\": false, \"valid\": false, \"warnings\": [], \"yaml_diff\": {\"lines_added\": 1, \"lines_removed\": 3}}, \"thesis\": {\"created\": true, \"entry_type\": \"trend\", \"instrument_id\": \"instrument\", \"thesis_id\": \"thesis\"}, \"thesis_update\": {\"created\": false, \"entry_type\": \"trend\", \"instrument_id\": \"instrument\", \"thesis_id\": \"thesis\"}, \"watchlist\": {\"items\": [{\"added_at\": \"2026-11-01T12:00:00.123000+00:00\", \"alerts\": {\"count\": 1, \"live\": 0, \"nearest\": null, \"triggered\": 0}, \"change_1d\": null, \"change_1m\": null, \"from_high_52w\": null, \"held\": true, \"high_52w\": null, \"hints\": [], \"instrument\": {\"currency\": \"PLN\", \"instrument_id\": \"instrument\", \"isin\": \"[account]\", \"label\": \"ABC\", \"owner_named\": false, \"symbol\": \"ABC\"}, \"item_id\": \"item\", \"last_close\": null, \"note\": \"Synthetic watch note\", \"plan_freshness\": {\"reasons\": [], \"state\": \"fresh\"}, \"price_date\": null, \"price_source\": true, \"recommendation\": \"buy\", \"source\": \"agent\", \"stale\": null, \"tags\": []}], \"note\": \"watched instruments join the daily price refresh; changes and distances are fractions (0.05 = 5%) from stored closes, never forecasts\"}}"
+  }
+}

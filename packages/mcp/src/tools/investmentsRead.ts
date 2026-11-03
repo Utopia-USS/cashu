@@ -230,7 +230,9 @@ function accountLabelsByGid(ctx: Context): ReadonlyMap<string, string> {
     }),
   );
 }
-function hintParams(params: Readonly<Record<string, unknown>>): { [key: string]: L.LabelledTree } {
+export function hintParams(params: Readonly<Record<string, unknown>>): {
+  [key: string]: L.LabelledTree;
+} {
   const out: { [key: string]: L.LabelledTree } = {};
   for (const [key, value] of Object.entries(params)) {
     if (["gain", "loss", "drawdown", "weight", "max_weight", "threshold"].includes(key))

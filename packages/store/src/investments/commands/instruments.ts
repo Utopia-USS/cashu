@@ -3,6 +3,7 @@
 // the market segment, and record a manual valuation. Market identity (the instrument row, aliases)
 // is per vault (D3); the owner's classification goes to the vault's override row
 // (`instrumentOverride.*`), so another vault's view of the same security never changes.
+import { pyLen, pySplit } from "@cashu/domain";
 import {
   AliasNamespace,
   defaultValuationMode,
@@ -289,8 +290,8 @@ export const setInstrumentPlan = defineCommand({
    * reduce / exit recommendation needs a held instrument.
    */
   run(ctx, input) {
-    const reason = (input.reason ?? "").split(/\s+/).filter(Boolean).join(" ") || null;
-    if (reason !== null && reason.length > PLAN_REASON_MAX) return refuse("reason_too_long");
+    const reason = pySplit(input.reason ?? "").join(" ") || null;
+    if (reason !== null && pyLen(reason) > PLAN_REASON_MAX) return refuse("reason_too_long");
     if (input.plan !== null && HELD_ONLY_PLANS.has(input.plan) && !input.held) {
       return refuse("needs_held");
     }
