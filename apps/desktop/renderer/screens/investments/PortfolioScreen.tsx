@@ -22,6 +22,7 @@ type PortfolioExtras = {
   noteGid?: string | null;
   onReviewClosed?(): void;
   onReviewOpened?(): void;
+  onProposalOpened?(gid: string, onResumed: () => void): boolean;
   onSignalsClosed?(): void;
   onSignalsPageOpened?(page: SignalsPageKind): void;
   onResearchOpened?(tab?: string, topic?: string, note?: string): void;
@@ -46,6 +47,7 @@ function PortfolioBound(props: Props) {
         account={props.account}
         onClosed={props.onReviewClosed ?? (() => {})}
         onInstrumentOpened={props.openPage}
+        onProposalOpened={props.onProposalOpened}
         onResearchOpened={(input) => props.onResearchOpened?.(undefined, input.topic, input.note)}
       />
     );

@@ -47,6 +47,7 @@ import {
 } from "@cashu/node-host";
 import { mcpProfile } from "@cashu/store/core";
 import { NotificationQueue } from "@cashu/store/investments/local";
+import { PerformanceService } from "@cashu/store/investments/performance";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
 import { handleAdmin } from "./admin.js";
 import { HANDOVER_EXIT, watchBundle } from "./bundle.js";
@@ -68,6 +69,7 @@ import { nativeRuntime } from "./mcp/native.js";
 import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
+import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
 import { servedCommands, servedQueries } from "./registry.js";
 import {
   currentRuntime,
@@ -76,6 +78,8 @@ import {
   pythonProgram,
   shimProgram,
 } from "./runtime.js";
+import { settingsInfoQuery } from "./settingsInfo.js";
+import { settingsWorkspaceActions } from "./settingsScreen.js";
 import {
   type SignalsScreenCapability,
   signalsScreenActions,
@@ -87,8 +91,10 @@ import { type StrategyScreenCapability, strategiesScreen } from "./strategiesScr
 import { bridgeCommand } from "./sync/command.js";
 import type { CrashPoint } from "./sync/loop.js";
 import { SyncService } from "./sync/service.js";
+import { type UpdateProvider, updateScreen } from "./updateScreen.js";
 import type { WorkerBindings, WorkerHostContext } from "./worker/contracts.js";
 import { startWorker } from "./worker/service.js";
+import type { WorkspaceProvider } from "./workspace/index.js";
 
 const DEFAULT_LINGER_MS = 10 * 60 * 1000;
 const DEFAULT_BUNDLE_CHECK_MS = 60 * 1000;
@@ -98,6 +104,12 @@ const CLEAN_EXIT = 0;
 type ExitReason = "stop" | "idle" | "signal" | "handover";
 
 export interface LocalHostOptions {
+  /** Checked S60 preparation authority, bound to the exact open vault. Absent by default. */
+  readonly proposals?: ProposalApprovalProvider;
+  /** Exact-vault checked workspace provider. Unbound means unavailable, never absent. */
+  readonly workspace?: WorkspaceProvider;
+  /** Verified packaged updater, absent in unbound native builds. */
+  readonly updates?: UpdateProvider;
   readonly strategies?: { bind(vault: string): StrategyScreenCapability | null };
   readonly strategyImages?: ReturnType<typeof currentStrategyImages>;
   readonly investments?: import("@cashu/store/investments/screen").InvestmentScreenSources;
@@ -190,7 +202,11 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     options.home ?? homedir(),
   );
   const now = options.now ?? Date.now;
+  const proposalManager = proposalScreen(options.proposals);
+  const workspaceActions = settingsWorkspaceActions(options.workspace);
+  const updates = updateScreen(options.updates);
   const investmentClock = signalsScreenClock(now);
+  const investmentPerformance = new PerformanceService();
   const importManager =
     options.investmentImports === undefined
       ? null
@@ -227,10 +243,22 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           },
         }),
   };
+  const build = options.build ?? "dev";
+  let dataDirPath: string | null = null;
+  let settingsStores: HostStores | null = null;
+  let currentWorkerStatus: (() => import("./worker/contracts.js").WorkerStatus) | null = null;
   const queries = servedQueries({
     ...options.overview,
     prices: options.overview?.prices ?? null,
     investments: investmentSources,
+    proposalImages: { changes: images.source.changes, image: images.image },
+    updateQuery: updates.query,
+    settingsInfoQuery: settingsInfoQuery({
+      version: build,
+      dataDir: () => dataDirPath,
+      worker: () => currentWorkerStatus?.() ?? null,
+      stores: () => settingsStores,
+    }),
     signals: {
       strategy: investmentSources.strategy,
       market: investmentSources.market,
@@ -253,7 +281,6 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       ...(strategyManager === null ? {} : { documents: strategyManager.source }),
     },
   });
-  const build = options.build ?? "dev";
   const lingerMs = options.lingerMs ?? DEFAULT_LINGER_MS;
   let dispatch: (session: HostSession) => void = (session) => session.close();
   const server = await startHost({
@@ -270,6 +297,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     ...(options.pathEnv === undefined ? {} : { pathEnv: options.pathEnv }),
     onSession: (session) => dispatch(session),
   });
+  dataDirPath = server.paths.dataDir;
   const log = options.log ?? fileLog(server.paths.logPath);
 
   let record: StartRecord;
@@ -345,6 +373,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         ...(python === undefined
           ? {
               nativeStores: stores,
+              investmentSources,
+              performance: investmentPerformance,
               classifier: options.budgetClassifiers?.local,
               cloudClassifier: options.budgetClassifiers?.cloud,
             }
@@ -400,6 +430,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     log.warn("worker.binding-failed", { error: errorName(error) });
   }
   const worker = startWorker(workerContext, workerBindings);
+  settingsStores = stores;
+  currentWorkerStatus = () => worker.status();
 
   const status = (): AdminStatus => {
     const currentWorker = worker.status();
@@ -517,6 +549,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           queries,
           commands: uiCommands,
           actions: [
+            proposalManager,
+            updates.action,
+            ...workspaceActions,
             ...(options.uiActions ?? []),
             ...signalActions,
             ...(importManager?.actions ?? []),
@@ -532,6 +567,12 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             await options.prepareUiQuery?.(vault, query, args);
           },
           privateQuery: (query, args) => {
+            if (query === "core.desktopProposals.detail" || query === "core.desktopProposals.list")
+              return (args as { privacy?: unknown } | undefined)?.privacy !== true;
+            if (query === "device.settings.hostInfo")
+              return (args as { privacy?: unknown } | undefined)?.privacy !== true;
+            if (query === "device.settings.mcpAudit")
+              return (args as { privacy?: unknown } | undefined)?.privacy !== true;
             const parsed =
               query === "investments.strategies.screen"
                 ? strategyScreenArgsSchema.safeParse(args)

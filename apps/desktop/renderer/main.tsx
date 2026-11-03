@@ -1,5 +1,7 @@
 import { installLanguageSource, lang } from "@cashu/i18n";
 import { S as Connection } from "@cashu/i18n/core/hostConnection.strings";
+import { devicePreferences, setDevicePreferences } from "@cashu/store/device";
+import { DEVICE_TARGET } from "@cashu/store-react/client";
 import { installIncognitoStore } from "@cashu/ui-logic/core/incognito";
 import { createRoot } from "react-dom/client";
 import "@cashu/ui/theme.css";
@@ -27,15 +29,45 @@ const retry = () => location.reload();
 renderer.render(<BootstrapView phase="waiting" onRetried={retry} />);
 let bootstrapping = true;
 try {
-  const [{ App }, client] = await Promise.all([
-    import("./App.js"),
-    desktopClient((status) => {
-      if (bootstrapping)
-        renderer.render(
-          <BootstrapView phase="waiting" status={Connection[status]} onRetried={retry} />,
-        );
-    }),
-  ]);
+  const client = await desktopClient((status) => {
+    if (bootstrapping)
+      renderer.render(
+        <BootstrapView phase="waiting" status={Connection[status]} onRetried={retry} />,
+      );
+  });
+  try {
+    const entry = client.entry(DEVICE_TARGET, devicePreferences, undefined);
+    await entry.ready;
+    const snapshot = entry.getSnapshot();
+    if (snapshot.status === "value") {
+      const preferences = snapshot.value;
+      const olderPin = localStorage.getItem("cashu.lang");
+      let pinned =
+        preferences.languagePin === "system"
+          ? null
+          : (preferences.languagePin ?? (olderPin === "pl" || olderPin === "en" ? olderPin : null));
+      if (preferences.languagePin === null && pinned !== null) {
+        const migrated = await client.run(DEVICE_TARGET, setDevicePreferences, {
+          languagePin: pinned,
+        });
+        if (migrated.ok) localStorage.removeItem("cashu.lang");
+      }
+      installLanguageSource({
+        pinned: () => pinned,
+        systemTags: () => navigator.languages,
+        pin: (choice) => {
+          pinned = choice;
+          location.reload();
+        },
+      });
+      document.documentElement.lang = lang();
+      document.documentElement.classList.toggle("dark", preferences.theme === "dark");
+      document.documentElement.classList.toggle("light", preferences.theme === "light");
+    }
+  } catch {
+    // A preference read failure leaves the system language/theme and the store connection usable.
+  }
+  const { App } = await import("./App.js");
   bootstrapping = false;
   renderer.render(<App client={client} />);
   window.addEventListener("pagehide", () => client.dispose(), { once: true });

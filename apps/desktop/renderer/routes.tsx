@@ -12,7 +12,7 @@ import {
   useParams,
   useSearch,
 } from "@tanstack/react-router";
-import { createContext, startTransition, use, useEffect, useRef } from "react";
+import { createContext, startTransition, use, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { S } from "./Desktop.strings.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
@@ -25,9 +25,16 @@ import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
 import { useCashDrawer } from "./screens/overview/useCashDrawer.js";
 import { useInvestmentPlan } from "./screens/overview/useInvestmentPlan.js";
 import { useOverviewScreen } from "./screens/overview/useOverviewScreen.js";
+import { ProposalDrawerScreen } from "./screens/proposals/ProposalDrawerScreen.js";
 import { ResearchScreen } from "./screens/research/ResearchScreen.js";
+import { SettingsView } from "./screens/settings/SettingsView.js";
+import { UpdateNoticeView } from "./screens/settings/UpdateNoticeView.js";
+import { useSettingsScreen } from "./screens/settings/useSettingsScreen.js";
+import { useUpdateNotice } from "./screens/settings/useUpdateNotice.js";
 import { SignalsPageScreen } from "./screens/signals/SignalsPageScreen.js";
 import { StrategiesScreen } from "./screens/strategies/StrategiesScreen.js";
+import { StrategySettingsView } from "./screens/strategies/StrategiesView.js";
+import { useStrategiesScreen } from "./screens/strategies/useStrategiesScreen.js";
 import { resolveProfileRoute } from "./shell/profileRoute.js";
 import { ProfileRouteSync } from "./shell/profileRouteSync.js";
 import { ShellView } from "./shell/ShellView.js";
@@ -53,6 +60,9 @@ const LegacyNavigation = createContext<{
   open: () => {},
   openModule: () => {},
 });
+const ProposalNavigation = createContext<{
+  open(gid: string, onResumed?: () => void): boolean;
+}>({ open: () => false });
 
 /** TRANSITIONAL(S55z): unported SPA pages retain their own routes and deep-link search. */
 function openLegacy(slug: string, tab: string) {
@@ -63,11 +73,28 @@ function openLegacy(slug: string, tab: string) {
 }
 
 function ShellRoute() {
+  const updateNotice = useUpdateNotice();
+  const [proposal, setProposal] = useState<{
+    gid: string;
+    vault: string;
+    privacy: boolean;
+    onResumed?: () => void;
+  } | null>(null);
   const state = useShellScreen({
     onProfileOpened: ({ slug, vault }) => {
+      setProposal(null);
       void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
     },
   });
+  const openProposal = (gid: string, onResumed?: () => void) => {
+    if (state.privacy) return false;
+    setProposal({ gid, vault: state.vault, privacy: state.privacy, onResumed });
+    return true;
+  };
+  const closeProposal = () => {
+    proposal?.onResumed?.();
+    setProposal(null);
+  };
   const params = useParams({ strict: false });
   const pathname = useLocation({ select: (location) => location.pathname });
   const requested = useSearch({ strict: false });
@@ -77,13 +104,18 @@ function ShellRoute() {
       : resolveProfileRoute(state.profiles, params.slug, requested.vault);
   const routeSync = useRef<ProfileRouteSync | null>(null);
   if (routeSync.current === null) routeSync.current = new ProfileRouteSync();
+  const currentVault = state.vault;
+  const onRouteVaultPicked = state.onRouteVaultPicked;
   useEffect(() => {
     routeSync.current?.update(
       selection?.kind === "ready" ? selection.profile.vault : null,
-      state.vault,
-      state.onRouteVaultPicked,
+      currentVault,
+      (vault) => {
+        if (vault !== currentVault) setProposal(null);
+        return onRouteVaultPicked(vault);
+      },
     );
-  }, [selection, state.vault, state.onRouteVaultPicked]);
+  }, [selection, currentVault, onRouteVaultPicked]);
   const openModule = (module: string) => {
     if (state.profile === null) return;
     const slug = state.profile.slug;
@@ -104,6 +136,8 @@ function ShellRoute() {
         params: { slug },
         search: { vault, period: "1y", view: "chart" },
       });
+    else if (module === "settings")
+      void router.navigate({ to: "/$slug/settings", params: { slug }, search: { vault } });
     else if (state.canOpenLegacy) openLegacy(slug, module);
     else state.onLegacyRefused();
   };
@@ -116,44 +150,63 @@ function ShellRoute() {
     },
   };
   return (
-    <ShellView
-      state={state}
-      onOverviewOpened={() => {
-        if (state.profile !== null)
-          void router.navigate({
-            to: "/$slug/overview",
-            params: { slug: state.profile.slug },
-            search: { vault: state.vault },
-          });
-      }}
-      activeModule={
-        pathname.includes("/budget/")
-          ? "budget"
-          : pathname.endsWith("/loans.list") || pathname.endsWith("/setup/loans")
-            ? "loans"
-            : pathname.endsWith("/setup/assets")
-              ? "assets"
-              : pathname.includes("/investments.") || pathname.includes("/assets/")
-                ? "investments"
-                : "overview"
-      }
-      onLegacyOpened={openModule}
-    >
-      <LegacyNavigation value={legacy}>
-        {selection !== null &&
-        (selection.kind !== "ready" || selection.profile.vault !== state.vault) ? (
-          <p role="status" className="p-6">
-            {selection.kind === "ambiguous"
-              ? S.ambiguousProfile
-              : selection.kind === "unavailable"
-                ? S.noProfile
-                : S.waiting}
-          </p>
-        ) : (
-          <Outlet />
-        )}
-      </LegacyNavigation>
-    </ShellView>
+    <ProposalNavigation value={{ open: openProposal }}>
+      <ShellView
+        state={{
+          ...state,
+          onPrivacyChanged: (privacy) => {
+            setProposal(null);
+            state.onPrivacyChanged(privacy);
+          },
+        }}
+        onOverviewOpened={() => {
+          if (state.profile !== null)
+            void router.navigate({
+              to: "/$slug/overview",
+              params: { slug: state.profile.slug },
+              search: { vault: state.vault },
+            });
+        }}
+        activeModule={
+          pathname.includes("/budget/")
+            ? "budget"
+            : pathname.endsWith("/loans.list") || pathname.endsWith("/setup/loans")
+              ? "loans"
+              : pathname.endsWith("/setup/assets")
+                ? "assets"
+                : pathname.includes("/investments.") || pathname.includes("/assets/")
+                  ? "investments"
+                  : "overview"
+        }
+        onLegacyOpened={openModule}
+      >
+        <LegacyNavigation value={legacy}>
+          {selection !== null &&
+          (selection.kind !== "ready" || selection.profile.vault !== state.vault) ? (
+            <p role="status" className="p-6">
+              {selection.kind === "ambiguous"
+                ? S.ambiguousProfile
+                : selection.kind === "unavailable"
+                  ? S.noProfile
+                  : S.waiting}
+            </p>
+          ) : (
+            <Outlet />
+          )}
+        </LegacyNavigation>
+      </ShellView>
+      <UpdateNoticeView state={updateNotice} />
+      {proposal && proposal.vault === state.vault && proposal.privacy === state.privacy && (
+        <ProposalDrawerScreen
+          key={`${proposal.vault}:${proposal.privacy}:${proposal.gid}`}
+          gid={proposal.gid}
+          onClose={closeProposal}
+          onOutcome={(outcome) => {
+            if (outcome.status === "approved" || outcome.status === "rejected") closeProposal();
+          }}
+        />
+      )}
+    </ProposalNavigation>
   );
 }
 
@@ -496,6 +549,83 @@ const strategiesRoute = createRoute({
   ),
   errorComponent: RouteFailure,
 });
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/settings",
+  validateSearch: (raw) =>
+    search
+      .pick({ vault: true })
+      .extend({
+        section: z
+          .enum(["profile", "modules", "agent", "connectors", "data", "worker", "secrets", "app"])
+          .optional(),
+      })
+      .parse(raw),
+  component: SettingsRoute,
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
+  errorComponent: RouteFailure,
+});
+function SettingsRoute() {
+  const { slug } = settingsRoute.useParams();
+  const { section } = settingsRoute.useSearch();
+  const vault = useProfile();
+  const { privacy } = useUiEnv();
+  const proposals = use(ProposalNavigation);
+  return (
+    <SettingsBound
+      key={`${vault}:${privacy}`}
+      section={section}
+      onProposalOpened={(gid) => {
+        proposals.open(gid);
+      }}
+      onModuleConfigured={(id) => {
+        if (id === "loans")
+          void router.navigate({ to: "/$slug/setup/loans", params: { slug }, search: { vault } });
+        else if (id === "assets")
+          void router.navigate({ to: "/$slug/setup/assets", params: { slug }, search: { vault } });
+        else if (id === "investments")
+          void router.navigate({
+            to: "/$slug/investments.strategies",
+            params: { slug },
+            search: { vault },
+          });
+        else
+          void router.navigate({
+            to: "/$slug/budget/$tab",
+            params: { slug, tab: "expenses" },
+            search: { vault },
+          });
+      }}
+    />
+  );
+}
+function SettingsBound({
+  section,
+  onProposalOpened,
+  onModuleConfigured,
+}: {
+  section?: string;
+  onProposalOpened(gid: string): void;
+  onModuleConfigured(id: string): void;
+}) {
+  const state = useSettingsScreen(onProposalOpened, onModuleConfigured);
+  const strategies = useStrategiesScreen(onProposalOpened);
+  return (
+    <SettingsView
+      state={state}
+      section={section}
+      strategyPanel={
+        state.modules.some((module) => module.id === "investments" && module.enabled) ? (
+          <StrategySettingsView state={strategies} />
+        ) : null
+      }
+    />
+  );
+}
 const alertsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/investments.alerts",
@@ -619,6 +749,7 @@ function PortfolioRoute() {
   const vault = useProfile();
   const modules = useQuery(overviewQueries({ prices: null }).moduleStates);
   const legacy = use(LegacyNavigation);
+  const proposals = use(ProposalNavigation);
   if (!modules.some((module) => module.id === "investments" && module.enabled))
     return <p className="p-6">{S.setup}</p>;
   if (instrument !== undefined && !investmentEntityIdSchema.safeParse(instrument).success)
@@ -647,6 +778,7 @@ function PortfolioRoute() {
       noteGid={selected.note}
       onReviewClosed={() => navigate({ review: undefined })}
       onReviewOpened={() => navigate({ review: "1" })}
+      onProposalOpened={proposals.open}
       onSignalsClosed={() => navigate({ signals: undefined })}
       onSignalsPageOpened={(page) =>
         void router.navigate({
@@ -712,8 +844,13 @@ function PortfolioRoute() {
 }
 function StrategiesRoute() {
   const modules = useQuery(overviewQueries({ prices: null }).moduleStates);
+  const proposals = use(ProposalNavigation);
   return modules.some((module) => module.id === "investments" && module.enabled) ? (
-    <StrategiesScreen />
+    <StrategiesScreen
+      onProposalOpened={(gid) => {
+        proposals.open(gid);
+      }}
+    />
   ) : (
     <p className="p-6">{S.setup}</p>
   );
@@ -734,6 +871,7 @@ export const router = createRouter({
     watchlistRoute,
     journalRoute,
     researchRoute,
+    settingsRoute,
   ]),
   history: createHashHistory(),
 });

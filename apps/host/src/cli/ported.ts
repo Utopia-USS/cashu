@@ -1,6 +1,8 @@
 // The commands the host runs itself. S39 slices add theirs here and delete their lines from
 // delegated.ts in the same change.
 import { homedir, tmpdir } from "node:os";
+import type { PerformanceService } from "@cashu/store/investments/performance";
+import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
 import type { StrategyFilesPort } from "@cashu/store/investments/services";
 import { currentRuntime, type HostRuntime, shippedSkillsSource } from "../runtime.js";
 import type { HostStores, OpenVault } from "../stores.js";
@@ -10,6 +12,7 @@ import { budgetCommands } from "./budget/index.js";
 import { printConsole } from "./core/console.js";
 import { skillsCommand } from "./core/skills.js";
 import { genesisCommand } from "./genesis/command.js";
+import { investmentCommands } from "./investments/index.js";
 import type { PortedCommand } from "./tree.js";
 
 export interface PortedDeps {
@@ -24,6 +27,8 @@ export interface PortedDeps {
   readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyFilesPort | null;
   readonly classifier?: CategorizeProvider;
   readonly cloudClassifier?: CloudCategorizeProvider;
+  readonly investmentSources?: InvestmentScreenSources;
+  readonly performance?: PerformanceService;
 }
 
 export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
@@ -48,6 +53,14 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
               spans: [{ start: 0, end: 7, style: { color: 32 } }],
             }),
         })),
+    ...(deps.nativeStores && deps.investmentSources && deps.performance
+      ? investmentCommands({
+          stores: deps.nativeStores,
+          now: deps.now ?? Date.now,
+          sources: deps.investmentSources,
+          performance: deps.performance,
+        })
+      : []),
     skillsCommand(deps.skillsSource ?? shippedSkillsSource(deps.runtime ?? currentRuntime())),
     {
       // Lab / dev: the genesis event log of a Python data dir (S26). Synchronous work: it holds the

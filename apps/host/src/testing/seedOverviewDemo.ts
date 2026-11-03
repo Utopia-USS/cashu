@@ -21,6 +21,7 @@ import type { StrategyScreenCapability } from "../strategiesScreen.js";
 import { storeClient } from "./harness.js";
 import { seedResearchDemo, syntheticResearchCapability } from "./researchDemo.js";
 import { reviewDemoSources, seedReviewDemo } from "./reviewDemo.js";
+import { seedSettingsDemo } from "./settingsDemo.js";
 import { seedSignalsDemo } from "./signalsDemo.js";
 import { syntheticStrategyDocuments } from "./strategyDocuments.js";
 
@@ -199,6 +200,13 @@ if (process.argv[2] === "rename") {
       revision: randomUUID(),
       files: await readStrategyFiles(cap.files),
     });
+  }
+  if (process.env.CASHU_E2E_SETTINGS === "1") {
+    const vault = imported.get("demo-anna")?.vault;
+    const opened = vault === undefined ? undefined : host.stores.vaults.get(vault);
+    const cap = vault === undefined ? undefined : capabilities.get(vault);
+    if (!opened || !cap) throw new Error("synthetic settings vault is absent");
+    await seedSettingsDemo(opened, await readStrategyFiles(cap.files));
   }
   if (process.env.CASHU_E2E_RESEARCH === "1") {
     const vault = imported.get("demo-anna")?.vault;

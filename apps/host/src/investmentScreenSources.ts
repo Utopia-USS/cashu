@@ -30,6 +30,13 @@ export function currentStrategyImages(isCurrent: (vault: string, generation: str
   };
   return {
     source,
+    /** A completed, still-current file image for an exact canonical vault. */
+    image(vault: string): CurrentStrategyImage | null {
+      const image = images.get(vault);
+      return image && isCurrent(vault, image.generation)
+        ? { ...image, files: { ...image.files } }
+        : null;
+    },
     publish(image: CurrentStrategyImage): boolean {
       if (!isCurrent(image.vault, image.generation)) return false;
       const prior = images.get(image.vault);

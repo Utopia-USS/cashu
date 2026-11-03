@@ -1,6 +1,6 @@
 import { intlLocale, type Lang, lang, setLanguage } from "@cashu/i18n";
 import { S as Connection } from "@cashu/i18n/core/hostConnection.strings";
-import { setCurrentVault } from "@cashu/store/device";
+import { setCurrentVault, setDevicePreferences } from "@cashu/store/device";
 import { legacyNavigation, overviewQueries, profileIdentity } from "@cashu/store/overview";
 import {
   isStale,
@@ -59,6 +59,7 @@ export function useShellScreen(args: {
   const legacyAvailable = useQuery(legacyQuery);
   const vault = useProfile();
   const switchProfile = useCommand(setCurrentVault);
+  const savePreferences = useCommand(setDevicePreferences);
   const connection = useConnection();
   const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const [toast, setToast] = useState<string | null>(null);
@@ -87,7 +88,11 @@ export function useShellScreen(args: {
     onLegacyRefused: () => setToast(S.legacyUnavailable),
     isSwitching: switchProfile.isPending,
     onPrivacyChanged: setIncognito,
-    onLanguagePicked: (value: Lang) => setLanguage(value),
+    onLanguagePicked: async (value: Lang) => {
+      const result = await savePreferences.run({ languagePin: value });
+      if (result.ok) setLanguage(value);
+      else setToast(S.refused);
+    },
     onProfilePicked: (next: string) => {
       const chosen = profiles.find((profile) => profile.vault === next);
       if (chosen === undefined) return;

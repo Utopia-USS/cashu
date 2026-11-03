@@ -13,6 +13,7 @@ import {
   renameProfile,
   restoreOverviewAsset,
   setCushion,
+  setModules,
   setProfileSettings,
   setTransactionCategory,
   updateAssetDetails,
@@ -25,7 +26,16 @@ import {
   setDesktopMerchantCategory,
 } from "@cashu/store/budget/queries";
 import { profile } from "@cashu/store/core";
-import { currentVault, type DeviceCommand, setCurrentVault } from "@cashu/store/device";
+import { proposalDetail, proposalList } from "@cashu/store/core/desktop-proposals";
+import { hostSettingsInfo, mcpAudit, saveProfile } from "@cashu/store/core/desktop-settings";
+import {
+  currentVault,
+  type DeviceCommand,
+  devicePreferences,
+  setCurrentVault,
+  setDevicePreferences,
+  updateStatus,
+} from "@cashu/store/device";
 import {
   researchScreenCommands,
   researchScreenQueries,
@@ -45,6 +55,7 @@ import {
   uiThesisCommands,
   updateUiWatchNote,
 } from "@cashu/store/investments/screen";
+import type { CurrentStrategyImage } from "@cashu/store/investments/screen-sources";
 import {
   conditionalOwnerAcknowledge,
   signalsAlertCommands,
@@ -62,6 +73,7 @@ import {
   vaultPaymentPatterns,
 } from "@cashu/store/overview";
 import type { Query, QueryArgs } from "@cashu/store/query";
+import { proposalDetailWithImages } from "./proposalDetail.js";
 
 /** A vault command or a device command (its own `scope` says which store it writes). */
 export type AnyCommand = Command<unknown, unknown> | DeviceCommand<unknown, unknown>;
@@ -76,11 +88,23 @@ export function servedQueries(
     readonly signals?: Parameters<typeof signalsQueries>[0];
     readonly research?: Parameters<typeof researchScreenQueries>[0];
     readonly review?: Parameters<typeof reviewScreenQueries>[0];
+    readonly proposalImages?: {
+      readonly changes: import("@cashu/store/query").ChangeSource;
+      image(vault: string): CurrentStrategyImage | null;
+    };
+    readonly updateQuery?: typeof updateStatus;
+    readonly settingsInfoQuery?: typeof hostSettingsInfo;
   } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
   return [
     currentVault,
+    devicePreferences,
+    env.settingsInfoQuery ?? hostSettingsInfo,
+    env.updateQuery ?? updateStatus,
+    mcpAudit,
     profile,
+    proposalList,
+    env.proposalImages ? proposalDetailWithImages(env.proposalImages) : proposalDetail,
     profileIdentity,
     vaultPaymentPatterns,
     legacyNavigation(env.legacyIdentity),
@@ -119,9 +143,12 @@ const SERVED_COMMANDS: readonly AnyCommand[] = [
   updateUiWatchNote,
   ...Object.values(uiThesisCommands()),
   setCurrentVault,
+  setDevicePreferences,
   createProfile,
   renameProfile,
+  saveProfile,
   setProfileSettings,
+  setModules,
   setCushion,
   createUiLoan,
   setUiLoanPayment,

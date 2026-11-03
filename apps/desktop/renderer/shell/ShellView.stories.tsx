@@ -25,7 +25,7 @@ const state: ShellViewProps["state"] = {
   language: "en",
   isSwitching: false,
   onPrivacyChanged: () => {},
-  onLanguagePicked: () => {},
+  onLanguagePicked: async () => {},
   onProfilePicked: async () => {},
   onRouteVaultPicked: async () => {},
   onToastDismissed: () => {},
