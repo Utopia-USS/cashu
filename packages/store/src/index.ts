@@ -41,10 +41,24 @@ export {
   InvalidEmitError,
   type Lease,
   ok,
+  type PreparedEvent,
+  type PreparedOutcome,
+  prepareCommand,
   refuse,
   runCommand,
   storeWriter,
 } from "./command.js";
+export {
+  type AttemptLookup,
+  type AttemptRecord,
+  type CommandAttemptPort,
+  commandFingerprint,
+  type DurableCommandResult,
+  type DurableCommandSession,
+  executeDurableCommand,
+  toUnstampedEvent,
+  type VaultCommandQueue,
+} from "./command-durable.js";
 export {
   createProfile,
   openAccount,

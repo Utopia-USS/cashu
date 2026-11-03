@@ -812,6 +812,7 @@ export class Store {
           })),
         ).map((r) => ({ applied: r.applied, duplicates: r.duplicates, parked: r.parked })),
       reset: () => this.reset(),
+      needsUpgrade: () => this.needsUpgrade(),
     };
   }
 

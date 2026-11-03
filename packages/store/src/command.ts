@@ -98,6 +98,25 @@ export type CommandOutcome<R> =
   | { readonly ok: true; readonly value: R; readonly events: readonly Envelope[] }
   | CommandRefusal;
 
+/** A validated command event before the sync engine assigns its durable HLC. */
+export interface PreparedEvent {
+  readonly eid: string;
+  readonly vault: string;
+  readonly device: string;
+  readonly at: string;
+  readonly type: string;
+  readonly v: number;
+  readonly gid: string;
+  readonly data: Readonly<Record<string, unknown>>;
+  readonly cause?: string;
+  readonly origin?: string;
+  readonly hlc?: never;
+  readonly [key: string]: unknown;
+}
+export type PreparedOutcome<R> =
+  | { readonly ok: true; readonly value: R; readonly events: readonly PreparedEvent[] }
+  | CommandRefusal;
+
 /** A writer bug: an emitted event the catalog would not fold as written. */
 export class InvalidEmitError extends Error {
   constructor(message: string) {
@@ -108,28 +127,33 @@ export class InvalidEmitError extends Error {
 
 /** Width of an HLC string (`<wall9>-<counter4>-<device32>`): the prefix of a materializer hwm. */
 const HLC_LEN = 47;
+const preparedEvents = new WeakSet<object>();
 
-/**
- * Validate `raw` with `cmd.input`, run the command against `store`'s view and append what it emitted
- * as one batch. Input that fails validation is refused with `invalid_input`; a refusal emits nothing.
- */
-export function runCommand<I, R>(
-  store: Store,
-  writer: EventWriter,
+/** Internal seam for callers that must fingerprint the same parsed input before deciding. */
+export function parseCommandInput<I, R>(
   cmd: Command<I, R>,
   raw: unknown,
-  env: CommandEnv,
-): CommandOutcome<R> {
+): { readonly ok: true; readonly value: I } | CommandRefusal {
   const parsed = cmd.input.safeParse(raw);
-  if (!parsed.success) return refuse("invalid_input");
-  if (env.hlc.device !== env.device) throw new RangeError("the clock belongs to another device");
-  // A device's stamp sorts after everything it folded (events.md 6.7 point 4): merge the highest
-  // folded HLC before stamping, so a guard checked here is never re-evaluated at an earlier position.
-  const hwm = store
-    .read<{ hwm: string | null }>("SELECT MAX(hwm) AS hwm FROM materializer_state")
-    .at(0)?.hwm;
-  if (hwm) env.hlc.receive(hwm.slice(0, HLC_LEN));
+  return parsed.success ? { ok: true, value: parsed.data } : refuse("invalid_input");
+}
 
+type ResolvedEvent = {
+  readonly eid: string;
+  readonly type: string;
+  readonly gid: string;
+  readonly data: Record<string, unknown>;
+  readonly cause?: string;
+};
+
+function decideCommand<I, R>(
+  store: Store,
+  cmd: Command<I, R>,
+  input: I,
+  env: Pick<CommandEnv, "clock" | "lease" | "random">,
+):
+  | { readonly ok: true; readonly value: R; readonly events: readonly ResolvedEvent[] }
+  | CommandRefusal {
   type Pending = {
     type: string;
     gid: string;
@@ -182,13 +206,13 @@ export function runCommand<I, R>(
   };
   const result = (() => {
     try {
-      return cmd.run(ctx, parsed.data);
+      return cmd.run(ctx, input);
     } finally {
       emitting = false;
     }
   })();
   if (!result.ok) return result;
-  const resolved = pending.map((p) => {
+  const events = pending.map((p, i): ResolvedEvent => {
     const data = p.payload.kind === "deferred" ? p.payload.resolveData() : p.payload.data;
     if (lateEmissionAttempted) {
       throw new InvalidEmitError(`${cmd.id}: a deferred resolver tried to emit`);
@@ -200,34 +224,134 @@ export function runCommand<I, R>(
         throw new InvalidEmitError(`${cmd.id}: deferred data must be a plain record`);
       }
     }
-    return { ...p, data };
-  });
-  const events: Envelope[] = resolved.map((p, i) => {
-    const hlc = env.hlc.tick();
-    const envelope = {
+    return {
       eid: eids[i] as string,
+      type: p.type,
+      gid: p.gid,
+      data,
+      ...(p.cause === undefined ? {} : { cause: p.cause }),
+    };
+  });
+  return { ok: true, value: result.value, events };
+}
+
+function validateEvent(store: Store, cmdId: string, envelope: Envelope): Envelope {
+  const check = parseEvent(envelope);
+  if (check.status !== "known") {
+    throw new InvalidEmitError(`${cmdId}: ${envelope.type} would not fold (${check.status})`);
+  }
+  const parts = detPartsOf(envelope.type, envelope.data);
+  if (parts !== undefined && store.deps.det(parts.table, parts.parts) !== envelope.gid) {
+    throw new InvalidEmitError(
+      `${cmdId}: ${envelope.type} carries a gid its payload does not derive`,
+    );
+  }
+  return check.event;
+}
+
+function immutableJson(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "object") throw new InvalidEmitError("event contains a non-JSON value");
+  if (seen.has(value)) throw new InvalidEmitError("event contains a cycle");
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const copy = Object.freeze(
+      value.map((entry) => immutableJson(entry === undefined ? null : entry, seen)),
+    );
+    seen.delete(value);
+    return copy;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new InvalidEmitError("event contains a non-plain record");
+  }
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) copy[key] = immutableJson(entry, seen);
+  }
+  seen.delete(value);
+  return Object.freeze(copy);
+}
+
+/** Only preparation-created, deeply frozen events may cross into the unstamped converter. */
+export function assertPreparedEvent(event: PreparedEvent): void {
+  if (!preparedEvents.has(event)) throw new InvalidEmitError("event was not prepared");
+}
+
+/** Decide a command without advancing the durable clock or retaining its mutable payload. */
+export function prepareParsedCommand<I, R>(
+  store: Store,
+  cmd: Command<I, R>,
+  input: I,
+  env: Pick<CommandEnv, "device" | "clock" | "lease" | "random">,
+): PreparedOutcome<R> {
+  const decided = decideCommand(store, cmd, input, env);
+  if (!decided.ok) return decided;
+  const events = decided.events.map((event): PreparedEvent => {
+    const checked = validateEvent(store, cmd.id, {
+      ...event,
+      vault: store.vault,
+      device: env.device,
+      hlc: `000000000-0000-${env.device}`,
+      at: new Date(env.clock.now()).toISOString(),
+      v: 1,
+    });
+    const { hlc: _hlc, ...unstamped } = checked;
+    const snapshot = immutableJson(unstamped) as PreparedEvent;
+    preparedEvents.add(snapshot);
+    return snapshot;
+  });
+  return { ok: true, value: decided.value, events: Object.freeze(events) };
+}
+
+export function prepareCommand<I, R>(
+  store: Store,
+  cmd: Command<I, R>,
+  raw: unknown,
+  env: Pick<CommandEnv, "device" | "clock" | "lease" | "random">,
+): PreparedOutcome<R> {
+  const parsed = parseCommandInput(cmd, raw);
+  return parsed.ok ? prepareParsedCommand(store, cmd, parsed.value, env) : parsed;
+}
+
+/**
+ * Validate `raw` with `cmd.input`, run the command against `store`'s view and append what it emitted
+ * as one batch. Input that fails validation is refused with `invalid_input`; a refusal emits nothing.
+ */
+export function runCommand<I, R>(
+  store: Store,
+  writer: EventWriter,
+  cmd: Command<I, R>,
+  raw: unknown,
+  env: CommandEnv,
+): CommandOutcome<R> {
+  const parsed = parseCommandInput(cmd, raw);
+  if (!parsed.ok) return parsed;
+  if (env.hlc.device !== env.device) throw new RangeError("the clock belongs to another device");
+  // A device's stamp sorts after everything it folded (events.md 6.7 point 4): merge the highest
+  // folded HLC before stamping, so a guard checked here is never re-evaluated at an earlier position.
+  const hwm = store
+    .read<{ hwm: string | null }>("SELECT MAX(hwm) AS hwm FROM materializer_state")
+    .at(0)?.hwm;
+  if (hwm) env.hlc.receive(hwm.slice(0, HLC_LEN));
+
+  const decided = decideCommand(store, cmd, parsed.value, env);
+  if (!decided.ok) return decided;
+  const iso = () => new Date(env.clock.now()).toISOString();
+  const events: Envelope[] = decided.events.map((event) => {
+    const hlc = env.hlc.tick();
+    return validateEvent(store, cmd.id, {
+      ...event,
       vault: store.vault,
       device: env.device,
       hlc,
       at: iso(),
-      type: p.type,
       v: 1,
-      gid: p.gid,
-      data: p.data,
-      ...(p.cause === undefined ? {} : { cause: p.cause }),
-    };
-    const check = parseEvent(envelope);
-    if (check.status !== "known") {
-      throw new InvalidEmitError(`${cmd.id}: ${p.type} would not fold (${check.status})`);
-    }
-    const parts = detPartsOf(p.type, p.data);
-    if (parts !== undefined && store.deps.det(parts.table, parts.parts) !== p.gid) {
-      throw new InvalidEmitError(`${cmd.id}: ${p.type} carries a gid its payload does not derive`);
-    }
-    return check.event;
+    });
   });
   if (events.length > 0) writer.append(events);
-  return { ok: true, value: result.value, events };
+  return { ok: true, value: decided.value, events };
 }
 
 /** An `EventWriter` that applies the batch to a store directly (tests, a single-device CLI). */

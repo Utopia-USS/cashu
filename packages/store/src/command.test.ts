@@ -5,7 +5,15 @@
 import { compareHlc } from "@cashu/sync/hlc";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineCommand, InvalidEmitError, ok, refuse, runCommand } from "./command.js";
+import {
+  defineCommand,
+  InvalidEmitError,
+  ok,
+  prepareCommand,
+  refuse,
+  runCommand,
+} from "./command.js";
+import { toUnstampedEvent } from "./command-durable.js";
 import type { Envelope } from "./events/v1/envelope.js";
 import { run, testEnv } from "./testing/commands.js";
 import { EventFactory, openTestStore } from "./testing/store.js";
@@ -36,6 +44,57 @@ const setRules = defineCommand({
 });
 
 describe("commands", () => {
+  it("prepares the same ordered EIDs and payloads without ticking the durable clock", () => {
+    const legacy = runCommand(
+      openTestStore(),
+      { append() {} },
+      setRules,
+      { keys: ["A", "B"] },
+      testEnv(),
+    );
+    const env = testEnv();
+    const before = env.hlc.last;
+    const prepared = prepareCommand(openTestStore(), setRules, { keys: ["A", "B"] }, env);
+    expect(prepared.ok).toBe(true);
+    if (!legacy.ok || !prepared.ok) return;
+    expect(env.hlc.last).toBe(before);
+    expect(prepared.events.map((event) => event.eid)).toEqual(
+      legacy.events.map((event) => event.eid),
+    );
+    expect(prepared.events.map((event) => event.data)).toEqual(
+      legacy.events.map((event) => event.data),
+    );
+    expect(prepared.events.map(toUnstampedEvent).map((event) => event.i)).toEqual(
+      legacy.events.map((event) => event.eid),
+    );
+    expect(prepared.events.every((event) => !("hlc" in event))).toBe(true);
+  });
+
+  it("detaches and freezes a prepared payload before returning", () => {
+    const store = openTestStore();
+    const payload = { merchantKey: "A", category: "groceries", source: "manual", locked: true };
+    const command = defineCommand({
+      id: "test.mutablePayload",
+      input: z.object({}),
+      run(ctx) {
+        ctx.emit("categoryRule.set", ctx.det("category_rules", ["A"]), payload);
+        return ok(null);
+      },
+    });
+    const prepared = prepareCommand(store, command, {}, testEnv());
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    payload.category = "fuel";
+    expect(prepared.events[0]?.data.category).toBe("groceries");
+    expect(Object.isFrozen(prepared.events[0]?.data)).toBe(true);
+    expect(
+      toUnstampedEvent(prepared.events[0] as (typeof prepared.events)[number]).d.category,
+    ).toBe("groceries");
+    expect(() =>
+      toUnstampedEvent({ ...prepared.events[0] } as (typeof prepared.events)[number]),
+    ).toThrow(InvalidEmitError);
+  });
+
   it("emit one batch with increasing HLCs, validated and applied", () => {
     const store = openTestStore();
     const env = testEnv();
