@@ -4,6 +4,19 @@ import type { Read } from "../query.js";
 export type ProposalKind = "strategy" | "custom_rule" | "import" | "budget_import";
 export type ProposalStatus = "pending" | "approved" | "rejected" | "failed";
 
+/** Pending investment proposals, without payloads or execution capabilities. */
+export function pendingProposals(read: Read) {
+  return read<{
+    gid: string;
+    kind: "strategy" | "custom_rule" | "import";
+    summary: string;
+    reason: string | null;
+    createdAt: string;
+  }>(
+    "SELECT gid, kind, summary, reason, created_at AS createdAt FROM proposals WHERE status = 'pending' AND kind IN ('strategy', 'custom_rule', 'import') ORDER BY created_at DESC, gid ASC",
+  );
+}
+
 /** Current folded row and the approval eid that actually decided it. */
 export interface ExecutionSnapshot {
   readonly gid: string;

@@ -10,6 +10,7 @@ export * from "./positionChart.js";
 export * from "./positionDetail.js";
 export * from "./positions.js";
 export * from "./reviewContext.js";
+export * from "./reviewDeck.js";
 export * from "./reviewDigest.js";
 export * from "./reviewSchedule.js";
 export * from "./strategyStatus.js";

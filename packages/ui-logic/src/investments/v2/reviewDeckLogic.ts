@@ -3,6 +3,7 @@
 // Pozycje, Wydarzenia, Okazje, Kalendarz, Do decyzji last (what needs the owner closes the review), then the
 // summary. Verdicts are facts in plain Polish.
 
+import { views as reviewDomain } from "@cashu/domain/investments";
 import { proposalSummary } from "../../core/messages.js";
 import { parseServerTime } from "../../core/time.js";
 import { pct, pctTarget } from "../labels.js";
@@ -40,9 +41,6 @@ export type Tone = "pos" | "neg" | "warn" | "info";
 
 /** A move this large or more counts on the Pozycje card. */
 export const MOVER_MIN = 0.03;
-const MAX_MOVERS = 3;
-const MAX_EVENTS = 4;
-const MAX_IDEAS = 3;
 
 // ---- Czy świat się wali --------------------------------------------------------------------------------------
 
@@ -54,28 +52,7 @@ interface TwrPoint {
 /** The portfolio's typical weekly move: the standard deviation of its 7-day TWR changes over the points given
  * (a year); null with fewer than 8 weeks of history. */
 export function weeklySigma(points: TwrPoint[]): number | null {
-  const pts = points.flatMap((p) => (p.twr != null ? [{ date: p.date, twr: p.twr }] : []));
-  const rets: number[] = [];
-  let j = 0;
-  pts.forEach((p, i) => {
-    const cut = addDaysIso(p.date, -7);
-    for (let next = pts[j + 1]; j + 1 < i && next && next.date <= cut; next = pts[j + 1]) j++;
-    const base = pts[j];
-    if (!base || base.date > cut) return;
-    const a = base.twr,
-      b = p.twr;
-    if (1 + a !== 0) rets.push((1 + b) / (1 + a) - 1);
-  });
-  if (rets.length < 40) return null; // ~8 weeks of daily points
-  const mean = rets.reduce((x, y) => x + y, 0) / rets.length;
-  const sd = Math.sqrt(rets.reduce((x, y) => x + (y - mean) ** 2, 0) / (rets.length - 1));
-  return sd > 0 ? sd : null;
-}
-
-function addDaysIso(iso: string, days: number): string {
-  const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+  return reviewDomain.reviewWeeklySigma(points);
 }
 
 export type MoveSize = "calm" | "strong" | "rare";
@@ -102,12 +79,8 @@ export function worldVerdict(
       size: null,
       vs: null,
     };
-  const z = sigma ? Math.abs(move) / sigma : Math.abs(move) / 0.02;
-  const size: MoveSize = z < 1 ? "calm" : z < 2 ? "strong" : "rare";
-  const diff = bench == null ? null : move - bench;
-  const vs: VsMarket | null =
-    diff == null ? null : Math.abs(diff) < 0.01 ? "inline" : diff < 0 ? "worse" : "better";
-  const down = move < 0;
+  const { size, vs, down } = reviewDomain.reviewWorldVerdict(move, bench, sigma);
+  if (size === null) throw new Error("valued review move requires a verdict");
   const head =
     size === "calm"
       ? S.calmWeek
@@ -153,35 +126,32 @@ export interface SectorRow {
  * moved the portfolio by 0.1 pp or more. */
 export function sectorRows(att: SegmentAttribution | null | undefined): SectorRow[] {
   if (!att) return [];
-  const rows: SectorRow[] = att.segments
-    .filter((s) => s.weight > 0 || s.contribution !== 0)
-    .map((s) => ({
+  return reviewDomain.reviewSectorRows<SectorRow>(
+    att.segments.map((s) => ({
       key: s.segment,
       label: s.label,
       contribution: s.contribution,
       ret: s.return,
       weight: s.weight,
-    }));
-  if (att.unassigned && att.unassigned.weight > 0)
-    rows.push({
-      key: "unassigned",
-      label: S.noTopic,
-      contribution: att.unassigned.contribution,
-      ret: att.unassigned.return,
-      weight: att.unassigned.weight,
-    });
-  rows.sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
-  const out = rows.slice(0, 6);
-  if (Math.abs(att.currency?.contribution ?? 0) >= 0.001)
-    out.push({
+    })),
+    att.unassigned
+      ? {
+          key: "unassigned",
+          label: S.noTopic,
+          contribution: att.unassigned.contribution,
+          ret: att.unassigned.return,
+          weight: att.unassigned.weight,
+        }
+      : null,
+    {
       key: "currency",
       label: S.currencies,
-      contribution: att.currency.contribution,
+      contribution: att.currency?.contribution ?? 0,
       ret: null,
       weight: null,
       currency: true,
-    });
-  return out;
+    },
+  );
 }
 
 /** Headline of the Sektory card: which segments made most of the move. */
@@ -189,25 +159,21 @@ export function sectorsTitle(
   rows: SectorRow[],
   move: number | null,
 ): { title: string; pill: string; tone: Tone } {
-  const real = rows.filter((r) => !r.currency);
-  const first = real[0];
-  if (!first) return { title: S.noSectors, pill: "-", tone: "info" };
-  const total = real.reduce((x, r) => x + r.contribution, 0);
-  const sign = Math.sign(move ?? total) || 1;
-  const same = real.filter((r) => Math.sign(r.contribution) === sign);
-  if (real.every((r) => r.contribution >= 0))
-    return { title: S.carriesAll(first.label), pill: S.allPlus, tone: "pos" };
-  if (real.every((r) => r.contribution <= 0))
-    return { title: S.allMinusTitle(first.label), pill: S.allMinus, tone: "neg" };
-  const top = same.slice(0, 2);
-  const share =
-    top.reduce((x, r) => x + r.contribution, 0) /
-    (same.reduce((x, r) => x + r.contribution, 0) || 1);
-  const names = top.map((r) => r.label).join(S.and);
+  const verdict = reviewDomain.reviewSectorVerdict(rows, move);
+  const names = verdict.names.join(S.and),
+    first = verdict.names[0] ?? "";
+  if (verdict.code === "empty") return { title: S.noSectors, pill: "-", tone: "info" };
+  if (verdict.code === "all_plus")
+    return { title: S.carriesAll(first), pill: S.allPlus, tone: "pos" };
+  if (verdict.code === "all_minus")
+    return { title: S.allMinusTitle(first), pill: S.allMinus, tone: "neg" };
   return {
-    title: share >= 0.6 ? S.shareOfMove(names, Math.round(share * 100), sign < 0) : S.spread(names),
-    pill: sign < 0 ? S.pillDown : S.pillUp,
-    tone: sign < 0 ? "neg" : "pos",
+    title:
+      verdict.code === "share"
+        ? S.shareOfMove(names, Math.round((verdict.share ?? 0) * 100), verdict.down)
+        : S.spread(names),
+    pill: verdict.down ? S.pillDown : S.pillUp,
+    tone: verdict.down ? "neg" : "pos",
   };
 }
 
@@ -245,25 +211,11 @@ export function topMovers(
   };
   for (const s of att.segments) add(s.instruments);
   if (att.unassigned) add(att.unassigned.instruments);
-  const all = [...seen.values()].sort((a, b) => a.ret - b.ret);
-  return {
-    down: all.filter((m) => m.ret < 0).slice(0, MAX_MOVERS),
-    up: all
-      .filter((m) => m.ret > 0)
-      .reverse()
-      .slice(0, MAX_MOVERS),
-    all,
-  };
+  return reviewDomain.reviewMovers([...seen.values()]);
 }
 
 // ---- Wydarzenia ------------------------------------------------------------------------------------------------
 
-const RELATION_SCORE: Record<string, number> = {
-  invalidates: 3,
-  weakens: 2,
-  fulfills: 2,
-  supports: 1,
-};
 export interface DeckEvent {
   note: ResearchNote;
   score: number;
@@ -272,17 +224,13 @@ export interface DeckEvent {
 /** The week's research notes that matter most: thesis-relevant first, then strength (news, earnings, macro,
  * trend; not dismissed). */
 export function weekEvents(notes: ResearchNote[]): DeckEvent[] {
-  return notes
-    .filter(
-      (n) => !n.dismissed_at && ["news", "earnings", "macro", "trend"].includes(String(n.kind)),
-    )
-    .map((n) => ({
-      note: n,
-      score: (n.strength ?? 1) + (RELATION_SCORE[String(n.thesis_relation)] ?? 0),
-    }))
-    .filter((e) => e.score >= 2)
-    .sort((a, b) => b.score - a.score || b.note.observed_at.localeCompare(a.note.observed_at))
-    .slice(0, MAX_EVENTS);
+  return reviewDomain.reviewEvents(notes, (n) => ({
+    dismissed: !!n.dismissed_at,
+    kind: String(n.kind),
+    strength: n.strength ?? null,
+    relation: n.thesis_relation ?? null,
+    observedAt: n.observed_at,
+  }));
 }
 
 // ---- Do decyzji ------------------------------------------------------------------------------------------------
@@ -337,10 +285,8 @@ export const STALE_RULE_DAYS = 14;
  * has lasted that long is not news (it is counted as unchanged). */
 export const NEW_MAX_DAYS = 14;
 const MAX_DECIDE = 6;
-const DAY = 86400000;
 const CHANGING = new Set(["weakens", "invalidates", "fulfills"]);
 /** Rule kinds measured against a threshold, whose steps on one instrument form a ladder. */
-const LADDER_KINDS = new Set(["drawdown_from_high", "loss_from_cost", "gain_from_cost"]);
 const HEALTH_RELATION: Record<string, string> = {
   inv: "invalidates",
   weak: "weakens",
@@ -360,11 +306,8 @@ const relationOf = (s: SignalV2) => (isResearch(s) ? str(s.payload.relation) : n
 const ts = parseServerTime;
 const newer = (s: SignalV2, since: number) => Number.isFinite(since) && ts(s.first_seen_at) > since;
 /** The baseline of "new" (ms): the last review, at most NEW_MAX_DAYS back. */
-export const newSinceMs = (since: string | null | undefined, now: number) => {
-  const cap = now - NEW_MAX_DAYS * DAY,
-    at = ts(since ?? null);
-  return Number.isFinite(at) ? Math.max(at, cap) : cap;
-};
+export const newSinceMs = (since: string | null | undefined, now: number) =>
+  reviewDomain.reviewNewSince(ts(since ?? null), now);
 const newSince = newSinceMs;
 
 /** A share in words: "ponad 1/3", "ok. połowę"; below a tenth the percentage. */
@@ -446,43 +389,32 @@ interface Subject {
 }
 
 /** Undecided open signals grouped per subject, ladders collapsed to their deepest step (the others in `ladder`). */
+function reviewSignalFact(row: SignalV2) {
+  return {
+    id: row.id,
+    instrument: row.instrument_id,
+    rule: row.rule_id,
+    kind: row.kind,
+    polarity: polarityOf(row),
+    relation: relationOf(row),
+    firstSeen: ts(row.first_seen_at),
+    threshold: num(row.payload.threshold) ?? 0,
+    open: row.status === "active" || row.status === "acknowledged",
+    snoozed: !!row.snoozed,
+    decided: row.decisions.length > 0,
+    bucket: row.payload.bucket_id == null ? null : String(row.payload.bucket_id),
+    row,
+  };
+}
 function subjectsOf(open: SignalV2[]): Subject[] {
-  const by = new Map<string, SignalV2[]>();
-  for (const s of open) {
-    const k =
-      s.instrument_id != null
-        ? `i:${s.instrument_id}`
-        : isResearch(s)
-          ? `n:${s.id}`
-          : s.kind === "allocation_drift"
-            ? `b:${String(s.payload.bucket_id ?? "")}`
-            : `r:${s.rule_id}`;
-    by.set(k, [...(by.get(k) ?? []), s]);
-  }
-  return [...by.entries()].map(([key, list]) => {
-    const live: SignalV2[] = [],
-      ladder: SignalV2[] = [];
-    const kinds = new Map<string, SignalV2[]>();
-    for (const s of list) {
-      if (!LADDER_KINDS.has(s.kind)) {
-        live.push(s);
-        continue;
-      }
-      const k = `${s.kind}|${polarityOf(s)}`;
-      kinds.set(k, [...(kinds.get(k) ?? []), s]);
-    }
-    for (const steps of kinds.values()) {
-      const sorted = [...steps].sort(
-        (a, b) =>
-          (num(b.payload.threshold) ?? 0) - (num(a.payload.threshold) ?? 0) ||
-          ts(b.first_seen_at) - ts(a.first_seen_at),
-      );
-      const [top, ...lower] = sorted;
-      if (top) live.push(top);
-      ladder.push(...lower);
-    }
-    return { key, instrumentId: list[0]?.instrument_id ?? null, live, ladder };
-  });
+  return reviewDomain
+    .reviewSignalSubjects(open.map(reviewSignalFact))
+    .map((sub) => ({
+      key: sub.key,
+      instrumentId: sub.instrument,
+      live: sub.live.map((s) => s.row),
+      ladder: sub.ladder.map((s) => s.row),
+    }));
 }
 
 /** What waits for the owner (see the section comment): subject items grouped risk / chance / mixed / plan and the
@@ -505,62 +437,34 @@ export function decideItems(
   } = {},
 ): { items: DecideItem[]; more: number; rest: DecideRest } {
   const now = opts.now ?? Date.now();
-  const since = newSince(opts.since, now);
-  const reviewed = ts(opts.lastReviewAt ?? null);
   const limit = opts.limit ?? MAX_DECIDE;
-  // In the last review's deck: a rule signal new then (at most NEW_MAX_DAYS before it) and still undecided now.
-  const wasInReview = (s: SignalV2) =>
-    Number.isFinite(reviewed) &&
-    !isResearch(s) &&
-    ts(s.first_seen_at) <= reviewed &&
-    ts(s.first_seen_at) > reviewed - NEW_MAX_DAYS * DAY;
-  // Snoozed signals wait out of the deck; the home rail asks for them (what the review put off).
-  const open = signals.filter(
-    (s) =>
-      (opts.includeSnoozed || !s.snoozed) &&
-      !s.decisions.length &&
-      (s.status === "active" || s.status === "acknowledged"),
-  );
-  const rest: DecideRest = { review: 0, research: 0 };
-  const items: DecideItem[] = [];
-  const stale: SignalV2[] = [];
-  const health = healthChanges(research);
-  for (const sub of subjectsOf(open)) {
-    const all = [...sub.live, ...sub.ladder];
-    const changing = sub.live.find((s) => CHANGING.has(relationOf(s) ?? ""));
-    // A thesis weakened by a note too weak for its own signal still gives the instrument's open signals a reason.
-    const healthRel =
-      !changing && sub.instrumentId != null ? (health.get(sub.instrumentId) ?? null) : null;
-    const fresh = sub.live.filter((s) => !isResearch(s) && newer(s, since));
-    const carried = opts.includeSnoozed ? sub.live.filter((s) => s.snoozed || wasInReview(s)) : [];
-    const putOff = carried.length > 0 && (all.every((s) => s.snoozed) || carried.some(wasInReview));
-    if (!changing && !healthRel && !fresh.length && !putOff) {
-      if (
-        sub.instrumentId == null &&
-        sub.live[0] !== undefined &&
-        !isResearch(sub.live[0]) &&
-        sub.live.every((s) => now - ts(s.first_seen_at) > STALE_RULE_DAYS * DAY)
-      )
-        stale.push(...all);
-      else if (sub.live.some((s) => !isResearch(s) || relationOf(s) === "supports")) rest.review++;
-      else rest.research++;
-      continue;
-    }
-    // New for the rail: a new rule signal, research that changed the thesis since the review, or the week's health.
-    const isNew = fresh.length > 0 || (!!changing && newer(changing, since)) || !!healthRel;
-    items.push(
-      subjectItem(
-        sub,
-        changing ?? null,
-        healthRel,
-        fresh.length ? fresh : carried,
-        isNew,
-        fresh.length > 0,
-        names,
-        sub.instrumentId != null ? opts.theses?.get(sub.instrumentId) : undefined,
-      ),
+  const selection = reviewDomain.reviewDecideSelection(signals.map(reviewSignalFact), {
+    now,
+    since: ts(opts.since ?? null),
+    health: healthChanges(research),
+    includeSnoozed: !!opts.includeSnoozed,
+    lastReviewAt: ts(opts.lastReviewAt ?? null),
+  });
+  const rest = selection.rest,
+    stale = selection.stale.map((s) => s.row);
+  const items = selection.selected.map((selected) => {
+    const sub = selected.subject;
+    return subjectItem(
+      {
+        key: sub.key,
+        instrumentId: sub.instrument,
+        live: sub.live.map((s) => s.row),
+        ladder: sub.ladder.map((s) => s.row),
+      },
+      selected.changing?.row ?? null,
+      selected.healthRelation,
+      selected.fresh.map((s) => s.row),
+      selected.isNew,
+      selected.newTag,
+      names,
+      sub.instrument !== null ? opts.theses?.get(sub.instrument) : undefined,
     );
-  }
+  });
   const covered = new Set(items.map((d) => d.instrumentId).filter((x) => x != null));
   const theses = (research?.theses_changed ?? [])
     .filter((c) => !covered.has(c.instrument_id))
@@ -590,22 +494,14 @@ function subjectItem(
   const all = [...sub.live, ...sub.ladder];
   const rel = changing ? relationOf(changing) : healthRel;
   const fulfilled = rel === "fulfills";
-  // Polarity of what speaks: the thesis change, else the new signals.
-  const pols = new Set(
-    (rel ? [fulfilled ? "positive" : "negative"] : fresh.map((s) => polarityOf(s))).filter(
-      (p) => p !== "neutral",
-    ),
-  );
   const lastSeen = Math.max(...all.map((s) => ts(s.first_seen_at)).filter(Number.isFinite));
-  const planned =
-    !!str(thesis?.exit_plan ?? null) && ts(thesis?.exit_plan_changed_at ?? null) > lastSeen + DAY;
-  const group: DecideGroup = planned
-    ? "plan"
-    : pols.size === 1
-      ? pols.has("negative")
-        ? "risk"
-        : "chance"
-      : "mixed";
+  const group = reviewDomain.reviewSubjectGroup({
+    relation: rel,
+    polarities: fresh.map(polarityOf),
+    hasExitPlan: !!str(thesis?.exit_plan ?? null),
+    exitPlanChangedAt: ts(thesis?.exit_plan_changed_at ?? null),
+    lastSeen,
+  });
   const lead = changing ?? fresh[0] ?? null;
   const any = lead ?? sub.live[0];
   if (!any) throw new Error("a review deck subject without signals");
@@ -783,17 +679,14 @@ function healthChanges(research: DigestResearch | null | undefined): Map<number,
 
 /** Open candidates of the research (not dismissed, not accepted, not expired), newest first, at most 3. */
 export function openIdeas(candidates: ResearchNote[], now = Date.now()): ResearchNote[] {
-  return candidates
-    .filter(
-      (n) =>
-        n.kind === "candidate" &&
-        !n.dismissed_at &&
-        !n.candidate?.accepted_at &&
-        !n.expired &&
-        (!n.expires_at || Date.parse(n.expires_at) > now),
-    )
-    .sort((a, b) => b.observed_at.localeCompare(a.observed_at))
-    .slice(0, MAX_IDEAS);
+  return reviewDomain.reviewIdeas(candidates, now, (n) => ({
+    kind: String(n.kind),
+    dismissed: !!n.dismissed_at,
+    accepted: !!n.candidate?.accepted_at,
+    expired: !!n.expired,
+    expiresAt: n.expires_at ?? null,
+    observedAt: n.observed_at,
+  }));
 }
 
 // ---- the deck ------------------------------------------------------------------------------------------------

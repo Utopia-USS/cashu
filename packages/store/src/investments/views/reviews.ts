@@ -17,12 +17,13 @@ import {
   type ProfileId,
   performance as perf,
   preloadRates,
-  research,
   views,
 } from "@cashu/domain/investments";
-import * as macro from "@cashu/domain/investments/macro";
+import type * as macro from "@cashu/domain/investments/macro";
 import type { Read } from "../../core/queries.js";
 import type { Store } from "../../materialize.js";
+import { type ResearchInputs, readResearchDigestInputs } from "../desktop-research/inputs.js";
+import { performanceStrategy } from "../desktop-research/sources.js";
 import { type MarketInput, resolveMarketInput } from "../marketInput.js";
 import { PerformanceService } from "../performance/service.js";
 import { importBatches } from "../queries/import-preview.js";
@@ -32,8 +33,6 @@ import { lastReview } from "../queries/reviews.js";
 import { lastGoodRunGid, ruleRuns, signalByGid } from "../queries/signals.js";
 import { strategyVersions } from "../queries/strategy.js";
 import { viewInstant } from "../research/rows.js";
-import { segmentsView } from "../research/segments.js";
-import { researchDigest } from "../research/views.js";
 import type { StrategyState } from "../services/strategy.js";
 import { allSignalFacts } from "./facts.js";
 import { portfolioAt } from "./portfolio.js";
@@ -101,20 +100,6 @@ export type ReviewDigestRequest = MarketInput & {
   readonly macroCloses: macro.MacroCloses;
   readonly performance?: PerformanceService;
 };
-
-function performanceStrategy(state: StrategyState): perf.PerformanceStrategy {
-  const config = state.config;
-  return {
-    state: state.state,
-    benchmark: config?.benchmark ?? null,
-    policy:
-      config === null
-        ? perf.DEFAULT_VALUATION_POLICY
-        : { maxPriceAgeDays: config.data.maxPriceAgeDays, maxFxAgeDays: config.data.maxFxAgeDays },
-    strategy:
-      config === null ? null : { baseCurrency: config.baseCurrency, allocation: config.allocation },
-  };
-}
 
 function flows(
   input: MarketInput & {
@@ -185,8 +170,14 @@ function flows(
 }
 
 /** No result cache: clock-only changes recompute episode visibility, periods, research and schedules. */
-export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
-  const read: Read = store.read.bind(store);
+export type PreparedReviewResearch = Pick<ResearchInputs, "computed" | "segments" | "digest">;
+export type TrackedReviewDigestRequest = MarketInput &
+  Omit<ReviewDigestRequest, "performance" | "macroCloses" | "prices" | "marketData">;
+export function readReviewDigestInputs(
+  read: Read,
+  request: TrackedReviewDigestRequest,
+  prepared: PreparedReviewResearch | (() => PreparedReviewResearch),
+) {
   const marketInput: MarketInput =
     request.marketData === undefined
       ? { prices: request.prices }
@@ -256,57 +247,18 @@ export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
       instrumentLabel(instrument),
     ]),
   );
-  let computed: perf.ComputedPerformance | null = null;
-  try {
-    computed = (request.performance ?? new PerformanceService()).computed(store, {
-      asOf: current.asOf,
-      strategy: performanceStrategy(request.strategy),
-      ...marketInput,
-    });
-  } catch {
-    /* Python's digest answers when attribution is unavailable. */
-  }
-  const now = viewInstant(toStorage(clock.now));
-  let segmentFacts: ReturnType<typeof research.digestSegments> | null = null;
-  let segmentTrends: research.Trends | null = null;
-  if (computed !== null) {
-    try {
-      const projected = segmentsView(read, {
-        computed,
-        ...marketInput,
-        now,
-        lang: request.lang,
-        window: "1w",
-      });
-      if (projected.ok) {
-        segmentFacts = research.digestSegments(projected.value);
-        segmentTrends = projected.trends;
-      }
-    } catch {
-      /* Attribution is best-effort in the source contract. */
-    }
-  }
-  const startInstant = viewInstant(toStorage(sinceAt));
-  const utcStart = toUtc(sinceAt).date;
-  const utcNow = toUtc(clock.now).date;
-  const macroStart = utcStart < utcNow ? utcStart : utcNow;
-  const changes = macro.macroChanges(
-    macro.evaluate(request.macroCloses, current.asOf),
-    macroStart,
-    current.asOf,
-    request.lang,
-  );
-  const digestResearch = researchDigest(read, {
-    now,
-    since: startInstant,
-    ...(segmentFacts === null ? {} : { segments: segmentFacts }),
-    macroChanges: changes,
-  });
+  const researchInputs = typeof prepared === "function" ? prepared() : prepared;
+  const computed = researchInputs.computed;
+  const segments = researchInputs.segments("1w");
+  const segmentTrends = segments.status === "current" ? segments.trends : null;
+  const digest = researchInputs.digest(viewInstant(toStorage(sinceAt)));
+  const digestResearch = digest.value;
   const versions = strategyVersions(read);
   const priceMoveBars = current.historyBars;
   return {
     ok: true as const,
     segmentTrends,
+    researchSources: { macro: digest.macro, segments: digest.segments },
     value: {
       current,
       previous,
@@ -359,6 +311,36 @@ export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
       priceMoveBars,
     } satisfies views.ReviewDigestInput,
   } as const;
+}
+
+/** Existing cached Store adapter and public result shape are preserved. */
+export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
+  const read: Read = store.read.bind(store);
+  const result = readReviewDigestInputs(read, request, () => {
+    let computed: perf.ComputedPerformance | null = null;
+    try {
+      computed = (request.performance ?? new PerformanceService()).computed(store, {
+        asOf: request.clock.today,
+        strategy: performanceStrategy(request.strategy),
+        ...(request.marketData === undefined
+          ? { prices: request.prices }
+          : { marketData: request.marketData }),
+      });
+    } catch {
+      /* Source digest remains readable without attribution. */
+    }
+    return readResearchDigestInputs(
+      read,
+      {
+        ...request,
+        macro: { status: "current", value: request.macroCloses },
+        calendar: { status: "unavailable", reason: "calendar_not_requested" },
+      },
+      computed,
+    );
+  });
+  if (!result.ok) return result;
+  return { ok: true as const, segmentTrends: result.segmentTrends, value: result.value };
 }
 
 export function readReviewDigest(store: Store, request: ReviewDigestRequest) {

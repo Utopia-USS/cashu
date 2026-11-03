@@ -3,6 +3,7 @@
 // from 30-day closes, re-entry gap, change-log grouping, performance facts. Pure; the frontend's `npm test`
 // imports it (frontend/tests).
 
+import { views as reviewDomain } from "@cashu/domain/investments";
 import { inEveryLang, intlLocale, lang } from "@cashu/i18n";
 import { describePerfNote } from "../../core/messages.js";
 import { localDay, parseServerTime, serverDate } from "../../core/time.js";
@@ -1401,22 +1402,7 @@ export function changeSince(
   points: PointLike[],
   since: string,
 ): { pct: number | null; money: number | null; bench: number | null; from: string | null } {
-  let k = 0;
-  points.forEach((p, i) => {
-    if (p.date <= since) k = i;
-  });
-  const a = points[k],
-    b = points[points.length - 1];
-  if (points.length < 2 || !a || !b) return { pct: null, money: null, bench: null, from: null };
-  const ratio = (x: number | null, y: number | null) =>
-    x == null || y == null || 1 + x === 0 ? null : (1 + y) / (1 + x) - 1;
-  const flows = points.slice(k + 1).reduce((acc, p) => acc + (p.flow ?? 0), 0);
-  return {
-    pct: ratio(a.twr, b.twr),
-    money: a.value != null && b.value != null ? b.value - a.value - flows : null,
-    bench: ratio(a.benchmark, b.benchmark),
-    from: a.date,
-  };
+  return reviewDomain.reviewChangeSince(points, since);
 }
 
 /** Value line of the review digest ("Co się zmieniło"), F7 F2. `market_change` absent (older server):
@@ -1822,7 +1808,7 @@ export function staleBenchmark(
     | null
     | undefined,
 ): { label: string; title: string } | null {
-  if (b?.status !== "ok" || b.covers_range_end !== false) return null;
+  if (!reviewDomain.reviewBenchmarkStale(b) || !b) return null;
   return {
     label: T.benchmarkStale,
     title: T.benchmarkPricesUntil(benchmarkLabel(b), b.last_priced ? dm(b.last_priced) : "-"),

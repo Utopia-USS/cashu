@@ -37,6 +37,7 @@
     "./loans/logic.strings": "./src/loans/logic.strings.ts"
   },
   "dependencies": {
+    "@cashu/domain": "workspace:*",
     "@cashu/i18n": "workspace:*"
   },
   "scripts": {
