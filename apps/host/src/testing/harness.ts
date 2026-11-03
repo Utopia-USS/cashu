@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { StoreToClient } from "@cashu/host-protocol/store";
+import type { JsonValue, StoreToClient } from "@cashu/host-protocol/store";
 import { connectHost, type HostConnection, resolveReal } from "@cashu/node-host";
 import { mintUlid } from "@cashu/store";
 import { memoryLog } from "../log.js";
@@ -49,6 +49,7 @@ export interface StoreClient {
   subscribe(
     query: string,
     target: "device" | string,
+    args?: JsonValue,
   ): Promise<{ first: unknown; values: unknown[] }>;
   close(): void;
 }
@@ -98,7 +99,7 @@ export async function storeClient(dataDir: string): Promise<StoreClient> {
       });
     },
     send,
-    subscribe(query, target) {
+    subscribe(query, target, args = null) {
       const sid = next++;
       const values: unknown[] = [];
       return new Promise((resolve, reject) => {
@@ -108,7 +109,7 @@ export async function storeClient(dataDir: string): Promise<StoreClient> {
           if (values.length === 1) resolve({ first: v, values });
         });
         const t = target === "device" ? { kind: "device" } : { kind: "vault", vault: target };
-        conn.send({ t: "store", m: { t: "sub", sid, target: t, query, args: null } as never });
+        conn.send({ t: "store", m: { t: "sub", sid, target: t, query, args } as never });
       });
     },
     close: () => conn.close(),

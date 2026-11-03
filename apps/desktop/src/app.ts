@@ -26,6 +26,8 @@ export interface TrayHandle {
 }
 
 export interface DesktopDeps {
+  /** Same trusted sidecar origin; unported SPA routes remain available at its root. */
+  rendererPath?: string;
   lang: Lang;
   logFile: string | null;
   /** Result of Electron's single instance lock for this data dir. */
@@ -106,7 +108,11 @@ export class DesktopApp {
     if (this.quitting) return "started";
     try {
       this.deps.rememberPort(this.info.port);
-      await window.loadUrl(this.links.ready(window, this.info.url));
+      const entry =
+        this.deps.rendererPath === undefined
+          ? this.info.url
+          : new URL(this.deps.rendererPath, this.info.url).href;
+      await window.loadUrl(this.links.ready(window, entry));
     } catch (e) {
       this.error = `Unexpected error while opening the window: ${e instanceof Error ? e.message : String(e)}`;
       await this.showError(window, this.error);

@@ -16,6 +16,7 @@ import { addManualPosition, setDepreciation } from "../assets/commands.js";
 import { importStatement } from "../budget/commands.js";
 import { defineCommand, ok } from "../command.js";
 import { createProfile, openAccount, recordBalance, removeAccount } from "../core/commands.js";
+import { SqlPriceCache } from "../investments/local/priceCache.js";
 import {
   account as brokerageOpened,
   Events,
@@ -26,9 +27,10 @@ import { addLoan, setPaymentMatching } from "../loans/commands.js";
 import type { Store } from "../materialize.js";
 import { runQuery, watchQuery } from "../query.js";
 import { run, type TestEnv, testEnv } from "../testing/commands.js";
-import { openTestStore } from "../testing/store.js";
+import { memoryDriver, openTestStore, TEST_VAULT } from "../testing/store.js";
 import {
   heroView,
+  legacyNavigation,
   moduleSetup,
   moduleStates,
   netWorthSeries,
@@ -481,7 +483,21 @@ describe("net worth over the view", () => {
     const read = store.read.bind(store);
     const value = (prices: market.PriceCache | null) =>
       core.latestBalancePerAccount(vaultNetWorthBook(read, { today: TODAY, prices })).get(acc)?.[1];
-    const cache = new market.InMemoryPriceCache();
+    const driver = memoryDriver();
+    const cache = new SqlPriceCache(driver);
+    const query = overviewQueries({ prices: cache, changes: cache }).hero;
+    const observed: string[] = [];
+    const stop = watchQuery(
+      store,
+      query,
+      { today: TODAY },
+      {
+        onValue: (view) => observed.push(view.facts.net.toString()),
+        onError: (error) => {
+          throw error;
+        },
+      },
+    );
     const now = {
       date: "2026-09-30",
       hour: 18,
@@ -508,10 +524,43 @@ describe("net worth over the view", () => {
     );
     expect(s(value(null))).not.toBe(s(value(cache)));
     expect(value(cache)?.gt(value(null) ?? D("0"))).toBe(true);
+    expect(observed).toHaveLength(2);
+    expect(observed[0]).not.toBe(observed[1]);
+    const beforeRollback = [...observed];
+    expect(() =>
+      cache.batch(() => {
+        cache.deleteBars(market.marketSymbol("yahoo", "TST.WA"), "2026-09-30", "2026-09-30");
+        throw new Error("rollback");
+      }),
+    ).toThrow("rollback");
+    expect(observed).toEqual(beforeRollback);
+    stop();
+    cache.deleteBars(market.marketSymbol("yahoo", "TST.WA"), "2026-09-30", "2026-09-30");
+    expect(observed).toEqual(beforeRollback);
+    driver.close();
   });
 });
 
 describe("queries", () => {
+  it("requires explicit matching vault and slug provenance for a legacy identity", () => {
+    const h = vault(["budget"]);
+    expect(runQuery(h.store, legacyNavigation(), undefined).value).toBe(false);
+    const observed: [string, string][] = [];
+    const provided = legacyNavigation((vault, slug) => {
+      observed.push([vault, slug]);
+      return vault === TEST_VAULT && slug === "jan";
+    });
+    expect(runQuery(h.store, provided, undefined).value).toBe(true);
+    expect(observed).toEqual([[TEST_VAULT, "jan"]]);
+    expect(
+      runQuery(
+        h.store,
+        legacyNavigation((_vault, slug) => slug === "another"),
+        undefined,
+      ).value,
+    ).toBe(false);
+    h.store.close();
+  });
   it("the series reads the net-worth tables and re-runs when a balance is recorded", () => {
     const h = household();
     const q = overviewQueries({ prices: null });

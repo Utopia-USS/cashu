@@ -4,12 +4,20 @@
 import { type Command, createProfile, renameProfile, setProfileSettings } from "@cashu/store";
 import { profile } from "@cashu/store/core";
 import { currentVault, type DeviceCommand, setCurrentVault } from "@cashu/store/device";
+import { legacyNavigation, overviewQueries, profileIdentity } from "@cashu/store/overview";
 import type { Query, QueryArgs } from "@cashu/store/query";
 
 /** A vault command or a device command (its own `scope` says which store it writes). */
 export type AnyCommand = Command<unknown, unknown> | DeviceCommand<unknown, unknown>;
 
-export const SERVED_QUERIES: readonly Query<QueryArgs, unknown>[] = [currentVault, profile];
+/** Process-local providers are bound here, never supplied by the renderer. */
+export function servedQueries(
+  env: Parameters<typeof overviewQueries>[0] & { readonly legacyIdentity?: Parameters<typeof legacyNavigation>[0] } = { prices: null },
+): readonly Query<QueryArgs, unknown>[] {
+  return [currentVault, profile, profileIdentity, legacyNavigation(env.legacyIdentity), ...Object.values(overviewQueries(env))];
+}
+
+export const SERVED_QUERIES = servedQueries();
 
 export const SERVED_COMMANDS: readonly AnyCommand[] = [
   setCurrentVault,

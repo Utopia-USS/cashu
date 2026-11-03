@@ -1,0 +1,50 @@
+import { catalog } from "@cashu/i18n";
+
+export const S = catalog({
+  overview: { pl: "Przegląd", en: "Overview" },
+  modules: { pl: "Moduły", en: "Modules" },
+  budget: { pl: "Budżet", en: "Budget" },
+  investments: { pl: "Inwestycje", en: "Investments" },
+  assets: { pl: "Majątek", en: "Assets" },
+  loans: { pl: "Kredyty", en: "Loans" },
+  settings: { pl: "Ustawienia", en: "Settings" },
+  profile: { pl: "Profil", en: "Profile" },
+  privacy: { pl: "Ukryj kwoty", en: "Hide amounts" },
+  language: { pl: "Język", en: "Language" },
+  waiting: { pl: "Otwieranie danych lokalnych…", en: "Opening local data…" },
+  failed: { pl: "Nie udało się otworzyć danych lokalnych.", en: "Local data could not be opened." },
+  retry: { pl: "Spróbuj ponownie", en: "Try again" },
+  noProfile: { pl: "Brak otwartego profilu.", en: "No profile is open." },
+  ambiguousProfile: {
+    pl: "Ten adres pasuje do kilku otwartych profili. Wybierz profil z listy.",
+    en: "This address matches several open profiles. Choose a profile from the list.",
+  },
+  legacyUnavailable: {
+    pl: "Tego profilu nie można jednoznacznie otworzyć w poprzednim widoku.",
+    en: "This profile cannot be uniquely opened in the previous view.",
+  },
+  vaultProfile: {
+    pl: (name: string, identity: string) => `${name} (${identity})`,
+    en: (name: string, identity: string) => `${name} (${identity})`,
+  },
+  legacy: { pl: "Pełny przegląd i pozostałe widoki", en: "Full overview and other views" },
+  currency: { pl: "Waluta", en: "Currency" },
+  netWorth: { pl: "Wartość netto", en: "Net worth" },
+  liquid: { pl: "Płynne środki", en: "Liquid funds" },
+  liabilities: { pl: "Zobowiązania", en: "Liabilities" },
+  homeEquity: { pl: "Kapitał w nieruchomości", en: "Home equity" },
+  history: { pl: "Historia wartości netto", en: "Net worth history" },
+  empty: { pl: "Brak historii w tej walucie.", en: "No history in this currency." },
+  moduleState: { pl: "Stan modułów", en: "Module setup" },
+  ready: { pl: "Gotowy", en: "Ready" },
+  partial: { pl: "W trakcie", en: "In progress" },
+  setup: { pl: "Rozpocznij konfigurację", en: "Start setup" },
+  changed: { pl: "Zmieniono profil.", en: "Profile changed." },
+  refused: { pl: "Nie udało się zmienić profilu.", en: "Profile could not be changed." },
+  dismiss: { pl: "Zamknij", en: "Dismiss" },
+  exactSeries: {
+    pl: (latest: string, low: string, high: string) =>
+      `Ostatnio ${latest}, minimum ${low}, maksimum ${high}`,
+    en: (latest: string, low: string, high: string) => `Latest ${latest}, low ${low}, high ${high}`,
+  },
+});

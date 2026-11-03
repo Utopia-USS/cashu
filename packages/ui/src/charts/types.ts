@@ -22,6 +22,9 @@ interface ChartBase {
 }
 
 export interface LineSeries {
+  /** Exact, already localized low/latest/high text when values are geometry approximations.
+   * Ignored for hidden amounts: the shared privacy summary replaces it. */
+  accessibleSummary?: string;
   values: (number | null)[];
   /** main (series colour), bench (muted, dashed), negative (loss tone). Default main. */
   tone?: "main" | "bench" | "negative";

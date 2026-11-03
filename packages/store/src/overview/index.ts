@@ -14,7 +14,7 @@ import { budgetBook, budgetEngineContext } from "../budget/read-models.js";
 import { netWorthBook } from "../core/networth.js";
 import { enabledModuleIds, profileOf } from "../core/queries.js";
 import { builtinModules } from "../modules.js";
-import { defineQuery, type Query, type Read } from "../query.js";
+import { type ChangeSource, defineQuery, type Query, type Read } from "../query.js";
 import type { NetWorthEnv, StoreModule } from "../registry.js";
 
 /** What the read models are composed from (the built-in modules and registry by default). */
@@ -89,6 +89,13 @@ export interface ShellSummary {
   /** The newest month of the base-currency cashflow; null without any. */
   readonly month: budget.MonthSummary | null;
   readonly subscriptions: budget.SubscriptionsSummary;
+}
+
+/** Live query shape: exact domain values, with the breakdown map represented as a JSON object. */
+export interface ShellSummarySnapshot extends Omit<ShellSummary, "breakdown"> {
+  readonly breakdown: Omit<core.NetWorthBreakdown, "byType"> & {
+    readonly byType: Readonly<Record<string, core.NetWorthBreakdown["net"]>>;
+  };
 }
 
 interface SummaryParts {
@@ -212,7 +219,7 @@ export function moduleStates(read: Read, sources: OverviewSources = {}): ModuleS
 
 export interface OverviewQueries {
   readonly netWorthSeries: Query<SeriesArgs, core.SeriesView>;
-  readonly summary: Query<{ readonly today: IsoDate }, ShellSummary>;
+  readonly summary: Query<{ readonly today: IsoDate }, ShellSummarySnapshot>;
   readonly hero: Query<{ readonly today: IsoDate }, HeroView>;
   readonly moduleSetup: Query<
     { readonly module: string; readonly cli: string; readonly lang: core.UiLang },
@@ -221,28 +228,58 @@ export interface OverviewQueries {
   readonly moduleStates: Query<undefined, ModuleState[]>;
 }
 
+/** Public identity of this vault only, for profile routes and the device's open-vault picker. */
+export const profileIdentity = defineQuery({
+  id: "core.profileIdentity",
+  run: (read): { slug: string; name: string; baseCurrency: string } | null =>
+    read<{ slug: string; name: string; baseCurrency: string }>(
+      "SELECT slug, name, base_currency AS baseCurrency FROM profiles",
+    )[0] ?? null,
+});
+
+/** Explicit matching legacy identity only. It grants no financial writer coherence or authority. */
+export function legacyNavigation(
+  available?: (vault: string, slug: string) => boolean,
+): Query<undefined, boolean> {
+  return defineQuery({
+    id: "core.legacyNavigation",
+    run: (read) => {
+      const profile = read<{ gid: string; slug: string }>("SELECT gid, slug FROM profiles")[0];
+      return profile !== undefined && available?.(profile.gid, profile.slug) === true;
+    },
+  });
+}
+
 /**
  * The overview queries of a process, over the device's price cache (null: no cache, last trade
- * prices). Live: `useQuery` re-runs one when an apply touches a table it read. A price cache write
- * touches no table, so it does not re-run them yet (see the S06b follow-ups).
+ * prices). The optional process-local change source wakes cache consumers after committed cache
+ * writes, independently of the SQL tables each query actually reads.
  */
 export function overviewQueries(
-  env: { readonly prices: market.PriceCache | null },
+  env: { readonly prices: market.PriceCache | null; readonly changes?: ChangeSource },
   sources: OverviewSources = {},
 ): OverviewQueries {
   const prices = env.prices;
   return {
     netWorthSeries: defineQuery({
       id: "core.netWorthSeries",
+      ...(env.changes === undefined ? {} : { changes: env.changes }),
       run: (read, args: SeriesArgs) => netWorthSeries(read, args, { prices }, sources),
     }),
     summary: defineQuery({
       id: "core.summary",
-      run: (read, args: { readonly today: IsoDate }) =>
-        shellSummary(read, { today: args.today, prices }, sources),
+      ...(env.changes === undefined ? {} : { changes: env.changes }),
+      run: (read, args: { readonly today: IsoDate }): ShellSummarySnapshot => {
+        const value = shellSummary(read, { today: args.today, prices }, sources);
+        return {
+          ...value,
+          breakdown: { ...value.breakdown, byType: Object.fromEntries(value.breakdown.byType) },
+        };
+      },
     }),
     hero: defineQuery({
       id: "core.hero",
+      ...(env.changes === undefined ? {} : { changes: env.changes }),
       run: (read, args: { readonly today: IsoDate }) =>
         heroView(read, { today: args.today, prices }, sources),
     }),

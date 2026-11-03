@@ -39,11 +39,18 @@ export type QueryArgs =
   | readonly QueryArgs[]
   | { readonly [key: string]: QueryArgs | undefined };
 
+/** Process-local, read-only input outside the synchronized SQL view (for example the price cache).
+ * The owner emits only after commit. This callback never crosses the store channel. */
+export interface ChangeSource {
+  subscribe(listener: () => void): () => void;
+}
+
 export interface Query<A extends QueryArgs, R> {
   /** Stable, unique id (`<module>.<name>`): what the desktop renderer sends to the store process. */
   readonly id: string;
   readonly scope: QueryScope;
-  /** Read rows and decode them into domain values. Deterministic in (view, args). */
+  readonly changes?: ChangeSource;
+  /** Read rows and decode domain values, using the view, args and bound process-local inputs. */
   run(read: Read, args: A): R;
 }
 
@@ -51,9 +58,15 @@ export interface Query<A extends QueryArgs, R> {
 export function defineQuery<A extends QueryArgs, R>(query: {
   readonly id: string;
   readonly scope?: QueryScope;
+  readonly changes?: ChangeSource;
   run(read: Read, args: A): R;
 }): Query<A, R> {
-  return { id: query.id, scope: query.scope ?? "vault", run: query.run };
+  return {
+    id: query.id,
+    scope: query.scope ?? "vault",
+    run: query.run,
+    ...(query.changes === undefined ? {} : { changes: query.changes }),
+  };
 }
 
 /** The snapshot cache key of `query` with `args` (canonical JSON: key order never splits a key). */
@@ -85,7 +98,8 @@ export interface QueryWatcher<R> {
 /**
  * Run `query` now and again after every apply that touched a table it read; stops when the returned
  * function is called. The read set is taken from each run, so a query whose SQL depends on its data
- * follows the tables it actually reads.
+ * follows the tables it actually reads. Optional external inputs are watched independently and
+ * never represented as invented SQL dependencies.
  */
 export function watchQuery<A extends QueryArgs, R>(
   source: QuerySource,
@@ -118,9 +132,18 @@ export function watchQuery<A extends QueryArgs, R>(
     watcher.onValue(result.value);
   }
 
-  rerun();
-  return () => {
+  const stopChanges = query.changes?.subscribe(rerun);
+  const stop = () => {
+    if (stopped) return;
     stopped = true;
     unsubscribe();
+    stopChanges?.();
   };
+  try {
+    rerun();
+  } catch (error) {
+    stop();
+    throw error;
+  }
+  return stop;
 }

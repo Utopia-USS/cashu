@@ -25,6 +25,19 @@ const meta = {
 export default meta;
 
 export const Default: Story<LineChartProps> = {};
+export const ExactAmountSummary: Story<LineChartProps> = {
+  args: {
+    series: [
+      {
+        values: [9007199254740992, 9007199254740994],
+        accessibleSummary:
+          "Latest PLN 9,007,199,254,740,993.12; low PLN 9,007,199,254,740,992.01; high PLN 9,007,199,254,740,993.12",
+      },
+    ],
+    yFormat: false,
+    xLabels: [],
+  },
+};
 
 export const WithBenchmark: Story<LineChartProps> = {
   args: {

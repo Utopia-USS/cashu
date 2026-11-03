@@ -54,7 +54,7 @@ import { nativeRuntime } from "./mcp/native.js";
 import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
-import { SERVED_COMMANDS, SERVED_QUERIES } from "./registry.js";
+import { SERVED_COMMANDS, servedQueries } from "./registry.js";
 import {
   currentRuntime,
   type HostRuntime,
@@ -76,6 +76,9 @@ const CLEAN_EXIT = 0;
 type ExitReason = "stop" | "idle" | "signal" | "handover";
 
 export interface LocalHostOptions {
+  /** Actual device cache and its committed changes. Without a cache, overview uses last trades.
+   * Persistent production cache lifecycle remains TRANSITIONAL(S53b). */
+  readonly overview?: Parameters<typeof servedQueries>[0];
   readonly dataDir: string;
   readonly build?: string;
   /** How long an idle host (no session, nothing queued) stays before it exits 0. */
@@ -142,6 +145,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     options.home ?? homedir(),
   );
   const now = options.now ?? Date.now;
+  const queries = servedQueries(options.overview);
   const build = options.build ?? "dev";
   const lingerMs = options.lingerMs ?? DEFAULT_LINGER_MS;
   let dispatch: (session: HostSession) => void = (session) => session.close();
@@ -333,7 +337,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       case "ui":
         serveStoreChannel(session, {
           stores,
-          queries: SERVED_QUERIES,
+          queries,
           commands: SERVED_COMMANDS,
           log,
           ...(options.maxInFlight === undefined ? {} : { maxInFlight: options.maxInFlight }),

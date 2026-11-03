@@ -113,6 +113,9 @@ function toHandle(window: BrowserWindow): WindowHandle {
 }
 
 const desktop = new DesktopApp({
+  // TRANSITIONAL(S53b): real-vault identity is not enabled by selecting the native renderer.
+  rendererPath:
+    env.CASHU_DESKTOP_NATIVE_OVERVIEW === "1" ? "/assets/desktop/index.html" : undefined,
   lang,
   logFile,
   hasSingleInstanceLock: hasLock,

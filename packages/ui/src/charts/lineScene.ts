@@ -177,7 +177,9 @@ export function lineScene(p: LineChartProps, width: number, privacy: boolean): B
   const summary = chartSummary(
     p.label,
     series.map((s, k) =>
-      seriesSummary(s.name ?? s.endLabel ?? S.series(k + 1), s.values, sayFmt, hidden),
+      !hidden && s.accessibleSummary !== undefined
+        ? s.accessibleSummary
+        : seriesSummary(s.name ?? s.endLabel ?? S.series(k + 1), s.values, sayFmt, hidden),
     ),
     xLabels,
   );

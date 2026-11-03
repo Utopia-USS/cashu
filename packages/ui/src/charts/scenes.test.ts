@@ -26,6 +26,17 @@ const line: LineChartProps = {
 };
 
 describe("lineScene", () => {
+  it("uses exact caller summaries while geometry floats remain approximate, and masks them", () => {
+    const exact = "latest 9,007,199,254,740,993.12 PLN; low 9,007,199,254,740,992.01 PLN";
+    const props = {
+      ...line,
+      series: [{ values: [9007199254740992, 9007199254740994], accessibleSummary: exact }],
+    };
+    expect(lineScene(props, 640, false).summary).toContain(exact);
+    const hidden = lineScene(props, 640, true).summary;
+    expect(hidden).not.toContain("9,007");
+    expect(hidden).toContain("hidden");
+  });
   it("lays out like the legacy chart: padded extent, 5 grid lines with labels, x labels at the ends", () => {
     const { scene } = lineScene(line, 400, false);
     expect(scene.width).toBe(400);

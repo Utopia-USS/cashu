@@ -21,6 +21,7 @@ export default async function globalSetup() {
     throw new Error(`No build at ${main}: run \`pnpm --filter @cashu/desktop build\` first.`);
 
   const root = realpathSync(mkdtempSync(join(tmpdir(), "cashu-e2e-desktop-")));
+  process.env.E2E_ROOT = root;
   // legacy name: drop every pre-rename FINANSE_* variable, as frontend/e2e/global-setup.ts does
   for (const key of Object.keys(process.env))
     if (key.startsWith("FINANSE_")) delete process.env[key];
@@ -35,7 +36,7 @@ export default async function globalSetup() {
     CASHU_APP_BUNDLE: "none",
     CASHU_AUTO_DAILY: "0",
     PYTHON_KEYRING_BACKEND: "memory_keyring.MemoryKeyring",
-    PYTHONPATH: [join(REPO, "frontend", "e2e"), process.env.PYTHONPATH].filter(Boolean).join(":"),
+    PYTHONPATH: [join(REPO, "frontend", "e2e"), join(REPO, "src"), process.env.PYTHONPATH].filter(Boolean).join(":"),
   };
   Object.assign(process.env, isolation);
   delete process.env.CASHU_DATABASE_URL;
@@ -52,7 +53,7 @@ export default async function globalSetup() {
   }
   const seed = spawnSync(
     python,
-    [join(REPO, "scripts", "demo_data.py"), "--data-dir", isolation.CASHU_DATA_DIR],
+    [join(APP_DIR, "e2e", "seed-demo.py"), join(REPO, "scripts", "demo_data.py"), "--data-dir", isolation.CASHU_DATA_DIR],
     {
       env: process.env,
       encoding: "utf8",
@@ -61,6 +62,22 @@ export default async function globalSetup() {
   if (seed.status !== 0) throw new Error(`demo_data.py failed:\n${seed.stdout}\n${seed.stderr}`);
 
   process.env.E2E_ROOT = root;
+  process.env.E2E_NATIVE_DATA_DIR = join(root, "native-data");
+  // Genuine native demo stores from a private copy of this isolated synthetic seed. This is
+  // independent of the SPA smoke stores and cannot enable the production S53b vault lifecycle.
+  const nativeSeed = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      join(REPO, "tools", "node-ts", "resolveTs.ts"),
+      join(REPO, "apps", "host", "src", "testing", "seedOverviewDemo.ts"),
+    ],
+    { env: process.env, encoding: "utf8" },
+  );
+  if (nativeSeed.status !== 0) {
+    rmSync(root, { recursive: true, force: true });
+    throw new Error(`native demo genesis failed: ${nativeSeed.stderr}`);
+  }
   process.env.E2E_DATA_DIR = isolation.CASHU_DATA_DIR;
   process.env.E2E_APP_DIR = APP_DIR;
   process.env.E2E_REPO = REPO;

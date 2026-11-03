@@ -1,16 +1,43 @@
 // F12 instrument search (searchLogic.ts): rows of a result, the POST body of a hit, the type word, the free-text
 // row, keyboard highlight and the toast after an add.
 import assert from "node:assert/strict";
-import { test } from "node:test";
 import {
-  addedToast, defaultRow, enterTarget, highlightIndex, isAddable, looksLikeSymbol, moveHighlight, normQuery, optionLabel, searchView, typeWord, watchInputOf,
+  addedToast,
+  defaultRow,
+  enterTarget,
+  highlightIndex,
+  isAddable,
+  looksLikeSymbol,
+  moveHighlight,
+  normQuery,
+  optionLabel,
+  searchView,
+  typeWord,
+  watchInputOf,
 } from "@cashu/ui-logic/investments/v2/searchLogic";
+import { test } from "vitest";
 
 const hit = (o) => ({
-  key: "y:VWCE.DE", instrument_id: null, state: "new", symbol: "VWCE", yahoo_symbol: "VWCE.DE", name: "Vanguard FTSE All-World", exchange: "XETRA",
-  mic: "XETR", asset_class: "etf", currency: "EUR", isin: null, source: "yahoo", ...o,
+  key: "y:VWCE.DE",
+  instrument_id: null,
+  state: "new",
+  symbol: "VWCE",
+  yahoo_symbol: "VWCE.DE",
+  name: "Vanguard FTSE All-World",
+  exchange: "XETRA",
+  mic: "XETR",
+  asset_class: "etf",
+  currency: "EUR",
+  isin: null,
+  source: "yahoo",
+  ...o,
 });
-const res = (query, local, remote, remote_status = "ok") => ({ query, local, remote, remote_status });
+const res = (query, local, remote, remote_status = "ok") => ({
+  query,
+  local,
+  remote,
+  remote_status,
+});
 
 test("type words: ETF, akcja, fundusz, krypto; remote other is an index, local other says nothing", () => {
   assert.equal(typeWord({ asset_class: "etf", source: "yahoo" }), "ETF");
@@ -24,17 +51,51 @@ test("type words: ETF, akcja, fundusz, krypto; remote other is an index, local o
 test("POST body: saved by id (restore), new as a pick, no Yahoo symbol falls back to the id or the ISIN", () => {
   // remote hits outside the profile now carry instrument_id null (review fix): a pick; an OpenFIGI listing with a
   // Yahoo symbol for an ISIN query: a pick with its ISIN
-  assert.deepEqual(watchInputOf(hit({ source: "openfigi", yahoo_symbol: "VWRA.L", symbol: "VWRA", mic: "XLON", isin: "IE00BK5BQT80", key: "y:VWRA.L" })), {
-    pick: { yahoo_symbol: "VWRA.L", ticker: "VWRA", name: "Vanguard FTSE All-World", asset_class: "etf", mic: "XLON", isin: "IE00BK5BQT80" },
-  });
-  assert.deepEqual(watchInputOf(hit({ state: "saved", instrument_id: 7, key: "i:7", source: "local" })), { instrument_id: 7 });
+  assert.deepEqual(
+    watchInputOf(
+      hit({
+        source: "openfigi",
+        yahoo_symbol: "VWRA.L",
+        symbol: "VWRA",
+        mic: "XLON",
+        isin: "IE00BK5BQT80",
+        key: "y:VWRA.L",
+      }),
+    ),
+    {
+      pick: {
+        yahoo_symbol: "VWRA.L",
+        ticker: "VWRA",
+        name: "Vanguard FTSE All-World",
+        asset_class: "etf",
+        mic: "XLON",
+        isin: "IE00BK5BQT80",
+      },
+    },
+  );
+  assert.deepEqual(
+    watchInputOf(hit({ state: "saved", instrument_id: 7, key: "i:7", source: "local" })),
+    { instrument_id: 7 },
+  );
   assert.deepEqual(watchInputOf(hit({})), {
-    pick: { yahoo_symbol: "VWCE.DE", ticker: "VWCE", name: "Vanguard FTSE All-World", asset_class: "etf", mic: "XETR", isin: null },
+    pick: {
+      yahoo_symbol: "VWCE.DE",
+      ticker: "VWCE",
+      name: "Vanguard FTSE All-World",
+      asset_class: "etf",
+      mic: "XETR",
+      isin: null,
+    },
   });
   // a remote hit merged into a shared instrument that is not in the profile still goes as a pick (no network on the server)
   assert.ok("pick" in watchInputOf(hit({ instrument_id: 3 })));
-  assert.deepEqual(watchInputOf(hit({ yahoo_symbol: null, instrument_id: 3 })), { instrument_id: 3 });
-  assert.deepEqual(watchInputOf(hit({ yahoo_symbol: null, isin: "IE00BK5BQT80", source: "openfigi" })), { symbol_or_isin: "IE00BK5BQT80" });
+  assert.deepEqual(watchInputOf(hit({ yahoo_symbol: null, instrument_id: 3 })), {
+    instrument_id: 3,
+  });
+  assert.deepEqual(
+    watchInputOf(hit({ yahoo_symbol: null, isin: "IE00BK5BQT80", source: "openfigi" })),
+    { symbol_or_isin: "IE00BK5BQT80" },
+  );
   assert.equal(isAddable({ state: "new" }), true);
   assert.equal(isAddable({ state: "saved" }), true);
   assert.equal(isAddable({ state: "watched" }), false);
@@ -45,12 +106,18 @@ test("rows: local first, a key once; the free row when remote is unavailable or 
   const a = hit({ key: "i:1", source: "local", instrument_id: 1, state: "watched" });
   const b = hit({});
   let v = searchView(res("vw", [a], [b, a]), "vw", false);
-  assert.deepEqual(v.rows.map((r) => r.key), ["i:1", "y:VWCE.DE"]);
+  assert.deepEqual(
+    v.rows.map((r) => r.key),
+    ["i:1", "y:VWCE.DE"],
+  );
   assert.equal(v.unavailable, false);
   assert.equal(v.empty, false);
   v = searchView(res("vwce", [a], [], "unavailable"), "vwce", false);
   assert.equal(v.unavailable, true);
-  assert.deepEqual(v.rows.map((r) => r.kind), ["hit", "free"]);
+  assert.deepEqual(
+    v.rows.map((r) => r.kind),
+    ["hit", "free"],
+  );
   // pending: no unavailable line, no free row yet
   v = searchView(res("vwce", [], [], "unavailable"), "vwce", true);
   assert.equal(v.unavailable, false);
@@ -65,9 +132,15 @@ test("rows: local first, a key once; the free row when remote is unavailable or 
 });
 
 test("symbol-like text and the keyboard highlight", () => {
-  for (const t of ["VWCE", "vwce.de", "BTC-USD", "^GSPC", "IE00BK5BQT80"]) assert.equal(looksLikeSymbol(t), true, t);
-  for (const t of ["all world", "Vanguard FTSE All-World UCITS"]) assert.equal(looksLikeSymbol(t), false, t);
-  const rows = searchView(res("vw", [hit({ key: "i:1", state: "held", instrument_id: 1 })], [hit({})]), "vw", false).rows;
+  for (const t of ["VWCE", "vwce.de", "BTC-USD", "^GSPC", "IE00BK5BQT80"])
+    assert.equal(looksLikeSymbol(t), true, t);
+  for (const t of ["all world", "Vanguard FTSE All-World UCITS"])
+    assert.equal(looksLikeSymbol(t), false, t);
+  const rows = searchView(
+    res("vw", [hit({ key: "i:1", state: "held", instrument_id: 1 })], [hit({})]),
+    "vw",
+    false,
+  ).rows;
   assert.equal(defaultRow(rows), 1);
   assert.equal(defaultRow(rows.slice(0, 1)), null);
   assert.equal(moveHighlight(null, 3, 1), 0);
@@ -81,9 +154,18 @@ test("toast: Obserwujesz / Przywrócono, a coded warning appended", () => {
   const d = (w) => `PL:${w.code}`;
   assert.equal(addedToast({}, "Orlen", d), "Obserwujesz Orlen");
   assert.equal(addedToast({ restored: true }, "Orlen", d), "Przywrócono Orlen");
-  assert.equal(addedToast({ warning_codes: [{ code: "watchlist.unverified_price_symbol", params: {}, message: "x" }] }, "VWCE", d),
-    "Obserwujesz VWCE · PL:watchlist.unverified_price_symbol");
-  assert.match(addedToast({ created_instrument: true, warnings: ["guessed"] }, "VWCE", d), /^Obserwujesz VWCE · symbol ceny zgadnięty/);
+  assert.equal(
+    addedToast(
+      { warning_codes: [{ code: "watchlist.unverified_price_symbol", params: {}, message: "x" }] },
+      "VWCE",
+      d,
+    ),
+    "Obserwujesz VWCE · PL:watchlist.unverified_price_symbol",
+  );
+  assert.match(
+    addedToast({ created_instrument: true, warnings: ["guessed"] }, "VWCE", d),
+    /^Obserwujesz VWCE · symbol ceny zgadnięty/,
+  );
 });
 
 test("stale query (review MED-2): another query's rows are stale, inert for Enter, no free row or status line", () => {
@@ -92,7 +174,10 @@ test("stale query (review MED-2): another query's rows are stale, inert for Ente
   // the field says PKO, the shown answer is PK's: stale, Enter waits for the fresh answer
   let v = searchView(res("PK", [], [pkn]), "PKO", false);
   assert.equal(v.stale, true);
-  assert.deepEqual(v.rows.map((r) => r.key), ["y:PKN.WA"]);
+  assert.deepEqual(
+    v.rows.map((r) => r.key),
+    ["y:PKN.WA"],
+  );
   assert.equal(v.empty, false);
   assert.equal(v.unavailable, false);
   assert.equal(enterTarget(v, false, null), "wait");
@@ -106,10 +191,18 @@ test("stale query (review MED-2): another query's rows are stale, inert for Ente
   assert.equal(v.stale, false);
   assert.equal(enterTarget(v, true, null), 0);
   // a fresh answer without an addable row: Enter does nothing
-  v = searchView(res("pk", [hit({ key: "i:1", state: "watched", instrument_id: 1 })], []), "pk", false);
+  v = searchView(
+    res("pk", [hit({ key: "i:1", state: "watched", instrument_id: 1 })], []),
+    "pk",
+    false,
+  );
   assert.equal(enterTarget(v, true, null), null);
   // the highlighted row wins over the default
-  v = searchView(res("vw", [hit({ key: "i:1", state: "held", instrument_id: 1 })], [hit({})]), "vw", false);
+  v = searchView(
+    res("vw", [hit({ key: "i:1", state: "held", instrument_id: 1 })], [hit({})]),
+    "vw",
+    false,
+  );
   assert.equal(enterTarget(v, true, 0), 0);
   assert.equal(enterTarget(v, true, null), 1);
   // no answer yet for the text (debounce): wait
@@ -117,8 +210,20 @@ test("stale query (review MED-2): another query's rows are stale, inert for Ente
 });
 
 test("highlight by key (review LOW-10): kept when the remote answer replaces the local rows, else the first row", () => {
-  const local = searchView(res("vw", [hit({ key: "i:1", state: "saved", instrument_id: 1, source: "local" })], []), "vw", true).rows;
-  const full = searchView(res("vw", [hit({ key: "i:1", state: "saved", instrument_id: 1, source: "local" })], [hit({ key: "y:A" }), hit({ key: "y:B" })]), "vw", false).rows;
+  const local = searchView(
+    res("vw", [hit({ key: "i:1", state: "saved", instrument_id: 1, source: "local" })], []),
+    "vw",
+    true,
+  ).rows;
+  const full = searchView(
+    res(
+      "vw",
+      [hit({ key: "i:1", state: "saved", instrument_id: 1, source: "local" })],
+      [hit({ key: "y:A" }), hit({ key: "y:B" })],
+    ),
+    "vw",
+    false,
+  ).rows;
   assert.equal(highlightIndex(local, "i:1"), 0);
   assert.equal(highlightIndex(full, "y:B"), 2);
   assert.equal(highlightIndex(full, "i:1"), 0);
@@ -129,7 +234,16 @@ test("highlight by key (review LOW-10): kept when the remote answer replaces the
 
 test("option names carry the action (an option's children are presentational)", () => {
   assert.equal(optionLabel(hit({}), "XETRA"), "Obserwuj VWCE, Vanguard FTSE All-World, XETRA, ETF");
-  assert.equal(optionLabel(hit({ state: "saved" }), "Xetra"), "Obserwuj VWCE, Vanguard FTSE All-World, Xetra, ETF, zapisany");
-  assert.equal(optionLabel(hit({ state: "watched" }), null), "Obserwujesz VWCE, Vanguard FTSE All-World, ETF");
-  assert.equal(optionLabel(hit({ state: "held", source: "local", asset_class: "other" }), "GPW"), "VWCE, Vanguard FTSE All-World, GPW, w portfelu");
+  assert.equal(
+    optionLabel(hit({ state: "saved" }), "Xetra"),
+    "Obserwuj VWCE, Vanguard FTSE All-World, Xetra, ETF, zapisany",
+  );
+  assert.equal(
+    optionLabel(hit({ state: "watched" }), null),
+    "Obserwujesz VWCE, Vanguard FTSE All-World, ETF",
+  );
+  assert.equal(
+    optionLabel(hit({ state: "held", source: "local", asset_class: "other" }), "GPW"),
+    "VWCE, Vanguard FTSE All-World, GPW, w portfelu",
+  );
 });

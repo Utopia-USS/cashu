@@ -13,6 +13,7 @@ export const S = catalog({
   // Shell
   modulesNav: { pl: "Moduły", en: "Modules" },
   overview: { pl: "Przegląd", en: "Overview" },
+  nativeOverview: { pl: "Lokalny przegląd", en: "Local overview" },
   notConfiguredTitle: { pl: "Nieskonfigurowany", en: "Not set up" },
   notConfigured: { pl: "nieskonfigurowany", en: "not set up" },
   wizardCancelled: { pl: "Przerwano tworzenie profilu", en: "Profile creation cancelled" },

@@ -210,6 +210,9 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
               onSettings={() => go({ kind: "settings" })} />
           </div>
           <div className="hdr-right">
+            {/* TRANSITIONAL(S55z): only the explicit native renderer opt-in carries this marker. */}
+            {new URLSearchParams(location.search).get("native") === "1" &&
+              <a className="btn" href={`/assets/desktop/index.html#/${encodeURIComponent(profile.slug)}/overview`}>{S.nativeOverview}</a>}
             {enabled.filter((m) => m.setup_state !== "empty").map((m) => {
               const Tag = moduleDef(m.id, modules).HeaderTag;
               return Tag ? <Tag key={`${profile.slug}:${m.id}:${nonce}`} slug={profile.slug} go={go} /> : null;
