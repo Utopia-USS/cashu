@@ -1,0 +1,731 @@
+{
+  "renders": [
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "plain text"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: plain text\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: plain text\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: plain text\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: plain text\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: plain text\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "a: b"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'a: b'\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'a: b'\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'a: b'\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'a: b'\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'a: b'\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "yes"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'yes'\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'yes'\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'yes'\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'yes'\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'yes'\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "two\nlines"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'two\n\n      lines'\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'two\n\n        lines'\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'two\n\n        lines'\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'two\n\n        lines'\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'two\n\n      lines'\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "CR\rvalue"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: \"CR\\rvalue\"\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"CR\\rvalue\"\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"CR\\rvalue\"\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"CR\\rvalue\"\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: \"CR\\rvalue\"\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "tab\tvalue"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: \"tab\\tvalue\"\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"tab\\tvalue\"\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"tab\\tvalue\"\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"tab\\tvalue\"\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: \"tab\\tvalue\"\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "NEL\u0085value"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'NEL\n      value'\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'NEL\n        value'\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'NEL\n        value'\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'NEL\n        value'\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'NEL\u0085      value'\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "LINE\u2028value"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'LINE\n      value'\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'LINE\n        value'\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'LINE\n        value'\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'LINE\n        value'\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'LINE\u2028      value'\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "PARA\u2029value"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'PARA\n      value'\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'PARA\n        value'\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'PARA\n        value'\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'PARA\n        value'\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'PARA\u2029      value'\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "delete\u007fvalue"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: \"delete\\x7Fvalue\"\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"delete\\x7Fvalue\"\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"delete\\x7Fvalue\"\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: \"delete\\x7Fvalue\"\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: \"delete\\x7Fvalue\"\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "apostrophe's text"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: apostrophe's text\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: apostrophe's text\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: apostrophe's text\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: apostrophe's text\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: apostrophe's text\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": ""
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: ''\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: ''\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: ''\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: ''\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: ''\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "trailing\n"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'trailing\n\n      '\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'trailing\n\n        '\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'trailing\n\n        '\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'trailing\n\n        '\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'trailing\n\n      '\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "leading\n\nvalue"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'leading\n\n\n      value'\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'leading\n\n\n        value'\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'leading\n\n\n        value'\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: 'leading\n\n\n        value'\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: 'leading\n\n\n      value'\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n        portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n        portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n        portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and\n      portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight\n      > 0.15 and portfolio.cash_weight > 0.15 and portfolio.cash_weight > 0.15\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "new_rule",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.1",
+          "message": "synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message"
+        }
+      },
+      "rendered": "- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message\n        synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message\n        synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: new_rule\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.1\n      message: synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message\n        synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message synthetic message\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: new_rule\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.1\n    message: synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic\n      message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic\n      message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic\n      message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic\n      message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic\n      message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic\n      message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic\n      message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message synthetic\n      message synthetic message synthetic message synthetic message synthetic message\n      synthetic message synthetic message synthetic message synthetic message\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "nested",
+        "kind": "custom",
+        "params": {
+          "scope": "instrument",
+          "when": "weight > 0.15",
+          "filters": {
+            "tags": ["alpha", "beta"],
+            "kinds": ["equity", "etf"]
+          },
+          "items": [
+            {
+              "name": "first",
+              "threshold": 0.15
+            },
+            {
+              "name": "second",
+              "threshold": 0.25
+            }
+          ]
+        }
+      },
+      "rendered": "- id: nested\n  kind: custom\n  params:\n    scope: instrument\n    when: weight > 0.15\n    filters:\n      tags:\n      - alpha\n      - beta\n      kinds:\n      - equity\n      - etf\n    items:\n    - name: first\n      threshold: 0.15\n    - name: second\n      threshold: 0.25\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: nested\n    kind: custom\n    params:\n      scope: instrument\n      when: weight > 0.15\n      filters:\n        tags:\n        - alpha\n        - beta\n        kinds:\n        - equity\n        - etf\n      items:\n      - name: first\n        threshold: 0.15\n      - name: second\n        threshold: 0.25\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: nested\n    kind: custom\n    params:\n      scope: instrument\n      when: weight > 0.15\n      filters:\n        tags:\n        - alpha\n        - beta\n        kinds:\n        - equity\n        - etf\n      items:\n      - name: first\n        threshold: 0.15\n      - name: second\n        threshold: 0.25\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: nested\n    kind: custom\n    params:\n      scope: instrument\n      when: weight > 0.15\n      filters:\n        tags:\n        - alpha\n        - beta\n        kinds:\n        - equity\n        - etf\n      items:\n      - name: first\n        threshold: 0.15\n      - name: second\n        threshold: 0.25\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: nested\n  kind: custom\n  params:\n    scope: instrument\n    when: weight > 0.15\n    filters:\n      tags:\n      - alpha\n      - beta\n      kinds:\n      - equity\n      - etf\n    items:\n    - name: first\n      threshold: 0.15\n    - name: second\n      threshold: 0.25\n"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "id": "long_when",
+        "kind": "custom",
+        "params": {
+          "scope": "portfolio",
+          "when": "cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15"
+        }
+      },
+      "rendered": "- id: long_when\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n",
+      "merges": [
+        {
+          "yaml": "version: 1\n",
+          "expected": "version: 1\nrules:\n  - id: long_when\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n        > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+          "expected": "version: 1\nrules:\n  - id: long_when\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n        > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n# footer\n"
+        },
+        {
+          "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+          "expected": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n  - id: long_when\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n        > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n\nother: null\n"
+        },
+        {
+          "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+          "expected": "version: 1\nrules:\n- id: old\n  kind: cash_level\n- id: long_when\n  kind: custom\n  params:\n    scope: portfolio\n    when: cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n      and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n      and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n      and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n      and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n      and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n      and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n      and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n      > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n"
+        }
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "kind": " cash_level ",
+      "params": {
+        "max_weight": 0.2
+      },
+      "ids": [],
+      "expected": {
+        "ok": true,
+        "entry": {
+          "id": "agent_cash_level_1",
+          "kind": "cash_level",
+          "params": {
+            "max_weight": 0.2
+          }
+        },
+        "expression": null
+      }
+    },
+    {
+      "kind": "cash_level",
+      "params": {
+        "id": "agent_cash_level_1",
+        "max_weight": 0.2
+      },
+      "ids": ["agent_cash_level_1"],
+      "expected": {
+        "ok": false,
+        "message": "a rule with id agent_cash_level_1 already exists; choose another id"
+      }
+    },
+    {
+      "kind": "custom",
+      "params": {
+        "when": true,
+        "scope": null,
+        "id": []
+      },
+      "ids": [],
+      "expected": {
+        "ok": true,
+        "entry": {
+          "id": "agent_custom_1",
+          "kind": "custom",
+          "params": {
+            "scope": null,
+            "when": "True"
+          }
+        },
+        "expression": "True"
+      }
+    },
+    {
+      "kind": "cash_weight > 0",
+      "params": {
+        "scope": "portfolio",
+        "severity": "warning",
+        "cooldown_days": 7
+      },
+      "ids": [],
+      "expected": {
+        "ok": true,
+        "entry": {
+          "id": "agent_custom_1",
+          "kind": "custom",
+          "severity": "warning",
+          "cooldown_days": 7,
+          "params": {
+            "scope": "portfolio",
+            "when": "cash_weight > 0"
+          }
+        },
+        "expression": "cash_weight > 0"
+      }
+    },
+    {
+      "kind": "\u0085cash_level\u0085",
+      "params": {
+        "id": "\u0085synthetic\u0085"
+      },
+      "ids": [],
+      "expected": {
+        "ok": true,
+        "entry": {
+          "id": "synthetic",
+          "kind": "cash_level"
+        },
+        "expression": null
+      }
+    }
+  ],
+  "validations": [
+    {
+      "before": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules: []\n",
+      "after": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules: []\n",
+      "own": null,
+      "expected": {
+        "ok": true,
+        "warnings": []
+      }
+    },
+    {
+      "before": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules:\n  - id: old_bad\n    kind: not_a_kind\n",
+      "after": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules:\n  - id: old_bad\n    kind: not_a_kind\n",
+      "own": null,
+      "expected": {
+        "ok": true,
+        "warnings": [
+          {
+            "code": "inactive_rule",
+            "rule_id": "old_bad",
+            "message": "rule old_bad was already inactive before this change; fix it in strategy.yaml"
+          }
+        ]
+      }
+    },
+    {
+      "before": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules: []\n",
+      "after": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules:\n  - id: old_bad\n    kind: not_a_kind\n",
+      "own": null,
+      "expected": {
+        "ok": false,
+        "code": "rules_made_inactive",
+        "message": "the change makes rule(s) inactive: old_bad"
+      }
+    },
+    {
+      "before": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules: []\n",
+      "after": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules:\n  - id: old_bad\n    kind: not_a_kind\n",
+      "own": "old_bad",
+      "expected": {
+        "ok": false,
+        "code": "rule_invalid",
+        "message": "the proposed rule old_bad does not validate: error rules[0].kind (line 7, column 11): Unknown rule kind \"not_a_kind\"; known: allocation_drift, position_concentration, loss_from_cost, gain_from_cost, drawdown_from_high, cash_level, contribution_gap, tagged_weight, custom"
+      }
+    },
+    {
+      "before": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules: []\n",
+      "after": "version: 99\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules: []\n",
+      "own": null,
+      "expected": {
+        "ok": false,
+        "code": "invalid_strategy",
+        "message": "the resulting strategy does not validate: error version (line 1, column 10): Unsupported version 99 (supported: 1)"
+      }
+    },
+    {
+      "before": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules: []\n",
+      "after": "version: 1\nbase_currency: PLN\nbuckets: [{id: cash, match: {asset_class: cash}}]\nallocation: {targets: {cash: 1.0}}\nrules:\n  - id: long_when\n    kind: custom\n    params:\n      scope: portfolio\n      when: cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight\n        > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15 and cash_weight > 0.15\n",
+      "own": "long_when",
+      "expected": {
+        "ok": false,
+        "code": "rule_invalid",
+        "message": "the proposed rule long_when does not validate: error rules[0].params.when (line 10, column 13): Expression is too long (1260 characters, max 1000) (column 1 of the expression)"
+      }
+    }
+  ],
+  "ids": [
+    {
+      "yaml": "version: 1\n",
+      "expected": []
+    },
+    {
+      "yaml": "version: 1\nrules: [] # synthetic\n# footer\n",
+      "expected": []
+    },
+    {
+      "yaml": "version: 1\nrules:\n  # retain\n  - id: old\n    kind: cash_level\n\nother: null\n",
+      "expected": ["old"]
+    },
+    {
+      "yaml": "version: 1\nrules: [{id: old, kind: cash_level}]\n",
+      "expected": ["old"]
+    }
+  ]
+}

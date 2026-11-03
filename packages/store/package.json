@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./core": "./src/core/index.ts",
     "./budget/queries": "./src/budget/mcp-queries.ts",
+    "./budget/proposals": "./src/budget/import-proposals.ts",
     "./loans/queries": "./src/loans/mcp-queries.ts",
     "./investments/queries": "./src/investments/queries/index.ts",
     "./investments/views": "./src/investments/views/index.ts",

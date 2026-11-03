@@ -60,6 +60,13 @@ export interface CommandContext {
   readonly lease: Lease;
   /** Queue one event of the batch; returns its eid (usable as a later event's `cause`). */
   emit(type: string, gid: string, data: Record<string, unknown>, opts?: EmitOptions): string;
+  /** Reserve eid and order now; resolve data once after a successful run, before validation/append. */
+  emitDeferred(
+    type: string,
+    gid: string,
+    resolveData: () => Record<string, unknown>,
+    opts?: EmitOptions,
+  ): string;
 }
 
 /** An expected failure: a value-free reason code (never amounts, names or ids). */
@@ -123,12 +130,31 @@ export function runCommand<I, R>(
     .at(0)?.hwm;
   if (hwm) env.hlc.receive(hwm.slice(0, HLC_LEN));
 
-  const pending: { type: string; gid: string; data: Record<string, unknown>; cause?: string }[] =
-    [];
+  type Pending = {
+    type: string;
+    gid: string;
+    payload:
+      | { kind: "static"; data: Record<string, unknown> }
+      | { kind: "deferred"; resolveData: () => Record<string, unknown> };
+    cause?: string;
+  };
+  const pending: Pending[] = [];
   const eids: string[] = [];
+  let emitting = true;
+  let lateEmissionAttempted = false;
   const random = env.random;
   const ulid = () => mintUlid(env.clock.now(), random);
   const iso = () => new Date(env.clock.now()).toISOString();
+  const queue = (item: Pending): string => {
+    if (!emitting) {
+      lateEmissionAttempted = true;
+      throw new InvalidEmitError(`${cmd.id}: cannot emit while resolving deferred data`);
+    }
+    const eid = ulid();
+    eids.push(eid);
+    pending.push(item);
+    return eid;
+  };
   const ctx: CommandContext = {
     vault: store.vault,
     read: (sql, ...params) => store.read(sql, ...params),
@@ -138,20 +164,45 @@ export function runCommand<I, R>(
     today: () => iso().slice(0, 10),
     lease: env.lease,
     emit(type, gid, data, opts) {
-      const eid = ulid();
-      eids.push(eid);
-      pending.push({
+      return queue({
         type,
         gid,
-        data,
+        payload: { kind: "static", data },
         ...(opts?.cause === undefined ? {} : { cause: opts.cause }),
       });
-      return eid;
+    },
+    emitDeferred(type, gid, resolveData, opts) {
+      return queue({
+        type,
+        gid,
+        payload: { kind: "deferred", resolveData },
+        ...(opts?.cause === undefined ? {} : { cause: opts.cause }),
+      });
     },
   };
-  const result = cmd.run(ctx, parsed.data);
+  const result = (() => {
+    try {
+      return cmd.run(ctx, parsed.data);
+    } finally {
+      emitting = false;
+    }
+  })();
   if (!result.ok) return result;
-  const events: Envelope[] = pending.map((p, i) => {
+  const resolved = pending.map((p) => {
+    const data = p.payload.kind === "deferred" ? p.payload.resolveData() : p.payload.data;
+    if (lateEmissionAttempted) {
+      throw new InvalidEmitError(`${cmd.id}: a deferred resolver tried to emit`);
+    }
+    if (p.payload.kind === "deferred") {
+      const prototype =
+        data !== null && typeof data === "object" ? Object.getPrototypeOf(data) : undefined;
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new InvalidEmitError(`${cmd.id}: deferred data must be a plain record`);
+      }
+    }
+    return { ...p, data };
+  });
+  const events: Envelope[] = resolved.map((p, i) => {
     const hlc = env.hlc.tick();
     const envelope = {
       eid: eids[i] as string,
