@@ -4,16 +4,18 @@
 // The chain starts at the creator's recovery-signed pin (`prev = null`; nothing else may root it) and
 // follows the valid children of the current head. When several children are valid, an owner pin wins
 // over the others; among sibling pins, the one the leader in charge acknowledged first in its own
-// stream (S1); otherwise the first by (hlc, eid) (only the deterministic tie-break: the chain follows
+// stream (S1, including acknowledgement through a descendant that kept the leader in charge);
+// otherwise the first by (hlc, eid) (only the deterministic tie-break: the chain follows
 // causality, so an event stamped with a wrong clock never falls out of it).
 //
 // Modes (S29c R4, lead decision D3). The owner's `lease.pinned` sets the mode:
 // - `pinned` (the default from the creator's pin on): exactly one designated fetch leader. Claims and
 //   renewals are ignored (`pinned_mode`). A re-pin to another device leaves `pendingFrom` = the leader
 //   that was allowed to act before it, unless `force`, unless that leader wrote the pin itself, and
-//   unless it is no longer trusted; the new leader may act only after `pendingFrom` acknowledged with
-//   a `lease.released` on the chain (the hand-over ack). Rule 6 needs no propagation bound here: the
-//   old leader acknowledges only after it saw the pin, and from then on it never acts.
+//   the new leader may act only after `pendingFrom` acknowledged with a `lease.released` on the chain
+//   (the hand-over ack). Revocation alone never clears pending; if the old leader cannot acknowledge,
+//   the owner must confirm force. Rule 6 needs no propagation bound here: the old leader acknowledges
+//   only after it saw the pin, and from then on it never acts.
 // - `auto` (owner opt-in): claims, renewals and releases as before (terms, settle period); the belief
 //   uses it only over a transport declaring bounded propagation. The leader in charge before the
 //   opt-in acknowledges first, like a re-pin.
@@ -82,6 +84,8 @@ export type LeaseIgnoredReason =
   | "not_holder"
   /** A device-signed pin without the owner's typed confirmation. */
   | "unconfirmed"
+  /** A non-force exit from auto could race an unseen settled claim. */
+  | "force_required"
   /** A `prev = null` event other than a recovery-signed pin (only the creator's pin roots the chain). */
   | "not_root"
   /** A claim or renewal while the owner pinned a leader. */
@@ -97,8 +101,8 @@ export interface LeaseView {
   /** Mode pinned: the designated leader (null: none yet). Mode auto: null. */
   readonly pinned: string | null;
   /**
-   * The leader allowed to act before the last pin, which must acknowledge (`lease.released`) before
-   * anyone else acts; null when none (forced, self-written, untrusted, or acknowledged).
+   * The recorded predecessor before the last pin, which must acknowledge (`lease.released`) before
+   * anyone else acts; null when none (forced, self-written, or acknowledged). Revocation is not ACK.
    */
   readonly pendingFrom: string | null;
   /** Mode pinned: the pinned leader. Mode auto: the device of the current term. */
@@ -314,26 +318,27 @@ export function foldLease(
   const onChain = new Set<string>();
   const recoveryPins: string[] = [];
 
-  /** Who could still act as leader right now (the one a new pin must hear from). */
+  /** The predecessor a non-force pin must hear from, even if it was since revoked. */
   const activeLeader = (): string | null => {
-    if (trusted(pendingFrom)) return pendingFrom;
-    if (mode === "pinned") return trusted(pinned) ? pinned : null;
-    return !released && trusted(holder) ? holder : null;
+    if (pendingFrom !== null) return pendingFrom;
+    if (mode === "pinned") return pinned;
+    return !released ? holder : null;
   };
   /**
    * The leader in charge at the current head as the chain recorded it, NOT filtered by today's
    * trust (S1b): sibling pins are judged by its acknowledgements, which verify as of their own stream
    * position (`statementKeys` through the gate: a revoked or retired device's pre-cut statements
-   * still count), so a later revocation never reorders the past. Current trust only decides whether
-   * a NEW pin still needs an acknowledgement (`activeLeader`).
+   * still count), so a later revocation never reorders the past. Revocation does not acknowledge
+   * a hand-over; an owner-confirmed force pin is needed if the predecessor cannot acknowledge.
    */
   const recordedLeader = (): string | null =>
     pendingFrom ?? (mode === "pinned" ? pinned : released ? null : holder);
   /** Why `d` cannot extend the chain now, or undefined. */
   const refusal = (d: DecodedLease): LeaseIgnoredReason | undefined => {
-    const pending = trusted(pendingFrom);
+    const pending = pendingFrom !== null;
     switch (d.kind) {
       case "pinned":
+        if (mode === "auto" && d.mode === "pinned" && !d.force) return "force_required";
         return undefined;
       case "claimed":
       case "renewed":
@@ -343,7 +348,7 @@ export function foldLease(
           ? undefined
           : "not_holder";
       case "released":
-        if (pending) return d.device === pendingFrom ? undefined : "not_holder";
+        if (pendingFrom !== null) return d.device === pendingFrom ? undefined : "not_holder";
         return mode === "auto" && d.device === holder && !released ? undefined : "not_holder";
       case "fetched": {
         if (pending) return "not_holder";
@@ -355,19 +360,99 @@ export function foldLease(
 
   /**
    * S1: among sibling pins (same `prev`), the one the leader in charge (`recordedLeader`)
-   * acknowledged FIRST in its own stream wins (writing a pin itself counts as acknowledging it), whatever their timestamps. So once
-   * the old leader handed over, a sibling stamped earlier (an offline tablet's pin arriving late, or
-   * a backdating device) can never make it hand over a second time; its later acks are stale.
+   * acknowledged FIRST in its own stream wins (writing a pin itself counts as acknowledging it),
+   * whatever their timestamps. A descendant pin can carry the same pending hand-over, so an ACK
+   * beneath that descendant also locks the ancestor. Once the old leader handed over, a sibling
+   * stamped earlier (an offline tablet's pin arriving late, or a backdating device) cannot make
+   * it hand over a second time; its later acks are stale.
    */
+  const ackMemo = new Map<string, SegmentCursor | undefined>();
+  const earliest = (a: SegmentCursor | undefined, b: SegmentCursor | undefined) =>
+    a && b ? (comparePositions(a, b) <= 0 ? a : b) : (a ?? b);
+  type AckState = {
+    readonly node: Candidate;
+    readonly pending: boolean;
+    readonly mode: "pinned" | "auto";
+  };
+  const ackKey = (leader: string, state: AckState) =>
+    `${leader}|${state.node.event.eid}|${Number(state.pending)}|${state.mode}`;
+  const ackEdges = (leader: string, state: AckState) => {
+    const out: { position?: SegmentCursor; next?: AckState }[] = [];
+    for (const childEid of children.get(state.node.event.eid) ?? []) {
+      const child = resolve(childEid);
+      if (!child || child.d.prev !== state.node.event.eid) continue;
+      if (child.d.kind === "released") {
+        if ((state.pending || state.mode === "auto") && child.event.writer === leader)
+          out.push({ position: child.event.position });
+      } else if (child.d.kind === "fetched") {
+        if (!state.pending && child.event.writer === leader)
+          out.push({ next: { node: child, pending: false, mode: state.mode } });
+      } else if (child.d.kind === "pinned") {
+        if (state.mode === "auto" && child.d.mode === "pinned" && !child.d.force) continue;
+        if (child.event.writer === leader) out.push({ position: child.event.position });
+        else if (!child.d.force)
+          out.push({
+            next: {
+              node: child,
+              pending: child.d.mode !== "pinned" || child.d.leader !== leader,
+              mode: child.d.mode,
+            },
+          });
+      }
+    }
+    return out;
+  };
+  // A descendant release also acknowledges its ancestor while the old leader remains pending.
+  // Evaluate each (leader, event, pending) state once, bottom-up and without recursive call depth.
+  const descendantAck = (leader: string, start: AckState): SegmentCursor | undefined => {
+    const stack: { state: AckState; expanded: boolean }[] = [{ state: start, expanded: false }];
+    const active = new Set<string>();
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1] as { state: AckState; expanded: boolean };
+      const key = ackKey(leader, frame.state);
+      if (ackMemo.has(key)) {
+        stack.pop();
+        continue;
+      }
+      if (!frame.expanded) {
+        frame.expanded = true;
+        active.add(key);
+        for (const edge of ackEdges(leader, frame.state)) {
+          if (!edge.next) continue;
+          const childKey = ackKey(leader, edge.next);
+          if (!ackMemo.has(childKey) && !active.has(childKey))
+            stack.push({ state: edge.next, expanded: false });
+        }
+      } else {
+        let best: SegmentCursor | undefined;
+        for (const edge of ackEdges(leader, frame.state)) {
+          best = earliest(
+            best,
+            edge.position ?? (edge.next && ackMemo.get(ackKey(leader, edge.next))),
+          );
+        }
+        ackMemo.set(key, best);
+        active.delete(key);
+        stack.pop();
+      }
+    }
+    return ackMemo.get(ackKey(leader, start));
+  };
   const ackedBy = (leader: string | null, eid: string): SegmentCursor | undefined => {
     const c = leader === null ? undefined : resolve(eid);
-    if (c?.d.kind !== "pinned") return undefined;
-    const acks = (children.get(eid) ?? [])
-      .map(resolve)
-      .filter((r): r is Candidate => r?.d.kind === "released" && r.event.writer === leader)
-      .map((r) => r.event.position);
-    if (c.event.writer === leader) acks.push(c.event.position);
-    return acks.sort(comparePositions)[0];
+    if (!c || leader === null || c.d.prev !== head || refusal(c.d)) return undefined;
+    if (c.d.kind === "released" || c.d.kind === "pinned") {
+      if (c.event.writer === leader) return c.event.position;
+    }
+    if (c.d.kind === "fetched" && c.event.writer === leader)
+      return descendantAck(leader, { node: c, pending: false, mode });
+    if (c.d.kind === "pinned" && !c.d.force)
+      return descendantAck(leader, {
+        node: c,
+        pending: c.d.mode !== "pinned" || c.d.leader !== leader,
+        mode: c.d.mode,
+      });
+    return undefined;
   };
   const siblingOrder = (leader: string | null) => {
     const at = new Map<string, SegmentCursor | undefined>();
@@ -427,7 +512,7 @@ export function foldLease(
       until = d.until;
       term = [...term, { eid: event.eid, kind: "renewed", at: d.at, until: d.until }];
     } else if (d.kind === "released") {
-      if (trusted(pendingFrom) && d.device === pendingFrom) pendingFrom = null;
+      if (pendingFrom !== null && d.device === pendingFrom) pendingFrom = null;
       if (mode === "auto" && d.device === holder) released = true;
     } else {
       lastFetch = { eid: event.eid, at: d.at };
@@ -456,7 +541,7 @@ export function foldLease(
     head,
     mode,
     pinned,
-    pendingFrom: trusted(pendingFrom) ? pendingFrom : null,
+    pendingFrom,
     holder,
     released,
     free,

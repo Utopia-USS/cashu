@@ -423,6 +423,9 @@ export function pinEventFor(
   local: Pick<LeaseLocal, "transport">,
   config: LeaseConfig = DEFAULT_LEASE_CONFIG,
 ): UnstampedEvent {
+  if (view.mode === "auto" && pin.mode === "pinned" && !pin.force) {
+    throw new RangeError("leaving automatic handover requires an owner-confirmed force pin");
+  }
   if (pin.mode === "auto" && !supportsAutoHandover(local, config)) {
     throw new RangeError("automatic handover needs a relay declaring bounded propagation");
   }

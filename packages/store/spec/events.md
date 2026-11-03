@@ -777,7 +777,10 @@ wall), `watermark: {<device id>: {seg, offset}}` (per writer device, 32 lower-ca
 to which the writer had applied that device's stream: cursors, not HLCs, because a stream's cursor
 order is exact; R3b turns them into signed heads) and `prev` (the eid of the last valid lease event the
 writer saw). The events form one compare-and-set chain from `prev = null`; concurrent children are
-ordered owner pins first, then by `(hlc, eid)`. Only a recovery-signed `lease.pinned` may have
+ordered first by the earliest authentic acknowledgement in the recorded leader's own stream
+(including a valid descendant acknowledgement through non-forced pins or a valid fetched prefix),
+then owner pins, then `(hlc, eid)`. Only
+a recovery-signed `lease.pinned` may have
 `prev = null`: vault creation writes it next to the creator's `device.added`, pinning the creator.
 
 The fetch leader (S29c R4; rule 6 must not rest on an unstated linearizable remote):
@@ -791,11 +794,25 @@ The fetch leader (S29c R4; rule 6 must not rest on an unstated linearizable remo
   unless it wrote the pin itself or the owner confirmed `force` (the previous leader is gone; it may
   fetch once more if it is in fact still running). Claims and renewals are ignored. This needs no
   propagation bound, so it is safe on a synced folder.
+- **Revocation and pending hand-over safety (S29c rule-6 erratum):** revoking the predecessor is not
+  its acknowledgement. A non-force pin keeps the recorded `pendingFrom`, even if that device is now
+  revoked, until an authentic pre-cut release on the selected lease chain or a pin written by that
+  predecessor acknowledges it. A revoked device cannot act, but its absence does not authorize the
+  next leader to act. If it cannot acknowledge, the owner must explicitly confirm a force pin, with
+  the existing possible-overlap warning. A subsequent non-force pin waits for the leader established
+  by that force pin. This is a safety behavior change without a wire, event, or key format change.
+  Mixed old and new lease actors are unsafe around revocation and auto-to-pinned exit: an old actor
+  may clear pending on revocation or accept a non-force exit from a stale auto view while a new actor
+  waits or refuses it. Upgrade or pause all active lease actors before relying on these guarantees.
 - **Mode `auto`** (an owner opt-in, `lease.pinned {mode: "auto", leader: null}`): claims start a term,
   renewals extend it (`0 < until - at <= 24 h`, optional `waive`), releases end it. A device uses it
   only while its transport declares bounded propagation (`Transport.consistency`, proven by the
   carrier contract's propagation check) and its config covers the bound: `settle >= skew + publish
-  deadline + propagation`. Over an eventual transport nobody holds in this mode.
+  deadline + propagation`. Over an eventual transport nobody holds in this mode. Exiting auto for
+  pinned leadership requires an owner-confirmed `force` pin, even when the local auto view is free or
+  names an expired holder: an unseen settled claim can otherwise overlap the new pinned leader. A
+  non-force auto-to-pinned pin is refused by both the local builder and the lease fold. The existing
+  force warning applies; an auto-to-auto pin is unchanged.
 - The leader reports each completed fetch with `lease.fetched`; every device warns the owner when the
   pinned leader has been silent for more than 36 hours (`leaderLiveness`).
 
