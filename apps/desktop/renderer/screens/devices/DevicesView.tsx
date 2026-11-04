@@ -1,13 +1,20 @@
 import { T } from "./Devices.strings.js";
 import { LeaderAction } from "./LeaderAction.js";
 import type { DevicesScreenState } from "./useDevicesScreen.js";
+import type { LeaderActionState } from "./useLeaderAction.js";
 
 const control =
   "rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent";
 const button =
   "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent";
 
-export function DevicesView({ state }: { state: DevicesScreenState }) {
+export function DevicesView({
+  state,
+  leaderAction,
+}: {
+  state: DevicesScreenState;
+  leaderAction: LeaderActionState;
+}) {
   if (state.list?.kind !== "ready") return <p>{T.unavailable}</p>;
   const list = state.list;
   const reviewBlocked =
@@ -62,7 +69,7 @@ export function DevicesView({ state }: { state: DevicesScreenState }) {
           </p>
         )}
       </section>
-      {list.leader.warn && <LeaderAction list={list} />}
+      {list.leader.warn && <LeaderAction state={leaderAction} />}
       <section className="grid gap-1" aria-label={T.provenanceTitle}>
         <h3>{T.provenanceTitle}</h3>
         <p>{provenanceStatus}</p>

@@ -29,10 +29,13 @@ const complete = (backend: "ollama" | "anthropic") => ({
 });
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
-let latest: ReturnType<typeof useClassificationScreen> | null = null;
 function Probe() {
-  latest = useClassificationScreen();
-  return <div>{latest.snapshot?.backend ?? "unavailable"}</div>;
+  const state = useClassificationScreen();
+  return (
+    <div data-vault={state.vault} data-backend={state.snapshot?.backend ?? ""}>
+      {state.snapshot?.backend ?? "unavailable"}
+    </div>
+  );
 }
 afterEach(async () => {
   if (root)
@@ -42,7 +45,6 @@ afterEach(async () => {
   container?.remove();
   root = null;
   container = null;
-  latest = null;
   mock.calls.length = 0;
   mock.vault = "a".repeat(32);
 });
@@ -68,7 +70,7 @@ it("drops a delayed old-profile status after selecting another vault", async () 
     mock.calls[0]?.resolve(complete("anthropic"));
   });
   expect(container.textContent).toBe("ollama");
-  expect(latest?.vault).toBe("b".repeat(32));
+  expect(container.firstElementChild?.getAttribute("data-vault")).toBe("b".repeat(32));
 });
 
 it("refuses a malformed completed status snapshot", async () => {
@@ -82,5 +84,5 @@ it("refuses a malformed completed status snapshot", async () => {
     mock.calls[0]?.resolve({ status: "completed", value: { backend: "anthropic" } });
   });
   expect(container.textContent).toBe("unavailable");
-  expect(latest?.snapshot).toBeNull();
+  expect(container.firstElementChild?.getAttribute("data-backend")).toBe("");
 });
