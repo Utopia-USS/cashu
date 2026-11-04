@@ -1,32 +1,19 @@
-// Actual Python CLI bytes and native append state over isolated synthetic profiles.
-import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+// Native cash CLI bytes against the bytes the retired Python CLI printed for the same runs
+// (fixtures/cash.json, recorded on 2026-11-05), and native append state over a synthetic profile.
 import { createTranslator } from "@cashu/i18n";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "../../host.js";
 import { cleanup, tempDir, testHostOptions } from "../../testing/harness.js";
 import { type CommandIo, runTree } from "../tree.js";
+import expected from "./fixtures/cash.json" with { type: "json" };
 import { budgetCommands } from "./index.js";
 
-const REPO = fileURLToPath(new URL("../../../../../", import.meta.url));
-const PYTHON = join(REPO, ".venv", "bin", "python");
+/** The day the fixture was recorded: the native clock is pinned to it. */
+const RECORDED = new Date(2026, 10, 5, 12).getTime();
 afterEach(cleanup);
 
-it.skipIf(!existsSync(PYTHON))("matches Python cash CLI bytes and one-append state", async () => {
+it("matches the frozen Python cash CLI bytes and one-append state", async () => {
   const home = tempDir();
-  const env = {
-    PATH: process.env.PATH ?? "",
-    HOME: home,
-    CASHU_TESTING: "1",
-    CASHU_DATA_DIR: tempDir(),
-    CASHU_WORKSPACES_DIR: tempDir(),
-    CASHU_AUTO_DAILY: "0",
-    PYTHONPATH: join(REPO, "src"),
-    CASHU_LANG: "en",
-    LANG: "en_US.UTF-8",
-  };
   const runs: { args: string[]; env: Record<string, string> }[] = [
     { args: ["-p", "demo", "cash"], env: {} },
     {
@@ -74,14 +61,6 @@ it.skipIf(!existsSync(PYTHON))("matches Python cash CLI bytes and one-append sta
       env: {},
     },
   ];
-  const oracle = spawnSync(PYTHON, [join(REPO, "apps/host/test-fixtures/budget-cash-oracle.py")], {
-    cwd: REPO,
-    env,
-    encoding: "utf8",
-    input: JSON.stringify(runs.map((r) => ({ args: r.args, env: { ...env, ...r.env } }))),
-  });
-  expect(oracle.status, oracle.stderr).toBe(0);
-  const expected = JSON.parse(oracle.stdout) as { code: number; stdout: string; stderr: string }[];
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
@@ -89,7 +68,7 @@ it.skipIf(!existsSync(PYTHON))("matches Python cash CLI bytes and one-append sta
   try {
     const commands = budgetCommands({
       stores: host.stores,
-      now: () => Date.now(),
+      now: () => RECORDED,
     });
     for (const [index, run] of runs.entries()) {
       const actual = { code: -1, stdout: "", stderr: "" };

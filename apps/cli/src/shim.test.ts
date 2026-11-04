@@ -6,7 +6,7 @@ import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
-import { cleanEnv } from "./testing/python.js";
+import { cleanEnv } from "./testing/env.js";
 import { alive, hostPid, runShim, stopHosts } from "./testing/shim.js";
 
 afterEach(async () => {

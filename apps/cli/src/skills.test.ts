@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
-import { cleanEnv } from "./testing/python.js";
+import { cleanEnv } from "./testing/env.js";
 import { hostPid, runShim, stopHosts } from "./testing/shim.js";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));

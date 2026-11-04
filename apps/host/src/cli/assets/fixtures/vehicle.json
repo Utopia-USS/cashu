@@ -1,0 +1,32 @@
+[
+  {
+    "code": 0,
+    "stdout": "Vehicle 'Synthetic car': bought 2025-05-01 for 80 000,00 USD, depreciation \n15.0%/yr → value today ≈ 62 689,42 USD\n",
+    "stderr": ""
+  },
+  {
+    "code": 0,
+    "stdout": "\u001b[32mVehicle\u001b[0m \u001b[32m'Synthetic car'\u001b[0m: bought \u001b[1;36m2026\u001b[0m-\u001b[1;36m10\u001b[0m-\u001b[1;36m31\u001b[0m for \n\u001b[1;36m90\u001b[0m \u001b[1;36m000\u001b[0m,\u001b[1;36m00\u001b[0m USD, depreciation \u001b[1;36m0.0\u001b[0m%\u001b[35m/\u001b[0m\u001b[95myr\u001b[0m → value \ntoday ≈ \u001b[1;36m90\u001b[0m \u001b[1;36m000\u001b[0m,\u001b[1;36m00\u001b[0m USD\n",
+    "stderr": ""
+  },
+  {
+    "code": 0,
+    "stdout": "\u001b[32mVehicle\u001b[0m \u001b[32m'Łódź 表🙂'\u001b[0m: bought \n\u001b[1;36m2026\u001b[0m-\u001b[1;36m10\u001b[0m-\u001b[1;36m26\u001b[0m for \u001b[1;36m1\u001b[0m \u001b[1;36m000\u001b[0m,\u001b[1;36m50\u001b[0m PLN, \ndepreciation \u001b[1;36m15.0\u001b[0m%\u001b[35m/\u001b[0m\u001b[95myr\u001b[0m, floor \n\u001b[1;36m900\u001b[0m,\u001b[1;36m00\u001b[0m PLN → value today ≈ \n\u001b[1;36m998\u001b[0m,\u001b[1;36m28\u001b[0m PLN\n",
+    "stderr": ""
+  },
+  {
+    "code": 0,
+    "stdout": "Vehicle 'Future': bought \u001b[1m2027\u001b[0m-\u001b[1m01\u001b[0m-\u001b[1m01\u001b[0m for \u001b[1m10\u001b[0m,\u001b[1m00\u001b[0m PLN, depreciation \u001b[1m15.0\u001b[0m%/yr, floor \u001b[1m2\u001b[0m,\u001b[1m00\u001b[0m PLN → value today ≈ \u001b[1m0\u001b[0m,\u001b[1m00\u001b[0m PLN\n",
+    "stderr": ""
+  },
+  {
+    "code": 0,
+    "stdout": "Vehicle 'manual': \nbought 2026-10-31 \nfor 1 000,00 PLN, \ndepreciation \n100.0%/yr → value \ntoday ≈ 1 000,00 \nPLN\n",
+    "stderr": ""
+  },
+  {
+    "code": 0,
+    "stdout": "Vehicle 'Negative': bought 2026-10-31 for -1,00 PLN, depreciation -1.0%/yr → \nvalue today ≈ -1,00 PLN\n",
+    "stderr": ""
+  }
+]

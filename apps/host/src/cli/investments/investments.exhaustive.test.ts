@@ -1,22 +1,21 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+// The invest commands over native stores. Byte expectations were frozen from the retired Python CLI:
+// fixtures/fileReports.json (alert catalog and file reports) and fixtures/views.json (positions,
+// search and performance rendered by Python from the same native view data, plain and terminal).
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { D, parseDateTime } from "@cashu/domain";
-import { asProfileId, market, performance as perf, toCurrency } from "@cashu/domain/investments";
+import { market, toCurrency } from "@cashu/domain/investments";
 import { createTranslator } from "@cashu/i18n";
 import { investmentsCommands, runCommand, setModules } from "@cashu/store";
 import { PerformanceService } from "@cashu/store/investments/performance";
-import { projectInstrumentSearch } from "@cashu/store/investments/services";
-import { readPositions } from "@cashu/store/investments/views";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "../../host.js";
 import { cleanup, tempDir, testHostOptions } from "../../testing/harness.js";
 import { type CommandIo, runTree } from "../tree.js";
+import fileReports from "./fixtures/fileReports.json" with { type: "json" };
+import views from "./fixtures/views.json" with { type: "json" };
 import { investmentCommands } from "./index.js";
 
-const REPO = fileURLToPath(new URL("../../../../../", import.meta.url));
-const PYTHON = join(REPO, ".venv", "bin", "python");
 afterEach(cleanup);
 
 function io(
@@ -44,136 +43,40 @@ function io(
   };
 }
 
-function python(
-  cases: readonly { readonly args: readonly string[]; readonly terminal: boolean }[],
-  cwd: string,
-) {
-  const env = {
-    PATH: process.env.PATH ?? "",
-    HOME: tempDir(),
-    CASHU_TESTING: "1",
-    CASHU_DATA_DIR: tempDir(),
-    CASHU_WORKSPACES_DIR: tempDir(),
-    CASHU_AUTO_DAILY: "0",
-    CASHU_LANG: "en",
-    LANG: "en_US.UTF-8",
-    PYTHONPATH: join(REPO, "src"),
+it("matches the frozen Python alert catalog and invalid file report bytes", async () => {
+  const cwd = tempDir();
+  writeFileSync(join(cwd, "invalid.csv"), "synthetic,header\n");
+  writeFileSync(
+    join(cwd, "valid.csv"),
+    "format_version,record,date,type,currency,cash_amount\n1,txn,2026-10-31,deposit,PLN,100\n",
+  );
+  writeFileSync(join(cwd, "broken.yaml"), "version: [\n");
+  writeFileSync(
+    join(cwd, "mapping.yaml"),
+    "version: 1\ndefault_currency: PLN\ncolumns:\n  trade_date: Date\n  type: Type\n  cash_amount: Amount\n",
+  );
+  writeFileSync(join(cwd, "mapped.csv"), "Date,Type,Amount\n2026-10-31,deposit,123.45\n");
+  const deps = {
+    stores: { vaults: new Map() },
+    now: () => new Date(2026, 9, 31, 12).getTime(),
+    sources: {},
+    performance: new PerformanceService(),
   };
-  const code = `import json,sys,os\nfrom typer.testing import CliRunner\nfrom cashu.cli import app\nrunner=CliRunner()\nout=[]\nfor case in json.loads(sys.argv[1]):\n    if case['terminal']:\n        os.environ['FORCE_COLOR']='1'\n        os.environ['COLUMNS']='120'\n    else:\n        os.environ.pop('FORCE_COLOR',None)\n        os.environ.pop('COLUMNS',None)\n    r=runner.invoke(app,case['args'],color=case['terminal'])\n    out.append({'code':r.exit_code,'stdout':r.stdout,'stderr':r.stderr})\nprint(json.dumps(out))`;
-  const result = spawnSync(PYTHON, ["-c", code, JSON.stringify(cases)], {
-    cwd,
-    env,
-    encoding: "utf8",
-    timeout: 30_000,
-  });
-  expect(result.status, result.stderr).toBe(0);
-  return JSON.parse(result.stdout) as { code: number; stdout: string; stderr: string }[];
-}
-
-function pythonRenderBatch(
-  jobs: readonly (readonly ["positions" | "performance" | "search", unknown])[],
-  cwd: string,
-  terminal = false,
-): string[] {
-  const env = {
-    PATH: process.env.PATH ?? "",
-    HOME: tempDir(),
-    CASHU_TESTING: "1",
-    CASHU_DATA_DIR: tempDir(),
-    CASHU_WORKSPACES_DIR: tempDir(),
-    CASHU_AUTO_DAILY: "0",
-    PYTHONPATH: join(REPO, "src"),
-    CASHU_LANG: "en",
-    LANG: "en_US.UTF-8",
-    ...(terminal ? { FORCE_COLOR: "1", COLUMNS: "120" } : {}),
-  };
-  const code = `import json,sys,io,contextlib
-from rich.console import Console
-from cashu.core import cliutil
-import cashu.modules.investments.cli as c
-import cashu.modules.investments.performance.cli as p
-import cashu.modules.investments.cli_alerts as a
-from cashu.modules.investments.service import views
-from cashu.modules.investments.performance import service
-from cashu.modules.investments.service import instrument_search
-from types import SimpleNamespace
-jobs=json.loads(sys.stdin.read())
-cliutil.profile=lambda session,create=False: object()
-c.init_db=lambda:None
-c.get_session=lambda:contextlib.nullcontext(object())
-p.init_db=lambda:None
-p.get_session=lambda:contextlib.nullcontext(object())
-views.account_filter=lambda session,profile,account:None
-rendered=[]
-for kind,data in jobs:
-    out=io.StringIO()
-    cliutil.console=Console(file=out,force_terminal=${terminal ? "True" : "False"},width=${terminal ? 120 : 80},color_system=${terminal ? "'standard'" : "None"})
-    if kind=='positions':
-        views.positions=lambda *args,**kwargs:data
-        c.positions_cmd()
-    elif kind=='search':
-        a.init_db=lambda:None
-        a.get_session=lambda:contextlib.nullcontext(object())
-        instrument_search.search_detached=lambda *args,**kwargs:SimpleNamespace(query=data['query'],local=[SimpleNamespace(**hit) for hit in data['local']],remote=[],remote_status='skipped')
-        a.search_cmd('syn',True)
-    else:
-        service.performance_view=lambda *args,**kwargs:data['view']
-        service.attribution_view=lambda *args,**kwargs:data['attribution']
-        p.performance_cmd('1m',None,True)
-    rendered.append(out.getvalue())
-print(json.dumps(rendered))`;
-  const run = spawnSync(PYTHON, ["-c", code], {
-    cwd,
-    env,
-    input: JSON.stringify(jobs),
-    encoding: "utf8",
-    timeout: 30_000,
-  });
-  expect(run.status, run.stderr).toBe(0);
-  return JSON.parse(run.stdout) as string[];
-}
-
-it.skipIf(!existsSync(PYTHON))(
-  "matches Python alert catalog and invalid file report bytes",
-  async () => {
-    const cwd = tempDir();
-    writeFileSync(join(cwd, "invalid.csv"), "synthetic,header\n");
-    writeFileSync(
-      join(cwd, "valid.csv"),
-      "format_version,record,date,type,currency,cash_amount\n1,txn,2026-10-31,deposit,PLN,100\n",
-    );
-    writeFileSync(join(cwd, "broken.yaml"), "version: [\n");
-    writeFileSync(
-      join(cwd, "mapping.yaml"),
-      "version: 1\ndefault_currency: PLN\ncolumns:\n  trade_date: Date\n  type: Type\n  cash_amount: Amount\n",
-    );
-    writeFileSync(join(cwd, "mapped.csv"), "Date,Type,Amount\n2026-10-31,deposit,123.45\n");
-    const deps = {
-      stores: { vaults: new Map() },
-      now: () => new Date(2026, 9, 31, 12).getTime(),
-      sources: {},
-      performance: new PerformanceService(),
-    };
-    const cases = [
-      ["alerts", "kinds"],
-      ["validate", "invalid.csv"],
-      ["validate", "valid.csv"],
-      ["validate", "valid.csv", "--mapping", "broken.yaml"],
-      ["validate", "mapped.csv", "--mapping", "mapping.yaml"],
-    ].flatMap((args) => [false, true].map((terminal) => ({ args, terminal })));
-    const expected = python(
-      cases.map((entry) => ({ ...entry, args: ["invest", ...entry.args] })),
-      cwd,
-    );
-    for (const [index, { args, terminal }] of cases.entries()) {
-      const actual = io(cwd, terminal);
-      const outcome = await runTree(["invest", ...args], actual.io, investmentCommands(deps));
-      expect(outcome.kind).toBe("exit");
-      if (outcome.kind !== "exit") continue;
-      expect({ code: outcome.code, ...actual.output }, `case ${index}`).toEqual(expected[index]);
-    }
-  },
-);
+  const cases = [
+    ["alerts", "kinds"],
+    ["validate", "invalid.csv"],
+    ["validate", "valid.csv"],
+    ["validate", "valid.csv", "--mapping", "broken.yaml"],
+    ["validate", "mapped.csv", "--mapping", "mapping.yaml"],
+  ].flatMap((args) => [false, true].map((terminal) => ({ args, terminal })));
+  for (const [index, { args, terminal }] of cases.entries()) {
+    const actual = io(cwd, terminal);
+    const outcome = await runTree(["invest", ...args], actual.io, investmentCommands(deps));
+    expect(outcome.kind).toBe("exit");
+    if (outcome.kind !== "exit") continue;
+    expect({ code: outcome.code, ...actual.output }, `case ${index}`).toEqual(fileReports[index]);
+  }
+});
 
 it("renders a folded multi-currency vault with current strategy and market inputs", async () => {
   const host = await startLocalHost({
@@ -330,7 +233,8 @@ it("renders a folded multi-currency vault with current strategy and market input
       const result = await runTree(
         ["-p", "demo", "invest", ...args],
         actual.io,
-        investmentCommands(deps));
+        investmentCommands(deps),
+      );
       expect(result).toEqual({ kind: "exit", code: 0 });
       expect(actual.output.stdout).toContain(fragment);
     }
@@ -339,7 +243,8 @@ it("renders a folded multi-currency vault with current strategy and market input
       await runTree(
         ["-p", "demo", "invest", "accounts", "add", "Synthetic third", "--broker", "xtb"],
         added.io,
-        investmentCommands(deps)),
+        investmentCommands(deps),
+      ),
     ).toEqual({ kind: "exit", code: 0 });
     expect(added.output.stdout).toMatch(
       /Brokerage account 'Synthetic third' \(id [0-9A-HJKMNP-TV-Z]{26}, xtb,\s+regular\)/,
@@ -367,10 +272,7 @@ it("renders a folded multi-currency vault with current strategy and market input
     expect(strategyFiles.has("strategy.yaml")).toBe(true);
     const validated = io(tempDir());
     expect(
-      await runTree(
-        ["-p", "demo", "invest", "strategy", "validate"],
-        validated.io,
-        withStrategy),
+      await runTree(["-p", "demo", "invest", "strategy", "validate"], validated.io, withStrategy),
     ).toEqual({ kind: "exit", code: 0 });
     expect(validated.output.stdout).toContain("strategy.yaml: valid");
     const polish = io(tempDir());
@@ -388,7 +290,8 @@ it("renders a folded multi-currency vault with current strategy and market input
       const result = await runTree(
         ["-p", "demo", "invest", ...args],
         actual.io,
-        investmentCommands(deps));
+        investmentCommands(deps),
+      );
       expect(result).toEqual({ kind: "exit", code: 0 });
       expect(actual.output.stdout).toContain(fragment);
       rendered.set(args[0], actual.output.stdout);
@@ -397,78 +300,16 @@ it("renders a folded multi-currency vault with current strategy and market input
         expect(actual.output.stdout).toContain("top 2 share of P/L");
       }
     }
-    if (existsSync(PYTHON)) {
-      const read = vault.store.read.bind(vault.store);
-      const positionView = readPositions(read, {
-        prices,
-        vault: asProfileId(vault.id),
-        asOf: "2026-10-31",
-        clock: {
-          today: "2026-10-31",
-          now: fetched,
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
-        strategy: deps.sources.strategy.current().state,
-        lang: "en",
-        forOwner: true,
-      });
-      expect(positionView.ok).toBe(true);
-      if (!positionView.ok) throw new Error(positionView.reason);
-      const positionData = {
-        as_of: positionView.value.as_of,
-        base_currency: positionView.value.base_currency,
-        positions: positionView.value.positions.map((row) => ({
-          instrument: { label: row.instrument.label, asset_class: row.instrument.asset_class },
-          quantity: row.quantity.toFloat(),
-          price: row.price?.toFloat() ?? null,
-          price_currency: row.price_currency,
-          price_date: row.price_date,
-          is_stale: row.is_stale,
-          value: row.value?.toFloat() ?? null,
-          weight: row.weight,
-          unrealized_pct: row.unrealized_pct,
-        })),
-        cash: positionView.value.cash.map((cash) => ({
-          account_name: cash.account_name,
-          amount: cash.amount.toFloat(),
-          currency: cash.currency,
-          amount_base: cash.amount_base?.toFloat() ?? null,
-        })),
-        total: positionView.value.total.toFloat(),
-      };
-      const search = projectInstrumentSearch({ read, asOf: "2026-10-31" }, "syn");
-      expect(search.local).toHaveLength(1);
-      const request = {
-        prices,
-        asOf: "2026-10-31",
-        strategy: {
-          state: "missing" as const,
-          benchmark: null,
-          policy: perf.DEFAULT_VALUATION_POLICY,
-          strategy: null,
-        },
-        range: "1m",
-      };
-      const view = deps.performance.performanceView(vault.store, request);
-      const attribution = deps.performance.attributionView(vault.store, request);
-      expect(view.ok && attribution.ok).toBe(true);
-      if (!view.ok || !attribution.ok) throw new Error("missing synthetic performance");
-      const jobs = [
-        ["positions", positionData],
-        ["search", search],
-        ["performance", { view: view.value, attribution: attribution.value }],
-      ] as const;
-      // Two Python interpreters preserve the original plain/terminal environments while keeping
-      // this one test below the shared 5 s limit. Each interpreter renders all three oracle views.
-      const plain = pythonRenderBatch(jobs, tempDir());
-      const terminal = pythonRenderBatch(jobs, tempDir(), true);
+    {
+      const { plain, terminal } = views;
       expect(rendered.get("positions")).toBe(plain[0]);
       const terminalPositions = io(tempDir(), true);
       expect(
         await runTree(
           ["-p", "demo", "invest", "positions"],
           terminalPositions.io,
-          investmentCommands(deps)),
+          investmentCommands(deps),
+        ),
       ).toEqual({ kind: "exit", code: 0 });
       expect(terminalPositions.output.stdout).toBe(terminal[0]);
       const scopedPositions = io(tempDir());
@@ -495,7 +336,8 @@ it("renders a folded multi-currency vault with current strategy and market input
         await runTree(
           ["-p", "demo", "invest", "search", "--local", "syn"],
           terminalSearch.io,
-          investmentCommands(deps)),
+          investmentCommands(deps),
+        ),
       ).toEqual({ kind: "exit", code: 0 });
       expect(terminalSearch.output.stdout).toBe(terminal[1]);
       expect(rendered.get("performance")).toBe(plain[2]);
@@ -504,7 +346,8 @@ it("renders a folded multi-currency vault with current strategy and market input
         await runTree(
           ["-p", "demo", "invest", "performance", "--range", "1m", "--attribution"],
           terminalPerformance.io,
-          investmentCommands(deps)),
+          investmentCommands(deps),
+        ),
       ).toEqual({ kind: "exit", code: 0 });
       expect(terminalPerformance.output.stdout).toBe(terminal[2]);
     }
@@ -513,7 +356,8 @@ it("renders a folded multi-currency vault with current strategy and market input
       await runTree(
         ["-p", "demo", "invest", "positions", "--account", "1"],
         refused.io,
-        investmentCommands(deps)),
+        investmentCommands(deps),
+      ),
     ).toEqual({ kind: "exit", code: 2 });
     expect(refused.output.stdout).toBe("");
     expect(refused.output.stderr).not.toBe("");
@@ -523,10 +367,7 @@ it("renders a folded multi-currency vault with current strategy and market input
     ]) {
       const unsupported = io(tempDir());
       expect(
-        await runTree(
-          ["-p", "demo", "invest", ...args],
-          unsupported.io,
-          investmentCommands(deps)),
+        await runTree(["-p", "demo", "invest", ...args], unsupported.io, investmentCommands(deps)),
       ).toEqual({ kind: "exit", code: 2 });
       expect(unsupported.output.stdout).toBe("");
       expect(unsupported.output.stderr).not.toBe("");
@@ -576,7 +417,8 @@ it("renders a folded multi-currency vault with current strategy and market input
               ["two", vault],
             ]),
           },
-        })),
+        }),
+      ),
     ).toEqual({ kind: "exit", code: 2 });
     expect(ambiguous.output.stdout).toBe("");
     expect(ambiguous.output.stderr).not.toBe("");
