@@ -56,6 +56,7 @@ async function cli(
     answer?: string | null;
     onStdout?: (line: string) => void;
     makeKeyStore?: typeof createProductionKeyStore;
+    afterCutoverMove?: (moves: number) => void;
   } = {},
 ): Promise<Run> {
   const out: string[] = [];
@@ -71,6 +72,9 @@ async function cli(
     build: "test-build",
     now: () => AT,
     keychain: { ...f.keychain, makeKeyStore: options.makeKeyStore ?? f.makeKeyStore },
+    ...(options.afterCutoverMove === undefined
+      ? {}
+      : { afterCutoverMove: options.afterCutoverMove }),
   });
   return { code, out, err };
 }
@@ -225,7 +229,7 @@ describe("cashu migrate (human mode) failures", () => {
     ],
     [
       "verify",
-      "migrate_verify_mismatch",
+      "migrate_import_failed",
       "replay_mismatch",
       (f) => ({
         onStdout(line) {
@@ -389,4 +393,30 @@ describe("cashu migrate usage", () => {
     expect(code).toBe(64);
     expect(err[0]).toMatch(/^użycie: cashu migrate/);
   });
+});
+
+describe("cashu migrate after an interrupted cutover", () => {
+  it(
+    "finishes it in human mode without --recovery-file and asks for no words",
+    async () => {
+      const f = fixture();
+      const crashed = await cli(f, ["--data-dir", f.dataDir, "--json"], {
+        answer: "confirm",
+        afterCutoverMove: (moves) => {
+          if (moves === 3) throw new Error("synthetic crash");
+        },
+      });
+      expect(crashed.code).not.toBe(0);
+      expect(readdirSync(f.dataDir).some((name) => name.startsWith(".migration-"))).toBe(true);
+      expect(existsSync(join(f.dataDir, "migration.json"))).toBe(false);
+      const finished = await cli(f, ["--data-dir", f.dataDir]);
+      expect(finished.code).toBe(0);
+      expect(finished.out.join("\n")).not.toMatch(/recovery/i);
+      expect(existsSync(join(f.dataDir, "migration.json"))).toBe(true);
+      expect(readdirSync(f.dataDir).filter((name) => name.startsWith(".migration-"))).toEqual([]);
+      const again = await cli(f, ["--data-dir", f.dataDir]);
+      expect(again.code).toBe(0);
+    },
+    SLOW,
+  );
 });

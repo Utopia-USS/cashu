@@ -45,6 +45,7 @@ import {
 import {
   completedMigration,
   type InPlaceKeychain,
+  interruptedMigration,
   type InPlaceResult,
   type MigrationMarker,
   migrateInPlace,
@@ -344,6 +345,15 @@ function completedOrNull(dataDir: string): MigrationMarker | null {
   }
 }
 
+/** D holds an interrupted cutover's journal; false for anything else (read-only). */
+function interruptedOrFalse(dataDir: string): boolean {
+  try {
+    return interruptedMigration(dataDir);
+  } catch {
+    return false;
+  }
+}
+
 async function runVerify(io: MigrateIo, args: Args, t: Translator, home: string): Promise<number> {
   const marker = readMigrationMarker(args.dataDir);
   if (marker === null) throw new Error("python_data_absent");
@@ -384,8 +394,14 @@ export async function migrateCommand(argv: readonly string[], io: MigrateIo): Pr
     return USAGE_EXIT;
   }
   const home = io.env.HOME || homedir();
-  // The words go only to a new --recovery-file; without one, only a finished import can be shown.
-  if (args.command === "import" && !args.json && args.recoveryFile === undefined) {
+  // The words go only to a new --recovery-file; without one, only a finished import can be shown
+  // or an interrupted cutover finished (it never asks for words).
+  if (
+    args.command === "import" &&
+    !args.json &&
+    args.recoveryFile === undefined &&
+    !interruptedOrFalse(args.dataDir)
+  ) {
     const marker = completedOrNull(args.dataDir);
     if (marker === null) {
       io.stderr(t.tr(M.usage));

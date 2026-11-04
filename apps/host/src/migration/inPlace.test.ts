@@ -198,6 +198,30 @@ describe("migrateInPlace", () => {
     SLOW,
   );
 
+  it(
+    "finishes a cutover when a device-local entry vanished after the crash, but not a database",
+    async () => {
+      const f = fixture();
+      const crash = (moves: number) => {
+        if (moves === 1) throw new Error("synthetic crash");
+      };
+      expect(await failure(run(f, crash))).toMatchObject({ code: "migration_incomplete" });
+      rmSync(join(f.dataDir, "settings.json"));
+      const resumed = await run(f);
+      expect(resumed.result.status).toBe("migrated");
+      expect(existsSync(join(f.dataDir, "migration.json"))).toBe(true);
+
+      const g = fixture();
+      expect(await failure(run(g, crash))).toMatchObject({ code: "migration_incomplete" });
+      rmSync(join(g.dataDir, "cashu.db"));
+      expect(await failure(run(g))).toMatchObject({
+        code: "migration_incomplete",
+        detail: "cutover_failed",
+      });
+    },
+    SLOW,
+  );
+
   it.each([1, PYTHON_NAMES.length + 1])(
     "finishes a cutover that crashed after %i moves on the next run",
     async (crashAt) => {

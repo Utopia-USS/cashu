@@ -211,9 +211,9 @@ delete files in `$D` by hand while you troubleshoot.
 | Code | Meaning | What to do |
 |---|---|---|
 | `python_data_present` | Python data, not imported yet | Section 4a or 4b |
-| `migrate_import_failed` | The import stopped before the switch; nothing changed. Detail: `source_changed` (something wrote to the Python files: app, worker or MCP still running), `semantic_difference` (an unclassified entry, see step 3.6, or an unreviewed difference), `unsupported_schema` (step 3.1), `cancelled` (words not confirmed), `already_migrated`, `python_data_absent`, `native_host_lock_required` (cashU or a host is running), `source_unsafe` (permissions, links), `staging_failed`, `keystore_unavailable` | Fix the cause, run the import again |
-| `migration_incomplete` | The switch was interrupted (`cutover_failed`); the originals are in place or intact in the backup | Run `"${CASHU[@]}" migrate` again; it finishes from the journal |
-| `migrate_verify_mismatch` | The imported data does not match the copy of the Python data | Keep the backup, use nothing, send the report |
+| `migrate_import_failed` | The import stopped before the switch; nothing changed. Detail: `source_changed` (something wrote to the Python files: app, worker or MCP still running), `semantic_difference` (an unclassified entry, see step 3.6, or an unreviewed difference), `unsupported_schema` (step 3.1), `cancelled` (words not confirmed), `already_migrated`, `python_data_absent`, `native_host_lock_required` (cashU or a host is running), `source_unsafe` (permissions, links), `staging_failed`, `keystore_unavailable`, `replay_mismatch` (the staged import failed its own check) | Fix the cause, run the import again |
+| `migration_incomplete` | The switch was interrupted (`cutover_failed`); the originals are in place or intact in the backup | Run `"${CASHU[@]}" migrate` again (no `--recovery-file` needed); it finishes from the journal and asks for no words |
+| `migrate_verify_mismatch` | `migrate verify` found that the imported data does not match the backup of the Python data | Keep the backup, use nothing, send the report |
 | `native_inventory_unavailable` | The list of vaults does not match the files | Send the report; do not create a new profile |
 | `vault_key_unavailable` | A vault key is missing from the keychain or unreadable | Unlock the login keychain, retry; else send the report. Recovery words restore the keys |
 | `view_rebuild_failed` | The data view could not be rebuilt; the history is untouched | Retry; else send the report |

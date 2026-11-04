@@ -443,7 +443,11 @@ function markerOf(journal: Journal): MigrationMarker {
   return { version: 1, at: journal.at, backupDir: journal.backupDir, ...journal.result };
 }
 
-/** Moves `name` from `from` to `to` unless already moved; a name in both places is a conflict. */
+/**
+ * Moves `name` from `from` to `to` unless already moved; a name in both places is a conflict. A
+ * device-local Python entry (never imported) gone from both places counts as moved, so a stray
+ * temp or lock file that vanished cannot hold the cutover half done forever.
+ */
 function moveOnce(from: string, to: string, name: string, sharedLogs = false): boolean {
   const source = present(join(from, name));
   const target = present(join(to, name));
@@ -452,6 +456,7 @@ function moveOnce(from: string, to: string, name: string, sharedLogs = false): b
     return true;
   }
   if (source === null && target !== null) return false;
+  if (source === null && target === null && DEVICE_LOCAL_EXCLUSIONS.has(name)) return false;
   // `logs/` is shared with the native shell, which may have recreated it after the move.
   if (sharedLogs && source !== null && target !== null) return false;
   throw new Error("cutover_conflict");
@@ -524,6 +529,11 @@ function finished(state: Inspection): MigrationMarker | null {
 /** Read-only, no lock: D's marker when D was already migrated in place, else null. */
 export function completedMigration(dataDir: string): MigrationMarker | null {
   return finished(inspect(canonicalDataDir(dataDir)));
+}
+
+/** Read-only, no lock: D holds the journal of an interrupted cutover (finishing needs no words). */
+export function interruptedMigration(dataDir: string): boolean {
+  return inspect(canonicalDataDir(dataDir)).journals.length > 0;
 }
 
 /** `cashu migrate` on D. Resolves migrated / already_migrated; throws a `StartupFailureError`. */
@@ -629,7 +639,9 @@ async function freshImport(
       if (JSON.stringify(verified) !== JSON.stringify(imported))
         throw new MigrationError("replay_mismatch");
     } catch (error) {
-      rethrowAs(error, "migrate_verify_mismatch", "replay_mismatch");
+      // The staged import failed its own check: an import failure (nothing was switched), so the
+      // remedy is another import, not `migrate verify`, which needs a finished one.
+      rethrowAs(error, "migrate_import_failed", "replay_mismatch");
     }
     try {
       // The Python app must not have written meanwhile: same entries, same bytes.
