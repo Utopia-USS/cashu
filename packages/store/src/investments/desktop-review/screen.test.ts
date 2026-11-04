@@ -325,24 +325,31 @@ describe("native Review owner and tracked projection", () => {
           status: "current",
           last: { stats: { source: "app" } },
         });
-        const current = reviewScreenQueries({
-          ...sources,
-          calendar: {
-            changes,
-            current: () => ({
-              status: "current",
-              value: {
-                vault: v.store.vault,
-                generation: "test",
-                revision: "one",
-                value: market.emptyFeeds("2026-10-31", 14, []),
-              },
-            }),
-          },
-        }).screen.run(read, args);
-        expect(current).toMatchObject({
+        const withFeeds = (feeds: market.CalendarFeeds) =>
+          reviewScreenQueries({
+            ...sources,
+            calendar: {
+              changes,
+              current: () => ({
+                status: "current",
+                value: { vault: v.store.vault, generation: "test", revision: "one", value: feeds },
+              }),
+            },
+          }).screen.run(read, args);
+        // A cache fetched an hour ago that covers the window is a current, empty calendar.
+        expect(
+          withFeeds({
+            ...market.emptyFeeds("2026-10-31", 14, []),
+            fetched_at: "2026-10-31T11:00:00+00:00",
+          }),
+        ).toMatchObject({
           status: "current",
           calendar: { status: "current", value: { events: [], stale: false } },
+        });
+        // Feeds that were never fetched are bound but stale, as Python's offline `feeds()` reports.
+        expect(withFeeds(market.emptyFeeds("2026-10-31", 14, []))).toMatchObject({
+          status: "current",
+          calendar: { status: "current", value: { events: [], stale: true } },
         });
       } finally {
         stop();

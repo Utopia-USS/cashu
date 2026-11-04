@@ -1,6 +1,7 @@
 import { investments as inv, parseDateTime } from "@cashu/domain";
 import { investmentsServices } from "@cashu/store";
 import { afterEach, expect, it } from "vitest";
+import type { LabelledTree } from "../privacy/labels.js";
 import { pyDumps } from "../privacy/pyJson.js";
 import { leakCheck, Redactor } from "../privacy/redactor.js";
 import { investmentReads } from "../providers/investmentReads.js";
@@ -61,18 +62,31 @@ async function context(
   };
   return { ...ctx, store: { ...ctx.store, investments: investmentReads(ctx, requests) } };
 }
-function call(ctx: ToolContext<NativeToolStore>, name: string, args: Record<string, unknown> = {}) {
-  const spec = investmentTools().find((t) => t.name === name);
-  if (spec === undefined) throw new Error("missing tool");
+function spec(name: string) {
+  const found = investmentTools().find((t) => t.name === name);
+  if (found === undefined) throw new Error("missing tool");
+  return found;
+}
+function redact(ctx: ToolContext<NativeToolStore>, tree: LabelledTree) {
   const redactor = new Redactor({ privacy: ctx.privacy, guard: ctx.guard }),
-    data = redactor.apply(
-      spec.handler(
-        ctx,
-        validateArguments(spec, args),
-      ) as import("../privacy/labels.js").LabelledTree,
-    );
+    data = redactor.apply(tree);
   leakCheck(data, { strict: ctx.strict, isins: redactor.isins, nonMoney: redactor.nonMoney });
   return JSON.parse(pyDumps(data));
+}
+/** For the synchronous read handlers; an async handler must go through `callAsync`. */
+function call(ctx: ToolContext<NativeToolStore>, name: string, args: Record<string, unknown> = {}) {
+  const tool = spec(name),
+    tree = tool.handler(ctx, validateArguments(tool, args));
+  if (tree instanceof Promise) throw new Error(`${name} is async: use callAsync`);
+  return redact(ctx, tree);
+}
+async function callAsync(
+  ctx: ToolContext<NativeToolStore>,
+  name: string,
+  args: Record<string, unknown> = {},
+) {
+  const tool = spec(name);
+  return redact(ctx, await tool.handler(ctx, validateArguments(tool, args)));
 }
 it("offers exactly the implemented read bodies with original descriptors and refusals", () => {
   expect(investmentTools().map((t) => t.name)).toEqual([
@@ -125,7 +139,7 @@ it("refuses unowned opaque instrument references, wrong kinds, numeric source id
   expect(() => profileInstrument(ctx, "1")).toThrow("no such instrument");
   expect(() => call(ctx, "positions")).toThrow("native investment reads are unavailable");
 });
-it("refuses script paths before reading and does not borrow general file authority for profile-only mapping", () => {
+it("refuses script paths before reading and does not borrow general file authority for profile-only mapping", async () => {
   const f = fixture(),
     ctx = f.context();
   let calls = 0;
@@ -136,14 +150,14 @@ it("refuses script paths before reading and does not borrow general file authori
       return { name: "invalid.csv", bytes: new TextEncoder().encode("bad") };
     },
   };
-  expect(() => call({ ...ctx, store }, "validate_import", { path: "x.py" })).toThrow(
+  await expect(callAsync({ ...ctx, store }, "validate_import", { path: "x.py" })).rejects.toThrow(
     "path is a script",
   );
   expect(calls).toBe(0);
-  expect(() =>
-    call({ ...ctx, store }, "validate_import", { path: "x.csv", mapping: "x.yaml" }),
-  ).toThrow("local mapping files are unavailable");
-  expect(call({ ...ctx, store }, "validate_import", { path: "x.csv" })).toMatchObject({
+  await expect(
+    callAsync({ ...ctx, store }, "validate_import", { path: "x.csv", mapping: "x.yaml" }),
+  ).rejects.toThrow("local mapping files are unavailable");
+  expect(await callAsync({ ...ctx, store }, "validate_import", { path: "x.csv" })).toMatchObject({
     ok: false,
     errors: 1,
     transactions: 0,

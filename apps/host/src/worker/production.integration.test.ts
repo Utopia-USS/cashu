@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mintUlid, setModules } from "@cashu/store";
@@ -9,6 +9,10 @@ import { startLocalHost } from "../host.js";
 import { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
 import { createProductionWorkerBindings } from "./production.js";
+
+// The host's engine refuses its own log when the injected clock is far behind it, so the fixture
+// stamps the creator log from this same fixed clock instead of the wall clock.
+const NOW = Date.UTC(2026, 10, 3, 12);
 
 it("starts a native first-Create host without constructing a worker or KeyStore", async () => {
   const root = mkdtempSync(join(tmpdir(), "cashu-t53-empty-"));
@@ -43,11 +47,9 @@ it("starts a native first-Create host without constructing a worker or KeyStore"
 
 it("takes checked ownership before investments is enabled and follows live module changes", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-  const fixture = await nativeVaultFixture({ modules: ["budget"] });
-  const vaultRoot = join(fixture.dataDir, "vaults", fixture.vaultId);
-  chmodSync(vaultRoot, 0o700);
-  mkdirSync(join(vaultRoot, "strategy"), { mode: 0o700 });
-  let time = Date.UTC(2026, 10, 3, 12);
+  let time = NOW;
+  // The fixture creates the private vault root and strategy directory (4a78c1a).
+  const fixture = await nativeVaultFixture({ modules: ["budget"], now: () => time });
   let host: Awaited<ReturnType<typeof startLocalHost>> | undefined;
   try {
     host = await startLocalHost({
@@ -99,17 +101,15 @@ it("takes checked ownership before investments is enabled and follows live modul
 });
 
 it("binds an authenticated local daily run and retains its one native owner after restart", async () => {
-  const fixture = await nativeVaultFixture({ modules: ["investments"] });
-  const vaultRoot = join(fixture.dataDir, "vaults", fixture.vaultId);
-  chmodSync(vaultRoot, 0o700);
-  mkdirSync(join(vaultRoot, "strategy"), { mode: 0o700 });
+  // The fixture creates the private vault root and strategy directory (4a78c1a).
+  const fixture = await nativeVaultFixture({ modules: ["investments"], now: () => NOW });
   const options = {
     dataDir: fixture.dataDir,
     home: fixture.home,
     build: "test",
     launcher: false,
     vaultSource: fixture.vaultSource,
-    now: () => Date.UTC(2026, 10, 3, 12),
+    now: () => NOW,
     worker: (context: Parameters<typeof createProductionWorkerBindings>[0]) =>
       createProductionWorkerBindings(context, {
         dataDir: fixture.dataDir,
@@ -150,14 +150,15 @@ it("binds an authenticated local daily run and retains its one native owner afte
 });
 
 it("reports missing file authority without claiming or recording a daily run", async () => {
-  const fixture = await nativeVaultFixture({ modules: ["investments"] });
+  const fixture = await nativeVaultFixture({ modules: ["investments"], now: () => NOW });
+  rmSync(join(fixture.dataDir, "vaults", fixture.vaultId, "strategy"), { recursive: true });
   const host = await startLocalHost({
     dataDir: fixture.dataDir,
     home: fixture.home,
     build: "test",
     launcher: false,
     vaultSource: fixture.vaultSource,
-    now: () => Date.UTC(2026, 10, 3, 12),
+    now: () => NOW,
     worker: (context) =>
       createProductionWorkerBindings(context, {
         dataDir: fixture.dataDir,
@@ -182,7 +183,8 @@ it("reports missing file authority without claiming or recording a daily run", a
 });
 
 it("claims a budget connector without a strategy directory", async () => {
-  const fixture = await nativeVaultFixture({ modules: ["budget"] });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  const fixture = await nativeVaultFixture({ modules: ["budget"], now: () => NOW });
   let fetched = 0;
   const host = await startLocalHost({
     dataDir: fixture.dataDir,
@@ -190,13 +192,14 @@ it("claims a budget connector without a strategy directory", async () => {
     build: "test",
     launcher: false,
     vaultSource: fixture.vaultSource,
-    now: () => Date.UTC(2026, 10, 3, 12),
+    now: () => NOW,
     worker: (context) =>
       createProductionWorkerBindings(context, {
         dataDir: fixture.dataDir,
         assertAdmission() {},
         strategyDirectory: () => null,
-        canFetchPublicMarket: () => true,
+        // Production wiring (main.ts): the worker also takes the real native fetch lease (2b8a073).
+        canFetchPublicMarket: (vault) => vault.native?.canFetchPublicMarket() ?? false,
         connectors: {
           fetch: async (_vault, guard) => {
             guard();
@@ -208,6 +211,13 @@ it("claims a budget connector without a strategy directory", async () => {
       }),
   });
   try {
+    const vault = host.stores.vaults.get(fixture.vaultId);
+    if (!vault?.native) throw new Error("synthetic native vault absent");
+    expect(fetched).toBe(0);
+    // A fresh pull grants the pinned creator the fetch lease; the next tick runs the connector.
+    await vault.native.sync();
+    expect(vault.native.canFetchPublicMarket()).toBe(true);
+    await vi.advanceTimersByTimeAsync(60_000);
     await expect.poll(() => fetched).toBe(1);
     const record = JSON.parse(
       readFileSync(join(fixture.dataDir, "worker", "ownership.json"), "utf8"),
@@ -216,5 +226,6 @@ it("claims a budget connector without a strategy directory", async () => {
   } finally {
     await host.stop();
     fixture.cleanup();
+    vi.useRealTimers();
   }
 });

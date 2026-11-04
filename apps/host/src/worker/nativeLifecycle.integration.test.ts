@@ -13,6 +13,10 @@ import type { WorkerBindings, WorkerHostContext } from "./contracts.js";
 import { HostWorker } from "./service.js";
 import { privateWorkerState } from "./state.js";
 
+// The host's engine refuses its own log when the injected clock is far behind it, so the fixture
+// stamps the creator log from this same fixed clock instead of the wall clock.
+const NOW = Date.UTC(2026, 10, 3, 12);
+
 function deferred() {
   let release!: () => void;
   const promise = new Promise<void>((resolve) => {
@@ -94,7 +98,7 @@ it("holds idle exit for native sync and an encrypted write queued behind it", as
 });
 
 it("daily startup, duplicate wake and restart keep one encrypted completed run", async () => {
-  const fixture = await nativeVaultFixture({ modules: ["investments"] });
+  const fixture = await nativeVaultFixture({ modules: ["investments"], now: () => NOW });
   const privateDir = join(fixture.dataDir, "worker-private");
   mkdirSync(privateDir, { mode: 0o700 });
   const driver = openNodeSqlite(":memory:");
@@ -117,7 +121,7 @@ it("daily startup, duplicate wake and restart keep one encrypted completed run",
     build: "test",
     launcher: false,
     vaultSource: fixture.vaultSource,
-    now: () => Date.UTC(2026, 10, 3, 12),
+    now: () => NOW,
   } as const;
   let context: WorkerHostContext | undefined;
   const first = await startLocalHost({
@@ -156,19 +160,19 @@ it("daily startup, duplicate wake and restart keep one encrypted completed run",
 });
 
 it("safe-mode native startup suppresses the worker and network capability", async () => {
-  const fixture = await nativeVaultFixture();
+  const fixture = await nativeVaultFixture({ now: () => NOW });
   const options = {
     dataDir: fixture.dataDir,
     home: fixture.home,
     build: "test",
     launcher: false,
     vaultSource: fixture.vaultSource,
-    now: () => Date.UTC(2026, 10, 3, 12),
+    now: () => NOW,
   } as const;
   const first = await startLocalHost(options);
   try {
     await first.stop();
-    const now = Date.UTC(2026, 10, 3, 12);
+    const now = NOW;
     writeFileSync(
       join(fixture.dataDir, "run", "starts.json"),
       JSON.stringify({

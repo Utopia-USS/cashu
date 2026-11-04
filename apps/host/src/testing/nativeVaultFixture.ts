@@ -51,8 +51,11 @@ export async function nativeVaultFixture(
     readonly modules?: readonly string[];
     readonly profileSlug?: string;
     readonly pairPeer?: boolean;
+    /** Clock for the creator log; a host started with a fixed `now` must stamp from the same one. */
+    readonly now?: () => number;
   } = {},
 ): Promise<NativeVaultFixture> {
+  const now = options.now ?? Date.now;
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "cashu-native-fixture-")));
   const home = join(dataDir, "test-home");
   mkdirSync(home);
@@ -116,9 +119,9 @@ export async function nativeVaultFixture(
       sender: identity.deviceId,
       recipients: null,
       source: "own",
-      receivedAt: Date.now(),
+      receivedAt: now(),
     });
-    SqlAttemptJournal.open(meta, "new", () => Date.now());
+    SqlAttemptJournal.open(meta, "new", now);
     const saltKey = created.ring.gidSalt();
     const salt = vaultSalt(saltKey.expose().slice());
     saltKey.wipe();
@@ -135,7 +138,7 @@ export async function nativeVaultFixture(
       keyStore,
       sodium,
       provenance,
-      clock: () => Date.now(),
+      clock: now,
       bootstrapCertificates: [certificate],
     });
     engine = await createSyncEngine({
@@ -153,6 +156,7 @@ export async function nativeVaultFixture(
       clockStore: metaClockStore(store.driver, entry.deviceId),
       clockGuard: nativeClockGuard(store.driver, entry.deviceId),
       gateState: metaGateStateStore(store.driver, entry.deviceId),
+      physicalClock: { now },
     });
     const subject = {
       deviceId: identity.deviceId,
@@ -168,7 +172,7 @@ export async function nativeVaultFixture(
         "creator",
         certificate,
       ),
-      devices.creatorPin(identity, recovery, vaultId, "01K9B2W0000000000000000001", Date.now()),
+      devices.creatorPin(identity, recovery, vaultId, "01K9B2W0000000000000000001", now()),
     ]);
     const prepared = prepareCommand(
       store,
@@ -178,7 +182,7 @@ export async function nativeVaultFixture(
         name: "Synthetic",
         modules: options.modules ?? ["budget", "investments"],
       },
-      { device: entry.deviceId, clock: { now: () => Date.now() }, lease: { isHolder: () => true } },
+      { device: entry.deviceId, clock: { now }, lease: { isHolder: () => true } },
     );
     if (!prepared.ok) throw new Error(prepared.reason);
     await engine.write(prepared.events.map(toUnstampedEvent));

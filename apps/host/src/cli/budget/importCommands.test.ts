@@ -41,24 +41,25 @@ it("refuses unsupported selection, later-file representation and abort before an
     join(ROOT, "connectors/mbank-csv/fixtures/mbank-zestawienie.csv"),
     join(cwd, "in/a.csv"),
   );
-  writeFileSync(join(cwd, "in/z[red].csv"), "bad\n");
+  // Native output is literal (6491e44): only control characters remain unrepresentable.
+  writeFileSync(join(cwd, "in/z\u0007.csv"), "bad\n");
   const io = commandIo(cwd);
   const deps = { stores: host.stores, now: Date.now };
-  const delegate = { kind: "unhandled" };
+  const unhandled = { kind: "unhandled" };
   try {
-    expect(await runImportCommand(false, ["in/a.csv"], io, {}, deps)).toEqual(delegate);
+    expect(await runImportCommand(false, ["in/a.csv"], io, {}, deps)).toEqual(unhandled);
     expect(await runImportCommand(false, ["in/a.csv"], io, { profile: "missing" }, deps)).toEqual(
-      delegate,
+      unhandled,
     );
     for (const args of [
       ["--help"],
       ["in/a.csv", "--bank=MBANK"],
       ["in/a.csv", "--account-type=invalid"],
-      ["in/a.csv", "--name=[red]markup[/]"],
+      ["in/a.csv", "--name=bell\u0007name"],
       ["in/a.csv", "--unknown"],
     ])
-      expect(await runImportCommand(false, args, io, { profile: "demo" }, deps)).toEqual(delegate);
-    expect(await runImportCommand(true, ["in"], io, { profile: "demo" }, deps)).toEqual(delegate);
+      expect(await runImportCommand(false, args, io, { profile: "demo" }, deps)).toEqual(unhandled);
+    expect(await runImportCommand(true, ["in"], io, { profile: "demo" }, deps)).toEqual(unhandled);
     const controller = new AbortController();
     controller.abort();
     expect(

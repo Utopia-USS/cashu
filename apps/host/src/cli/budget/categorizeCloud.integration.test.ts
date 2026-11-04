@@ -3,7 +3,13 @@
 import { type budget, D } from "@cashu/domain";
 import { createTranslator } from "@cashu/i18n";
 import type { CloudCredentials, CurrentCloudConfig, ReviewedCloudConsent } from "@cashu/llm";
-import { type Command, importStatement, runCommand, setMerchantCategory } from "@cashu/store";
+import {
+  type Command,
+  importStatement,
+  runCommand,
+  setMerchantCategory,
+  setModules,
+} from "@cashu/store";
 import { budgetBook } from "@cashu/store/budget/queries";
 import { afterEach, expect, it, vi } from "vitest";
 import { startLocalHost } from "../../host.js";
@@ -77,6 +83,8 @@ async function fixture() {
     if (!outcome.ok) throw new Error(`synthetic command refused: ${outcome.reason}`);
     return outcome.value;
   }
+  // The native categorize gate follows the live budget module (6491e44); enable it like the owner.
+  run(setModules, { moduleIds: ["budget"] });
   async function insert(facts: readonly Fact[]) {
     const rows: budget.RawTransaction[] = facts.map((fact) => ({
       bookingDate: "2026-09-01",

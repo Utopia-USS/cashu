@@ -365,7 +365,7 @@ describe("native admission and durability", () => {
     expect(peerRing.vaultId).toBe(value.vaultId);
 
     const peerRoot = join(value.dataDir, "vaults", `peer-${peerIdentity.deviceId}`);
-    mkdirSync(peerRoot);
+    mkdirSync(peerRoot, { mode: 0o700 });
     const peerEntry = {
       vaultId: value.vaultId,
       deviceId: peerIdentity.deviceId,

@@ -135,7 +135,7 @@ describe("native vault session", () => {
     const created = crypto.createVaultWithRecovery(sodium, recovery, identity);
     const root = join(dataDir, "vaults", created.ring.vaultId);
     const log = join(root, "log");
-    mkdirSync(log, { recursive: true });
+    mkdirSync(log, { recursive: true, mode: 0o700 });
     const entry = {
       vaultId: created.ring.vaultId,
       deviceId: identity.deviceId,

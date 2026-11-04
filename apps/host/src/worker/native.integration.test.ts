@@ -10,8 +10,12 @@ import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
 import type { WorkerBindings } from "./contracts.js";
 import { privateWorkerState } from "./state.js";
 
+// The host's engine refuses its own log when the injected clock is far behind it, so the fixture
+// stamps the creator log from this same fixed clock instead of the wall clock.
+const NOW = Date.UTC(2026, 10, 3, 12);
+
 it("appends a native daily result and reopens its encrypted view", async () => {
-  const fixture = await nativeVaultFixture({ modules: ["investments"] });
+  const fixture = await nativeVaultFixture({ modules: ["investments"], now: () => NOW });
   const privateDir = join(fixture.dataDir, "worker-private");
   mkdirSync(privateDir, { mode: 0o700 });
   const priceDriver = openNodeSqlite(":memory:");
@@ -41,7 +45,7 @@ it("appends a native daily result and reopens its encrypted view", async () => {
     build: "test",
     launcher: false,
     vaultSource: fixture.vaultSource,
-    now: () => Date.UTC(2026, 10, 3, 12),
+    now: () => NOW,
   } as const;
   const first = await startLocalHost({ ...options, worker: () => bindings });
   let reopened: Awaited<ReturnType<typeof startLocalHost>> | undefined;
@@ -80,7 +84,7 @@ it("appends a native daily result and reopens its encrypted view", async () => {
 });
 
 it("persists an uncertain native daily append and suppresses a fresh write after encrypted reopen", async () => {
-  const fixture = await nativeVaultFixture({ modules: ["investments"] });
+  const fixture = await nativeVaultFixture({ modules: ["investments"], now: () => NOW });
   const privateDir = join(fixture.dataDir, "worker-private");
   mkdirSync(privateDir, { mode: 0o700 });
   const priceDriver = openNodeSqlite(":memory:");
@@ -121,7 +125,7 @@ it("persists an uncertain native daily append and suppresses a fresh write after
     build: "test",
     launcher: false,
     vaultSource: fixture.vaultSource,
-    now: () => Date.UTC(2026, 10, 3, 12),
+    now: () => NOW,
   } as const;
   const first = await startLocalHost({ ...options, worker: () => bindings });
   let second: Awaited<ReturnType<typeof startLocalHost>> | undefined;

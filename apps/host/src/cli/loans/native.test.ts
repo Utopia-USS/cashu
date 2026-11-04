@@ -149,24 +149,25 @@ it("rejects malformed and unsupported native arguments without delegation or wri
   });
   try {
     const deps = { stores: host.stores, now: Date.now, render: () => {} };
-    const { io, stderr } = output();
+    const { io, stdout } = output();
     for (const args of [
       ["-p", "demo", "loans", "add", "Synthetic", "--principal", "bad", "--rate", "2"],
       ["-p", "demo", "loans", "set-payment", "bogus"],
       ["-p", "demo", "loans", "add", "--account", "missing", "--principal", "100", "--rate", "2"],
       ["-p", "demo", "add-position", "Synthetic", "--type", "property"],
-      ["-p", "demo", "loans", "--help"],
     ])
-      expect(await runTree(args, io, [...assetCommands(deps), ...loansCommands(deps)])).toEqual(
-        { kind: "exit", code: 2 },
-      );
+      expect(await runTree(args, io, [...assetCommands(deps), ...loansCommands(deps)])).toEqual({
+        kind: "exit",
+        code: 2,
+      });
+    // Since 6491e44 the tree answers command `--help` natively: usage on stdout, exit 0 (Typer).
     expect(
-      await runTree(
-        ["-p", "demo", "loans", "--help"],
-        { ...io, t: createTranslator("pl") },
-        [...assetCommands(deps), ...loansCommands(deps)]),
-    ).toEqual({ kind: "exit", code: 2 });
-    expect(stderr.some((line) => line.includes("Użycie: cashu loans"))).toBe(true);
+      await runTree(["-p", "demo", "loans", "--help"], { ...io, t: createTranslator("pl") }, [
+        ...assetCommands(deps),
+        ...loansCommands(deps),
+      ]),
+    ).toEqual({ kind: "exit", code: 0 });
+    expect(stdout.some((line) => line.includes("Użycie: cashu loans"))).toBe(true);
     const vault = [...host.stores.vaults.values()][0];
     expect(vault?.store.read("SELECT COUNT(*) AS n FROM accounts")).toEqual([{ n: 0 }]);
   } finally {
@@ -208,7 +209,8 @@ it("refuses ambiguous exact loan account names before a loan append", async () =
           "5",
         ],
         io,
-        loansCommands({ stores: host.stores, now: Date.now })),
+        loansCommands({ stores: host.stores, now: Date.now }),
+      ),
     ).toEqual({ kind: "exit", code: 2 });
     expect(vault.store.read("SELECT COUNT(*) AS n FROM loans")).toEqual([{ n: 0 }]);
   } finally {
