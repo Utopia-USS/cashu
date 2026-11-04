@@ -1,6 +1,7 @@
 import { enabledModuleIds } from "@cashu/store/core";
 import { z } from "zod";
 import type { UiActionRegistration } from "../uiActions.js";
+import { reportSuccessfulFetch } from "../worker/leaseReport.js";
 import { runBankingOwnerAction } from "./ownerAction.js";
 import type { BankingRuntime } from "./runtime.js";
 
@@ -38,14 +39,37 @@ export function bankingUiAction(runtime: () => BankingRuntime | undefined): UiAc
       if (!current()) return { status: "refused", reason: "stale_action", preparation: "none" };
       const active = runtime();
       if (!active) return { status: "not_started", reason: "capability_unavailable" };
-      const result = await active.withOwnerAction(vaultId, current, () =>
-        runBankingOwnerAction({
-          runtime: active,
-          profileId: vaultId,
-          isOwnerAction: current,
-          action: parsed.data,
-        }),
-      );
+      const endFetch = parsed.data.type === "sync" ? vault.native.beginFetch() : null;
+      if (parsed.data.type === "sync" && !endFetch)
+        return { status: "not_started", reason: "capability_unavailable" };
+      let result: Awaited<ReturnType<typeof runBankingOwnerAction>>;
+      try {
+        result = await active.withOwnerAction(vaultId, current, () =>
+          runBankingOwnerAction({
+            runtime: active,
+            profileId: vaultId,
+            isOwnerAction: current,
+            action: parsed.data,
+          }),
+        );
+      } finally {
+        endFetch?.();
+      }
+      if (
+        parsed.data.type === "sync" &&
+        result.ok &&
+        typeof result.value === "object" &&
+        result.value !== null
+      ) {
+        const sync = result.value as { banks?: unknown; attempts?: unknown };
+        if (
+          typeof sync.banks === "number" &&
+          sync.banks > 0 &&
+          Array.isArray(sync.attempts) &&
+          sync.attempts.length === 0
+        )
+          await reportSuccessfulFetch(vault, current);
+      }
       return !current()
         ? { status: "outcome_unknown", reason: "interrupted" }
         : result.ok

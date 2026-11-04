@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ensurePrivateDir } from "@cashu/node-host";
 import { enabledModuleIds } from "@cashu/store/core";
 import { type NotificationQueue, SqlPriceCache } from "@cashu/store/investments/local";
-import { DailyPriceLock } from "@cashu/store/investments/services";
+import { DailyPriceLock, type DailySources } from "@cashu/store/investments/services";
 import type { StrategyDirectoryAuthority } from "../proposals/strategyFiles.js";
 import type { OpenVault } from "../stores.js";
 import type {
@@ -34,6 +34,15 @@ export interface ProductionWorkerInput {
   /** Bound host-only connector executor. Its final import command checks the D7 holder again. */
   readonly connectors?: ConnectorFetchPort;
   readonly budget?: BudgetSyncPort;
+  /** One host-owned device cache and checked public sources shared with views and MCP. */
+  readonly market?: {
+    readonly prices: SqlPriceCache;
+    sources(vaultIds: readonly string[]): DailySources;
+    marketForVault(
+      read: import("@cashu/store/query").Read,
+      vault: string,
+    ): import("@cashu/store/investments/screen-sources").MarketInput;
+  };
   /** Shared with checked proposal approval so daily evaluation and imports cannot overlap. */
   readonly dailyLock?: DailyPriceLock;
 }
@@ -92,7 +101,7 @@ export function createProductionWorkerBindings(
       return false;
     }
   });
-  const prices = new SqlPriceCache(host.stores.device.driver);
+  const prices = input.market?.prices ?? new SqlPriceCache(host.stores.device.driver);
   const dailyLock = input.dailyLock ?? new DailyPriceLock();
   // The switch is the last preparation step: an earlier file/cache/state failure leaves Python
   // eligible. A later ambiguous failure keeps the durable native owner and refuses a second run.
@@ -116,11 +125,22 @@ export function createProductionWorkerBindings(
       input.canFetchPublicMarket !== undefined
         ? { isHolder: () => host.isCurrent(vault) && input.canFetchPublicMarket?.(vault) === true }
         : null,
-    // Public sources remain absent until the production cache/transport binding is admitted.
-    offline: true,
+    offline: input.market === undefined,
     language: input.language,
     investments: {
       prices,
+      ...(input.market === undefined ? {} : { marketForVault: input.market.marketForVault }),
+      ...(input.market === undefined
+        ? {}
+        : {
+            macroStore: {
+              apply: (
+                report: Parameters<SqlPriceCache["applyMacroReport"]>[0],
+                now: Parameters<SqlPriceCache["applyMacroReport"]>[1],
+              ) => prices.applyMacroReport(report, now),
+            },
+          }),
+      ...(input.market === undefined ? {} : { sources: input.market.sources }),
       dailyLock,
       files: fileFor,
       ...(input.notifications === undefined ? {} : { notifications: input.notifications }),

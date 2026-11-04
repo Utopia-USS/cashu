@@ -34,6 +34,8 @@ export { type CashWalletView, cashWallet, overviewCashWallet } from "./widgets.j
 
 /** What the read models are composed from (the built-in modules and registry by default). */
 export interface OverviewSources {
+  /** Exact imported and public market data resolved against the current vault's read. */
+  readonly marketData?: (read: Read) => market.CachedMarketData | null;
   readonly modules?: readonly StoreModule[];
   readonly registry?: core.CoreRegistry;
   /** Vault-scoped, authoritative strategy plan; absent means the investment close is unavailable. */
@@ -58,9 +60,10 @@ export function vaultNetWorthBook(
   env: NetWorthEnv,
   sources: OverviewSources = {},
 ): core.NetWorthBook {
+  const marketData = env.marketData ?? sources.marketData?.(read) ?? undefined;
   const contributors: Record<string, core.NetWorthContributor> = {};
   for (const m of modulesOf(sources)) {
-    if (m.netWorth !== undefined) contributors[m.id] = m.netWorth(read, env);
+    if (m.netWorth !== undefined) contributors[m.id] = m.netWorth(read, { ...env, marketData });
   }
   return netWorthBook(read, contributors, env.today, registryOf(sources));
 }

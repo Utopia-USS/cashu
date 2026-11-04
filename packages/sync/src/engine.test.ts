@@ -2,7 +2,7 @@
 // itself a synced folder (partial frames in `local`), a newer frame format.
 import { describe, expect, it } from "vitest";
 import { ownBatchDigest } from "./batchProof.js";
-import type { SyncEngine, Transport } from "./carrier.js";
+import type { ClockGuardStore, SyncEngine, Transport } from "./carrier.js";
 import { createSyncEngine } from "./engine.js";
 import { SyncError } from "./errors.js";
 import { MemoryClockStore, MemoryTransport } from "./memory.js";
@@ -50,6 +50,134 @@ async function codeOf(p: Promise<unknown>): Promise<string | undefined> {
 }
 
 describe("SyncEngine", () => {
+  it("persists verified peer clock walls before sink advance and requires a fresh complete pull", async () => {
+    const remote = new FaultInjector(new MemoryTransport());
+    const writerClock = new ManualClock(T0 + 20 * 60_000);
+    const writer = await createSyncEngine({
+      vault: VAULT,
+      device: A,
+      local: new MemoryTransport(),
+      remotes: [remote],
+      codec,
+      gate,
+      sink: new MemorySink(),
+      clockStore: new MemoryClockStore(),
+      physicalClock: writerClock,
+    });
+    await writer.write([ev("future")]);
+    await writer.sync();
+    const local = new MemoryTransport();
+    const sink = new MemorySink();
+    const clock = new ManualClock(T0);
+    const clockStore = new MemoryClockStore();
+    let walls: Record<string, number> = {};
+    let failSave = true;
+    const guard: ClockGuardStore = {
+      load: () => ({ ...walls }),
+      save(next) {
+        if (failSave) throw new Error("clock guard unavailable");
+        walls = { ...next };
+      },
+    };
+    const make = () =>
+      createSyncEngine({
+        vault: VAULT,
+        device: B,
+        local,
+        remotes: [remote],
+        codec,
+        gate,
+        sink,
+        clockStore,
+        clockGuard: guard,
+        physicalClock: clock,
+      });
+    const first = await make();
+    await expect(first.sync()).rejects.toThrow("clock guard unavailable");
+    expect(sink.size).toBe(0);
+    expect(
+      first.fetchLeaseEvidence(
+        () => true,
+        () => true,
+      ).lastPullAt,
+    ).toBeUndefined();
+    failSave = false;
+    await first.close();
+    const reopened = await make();
+    await reopened.sync();
+    expect(sink.size).toBe(1);
+    expect(walls[A]).toBe(T0 + 20 * 60_000);
+    expect(
+      reopened.fetchLeaseEvidence(
+        () => true,
+        () => true,
+      ),
+    ).toEqual({
+      lastPullAt: undefined,
+      clockOk: false,
+    });
+    await reopened.close();
+    const again = await make();
+    await again.sync(); // Already-applied future event is not delivered again.
+    expect(
+      again.fetchLeaseEvidence(
+        () => true,
+        () => true,
+      ).clockOk,
+    ).toBe(false);
+    expect(
+      again.fetchLeaseEvidence(
+        (device) => device !== A,
+        () => true,
+      ).clockOk,
+    ).toBe(true);
+    clock.advance(16 * 60_000);
+    expect(
+      again.fetchLeaseEvidence(
+        () => true,
+        () => true,
+      ).clockOk,
+    ).toBe(true);
+    remote.setOnline(false);
+    await again.sync();
+    expect(
+      again.fetchLeaseEvidence(
+        () => true,
+        () => true,
+      ).lastPullAt,
+    ).toBeUndefined();
+  });
+  it("refuses fetch evidence when the wall clock falls behind its own persisted HLC", async () => {
+    const clock = new ManualClock(T0);
+    const guard: ClockGuardStore = { load: () => ({}), save: () => {} };
+    const e = await createSyncEngine({
+      vault: VAULT,
+      device: A,
+      local: new MemoryTransport(),
+      remotes: [new MemoryTransport()],
+      codec,
+      gate,
+      sink: new MemorySink(),
+      clockStore: new MemoryClockStore(),
+      clockGuard: guard,
+      physicalClock: clock,
+    });
+    await e.write([ev("own")]);
+    await e.sync();
+    expect(
+      e.fetchLeaseEvidence(
+        () => true,
+        () => true,
+      ).clockOk,
+    ).toBe(true);
+    clock.set(T0 - 6 * 60_000);
+    expect(
+      e.fetchLeaseEvidence(
+        () => true,
+        () => true,
+      ).clockOk,
+    ).toBe(false);
+  });
   it("validates its configuration", async () => {
     const local = new MemoryTransport();
     expect(await codeOf(engine("UPPER-CASE-ID-00", local))).toBe("invalid-config");

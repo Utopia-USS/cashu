@@ -366,6 +366,9 @@ it("pairs through the real native host composition and mirrors initial encrypted
     });
     expect(result.ok).toBe(true);
     expect(await confirmed).toMatchObject({ kind: "completed", device: phone.deviceId });
+    const pairedVault = host.stores.vaults.get(fixture.vaultId)?.native;
+    expect(pairedVault?.isCurrent()).toBe(true);
+    expect(await pairedVault?.pairingKnown(phone.deviceId, "carrier")).toBe(true);
     const carrier = new HostLanCarrier(join(fixture.dataDir, "lan-carrier"));
     const initial = await carrier.list(fixture.vaultId);
     expect(

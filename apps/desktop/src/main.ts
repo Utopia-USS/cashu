@@ -11,6 +11,12 @@ import {
   bankingNativeResultSchema,
   deviceListParamsSchema,
   deviceListResultSchema,
+  leaderCommitParamsSchema,
+  leaderCommitResultSchema,
+  leaderInspectParamsSchema,
+  leaderInspectResultSchema,
+  leaderPreviewParamsSchema,
+  leaderPreviewResultSchema,
   NATIVE_BANKING_FEATURE,
   NATIVE_CONNECTORS_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
@@ -536,7 +542,15 @@ creationIpc("inspect");
 creationIpc("current");
 
 function devicesIpc(
-  method: "list" | "revokePreview" | "revokeCommit" | "revokeInspect" | "revokeCancel",
+  method:
+    | "list"
+    | "revokePreview"
+    | "revokeCommit"
+    | "revokeInspect"
+    | "revokeCancel"
+    | "leaderPreview"
+    | "leaderCommit"
+    | "leaderInspect",
 ) {
   const paramsSchema = {
     list: deviceListParamsSchema,
@@ -544,6 +558,9 @@ function devicesIpc(
     revokeCommit: revokeCommitParamsSchema,
     revokeInspect: revokeInspectParamsSchema,
     revokeCancel: revokeCancelParamsSchema,
+    leaderPreview: leaderPreviewParamsSchema,
+    leaderCommit: leaderCommitParamsSchema,
+    leaderInspect: leaderInspectParamsSchema,
   }[method];
   const resultSchema = {
     list: deviceListResultSchema,
@@ -551,6 +568,9 @@ function devicesIpc(
     revokeCommit: revokeCommitResultSchema,
     revokeInspect: revokeInspectResultSchema,
     revokeCancel: revokeCancelResultSchema,
+    leaderPreview: leaderPreviewResultSchema,
+    leaderCommit: leaderCommitResultSchema,
+    leaderInspect: leaderInspectResultSchema,
   }[method];
   ipcMain.handle(`cashu:devices-${method}`, async (event, raw: unknown) => {
     if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen())
@@ -585,6 +605,9 @@ devicesIpc("revokePreview");
 devicesIpc("revokeCommit");
 devicesIpc("revokeInspect");
 devicesIpc("revokeCancel");
+devicesIpc("leaderPreview");
+devicesIpc("leaderCommit");
+devicesIpc("leaderInspect");
 
 ipcMain.handle("cashu:connectors-install", async (event) => {
   if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen() || !mainWindow)

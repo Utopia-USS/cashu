@@ -28,6 +28,8 @@ import { notificationSignalGroup } from "./notificationFocus.js";
 import {
   alertHistoryRows,
   alertSignalObserved,
+  decisionUndoOpen,
+  journalTimeline,
   type SignalFilter,
   signalGroups,
 } from "./presentation.js";
@@ -659,6 +661,46 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     data?.decisions.filter(
       (row) => journalInstrument === "" || row.instrument === journalInstrument,
     ) ?? [];
+  const journalRows = journalTimeline(journalDecisions, journal, journalFilter);
+  const undoableDecisionIds = new Set(
+    journalDecisions
+      .filter((row) => data && decisionUndoOpen(data.asOf, row.createdAt))
+      .map((row) => row.gid),
+  );
+  const watchSparks = new Map<string, number[]>();
+  if (data?.context.status === "ready") {
+    for (const row of data.context.watchlist) {
+      const values = row.closes_30d.map((point) => Number(String(point.close)));
+      if (values.length > 1 && values.every(Number.isFinite)) watchSparks.set(row.id, values);
+    }
+  }
+  const watchHits =
+    privacy || searchResult?.query !== searchText.trim()
+      ? []
+      : [...searchResult.local, ...searchResult.remote];
+  const chooseWatchHit = (hit: (typeof watchHits)[number]) => {
+    if (hit.state === "new") {
+      if (hit.yahoo_symbol) {
+        void addWatch({
+          kind: "pick",
+          yahooSymbol: hit.yahoo_symbol,
+          ticker: hit.symbol,
+          name: hit.name,
+          assetClass: hit.asset_class,
+          mic: hit.mic,
+          isin: hit.isin,
+        });
+      } else void addWatch({ kind: "text", text: hit.symbol });
+    } else if (hit.instrument_id && hit.state === "watched")
+      options.onOpenAsset?.(hit.instrument_id);
+    else if (hit.instrument_id) void addWatch({ kind: "instrument", gid: hit.instrument_id });
+  };
+  const removeWatchByInstrument = (instrument: string) => {
+    const original = data?.watchlist.find((row) => row.instrument === instrument);
+    if (original) void removeWatch(original);
+  };
+  const snoozeUntil = (gid: string, day: string) =>
+    snooze(gid, new Date(`${day}T23:59:00`).toISOString());
   const history = data === null ? [] : alertHistoryRows(data.signals, data.asOf);
   const exportHistory = () => {
     if (privacy || data === null) return;
@@ -709,6 +751,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     undoOne,
     undoSnooze,
     snooze,
+    snoozeUntil,
     acknowledgeGroup,
     run,
     next,
@@ -728,6 +771,12 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     exportHistory,
     journal,
     journalDecisions,
+    journalRows,
+    undoableDecisionIds,
+    watchSparks,
+    watchHits,
+    chooseWatchHit,
+    removeWatchByInstrument,
     journalFilter,
     setJournalFilter,
     journalInstrument,

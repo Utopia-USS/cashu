@@ -3,9 +3,12 @@
 import { summaryOk } from "@cashu/domain/investments/macro";
 import {
   budgetTools,
+  connectorTools,
+  coreTools,
   decodeEntityRef,
   type EntityRefKind,
   enabledIn,
+  investmentSearchAdapter,
   investmentTools,
   investmentWriteTools,
   type JsonValue,
@@ -21,10 +24,15 @@ import {
   UnlabelledValue,
   validateArguments,
 } from "@cashu/mcp";
-import type { CanonObject, CanonValue } from "../../json.ts";
+import type { CanonObject } from "../../json.ts";
 import { type OutValue, PyFloat } from "../output.ts";
 
 const NATIVE_READS = [
+  "profile_overview",
+  "setup_status",
+  "networth_breakdown",
+  "search_instruments",
+  "connectors",
   "spending_breakdown",
   "cashflow_summary",
   "recurring_payments",
@@ -48,22 +56,32 @@ interface NativeCall {
   readonly args: Record<string, unknown>;
 }
 const NATIVE_CALLS = NATIVE_READS.flatMap<NativeCall>((name) =>
-  name === "signals"
-    ? ["open", "history", "all"].map((status) => ({
+  name === "setup_status"
+    ? ["budget", "assets", "loans", "investments"].map((module) => ({
         name,
-        call: `signals(status=${status})`,
-        args: { status },
+        call: `setup_status(module=${module})`,
+        args: { module },
       }))
-    : name === "alerts"
-      ? [
-          { name, call: "alerts()", args: {} },
-          { name, call: "alerts(status=all)", args: { status: "all" } },
-        ]
-      : [{ name, call: `${name}()`, args: {} }],
+    : name === "search_instruments"
+      ? [{ name, call: "search_instruments(query=ETF)", args: { query: "ETF" } }]
+      : name === "signals"
+        ? ["open", "history", "all"].map((status) => ({
+            name,
+            call: `signals(status=${status})`,
+            args: { status },
+          }))
+        : name === "alerts"
+          ? [
+              { name, call: "alerts()", args: {} },
+              { name, call: "alerts(status=all)", args: { status: "all" } },
+            ]
+          : [{ name, call: `${name}()`, args: {} }],
 );
 const NATIVE_NAMES: ReadonlySet<string> = new Set(NATIVE_READS);
 const specs = new Map(
   [
+    ...coreTools(),
+    ...connectorTools(),
     ...budgetTools(),
     ...loansTools(),
     ...investmentTools(),
@@ -74,6 +92,7 @@ const specs = new Map(
 export interface InvestmentReferences {
   ref(kind: EntityRefKind, gid: string): string;
   rule(value: string): string;
+  searchKey(value: string): string;
 }
 
 /** Called only after real redaction and leak checking. Canonicalize this one typed reference field. */
@@ -88,6 +107,8 @@ function canonicalNative(
     return loanKey(decodeEntityRef("loan", value));
   }
   if (value !== null && investments !== undefined) {
+    if (field === "key" && typeof value === "string" && value.startsWith("i:"))
+      return investments.searchKey(value);
     const kinds: Readonly<Record<string, EntityRefKind>> = {
       instrument_id: "instrument",
       signal_id: "signal",
@@ -135,13 +156,21 @@ export async function nativeMcpReads(
     if (spec === undefined || spec.write) throw new Error("native read manifest is incomplete");
     if (!enabledIn(spec, modules)) return [call, { error_kind: "module_disabled" }];
     try {
-      const tree = await spec.handler(context, validateArguments(spec, args));
+      const validated = validateArguments(spec, args);
+      const answer =
+        name === "search_instruments"
+          ? await (async () => {
+              const step = investmentSearchAdapter.advance(context, validated, undefined);
+              if (step.kind !== "ready") throw new Error("offline MCP parity attempted search I/O");
+              return (await investmentSearchAdapter.finish(context, validated, step.ready)).answer;
+            })()
+          : await spec.handler(context, validated);
       const redactor = new Redactor({
         privacy: context.privacy,
         guard: context.guard,
         summaryOk,
       });
-      const data = redactor.apply(tree);
+      const data = redactor.apply(answer);
       if (data === null || typeof data !== "object" || Array.isArray(data))
         throw new UnlabelledValue("a tool must return an object");
       leakCheck(data, {
@@ -175,18 +204,17 @@ export async function nativeMcpReads(
 export function mergeMcpReads(
   calls: CanonObject,
   native: Readonly<Record<string, OutValue>>,
-  replay: (entry: CanonValue) => OutValue,
 ): Record<string, OutValue> {
   for (const { call } of NATIVE_CALLS) {
     if (!calls.has(call) || !Object.hasOwn(native, call))
       throw new Error("native MCP read coverage is incomplete");
   }
   return Object.fromEntries(
-    [...calls].map(([call, entry]) => {
+    [...calls].map(([call]) => {
       if (Object.hasOwn(native, call)) return [call, native[call] as OutValue];
       if (NATIVE_NAMES.has(call.split("(")[0] ?? ""))
         throw new Error("native MCP read arguments are not covered");
-      return [call, replay(entry)];
+      throw new Error("native MCP read coverage is incomplete");
     }),
   );
 }

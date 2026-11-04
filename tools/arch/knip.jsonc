@@ -17,6 +17,10 @@
     "packages/*": {
       "project": ["src/**/*.{ts,tsx}"]
     },
+    "packages/ui": {
+      "entry": ["src/**/*.stories.tsx"],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
     "apps/*": {
       "project": ["src/**/*.{ts,tsx}"]
     },

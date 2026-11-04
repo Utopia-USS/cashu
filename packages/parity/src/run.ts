@@ -20,6 +20,8 @@ export interface CheckReport {
 
 export interface Report {
   checks: CheckReport[];
+  /** Indexed Python inputs consumed by TS producers, validated but never compared as outputs. */
+  oracleInputs: string[];
   /** `*.json` files in the actual dir that are not a check of the golden index (informational). */
   extra: string[];
   counts: Record<Status, number>;
@@ -47,6 +49,28 @@ interface IndexEntry {
   check: string;
   rows: number | null;
   sha256: string;
+}
+
+const ORACLE_INPUTS: ReadonlySet<string> = new Set(["mcp.read_raw"]);
+
+function validateOracleInputs(goldenDir: string, index: readonly IndexEntry[]): string[] {
+  const inputs = index.filter((entry) => ORACLE_INPUTS.has(entry.check));
+  for (const entry of inputs) {
+    const bytes = readBytes(join(goldenDir, `${entry.check}.json`));
+    if (bytes === null || sha256Hex(bytes) !== entry.sha256)
+      throw new RunError(`oracle input ${entry.check} is missing or has a bad indexed hash`);
+  }
+  return inputs.map((entry) => entry.check);
+}
+
+/** Explicit input-only request: validate it, but never claim it was a comparison. */
+export function oracleInputOnly(goldenDir: string, name: string): boolean {
+  if (!ORACLE_INPUTS.has(name)) return false;
+  const index = readIndex(goldenDir);
+  if (index === null || !index.some((entry) => entry.check === name))
+    throw new RunError(`oracle input ${name} is not indexed`);
+  validateOracleInputs(goldenDir, index);
+  return true;
 }
 
 function readIndex(dir: string): IndexEntry[] | null {
@@ -97,7 +121,8 @@ function isDir(path: string): boolean {
 export function goldenChecks(goldenDir: string): string[] {
   const index = readIndex(goldenDir);
   if (index === null) throw new RunError(`no readable index.json in the golden dir ${goldenDir}`);
-  return index.map((e) => e.check);
+  validateOracleInputs(goldenDir, index);
+  return index.filter((e) => !ORACLE_INPUTS.has(e.check)).map((e) => e.check);
 }
 
 function compareCheck(
@@ -132,14 +157,17 @@ export function runParity(opts: RunOptions): Report {
   if (index === null) {
     throw new RunError(`no readable index.json in the golden dir ${opts.goldenDir}`);
   }
-  const known = new Set(index.map((e) => e.check));
+  const oracleInputs = validateOracleInputs(opts.goldenDir, index);
+  const known = new Set(index.filter((e) => !ORACLE_INPUTS.has(e.check)).map((e) => e.check));
   for (const name of opts.only ?? []) {
     if (!known.has(name)) throw new RunError(`unknown check "${name}"`);
   }
   for (const name of Object.keys(opts.config.checks)) {
     if (!known.has(name)) throw new RunError(`config names an unknown check "${name}"`);
   }
-  const selected = index.filter((e) => opts.only === undefined || opts.only.includes(e.check));
+  const selected = index.filter(
+    (e) => !ORACLE_INPUTS.has(e.check) && (opts.only === undefined || opts.only.includes(e.check)),
+  );
 
   const actualIsDir = isDir(opts.actualDir);
   const actualIndex = actualIsDir ? readIndex(opts.actualDir) : null;
@@ -198,5 +226,5 @@ export function runParity(opts: RunOptions): Report {
       : [];
   const counts: Record<Status, number> = { pass: 0, fail: 0, missing: 0 };
   for (const c of checks) counts[c.status]++;
-  return { checks, extra, counts };
+  return { checks, oracleInputs, extra, counts };
 }

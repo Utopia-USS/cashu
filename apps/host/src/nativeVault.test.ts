@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { builtinRegistry } from "@cashu/domain/core";
 import type { CliExecParams, HostFrame } from "@cashu/host-protocol";
 import { acquireHostLock, connectHost, NodeFolderFs } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
@@ -38,10 +39,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { startLocalHost } from "./host.js";
 import { takeWriterLease } from "./lease.js";
+import { initializeNativeClockGuard } from "./market/clockGuard.js";
 import { openNativeVault } from "./nativeVault.js";
 import { loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
 import { SqlProvenanceStore } from "./sync/keys/sqlProvenance.js";
 import { storeClient } from "./testing/harness.js";
+import { createProductionWorkspaceProvider } from "./workspace/production.js";
 
 const sodium = await crypto.loadNodeSodium();
 const NOW = Date.UTC(2026, 10, 3, 12);
@@ -164,6 +167,7 @@ describe("native vault session", () => {
       salt,
       modules: builtinModules(),
     });
+    initializeNativeClockGuard(store.driver, entry.deviceId);
     const candidate = await loadDeviceAuthority({
       entry,
       dataDir,
@@ -460,19 +464,51 @@ describe("native vault session", () => {
         bootstrapCertificates: async () => [created.creatorCertificate, peerCertificate],
       },
       takeWriterLease(lock),
-      () => NOW,
+      () => Date.now(),
     );
     expect(opened.store.read<{ gid: string }>("SELECT gid FROM profiles")).toEqual([
       { gid: entry.vaultId },
     ]);
     expect((await opened.sync()).rolledBack).toBe(false);
+    const workspaceHome = realpathSync(mkdtempSync(join(tmpdir(), "cashu-native-workspace-home-")));
+    roots.push(workspaceHome);
+    const skillSource = join(workspaceHome, "shipped-skills");
+    mkdirSync(join(skillSource, "workspace-setup"), { recursive: true });
+    writeFileSync(
+      join(skillSource, "workspace-setup", "SKILL.md"),
+      "---\nname: workspace-setup\ndescription: |\n  Applicability - POSITIVE: synthetic.\n  Applicability - NEGATIVE: NOT other.\n---\n\n# Synthetic\n",
+    );
+    const workspace = createProductionWorkspaceProvider({
+      dataRoot: dataDir,
+      home: workspaceHome,
+      workspacesRoot: join(workspaceHome, "Documents", "cashU"),
+      skillSource,
+      version: "synthetic",
+      program: { command: "/synthetic/cashu", args: [] },
+      sessions: (vault) => (vault === entry.vaultId ? opened : null),
+      inventory: () => [entry],
+      now: () => new Date(NOW),
+    });
+    const nativeBinding = workspace.bind(entry.vaultId);
+    const nativeWorkspaceInput = {
+      slug: "synthetic",
+      privacy: "strict" as const,
+      baseCurrency: "PLN",
+      modules: [{ id: "budget", name: builtinRegistry().modules.get("budget")?.name ?? "" }],
+    };
+    expect((await nativeBinding?.apply(nativeWorkspaceInput))?.kind).toBe("completed");
+    expect(await nativeBinding?.inspect(nativeWorkspaceInput)).toMatchObject({
+      availability: "ready",
+      exists: true,
+      upToDate: true,
+    });
     const key = "01K9B2W0000000000000000010";
     const commandSession = {
       vault: entry.vaultId,
       device: entry.deviceId,
       store: opened.store,
       engine: opened.engine,
-      clock: { now: () => NOW },
+      clock: { now: () => Date.now() + 2000 },
       lease: { isHolder: () => true },
       attempts: opened.attempts,
       queue: { run: (_id, task) => opened.queue.run(task) },

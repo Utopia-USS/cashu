@@ -35,6 +35,7 @@
 import { ownBatchDigest } from "./batchProof.js";
 import type {
   AppliedInfo,
+  ClockGuardStore,
   ClockStore,
   DeviceId,
   EventSink,
@@ -107,6 +108,8 @@ export interface SyncEngineOptions {
   readonly gossipEid?: () => string;
   readonly sink: EventSink;
   readonly clockStore: ClockStore;
+  /** Native production supplies a durable, device-local verified foreign-clock guard. */
+  readonly clockGuard?: ClockGuardStore;
   /** Where the gate's state snapshot is kept (absent: every start replays the whole local log). */
   readonly gateState?: GateStateStore;
   readonly physicalClock?: PhysicalClock;
@@ -132,7 +135,8 @@ export async function createSyncEngine(options: SyncEngineOptions): Promise<Sync
   if (!VAULT_RE.test(options.vault)) throw new SyncError("invalid-config", "invalid vault id");
   if (!DEVICE_RE.test(options.device)) throw new SyncError("invalid-config", "invalid device id");
   const restored = await options.clockStore.load();
-  const engine = new OwnLogEngine(options, restored);
+  const guard = options.clockGuard === undefined ? null : await options.clockGuard.load();
+  const engine = new OwnLogEngine(options, restored, guard);
   await engine.init();
   return engine;
 }
@@ -267,6 +271,10 @@ class OwnLogEngine implements SyncEngine {
   readonly #gossipEid: (() => string) | undefined;
   readonly #sink: EventSink;
   readonly #clockStore: ClockStore;
+  readonly #clockGuard: ClockGuardStore | undefined;
+  #foreignWalls: Record<DeviceId, number> | null;
+  #lastPullAt: number | undefined;
+  #rejectedWriters: readonly DeviceId[] = [];
   readonly #gateState: GateStateStore | undefined;
   /** Per writer, the head of the last data frame the gate accepted (in stream order). */
   #judged = new Map<DeviceId, FrameHead>();
@@ -298,7 +306,11 @@ class OwnLogEngine implements SyncEngine {
   /** `takeRebuild` consumes its flag; the old sink remains stale across recovery retries. */
   #recoveryViewStale = false;
 
-  constructor(o: SyncEngineOptions, restored: { wall: number; counter: number } | undefined) {
+  constructor(
+    o: SyncEngineOptions,
+    restored: { wall: number; counter: number } | undefined,
+    guard: Readonly<Record<DeviceId, number>> | null,
+  ) {
     this.vault = o.vault;
     this.device = o.device;
     this.#local = o.local;
@@ -309,6 +321,8 @@ class OwnLogEngine implements SyncEngine {
     this.#gossipEid = o.gossipEid;
     this.#sink = o.sink;
     this.#clockStore = o.clockStore;
+    this.#clockGuard = o.clockGuard;
+    this.#foreignWalls = guard === null ? null : { ...guard };
     this.#gateState = o.gateState;
     this.#physical = o.physicalClock ?? systemClock;
     this.#clock = new HybridClock(o.device, {
@@ -863,12 +877,15 @@ class OwnLogEngine implements SyncEngine {
   sync(): Promise<SyncResult> {
     return this.#run(async () => {
       this.#assertOpen();
+      this.#lastPullAt = undefined;
+      this.#rejectedWriters = [];
       const pass = newPass();
       // A gate with statement state sees the local log first, so every stream's key is bound by its
       // first frame before anything new is verified.
       if (!this.#primed && this.#gate.needsReplay()) await this.#applyLocal(pass);
       this.#leaseTransport = { kind: "eventual" };
       const bounded: { propagationMs: number; pullAt: number; pushAt: number }[] = [];
+      const pullStarts: number[] = [];
       let boundedOffline = false;
       let allDelivered = true;
       const offlineRemoteIndices = new Set<number>();
@@ -877,6 +894,7 @@ class OwnLogEngine implements SyncEngine {
         const pullAt = this.#physical.now();
         try {
           if (!(await this.#replicate(remote, pass, !this.#ownTailUncertain))) allDelivered = false;
+          pullStarts.push(pullAt);
           if (bound !== undefined) {
             bounded.push({ propagationMs: bound, pullAt, pushAt: this.#physical.now() });
           }
@@ -958,7 +976,18 @@ class OwnLogEngine implements SyncEngine {
         this.#gossipDeliveryPending = !delivered;
       }
       await this.#saveGate();
-      return this.#finish(pass);
+      const result = await this.#finish(pass);
+      this.#rejectedWriters = result.rejected.map((row) => row.device);
+      if (
+        this.#remotes.length > 0 &&
+        pullStarts.length === this.#remotes.length &&
+        result.offlineRemotes === 0 &&
+        !result.needsUpgrade &&
+        !result.rolledBack &&
+        allDelivered
+      )
+        this.#lastPullAt = Math.min(...pullStarts);
+      return result;
     });
   }
 
@@ -980,6 +1009,29 @@ class OwnLogEngine implements SyncEngine {
     )
       return { kind: "eventual" };
     return this.#leaseTransport;
+  }
+
+  fetchLeaseEvidence(
+    activeClockWriter: (device: DeviceId) => boolean,
+    rejectedRelevant: (device: DeviceId) => boolean,
+  ) {
+    const physical = this.#physical.now();
+    const healthy =
+      Number.isSafeInteger(physical) && physical + this.#clock.maxDriftMs >= this.#clock.state.wall;
+    let clockOk = healthy && this.#foreignWalls !== null;
+    if (clockOk) {
+      try {
+        if (this.#rejectedWriters.some(rejectedRelevant)) clockOk = false;
+        for (const [device, wall] of Object.entries(this.#foreignWalls ?? {}))
+          if (activeClockWriter(device) && physical + this.#clock.maxDriftMs < wall) {
+            clockOk = false;
+            break;
+          }
+      } catch {
+        clockOk = false;
+      }
+    }
+    return { lastPullAt: clockOk ? this.#lastPullAt : undefined, clockOk };
   }
 
   onApplied(listener: (info: AppliedInfo) => void): () => void {
@@ -1660,6 +1712,20 @@ class OwnLogEngine implements SyncEngine {
     pass.pendingBytes = 0;
     let outcomes: readonly { applied: number; duplicates: number; parked: number }[];
     try {
+      if (this.#foreignWalls !== null && this.#clockGuard !== undefined) {
+        const next = { ...this.#foreignWalls };
+        for (const batch of batches) {
+          if (batch.own) continue;
+          for (const event of batch.events) {
+            const wall = Number.parseInt(event.h.slice(0, 9), 36);
+            if (!Number.isSafeInteger(wall) || wall < 0)
+              throw new SyncError("invalid-event", "invalid foreign clock wall");
+            next[batch.device] = Math.max(next[batch.device] ?? 0, wall);
+          }
+        }
+        await this.#clockGuard.save(next);
+        this.#foreignWalls = next;
+      }
       outcomes = await this.#sink.applyBatches(batches);
     } catch (e) {
       this.#gate.reset();

@@ -26,7 +26,6 @@
     "@cashu/ui-logic": "workspace:*",
     "@tanstack/react-form": "1.33.5",
     "@tanstack/react-router": "^1.0.0",
-    "@tanstack/react-virtual": "3.14.25",
     "electron-updater": "6.7.3",
     "qrcode.react": "4.2.0",
     "react": "19.3.0",

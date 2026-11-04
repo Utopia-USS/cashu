@@ -41,6 +41,10 @@ export interface RefreshPriceDeps {
   readonly fxSource: market.FxSource;
   readonly spark?: market.SparkSource | null;
   readonly tableFx?: market.TableFxSource | null;
+  /** Bind a short request to its exact current consumers, including source fallback and retries. */
+  readonly scoped?: (
+    allowed: () => boolean,
+  ) => Pick<RefreshPriceDeps, "priceSource" | "fxSource" | "spark" | "tableFx">;
   readonly asOf: CalendarDate;
   readonly now: DateTime;
   readonly workers?: number;
@@ -115,7 +119,9 @@ export async function refreshPriceNeeds(deps: RefreshPriceDeps): Promise<PriceRe
     async fetch(i, start, end) {
       const consumers = byId.get(i.id)?.consumers ?? [];
       requireConsumer(consumers);
-      const result = await deps.priceSource.fetch(i, start, end);
+      const source =
+        deps.scoped?.(() => consumers.some(authorized)).priceSource ?? deps.priceSource;
+      const result = await source.fetch(i, start, end);
       requireConsumer(consumers);
       return result;
     },
@@ -125,7 +131,8 @@ export async function refreshPriceNeeds(deps: RefreshPriceDeps): Promise<PriceRe
     async rates(c, start, end) {
       const consumers = currencyConsumers.get(c) ?? [];
       requireConsumer(consumers);
-      const result = await deps.fxSource.rates(c, start, end);
+      const source = deps.scoped?.(() => consumers.some(authorized)).fxSource ?? deps.fxSource;
+      const result = await source.rates(c, start, end);
       requireConsumer(consumers);
       return result;
     },
@@ -146,7 +153,8 @@ export async function refreshPriceNeeds(deps: RefreshPriceDeps): Promise<PriceRe
               );
             const requested = symbols.filter(allowed);
             if (requested.length === 0) return new Map();
-            const answer = await deps.spark?.spark(requested);
+            const source = deps.scoped?.(() => requested.every(allowed)).spark ?? deps.spark;
+            const answer = await source?.spark(requested);
             return new Map([...(answer ?? [])].filter(([symbol]) => allowed(symbol)));
           },
         };
@@ -157,7 +165,12 @@ export async function refreshPriceNeeds(deps: RefreshPriceDeps): Promise<PriceRe
           maxDaysPerRequest: deps.tableFx.maxDaysPerRequest,
           async tableRates(start, end) {
             requireConsumer([...currencyConsumers.values()].flat());
-            const answer = await deps.tableFx?.tableRates(start, end);
+            const activeCurrencies = [...currencyConsumers.keys()];
+            const source =
+              deps.scoped?.(() =>
+                activeCurrencies.every((c) => currencyConsumers.get(c)?.some(authorized)),
+              ).tableFx ?? deps.tableFx;
+            const answer = await source?.tableRates(start, end);
             return new Map(
               [...(answer ?? [])].filter(([c]) => currencyConsumers.get(c)?.some(authorized)),
             );

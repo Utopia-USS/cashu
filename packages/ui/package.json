@@ -21,15 +21,22 @@
   "dependencies": {
     "@cashu/domain": "workspace:*",
     "@cashu/i18n": "workspace:*",
+    "@expo/ui": "~58.0.26",
+    "@shopify/flash-list": "2.3.2",
+    "@tanstack/react-virtual": "3.14.25",
     "tailwindcss": "4.3.3",
     "uniwind": "1.13.1"
   },
   "peerDependencies": {
     "react": "19.3.0",
+    "react-dom": "19.3.0",
     "react-native": "0.88.1",
     "react-native-svg": "15.16.0"
   },
   "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    },
     "react-native": {
       "optional": true
     },

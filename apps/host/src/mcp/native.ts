@@ -39,6 +39,10 @@ export interface NativeMcpOptions {
   readonly log: HostLog;
   readonly inventory: readonly ToolInventoryEntry[];
   readonly prices?: market.PriceCache | null;
+  readonly marketData?: (
+    read: NativeToolStore["read"],
+    vault: string,
+  ) => market.CachedMarketData | null;
   readonly fxNewest?: () => string | null;
   readonly investmentReads?: (context: ToolContext<NativeToolStore>) => InvestmentReads;
   readonly investmentHistory?: (context: ToolContext<NativeToolStore>) => InvestmentHistoryReads;
@@ -258,6 +262,14 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         today,
         now: () => at,
         prices: options.prices ?? null,
+        ...(options.marketData === undefined
+          ? {}
+          : {
+              get marketData() {
+                assertContextCurrent();
+                return options.marketData?.(read, vault.id) ?? undefined;
+              },
+            }),
         fxNewest: options.fxNewest?.() ?? null,
         toolInventory: options.inventory,
         get investmentWrites() {

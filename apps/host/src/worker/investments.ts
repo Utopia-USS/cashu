@@ -24,6 +24,7 @@ import { runHostVaultCommand } from "../commands.js";
 import type { OpenVault } from "../stores.js";
 import { guardedLease, WorkerAuthorityLost, workerGuard } from "./authority.js";
 import type { JobOutcome, WorkerBindings, WorkerHostContext } from "./contracts.js";
+import { reportSuccessfulFetch } from "./leaseReport.js";
 import { localDay } from "./schedule.js";
 
 export interface WorkerWriteAttempts {
@@ -155,6 +156,7 @@ export function nativeInvestmentJobs(
           vaults: selected,
           lock: ports.dailyLock,
           prices: ports.prices,
+          ...(ports.marketForVault === undefined ? {} : { marketForVault: ports.marketForVault }),
           ...(sources === undefined ? {} : { sources }),
           ...(ports.activity === undefined ? {} : { activity: ports.activity }),
           ...(ports.notifications === undefined ? {} : { notifications: ports.notifications }),
@@ -162,6 +164,14 @@ export function nativeInvestmentJobs(
         },
         { asOf: localDay(host.now()), trigger: "worker", offline },
       );
+      for (const vault of vaults) {
+        const fetched = report.market?.reports.get(vault.id);
+        if (
+          fetched?.instruments.some((item) => item.status === "ok" && item.start !== null) ||
+          fetched?.fx.some((item) => item.status === "ok" && item.start !== null)
+        )
+          await reportSuccessfulFetch(vault, guardOf(vault));
+      }
       if (report.status === "busy")
         for (const vault of selected)
           results.set(vault.store.vault, { status: "skipped", code: "busy" });
@@ -196,7 +206,7 @@ export function nativeInvestmentJobs(
         read = vault.store.read.bind(vault.store),
         profile = mcpProfile(read);
       if (profile === undefined) return "unavailable";
-      const sources = ports.sources();
+      const sources = ports.sources([vault.id]);
       try {
         const result = await investmentsPerformance.runBackfill({
           store: vault.store,
@@ -231,6 +241,12 @@ export function nativeInvestmentJobs(
         guard();
         if (!result.ok && result.reason === "not_leader") throw new WorkerAuthorityLost();
         if (!result.ok) return "busy";
+        if (
+          [...result.value.instruments, ...result.value.benchmarks, ...result.value.fx].some(
+            (row) => row.status === "ok",
+          )
+        )
+          await reportSuccessfulFetch(vault, guard);
         return [...result.value.instruments, ...result.value.benchmarks, ...result.value.fx].some(
           (row) => row.status === "error",
         )
@@ -261,7 +277,7 @@ export function nativeInvestmentJobs(
         );
       });
       guard();
-      const sources = ports.sources();
+      const sources = ports.sources([vault.id]);
       let closed = false;
       const close = () => {
         if (!closed) {
@@ -284,6 +300,8 @@ export function nativeInvestmentJobs(
           ...(sources.workers === undefined ? {} : { workers: sources.workers }),
         });
         guard();
+        if (result.status === "ok" && (result.updated > 0 || result.fxUpdated > 0))
+          await reportSuccessfulFetch(vault, guard);
         return result.status === "busy" || result.status === "refused" ? "busy" : "finished";
       } finally {
         close();

@@ -1,6 +1,12 @@
 import type {
   DeviceListParams,
   DeviceListResult,
+  LeaderCommitParams,
+  LeaderCommitResult,
+  LeaderInspectParams,
+  LeaderInspectResult,
+  LeaderPreviewParams,
+  LeaderPreviewResult,
   RevokeCancelParams,
   RevokeCancelResult,
   RevokeCommitParams,
@@ -17,6 +23,9 @@ export interface DevicesBridge {
   revokeCommit(input: RevokeCommitParams): Promise<RevokeCommitResult>;
   revokeInspect(input: RevokeInspectParams): Promise<RevokeInspectResult>;
   revokeCancel(input: RevokeCancelParams): Promise<RevokeCancelResult>;
+  leaderPreview(input: LeaderPreviewParams): Promise<LeaderPreviewResult>;
+  leaderCommit(input: LeaderCommitParams): Promise<LeaderCommitResult>;
+  leaderInspect(input: LeaderInspectParams): Promise<LeaderInspectResult>;
 }
 
 export function devicesBridge(): DevicesBridge | null {

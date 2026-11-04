@@ -1,7 +1,6 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, DateText, Money } from "@cashu/ui";
-import { type ReactNode, useRef } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
+import { Amount, DateText, Money, VirtualList } from "@cashu/ui";
+import type { ReactNode } from "react";
 import { MarkdownDocument } from "./MarkdownDocument.js";
 import { S } from "./Strategies.strings.js";
 import type { StrategiesScreenState } from "./useStrategiesScreen.js";
@@ -20,33 +19,15 @@ function Rows<T>({
   children(row: T, index: number): ReactNode;
   label: string;
 }) {
-  const ref = useRef<HTMLElement>(null);
-  const virtual = useVirtualRows({
-    count: rows.length,
-    getScrollElement: () => ref.current,
-    estimateSize: () => 48,
-    getItemKey: (i) => rowKey(rows[i] as T),
-    overscan: 5,
-  });
   return (
-    <section ref={ref} aria-label={label} className="max-h-96 overflow-auto">
-      <div className="relative" style={{ height: virtual.totalSize }}>
-        {virtual.items.map((item) => {
-          const row = rows[item.index];
-          return row === undefined ? null : (
-            <div
-              key={item.key}
-              ref={virtual.measureElement}
-              data-index={item.index}
-              className="absolute left-0 top-0 w-full border-b border-border py-2"
-              style={{ transform: `translateY(${item.start}px)` }}
-            >
-              {children(row, item.index)}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    <VirtualList
+      items={rows}
+      getKey={rowKey}
+      renderItem={children}
+      label={label}
+      estimateSize={48}
+      rowClassName="border-b border-border py-2"
+    />
   );
 }
 function SourceLines({ state, text }: { state: StrategiesScreenState; text: string }) {

@@ -5,6 +5,9 @@ import type { DateTime } from "@cashu/domain";
 import { strategyStatus, usableConfig } from "@cashu/domain/investments/strategy";
 import type { ChangeSource, Read } from "../../query.js";
 import type { MarketInput } from "../marketInput.js";
+
+export type { MarketInput } from "../marketInput.js";
+
 import { latestStrategyVersion } from "../queries/strategy.js";
 import type { StrategyState } from "../services/strategy.js";
 

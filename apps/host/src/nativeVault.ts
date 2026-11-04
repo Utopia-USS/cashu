@@ -38,10 +38,13 @@ import {
   type UnstampedEvent,
 } from "@cashu/sync";
 import { SqlAttemptJournal } from "./attemptJournal.js";
+import { LEADER_PIN_COMMAND, leaseAttempts } from "./devices/leaseAttempts.js";
 import type { WriterLease } from "./lease.js";
+import { nativeClockGuard } from "./market/clockGuard.js";
 import { NativeBlobPublication } from "./nativeBlobs.js";
 import { HostLanCarrier } from "./pairing/carrier.js";
 import { type PairingAttempt, PairingJournal } from "./pairing/journal.js";
+import { pairingReadCapability } from "./pairing/readCapability.js";
 import type { StrategyDirectoryAuthority } from "./proposals/strategyFiles.js";
 import { WriteQueue } from "./queue.js";
 import {
@@ -151,6 +154,10 @@ export interface NativeVaultSession {
   canRunSideEffects(): boolean;
   strategyDirectoryAuthority(): StrategyDirectoryAuthority | null;
   canFetchPublicMarket(): boolean;
+  /** A live external fetch holds back non-force leader handover ACK until it settles. */
+  beginFetch(): (() => void) | null;
+  /** Separate durable lease report after a successful checked fetch. */
+  recordFetch(): Promise<"completed" | "not_started" | "outcome_unknown">;
   /** Exact-vault encrypted import archive, invalidated with this native session. */
   blobPublication(): NativeBlobPublication | null;
   isSyncing(): boolean;
@@ -168,6 +175,28 @@ export interface NativeVaultSession {
     },
   ): Promise<RevokeCommitResult>;
   deviceInspect(operationId: string): Promise<RevokeInspectResult>;
+  leaderPrepare(
+    leader: string,
+    force: boolean,
+  ): Promise<
+    | {
+        readonly kind: "prepared";
+        readonly head: string;
+        readonly mayStillRun: string | null;
+        readonly confirmationText: string;
+      }
+    | { readonly kind: "refused"; readonly code: "unavailable" | "unsafe_target" }
+  >;
+  leaderCommit(
+    leader: string,
+    force: boolean,
+    confirmationText: string,
+    head: string,
+    operationId: string,
+  ): Promise<"completed" | "not_started" | "outcome_unknown">;
+  leaderInspect(
+    operationId: string,
+  ): Promise<"completed" | "not_started" | "outcome_unknown" | "not_found">;
   pairingStart(
     rendezvous: string,
   ): Promise<
@@ -340,6 +369,8 @@ export async function openNativeVault(
       gate: candidate.gate,
       sink: store.sink(),
       clockStore: metaClockStore(store.driver, entry.deviceId),
+      clockGuard: nativeClockGuard(store.driver, entry.deviceId),
+      physicalClock: { now },
       gateState: metaGateStateStore(store.driver, entry.deviceId),
       gossipEid: () => mintUlid(now()),
     });
@@ -388,6 +419,7 @@ export async function openNativeVault(
     const workspaceGeneration = randomUUID();
     let current = true;
     let syncing = false;
+    let activeFetches = 0;
     const syncListeners = new Set<() => void>();
     const notifySyncSettled = () => {
       for (const listener of [...syncListeners]) {
@@ -546,6 +578,56 @@ export async function openNativeVault(
         return false;
       }
     };
+    const canFetchPublicMarket = () => {
+      if (!isCurrent() || activeEngine.writeAdmission() !== "ready") return false;
+      try {
+        const transport = activeEngine.leaseTransport();
+        const evidence = activeEngine.fetchLeaseEvidence(
+          (writer) => !activeCandidate.devices.registry.revoked.has(writer),
+          (writer) => activeCandidate.devices.registry.isTrusted(writer),
+        );
+        return devices.mayRunNewestDayImports(
+          activeCandidate.devices.lease,
+          {
+            me: entry.deviceId,
+            now: now(),
+            lastPullAt: evidence.lastPullAt,
+            transport,
+            own: () => undefined,
+            firstSeen: (eid) => activeCandidate.devices.firstSeen(eid),
+            clockOk: evidence.clockOk,
+          },
+          activeStore.cursors(),
+        );
+      } catch {
+        return false;
+      }
+    };
+    const leaseReports = leaseAttempts({
+      vault: entry.vaultId,
+      identity: activeCandidate.identity,
+      store: activeStore,
+      engine: activeEngine,
+      authority: activeCandidate.devices,
+      attempts,
+      queue,
+      now,
+      current: isCurrent,
+      canFetch: canFetchPublicMarket,
+      canPin: () =>
+        current &&
+        lease.held &&
+        activeEngine.writeAdmission() === "ready" &&
+        !attempts.hasPending(entry.vaultId, revokeCommand) &&
+        pairingJournal.pending(entry.vaultId).length === 0 &&
+        (syncing || canRunSideEffects()),
+      canPinTarget: (leader, force) =>
+        force ||
+        leader === entry.deviceId ||
+        activeCandidate.devices.lease.holder !== entry.deviceId ||
+        (activeFetches === 0 && canFetchPublicMarket()),
+    });
+    await leaseReports.reconcilePending();
     return {
       id: entry.vaultId,
       store: activeStore,
@@ -583,25 +665,18 @@ export async function openNativeVault(
           return null;
         }
       },
-      canFetchPublicMarket: () => {
-        if (!isCurrent() || activeEngine.writeAdmission() !== "ready") return false;
-        try {
-          const transport = activeEngine.leaseTransport();
-          return devices.holdsLease(activeCandidate.devices.lease, {
-            me: entry.deviceId,
-            now: now(),
-            lastPullAt: transport.kind === "bounded" ? transport.lastPullAt : undefined,
-            transport,
-            own: () => undefined,
-            firstSeen: (eid) => activeCandidate.devices.firstSeen(eid),
-            // The host has no persisted clock-warning authority yet. A recent pull and write
-            // admission do not prove the HLC clock is healthy, so fetch stays unavailable.
-            clockOk: false,
-          });
-        } catch {
-          return false;
-        }
+      canFetchPublicMarket,
+      beginFetch: () => {
+        if (!canFetchPublicMarket()) return null;
+        activeFetches++;
+        let ended = false;
+        return () => {
+          if (ended) return;
+          ended = true;
+          activeFetches--;
+        };
       },
+      recordFetch: () => leaseReports.recordFetched(),
       blobPublication: () => {
         if (!isCurrent()) return null;
         if (blobPublication === null)
@@ -634,6 +709,25 @@ export async function openNativeVault(
             );
             if (result.rolledBack || activeCandidate.devices.rotationNeeded() !== undefined)
               throw new Error("native_authority_changed");
+            if (
+              activeCandidate.devices.lease.pendingFrom === entry.deviceId &&
+              activeFetches === 0
+            ) {
+              const evidence = activeEngine.fetchLeaseEvidence(
+                (writer) => !activeCandidate.devices.registry.revoked.has(writer),
+                (writer) => activeCandidate.devices.registry.isTrusted(writer),
+              );
+              const release = await leaseReports.releasePendingInQueue({
+                me: entry.deviceId,
+                now: now(),
+                lastPullAt: evidence.lastPullAt,
+                transport: activeEngine.leaseTransport(),
+                own: () => undefined,
+                firstSeen: (eid) => activeCandidate.devices.firstSeen(eid),
+                clockOk: evidence.clockOk,
+              });
+              if (release === "outcome_unknown") throw new Error("native_lease_release_uncertain");
+            }
             // The gate may have accepted a new wrapped generation during this sync.
             await crypto.saveKeyring(source.keyStore, activeCandidate.ring);
             syncing = false;
@@ -651,7 +745,13 @@ export async function openNativeVault(
         queue.run(() => {
           if (!isCurrent()) return { kind: "refused", code: "unavailable" } as const;
           const behind = new Set(activeCandidate.gate.behind().map((x) => x.device));
-          const forked = new Set(activeCandidate.gate.forks().map((x) => x.device));
+          const forked = new Map(activeCandidate.gate.forks().map((x) => [x.device, x.agreed]));
+          const liveness = devices.leaderLiveness(
+            activeCandidate.devices.lease,
+            activeCandidate.devices.registry,
+            { now: now(), firstSeen: (eid) => activeCandidate.devices.firstSeen(eid) },
+          );
+          const activeProvenance = provenance.get(activeCandidate.ring.active.kid);
           const records = [...activeCandidate.devices.registry.devices.values()].sort((a, b) =>
             a.deviceId.localeCompare(b.deviceId),
           );
@@ -660,11 +760,30 @@ export async function openNativeVault(
             vault: entry.vaultId,
             ownDevice: entry.deviceId,
             operations: [...attempts.recentOperations(entry.vaultId, revokeCommand)],
+            leaderOperations: [...attempts.recentOperations(entry.vaultId, LEADER_PIN_COMMAND)],
             evidence: {
               historyPending: activeCandidate.gate.gossipStatus().historyPending,
               overflow: activeCandidate.gate.gossipStatus().overflow,
               authorityUncertain: activeCandidate.gate.gossipStatus().authorityUncertain,
               writeAdmission: activeEngine.writeAdmission(),
+            },
+            leader: {
+              mode: liveness.mode,
+              state: liveness.state,
+              device: liveness.leader,
+              pendingFrom: liveness.pendingFrom,
+              lastActivityAt: liveness.lastActivityAt ?? null,
+              silentForMs: liveness.silentForMs,
+              warn: liveness.warn,
+            },
+            keyProvenance: {
+              source: activeProvenance?.source ?? "unknown",
+              sender:
+                activeProvenance?.sender && /^[0-9a-f]{32}$/.test(activeProvenance.sender)
+                  ? activeProvenance.sender
+                  : null,
+              recipientsKnown:
+                activeProvenance?.recipients !== null && activeProvenance?.recipients !== undefined,
             },
             devices: records.map((record) => ({
               id: record.deviceId,
@@ -673,6 +792,9 @@ export async function openNativeVault(
               revoked: activeCandidate.devices.registry.revoked.has(record.deviceId),
               behind: behind.has(record.deviceId),
               forked: forked.has(record.deviceId),
+              forkAgreed: forked.get(record.deviceId) ?? null,
+              pairedBy: record.pairedBy,
+              pairedAt: record.pairedAt.position,
             })),
           } as const;
         }),
@@ -909,6 +1031,40 @@ export async function openNativeVault(
           const result = await reconcileRevoke(operationId, status.eids, status.fingerprint);
           return { kind: result, operationId } as const;
         }),
+      leaderPrepare: (leader, force) =>
+        queue.run(() => {
+          if (
+            !canRunSideEffects() ||
+            (activeCandidate.devices.lease.mode === "pinned" &&
+              activeCandidate.devices.lease.pinned === leader) ||
+            !activeCandidate.devices.registry.isTrusted(leader) ||
+            activeCandidate.devices.registry.revoked.has(leader)
+          )
+            return { kind: "refused", code: "unsafe_target" } as const;
+          if (
+            !force &&
+            leader !== entry.deviceId &&
+            activeCandidate.devices.lease.holder === entry.deviceId &&
+            (activeFetches > 0 || !canFetchPublicMarket())
+          )
+            return { kind: "refused", code: "unavailable" } as const;
+          const head = activeCandidate.devices.lease.head;
+          if (head === null) return { kind: "refused", code: "unavailable" } as const;
+          const liveness = devices.leaderLiveness(
+            activeCandidate.devices.lease,
+            activeCandidate.devices.registry,
+            { now: now(), firstSeen: (eid) => activeCandidate.devices.firstSeen(eid) },
+          );
+          return {
+            kind: "prepared",
+            head,
+            mayStillRun: liveness.repin?.mayStillRun ?? null,
+            confirmationText: devices.pinConfirmationText("pinned", leader, force),
+          } as const;
+        }),
+      leaderCommit: (leader, force, confirmationText, head, operationId) =>
+        leaseReports.pin(leader, force, confirmationText, head, operationId),
+      leaderInspect: (operationId) => leaseReports.inspect("native.devices.leaderPin", operationId),
       pairingStart: (rendezvous) =>
         queue.run(() => {
           prunePairing();
@@ -1038,77 +1194,17 @@ export async function openNativeVault(
             return "outcome_unknown" as const;
           }
         }),
-      pairingAttempt: (session) =>
-        queue.run(async () => {
-          prunePairing();
-          if (!isCurrent()) return undefined;
-          const attempt = pairingJournal.get(entry.vaultId, session);
-          if (!attempt || attempt.vault !== entry.vaultId) return undefined;
-          if (attempt.phase !== "may_append") return attempt;
-          const proof = await activeEngine.inspectOwnBatch({
-            eids: [attempt.eid],
-            digest: attempt.digest,
-          });
-          if (proof === "committed" && (await ensureOwnLanMirror()))
-            pairingJournal.mark(entry.vaultId, session, "completed", now());
-          else if (proof === "absent")
-            pairingJournal.mark(entry.vaultId, session, "not_started", now());
-          return pairingJournal.get(entry.vaultId, session);
-        }),
-      pairingOperation: (operationId) =>
-        queue.run(async () => {
-          prunePairing();
-          if (!isCurrent()) return undefined;
-          const attempt = pairingJournal.forOperation(entry.vaultId, operationId);
-          if (!attempt) return undefined;
-          if (attempt.phase === "may_append") {
-            const proof = await activeEngine.inspectOwnBatch({
-              eids: [attempt.eid],
-              digest: attempt.digest,
-            });
-            if (proof === "committed" && (await ensureOwnLanMirror()))
-              pairingJournal.mark(entry.vaultId, attempt.session, "completed", now());
-            else if (proof === "absent")
-              pairingJournal.mark(entry.vaultId, attempt.session, "not_started", now());
-          }
-          return pairingJournal.forOperation(entry.vaultId, operationId);
-        }),
-      pairingHasActive: () =>
-        queue.run(() => {
-          if (!isCurrent()) return false;
-          if (pairingJournal.pending(entry.vaultId).length > 0) return true;
-          for (const device of activeCandidate.devices.registry.trusted.keys())
-            if (pairingJournal.forDevice(entry.vaultId, device) !== undefined) return true;
-          return false;
-        }),
-      pairingKnown: (device, purpose, session) =>
-        queue.run(() => {
-          if (!isCurrent()) return false;
-          if (purpose === "carrier") return activeCandidate.devices.registry.isTrusted(device);
-          if (!session) return false;
-          const attempt = pairingJournal.get(entry.vaultId, session);
-          return (
-            !!attempt &&
-            attempt.device === device &&
-            attempt.phase === "completed" &&
-            activeCandidate.devices.registry.isTrusted(device)
-          );
-        }),
-      pairingTrust: (device, signKey, boxKey, certificate) =>
-        queue.run(() => {
-          if (!isCurrent()) return false;
-          const record = activeCandidate.devices.registry.trusted.get(device);
-          const stored = pairingJournal.forDevice(entry.vaultId, device);
-          return (
-            !!record &&
-            !!stored &&
-            Buffer.from(record.signPublicKey).equals(Buffer.from(signKey)) &&
-            Buffer.from(record.boxPublicKey).equals(Buffer.from(boxKey)) &&
-            stored.signKey === Buffer.from(signKey).toString("hex") &&
-            stored.boxKey === Buffer.from(boxKey).toString("hex") &&
-            stored.certificate === Buffer.from(certificate).toString("hex")
-          );
-        }),
+      ...pairingReadCapability({
+        vault: entry.vaultId,
+        journal: pairingJournal,
+        engine: activeEngine,
+        queue,
+        registry: () => activeCandidate.devices.registry,
+        isCurrent,
+        prune: prunePairing,
+        mirrorOwnBatch: ensureOwnLanMirror,
+        now,
+      }),
       carrierRequest: (request, expiresAt, onAuthorized) =>
         queue.run(async () => {
           const refused = (

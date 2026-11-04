@@ -1,4 +1,5 @@
 import { T } from "./Devices.strings.js";
+import { LeaderAction } from "./LeaderAction.js";
 import type { DevicesScreenState } from "./useDevicesScreen.js";
 
 const control =
@@ -15,8 +16,78 @@ export function DevicesView({ state }: { state: DevicesScreenState }) {
     list.evidence.authorityUncertain ||
     list.evidence.writeAdmission !== "ready" ||
     list.operations.some((operation) => operation.phase === "may_append");
+  const deviceName = (id: string | null) =>
+    id === null ? T.leaderNone : (list.devices.find((device) => device.id === id)?.name ?? id);
+  const issuerName = (id: string) => (id === "0".repeat(32) ? T.issuerRecovery : deviceName(id));
+  const origins = [...list.devices].sort(
+    (a, b) =>
+      a.pairedAt.seg - b.pairedAt.seg ||
+      a.pairedAt.offset - b.pairedAt.offset ||
+      a.id.localeCompare(b.id),
+  );
+  const orphanOrder = new Map(origins.map((device, index) => [device.id, index]));
+  const originsById = new Map(origins.map((device) => [device.id, device]));
+  const affected = [...(state.preview?.affected ?? [])].sort(
+    (a, b) =>
+      (orphanOrder.get(a.device) ?? Number.MAX_SAFE_INTEGER) -
+        (orphanOrder.get(b.device) ?? Number.MAX_SAFE_INTEGER) || a.device.localeCompare(b.device),
+  );
+  const leaderStatus =
+    list.leader.state === "auto"
+      ? T.leaderAuto
+      : list.leader.state === "leaderless"
+        ? T.leaderNone
+        : list.leader.state === "handover_pending"
+          ? T.leaderPending
+          : list.leader.state === "silent"
+            ? T.leaderSilent
+            : T.leaderOk;
+  const provenanceStatus =
+    list.keyProvenance.source === "own"
+      ? T.provenanceOwn
+      : list.keyProvenance.source === "wrap"
+        ? T.provenanceWrap
+        : list.keyProvenance.source === "pairing"
+          ? T.provenancePairing
+          : T.provenanceUnknown;
   return (
     <div className="grid gap-4">
+      <section className="grid gap-1" aria-label={T.leaderTitle}>
+        <h3>{T.leaderTitle}</h3>
+        <p>{list.leader.mode === "auto" ? T.leaderAuto : deviceName(list.leader.device)}</p>
+        <p role={list.leader.warn ? "alert" : "status"}>{leaderStatus}</p>
+        {list.leader.pendingFrom && (
+          <p>
+            {T.leaderPending}: {deviceName(list.leader.pendingFrom)}
+          </p>
+        )}
+      </section>
+      {list.leader.warn && <LeaderAction list={list} />}
+      <section className="grid gap-1" aria-label={T.provenanceTitle}>
+        <h3>{T.provenanceTitle}</h3>
+        <p>{provenanceStatus}</p>
+        {list.keyProvenance.sender && (
+          <p>
+            {T.issuerBy}: {issuerName(list.keyProvenance.sender)}
+          </p>
+        )}
+      </section>
+      <section className="grid gap-1" aria-label={T.issuerTitle}>
+        <h3>{T.issuerTitle}</h3>
+        <ul>
+          {origins.map((device) => (
+            <li key={device.id}>
+              {device.name}: {T.issuerBy} {issuerName(device.pairedBy)} (
+              {T.issuerAt(device.pairedAt.seg, device.pairedAt.offset)})
+              {device.forkAgreed && (
+                <span>
+                  . {T.forkAgreed}: {T.issuerAt(device.forkAgreed.seg, device.forkAgreed.offset)}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
       {list.evidence.overflow ? (
         <p role="alert">{T.evidenceOverflow}</p>
       ) : list.evidence.historyPending || list.evidence.authorityUncertain ? (
@@ -80,17 +151,29 @@ export function DevicesView({ state }: { state: DevicesScreenState }) {
           {state.preview.affected.length > 0 && (
             <fieldset className="grid gap-2">
               <legend>{T.orphanTitle}</legend>
-              {state.preview.affected.map((device) => (
-                <label key={device.device} className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    disabled={state.status === "busy"}
-                    checked={state.recertify.includes(device.device)}
-                    onChange={(event) => state.toggleRecertify(device.device, event.target.checked)}
-                  />
-                  {T.orphanChoice}: {device.name}
-                </label>
-              ))}
+              {affected.map((device) => {
+                const origin = originsById.get(device.device);
+                return (
+                  <label key={device.device} className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      disabled={state.status === "busy"}
+                      checked={state.recertify.includes(device.device)}
+                      onChange={(event) =>
+                        state.toggleRecertify(device.device, event.target.checked)
+                      }
+                    />
+                    {T.orphanChoice}: {device.name}
+                    {origin && (
+                      <span>
+                        {" "}
+                        ({T.issuerBy} {issuerName(origin.pairedBy)},{" "}
+                        {T.issuerAt(origin.pairedAt.seg, origin.pairedAt.offset)})
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
             </fieldset>
           )}
           {state.selectionDirty && (

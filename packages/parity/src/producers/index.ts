@@ -105,43 +105,37 @@ export const PRODUCERS: readonly Producer[] = [
   },
   {
     check: "budget.dedup",
-    // lab has no bank transactions yet (R3): enable lab here once it does.
-    datasets: ["demo"],
+    datasets: ["demo", "lab"],
     inputs: [],
     produce: produceBudgetDedup,
   },
   {
     check: "budget.ingest_fixtures",
-    // Synthetic fixtures, not dataset state: one dataset is enough.
-    datasets: ["demo"],
+    datasets: ["demo", "lab"],
     inputs: [],
     produce: () => produceIngestFixtures(),
   },
   {
     check: "budget.transfers",
-    // lab has no bank transactions yet (R3): enable lab here once it does.
-    datasets: ["demo"],
+    datasets: ["demo", "lab"],
     inputs: [],
     produce: produceBudgetTransfers,
   },
   {
     check: "budget.categories",
-    // lab has no bank transactions yet (R3): enable lab here once it does.
-    datasets: ["demo"],
+    datasets: ["demo", "lab"],
     inputs: [],
     produce: produceBudgetCategories,
   },
   {
     check: "budget.analytics",
-    // lab has no bank transactions yet (R3): enable lab here once it does.
-    datasets: ["demo"],
+    datasets: ["demo", "lab"],
     inputs: [],
     produce: produceBudgetAnalytics,
   },
   {
     check: "budget.month_close",
-    // lab has no bank transactions yet (R3): enable lab here once it does.
-    datasets: ["demo"],
+    datasets: ["demo", "lab"],
     inputs: [],
     produce: (db) => produceBudgetMonthClose(db, strategyInputs(db)),
   },

@@ -8,6 +8,7 @@
     "./keyring": "./src/keyring/production.ts",
     "./connector-secrets": "./src/keyring/connectors.ts",
     "./banking-secrets": "./src/keyring/banking.ts",
+    "./classifier-secrets": "./src/keyring/classifier.ts",
     "./sqlite": "./src/sqlite.ts",
     "./testing": "./src/testing.ts",
     "./bundle-identity": "./src/bundleIdentity.ts",

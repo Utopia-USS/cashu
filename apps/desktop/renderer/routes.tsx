@@ -26,10 +26,11 @@ import { useOpenCreation } from "./creationContext.js";
 import { S } from "./Desktop.strings.js";
 import { NotificationSignalFocus } from "./notificationFocusContext.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
+import { BankingSettingsPanel } from "./screens/banking/BankingSettingsPanel.js";
 import { BudgetView } from "./screens/budget/BudgetView.js";
 import { type BudgetTab, useBudgetScreen } from "./screens/budget/useBudgetScreen.js";
+import { ClassificationPanel } from "./screens/classification/ClassificationPanel.js";
 import { DevicesScreen } from "./screens/devices/DevicesScreen.js";
-import { BankingSettingsPanel } from "./screens/banking/BankingSettingsPanel.js";
 import { PortfolioScreen } from "./screens/investments/PortfolioScreen.js";
 import { LoansScreen } from "./screens/loans/LoansScreen.js";
 import { OverviewView } from "./screens/overview/OverviewView.js";
@@ -702,7 +703,16 @@ function SettingsBound({
   return (
     <SettingsView
       devicesPanel={<DevicesScreen />}
-      bankingPanel={state.modules.some((module) => module.id === "budget" && module.enabled) ? <BankingSettingsPanel /> : null}
+      bankingPanel={
+        state.modules.some((module) => module.id === "budget" && module.enabled) ? (
+          <BankingSettingsPanel />
+        ) : null
+      }
+      classificationPanel={
+        state.modules.some((module) => module.id === "budget" && module.enabled) ? (
+          <ClassificationPanel />
+        ) : null
+      }
       state={state}
       section={section}
       strategyPanel={

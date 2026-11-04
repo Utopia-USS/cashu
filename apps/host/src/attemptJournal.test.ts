@@ -17,6 +17,20 @@ function fixture() {
 }
 
 describe("SqlAttemptJournal", () => {
+  it("refuses an existing journal without the current digest column", () => {
+    const driver = openNodeSqlite(fixture());
+    try {
+      driver.exec("CREATE TABLE host_attempts (key TEXT PRIMARY KEY NOT NULL)");
+      expect(() => SqlAttemptJournal.open(driver, "existing")).toThrow(
+        "attempt_journal_schema_mismatch",
+      );
+      const columns = driver.prepare("PRAGMA table_info(host_attempts)").all<{ name: string }>();
+      expect(columns.some((column) => column.name === "digest")).toBe(false);
+    } finally {
+      driver.close();
+    }
+  });
+
   it("keeps a may-append key and original EIDs across restart", async () => {
     const path = fixture();
     const driver = openNodeSqlite(path);

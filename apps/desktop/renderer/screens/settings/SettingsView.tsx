@@ -49,12 +49,14 @@ export function SettingsView({
   strategyPanel,
   devicesPanel,
   bankingPanel,
+  classificationPanel,
 }: {
   state: SettingsScreenState;
   section?: string;
   strategyPanel?: React.ReactNode;
   devicesPanel?: React.ReactNode;
   bankingPanel?: React.ReactNode;
+  classificationPanel?: React.ReactNode;
 }) {
   const [active, setActive] = useState<string>(
     section && sections.some((s) => s === section) ? section : "profile",
@@ -137,6 +139,7 @@ export function SettingsView({
         </Card>
         <Card id="secrets" title={SECTION.secrets}>
           <SecretsSection />
+          {classificationPanel}
         </Card>
         <Card id="devices" title={T.devicesTitle}>
           {devicesPanel ?? <p>{T.unavailable}</p>}
@@ -1068,10 +1071,7 @@ function WorkerSection({ state }: { state: SettingsScreenState }) {
 function SecretsSection() {
   return (
     <div className="grid gap-3">
-      <p>{T.secretsUnavailable}</p>
       <dl className="grid grid-cols-2 gap-2">
-        <dt>{S.anthropicKey}</dt>
-        <dd>{T.presenceUnknown}</dd>
         <dt>{S.ebKey}</dt>
         <dd>{T.presenceUnknown}</dd>
         <dt>{S.apiToken}</dt>

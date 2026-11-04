@@ -20,9 +20,11 @@ import {
 import { profileOf } from "../../core/queries.js";
 import { mintUlid } from "../../gid.js";
 import type { Store } from "../../materialize.js";
+import type { Read } from "../../query.js";
 import { type DailyEvaluationResult, dailyEvaluation } from "../commands/daily.js";
 import type { NotificationQueue } from "../local/notificationQueue.js";
 import type { LocalRunStatus } from "../local/runStatus.js";
+import type { MarketInput } from "../marketInput.js";
 import { type DurableWrite, DurableWriteUnknown, requireDurable } from "./durable.js";
 import { collectPriceNeeds } from "./priceNeeds.js";
 import { type DailyPriceLock, type RefreshPriceDeps, refreshPriceNeeds } from "./prices.js";
@@ -46,7 +48,10 @@ export interface DailyProfileResult {
   readonly error?: string;
 }
 export interface DailySources
-  extends Pick<RefreshPriceDeps, "priceSource" | "fxSource" | "spark" | "tableFx" | "workers"> {
+  extends Pick<
+    RefreshPriceDeps,
+    "priceSource" | "fxSource" | "spark" | "tableFx" | "workers" | "scoped"
+  > {
   close(): void;
   readonly macro?: MacroChartSource | null;
 }
@@ -55,7 +60,8 @@ export async function runDaily(
     readonly vaults: readonly DailyVault[];
     readonly lock: DailyPriceLock;
     readonly prices: market.PriceCache;
-    readonly sources?: () => DailySources;
+    readonly marketForVault?: (read: Read, vault: string) => MarketInput;
+    readonly sources?: (vaultIds: readonly string[]) => DailySources;
     readonly activity?: LocalRunStatus;
     readonly notifications?: NotificationQueue;
     /** Local macro cache writes belong to an explicitly injected short transaction adapter. */
@@ -139,7 +145,7 @@ export async function runDaily(
     let runMacro: (() => Promise<void>) | undefined;
     if (!input.offline && deps.sources && ready.some(({ v }) => v.env.lease.isHolder())) {
       try {
-        sources = deps.sources();
+        sources = deps.sources(ready.map(({ v }) => v.store.vault));
         const activeSources = sources;
         const hasConsumer = () => ready.some(({ v }) => v.env.lease.isHolder());
         const macroSource = activeSources.macro;
@@ -239,7 +245,9 @@ export async function runDaily(
             errors.push(`fx ${fx.currency}: ${fx.message}`);
         const command = dailyEvaluation({
           strategy,
-          market: { prices: deps.prices },
+          market: deps.marketForVault?.(v.store.read.bind(v.store), v.store.vault) ?? {
+            prices: deps.prices,
+          },
           lang: v.lang,
           marketErrors: errors,
           notificationKnown: (signal, severity) =>

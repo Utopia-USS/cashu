@@ -169,6 +169,7 @@ export interface NetWorthEnv {
   readonly today: IsoDate;
   /** The device's price cache (prices are device-local caches, never view tables, events.md 10). */
   readonly prices: market.PriceCache | null;
+  readonly marketData?: market.CachedMarketData;
 }
 
 /** A module's net-worth contributor over the vault's view. */

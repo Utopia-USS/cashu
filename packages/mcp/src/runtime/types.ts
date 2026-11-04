@@ -40,6 +40,7 @@ export interface NativeToolStore {
         readonly lastVerified: string | null;
         readonly contentSha256: string;
         readonly stale: boolean;
+        readonly valid: boolean;
         readonly installedStatus: string | null;
         readonly installedSameContent: boolean | null;
       }[];
@@ -98,6 +99,8 @@ export interface NativeToolStore {
   readonly read: Read;
   run<I, R>(command: Command<I, R>, input: unknown): CommandResult<R> | Promise<CommandResult<R>>;
   readonly prices: market.PriceCache | null;
+  /** A resolved exact-vault market image, including migrated alias-less instruments. */
+  readonly marketData?: market.CachedMarketData;
   readonly fxNewest: string | null;
   readonly profile: ProfileView;
   readonly today: IsoDate;

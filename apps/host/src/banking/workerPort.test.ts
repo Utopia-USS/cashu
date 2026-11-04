@@ -10,7 +10,10 @@ it("reports processed bank sessions separately from imported accounts", async ()
       sync: async () => ({ banks: 1, accounts: 2, inserted: 3, errors: [], attempts: [] }),
     }),
   } as unknown as BankingRuntime;
-  const vault = { mode: "native" } as OpenVault;
+  const vault = {
+    mode: "native",
+    native: { beginFetch: () => () => {}, recordFetch: async () => "completed" },
+  } as unknown as OpenVault;
   const port = bankingWorkerPort(runtime);
   const guard = () => undefined;
   expect(await port.configured(vault)).toBe(true);

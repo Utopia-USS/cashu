@@ -25,9 +25,11 @@ import { runQuery } from "@cashu/store/query";
 import { BankingRuntime } from "./banking/runtime.js";
 import { bankingUiAction } from "./banking/uiAction.js";
 import { bankingWorkerPort } from "./banking/workerPort.js";
+import { ClassifierHostPorts } from "./classification/hostPorts.js";
 import { connectorOwnerAction } from "./connectorOwnerAction.js";
 import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntime.js";
 import { startLocalHost } from "./host.js";
+import { createProductionMarket, type ProductionMarket } from "./market/production.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
 import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
@@ -237,17 +239,21 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
         const dailyLock = new DailyPriceLock();
         let connectors: ConnectorRuntime | undefined;
         let banking: BankingRuntime | undefined;
+        let market: ProductionMarket | undefined;
+        const classifier = new ClassifierHostPorts();
         let connectorLock: import("@cashu/node-host").HostLock | undefined;
         let workerBindings: ReturnType<typeof createProductionWorkerBindings> | undefined;
-        const language = (context: Parameters<typeof createProductionWorkerBindings>[0]) => {
+        const languageForStores = (stores: import("./stores.js").HostStores) => {
           try {
-            const pinned = runQuery(context.stores.device.store, devicePreferences, undefined).value
+            const pinned = runQuery(stores.device.store, devicePreferences, undefined).value
               .languagePin;
             return pinned === "pl" || pinned === "en" ? pinned : systemLanguage;
           } catch {
             return systemLanguage;
           }
         };
+        const language = (context: Parameters<typeof createProductionWorkerBindings>[0]) =>
+          languageForStores(context.stores);
         try {
           const host = await startLocalHost({
             dataDir: args.dataDir,
@@ -260,10 +266,22 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
             assertNativeSourceAdmission,
             proposals: { bind: (vault) => connectors?.proposals.bind(vault) ?? null },
             ...(workspace === undefined ? {} : { workspace }),
+            marketFactory: (stores, isCurrent, now) => {
+              market = createProductionMarket({
+                stores,
+                isCurrent,
+                now,
+                fetch: globalThis.fetch,
+                language: () => languageForStores(stores),
+              });
+              return market;
+            },
             connectorCatalog: () => (connectorLock?.held ? connectors?.catalog : undefined),
             banking: () => banking,
+            budgetClassifiers: { local: classifier.local, cloud: classifier.cloud },
             uiActions: [
               bankingUiAction(() => banking),
+              classifier.action,
               connectorOwnerAction({
                 runtime: () => connectors,
                 worker: () => workerBindings,
@@ -276,6 +294,14 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
             worker: (context, notifications, queue, lock) => {
               assertAdmission();
               workspaceStores = context.stores;
+              if (lock?.held && (process.platform === "darwin" || process.platform === "linux")) {
+                classifier.bind({
+                  dataDir: args.dataDir,
+                  lock,
+                  stores: context.stores,
+                  isCurrentVault: context.isCurrent,
+                });
+              }
               if (lock?.held && (process.platform === "darwin" || process.platform === "linux")) {
                 banking = new BankingRuntime({
                   dataDir: args.dataDir,
@@ -316,6 +342,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                 assertAdmission,
                 strategyDirectory: (vault) => vault.native?.strategyDirectoryAuthority() ?? null,
                 canFetchPublicMarket: (vault) => vault.native?.canFetchPublicMarket() ?? false,
+                ...(market === undefined ? {} : { market }),
                 language: () => language(context),
                 dailyLock,
                 ...(connectors === undefined ? {} : { connectors: connectors.worker }),
@@ -335,6 +362,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           return await host.exit;
         } finally {
           await banking?.close();
+          market?.close();
           updateBridge?.close();
         }
       }

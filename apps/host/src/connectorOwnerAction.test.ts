@@ -52,7 +52,12 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
     id: vaultId,
     mode: "native",
     store: { read },
-    native: { isCurrent: () => true, canFetchPublicMarket: () => true },
+    native: {
+      isCurrent: () => true,
+      canFetchPublicMarket: () => true,
+      beginFetch: () => () => {},
+      recordFetch: async () => "completed",
+    },
     queue: { run: async (fn: () => unknown) => fn() },
   };
   const stores = { vaults: new Map([[vaultId, vault]]) } as unknown as HostStores;

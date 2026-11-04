@@ -281,7 +281,14 @@ export function readResearchInputs(
               status: "current" as const,
               value: market.calendarEvents({
                 feeds: request.calendar.value,
-                stale: market.isStale(request.calendar.value),
+                stale:
+                  market.isStale(request.calendar.value) ||
+                  !market.isFresh(
+                    request.calendar.value,
+                    request.clock.today,
+                    14,
+                    request.clock.now,
+                  ),
                 today: request.clock.today,
                 days: 14,
                 instruments,

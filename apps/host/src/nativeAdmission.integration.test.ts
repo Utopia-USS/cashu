@@ -7,15 +7,25 @@ import {
   executeDurableCommand,
   metaClockStore,
   metaGateStateStore,
+  mintUlid,
   renameProfile,
   Store,
   vaultSalt,
 } from "@cashu/store";
-import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
-import { InMemoryKeyStore } from "@cashu/sync/testing";
+import {
+  createOwnLogCodec,
+  createSyncEngine,
+  crypto,
+  devices,
+  FolderTransport,
+  MemoryClockStore,
+  MemoryTransport,
+} from "@cashu/sync";
+import { InMemoryKeyStore, insecureTestGate, MemorySink } from "@cashu/sync/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { takeWriterLease } from "./lease.js";
+import { initializeNativeClockGuard, nativeClockGuard } from "./market/clockGuard.js";
 import { openNativeVault } from "./nativeVault.js";
 import { loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
 import { SqlProvenanceStore } from "./sync/keys/sqlProvenance.js";
@@ -39,6 +49,148 @@ function openWithLock(value: NativeVaultFixture) {
 }
 
 describe("native admission and durability", () => {
+  it("ignores a persisted peer clock wall only after authenticated revocation", async () => {
+    const value = await nativeVaultFixture({ pairPeer: true });
+    fixtures.push(value);
+    const entry = value.vaultSource.provider.inventory[0];
+    const peer = value.peerDevice;
+    const peerIdentity = value.peerIdentity;
+    if (!entry || !peer || !peerIdentity) throw new Error("missing synthetic peer");
+    const remote = new MemoryTransport();
+    const peerRing = await crypto.loadKeyring(
+      value.vaultSource.provider.keyStore,
+      value.vaultSource.provider.sodium,
+      value.vaultId,
+    );
+    if (!peerRing) throw new Error("missing synthetic keyring");
+    const peerEngine = await createSyncEngine({
+      vault: value.vaultId,
+      device: peer,
+      local: new MemoryTransport(),
+      remotes: [remote],
+      codec: createOwnLogCodec({
+        sodium: value.vaultSource.provider.sodium,
+        ring: peerRing,
+        signer: peerIdentity,
+      }),
+      gate: insecureTestGate(),
+      sink: new MemorySink(),
+      clockStore: new MemoryClockStore(),
+    });
+    const view = openNodeSqlite(join(entry.vaultRoot, "view.db"));
+    nativeClockGuard(view, entry.deviceId).save({ [peer]: Date.now() + 20 * 60_000 });
+    view.close();
+    const { lock, lease } = openWithLock(value);
+    const opened = await openNativeVault(
+      entry,
+      value.dataDir,
+      {
+        ...value.vaultSource.provider,
+        remoteTransports: () => [remote],
+      },
+      lease,
+      Date.now,
+    );
+    try {
+      await opened.sync();
+      expect(opened.canFetchPublicMarket()).toBe(false);
+      const draft = {
+        vault: value.vaultId,
+        targets: [peer],
+        recertify: [],
+        operationId: mintUlid(Date.now()),
+        eids: { revoke: mintUlid(Date.now() + 1), rotate: mintUlid(Date.now() + 2) },
+      };
+      const preview = await opened.devicePreview(draft);
+      if (preview.kind !== "prepared") throw new Error(`revocation preview ${preview.code}`);
+      const completed = await opened.deviceCommit(
+        { ...draft, fingerprint: preview.fingerprint },
+        {
+          warningAcknowledgement: "revoke_risk_acknowledged",
+          localStartAcknowledgement: "local_target_stream_never_seen",
+          recoveryPhrase: value.recoveryWords,
+        },
+      );
+      expect(completed.kind).toBe("completed");
+      await peerEngine.write([
+        {
+          t: "test.set",
+          v: 1,
+          i: mintUlid(Date.now()),
+          g: value.vaultId,
+          d: { value: "revoked peer" },
+        },
+      ]);
+      await peerEngine.sync();
+      const afterRevocation = await opened.sync();
+      expect(afterRevocation.rejected.some((frame) => frame.device === peer)).toBe(true);
+      expect(opened.canFetchPublicMarket()).toBe(true);
+      const unknownIdentity = crypto.createDeviceIdentity(value.vaultSource.provider.sodium);
+      const unknownEngine = await createSyncEngine({
+        vault: value.vaultId,
+        device: unknownIdentity.deviceId,
+        local: new MemoryTransport(),
+        remotes: [remote],
+        codec: createOwnLogCodec({
+          sodium: value.vaultSource.provider.sodium,
+          ring: peerRing,
+          signer: unknownIdentity,
+        }),
+        gate: insecureTestGate(),
+        sink: new MemorySink(),
+        clockStore: new MemoryClockStore(),
+      });
+      try {
+        await unknownEngine.write([
+          {
+            t: "test.set",
+            v: 1,
+            i: mintUlid(Date.now()),
+            g: value.vaultId,
+            d: { value: "unknown peer" },
+          },
+        ]);
+        await unknownEngine.sync();
+        const afterUnknown = await opened.sync();
+        expect(
+          afterUnknown.rejected.some((frame) => frame.device === unknownIdentity.deviceId),
+        ).toBe(true);
+        expect(opened.canFetchPublicMarket()).toBe(true);
+      } finally {
+        await unknownEngine.close();
+        unknownIdentity.wipe();
+      }
+    } finally {
+      await peerEngine.close();
+      peerRing.wipe();
+      await opened.close();
+      lock.release();
+    }
+  });
+  it("allows a healthy pinned creator only after a fresh native pull", async () => {
+    const value = await fixture();
+    const { lock, lease } = openWithLock(value);
+    const entry = value.vaultSource.provider.inventory[0];
+    if (!entry) throw new Error("missing synthetic creator");
+    let offset = 0;
+    const opened = await openNativeVault(
+      entry,
+      value.dataDir,
+      value.vaultSource.provider,
+      lease,
+      () => Date.now() + offset,
+    );
+    try {
+      expect(opened.canFetchPublicMarket()).toBe(false);
+      await opened.sync();
+      expect(opened.canFetchPublicMarket()).toBe(true);
+      offset = 61_000;
+      expect(opened.canFetchPublicMarket()).toBe(false);
+    } finally {
+      await opened.close();
+      lock.release();
+    }
+  });
   it("keeps a post-append receipt failure unknown across native reopen", async () => {
     const value = await fixture();
     const { lock, lease } = openWithLock(value);
@@ -236,6 +388,7 @@ describe("native admission and durability", () => {
       salt: vaultSalt(peerSalt.expose().slice()),
       modules: builtinModules(),
     });
+    initializeNativeClockGuard(peerStore.driver, peerEntry.deviceId);
     peerSalt.wipe();
     peerStore.close();
     cpSync(join(creatorEntry.vaultRoot, "log"), join(peerRoot, "log"), { recursive: true });

@@ -6,6 +6,8 @@ const base = {
     kind: "ready",
     vault: "a".repeat(32),
     ownDevice: "b".repeat(32),
+    leader: { mode: "pinned", state: "ok", device: "b".repeat(32), pendingFrom: null, lastActivityAt: Date.now(), silentForMs: 0, warn: false },
+    keyProvenance: { source: "own", sender: "b".repeat(32), recipientsKnown: false },
     operations: [],
     evidence: {
       historyPending: false,
@@ -21,6 +23,9 @@ const base = {
         revoked: false,
         behind: false,
         forked: false,
+        forkAgreed: null,
+        pairedBy: "b".repeat(32),
+        pairedAt: { seg: 1, offset: 0 },
       },
       {
         id: "c".repeat(32),
@@ -29,6 +34,9 @@ const base = {
         revoked: false,
         behind: false,
         forked: false,
+        forkAgreed: null,
+        pairedBy: "b".repeat(32),
+        pairedAt: { seg: 1, offset: 1 },
       },
     ],
   },

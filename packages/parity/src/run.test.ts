@@ -171,6 +171,22 @@ describe("runParity", () => {
     expect(() => runParity({ goldenDir: g, actualDir: g, config: typo })).toThrow(/unknown check/);
     expect(goldenChecks(g)).toEqual(["core.networth", "budget.analytics"]);
   });
+
+  it("validates the raw MCP oracle input without counting it as an output", () => {
+    const g = join(root, "golden");
+    const a = join(root, "actual");
+    writeSet(g, { "mcp.read_raw": '{"strict":{}}\n', "core.networth": GOLDEN["core.networth"] });
+    writeSet(a, {});
+    expect(goldenChecks(g)).toEqual(["core.networth"]);
+    const report = runParity({ goldenDir: g, actualDir: a, config: noConfig });
+    expect(report.oracleInputs).toEqual(["mcp.read_raw"]);
+    expect(report.counts).toEqual({ pass: 0, fail: 0, missing: 1 });
+    expect(formatReport(report)).toContain("oracle input mcp.read_raw: indexed hash validated");
+    writeFileSync(join(g, "mcp.read_raw.json"), "{}\n");
+    expect(() => runParity({ goldenDir: g, actualDir: a, config: noConfig })).toThrow(
+      /oracle input/,
+    );
+  });
 });
 
 describe("cli", () => {
@@ -190,6 +206,15 @@ describe("cli", () => {
     });
     return { code, out, err };
   };
+
+  it("reports an explicit raw MCP request as a validated oracle input", async () => {
+    const g = join(root, "golden");
+    writeSet(g, { "mcp.read_raw": '{"strict":{}}\n' });
+    const result = await run(["--dataset", "demo", "--golden", g, "--check", "mcp.read_raw"]);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("oracle input, indexed hash validated; not a comparison");
+    expect(result.out).not.toContain("checks: 0 pass");
+  });
 
   it("exits 0 on all-pass, 2 on missing, 1 on fail, with --allow-missing exits 0", async () => {
     const g = join(root, "golden");

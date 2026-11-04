@@ -16,6 +16,7 @@ import {
   type WorkerStatus,
 } from "./contracts.js";
 import { nativeInvestmentJobs, type WorkerWriteAttempts } from "./investments.js";
+import { reportSuccessfulFetch } from "./leaseReport.js";
 import { deliverWorkerNotifications, sendWorkerDigest } from "./notifications.js";
 import { checkedSchedule, localDay, nextSlot, slotPassed, slotText } from "./schedule.js";
 
@@ -349,9 +350,19 @@ export class HostWorker {
         const candidates = [
           ...new Map([...investors, ...budgeters].map((v) => [v.id, v])).values(),
         ];
-        await this.phase("connectors.fetch", candidates, force, (vault, guard) =>
-          connectors.fetch(vault, guard),
-        );
+        await this.phase("connectors.fetch", candidates, force, async (vault, guard) => {
+          const endFetch = vault.native?.beginFetch();
+          if (vault.mode === "native" && !endFetch)
+            return { status: "skipped", code: "fetch_authority_unavailable" };
+          let result: JobOutcome;
+          try {
+            result = await connectors.fetch(vault, guard);
+          } finally {
+            endFetch?.();
+          }
+          if (result.status === "ok") await reportSuccessfulFetch(vault, guard);
+          return result;
+        });
       }
       if (this.investments !== undefined) {
         const busy = new Set<string>();

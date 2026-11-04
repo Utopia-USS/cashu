@@ -17,6 +17,7 @@ import {
 import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import { InMemoryKeyStore } from "@cashu/sync/testing";
 import { SqlAttemptJournal } from "../attemptJournal.js";
+import { initializeNativeClockGuard, nativeClockGuard } from "../market/clockGuard.js";
 import {
   loadDeviceAuthority,
   type NativeVaultInventoryEntry,
@@ -30,6 +31,9 @@ export interface NativeVaultFixture {
   readonly profileSlug: string;
   readonly recoveryWords: string;
   readonly peerDevice?: string;
+  /** Synthetic test key only; never exposed by production sources. */
+  readonly peerIdentity?: crypto.DeviceIdentity;
+  readonly peerCertificate?: Uint8Array;
   readonly vaultSource: {
     readonly kind: "native";
     readonly provider: {
@@ -64,6 +68,7 @@ export async function nativeVaultFixture(
   const vaultRoot = join(dataDir, "vaults", vaultId);
   const log = join(vaultRoot, "log");
   mkdirSync(log, { recursive: true });
+  mkdirSync(join(vaultRoot, "strategy"), { mode: 0o700 });
   const entry: NativeVaultInventoryEntry = {
     vaultId,
     deviceId: identity.deviceId,
@@ -101,6 +106,7 @@ export async function nativeVaultFixture(
       salt,
       modules: builtinModules(),
     });
+    initializeNativeClockGuard(store.driver, identity.deviceId);
     candidate = await loadDeviceAuthority({
       entry,
       dataDir,
@@ -123,6 +129,7 @@ export async function nativeVaultFixture(
       gate: candidate.gate,
       sink: store.sink(),
       clockStore: metaClockStore(store.driver, entry.deviceId),
+      clockGuard: nativeClockGuard(store.driver, entry.deviceId),
       gateState: metaGateStateStore(store.driver, entry.deviceId),
     });
     const subject = {
@@ -153,13 +160,14 @@ export async function nativeVaultFixture(
     );
     if (!prepared.ok) throw new Error(prepared.reason);
     await engine.write(prepared.events.map(toUnstampedEvent));
+    let peerCertificate: Uint8Array | undefined;
     if (peer) {
       const peerSubject = {
         deviceId: peer.deviceId,
         signPublicKey: peer.signPublicKey,
         boxPublicKey: peer.box.publicKey,
       };
-      const peerCertificate = crypto.certifyDevice(sodium, identity, peerSubject, vaultId);
+      peerCertificate = crypto.certifyDevice(sodium, identity, peerSubject, vaultId);
       await engine.write([
         devices.buildDeviceAdded(
           identity,
@@ -186,6 +194,8 @@ export async function nativeVaultFixture(
       profileSlug,
       recoveryWords,
       ...(peer ? { peerDevice: peer.deviceId } : {}),
+      ...(peer ? { peerIdentity: peer } : {}),
+      ...(peerCertificate ? { peerCertificate } : {}),
       vaultSource: {
         kind: "native",
         provider: {
@@ -196,6 +206,7 @@ export async function nativeVaultFixture(
         },
       },
       cleanup() {
+        peer?.wipe();
         rmSync(dataDir, { recursive: true, force: true });
       },
     };
@@ -204,11 +215,11 @@ export async function nativeVaultFixture(
     store?.close();
     candidate?.close();
     meta?.close();
+    peer?.wipe();
     rmSync(dataDir, { recursive: true, force: true });
     throw error;
   } finally {
     identity.wipe();
-    peer?.wipe();
     recovery.wipe();
     created.ring.wipe();
   }

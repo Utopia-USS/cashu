@@ -26,7 +26,7 @@ import {
 } from "@cashu/store";
 import { mcpProfile } from "@cashu/store/core";
 import Database from "better-sqlite3";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import type { CanonObject } from "../../json.ts";
 import { dumps, PyFloat } from "../output.ts";
 import { mergeMcpReads, nativeMcpReads } from "./nativeReads.ts";
@@ -107,19 +107,15 @@ it("native read answers follow the actual store and ignore changed raw oracle va
     const calls: CanonObject = new Map(
       Object.keys(disabled).map((key) => [key, new Map([["error_kind", "oracle-placeholder"]])]),
     );
-    const replay = vi.fn(() => ({ replayed: true }));
-    expect(mergeMcpReads(calls, disabled, replay)).toEqual(disabled);
-    expect(replay).not.toHaveBeenCalled();
+    expect(mergeMcpReads(calls, disabled)).toEqual(disabled);
     f.run(setModules, { moduleIds: ["budget"] });
     const enabled = await f.reads();
     expect(enabled["spending_breakdown()"]).not.toEqual(disabled["spending_breakdown()"]);
     expect(enabled["spending_breakdown()"]).toMatchObject({ currency: "PLN" });
     calls.set("spending_breakdown()", new Map([["forged", "not a native answer"]]));
-    expect(dumps(mergeMcpReads(calls, enabled, replay))).toBe(dumps(enabled));
-    expect(replay).not.toHaveBeenCalled();
+    expect(dumps(mergeMcpReads(calls, enabled))).toBe(dumps(enabled));
     calls.set("unported()", new Map());
-    expect(mergeMcpReads(calls, enabled, replay)["unported()"]).toEqual({ replayed: true });
-    expect(replay).toHaveBeenCalledTimes(1);
+    expect(() => mergeMcpReads(calls, enabled)).toThrow("coverage is incomplete");
   } finally {
     f.close();
   }
@@ -130,13 +126,11 @@ it("missing native coverage or a new native argument variant refuses replay", as
   try {
     const native = await f.reads();
     const calls: CanonObject = new Map(Object.keys(native).map((key) => [key, null]));
-    const replay = vi.fn(() => null);
     calls.set("spending_breakdown(period=2026)", null);
-    expect(() => mergeMcpReads(calls, native, replay)).toThrow("arguments are not covered");
+    expect(() => mergeMcpReads(calls, native)).toThrow("arguments are not covered");
     calls.delete("spending_breakdown(period=2026)");
     calls.delete("loans_summary()");
-    expect(() => mergeMcpReads(calls, native, replay)).toThrow("coverage is incomplete");
-    expect(replay).not.toHaveBeenCalled();
+    expect(() => mergeMcpReads(calls, native)).toThrow("coverage is incomplete");
   } finally {
     f.close();
   }
@@ -230,9 +224,7 @@ it("actual native alert/watchlist reads ignore poisoned labelled oracle trees", 
     calls.set("alerts()", new Map([["redacted", new Map([["alerts", ["not native facts"]]])]]));
     calls.set("alerts(status=all)", new Map([["error_kind", "forged-oracle-error"]]));
     calls.set("watchlist()", new Map([["redacted", new Map([["items", []]])]]));
-    const replay = vi.fn(() => ({ poisoned: true }));
-    expect(dumps(mergeMcpReads(calls, native, replay))).toBe(dumps(native));
-    expect(replay).not.toHaveBeenCalled();
+    expect(dumps(mergeMcpReads(calls, native))).toBe(dumps(native));
   } finally {
     f.close();
   }

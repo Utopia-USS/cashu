@@ -128,7 +128,10 @@ export const T = catalog({
   connectorInterpreter: { pl: "Interpreter", en: "Interpreter" },
   connectorApprove: { pl: "Zatwierdź ten kod", en: "Approve this code" },
   connectorDisable: { pl: "Wyłącz", en: "Disable" },
-  connectorRemoveAll: { pl: "Usuń konektor ze wszystkich profili", en: "Remove connector from all profiles" },
+  connectorRemoveAll: {
+    pl: "Usuń konektor ze wszystkich profili",
+    en: "Remove connector from all profiles",
+  },
   connectorRemoveAllConfirm: {
     pl: "Usunąć ten konektor ze wszystkich profili? Ta operacja usunie wszystkie powiązania, zapisane sekrety konektora i lokalną historię uruchomień.",
     en: "Remove this connector from all profiles? This deletes every binding, saved connector secret, and local run history.",
@@ -159,8 +162,8 @@ export const T = catalog({
   },
   presenceUnknown: { pl: "stan nieznany", en: "unknown" },
   noSecretEntry: {
-    pl: "Sekrety ustawiaj w lokalnym CLI. Aplikacja nie pokazuje ich wartości.",
-    en: "Set secrets in the local CLI. The app never displays their values.",
+    pl: "Pozostałe sekrety ustawiaj w lokalnym CLI. Aplikacja nie pokazuje ich wartości.",
+    en: "Set other secrets in the local CLI. The app never displays their values.",
   },
   versionUnknown: { pl: "Wersja niedostępna", en: "Version unavailable" },
   updatesUnavailable: {

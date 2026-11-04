@@ -6,6 +6,7 @@ import {
   type market,
   toCurrency,
 } from "@cashu/domain/investments";
+import { type MacroReport, reportStats } from "@cashu/domain/investments/macro";
 import type { SourceCacheReceipt } from "../../genesis/verification/sourceCache.js";
 import type { SqlDriver, SqlRow } from "../../sql/driver.js";
 
@@ -98,6 +99,10 @@ export class SqlPriceCache implements TransactionalPriceCache {
       CREATE TABLE IF NOT EXISTS local_market_macro_bars (
         id INTEGER PRIMARY KEY, series TEXT NOT NULL, date TEXT NOT NULL,
         close TEXT NOT NULL, source TEXT NOT NULL, fetched_at TEXT);
+      CREATE TABLE IF NOT EXISTS local_native_macro_bars (
+        series TEXT NOT NULL, date TEXT NOT NULL, close TEXT NOT NULL,
+        source TEXT NOT NULL, fetched_at TEXT NOT NULL,
+        PRIMARY KEY(series,date));
     `),
     );
     if (
@@ -175,6 +180,32 @@ export class SqlPriceCache implements TransactionalPriceCache {
     for (const row of source) merged.set(row.date, cachedBar(row));
     for (const row of native) merged.set(row.date, cachedBar(row));
     return [...merged.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }
+
+  /** Device-native public bars only; imported instrument rows require an exact vault identity. */
+  nativeBars(key: market.MarketSymbol): readonly market.CachedBar[] {
+    return this.driver
+      .prepare("SELECT * FROM local_market_bars WHERE provider=? AND symbol=? ORDER BY date")
+      .all<BarRow>(key.provider, key.symbol)
+      .map(cachedBar);
+  }
+
+  /** Effective imported bars after a split refresh, scoped to one vault and canonical instrument. */
+  effectiveBarsForInstrument(vault: string, gid: string): readonly SourceCachedBar[] {
+    return this.driver
+      .prepare(
+        `SELECT b.* FROM local_source_price_bars b
+         JOIN local_source_price_gids g ON g.instrument_id=b.instrument_id
+         WHERE g.vault=? AND g.gid=?
+           AND NOT EXISTS (
+             SELECT 1 FROM local_source_price_aliases a
+             JOIN local_market_bar_masks m ON m.provider=a.provider AND m.symbol=a.symbol
+             WHERE a.instrument_id=b.instrument_id AND a.provider=b.source AND m.date=b.date
+           )
+         ORDER BY b.date,b.source,b.id`,
+      )
+      .all<BarRow & { id: number; source: string }>(vault, gid)
+      .map((row) => ({ id: row.id, source: row.source, ...cachedBar(row) }));
   }
 
   /** Exact source rows by stable native instrument identity, including alias-less instruments. */
@@ -381,7 +412,7 @@ export class SqlPriceCache implements TransactionalPriceCache {
 
   /** Cached macro closes are available offline by series and provider. */
   macroBars(series: string, source?: string): readonly SourceMacroBarView[] {
-    return this.driver
+    const imported = this.driver
       .prepare(
         `SELECT id,date,close,source,fetched_at AS fetchedAt FROM local_market_macro_bars
          WHERE series=? ${source === undefined ? "" : "AND source=?"} ORDER BY date,id`,
@@ -397,5 +428,46 @@ export class SqlPriceCache implements TransactionalPriceCache {
         source: row.source,
         fetchedAt: row.fetchedAt === null ? null : parseDateTime(row.fetchedAt),
       }));
+    const native = this.driver
+      .prepare(`SELECT date,close,source,fetched_at AS fetchedAt FROM local_native_macro_bars
+        WHERE series=? ${source === undefined ? "" : "AND source=?"} ORDER BY date`)
+      .all<{ date: string; close: string; source: string; fetchedAt: string }>(
+        series,
+        ...(source === undefined ? [] : [source]),
+      )
+      .map((row) => ({
+        id: 0,
+        date: row.date,
+        close: D(row.close),
+        source: row.source,
+        fetchedAt: parseDateTime(row.fetchedAt),
+      }));
+    const byDate = new Map(imported.map((row) => [row.date, row]));
+    for (const row of native) byDate.set(row.date, row);
+    return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  applyMacroReport(report: MacroReport, now: DateTime) {
+    this.write(() => {
+      const erase = this.driver.prepare(
+        "DELETE FROM local_native_macro_bars WHERE series=? AND date>=? AND date<=?",
+      );
+      const put = this.driver.prepare(
+        "INSERT INTO local_native_macro_bars(series,date,close,source,fetched_at) VALUES (?,?,?,?,?)",
+      );
+      for (const item of report.series) {
+        if (
+          item.status !== "ok" ||
+          item.start === null ||
+          item.end === null ||
+          item.source === null
+        )
+          continue;
+        erase.run(item.series, item.start, item.end);
+        for (const [date, close] of item.closes)
+          put.run(item.series, date, close.toString(), item.source, toStorage(now));
+      }
+    });
+    return reportStats(report);
   }
 }

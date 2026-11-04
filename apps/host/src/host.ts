@@ -27,6 +27,12 @@ import {
   deviceListParamsSchema,
   deviceListResultSchema,
   HOST_PROTOCOL,
+  leaderCommitParamsSchema,
+  leaderCommitResultSchema,
+  leaderInspectParamsSchema,
+  leaderInspectResultSchema,
+  leaderPreviewParamsSchema,
+  leaderPreviewResultSchema,
   NATIVE_BANKING_FEATURE,
   NATIVE_CONNECTORS_FEATURE,
   NATIVE_CREATION_FEATURE,
@@ -34,24 +40,8 @@ import {
   NATIVE_PAIRING_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
   NOTIFICATION_INTENT_METHOD,
-  nativeCreationCommitParamsSchema,
-  nativeCreationCommitResultSchema,
-  nativeCreationCurrentParamsSchema,
-  nativeCreationCurrentResultSchema,
-  nativeCreationInspectParamsSchema,
-  nativeCreationInspectResultSchema,
-  nativeCreationPrepareParamsSchema,
-  nativeCreationPrepareResultSchema,
   notificationResolveParamsSchema,
   notificationResolveResultSchema,
-  pairingCancelParamsSchema,
-  pairingCancelResultSchema,
-  pairingConfirmParamsSchema,
-  pairingConfirmResultSchema,
-  pairingInspectParamsSchema,
-  pairingInspectResultSchema,
-  pairingInviteParamsSchema,
-  pairingInviteResultSchema,
   revokeCancelParamsSchema,
   revokeCancelResultSchema,
   revokeCommitParamsSchema,
@@ -61,9 +51,7 @@ import {
   revokePreviewParamsSchema,
   revokePreviewResultSchema,
   uiBankingAllowed,
-  uiCreationAllowed,
   uiDevicesAllowed,
-  uiPairingAllowed,
 } from "@cashu/host-protocol";
 import {
   budgetTools,
@@ -119,6 +107,7 @@ import { type InvestmentImportCapability, investmentImportActions } from "./inve
 import { writeLauncher } from "./launcher.js";
 import { takeWriterLease, type WriterLease } from "./lease.js";
 import { errorName, fileLog, type HostLog } from "./log.js";
+import type { ProductionMarket } from "./market/production.js";
 import { compositeBackend } from "./mcp/composite.js";
 import { ConnectorProposalReceipts } from "./mcp/connectorReceipt.js";
 import { connectorMcpPort } from "./mcp/connectors.js";
@@ -130,6 +119,7 @@ import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
 import { createNativeCreationService } from "./nativeCreation.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
+import { serveNativeCreationRequest } from "./nativeCreationRpc.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
 import type { NativeVaultSource } from "./nativeVault.js";
 import {
@@ -139,6 +129,7 @@ import {
 import { privateNotificationIntents } from "./notifications/intentLedger.js";
 import { type IntentVaultAuthority, resolveNotificationIntent } from "./notifications/resolve.js";
 import { type LanPairingService, localLanIp, startLanPairingService } from "./pairing/service.js";
+import { serveNativePairingRequest } from "./pairingRpc.js";
 import type { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
 import { servedCommands, servedQueries } from "./registry.js";
@@ -217,6 +208,8 @@ const NATIVE_MCP_INVESTMENT_WRITES = new Set([
   "watchlist",
   "remove_from_watchlist",
   "add_to_watchlist",
+  "propose_strategy",
+  "propose_custom_rule",
 ]);
 
 type ExitReason = "stop" | "idle" | "signal" | "handover";
@@ -242,6 +235,11 @@ export interface LocalHostOptions {
   readonly strategies?: { bind(vault: string): StrategyScreenCapability | null };
   readonly strategyImages?: ReturnType<typeof currentStrategyImages>;
   readonly investments?: import("@cashu/store/investments/screen").InvestmentScreenSources;
+  readonly marketFactory?: (
+    stores: HostStores,
+    isCurrent: (vault: OpenVault) => boolean,
+    now: () => number,
+  ) => ProductionMarket;
   readonly investmentImports?: { bind(vault: string): InvestmentImportCapability | null };
   /** Optional public-market provider; local Signals actions need no remote provider. */
   readonly signals?: { bind(vault: string): SignalsScreenCapability | null };
@@ -399,8 +397,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     options.strategies === undefined
       ? null
       : strategiesScreen({ ...options.strategies, publish: images.publish, revoke: images.revoke });
-  const investmentSources = {
+  const makeInvestmentSources = (marketSource?: ProductionMarket["market"]) => ({
     ...options.investments,
+    ...(marketSource === undefined ? {} : { market: marketSource }),
     clock: {
       current: () => ({
         now: parseDateTime(new Date(now()).toISOString()),
@@ -420,45 +419,62 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             return capability != null && capability.vault === vault && capability.isCurrent();
           },
         }),
-  };
+  });
   const build = options.build ?? "dev";
   let dataDirPath: string | null = null;
   let settingsStores: HostStores | null = null;
   let currentWorkerStatus: (() => import("./worker/contracts.js").WorkerStatus) | null = null;
-  const queries = servedQueries({
-    ...options.overview,
-    prices: options.overview?.prices ?? null,
-    investments: investmentSources,
-    proposalImages: { changes: images.source.changes, image: images.image },
-    updateQuery: updates.query,
-    settingsInfoQuery: settingsInfoQuery({
-      version: build,
-      dataDir: () => dataDirPath,
-      worker: () => currentWorkerStatus?.() ?? null,
-      stores: () => settingsStores,
-    }),
-    signals: {
-      strategy: investmentSources.strategy,
-      market: investmentSources.market,
-      clock: investmentClock,
-    },
-    research: {
-      ...options.research,
-      strategy: investmentSources.strategy,
-      market: investmentSources.market,
-      clock: investmentClock,
-    },
-    review: {
-      ...options.review,
-      strategy: investmentSources.strategy,
-      market: investmentSources.market,
-      clock: investmentClock,
-    },
-    strategies: {
-      strategy: images.source,
-      ...(strategyManager === null ? {} : { documents: strategyManager.source }),
-    },
-  });
+  const makeQueries = (
+    investmentSources: ReturnType<typeof makeInvestmentSources>,
+    prices: market.PriceCache | null,
+  ) =>
+    servedQueries({
+      ...options.overview,
+      sources: {
+        ...options.overview?.sources,
+        ...(marketRuntime === undefined
+          ? {}
+          : {
+              marketData: (read: import("@cashu/store/query").Read) => {
+                const vault = read<{ gid: string }>("SELECT gid FROM profiles")[0]?.gid;
+                return vault === undefined ? null : marketRuntime.marketData(read, vault);
+              },
+            }),
+      },
+      prices,
+      investments: investmentSources,
+      proposalImages: { changes: images.source.changes, image: images.image },
+      updateQuery: updates.query,
+      settingsInfoQuery: settingsInfoQuery({
+        version: build,
+        dataDir: () => dataDirPath,
+        worker: () => currentWorkerStatus?.() ?? null,
+        stores: () => settingsStores,
+      }),
+      signals: {
+        strategy: investmentSources.strategy,
+        market: investmentSources.market,
+        clock: investmentClock,
+      },
+      research: {
+        ...options.research,
+        ...marketRuntime?.research,
+        strategy: investmentSources.strategy,
+        market: investmentSources.market,
+        clock: investmentClock,
+      },
+      review: {
+        ...options.review,
+        ...marketRuntime?.research,
+        strategy: investmentSources.strategy,
+        market: investmentSources.market,
+        clock: investmentClock,
+      },
+      strategies: {
+        strategy: images.source,
+        ...(strategyManager === null ? {} : { documents: strategyManager.source }),
+      },
+    });
   const lingerMs = options.lingerMs ?? DEFAULT_LINGER_MS;
   let dispatch: (session: HostSession) => void = (session) => session.close();
   const server = await startHost({
@@ -534,6 +550,29 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     await server.close();
     throw error;
   }
+  const marketRuntime = nativeMode
+    ? options.marketFactory?.(
+        stores,
+        (vault) =>
+          server.lock.held &&
+          !server.stopping &&
+          stores.vaults.get(vault.id) === vault &&
+          vault.mode === "native" &&
+          vault.native.isCurrent() &&
+          !record.safeMode,
+        now,
+      )
+    : undefined;
+  const investmentSources = makeInvestmentSources(marketRuntime?.market);
+  const marketPrices =
+    marketRuntime?.prices ?? options.mcpPrices ?? options.overview?.prices ?? null;
+  const marketFxNewest = marketRuntime?.fxNewest ?? options.mcpFxNewest;
+  const marketAsync = marketRuntime?.investmentAsync ?? options.mcpInvestmentAsync;
+  const mcpResearch = options.mcpResearch ?? marketRuntime?.mcpResearch;
+  const mcpInvestmentWrites = options.mcpInvestmentWrites ?? marketRuntime?.mcpInvestmentWrites;
+  const mcpInvestmentReads = options.mcpInvestmentReads ?? marketRuntime?.mcpInvestmentReads;
+  const mcpInvestmentHistory = options.mcpInvestmentHistory ?? marketRuntime?.mcpInvestmentHistory;
+  const queries = makeQueries(investmentSources, marketPrices);
   const signalQueue = new NotificationQueue(stores.device.driver);
   const localSignals = new Map<string, SignalsScreenCapability>();
   const bindSignals = (vault: string): SignalsScreenCapability | null => {
@@ -547,9 +586,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         generation: `local:${vault}`,
         isCurrent: () => stores.vaults.get(vault) === opened,
         notifications: signalQueue,
-        ...((options.mcpPrices ?? options.overview?.prices)
-          ? { prices: options.mcpPrices ?? options.overview?.prices ?? undefined }
-          : {}),
+        ...(marketPrices ? { prices: marketPrices } : {}),
       };
       localSignals.set(vault, cap);
     }
@@ -914,6 +951,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       importManager?.close();
       strategyManager?.close();
       images.close();
+      marketRuntime?.close();
       await stores.drain();
       await stores.close();
       // Before the lock goes: a successor host records its own start after taking the lock.
@@ -981,89 +1019,17 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const serveCreationRequest = (
     session: HostSession,
     frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
-  ) => {
-    // Existing UI sessions survive beginStop until drain completes. Close the admission gate before
-    // the drain snapshot, so no new Create work can run after shutdown releases HostLock.
-    if (server.stopping || stopping !== undefined || bundleReplaced) {
-      session.send({
-        t: "res",
-        id: frame.id,
-        outcome: { ok: false, error: { code: "stopping", message: "host is stopping" } },
-      });
-      return;
-    }
-    if (
-      creation === undefined ||
-      !uiCreationAllowed(frame.method, session.protocol.minor, [NATIVE_CREATION_FEATURE])
-    ) {
-      session.send({
-        t: "res",
-        id: frame.id,
-        outcome: { ok: false, error: { code: "unknown-method", message: "method unavailable" } },
-      });
-      return;
-    }
-    let verifiedReady = false;
-    const request = Promise.resolve()
-      .then(async () => {
-        let result: unknown;
-        switch (frame.method) {
-          case "native.creation.prepare": {
-            const parsed = nativeCreationPrepareParamsSchema.safeParse(frame.params);
-            result = parsed.success
-              ? nativeCreationPrepareResultSchema.parse(await creation.prepare(parsed.data))
-              : { kind: "refused", code: "invalid_input" };
-            break;
-          }
-          case "native.creation.commit": {
-            const parsed = nativeCreationCommitParamsSchema.safeParse(frame.params);
-            result = parsed.success
-              ? nativeCreationCommitResultSchema.parse(await creation.commit(parsed.data))
-              : { kind: "refused", code: "invalid_input" };
-            verifiedReady = (result as { kind: string }).kind === "ready";
-            break;
-          }
-          case "native.creation.inspect":
-            result = nativeCreationInspectResultSchema.parse(
-              await creation.inspect(nativeCreationInspectParamsSchema.parse(frame.params)),
-            );
-            break;
-          case "native.creation.current":
-            result = nativeCreationCurrentResultSchema.parse(
-              await creation.current(nativeCreationCurrentParamsSchema.parse(frame.params)),
-            );
-            break;
-          default:
-            throw new Error("unknown_method");
-        }
-        try {
-          session.send({
-            t: "res",
-            id: frame.id,
-            outcome: { ok: true, result: result as import("@cashu/host-protocol/store").JsonValue },
-          });
-        } catch {
-          // A disconnected caller reconciles with read-only inspect/current.
-        }
-        if (verifiedReady) setTimeout(() => void stop("handover"), 0);
-      })
-      .catch(() => {
-        try {
-          session.send({
-            t: "res",
-            id: frame.id,
-            outcome: { ok: false, error: { code: "failed", message: "creation request failed" } },
-          });
-        } catch {
-          // The client may already be gone.
-        }
-      })
-      .finally(() => {
-        creationRequests.delete(request);
-        armIdle();
-      });
-    creationRequests.add(request);
-  };
+  ) =>
+    serveNativeCreationRequest({
+      session,
+      frame,
+      creation,
+      isStopping: () => server.stopping || stopping !== undefined || bundleReplaced,
+      requestSet: creationRequests,
+      armIdle,
+      handover: () => void stop("handover"),
+      log,
+    });
 
   const serveDevicesRequest = (
     session: HostSession,
@@ -1124,6 +1090,28 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
               : { kind: "refused", code: "invalid_input" };
             break;
           }
+          case "native.devices.leaderPreview": {
+            const input = leaderPreviewParamsSchema.safeParse(frame.params);
+            result = input.success
+              ? leaderPreviewResultSchema.parse(await devices.leaderPreview(input.data))
+              : { kind: "refused", code: "invalid_input" };
+            break;
+          }
+          case "native.devices.leaderCommit": {
+            const input = leaderCommitParamsSchema.safeParse(frame.params);
+            result = input.success
+              ? leaderCommitResultSchema.parse(await devices.leaderCommit(input.data))
+              : { kind: "refused", code: "invalid_input" };
+            requiresReopen = (result as { kind: string }).kind === "outcome_unknown";
+            break;
+          }
+          case "native.devices.leaderInspect": {
+            const input = leaderInspectParamsSchema.safeParse(frame.params);
+            result = input.success
+              ? leaderInspectResultSchema.parse(await devices.leaderInspect(input.data))
+              : { kind: "refused", code: "invalid_input" };
+            break;
+          }
           default:
             result = { kind: "refused", code: "invalid_input" };
         }
@@ -1158,104 +1146,18 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const servePairingRequest = (
     session: HostSession,
     frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
-  ) => {
-    if (
-      server.stopping ||
-      stopping !== undefined ||
-      bundleReplaced ||
-      !uiPairingAllowed(frame.method, session.protocol.minor, [NATIVE_PAIRING_FEATURE])
-    ) {
-      session.send({
-        t: "res",
-        id: frame.id,
-        outcome: { ok: false, error: { code: "unknown-method", message: "method unavailable" } },
-      });
-      return;
-    }
-    const request = Promise.resolve()
-      .then(async () => {
-        const service =
-          lan ?? (frame.method === "native.pairing.invite" ? await ensureLan() : undefined);
-        if (service === undefined) {
-          session.send({
-            t: "res",
-            id: frame.id,
-            outcome: { ok: true, result: { kind: "refused", code: "unavailable" } },
-          });
-          return;
-        }
-        let result: unknown;
-        let requiresReopen = false;
-        switch (frame.method) {
-          case "native.pairing.invite": {
-            const parsed = pairingInviteParamsSchema.safeParse(frame.params);
-            result = parsed.success
-              ? pairingInviteResultSchema.parse(await service.invite(parsed.data.vault))
-              : { kind: "refused", code: "invalid" };
-            break;
-          }
-          case "native.pairing.confirm": {
-            const parsed = pairingConfirmParamsSchema.safeParse(frame.params);
-            result = parsed.success
-              ? pairingConfirmResultSchema.parse(
-                  await service.confirm(
-                    parsed.data.vault,
-                    parsed.data.operationId,
-                    parsed.data.code,
-                  ),
-                )
-              : { kind: "refused", code: "invalid" };
-            requiresReopen = (result as { kind: string }).kind === "outcome_unknown";
-            break;
-          }
-          case "native.pairing.inspect": {
-            const parsed = pairingInspectParamsSchema.safeParse(frame.params);
-            result = parsed.success
-              ? pairingInspectResultSchema.parse(
-                  await service.inspect(parsed.data.vault, parsed.data.operationId),
-                )
-              : { kind: "refused", code: "invalid" };
-            break;
-          }
-          case "native.pairing.cancel": {
-            const parsed = pairingCancelParamsSchema.safeParse(frame.params);
-            result = parsed.success
-              ? pairingCancelResultSchema.parse(
-                  await service.cancel(parsed.data.vault, parsed.data.operationId),
-                )
-              : { kind: "refused" };
-            break;
-          }
-          default:
-            result = { kind: "refused", code: "invalid" };
-        }
-        try {
-          session.send({
-            t: "res",
-            id: frame.id,
-            outcome: { ok: true, result: result as import("@cashu/host-protocol/store").JsonValue },
-          });
-        } finally {
-          if (requiresReopen) setTimeout(() => void stop("handover"), 0);
-        }
-      })
-      .catch(() => {
-        try {
-          session.send({
-            t: "res",
-            id: frame.id,
-            outcome: { ok: false, error: { code: "failed", message: "pairing request failed" } },
-          });
-        } catch {
-          /* Session may already be closed. */
-        }
-      });
-    creationRequests.add(request);
-    void request.finally(() => {
-      creationRequests.delete(request);
-      armIdle();
+  ) =>
+    serveNativePairingRequest({
+      session,
+      frame,
+      isStopping: () => server.stopping || stopping !== undefined || bundleReplaced,
+      currentService: () => lan,
+      ensureService: ensureLan,
+      requestSet: creationRequests,
+      armIdle,
+      handover: () => void stop("handover"),
+      log,
     });
-  };
 
   const serveNotificationRequest = (
     session: HostSession,
@@ -1632,12 +1534,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                       options.connectorCatalog?.() === catalog,
                   })
                 : undefined;
-            // TRANSITIONAL(S22c): cached-market reads remain on the legacy source until a real
-            // device cache is supplied. The restrictive bridge still enforces this vault's policy.
             const tools = coreTools().filter((tool) =>
               tool.name === "profile_overview"
-                ? options.mcpPrices !== undefined && options.mcpFxNewest !== undefined
-                : tool.name !== "networth_breakdown" || options.mcpPrices !== undefined,
+                ? marketPrices !== null && marketFxNewest !== undefined
+                : tool.name !== "networth_breakdown" || marketPrices !== null,
             );
             // TRANSITIONAL(S38b): mixed sessions keep financial reads beside the Python writer.
             // Native payee identities and unsynchronized native category views cannot form a
@@ -1651,8 +1551,6 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
               ),
             );
             if (child === undefined) tools.push(...loansTools());
-            // TRANSITIONAL(S38c): delegated writers and native investment reads do not yet share
-            // coherent authority. File-only tools are independent of the financial write model.
             tools.push(
               ...investmentTools().filter((tool) =>
                 tool.name === "inspect_export" || tool.name === "validate_import"
@@ -1661,35 +1559,40 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                     (tool.name === "signals" ||
                       tool.name === "theses" ||
                       (tool.name === "history_metrics"
-                        ? options.mcpInvestmentHistory !== undefined
-                        : options.mcpInvestmentReads !== undefined)),
+                        ? mcpInvestmentHistory !== undefined
+                        : mcpInvestmentReads !== undefined)),
               ),
             );
             if (child === undefined)
               tools.push(
                 ...researchTools().filter((tool) =>
-                  tool.name === "research_context" ? options.mcpResearch !== undefined : true,
+                  tool.name === "research_context" ? mcpResearch !== undefined : true,
                 ),
               );
             if (child === undefined)
               tools.push(
                 ...investmentWriteTools().filter(
-                  (tool) => tool.name !== "watchlist" || options.mcpInvestmentWrites !== undefined,
+                  (tool) => tool.name !== "watchlist" || mcpInvestmentWrites !== undefined,
                 ),
               );
-            const investmentAsync = options.mcpInvestmentAsync?.(vault.id);
+            const investmentAsync = marketAsync?.(vault.id);
             if (nativeMode) {
               const enabled = (name: string): boolean => {
                 if (NATIVE_MCP_STORE_TOOLS.has(name)) return true;
                 if (name === "profile_overview")
-                  return options.mcpPrices !== undefined && options.mcpFxNewest !== undefined;
-                if (name === "networth_breakdown") return options.mcpPrices !== undefined;
-                if (NATIVE_MCP_INVESTMENT_READS.has(name))
-                  return options.mcpInvestmentReads !== undefined;
-                if (name === "history_metrics") return options.mcpInvestmentHistory !== undefined;
-                if (NATIVE_MCP_RESEARCH.has(name)) return options.mcpResearch !== undefined;
+                  return marketPrices !== null && marketFxNewest !== undefined;
+                if (name === "networth_breakdown") return marketPrices !== null;
+                if (NATIVE_MCP_INVESTMENT_READS.has(name)) return mcpInvestmentReads !== undefined;
+                if (name === "history_metrics") return mcpInvestmentHistory !== undefined;
+                if (NATIVE_MCP_RESEARCH.has(name)) return mcpResearch !== undefined;
+                if (name === "propose_import")
+                  return (
+                    investmentAsync?.vault === vault.id &&
+                    investmentAsync.imports?.vault === vault.id &&
+                    investmentAsync.imports.isCurrent()
+                  );
                 if (NATIVE_MCP_INVESTMENT_WRITES.has(name)) {
-                  if (options.mcpInvestmentWrites === undefined) return false;
+                  if (mcpInvestmentWrites === undefined) return false;
                   if (name === "add_to_watchlist")
                     return (
                       investmentAsync?.vault === vault.id &&
@@ -1727,13 +1630,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 replaced: () => bundleReplaced,
                 log,
                 inventory,
-                prices: options.mcpPrices ?? null,
-                fxNewest: options.mcpFxNewest,
+                prices: marketPrices,
+                marketData: marketRuntime?.marketData,
+                fxNewest: marketFxNewest,
                 readBudgetImportFile: fileReader,
-                investmentReads: options.mcpInvestmentReads,
-                investmentHistory: options.mcpInvestmentHistory,
-                research: options.mcpResearch,
-                investmentWrites: options.mcpInvestmentWrites,
+                investmentReads: mcpInvestmentReads,
+                investmentHistory: mcpInvestmentHistory,
+                research: mcpResearch,
+                investmentWrites: mcpInvestmentWrites,
                 investmentAsync,
                 connectors: connectorPort,
                 readInvestmentImportFile: readInvestmentFile,

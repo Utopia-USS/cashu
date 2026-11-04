@@ -26,7 +26,11 @@ import { BROKERAGE, manualValuations, renames, transactions } from "./queries/tr
  * valuations, and from the price cache every bar of those instruments and every rate of the
  * currencies involved.
  */
-function brokerageHistory(read: Read, prices: market.PriceCache | null): BrokerageHistory {
+function brokerageHistory(
+  read: Read,
+  prices: market.PriceCache | null,
+  marketData?: market.CachedMarketData,
+): BrokerageHistory {
   const txns = transactions(read);
   const renamed = renames(read);
   const ids = new Set<InstrumentId>();
@@ -40,8 +44,9 @@ function brokerageHistory(read: Read, prices: market.PriceCache | null): Brokera
   const valuations = manualValuations(read, ids);
   const bars: PriceBar[] = [];
   const rates: FxRate[] = [];
-  if (prices !== null) {
-    const cached = market.cachedMarketData(prices, instruments.values());
+  if (prices !== null || marketData !== undefined) {
+    const cached =
+      marketData ?? market.cachedMarketData(prices as market.PriceCache, instruments.values());
     for (const id of ids) bars.push(...cached.series(id));
     const currencies = new Set<Currency>();
     for (const a of read<{ currency: Currency }>(
@@ -70,7 +75,7 @@ function brokerageHistory(read: Read, prices: market.PriceCache | null): Brokera
 }
 
 export const investmentsNetWorth: NetWorthSource = (read, env) =>
-  new BrokerageContributor(brokerageHistory(read, env.prices), env.today);
+  new BrokerageContributor(brokerageHistory(read, env.prices, env.marketData), env.today);
 
 const exists = (read: Read, sql: string, ...params: string[]): boolean =>
   read<{ one: number }>(sql, ...params).length > 0;

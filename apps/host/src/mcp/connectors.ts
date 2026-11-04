@@ -177,6 +177,7 @@ export function connectorMcpPort(authority: ConnectorMcpAuthority) {
         return {
           ...entry,
           stale: age > 180,
+          valid: Number.isFinite(age) && age >= -1,
           installedStatus: status?.approval ?? null,
           installedSameContent: status ? status.contentSha256 === entry.contentSha256 : null,
         };

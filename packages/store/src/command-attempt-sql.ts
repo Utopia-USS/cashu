@@ -85,8 +85,22 @@ export class SqlCommandAttemptJournal<R> implements CommandAttemptPort<R> {
     if (mode === "new") driver.exec(DDL(table));
     if (mode === "existing") {
       const columns = driver.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
-      if (!columns.some((column) => column.name === "digest"))
-        driver.exec(`ALTER TABLE ${table} ADD COLUMN digest TEXT`);
+      const expected = [
+        "key",
+        "vault",
+        "attempt_id",
+        "command_id",
+        "fingerprint",
+        "phase",
+        "eids",
+        "digest",
+        "terminal_kind",
+        "terminal_reason",
+        "receipt",
+        "completed_at",
+      ];
+      if (columns.map((column) => column.name).join("|") !== expected.join("|"))
+        throw new Error("attempt_journal_schema_mismatch");
     }
     return new SqlCommandAttemptJournal<R>(driver, table, now);
   }

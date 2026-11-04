@@ -44,6 +44,7 @@ import {
 import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { takeWriterLease } from "./lease.js";
+import { initializeNativeClockGuard, nativeClockGuard } from "./market/clockGuard.js";
 import { readNativeRecoveryWrap } from "./nativeCreationArtifacts.js";
 import {
   type CreationStage,
@@ -549,6 +550,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
           salt,
           modules: builtinModules(),
         });
+        initializeNativeClockGuard(store.driver, deviceId);
         const openKeyStore = makeKeyStore({
           dataDir,
           purpose: "open",
@@ -584,6 +586,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
           gate: candidate.gate,
           sink: store.sink(),
           clockStore: metaClockStore(store.driver, deviceId),
+          clockGuard: nativeClockGuard(store.driver, deviceId),
           gateState: metaGateStateStore(store.driver, deviceId),
           gossipEid: () => mintUlid(now(), (n) => sodium.randomBytes(n)),
         });

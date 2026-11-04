@@ -73,6 +73,9 @@
 
 @layer theme {
   :root {
+    --modal-backdrop-layer: 40;
+    --modal-panel-layer: 50;
+    --modal-layer-step: 20;
     @variant dark {
       --color-fg: #e8eaed;
       --color-fg-secondary: #c9cfd8;

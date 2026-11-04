@@ -31,7 +31,13 @@ export async function runMerchantClassification(
   io: CommandIo,
   deps: CategorizeDeps,
 ): Promise<number | typeof DELEGATE> {
-  const backend = () => (io.env.CASHU_CATEGORIZE_LLM_BACKEND || "ollama").toLowerCase();
+  // Native per-vault owner consent selects cloud. The old env request alone never grants it.
+  const backend = () => {
+    const explicit = io.env.CASHU_CATEGORIZE_LLM_BACKEND?.toLowerCase();
+    // An explicit local CLI choice is honored. Cloud still requires owner-persisted capability.
+    if (explicit === "ollama") return "ollama";
+    return deps.cloudClassifier?.config(vault.id) ? "anthropic" : explicit || "ollama";
+  };
   const cloud = backend() === "anthropic";
   const refuseCloud = () => {
     io.stderr(`${io.t.tr(S.cloudUnavailable)}\n${io.t.tr(S.cloudRisk)}\n`);
@@ -160,7 +166,6 @@ export async function runMerchantClassification(
   }
   if (cloud && !answers.ok && answers.reason === "no_api_key") return refuseCloud();
   const key = cliCommandKey();
-  if (io.signal.aborted) return 130;
   if (io.signal.aborted) return 130;
   try {
     assertClassifierCurrent(context, cloudGuard);

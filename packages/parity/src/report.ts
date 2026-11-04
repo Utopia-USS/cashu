@@ -40,6 +40,8 @@ export function formatReport(report: Report, title?: string): string {
   if (report.extra.length > 0) {
     lines.push(`note: ${report.extra.length} actual file(s) are not golden checks (ignored)`);
   }
+  for (const input of report.oracleInputs)
+    lines.push(`oracle input ${input}: indexed hash validated; not a comparison`);
   const { pass, fail, missing } = report.counts;
   lines.push(`${report.checks.length} checks: ${pass} pass, ${fail} fail, ${missing} missing`);
   return `${lines.join("\n")}\n`;

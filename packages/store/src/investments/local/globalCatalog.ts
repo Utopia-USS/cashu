@@ -9,7 +9,9 @@ export interface SourceGlobalCatalogRow {
 
 /** Device-local source catalog rows that had no profile reference at import time. */
 export class SqlGlobalCatalog {
-  constructor(private readonly driver: SqlDriver) {
+  private readonly driver: SqlDriver;
+  constructor(driver: SqlDriver) {
+    this.driver = driver;
     driver.exec(`CREATE TABLE IF NOT EXISTS local_source_global_catalog (
       kind TEXT NOT NULL CHECK(kind IN ('instrument','alias')),
       id INTEGER NOT NULL CHECK(id>0), source_json TEXT NOT NULL,

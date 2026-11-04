@@ -83,21 +83,6 @@ export function signalGroups(
 export const signalDisplayDay = (instant: string | null | undefined): string | null =>
   localDay(instant);
 
-/** Visual geometry only; displayed price facts retain their domain Decimal values. */
-export function signalSparkline(closes: readonly { readonly close: unknown }[]): string | null {
-  const values = closes.map((point) => Number(String(point.close)));
-  if (values.length < 2 || values.some((value) => !Number.isFinite(value))) return null;
-  const low = Math.min(...values),
-    high = Math.max(...values);
-  const span = high - low || 1;
-  return values
-    .map(
-      (value, index) =>
-        `${(index / (values.length - 1)) * 100},${24 - ((value - low) / span) * 24}`,
-    )
-    .join(" ");
-}
-
 export type JournalEntry =
   | {
       readonly kind: "year";

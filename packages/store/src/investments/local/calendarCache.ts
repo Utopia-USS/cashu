@@ -3,7 +3,10 @@ import type { market } from "@cashu/domain/investments";
 import type { SqlDriver } from "../../sql/driver.js";
 
 export class SqlCalendarCache {
-  constructor(private readonly driver: SqlDriver) {
+  private readonly driver: SqlDriver;
+  private readonly listeners = new Set<() => void>();
+  constructor(driver: SqlDriver) {
+    this.driver = driver;
     driver.exec(`CREATE TABLE IF NOT EXISTS local_market_calendar (
       id INTEGER PRIMARY KEY CHECK(id=1), content BLOB NOT NULL
     )`);
@@ -16,6 +19,12 @@ export class SqlCalendarCache {
         "INSERT INTO local_market_calendar(id,content) VALUES (1,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content",
       )
       .run(Uint8Array.from(bytes));
+    for (const listener of [...this.listeners]) listener();
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 
   rawBytes(): Uint8Array | null {

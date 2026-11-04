@@ -23,6 +23,7 @@ import { boundConnectorSecrets } from "./connectors/secrets.js";
 import type { HostStores, OpenVault } from "./stores.js";
 import { type UiActionRegistration, unknownUiCommand } from "./uiActions.js";
 import type { WorkerBindings } from "./worker/contracts.js";
+import { reportSuccessfulFetch } from "./worker/leaseReport.js";
 
 const gid = v1.gid;
 const id = z.string().regex(/^[a-z][a-z0-9-]{1,39}$/);
@@ -290,7 +291,15 @@ export function connectorOwnerAction(input: {
               throw new Error("fetch_authority_unavailable");
           };
           guard();
-          const outcome = await runtime.runOne(vault, row.gid, guard);
+          const endFetch = vault.native.beginFetch();
+          if (!endFetch) return { status: "not_started", reason: "capability_unavailable" };
+          let outcome: Awaited<ReturnType<typeof runtime.runOne>>;
+          try {
+            outcome = await runtime.runOne(vault, row.gid, guard);
+          } finally {
+            endFetch();
+          }
+          if (outcome.status === "ok") await reportSuccessfulFetch(vault, guard);
           return { status: "completed", value: outcome };
         }
         const loaded = catalog.installed(row.connector_id);

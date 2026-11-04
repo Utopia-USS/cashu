@@ -34,6 +34,7 @@ import {
 } from "@cashu/sync";
 import { SqlAttemptJournal } from "../../attemptJournal.js";
 import { takeWriterLease } from "../../lease.js";
+import { initializeNativeClockGuard, nativeClockGuard } from "../../market/clockGuard.js";
 import { type NativeVaultSource, openNativeVault } from "../../nativeVault.js";
 import {
   assertReplayedDeviceAuthority,
@@ -226,6 +227,7 @@ export async function writeEncryptedMigrationVault(input: {
       salt: identity.salt,
       modules: builtinModules(),
     });
+    initializeNativeClockGuard(store.driver, deviceId);
     const entry = {
       vaultId,
       deviceId,
@@ -331,6 +333,7 @@ export async function writeEncryptedMigrationVault(input: {
       gate: candidate.gate,
       sink: store.sink(),
       clockStore: metaClockStore(store.driver, deviceId),
+      clockGuard: nativeClockGuard(store.driver, deviceId),
       gateState: metaGateStateStore(store.driver, deviceId),
       gossipEid: () => mintUlid(now(), (n) => sodium.randomBytes(n)),
     });

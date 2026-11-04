@@ -1,42 +1,37 @@
 /// <reference types="node" />
 /**
- * S38b's five dataset reads execute actual native handlers on the genesis-folded vault. Remaining
- * reads replay S02 labelled Python trees through native providers and privacy. Only unported
- * calls may pass through an oracle error; native module/error results are computed independently.
+ * Dataset reads execute native handlers on the genesis-folded vault. Python trees supply only
+ * the comparison oracle; native module and error results are computed independently.
  */
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import * as macro from "@cashu/domain/investments/macro";
 import {
   decodeEntityRef,
   type InvestmentWriteServices,
-  LeakDetected,
-  leakCheck,
   loadAccountLabels,
   loadGuard,
   mcpToolMetadata,
-  type NameGuard,
   type NativeToolStore,
-  Redactor,
   type ResearchServices,
   scrubText,
   toolContext,
-  UnlabelledValue,
 } from "@cashu/mcp";
 import { mcpProfile } from "@cashu/store/core";
 import { type CanonObject, type CanonValue, parseCanonical } from "../../json.ts";
 import { DATASET_CLOCKS, type Dataset, goldenRoot, type PythonDb } from "../../sources/index.ts";
 import type { ProfileRow } from "../../sources/pythonDb.ts";
+import { copiedOverviewPrices } from "../core/overviewMarket.ts";
+import { nativeViewSources } from "../investments/viewSource.ts";
 import type { OutValue } from "../output.ts";
 import { genesisRun } from "../store/genesisRun.ts";
 import { GidKeys } from "../store/gidKeys.ts";
+import { bindConnectorReads } from "./connectorSource.ts";
 import { bindInvestmentHistory } from "./historySource.ts";
 import { bindInvestmentReads } from "./investmentSource.ts";
 import { bindInvestmentWriteReads } from "./investmentWriteSource.ts";
 import { mergeMcpReads, nativeMcpReads } from "./nativeReads.ts";
-import { canonToOut, SyntheticIds, toCanonical, toLabelledTree } from "./rawTrees.ts";
 import { bindResearchReads } from "./researchSource.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..", "..");
@@ -63,53 +58,6 @@ function asObject(value: CanonValue | undefined, what: string): CanonObject {
   return value;
 }
 
-/** A raw golden entry without a tree: `{error_kind[, error]}` with plain string values. */
-function isPassThrough(entry: CanonObject): boolean {
-  return (
-    entry.has("error_kind") &&
-    typeof entry.get("error_kind") === "string" &&
-    [...entry.keys()].every((k) => k === "error_kind" || k === "error")
-  );
-}
-
-let debugDataset: Dataset | null = null;
-
-function redactEntry(
-  raw: CanonValue,
-  mode: PrivacyMode,
-  guard: NameGuard,
-  summaryOk: (t: string) => boolean,
-): OutValue {
-  const ids = new SyntheticIds();
-  const tree = toLabelledTree(raw, ids);
-  const redactor = new Redactor({ privacy: mode, guard, summaryOk });
-  let data: ReturnType<Redactor["apply"]>;
-  try {
-    data = redactor.apply(tree);
-    if (data === null || typeof data !== "object" || Array.isArray(data)) {
-      throw new UnlabelledValue("a tool must return an object");
-    }
-  } catch (e) {
-    if (e instanceof UnlabelledValue) {
-      // the message names JSON paths only; still printed for the synthetic dataset only
-      if (process.env.CASHU_PARITY_DEBUG && debugDataset === "demo") console.error(e.message);
-      return { error_kind: "unlabelled" };
-    }
-    throw e;
-  }
-  try {
-    leakCheck(data, {
-      strict: redactor.strict,
-      isins: redactor.isins,
-      nonMoney: redactor.nonMoney,
-    });
-  } catch (e) {
-    if (e instanceof LeakDetected) return { error_kind: "privacy_check" };
-    throw e;
-  }
-  return toCanonical(data, ids);
-}
-
 /** Independent native outputs for one profile; no oracle tree or expected result is read. */
 export async function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, profile: ProfileRow) {
   const vaults = genesisRun(db).vaults;
@@ -122,6 +70,8 @@ export async function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, pro
   const nativeProfile = mcpProfile(read);
   if (nativeProfile === undefined) throw new Error("MCP parity: missing native profile");
   const keys = new GidKeys(vault, db.keys);
+  const marketData = nativeViewSources(db).find((source) => source.profile.id === profile.id)
+    ?.marketData.data;
   let research: ResearchServices | undefined;
   let investmentWrites: InvestmentWriteServices | undefined;
   const store: NativeToolStore = {
@@ -135,9 +85,16 @@ export async function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, pro
     profile: nativeProfile,
     today: db.asOf,
     now: () => Date.parse(`${DATASET_CLOCKS[db.dataset]}Z`),
-    prices: null,
-    fxNewest: null,
+    prices: copiedOverviewPrices(db),
+    ...(marketData === undefined ? {} : { marketData }),
+    fxNewest: db.investments
+      .fxRates()
+      .reduce<string | null>(
+        (newest, row) => (newest === null || row.date > newest ? row.date : newest),
+        null,
+      ),
     toolInventory: mcpToolMetadata(),
+    connectors: bindConnectorReads(db, profile.id),
     ...(nativeProfile.modules.includes("investments")
       ? {
           investments: bindInvestmentReads(db, profile.id),
@@ -185,6 +142,17 @@ export async function nativeProfileMcpReads(db: PythonDb, mode: PrivacyMode, pro
         if (key === null) throw new Error("missing native investment identity");
         return key;
       },
+      searchKey(value) {
+        if (!value.startsWith("i:")) return value;
+        const gid = decodeEntityRef("instrument", value.slice(2));
+        keys.ref("inv_instruments", gid);
+        const source = keys.source(gid);
+        if (source?.table !== "inv_instruments") throw new Error("missing native search identity");
+        return scrubText(`i:${source.localId}`, {
+          strict: context.strict,
+          guard: context.guard,
+        });
+      },
       rule(value) {
         if (!/^alert:(?:u[a-p]{52}|v[a-p]{32})$/u.test(value)) return value;
         const gid = decodeEntityRef("alert", value);
@@ -209,7 +177,6 @@ export async function produceMcpRead(
   mode: PrivacyMode,
   rawRoot: string = goldenRoot(),
 ): Promise<OutValue> {
-  debugDataset = db.dataset;
   const raw = asObject(
     parseCanonical(readFileSync(rawGoldenPath(db.dataset, rawRoot), "utf8")),
     "mcp.read_raw",
@@ -219,12 +186,8 @@ export async function produceMcpRead(
   for (const profile of db.profiles()) {
     const pkey = db.keys.key("profiles", profile.id),
       calls = asObject(perProfile.get(pkey), "a profile of mcp.read_raw");
-    const { native, guard } = await nativeProfileMcpReads(db, mode, profile);
-    out[pkey] = mergeMcpReads(calls, native, (entry) =>
-      entry instanceof Map && isPassThrough(entry)
-        ? canonToOut(entry)
-        : redactEntry(entry, mode, guard, macro.summaryOk),
-    );
+    const { native } = await nativeProfileMcpReads(db, mode, profile);
+    out[pkey] = mergeMcpReads(calls, native);
   }
   if (Object.keys(out).length !== perProfile.size)
     throw new Error("mcp.read_raw has profiles the dataset lacks");

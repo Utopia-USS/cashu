@@ -16,6 +16,9 @@ export const NATIVE_DEVICES_METHODS = [
   "native.devices.revokeCommit",
   "native.devices.revokeInspect",
   "native.devices.revokeCancel",
+  "native.devices.leaderPreview",
+  "native.devices.leaderCommit",
+  "native.devices.leaderInspect",
 ] as const;
 
 export function uiDevicesAllowed(
@@ -60,6 +63,9 @@ export const deviceListResultSchema = z.discriminatedUnion("kind", [
     operations: z
       .array(z.strictObject({ operationId: ulid, phase: z.enum(["may_append", "completed"]) }))
       .max(16),
+    leaderOperations: z
+      .array(z.strictObject({ operationId: ulid, phase: z.enum(["may_append", "completed"]) }))
+      .max(16),
     evidence: z.strictObject({
       historyPending: z.boolean(),
       overflow: z.boolean(),
@@ -71,6 +77,20 @@ export const deviceListResultSchema = z.discriminatedUnion("kind", [
         "rolled-back",
       ]),
     }),
+    leader: z.strictObject({
+      mode: z.enum(["pinned", "auto"]),
+      state: z.enum(["ok", "silent", "leaderless", "handover_pending", "auto"]),
+      device: id.nullable(),
+      pendingFrom: id.nullable(),
+      lastActivityAt: z.number().int().nonnegative().nullable(),
+      silentForMs: z.number().int().nonnegative(),
+      warn: z.boolean(),
+    }),
+    keyProvenance: z.strictObject({
+      source: z.enum(["own", "wrap", "pairing", "unknown"]),
+      sender: id.nullable(),
+      recipientsKnown: z.boolean(),
+    }),
     devices: z
       .array(
         z.strictObject({
@@ -80,6 +100,9 @@ export const deviceListResultSchema = z.discriminatedUnion("kind", [
           revoked: z.boolean(),
           behind: z.boolean(),
           forked: z.boolean(),
+          forkAgreed: cursor.nullable(),
+          pairedBy: id,
+          pairedAt: cursor,
         }),
       )
       .max(1024),
@@ -140,6 +163,44 @@ export const revokeCancelResultSchema = z.discriminatedUnion("kind", [
   deviceRefusalSchema,
 ]);
 
+export const leaderPreviewParamsSchema = z.strictObject({
+  vault: id,
+  leader: id,
+  force: z.boolean(),
+});
+export const leaderPreviewResultSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("prepared"),
+    vault: id,
+    token: id,
+    operationId: ulid,
+    expiresAt: z.number().int().nonnegative(),
+    leader: id,
+    force: z.boolean(),
+    mayStillRun: id.nullable(),
+    confirmationText: z.string().min(8).max(14),
+  }),
+  deviceRefusalSchema,
+]);
+export const leaderCommitParamsSchema = z.strictObject({
+  vault: id,
+  token: id,
+  confirmationText: z.string().min(8).max(14),
+});
+export const leaderCommitResultSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("completed"), operationId: ulid }),
+  z.strictObject({ kind: z.literal("outcome_unknown"), operationId: ulid }),
+  deviceRefusalSchema,
+]);
+export const leaderInspectParamsSchema = z.strictObject({ vault: id, operationId: ulid });
+export const leaderInspectResultSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("completed"), operationId: ulid }),
+  z.strictObject({ kind: z.literal("outcome_unknown"), operationId: ulid }),
+  z.strictObject({ kind: z.literal("not_started"), operationId: ulid }),
+  z.strictObject({ kind: z.literal("not_found"), operationId: ulid }),
+  deviceRefusalSchema,
+]);
+
 export type RevokePreviewParams = z.infer<typeof revokePreviewParamsSchema>;
 export type RevokePreviewResult = z.infer<typeof revokePreviewResultSchema>;
 export type RevokeCommitParams = z.infer<typeof revokeCommitParamsSchema>;
@@ -150,3 +211,9 @@ export type RevokeCancelParams = z.infer<typeof revokeCancelParamsSchema>;
 export type RevokeCancelResult = z.infer<typeof revokeCancelResultSchema>;
 export type DeviceListParams = z.infer<typeof deviceListParamsSchema>;
 export type DeviceListResult = z.infer<typeof deviceListResultSchema>;
+export type LeaderPreviewParams = z.infer<typeof leaderPreviewParamsSchema>;
+export type LeaderPreviewResult = z.infer<typeof leaderPreviewResultSchema>;
+export type LeaderCommitParams = z.infer<typeof leaderCommitParamsSchema>;
+export type LeaderCommitResult = z.infer<typeof leaderCommitResultSchema>;
+export type LeaderInspectParams = z.infer<typeof leaderInspectParamsSchema>;
+export type LeaderInspectResult = z.infer<typeof leaderInspectResultSchema>;

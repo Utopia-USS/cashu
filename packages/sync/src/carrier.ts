@@ -110,6 +110,12 @@ export interface ClockStore {
   save(state: HlcState): Awaitable<void>;
 }
 
+/** Local high watermarks of verified foreign event clocks, persisted before their sink cursor. */
+export interface ClockGuardStore {
+  load(): Awaitable<Readonly<Record<DeviceId, number>>>;
+  save(walls: Readonly<Record<DeviceId, number>>): Awaitable<void>;
+}
+
 /**
  * Durable snapshot of the frame gate's state per device and vault (S29c-B3; the store keeps it in its
  * meta table). Opaque text the gate produced and authenticates itself (`FrameGate.exportState`).
@@ -439,6 +445,14 @@ export interface SyncEngine {
   writeAdmission(): "ready" | "own-tail-uncertain" | "authority-unresolved" | "rolled-back";
   /** The lease transport report of the last `sync()` pass (`eventual` before the first one). */
   leaseTransport(): LeaseTransport;
+  /** Read-only evidence for the existing fetch-lease decision; absent on failed or offline pulls. */
+  fetchLeaseEvidence(
+    activeClockWriter: (device: DeviceId) => boolean,
+    rejectedRelevant: (device: DeviceId) => boolean,
+  ): {
+    readonly lastPullAt: number | undefined;
+    readonly clockOk: boolean;
+  };
   /** Stamp, append to the own segment as one atomic batch (frame or frame group), apply locally. */
   write(events: readonly UnstampedEvent[], options?: WriteOptions): Promise<WriteResult>;
   /** Authenticated exact own one-frame batch proof for a private prepared-attempt journal. */

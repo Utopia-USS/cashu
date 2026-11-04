@@ -17,6 +17,11 @@ pass without parsing (`--deep` forces the tree comparison). Exit code: 0 all pas
 failed, 2 only missing (`--allow-missing` turns that into 0), 64 usage, 70 golden/config problem or
 stale inputs (below).
 
+`mcp.read_raw` is an indexed Python oracle input consumed by the native strict and amounts read
+producers. The comparer validates its presence and indexed hash, reports it separately, and does
+not count it as a comparison output. `--check mcp.read_raw` reports that status explicitly.
+Every other indexed golden remains a required comparison; an unknown or newly missing output fails.
+
 Defaults: lab goldens `~/cashu-lab/parity/out/lab` (`$CASHU_LAB_DIR` moves the lab root), demo
 goldens `parity/golden-demo`, actual `~/cashu-lab/parity/ts-out/<dataset>`.
 

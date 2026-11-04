@@ -1,16 +1,9 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, DateText, Money, Percent } from "@cashu/ui";
+import { Amount, DateText, Modal, Money, Percent, Sparkline } from "@cashu/ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { investmentMarks } from "../investments/presentation.js";
-import {
-  alertPresentation,
-  alertSignalObserved,
-  decisionUndoOpen,
-  journalTimeline,
-  signalDisplayDay,
-  signalSparkline,
-} from "./presentation.js";
+import { alertPresentation, alertSignalObserved, signalDisplayDay } from "./presentation.js";
 import { G } from "./Signals.strings.js";
 import type { SignalRow, SignalsPageKind, SignalsScreenState } from "./useSignalsScreen.js";
 
@@ -340,7 +333,7 @@ function SignalLine({ state, row }: { state: SignalsScreenState; row: SignalRow 
             type="button"
             className={button}
             disabled={state.busy}
-            onClick={() => void state.snooze(row.gid, new Date(`${until}T23:59:00`).toISOString())}
+            onClick={() => void state.snoozeUntil(row.gid, until)}
           >
             {G.nextDeposit}
           </button>
@@ -374,186 +367,148 @@ function SignalLine({ state, row }: { state: SignalsScreenState; row: SignalRow 
 }
 function DecisionDialog({ state }: { state: SignalsScreenState }) {
   const group = state.selected;
-  const groupKey = group?.key ?? null;
-  const ref = useRef<HTMLDivElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (groupKey === null) return;
-    opener.current = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
-    return () => {
-      const target = opener.current;
-      if (target && document.contains(target)) target.focus();
-    };
-  }, [groupKey]);
   if (!group) return null;
   const form = state.decisionForm;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4">
-      <button
-        type="button"
-        className="absolute inset-0"
-        aria-label={G.close}
-        onClick={() => state.setSelectedGroup(null)}
-      />
-      <section
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-label={G.decide}
-        tabIndex={-1}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") state.setSelectedGroup(null);
-        }}
-        className="relative max-h-full w-full max-w-xl overflow-auto rounded-lg border border-border bg-surface-raised p-5"
-      >
-        <header className="flex items-center justify-between">
-          <h2>
-            {G.decide}: {group.primary?.instrumentLabel ?? group.primary?.message}
-          </h2>
-          <button type="button" className={button} onClick={() => state.setSelectedGroup(null)}>
-            {G.close}
-          </button>
-        </header>
-        <div className="py-3">
-          <h3>{G.context}</h3>
-          {group.live.slice(0, 5).map((row) => (
-            <p key={row.gid}>
-              {row.message} <DateText value={date(row.firstSeenAt)} />
-            </p>
-          ))}
-          {group.live.length > 5 && <p>{G.more(group.live.length - 5)}</p>}
-          {state.data?.theses
-            .filter((thesis) => thesis.instrument === group.instrument)
-            .slice(0, 1)
-            .map((thesis) => (
-              <p key={thesis.gid}>
-                {G.thesis}: {thesis.thesis}
-                {thesis.exitPlan && (
-                  <>
-                    {" "}
-                    · {G.exitPlan}: {thesis.exitPlan}
-                  </>
-                )}
-              </p>
-            ))}
-          {group.primary?.kind === "contribution_gap" && state.next && (
-            <p>
-              {G.nextDeposit}: <DateText value={state.next} />
-            </p>
-          )}
-          {state.suggestion.quantity && (
-            <p>
-              {G.suggestedQuantity}: <Amount value={state.suggestion.quantity} fractionDigits={0} />
-            </p>
-          )}
-          {state.suggestion.quantityUnavailable && <p>{G.quantityUnavailable}</p>}
-          {state.estimate && (
-            <p>
-              {G.estimate}:{" "}
-              <Money value={new MoneyValue(state.estimate.amount, state.estimate.currency)} />
-              {state.estimate.allocation && (
+    <Modal
+      label={G.decide}
+      onClose={() => state.setSelectedGroup(null)}
+      className="mx-auto max-w-xl p-5"
+    >
+      <header className="flex items-center justify-between">
+        <h2>
+          {G.decide}: {group.primary?.instrumentLabel ?? group.primary?.message}
+        </h2>
+        <button type="button" className={button} onClick={() => state.setSelectedGroup(null)}>
+          {G.close}
+        </button>
+      </header>
+      <div className="py-3">
+        <h3>{G.context}</h3>
+        {group.live.slice(0, 5).map((row) => (
+          <p key={row.gid}>
+            {row.message} <DateText value={date(row.firstSeenAt)} />
+          </p>
+        ))}
+        {group.live.length > 5 && <p>{G.more(group.live.length - 5)}</p>}
+        {state.data?.theses
+          .filter((thesis) => thesis.instrument === group.instrument)
+          .slice(0, 1)
+          .map((thesis) => (
+            <p key={thesis.gid}>
+              {G.thesis}: {thesis.thesis}
+              {thesis.exitPlan && (
                 <>
                   {" "}
-                  · {G.afterWeight}:{" "}
-                  <Percent value={D(String(state.estimate.allocation.afterWeight))} /> ·{" "}
-                  {G.targetWeight}: <Percent value={D(String(state.estimate.allocation.target))} />{" "}
-                  · {G.drift}:{" "}
-                  <Amount value={D(String(state.estimate.allocation.driftPp))} fractionDigits={1} />{" "}
-                  {G.pp}
+                  · {G.exitPlan}: {thesis.exitPlan}
                 </>
               )}
             </p>
+          ))}
+        {group.primary?.kind === "contribution_gap" && state.next && (
+          <p>
+            {G.nextDeposit}: <DateText value={state.next} />
+          </p>
+        )}
+        {state.suggestion.quantity && (
+          <p>
+            {G.suggestedQuantity}: <Amount value={state.suggestion.quantity} fractionDigits={0} />
+          </p>
+        )}
+        {state.suggestion.quantityUnavailable && <p>{G.quantityUnavailable}</p>}
+        {state.estimate && (
+          <p>
+            {G.estimate}:{" "}
+            <Money value={new MoneyValue(state.estimate.amount, state.estimate.currency)} />
+            {state.estimate.allocation && (
+              <>
+                {" "}
+                · {G.afterWeight}:{" "}
+                <Percent value={D(String(state.estimate.allocation.afterWeight))} /> ·{" "}
+                {G.targetWeight}: <Percent value={D(String(state.estimate.allocation.target))} /> ·{" "}
+                {G.drift}:{" "}
+                <Amount value={D(String(state.estimate.allocation.driftPp))} fractionDigits={1} />{" "}
+                {G.pp}
+              </>
+            )}
+          </p>
+        )}
+      </div>
+      <form
+        className="grid gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void form.handleSubmit();
+        }}
+      >
+        <form.Field name="action">
+          {(field) => (
+            <label>
+              {G.action}
+              <select
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+                className="block w-full rounded-sm border border-border bg-surface p-2"
+              >
+                <option value="held">{G.held}</option>
+                <option value="bought">{G.buy}</option>
+                <option value="sold">{G.sell}</option>
+                <option value="other">{G.later}</option>
+              </select>
+            </label>
           )}
-        </div>
-        <form
-          className="grid gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void form.handleSubmit();
-          }}
-        >
-          <form.Field name="action">
+        </form.Field>
+        <form.Field name="account">
+          {(field) => (
+            <label>
+              {G.account}
+              <select
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+                className="block w-full rounded-sm border border-border bg-surface p-2"
+              >
+                <option value="">-</option>
+                {state.data?.accounts.map((account) => (
+                  <option key={account.gid} value={account.gid}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </form.Field>
+        <div className="grid grid-cols-3 gap-2">
+          <form.Field name="quantity">
             {(field) => (
               <label>
-                {G.action}
-                <select
+                {G.quantity}
+                <input
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
+                  inputMode="decimal"
                   className="block w-full rounded-sm border border-border bg-surface p-2"
-                >
-                  <option value="held">{G.held}</option>
-                  <option value="bought">{G.buy}</option>
-                  <option value="sold">{G.sell}</option>
-                  <option value="other">{G.later}</option>
-                </select>
+                />
               </label>
             )}
           </form.Field>
-          <form.Field name="account">
+          <form.Field name="price">
             {(field) => (
               <label>
-                {G.account}
-                <select
+                {G.price}
+                <input
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
+                  inputMode="decimal"
                   className="block w-full rounded-sm border border-border bg-surface p-2"
-                >
-                  <option value="">-</option>
-                  {state.data?.accounts.map((account) => (
-                    <option key={account.gid} value={account.gid}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
             )}
           </form.Field>
-          <div className="grid grid-cols-3 gap-2">
-            <form.Field name="quantity">
-              {(field) => (
-                <label>
-                  {G.quantity}
-                  <input
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    inputMode="decimal"
-                    className="block w-full rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-              )}
-            </form.Field>
-            <form.Field name="price">
-              {(field) => (
-                <label>
-                  {G.price}
-                  <input
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    inputMode="decimal"
-                    className="block w-full rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-              )}
-            </form.Field>
-            <form.Field name="currency">
-              {(field) => (
-                <label>
-                  {G.currency}
-                  <input
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    className="block w-full rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-              )}
-            </form.Field>
-          </div>
-          <form.Field name="reason">
+          <form.Field name="currency">
             {(field) => (
               <label>
-                {G.reason}
-                <textarea
+                {G.currency}
+                <input
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
                   className="block w-full rounded-sm border border-border bg-surface p-2"
@@ -561,32 +516,34 @@ function DecisionDialog({ state }: { state: SignalsScreenState }) {
               </label>
             )}
           </form.Field>
-          <p>{G.noTrade}</p>
-          <div className="flex gap-2">
-            <button type="submit" className={button} disabled={state.busy}>
-              {G.save}
-            </button>
-            <button type="button" className={button} onClick={() => state.setSelectedGroup(null)}>
-              {G.cancel}
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
+        </div>
+        <form.Field name="reason">
+          {(field) => (
+            <label>
+              {G.reason}
+              <textarea
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+                className="block w-full rounded-sm border border-border bg-surface p-2"
+              />
+            </label>
+          )}
+        </form.Field>
+        <p>{G.noTrade}</p>
+        <div className="flex gap-2">
+          <button type="submit" className={button} disabled={state.busy}>
+            {G.save}
+          </button>
+          <button type="button" className={button} onClick={() => state.setSelectedGroup(null)}>
+            {G.cancel}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 export function SignalsDialogView({ state }: { state: SignalsScreenState }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!state.dialogOpen) return;
-    opener.current = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
-    return () => {
-      const target = opener.current;
-      if (target && document.contains(target)) target.focus();
-    };
-  }, [state.dialogOpen]);
+  const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!state.dialogOpen || state.cursor === null) return;
     ref.current
@@ -605,18 +562,11 @@ export function SignalsDialogView({ state }: { state: SignalsScreenState }) {
   };
   return (
     <>
-      <button
-        type="button"
-        className="fixed inset-0 z-40 bg-overlay"
-        aria-label={G.close}
-        onClick={close}
-      />
-      <section
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-label={G.signals}
-        tabIndex={-1}
+      <Modal
+        label={G.signals}
+        onClose={close}
+        panelRef={ref}
+        focus="panel"
         onKeyDown={(event) => {
           if (state.selected) return;
           if (event.key === "Escape") close();
@@ -635,7 +585,6 @@ export function SignalsDialogView({ state }: { state: SignalsScreenState }) {
             if (group) state.setSelectedGroup(group.key);
           }
         }}
-        className="fixed inset-4 z-40 overflow-auto rounded-lg border border-border bg-surface-raised p-4"
       >
         <header className="flex flex-wrap items-center gap-2">
           <h2>{G.signals}</h2>
@@ -702,7 +651,7 @@ export function SignalsDialogView({ state }: { state: SignalsScreenState }) {
             {G.journal}
           </button>
         </footer>
-      </section>
+      </Modal>
       <DecisionDialog state={state} />
     </>
   );
@@ -1011,29 +960,9 @@ function AlertHistory({ state }: { state: SignalsScreenState }) {
 }
 function WatchlistPage({ state }: { state: SignalsScreenState }) {
   const [active, setActive] = useState(0);
-  const hits =
-    state.searchResult?.query === state.searchText.trim()
-      ? [...state.searchResult.local, ...state.searchResult.remote]
-      : [];
+  const hits = state.watchHits;
   const ref = useRef<HTMLDivElement>(null);
   const rows = state.data?.context.status === "ready" ? state.data.context.watchlist : [];
-  const choose = (hit: (typeof hits)[number]) => {
-    if (hit.state === "new") {
-      if (hit.yahoo_symbol)
-        void state.addWatch({
-          kind: "pick",
-          yahooSymbol: hit.yahoo_symbol,
-          ticker: hit.symbol,
-          name: hit.name,
-          assetClass: hit.asset_class,
-          mic: hit.mic,
-          isin: hit.isin,
-        });
-      else void state.addWatch({ kind: "text", text: hit.symbol });
-    } else if (hit.instrument_id && hit.state === "watched")
-      state.options.onOpenAsset?.(hit.instrument_id);
-    else if (hit.instrument_id) void state.addWatch({ kind: "instrument", gid: hit.instrument_id });
-  };
   const virtual = useVirtualRows({
     count: rows.length,
     getScrollElement: () => ref.current,
@@ -1066,7 +995,7 @@ function WatchlistPage({ state }: { state: SignalsScreenState }) {
                 setActive(Math.max(active - 1, 0));
               }
               if (event.key === "Enter" && hits[active]) {
-                choose(hits[active]);
+                state.chooseWatchHit(hits[active]);
               }
             }}
             className="block w-full rounded-sm border border-border bg-surface p-2"
@@ -1082,7 +1011,7 @@ function WatchlistPage({ state }: { state: SignalsScreenState }) {
               role="option"
               aria-selected={index === active}
               className={`${button} block w-full text-left`}
-              onClick={() => choose(hit)}
+              onClick={() => state.chooseWatchHit(hit)}
             >
               {hit.symbol} · {hit.name} · {status(hit.state)} ·{" "}
               {hit.state === "watched" ? G.opens : G.add}
@@ -1116,7 +1045,7 @@ function WatchlistPage({ state }: { state: SignalsScreenState }) {
               {virtual.items.map((item) => {
                 const row = rows[item.index];
                 if (!row) return null;
-                const spark = signalSparkline(row.closes_30d);
+                const spark = state.watchSparks.get(row.id);
                 const quoteCurrency = row.price?.currency || row.instrument?.currency || null;
                 const marks = investmentMarks(row.instrument ?? {}, row.hints, row.held);
                 return (
@@ -1183,21 +1112,7 @@ function WatchlistPage({ state }: { state: SignalsScreenState }) {
                       ) : (
                         <span>{G.noPrice}</span>
                       )}
-                      {spark && (
-                        <svg
-                          role="img"
-                          aria-label={G.spark}
-                          viewBox="0 0 100 24"
-                          className="h-6 w-24"
-                        >
-                          <polyline
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            points={spark}
-                          />
-                        </svg>
-                      )}
+                      {spark && <Sparkline values={spark} label={G.spark} />}
                       <span>
                         {G.liveAlerts}:{" "}
                         <Amount value={D(String(row.alerts.live))} fractionDigits={0} />
@@ -1206,12 +1121,7 @@ function WatchlistPage({ state }: { state: SignalsScreenState }) {
                     <button
                       type="button"
                       className={`${button} justify-self-end`}
-                      onClick={() => {
-                        const original = state.data?.watchlist.find(
-                          (item) => item.instrument === row.instrument_id,
-                        );
-                        if (original) void state.removeWatch(original);
-                      }}
+                      onClick={() => state.removeWatchByInstrument(row.instrument_id)}
                     >
                       {G.remove}
                     </button>
@@ -1226,7 +1136,7 @@ function WatchlistPage({ state }: { state: SignalsScreenState }) {
   );
 }
 function JournalPage({ state }: { state: SignalsScreenState }) {
-  const rows = journalTimeline(state.journalDecisions, state.journal, state.journalFilter);
+  const rows = state.journalRows;
   const ref = useRef<HTMLDivElement>(null);
   const virtual = useVirtualRows({
     count: rows.length,
@@ -1325,7 +1235,7 @@ function JournalPage({ state }: { state: SignalsScreenState }) {
                           {G.opens}
                         </button>
                       )}
-                      {state.data && decisionUndoOpen(state.data.asOf, entry.row.createdAt) && (
+                      {state.undoableDecisionIds.has(entry.row.gid) && (
                         <button
                           type="button"
                           className={button}

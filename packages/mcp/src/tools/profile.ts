@@ -22,16 +22,21 @@ const PRIVACY_NOTES = {
 };
 const SETUP_CONTEXT = { cli: "cashu --profile <profile>", lang: "pl" } as const;
 function investmentFreshness(ctx: ToolContext<NativeToolStore>): L.LabelledTree {
-  const { read, prices } = ctx.store;
+  const { read, prices, marketData } = ctx.store;
   const instruments = loadInstruments(read, vaultInstrumentGids(read));
   let newest: string | null = null;
-  if (prices)
+  if (marketData !== undefined) {
+    for (const instrument of instruments.values())
+      for (const bar of marketData.series(instrument.id))
+        if (newest === null || bar.date > newest) newest = bar.date;
+  } else if (prices) {
     for (const instrument of instruments.values()) {
       for (const key of market.marketSymbolsOf(instrument))
         for (const bar of prices.bars(key)) {
           if (newest === null || bar.date > newest) newest = bar.date;
         }
     }
+  }
   const run = lastRun(read);
   const listLength = (value: unknown) => (Array.isArray(value) ? value.length : 0);
   return {

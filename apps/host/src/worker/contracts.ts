@@ -116,10 +116,14 @@ export interface ConnectorFetchPort {
 }
 interface InvestmentWorkerPorts {
   readonly prices: TransactionalPriceCache;
+  readonly marketForVault?: (
+    read: import("@cashu/store/query").Read,
+    vault: string,
+  ) => import("@cashu/store/investments/screen-sources").MarketInput;
   /** Same instance used by daily, UI prices and proposal publication. */
   readonly dailyLock: DailyPriceLock;
   files(vault: OpenVault): StrategyFilesPort | null;
-  sources?(): DailySources;
+  sources?(vaultIds: readonly string[]): DailySources;
   readonly notifications?: NotificationQueue;
   readonly activity?: LocalRunStatus;
   readonly macroStore?: NonNullable<Parameters<typeof runDaily>[0]["macroStore"]>;

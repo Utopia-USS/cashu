@@ -326,6 +326,16 @@ export class PythonDb implements SqlRows {
     return this.objects(sql, ...params).map((r) => Object.values(r));
   }
 
+  /** Connector code is global; a copied source with installed code needs its own disk adapter. */
+  connectorInventoryEmpty(profileId: number): boolean {
+    const installed = this.objects("SELECT COUNT(*) AS n FROM connectors")[0];
+    const bindings = this.objects(
+      "SELECT COUNT(*) AS n FROM connector_bindings WHERE profile_id = ?",
+      profileId,
+    )[0];
+    return int(installed ?? {}, "n") === 0 && int(bindings ?? {}, "n") === 0;
+  }
+
   private objects(sql: string, ...params: (string | number | bigint | null)[]): Row[] {
     const stmt = this.db.prepare(sql);
     stmt.setReadBigInts(true);

@@ -12,7 +12,11 @@ const sum = (values: Iterable<Decimal>): Decimal => {
   return total;
 };
 export function networthBreakdown(ctx: ToolContext<NativeToolStore>): L.LabelledTree {
-  const book = vaultNetWorthBook(ctx.store.read, { today: ctx.today, prices: ctx.store.prices });
+  const book = vaultNetWorthBook(ctx.store.read, {
+    today: ctx.today,
+    prices: ctx.store.prices,
+    ...(ctx.store.marketData === undefined ? {} : { marketData: ctx.store.marketData }),
+  });
   const accounts = new Map(mcpAccounts(ctx.store.read).map((a) => [a.gid, a]));
   const groups = new Map<string, NetWorthLine[]>();
   for (const line of netWorth(book).lines) {

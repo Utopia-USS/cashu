@@ -1,7 +1,6 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { BarChart, DateText, Donut, Money, Percent } from "@cashu/ui";
+import { BarChart, DateText, Donut, Money, Percent, VirtualList } from "@cashu/ui";
 import { type ReactNode, useEffect, useRef } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { B } from "./Budget.strings.js";
 import type { BudgetScreenState } from "./useBudgetScreen.js";
 
@@ -20,33 +19,15 @@ function WindowRows<T>({
   rowKey(row: T): string;
   children(row: T): ReactNode;
 }) {
-  const ref = useRef<HTMLElement>(null);
-  const virtual = useVirtualRows({
-    count: rows.length,
-    getScrollElement: () => ref.current,
-    estimateSize: () => 88,
-    getItemKey: (index) => rowKey(rows[index] as T),
-    overscan: 5,
-  });
   return (
-    <section ref={ref} aria-label={B.transactions} className="max-h-96 overflow-auto">
-      <div className="relative" style={{ height: virtual.totalSize }}>
-        {virtual.items.map((item) => {
-          const row = rows[item.index];
-          return row === undefined ? null : (
-            <div
-              key={item.key}
-              ref={virtual.measureElement}
-              data-index={item.index}
-              className="absolute left-0 top-0 w-full border-b border-border py-3"
-              style={{ transform: `translateY(${item.start}px)` }}
-            >
-              {children(row)}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    <VirtualList
+      items={rows}
+      getKey={rowKey}
+      renderItem={children}
+      label={B.transactions}
+      estimateSize={88}
+      rowClassName="border-b border-border py-3"
+    />
   );
 }
 

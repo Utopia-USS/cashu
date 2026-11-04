@@ -3,7 +3,7 @@ import { D, toCurrency } from "@cashu/domain";
 import { alerts, asInstrumentId, instrument as makeInstrument } from "@cashu/domain/investments";
 import type { ReadySignals, SignalRow } from "@cashu/store/investments/signals-screen";
 import { useForm } from "@tanstack/react-form";
-import { signalGroups } from "./presentation.js";
+import { journalTimeline, signalGroups } from "./presentation.js";
 import type { SignalsScreenState } from "./useSignalsScreen.js";
 
 const now = "2026-11-03T12:00:00Z";
@@ -243,6 +243,10 @@ export function useSignalsStoryState(privacy = false): SignalsScreenState {
     history: data?.signals ?? [],
     journal: data?.signals ?? [],
     journalDecisions: data?.decisions ?? [],
+    journalRows: journalTimeline(data?.decisions ?? [], data?.signals ?? [], "all"),
+    undoableDecisionIds: new Set<string>(),
+    watchSparks: new Map<string, number[]>(),
+    watchHits: [],
     journalFilter: "all",
     journalInstrument: "",
     searchText: "",
@@ -264,12 +268,15 @@ export function useSignalsStoryState(privacy = false): SignalsScreenState {
     async undoDecisions() {},
     async undoOne() {},
     async snooze() {},
+    async snoozeUntil() {},
     acknowledgeGroup() {},
     async run() {},
     async addWatch() {
       return false;
     },
     async removeWatch() {},
+    removeWatchByInstrument() {},
+    chooseWatchHit() {},
     async restoreWatch() {},
     async saveAlert() {},
     async removeAlert() {},

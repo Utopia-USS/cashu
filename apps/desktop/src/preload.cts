@@ -39,6 +39,12 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
       electron.ipcRenderer.invoke("cashu:devices-revokeInspect", input),
     revokeCancel: (input: unknown): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:devices-revokeCancel", input),
+    leaderPreview: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-leaderPreview", input),
+    leaderCommit: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-leaderCommit", input),
+    leaderInspect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-leaderInspect", input),
   });
   electron.contextBridge.exposeInMainWorld("cashuConnectors", {
     installPending: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:connectors-install"),

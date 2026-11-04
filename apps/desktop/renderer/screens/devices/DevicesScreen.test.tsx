@@ -25,6 +25,29 @@ vi.mock("../../devicesBridge.js", () => ({ devicesBridge: () => bindings.bridge 
 const own = "b".repeat(32);
 const target = "c".repeat(32);
 const orphan = "d".repeat(32);
+const metadata = {
+  leader: {
+    mode: "pinned",
+    state: "ok",
+    device: own,
+    pendingFrom: null,
+    lastActivityAt: Date.now(),
+    silentForMs: 0,
+    warn: false,
+  },
+  keyProvenance: { source: "own", sender: own, recipientsKnown: false },
+} as const;
+const device = (id: string, name: string) => ({
+  id,
+  name,
+  trusted: true,
+  revoked: false,
+  behind: false,
+  forked: false,
+  forkAgreed: null,
+  pairedBy: own,
+  pairedAt: { seg: 1, offset: 0 },
+});
 const prepared = (selected: boolean) => ({
   kind: "prepared" as const,
   vault: bindings.vault,
@@ -54,6 +77,7 @@ it("shows the warning and requires refreshed explicit orphan selection; clears w
     kind: "ready" as const,
     vault: bindings.vault,
     ownDevice: own,
+    ...metadata,
     operations: [],
     evidence: {
       historyPending: false,
@@ -61,10 +85,7 @@ it("shows the warning and requires refreshed explicit orphan selection; clears w
       authorityUncertain: false,
       writeAdmission: "ready" as const,
     },
-    devices: [
-      { id: own, name: "This device", trusted: true, revoked: false, behind: false, forked: false },
-      { id: target, name: "Target", trusted: true, revoked: false, behind: false, forked: false },
-    ],
+    devices: [device(own, "This device"), device(target, "Target")],
   }));
   const revokePreview = vi.fn(async (input: { recertify: string[] }) =>
     prepared(input.recertify.includes(orphan)),
@@ -129,6 +150,88 @@ it("shows the warning and requires refreshed explicit orphan selection; clears w
   }
 });
 
+it("shows a silent leader's re-pin action with force unchecked and exact typed confirmation", async () => {
+  const confirmationText = "PIN TARGET";
+  const leaderPreview = vi.fn(async () => ({
+    kind: "prepared" as const,
+    vault: bindings.vault,
+    token: "e".repeat(32),
+    operationId: "2".repeat(26),
+    expiresAt: Date.now() + 300_000,
+    leader: target,
+    force: false,
+    mayStillRun: own,
+    confirmationText,
+  }));
+  const leaderCommit = vi.fn(async () => ({
+    kind: "completed" as const,
+    operationId: "2".repeat(26),
+  }));
+  bindings.bridge = {
+    list: async () => ({
+      kind: "ready" as const,
+      vault: bindings.vault,
+      ownDevice: own,
+      leader: { ...metadata.leader, state: "silent", silentForMs: 37 * 60 * 60 * 1000, warn: true },
+      keyProvenance: metadata.keyProvenance,
+      operations: [],
+      leaderOperations: [],
+      evidence: {
+        historyPending: false,
+        overflow: false,
+        authorityUncertain: false,
+        writeAdmission: "ready",
+      },
+      devices: [device(own, "This device"), device(target, "Target")],
+    }),
+    leaderPreview,
+    leaderCommit,
+  };
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const button = (label: string) =>
+    [...container.querySelectorAll("button")].find((node) => node.textContent?.includes(label));
+  try {
+    await act(async () => root.render(<DevicesScreen />));
+    const panel = [...container.querySelectorAll("section")].find(
+      (node) => node.getAttribute("aria-label") === "Change fetch leader",
+    );
+    if (!panel) throw new Error("re-pin panel missing");
+    const force = panel.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(force.checked).toBe(false);
+    const select = panel.querySelector("select") as HTMLSelectElement;
+    await act(async () => {
+      select.value = target;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => button("Review change")?.click());
+    expect(leaderPreview).toHaveBeenCalledWith({
+      vault: bindings.vault,
+      leader: target,
+      force: false,
+    });
+    expect((button("Confirm change") as HTMLButtonElement).disabled).toBe(true);
+    const typed = panel.querySelector('input[autocomplete="off"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        typed,
+        confirmationText,
+      );
+      typed.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button("Confirm change")?.click());
+    expect(leaderCommit).toHaveBeenCalledWith({
+      vault: bindings.vault,
+      token: "e".repeat(32),
+      confirmationText,
+    });
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
 it("reattaches a keyed unknown operation after disconnect and remount, then inspects the same id", async () => {
   const operationId = "1".repeat(26);
   let listed = 0;
@@ -136,6 +239,7 @@ it("reattaches a keyed unknown operation after disconnect and remount, then insp
     kind: "ready" as const,
     vault: bindings.vault,
     ownDevice: own,
+    ...metadata,
     operations: listed++ === 0 ? [] : [{ operationId, phase: "may_append" as const }],
     evidence: {
       historyPending: false,
@@ -143,10 +247,7 @@ it("reattaches a keyed unknown operation after disconnect and remount, then insp
       authorityUncertain: false,
       writeAdmission: "ready" as const,
     },
-    devices: [
-      { id: own, name: "This device", trusted: true, revoked: false, behind: false, forked: false },
-      { id: target, name: "Target", trusted: true, revoked: false, behind: false, forked: false },
-    ],
+    devices: [device(own, "This device"), device(target, "Target")],
   }));
   const revokePreview = vi.fn(async () => ({ ...prepared(false), operationId }));
   const revokeCancel = vi.fn(async () => ({ kind: "cancelled" as const }));
@@ -214,6 +315,7 @@ it("cancels a preview that returns after the vault has changed", async () => {
     kind: "ready" as const,
     vault: bindings.vault,
     ownDevice: own,
+    ...metadata,
     operations: [],
     evidence: {
       historyPending: false,
@@ -221,10 +323,7 @@ it("cancels a preview that returns after the vault has changed", async () => {
       authorityUncertain: false,
       writeAdmission: "ready" as const,
     },
-    devices: [
-      { id: own, name: "This device", trusted: true, revoked: false, behind: false, forked: false },
-      { id: target, name: "Target", trusted: true, revoked: false, behind: false, forked: false },
-    ],
+    devices: [device(own, "This device"), device(target, "Target")],
   }));
   let finishPreview: ((value: ReturnType<typeof prepared>) => void) | undefined;
   const revokePreview = vi.fn(
@@ -294,19 +393,10 @@ it.each([
       kind: "ready",
       vault: bindings.vault,
       ownDevice: own,
+      ...metadata,
       operations: [],
       evidence,
-      devices: [
-        {
-          id: own,
-          name: "This device",
-          trusted: true,
-          revoked: false,
-          behind: false,
-          forked: false,
-        },
-        { id: target, name: "Target", trusted: true, revoked: false, behind: false, forked: false },
-      ],
+      devices: [device(own, "This device"), device(target, "Target")],
     }),
     revokePreview,
     revokeCancel: vi.fn(),

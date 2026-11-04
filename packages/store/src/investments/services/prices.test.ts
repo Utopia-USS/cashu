@@ -110,6 +110,36 @@ it("refuses cache effects after lease loss during network await", async () => {
   expect(prices.version()).toBe(0);
   expect(out.refused).toEqual(["a"]);
 });
+it("passes each grouped instrument's consumers into nested source request guards", async () => {
+  let bHolder = true;
+  const checked: [string, boolean][] = [];
+  const empty: market.PriceSource = { id: "fallback", fetch: async () => market.priceHistory() };
+  await refreshPriceNeeds({
+    prices: new market.InMemoryPriceCache(),
+    priceSource: empty,
+    fxSource,
+    asOf,
+    now,
+    vaults: [
+      { vault: "a", needs: needs(subject("a", "A")), authority: { isHolder: () => true } },
+      { vault: "b", needs: needs(subject("b", "B")), authority: { isHolder: () => bHolder } },
+    ],
+    scoped: (allowed) => ({
+      priceSource: {
+        id: "scoped",
+        async fetch(i) {
+          const symbol = i.aliases[0]?.value ?? "";
+          if (symbol === "B") bHolder = false;
+          checked.push([symbol, allowed()]);
+          return market.priceHistory();
+        },
+      },
+      fxSource,
+    }),
+  });
+  expect(checked).toContainEqual(["A", true]);
+  expect(checked).toContainEqual(["B", false]);
+});
 it("keeps the ten-minute throttle separate from force and the shared daily lock", async () => {
   const lock = new DailyPriceLock();
   const service = new PricesService(lock);

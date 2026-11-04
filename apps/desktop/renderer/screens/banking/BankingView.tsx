@@ -1,10 +1,9 @@
+import { Button } from "@cashu/ui";
 import { B } from "./Banking.strings.js";
 import type { useBankingScreen } from "./useBankingScreen.js";
 
 const control =
   "rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent";
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent";
 
 export interface BankingScreenState {
   readonly screen: ReturnType<typeof useBankingScreen>;
@@ -51,30 +50,20 @@ export function BankingView({
               maxLength={128}
             />
           </label>
-          <button className={button} type="submit" disabled={screen.busy}>
+          <Button type="submit" disabled={screen.busy}>
             {t("chooseKey")}
-          </button>
+          </Button>
         </form>
       )}
       {screen.configured && (
         <>
           <div className="flex flex-wrap gap-2">
-            <button
-              className={button}
-              type="button"
-              disabled={screen.busy}
-              onClick={() => void screen.check()}
-            >
+            <Button type="button" disabled={screen.busy} onPress={() => void screen.check()}>
               {t("check")}
-            </button>
-            <button
-              className={button}
-              type="button"
-              disabled={screen.busy}
-              onClick={() => void screen.loadBanks()}
-            >
+            </Button>
+            <Button type="button" disabled={screen.busy} onPress={() => void screen.loadBanks()}>
               {t("banks")}
-            </button>
+            </Button>
           </div>
           <form
             className="grid gap-2"
@@ -100,24 +89,19 @@ export function BankingView({
                 <option key={name} value={name} />
               ))}
             </datalist>
-            <button className={button} type="submit" disabled={screen.busy}>
+            <Button type="submit" disabled={screen.busy}>
               {t("consent")}
-            </button>
+            </Button>
           </form>
           {screen.pendingUrl && (
             <div className="grid gap-2" role="status">
               <p>{t("waiting")}</p>
-              <button className={button} type="button" onClick={() => void screen.open()}>
+              <Button type="button" onPress={() => void screen.open()}>
                 {t("openBank")}
-              </button>
-              <button
-                className={button}
-                type="button"
-                disabled={screen.busy}
-                onClick={() => void screen.cancel()}
-              >
+              </Button>
+              <Button type="button" disabled={screen.busy} onPress={() => void screen.cancel()}>
                 {t("cancel")}
-              </button>
+              </Button>
               <form
                 className="grid gap-2"
                 onSubmit={(event) => {
@@ -139,9 +123,9 @@ export function BankingView({
                     spellCheck={false}
                   />
                 </label>
-                <button className={button} type="submit" disabled={screen.busy}>
+                <Button type="submit" disabled={screen.busy}>
                   {t("complete")}
-                </button>
+                </Button>
               </form>
             </div>
           )}
@@ -151,24 +135,22 @@ export function BankingView({
               <div key={session.handle} className="rounded-md border border-border p-3">
                 <p>{session.institution}</p>
                 <p className="text-sm">{t("localForget")}</p>
-                <button
-                  className={button}
+                <Button
                   type="button"
                   disabled={screen.busy}
-                  onClick={() => void screen.forget(session.handle)}
+                  onPress={() => void screen.forget(session.handle)}
                 >
                   {t("forget")}
-                </button>
+                </Button>
               </div>
             ))}
-            <button
-              className={button}
+            <Button
               type="button"
               disabled={screen.busy || screen.connected.length === 0}
-              onClick={() => void screen.sync()}
+              onPress={() => void screen.sync()}
             >
               {t("sync")}
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -184,14 +166,13 @@ export function BankingView({
             )}
           </p>
           {attempt.status === "outcome_unknown" && (
-            <button
-              className={button}
+            <Button
               type="button"
               disabled={screen.busy}
-              onClick={() => void screen.checkAttempt(attempt.key)}
+              onPress={() => void screen.checkAttempt(attempt.key)}
             >
               {t("checkAttempt")}
-            </button>
+            </Button>
           )}
         </div>
       ))}

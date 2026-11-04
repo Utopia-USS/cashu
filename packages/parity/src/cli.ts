@@ -4,7 +4,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { ConfigError, loadConfig } from "./config.ts";
 import { formatReport, reportToJson } from "./report.ts";
-import { goldenChecks, RunError, runParity } from "./run.ts";
+import { goldenChecks, oracleInputOnly, RunError, runParity } from "./run.ts";
 import { checkStaleness, formatStaleness, readTreeState, type TreeState } from "./staleness.ts";
 
 const USAGE = `Usage: pnpm parity --dataset lab|demo [options]
@@ -95,6 +95,10 @@ export async function main(argv: string[], io: Io): Promise<number> {
   );
   const actualDir = abs(values.actual ?? join(labDir, "parity", "ts-out", dataset));
   try {
+    if (values.check.length === 1 && oracleInputOnly(goldenDir, values.check[0] ?? "")) {
+      io.out(`${values.check[0]}: oracle input, indexed hash validated; not a comparison\n`);
+      return 0;
+    }
     const config = loadConfig(abs(values.config ?? DEFAULT_CONFIG));
     const only =
       values.check.length > 0 ? selectChecks(values.check, goldenChecks(goldenDir)) : undefined;

@@ -63,4 +63,58 @@ export const T = catalog({
     pl: "Wykryto sprzeczne podpisane historie urządzenia. Wstrzymaj zmiany i sprawdź jego stan.",
     en: "Conflicting signed device histories were detected. Pause changes and review this device.",
   },
+  issuerTitle: { pl: "Pochodzenie urządzeń", en: "Device origins" },
+  issuerRecovery: { pl: "słowa odzyskiwania", en: "recovery words" },
+  issuerAt: {
+    pl: (segment: number, offset: number) => `segment ${segment}, pozycja ${offset}`,
+    en: (segment: number, offset: number) => `segment ${segment}, position ${offset}`,
+  },
+  issuerBy: { pl: "Dodane przez", en: "Added by" },
+  leaderTitle: { pl: "Urządzenie pobierające", en: "Fetch leader" },
+  leaderAuto: { pl: "Automatyczny wybór", en: "Automatic selection" },
+  leaderNone: { pl: "Brak zaufanego urządzenia pobierającego", en: "No trusted fetch leader" },
+  leaderPending: {
+    pl: "Czeka na przekazanie przez poprzednie urządzenie",
+    en: "Waiting for the previous device to hand over",
+  },
+  leaderSilent: {
+    pl: "Brak potwierdzenia pobrania od ponad 36 godzin",
+    en: "No fetch report for over 36 hours",
+  },
+  leaderOk: { pl: "Urządzenie pobierające jest aktywne", en: "Fetch leader is current" },
+  provenanceTitle: { pl: "Pochodzenie bieżącego klucza", en: "Current key origin" },
+  provenanceOwn: { pl: "Utworzony na tym urządzeniu", en: "Created on this device" },
+  provenanceWrap: { pl: "Przekazany przez zaufane urządzenie", en: "Wrapped by a trusted device" },
+  provenancePairing: { pl: "Otrzymany podczas parowania", en: "Received during pairing" },
+  provenanceUnknown: { pl: "Brak potwierdzonego pochodzenia", en: "Origin is unavailable" },
+  forkAgreed: { pl: "Ostatni zgodny punkt", en: "Last agreed position" },
+  repinTitle: { pl: "Zmień urządzenie pobierające", en: "Change fetch leader" },
+  repinHelp: {
+    pl: "Po ponad 36 godzinach bez potwierdzonego pobrania możesz wskazać urządzenie, które ma pobierać dane.",
+    en: "After more than 36 hours without a confirmed fetch, you can choose the device that fetches data.",
+  },
+  repinTarget: { pl: "Nowe urządzenie pobierające", en: "New fetch leader" },
+  repinForce: {
+    pl: "Wymuś bez potwierdzenia poprzedniego urządzenia",
+    en: "Force without acknowledgement from the previous device",
+  },
+  repinOverlap: {
+    pl: "Wymuszenie może dopuścić jednoczesne pobieranie na dwóch urządzeniach. Użyj go tylko po sprawdzeniu poprzedniego urządzenia.",
+    en: "Forcing may allow two devices to fetch at the same time. Check the previous device before proceeding.",
+  },
+  repinHandover: {
+    pl: "Nowe urządzenie poczeka na potwierdzenie poprzedniego urządzenia i nadrobi zaległe zmiany.",
+    en: "The new device will wait for the previous device to acknowledge the handover and catch up.",
+  },
+  repinMayStillRun: {
+    pl: "Poprzednie urządzenie może nadal pobierać dane.",
+    en: "The previous device may still be fetching data.",
+  },
+  repinReview: { pl: "Sprawdź zmianę", en: "Review change" },
+  repinType: {
+    pl: (text: string) => `Wpisz dokładnie ${text}, aby potwierdzić`,
+    en: (text: string) => `Type ${text} exactly to confirm`,
+  },
+  repinCommit: { pl: "Potwierdź zmianę", en: "Confirm change" },
+  repinCompleted: { pl: "Zmieniono urządzenie pobierające.", en: "Fetch leader changed." },
 });

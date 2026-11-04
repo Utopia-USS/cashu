@@ -1,4 +1,5 @@
 import { D, parseDateTime, toCurrency } from "@cashu/domain";
+import { asInstrumentId, type market, priceBar } from "@cashu/domain/investments";
 import { investmentsCommands, openAccount, recordBalance, setModules } from "@cashu/store";
 import { lastReview } from "@cashu/store/investments/queries";
 import { afterEach, expect, it } from "vitest";
@@ -190,6 +191,51 @@ it("values brokerage history using actual cached prices and reports cache freshn
     strategy: "missing",
     last_run: null,
   });
+});
+it("reports an alias-less imported price only for the current vault", () => {
+  const f = fixture();
+  const made = f.run(investmentsCommands.createInstrument, {
+    name: "Synthetic unquoted",
+    currency: "PLN",
+    assetClass: "equity",
+  });
+  if (!made.ok) throw new Error(made.reason);
+  expect(f.run(investmentsCommands.classifyInstrument, { instrument: made.value.gid }).ok).toBe(
+    true,
+  );
+  const brokerage = account(f, "PLN", "brokerage");
+  const bought = f.run(investmentsCommands.addManualTransaction, {
+    account: brokerage,
+    type: "buy",
+    tradeDate: "2026-10-01",
+    instrument: made.value.gid,
+    quantity: "1",
+    price: "5",
+  });
+  if (!bought.ok) throw new Error(bought.reason);
+  const row = priceBar({
+    instrumentId: asInstrumentId(made.value.gid),
+    date: "2026-10-31",
+    close: D("10"),
+    source: "broker",
+    currency: toCurrency("PLN"),
+  });
+  const marketData: market.CachedMarketData = {
+    series: (id) => (id === made.value.gid ? [row] : []),
+    fxRates: () => [],
+    lastBarDate: (id) => (id === made.value.gid ? row.date : null),
+    firstBarDate: (id) => (id === made.value.gid ? row.date : null),
+    hasBarsFetchedBefore: () => false,
+    lastRateDate: () => null,
+    firstRateDate: () => null,
+    hasRateOnOrBefore: () => false,
+  };
+  const ctx = f.context();
+  const store = { ...ctx.store, marketData };
+  expect(call({ ...ctx, store }, "profile_overview").freshness.investments.prices_newest).toBe(
+    "2026-10-31",
+  );
+  expect(call({ ...ctx, store }, "networth_breakdown").currencies[0].net).toBe(10);
 });
 it("records a review with typed global reference, real counts and the owner agenda", async () => {
   const f = fixture();
