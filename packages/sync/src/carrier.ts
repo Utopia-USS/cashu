@@ -184,6 +184,10 @@ export type GateVerdict =
  * keys a writer has.
  */
 export interface FrameGate {
+  /** One-use exception for a freshly prepared, recovery-authorized revocation batch. */
+  consumeRecoveryRevocationBatch?(
+    events: readonly UnstampedEvent[],
+  ): readonly UnstampedEvent[] | undefined;
   /** One bounded authenticated gossip event, or undefined when there is no new eligible head. */
   prepareGossip?(eid: string): UnstampedEvent | undefined;
   /** Visible capacity/status report; overflow must not be mistaken for a fully shared frontier. */
@@ -250,8 +254,6 @@ export interface FrameGate {
         readonly positions: ReadonlyMap<DeviceId, FrameHead>;
         /** Heads this device previously held locally, as recorded in its signed snapshot. */
         readonly heldHeads?: readonly FrameHead[];
-        /** Signed legacy state anchors the local log but must replay all frames. */
-        readonly replayOnly?: boolean;
         restore(): void;
       }
     | undefined;

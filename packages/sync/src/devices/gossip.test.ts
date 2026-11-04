@@ -34,7 +34,7 @@ describe("authenticated head gossip", () => {
     expect(decodeHead(encodeHead(head))?.device).toBe(a.id);
   });
 
-  it("deduplicates repeated frontier statements and hard-bounds hostile distinct history", () => {
+  it("deduplicates repeated frontiers and drops unknown-device hints without blocking authority", () => {
     const { creator: a, vaultId } = createSimVault();
     const head = must(a.stream.at(-1)).head;
     const offer = (item: typeof head, n: number) => {
@@ -68,9 +68,10 @@ describe("authenticated head gossip", () => {
         n + MAX_GOSSIP_HISTORY + 1,
       );
     }
-    expect(a.gate.gossipStatus().overflow).toBe(true);
-    expect(a.gate.gossipStatus().retained).toBeLessThanOrEqual(MAX_GOSSIP_HISTORY);
-    expect(a.gate.gossipStatus().historyPending).toBe(true);
+    expect(a.gate.gossipStatus().overflow).toBe(false);
+    expect(a.gate.gossipStatus().retained).toBe(1);
+    expect(a.gate.gossipStatus().historyPending).toBe(false);
+    expect(a.gate.gossipStatus().authorityUncertain).toBe(false);
   });
 
   it("relays an unchanged A head through B and C while A is withheld, without echoing envelopes", async () => {

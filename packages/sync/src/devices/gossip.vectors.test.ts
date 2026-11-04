@@ -56,6 +56,9 @@ describe("device.headsGossiped v1 wire vector", () => {
     expect(verifyContextSignature("cashu/gossip/v1", body, signature, writer.signPublicKey)).toBe(
       true,
     );
+    expect(
+      verifyContextSignature("cashu/gossip/v1", body, signature, ed25519.getPublicKey(boxSeed)),
+    ).toBe(false);
     expect(verifyContextSignature("cashu/registry/v1", body, signature, writer.signPublicKey)).toBe(
       false,
     );

@@ -778,13 +778,15 @@ trusted at the statement's actual position. The outer signature uses domain `cas
 `statementBody(vault, "device.headsGossiped", eid, {heads, signer})`: length-prefixed UTF-8 vault,
 type and eid, then length-prefixed canonical JSON of the unsigned payload. A signature valid in a
 registry or lease context MUST NOT validate here. Wrong vault, stream, cursor, writer, key, chain,
-signature, order, duplicate or size is refused. An unknown inner writer key waits for authenticated
-key resolution; a forged or ambiguous one creates no attestation or candidate.
+signature, order, duplicate or size is refused. An unknown, forged or ambiguous inner writer key
+is an untrusted hint: it is not retained as pending authority and creates no attestation or
+candidate. The gate retains an outer gossip statement only after its writer, position and outer
+signature are admitted and at least one inner head verifies against an authenticated writer.
 
 The frame gate publishes inner attestations only after the outer frame passes revocation and fork
 admission at that exact position. A post-cut gossip frame from a revoked writer contributes no head,
 fork proof, freeze or candidate. A signed head attests the writer's chain endpoint; it does not prove
-that a remote carrier currently serves its frames. `behind` and unresolved fork/overflow are visible
+that a remote carrier currently serves its frames. `behind` and unresolved known-writer history are visible
 states, not a claim of full synchronization. Gossip never counts as a lease acknowledgement or owner
 force. Every revoke warns that unseen writes may be excluded. A local start cursor without a trusted
 head requires an explicit one-use local observation confirmation; a non-start cut without an exact
@@ -797,21 +799,25 @@ writer. One dedicated gossip-only frame may follow an inbound pass when candidat
 then performs one bounded remote push. A verified own-log gossip event is the local emission receipt;
 remote delivery is tracked separately and can remain pending. An uncertain own append fences all
 writes until authenticated `recoverLocal` rebases the writer's segment, size, chain, clock and gossip
-receipts. Replaying a v1 gate snapshot requires full authenticated log replay into v2 state. The v2
-snapshot carries compact attestations/receipts, `anchors` and `freezeFloors`, while independent
+receipts. The signed gate snapshot carries compact attestations/receipts, `anchors` and
+`freezeFloors`, while independent
 append-only fork evidence persists. `anchors` holds at most one encoded, signed data-stream head per
 writer: the highest matching pre-conflict head found by complete authenticated history lookup.
 Restore rechecks its signature/key and matches the exact local frame. `freezeFloors` holds at most
 one `[deviceId, seg, offset]` per writer, the monotonic agreed cut after a proven fork, so a later
 refold cannot relax the freeze. Both fields are covered by the snapshot's `cashu/state/v1` signature.
-An authenticated v1 snapshot contributes only position and held-head durability anchors and always
-forces full replay; a missing anchor is rollback and refuses writes. An invalid snapshot signature
-is a cache miss, never authority.
-Late same-position fork checks use exact-end authenticated history; unavailable history or a cap
-overflow is reported and cannot silently clear evidence or claim a checked frontier. Older readers
-may ignore the new reserved event but cannot be advertised as B4 protected. Mixed older lease actors
-must be upgraded or paused before multi-device use because the preceding rule-6 fix changed
-revocation and auto-exit behavior.
+An invalid snapshot signature is a cache miss, never authority.
+Late same-position fork checks use exact-end authenticated history. Unavailable history or an
+overflow from a still trusted writer refuses ordinary writes; a bounded gossip queue discards
+duplicate or stale hints without setting a permanent authority veto. Overflow records identify
+their signed writer in the authenticated gate snapshot and remain visible after restart. A checked,
+one-use recovery preview may write only its exact prepared revoke, re-certification and key-rotation
+batch through unresolved gossip. The engine copies that batch before asynchronous work and refuses
+changed contents, ineffective targets and unrelated domain events. Revoking the overflowing writer
+removes that writer's capacity veto and pending history lookup. Its signed fork evidence and freeze
+floor remain durable.
+Unresolved history of other trusted writers still blocks ordinary writes until checked.
+One unavailable writer's lookup does not prevent exact local history checks for other writers.
 
 Every new `device.keysRotated` batch that the writer can survive includes a signed wrap addressed
 to that writer in the same frame, sealed with the preceding data key. Its authenticated recipient

@@ -379,8 +379,14 @@ class OwnLogEngine implements SyncEngine {
       throw new SyncError("own-tail-uncertain", "own log needs authenticated recovery");
     }
     if (!this.#primed && this.#gate.needsReplay()) await this.#applyLocal(newPass());
-    if (this.#gate.gossipStatus?.().authorityUncertain) {
+    const recoveryBatch = this.#gate.consumeRecoveryRevocationBatch?.(events);
+    if (this.#gate.gossipStatus?.().authorityUncertain && !recoveryBatch) {
       throw new SyncError("authority-unresolved", "authenticated head history needs resolution");
+    }
+    if (recoveryBatch) {
+      // The gate returns a private copy of the exact prepared batch. The caller cannot mutate it
+      // while the queued write awaits clock, codec or transport operations.
+      events = recoveryBatch;
     }
     if (this.#rolledBack) {
       throw new SyncError("rolled-back", "this device's log is ahead of its clock; re-pair it");
@@ -504,7 +510,7 @@ class OwnLogEngine implements SyncEngine {
         if (imported) {
           anchors = imported.heldHeads ?? [...imported.positions.values()];
           for (const head of anchors) streamFor(head.device);
-          if (!this.#primed && !imported.replayOnly) imported.restore();
+          if (!this.#primed) imported.restore();
         }
       } catch {
         // A missing or damaged cache never establishes readiness on its own.
@@ -1277,6 +1283,7 @@ class OwnLogEngine implements SyncEngine {
     }
     const found = new Map(requests.map((r) => [r.candidate, new Set<string>()]));
     const matching = new Map<string, FrameHead>();
+    const unavailable = new Set<string>();
     for (const [writer, list] of byWriter) {
       let prev = this.#codec.genesis(this.vault, writer, 1);
       let expected = 1;
@@ -1299,13 +1306,17 @@ class OwnLogEngine implements SyncEngine {
           if (!decoded.ok || !this.#gate.authenticate(opened.head, decoded.payload.events).ok)
             return;
           for (const request of requests) {
+            if (unavailable.has(request.candidate)) continue;
             const historical = this.#gate.historicalHeadsInFrame(
               opened.head,
               decoded.payload.events,
               request.device,
               request.end,
             );
-            if (!historical) return;
+            if (!historical) {
+              unavailable.add(request.candidate);
+              continue;
+            }
             for (const head of historical) {
               const decodedHead = decodeHead(head);
               if (!decodedHead) continue;
@@ -1332,6 +1343,7 @@ class OwnLogEngine implements SyncEngine {
       }
     }
     for (const request of requests) {
+      if (unavailable.has(request.candidate)) continue;
       this.#gate.resolveHistoricalLookup(request.candidate, [
         ...(found.get(request.candidate) ?? []),
         ...(matching.has(request.candidate)
@@ -1585,14 +1597,9 @@ class OwnLogEngine implements SyncEngine {
     if (!imported) return undefined;
     for (const head of imported.heldHeads ?? [...imported.positions.values()]) {
       if (!(await this.#matchesLog(head.device, head, pass))) {
-        if (imported.replayOnly) {
-          this.#rolledBack = true;
-          throw new SyncError("rolled-back", "signed legacy state anchors a missing local frame");
-        }
         return undefined;
       }
     }
-    if (imported.replayOnly) return undefined;
     imported.restore();
     this.#judged = new Map(imported.positions);
     this.#savedKey = this.#judgedKey();

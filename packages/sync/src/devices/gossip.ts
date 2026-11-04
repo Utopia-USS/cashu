@@ -12,14 +12,18 @@ export class GossipLedger {
   readonly #frontiers = new Map<string, SignedHead>();
   readonly #proofs = new Set<string>();
   readonly #ordinary = new Map<string, SignedHead>();
-  #overflow = false;
+  readonly #overflowDevices = new Set<string>();
 
   get overflow(): boolean {
-    return this.#overflow;
+    return this.#overflowDevices.size > 0;
   }
 
-  markOverflow(): void {
-    this.#overflow = true;
+  activeOverflow(isTrusted: (device: string) => boolean): boolean {
+    return [...this.#overflowDevices].some(isTrusted);
+  }
+
+  markOverflow(device: string): void {
+    this.#overflowDevices.add(device);
   }
 
   /** Only a frame which contains an ordinary event may become a local source. */
@@ -49,7 +53,7 @@ export class GossipLedger {
       if (chains.size < 2) continue;
       for (const value of group) {
         if (this.#proofs.size >= MAX_GOSSIP_HISTORY && !this.#proofs.has(value))
-          this.#overflow = true;
+          this.markOverflow((decodeHead(value) as SignedHead).device);
         else this.#proofs.add(value);
       }
     }
@@ -61,7 +65,6 @@ export class GossipLedger {
     attested: readonly SignedHead[],
     proofs: readonly (readonly [SignedHead, SignedHead])[],
   ): SignedHead[] {
-    if (this.#overflow) return [];
     const latest = new Map<string, SignedHead>();
     for (const head of [...this.#ordinary.values(), ...attested]) {
       if (head.device === localDevice) continue;
@@ -85,12 +88,14 @@ export class GossipLedger {
     readonly proofs: readonly string[];
     readonly ordinary: readonly string[];
     readonly overflow: boolean;
+    readonly overflowDevices: readonly string[];
   } {
     return {
       frontiers: [...this.#frontiers.values()].map(encodeHead).sort(),
       proofs: [...this.#proofs].sort(),
       ordinary: [...this.#ordinary.values()].map(encodeHead).sort(),
-      overflow: this.#overflow,
+      overflow: this.overflow,
+      overflowDevices: [...this.#overflowDevices].sort(),
     };
   }
 
@@ -98,6 +103,7 @@ export class GossipLedger {
     this.#frontiers.clear();
     this.#proofs.clear();
     this.#ordinary.clear();
+    this.#overflowDevices.clear();
     for (const value of snapshot.frontiers) {
       const head = decodeHead(value);
       if (head) this.#frontiers.set(head.device, head);
@@ -107,7 +113,7 @@ export class GossipLedger {
       const head = decodeHead(value);
       if (head) this.#ordinary.set(head.device, head);
     }
-    this.#overflow = snapshot.overflow;
+    for (const device of snapshot.overflowDevices) this.#overflowDevices.add(device);
   }
 
   frontier(device: string): SegmentCursor | undefined {

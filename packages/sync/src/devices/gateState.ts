@@ -50,6 +50,7 @@ export interface GateSnapshot {
     readonly proofs: readonly string[];
     readonly ordinary: readonly string[];
     readonly overflow: boolean;
+    readonly overflowDevices: readonly string[];
   };
 }
 
@@ -181,6 +182,10 @@ export function decodeGateState(
   const ordinary = all(ledger?.ordinary, (value) =>
     decodeHead(value) ? (value as string) : undefined,
   );
+  // The signed snapshot must identify each writer whose proof bound overflowed.
+  const overflowDevices = all(ledger?.overflowDevices, (value) =>
+    isDevice(value) ? value : undefined,
+  );
   const applied = all(raw.applied, (a): [string, { seg: number; offset: number }] | undefined =>
     Array.isArray(a) && isDevice(a[0]) && isPosInt(a[1]) && isPosInt(a[2])
       ? [a[0], { seg: a[1], offset: a[2] }]
@@ -198,7 +203,9 @@ export function decodeGateState(
     !frontiers ||
     !proofs ||
     !ordinary ||
-    typeof ledger?.overflow !== "boolean"
+    !overflowDevices ||
+    typeof ledger?.overflow !== "boolean" ||
+    ledger.overflow !== overflowDevices.length > 0
   )
     return undefined;
   if (
@@ -209,12 +216,14 @@ export function decodeGateState(
     freezeFloors.length > 1024 ||
     proofs.length > MAX_GOSSIP_HISTORY ||
     frontiers.length > 1024 ||
-    ordinary.length > 1024
+    ordinary.length > 1024 ||
+    overflowDevices.length > 1024
   )
     return undefined;
   if (gossip.some((e) => e.type !== HEADS_GOSSIPED || e.v !== 1 || !decodeHeadsGossiped(e.data)))
     return undefined;
   if ([frontiers, proofs, ordinary].some((xs) => new Set(xs).size !== xs.length)) return undefined;
+  if (new Set(overflowDevices).size !== overflowDevices.length) return undefined;
   if (new Set(freezeFloors.map(([device]) => device)).size !== freezeFloors.length)
     return undefined;
   const bound = new Map(keys.map(([d, stream, key]) => [`${d}|${stream}`, key]));
@@ -262,68 +271,8 @@ export function decodeGateState(
     gossip,
     anchors,
     freezeFloors,
-    ledger: { frontiers, proofs, ordinary, overflow: ledger.overflow },
+    ledger: { frontiers, proofs, ordinary, overflow: ledger.overflow, overflowDevices },
   };
-}
-
-/** Authenticated v1 positions are durability anchors, never a restorable v2 gate state. */
-export function decodeLegacyGateAnchors(
-  text: string,
-  vaultId: string,
-  deviceId: string,
-  signKey: Uint8Array,
-  verify: StatementVerifier,
-):
-  | { readonly positions: readonly SignedHead[]; readonly heldHeads: readonly SignedHead[] }
-  | undefined {
-  const cut = text.lastIndexOf("\n");
-  if (cut < 0) return undefined;
-  const json = text.slice(0, cut);
-  const sigHex = text.slice(cut + 1);
-  if (sigHex.length !== SIG_HEX || !isHex(sigHex)) return undefined;
-  if (
-    !accepted(verify, "cashu/state/v1", signedBody(vaultId, deviceId, json), fromHex(sigHex), {
-      kind: "self",
-      signKey,
-    })
-  )
-    return undefined;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(json);
-  } catch {
-    return undefined;
-  }
-  if (!isRecord(raw) || raw.v !== 1 || raw.vault !== vaultId || raw.device !== deviceId)
-    return undefined;
-  const positions = all(raw.positions, decodeHead);
-  const keys = all(raw.keys, (k): [string, 0 | 1, Uint8Array] | undefined =>
-    Array.isArray(k) && isDevice(k[0]) && (k[1] === 0 || k[1] === 1) && isHex(k[2], 32)
-      ? [k[0], k[1], fromHex(k[2])]
-      : undefined,
-  );
-  const heads = all(raw.heads, (h) => (Array.isArray(h) ? decodeHead(h[0]) : undefined));
-  if (!positions || !keys || !heads) return undefined;
-  const bound = new Map(keys.map(([device, stream, key]) => [`${device}|${stream}`, key]));
-  for (const head of [...positions, ...heads]) {
-    const key = bound.get(`${head.device}|1`);
-    if (
-      head.stream !== 1 ||
-      !key ||
-      !acceptedHead(verify, vaultId, head, { kind: "author", keys: [key] })
-    )
-      return undefined;
-  }
-  const latest = new Map<string, SignedHead>();
-  for (const head of heads) {
-    const prior = latest.get(head.device);
-    if (!prior || head.seg > prior.seg || (head.seg === prior.seg && head.offset > prior.offset))
-      latest.set(head.device, head);
-  }
-  const anchors = new Map(
-    [...positions, ...latest.values()].map((head) => [encodeHead(head), head]),
-  );
-  return { positions, heldHeads: [...anchors.values()] };
 }
 
 /**

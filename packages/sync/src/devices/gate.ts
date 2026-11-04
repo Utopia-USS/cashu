@@ -22,11 +22,14 @@ import type {
   FrameHead,
   GateVerdict,
   SegmentCursor,
+  UnstampedEvent,
   WireEvent,
 } from "../carrier.js";
 import {
   decodeHead,
   encodeHead,
+  RECOVERY_SIGNER_ID,
+  type RecoveryIdentity,
   type SignedHead,
   type Sodium,
   verifyCertificates,
@@ -41,17 +44,12 @@ import {
   decodeDeviceRevoked,
   decodeHeadsGossiped,
   HEADS_GOSSIPED,
+  KEYS_ROTATED,
   type LogEvent,
   type RevokedEntry,
   statementBody,
 } from "./events.js";
-import {
-  decodeEvidence,
-  decodeGateState,
-  decodeLegacyGateAnchors,
-  encodeEvidence,
-  encodeGateState,
-} from "./gateState.js";
+import { decodeEvidence, decodeGateState, encodeEvidence, encodeGateState } from "./gateState.js";
 import { GossipLedger, MAX_GOSSIP_HISTORY } from "./gossip.js";
 import type { FrameRejection } from "./guard.js";
 import { type BehindReport, type ForkReport, StreamIndex } from "./heads.js";
@@ -110,11 +108,69 @@ export class DeviceFrameGate implements FrameGate {
   readonly #historicalResolved = new Set<string>();
   readonly #matchingAnchors = new Map<string, SignedHead>();
   readonly #freezeFloor = new Map<string, SegmentCursor>();
-  #unknownPending = 0;
   readonly #ledger = new GossipLedger();
   /** Fork proofs held (recorded or imported), and those not handed out for persistence yet. */
   readonly #evidence = new Set<string>();
   #newEvidence: string[] = [];
+  readonly #recoveryBatches = new WeakMap<
+    readonly UnstampedEvent[],
+    { readonly snapshot: string; readonly revocationCount: number }
+  >();
+
+  /** A one-use exception minted only by the checked prepareRevocation path. */
+  stageRecoveryRevocationBatch(
+    events: readonly UnstampedEvent[],
+    authority: RecoveryIdentity,
+  ): void {
+    const [first, ...rest] = events;
+    const data = first?.t === DEVICE_REVOKED ? decodeDeviceRevoked(first.d) : undefined;
+    const recertify = data?.recertify ?? [];
+    const additions = rest.slice(0, recertify.length);
+    const final = rest.slice(recertify.length);
+    if (
+      !first ||
+      !data ||
+      data.signer !== RECOVERY_SIGNER_ID ||
+      !equalBytes(authority.signPublicKey, this.#devices.registry.recovery.signPublicKey) ||
+      data.devices.some((entry) => !this.#devices.registry.isTrusted(entry.device)) ||
+      additions.length !== recertify.length ||
+      additions.some((event, index) => event?.t !== DEVICE_ADDED || event.i !== recertify[index]) ||
+      final.length > 1 ||
+      (final.length === 1 && final[0]?.t !== KEYS_ROTATED) ||
+      !accepted(
+        this.#verify,
+        "cashu/registry/v1",
+        statementBody(this.#devices.ring.vaultId, first.t, first.i, first.d),
+        fromHex(data.sig),
+        { kind: "recovery", signKeys: this.#devices.registry.recoverySignKeysFor(first.i) },
+      )
+    ) {
+      throw new RangeError("invalid prepared recovery revocation batch");
+    }
+    this.#recoveryBatches.set(events, {
+      snapshot: JSON.stringify(events),
+      revocationCount: this.#devices.registry.revocationCount,
+    });
+  }
+
+  consumeRecoveryRevocationBatch(
+    events: readonly UnstampedEvent[],
+  ): readonly UnstampedEvent[] | undefined {
+    const pending = this.#recoveryBatches.get(events);
+    this.#recoveryBatches.delete(events);
+    if (!pending || JSON.stringify(events) !== pending.snapshot) return undefined;
+    if (this.#devices.registry.revocationCount !== pending.revocationCount) return undefined;
+    const snapshot = JSON.parse(pending.snapshot) as UnstampedEvent[];
+    const data = snapshot[0] ? decodeDeviceRevoked(snapshot[0].d) : undefined;
+    if (!data || data.devices.some((entry) => !this.#devices.registry.isTrusted(entry.device))) {
+      return undefined;
+    }
+    return snapshot;
+  }
+
+  cancelRecoveryRevocationBatch(events: readonly UnstampedEvent[]): void {
+    this.#recoveryBatches.delete(events);
+  }
 
   constructor(devices: VaultDevices, options: DeviceFrameGateOptions) {
     this.#devices = devices;
@@ -173,15 +229,42 @@ export class DeviceFrameGate implements FrameGate {
    */
   ingest(events: readonly LogEvent[]): IngestReport {
     for (const e of events) {
-      if (e.type === HEADS_GOSSIPED) {
-        const data = e.v === 1 ? decodeHeadsGossiped(e.data) : undefined;
-        if (!data) continue;
-        this.#gossip.set(statementKey(e), e);
-      } else if (e.type.startsWith("device.") || e.type.startsWith("lease.")) {
+      if (
+        e.type !== HEADS_GOSSIPED &&
+        (e.type.startsWith("device.") || e.type.startsWith("lease."))
+      ) {
         this.#statements.set(statementKey(e), e);
       }
     }
     const report = this.#devices.ingest(events);
+    for (const e of events) {
+      if (e.type !== HEADS_GOSSIPED || e.v !== 1) continue;
+      const data = decodeHeadsGossiped(e.data);
+      if (
+        !data ||
+        data.signer !== e.writer ||
+        !this.#devices.guard.check({ device: e.writer, end: e.position }).ok ||
+        !accepted(
+          this.#verify,
+          "cashu/gossip/v1",
+          statementBody(this.#devices.ring.vaultId, e.type, e.eid, e.data),
+          fromHex(data.sig),
+          {
+            kind: "statement",
+            keys: this.#devices.registry.decisionKeys,
+            device: e.writer,
+            position: e.position,
+            revoked: this.#devices.registry.revoked,
+          },
+        ) ||
+        !data.heads.some((encoded) => {
+          const head = decodeHead(encoded);
+          return head !== undefined && this.#gossipGenuine(head);
+        })
+      )
+        continue;
+      this.#gossip.set(statementKey(e), e);
+    }
     this.#refreshAttestations();
     const frozen = this.#devices.freeze(this.#freezes());
     if (frozen && frozen.rejectedFrames.length > 0) {
@@ -232,7 +315,7 @@ export class DeviceFrameGate implements FrameGate {
       if (other.seg !== head.seg || other.offset !== head.offset) continue;
       if (encodeHead(other) === candidate || encodeHead(other) === encodeHead(head)) continue;
       if (this.#evidence.size >= MAX_GOSSIP_HISTORY) {
-        this.#ledger.markOverflow();
+        this.#ledger.markOverflow(head.device);
         return;
       }
       const record = encodeEvidence([head, other]);
@@ -323,7 +406,15 @@ export class DeviceFrameGate implements FrameGate {
     const seen = new Map<string, string>();
     for (const [key, event] of this.#gossip) {
       const data = decodeHeadsGossiped(event.data);
-      const semantic = data ? `${event.writer}|${data.heads.join(",")}` : key;
+      const genuine = data?.heads.filter((encoded) => {
+        const head = decodeHead(encoded);
+        return head !== undefined && this.#gossipGenuine(head);
+      });
+      if (!genuine || genuine.length === 0) {
+        this.#gossip.delete(key);
+        continue;
+      }
+      const semantic = `${event.writer}|${genuine.join(",")}`;
       const priorKey = seen.get(semantic);
       if (priorKey) {
         const prior = this.#gossip.get(priorKey);
@@ -350,7 +441,6 @@ export class DeviceFrameGate implements FrameGate {
       }
     }
     if (this.#gossip.size > MAX_GOSSIP_HISTORY) {
-      this.#ledger.markOverflow();
       while (this.#gossip.size > MAX_GOSSIP_HISTORY) {
         const oldest = this.#gossip.keys().next().value;
         if (oldest === undefined) break;
@@ -394,11 +484,14 @@ export class DeviceFrameGate implements FrameGate {
     readonly authorityUncertain: boolean;
     readonly retained: number;
   } {
+    const unresolvedLiveHistory = this.#historicalLookups.size > 0;
     return {
-      overflow: this.#ledger.overflow,
+      overflow: this.#ledger.activeOverflow((device) => this.#devices.registry.isTrusted(device)),
       pending: this.gossipCandidates().length,
-      historyPending: this.#historicalLookups.size > 0 || this.#unknownPending > 0,
-      authorityUncertain: this.#historicalLookups.size > 0 || this.#ledger.overflow,
+      historyPending: unresolvedLiveHistory,
+      authorityUncertain:
+        unresolvedLiveHistory ||
+        this.#ledger.activeOverflow((device) => this.#devices.registry.isTrusted(device)),
       retained: this.#gossip.size,
     };
   }
@@ -416,9 +509,8 @@ export class DeviceFrameGate implements FrameGate {
 
   prepareGossip(eid: string): ReturnType<typeof buildHeadsGossiped> | undefined {
     if (
-      this.#ledger.overflow ||
+      this.#ledger.activeOverflow((device) => this.#devices.registry.isTrusted(device)) ||
       this.#historicalLookups.size > 0 ||
-      this.#unknownPending > 0 ||
       !this.#devices.registry.isTrusted(this.#devices.deviceId)
     ) {
       return undefined;
@@ -435,7 +527,11 @@ export class DeviceFrameGate implements FrameGate {
 
   #refreshAttestations(): void {
     this.heads.clearAttestations();
-    this.#unknownPending = 0;
+    // A recovery revoke accepts the target's unknown lower history. Keep proven evidence and
+    // freeze floors, but stop retrying unproven lookups that cannot affect a live writer.
+    for (const [encoded, head] of this.#historicalLookups) {
+      if (this.#devices.registry.revoked.has(head.device)) this.#historicalLookups.delete(encoded);
+    }
     const evidencedHeads = new Set<string>();
     for (const e of this.#statements.values()) {
       if (e.type !== DEVICE_REVOKED) continue;
@@ -481,11 +577,7 @@ export class DeviceFrameGate implements FrameGate {
       for (const encoded of data.heads) {
         const head = decodeHead(encoded);
         if (!head) continue;
-        if (!this.#gossipGenuine(head)) {
-          if (this.#devices.registry.authorKeys(head.device).length === 0)
-            this.#unknownPending += 1;
-          continue;
-        }
+        if (!this.#gossipGenuine(head)) continue;
         const latest = this.#gossipLatest.get(head.device);
         const frontier = latest
           ? { seg: latest.seg, offset: latest.offset }
@@ -497,13 +589,14 @@ export class DeviceFrameGate implements FrameGate {
           ((heldAt !== undefined && !equalBytes(heldAt.chain, head.chain)) ||
             (latest !== undefined && !equalBytes(latest.chain, head.chain)));
         if (
+          !this.#devices.registry.revoked.has(head.device) &&
           frontier &&
           (relation < 0 || sameEndConflict) &&
           !this.#historicalResolved.has(encoded) &&
           !evidencedHeads.has(encoded) &&
           (!heldAt || !equalBytes(heldAt.chain, head.chain) || sameEndConflict)
         ) {
-          if (this.#historicalLookups.size >= 64) this.#ledger.markOverflow();
+          if (this.#historicalLookups.size >= 64) this.#ledger.markOverflow(head.device);
           else this.#historicalLookups.set(encoded, head);
         }
         if (!latest || comparePositions(head, latest) > 0)
@@ -564,7 +657,7 @@ export class DeviceFrameGate implements FrameGate {
       const pair = decodeEvidence(record);
       if (!pair || this.#evidence.has(record)) continue;
       if (this.#evidence.size >= MAX_GOSSIP_HISTORY) {
-        this.#ledger.markOverflow();
+        this.#ledger.markOverflow(pair[0].device);
         continue;
       }
       this.#evidence.add(record);
@@ -579,7 +672,7 @@ export class DeviceFrameGate implements FrameGate {
       const record = encodeEvidence(pair);
       if (this.#evidence.has(record)) continue;
       if (this.#evidence.size >= MAX_GOSSIP_HISTORY) {
-        this.#ledger.markOverflow();
+        this.#ledger.markOverflow(pair[0].device);
         continue;
       }
       this.#evidence.add(record);
@@ -589,7 +682,7 @@ export class DeviceFrameGate implements FrameGate {
 
   exportState(positions: ReadonlyMap<DeviceId, FrameHead>): string | undefined {
     const devices = this.#devices;
-    if (this.#historicalLookups.size > 0 || this.#unknownPending > 0) return undefined;
+    if (this.#historicalLookups.size > 0) return undefined;
     try {
       return encodeGateState(
         devices.ring.vaultId,
@@ -623,7 +716,6 @@ export class DeviceFrameGate implements FrameGate {
     | {
         readonly positions: ReadonlyMap<DeviceId, FrameHead>;
         readonly heldHeads?: readonly FrameHead[];
-        readonly replayOnly?: boolean;
         restore(): void;
       }
     | undefined {
@@ -635,22 +727,7 @@ export class DeviceFrameGate implements FrameGate {
       devices.signPublicKey,
       this.#verify,
     );
-    if (!snapshot) {
-      const legacy = decodeLegacyGateAnchors(
-        state,
-        devices.ring.vaultId,
-        devices.deviceId,
-        devices.signPublicKey,
-        this.#verify,
-      );
-      if (!legacy) return undefined;
-      return {
-        positions: new Map(legacy.positions.map((head) => [head.device, head])),
-        heldHeads: legacy.heldHeads,
-        replayOnly: true,
-        restore: () => {},
-      };
-    }
+    if (!snapshot) return undefined;
     return {
       positions: new Map(snapshot.positions.map((h) => [h.device, h])),
       heldHeads: snapshot.heads.map(({ head }) => head),

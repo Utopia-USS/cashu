@@ -142,7 +142,9 @@ export function previewRevocation(
 ): RevocationPreviewResult {
   if (gate.devices !== devices) return { ok: false, reason: "wrong_gate" };
   const gossip = gate.gossipStatus();
-  if (gossip.overflow || gossip.historyPending) return { ok: false, reason: "integrity_error" };
+  if (request.authority.kind !== "recovery" && (gossip.overflow || gossip.historyPending)) {
+    return { ok: false, reason: "integrity_error" };
+  }
   const targets = [...request.targets].sort((a, b) => a.device.localeCompare(b.device));
   if (
     targets.length === 0 ||

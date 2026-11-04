@@ -11,7 +11,7 @@ import {
   CertificateCache,
   type DeviceIdentity,
   type Keyring,
-  type RecoveryIdentity,
+  RecoveryIdentity,
   type Sodium,
   wrapSenderId,
 } from "../crypto/index.js";
@@ -436,9 +436,24 @@ export class VaultDevices {
     authority: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
     selection: { readonly recertify?: readonly string[] },
   ): PrepareResult {
-    return this.#onCommit(
+    const result = this.#onCommit(
       prepareRevocation(this.keyContext(), gate, request, permit, eids, authority, selection),
     );
+    if (result.ok && authority instanceof RecoveryIdentity) {
+      gate.stageRecoveryRevocationBatch(result.change.events, authority);
+      const change = result.change;
+      return {
+        ok: true,
+        change: {
+          ...change,
+          discard: () => {
+            gate.cancelRecoveryRevocationBatch(change.events);
+            change.discard();
+          },
+        },
+      };
+    }
+    return result;
   }
 
   /**
