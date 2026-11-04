@@ -1,12 +1,9 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { BarChart, DateText, Donut, Money, Percent, VirtualList } from "@cashu/ui";
+import { BarChart, Button, Card, DateText, Donut, Money, Percent, VirtualList } from "@cashu/ui";
 import { type ReactNode, useEffect, useRef } from "react";
 import { B } from "./Budget.strings.js";
 import type { BudgetScreenState } from "./useBudgetScreen.js";
 
-const card = "rounded-lg border border-border bg-surface-raised p-6";
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent";
 const field = "rounded-sm border border-border bg-surface px-3 py-2";
 
 // Virtualization is presentation only; domain rows and actions arrive from the screen hook.
@@ -68,7 +65,7 @@ function CategoryChoice({
 function Spending({ state }: { state: BudgetScreenState }) {
   return (
     <>
-      <section className={card} aria-label={B.expenses}>
+      <Card label={B.expenses} padding="lg">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-title font-strong">{B.expenses}</h2>
           <label>
@@ -87,25 +84,21 @@ function Spending({ state }: { state: BudgetScreenState }) {
           </label>
           {state.mode !== "all" && (
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className={button}
-                aria-label={B.previous}
+              <Button
+                label={B.previous}
                 disabled={state.anchor <= state.first}
-                onClick={() => state.patch({ anchor: state.anchor - 1 })}
+                onPress={() => state.patch({ anchor: state.anchor - 1 })}
               >
                 ‹
-              </button>
+              </Button>
               <span>{state.periodLabel}</span>
-              <button
-                type="button"
-                className={button}
-                aria-label={B.next}
+              <Button
+                label={B.next}
                 disabled={state.anchor >= state.last}
-                onClick={() => state.patch({ anchor: state.anchor + 1 })}
+                onPress={() => state.patch({ anchor: state.anchor + 1 })}
               >
                 ›
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -159,9 +152,9 @@ function Spending({ state }: { state: BudgetScreenState }) {
             </div>
           </div>
         )}
-      </section>
+      </Card>
       {state.drillCategory !== null && (
-        <section className={card} aria-label={B.transactions}>
+        <Card label={B.transactions} padding="lg">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-title">
               {B.transactions}:{" "}
@@ -190,13 +183,7 @@ function Spending({ state }: { state: BudgetScreenState }) {
                 <option value="asc">{B.asc}</option>
               </select>
             </label>
-            <button
-              type="button"
-              className={button}
-              onClick={() => state.patch({ drill: undefined })}
-            >
-              {B.close}
-            </button>
+            <Button onPress={() => state.patch({ drill: undefined })}>{B.close}</Button>
           </div>
           {state.drill.length === 0 ? (
             <p>{B.empty}</p>
@@ -224,11 +211,10 @@ function Spending({ state }: { state: BudgetScreenState }) {
             </WindowRows>
           )}
           {state.offer !== null && (
-            <button
-              type="button"
-              className={`${button} mt-4`}
+            <Button
+              className="mt-4"
               disabled={state.busy}
-              onClick={() => {
+              onPress={() => {
                 if (state.offer)
                   void state.markMerchant(state.offer.merchantKey, state.offer.category);
               }}
@@ -236,9 +222,9 @@ function Spending({ state }: { state: BudgetScreenState }) {
               {state.privacy || state.offer === null
                 ? B.applyMerchant
                 : B.applyMerchantFor(state.offer.label)}
-            </button>
+            </Button>
           )}
-        </section>
+        </Card>
       )}
     </>
   );
@@ -248,37 +234,33 @@ function MonthClose({ state }: { state: BudgetScreenState }) {
   const close = state.close;
   if (!close)
     return (
-      <section className={card}>
+      <Card padding="lg">
         <h2>{B.monthClose}</h2>
         <p>{B.unsupported}</p>
-      </section>
+      </Card>
     );
   const selected = close.currencies.find((row) => row.currency === state.currency);
   return (
-    <section className={card} aria-label={B.monthClose}>
+    <Card label={B.monthClose} padding="lg">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-title font-strong">{B.monthClose}</h2>
         {!close.complete && <span className="text-warning">{B.incomplete}</span>}
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className={button}
-            aria-label={B.previous}
+          <Button
+            label={B.previous}
             disabled={close.firstMonth !== null && close.month <= close.firstMonth}
-            onClick={() => state.shiftClose(-1)}
+            onPress={() => state.shiftClose(-1)}
           >
             ‹
-          </button>
+          </Button>
           <span>{close.month}</span>
-          <button
-            type="button"
-            className={button}
-            aria-label={B.next}
+          <Button
+            label={B.next}
             disabled={close.lastMonth === null || close.month >= close.lastMonth}
-            onClick={() => state.shiftClose(1)}
+            onPress={() => state.shiftClose(1)}
           >
             ›
-          </button>
+          </Button>
         </div>
       </div>
       {selected ? (
@@ -313,14 +295,12 @@ function MonthClose({ state }: { state: BudgetScreenState }) {
                 </span>
               ))}
             {selected.spendingByCategory.length > 3 && (
-              <button
-                type="button"
-                className={button}
-                aria-expanded={state.allCategories}
-                onClick={() => state.setAllCategories(!state.allCategories)}
+              <Button
+                expanded={state.allCategories}
+                onPress={() => state.setAllCategories(!state.allCategories)}
               >
                 {B.allCategories}
-              </button>
+              </Button>
             )}
           </div>
         </>
@@ -355,14 +335,9 @@ function MonthClose({ state }: { state: BudgetScreenState }) {
         {close.cushion && close.cushion.target === null && (
           <p className="text-caption text-fg-muted">{B.noHistory}</p>
         )}
-        <button
-          type="button"
-          className={`${button} mt-3`}
-          disabled={state.privacy}
-          onClick={state.openCushion}
-        >
+        <Button className="mt-3" disabled={state.privacy} onPress={state.openCushion}>
           {B.edit}
-        </button>
+        </Button>
       </div>
       {state.strategyUnavailable ? (
         <p className="mt-3 text-fg-muted">{B.strategyUnavailable}</p>
@@ -410,7 +385,7 @@ function MonthClose({ state }: { state: BudgetScreenState }) {
             ))}
         </div>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -557,12 +532,10 @@ function CushionForm({ state }: { state: BudgetScreenState }) {
           {(errors) => (errors.length > 0 ? <p role="alert">{B.refused}</p> : null)}
         </state.form.Subscribe>
         <div className="flex gap-3">
-          <button type="submit" className={button} disabled={state.busy}>
+          <Button type="submit" disabled={state.busy}>
             {B.save}
-          </button>
-          <button type="button" className={button} onClick={state.closeCushion}>
-            {B.close}
-          </button>
+          </Button>
+          <Button onPress={state.closeCushion}>{B.close}</Button>
         </div>
       </form>
     </Drawer>
@@ -617,15 +590,14 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav aria-label={B.range} className="flex gap-3">
           {(["expenses", "flows", "subs"] as const).map((tab) => (
-            <button
+            <Button
               key={tab}
-              type="button"
-              className={`${button} ${state.tab === tab ? "bg-accent-muted text-accent" : ""}`}
-              aria-current={state.tab === tab ? "page" : undefined}
-              onClick={() => onTabPicked(tab)}
+              className={`${state.tab === tab ? "bg-accent-muted text-accent" : ""}`}
+              current={state.tab === tab ? "page" : undefined}
+              onPress={() => onTabPicked(tab)}
             >
               {B[tab === "subs" ? "subscriptions" : tab]}
-            </button>
+            </Button>
           ))}
         </nav>
         <div className="flex flex-wrap gap-3">
@@ -643,20 +615,11 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
               </select>
             </label>
           )}
-          <button type="button" className={button} onClick={state.openCategories}>
-            {B.uncategorized}
-          </button>
-          <button type="button" className={button} onClick={() => state.setImportOpen(true)}>
-            {B.import}
-          </button>
-          <button
-            type="button"
-            className={button}
-            title={B.syncUnavailable}
-            onClick={() => state.setMessage(B.syncUnavailable)}
-          >
+          <Button onPress={state.openCategories}>{B.uncategorized}</Button>
+          <Button onPress={() => state.setImportOpen(true)}>{B.import}</Button>
+          <Button title={B.syncUnavailable} onPress={() => state.setMessage(B.syncUnavailable)}>
             {B.sync}
-          </button>
+          </Button>
         </div>
       </div>
       {state.message !== null && (
@@ -668,7 +631,7 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
       {state.tab === "flows" && (
         <>
           <MonthClose state={state} />
-          <section className={card} aria-label={B.flows}>
+          <Card label={B.flows} padding="lg">
             <div className="mb-4 flex flex-wrap justify-between gap-3">
               <h2 className="text-title">{B.flows}</h2>
               <label>
@@ -730,11 +693,11 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
                 tooltip={state.flowTip}
               />
             )}
-          </section>
+          </Card>
         </>
       )}
       {state.tab === "subs" && (
-        <section className={card} aria-label={B.subscriptions}>
+        <Card label={B.subscriptions} padding="lg">
           {state.subscriptions.length === 0 ? (
             <p>{B.empty}</p>
           ) : (
@@ -757,16 +720,14 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
               )}
             </WindowRows>
           )}
-        </section>
+        </Card>
       )}
       {state.categoriesOpen && (
         <Drawer label={B.uncategorized} onClose={state.closeCategories}>
           {state.message && <p role="status">{state.message}</p>}
           <div className="mb-4 flex justify-between">
             <h2 className="text-title">{B.uncategorized}</h2>
-            <button type="button" className={button} onClick={state.closeCategories}>
-              {B.close}
-            </button>
+            <Button onPress={state.closeCategories}>{B.close}</Button>
           </div>
           {state.categoryRows.length === 0 ? (
             <p>{B.allDone}</p>
@@ -806,9 +767,7 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
           </ol>
           <p>{B.importUnavailable}</p>
           <div className="mt-4 flex gap-3">
-            <button type="button" className={button} onClick={() => state.setImportOpen(false)}>
-              {B.close}
-            </button>
+            <Button onPress={() => state.setImportOpen(false)}>{B.close}</Button>
           </div>
         </Drawer>
       )}

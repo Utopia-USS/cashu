@@ -1,5 +1,5 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, DateText, Money, Percent } from "@cashu/ui";
+import { Amount, Button, DateText, Money, Percent } from "@cashu/ui";
 import { reviewSourceMessage } from "./presentation.js";
 import { R } from "./Review.strings.js";
 import { ReviewDecideCard } from "./ReviewDecideCard.js";
@@ -8,8 +8,6 @@ import { Rows } from "./ReviewRows.js";
 import { ReviewSummaryCard } from "./ReviewSummaryCard.js";
 import type { ReviewScreenState } from "./useReviewScreen.js";
 
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
 const pct = (value: number | null) => (value === null ? null : D(String(value)));
 function SourceFact({
   status,
@@ -74,13 +72,9 @@ export function CardContent({ state }: { state: ReviewScreenState }) {
               {snapshot.riskBrief && (
                 <p>
                   <strong>{snapshot.riskBrief.headline}</strong> {snapshot.riskBrief.why}{" "}
-                  <button
-                    type="button"
-                    className={button}
-                    onClick={() => state.setReader(snapshot.riskBrief?.note ?? null)}
-                  >
+                  <Button onPress={() => state.setReader(snapshot.riskBrief?.note ?? null)}>
                     {R.fullNote}
-                  </button>
+                  </Button>
                 </p>
               )}
               <dl className="grid grid-cols-2 gap-3">
@@ -101,13 +95,7 @@ export function CardContent({ state }: { state: ReviewScreenState }) {
                 {(row) => (
                   <p>
                     {row.headline} {row.why}{" "}
-                    <button
-                      type="button"
-                      className={button}
-                      onClick={() => state.setReader(row.note)}
-                    >
-                      {R.fullNote}
-                    </button>
+                    <Button onPress={() => state.setReader(row.note)}>{R.fullNote}</Button>
                   </p>
                 )}
               </Rows>
@@ -161,13 +149,7 @@ export function CardContent({ state }: { state: ReviewScreenState }) {
               {(row) => (
                 <p>
                   {row.headline} {row.why}{" "}
-                  <button
-                    type="button"
-                    className={button}
-                    onClick={() => state.setReader(row.note)}
-                  >
-                    {R.fullNote}
-                  </button>
+                  <Button onPress={() => state.setReader(row.note)}>{R.fullNote}</Button>
                 </p>
               )}
             </Rows>
@@ -213,9 +195,7 @@ export function CardContent({ state }: { state: ReviewScreenState }) {
                 <h3 className="font-strong">{note.title}</h3>
                 <p>{note.summary}</p>
                 <DateText value={state.dates.notes[note.id] ?? null} />
-                <button type="button" className={button} onClick={() => state.setReader(note.id)}>
-                  {R.fullNote}
-                </button>
+                <Button onPress={() => state.setReader(note.id)}>{R.fullNote}</Button>
               </section>
             )}
           </Rows>
@@ -253,13 +233,7 @@ export function CardContent({ state }: { state: ReviewScreenState }) {
                         : ""}{" "}
                     {row.kind === "research" ? R.researchEvent : ""}
                     {row.note_id && (
-                      <button
-                        type="button"
-                        className={button}
-                        onClick={() => state.setReader(row.note_id)}
-                      >
-                        {R.fullNote}
-                      </button>
+                      <Button onPress={() => state.setReader(row.note_id)}>{R.fullNote}</Button>
                     )}
                   </p>
                 )}

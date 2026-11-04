@@ -1,10 +1,8 @@
 import { D } from "@cashu/domain";
-import { Amount, DateText } from "@cashu/ui";
+import { Amount, Button, DateText } from "@cashu/ui";
 import { R } from "./Review.strings.js";
 import type { ReviewEntryState } from "./useReviewEntry.js";
 
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
 export function ReviewEntryView({
   state,
   onOpened,
@@ -22,7 +20,7 @@ export function ReviewEntryView({
   if (!state.data.hasData) return null;
   return (
     <section className="flex flex-wrap items-center gap-3" aria-label={R.title}>
-      <button type="button" className={button} onClick={onOpened}>
+      <Button onPress={onOpened}>
         {state.data.name}{" "}
         {state.data.due && (
           <>
@@ -30,7 +28,7 @@ export function ReviewEntryView({
             <Amount value={D(String(state.data.cards.length))} fractionDigits={0} />
           </>
         )}
-      </button>
+      </Button>
       {state.data.last && (
         <span>
           {R.last}: <DateText value={state.lastOn} />
@@ -40,14 +38,9 @@ export function ReviewEntryView({
         {R.next}: <DateText value={state.data.next} />
       </span>
       {state.canUndo && (
-        <button
-          type="button"
-          className={button}
-          disabled={state.busy}
-          onClick={() => void state.undo()}
-        >
+        <Button disabled={state.busy} onPress={() => void state.undo()}>
           {R.undo}
-        </button>
+        </Button>
       )}
       {state.failure && <p role="status">{state.failure}</p>}
     </section>

@@ -1,5 +1,15 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, BarChart, DateText, Donut, LineChart, Money, Percent, Sparkline } from "@cashu/ui";
+import {
+  Amount,
+  BarChart,
+  Card,
+  DateText,
+  Donut,
+  LineChart,
+  Money,
+  Percent,
+  Sparkline,
+} from "@cashu/ui";
 import { type ReactNode, useRef } from "react";
 import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { I } from "./Portfolio.strings.js";
@@ -7,7 +17,6 @@ import type { PortfolioScreenState } from "./usePortfolioScreen.js";
 
 export const investmentButton =
   "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-accent-muted";
-const card = "rounded-lg border border-border bg-surface-raised p-4";
 const ratio = (value: number | null) => (value === null ? null : D(String(value)));
 
 /** Native portfolio composition; financial results arrive already computed from the tracked query. */
@@ -78,9 +87,9 @@ export function PortfolioView({
       </label>
       {homeRail}
       {data.status !== "ready" ? (
-        <section className={card}>
+        <Card>
           <p>{data.accounts.length === 0 ? I.empty : I.unavailable}</p>
-        </section>
+        </Card>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-4">
@@ -90,16 +99,16 @@ export function PortfolioView({
               [I.result, data.overview.kpis.unrealized.amount],
               [I.cost, data.overview.kpis.unrealized.cost],
             ].map(([label, value]) => (
-              <section key={String(label)} className={card}>
+              <Card key={String(label)}>
                 <h2 className="text-caption text-fg-muted">{String(label)}</h2>
                 <Money
                   value={state.money(typeof value === "string" ? null : value)}
                   size="headline"
                 />
-              </section>
+              </Card>
             ))}
           </div>
-          <section className={card}>
+          <Card>
             <header className="flex flex-wrap items-center justify-between gap-3">
               <h2>{I.performance}</h2>
               <div className="flex gap-2">
@@ -204,9 +213,9 @@ export function PortfolioView({
                 {I.benchmarkMissing} · {data.performance.benchmark.status}
               </p>
             )}
-          </section>
+          </Card>
           <div className="grid gap-6 lg:grid-cols-2">
-            <section className={card}>
+            <Card>
               <h2>{I.drawdown}</h2>
               <LineChart
                 label={I.drawdown}
@@ -223,8 +232,8 @@ export function PortfolioView({
                 ]}
                 yFormat={(value) => `${state.format(value * 100)}%`}
               />
-            </section>
-            <section className={card}>
+            </Card>
+            <Card>
               <h2>{I.contributions}</h2>
               <BarChart
                 label={I.contributions}
@@ -235,13 +244,13 @@ export function PortfolioView({
                 plan={data.contributionPlan?.monthlyAmount.toFloat() ?? null}
                 planLabel={I.plan}
               />
-            </section>
+            </Card>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <PositionList state={state} />
             <AllocationPanel state={state} />
           </div>
-          <section className={card}>
+          <Card>
             <h2>{I.accounts}</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               {data.accountViews.map((account, index) => (
@@ -274,8 +283,8 @@ export function PortfolioView({
                 </article>
               ))}
             </div>
-          </section>
-          <section className={card}>
+          </Card>
+          <Card>
             <h2>{I.warnings}</h2>
             {data.overview.freshness.prices.stale_count > 0 && (
               <p>
@@ -312,7 +321,7 @@ export function PortfolioView({
                 {I.strategies}: {data.strategy.state}
               </button>
             )}
-          </section>
+          </Card>
         </>
       )}
       <nav className="flex flex-wrap gap-3" aria-label={I.details}>
@@ -378,7 +387,7 @@ function PositionList({ state }: { state: PortfolioScreenState }) {
     ? virtual.items
     : rows.map((_, index) => ({ index, key: rows[index]?.id ?? index, start: 0 }));
   return (
-    <section className={card}>
+    <Card>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h2>{I.assets}</h2>
         <div className="flex gap-2">
@@ -506,7 +515,7 @@ function PositionList({ state }: { state: PortfolioScreenState }) {
         </ul>
       </div>
       {rows.length === 0 && <p>{I.empty}</p>}
-    </section>
+    </Card>
   );
 }
 
@@ -546,7 +555,7 @@ function AllocationPanel({ state }: { state: PortfolioScreenState }) {
             drift: null,
           }));
   return (
-    <section className={card}>
+    <Card>
       <h2>{I.allocation}</h2>
       <div className="flex flex-wrap gap-2 py-3">
         {(
@@ -612,7 +621,7 @@ function AllocationPanel({ state }: { state: PortfolioScreenState }) {
           ))}
         </tbody>
       </table>
-    </section>
+    </Card>
   );
 }
 

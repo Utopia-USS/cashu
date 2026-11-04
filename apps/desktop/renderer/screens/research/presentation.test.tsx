@@ -1,6 +1,9 @@
+// @vitest-environment jsdom
+// The note view is a portaled Modal, so it renders into a DOM document rather than static markup.
 import { formatCalendarDate } from "@cashu/i18n/values";
 import { UiEnvProvider } from "@cashu/ui";
-import { renderToStaticMarkup } from "react-dom/server";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
 import { researchNoteDates, researchNoteFacts } from "./presentation.js";
 import { type ResearchNote, ResearchNoteView } from "./ResearchNoteView.js";
@@ -11,7 +14,7 @@ afterEach(() => {
   else process.env.TZ = priorZone;
 });
 
-it("renders a source timestamp near local midnight as its visible calendar date", () => {
+it("renders a source timestamp near local midnight as its visible calendar date", async () => {
   process.env.TZ = "Europe/Warsaw";
   const note = {
     id: "a".repeat(32),
@@ -30,17 +33,28 @@ it("renders a source timestamp near local midnight as its visible calendar date"
     expired: false,
     dismissed: false,
   } as unknown as ResearchNote;
-  const markup = renderToStaticMarkup(
-    <UiEnvProvider locale="en-US" privacy={false}>
-      <ResearchNoteView
-        note={note}
-        dates={researchNoteDates(note)}
-        facts={researchNoteFacts(note)}
-        privacy={false}
-        onClose={() => {}}
-      />
-    </UiEnvProvider>,
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () =>
+    root.render(
+      <UiEnvProvider locale="en-US" privacy={false}>
+        <ResearchNoteView
+          note={note}
+          dates={researchNoteDates(note)}
+          facts={researchNoteFacts(note)}
+          privacy={false}
+          onClose={() => {}}
+        />
+      </UiEnvProvider>,
+    ),
   );
-  expect(markup).toContain(formatCalendarDate("2026-10-06", "en-US"));
-  expect(markup).not.toContain("2026-10-05T23:30:00Z");
+  const markup = document.body.innerHTML;
+  try {
+    expect(markup).toContain(formatCalendarDate("2026-10-06", "en-US"));
+    expect(markup).not.toContain("2026-10-05T23:30:00Z");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
 });

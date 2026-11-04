@@ -1,12 +1,10 @@
 import { D } from "@cashu/domain";
-import { Amount, DateText } from "@cashu/ui";
+import { Amount, Button, DateText } from "@cashu/ui";
 import { reviewChoiceLabel } from "./presentation.js";
 import { R } from "./Review.strings.js";
 import { Rows } from "./ReviewRows.js";
 import type { ReviewScreenState } from "./useReviewScreen.js";
 
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
 export function ReviewDecideCard({ state }: { state: ReviewScreenState }) {
   const session = state.session;
   if (!session) return null;
@@ -41,11 +39,7 @@ export function ReviewDecideCard({ state }: { state: ReviewScreenState }) {
                 )}
               </>
             )}
-            {item.note && (
-              <button type="button" className={button} onClick={() => state.setReader(item.note)}>
-                {R.fullNote}
-              </button>
-            )}
+            {item.note && <Button onPress={() => state.setReader(item.note)}>{R.fullNote}</Button>}
             {item.context && <p>{item.context}</p>}
             {item.ladder && item.ladder.count > 1 && (
               <p>
@@ -60,15 +54,13 @@ export function ReviewDecideCard({ state }: { state: ReviewScreenState }) {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {item.actions.map(({ action, label }) => (
-                  <button
-                    type="button"
+                  <Button
                     key={action}
-                    className={button}
                     disabled={state.pending !== null || state.unknownItems.has(item.key)}
-                    onClick={() => void state.choose(item, action)}
+                    onPress={() => void state.choose(item, action)}
                   >
                     {label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}

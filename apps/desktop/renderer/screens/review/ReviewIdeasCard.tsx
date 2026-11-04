@@ -1,11 +1,9 @@
 import { D } from "@cashu/domain";
-import { Amount, DateText } from "@cashu/ui";
+import { Amount, Button, DateText } from "@cashu/ui";
 import { R } from "./Review.strings.js";
 import { Rows } from "./ReviewRows.js";
 import type { ReviewScreenState } from "./useReviewScreen.js";
 
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
 export function ReviewIdeasCard({ state }: { state: ReviewScreenState }) {
   return (
     <Rows rows={state.ideas} rowKey={(row) => row.id} label={R.ideas}>
@@ -52,36 +50,28 @@ export function ReviewIdeasCard({ state }: { state: ReviewScreenState }) {
             </>
           )}
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" className={button} onClick={() => state.setReader(note.id)}>
-              {R.fullNote}
-            </button>
+            <Button onPress={() => state.setReader(note.id)}>{R.fullNote}</Button>
             {state.candidateChoices[note.id] ? (
-              <button
-                type="button"
-                className={button}
+              <Button
                 disabled={state.pending !== null}
-                onClick={() => void state.candidate(note.id, "undo")}
+                onPress={() => void state.candidate(note.id, "undo")}
               >
                 {R.undoCandidate}
-              </button>
+              </Button>
             ) : (
               <>
-                <button
-                  type="button"
-                  className={button}
+                <Button
                   disabled={state.pending !== null}
-                  onClick={() => void state.candidate(note.id, "watch")}
+                  onPress={() => void state.candidate(note.id, "watch")}
                 >
                   {R.watch}
-                </button>
-                <button
-                  type="button"
-                  className={button}
+                </Button>
+                <Button
                   disabled={state.pending !== null}
-                  onClick={() => void state.candidate(note.id, "dismiss")}
+                  onPress={() => void state.candidate(note.id, "dismiss")}
                 >
                   {R.dismiss}
-                </button>
+                </Button>
               </>
             )}
           </div>

@@ -1,10 +1,8 @@
 import { D } from "@cashu/domain";
-import { Amount } from "@cashu/ui";
+import { Amount, Button } from "@cashu/ui";
 import { R } from "./Review.strings.js";
 import type { ReviewScreenState } from "./useReviewScreen.js";
 
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
 export function ReviewSummaryCard({ state }: { state: ReviewScreenState }) {
   return (
     <>
@@ -51,14 +49,9 @@ export function ReviewSummaryCard({ state }: { state: ReviewScreenState }) {
           </label>
         )}
       </state.form.Field>
-      <button
-        type="button"
-        className={button}
-        disabled={state.pending !== null}
-        onClick={() => void state.save()}
-      >
+      <Button disabled={state.pending !== null} onPress={() => void state.save()}>
         {R.finish}
-      </button>
+      </Button>
     </>
   );
 }

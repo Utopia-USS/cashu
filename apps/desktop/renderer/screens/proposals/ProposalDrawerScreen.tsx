@@ -1,7 +1,6 @@
 import { useProfile } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
+import { Modal, useUiEnv } from "@cashu/ui";
 import { Component, type ReactNode, Suspense } from "react";
-import { ModalFrame } from "../../presentation/ModalFrame.js";
 import { P } from "./ProposalDrawer.strings.js";
 import { ProposalDrawerView } from "./ProposalDrawerView.js";
 import { useProposalDrawer } from "./useProposalDrawer.js";
@@ -24,13 +23,13 @@ export function ProposalDrawerScreen({
   const vault = useProfile();
   const { privacy } = useUiEnv();
   return (
-    <ModalFrame label={P.title} onClose={onClose}>
+    <Modal label={P.title} onClose={onClose} placement="end">
       <ProposalBoundary key={`${vault}:${privacy}:${gid}`} onClose={onClose}>
         <Suspense fallback={<DrawerStatus onClose={onClose} text={P.loading} />}>
           <BoundProposal gid={gid} onClose={onClose} onOutcome={onOutcome} />
         </Suspense>
       </ProposalBoundary>
-    </ModalFrame>
+    </Modal>
   );
 }
 function BoundProposal(props: Parameters<typeof ProposalDrawerScreen>[0]) {

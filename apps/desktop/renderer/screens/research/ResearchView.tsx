@@ -1,5 +1,5 @@
 import { D } from "@cashu/domain";
-import { Amount, DateText, Percent } from "@cashu/ui";
+import { Amount, Button, Card, DateText, Percent } from "@cashu/ui";
 import { useRef } from "react";
 import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { type ResearchNoteRow, researchHealthLabel, researchRunStatus } from "./presentation.js";
@@ -9,9 +9,6 @@ import { ResearchTopicDrawer } from "./ResearchTopicDrawer.js";
 import { ResearchValuationFacts } from "./ResearchValuationFacts.js";
 import type { ResearchScreenState, ResearchTab } from "./useResearchScreen.js";
 
-const card = "rounded-lg border border-border bg-surface-raised p-4";
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent";
 const tabs: readonly [ResearchTab, string][] = [
   ["topics", S.topics],
   ["mine", S.mine],
@@ -93,37 +90,33 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
     <main className="grid gap-6 p-6" data-testid="native-research">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <button type="button" className={button} onClick={state.onBack}>
-            {S.back}
-          </button>
+          <Button onPress={state.onBack}>{S.back}</Button>
           <h1 className="mt-2 text-headline font-strong">{S.title}</h1>
         </div>
-        <button
-          type="button"
-          className={button}
+        <Button
           disabled={
             state.privacy ||
             data.status !== "current" ||
             data.workspace.status !== "current" ||
             !data.workspace.value.command
           }
-          onClick={state.copyRun}
+          onPress={state.copyRun}
         >
           {S.runNow}
-        </button>
+        </Button>
       </header>
       {state.notice && (
-        <p role="status" className={card}>
+        <Card as="p" role="status">
           {state.notice}
-        </p>
+        </Card>
       )}
       {data.status === "unavailable" ? (
-        <section className={card}>{S.unavailable}</section>
+        <Card>{S.unavailable}</Card>
       ) : (
         <>
-          {data.status === "partial" && <section className={card}>{S.unavailableMarket}</section>}
+          {data.status === "partial" && <Card>{S.unavailableMarket}</Card>}
           {!hasRun && (
-            <section className={card}>
+            <Card>
               <h2 className="font-strong">{S.noRun}</h2>
               <ol className="mt-3 list-decimal pl-5">
                 <li>{S.setupSkill}</li>
@@ -137,30 +130,26 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
                     ? S.workspaceReady
                     : S.workspaceMissing}
               </p>
-              <button type="button" className={button} onClick={state.onSettings}>
-                {S.routine}
-              </button>
-            </section>
+              <Button onPress={state.onSettings}>{S.routine}</Button>
+            </Card>
           )}
           <nav aria-label={S.title} className="flex flex-wrap gap-2">
             {tabs.map(([id, label]) => (
-              <button
-                type="button"
+              <Button
                 key={id}
-                className={button}
-                aria-current={state.tab === id ? "page" : undefined}
-                onClick={() => state.setTab(id)}
+                current={state.tab === id ? "page" : undefined}
+                onPress={() => state.setTab(id)}
               >
                 {label}
-              </button>
+              </Button>
             ))}
           </nav>
           {state.privacy ? (
-            <section className={card}>{S.hidden}</section>
+            <Card>{S.hidden}</Card>
           ) : (
             <>
               {state.tab === "topics" && (
-                <section className={card}>
+                <Card>
                   <h2 className="mb-3 font-strong">{S.topics}</h2>
                   {state.display.topics === null ? (
                     <p>{S.unavailableMarket}</p>
@@ -217,22 +206,20 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
                       <h3 className="font-strong">{S.macro}</h3>
                       <div className="flex flex-wrap gap-2">
                         {data.macro.value.map((regime) => (
-                          <button
-                            type="button"
+                          <Button
                             key={regime.key}
-                            className={button}
-                            onClick={() => state.openTopic(`macro_${regime.key}`)}
+                            onPress={() => state.openTopic(`macro_${regime.key}`)}
                           >
                             {regime.label}: {regime.state_label}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     </div>
                   )}
-                </section>
+                </Card>
               )}
               {state.tab === "mine" && (
-                <section className={card}>
+                <Card>
                   <h2 className="mb-3 font-strong">{S.mine}</h2>
                   {held === null ? (
                     <p>{S.unavailableMarket}</p>
@@ -268,31 +255,25 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
                             </span>
                           )}
                           {row.latest_note && (
-                            <button
-                              type="button"
-                              className={button}
-                              onClick={() => state.openNote(row.latest_note?.id as string)}
-                            >
+                            <Button onPress={() => state.openNote(row.latest_note?.id as string)}>
                               {S.latest}
-                            </button>
+                            </Button>
                           )}
                         </li>
                       ))}
                     </ul>
                   )}
-                </section>
+                </Card>
               )}
               {state.tab === "notes" && (
-                <section className={card}>
+                <Card>
                   <h2 className="mb-3 font-strong">{S.notes}</h2>
                   <div className="mb-3 flex flex-wrap gap-2">
                     {(["all", "thesis", "earnings", "news"] as const).map((key) => (
-                      <button
-                        type="button"
+                      <Button
                         key={key}
-                        className={button}
-                        aria-pressed={state.noteFilter === key}
-                        onClick={() => state.setNoteFilter(key)}
+                        pressed={state.noteFilter === key}
+                        onPress={() => state.setNoteFilter(key)}
                       >
                         {
                           {
@@ -302,7 +283,7 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
                             news: S.newsFilter,
                           }[key]
                         }
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   {shownCount ? (
@@ -310,15 +291,11 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
                   ) : (
                     <p>{S.noNotes}</p>
                   )}
-                  {shownCount < filteredCount && (
-                    <button type="button" className={button} onClick={state.showMore}>
-                      {S.more}
-                    </button>
-                  )}
-                </section>
+                  {shownCount < filteredCount && <Button onPress={state.showMore}>{S.more}</Button>}
+                </Card>
               )}
               {state.tab === "calendar" && (
-                <section className={card}>
+                <Card>
                   <h2 className="mb-3 font-strong">{S.calendar}</h2>
                   {state.display.calendar === null ? (
                     <p>{S.unavailableCalendar}</p>
@@ -362,13 +339,11 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
                                           {event.held === true ? ` · ${S.heldEarnings}` : ""}
                                         </span>
                                         {event.note_id && (
-                                          <button
-                                            type="button"
-                                            className={button}
-                                            onClick={() => state.openNote(event.note_id as string)}
+                                          <Button
+                                            onPress={() => state.openNote(event.note_id as string)}
                                           >
                                             {S.details}
-                                          </button>
+                                          </Button>
                                         )}
                                       </li>
                                     ))}
@@ -381,20 +356,20 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
                       )}
                     </>
                   )}
-                </section>
+                </Card>
               )}
               {state.tab === "candidates" && (
-                <section className={card}>
+                <Card>
                   <h2 className="mb-3 font-strong">{S.candidates}</h2>
                   {candidates.length === 0 ? (
                     <p>{S.noCandidates}</p>
                   ) : (
                     <NoteRows rows={candidates} onOpen={state.openNote} />
                   )}
-                </section>
+                </Card>
               )}
               {state.tab === "runs" && (
-                <section className={card}>
+                <Card>
                   <h2 className="mb-3 font-strong">{S.runs}</h2>
                   {state.display.scope && (
                     <div className="mb-3 flex flex-wrap gap-4 rounded-sm bg-surface-sunken p-3 text-sm">
@@ -463,7 +438,7 @@ export function ResearchView({ state }: { state: ResearchScreenState }) {
                       ? (data.workspace.value.routine ?? S.routine)
                       : S.routine}
                   </p>
-                </section>
+                </Card>
               )}
             </>
           )}

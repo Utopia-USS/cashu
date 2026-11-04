@@ -1,12 +1,9 @@
-import { DateText } from "@cashu/ui";
+import { Button, Card, DateText } from "@cashu/ui";
 import { useEffect, useRef } from "react";
 import { R } from "./Review.strings.js";
 import { CardContent } from "./ReviewCardContent.js";
 import type { ReviewScreenState } from "./useReviewScreen.js";
 
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
-const panel = "rounded-lg border border-border bg-surface-raised p-4";
 export function ReviewView({ state }: { state: ReviewScreenState }) {
   const ref = useRef<HTMLDialogElement>(null),
     pointer = useRef<{ x: number; y: number } | null>(null);
@@ -63,9 +60,7 @@ export function ReviewView({ state }: { state: ReviewScreenState }) {
     >
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-headline font-strong">{state.session?.snapshot.name ?? R.title}</h2>
-        <button type="button" className={button} onClick={state.onClosed}>
-          {R.close}
-        </button>
+        <Button onPress={state.onClosed}>{R.close}</Button>
       </header>
       {state.data.status !== "current" && <p role="status">{R.unavailable}</p>}
       {state.session && (
@@ -86,8 +81,7 @@ export function ReviewView({ state }: { state: ReviewScreenState }) {
               </span>
             ))}
           </nav>
-          <section
-            className={panel}
+          <Card
             onPointerDown={(event) => {
               if (!(event.target as HTMLElement).closest("button,a,input,textarea,select"))
                 pointer.current = { x: event.clientX, y: event.clientY };
@@ -105,45 +99,27 @@ export function ReviewView({ state }: { state: ReviewScreenState }) {
           >
             <h3 className="mb-3 text-title font-strong">{R[state.card]}</h3>
             <CardContent state={state} />
-          </section>
+          </Card>
           {state.card !== "summary" && (
             <div className="my-4 flex flex-wrap gap-3">
-              <button
-                type="button"
-                className={button}
-                disabled={state.pending !== null}
-                onClick={() => state.advance("flag")}
-              >
+              <Button disabled={state.pending !== null} onPress={() => state.advance("flag")}>
                 {R.flag}
-              </button>
-              <button
-                type="button"
-                className={button}
-                disabled={state.pending !== null}
-                onClick={() => state.advance("keep")}
-              >
+              </Button>
+              <Button disabled={state.pending !== null} onPress={() => state.advance("keep")}>
                 {R.keep}
-              </button>
-              <button
-                type="button"
-                className={button}
-                onClick={() => state.setDetail(!state.detail)}
-              >
+              </Button>
+              <Button onPress={() => state.setDetail(!state.detail)}>
                 {state.detail ? R.hideDetails : R.details}
-              </button>
-              <button type="button" className={button} onClick={() => state.setNoteOpen(true)}>
-                {R.note}
-              </button>
+              </Button>
+              <Button onPress={() => state.setNoteOpen(true)}>{R.note}</Button>
             </div>
           )}
-          <button
-            type="button"
-            className={button}
+          <Button
             disabled={state.session.index === 0 || state.pending !== null}
-            onClick={state.back}
+            onPress={state.back}
           >
             {R.back}
-          </button>
+          </Button>
           <p className="mt-3 text-sm text-fg-muted">{R.keys}</p>
         </>
       )}

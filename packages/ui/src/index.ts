@@ -31,6 +31,8 @@ export type { VirtualListProps } from "./lists/VirtualList.types.js";
 export { createVirtualRows, type VirtualRowsOptions } from "./lists/virtualRows.js";
 export { Modal } from "./overlays/Modal.js";
 export type { ModalProps } from "./overlays/Modal.types.js";
+export { Card } from "./surfaces/Card.js";
+export type { CardProps } from "./surfaces/Card.types.js";
 export { Amount } from "./values/Amount.js";
 export { DateText } from "./values/DateText.js";
 export { Delta } from "./values/Delta.js";

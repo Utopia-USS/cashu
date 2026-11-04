@@ -10,7 +10,7 @@ import {
   SECTION,
 } from "@cashu/i18n/core/Settings.strings";
 import { PRIVACY } from "@cashu/i18n/core/Wizard.strings";
-import { DateText } from "@cashu/ui";
+import { Button, Card, DateText } from "@cashu/ui";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { T } from "./Settings.strings.js";
@@ -27,11 +27,8 @@ const sections = [
   "devices",
   "app",
 ] as const;
-const card = "rounded-lg border border-border bg-surface-raised p-5";
 const control =
   "rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent";
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent";
 
 function SettingsTimestamp({ day, time }: { day: string | null; time: string }) {
   return (
@@ -108,51 +105,46 @@ export function SettingsView({
         {state.notice && (
           <div role="status" className="rounded-md border border-border bg-surface-raised p-3">
             {state.notice}{" "}
-            <button
-              type="button"
-              onClick={state.onNoticeDismissed}
-              aria-label={C.close}
-              className={button}
-            >
+            <Button onPress={state.onNoticeDismissed} label={C.close}>
               {C.close}
-            </button>
+            </Button>
           </div>
         )}
-        <Card id="profile" title={SECTION.profile}>
+        <SettingsSection id="profile" title={SECTION.profile}>
           <ProfileSection state={state} />
-        </Card>
-        <Card id="modules" title={SECTION.modules}>
+        </SettingsSection>
+        <SettingsSection id="modules" title={SECTION.modules}>
           <ModulesSection state={state} />
-        </Card>
-        <Card id="agent" title={SECTION.agent}>
+        </SettingsSection>
+        <SettingsSection id="agent" title={SECTION.agent}>
           <AgentSection state={state} strategyPanel={strategyPanel} />
-        </Card>
-        <Card id="connectors" title={SECTION.connectors}>
+        </SettingsSection>
+        <SettingsSection id="connectors" title={SECTION.connectors}>
           <ConnectorsSection state={state} />
           {bankingPanel}
-        </Card>
-        <Card id="data" title={SECTION.data}>
+        </SettingsSection>
+        <SettingsSection id="data" title={SECTION.data}>
           <DataSection state={state} />
-        </Card>
-        <Card id="worker" title={SECTION.worker}>
+        </SettingsSection>
+        <SettingsSection id="worker" title={SECTION.worker}>
           <WorkerSection state={state} />
-        </Card>
-        <Card id="secrets" title={SECTION.secrets}>
+        </SettingsSection>
+        <SettingsSection id="secrets" title={SECTION.secrets}>
           <SecretsSection />
           {classificationPanel}
-        </Card>
-        <Card id="devices" title={T.devicesTitle}>
+        </SettingsSection>
+        <SettingsSection id="devices" title={T.devicesTitle}>
           {devicesPanel ?? <p>{T.unavailable}</p>}
-        </Card>
-        <Card id="app" title={SECTION.app}>
+        </SettingsSection>
+        <SettingsSection id="app" title={SECTION.app}>
           <AppSection state={state} />
-        </Card>
+        </SettingsSection>
       </div>
     </div>
   );
 }
 
-function Card({
+function SettingsSection({
   id,
   title,
   children,
@@ -162,16 +154,12 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section
-      id={`settings-${id}`}
-      aria-labelledby={`settings-${id}-title`}
-      className={`${card} scroll-mt-4`}
-    >
+    <Card id={`settings-${id}`} labelledBy={`settings-${id}-title`} className="scroll-mt-4">
       <h2 id={`settings-${id}-title`} className="mb-4 text-headline font-semibold">
         {title}
       </h2>
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -244,13 +232,9 @@ function ProfileSection({ state }: { state: SettingsScreenState }) {
       >
         {({ dirty, submitting, errors }) => (
           <>
-            <button
-              className={button}
-              type="submit"
-              disabled={!dirty || submitting || state.profileBusy}
-            >
+            <Button type="submit" disabled={!dirty || submitting || state.profileBusy}>
               {C.save}
-            </button>
+            </Button>
             {errors.length > 0 && <p role="alert">{T.invalidProfile}</p>}
           </>
         )}
@@ -290,13 +274,9 @@ function ModulesSection({ state }: { state: SettingsScreenState }) {
             <p className="mt-1 text-caption text-fg-muted">{module.dependsOn.join(", ")}</p>
           )}
           {module.enabled && (
-            <button
-              className={`${button} mt-2`}
-              type="button"
-              onClick={() => state.onModuleConfigured(module.id)}
-            >
+            <Button className="mt-2" onPress={() => state.onModuleConfigured(module.id)}>
               {S.configure}
-            </button>
+            </Button>
           )}
         </div>
       ))}
@@ -363,14 +343,9 @@ function WorkspaceSection({ state }: { state: SettingsScreenState }) {
     <section className="rounded-md border border-border p-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold">{S.workspace}</h3>
-        <button
-          className={button}
-          type="button"
-          disabled={state.workspaceBusy}
-          onClick={() => void state.refreshWorkspace()}
-        >
+        <Button disabled={state.workspaceBusy} onPress={() => void state.refreshWorkspace()}>
           {T.workspaceRefresh}
-        </button>
+        </Button>
       </div>
       {ws.availability !== "ready" ? (
         <p className="mt-3 text-sm text-fg-muted">{T.workspaceUnbound}</p>
@@ -380,13 +355,9 @@ function WorkspaceSection({ state }: { state: SettingsScreenState }) {
             {S.folder}: <code>{ws.path}</code>
             {ws.custom && <> ({S.customFolder})</>}
             {ws.path && (
-              <button
-                type="button"
-                className={`${button} ml-2`}
-                onClick={() => void state.onWorkspaceCopied(ws.path ?? "")}
-              >
+              <Button className="ml-2" onPress={() => void state.onWorkspaceCopied(ws.path ?? "")}>
                 {S.copy}
-              </button>
+              </Button>
             )}
           </p>
           <p className="text-caption text-fg-muted">
@@ -446,24 +417,14 @@ function WorkspaceSection({ state }: { state: SettingsScreenState }) {
               />
             </label>
           ) : (
-            <button
-              type="button"
-              className={button}
-              disabled={state.workspaceBusy}
-              onClick={() => state.setEditingPath(true)}
-            >
+            <Button disabled={state.workspaceBusy} onPress={() => state.setEditingPath(true)}>
               {S.changeFolder}
-            </button>
+            </Button>
           )}
           {state.editingPath && (
-            <button
-              type="button"
-              className={button}
-              disabled={state.workspaceBusy}
-              onClick={() => state.setEditingPath(false)}
-            >
+            <Button disabled={state.workspaceBusy} onPress={() => state.setEditingPath(false)}>
               {T.workspaceCancel}
-            </button>
+            </Button>
           )}
           <label className="flex items-center gap-2">
             <input
@@ -486,40 +447,36 @@ function WorkspaceSection({ state }: { state: SettingsScreenState }) {
                 {T.workspacePermissions}
               </label>
             )}
-          <button
-            type="button"
-            className={button}
+          <Button
             disabled={
               state.workspaceBusy ||
               !!ws.conflict ||
               (state.editingPath && ws.configured && !state.workspacePath.trim())
             }
-            onClick={() => void state.saveWorkspace()}
+            onPress={() => void state.saveWorkspace()}
           >
             {ws.configured ? S.update : S.create}
-          </button>
+          </Button>
           {ws.claudeCommand && (
             <p>
               {S.fromTerminal}: <code>{ws.claudeCommand}</code>
-              <button
-                type="button"
-                className={`${button} ml-2`}
-                onClick={() => void state.onWorkspaceCopied(ws.claudeCommand ?? "")}
+              <Button
+                className="ml-2"
+                onPress={() => void state.onWorkspaceCopied(ws.claudeCommand ?? "")}
               >
                 {S.copy}
-              </button>
+              </Button>
             </p>
           )}
           {ws.routineCommand && (
             <p>
               {S.routine}: <code>{ws.routineCommand}</code>
-              <button
-                type="button"
-                className={`${button} ml-2`}
-                onClick={() => void state.onWorkspaceCopied(ws.routineCommand ?? "")}
+              <Button
+                className="ml-2"
+                onPress={() => void state.onWorkspaceCopied(ws.routineCommand ?? "")}
               >
                 {S.copy}
-              </button>
+              </Button>
             </p>
           )}
         </div>
@@ -550,14 +507,9 @@ function ProposalRows({ state }: { state: SettingsScreenState }) {
               className="absolute left-0 top-0 w-full border-b border-border py-2"
               style={{ transform: `translateY(${item.start}px)` }}
             >
-              <button
-                type="button"
-                className={button}
-                onClick={() => state.onProposalOpened(row.gid)}
-                aria-label={T.openProposal}
-              >
+              <Button onPress={() => state.onProposalOpened(row.gid)} label={T.openProposal}>
                 {row.summary || T.openProposal}
-              </button>
+              </Button>
             </div>
           ) : null;
         })}
@@ -580,9 +532,7 @@ function AuditSection({ state }: { state: SettingsScreenState }) {
     <section>
       <div className="flex items-center justify-between">
         <h3 className="font-semibold">{S.callLog}</h3>
-        <button type="button" className={button} onClick={state.onAuditRefreshed}>
-          {T.workspaceRefresh}
-        </button>
+        <Button onPress={state.onAuditRefreshed}>{T.workspaceRefresh}</Button>
       </div>
       <p className="text-caption text-fg-muted">
         {S.last7Days(state.audit.count7d)} · {S.argNamesOnly}
@@ -641,22 +591,12 @@ function ConnectorsSection({ state }: { state: SettingsScreenState }) {
   return (
     <div className="grid gap-4">
       <div className="flex gap-2">
-        <button
-          className={button}
-          type="button"
-          disabled={state.connectorBusy}
-          onClick={() => void state.installConnector()}
-        >
+        <Button disabled={state.connectorBusy} onPress={() => void state.installConnector()}>
           {T.connectorInstall}
-        </button>
-        <button
-          className={button}
-          type="button"
-          disabled={state.connectorBusy}
-          onClick={() => void state.refreshConnectors()}
-        >
+        </Button>
+        <Button disabled={state.connectorBusy} onPress={() => void state.refreshConnectors()}>
           {T.connectorRefresh}
-        </button>
+        </Button>
       </div>
       {!snapshot ? (
         <p>{T.connectorUnavailable}</p>
@@ -715,11 +655,9 @@ function ConnectorCard({
         <code>{connector.interpreter ?? T.unavailable}</code>
       </p>
       {connector.approval !== "approved" && connector.interpreter && (
-        <button
-          className={button}
-          type="button"
+        <Button
           disabled={state.connectorBusy}
-          onClick={() =>
+          onPress={() =>
             connector.interpreter &&
             void state.onConnectorAction({
               op: "approve",
@@ -730,29 +668,25 @@ function ConnectorCard({
           }
         >
           {T.connectorApprove}
-        </button>
+        </Button>
       )}
       {connector.approval === "approved" && (
-        <button
-          className={button}
-          type="button"
+        <Button
           disabled={state.connectorBusy}
-          onClick={() => void state.onConnectorAction({ op: "disable", id: connector.id })}
+          onPress={() => void state.onConnectorAction({ op: "disable", id: connector.id })}
         >
           {T.connectorDisable}
-        </button>
+        </Button>
       )}
-      <button
-        className={button}
-        type="button"
+      <Button
         disabled={state.connectorBusy}
-        onClick={() => {
+        onPress={() => {
           if (window.confirm(T.connectorRemoveAllConfirm))
             void state.onConnectorAction({ op: "remove", id: connector.id, allVaults: true });
         }}
       >
         {T.connectorRemoveAll}
-      </button>
+      </Button>
       {connector.approval === "approved" && connector.kind === "fetch" && (
         <div className="grid gap-2">
           <label className="grid gap-1">
@@ -807,14 +741,12 @@ function ConnectorCard({
             />
             {T.connectorAuto}
           </label>
-          <button
-            className={button}
-            type="button"
+          <Button
             disabled={state.connectorBusy || !account}
-            onClick={() => void state.bindConnector(connector, account, params, auto)}
+            onPress={() => void state.bindConnector(connector, account, params, auto)}
           >
             {T.connectorBind}
-          </button>
+          </Button>
         </div>
       )}
     </section>
@@ -839,22 +771,18 @@ function ConnectorBindingCard({
         {connector?.name ?? binding.connector_id} · {account?.name ?? binding.account}
       </h3>
       <div className="flex gap-2">
-        <button
-          className={button}
-          type="button"
+        <Button
           disabled={state.connectorBusy || connector?.approval !== "approved"}
-          onClick={() => void state.onConnectorAction({ op: "run", binding: binding.gid })}
+          onPress={() => void state.onConnectorAction({ op: "run", binding: binding.gid })}
         >
           {T.connectorRun}
-        </button>
-        <button
-          className={button}
-          type="button"
+        </Button>
+        <Button
           disabled={state.connectorBusy}
-          onClick={() => void state.onConnectorAction({ op: "unbind", binding: binding.gid })}
+          onPress={() => void state.onConnectorAction({ op: "unbind", binding: binding.gid })}
         >
           {T.connectorUnbind}
-        </button>
+        </Button>
       </div>
       {connector?.secrets.map((spec) => (
         <label className="grid gap-1" key={spec.id}>
@@ -869,11 +797,9 @@ function ConnectorBindingCard({
             }
           />
           <span className="flex gap-2">
-            <button
-              className={button}
-              type="button"
+            <Button
               disabled={state.connectorBusy || !values[spec.id]}
-              onClick={() => {
+              onPress={() => {
                 const value = values[spec.id];
                 if (!value) return;
                 void state.onConnectorAction({
@@ -886,12 +812,10 @@ function ConnectorBindingCard({
               }}
             >
               {T.connectorSetSecret}
-            </button>
-            <button
-              className={button}
-              type="button"
+            </Button>
+            <Button
               disabled={state.connectorBusy}
-              onClick={() =>
+              onPress={() =>
                 void state.onConnectorAction({
                   op: "clearSecret",
                   binding: binding.gid,
@@ -900,7 +824,7 @@ function ConnectorBindingCard({
               }
             >
               {T.connectorClearSecret}
-            </button>
+            </Button>
           </span>
         </label>
       ))}
@@ -914,9 +838,7 @@ function DataSection({ state }: { state: SettingsScreenState }) {
       {info.availability === "ready" && info.dataDir ? (
         <p>
           {S.dataDir}: <code>{info.dataDir}</code>{" "}
-          <button className={button} type="button" onClick={() => void state.onDataDirCopied()}>
-            {S.copy}
-          </button>
+          <Button onPress={() => void state.onDataDirCopied()}>{S.copy}</Button>
         </p>
       ) : (
         <p>{T.dataUnavailable}</p>
@@ -970,14 +892,9 @@ function WorkerSection({ state }: { state: SettingsScreenState }) {
         {T.serviceToggle}
       </label>
       {state.service.state === "requires_approval" && (
-        <button
-          className={button}
-          type="button"
-          disabled={state.serviceBusy}
-          onClick={() => void state.onServiceEnabled(false)}
-        >
+        <Button disabled={state.serviceBusy} onPress={() => void state.onServiceEnabled(false)}>
           {T.serviceCancelApproval}
-        </button>
+        </Button>
       )}
       {state.service.state === "enabled" && state.serviceNextWakeDay && (
         <p>
@@ -1055,14 +972,12 @@ function WorkerSection({ state }: { state: SettingsScreenState }) {
           }
         </p>
         {state.notificationPermission === "pending" && (
-          <button
-            className={button}
-            type="button"
+          <Button
             disabled={state.notificationPermissionBusy}
-            onClick={() => void state.onNotificationPermissionRequested()}
+            onPress={() => void state.onNotificationPermissionRequested()}
           >
             {T.notificationPermissionRequest}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -1136,14 +1051,9 @@ function AppSection({ state }: { state: SettingsScreenState }) {
         {S.updates}: {state.updater.availability === "ready" ? stageLabel : T.updatesUnavailable}
       </p>
       {state.updater.availability === "ready" && (
-        <button
-          className={button}
-          type="button"
-          disabled={state.updaterBusy}
-          onClick={() => void state.onCheckUpdates()}
-        >
+        <Button disabled={state.updaterBusy} onPress={() => void state.onCheckUpdates()}>
           {T.checkUpdates}
-        </button>
+        </Button>
       )}
       <label className="flex items-center gap-2">
         <input

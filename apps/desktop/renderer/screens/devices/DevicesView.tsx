@@ -1,3 +1,4 @@
+import { Button } from "@cashu/ui";
 import { T } from "./Devices.strings.js";
 import { LeaderAction } from "./LeaderAction.js";
 import type { DevicesScreenState } from "./useDevicesScreen.js";
@@ -5,8 +6,6 @@ import type { LeaderActionState } from "./useLeaderAction.js";
 
 const control =
   "rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent";
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent";
 
 export function DevicesView({
   state,
@@ -135,14 +134,12 @@ export function DevicesView({
         </select>
       </label>
       {!state.preview && (
-        <button
-          className={button}
-          type="button"
+        <Button
           disabled={!state.target || state.status === "busy" || reviewBlocked}
-          onClick={() => void state.review()}
+          onPress={() => void state.review()}
         >
           {T.preview}
-        </button>
+        </Button>
       )}
       {state.preview && (
         <div className="grid gap-4 rounded-lg border border-border bg-surface-raised p-4">
@@ -184,14 +181,9 @@ export function DevicesView({
             </fieldset>
           )}
           {state.selectionDirty && (
-            <button
-              className={button}
-              type="button"
-              disabled={state.status === "busy"}
-              onClick={() => void state.review()}
-            >
+            <Button disabled={state.status === "busy"} onPress={() => void state.review()}>
               {T.refreshSelection}
-            </button>
+            </Button>
           )}
           <label className="flex items-start gap-2">
             <input
@@ -227,9 +219,7 @@ export function DevicesView({
             />
           </label>
           <div className="flex gap-2">
-            <button
-              className={button}
-              type="button"
+            <Button
               disabled={
                 state.status === "busy" ||
                 state.selectionDirty ||
@@ -237,18 +227,13 @@ export function DevicesView({
                 !state.phrase ||
                 (state.preview.localStartConfirmationRequired && !state.localAck)
               }
-              onClick={() => void state.commit()}
+              onPress={() => void state.commit()}
             >
               {T.remove}
-            </button>
-            <button
-              className={button}
-              type="button"
-              disabled={state.status === "busy"}
-              onClick={() => void state.cancel()}
-            >
+            </Button>
+            <Button disabled={state.status === "busy"} onPress={() => void state.cancel()}>
               {T.cancel}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -258,9 +243,7 @@ export function DevicesView({
       )}
       {state.status === "unknown" && <p role="alert">{T.unknown}</p>}
       {state.status === "unknown" && state.operationId && (
-        <button className={button} type="button" onClick={() => void state.inspect()}>
-          {T.inspect}
-        </button>
+        <Button onPress={() => void state.inspect()}>{T.inspect}</Button>
       )}
     </div>
   );

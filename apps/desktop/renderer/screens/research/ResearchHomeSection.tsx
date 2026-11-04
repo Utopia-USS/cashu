@@ -1,13 +1,10 @@
 import { D } from "@cashu/domain";
 import type { ResearchScreenSnapshot } from "@cashu/store/investments/research-screen";
-import { Amount, DateText, Percent } from "@cashu/ui";
+import { Amount, Button, Card, DateText, Percent } from "@cashu/ui";
 import { researchHomeModel } from "./presentation.js";
 import { S } from "./Research.strings.js";
 import { ResearchValuationFacts } from "./ResearchValuationFacts.js";
 
-const card = "rounded-lg border border-border bg-surface-raised p-4";
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent";
 type HomeProps = {
   data: ResearchScreenSnapshot;
   privacy: boolean;
@@ -31,12 +28,10 @@ function ResearchHomeView({
 }: Omit<HomeProps, "data"> & { model: NonNullable<ReturnType<typeof researchHomeModel>> }) {
   const { data, weak, events, quiet, draftCount, topics, riskSummary } = model;
   return (
-    <section className={card} data-testid="native-research-story">
+    <Card testID="native-research-story">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-strong">{S.title}</h2>
-        <button type="button" className={button} onClick={() => onOpenResearch()}>
-          {S.all}
-        </button>
+        <Button onPress={() => onOpenResearch()}>{S.all}</Button>
       </div>
       {privacy ? (
         <p>{S.hidden}</p>
@@ -46,14 +41,9 @@ function ResearchHomeView({
           {data.macro.status === "current" ? (
             <div className="mt-3 flex flex-wrap gap-2">
               {data.macro.value.map((regime) => (
-                <button
-                  type="button"
-                  key={regime.key}
-                  className={button}
-                  onClick={() => onOpenTopic(`macro_${regime.key}`)}
-                >
+                <Button key={regime.key} onPress={() => onOpenTopic(`macro_${regime.key}`)}>
                   {regime.label}: {regime.state_label}
-                </button>
+                </Button>
               ))}
             </div>
           ) : (
@@ -66,14 +56,12 @@ function ResearchHomeView({
                   <h3 className="font-strong">{S.thesisMoves}</h3>
                   <div className="flex flex-wrap gap-2">
                     {weak.map((row) => (
-                      <button
-                        type="button"
+                      <Button
                         key={row.instrument_id}
-                        className={button}
-                        onClick={() => onOpenAsset(row.instrument_id)}
+                        onPress={() => onOpenAsset(row.instrument_id)}
                       >
                         {row.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -124,14 +112,9 @@ function ResearchHomeView({
                     <h4 className="font-strong">{S.quietTopics}</h4>
                     <div className="flex flex-wrap gap-2">
                       {quiet.map((row) => (
-                        <button
-                          type="button"
-                          key={row.segment}
-                          className={button}
-                          onClick={() => onOpenTopic(row.segment)}
-                        >
+                        <Button key={row.segment} onPress={() => onOpenTopic(row.segment)}>
                           {row.label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -161,6 +144,6 @@ function ResearchHomeView({
           )}
         </>
       )}
-    </section>
+    </Card>
   );
 }

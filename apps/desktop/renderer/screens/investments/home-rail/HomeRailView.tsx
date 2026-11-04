@@ -1,3 +1,4 @@
+import { Button, Card } from "@cashu/ui";
 import type { ReactNode } from "react";
 import { H } from "./HomeRail.strings.js";
 
@@ -50,9 +51,6 @@ export interface HomeRailViewProps {
   };
 }
 
-const card = "grid content-start gap-3 rounded-lg border border-border bg-surface-raised p-4";
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
 const groupTone: Readonly<Record<RailGroup, string>> = {
   risk: "text-negative",
   chance: "text-positive",
@@ -136,19 +134,14 @@ export function HomeRailView({ privacy, signals, alerts }: HomeRailViewProps) {
       : `${H.nothingNew} ${signals.reviewDue ? H.reviewWaits : signals.nextReviewDay ? H.nextReview(signals.nextReviewDay) : ""}`;
   return (
     <div className="grid gap-4 lg:grid-cols-2" data-testid="native-investment-home-rail">
-      <section className={card} aria-labelledby="home-rail-signals">
+      <Card labelledBy="home-rail-signals" className="grid content-start gap-3">
         <header className="flex items-center justify-between gap-3">
           <h2 id="home-rail-signals" className="font-strong">
             {H.signals}
           </h2>
-          <button
-            type="button"
-            className={button}
-            onClick={signals.onAll}
-            disabled={privacy || !signals.navigationAvailable}
-          >
+          <Button onPress={signals.onAll} disabled={privacy || !signals.navigationAvailable}>
             {H.all(signals.total)}
-          </button>
+          </Button>
         </header>
         {privacy ? (
           <p>{H.hidden}</p>
@@ -195,9 +188,7 @@ export function HomeRailView({ privacy, signals, alerts }: HomeRailViewProps) {
                       </span>
                     ))}
                 </div>
-                <button type="button" className={button} onClick={signals.review.onOpen}>
-                  {H.openReview}
-                </button>
+                <Button onPress={signals.review.onOpen}>{H.openReview}</Button>
               </div>
             )}
             {signals.unchanged > 0 && (
@@ -205,20 +196,15 @@ export function HomeRailView({ privacy, signals, alerts }: HomeRailViewProps) {
             )}
           </>
         )}
-      </section>
-      <section className={card} aria-labelledby="home-rail-alerts">
+      </Card>
+      <Card labelledBy="home-rail-alerts" className="grid content-start gap-3">
         <header className="flex items-center justify-between gap-3">
           <h2 id="home-rail-alerts" className="font-strong">
             {H.alerts}
           </h2>
-          <button
-            type="button"
-            className={button}
-            onClick={alerts.onNew}
-            disabled={privacy || !alerts.available}
-          >
+          <Button onPress={alerts.onNew} disabled={privacy || !alerts.available}>
             {H.addNew}
-          </button>
+          </Button>
         </header>
         {privacy ? (
           <p>{H.hidden}</p>
@@ -249,16 +235,11 @@ export function HomeRailView({ privacy, signals, alerts }: HomeRailViewProps) {
           <span className="text-caption text-fg-muted">
             {H.near} · {H.met}
           </span>
-          <button
-            type="button"
-            className={button}
-            onClick={alerts.onAll}
-            disabled={privacy || !alerts.available}
-          >
+          <Button onPress={alerts.onAll} disabled={privacy || !alerts.available}>
             {H.all(alerts.active)}
-          </button>
+          </Button>
         </footer>
-      </section>
+      </Card>
     </div>
   );
 }

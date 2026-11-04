@@ -176,3 +176,27 @@ it("pushes initially nested modal history parent first so closing the child remo
     back.mockRestore();
   }
 });
+
+const visibleTitle = "Visible title";
+it("names the dialog by a visible heading when labelledBy is given", () => {
+  render(
+    <Modal label="Fallback" labelledBy="modal-heading" onClose={() => {}}>
+      <h2 id="modal-heading">{visibleTitle}</h2>
+      <button type="button" aria-label="Action" />
+    </Modal>,
+  );
+  const dialog = screen.getByRole("dialog", { name: "Visible title" });
+  expect(dialog.getAttribute("aria-modal")).toBe("true");
+  expect(dialog.hasAttribute("aria-label")).toBe(false);
+});
+
+it("places the panel by role", () => {
+  render(
+    <Modal label="Drawer" placement="end" onClose={() => {}}>
+      <button type="button" aria-label="Action" />
+    </Modal>,
+  );
+  const panel = screen.getByRole("dialog", { name: "Drawer" });
+  expect(panel.className).toContain("right-0");
+  expect(panel.className).not.toContain("inset-4");
+});

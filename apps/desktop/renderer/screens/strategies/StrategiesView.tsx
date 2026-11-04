@@ -1,13 +1,10 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, DateText, Money, VirtualList } from "@cashu/ui";
+import { Amount, Button, Card, DateText, Money, VirtualList } from "@cashu/ui";
 import type { ReactNode } from "react";
 import { MarkdownDocument } from "./MarkdownDocument.js";
 import { S } from "./Strategies.strings.js";
 import type { StrategiesScreenState } from "./useStrategiesScreen.js";
 
-const card = "rounded-lg border border-border bg-surface-raised p-4";
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent";
 function Rows<T>({
   rows,
   rowKey,
@@ -67,9 +64,9 @@ function SourceLines({ state, text }: { state: StrategiesScreenState; text: stri
 export function StrategySettingsView({ state }: { state: StrategiesScreenState }) {
   if (state.privacy)
     return (
-      <aside className={card}>
+      <Card as="aside">
         <p>{S.privacy}</p>
-      </aside>
+      </Card>
     );
   const { data } = state;
   const status = data.status === "current" ? data.strategy : null;
@@ -80,7 +77,7 @@ export function StrategySettingsView({ state }: { state: StrategiesScreenState }
     missing: S.missingState,
   };
   return (
-    <aside className={`${card} space-y-4`} aria-label={S.validation}>
+    <Card as="aside" label={S.validation} className="space-y-4">
       <h2 className="text-title">{S.main}</h2>
       {status ? (
         <>
@@ -168,27 +165,23 @@ export function StrategySettingsView({ state }: { state: StrategiesScreenState }
             </>
           )}
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={button}
+            <Button
               disabled={state.busy || !data.canReload}
-              onClick={() => {
+              onPress={() => {
                 void state.act("reload");
               }}
             >
               {S.reload}
-            </button>
+            </Button>
             {status.state === "missing" && (
-              <button
-                type="button"
-                className={button}
+              <Button
                 disabled={state.busy || !data.canInit}
-                onClick={() => {
+                onPress={() => {
                   void state.act("init");
                 }}
               >
                 {S.init}
-              </button>
+              </Button>
             )}
           </div>
           {status.state === "missing" && !data.canInit && (
@@ -196,40 +189,34 @@ export function StrategySettingsView({ state }: { state: StrategiesScreenState }
           )}
           {data.paths && (
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={button}
-                onClick={() => {
+              <Button
+                onPress={() => {
                   void state.copy(data.paths?.yaml ?? "");
                 }}
               >
                 {S.copyPath}
-              </button>
-              <button
-                type="button"
-                className={button}
+              </Button>
+              <Button
                 disabled={!status.files.md_exists}
-                onClick={() => {
+                onPress={() => {
                   void state.copy(data.paths?.md ?? "");
                 }}
               >
                 MD
-              </button>
+              </Button>
             </div>
           )}
         </>
       ) : (
         <p>{S.unavailable}</p>
       )}
-      <button
-        type="button"
-        className={button}
-        onClick={() => {
+      <Button
+        onPress={() => {
           void state.copy("/investments-setup");
         }}
       >
         {S.copyCommand}
-      </button>
+      </Button>
       <h3>
         {S.pending} <Amount value={D(String(data.proposals.length))} fractionDigits={0} />
       </h3>
@@ -237,26 +224,19 @@ export function StrategySettingsView({ state }: { state: StrategiesScreenState }
         {(proposal) => (
           <div>
             <p>{proposal.summary}</p>
-            <button
-              type="button"
-              className={button}
+            <Button
               disabled={!state.onProposalOpened}
-              onClick={() => state.onProposalOpened?.(proposal.gid)}
+              onPress={() => state.onProposalOpened?.(proposal.gid)}
             >
               {S.open}
-            </button>
+            </Button>
           </div>
         )}
       </Rows>
       {data.proposals.length > 0 && !state.onProposalOpened && <p>{S.proposalUnavailable}</p>}
-      <button
-        type="button"
-        className={button}
-        aria-expanded={state.history}
-        onClick={() => state.setHistory(!state.history)}
-      >
+      <Button expanded={state.history} onPress={() => state.setHistory(!state.history)}>
         {S.history} <Amount value={D(String(data.versions.length))} fractionDigits={0} />
-      </button>
+      </Button>
       {state.history && (
         <Rows rows={data.versions} rowKey={(v) => String(v.version)} label={S.history}>
           {(version) => (
@@ -269,7 +249,7 @@ export function StrategySettingsView({ state }: { state: StrategiesScreenState }
           )}
         </Rows>
       )}
-    </aside>
+    </Card>
   );
 }
 /** Read-only document workbench. All private prose is suppressed before any document child renders. */
@@ -289,41 +269,38 @@ export function StrategiesView({ state }: { state: StrategiesScreenState }) {
     <main className="space-y-4 p-6" data-testid="native-strategies">
       <header className="flex items-center justify-between gap-3">
         <h1 className="text-headline">{S.title}</h1>
-        <button
-          type="button"
-          className={button}
+        <Button
           disabled={state.busy}
-          onClick={() => {
+          onPress={() => {
             void state.act("refresh");
           }}
         >
           {S.refresh}
-        </button>
+        </Button>
       </header>
       {state.notice && <p role="status">{state.notice}</p>}
       <div className="grid gap-4 lg:grid-cols-3">
-        <nav className={card} aria-label={S.files}>
+        <Card as="nav" label={S.files}>
           <Rows rows={state.tree} rowKey={(r) => r.key} label={S.files}>
             {(row) => (
               <div className={["pl-0", "pl-3", "pl-6", "pl-9"][Math.min(row.depth, 3)]}>
                 {row.kind === "dir" ? (
                   <p className="text-text-muted">{row.title}</p>
                 ) : (
-                  <button
-                    type="button"
-                    className={`${button} w-full text-left ${row.document === current?.document && row.path === current.path ? "bg-accent-muted text-accent" : ""}`}
-                    aria-current={
+                  <Button
+                    className={`w-full text-left ${row.document === current?.document && row.path === current.path ? "bg-accent-muted text-accent" : ""}`}
+                    current={
                       row.document === current?.document && row.path === current.path
                         ? "page"
                         : undefined
                     }
                     disabled={row.path === null}
-                    onClick={() => {
+                    onPress={() => {
                       if (row.path) state.pick({ document: row.document, path: row.path });
                     }}
                   >
                     {row.title}
-                  </button>
+                  </Button>
                 )}
                 {row.main ? (
                   <span>{S.executed}</span>
@@ -336,18 +313,16 @@ export function StrategiesView({ state }: { state: StrategiesScreenState }) {
             )}
           </Rows>
           {data.status === "current" && data.paths && (
-            <button
-              type="button"
-              className={button}
-              onClick={() => {
+            <Button
+              onPress={() => {
                 void state.copy(data.paths?.folder ?? "");
               }}
             >
               {S.copyFolder}
-            </button>
+            </Button>
           )}
-        </nav>
-        <section className={`${card} min-w-0 space-y-4`} aria-label={S.preview}>
+        </Card>
+        <Card label={S.preview} className="min-w-0 space-y-4">
           {data.status !== "current" ? (
             <p>{S.unavailable}</p>
           ) : !current ? (
@@ -356,35 +331,31 @@ export function StrategiesView({ state }: { state: StrategiesScreenState }) {
             <>
               <h2 className="break-words text-title">{current.path}</h2>
               {file?.status === "ready" && file.absolutePath && (
-                <button
-                  type="button"
-                  className={button}
-                  onClick={() => {
+                <Button
+                  onPress={() => {
                     void state.copy(file.absolutePath ?? "");
                   }}
                 >
                   {S.copyPath}
-                </button>
+                </Button>
               )}
               {kind === "yaml" && !state.doc?.executed && <p>{S.notExecuted}</p>}
               {kind === "md" && (
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className={`${button} ${state.mode === "preview" ? "bg-accent-muted text-accent" : ""}`}
-                    aria-pressed={state.mode === "preview"}
-                    onClick={() => state.setMode("preview")}
+                  <Button
+                    className={`${state.mode === "preview" ? "bg-accent-muted text-accent" : ""}`}
+                    pressed={state.mode === "preview"}
+                    onPress={() => state.setMode("preview")}
                   >
                     {S.preview}
-                  </button>
-                  <button
-                    type="button"
-                    className={`${button} ${state.mode === "source" ? "bg-accent-muted text-accent" : ""}`}
-                    aria-pressed={state.mode === "source"}
-                    onClick={() => state.setMode("source")}
+                  </Button>
+                  <Button
+                    className={`${state.mode === "source" ? "bg-accent-muted text-accent" : ""}`}
+                    pressed={state.mode === "source"}
+                    onPress={() => state.setMode("source")}
                   >
                     {S.source}
-                  </button>
+                  </Button>
                 </div>
               )}
               {file?.status === "ready" ? (
@@ -404,7 +375,7 @@ export function StrategiesView({ state }: { state: StrategiesScreenState }) {
               )}
             </>
           )}
-        </section>
+        </Card>
         <StrategySettingsView state={state} />
       </div>
     </main>

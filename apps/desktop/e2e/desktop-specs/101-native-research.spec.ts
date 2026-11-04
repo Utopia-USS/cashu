@@ -111,7 +111,7 @@ test("native Research reads generated events, opens a note, and separates vault 
     await research.getByRole("button", { name: "Notatki", exact: true }).click();
     await expect(research.getByText("Synthetic research fact 1", { exact: true })).toBeVisible();
     await research.getByRole("button", { name: /^Synthetic research fact 1(?:\s|$)/u }).click();
-    const reader = research.getByRole("dialog", { name: "Szczegóły" });
+    const reader = page.getByRole("dialog", { name: "Szczegóły" });
     await expect(reader.getByText("Synthetic research fact 1", { exact: true })).toBeVisible();
     await expect(reader.getByRole("link", { name: "Synthetic publisher" })).toHaveAttribute(
       "href",
@@ -134,7 +134,7 @@ test("native Research reads generated events, opens a note, and separates vault 
       .locator("ul li button")
       .first();
     await firstTopic.click();
-    const drawer = research.getByRole("dialog");
+    const drawer = page.getByRole("dialog");
     const topicLabel = await drawer.getAttribute("aria-label");
     const ownerThesis = "Synthetic owner thesis typed in Electron101";
     const ownerView = "Synthetic market assessment typed in Electron101";
@@ -177,10 +177,10 @@ test("native Research reads generated events, opens a note, and separates vault 
     }
     await expect(finalFixtureNote).toBeVisible();
     await finalFixtureNote.click();
-    await expect(research.getByRole("dialog", { name: "Szczegóły" })).toContainText(
+    await expect(page.getByRole("dialog", { name: "Szczegóły" })).toContainText(
       "Synthetic research fact 100",
     );
-    await research
+    await page
       .getByRole("dialog", { name: "Szczegóły" })
       .getByRole("button", { name: "Zamknij" })
       .click();
@@ -193,7 +193,7 @@ test("native Research reads generated events, opens a note, and separates vault 
     await research.getByRole("button", { name: "Kandydaci", exact: true }).click();
     await expect(research.getByText("Synthetic research fact 3", { exact: true })).toBeVisible();
     await research.getByRole("button", { name: "Synthetic research fact 3" }).click();
-    const candidate = research.getByRole("dialog", { name: "Szczegóły" });
+    const candidate = page.getByRole("dialog", { name: "Szczegóły" });
     await expect(candidate.getByRole("button", { name: "Obserwuj" })).toBeDisabled();
     await expect(
       candidate.getByText("Nie można potwierdzić instrumentu dla tego kandydata"),
@@ -204,7 +204,7 @@ test("native Research reads generated events, opens a note, and separates vault 
     await expect(candidate.getByRole("button", { name: "Odrzuć" })).toBeVisible();
     await candidate.getByRole("button", { name: "Zamknij" }).click();
     await research.getByRole("button", { name: "Synthetic research fact 4" }).click();
-    const resolved = research.getByRole("dialog", { name: "Szczegóły" });
+    const resolved = page.getByRole("dialog", { name: "Szczegóły" });
     await expect(resolved.getByRole("button", { name: "Obserwuj" })).toBeEnabled();
     await resolved.getByRole("button", { name: "Obserwuj" }).click();
     await expect(resolved.getByRole("button", { name: "Cofnij obserwowanie" })).toBeVisible();

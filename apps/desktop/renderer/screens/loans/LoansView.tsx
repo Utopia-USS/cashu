@@ -1,15 +1,11 @@
 import { Money as MoneyValue } from "@cashu/domain";
 import { S as F } from "@cashu/i18n/loans/Drawers.strings";
 import { S } from "@cashu/i18n/loans/Loans.strings";
-import { DateText, LineChart, Money } from "@cashu/ui";
+import { Button, DateText, LineChart, Money } from "@cashu/ui";
 import { useRef } from "react";
 import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { L } from "./Loans.strings.js";
 import type { LoansState } from "./useLoansScreen.js";
-
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
-const selectedButton = `${button} aria-pressed:bg-accent-muted aria-pressed:font-strong aria-pressed:text-accent`;
 
 export interface LoansViewProps {
   state: LoansState;
@@ -23,23 +19,16 @@ export function LoansView({ state }: LoansViewProps) {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-headline font-strong">{L.title}</h1>
         <div className="flex gap-3">
-          <button
-            type="button"
-            className={button}
-            disabled={state.privacy || state.busy}
-            onClick={state.openLoan}
-          >
+          <Button disabled={state.privacy || state.busy} onPress={state.openLoan}>
             {L.add}
-          </button>
+          </Button>
           {state.budgetOn && (
-            <button
-              type="button"
-              className={button}
+            <Button
               disabled={loan === null || state.privacy || state.busy}
-              onClick={state.openPayment}
+              onPress={state.openPayment}
             >
               {L.payments}
-            </button>
+            </Button>
           )}
         </div>
       </header>
@@ -91,19 +80,17 @@ export function LoansView({ state }: LoansViewProps) {
               className="my-3 flex flex-wrap gap-1 rounded-sm border border-border bg-surface-sunken p-0.5"
             >
               {[365, 1825, 3650, null].map((days) => (
-                <button
+                <Button
                   key={days ?? "all"}
-                  type="button"
-                  className={selectedButton}
-                  aria-pressed={state.range === days}
-                  onClick={() => state.setRange(days)}
+                  pressed={state.range === days}
+                  onPress={() => state.setRange(days)}
                 >
                   {days === null
                     ? L.max
                     : days === 365
                       ? S.oneYear
                       : S.years(days === 1825 ? 5 : 10)}
-                </button>
+                </Button>
               ))}
             </fieldset>
             <LineChart

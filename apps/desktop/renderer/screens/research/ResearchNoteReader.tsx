@@ -4,7 +4,7 @@ import {
   researchScreenQueries,
 } from "@cashu/store/investments/research-screen";
 import { useCommand, useProfile, useQuery } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
+import { Button, Modal, useUiEnv } from "@cashu/ui";
 import { useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { commandFailure, type GuardedOutcome, useDurableCommands } from "../useDurableCommand.js";
@@ -57,19 +57,10 @@ function BoundNote(props: Parameters<typeof ResearchNoteReader>[0]) {
   };
   if (result.status !== "current" || !result.note)
     return (
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label={S.details}
-        className="fixed inset-0 z-50 grid place-items-center bg-overlay"
-      >
-        <div className="rounded-lg bg-surface-raised p-6">
-          <p>{S.unavailable}</p>
-          <button type="button" onClick={props.onClose}>
-            {S.close}
-          </button>
-        </div>
-      </section>
+      <Modal label={S.details} onClose={props.onClose} placement="center">
+        <p>{S.unavailable}</p>
+        <Button onPress={props.onClose}>{S.close}</Button>
+      </Modal>
     );
   return (
     <>

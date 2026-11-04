@@ -11,6 +11,13 @@ import {
 import { createPortal } from "react-dom";
 import type { ModalProps } from "./Modal.types.js";
 
+const placements = {
+  fill: "inset-4 rounded-lg border border-border bg-surface-raised p-4",
+  center:
+    "inset-4 m-auto h-fit max-h-[calc(100%-2rem)] max-w-3xl rounded-lg border border-border bg-surface-raised p-6 shadow-lg",
+  end: "inset-y-0 right-0 w-full max-w-xl border-l border-border bg-surface p-6 shadow-xl",
+  screen: "inset-0 bg-surface",
+} as const;
 const focusable = "a[href], button, input, select, textarea, [tabindex]";
 let nextModalId = 0;
 let ownBacks = 0;
@@ -58,12 +65,14 @@ function handleBack() {
     ?.close();
 }
 
-/** Desktop modal shell with one focus, keyboard, scroll and browser-history controller. */
+/** Desktop modal dialog: traps Tab, closes on Escape, backdrop or browser back, restores focus to the opener. */
 export function Modal({
   label,
+  labelledBy,
   onClose,
   children,
   className = "",
+  placement = "fill",
   focus = "first",
   panelRef,
   onKeyDown,
@@ -220,9 +229,10 @@ export function Modal({
         data-cashu-modal-parent={parentModalId ?? undefined}
         data-cashu-modal-depth={depth}
         aria-modal="true"
-        aria-label={label}
+        aria-label={labelledBy ? undefined : label}
+        aria-labelledby={labelledBy}
         onKeyDown={onKeyDown}
-        className={`fixed inset-4 overflow-auto rounded-lg border border-border bg-surface-raised p-4 ${className}`}
+        className={`fixed overflow-auto ${placements[placement]} ${className}`}
         style={{ zIndex: `calc(var(--modal-panel-layer) + ${depth} * var(--modal-layer-step))` }}
       >
         <ModalParent.Provider value={modalId}>{children}</ModalParent.Provider>

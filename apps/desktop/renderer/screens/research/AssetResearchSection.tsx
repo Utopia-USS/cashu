@@ -1,5 +1,5 @@
 import { D } from "@cashu/domain";
-import { Amount, DateText, Percent } from "@cashu/ui";
+import { Amount, Button, DateText, Percent } from "@cashu/ui";
 import { useEffect, useRef } from "react";
 import {
   type researchAssetModel,
@@ -8,9 +8,6 @@ import {
   researchRunStatus,
 } from "./presentation.js";
 import { S } from "./Research.strings.js";
-
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent";
 
 /** Render-only asset slot; the Block owns Store reads, note age selection, and expansion state. */
 export function AssetResearchSection({
@@ -125,11 +122,7 @@ export function AssetResearchSection({
               ))}
             </ul>
           )}
-          {hasOlder && (
-            <button type="button" className={button} onClick={onShowOlder}>
-              {S.showOlder}
-            </button>
-          )}
+          {hasOlder && <Button onPress={onShowOlder}>{S.showOlder}</Button>}
         </>
       )}
     </section>

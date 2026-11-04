@@ -11,8 +11,10 @@ const sizes = {
   md: "px-3 py-2 text-body",
   lg: "px-4 py-3 text-title",
 } as const;
+const selected =
+  "aria-pressed:bg-accent-muted aria-pressed:text-accent aria-[current=page]:bg-accent-muted aria-[current=page]:text-accent";
 
-/** Action button with semantic intent and a visible keyboard focus ring. */
+/** Action button with semantic intent, a selected look for toggles and tabs, and a visible keyboard focus ring. */
 export function Button({
   children,
   onPress,
@@ -21,13 +23,25 @@ export function Button({
   disabled,
   type = "button",
   className = "",
+  label,
+  pressed,
+  current,
+  expanded,
+  title,
+  ref,
 }: ButtonProps) {
   return (
     <button
+      ref={ref}
       type={type}
       disabled={disabled}
       onClick={onPress}
-      className={`rounded-sm border font-strong disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus ${variants[variant]} ${sizes[size]} ${className}`}
+      aria-label={label}
+      aria-pressed={pressed}
+      aria-current={current}
+      aria-expanded={expanded}
+      title={title}
+      className={`rounded-sm border font-strong disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus ${variants[variant]} ${selected} ${sizes[size]} ${className}`}
     >
       {children}
     </button>

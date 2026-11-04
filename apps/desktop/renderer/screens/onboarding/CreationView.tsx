@@ -1,11 +1,8 @@
 import { PRIVACY, S as Wizard } from "@cashu/i18n/core/Wizard.strings";
+import { Button, Card, Modal } from "@cashu/ui";
 import { type FormEvent, useEffect, useRef } from "react";
 import { C } from "./Creation.strings.js";
 import type { CreationScreenState } from "./useCreationScreen.js";
-
-const card = "grid gap-5 rounded-lg border border-border bg-surface-raised p-6";
-const button =
-  "rounded-sm border border-border bg-surface px-4 py-2 hover:bg-surface-sunken disabled:opacity-50";
 
 export function CreationView({ state }: { state: CreationScreenState }) {
   const nameInput = useRef<HTMLInputElement>(null);
@@ -25,23 +22,12 @@ export function CreationView({ state }: { state: CreationScreenState }) {
     if (state.phase === "privacy") state.onPrepare();
     else state.onNext();
   };
-  return (
+  const content = (
     <main
       className={state.mode === "first" ? "min-h-screen bg-surface p-6 text-fg" : "p-6 text-fg"}
       data-testid="native-creation"
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && state.canClose && state.onClosed) {
-          event.preventDefault();
-          state.onClosed();
-        }
-      }}
     >
-      <div
-        className="mx-auto grid max-w-2xl gap-5"
-        role="dialog"
-        aria-modal={state.mode === "additional" ? true : undefined}
-        aria-label={state.mode === "additional" ? Wizard.newProfile : Wizard.welcome}
-      >
+      <div className="mx-auto grid max-w-2xl gap-5">
         <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-headline font-strong">
@@ -50,25 +36,21 @@ export function CreationView({ state }: { state: CreationScreenState }) {
             <p className="text-fg-muted">{Wizard.leadLocal}</p>
           </div>
           {state.mode === "additional" && state.canClose && state.onClosed && (
-            <button type="button" className={button} onClick={state.onClosed}>
-              {Wizard.closeEsc}
-            </button>
+            <Button onPress={state.onClosed}>{Wizard.closeEsc}</Button>
           )}
         </header>
         {state.phase === "checking" && <p role="status">{C.checking}</p>}
         {state.phase === "unavailable" && <p role="alert">{C.unavailable}</p>}
         {state.phase === "refused" && (
-          <section className={card} role="alert">
+          <Card role="alert" padding="lg" className="grid gap-5">
             <p>{state.refusal === "prepare_expired" ? C.expired : C.refused}</p>
-            <button type="button" className={button} onClick={state.onCheckStatus}>
-              {C.checkStatus}
-            </button>
-          </section>
+            <Button onPress={state.onCheckStatus}>{C.checkStatus}</Button>
+          </Card>
         )}
         {(["profile", "modules", "privacy"] as const).includes(
           state.phase as "profile" | "modules" | "privacy",
         ) && (
-          <form className={card} onSubmit={submit}>
+          <Card as="form" onSubmit={submit} padding="lg" className="grid gap-5">
             <p className="text-caption text-fg-muted">
               {state.phase === "profile"
                 ? Wizard.stepOf(1)
@@ -192,25 +174,22 @@ export function CreationView({ state }: { state: CreationScreenState }) {
             )}
             <div className="flex justify-between gap-3">
               {state.phase !== "profile" ? (
-                <button type="button" className={button} onClick={state.onBack}>
-                  {Wizard.back}
-                </button>
+                <Button onPress={state.onBack}>{Wizard.back}</Button>
               ) : (
                 <span />
               )}
-              <button
+              <Button
                 type="submit"
-                className={button}
                 disabled={state.phase === "privacy" && state.values.mcpPrivacy === null}
               >
                 {state.phase === "privacy" ? C.recoveryTitle : Wizard.next}
-              </button>
+              </Button>
             </div>
-          </form>
+          </Card>
         )}
         {state.phase === "preparing" && <p role="status">{C.preparing}</p>}
         {state.phase === "recovery" && (
-          <section className={card}>
+          <Card padding="lg" className="grid gap-5">
             <h2 className="text-title">{C.recoveryTitle}</h2>
             <p>{C.recoveryHint}</p>
             <p
@@ -227,15 +206,10 @@ export function CreationView({ state }: { state: CreationScreenState }) {
               />
               {C.backupConfirmed}
             </label>
-            <button
-              type="button"
-              className={button}
-              disabled={!state.backupConfirmed}
-              onClick={state.onCommit}
-            >
+            <Button disabled={!state.backupConfirmed} onPress={state.onCommit}>
               {C.commit}
-            </button>
-          </section>
+            </Button>
+          </Card>
         )}
         {state.phase === "committing" && <p role="status">{C.committing}</p>}
         {state.phase === "verifying" && <p role="status">{C.verifying}</p>}
@@ -255,7 +229,7 @@ export function CreationView({ state }: { state: CreationScreenState }) {
             | "workspace_unknown"
             | "workspace_unavailable",
         ) && (
-          <section className={card} role="status">
+          <Card role="status" padding="lg" className="grid gap-5">
             <h2 className="text-title">{C.workspaceChoice}</h2>
             {state.phase === "workspace_unavailable" && <p>{C.workspaceUnavailable}</p>}
             {state.phase === "workspace_failed" && <p>{C.workspaceFailed}</p>}
@@ -289,50 +263,46 @@ export function CreationView({ state }: { state: CreationScreenState }) {
             <div className="flex gap-3">
               {(state.phase === "workspace_ready" || state.phase === "workspace_failed") &&
                 state.workspaceStatus?.availability === "ready" && (
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={!state.workspaceInspected}
-                    onClick={state.onWorkspaceApply}
-                  >
+                  <Button disabled={!state.workspaceInspected} onPress={state.onWorkspaceApply}>
                     {state.phase === "workspace_ready" ? C.workspaceApply : C.workspaceRetry}
-                  </button>
+                  </Button>
                 )}
               {(state.phase === "workspace_unknown" || state.phase === "workspace_unavailable") && (
-                <button type="button" className={button} onClick={state.onWorkspaceInspect}>
-                  {C.workspaceCheck}
-                </button>
+                <Button onPress={state.onWorkspaceInspect}>{C.workspaceCheck}</Button>
               )}
-              <button type="button" className={button} onClick={state.onWorkspaceSkip}>
-                {C.workspaceSkip}
-              </button>
+              <Button onPress={state.onWorkspaceSkip}>{C.workspaceSkip}</Button>
             </div>
-          </section>
+          </Card>
         )}
         {(state.phase === "pending" || state.phase === "unknown") && (
-          <section className={card} role="status">
+          <Card role="status" padding="lg" className="grid gap-5">
             <p>{state.phase === "pending" ? C.pending : C.unknown}</p>
             {state.stage && <p className="text-fg-muted">{stageText[state.stage]}</p>}
-            <button
-              type="button"
-              className={button}
-              disabled={state.checkingStatus}
-              onClick={state.onCheckStatus}
-            >
+            <Button disabled={state.checkingStatus} onPress={state.onCheckStatus}>
               {state.checkingStatus ? C.checkingStatus : C.checkStatus}
-            </button>
-          </section>
+            </Button>
+          </Card>
         )}
         {state.phase === "restart_possible" && (
-          <section className={card} role="status">
+          <Card role="status" padding="lg" className="grid gap-5">
             <p>{C.restartPossible}</p>
-            <button type="button" className={button} onClick={state.onRestart}>
-              {C.restart}
-            </button>
-          </section>
+            <Button onPress={state.onRestart}>{C.restart}</Button>
+          </Card>
         )}
         {state.phase === "ready" && <p role="status">{C.ready}</p>}
       </div>
     </main>
+  );
+  if (state.mode !== "additional") return content;
+  return (
+    <Modal
+      label={Wizard.newProfile}
+      placement="screen"
+      onClose={() => {
+        if (state.canClose) state.onClosed?.();
+      }}
+    >
+      {content}
+    </Modal>
   );
 }

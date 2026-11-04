@@ -1,3 +1,4 @@
+import { Button } from "@cashu/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { T } from "./Pairing.strings.js";
 
@@ -22,9 +23,6 @@ export type PairingViewState =
   | { kind: "completed"; onCreate(): void }
   | { kind: "refused" | "expired"; onCreate(): void };
 
-const button =
-  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent";
-
 export function PairingView({ state }: { state: PairingViewState }) {
   return (
     <section className="grid gap-4" aria-labelledby="pairing-title">
@@ -40,9 +38,9 @@ export function PairingView({ state }: { state: PairingViewState }) {
             <QRCodeSVG value={state.qr} size={232} level="M" title={T.qrLabel} />
           </div>
           <p>{T.pasteHint}</p>
-          <button className={button} type="button" disabled={!state.canCopy} onClick={state.onCopy}>
+          <Button disabled={!state.canCopy} onPress={state.onCopy}>
             {T.copy}
-          </button>
+          </Button>
           <p>
             {T.expiry} {state.expiresAt}
           </p>
@@ -64,22 +62,15 @@ export function PairingView({ state }: { state: PairingViewState }) {
             />
           </label>
           <div className="flex gap-2">
-            <button
-              className={button}
-              type="button"
+            <Button
               disabled={state.code.length !== 6 || state.submitting}
-              onClick={state.onConfirm}
+              onPress={state.onConfirm}
             >
               {T.confirm}
-            </button>
-            <button
-              className={button}
-              type="button"
-              disabled={state.submitting}
-              onClick={state.onCancel}
-            >
+            </Button>
+            <Button disabled={state.submitting} onPress={state.onCancel}>
               {T.cancel}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -87,9 +78,7 @@ export function PairingView({ state }: { state: PairingViewState }) {
       {state.kind === "unknown" && (
         <div className="grid gap-2">
           <p role="alert">{T.unknown}</p>
-          <button className={button} type="button" onClick={state.onInspect}>
-            {T.inspect}
-          </button>
+          <Button onPress={state.onInspect}>{T.inspect}</Button>
         </div>
       )}
       {state.kind === "completed" && <p role="status">{T.complete}</p>}
@@ -98,11 +87,7 @@ export function PairingView({ state }: { state: PairingViewState }) {
       {(state.kind === "idle" ||
         state.kind === "completed" ||
         state.kind === "refused" ||
-        state.kind === "expired") && (
-        <button className={button} type="button" onClick={state.onCreate}>
-          {T.create}
-        </button>
-      )}
+        state.kind === "expired") && <Button onPress={state.onCreate}>{T.create}</Button>}
     </section>
   );
 }
