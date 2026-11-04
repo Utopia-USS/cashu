@@ -66,14 +66,14 @@ export async function syncWorkerBudget(deps: {
     return { status: "failed", code: "budget_sync_failed", stats: { days } };
   }
   guard();
+  const errors = result.errors ?? [];
+  if (errors.some((error) => error.includes("429") || error.toLowerCase().includes("rate limit")))
+    book.throttled_until = new Date(now + BANK_BACKOFF_MS).toISOString();
   if (!result.ok) {
     book.last_status = "failed";
     await deps.save();
     return { status: "failed", code: "budget_sync_failed", stats: { days } };
   }
-  const errors = result.errors ?? [];
-  if (errors.some((error) => error.includes("429") || error.toLowerCase().includes("rate limit")))
-    book.throttled_until = new Date(now + BANK_BACKOFF_MS).toISOString();
   book.last_status = errors.length === 0 ? "ok" : "partial";
   if (errors.length === 0) book.last_success = new Date(now).toISOString();
   await deps.save();

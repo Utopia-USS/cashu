@@ -22,6 +22,7 @@ function budgetBindings(
     state,
     ownership: f.bindings.ownership,
     authority: (v) => f.bindings.authority(v),
+    fetchAuthority: (v) => f.bindings.authority(v),
     language: (v) => f.bindings.language(v),
     budget: port,
   };
@@ -82,6 +83,32 @@ describe("native bank worker durability", () => {
       f.advance(BANK_BACKOFF_MS - BANK_INTERVAL_MS);
       await worker.tick(true);
       expect(calls).toBe(2);
+    } finally {
+      await worker.stop();
+      await f.close();
+    }
+  });
+  it("persists 429 backoff even when the transport reports an unsuccessful result", async () => {
+    const f = await workerFixture({ modules: ["budget"] });
+    let calls = 0;
+    const port: BudgetSyncPort = {
+      configured: () => true,
+      hasSavedSessions: () => true,
+      async sync() {
+        calls++;
+        return { ok: false, errors: ["synthetic HTTP 429"] };
+      },
+    };
+    let worker = new HostWorker(f.context, budgetBindings(f, port));
+    try {
+      await worker.tick();
+      const book = Object.values((await f.bindings.state.load()).budget)[0];
+      expect(Date.parse(book?.throttled_until ?? "") - f.time()).toBe(BANK_BACKOFF_MS);
+      await worker.stop();
+      f.advance(BANK_INTERVAL_MS);
+      worker = new HostWorker(f.context, budgetBindings(f, port));
+      await worker.tick(true);
+      expect(calls).toBe(1);
     } finally {
       await worker.stop();
       await f.close();

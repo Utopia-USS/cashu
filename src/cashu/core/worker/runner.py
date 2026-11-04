@@ -25,7 +25,7 @@ from ..db import get_session
 from . import budget as budget_glue
 from . import connectors as connectors_glue
 from . import investments as inv
-from . import notifications
+from . import notifications, ownership
 from . import state as worker_state
 from .notifier import Notifier
 from .schedule import local_now
@@ -230,28 +230,47 @@ def _jobs(report, notifier, offline, budget, now, as_of, sources, lock_wait, ses
     # (positions, rules, notifications), like the in-app "run now" (sync, then the check).
     for profile in everyone:
         _checkpoint()
-        job = _connectors(profile, enabled[profile.id], offline, notifier, now)
+        job = (
+            _connectors(profile, enabled[profile.id], offline, notifier, now)
+            if ownership.python_owns(CONNECTORS_FETCH)
+            else JobResult(CONNECTORS_FETCH, "skipped", profile.slug, code="native_owner")
+        )
         if job is not None:
             report.jobs.append(job)
     if investors:
         _checkpoint()
-        report.jobs += _investments(offline, as_of, sources, lock_wait)
-        if not offline:  # performance history of sold instruments + benchmark (housekeeping, F6)
-            _checkpoint()
-            backfilled = inv.backfill_prices(as_of=as_of, sources=sources)
-            if backfilled and (backfilled.get("error") or backfilled.get("errors")):
-                _log.warning("price backfill: %s", backfilled)
+        if ownership.python_owns(INVESTMENTS_DAILY):
+            report.jobs += _investments(offline, as_of, sources, lock_wait)
+            if not offline:  # performance history of sold instruments + benchmark (housekeeping, F6)
+                _checkpoint()
+                backfilled = inv.backfill_prices(as_of=as_of, sources=sources)
+                if backfilled and (backfilled.get("error") or backfilled.get("errors")):
+                    _log.warning("price backfill: %s", backfilled)
+        else:
+            report.jobs.append(JobResult(INVESTMENTS_DAILY, "skipped", code="native_owner"))
     if budgeters:
         for profile in budgeters:
             _checkpoint()
-            report.jobs.append(_budget(profile, budget, now, state, save, legacy_owner))
+            report.jobs.append(
+                _budget(profile, budget, now, state, save, legacy_owner)
+                if ownership.python_owns(BUDGET_SYNC)
+                else JobResult(BUDGET_SYNC, "skipped", profile.slug, code="native_owner")
+            )
     if investors:
         for profile in investors:
             _checkpoint()
-            report.jobs.append(_notify(profile, notifier, now, session_factory))
+            report.jobs.append(
+                _notify(profile, notifier, now, session_factory)
+                if ownership.python_owns(NOTIFICATIONS)
+                else JobResult(NOTIFICATIONS, "skipped", profile.slug, code="native_owner")
+            )
         for profile in investors:
             _checkpoint()
-            job = _digest(profile, notifier, now.date(), state, save, session_factory)
+            job = (
+                _digest(profile, notifier, now.date(), state, save, session_factory)
+                if ownership.python_owns(DIGEST)
+                else JobResult(DIGEST, "skipped", profile.slug, code="native_owner")
+            )
             if job is not None:
                 report.jobs.append(job)
 

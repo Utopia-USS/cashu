@@ -9,7 +9,8 @@
 // its localized texts (S56d).
 import { execFileSync } from "node:child_process";
 import { lstatSync, realpathSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
 import { connectHost, HostBusyError, HostConnectError, RefusalError } from "@cashu/node-host";
 import {
@@ -17,10 +18,15 @@ import {
   packagedBuildId,
   readBundleIdentity,
 } from "@cashu/node-host/bundle-identity";
+import { devicePreferences } from "@cashu/store/device";
+import { runQuery } from "@cashu/store/query";
 import { startLocalHost } from "./host.js";
+import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
+import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { currentRuntime } from "./runtime.js";
 import { hostUpdateBridge } from "./updateBridge.js";
+import { createProductionWorkerBindings } from "./worker/production.js";
 
 const USAGE_EXIT = 64;
 const NOT_RUNNING_EXIT = 3;
@@ -148,6 +154,33 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
     const runtime = checkedRuntime(args, io);
     switch (args.command) {
       case "run": {
+        const home = io.env.HOME || homedir();
+        const defaultDir =
+          process.platform === "darwin"
+            ? join(home, "Library", "Application Support", "cashU")
+            : process.platform === "win32"
+              ? join(io.env.APPDATA || join(home, "AppData", "Roaming"), "cashU")
+              : join(io.env.XDG_DATA_HOME || join(home, ".local", "share"), "cashu");
+        const sourceRuntime = currentRuntime();
+        const assertNativeSourceAdmission = nativeSourceAdmission({
+          dataDir: args.dataDir,
+          projectRoot: sourceRuntime.checkout ?? sourceRuntime.dir,
+          home,
+          env: io.env,
+          platform: process.platform,
+          explicitDataDir: resolve(args.dataDir) !== resolve(defaultDir),
+        });
+        const assertAdmission = () => {
+          assertNativeSourceAdmission();
+          if (classifyNativeCreationStartup(args.dataDir) !== "ready")
+            throw new Error("worker_native_admission_unavailable");
+        };
+        const systemLanguage: "pl" | "en" = Intl.DateTimeFormat()
+          .resolvedOptions()
+          .locale.toLowerCase()
+          .startsWith("pl")
+          ? "pl"
+          : "en";
         const updateBridge =
           runtime.fingerprint === undefined
             ? undefined
@@ -161,7 +194,41 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               kind: "native-production",
               factory: new ProductionVaultSourceFactory(args.dataDir),
             },
+            assertNativeSourceAdmission,
             lan: { kind: "local" },
+            worker: (context, notifications, queue) => {
+              assertAdmission();
+              let notifier: ReturnType<NonNullable<typeof notifications>["notifier"]> = null;
+              // On macOS, the checked helper routes activation into Electron. Other platform
+              // click routing is still unavailable and must not silently discard a click.
+              if (process.platform === "darwin") {
+                try {
+                  notifier = notifications?.notifier(() => {}) ?? null;
+                } catch {
+                  notifier = null;
+                }
+              }
+              return createProductionWorkerBindings(context, {
+                dataDir: args.dataDir,
+                assertAdmission,
+                strategyDirectory: (vault) => vault.native?.strategyDirectoryAuthority() ?? null,
+                canFetchPublicMarket: (vault) => vault.native?.canFetchPublicMarket() ?? false,
+                language: () => {
+                  try {
+                    const pinned = runQuery(
+                      context.stores.device.store,
+                      devicePreferences,
+                      undefined,
+                    ).value.languagePin;
+                    return pinned === "pl" || pinned === "en" ? pinned : systemLanguage;
+                  } catch {
+                    return systemLanguage;
+                  }
+                },
+                ...(queue === undefined ? {} : { notifications: queue }),
+                ...(notifier === null ? {} : { notifier }),
+              });
+            },
             ...(args.lingerMs === undefined ? {} : { lingerMs: args.lingerMs }),
             ...(runtime.bundle === undefined ? {} : { bundlePath: runtime.bundle }),
           });

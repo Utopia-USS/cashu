@@ -31,6 +31,7 @@ from cashu.core import locks, profiles
 from cashu.core.api import utc_iso
 from cashu.core.db import get_session
 from cashu.core.models import Profile, ProfileModule, utcnow
+from cashu.core.worker import ownership as worker_ownership
 
 from ..domain import (
     AliasNamespace,
@@ -303,6 +304,8 @@ def run_backfill(
     :class:`BackfillBusy` while another backfill runs."""
     try:
         with locks.run_lock(LOCK_NAME, wait=lock_wait):
+            if not worker_ownership.python_owns("investments.daily"):
+                raise BackfillBusy("daily owner is native")
             return _run(profile_ids, as_of, sources, session_factory, clock)
     except locks.LockBusy as e:
         raise BackfillBusy(str(e)) from None

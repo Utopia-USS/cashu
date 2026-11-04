@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   HOST_PROTOCOL,
@@ -8,10 +8,63 @@ import {
 import { connectHost } from "@cashu/node-host";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "./host.js";
+import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { cleanup, tempDir } from "./testing/harness.js";
 
 afterEach(cleanup);
+
+it.each(["finanse.db", "cashu.db-wal"])(
+  "refuses zero-vault Create startup when selected data contains %s",
+  async (name) => {
+    const dataDir = tempDir();
+    writeFileSync(join(dataDir, name), "synthetic", { mode: 0o600 });
+    await expect(
+      startLocalHost({
+        dataDir,
+        home: tempDir(),
+        vaultSource: {
+          kind: "native-production",
+          factory: new ProductionVaultSourceFactory(dataDir),
+        },
+        launcher: false,
+        python: null,
+      }),
+    ).rejects.toThrow("legacy_python_db_awaits_s62");
+    expect(existsSync(join(dataDir, "native", "v1", "creation.json"))).toBe(false);
+  },
+);
+
+it("refuses a pre-rename source root before opening zero-vault Create", async () => {
+  const dataDir = tempDir();
+  const home = tempDir();
+  const projectRoot = tempDir();
+  const legacyRoot = join(home, "Library", "Application Support", "finanse");
+  mkdirSync(legacyRoot, { recursive: true, mode: 0o700 });
+  writeFileSync(join(legacyRoot, "finanse.db"), "synthetic", { mode: 0o600 });
+  const assertNativeSourceAdmission = nativeSourceAdmission({
+    dataDir,
+    projectRoot,
+    home,
+    env: {},
+    platform: "darwin",
+    explicitDataDir: false,
+  });
+  await expect(
+    startLocalHost({
+      dataDir,
+      home,
+      vaultSource: {
+        kind: "native-production",
+        factory: new ProductionVaultSourceFactory(dataDir),
+      },
+      assertNativeSourceAdmission,
+      launcher: false,
+      python: null,
+    }),
+  ).rejects.toThrow("legacy_python_db_awaits_s62");
+  expect(existsSync(join(dataDir, "native", "v1", "creation.json"))).toBe(false);
+});
 
 it("serves clean first-run Create under the real host lock with zero vaults", async () => {
   const dataDir = tempDir();

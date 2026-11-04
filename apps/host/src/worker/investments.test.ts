@@ -36,6 +36,7 @@ it("keeps backfill network outside the real vault queue and refuses cache mutati
     state: f.bindings.state,
     ownership: f.bindings.ownership,
     authority: (v) => f.bindings.authority(v),
+    fetchAuthority: (v) => f.bindings.authority(v),
     language: (v) => f.bindings.language(v),
     investments: {
       prices: f.prices,

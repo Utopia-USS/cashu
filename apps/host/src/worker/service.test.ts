@@ -133,6 +133,7 @@ function online(
     state: f.bindings.state,
     ownership: f.bindings.ownership,
     authority: (v) => f.bindings.authority(v),
+    fetchAuthority: (v) => f.bindings.authority(v),
     language: (v) => f.bindings.language(v),
     investments: {
       prices: ports.prices,
@@ -171,6 +172,24 @@ it("stays off by default and safe mode never starts a job", async () => {
   } finally {
     await off.stop();
     await safe.stop();
+    await f.close();
+  }
+});
+it("projects unavailable job metadata without a synthetic run or changing due state", async () => {
+  const f = await workerFixture();
+  const worker = new HostWorker(f.context, {
+    ...f.bindings,
+    unavailable: (_vault, job) =>
+      job === "investments.daily" ? "file_authority_unavailable" : null,
+  });
+  try {
+    expect(worker.status().jobs).toHaveLength(0);
+    expect(worker.status().unavailable).toEqual([
+      { job: "investments.daily", ordinal: 0, code: "file_authority_unavailable" },
+    ]);
+    expect((await f.bindings.state.load()).runs).toEqual({});
+  } finally {
+    await worker.stop();
     await f.close();
   }
 });

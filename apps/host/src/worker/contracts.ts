@@ -73,7 +73,7 @@ interface WorkerAuthority {
 }
 interface ExclusiveJobOwnership {
   /** Already-exclusive local runtime ownership, supplied after a genuine drain/handover. */
-  isExclusive(job: WorkerJob): boolean;
+  isExclusive(job: WorkerJob, vault: OpenVault): boolean;
 }
 export interface WorkerNotification {
   readonly vaultId: string;
@@ -122,13 +122,18 @@ interface InvestmentWorkerPorts {
 export interface WorkerBindings {
   readonly state: WorkerStatePort;
   readonly ownership: ExclusiveJobOwnership;
+  /** Current local append capability, independent of remote fetch leadership. */
   authority(vault: OpenVault): WorkerAuthority | null;
+  /** Fresh action-specific leadership. Missing means no bank or public network request. */
+  fetchAuthority?(vault: OpenVault, job: WorkerJob): WorkerAuthority | null;
   readonly investments?: InvestmentWorkerPorts;
   readonly budget?: BudgetSyncPort;
   readonly notifier?: WorkerNotifier;
   readonly offline?: boolean;
   readonly schedule?: { readonly hour: number; readonly minute: number };
   language(vault: OpenVault): "pl" | "en";
+  /** Metadata-only current eligibility. It never records a run or changes due policy. */
+  unavailable?(vault: OpenVault, job: WorkerJob): string | null;
 }
 export interface WorkerStatus {
   readonly state: "off" | "safe-mode" | "idle" | "running" | "stopped" | "error";
@@ -136,6 +141,11 @@ export interface WorkerStatus {
   readonly nextRunAt: string | null;
   readonly lastTickAt: string | null;
   readonly jobs: readonly ({ readonly job: WorkerJob; readonly ordinal: number } & JobRun)[];
+  readonly unavailable: readonly {
+    readonly job: WorkerJob;
+    readonly ordinal: number;
+    readonly code: string;
+  }[];
 }
 export const emptyWorkerState = (): WorkerState => ({
   version: 1,

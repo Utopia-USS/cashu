@@ -181,28 +181,33 @@ it("safe-mode native startup suppresses the worker and network capability", asyn
       }),
     );
     let loads = 0;
+    let constructed = 0;
     const safe = await startLocalHost({
       ...options,
-      worker: () => ({
-        state: {
-          load: async () => {
-            loads++;
-            throw new Error("must not load");
+      worker: () => {
+        constructed++;
+        return {
+          state: {
+            load: async () => {
+              loads++;
+              throw new Error("must not load");
+            },
+            save: async () => {
+              throw new Error("must not save");
+            },
           },
-          save: async () => {
-            throw new Error("must not save");
-          },
-        },
-        ownership: { isExclusive: () => false },
-        authority: () => null,
-        language: () => "en",
-      }),
+          ownership: { isExclusive: () => false },
+          authority: () => null,
+          language: () => "en",
+        };
+      },
     });
     try {
       expect(safe.safeMode).toBe(true);
       expect(safe.capabilities).toEqual({ jobs: false, network: false });
       expect(safe.status().worker?.state).toBe("safe-mode");
       expect(loads).toBe(0);
+      expect(constructed).toBe(0);
     } finally {
       await safe.stop();
     }

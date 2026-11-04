@@ -25,6 +25,7 @@ from cashu.core.api import utc_iso
 from cashu.core.db import get_session
 from cashu.core.env import env
 from cashu.core.models import Profile, utcnow
+from cashu.core.worker import ownership as worker_ownership
 
 from ..domain import Currency
 from ..market import (
@@ -181,6 +182,8 @@ def refresh_prices(
         return replace(previous, cached=True)
     try:
         with locks.run_lock(daily.LOCK_NAME):
+            if not worker_ownership.python_owns("investments.daily"):
+                return PriceRefresh(profile.slug, "disabled", started_at=now, finished_at=now)
             result = _run(profile, sources, as_of, clock, session_factory)
     except locks.LockBusy:
         return PriceRefresh(profile.slug, "busy", started_at=now, finished_at=now)

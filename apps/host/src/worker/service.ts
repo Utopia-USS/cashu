@@ -53,8 +53,11 @@ export class HostWorker {
       bindings === undefined
         ? undefined
         : nativeInvestmentJobs(this.host, bindings, this.writeAttempts());
-    this.stateName =
-      bindings === undefined ? "off" : !this.host.jobsEnabled() ? "safe-mode" : "idle";
+    this.stateName = !this.host.jobsEnabled()
+      ? "safe-mode"
+      : bindings === undefined
+        ? "off"
+        : "idle";
   }
   get pending(): number {
     return this.working ? 1 : 0;
@@ -103,11 +106,18 @@ export class HostWorker {
   }
   status(): WorkerStatus {
     const jobs: WorkerStatus["jobs"][number][] = [];
+    const unavailable: WorkerStatus["unavailable"][number][] = [];
     let ordinal = 0;
     for (const vault of this.host.stores.vaults.values()) {
       for (const job of JOBS) {
         const run = this.state.runs[runKey(job, vault.id)];
         if (run !== undefined) jobs.push({ job, ordinal, ...run });
+        try {
+          const code = this.bindings?.unavailable?.(vault, job);
+          if (code) unavailable.push({ job, ordinal, code });
+        } catch {
+          unavailable.push({ job, ordinal, code: "authority_unavailable" });
+        }
       }
       ordinal++;
     }
@@ -120,6 +130,7 @@ export class HostWorker {
           : nextSlot(this.host.now(), this.schedule),
       lastTickAt: this.lastTick,
       jobs,
+      unavailable,
     };
   }
   private async save(): Promise<void> {

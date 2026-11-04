@@ -21,9 +21,11 @@ export function workerGuard(
         host.jobsEnabled() === true &&
         host.stores.vaults.get(vault.id) === vault &&
         host.isCurrent(vault) === true &&
-        bindings.ownership.isExclusive(job) === true &&
+        bindings.ownership.isExclusive(job, vault) === true &&
         bindings.authority(vault)?.isHolder() === true &&
-        (!options.network || host.networkEnabled() === true) &&
+        (!options.network ||
+          (host.networkEnabled() === true &&
+            bindings.fetchAuthority?.(vault, job)?.isHolder() === true)) &&
         (!options.ui || host.uiCount() > 0)
       ) {
         const module = job === "budget.sync" ? "budget" : "investments";

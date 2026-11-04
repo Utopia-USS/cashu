@@ -45,6 +45,7 @@ from cashu.core import locks, profiles
 from cashu.core.api import utc_iso
 from cashu.core.db import get_session
 from cashu.core.models import Profile, ProfileModule, utcnow
+from cashu.core.worker import ownership as worker_ownership
 
 from ..alerts import LIVE_STATUSES, is_alert_key
 from ..domain import Currency, Instrument, InstrumentId, MarketView, TxnType
@@ -301,6 +302,8 @@ def run_daily_check(
     Raises :class:`RunBusy` when another run holds the lock."""
     try:
         with locks.run_lock(LOCK_NAME, wait=lock_wait):
+            if not worker_ownership.python_owns("investments.daily"):
+                raise RunBusy("daily owner is native")
             return _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory)
     except locks.LockBusy as e:
         raise RunBusy(str(e)) from None

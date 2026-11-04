@@ -87,6 +87,7 @@ import {
   refusePaths,
   startHost,
 } from "@cashu/node-host";
+import { legacyDataAdmission } from "@cashu/node-host/admission";
 import { readBundleIdentity, watchBundleIdentity } from "@cashu/node-host/bundle-identity";
 import { mcpProfile } from "@cashu/store/core";
 import { NotificationQueue } from "@cashu/store/investments/local";
@@ -116,7 +117,7 @@ import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
 import { createNativeCreationService } from "./nativeCreation.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
-import type { NativeVaultSession, NativeVaultSource } from "./nativeVault.js";
+import type { NativeVaultSource } from "./nativeVault.js";
 import {
   type HostNotificationCapability,
   hostNotificationCapability,
@@ -241,7 +242,11 @@ export interface LocalHostOptions {
   readonly worker?: (
     context: WorkerHostContext,
     notifications?: HostNotificationCapability,
-  ) => WorkerBindings;
+    queue?: NotificationQueue,
+  ) => WorkerBindings | undefined;
+  /** Additional read-only source roots checked by the production entry. The selected data dir
+   * is always checked here, including when Create starts before any vault or worker exists. */
+  readonly assertNativeSourceAdmission?: () => void;
   /** Actual device cache and its committed changes. Without a cache, overview uses last trades.
    * Persistent production cache lifecycle remains TRANSITIONAL(S53b). */
   readonly overview?: Parameters<typeof servedQueries>[0];
@@ -313,11 +318,13 @@ export interface LocalHost {
 /** Starts the data dir's host. Throws `HostBusyError` when another host holds the lock. */
 export async function startLocalHost(options: LocalHostOptions): Promise<LocalHost> {
   if (options.vaultSource === undefined) throw new Error("native_vault_provider_unavailable");
-  if (
-    options.vaultSource.kind === "native-production" &&
-    existsSync(join(options.dataDir, "cashu.db"))
-  )
-    throw new Error("legacy_python_db_awaits_s62");
+  const assertNativeSourceAdmission = () => {
+    // T54 replaces this temporary absence proof with authenticated completed migration.
+    if (legacyDataAdmission(options.dataDir) !== "no_legacy_sentinel")
+      throw new Error("legacy_python_db_awaits_s62");
+    options.assertNativeSourceAdmission?.();
+  };
+  if (options.vaultSource.kind === "native-production") assertNativeSourceAdmission();
   if (options.bundlePath !== undefined) {
     const identity = readBundleIdentity(options.bundlePath);
     if (
@@ -474,6 +481,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         lock: server.lock,
         now,
         createKeyStore: options.vaultSource.factory.creationKeyStoreFactory(),
+        assertSourceAdmission: assertNativeSourceAdmission,
       });
       // Authenticate completed anchors before native sessions take exclusive SQLite opens.
       await creation.primeVerifiedCompleted();
@@ -705,7 +713,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           () => stopping === undefined && !bundleReplaced && !server.stopping && server.lock.held,
         );
   try {
-    workerBindings = options.worker?.(workerContext, notifications);
+    workerBindings =
+      workerContext.jobsEnabled() && stores.vaults.size > 0
+        ? options.worker?.(workerContext, notifications, signalQueue)
+        : undefined;
   } catch (error) {
     log.warn("worker.binding-failed", { error: errorName(error) });
   }
@@ -727,7 +738,11 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       vaults: stores.vaults.size,
       pendingWrites: stores.pending(),
       ...(syncService === undefined ? {} : { sync: syncService.status() }),
-      worker: { ...currentWorker, jobs: [...currentWorker.jobs] },
+      worker: {
+        ...currentWorker,
+        jobs: [...currentWorker.jobs],
+        unavailable: [...currentWorker.unavailable],
+      },
     };
   };
 

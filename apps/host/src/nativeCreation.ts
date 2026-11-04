@@ -27,6 +27,7 @@ import type {
 } from "@cashu/host-protocol";
 import { nativeCreationPrepareParamsSchema } from "@cashu/host-protocol";
 import { type HostLock, NodeFolderFs } from "@cashu/node-host";
+import { legacyDataAdmission } from "@cashu/node-host/admission";
 import { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import {
@@ -96,6 +97,8 @@ export interface NativeCreationOptions {
   readonly now?: () => number;
   /** Fake OS port only in a strict test namespace. Ordinary host omits this. */
   readonly createKeyStore?: typeof createProductionKeyStore;
+  /** The host's additional source roots, checked again before each Create effect. */
+  readonly assertSourceAdmission?: () => void;
   readonly sodium?: crypto.Sodium;
   /** Synthetic fault injection after a durable phase record; never bound by the ordinary host. */
   readonly faultAfterPhase?: (stage: CreationStage) => void;
@@ -253,6 +256,12 @@ export function createNativeCreationService(options: NativeCreationOptions) {
       throw new Error("native_host_lock_required");
     }
   };
+  const assertSourceAdmission = () => {
+    // A missing legacy sentinel is only an absence check, never native inventory authority.
+    if (legacyDataAdmission(dataDir) !== "no_legacy_sentinel")
+      throw new Error("native_creation_source_unavailable");
+    options.assertSourceAdmission?.();
+  };
   const wipe = (value: Prepared | null) => {
     value?.identity.wipe();
     value?.recovery.wipe();
@@ -335,6 +344,14 @@ export function createNativeCreationService(options: NativeCreationOptions) {
     assertLock();
     clearExpired();
     if (active || journal.snapshot().pending) return REFUSED("pending_exists");
+    try {
+      assertSourceAdmission();
+    } catch {
+      wipe(prepared);
+      prepared = null;
+      clearTimer();
+      return REFUSED("setup_unavailable");
+    }
     const parsed = nativeCreationPrepareParamsSchema.safeParse(raw);
     if (!parsed.success) return REFUSED("invalid_input");
     try {
@@ -347,6 +364,14 @@ export function createNativeCreationService(options: NativeCreationOptions) {
     const input = parsed.data;
     const sodium = options.sodium ?? (await crypto.loadNodeSodium());
     assertLock();
+    try {
+      assertSourceAdmission();
+    } catch {
+      wipe(prepared);
+      prepared = null;
+      clearTimer();
+      return REFUSED("setup_unavailable");
+    }
     if (journal.snapshot().pending) return REFUSED("pending_exists");
     let inventory: ReturnType<typeof existingInventory>;
     try {
@@ -406,11 +431,17 @@ export function createNativeCreationService(options: NativeCreationOptions) {
   };
 
   const commitEffects = async (item: Prepared): Promise<NativeCreationCommitResult> => {
+    try {
+      assertSourceAdmission();
+    } catch {
+      return REFUSED("setup_unavailable");
+    }
     const { operationId, input, identity, recovery, created } = item;
     const vaultId = created.ring.vaultId;
     const deviceId = identity.deviceId;
     const vaultRoot = join(dataDir, "vaults", vaultId);
     const checkTarget = () => {
+      assertSourceAdmission();
       journal.assertPending(operationId, vaultId, deviceId);
       if (existsSync(vaultRoot)) throw new Error("native_creation_target_not_empty");
       if (
@@ -436,6 +467,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
       options.faultAfterPhase?.("recorded");
       const sodium = options.sodium ?? (await crypto.loadNodeSodium());
       const advance = (stage: CreationStage) => {
+        assertSourceAdmission();
         journal.advance(operationId, stage);
         options.faultAfterPhase?.(stage);
       };
@@ -453,6 +485,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
         provision: { lock, assertPending: checkTarget },
       });
       await crypto.saveKeyring(provision, created.ring);
+      assertSourceAdmission();
       await crypto.saveDeviceIdentity(provision, identity);
       advance("keys");
       const vaults = ensureChild(dataDir, "vaults");
@@ -541,6 +574,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
           clock: now,
           bootstrapCertificates: [created.creatorCertificate],
         });
+        assertSourceAdmission();
         engine = await createSyncEngine({
           vault: vaultId,
           device: deviceId,
@@ -553,6 +587,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
           gateState: metaGateStateStore(store.driver, deviceId),
           gossipEid: () => mintUlid(now(), (n) => sodium.randomBytes(n)),
         });
+        assertSourceAdmission();
         const eid = () => mintUlid(now(), (n) => sodium.randomBytes(n));
         const addedEid = eid();
         pinEid = eid();
@@ -571,6 +606,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
           ),
           devices.creatorPin(identity, recovery, vaultId, pinEid, now()),
         ]);
+        assertSourceAdmission();
         const preparedProfile = prepareCommand(store, createProfile, input, {
           device: deviceId,
           clock: { now },
@@ -579,7 +615,9 @@ export function createNativeCreationService(options: NativeCreationOptions) {
         });
         if (!preparedProfile.ok) throw new Error("native_creation_profile_refused");
         await engine.write(preparedProfile.events.map(toUnstampedEvent));
+        assertSourceAdmission();
         const recoveryResult = await engine.recoverLocal();
+        assertSourceAdmission();
         verifyProfile(store, input, vaultId, preparedProfile.value.modules);
         assertReplayedDeviceAuthority(candidate, recoveryResult, vaultId);
         const lease = candidate.devices.lease;
@@ -629,6 +667,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
       };
       const session = await openNativeVault(entry, dataDir, source, takeWriterLease(lock), now);
       try {
+        assertSourceAdmission();
         verifyProfile(session.store, input, vaultId, item.enabledModules);
       } finally {
         await session.close();
@@ -643,6 +682,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
         currentEntries.some((entry, index) => entry.vaultId !== initialInventory[index]?.vaultId)
       )
         throw new Error("native_creation_inventory_changed");
+      assertSourceAdmission();
       privateAtomicFile(
         inventoryPath,
         canonicalArtifact({
@@ -658,6 +698,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
       const factory = new ProductionVaultSourceFactory(dataDir, makeKeyStore);
       factory.preflight();
       const production = await factory.open(lock);
+      assertSourceAdmission();
       const published = production.inventory.find((candidate) => candidate.vaultId === vaultId);
       if (!published) throw new Error("native_creation_inventory_changed");
       const reopened = await openNativeVault(
@@ -672,6 +713,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
       } finally {
         await reopened.close();
       }
+      assertSourceAdmission();
       const anchor = journal.complete(operationId, input.slug, eventCount, pinEid, effectHash);
       verified.set(operationId, {
         anchor: JSON.stringify(anchor),
@@ -713,6 +755,14 @@ export function createNativeCreationService(options: NativeCreationOptions) {
       wipe(prepared);
       prepared = null;
       return REFUSED("prepare_expired");
+    }
+    try {
+      assertSourceAdmission();
+    } catch {
+      wipe(prepared);
+      prepared = null;
+      clearTimer();
+      return REFUSED("setup_unavailable");
     }
     const item = prepared;
     prepared = null;
