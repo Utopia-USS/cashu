@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // Sandboxed preload (CommonJS: a sandboxed preload cannot be an ES module).
 //
-import electron = require("electron");
+const electron: typeof import("electron") = require("electron");
 
 /** The page's window as this preload uses it (the shell's tsconfig has no DOM lib). */
 interface PageWindow {

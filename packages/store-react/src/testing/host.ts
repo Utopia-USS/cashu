@@ -56,7 +56,9 @@ export class TestHost {
   readonly #queries: ReadonlyMap<string, Query<QueryArgs, unknown>>;
   readonly #commands: ReadonlyMap<string, AnyCommand>;
 
-  constructor(private readonly options: TestHostOptions) {
+  private readonly options: TestHostOptions;
+  constructor(options: TestHostOptions) {
+    this.options = options;
     this.#queries = new Map(options.queries.map((q) => [q.id, q]));
     this.#commands = new Map(options.commands.map((c) => [c.id, c]));
   }

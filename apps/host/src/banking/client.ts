@@ -6,17 +6,19 @@ const body = z.record(z.string(), z.unknown());
 const responseLimit = 4 * 1024 * 1024;
 const endpoint = /^\/[a-z0-9/_-]+$/;
 
+type BankingFaultKind =
+  | "configuration"
+  | "transport"
+  | "authorization"
+  | "expired"
+  | "rate_limited"
+  | "response";
+
 export class BankingFault extends Error {
-  constructor(
-    readonly kind:
-      | "configuration"
-      | "transport"
-      | "authorization"
-      | "expired"
-      | "rate_limited"
-      | "response",
-  ) {
+  readonly kind: BankingFaultKind;
+  constructor(kind: BankingFaultKind) {
     super(`enable_banking_${kind}`);
+    this.kind = kind;
   }
 }
 
@@ -108,12 +110,20 @@ function token(credentials: BankingCredentials, now: Date): string {
 }
 
 export class EnableBankingClient {
+  private readonly credentials: BankingCredentials;
+  private readonly transport: BankingTransport;
+  private readonly clock: BankingClock;
+  private readonly origin: string;
   constructor(
-    private readonly credentials: BankingCredentials,
-    private readonly transport: BankingTransport,
-    private readonly clock: BankingClock,
-    private readonly origin = API_ORIGIN,
+    credentials: BankingCredentials,
+    transport: BankingTransport,
+    clock: BankingClock,
+    origin = API_ORIGIN,
   ) {
+    this.credentials = credentials;
+    this.transport = transport;
+    this.clock = clock;
+    this.origin = origin;
     const url = new URL(origin);
     if (
       url.protocol !== "https:" ||

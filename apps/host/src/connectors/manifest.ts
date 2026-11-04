@@ -109,11 +109,10 @@ export const manifestSchema = z
 type ConnectorManifest = z.infer<typeof manifestSchema>;
 
 export class ConnectorFault extends Error {
-  constructor(
-    readonly kind: "invalid_manifest" | "invalid_directory" | "changed" | "missing",
-    message: string,
-  ) {
+  readonly kind: "invalid_manifest" | "invalid_directory" | "changed" | "missing";
+  constructor(kind: ConnectorFault["kind"], message: string) {
     super(message);
+    this.kind = kind;
   }
 }
 interface FileEntry {

@@ -71,7 +71,10 @@ export type PostResult = { status: "posted" } | { status: "unsupported" };
 export class Notifier {
   private readonly shown = new Map<string, NativeNotification>();
 
-  constructor(private readonly deps: NotifierDeps) {}
+  private readonly deps: NotifierDeps;
+  constructor(deps: NotifierDeps) {
+    this.deps = deps;
+  }
 
   post(request: NativeRequest): PostResult {
     if (!this.deps.supported()) return { status: "unsupported" };

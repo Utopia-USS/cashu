@@ -164,7 +164,10 @@ export class HostRelay {
 export class HostRelays {
   readonly #relays = new Map<string, HostRelay>();
 
-  constructor(private readonly create: (port: RelayPort) => HostRelay) {}
+  private readonly create: (port: RelayPort) => HostRelay;
+  constructor(create: (port: RelayPort) => HostRelay) {
+    this.create = create;
+  }
 
   get size(): number {
     return this.#relays.size;

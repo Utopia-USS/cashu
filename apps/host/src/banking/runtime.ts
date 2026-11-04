@@ -32,7 +32,10 @@ export class BankingRuntime {
     string,
     { vault: OpenVault; service: EnableBankingService }
   >();
-  constructor(private readonly options: BankingRuntimeOptions) {}
+  private readonly options: BankingRuntimeOptions;
+  constructor(options: BankingRuntimeOptions) {
+    this.options = options;
+  }
 
   /** Owner authority follows one authenticated UI request across awaits; workers never inherit it. */
   withOwnerAction<T>(

@@ -50,7 +50,10 @@ export class DesktopApp {
   private shutdownPromise: Promise<void> | null = null;
   error: string | null = null;
 
-  constructor(private readonly deps: DesktopDeps) {}
+  private readonly deps: DesktopDeps;
+  constructor(deps: DesktopDeps) {
+    this.deps = deps;
+  }
 
   get origin(): string {
     return this.deps.staticEntry;

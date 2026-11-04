@@ -89,12 +89,21 @@ export class UpdateController {
   private readonly subscriptions: { event: string; callback: EventCallback }[] = [];
   private readonly listeners = new Set<() => void>();
 
+  private readonly updater: UpdaterPort;
+  private readonly authority: UpdateAuthority;
+  private readonly preferences: PreferenceStore;
+  private readonly current: string;
+
   constructor(
-    private readonly updater: UpdaterPort,
-    private readonly authority: UpdateAuthority,
-    private readonly preferences: PreferenceStore,
-    private readonly current: string,
+    updater: UpdaterPort,
+    authority: UpdateAuthority,
+    preferences: PreferenceStore,
+    current: string,
   ) {
+    this.updater = updater;
+    this.authority = authority;
+    this.preferences = preferences;
+    this.current = current;
     updater.autoDownload = false;
     updater.autoInstallOnAppQuit = false;
     const listen = (event: string, callback: EventCallback) => {

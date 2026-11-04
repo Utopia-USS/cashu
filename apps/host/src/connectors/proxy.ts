@@ -74,12 +74,19 @@ export class ConnectorEgressProxy {
   get activeClients(): number {
     return this.clients.size;
   }
+  readonly hosts: readonly string[];
+  private readonly resolveHost: (host: string) => Promise<{ address: string }[]>;
+  private readonly dial: typeof connect;
   constructor(
-    readonly hosts: readonly string[],
-    private readonly resolveHost: (host: string) => Promise<{ address: string }[]> = (host) =>
+    hosts: readonly string[],
+    resolveHost: (host: string) => Promise<{ address: string }[]> = (host) =>
       lookup(host, { all: true, verbatim: true }),
-    private readonly dial: typeof connect = connect,
-  ) {}
+    dial: typeof connect = connect,
+  ) {
+    this.hosts = hosts;
+    this.resolveHost = resolveHost;
+    this.dial = dial;
+  }
 
   async start(): Promise<number> {
     if (this.server) throw new Error("proxy already running");

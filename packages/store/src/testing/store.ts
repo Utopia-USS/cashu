@@ -91,10 +91,12 @@ export interface TestEnvelope {
 /** Builds logical envelopes with increasing eids; `wall` is ms after BASE_WALL. */
 export class EventFactory {
   #seq = 0;
-  constructor(
-    readonly device = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    readonly prefix = "01JC",
-  ) {}
+  readonly device: string;
+  readonly prefix: string;
+  constructor(device = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", prefix = "01JC") {
+    this.device = device;
+    this.prefix = prefix;
+  }
 
   make(
     type: string,

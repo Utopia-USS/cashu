@@ -12,6 +12,7 @@
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
+    "erasableSyntaxOnly": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

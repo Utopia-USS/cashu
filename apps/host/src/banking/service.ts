@@ -150,7 +150,9 @@ export class EnableBankingService {
     url: string;
   } | null = null;
 
-  constructor(private readonly options: BankingServiceOptions) {
+  private readonly options: BankingServiceOptions;
+  constructor(options: BankingServiceOptions) {
+    this.options = options;
     this.clock = options.clock ?? { now: () => new Date() };
     this.transport = options.transport ?? productionBankingTransport;
     this.callback = options.callback ?? listenForBankingCallback;

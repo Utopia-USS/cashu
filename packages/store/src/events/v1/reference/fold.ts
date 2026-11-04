@@ -114,7 +114,10 @@ class Identity {
   /** Claims / unions refused by the exclusive-key guard, in fold order (shown as conflicts). */
   readonly conflicts: string[] = [];
 
-  constructor(private readonly exclusivePrefix: string | null = null) {}
+  private readonly exclusivePrefix: string | null;
+  constructor(exclusivePrefix: string | null = null) {
+    this.exclusivePrefix = exclusivePrefix;
+  }
 
   find(g: string): string {
     let r = g;

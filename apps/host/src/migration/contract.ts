@@ -10,8 +10,10 @@ export type MigrationRefusal =
   | "replay_mismatch";
 
 export class MigrationError extends Error {
-  constructor(readonly code: MigrationRefusal) {
+  readonly code: MigrationRefusal;
+  constructor(code: MigrationRefusal) {
     super(code);
+    this.code = code;
     this.name = "MigrationError";
   }
 }

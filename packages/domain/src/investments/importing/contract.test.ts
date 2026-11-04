@@ -110,11 +110,13 @@ it("importers satisfy the protocol", () => {
 class Fake implements BrokerImporter {
   readonly displayName: string;
   readonly version = 1;
-  constructor(
-    readonly brokerId: string,
-    private readonly accepts = true,
-    private readonly explode = false,
-  ) {
+  readonly brokerId: string;
+  private readonly accepts: boolean;
+  private readonly explode: boolean;
+  constructor(brokerId: string, accepts = true, explode = false) {
+    this.brokerId = brokerId;
+    this.accepts = accepts;
+    this.explode = explode;
     this.displayName = brokerId.toUpperCase();
   }
 

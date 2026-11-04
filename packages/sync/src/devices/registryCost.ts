@@ -26,7 +26,10 @@ import { createSimVault, hlcAt, newEid, START_TIME, sodium } from "./testkit.js"
 class Stream {
   #offset = 0;
   readonly events: LogEvent[] = [];
-  constructor(readonly writer: string) {}
+  readonly writer: string;
+  constructor(writer: string) {
+    this.writer = writer;
+  }
   add(e: UnstampedEvent): void {
     this.#offset += 100;
     this.events.push({

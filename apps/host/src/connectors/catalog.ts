@@ -69,10 +69,9 @@ function safeId(id: string): string {
 export class ConnectorCatalog {
   readonly root: string;
   private readonly pin: { dev: number; ino: number };
-  constructor(
-    dataDir: string,
-    readonly bundledDeno?: string,
-  ) {
+  readonly bundledDeno: string | undefined;
+  constructor(dataDir: string, bundledDeno?: string) {
+    this.bundledDeno = bundledDeno;
     if (!dataDir || !resolve(dataDir).startsWith("/"))
       throw new ConnectorFault("invalid_directory", "app data directory required");
     privateDirectory(dataDir);

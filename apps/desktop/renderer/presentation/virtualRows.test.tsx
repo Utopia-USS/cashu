@@ -10,7 +10,9 @@ class Observer {
   static all: Observer[] = [];
   readonly nodes = new Set<Element>();
   disconnected = false;
-  constructor(readonly callback: ResizeObserverCallback) {
+  readonly callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
     Observer.all.push(this);
   }
   observe(node: Element) {

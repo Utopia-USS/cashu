@@ -58,13 +58,24 @@ class Entry<R> implements QueryEntry<R> {
   #timer: ReturnType<typeof setTimeout> | null = null;
   readonly #listeners = new Set<() => void>();
 
+  private readonly cache: QueryCache;
+  readonly key: string;
+  private readonly target: Target;
+  private readonly query: Query<QueryArgs, R>;
+  private readonly args: QueryArgs;
+
   constructor(
-    private readonly cache: QueryCache,
-    readonly key: string,
-    private readonly target: Target,
-    private readonly query: Query<QueryArgs, R>,
-    private readonly args: QueryArgs,
+    cache: QueryCache,
+    key: string,
+    target: Target,
+    query: Query<QueryArgs, R>,
+    args: QueryArgs,
   ) {
+    this.cache = cache;
+    this.key = key;
+    this.target = target;
+    this.query = query;
+    this.args = args;
     this.#makePending();
   }
 
