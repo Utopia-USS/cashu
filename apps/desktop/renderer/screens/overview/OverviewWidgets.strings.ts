@@ -59,5 +59,6 @@ export const W = catalog({
     pl: (step: string) => `Następny krok: ${step}`,
     en: (step: string) => `Next step: ${step}`,
   },
+  benchmark: { pl: "Benchmark", en: "Benchmark" },
   waitsForData: { pl: "Konfiguracja czeka na dane.", en: "Setup is waiting for data." },
 });

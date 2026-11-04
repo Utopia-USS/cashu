@@ -14,6 +14,14 @@ import investments, {
   Unavailable as UnavailableInvestments,
   ZeroStart,
 } from "./screens/overview/InvestmentsWidgetView.stories.js";
+import minimal, {
+  FirstDeposit,
+  Planned,
+  Privacy as PrivateMinimal,
+  Ready as ReadyMinimal,
+  Refused,
+  Unavailable as UnavailableMinimal,
+} from "./screens/overview/MinimalOverviewView.stories.js";
 import overview, { Empty, Privacy, Ready } from "./screens/overview/OverviewView.stories.js";
 import bootstrap, { Failed, Waiting } from "./shell/BootstrapView.stories.js";
 import recovery, {
@@ -106,6 +114,27 @@ it("renders asset and investment widget stories from synthetic state", () => {
       PrivateInvestments.decorators[0]?.(() => <investments.component {...investments.args} />),
     ),
   ).toContain("overview-investments-title");
+});
+
+it("renders the investments-only overview stories in every phase", () => {
+  const render = (story: { args?: object } = {}) =>
+    renderToStaticMarkup(<minimal.component {...minimal.args} {...story.args} />);
+  const ready = render(ReadyMinimal);
+  expect(ready).toContain('data-testid="minimal-portfolio-value"');
+  expect(ready).toContain("minimal-deposits-title");
+  expect(ready).toContain('aria-current="step"');
+  expect(ready).toContain(">Plan</button>");
+  expect(render(Planned)).not.toContain(">Plan</button>");
+  expect(render(FirstDeposit)).toContain("set it in the strategy");
+  expect(render(Refused)).toContain('role="alert"');
+  const unavailable = render(UnavailableMinimal);
+  expect(unavailable).toContain('aria-label="Portfolio"');
+  expect(unavailable).not.toContain("minimal-deposits-title");
+  const hidden = renderToStaticMarkup(
+    PrivateMinimal.decorators[0]?.(() => <minimal.component {...minimal.args} />),
+  );
+  expect(hidden).not.toContain("10,450");
+  expect(hidden).toContain("hidden");
 });
 
 it("renders actual shell CSF states", () => {

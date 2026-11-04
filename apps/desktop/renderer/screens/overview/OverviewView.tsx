@@ -26,9 +26,8 @@ export interface OverviewViewProps {
   onModuleOpened(module: string): void;
 }
 
-/** The overview tab as a pure View. TRANSITIONAL(S55b): the investments-only layout of the frozen
- * Python app (frontend `MinimalOverview`: deposit plan, holdings, six-month flows in a narrow shell)
- * is not ported; an investments-only profile gets this full overview. */
+/** The overview tab as a pure View. An investments-only profile gets `MinimalOverviewView` instead
+ * (the route decides with `investmentsOnlyOverview`). */
 export function OverviewView({
   state,
   cash,

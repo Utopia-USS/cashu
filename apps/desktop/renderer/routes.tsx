@@ -33,10 +33,13 @@ import { ClassificationPanel } from "./screens/classification/ClassificationPane
 import { DevicesScreen } from "./screens/devices/DevicesScreen.js";
 import { PortfolioScreen } from "./screens/investments/PortfolioScreen.js";
 import { LoansScreen } from "./screens/loans/LoansScreen.js";
+import { MinimalOverviewView } from "./screens/overview/MinimalOverviewView.js";
+import { investmentsOnlyOverview } from "./screens/overview/minimalOverview.js";
 import { OverviewView } from "./screens/overview/OverviewView.js";
 import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
 import { useCashDrawer } from "./screens/overview/useCashDrawer.js";
 import { useInvestmentPlan } from "./screens/overview/useInvestmentPlan.js";
+import { useMinimalOverview } from "./screens/overview/useMinimalOverview.js";
 import { useOverviewScreen } from "./screens/overview/useOverviewScreen.js";
 import { ProposalDrawerScreen } from "./screens/proposals/ProposalDrawerScreen.js";
 import { ResearchScreen } from "./screens/research/ResearchScreen.js";
@@ -285,8 +288,39 @@ function OverviewRoute() {
   return <OverviewBound key={vault} vault={vault} slug={slug} currency={currency} />;
 }
 
+const overviewModuleQuery = overviewQueries({ prices: null }).moduleStates;
+
+/** A profile with investments as its only module gets the minimal overview (Python `MinimalOverview`). */
+function OverviewBound(props: { vault: string; slug: string; currency?: string }) {
+  const modules = useQuery(overviewModuleQuery).filter((module) => module.enabled);
+  return investmentsOnlyOverview(modules) ? (
+    <MinimalOverviewBound vault={props.vault} slug={props.slug} />
+  ) : (
+    <FullOverviewBound {...props} />
+  );
+}
+
+function MinimalOverviewBound({ vault, slug }: { vault: string; slug: string }) {
+  const state = useMinimalOverview({
+    today: useCalendarDay(),
+    openNewAlert: () =>
+      void router.navigate({
+        to: "/$slug/investments.alerts",
+        params: { slug },
+        search: { vault, newAlert: "1" },
+      }),
+    openWatchlist: () =>
+      void router.navigate({
+        to: "/$slug/investments.watchlist",
+        params: { slug },
+        search: { vault },
+      }),
+  });
+  return <MinimalOverviewView state={state} />;
+}
+
 /** A profile switch discards drawer drafts before commands can bind to the newly selected vault. */
-function OverviewBound({
+function FullOverviewBound({
   vault,
   slug,
   currency,
