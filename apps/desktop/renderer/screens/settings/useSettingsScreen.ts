@@ -4,6 +4,9 @@ import { setModules, setProfileSettings } from "@cashu/store";
 import { profile } from "@cashu/store/core";
 import { proposalList } from "@cashu/store/core/desktop-proposals";
 import {
+  type ConnectorSettingsInput,
+  type ConnectorSettingsSnapshot,
+  connectorSettings,
   hostSettingsInfo,
   mcpAudit,
   saveProfile,
@@ -22,7 +25,8 @@ import { useCommand, useProfile, useQuery, useUiAction } from "@cashu/store-reac
 import { useUiEnv } from "@cashu/ui";
 import { hmLocal, localDay } from "@cashu/ui-logic/core/time";
 import { useForm } from "@tanstack/react-form";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { connectorsBridge } from "../../connectorsBridge.js";
 import {
   type NotificationPermissionStatus,
   readNotificationPermission,
@@ -65,6 +69,84 @@ interface WorkspaceSummary {
   readonly routineCommand?: string | null;
   readonly routinePermissions?: boolean;
   readonly mcpCommandStale?: boolean;
+}
+type ConnectorSummary = ConnectorSettingsSnapshot["connectors"][number];
+type ConnectorDraft = Readonly<Record<string, string | boolean>>;
+interface ScopedConnectorState {
+  readonly vault: string;
+  readonly snapshot: ConnectorSettingsSnapshot | null;
+  readonly busy: boolean;
+}
+interface ConnectorScope {
+  readonly vault: string;
+  readonly generation: number;
+}
+
+export function connectorStateForVault(state: ScopedConnectorState, vault: string) {
+  return state.vault === vault ? state : { vault, snapshot: null, busy: false };
+}
+
+export function connectorScopeMatches(current: ConnectorScope, captured: ConnectorScope): boolean {
+  return current.vault === captured.vault && current.generation === captured.generation;
+}
+
+export function connectorActionMessage(
+  input: ConnectorSettingsInput,
+  result: { readonly status: string; readonly value?: unknown },
+) {
+  if (result.status === "outcome_unknown") return T.connectorUnknown;
+  if (result.status !== "completed") return T.connectorFailed;
+  const runStatus =
+    input.op === "run" &&
+    result.value &&
+    typeof result.value === "object" &&
+    "status" in result.value
+      ? result.value.status
+      : null;
+  return runStatus === "failed" || runStatus === "partial"
+    ? T.connectorRunFailed
+    : T.connectorSaved;
+}
+
+export function connectorEligibleAccounts(
+  snapshot: ConnectorSettingsSnapshot | null,
+  connector: ConnectorSummary,
+) {
+  return (
+    snapshot?.accounts.filter((account) =>
+      connector.module === "investments"
+        ? account.type === "brokerage"
+        : account.type !== "brokerage",
+    ) ?? []
+  );
+}
+
+export function connectorParams(
+  connector: ConnectorSummary,
+  draft: ConnectorDraft,
+): Readonly<Record<string, string | number | boolean>> | null {
+  const result: Record<string, string | number | boolean> = {};
+  for (const spec of connector.params) {
+    const value = draft[spec.id];
+    if (spec.type === "boolean") {
+      result[spec.id] = value === true;
+      continue;
+    }
+    if (value === undefined || value === "") {
+      if (spec.required) return null;
+      continue;
+    }
+    if (typeof value !== "string") return null;
+    if (spec.type === "number") {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return null;
+      result[spec.id] = number;
+    } else if (spec.type === "date") {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+      result[spec.id] = value;
+    } else result[spec.id] = value;
+  }
+  return result;
 }
 const workspaceStatus = (value: unknown): WorkspaceSummary => {
   if (!value || typeof value !== "object" || !("availability" in value))
@@ -166,6 +248,131 @@ export function useSettingsScreen(
   const durable = useDurableCommands();
   const inspect = useUiAction(workspaceInspect);
   const apply = useUiAction(workspaceApply);
+  const connectorAction = useUiAction(connectorSettings);
+  const connectorScope = useRef({ vault, generation: 0 });
+  const connectorRunRef = useRef(connectorAction.run);
+  useLayoutEffect(() => {
+    if (connectorScope.current.vault !== vault)
+      connectorScope.current = { vault, generation: connectorScope.current.generation + 1 };
+    connectorRunRef.current = connectorAction.run;
+  });
+  const [connectorState, setConnectorState] = useState<ScopedConnectorState>({
+    vault,
+    snapshot: null,
+    busy: false,
+  });
+  const visibleConnectorState = connectorStateForVault(connectorState, vault);
+  const connectorSnapshot = visibleConnectorState.snapshot;
+  const connectorBusy = visibleConnectorState.busy;
+  const currentConnectorScope = (captured: ConnectorScope) =>
+    connectorScopeMatches(connectorScope.current, captured);
+  const setConnectorScoped = (
+    captured: ConnectorScope,
+    update: (old: ConnectorSettingsSnapshot | null) => ConnectorSettingsSnapshot | null,
+  ) => {
+    if (!currentConnectorScope(captured)) return;
+    setConnectorState((previous) => ({
+      vault: captured.vault,
+      snapshot: update(previous.vault === captured.vault ? previous.snapshot : null),
+      busy: previous.vault === captured.vault ? previous.busy : false,
+    }));
+  };
+  const setConnectorBusyScoped = (captured: ConnectorScope, busy: boolean) => {
+    if (!currentConnectorScope(captured)) return;
+    setConnectorState((previous) => ({
+      vault: captured.vault,
+      snapshot: previous.vault === captured.vault ? previous.snapshot : null,
+      busy,
+    }));
+  };
+  async function refreshConnectors() {
+    if (connectorBusy) return;
+    const captured = connectorScope.current;
+    setConnectorBusyScoped(captured, true);
+    try {
+      const result = await connectorAction.run({ op: "list" });
+      setConnectorScoped(captured, () =>
+        result.status === "completed" ? (result.value as ConnectorSettingsSnapshot) : null,
+      );
+    } finally {
+      setConnectorBusyScoped(captured, false);
+    }
+  }
+  async function installConnector() {
+    if (connectorBusy) return;
+    const captured = connectorScope.current;
+    const bridge = connectorsBridge();
+    if (!bridge) {
+      setNotice(T.connectorFailed);
+      return;
+    }
+    setConnectorBusyScoped(captured, true);
+    try {
+      const result = await bridge.installPending();
+      if (result.kind === "installed" && currentConnectorScope(captured)) {
+        const listed = await connectorAction.run({ op: "list" });
+        if (currentConnectorScope(captured)) {
+          if (listed.status === "completed")
+            setConnectorScoped(captured, () => listed.value as ConnectorSettingsSnapshot);
+          setNotice(T.connectorInstalled);
+        }
+      }
+    } catch {
+      if (currentConnectorScope(captured)) setNotice(T.connectorUnknown);
+    } finally {
+      setConnectorBusyScoped(captured, false);
+    }
+  }
+  async function onConnectorAction(input: ConnectorSettingsInput) {
+    if (connectorBusy) return;
+    const captured = connectorScope.current;
+    setConnectorBusyScoped(captured, true);
+    try {
+      const result = await connectorAction.run(input);
+      if (!currentConnectorScope(captured)) return;
+      if (result.status === "completed") {
+        const listed = await connectorAction.run({ op: "list" });
+        if (!currentConnectorScope(captured)) return;
+        if (listed.status === "completed")
+          setConnectorScoped(captured, () => listed.value as ConnectorSettingsSnapshot);
+        setNotice(connectorActionMessage(input, result));
+      } else setNotice(connectorActionMessage(input, result));
+    } finally {
+      setConnectorBusyScoped(captured, false);
+    }
+  }
+  const connectorAccounts = (connector: ConnectorSummary) =>
+    connectorEligibleAccounts(connectorSnapshot, connector);
+  async function bindConnector(
+    connector: ConnectorSummary,
+    account: string,
+    draft: ConnectorDraft,
+    autoCommit: boolean,
+  ) {
+    const params = connectorParams(connector, draft);
+    if (!params || !connectorAccounts(connector).some((item) => item.gid === account)) {
+      setNotice(T.connectorInvalidParams);
+      return;
+    }
+    await onConnectorAction({ op: "bind", id: connector.id, account, params, autoCommit });
+  }
+  useEffect(() => {
+    const captured = connectorScope.current;
+    const timer = setTimeout(() => {
+      void connectorRunRef.current({ op: "list" }).then((result) => {
+        if (!connectorScopeMatches(connectorScope.current, captured)) return;
+        setConnectorState((previous) => ({
+          vault: captured.vault,
+          snapshot:
+            result.status === "completed" ? (result.value as ConnectorSettingsSnapshot) : null,
+          busy: previous.vault === captured.vault ? previous.busy : false,
+        }));
+      });
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [vault]);
   const [notice, setNotice] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSummary>({
     availability: "unavailable",
@@ -428,6 +635,14 @@ export function useSettingsScreen(
     privacyBusy: setPrivacy.isPending,
     onMcpPrivacyPicked: setMcpPrivacy,
     workspace,
+    connectorSnapshot,
+    connectorVault: vault,
+    connectorBusy,
+    connectorAccounts,
+    bindConnector,
+    refreshConnectors,
+    installConnector,
+    onConnectorAction,
     workspaceBusy,
     workspacePath,
     editingPath,

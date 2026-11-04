@@ -7,7 +7,12 @@ import { type NotificationQueue, SqlPriceCache } from "@cashu/store/investments/
 import { DailyPriceLock } from "@cashu/store/investments/services";
 import type { StrategyDirectoryAuthority } from "../proposals/strategyFiles.js";
 import type { OpenVault } from "../stores.js";
-import type { WorkerBindings, WorkerHostContext, WorkerNotifier } from "./contracts.js";
+import type {
+  ConnectorFetchPort,
+  WorkerBindings,
+  WorkerHostContext,
+  WorkerNotifier,
+} from "./contracts.js";
 import { admittedWorkerOwnership } from "./ownership.js";
 import { privateWorkerState } from "./state.js";
 import { workerStrategyFiles } from "./strategyFiles.js";
@@ -25,11 +30,15 @@ export interface ProductionWorkerInput {
   /** Host-owned queue and checked OS delivery, if the platform can actually submit. */
   readonly notifications?: NotificationQueue;
   readonly notifier?: WorkerNotifier;
+  /** Bound host-only connector executor. Its final import command checks the D7 holder again. */
+  readonly connectors?: ConnectorFetchPort;
+  /** Shared with checked proposal approval so daily evaluation and imports cannot overlap. */
+  readonly dailyLock?: DailyPriceLock;
 }
 
 /**
- * One host instance owns the daily lock and the device-local cache. Bank and connector jobs are
- * deliberately absent until their own authenticated sessions, per-binding state and handover land.
+ * One host instance owns the daily lock and the device-local cache. Bank jobs remain absent until
+ * their own authenticated sessions, per-binding state and handover land.
  * Public market sources are absent too; a lease check alone is not a configured source.
  */
 export function createProductionWorkerBindings(
@@ -65,10 +74,11 @@ export function createProductionWorkerBindings(
       return null;
     }
   };
-  // Claim checked file-capable native vaults before module activation. The scheduler reads live
-  // module state on every tick, so enabling investments later needs no host restart, and disabling
-  // it stops the job. Missing file authority leaves only that vault unavailable.
-  const eligible = currentVaults.filter((vault) => fileFor(vault) !== null);
+  // Claim file-capable vaults and native connector vaults. A budget-only connector does not depend
+  // on a strategy directory; an unbound worker still leaves missing file authority untouched.
+  const eligible = currentVaults.filter(
+    (vault) => fileFor(vault) !== null || input.connectors !== undefined,
+  );
   const workerDir = join(input.dataDir, "worker");
   ensurePrivateDir(workerDir);
   const state = privateWorkerState(workerDir, () => {
@@ -80,7 +90,7 @@ export function createProductionWorkerBindings(
     }
   });
   const prices = new SqlPriceCache(host.stores.device.driver);
-  const dailyLock = new DailyPriceLock();
+  const dailyLock = input.dailyLock ?? new DailyPriceLock();
   // The switch is the last preparation step: an earlier file/cache/state failure leaves Python
   // eligible. A later ambiguous failure keeps the durable native owner and refuses a second run.
   const ownership = admittedWorkerOwnership({
@@ -96,7 +106,8 @@ export function createProductionWorkerBindings(
         ? { isHolder: () => host.isCurrent(vault) && vault.native.canRunSideEffects() }
         : null,
     fetchAuthority: (vault, job) =>
-      job === "investments.daily" &&
+      (job === "investments.daily" ||
+        (job === "connectors.fetch" && input.connectors !== undefined)) &&
       vault.mode === "native" &&
       input.canFetchPublicMarket !== undefined
         ? { isHolder: () => host.isCurrent(vault) && input.canFetchPublicMarket?.(vault) === true }
@@ -111,6 +122,7 @@ export function createProductionWorkerBindings(
       files: fileFor,
       ...(input.notifications === undefined ? {} : { notifications: input.notifications }),
     },
+    ...(input.connectors === undefined ? {} : { connectors: input.connectors }),
     ...(input.notifier === undefined ? {} : { notifier: input.notifier }),
     unavailable(vault, job) {
       if (vault.mode !== "native" || !host.isCurrent(vault)) return "native_admission_unavailable";
@@ -122,7 +134,13 @@ export function createProductionWorkerBindings(
       }
       if (job === "connectors.fetch")
         return modules.has("investments") || modules.has("budget")
-          ? "connector_provider_unavailable"
+          ? input.connectors === undefined
+            ? "connector_provider_unavailable"
+            : input.canFetchPublicMarket?.(vault) !== true
+              ? "fetch_authority_unavailable"
+              : ownership.isExclusive(job, vault)
+                ? null
+                : "ownership_unavailable"
           : null;
       if (job === "budget.sync") return modules.has("budget") ? "bank_provider_unavailable" : null;
       return modules.has("investments") &&

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./keyring": "./src/keyring/production.ts",
+    "./connector-secrets": "./src/keyring/connectors.ts",
     "./sqlite": "./src/sqlite.ts",
     "./testing": "./src/testing.ts",
     "./bundle-identity": "./src/bundleIdentity.ts",

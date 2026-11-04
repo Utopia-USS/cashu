@@ -19,7 +19,10 @@ import {
   readBundleIdentity,
 } from "@cashu/node-host/bundle-identity";
 import { devicePreferences } from "@cashu/store/device";
+import { DailyPriceLock } from "@cashu/store/investments/services";
 import { runQuery } from "@cashu/store/query";
+import { connectorOwnerAction } from "./connectorOwnerAction.js";
+import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntime.js";
 import { startLocalHost } from "./host.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
@@ -185,6 +188,19 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           runtime.fingerprint === undefined
             ? undefined
             : hostUpdateBridge(args.dataDir, runtime.build, runtime.fingerprint);
+        const dailyLock = new DailyPriceLock();
+        let connectors: ConnectorRuntime | undefined;
+        let connectorLock: import("@cashu/node-host").HostLock | undefined;
+        let workerBindings: ReturnType<typeof createProductionWorkerBindings> | undefined;
+        const language = (context: Parameters<typeof createProductionWorkerBindings>[0]) => {
+          try {
+            const pinned = runQuery(context.stores.device.store, devicePreferences, undefined).value
+              .languagePin;
+            return pinned === "pl" || pinned === "en" ? pinned : systemLanguage;
+          } catch {
+            return systemLanguage;
+          }
+        };
         try {
           const host = await startLocalHost({
             dataDir: args.dataDir,
@@ -195,9 +211,34 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               factory: new ProductionVaultSourceFactory(args.dataDir),
             },
             assertNativeSourceAdmission,
+            proposals: { bind: (vault) => connectors?.proposals.bind(vault) ?? null },
+            connectorCatalog: () => (connectorLock?.held ? connectors?.catalog : undefined),
+            uiActions: [
+              connectorOwnerAction({
+                runtime: () => connectors,
+                worker: () => workerBindings,
+                dataDir: args.dataDir,
+                lock: () => connectorLock,
+                now: () => Date.now(),
+              }),
+            ],
             lan: { kind: "local" },
-            worker: (context, notifications, queue) => {
+            worker: (context, notifications, queue, lock) => {
               assertAdmission();
+              if (process.platform === "darwin" && lock?.held) {
+                connectorLock = lock;
+                connectors = createConnectorRuntime({
+                  dataDir: args.dataDir,
+                  lock,
+                  stores: context.stores,
+                  device: context.stores.device.store,
+                  dailyLock,
+                  current: context.isCurrent,
+                  holder: (vault) => vault.native?.canFetchPublicMarket() === true,
+                  now: context.now,
+                  language: () => language(context),
+                });
+              }
               let notifier: ReturnType<NonNullable<typeof notifications>["notifier"]> = null;
               // On macOS, the checked helper routes activation into Electron. Other platform
               // click routing is still unavailable and must not silently discard a click.
@@ -208,26 +249,18 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                   notifier = null;
                 }
               }
-              return createProductionWorkerBindings(context, {
+              workerBindings = createProductionWorkerBindings(context, {
                 dataDir: args.dataDir,
                 assertAdmission,
                 strategyDirectory: (vault) => vault.native?.strategyDirectoryAuthority() ?? null,
                 canFetchPublicMarket: (vault) => vault.native?.canFetchPublicMarket() ?? false,
-                language: () => {
-                  try {
-                    const pinned = runQuery(
-                      context.stores.device.store,
-                      devicePreferences,
-                      undefined,
-                    ).value.languagePin;
-                    return pinned === "pl" || pinned === "en" ? pinned : systemLanguage;
-                  } catch {
-                    return systemLanguage;
-                  }
-                },
+                language: () => language(context),
+                dailyLock,
+                ...(connectors === undefined ? {} : { connectors: connectors.worker }),
                 ...(queue === undefined ? {} : { notifications: queue }),
                 ...(notifier === null ? {} : { notifier }),
               });
+              return workerBindings;
             },
             ...(args.lingerMs === undefined ? {} : { lingerMs: args.lingerMs }),
             ...(runtime.bundle === undefined ? {} : { bundlePath: runtime.bundle }),

@@ -8,6 +8,7 @@ import {
   adminStatusResultSchema,
   deviceListParamsSchema,
   deviceListResultSchema,
+  NATIVE_CONNECTORS_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
   NOTIFICATION_INTENT_METHOD,
   nativeCreationCommitParamsSchema,
@@ -64,6 +65,7 @@ import { nativeImage, shell } from "electron/common";
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   MessageChannelMain,
@@ -578,6 +580,47 @@ devicesIpc("revokePreview");
 devicesIpc("revokeCommit");
 devicesIpc("revokeInspect");
 devicesIpc("revokeCancel");
+
+ipcMain.handle("cashu:connectors-install", async (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen() || !mainWindow)
+    throw new Error("connectors_unavailable");
+  const connection = (
+    await connectOrStart({
+      dataDir,
+      role: "ui",
+      build: HOST_BUILD,
+      start: async () => {
+        await activateHost(hostService, startHost);
+      },
+    })
+  ).connection;
+  try {
+    if (!connection.host.features.includes(NATIVE_CONNECTORS_FEATURE))
+      throw new Error("connectors_unavailable");
+    const prepared = await connection.call("native.connectors.prepareInstall", {});
+    if (
+      !prepared ||
+      typeof prepared !== "object" ||
+      !("token" in prepared) ||
+      typeof prepared.token !== "string"
+    )
+      throw new Error("connector_picker_unavailable");
+    const chosen = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openDirectory"],
+      securityScopedBookmarks: false,
+    });
+    if (chosen.canceled || chosen.filePaths.length !== 1) return { kind: "cancelled" };
+    const result = await connection.call("native.connectors.commitInstall", {
+      token: prepared.token,
+      source: chosen.filePaths[0],
+    });
+    if (!result || typeof result !== "object" || !("id" in result) || !("digest" in result))
+      throw new Error("connector_install_failed");
+    return { kind: "installed", id: result.id, digest: result.digest };
+  } finally {
+    connection.close();
+  }
+});
 
 function pairingIpc(method: "invite" | "confirm" | "inspect" | "cancel") {
   const paramsSchema = {

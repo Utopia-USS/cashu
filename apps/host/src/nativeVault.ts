@@ -39,6 +39,7 @@ import {
 } from "@cashu/sync";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import type { WriterLease } from "./lease.js";
+import { NativeBlobPublication } from "./nativeBlobs.js";
 import { HostLanCarrier } from "./pairing/carrier.js";
 import { type PairingAttempt, PairingJournal } from "./pairing/journal.js";
 import type { StrategyDirectoryAuthority } from "./proposals/strategyFiles.js";
@@ -144,6 +145,8 @@ export interface NativeVaultSession {
   canRunSideEffects(): boolean;
   strategyDirectoryAuthority(): StrategyDirectoryAuthority | null;
   canFetchPublicMarket(): boolean;
+  /** Exact-vault encrypted import archive, invalidated with this native session. */
+  blobPublication(): NativeBlobPublication | null;
   isSyncing(): boolean;
   onSyncSettled(listener: () => void): () => void;
   /** Serialize inbound fold and push with UI commands on this vault. */
@@ -392,6 +395,7 @@ export async function openNativeVault(
     const activeEngine = engine;
     const activeCandidate = candidate;
     const activeMeta = meta;
+    let blobPublication: NativeBlobPublication | null = null;
     const pairingAuthority = (): string => {
       const recovery = activeCandidate.devices.registry.recovery;
       const active = activeCandidate.ring.active;
@@ -580,6 +584,18 @@ export async function openNativeVault(
         } catch {
           return false;
         }
+      },
+      blobPublication: () => {
+        if (!isCurrent()) return null;
+        if (blobPublication === null)
+          blobPublication = new NativeBlobPublication({
+            dataDir,
+            vault: entry.vaultId,
+            lock: lease.lock(),
+            sodium: source.sodium,
+            ring: activeCandidate.ring,
+          });
+        return blobPublication.isCurrent() ? blobPublication : null;
       },
       isSyncing: () => syncing,
       onSyncSettled(listener) {
@@ -1205,11 +1221,13 @@ export async function openNativeVault(
         }),
       invalidate() {
         current = false;
+        blobPublication?.close();
         queue.close();
         notifySyncSettled();
       },
       async close() {
         current = false;
+        blobPublication?.close();
         queue.close();
         await queue.idle();
         await activeEngine.close();

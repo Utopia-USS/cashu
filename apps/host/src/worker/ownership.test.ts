@@ -80,13 +80,37 @@ it("refuses malformed or replaced private ownership without resetting it", () =>
   const duplicate = {
     version: 1,
     generation: 1,
-    jobs: { "investments.daily": { owner: "native", vaults: [f.vault.id, f.vault.id] } },
+    jobs: {
+      "investments.daily": { owner: "native", vaults: [f.vault.id, f.vault.id] },
+      "connectors.fetch": { owner: "native", vaults: [f.vault.id] },
+    },
   };
   writeFileSync(join(f.dataDir, "worker", "ownership.json"), JSON.stringify(duplicate));
   expect(() => admittedWorkerOwnership(f.input)).toThrow("worker_ownership_unavailable");
   expect(JSON.parse(readFileSync(join(f.dataDir, "worker", "ownership.json"), "utf8"))).toEqual(
     duplicate,
   );
+});
+
+it("refuses a one-job record and empty connector ownership", () => {
+  const f = fixture();
+  mkdirSync(join(f.dataDir, "worker"), { mode: 0o700 });
+  const path = join(f.dataDir, "worker", "ownership.json");
+  const record = {
+    version: 1,
+    generation: 1,
+    jobs: { "investments.daily": { owner: "native", vaults: [f.vault.id] } },
+  };
+  writeFileSync(path, JSON.stringify(record), { mode: 0o600 });
+  expect(() => admittedWorkerOwnership(f.input)).toThrow("worker_ownership_unavailable");
+  writeFileSync(
+    path,
+    JSON.stringify({
+      ...record,
+      jobs: { ...record.jobs, "connectors.fetch": { owner: "native", vaults: [] } },
+    }),
+  );
+  expect(() => admittedWorkerOwnership(f.input)).toThrow("worker_ownership_unavailable");
 });
 
 it("extends native daily ownership when another admitted vault is added", () => {

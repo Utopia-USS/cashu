@@ -7,9 +7,11 @@ import type { SettingsScreenState } from "./useSettingsScreen.js";
 function SyntheticSettings({
   unavailable = false,
   approval = false,
+  connectors = false,
 }: {
   unavailable?: boolean;
   approval?: boolean;
+  connectors?: boolean;
 }) {
   const profileForm = useForm({
     defaultValues: { name: "Synthetic Household", baseCurrency: "PLN" },
@@ -46,6 +48,49 @@ function SyntheticSettings({
     onModuleConfigured() {},
     privacyBusy: false,
     onMcpPrivacyPicked: async () => {},
+    connectorVault: "5f0c3a9e81d24b7690ae13c7d2f4b856",
+    connectorSnapshot: connectors
+      ? {
+          connectors: [
+            {
+              id: "synthetic-fetch",
+              name: "Synthetic fetch",
+              kind: "fetch",
+              module: "budget",
+              approval: "approved",
+              contentSha256: "a".repeat(64),
+              interpreter: "/synthetic/interpreter",
+              params: [{ id: "enabled", label: "Enabled", type: "boolean", required: false }],
+              secrets: [{ id: "token", label: "Token" }],
+            },
+          ],
+          accounts: [
+            {
+              gid: "6ad703ab-383d-8c73-82a5-1ee2d6742735",
+              name: "Synthetic checking",
+              type: "checking",
+            },
+          ],
+          bindings: [
+            {
+              gid: "8ad703ab-383d-8c73-82a5-1ee2d6742735",
+              account: "6ad703ab-383d-8c73-82a5-1ee2d6742735",
+              connector_id: "synthetic-fetch",
+              params_json: "{}",
+              cursor: "page-2",
+              auto_commit: 0,
+            },
+          ],
+        }
+      : null,
+    connectorBusy: false,
+    connectorAccounts: () => [
+      { gid: "6ad703ab-383d-8c73-82a5-1ee2d6742735", name: "Synthetic checking", type: "checking" },
+    ],
+    bindConnector: async () => {},
+    onConnectorAction: async () => {},
+    refreshConnectors: async () => {},
+    installConnector: async () => {},
     workspace: unavailable
       ? { availability: "unavailable", reason: "source_unbound" }
       : {
@@ -176,3 +221,4 @@ export default { title: "Desktop/Settings/Full", component: SyntheticSettings };
 export const Ready = { render: () => <SyntheticSettings /> };
 export const UnboundProviders = { render: () => <SyntheticSettings unavailable /> };
 export const ApprovalRequired = { render: () => <SyntheticSettings approval /> };
+export const ConnectorsReady = { render: () => <SyntheticSettings connectors /> };

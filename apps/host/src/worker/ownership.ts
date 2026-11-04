@@ -31,6 +31,14 @@ const schema = z.strictObject({
         .max(64)
         .refine((vaults) => new Set(vaults).size === vaults.length),
     }),
+    "connectors.fetch": z.strictObject({
+      owner: z.literal("native"),
+      vaults: z
+        .array(id)
+        .min(1)
+        .max(64)
+        .refine((vaults) => new Set(vaults).size === vaults.length),
+    }),
   }),
 });
 type Record = z.infer<typeof schema>;
@@ -141,18 +149,26 @@ export function admittedWorkerOwnership(input: {
   const combined = [
     ...new Set([...(old?.jobs["investments.daily"].vaults ?? []), ...expected]),
   ].sort();
+  const connectorVaults = [
+    ...new Set([...(old?.jobs["connectors.fetch"].vaults ?? []), ...expected]),
+  ].sort();
   if (combined.length > 64 || old?.generation === Number.MAX_SAFE_INTEGER)
     throw new Error("worker_ownership_unavailable");
   if (
     combined.length !== 0 &&
-    (old === null || combined.length !== old.jobs["investments.daily"].vaults.length)
+    (old === null ||
+      combined.length !== old.jobs["investments.daily"].vaults.length ||
+      connectorVaults.length !== old.jobs["connectors.fetch"].vaults.length)
   )
     writeRecord(
       path,
       {
         version: 1,
         generation: (old?.generation ?? 0) + 1,
-        jobs: { "investments.daily": { owner: "native", vaults: combined } },
+        jobs: {
+          "investments.daily": { owner: "native", vaults: combined },
+          "connectors.fetch": { owner: "native", vaults: connectorVaults },
+        },
       },
       old,
     );
@@ -173,7 +189,9 @@ export function admittedWorkerOwnership(input: {
         record !== null &&
         record.generation >= generation &&
         record.jobs["investments.daily"].owner === "native" &&
-        expected.every((vault) => record.jobs["investments.daily"].vaults.includes(vault))
+        expected.every((vault) => record.jobs["investments.daily"].vaults.includes(vault)) &&
+        record.jobs["connectors.fetch"].owner === "native" &&
+        expected.every((vault) => record.jobs["connectors.fetch"].vaults.includes(vault))
       );
     } catch {
       return false;
@@ -183,7 +201,7 @@ export function admittedWorkerOwnership(input: {
   return {
     isExclusive(job, vault) {
       return (
-        job === "investments.daily" &&
+        (job === "investments.daily" || job === "connectors.fetch") &&
         vault.mode === "native" &&
         expected.includes(vault.id) &&
         vault.native.canRunSideEffects() &&

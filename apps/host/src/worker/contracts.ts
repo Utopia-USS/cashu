@@ -109,6 +109,11 @@ export interface BudgetSyncPort {
     readonly errors?: readonly string[];
   }>;
 }
+export interface ConnectorFetchPort {
+  /** A single checked pass over this vault's bindings. Each binding owns its own lock and
+   * rechecks the holder, approved code and cursor at its final import command boundary. */
+  fetch(vault: OpenVault, guard: () => void): Promise<JobOutcome>;
+}
 interface InvestmentWorkerPorts {
   readonly prices: TransactionalPriceCache;
   /** Same instance used by daily, UI prices and proposal publication. */
@@ -128,6 +133,7 @@ export interface WorkerBindings {
   fetchAuthority?(vault: OpenVault, job: WorkerJob): WorkerAuthority | null;
   readonly investments?: InvestmentWorkerPorts;
   readonly budget?: BudgetSyncPort;
+  readonly connectors?: ConnectorFetchPort;
   readonly notifier?: WorkerNotifier;
   readonly offline?: boolean;
   readonly schedule?: { readonly hour: number; readonly minute: number };

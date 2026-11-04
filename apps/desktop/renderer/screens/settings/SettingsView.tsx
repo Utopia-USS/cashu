@@ -124,7 +124,7 @@ export function SettingsView({
           <AgentSection state={state} strategyPanel={strategyPanel} />
         </Card>
         <Card id="connectors" title={SECTION.connectors}>
-          <ConnectorsSection />
+          <ConnectorsSection state={state} />
         </Card>
         <Card id="data" title={SECTION.data}>
           <DataSection state={state} />
@@ -630,13 +630,264 @@ function AuditSection({ state }: { state: SettingsScreenState }) {
   );
 }
 
-function ConnectorsSection() {
+function ConnectorsSection({ state }: { state: SettingsScreenState }) {
+  const snapshot = state.connectorSnapshot;
   return (
-    <div className="grid gap-3">
-      <p>{T.connectorUnavailable}</p>
-      <p className="text-caption text-fg-muted">{T.connectorBuilder}</p>
-      <p className="text-caption text-fg-muted">{T.connectorDocs}</p>
+    <div className="grid gap-4">
+      <div className="flex gap-2">
+        <button
+          className={button}
+          type="button"
+          disabled={state.connectorBusy}
+          onClick={() => void state.installConnector()}
+        >
+          {T.connectorInstall}
+        </button>
+        <button
+          className={button}
+          type="button"
+          disabled={state.connectorBusy}
+          onClick={() => void state.refreshConnectors()}
+        >
+          {T.connectorRefresh}
+        </button>
+      </div>
+      {!snapshot ? (
+        <p>{T.connectorUnavailable}</p>
+      ) : snapshot.connectors.length === 0 ? (
+        <p>{T.connectorNone}</p>
+      ) : (
+        snapshot.connectors.map((connector) => (
+          <ConnectorCard
+            key={`${state.connectorVault}:${connector.id}`}
+            connector={connector}
+            state={state}
+          />
+        ))
+      )}
+      {snapshot?.bindings.map((binding) => (
+        <ConnectorBindingCard
+          key={`${state.connectorVault}:${binding.gid}`}
+          binding={binding}
+          state={state}
+        />
+      ))}
     </div>
+  );
+}
+
+function ConnectorCard({
+  connector,
+  state,
+}: {
+  connector: NonNullable<SettingsScreenState["connectorSnapshot"]>["connectors"][number];
+  state: SettingsScreenState;
+}) {
+  const [account, setAccount] = useState("");
+  const [params, setParams] = useState<Record<string, string | boolean>>({});
+  const [auto, setAuto] = useState(false);
+  const eligible = state.connectorAccounts(connector);
+  return (
+    <section className="grid gap-2 rounded-md border border-border p-3">
+      <h3 className="font-semibold">{connector.name}</h3>
+      <p>
+        {connector.module} · {connector.kind} ·{" "}
+        {
+          {
+            approved: T.connectorApproved,
+            pending: T.connectorPending,
+            changed: T.connectorChanged,
+            disabled: T.connectorDisabled,
+          }[connector.approval]
+        }
+      </p>
+      <p className="break-all text-caption">
+        <strong>{T.connectorDigest}:</strong> <code>{connector.contentSha256}</code>
+      </p>
+      <p className="break-all text-caption">
+        <strong>{T.connectorInterpreter}:</strong>{" "}
+        <code>{connector.interpreter ?? T.unavailable}</code>
+      </p>
+      {connector.approval !== "approved" && connector.interpreter && (
+        <button
+          className={button}
+          type="button"
+          disabled={state.connectorBusy}
+          onClick={() =>
+            connector.interpreter &&
+            void state.onConnectorAction({
+              op: "approve",
+              id: connector.id,
+              digest: connector.contentSha256,
+              interpreter: connector.interpreter,
+            })
+          }
+        >
+          {T.connectorApprove}
+        </button>
+      )}
+      {connector.approval === "approved" && (
+        <button
+          className={button}
+          type="button"
+          disabled={state.connectorBusy}
+          onClick={() => void state.onConnectorAction({ op: "disable", id: connector.id })}
+        >
+          {T.connectorDisable}
+        </button>
+      )}
+      {connector.approval === "approved" && connector.kind === "fetch" && (
+        <div className="grid gap-2">
+          <label className="grid gap-1">
+            {T.connectorAccount}
+            <select
+              className={control}
+              value={account}
+              onChange={(event) => setAccount(event.target.value)}
+            >
+              <option value="">{T.connectorAccount}</option>
+              {eligible.map((item) => (
+                <option key={item.gid} value={item.gid}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {connector.params.map((spec) => (
+            <label
+              className={spec.type === "boolean" ? "flex gap-2" : "grid gap-1"}
+              key={spec.id}
+              htmlFor={`connector-${connector.id}-${spec.id}`}
+            >
+              {spec.label || T.connectorParam}
+              {spec.type === "boolean" ? (
+                <input
+                  id={`connector-${connector.id}-${spec.id}`}
+                  type="checkbox"
+                  checked={params[spec.id] === true}
+                  onChange={(event) =>
+                    setParams((value) => ({ ...value, [spec.id]: event.target.checked }))
+                  }
+                />
+              ) : (
+                <input
+                  id={`connector-${connector.id}-${spec.id}`}
+                  className={control}
+                  type={spec.type === "date" ? "date" : spec.type === "number" ? "number" : "text"}
+                  value={typeof params[spec.id] === "string" ? (params[spec.id] as string) : ""}
+                  onChange={(event) =>
+                    setParams((value) => ({ ...value, [spec.id]: event.target.value }))
+                  }
+                />
+              )}
+            </label>
+          ))}
+          <label className="flex gap-2">
+            <input
+              type="checkbox"
+              checked={auto}
+              onChange={(event) => setAuto(event.target.checked)}
+            />
+            {T.connectorAuto}
+          </label>
+          <button
+            className={button}
+            type="button"
+            disabled={state.connectorBusy || !account}
+            onClick={() => void state.bindConnector(connector, account, params, auto)}
+          >
+            {T.connectorBind}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ConnectorBindingCard({
+  binding,
+  state,
+}: {
+  binding: NonNullable<SettingsScreenState["connectorSnapshot"]>["bindings"][number];
+  state: SettingsScreenState;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const connector = state.connectorSnapshot?.connectors.find(
+    (item) => item.id === binding.connector_id,
+  );
+  const account = state.connectorSnapshot?.accounts.find((item) => item.gid === binding.account);
+  return (
+    <section className="grid gap-2 rounded-md border border-border p-3">
+      <h3 className="font-semibold">
+        {connector?.name ?? binding.connector_id} · {account?.name ?? binding.account}
+      </h3>
+      <div className="flex gap-2">
+        <button
+          className={button}
+          type="button"
+          disabled={state.connectorBusy || connector?.approval !== "approved"}
+          onClick={() => void state.onConnectorAction({ op: "run", binding: binding.gid })}
+        >
+          {T.connectorRun}
+        </button>
+        <button
+          className={button}
+          type="button"
+          disabled={state.connectorBusy}
+          onClick={() => void state.onConnectorAction({ op: "unbind", binding: binding.gid })}
+        >
+          {T.connectorUnbind}
+        </button>
+      </div>
+      {connector?.secrets.map((spec) => (
+        <label className="grid gap-1" key={spec.id}>
+          {spec.label || T.connectorSecret}
+          <input
+            className={control}
+            type="password"
+            autoComplete="off"
+            value={values[spec.id] ?? ""}
+            onChange={(event) =>
+              setValues((previous) => ({ ...previous, [spec.id]: event.target.value }))
+            }
+          />
+          <span className="flex gap-2">
+            <button
+              className={button}
+              type="button"
+              disabled={state.connectorBusy || !values[spec.id]}
+              onClick={() => {
+                const value = values[spec.id];
+                if (!value) return;
+                void state.onConnectorAction({
+                  op: "setSecret",
+                  binding: binding.gid,
+                  secret: spec.id,
+                  value,
+                });
+                setValues((previous) => ({ ...previous, [spec.id]: "" }));
+              }}
+            >
+              {T.connectorSetSecret}
+            </button>
+            <button
+              className={button}
+              type="button"
+              disabled={state.connectorBusy}
+              onClick={() =>
+                void state.onConnectorAction({
+                  op: "clearSecret",
+                  binding: binding.gid,
+                  secret: spec.id,
+                })
+              }
+            >
+              {T.connectorClearSecret}
+            </button>
+          </span>
+        </label>
+      ))}
+    </section>
   );
 }
 function DataSection({ state }: { state: SettingsScreenState }) {

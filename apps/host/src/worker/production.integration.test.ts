@@ -184,3 +184,42 @@ it("reports missing file authority without claiming or recording a daily run", a
     fixture.cleanup();
   }
 });
+
+it("claims a budget connector without a strategy directory", async () => {
+  const fixture = await nativeVaultFixture({ modules: ["budget"] });
+  let fetched = 0;
+  const host = await startLocalHost({
+    dataDir: fixture.dataDir,
+    home: fixture.home,
+    build: "test",
+    launcher: false,
+    python: null,
+    vaultSource: fixture.vaultSource,
+    now: () => Date.UTC(2026, 10, 3, 12),
+    worker: (context) =>
+      createProductionWorkerBindings(context, {
+        dataDir: fixture.dataDir,
+        assertAdmission() {},
+        strategyDirectory: () => null,
+        canFetchPublicMarket: () => true,
+        connectors: {
+          fetch: async (_vault, guard) => {
+            guard();
+            fetched++;
+            return { status: "ok", stats: { stored: 0, skipped: 0, failed: 0 } };
+          },
+        },
+        language: () => "en",
+      }),
+  });
+  try {
+    await expect.poll(() => fetched).toBe(1);
+    const record = JSON.parse(
+      readFileSync(join(fixture.dataDir, "worker", "ownership.json"), "utf8"),
+    );
+    expect(record.jobs["connectors.fetch"].vaults).toEqual([fixture.vaultId]);
+  } finally {
+    await host.stop();
+    fixture.cleanup();
+  }
+});

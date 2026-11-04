@@ -1,6 +1,6 @@
 // Texts of the connector helpers (frontend/src/core/connectors.ts), shared by Settings > Konektory, the connector drawer
 // and the bindings. See docs/agents/localization.md.
-import { catalog, enCount, plCount } from "../index.js";
+import { catalog, createTranslator, enCount, type Lang, plCount } from "../index.js";
 
 type Tone = "pos" | "neg" | "warn" | "info";
 type Status = [string, Tone | undefined, boolean];
@@ -77,6 +77,14 @@ export const CS = catalog({
   },
   ownImporter: { pl: "Własny importer.", en: "Custom importer." },
 });
+
+/** Worker copy uses an explicit profile language, independent of the renderer's global locale. */
+export function connectorProposalSummary(language: Lang, name: string): string {
+  return createTranslator(language).tr({
+    pl: `Import z konektora ${name}`,
+    en: `Import from connector ${name}`,
+  });
+}
 
 /** Status vocabulary (D8): label, tone, solid. */
 export const STATUS = catalog({

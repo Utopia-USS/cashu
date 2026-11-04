@@ -195,6 +195,8 @@ export {
   uiPairingAllowed,
 } from "./pairing/messages.js";
 export {
+  NATIVE_CONNECTORS_FEATURE,
+  NATIVE_CONNECTORS_METHODS,
   NATIVE_CREATION_FEATURE,
   NATIVE_CREATION_METHODS,
   roleAllows,

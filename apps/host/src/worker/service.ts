@@ -166,7 +166,10 @@ export class HostWorker {
     const bindings = this.bindings;
     if (bindings === undefined) throw new WorkerAuthorityLost();
     return workerGuard(this.host, bindings, vault, job, {
-      network: job === "budget.sync" || (job === "investments.daily" && bindings.offline !== true),
+      network:
+        job === "connectors.fetch" ||
+        job === "budget.sync" ||
+        (job === "investments.daily" && bindings.offline !== true),
     });
   }
   private async due(
@@ -304,7 +307,15 @@ export class HostWorker {
       }
     }
     if (force || slotPassed(time, this.schedule)) {
-      // connectors.fetch remains Python-owned until its genuine native executor/D7 is available.
+      if (bindings.connectors !== undefined) {
+        const connectors = bindings.connectors;
+        const candidates = [
+          ...new Map([...investors, ...budgeters].map((v) => [v.id, v])).values(),
+        ];
+        await this.phase("connectors.fetch", candidates, force, (vault, guard) =>
+          connectors.fetch(vault, guard),
+        );
+      }
       if (this.investments !== undefined) {
         const busy = new Set<string>();
         const due = await this.recordStart(

@@ -17,6 +17,9 @@ export interface ProtocolVersion {
  * 1.5: verified packaged content-build match for ui/cli/mcp handshakes; admin stays cross-build.
  * 1.6: exact UI-role native device revocation RPCs (feature `native.devices.v1`).
  * 1.7: exact UI-role native pairing RPCs (feature `native.pairing.v1`).
+ * 1.7 also admits the additive `native.connectors.v1` picker capability: prepareInstall returns a
+ * session-bound one-use token, commitInstall consumes it with a main-process selected directory.
+ * No arbitrary path is exposed in the renderer. Unknown connector methods close the UI session.
  */
 export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 7 };
 

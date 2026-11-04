@@ -147,3 +147,62 @@ export const workspaceApply: UiAction<
   },
   unknown
 > = { id: "core.settings.workspaceApply" };
+
+export interface ConnectorSettingsSnapshot {
+  readonly connectors: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly kind: "file" | "fetch";
+    readonly module: "budget" | "investments";
+    readonly contentSha256: string;
+    readonly interpreter: string | null;
+    readonly approval: "pending" | "approved" | "changed" | "disabled";
+    readonly params: readonly {
+      readonly id: string;
+      readonly label: string;
+      readonly type: string;
+      readonly required: boolean;
+    }[];
+    readonly secrets: readonly { readonly id: string; readonly label: string }[];
+  }[];
+  readonly accounts: readonly {
+    readonly gid: string;
+    readonly name: string;
+    readonly type: string;
+  }[];
+  readonly bindings: readonly {
+    readonly gid: string;
+    readonly account: string;
+    readonly connector_id: string;
+    readonly params_json: string;
+    readonly cursor: string | null;
+    readonly auto_commit: number;
+  }[];
+}
+export type ConnectorSettingsInput =
+  | { readonly op: "list" }
+  | {
+      readonly op: "approve";
+      readonly id: string;
+      readonly digest: string;
+      readonly interpreter: string;
+    }
+  | { readonly op: "disable"; readonly id: string }
+  | {
+      readonly op: "bind";
+      readonly id: string;
+      readonly account: string;
+      readonly params: Readonly<Record<string, string | number | boolean>>;
+      readonly autoCommit: boolean;
+    }
+  | { readonly op: "unbind" | "run"; readonly binding: string }
+  | {
+      readonly op: "setSecret";
+      readonly binding: string;
+      readonly secret: string;
+      readonly value: string;
+    }
+  | { readonly op: "clearSecret"; readonly binding: string; readonly secret: string };
+export const connectorSettings: UiAction<ConnectorSettingsInput, unknown> = {
+  id: "core.settings.connectors",
+};

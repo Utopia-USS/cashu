@@ -24,6 +24,7 @@ import {
   deviceListParamsSchema,
   deviceListResultSchema,
   HOST_PROTOCOL,
+  NATIVE_CONNECTORS_FEATURE,
   NATIVE_CREATION_FEATURE,
   NATIVE_DEVICES_FEATURE,
   NATIVE_PAIRING_FEATURE,
@@ -78,6 +79,7 @@ import {
   researchTools,
   type ToolContext,
 } from "@cashu/mcp";
+import type { HostLock } from "@cashu/node-host";
 import {
   type HostPathEnv,
   type HostSession,
@@ -101,6 +103,7 @@ import { DELEGATED } from "./cli/delegated.js";
 import { portedCommands } from "./cli/ported.js";
 import { serveCliSession } from "./cli/runner.js";
 import type { PortedCommand } from "./cli/tree.js";
+import { connectorInstallRpc } from "./connectorInstallRpc.js";
 import { recordStart, type StartRecord } from "./crashLoop.js";
 import { createDeviceService } from "./devices/service.js";
 import { currentStrategyImages } from "./investmentScreenSources.js";
@@ -217,6 +220,7 @@ export interface LocalHostOptions {
     | { readonly kind: "native-production"; readonly factory: ProductionVaultSourceFactory };
   /** Checked S60 preparation authority, bound to the exact open vault. Absent by default. */
   readonly proposals?: ProposalApprovalProvider;
+  readonly connectorCatalog?: () => import("./connectors/catalog.js").ConnectorCatalog | undefined;
   /** Exact-vault checked workspace provider. Unbound means unavailable, never absent. */
   readonly workspace?: WorkspaceProvider;
   /** Verified packaged updater, absent in unbound native builds. */
@@ -243,6 +247,7 @@ export interface LocalHostOptions {
     context: WorkerHostContext,
     notifications?: HostNotificationCapability,
     queue?: NotificationQueue,
+    lock?: HostLock,
   ) => WorkerBindings | undefined;
   /** Additional read-only source roots checked by the production entry. The selected data dir
    * is always checked here, including when Create starts before any vault or worker exists. */
@@ -448,6 +453,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     features: [
       "store.v2",
       ...(options.vaultSource.kind === "native-production" ? [NATIVE_CREATION_FEATURE] : []),
+      ...(options.connectorCatalog !== undefined ? [NATIVE_CONNECTORS_FEATURE] : []),
       ...(nativeMode ? [NATIVE_DEVICES_FEATURE] : []),
       ...(nativeMode && options.lan !== undefined && options.lan.kind !== "off"
         ? [NATIVE_PAIRING_FEATURE]
@@ -715,7 +721,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   try {
     workerBindings =
       workerContext.jobsEnabled() && stores.vaults.size > 0
-        ? options.worker?.(workerContext, notifications, signalQueue)
+        ? options.worker?.(workerContext, notifications, signalQueue, server.lock)
         : undefined;
   } catch (error) {
     log.warn("worker.binding-failed", { error: errorName(error) });
@@ -1211,19 +1217,22 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       armIdle();
     });
     switch (session.role) {
-      case "ui":
+      case "ui": {
+        const installConnector = connectorInstallRpc(session, () => options.connectorCatalog?.());
         serveStoreChannel(session, {
-          ...(creation === undefined && notificationIntents === undefined && !nativeMode
+          ...(creation === undefined && notificationIntents === undefined && options.connectorCatalog === undefined && !nativeMode
             ? {}
             : {
                 onRequest: (frame) =>
                   frame.method === NOTIFICATION_INTENT_METHOD
                     ? serveNotificationRequest(session, frame)
-                    : frame.method.startsWith("native.pairing.")
-                      ? servePairingRequest(session, frame)
-                      : frame.method.startsWith("native.devices.")
-                        ? serveDevicesRequest(session, frame)
-                        : serveCreationRequest(session, frame),
+                    : frame.method.startsWith("native.connectors.")
+                      ? installConnector(frame)
+                      : frame.method.startsWith("native.pairing.")
+                        ? servePairingRequest(session, frame)
+                        : frame.method.startsWith("native.devices.")
+                          ? serveDevicesRequest(session, frame)
+                          : serveCreationRequest(session, frame),
               }),
           stores,
           queries,
@@ -1277,6 +1286,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           ...(options.afterCommit === undefined ? {} : { afterCommit: options.afterCommit }),
         });
         return;
+      }
       case "admin":
         handleAdmin(session, { status, stop, log });
         return;

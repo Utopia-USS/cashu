@@ -20,6 +20,11 @@ export const NATIVE_CREATION_METHODS = [
   "native.creation.inspect",
   "native.creation.current",
 ] as const;
+export const NATIVE_CONNECTORS_FEATURE = "native.connectors.v1";
+export const NATIVE_CONNECTORS_METHODS = [
+  "native.connectors.prepareInstall",
+  "native.connectors.commitInstall",
+] as const;
 
 export function uiCreationAllowed(
   method: string,
@@ -45,6 +50,7 @@ export function roleAllows(role: Role, frame: ClientFrame): boolean {
         return (
           frame.method === NOTIFICATION_INTENT_METHOD ||
           NATIVE_CREATION_METHODS.some((method) => frame.method === method) ||
+          NATIVE_CONNECTORS_METHODS.some((method) => frame.method === method) ||
           NATIVE_PAIRING_METHODS.some((method) => frame.method === method) ||
           NATIVE_DEVICES_METHODS.some((method) => frame.method === method)
         );

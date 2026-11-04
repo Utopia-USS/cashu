@@ -68,16 +68,17 @@ def _read(path: Path) -> dict | None:
             not 1 <= value["generation"] <= 2**53 - 1):
         raise ValueError("worker ownership record invalid")
     jobs = value["jobs"]
-    if not isinstance(jobs, dict) or set(jobs) != {"investments.daily"}:
+    if not isinstance(jobs, dict) or set(jobs) != {"investments.daily", "connectors.fetch"}:
         raise ValueError("worker ownership record invalid")
-    daily = jobs["investments.daily"]
-    if not isinstance(daily, dict) or set(daily) != {"owner", "vaults"} or daily["owner"] != "native":
-        raise ValueError("worker ownership record invalid")
-    vaults = daily["vaults"]
-    if not isinstance(vaults, list) or not vaults or len(vaults) > 64 or len(vaults) != len(set(vaults)) or not all(
-        isinstance(vault, str) and _ID.fullmatch(vault) for vault in vaults
-    ):
-        raise ValueError("worker ownership record invalid")
+    for job in ("investments.daily", "connectors.fetch"):
+        record = jobs[job]
+        if not isinstance(record, dict) or set(record) != {"owner", "vaults"} or record["owner"] != "native":
+            raise ValueError("worker ownership record invalid")
+        vaults = record["vaults"]
+        if not isinstance(vaults, list) or not vaults or len(vaults) > 64 or len(vaults) != len(set(vaults)) or not all(
+            isinstance(vault, str) and _ID.fullmatch(vault) for vault in vaults
+        ):
+            raise ValueError("worker ownership record invalid")
     return value
 
 

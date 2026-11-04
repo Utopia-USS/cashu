@@ -4,7 +4,12 @@ import { setLanguageForTests } from "@cashu/i18n";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ApprovalRequired, Ready, UnboundProviders } from "./SettingsView.stories.js";
+import {
+  ApprovalRequired,
+  ConnectorsReady,
+  Ready,
+  UnboundProviders,
+} from "./SettingsView.stories.js";
 
 class Observer {
   observe() {}
@@ -80,6 +85,25 @@ it("disables registration when no OS service provider is bound", async () => {
     expect(container.textContent).toContain("Unavailable in this environment");
     expect(toggle?.checked).toBe(false);
     expect(toggle?.disabled).toBe(true);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("shows a populated connector with a boolean control and no raw cursor", async () => {
+  setLanguageForTests("en");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<ConnectorsReady.render />));
+    expect(container.textContent).toContain("Synthetic fetch");
+    const enabled = [...container.querySelectorAll("label")].find((item) =>
+      item.textContent?.includes("Enabled"),
+    );
+    expect(enabled?.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("page-2");
   } finally {
     await act(async () => root.unmount());
     container.remove();
