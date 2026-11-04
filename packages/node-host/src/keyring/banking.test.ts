@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 it("isolates profile banking secrets and closes access after authority or lock loss", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cashu-banking-keys-test-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-banking-keys-test-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });

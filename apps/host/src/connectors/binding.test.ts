@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -10,7 +10,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), "cashu-binding-test-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-binding-test-"));
   roots.push(root);
   const data = join(root, "data");
   const source = join(root, "source");

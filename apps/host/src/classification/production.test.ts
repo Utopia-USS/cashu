@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "cashu-classifier-binding-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-classifier-binding-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });

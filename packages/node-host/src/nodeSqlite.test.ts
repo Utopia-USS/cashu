@@ -1,13 +1,14 @@
 // The node:sqlite SqlDriver on a temp database: read-write basics (transactions, savepoints,
 // rollback) and the read-only mode a host uses on a live WAL database written by another connection.
-import { lstatSync, mkdtempSync } from "node:fs";
+import { lstatSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { acquireHostLock } from "./host/lock.js";
 import { backupNodeSqlite, openNodeSqlite, ReadOnlyDriverError } from "./nodeSqlite.js";
 
-const tempDb = () => join(mkdtempSync(join(tmpdir(), "cashu-node-host-sqlite-")), "t.db");
+const tempDb = () =>
+  join(mkdtempSync(join(realpathSync(tmpdir()), "cashu-node-host-sqlite-")), "t.db");
 
 const count = (db: ReturnType<typeof openNodeSqlite>) =>
   db.prepare("SELECT count(*) AS n FROM t").get<{ n: number }>()?.n;
@@ -104,7 +105,7 @@ describe("node:sqlite driver, read-only", () => {
 
 describe("live exclusive online backup", () => {
   it("captures committed WAL through the held writer and refuses a stale or ordinary driver", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "cashu-node-backup-"));
+    const dir = mkdtempSync(join(realpathSync(tmpdir()), "cashu-node-backup-"));
     const lock = acquireHostLock(join(dir, "host.lock.db"));
     if (!lock) throw new Error("synthetic lock unavailable");
     const source = openNodeSqlite(join(dir, "source.db"), { exclusive: lock });

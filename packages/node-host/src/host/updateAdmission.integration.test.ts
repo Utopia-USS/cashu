@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -20,7 +20,7 @@ afterEach(cleanup);
 it("fences a real successor before socket publication and proves a bound completed handover", async () => {
   const base = trackDir(tempDir());
   const dataDir = join(base, `long-${"x".repeat(120)}`);
-  const runtime = trackDir(mkdtempSync(join(tmpdir(), "ch-")));
+  const runtime = trackDir(mkdtempSync(join(realpathSync(tmpdir()), "ch-")));
   const pathEnv = { platform: "darwin" as const, tmpDir: runtime };
   const paths = hostRunPaths(dataDir, pathEnv);
   expect(paths.socketDir).toContain(runtime);

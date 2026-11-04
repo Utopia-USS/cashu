@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 it("isolates each vault and refuses non-owner writes or stale reads before OS access", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cashu-classifier-test-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-classifier-test-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });

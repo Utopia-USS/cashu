@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 it("derives secret scope from the approved manifest and refuses cross-binding access", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cashu-secret-adapter-test-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-secret-adapter-test-"));
   roots.push(root);
   const data = join(root, "data"),
     source = join(root, "source");

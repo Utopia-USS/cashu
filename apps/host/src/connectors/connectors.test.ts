@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -22,7 +23,7 @@ function fixture(script = 'print("{\\"match\\":true}")'): {
   input: string;
   outside: string;
 } {
-  const root = mkdtempSync(join(tmpdir(), "cashu-connectors-test-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-connectors-test-"));
   roots.push(root);
   const source = join(root, "source");
   const data = join(root, "data");

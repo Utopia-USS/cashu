@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -27,7 +28,7 @@ afterEach(() => {
 });
 const sodium = await crypto.loadNodeSodium();
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "t44-test-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "t44-test-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });

@@ -2,6 +2,7 @@
 // created, `unavailable` when the root is gone, paths kept under the root), then the S28a carrier
 // contract suite unchanged over the own-log carrier on this adapter (shared folder and replicas kept
 // in step by the simulated sync service), as packages/sync runs it over its test adapter.
+import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +19,8 @@ import { CloudSim } from "@cashu/sync/testing/folder";
 import { describe, expect, it } from "vitest";
 import { NodeFolderFs } from "./folderFs.js";
 
-const tempRoot = (name: string) => mkdtemp(join(tmpdir(), `cashu-node-host-${name}-`));
+const tempRoot = (name: string) =>
+  mkdtemp(join(realpathSync(tmpdir()), `cashu-node-host-${name}-`));
 const mode = async (path: string) => (await stat(path)).mode & 0o777;
 const bytes = (...xs: number[]) => Uint8Array.from(xs);
 
