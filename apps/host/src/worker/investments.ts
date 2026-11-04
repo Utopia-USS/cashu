@@ -4,6 +4,13 @@ import { randomBytes } from "node:crypto";
 import { parseDateTime } from "@cashu/domain";
 import { performance as perf, toCurrency } from "@cashu/domain/investments";
 import {
+  evaluate,
+  refreshMacro,
+  regimeDict,
+  SERIES_KEYS,
+  USDPLN,
+} from "@cashu/domain/investments/macro";
+import {
   type Command,
   type CommandEnv,
   type DurableCommandResult,
@@ -33,8 +40,9 @@ export interface WorkerWriteAttempts {
     job: "investments.daily" | "investments.backfill",
     command: string,
     key: string,
+    offline: boolean,
   ): Promise<void>;
-  settle(vault: OpenVault, key: string): Promise<void>;
+  settle(vault: OpenVault, key: string, offline: boolean): Promise<void>;
 }
 
 export function nativeInvestmentJobs(
@@ -45,13 +53,14 @@ export function nativeInvestmentJobs(
   const ports = bindings.investments;
   if (ports === undefined) return undefined;
   const prices = new PricesService(ports.dailyLock);
-  const guardOf = (vault: OpenVault, ui = false, offline = false) => {
+  const guardOf = (vault: OpenVault, ui = false, offline = false, cliCurrent?: () => boolean) => {
     const current = workerGuard(host, bindings, vault, "investments.daily", {
       network: !offline && bindings.offline !== true,
       ...(ui ? { ui: true } : {}),
     });
     return () => {
       current();
+      if (cliCurrent && !cliCurrent()) throw new WorkerAuthorityLost();
       if (bindings.investments !== ports) throw new WorkerAuthorityLost();
     };
   };
@@ -63,13 +72,18 @@ export function nativeInvestmentJobs(
     ...(vault.env.random === undefined ? {} : { random: vault.env.random.bind(vault.env) }),
   });
   const durableOf =
-    (vault: OpenVault, guard: () => void, job: "investments.daily" | "investments.backfill") =>
+    (
+      vault: OpenVault,
+      guard: () => void,
+      job: "investments.daily" | "investments.backfill",
+      offline: boolean,
+    ) =>
     async <I, R>(command: Command<I, R>, input: unknown) => {
       if (attempts === undefined)
         return { kind: "not_started" as const, reason: "worker_attempt_bookkeeping_unavailable" };
       const key = mintUlid(Date.now(), (n) => new Uint8Array(randomBytes(n)));
       try {
-        await attempts.reserve(vault, job, command.id, key);
+        await attempts.reserve(vault, job, command.id, key, offline);
       } catch (error) {
         if (error instanceof DurableWriteUnknown) throw error;
         // A failed reservation may have reached disk. Never dispatch or mint a second key.
@@ -101,7 +115,7 @@ export function nativeInvestmentJobs(
       }
       if (result.kind !== "outcome_unknown") {
         try {
-          await attempts.settle(vault, key);
+          await attempts.settle(vault, key, offline);
         } catch {
           // The completed result is known but its reservation may remain durable.
           throw new DurableWriteUnknown(key, command.id);
@@ -110,15 +124,71 @@ export function nativeInvestmentJobs(
       return result;
     };
   return {
+    async macroRefresh(vault: OpenVault, cliCurrent: () => boolean) {
+      const guard = guardOf(vault, false, false, cliCurrent);
+      guard();
+      if (bindings.offline || !ports.sources || !ports.macroStore || !ports.macroBars)
+        return { status: "unavailable" as const };
+      const release = ports.dailyLock.tryAcquire();
+      if (release === null) return { status: "busy" as const };
+      let sources: ReturnType<NonNullable<typeof ports.sources>> | undefined;
+      try {
+        sources = ports.sources([vault.id]);
+        guard();
+        if (!sources.macro) return { status: "unavailable" as const };
+        const macroSource = sources.macro;
+        const report = await refreshMacro(
+          {
+            async chart(...args) {
+              guard();
+              const result = await macroSource.chart(...args);
+              guard();
+              return result;
+            },
+          },
+          localDay(host.now()),
+        );
+        guard();
+        const stored = ports.macroStore.apply(
+          report,
+          parseDateTime(new Date(host.now()).toISOString()),
+        );
+        guard();
+        const closes = Object.fromEntries(
+          [...SERIES_KEYS, USDPLN].map((series) => [
+            series,
+            ports
+              .macroBars?.(series)
+              .map((bar) => [bar.date, Number(bar.close.toString())] as const) ?? [],
+          ]),
+        );
+        const regimes = evaluate(closes, localDay(host.now())).map((regime) =>
+          regimeDict(regime, bindings.language(vault)),
+        );
+        if (report.series.some((item) => item.status === "ok" && item.start !== null))
+          await reportSuccessfulFetch(vault, guard);
+        return { status: "ok" as const, report, stored, regimes };
+      } finally {
+        try {
+          sources?.close();
+        } finally {
+          release();
+        }
+      }
+    },
     async daily(
       vaults: readonly OpenVault[],
       offlineOverride = false,
+      onReport?: (report: Awaited<ReturnType<typeof runDaily>>) => void,
+      trigger = "worker",
+      cliCurrent?: () => boolean,
+      selectedVaults?: readonly string[],
     ): Promise<ReadonlyMap<string, JobOutcome>> {
       const results = new Map<string, JobOutcome>(),
         selected: DailyVault[] = [];
       for (const vault of vaults) {
         try {
-          const guard = guardOf(vault, false, offlineOverride);
+          const guard = guardOf(vault, false, offlineOverride, cliCurrent);
           guard();
           const files = ports.files(vault);
           if (files === null) {
@@ -139,7 +209,7 @@ export function nativeInvestmentJobs(
               }),
             ...(vault.native === undefined
               ? {}
-              : { durableWrite: durableOf(vault, guard, "investments.daily") }),
+              : { durableWrite: durableOf(vault, guard, "investments.daily", offlineOverride) }),
           });
         } catch (error) {
           results.set(vault.id, {
@@ -162,15 +232,21 @@ export function nativeInvestmentJobs(
           ...(ports.notifications === undefined ? {} : { notifications: ports.notifications }),
           ...(ports.macroStore === undefined ? {} : { macroStore: ports.macroStore }),
         },
-        { asOf: localDay(host.now()), trigger: "worker", offline },
+        {
+          asOf: localDay(host.now()),
+          trigger,
+          offline,
+          ...(selectedVaults ? { vaults: selectedVaults } : {}),
+        },
       );
+      onReport?.(report);
       for (const vault of vaults) {
         const fetched = report.market?.reports.get(vault.id);
         if (
           fetched?.instruments.some((item) => item.status === "ok" && item.start !== null) ||
           fetched?.fx.some((item) => item.status === "ok" && item.start !== null)
         )
-          await reportSuccessfulFetch(vault, guardOf(vault));
+          await reportSuccessfulFetch(vault, guardOf(vault, false, offlineOverride, cliCurrent));
       }
       if (report.status === "busy")
         for (const vault of selected)
@@ -236,7 +312,7 @@ export function nativeInvestmentJobs(
             }),
           ...(vault.native === undefined
             ? {}
-            : { durableWrite: durableOf(vault, guard, "investments.backfill") }),
+            : { durableWrite: durableOf(vault, guard, "investments.backfill", false) }),
         });
         guard();
         if (!result.ok && result.reason === "not_leader") throw new WorkerAuthorityLost();

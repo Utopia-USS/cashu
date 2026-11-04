@@ -44,7 +44,7 @@ export interface StrategyPublicationJournal {
   readonly managed: ManagedImage;
   readonly pending: { readonly before: ManagedImage; readonly after: ManagedImage } | null;
   /** Private raw targets remain recoverable when a later version/approval loses. Never evict. */
-  readonly receipts?: readonly ManagedImage[];
+  readonly receipts: readonly ManagedImage[];
 }
 export interface PrivateStrategyJournal {
   readonly vault: string;
@@ -137,7 +137,7 @@ export async function prepareStrategyPublication(
     (saved.vault !== deps.store.vault ||
       !validImage(saved.baseline, saved.baselineDigests) ||
       !validImage(saved.managed.image, saved.managed.digests) ||
-      saved.receipts?.some((receipt) => !validImage(receipt.image, receipt.digests)) ||
+      saved.receipts.some((receipt) => !validImage(receipt.image, receipt.digests)) ||
       (saved.pending !== null &&
         (!validImage(saved.pending.before.image, saved.pending.before.digests) ||
           !validImage(saved.pending.after.image, saved.pending.after.digests))))
@@ -151,6 +151,7 @@ export async function prepareStrategyPublication(
     baselineVersion,
     managed: managed(base, null, baselineVersion),
     pending: null,
+    receipts: [],
   };
   const restoreTarget = managed(
     base,
@@ -185,12 +186,7 @@ export async function prepareStrategyPublication(
     // Preserve an existing mixed-rename intent before recovery; all its known states remain safe.
     const prior = managed(before, journal.managed.approvalEid, journal.managed.version);
     const receipts = new Map<string, ManagedImage>();
-    for (const receipt of [
-      ...(journal.receipts ?? []),
-      journal.managed,
-      journal.pending?.after,
-      after,
-    ]) {
+    for (const receipt of [...journal.receipts, journal.managed, journal.pending?.after, after]) {
       if (receipt === undefined || receipt.approvalEid === null) continue;
       const key = JSON.stringify([receipt.approvalEid, receipt.version]);
       receipts.delete(key);
@@ -285,7 +281,7 @@ export async function prepareStrategyPublication(
       const receipts = [
         journal.pending?.after,
         journal.managed,
-        ...(journal.receipts ?? []).toReversed(),
+        ...journal.receipts.toReversed(),
       ].filter(
         (image): image is ManagedImage => image !== undefined && image.version === expectedVersion,
       );

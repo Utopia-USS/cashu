@@ -3,9 +3,10 @@ import { performance as perf } from "@cashu/domain/investments";
 import { enabledModuleIds, mcpProfile } from "@cashu/store/core";
 import type { PerformanceService } from "@cashu/store/investments/performance";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
-import type { StrategyState } from "@cashu/store/investments/services";
+import type { StrategyFilesPort, StrategyState } from "@cashu/store/investments/services";
 import type { MarketInput } from "@cashu/store/investments/views";
 import type { HostStores, OpenVault } from "../../stores.js";
+import type { HostWorker } from "../../worker/service.js";
 import { localDate } from "../budget/context.js";
 import { supportsConsoleUnicode } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
@@ -15,6 +16,15 @@ export interface InvestmentCliDeps {
   readonly now: () => number;
   readonly sources: InvestmentScreenSources;
   readonly performance: PerformanceService;
+  readonly strategyFiles?: (vault: OpenVault, slug: string) => StrategyCliFiles | null;
+  readonly worker?: () => HostWorker | null;
+}
+
+export interface StrategyCliFiles extends StrategyFilesPort {
+  /** A private, checked create-if-absent publication, never an exists-then-overwrite pair. */
+  createAbsent?(name: "strategy.yaml" | "strategy.md", text: string): Promise<"created" | "exists">;
+  /** Explicit --force replacement of one checked private file, atomically per file. */
+  replaceForced?(name: "strategy.yaml" | "strategy.md", text: string): Promise<void>;
 }
 
 export interface InvestmentContext {
@@ -25,6 +35,23 @@ export interface InvestmentContext {
   readonly timeZone: string;
   readonly strategy: StrategyState;
   readonly market: MarketInput;
+}
+
+/** Select one enabled native vault without requiring strategy or market data. */
+export function investmentVault(
+  io: CommandIo,
+  root: { readonly profile?: string },
+  deps: Pick<InvestmentCliDeps, "stores">,
+): OpenVault | null {
+  const slug = root.profile || io.env.CASHU_PROFILE;
+  if (!slug || !supportsConsoleUnicode(io)) return null;
+  const matches = [...deps.stores.vaults.values()].filter(
+    (vault) => mcpProfile(vault.store.read.bind(vault.store))?.slug === slug,
+  );
+  const vault = matches.length === 1 ? matches[0] : undefined;
+  return vault && enabledModuleIds(vault.store.read.bind(vault.store)).has("investments")
+    ? vault
+    : null;
 }
 
 /** Refuse ambiguous slugs and unbound/currently invalid file or market authorities. */

@@ -68,6 +68,7 @@ function journal(vault: string): StrategyPublicationJournal {
     baselineVersion: null,
     managed,
     pending: null,
+    receipts: [],
   };
 }
 
@@ -148,6 +149,10 @@ describe("injected private strategy publication files", () => {
     privateFile(join(f.directory, ".proposal-publication.json"), "{bad");
     await expect(f.journal.read()).rejects.toThrow();
     await expect(f.journal.write(journal("another-vault"))).rejects.toThrow();
+    const withoutReceipts = { ...journal(f.files.vault) };
+    Reflect.deleteProperty(withoutReceipts, "receipts");
+    privateFile(join(f.directory, ".proposal-publication.json"), JSON.stringify(withoutReceipts));
+    await expect(f.journal.read()).rejects.toThrow();
   });
 
   it("refuses a forged target name before deleting an outside private file", async () => {
@@ -158,17 +163,49 @@ describe("injected private strategy publication files", () => {
     expect(readFileSync(outside, "utf8")).toBe("must remain");
   });
 
-  it("does not let a stale token install or discard a newer staged file", async () => {
+  it("refuses a second stage of the same target while the first token is active", async () => {
     const f = fixture();
     const old = await f.files.stage(STRATEGY_YAML, "old staged text");
-    const fresh = await f.files.stage(STRATEGY_YAML, "fresh staged text");
-    await expect(f.files.install(STRATEGY_YAML, old)).rejects.toThrow();
-    await f.files.discard(old);
+    await expect(f.files.stage(STRATEGY_YAML, "fresh staged text")).rejects.toThrow();
     expect(readFileSync(join(f.directory, ".strategy.yaml.approving"), "utf8")).toBe(
-      "fresh staged text",
+      "old staged text",
     );
+    await f.files.discard(old);
+    const fresh = await f.files.stage(STRATEGY_YAML, "fresh staged text");
     await f.files.install(STRATEGY_YAML, fresh);
     expect(f.files.readSync().yaml).toBe("fresh staged text");
+  });
+
+  it("shares a directory mutation lock across adapter instances", async () => {
+    const f = fixture();
+    const other = strategyPublicationPorts({
+      vault: f.files.vault,
+      privateRoot: f.root,
+      directory: f.directory,
+      isCurrent: () => true,
+    });
+    const first = await f.files.stage(STRATEGY_YAML, "first staged text");
+    await expect(other.files.stage(STRATEGY_MD, "competing text")).rejects.toThrow();
+    await f.files.discard(first);
+    const second = await other.files.stage(STRATEGY_MD, "second staged text");
+    await other.files.install(STRATEGY_MD, second);
+    expect(f.files.readSync()).toEqual({ yaml: null, md: "second staged text" });
+  });
+
+  it("releases a revoked stage so a fresh authority can publish", async () => {
+    const f = fixture();
+    const old = await f.files.stage(STRATEGY_YAML, "stale staged text");
+    f.revoke();
+    await expect(f.files.install(STRATEGY_YAML, old)).rejects.toThrow();
+    const fresh = strategyPublicationPorts({
+      vault: f.files.vault,
+      privateRoot: f.root,
+      directory: f.directory,
+      isCurrent: () => true,
+    });
+    const token = await fresh.files.stage(STRATEGY_YAML, "fresh text");
+    await fresh.files.install(STRATEGY_YAML, token);
+    expect(fresh.files.readSync().yaml).toBe("fresh text");
   });
 
   it("pins the injected vault identity and callback when their carrier object changes", async () => {

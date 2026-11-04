@@ -5,7 +5,6 @@ import type { market } from "@cashu/domain/investments";
 import type { HostService } from "@cashu/node-host";
 import type { PerformanceService } from "@cashu/store/investments/performance";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
-import type { StrategyFilesPort } from "@cashu/store/investments/services";
 import type { Read } from "@cashu/store/query";
 import type { createNativeCreationService } from "../nativeCreation.js";
 import { currentRuntime, type HostRuntime, shippedSkillsSource } from "../runtime.js";
@@ -24,6 +23,7 @@ import { profileCommands } from "./core/profiles.js";
 import { skillsCommand } from "./core/skills.js";
 import { statsCommand } from "./core/stats.js";
 import { genesisCommand } from "./genesis/command.js";
+import type { StrategyCliFiles } from "./investments/context.js";
 import { investmentCommands } from "./investments/index.js";
 import { loansCommands } from "./loans/index.js";
 import type { PortedCommand } from "./tree.js";
@@ -38,7 +38,7 @@ export interface PortedDeps {
   readonly skillsSource?: string;
   /** Supplied only when Python is absent: mixed sessions retain Python financial ownership. */
   readonly nativeStores?: Pick<HostStores, "vaults">;
-  readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyFilesPort | null;
+  readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyCliFiles | null;
   readonly classifier?: CategorizeProvider;
   readonly cloudClassifier?: CloudCategorizeProvider;
   readonly investmentSources?: InvestmentScreenSources;
@@ -103,6 +103,8 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
           now: deps.now ?? Date.now,
           sources: deps.investmentSources,
           performance: deps.performance,
+          strategyFiles: deps.strategyFiles,
+          worker: deps.worker,
         })
       : []),
     ...(deps.nativeStores && deps.worker

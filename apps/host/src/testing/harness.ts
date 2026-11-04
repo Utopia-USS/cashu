@@ -53,6 +53,12 @@ export interface StoreClient {
   ): Promise<RunResult>;
   /** Sends a run without waiting (the reply may never come). */
   send(command: string, input: unknown, key: string, vault?: string): number;
+  /** Sends an owner UI action without replacing the subscription frame handler. */
+  action(
+    action: string,
+    input: JsonValue,
+    vault: string,
+  ): Promise<Extract<StoreToClient, { t: "actionResult" }>["result"]>;
   /** Subscribes; resolves with the first value. `values` collects every pushed value. */
   subscribe(
     query: string,
@@ -65,6 +71,10 @@ export interface StoreClient {
 export async function storeClient(dataDir: string): Promise<StoreClient> {
   const conn = await connectHost({ dataDir, role: "ui", build: "test" });
   const results = new Map<number, (r: RunResult | Error) => void>();
+  const actions = new Map<
+    number,
+    (result: Extract<StoreToClient, { t: "actionResult" }>["result"]) => void
+  >();
   const subs = new Map<number, (v: unknown) => void>();
   let ready: (vaults: readonly string[]) => void = () => {};
   const announced = new Promise<readonly string[]>((resolve) => {
@@ -85,6 +95,7 @@ export async function storeClient(dataDir: string): Promise<StoreClient> {
       );
     } else if (m.t === "failed")
       results.get(m.rid)?.(new Error(`${m.error.name}: ${m.error.message}`));
+    else if (m.t === "actionResult") actions.get(m.rid)?.(m.result);
     else if (m.t === "value") subs.get(m.sid)?.(m.value);
     else if (m.t === "error") subs.get(m.sid)?.(new Error(m.error.name));
   });
@@ -119,6 +130,19 @@ export async function storeClient(dataDir: string): Promise<StoreClient> {
       });
     },
     send,
+    action(action, input, vault) {
+      const rid = next++;
+      return new Promise((resolve) => {
+        actions.set(rid, (result) => {
+          actions.delete(rid);
+          resolve(result);
+        });
+        conn.send({
+          t: "store",
+          m: { t: "action", rid, target: { kind: "vault", vault }, action, input },
+        });
+      });
+    },
     subscribe(query, target, args = null) {
       const sid = next++;
       const values: unknown[] = [];

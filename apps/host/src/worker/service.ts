@@ -1,6 +1,6 @@
 /** S40 host-lifetime worker. No default ownership, Python handover or closed-app wake binding. */
 import { enabledModuleIds } from "@cashu/store/core";
-import { DurableWriteUnknown, lastOkDay } from "@cashu/store/investments/services";
+import { DurableWriteUnknown, lastOkDay, type runDaily } from "@cashu/store/investments/services";
 import type { OpenVault } from "../stores.js";
 import { WorkerAuthorityLost, workerGuard } from "./authority.js";
 import { syncWorkerBudget } from "./budget.js";
@@ -39,6 +39,7 @@ export class HostWorker {
   private stateName: WorkerStatus["state"];
   private timer: ReturnType<typeof setInterval> | undefined;
   private active: Promise<void> | undefined;
+  private cliActive: Promise<unknown> | undefined;
   private tickOffline = false;
   private tickConstrained = false;
   private working = false;
@@ -98,6 +99,8 @@ export class HostWorker {
   ): Promise<void> {
     if (this.stopping || this.bindings === undefined || !this.host.jobsEnabled())
       return Promise.resolve();
+    if (this.cliActive !== undefined)
+      return force ? Promise.reject(new WorkerTickBusy()) : Promise.resolve();
     const constrained =
       options.offline === true || options.budget === false || options.notifier === "none";
     if (this.active !== undefined) {
@@ -133,8 +136,111 @@ export class HostWorker {
     this.stopping = true;
     if (this.timer !== undefined) clearInterval(this.timer);
     this.timer = undefined;
-    await this.active;
+    try {
+      await this.active;
+    } catch {
+      // A failed operation still must release the worker before shutdown completes.
+    }
+    try {
+      await this.cliActive;
+    } catch {
+      // The caller owns the CLI failure; shutdown still completes.
+    }
     this.stateName = "stopped";
+  }
+  runInvestmentCli(
+    vaults: readonly OpenVault[],
+    offline: boolean,
+    isCurrent?: () => boolean,
+  ): Promise<{
+    readonly report: Awaited<ReturnType<typeof runDaily>> | null;
+    readonly outcomes: ReadonlyMap<string, JobOutcome>;
+  }> {
+    if (
+      this.stopping ||
+      !this.host.jobsEnabled() ||
+      this.investments === undefined ||
+      this.active !== undefined ||
+      this.cliActive !== undefined
+    )
+      return Promise.reject(new WorkerTickBusy());
+    const investments = this.investments;
+    const selected = [...vaults];
+    if (
+      selected.length === 0 ||
+      new Set(selected.map((vault) => vault.id)).size !== selected.length ||
+      selected.some((vault) => this.host.stores.vaults.get(vault.id) !== vault) ||
+      (isCurrent !== undefined && !isCurrent())
+    )
+      return Promise.reject(new WorkerAuthorityLost());
+    const work = async () => {
+      let report: Awaited<ReturnType<typeof runDaily>> | null = null;
+      this.working = true;
+      try {
+        await this.loadState();
+        if (isCurrent && !isCurrent()) throw new WorkerAuthorityLost();
+        for (const vault of selected) {
+          const uncertain = this.state.uncertain[vault.id];
+          if (uncertain) throw new DurableWriteUnknown(uncertain.key, uncertain.command);
+        }
+        const outcomes = await investments.daily(
+          selected,
+          offline,
+          (value) => {
+            report = value;
+          },
+          "cli",
+          isCurrent,
+          selected.map((vault) => vault.id),
+        );
+        return { report, outcomes };
+      } finally {
+        this.working = false;
+      }
+    };
+    const current = work();
+    this.cliActive = current;
+    void current.then(
+      () => {
+        if (this.cliActive === current) this.cliActive = undefined;
+      },
+      () => {
+        if (this.cliActive === current) this.cliActive = undefined;
+      },
+    );
+    return current;
+  }
+  refreshMacroCli(vault: OpenVault, isCurrent: () => boolean) {
+    const investments = this.investments;
+    if (
+      this.stopping ||
+      !this.host.jobsEnabled() ||
+      investments === undefined ||
+      this.active !== undefined ||
+      this.cliActive !== undefined ||
+      this.host.stores.vaults.get(vault.id) !== vault ||
+      !isCurrent()
+    )
+      return Promise.reject(new WorkerTickBusy());
+    const work = async () => {
+      this.working = true;
+      try {
+        return await investments.macroRefresh(vault, isCurrent);
+      } finally {
+        this.working = false;
+      }
+    };
+    const current = work();
+    this.cliActive = current;
+    void current.then(
+      () => {
+        if (this.cliActive === current) this.cliActive = undefined;
+      },
+      () => {
+        if (this.cliActive === current) this.cliActive = undefined;
+      },
+    );
+    return current;
   }
   status(): WorkerStatus {
     const jobs: WorkerStatus["jobs"][number][] = [];
@@ -173,15 +279,16 @@ export class HostWorker {
   }
   private writeAttempts(): WorkerWriteAttempts {
     return {
-      reserve: async (vault, job, command, key) => {
-        this.guard(vault, "investments.daily")();
+      reserve: async (vault, job, command, key, offline) => {
+        this.guard(vault, "investments.daily", offline)();
         const existing = this.state.uncertain[vault.id];
         if (existing !== undefined) throw new DurableWriteUnknown(existing.key, existing.command);
         this.state.uncertain[vault.id] = { job, phase: "prepared", command, key };
         await this.save();
-        this.guard(vault, "investments.daily")();
+        this.guard(vault, "investments.daily", offline)();
       },
-      settle: async (vault, key) => {
+      settle: async (vault, key, offline) => {
+        this.guard(vault, "investments.daily", offline)();
         const pending = this.state.uncertain[vault.id];
         if (pending?.key !== key) throw new Error("worker_attempt_key_mismatch");
         delete this.state.uncertain[vault.id];
@@ -194,12 +301,12 @@ export class HostWorker {
       },
     };
   }
-  private guard(vault: OpenVault, job: WorkerJob): () => void {
+  private guard(vault: OpenVault, job: WorkerJob, offline = this.tickOffline): () => void {
     const bindings = this.bindings;
     if (bindings === undefined) throw new WorkerAuthorityLost();
     return workerGuard(this.host, bindings, vault, job, {
       network:
-        !this.tickOffline &&
+        !offline &&
         (job === "connectors.fetch" ||
           job === "budget.sync" ||
           (job === "investments.daily" && bindings.offline !== true)),
@@ -320,11 +427,7 @@ export class HostWorker {
   ): Promise<void> {
     const bindings = this.bindings;
     if (bindings === undefined) return;
-    if (!this.loaded) {
-      this.state = structuredClone(await bindings.state.load());
-      if (this.stopping || !this.host.jobsEnabled()) return;
-      this.loaded = true;
-    }
+    await this.loadState();
     const time = this.host.now();
     this.lastTick = new Date(time).toISOString();
     const investors: OpenVault[] = [],
@@ -469,6 +572,15 @@ export class HostWorker {
         }
       }
     }
+  }
+  private async loadState(): Promise<void> {
+    if (this.loaded) return;
+    const bindings = this.bindings;
+    if (!bindings) throw new WorkerAuthorityLost();
+    const state = structuredClone(await bindings.state.load());
+    if (this.stopping || !this.host.jobsEnabled()) throw new WorkerAuthorityLost();
+    this.state = state;
+    this.loaded = true;
   }
 
   private async backfillPhase(

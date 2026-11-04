@@ -18,7 +18,6 @@ import { goldenRoot, isDataset, labRoot, withPythonDbAsync } from "../sources/in
 import { readTreeState } from "../staleness.ts";
 import { inputDir, PRODUCERS } from "./index.ts";
 import { dumps, writeCheck } from "./output.ts";
-import { useBridgeStoreSource } from "./store/genesisRun.ts";
 import { indexEntry, type TsIndexEntry, updateTsIndex } from "./tsIndex.ts";
 
 /** The repository root: this file is `packages/parity/src/producers/cli.ts`. */
@@ -46,7 +45,6 @@ export async function main(argv: string[]): Promise<number> {
       "golden-root": { type: "string" },
       force: { type: "boolean", default: false },
       "source-dir": { type: "string" },
-      "store-source": { type: "string" },
     },
   });
   const dataset = values.dataset ?? "";
@@ -74,26 +72,16 @@ export async function main(argv: string[]): Promise<number> {
     process.stdout.write(`[${dataset}] note: dirty tree at ${tree.commit.slice(0, 12)}\n`);
   const produced: TsIndexEntry[] = [];
   const failed: string[] = [];
-  // TRANSITIONAL(S49): the S31a milestone reads a bridge run: the run's data copy as the source and
-  // its verifier stores as the `store.table.*` views. Both must lie under <lab>/parity.
+  // A parity run may read an isolated copy inside <lab>/parity.
   const parityDir = join(labRoot(), "parity");
   const underParity = (dir: string) => {
     const rel = relative(parityDir, resolve(dir));
     return rel !== "" && !rel.startsWith("..") && !rel.startsWith("/");
   };
   const sourceDir = values["source-dir"];
-  const storeSource = values["store-source"];
   if (sourceDir !== undefined && !underParity(sourceDir)) {
     process.stderr.write("--source-dir must be inside <lab>/parity\n");
     return 64;
-  }
-  if (storeSource !== undefined) {
-    const run = storeSource.startsWith("bridge:") ? storeSource.slice("bridge:".length) : "";
-    if (run === "" || !underParity(run)) {
-      process.stderr.write("--store-source takes bridge:<run dir inside <lab>/parity>\n");
-      return 64;
-    }
-    useBridgeStoreSource(resolve(run));
   }
   const open = sourceDir === undefined ? { dataset } : { dataset, sourceDir: resolve(sourceDir) };
   const status = await withPythonDbAsync(open, async (db) => {

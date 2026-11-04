@@ -21,7 +21,6 @@
     "./investments/services": "./src/investments/services/index.ts",
     "./investments/local": "./src/investments/local/index.ts",
     "./device": "./src/device/index.ts",
-    "./bridge": "./src/bridge/index.ts",
     "./genesis": "./src/genesis/index.ts",
     "./genesis/verification": "./src/genesis/verification/index.ts",
     "./overview": "./src/overview/index.ts",

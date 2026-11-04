@@ -39,14 +39,18 @@ function fixture() {
     documents,
     isCurrent: () => active,
   };
+  let bound = cap;
+  let revoked = 0;
   const published: unknown[] = [];
   const manager = strategiesScreen({
-    bind: () => cap,
+    bind: () => bound,
     publish(image) {
       published.push(image);
       return active;
     },
-    revoke() {},
+    revoke() {
+      revoked++;
+    },
   });
   const read: Read = <T>() => [{ gid: cap.vault }] as T[];
   return {
@@ -58,12 +62,93 @@ function fixture() {
     revoke() {
       active = false;
     },
+    replace(value: StrategyScreenCapability) {
+      bound = value;
+    },
+    revoked: () => revoked,
     onRead(value: (() => void) | null) {
       onRead = value;
     },
   };
 }
 describe("strategy screen coherent source", () => {
+  it("revokes a failed current watcher but not a replaced generation", async () => {
+    const f = fixture();
+    let changed: (() => void) | undefined;
+    Object.assign(f.cap, {
+      watch: (callback: () => void) => {
+        changed = callback;
+        return () => {};
+      },
+    });
+    await f.manager.prepare(f.cap.vault);
+    f.revoke();
+    changed?.();
+    expect(f.revoked()).toBe(1);
+    f.manager.close();
+
+    const g = fixture();
+    let staleChanged: (() => void) | undefined;
+    Object.assign(g.cap, {
+      watch: (callback: () => void) => {
+        staleChanged = callback;
+        return () => {};
+      },
+    });
+    await g.manager.prepare(g.cap.vault);
+    g.replace({ ...g.cap, generation: "replacement", isCurrent: () => true });
+    g.revoke();
+    staleChanged?.();
+    expect(g.revoked()).toBe(1);
+    g.manager.close();
+
+    const h = fixture();
+    let oldChanged: (() => void) | undefined;
+    Object.assign(h.cap, {
+      watch: (callback: () => void) => {
+        oldChanged = callback;
+        return () => {};
+      },
+    });
+    await h.manager.prepare(h.cap.vault);
+    h.replace({ ...h.cap, generation: "replacement", isCurrent: () => true, watch: undefined });
+    await h.manager.prepare(h.cap.vault);
+    h.revoke();
+    oldChanged?.();
+    expect(h.revoked()).toBe(0);
+    h.manager.close();
+  });
+  it("moves the watcher to a replacement generation and ignores a queued old callback", async () => {
+    const f = fixture();
+    let oldChanged: (() => void) | undefined;
+    let newChanged: (() => void) | undefined;
+    let oldStops = 0;
+    Object.assign(f.cap, {
+      watch: (callback: () => void) => {
+        oldChanged = callback;
+        return () => {
+          oldStops++;
+        };
+      },
+    });
+    await f.manager.prepare(f.cap.vault);
+    f.replace({
+      ...f.cap,
+      generation: "replacement",
+      watch: (callback) => {
+        newChanged = callback;
+        return () => {};
+      },
+    });
+    await f.manager.prepare(f.cap.vault);
+    expect(oldStops).toBe(1);
+    expect(newChanged).toBeTypeOf("function");
+    oldChanged?.();
+    expect(f.revoked()).toBe(0);
+    newChanged?.();
+    await expect.poll(() => f.published.length).toBe(3);
+    f.manager.close();
+  });
   it("hydrates actual default file and distinguishes deletion from history", async () => {
     const f = fixture();
     await f.manager.prepare(f.cap.vault);

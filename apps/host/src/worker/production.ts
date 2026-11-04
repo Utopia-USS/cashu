@@ -129,6 +129,7 @@ export function createProductionWorkerBindings(
     language: input.language,
     investments: {
       prices,
+      macroBars: (series) => prices.macroBars(series),
       ...(input.market === undefined ? {} : { marketForVault: input.market.marketForVault }),
       ...(input.market === undefined
         ? {}

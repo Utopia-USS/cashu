@@ -2,6 +2,7 @@
 import type {
   LocalRunStatus,
   NotificationQueue,
+  SourceMacroBarView,
   TransactionalPriceCache,
 } from "@cashu/store/investments/local";
 import type {
@@ -127,6 +128,7 @@ interface InvestmentWorkerPorts {
   readonly notifications?: NotificationQueue;
   readonly activity?: LocalRunStatus;
   readonly macroStore?: NonNullable<Parameters<typeof runDaily>[0]["macroStore"]>;
+  readonly macroBars?: (series: string) => readonly SourceMacroBarView[];
 }
 export interface WorkerBindings {
   readonly state: WorkerStatePort;

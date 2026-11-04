@@ -3,7 +3,6 @@
 import { D, sha256Hex } from "@cashu/domain";
 import { type ParsedStatement, planImport } from "@cashu/domain/budget";
 import { reportMismatches } from "@cashu/domain/investments/importing";
-import { connectorProposalSummary } from "@cashu/i18n/core/connectors.strings";
 import type { HostLock } from "@cashu/node-host";
 import {
   type Command,
@@ -30,6 +29,7 @@ import {
   connectorImportCommand,
   currentConnectorBinding,
 } from "./connectorImportCommand.js";
+import { connectorProposalSummary } from "./connectorRuntime.strings.js";
 import { type ConnectorBinding, runBoundFetch } from "./connectors/binding.js";
 import { ConnectorCatalog, resolveInterpreter } from "./connectors/catalog.js";
 import { validateConnectorDocument } from "./connectors/document.js";

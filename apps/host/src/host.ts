@@ -7,9 +7,6 @@
 //   4. serves sessions by role: `ui` gets the store channel v2, `admin` gets status / stop / handover,
 //      `cli` the hosted command tree (cli/runner.ts), `mcp` an MCP server for its profile (mcp/session.ts);
 //      writes the stable launcher `<data dir>/bin/cashu` (launcher.ts),
-//   4a. runs the sync service when the data dir configures one (sync/service.ts: the outbox bridge and
-//      the carrier loop, TRANSITIONAL(S49)); it starts in the background, never in safe mode, and
-//      stops before the stores close,
 //   5. lingers while idle (no session, no queued write) and then exits 0; exits 75 when its bundle
 //      was replaced (handover); a signal or `admin.stop` exits 0.
 // Everything is logged as codes and counts (log.ts). A clean exit clears the crash record.
@@ -121,6 +118,7 @@ import { createNativeCreationService } from "./nativeCreation.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { serveNativeCreationRequest } from "./nativeCreationRpc.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
+import { nativeStrategyCliFiles, nativeStrategyDocuments } from "./nativeStrategyDocuments.js";
 import type { NativeVaultSource } from "./nativeVault.js";
 import {
   type HostNotificationCapability,
@@ -157,14 +155,10 @@ import {
   openNativeSetupStores,
 } from "./stores.js";
 import { type StrategyScreenCapability, strategiesScreen } from "./strategiesScreen.js";
-import { bridgeCommand } from "./sync/command.js";
 import { validateNativeVaultInventorySet } from "./sync/keys/deviceAuthority.js";
-import type { CrashPoint } from "./sync/loop.js";
-import { SyncService } from "./sync/service.js";
 import { type UpdateProvider, updateScreen } from "./updateScreen.js";
 import type { WorkerBindings, WorkerHostContext } from "./worker/contracts.js";
 import { startWorker } from "./worker/service.js";
-import { workerStrategyFiles } from "./worker/strategyFiles.js";
 import type { WorkspaceProvider } from "./workspace/index.js";
 
 const DEFAULT_LINGER_MS = 10 * 60 * 1000;
@@ -304,8 +298,6 @@ export interface LocalHostOptions {
   readonly mcpInvestmentWrites?: (context: ToolContext<NativeToolStore>) => InvestmentWriteServices;
   /** Explicit legacy-file authority for packaged hosts or an external Python program. */
   readonly mcpLegacyDataDir?: string;
-  /** Tests only: called at each crash point of the sync service's loop. */
-  readonly syncAt?: (point: CrashPoint) => void;
 }
 
 export interface LocalHost {
@@ -315,8 +307,6 @@ export interface LocalHost {
   readonly lease: WriterLease;
   readonly stores: HostStores;
   readonly safeMode: boolean;
-  /** The sync service, once started (state `off` when the data dir configures none). */
-  readonly sync: Promise<SyncService | undefined>;
   /** What may run besides serving sessions: nothing in safe mode (rule 6 under crash loops). */
   readonly capabilities: { readonly jobs: boolean; readonly network: boolean };
   /** Resolves with the exit code once the host stopped (0 clean, 75 handover). */
@@ -388,16 +378,39 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     options.investmentImports === undefined
       ? null
       : investmentImportActions({ ...options.investmentImports, now });
+  let strategyStores: HostStores | null = null;
+  const strategyCaps = new Map<string, { vault: OpenVault; cap: StrategyScreenCapability }>();
+  const strategies =
+    options.strategies ??
+    (nativeMode
+      ? {
+          bind(id: string): StrategyScreenCapability | null {
+            const vault = strategyStores?.vaults.get(id);
+            if (vault?.mode !== "native" || !vault.native.isCurrent()) return null;
+            const previous = strategyCaps.get(id);
+            if (previous?.vault === vault && previous.cap.isCurrent()) return previous.cap;
+            const authority = vault.native.strategyDirectoryAuthority();
+            if (!authority) return null;
+            try {
+              const cap = nativeStrategyDocuments(authority);
+              strategyCaps.set(id, { vault, cap });
+              return cap;
+            } catch {
+              return null;
+            }
+          },
+        }
+      : undefined);
   const images =
     options.strategyImages ??
     currentStrategyImages((vault, generation) => {
-      const capability = options.strategies?.bind(vault);
+      const capability = strategies?.bind(vault);
       return capability?.generation === generation && capability.isCurrent();
     });
   const strategyManager =
-    options.strategies === undefined
+    strategies === undefined
       ? null
-      : strategiesScreen({ ...options.strategies, publish: images.publish, revoke: images.revoke });
+      : strategiesScreen({ ...strategies, publish: images.publish, revoke: images.revoke });
   const makeInvestmentSources = (marketSource?: ProductionMarket["market"]) => ({
     ...options.investments,
     ...(marketSource === undefined ? {} : { market: marketSource }),
@@ -408,7 +421,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       }),
     },
     ...(options.investments?.strategy === undefined &&
-    (options.strategies !== undefined || options.strategyImages !== undefined)
+    (strategies !== undefined || options.strategyImages !== undefined)
       ? { strategy: images.source }
       : {}),
     ...(options.investmentImports === undefined
@@ -494,7 +507,6 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       "admin.handover",
       "cli.exec",
       "mcp.lines",
-      "sync.status",
       "worker.status",
     ],
     ...(options.pathEnv === undefined ? {} : { pathEnv: options.pathEnv }),
@@ -538,6 +550,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         : source.kind === "native-production"
           ? openNativeSetupStores(server.paths.dataDir, lease, log, now)
           : openHostStores(server.paths.dataDir, lease, log, now);
+    strategyStores = stores;
     // Construction checks the private directory while the host lock is held. A bad ledger
     // prevents a native host from advertising click resolution.
     if (nativeMode)
@@ -608,29 +621,6 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       : (options.python ?? undefined);
   const workerBound = !nativeMode || options.worker !== undefined;
   const capabilities = { jobs: !safeMode && workerBound, network: !safeMode && workerBound };
-  let syncService: SyncService | undefined;
-  const sync: Promise<SyncService | undefined> = (
-    nativeMode
-      ? Promise.resolve(undefined)
-      : SyncService.start({
-          dataDir: server.paths.dataDir,
-          home: options.home ?? homedir(),
-          lease,
-          log,
-          capabilities,
-          now,
-          ...(options.syncAt === undefined ? {} : { at: options.syncAt }),
-        })
-  ).then(
-    (service) => {
-      syncService = service;
-      return service;
-    },
-    (error: unknown) => {
-      log.error("sync.start-failed", { error: errorName(error) });
-      return undefined;
-    },
-  );
   // TRANSITIONAL(S39c): Python owns financial mutations in mixed sessions. Native-only builds
   // bind the explicit profile to a loaded vault until the shared authority/catalog is available.
   let ported = nativeMode
@@ -666,7 +656,6 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 }
               : {}),
           })),
-        bridgeCommand(() => sync),
       ];
   const portedNames = new Set(ported.map((command) => command.name));
   const delegated = nativeMode
@@ -805,7 +794,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       investmentSources,
       performance: investmentPerformance,
       strategyFiles: (vault, slug) => {
-        const capability = options.strategies?.bind(vault.id);
+        const capability = strategies?.bind(vault.id);
         if (
           vault.mode !== "native" ||
           !vault.native.isCurrent() ||
@@ -814,7 +803,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           return null;
         if (capability?.vault === vault.id && capability.isCurrent()) return capability.files;
         const authority = vault.native.strategyDirectoryAuthority();
-        return authority === null ? null : workerStrategyFiles(authority);
+        return authority === null ? null : nativeStrategyCliFiles(authority);
       },
       classifier: options.budgetClassifiers?.local,
       cloudClassifier: options.budgetClassifiers?.cloud,
@@ -944,7 +933,6 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       safeMode,
       vaults: stores.vaults.size,
       pendingWrites: stores.pending(),
-      ...(syncService === undefined ? {} : { sync: syncService.status() }),
       worker: {
         ...currentWorker,
         jobs: [...currentWorker.jobs],
@@ -964,8 +952,6 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       if (reason === "handover")
         await Promise.all([...mcpServers].map((b) => b.prepareHandover?.()));
       await Promise.all([...mcpServers].map((b) => b.close()));
-      // The sync service's current iteration finishes and its vaults close while the lock is held.
-      await (await sync)?.stop();
       await worker.stop();
       await lanStart;
       await lan?.close();
@@ -1353,7 +1339,6 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     lease,
     stores,
     safeMode,
-    sync,
     capabilities,
     exit,
     status,

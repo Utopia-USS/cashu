@@ -322,6 +322,70 @@ it("renders a folded multi-currency vault with current strategy and market input
     };
     const rendered = new Map<string, string>();
     for (const [args, fragment] of [
+      [["accounts", "list"], "Brokerage accounts"],
+      [["signals"], "No signals."],
+      [["signals", "--history"], "No signals."],
+    ] as const) {
+      const actual = io(tempDir());
+      const result = await runTree(
+        ["-p", "demo", "invest", ...args],
+        actual.io,
+        investmentCommands(deps),
+        {},
+      );
+      expect(result).toEqual({ kind: "exit", code: 0 });
+      expect(actual.output.stdout).toContain(fragment);
+    }
+    const added = io(tempDir());
+    expect(
+      await runTree(
+        ["-p", "demo", "invest", "accounts", "add", "Synthetic third", "--broker", "xtb"],
+        added.io,
+        investmentCommands(deps),
+        {},
+      ),
+    ).toEqual({ kind: "exit", code: 0 });
+    expect(added.output.stdout).toMatch(
+      /Brokerage account 'Synthetic third' \(id [0-9A-HJKMNP-TV-Z]{26}, xtb,\s+regular\)/,
+    );
+    const strategyFiles = new Map<string, string>();
+    const withStrategy = investmentCommands({
+      ...deps,
+      strategyFiles: () => ({
+        read: async (name) => strategyFiles.get(name) ?? null,
+        exists: async (name) => strategyFiles.has(name),
+        write: async (name, text) => {
+          strategyFiles.set(name, text);
+        },
+        createAbsent: async (name, text) => {
+          if (strategyFiles.has(name)) return "exists" as const;
+          strategyFiles.set(name, text);
+          return "created" as const;
+        },
+      }),
+    });
+    const initialized = io(tempDir());
+    expect(
+      await runTree(["-p", "demo", "invest", "strategy", "init"], initialized.io, withStrategy, {}),
+    ).toEqual({ kind: "exit", code: 0 });
+    expect(strategyFiles.has("strategy.yaml")).toBe(true);
+    const validated = io(tempDir());
+    expect(
+      await runTree(
+        ["-p", "demo", "invest", "strategy", "validate"],
+        validated.io,
+        withStrategy,
+        {},
+      ),
+    ).toEqual({ kind: "exit", code: 0 });
+    expect(validated.output.stdout).toContain("strategy.yaml: valid");
+    const polish = io(tempDir());
+    const polishIo = { ...polish.io, t: createTranslator("pl") };
+    expect(
+      await runTree(["-p", "demo", "invest", "signals"], polishIo, investmentCommands(deps), {}),
+    ).toEqual({ kind: "exit", code: 0 });
+    expect(polish.output.stdout).toContain("Brak sygnałów.");
+    for (const [args, fragment] of [
       [["positions"], "Positions as of"],
       [["performance", "--range", "1m", "--attribution"], "portfolio"],
       [["search", "--local", "syn"], "Synthetic Equity"],

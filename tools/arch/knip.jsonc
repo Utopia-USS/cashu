@@ -30,16 +30,13 @@
       "project": ["src/**/*.ts"]
     },
     "apps/host": {
-      // Process entry points and the fake Python CLI are referenced by path, not imported.
+      // Process entry points are referenced by path, not imported.
       "entry": [
         "src/cli.ts",
         "src/testing/faultHost.ts",
         "src/testing/nativeCreationHost.ts",
         "src/testing/seedOverviewDemo.ts",
-        "src/testing/syntheticCliHost.ts",
-        "src/sync/harness/main.ts",
-        "src/sync/harness/crashHost.ts",
-        "src/sync/testing/fakeCashu.ts"
+        "src/testing/syntheticCliHost.ts"
       ],
       "project": ["src/**/*.ts"]
     },

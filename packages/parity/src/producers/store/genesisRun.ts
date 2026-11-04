@@ -13,8 +13,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   betterSqlite3Driver,
   builtinModules,
@@ -137,91 +135,13 @@ function runGenesis(db: PythonDb): GenesisRun {
   return { vaults };
 }
 
-// --------------------------------------------------------------------------------------------- //
-// TRANSITIONAL(S49): the S31a milestone store source. Instead of genesis, each vault's view is the
-// verifier store of a bridge run (a fresh device that pulled only the encrypted remote log and folded
-// it; `apps/host/src/sync/harness`), and `sources` come from the run copy's `sync_ids` / `sync_vaults`,
-// so the producers' view-count invariant also proves Python's gid map complete.
-
-interface VerifierVault {
-  readonly profileId: number;
-  readonly vault: string;
-  readonly salt: string;
-  readonly viewDb: string;
-}
-
-/** `<run>/verifier/verifier.json`, checked field by field (the harness wrote it; still a boundary). */
-function readVerifier(runDir: string): readonly VerifierVault[] {
-  const raw: unknown = JSON.parse(readFileSync(join(runDir, "verifier", "verifier.json"), "utf8"));
-  const vaults = (raw as { format?: unknown; vaults?: unknown }).vaults;
-  if ((raw as { format?: unknown }).format !== 1 || !Array.isArray(vaults)) {
-    throw new Error("verifier.json: unsupported format");
-  }
-  return vaults.map((v: Record<string, unknown>) => {
-    const ok =
-      Number.isSafeInteger(v.profileId) &&
-      typeof v.vault === "string" &&
-      /^[0-9a-f]{32}$/.test(v.vault) &&
-      typeof v.salt === "string" &&
-      /^[0-9a-f]{64}$/.test(v.salt) &&
-      typeof v.viewDb === "string" &&
-      /^[A-Za-z0-9._-]+$/.test(v.viewDb);
-    if (!ok) throw new Error("verifier.json: a vault entry does not validate");
-    return v as unknown as VerifierVault;
-  });
-}
-
-let bridgeRunDir: string | undefined;
-
-/** Makes every later `genesisRun` read the verifier stores of the bridge run at `runDir`. */
-export function useBridgeStoreSource(runDir: string): void {
-  bridgeRunDir = runDir;
-}
-
-function runBridge(db: PythonDb, runDir: string): GenesisRun {
-  const verifier = readVerifier(runDir);
-  const ordinals = new Map(db.profiles().map((p, i) => [p.id, i]));
-  const vaults = new Map<number, VaultRun>();
-  for (const v of verifier) {
-    const ordinal = ordinals.get(v.profileId) ?? -1;
-    const salt = vaultSalt(Buffer.from(v.salt, "hex"));
-    const store = Store.open({
-      driver: betterSqlite3Driver(new Database(join(runDir, "verifier", v.viewDb))),
-      vault: v.vault,
-      salt,
-      modules: builtinModules(),
-    });
-    const sources = new Map<string, GidSource>();
-    for (const [table, localId, gid] of db.rows(
-      "SELECT table_name, local_id, gid FROM sync_ids WHERE profile_id = ?",
-      v.profileId,
-    )) {
-      sources.set(String(gid), { table: String(table), localId: String(localId) });
-    }
-    for (const [vault] of db.rows(
-      "SELECT vault_id FROM sync_vaults WHERE profile_id = ?",
-      v.profileId,
-    )) {
-      sources.set(String(vault), { table: "profiles", localId: String(v.profileId) });
-    }
-    vaults.set(v.profileId, {
-      ordinal,
-      profileId: v.profileId,
-      store,
-      sources,
-      det: detGidFor(salt),
-    });
-  }
-  return { vaults };
-}
-
 const runs = new WeakMap<PythonDb, GenesisRun>();
 
 /** The genesis roundtrip of `db`, run once per `PythonDb` and shared by every `store.table.*` producer. */
 export function genesisRun(db: PythonDb): GenesisRun {
   let run = runs.get(db);
   if (run === undefined) {
-    run = bridgeRunDir === undefined ? runGenesis(db) : runBridge(db, bridgeRunDir);
+    run = runGenesis(db);
     runs.set(db, run);
   }
   return run;

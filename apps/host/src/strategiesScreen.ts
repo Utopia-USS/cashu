@@ -71,7 +71,7 @@ export function strategiesScreen(options: {
   const actionCounts = new Map<string, number>();
   const dirty = new Set<string>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
-  const watches = new Map<string, () => void>();
+  const watches = new Map<string, { readonly generation: string; readonly stop: () => void }>();
   const listeners = new Set<() => void>();
   const emit = () => {
     for (const listener of [...listeners]) listener();
@@ -82,7 +82,7 @@ export function strategiesScreen(options: {
     if (timer) clearTimeout(timer);
     timers.delete(vault);
     dirty.delete(vault);
-    watches.get(vault)?.();
+    watches.get(vault)?.stop();
     watches.delete(vault);
     images.delete(vault);
     fileImages.delete(vault);
@@ -108,7 +108,15 @@ export function strategiesScreen(options: {
     },
   };
   const schedule = (cap: StrategyScreenCapability) => {
-    if (closed || !cap.isCurrent()) return;
+    if (closed) return;
+    if (!cap.isCurrent() || options.bind(cap.vault)?.generation !== cap.generation) {
+      if (
+        images.get(cap.vault)?.generation === cap.generation ||
+        fileImages.get(cap.vault)?.generation === cap.generation
+      )
+        revoke(cap.vault);
+      return;
+    }
     dirty.add(cap.vault);
     if (actionCounts.get(cap.vault) || timers.has(cap.vault)) return;
     timers.set(
@@ -250,11 +258,16 @@ export function strategiesScreen(options: {
         throw new Error("authority_lost");
       }
       emit();
-      if (!watches.has(cap.vault) && cap.watch)
-        watches.set(
-          cap.vault,
-          cap.watch(() => schedule(cap)),
-        );
+      const priorWatch = watches.get(cap.vault);
+      if (priorWatch?.generation !== cap.generation) {
+        priorWatch?.stop();
+        watches.delete(cap.vault);
+        if (cap.watch)
+          watches.set(cap.vault, {
+            generation: cap.generation,
+            stop: cap.watch(() => schedule(cap)),
+          });
+      }
       return snapshot;
     } catch (error) {
       if (runs.get(cap.vault) === run) revoke(cap.vault);
@@ -546,7 +559,7 @@ export function strategiesScreen(options: {
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
       dirty.clear();
-      for (const stop of watches.values()) stop();
+      for (const watch of watches.values()) watch.stop();
       watches.clear();
       for (const vault of images.keys()) revoke(vault);
       listeners.clear();
