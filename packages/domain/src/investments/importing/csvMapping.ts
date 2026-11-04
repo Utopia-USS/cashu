@@ -2,8 +2,8 @@
  * Configuration of the generic CSV importer: file format plus column and type mapping, loaded from YAML
  * (port of `importing/csv_mapping.py`).
  *
- * The shipped example (`generic_csv_example.yaml` next to the Python module) documents every key; its
- * text is not part of the domain (reading it is the caller's job). Unknown keys are errors with a
+ * The shipped example (`generic_csv_example.yaml` next to this file) documents every key; its text is
+ * not part of the domain code (reading it is the caller's job). Unknown keys are errors with a
  * did-you-mean hint and a 1-based line / column, so a typo never silently falls back to a default.
  * Expected failures are returned (`CsvMappingParse`), never thrown.
  */

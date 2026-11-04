@@ -1,7 +1,7 @@
-// `<checkout>/.env.dev` exactly as the Python app reads it (`src/cashu/_devenv.py`), so the shim and
-// every Python process of a dev checkout land on the same data dir. A source checkout is the repo
-// root holding both `pyproject.toml` and `.git`; a linked git worktree also reads its main checkout's
-// file (nearest first). Nothing is read without a checkout (the packaged app) or under the test suite
+// `<checkout>/.env.dev` (the contract the retired Python app's `_devenv` defined), so every process of a
+// dev checkout lands on the same (demo) data dir. A source checkout is the repo root holding both
+// `pnpm-workspace.yaml` and `.git` (like the host's runtime); a linked git worktree also reads its
+// main checkout's file (nearest first). Nothing is read without a checkout (the packaged app) or under the test suite
 // (`CASHU_TESTING`). Only `CASHU_*` keys count, and they fill only variables the environment does not
 // set already (the shell always wins). Parsing: Python `str.splitlines`, `str.strip`, `KEY=VALUE`,
 // `#` comments, an `export ` prefix, one pair of matching quotes, `~` expanded at the start.
@@ -41,9 +41,11 @@ const isFile = (path: string) => {
   }
 };
 
-/** `root` when it is a source checkout (pyproject.toml + .git), else undefined. */
+/** `root` when it is a source checkout (pnpm-workspace.yaml + .git), else undefined. */
 export function checkoutRoot(root: string): string | undefined {
-  return isFile(join(root, "pyproject.toml")) && existsSync(join(root, ".git")) ? root : undefined;
+  return isFile(join(root, "pnpm-workspace.yaml")) && existsSync(join(root, ".git"))
+    ? root
+    : undefined;
 }
 
 const parentOf = (path: string) => path.slice(0, path.lastIndexOf("/")) || "/";

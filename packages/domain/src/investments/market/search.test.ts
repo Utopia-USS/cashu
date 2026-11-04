@@ -11,7 +11,7 @@ import { exchangeForYahooSuffix } from "../importing/exchanges.js";
 import { isKnownMarket, parseOpenFigiMapping, parseYahooSearch, type SearchHit } from "./search.js";
 import { SourceException } from "./sources.js";
 
-const SEARCH = new URL("../../../../../tests/investments/fixtures/market/search/", import.meta.url);
+const SEARCH = new URL("../../../test/fixtures/market/search/", import.meta.url);
 const body = (name: string): string => readFileSync(new URL(name, SEARCH), "utf8");
 
 const rows = (hits: readonly SearchHit[]) =>

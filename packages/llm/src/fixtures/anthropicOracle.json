@@ -1,0 +1,183 @@
+{
+  "valid": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {
+      "SKLEP UNIKAT 00": {
+        "category": "groceries",
+        "confidence": 0.8
+      }
+    },
+    "failed_batches": 0
+  },
+  "empty": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {},
+    "failed_batches": 0
+  },
+  "unknown ids and closed categories": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {
+      "SKLEP UNIKAT 00": {
+        "category": "other",
+        "confidence": 1
+      }
+    },
+    "failed_batches": 0
+  },
+  "HTTP error": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {},
+    "failed_batches": 1
+  },
+  "redirect": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {},
+    "failed_batches": 1
+  },
+  "network error": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {},
+    "failed_batches": 1
+  },
+  "outer JSON": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {},
+    "failed_batches": 1
+  },
+  "inner JSON": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {},
+    "failed_batches": 1
+  },
+  "partial batch continuation": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":3456,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 00\\\"}, {\\\"id\\\": \\\"m1\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 01\\\"}, {\\\"id\\\": \\\"m2\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 02\\\"}, {\\\"id\\\": \\\"m3\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 03\\\"}, {\\\"id\\\": \\\"m4\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 04\\\"}, {\\\"id\\\": \\\"m5\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 05\\\"}, {\\\"id\\\": \\\"m6\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 06\\\"}, {\\\"id\\\": \\\"m7\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 07\\\"}, {\\\"id\\\": \\\"m8\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 08\\\"}, {\\\"id\\\": \\\"m9\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 09\\\"}, {\\\"id\\\": \\\"m10\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 10\\\"}, {\\\"id\\\": \\\"m11\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 11\\\"}, {\\\"id\\\": \\\"m12\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 12\\\"}, {\\\"id\\\": \\\"m13\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 13\\\"}, {\\\"id\\\": \\\"m14\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 14\\\"}, {\\\"id\\\": \\\"m15\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 15\\\"}, {\\\"id\\\": \\\"m16\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 16\\\"}, {\\\"id\\\": \\\"m17\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 17\\\"}, {\\\"id\\\": \\\"m18\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 18\\\"}, {\\\"id\\\": \\\"m19\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 19\\\"}, {\\\"id\\\": \\\"m20\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 20\\\"}, {\\\"id\\\": \\\"m21\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 21\\\"}, {\\\"id\\\": \\\"m22\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 22\\\"}, {\\\"id\\\": \\\"m23\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 23\\\"}, {\\\"id\\\": \\\"m24\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 24\\\"}, {\\\"id\\\": \\\"m25\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 25\\\"}, {\\\"id\\\": \\\"m26\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 26\\\"}, {\\\"id\\\": \\\"m27\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 27\\\"}, {\\\"id\\\": \\\"m28\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 28\\\"}, {\\\"id\\\": \\\"m29\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 29\\\"}, {\\\"id\\\": \\\"m30\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 30\\\"}, {\\\"id\\\": \\\"m31\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 31\\\"}, {\\\"id\\\": \\\"m32\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 32\\\"}, {\\\"id\\\": \\\"m33\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 33\\\"}, {\\\"id\\\": \\\"m34\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 34\\\"}, {\\\"id\\\": \\\"m35\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 35\\\"}, {\\\"id\\\": \\\"m36\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 36\\\"}, {\\\"id\\\": \\\"m37\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 37\\\"}, {\\\"id\\\": \\\"m38\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 38\\\"}, {\\\"id\\\": \\\"m39\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 39\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      },
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":3456,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 40\\\"}, {\\\"id\\\": \\\"m1\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 41\\\"}, {\\\"id\\\": \\\"m2\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 42\\\"}, {\\\"id\\\": \\\"m3\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 43\\\"}, {\\\"id\\\": \\\"m4\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 44\\\"}, {\\\"id\\\": \\\"m5\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 45\\\"}, {\\\"id\\\": \\\"m6\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 46\\\"}, {\\\"id\\\": \\\"m7\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 47\\\"}, {\\\"id\\\": \\\"m8\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 48\\\"}, {\\\"id\\\": \\\"m9\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 49\\\"}, {\\\"id\\\": \\\"m10\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 50\\\"}, {\\\"id\\\": \\\"m11\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 51\\\"}, {\\\"id\\\": \\\"m12\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 52\\\"}, {\\\"id\\\": \\\"m13\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 53\\\"}, {\\\"id\\\": \\\"m14\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 54\\\"}, {\\\"id\\\": \\\"m15\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 55\\\"}, {\\\"id\\\": \\\"m16\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 56\\\"}, {\\\"id\\\": \\\"m17\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 57\\\"}, {\\\"id\\\": \\\"m18\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 58\\\"}, {\\\"id\\\": \\\"m19\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 59\\\"}, {\\\"id\\\": \\\"m20\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 60\\\"}, {\\\"id\\\": \\\"m21\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 61\\\"}, {\\\"id\\\": \\\"m22\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 62\\\"}, {\\\"id\\\": \\\"m23\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 63\\\"}, {\\\"id\\\": \\\"m24\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 64\\\"}, {\\\"id\\\": \\\"m25\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 65\\\"}, {\\\"id\\\": \\\"m26\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 66\\\"}, {\\\"id\\\": \\\"m27\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 67\\\"}, {\\\"id\\\": \\\"m28\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 68\\\"}, {\\\"id\\\": \\\"m29\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 69\\\"}, {\\\"id\\\": \\\"m30\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 70\\\"}, {\\\"id\\\": \\\"m31\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 71\\\"}, {\\\"id\\\": \\\"m32\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 72\\\"}, {\\\"id\\\": \\\"m33\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 73\\\"}, {\\\"id\\\": \\\"m34\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 74\\\"}, {\\\"id\\\": \\\"m35\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 75\\\"}, {\\\"id\\\": \\\"m36\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 76\\\"}, {\\\"id\\\": \\\"m37\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 77\\\"}, {\\\"id\\\": \\\"m38\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 78\\\"}, {\\\"id\\\": \\\"m39\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 79\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      },
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "x-api-key": "synthetic-key",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": "{\"model\":\"synthetic-model\",\"max_tokens\":336,\"system\":[{\"type\":\"text\",\"text\":\"You are a precise merchant-name classifier for a personal-finance tracker. Given short, noisy merchant strings (often uppercased, abbreviated, or containing payment-processor noise, mostly Polish), assign each to exactly ONE category.\\n\\nAllowed categories: groceries, fuel.\\nIf none clearly fits, use \\\"other\\\". If the string carries no usable signal at all, use \\\"UNKNOWN\\\".\\n\\nPayment aggregators / processors are NOT a merchant category \u2014 a raw aggregator string with no underlying merchant must be \\\"other\\\". Examples:\\n- \\\"ZABKA\\\" -> groceries\\n- \\\"BIEDRONKA\\\" -> groceries\\n- \\\"ORLEN\\\" -> fuel\\n- \\\"NETFLIX.COM\\\" -> subscriptions\\n- \\\"UBER EATS\\\" -> dining\\n- \\\"PAYU\\\" -> other\\n- \\\"PRZELEWY24\\\" -> other\\n\\nFor every input item, output an object with its id, the chosen category (exactly one of the allowed values), and a confidence in [0,1]. Base the decision only on the merchant string itself.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Classify each of the following merchant strings. Return one result per item, keyed by the given id:\\n[{\\\"id\\\": \\\"m0\\\", \\\"merchant\\\": \\\"SKLEP UNIKAT 80\\\"}]\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"groceries\",\"fuel\",\"other\",\"UNKNOWN\"]},\"confidence\":{\"type\":\"number\"}},\"required\":[\"id\",\"category\",\"confidence\"],\"additionalProperties\":false}}},\"required\":[\"results\"],\"additionalProperties\":false}}}}"
+      }
+    ],
+    "timeouts": [60],
+    "answers": {
+      "SKLEP UNIKAT 00": {
+        "category": "groceries",
+        "confidence": 0.8
+      },
+      "SKLEP UNIKAT 80": {
+        "category": "groceries",
+        "confidence": 0.8
+      }
+    },
+    "failed_batches": 1
+  }
+}

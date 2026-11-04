@@ -14,7 +14,7 @@ import { addResearchNoteWithPlans } from "@cashu/store/investments/services";
 import * as L from "../privacy/labels.js";
 import { type ToolArgs, type ToolContext, ToolError, type ToolSpec } from "../registry.js";
 import { decodeEntityRef } from "../runtime/refs.js";
-import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.generated.js";
+import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { researchContext } from "./researchContext.js";
 import * as F from "./researchLabels.js";

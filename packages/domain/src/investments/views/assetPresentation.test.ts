@@ -1,21 +1,9 @@
-import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { D } from "../../decimal.js";
 import { assetFeeSummary, assetLotFacts, assetQuoteFacts } from "./assetPresentation.js";
 import type { PositionChartView } from "./positionChart.js";
 import type { PositionDetailView } from "./positionDetail.js";
 import type { PositionRow } from "./positions.js";
-
-// Execute the actual source SPA expression, rather than reproducing its algorithm as an oracle.
-const source = readFileSync(
-  new URL("../../../../../frontend/src/modules/investments/v2/AssetPage.tsx", import.meta.url),
-  "utf8",
-);
-const begin = source.indexOf("  const vol30 = (() => {");
-const end = source.indexOf("  const nearest =", begin);
-const originalVolatility = new Function("closes", `${source.slice(begin, end)};return vol30;`) as (
-  values: number[],
-) => number | null;
 
 function chart(values: readonly string[]): PositionChartView {
   return {
@@ -29,12 +17,13 @@ function chart(values: readonly string[]): PositionChartView {
 }
 
 it("uses the actual source displayed-range log-return sample, including 9/10-close boundary", () => {
-  for (const values of [
-    Array(9).fill("10"),
-    Array(10).fill("10"),
-    Array.from({ length: 31 }, (_, i) => String(10 + (i % 3) - i / 10)),
-  ]) {
-    const expected = originalVolatility(values.map(Number));
+  // Expectations captured from the retired oracle (the vol30 expression of
+  // frontend/src/modules/investments/v2/AssetPage.tsx) on 2026-11-04.
+  for (const [values, expected] of [
+    [Array(9).fill("10"), null],
+    [Array(10).fill("10"), 0],
+    [Array.from({ length: 31 }, (_, i) => String(10 + (i % 3) - i / 10)), 0.15491699473811396],
+  ] as const) {
     const result = assetQuoteFacts(chart(values), D("15"));
     if (expected === null) expect(result.volatility30).toBeNull();
     else expect(result.volatility30).toBeCloseTo(expected, 12);

@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -32,6 +31,7 @@ import {
   publishManagedText,
   WorkspacePathError,
 } from "./files.js";
+import claudeMdSections from "./fixtures/claudeMdSections.json" with { type: "json" };
 import { runWorkspaceOperation } from "./operations.js";
 import { readSkillSource, treeHash } from "./skills.js";
 import { createTempPublication } from "./testing/tempPublication.js";
@@ -176,38 +176,8 @@ test("actual Python tree hash matches ordered nested synthetic skill", () => {
   writeFileSync(join(skill, "zz.md"), "root file ordered before directories\n");
   writeFileSync(join(skill, "references", "x.md"), "synthetic reference\n");
   writeFileSync(join(skill, ".DS_Store"), "ignored");
-  const home = join(root, "home");
-  for (const folder of [
-    home,
-    join(root, "data"),
-    join(root, "workspaces"),
-    join(root, "legacy"),
-    join(root, "launchagents"),
-  ])
-    mkdirSync(folder);
-  const py = spawnSync(
-    join(REPO, ".venv", "bin", "python"),
-    [
-      "-c",
-      "from pathlib import Path; from cashu.core.workspace.skills import tree_hash; import sys; print(tree_hash(Path(sys.argv[1])))",
-      skill,
-    ],
-    {
-      cwd: REPO,
-      encoding: "utf8",
-      env: {
-        PATH: process.env.PATH ?? "",
-        HOME: home,
-        CASHU_DATA_DIR: join(root, "data"),
-        CASHU_WORKSPACES_DIR: join(root, "workspaces"),
-        CASHU_TESTING: "1",
-        XDG_DATA_HOME: join(root, "legacy"),
-        CASHU_LAUNCH_AGENTS_DIR: join(root, "launchagents"),
-      },
-    },
-  );
-  expect(py.status, py.stderr).toBe(0);
-  expect(treeHash(skill)).toBe(py.stdout.trim());
+  // Expectation captured from the retired oracle (Python cashu.core.workspace.skills.tree_hash) on 2026-11-04.
+  expect(treeHash(skill)).toBe("0bf4f2dbf2d8");
 });
 
 test("shipped skill inventory is sourced from assets, with applicability and references", () => {
@@ -279,15 +249,6 @@ test("MCP and permissions retain unrelated user entries and routine ownership", 
 
 test("MCP and settings merges match the isolated Python source oracle", () => {
   const root = fresh();
-  const home = join(root, "home");
-  for (const folder of [
-    home,
-    join(root, "data"),
-    join(root, "workspaces"),
-    join(root, "legacy"),
-    join(root, "launchagents"),
-  ])
-    mkdirSync(folder);
   const context = ctx(root);
   const oldMcp = {
     extra: { retained: true },
@@ -300,51 +261,37 @@ test("MCP and settings merges match the isolated Python source oracle", () => {
     },
     enabledMcpjsonServers: ["user", "cashu-other"],
   };
-  const code = `import json,sys\nfrom pathlib import Path\nfrom cashu.core.workspace import render\nraw=json.loads(sys.argv[1])\nc=render.Context(slug='synthetic',version='1',base_currency='PLN',privacy='strict',modules=(('investments','Investments'),),tools=(render.ToolInfo('profile_overview','core',False),),skills={},research_available=False,cli=('/synthetic/cashu',),path=Path(raw['path']),protected=(Path(raw['protected']),),routine_permissions=True)\nprint(json.dumps({'mcp':render.merge_mcp(raw['mcp'],c),'settings':render.merge_settings(raw['settings'],c,[],[])},sort_keys=True))`;
-  const py = spawnSync(
-    join(REPO, ".venv", "bin", "python"),
-    [
-      "-c",
-      code,
-      JSON.stringify({
-        path: context.path,
-        protected: context.protected[0],
-        mcp: oldMcp,
-        settings: oldSettings,
-      }),
-    ],
-    {
-      cwd: REPO,
-      encoding: "utf8",
-      env: {
-        PATH: process.env.PATH ?? "",
-        HOME: home,
-        CASHU_DATA_DIR: join(root, "data"),
-        CASHU_WORKSPACES_DIR: join(root, "workspaces"),
-        CASHU_TESTING: "1",
-        XDG_DATA_HOME: join(root, "legacy"),
-        CASHU_LAUNCH_AGENTS_DIR: join(root, "launchagents"),
-      },
-    },
-  );
-  expect(py.status, py.stderr).toBe(0);
+  // Expectations captured from the retired oracle (Python cashu.core.workspace.render.merge_mcp /
+  // merge_settings) on 2026-11-04; the temp root is the only path-dependent part.
   expect({
     mcp: mergeMcp(oldMcp, context),
     settings: mergeSettings(oldSettings, context, [], []),
-  }).toEqual(JSON.parse(py.stdout));
+  }).toEqual({
+    mcp: {
+      extra: { retained: true },
+      mcpServers: {
+        "cashu-synthetic": { args: ["mcp", "--profile", "synthetic"], command: "/synthetic/cashu" },
+        user: { command: "u" },
+      },
+    },
+    settings: {
+      enabledMcpjsonServers: ["cashu-synthetic", "user"],
+      permissions: {
+        allow: [
+          "mcp__cashu-synthetic__profile_overview",
+          "WebSearch",
+          "WebFetch",
+          `Edit(/${root}/workspace/research/**)`,
+          `Edit(/${root}/workspace/notes/**)`,
+          "user-rule",
+        ],
+        deny: [`Read(/${root}/data/**)`, `Edit(/${root}/data/**)`, "user-deny"],
+      },
+    },
+  });
 });
 
 test("permission rule paths match Python for POSIX, Windows drive and UNC forms", () => {
-  const root = fresh(),
-    home = join(root, "home");
-  for (const folder of [
-    home,
-    join(root, "data"),
-    join(root, "workspaces"),
-    join(root, "legacy"),
-    join(root, "launchagents"),
-  ])
-    mkdirSync(folder);
   const inputs = [
     "/Users/x",
     "C:\\Users\\x",
@@ -352,42 +299,18 @@ test("permission rule paths match Python for POSIX, Windows drive and UNC forms"
     "\\\\Server\\Share\\Folder",
     "relative\\x",
   ];
-  const py = spawnSync(
-    join(REPO, ".venv", "bin", "python"),
-    [
-      "-c",
-      "import json,sys; from pathlib import Path; from cashu.core.workspace.render import rule_path; print(json.dumps([rule_path(Path(s)) for s in json.loads(sys.argv[1])]))",
-      JSON.stringify(inputs),
-    ],
-    {
-      cwd: REPO,
-      encoding: "utf8",
-      env: {
-        PATH: process.env.PATH ?? "",
-        HOME: home,
-        CASHU_DATA_DIR: join(root, "data"),
-        CASHU_WORKSPACES_DIR: join(root, "workspaces"),
-        CASHU_TESTING: "1",
-        XDG_DATA_HOME: join(root, "legacy"),
-        CASHU_LAUNCH_AGENTS_DIR: join(root, "launchagents"),
-      },
-    },
-  );
-  expect(py.status, py.stderr).toBe(0);
-  expect(inputs.map(rulePath)).toEqual(JSON.parse(py.stdout));
+  // Expectations captured from the retired oracle (Python cashu.core.workspace.render.rule_path) on 2026-11-04.
+  expect(inputs.map(rulePath)).toEqual([
+    "//Users/x",
+    "//c/Users/x",
+    "//c/Users/x",
+    "//\\\\server\\share/Folder",
+    "/relative\\x",
+  ]);
 });
 
 test("managed sections and new CLAUDE.md match isolated Python source in three contexts", () => {
   const root = fresh();
-  const home = join(root, "home");
-  for (const folder of [
-    home,
-    join(root, "data"),
-    join(root, "workspaces"),
-    join(root, "legacy"),
-    join(root, "launchagents"),
-  ])
-    mkdirSync(folder);
   const cases = [
     { modules: [], privacy: "strict", routine: false, skills: [] },
     {
@@ -405,7 +328,18 @@ test("managed sections and new CLAUDE.md match isolated Python source in three c
   ] as const;
   const existing =
     "# finanse agent workspace\n\n<!-- finanse:begin layout -->\nold managed text\n<!-- finanse:end layout -->\n\nUser note stays.\n";
-  for (const item of cases) {
+  // Expectations captured from the retired oracle (Python cashu.core.workspace.render.sections /
+  // new_claude_md / merge_claude_md) on 2026-11-04, one fixture entry per case; <ROOT> stands for the temp root.
+  const withRoot = (value: unknown): unknown =>
+    typeof value === "string"
+      ? value.split("<ROOT>").join(root)
+      : Array.isArray(value)
+        ? value.map(withRoot)
+        : value !== null && typeof value === "object"
+          ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withRoot(item)]))
+          : value;
+  expect(claudeMdSections).toHaveLength(cases.length);
+  cases.forEach((item, index) => {
     const context = {
       ...ctx(root),
       modules: item.modules.map((id) => ({ id, name: "Investments" })),
@@ -422,35 +356,16 @@ test("managed sections and new CLAUDE.md match isolated Python source in three c
       researchAvailable: true,
       cli: ["/synthetic/cashu"],
     };
-    const code = `import json,sys\nfrom pathlib import Path\nfrom cashu.core.workspace import render,skills\nr=json.loads(sys.argv[1])\nss={n:skills.SkillSource(n,'core' if n=='workspace-setup' else 'investments',Path('/synthetic'), 'v',positive='the task | case',negative='NOT unrelated.') for n in r['skills']}\nc=render.Context(slug='synthetic',version='1',base_currency='PLN',privacy=r['privacy'],modules=tuple((m,'Investments') for m in r['modules']),tools=(render.ToolInfo('profile_overview','core',False),),skills=ss,research_available=True,cli=('/synthetic/cashu',),path=Path(r['path']),protected=(Path(r['protected']),),routine_permissions=r['routine'])\nprint(json.dumps({'sections':render.sections(c),'new':render.new_claude_md(c),'merged':render.merge_claude_md(r['existing'],c)},ensure_ascii=False))`;
-    const py = spawnSync(
-      join(REPO, ".venv", "bin", "python"),
-      [
-        "-c",
-        code,
-        JSON.stringify({ ...item, path: context.path, protected: context.protected[0], existing }),
-      ],
-      {
-        cwd: REPO,
-        encoding: "utf8",
-        env: {
-          PATH: process.env.PATH ?? "",
-          HOME: home,
-          CASHU_DATA_DIR: join(root, "data"),
-          CASHU_WORKSPACES_DIR: join(root, "workspaces"),
-          CASHU_TESTING: "1",
-          XDG_DATA_HOME: join(root, "legacy"),
-          CASHU_LAUNCH_AGENTS_DIR: join(root, "launchagents"),
-        },
-      },
-    );
-    expect(py.status, py.stderr).toBe(0);
-    const expected = JSON.parse(py.stdout);
+    const expected = withRoot(claudeMdSections[index]) as {
+      sections: Record<string, string>;
+      new: string;
+      merged: string;
+    };
     const sections = renderSections(context);
     expect(sections).toEqual(expected.sections);
     expect(mergeClaudeMd(null, sections, userPart)).toBe(expected.new);
     expect(mergeClaudeMd(existing, sections, userPart)).toBe(expected.merged);
-  }
+  });
 });
 
 test("checked path refuses overlap, hidden folders, symlink escapes and foreign claims", () => {

@@ -6,9 +6,8 @@ import { CSV_COLUMNS, RECORD_FIELDS, RECORD_KINDS } from "./canonical/index.js";
 import { IMPORT_SCHEMA_FILE, importSchema, importSchemaText } from "./jsonSchema.js";
 import { REPO_ROOT } from "./testing/support.js";
 
-// The TypeScript twin of `scripts/gen_connector_schemas.py --check` for docs/schemas/cashu-import.v1.json:
-// the schema built from the importer's field tables is the committed file, byte for byte. When this
-// fails run `pnpm --filter @cashu/domain gen:import-schema` (and the Python generator, until it is gone).
+// The schema built from the importer's field tables is the committed file, byte for byte. When this
+// fails run `pnpm --filter @cashu/host gen:connector-schemas`.
 describe("docs/schemas/cashu-import.v1.json", () => {
   const committed = readFileSync(join(REPO_ROOT, "docs", "schemas", IMPORT_SCHEMA_FILE), "utf8");
 

@@ -1,6 +1,5 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { expect, it } from "vitest";
 import { Currencies, TxnType } from "../domain/index.js";
 import {
@@ -15,7 +14,7 @@ import {
   RowErrorPolicy,
 } from "./csvMapping.js";
 import { decimalFormat } from "./csvValues.js";
-import { plMapping, REPO_ROOT } from "./testing/support.js";
+import { plMapping } from "./testing/support.js";
 import { ImportTextEncoding } from "./text.js";
 
 // Translation of tests/investments/importing/test_imp_csv_mapping.py. `CsvMapping.from_yaml` returns
@@ -29,20 +28,9 @@ columns:
   cash_amount: Amount
 `;
 
-/** `example_mapping_yaml()`: the shipped example next to the Python module (read by the caller). */
+/** `example_mapping_yaml()`: the shipped example next to `csvMapping.ts`. */
 const exampleMappingYaml = (): string =>
-  readFileSync(
-    join(
-      REPO_ROOT,
-      "src",
-      "cashu",
-      "modules",
-      "investments",
-      "importing",
-      "generic_csv_example.yaml",
-    ),
-    "utf8",
-  );
+  readFileSync(new URL("./generic_csv_example.yaml", import.meta.url), "utf8");
 
 function parse(text: string) {
   const parsed = csvMappingFromYaml(text);

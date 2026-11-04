@@ -54,47 +54,26 @@ it("keeps exact amount and source same-currency generic allocation estimates", (
   expect(decisionEstimate({ ...input, quantity: D("0") })).toBeNull();
 });
 
-// The actual SPA expressions are the oracle for defaults; no copy of their algorithm in the test.
-it("checks defaults against the actual Signals.tsx initializer and records its foreign-currency defect", async () => {
-  const { readFileSync } = await import("node:fs");
-  const source = readFileSync(
-    new URL("../../../../../frontend/src/modules/investments/v2/Signals.tsx", import.meta.url),
-    "utf8",
-  );
-  const actStart = source.indexOf("function defaultAct(");
-  const actBody = source.slice(
-    source.indexOf("{", actStart) + 1,
-    source.indexOf("\n}\n", actStart),
-  );
-  const defaultAct = new Function("s", actBody) as (
-    signal: { kind: string; payload: Record<string, unknown> } | null,
-  ) => string;
-  const quantityStart = source.indexOf('    if (!pos || !pos.price || !s) return "";');
-  const quantityBody = source.slice(quantityStart, source.indexOf("\n  });", quantityStart));
-  const original = new Function("s", "pos", "ctx", "defaultAct", quantityBody) as (
-    signal: { kind: string; payload: Record<string, unknown> },
-    position: { quantity: number; price: number },
-    context: { total: number },
-    act: typeof defaultAct,
-  ) => string;
+it("checks defaults against the actual Signals.tsx initializer and records its foreign-currency defect", () => {
+  // Expectations captured from the retired oracle (defaultAct and the quantity initializer of
+  // frontend/src/modules/investments/v2/Signals.tsx) on 2026-11-04: [signal, quantity, price, choice, quantity text].
   const signal = { kind: "position_concentration", payload: { weight: 0.3, max_weight: 0.2 } };
-  for (const [current, quantity, price] of [
-    [signal, 4.5, 10],
-    [{ ...signal, payload: { weight: 0.2, max_weight: 0.2 } }, 4.5, 10],
-    [{ kind: "price_below", payload: {} }, 4.5, 10],
+  for (const [current, quantity, price, choice, expected] of [
+    [signal, 4.5, 10, "sell", "10"],
+    [{ ...signal, payload: { weight: 0.2, max_weight: 0.2 } }, 4.5, 10, "sell", ""],
+    [{ kind: "price_below", payload: {} }, 4.5, 10, "buy", "2"],
   ] as const) {
-    const expected = original(current, { quantity, price }, { total: 1000 }, defaultAct);
     const result = decisionSuggestion({
       signal: current,
       position: { quantity: D(String(quantity)), price: D(String(price)), priceCurrency: "PLN" },
       total: D("1000"),
       base: "PLN",
     });
-    expect(result.choice).toBe(defaultAct(current));
+    expect(result.choice).toBe(choice);
     expect(result.quantity?.toString() ?? "").toBe(expected);
   }
-  // Source has no currency check and suggests 10 USD shares from a PLN excess. Native leaves it editable.
-  expect(original(signal, { quantity: 4.5, price: 10 }, { total: 1000 }, defaultAct)).toBe("10");
+  // Source had no currency check and suggested "10" USD shares from a PLN excess for the first signal
+  // above. Native leaves it editable.
   expect(
     decisionSuggestion({
       signal,

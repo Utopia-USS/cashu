@@ -1,7 +1,7 @@
 /// <reference types="node" />
-// The shared synthetic adversarial vectors (S37fix): the same file drives the Python test
-// (tests/test_mcp_privacy_vectors.py), so both languages close the same leaks. Byte equality with
-// Python on these texts (and a fuzz around them) is checked by the "adversarial" vector section.
+// The shared synthetic adversarial vectors (S37fix), test/fixtures/mcp_privacy_vectors.json: a frozen
+// copy of the file the retired Python test read, so the port closes the same leaks. Byte equality with
+// the Python output on these texts (and a fuzz around them) is checked by the "adversarial" vector section.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -47,7 +47,7 @@ interface Vectors {
   readonly messages: { finding: string; text: string; absent: string[]; expect: string }[];
 }
 
-const url = new URL("../../../../tests/mcp_privacy_vectors.json", import.meta.url);
+const url = new URL("../../test/fixtures/mcp_privacy_vectors.json", import.meta.url);
 /** JSON integers as Python ints (`bigint`), like the Python test reads them. */
 const VECTORS = JSON.parse(readFileSync(fileURLToPath(url), "utf8"), (_key, value) =>
   typeof value === "number" && Number.isInteger(value) ? BigInt(value) : value,

@@ -1,7 +1,7 @@
 /**
  * Shared helpers for the market tests (`tests/investments/market/inv_market_support.py`). No live HTTP:
  * every source runs on a recording fake `fetch`; fixtures are the recorded responses in
- * `tests/investments/fixtures/market`.
+ * `packages/domain/test/fixtures/market`.
  */
 
 import { readFileSync } from "node:fs";
@@ -19,7 +19,7 @@ import {
 import type { FetchLike, HttpRequest, HttpResponse } from "../http.js";
 import { MarketHttp } from "../http.js";
 
-const FIXTURES = new URL("../../../../tests/investments/fixtures/market/", import.meta.url);
+const FIXTURES = new URL("../../../domain/test/fixtures/market/", import.meta.url);
 
 /** Fetch time the sources stamp on bars and rates in tests. */
 export const FETCHED_AT: DateTime = Object.freeze({

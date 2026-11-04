@@ -35,6 +35,7 @@
         "src/cli.ts",
         "src/testing/faultHost.ts",
         "src/testing/nativeCreationHost.ts",
+        "src/testing/devDemo.ts",
         "src/testing/seedOverviewDemo.ts",
         "src/testing/syntheticCliHost.ts"
       ],

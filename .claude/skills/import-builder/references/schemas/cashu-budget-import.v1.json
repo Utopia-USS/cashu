@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "cashu-budget-import.v1.json",
   "title": "cashU budget import document (cashu-budget-import), format_version 1",
-  "description": "Generated from cashu.modules.budget.ingestion.canonical.BudgetImportDocument by scripts/gen_connector_schemas.py; see budget-import-format.md (also the CSV variant). The app also enforces what a schema cannot express: real calendar dates, at most 2 decimal places (3 for BHD, IQD, JOD, KWD, LYD, OMR, TND), unique transaction_id.",
+  "description": "Generated from the budget import document model (packages/domain/src/budget/ingestion/canonical/model.ts) by apps/host/scripts/genConnectorSchemas.ts; see budget-import-format.md (also the CSV variant). The app also enforces what a schema cannot express: real calendar dates, at most 2 decimal places (3 for BHD, IQD, JOD, KWD, LYD, OMR, TND), unique transaction_id.",
   "$defs": {
     "DocAccount": {
       "additionalProperties": false,

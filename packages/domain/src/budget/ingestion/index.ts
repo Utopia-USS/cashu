@@ -14,6 +14,7 @@ export {
   validateBudgetDocument,
 } from "./canonical/document.js";
 export { type BudgetIssue, formatIssue, type IssueKind, issueCode } from "./canonical/issues.js";
+export { BUDGET_IMPORT_SCHEMA_FILE, budgetImportSchemaText } from "./canonical/jsonSchema.js";
 export { type CanonicalResult, canonicalOk } from "./canonical/validate.js";
 /** Public API of budget ingestion: parsed shapes, Polish formats, the v2 content hash. */
 

@@ -16,7 +16,7 @@ import { investmentWriteServices } from "../providers/investmentWrites.js";
 import type { ToolContext } from "../registry.js";
 import { decodeEntityRef, type EntityRefKind, encodeEntityRef } from "../runtime/refs.js";
 import { NativeMcpServer, type NativeRuntime, restrictivePrivacy } from "../runtime/server.js";
-import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.generated.js";
+import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { nativeFixture } from "../testing/native.js";
 import vectors from "./fixtures/investmentWrites.json" with { type: "json" };

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "connector-protocol.v1.json",
   "title": "cashU connector protocol, api_version 1",
-  "description": "Generated from cashu.core.connectors.protocol by scripts/gen_connector_schemas.py; see connectors.md. stdin: request. stdout with exit code 0: detect_response (detect), document_response (convert, fetch), check_response (check); with exit code 1: error_response. Known error kinds: bad_file, unsupported_version, auth_failed, rate_limited, network, upstream, internal.",
+  "description": "Generated from the connector protocol (apps/host/src/connectors/runner.ts) by apps/host/scripts/genConnectorSchemas.ts; see connectors.md. stdin: request. stdout with exit code 0: detect_response (detect), document_response (convert, fetch), check_response (check); with exit code 1: error_response. Known error kinds: bad_file, unsupported_version, auth_failed, rate_limited, network, upstream, internal.",
   "messages": {
     "request": {
       "$ref": "#/$defs/Request"

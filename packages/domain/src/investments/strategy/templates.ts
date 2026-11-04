@@ -1,7 +1,7 @@
 /**
  * Shipped strategy templates (`templates/__init__.py`): `<name>.yaml` + `<name>.md` default strategy
  * files a new profile copies and edits; `README.md` is the strategy.yaml reference. The texts are
- * embedded in `templates.data.ts` (generated from the Python app's folder).
+ * embedded in `templates.data.ts`, their source of truth.
  */
 
 import { STRATEGY_TEMPLATE_FILES } from "./templates.data.js";

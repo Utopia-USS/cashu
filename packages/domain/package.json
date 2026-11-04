@@ -23,8 +23,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "vitest run",
-    "gen:import-schema": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ../../tools/node-ts/resolveTs.ts scripts/genImportSchema.ts",
-    "gen:strategy-templates": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ../../tools/node-ts/resolveTs.ts scripts/genStrategyTemplates.ts",
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
   }
 }

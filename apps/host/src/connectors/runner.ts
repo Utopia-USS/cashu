@@ -20,16 +20,16 @@ import { ConnectorEgressProxy } from "./proxy.js";
 export const MAX_INPUT = 64 * 1024 * 1024;
 const MAX_STDOUT = 64 * 1024 * 1024;
 const MAX_STDERR = 64 * 1024;
-const detectResponse = z.strictObject({
+export const detectResponse = z.strictObject({
   match: z.boolean(),
   confidence: z.number().finite().min(0).max(1).default(1),
 });
-const documentResponse = z.strictObject({
+export const documentResponse = z.strictObject({
   document: z.record(z.string(), z.unknown()),
   cursor: z.string().max(4096).nullable().optional(),
 });
-const checkResponse = z.strictObject({ ok: z.literal(true) });
-const errorResponse = z.strictObject({
+export const checkResponse = z.strictObject({ ok: z.literal(true) });
+export const errorResponse = z.strictObject({
   error: z.strictObject({
     kind: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
     message: z.string().default(""),

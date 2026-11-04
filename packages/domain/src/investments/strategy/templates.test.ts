@@ -1,11 +1,7 @@
-/// <reference types="node" />
-// Port of tests/investments/strategy/test_strategy_templates.py: the shipped strategy templates load
-// without issues; the .md templates are Polish prose; no em dashes. Plus the TypeScript-only check that
-// the generated templates.data.ts is current with the Python app's template folder.
+// Port of test_strategy_templates (the retired Python suite): the shipped strategy templates load
+// without issues; the .md templates are Polish prose; no em dashes. templates.data.ts is the source.
 
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { strategyTemplatesSource, templateFiles } from "../../../scripts/strategyTemplateSource.js";
 import { SignalSeverity } from "../domain/enums.js";
 import { BUILT_IN_KINDS } from "../rules/index.js";
 import {
@@ -31,16 +27,10 @@ function template(name: string): StrategyTemplate {
   return found;
 }
 
-describe("templates.data.ts", () => {
-  it("is generated from the Python template folder, byte for byte", () => {
-    const committed = readFileSync(new URL("./templates.data.ts", import.meta.url), "utf8");
-    expect(
-      committed === strategyTemplatesSource(),
-      "templates.data.ts is stale: run pnpm --filter @cashu/domain gen:strategy-templates",
-    ).toBe(true);
-    expect(STRATEGY_TEMPLATE_FILES).toEqual(Object.fromEntries(templateFiles()));
-  });
-});
+/** File name -> text of every shipped template file, sorted by name. */
+function templateFiles(): ReadonlyMap<string, string> {
+  return new Map(Object.entries(STRATEGY_TEMPLATE_FILES).sort(([a], [b]) => (a < b ? -1 : 1)));
+}
 
 describe("test_strategy_templates", () => {
   it("test_every_yaml_template_has_a_md_partner_and_is_listed", () => {

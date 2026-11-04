@@ -71,11 +71,11 @@ describe("resolveDataDir", () => {
 
   it("takes `.env.dev` of the checkout (and of a worktree's main checkout) without overriding the env", () => {
     const main = tempDir();
-    writeFileSync(join(main, "pyproject.toml"), "");
+    writeFileSync(join(main, "pnpm-workspace.yaml"), "");
     mkdirSync(join(main, ".git", "worktrees", "wt"), { recursive: true });
     writeFileSync(join(main, ".env.dev"), "CASHU_DATA_DIR=~/demo\nCASHU_AUTO_DAILY=0\n");
     const wt = tempDir();
-    writeFileSync(join(wt, "pyproject.toml"), "");
+    writeFileSync(join(wt, "pnpm-workspace.yaml"), "");
     writeFileSync(join(wt, ".git"), `gitdir: ${join(main, ".git", "worktrees", "wt")}\n`);
     writeFileSync(join(wt, ".env.dev"), "CASHU_AUTO_DAILY=1\n");
     const r = resolveDataDir({ ...ctx({ HOME: "/h" }), checkout: wt });
@@ -170,12 +170,12 @@ describe.skipIf(!HAS_PYTHON)("data dir = Python's (oracle)", () => {
 
   it("finds a worktree's main checkout and loads both files like _devenv.load", () => {
     const main = tempDir();
-    writeFileSync(join(main, "pyproject.toml"), "");
+    writeFileSync(join(main, "pnpm-workspace.yaml"), "");
     mkdirSync(join(main, ".git", "worktrees", "wt"), { recursive: true });
     writeFileSync(join(main, ".env.dev"), "CASHU_DATA_DIR=~/main\nCASHU_X=main\n");
     const wt = join(tempDir(), "wt");
     mkdirSync(wt);
-    writeFileSync(join(wt, "pyproject.toml"), "");
+    writeFileSync(join(wt, "pnpm-workspace.yaml"), "");
     const rel = `../../${main.split("/").slice(-1)[0]}/.git/worktrees/wt`;
     writeFileSync(join(wt, ".git"), `gitdir: ${rel}\n`);
     writeFileSync(join(wt, ".env.dev"), "CASHU_X=wt\n");

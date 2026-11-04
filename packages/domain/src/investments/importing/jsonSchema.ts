@@ -1,11 +1,10 @@
 /**
  * The JSON Schema of the `cashu-import` document, JSON variant (`docs/schemas/cashu-import.v1.json`).
  *
- * Like the Python generator it is built from the importer's field tables (there is no model to derive
- * it from): the top-level keys, the record fields allowed per record kind, value formats and limits.
- * `importSchemaText()` is byte for byte the file in `docs/schemas/`; `importing/jsonSchema.test.ts`
- * checks that (the TypeScript twin of `scripts/gen_connector_schemas.py --check`), and
- * `packages/domain/scripts/genImportSchema.ts` writes it.
+ * It is built from the importer's field tables (there is no model to derive it from): the top-level
+ * keys, the record fields allowed per record kind, value formats and limits. `importSchemaText()` is
+ * byte for byte the file in `docs/schemas/`; `importing/jsonSchema.test.ts` checks that, and
+ * `apps/host/scripts/genConnectorSchemas.ts` writes it.
  */
 
 import { InvariantError, TXN_TYPES } from "../domain/index.js";
@@ -104,7 +103,7 @@ export function importSchema(): SchemaNode {
     $id: IMPORT_SCHEMA_FILE,
     title: "cashU investments import document (cashu-import), format_version 1",
     description:
-      "Built from cashu.modules.investments.importing.canonical by scripts/gen_connector_schemas.py; see docs/import-format.md (also the CSV variant). The app also enforces what a schema cannot express: real calendar dates, the instrument and quantity rules per transaction type, cash sign rules, gross / fee / tax / cash consistency.",
+      "Built from the importer's field tables (packages/domain/src/investments/importing/canonical) by apps/host/scripts/genConnectorSchemas.ts; see docs/import-format.md (also the CSV variant). The app also enforces what a schema cannot express: real calendar dates, the instrument and quantity rules per transaction type, cash sign rules, gross / fee / tax / cash consistency.",
     type: "object",
     additionalProperties: false,
     required: ["format", "format_version", "records"],
@@ -128,9 +127,8 @@ export function importSchema(): SchemaNode {
 }
 
 /**
- * `render`: the file text of the schema (two-space indent, non-ASCII kept, a final newline), as
- * `json.dumps(schema, indent=2, ensure_ascii=False) + "\n"`. The schema holds only plain ASCII keys,
- * strings and integers, where `JSON.stringify` and `json.dumps` print the same bytes.
+ * The file text of the schema (two-space indent, non-ASCII kept, a final newline). The schema holds
+ * only plain ASCII keys, strings and integers, where `JSON.stringify` prints the published bytes.
  */
 export function importSchemaText(): string {
   return `${JSON.stringify(importSchema(), null, 2)}\n`;

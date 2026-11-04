@@ -60,10 +60,9 @@ Mixed hosts also keep financial investment reads with the Python writer. Native-
 stored signals/theses; calculated investment views and history require explicit coherent per-call
 market/strategy dependencies. File tools require the existing checked legacy-path authority. No
 dummy cache or fabricated successful calendar refresh enables production routing.
-`mcp.tool_schemas` uses native specs plus the generated contracts of remaining Python tools, in
-the exact Python registry order, with native module gating. Host integration
-tests compare the complete actual SDK tool list. Regenerate delegated contracts with
-`scripts/gen_mcp_tool_metadata.py` when Python registry metadata changes, then format/check normally.
+`mcp.tool_schemas` uses native specs plus the hand-maintained contracts in
+`packages/mcp/src/runtime/toolSchemas.ts` (captured from the Python registry, in its exact order),
+with native module gating. Host integration tests compare the complete actual SDK tool list.
 
 ## Staleness guard
 

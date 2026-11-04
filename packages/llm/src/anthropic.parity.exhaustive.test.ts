@@ -1,15 +1,12 @@
-// Independent actual Python HTTPX MockTransport oracle. Runs in the existing serial exhaustive
-// tier, with isolated HOME/data/workspaces/legacy/agents and no credential or network environment.
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+// Frozen Python HTTPX MockTransport oracle. Runs in the existing serial exhaustive tier.
+// Expectations captured from the retired oracle (packages/llm/test-fixtures/anthropic-oracle.py over
+// cashu.modules.budget.categorize.llm.classify_merchants) on 2026-11-04, one fixture entry per case.
 import { budget, D } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
 import { AnthropicClassifier } from "./anthropic.js";
+import oracleFixture from "./fixtures/anthropicOracle.json" with { type: "json" };
 import type { ClassifierDiagnostic, ClassifierTransportContext } from "./ports.js";
 
-const ROOT = resolve(import.meta.dirname, "../../..");
 const KEYS = ["groceries", "fuel"];
 const result = (items: unknown) => ({
   content: [{ type: "text", text: JSON.stringify({ results: items }) }],
@@ -37,41 +34,15 @@ function eligible(n: number): budget.CloudMerchant[] {
   );
 }
 
-function python(merchants: readonly budget.CloudMerchant[], responses: readonly Reply[]) {
-  const home = mkdtempSync(join(tmpdir(), "cashu-llm-oracle-"));
-  const data = join(home, "data");
-  mkdirSync(data);
-  try {
-    const child = spawnSync(
-      join(ROOT, ".venv/bin/python"),
-      [join(ROOT, "packages/llm/test-fixtures/anthropic-oracle.py")],
-      {
-        encoding: "utf8",
-        input: JSON.stringify({ merchants, keys: KEYS, responses }),
-        env: {
-          PATH: process.env.PATH ?? "",
-          HOME: home,
-          PYTHONPATH: join(ROOT, "src"),
-          PYTHONIOENCODING: "utf-8",
-          CASHU_TESTING: "1",
-          CASHU_DATA_DIR: data,
-          CASHU_WORKSPACES_DIR: join(home, "workspaces"),
-          CASHU_LEGACY_DATA_DIR: join(home, "legacy"),
-          CASHU_LAUNCH_AGENTS_DIR: join(home, "agents"),
-        },
-      },
-    );
-    if (child.status !== 0) throw new Error(`synthetic Python cloud oracle exit ${child.status}`);
-    return JSON.parse(child.stdout) as {
-      requests: { url: string; headers: Record<string, string>; body: string }[];
-      timeouts: number[];
-      answers: Record<string, { category: string; confidence: number }>;
-      failed_batches: number;
-    };
-  } finally {
-    rmSync(home, { recursive: true, force: true });
+const ORACLE = oracleFixture as Record<
+  string,
+  {
+    requests: { url: string; headers: Record<string, string>; body: string }[];
+    timeouts: number[];
+    answers: Record<string, { category: string; confidence: number }>;
+    failed_batches: number;
   }
-}
+>;
 
 const CASES: readonly { name: string; count: number; responses: readonly Reply[] }[] = [
   { name: "valid", count: 1, responses: [{ json: result([answer]) }] },
@@ -115,10 +86,11 @@ const CASES: readonly { name: string; count: number; responses: readonly Reply[]
 ];
 
 describe("cloud transport against actual isolated Python classifier", () => {
-  it.each(CASES)("$name", async ({ count, responses }) => {
+  it.each(CASES)("$name", async ({ name, count, responses }) => {
     const merchants = eligible(count);
     expect(merchants).toHaveLength(count);
-    const oracle = python(merchants, responses);
+    const oracle = ORACLE[name];
+    if (!oracle) throw new Error(`missing frozen oracle for ${name}`);
     const requests: { url: string; headers: Record<string, string>; body: string }[] = [];
     const diagnostics: ClassifierDiagnostic[] = [];
     const fetch: typeof globalThis.fetch = async (url, init) => {

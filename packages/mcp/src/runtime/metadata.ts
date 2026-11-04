@@ -3,7 +3,7 @@ import { budgetTools } from "../tools/budget.js";
 import { coreTools } from "../tools/core.js";
 import { investmentTools } from "../tools/investments.js";
 import { loansTools } from "../tools/loans.js";
-import { NATIVE_TOOL_SCHEMAS, TOOL_ORDER } from "./toolSchemas.generated.js";
+import { NATIVE_TOOL_SCHEMAS, TOOL_ORDER } from "./toolSchemas.js";
 
 export type { ToolMetadata } from "../registry.js";
 

@@ -1,22 +1,16 @@
-/// <reference types="node" />
 /**
  * Test-for-test translation of `tests/investments/research/test_rs_strategy_text.py`: strategy.md
  * sections for research (beliefs, entry / exit rules, what the owner avoids): heading keywords in
  * Polish and English, nested headings stay inside their section, code fences are not headings, long
- * sections are bounded. Synthetic markdown only (the template is the shipped Python template file).
+ * sections are bounded. Synthetic markdown only (plus the shipped passive_etf template).
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { strategyTemplate } from "../strategy/index.js";
 import { SECTION_MAX, strategySections } from "./strategyText.js";
 
-/** `templates.strategy_template(name).markdown`: the template file as shipped with the Python app. */
+/** `templates.strategy_template(name).markdown`: the shipped template text. */
 function strategyTemplateMarkdown(name: string): string {
-  const url = new URL(
-    `../../../../../src/cashu/modules/investments/templates/strategy/${name}.md`,
-    import.meta.url,
-  );
-  return readFileSync(fileURLToPath(url), "utf8");
+  return strategyTemplate(name)?.markdown ?? "";
 }
 
 describe("strategy text sections (test_rs_strategy_text.py)", () => {

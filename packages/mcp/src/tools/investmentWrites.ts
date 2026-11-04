@@ -21,7 +21,7 @@ import * as L from "../privacy/labels.js";
 import { systemText } from "../privacy/messages.js";
 import type { InvestmentWriteServices } from "../providers/investmentWriteTypes.js";
 import { type ToolArgs, type ToolContext, ToolError, type ToolSpec } from "../registry.js";
-import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.generated.js";
+import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { addAlert, alerts, instrumentFields, muteAlert, price } from "./alerts.js";
 import { proposeInvestmentImport } from "./investmentImportProposal.js";

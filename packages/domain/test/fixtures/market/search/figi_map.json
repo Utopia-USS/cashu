@@ -1,0 +1,413 @@
+[
+ {
+  "data": [
+   {
+    "figi": "BBG00PQQHQK0",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWRA",
+    "exchCode": "LN",
+    "compositeFIGI": "BBG00PQQHQJ2",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWRA"
+   },
+   {
+    "figi": "BBG00PQQJ258",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWRP",
+    "exchCode": "LN",
+    "compositeFIGI": "BBG00PQQJ249",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWRP"
+   },
+   {
+    "figi": "BBG00PQQJ374",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWCE",
+    "exchCode": "GR",
+    "compositeFIGI": "BBG00PQQJ374",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWCE"
+   },
+   {
+    "figi": "BBG00R4FZY63",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWCE",
+    "exchCode": "IM",
+    "compositeFIGI": "BBG00R4FZY54",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWCE"
+   },
+   {
+    "figi": "BBG00X71LYW4",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VFAWF",
+    "exchCode": "US",
+    "compositeFIGI": "BBG00X71LYW4",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VFAWF"
+   },
+   {
+    "figi": "BBG01FC3Q202",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWCE",
+    "exchCode": "NA",
+    "compositeFIGI": "BBG01FC3Q1Z6",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWCE"
+   },
+   {
+    "figi": "BBG01THSWTR7",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWRA",
+    "exchCode": "SW",
+    "compositeFIGI": "BBG01THSWTR7",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWRA"
+   },
+   {
+    "figi": "BBG00PQQJ383",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWCE",
+    "exchCode": "GF",
+    "compositeFIGI": "BBG00PQQJ374",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWCE"
+   },
+   {
+    "figi": "BBG00PQQJ392",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWCE",
+    "exchCode": "GD",
+    "compositeFIGI": "BBG00PQQJ374",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWCE"
+   },
+   {
+    "figi": "BBG00PQQJ3C8",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWCE",
+    "exchCode": "GS",
+    "compositeFIGI": "BBG00PQQJ374",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWCE"
+   },
+   {
+    "figi": "BBG00PQQJ3D7",
+    "name": "VANG FTSE AW USDA",
+    "ticker": "VWCE",
+    "exchCode": "GM",
+    "compositeFIGI": "BBG00PQQJ374",
+    "securityType": "ETP",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG00PQQHQN7",
+    "securityType2": "Mutual Fund",
+    "securityDescription": "VWCE"
+   }
+  ]
+ },
+ {
+  "data": [
+   {
+    "figi": "BBG000D0JDP8",
+    "name": "ORLEN SA",
+    "ticker": "PKN",
+    "exchCode": "PW",
+    "compositeFIGI": "BBG000D0JCZ9",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001SDW6Y2",
+    "securityType2": "Common Stock",
+    "securityDescription": "PKN"
+   },
+   {
+    "figi": "BBG001KNLV93",
+    "name": "ORLEN SA",
+    "ticker": "PSKOF",
+    "exchCode": "US",
+    "compositeFIGI": "BBG001KNLV93",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001SDW6Y2",
+    "securityType2": "Common Stock",
+    "securityDescription": "PSKOF"
+   },
+   {
+    "figi": "BBG00328MDS0",
+    "name": "ORLEN SA",
+    "ticker": "PKY1",
+    "exchCode": "GR",
+    "compositeFIGI": "BBG00328MDS0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001SDW6Y2",
+    "securityType2": "Common Stock",
+    "securityDescription": "PKY1"
+   },
+   {
+    "figi": "BBG000HXZSZ0",
+    "name": "POLSKI KONCERN NAFTOWY ORLEN",
+    "ticker": "PKNUSD",
+    "exchCode": "EO",
+    "compositeFIGI": "BBG000HXZSZ0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001SDW6Y2",
+    "securityType2": "Common Stock",
+    "securityDescription": "PKNUSD"
+   },
+   {
+    "figi": "BBG000HY09H8",
+    "name": "POLSKI KONCERN NAFTOWY ORLEN",
+    "ticker": "PKNUSD",
+    "exchCode": "E1",
+    "compositeFIGI": "BBG000HXZSZ0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001SDW6Y2",
+    "securityType2": "Common Stock",
+    "securityDescription": "PKNUSD"
+   },
+   {
+    "figi": "BBG000HY0CG2",
+    "name": "ORLEN SA",
+    "ticker": "PKNUSD",
+    "exchCode": "XW",
+    "compositeFIGI": "BBG000HXZSZ0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001SDW6Y2",
+    "securityType2": "Common Stock",
+    "securityDescription": "PKNUSD"
+   },
+   {
+    "figi": "BBG000HY1JG6",
+    "name": "ORLEN SA",
+    "ticker": "PKNUSD",
+    "exchCode": "EU",
+    "compositeFIGI": "BBG000HY0GC7",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001SDW6Y2",
+    "securityType2": "Common Stock",
+    "securityDescription": "PKNUSD"
+   }
+  ]
+ },
+ {
+  "data": [
+   {
+    "figi": "BBG000BBJQV0",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "US",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG000BBJR84",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "UA",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG000BBJS55",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "UN",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG000BBJSH2",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "UP",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG000BBK0R0",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "UW",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG000CR7KT3",
+    "name": "NVIDIA CORP",
+    "ticker": "NVD",
+    "exchCode": "GR",
+    "compositeFIGI": "BBG000CR7KT3",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVD"
+   },
+   {
+    "figi": "BBG000CR7M19",
+    "name": "NVIDIA CORP",
+    "ticker": "NVD",
+    "exchCode": "GY",
+    "compositeFIGI": "BBG000CR7KT3",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVD"
+   },
+   {
+    "figi": "BBG006TLSPV8",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "SW",
+    "compositeFIGI": "BBG006TLSPV8",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG00J7BJX58",
+    "name": "NVIDIA CORP",
+    "ticker": "1NVDA",
+    "exchCode": "IM",
+    "compositeFIGI": "BBG00J7BJX49",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "1NVDA"
+   },
+   {
+    "figi": "BBG01NX6K372",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "PW",
+    "compositeFIGI": "BBG01NX6K363",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG01YTQGW34",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDAUSD",
+    "exchCode": "SW",
+    "compositeFIGI": "BBG01YTQGW34",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDAUSD"
+   },
+   {
+    "figi": "BBG000BBJRH4",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "UC",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG000BBJTN3",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "UB",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG000BBJW29",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "UM",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   },
+   {
+    "figi": "BBG000BBJWW6",
+    "name": "NVIDIA CORP",
+    "ticker": "NVDA",
+    "exchCode": "UX",
+    "compositeFIGI": "BBG000BBJQV0",
+    "securityType": "Common Stock",
+    "marketSector": "Equity",
+    "shareClassFIGI": "BBG001S5TZJ6",
+    "securityType2": "Common Stock",
+    "securityDescription": "NVDA"
+   }
+  ]
+ },
+ {
+  "warning": "No identifier found."
+ }
+]
