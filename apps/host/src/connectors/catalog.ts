@@ -65,6 +65,14 @@ function safeId(id: string): string {
   return id;
 }
 
+/** A refusal the inventory shows on the connector's row: a connector fault or a file system error. */
+function inventoryFault(error: unknown): boolean {
+  return (
+    error instanceof ConnectorFault ||
+    (error instanceof Error && "code" in error && typeof error.code === "string")
+  );
+}
+
 /** The caller supplies an authorized app data directory, never a source/catalog path. */
 export class ConnectorCatalog {
   readonly root: string;
@@ -186,8 +194,9 @@ export class ConnectorCatalog {
       let interpreter: string | null = null;
       try {
         interpreter = resolveInterpreter(loaded, this.bundledDeno);
-      } catch {
+      } catch (error) {
         // An unavailable interpreter is shown as such; approval cannot execute.
+        if (!inventoryFault(error)) throw error;
       }
       let approval: InstalledConnectorSummary["approval"] = "pending";
       if (existsSync(this.approval(entry.name))) {
@@ -198,8 +207,9 @@ export class ConnectorCatalog {
             this.approved(entry.name, interpreter);
             approval = "approved";
           }
-        } catch {
+        } catch (error) {
           // A changed approval is visible but not executable.
+          if (!inventoryFault(error)) throw error;
         }
       }
       result.push({

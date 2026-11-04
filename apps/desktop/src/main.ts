@@ -21,6 +21,8 @@ import {
   NATIVE_CONNECTORS_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
   NOTIFICATION_INTENT_METHOD,
+  nativeConnectorsCommitResultSchema,
+  nativeConnectorsPrepareResultSchema,
   nativeCreationCommitParamsSchema,
   nativeCreationCommitResultSchema,
   nativeCreationCurrentParamsSchema,
@@ -623,26 +625,23 @@ ipcMain.handle("cashu:connectors-install", async (event) => {
   try {
     if (!connection.host.features.includes(NATIVE_CONNECTORS_FEATURE))
       throw new Error("connectors_unavailable");
-    const prepared = await connection.call("native.connectors.prepareInstall", {});
-    if (
-      !prepared ||
-      typeof prepared !== "object" ||
-      !("token" in prepared) ||
-      typeof prepared.token !== "string"
-    )
-      throw new Error("connector_picker_unavailable");
+    const prepared = nativeConnectorsPrepareResultSchema.safeParse(
+      await connection.call("native.connectors.prepareInstall", {}),
+    );
+    if (!prepared.success) throw new Error("connector_picker_unavailable");
     const chosen = await dialog.showOpenDialog(mainWindow, {
       properties: ["openDirectory"],
       securityScopedBookmarks: false,
     });
     if (chosen.canceled || chosen.filePaths.length !== 1) return { kind: "cancelled" };
-    const result = await connection.call("native.connectors.commitInstall", {
-      token: prepared.token,
-      source: chosen.filePaths[0],
-    });
-    if (!result || typeof result !== "object" || !("id" in result) || !("digest" in result))
-      throw new Error("connector_install_failed");
-    return { kind: "installed", id: result.id, digest: result.digest };
+    const result = nativeConnectorsCommitResultSchema.safeParse(
+      await connection.call("native.connectors.commitInstall", {
+        token: prepared.data.token,
+        source: chosen.filePaths[0],
+      }),
+    );
+    if (!result.success) throw new Error("connector_install_failed");
+    return { kind: "installed", id: result.data.id, digest: result.data.digest };
   } finally {
     connection.close();
   }

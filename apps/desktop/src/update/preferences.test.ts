@@ -33,3 +33,24 @@ it("refuses a preference symlink and a nonprivate directory", () => {
   symlinkSync(join(root, "target.json"), join(data, "update-preferences.json"));
   expect(() => updatePreferences(data).read()).toThrow();
 });
+
+it("refuses a stored record with a missing, extra or malformed field", () => {
+  const root = mkdtempSync(join(tmpdir(), "cashu-update-"));
+  roots.push(root);
+  const store = updatePreferences(root);
+  const file = join(root, "update-preferences.json");
+  const valid = { auto: true, skippedVersion: null, dismissedVersion: "1.0.0" };
+  for (const record of [
+    { auto: true, skippedVersion: null },
+    { ...valid, extra: 1 },
+    { ...valid, auto: "yes" },
+    { ...valid, skippedVersion: "latest" },
+    [valid],
+    null,
+  ]) {
+    writeFileSync(file, JSON.stringify(record), { mode: 0o600 });
+    expect(() => store.read()).toThrow("invalid_update_preferences");
+  }
+  writeFileSync(file, JSON.stringify(valid), { mode: 0o600 });
+  expect(store.read()).toEqual(valid);
+});

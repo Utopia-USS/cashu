@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parseDocument } from "yaml";
+import { z } from "zod";
 import type { UpdateAuthority } from "./controller.js";
 import { RELEASE_FEED_URL, RELEASE_TEAM_ID } from "./releasePolicy.js";
 
@@ -20,31 +21,23 @@ export interface InstalledApp {
   readonly expectedDataDir: string;
 }
 
+const releaseFeedSchema = z.strictObject({
+  provider: z.literal("generic"),
+  url: z.string(),
+  updaterCacheDirName: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{1,80}$/)
+    .optional(),
+});
+
 /** Rejects duplicate YAML keys, aliases, extra fields and credentials or URL redirection. */
 export function parseReleaseFeed(source: string, expectedUrl: string): boolean {
   try {
     const doc = parseDocument(source, { strict: true, uniqueKeys: true });
     if (doc.errors.length !== 0) return false;
-    const value: unknown = doc.toJS({ maxAliasCount: 0 });
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const fields = value as Record<string, unknown>;
-    if (
-      Object.keys(fields).some((key) => !["provider", "url", "updaterCacheDirName"].includes(key))
-    )
-      return false;
-    if (
-      fields.provider !== "generic" ||
-      typeof fields.url !== "string" ||
-      fields.url !== expectedUrl
-    )
-      return false;
-    if (
-      fields.updaterCacheDirName !== undefined &&
-      (typeof fields.updaterCacheDirName !== "string" ||
-        !/^[A-Za-z0-9._-]{1,80}$/.test(fields.updaterCacheDirName))
-    )
-      return false;
-    const url = new URL(fields.url);
+    const parsed = releaseFeedSchema.safeParse(doc.toJS({ maxAliasCount: 0 }));
+    if (!parsed.success || parsed.data.url !== expectedUrl) return false;
+    const url = new URL(parsed.data.url);
     if (
       url.protocol !== "https:" ||
       url.username ||

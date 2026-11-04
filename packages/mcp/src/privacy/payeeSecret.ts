@@ -22,8 +22,9 @@ export function loadPayeeSecret(dataDir: string): Uint8Array {
   try {
     const data = readFileSync(path);
     if (data.length >= 32) return new Uint8Array(data);
-  } catch {
-    // missing or unreadable: make a new key below
+  } catch (error) {
+    // Missing or unreadable (a file system error): make a new key below.
+    if (!(error instanceof Error && "code" in error)) throw error;
   }
   ensurePrivateDir(dataDir);
   ensurePrivateDir(dir);

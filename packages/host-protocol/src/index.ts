@@ -3,14 +3,7 @@
 // nonces come in as parameters; the socket, files and randomness live in @cashu/node-host.
 // The store channel v2 (JSON value codec, idempotency keys) is the `./store` subpath; the shim's
 // `cli.*` methods and `mcp` session notes are cli.ts and mcp.ts.
-export {
-  NATIVE_BANKING_FEATURE,
-  NATIVE_BANKING_METHODS,
-  bankingConfigureParamsSchema,
-  bankingConsentUrlParamsSchema,
-  bankingNativeResultSchema,
-  uiBankingAllowed,
-} from "./banking.js";
+
 export {
   type AdminStatus,
   adminHandoverParamsSchema,
@@ -26,6 +19,14 @@ export {
   type WorkerStatus,
   workerStatusSchema,
 } from "./admin.js";
+export {
+  bankingConfigureParamsSchema,
+  bankingConsentUrlParamsSchema,
+  bankingNativeResultSchema,
+  NATIVE_BANKING_FEATURE,
+  NATIVE_BANKING_METHODS,
+  uiBankingAllowed,
+} from "./banking.js";
 export {
   CLI_ENV_KEYS,
   CLI_INTERRUPTED_EXIT,
@@ -50,18 +51,18 @@ export {
   deviceListParamsSchema,
   deviceListResultSchema,
   deviceRefusalSchema,
-  type LeaderPreviewParams,
-  type LeaderPreviewResult,
   type LeaderCommitParams,
   type LeaderCommitResult,
   type LeaderInspectParams,
   type LeaderInspectResult,
-  leaderPreviewParamsSchema,
-  leaderPreviewResultSchema,
+  type LeaderPreviewParams,
+  type LeaderPreviewResult,
   leaderCommitParamsSchema,
   leaderCommitResultSchema,
   leaderInspectParamsSchema,
   leaderInspectResultSchema,
+  leaderPreviewParamsSchema,
+  leaderPreviewResultSchema,
   NATIVE_DEVICES_FEATURE,
   NATIVE_DEVICES_METHODS,
   type RevokeCancelParams,
@@ -148,6 +149,10 @@ export {
   type Role,
   roleSchema,
 } from "./messages.js";
+export {
+  nativeConnectorsCommitResultSchema,
+  nativeConnectorsPrepareResultSchema,
+} from "./nativeConnectors.js";
 export {
   type NativeCreationCommitParams,
   type NativeCreationCommitResult,

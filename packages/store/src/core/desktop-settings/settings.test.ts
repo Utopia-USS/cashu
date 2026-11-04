@@ -100,4 +100,28 @@ describe("desktop Settings owner actions", () => {
     ).toMatchObject({ hidden: true, count7d: 0, calls: [] });
     device.close();
   });
+
+  it("shows a malformed old audit row without argument names", () => {
+    const db = new Database(":memory:");
+    const device = DeviceStore.open(betterSqlite3Driver(db));
+    const vault = "5f0c3a9e81d24b7690ae13c7d2f4b856";
+    const created = device.run(startMcpCall, {
+      vault,
+      tool: "synthetic_tool",
+      calledAt: "2026-11-03T08:00:00.000Z",
+      args: { scope: "string" },
+    });
+    expect(created.ok).toBe(true);
+    db.prepare("UPDATE mcp_calls SET args = ?").run("{not json");
+    const audit = mcpAudit.run(device.read.bind(device), {
+      vault,
+      since: "2026-11-01T00:00:00.000Z",
+      privacy: false,
+    });
+    expect(audit).toMatchObject({
+      hidden: false,
+      calls: [{ tool: "synthetic_tool", arguments: [], unknownArgumentCount: 0 }],
+    });
+    device.close();
+  });
 });

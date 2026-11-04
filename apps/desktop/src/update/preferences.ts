@@ -14,11 +14,17 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 import type { PreferenceStore, UpdatePreferences } from "./controller.js";
 
 const DEFAULTS: UpdatePreferences = { auto: false, skippedVersion: null, dismissedVersion: null };
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const MAX_BYTES = 1024;
+const preferencesSchema = z.strictObject({
+  auto: z.boolean(),
+  skippedVersion: z.string().regex(VERSION).nullable(),
+  dismissedVersion: z.string().regex(VERSION).nullable(),
+});
 
 function notFound(error: unknown): boolean {
   return !!error && typeof error === "object" && "code" in error && error.code === "ENOENT";
@@ -87,26 +93,9 @@ export function updatePreferences(dataDir: string): PreferenceStore {
       } finally {
         closeSync(fd);
       }
-      const value: unknown = JSON.parse(raw);
-      if (!value || typeof value !== "object" || Array.isArray(value))
-        throw new Error("invalid_update_preferences");
-      const record = value as Record<string, unknown>;
-      if (
-        Object.keys(record).some(
-          (key) => !["auto", "skippedVersion", "dismissedVersion"].includes(key),
-        ) ||
-        typeof record.auto !== "boolean" ||
-        (record.skippedVersion !== null &&
-          (typeof record.skippedVersion !== "string" || !VERSION.test(record.skippedVersion))) ||
-        (record.dismissedVersion !== null &&
-          (typeof record.dismissedVersion !== "string" || !VERSION.test(record.dismissedVersion)))
-      )
-        throw new Error("invalid_update_preferences");
-      return {
-        auto: record.auto,
-        skippedVersion: record.skippedVersion,
-        dismissedVersion: record.dismissedVersion,
-      } as UpdatePreferences;
+      const parsed = preferencesSchema.safeParse(JSON.parse(raw));
+      if (!parsed.success) throw new Error("invalid_update_preferences");
+      return parsed.data;
     },
     write(value) {
       privateDirectory(dataDir);

@@ -18,6 +18,19 @@ describe("notification response intake", () => {
     expect(parseNotificationResponse({ ...pair, intentToken: "x" })).toBeNull();
   });
 
+  it("accepts a previously parsed pair and refuses non-objects or missing fields", () => {
+    const { requestId, intentToken } = pair;
+    expect(parseNotificationResponse({ requestId, intentToken })).toEqual({
+      requestId,
+      intentToken,
+    });
+    expect(parseNotificationResponse({ ...pair, version: undefined })).toBeNull();
+    expect(parseNotificationResponse({ version: 1, requestId })).toBeNull();
+    expect(parseNotificationResponse([requestId, intentToken])).toBeNull();
+    expect(parseNotificationResponse(null)).toBeNull();
+    expect(parseNotificationResponse("pair")).toBeNull();
+  });
+
   it("buffers early callbacks and deduplicates launchInfo replay", () => {
     const intake = createResponseIntake();
     const received: unknown[] = [];

@@ -79,6 +79,32 @@ export const updateBridgeServerFrame = z.discriminatedUnion("t", [
   }),
 ]);
 
+const fingerprint = z.string().regex(/^[a-f0-9]{64}$/);
+const appVersion = z
+  .string()
+  .max(64)
+  .regex(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/);
+/** update-admission.json: the per-data-dir barrier the updater publishes before the host stops. */
+export const updateAdmissionRecord = z
+  .strictObject({
+    schema: z.literal(1),
+    id: fingerprint,
+    phase: z.enum(["prepared", "dispatch_committed"]),
+    fromFingerprint: fingerprint,
+    fromVersion: appVersion,
+    targetVersion: appVersion,
+  })
+  .refine((value) => value.targetVersion !== value.fromVersion);
+/** update-handover-complete.json: the stopping host's identity, written under the barrier. */
+export const updateHandoverCompleteRecord = z.strictObject({
+  schema: z.literal(1),
+  admissionId: z.string(),
+  pid: z.number(),
+  startedAt: z.string(),
+  build: z.string(),
+  dataDirId: z.string(),
+});
+
 export type UpdateBridgeDescriptor = z.infer<typeof updateBridgeDescriptor>;
 export type UpdateBridgeClientFrame = z.infer<typeof updateBridgeClientFrame>;
 export type UpdateBridgeServerFrame = z.infer<typeof updateBridgeServerFrame>;

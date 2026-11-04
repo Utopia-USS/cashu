@@ -21,6 +21,20 @@ it("requires one exact, credential-free generic feed URL", () => {
   ).toBe(false);
 });
 
+it("refuses a feed that is not a mapping or has a malformed cache dir name", () => {
+  expect(parseReleaseFeed(`provider: generic\nurl: ${url}\n`, url)).toBe(true);
+  expect(parseReleaseFeed(`- provider: generic\n- url: ${url}\n`, url)).toBe(false);
+  expect(parseReleaseFeed("generic\n", url)).toBe(false);
+  expect(parseReleaseFeed(`url: ${url}\n`, url)).toBe(false);
+  expect(parseReleaseFeed(`provider: generic\nurl: ${url}\nupdaterCacheDirName:\n`, url)).toBe(
+    false,
+  );
+  expect(
+    parseReleaseFeed(`provider: generic\nurl: ${url}\nupdaterCacheDirName: ../escape\n`, url),
+  ).toBe(false);
+  expect(parseReleaseFeed(`provider: generic\nurl: 42\n`, url)).toBe(false);
+});
+
 it("pins the Apple Developer ID requirement to the app ID and release team", () => {
   const requirement = developerIdRequirement("ABCDE12345");
   expect(requirement).toContain('identifier "io.utopiasoft.cashu.next"');

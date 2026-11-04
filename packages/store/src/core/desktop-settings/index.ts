@@ -115,8 +115,9 @@ export const mcpAudit = defineQuery({
               .slice(0, 40)
               .map(([name, type]) => ({ name, type: type as string }));
           }
-        } catch {
+        } catch (error) {
           // A malformed old audit row has no displayable argument names.
+          if (!(error instanceof SyntaxError)) throw error;
         }
         return {
           id: row.id,

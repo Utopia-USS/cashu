@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export interface NotificationResponsePair {
   readonly requestId: string;
   readonly intentToken: string;
@@ -14,16 +16,20 @@ const tokenPattern = /^[0-9a-f]{64}$/;
 const MAX_PENDING = 16;
 const MAX_SEEN = 128;
 
+const pairFields = {
+  requestId: z.string().regex(requestIdPattern),
+  intentToken: z.string().regex(tokenPattern),
+};
+const notificationResponseSchema = z.union([
+  z.strictObject({ ...pairFields, version: z.literal(1) }),
+  z.strictObject(pairFields),
+]);
+
 /** Accepts only the opaque native userInfo shape, or a previously parsed pair. */
 export function parseNotificationResponse(value: unknown): NotificationResponsePair | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const row = value as Record<string, unknown>;
-  const keys = Object.keys(row).sort().join(",");
-  if (keys !== "intentToken,requestId,version" && keys !== "intentToken,requestId") return null;
-  if ("version" in row && row.version !== 1) return null;
-  if (typeof row.requestId !== "string" || !requestIdPattern.test(row.requestId)) return null;
-  if (typeof row.intentToken !== "string" || !tokenPattern.test(row.intentToken)) return null;
-  return { requestId: row.requestId, intentToken: row.intentToken };
+  const parsed = notificationResponseSchema.safeParse(value);
+  if (!parsed.success) return null;
+  return { requestId: parsed.data.requestId, intentToken: parsed.data.intentToken };
 }
 
 export function createResponseIntake(): ResponseIntake {

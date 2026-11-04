@@ -241,53 +241,59 @@ const DENO_FLAGS = [
   "--no-prompt",
   "--no-code-cache",
 ];
-function graphProblem(
+/** A dependency's resolved code or type module; a falsy value means there is none. */
+const denoTarget = z
+  .union([z.looseObject({ specifier: z.string() }), z.literal([false, 0, ""]), z.null()])
+  .optional();
+/** `deno info --json` output: only the fields the import confinement reads. */
+const denoInfoSchema = z.looseObject({
+  roots: z.unknown().optional(),
+  // Not z.record: its copy drops an own "__proto__" key, which must reach the URL check.
+  redirects: z
+    .custom<Readonly<Record<string, unknown>>>(
+      (value) => typeof value === "object" && value !== null && !Array.isArray(value),
+    )
+    .optional(),
+  npmPackages: z
+    .unknown()
+    .optional()
+    .refine((packages) => !Array.isArray(packages) || packages.length === 0),
+  modules: z.array(
+    z.looseObject({
+      specifier: z.string(),
+      error: z.unknown().optional(),
+      dependencies: z
+        .array(
+          z.union([
+            z.looseObject({ code: denoTarget, type: denoTarget }),
+            // An array names no code or type target, so it adds nothing to check.
+            z.array(z.unknown()),
+          ]),
+        )
+        .optional(),
+    }),
+  ),
+});
+
+/** Every specifier in the module graph must stay inside the approved snapshot (or be `node:`). */
+export function denoGraphProblem(
   value: unknown,
   root: string,
 ): "forbidden_import" | "module_parse_error" | null {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    !("modules" in value) ||
-    !Array.isArray(value.modules) ||
-    ("npmPackages" in value && Array.isArray(value.npmPackages) && value.npmPackages.length > 0)
-  )
-    return "forbidden_import";
-  const info = value as { roots?: unknown; redirects?: unknown; modules: unknown[] };
+  const parsed = denoInfoSchema.safeParse(value);
+  if (!parsed.success) return "forbidden_import";
+  const info = parsed.data;
   const urls: unknown[] = Array.isArray(info.roots) ? [...info.roots] : [];
-  if (info.redirects !== undefined) {
-    if (
-      info.redirects === null ||
-      typeof info.redirects !== "object" ||
-      Array.isArray(info.redirects)
-    )
-      return "forbidden_import";
+  if (info.redirects !== undefined)
     urls.push(...Object.keys(info.redirects), ...Object.values(info.redirects));
-  }
   let broken = false;
   for (const item of info.modules) {
-    if (
-      item === null ||
-      typeof item !== "object" ||
-      !("specifier" in item) ||
-      typeof item.specifier !== "string"
-    )
-      return "forbidden_import";
     urls.push(item.specifier);
-    if ("error" in item && item.error) broken = true;
-    if ("dependencies" in item && item.dependencies !== undefined) {
-      if (!Array.isArray(item.dependencies)) return "forbidden_import";
-      for (const dependency of item.dependencies) {
-        if (dependency === null || typeof dependency !== "object") return "forbidden_import";
-        for (const key of ["code", "type"] as const) {
-          if (!(key in dependency) || !dependency[key]) continue;
-          const target = dependency[key];
-          if (target === null || typeof target !== "object") return "forbidden_import";
-          if ("specifier" in target && typeof target.specifier === "string")
-            urls.push(target.specifier);
-          else return "forbidden_import";
-        }
-      }
+    if (item.error) broken = true;
+    for (const dependency of item.dependencies ?? []) {
+      if (Array.isArray(dependency)) continue;
+      for (const target of [dependency.code, dependency.type])
+        if (target) urls.push(target.specifier);
     }
   }
   for (const item of urls) {
@@ -341,7 +347,7 @@ export async function denoArguments(
   } catch {
     return { outcome: "refused", errorKind: "forbidden_import" };
   }
-  const problem = graphProblem(parsed, loaded.root);
+  const problem = denoGraphProblem(parsed, loaded.root);
   if (problem) return { outcome: "refused", errorKind: problem };
   return [
     interpreter,

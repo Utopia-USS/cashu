@@ -208,3 +208,45 @@ it("fails closed on malformed, symlinked or weakened barriers", () => {
   expect(() => assertHostAdmission(next, other)).toThrow("update_barrier_invalid");
   next.release();
 });
+
+it("fails closed on barrier and completion records with a wrong field", async () => {
+  const dir = trackDir(tempDir());
+  const barrier = publishUpdateAdmission(dir, OLD, "1.0.0", "2.0.0");
+  const run = hostRunPaths(dir);
+  const marker = join(run.runDir, "update-admission.json");
+  for (const record of [
+    { ...barrier, extra: true },
+    { ...barrier, targetVersion: barrier.fromVersion },
+    { ...barrier, phase: "done" },
+  ]) {
+    writeFileSync(marker, JSON.stringify(record));
+    expect(() => readUpdateAdmission(dir)).toThrow("update_barrier_invalid");
+  }
+  writeFileSync(marker, JSON.stringify(barrier));
+  const host = {
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    build: "synthetic-host",
+    dataDirId: run.dataDirId,
+  };
+  const first = acquireHostLock(run.lockPath);
+  if (!first) throw new Error("lock");
+  recordUpdateHandoverComplete(first, dir, host);
+  first.release();
+  const complete = join(run.runDir, "update-handover-complete.json");
+  const recorded = JSON.parse(readFileSync(complete, "utf8"));
+  const proof = await waitForHostLock(dir, barrier.id, 100);
+  if (!proof) throw new Error("lock");
+  for (const record of [
+    { ...recorded, extra: true },
+    { ...recorded, pid: String(host.pid) },
+  ]) {
+    writeFileSync(complete, JSON.stringify(record));
+    expect(() => assertUpdateHandoverComplete(proof, dir, barrier.id, host)).toThrow(
+      "update_handover_unverified",
+    );
+  }
+  writeFileSync(complete, JSON.stringify(recorded));
+  expect(() => assertUpdateHandoverComplete(proof, dir, barrier.id, host)).not.toThrow();
+  proof.release();
+});

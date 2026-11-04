@@ -16,6 +16,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import {
+  updateAdmissionRecord,
+  updateHandoverCompleteRecord,
+} from "@cashu/host-protocol/update-bridge";
 import { acquireHostLock, type HostLock } from "./lock.js";
 import { ensurePrivateDir, type HostPathEnv, hostRunPaths } from "./paths.js";
 
@@ -94,29 +98,9 @@ function read(dataDir: string, pathEnv?: HostPathEnv): UpdateAdmission | undefin
       (typeof process.getuid === "function" && stat.uid !== process.getuid())
     )
       throw new Error("invalid_file");
-    const value: unknown = JSON.parse(readFileSync(fd, "utf8"));
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      throw new Error("invalid_shape");
-    const v = value as Record<string, unknown>;
-    if (
-      Object.keys(v).sort().join(",") !==
-        "fromFingerprint,fromVersion,id,phase,schema,targetVersion" ||
-      v.schema !== 1 ||
-      (v.phase !== "prepared" && v.phase !== "dispatch_committed") ||
-      typeof v.id !== "string" ||
-      !FINGERPRINT.test(v.id) ||
-      typeof v.fromFingerprint !== "string" ||
-      !FINGERPRINT.test(v.fromFingerprint) ||
-      typeof v.fromVersion !== "string" ||
-      v.fromVersion.length > 64 ||
-      !VERSION.test(v.fromVersion) ||
-      typeof v.targetVersion !== "string" ||
-      v.targetVersion.length > 64 ||
-      !VERSION.test(v.targetVersion) ||
-      v.targetVersion === v.fromVersion
-    )
-      throw new Error("invalid_shape");
-    return v as unknown as UpdateAdmission;
+    const parsed = updateAdmissionRecord.safeParse(JSON.parse(readFileSync(fd, "utf8")));
+    if (!parsed.success) throw new Error("invalid_shape");
+    return parsed.data;
   } catch {
     throw new UpdateAdmissionError("update_barrier_invalid");
   } finally {
@@ -317,12 +301,10 @@ export function assertUpdateHandoverComplete(
     } finally {
       closeSync(fd);
     }
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      throw new Error("invalid_shape");
-    const v = value as Record<string, unknown>;
+    const parsed = updateHandoverCompleteRecord.safeParse(value);
+    if (!parsed.success) throw new Error("invalid_shape");
+    const v = parsed.data;
     if (
-      Object.keys(v).sort().join(",") !== "admissionId,build,dataDirId,pid,schema,startedAt" ||
-      v.schema !== 1 ||
       v.admissionId !== admissionId ||
       v.pid !== expected.pid ||
       v.startedAt !== expected.startedAt ||

@@ -161,6 +161,33 @@ describe("native updater controller", () => {
     expect(f.controller.status()).toEqual({ availability: "unavailable" });
   });
 
+  it("refuses malformed update metadata from the feed", async () => {
+    const sha512 = `${"A".repeat(86)}==`;
+    const zip = { url: "cashU-1.2.3-mac.zip", sha512 };
+    for (const value of [
+      null,
+      "1.2.3",
+      { version: "1.2.3" },
+      { version: "1.2", files: [zip] },
+      { version: "1.2.3", files: [] },
+      { version: "1.2.3", files: [{ ...zip, url: "cashU-1.2.3.dmg" }] },
+      { version: "1.2.3", files: [zip, { ...zip, url: "second.zip" }] },
+      { version: "1.2.3", files: [{ ...zip, url: "a..b.zip" }] },
+      { version: "1.2.3", files: [{ ...zip, sha512: "short" }] },
+      { version: "1.2.3", files: Array.from({ length: 9 }, () => zip) },
+    ]) {
+      const f = fixture();
+      await f.controller.initialize();
+      f.updater.checkForUpdates.mockImplementationOnce(async () => {
+        f.updater.emit("update-available", value);
+      });
+      await f.controller.act("check");
+      expect(f.controller.status()).toMatchObject({
+        app: { stage: "error", error: "invalid_update_metadata" },
+      });
+    }
+  });
+
   it("rejects a bad first download candidate even when a later zip looks valid", async () => {
     const f = fixture();
     await f.controller.initialize();

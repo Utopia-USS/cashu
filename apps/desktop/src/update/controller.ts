@@ -1,4 +1,5 @@
 import type { UpdateStatus } from "@cashu/store/device";
+import { z } from "zod";
 
 export type UpdateAction = "check" | "install" | "skip" | "dismiss" | "auto";
 export type UpdateOutcome = {
@@ -8,9 +9,6 @@ export type UpdateOutcome = {
 export interface UpdateInfo {
   readonly version: string;
   readonly files?: readonly { readonly url: string; readonly sha512?: string }[];
-}
-interface ProgressInfo {
-  readonly percent: number;
 }
 type EventCallback = (...args: unknown[]) => void;
 export interface UpdaterPort {
@@ -46,29 +44,27 @@ export interface UpdateAuthority {
   >;
 }
 
-function validInfo(info: UpdateInfo): boolean {
-  return (
-    !!info &&
-    typeof info === "object" &&
-    typeof info.version === "string" &&
-    info.version.length <= 64 &&
-    /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(info.version) &&
-    Array.isArray(info.files) &&
-    info.files.length > 0 &&
-    info.files.length <= 8 &&
-    info.files.every(
-      (file) =>
-        !!file &&
-        typeof file.sha512 === "string" &&
-        /^[A-Za-z0-9+/]{86}==$/.test(file.sha512) &&
-        typeof file.url === "string" &&
-        file.url.length <= 180 &&
-        /^[A-Za-z0-9][A-Za-z0-9._-]*\.(zip|dmg)$/.test(file.url) &&
-        !file.url.includes(".."),
-    ) &&
-    info.files.filter((file) => file.url.endsWith(".zip")).length === 1
-  );
-}
+const updateFileSchema = z.looseObject({
+  sha512: z.string().regex(/^[A-Za-z0-9+/]{86}==$/),
+  url: z
+    .string()
+    .max(180)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*\.(zip|dmg)$/)
+    .refine((url) => !url.includes("..")),
+});
+/** electron-updater's info for the feed's release: one zip plus optional dmgs, all hashed. */
+const updateInfoSchema = z.looseObject({
+  version: z
+    .string()
+    .max(64)
+    .regex(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/),
+  files: z
+    .array(updateFileSchema)
+    .min(1)
+    .max(8)
+    .refine((files) => files.filter((file) => file.url.endsWith(".zip")).length === 1),
+});
+const progressSchema = z.looseObject({ percent: z.number() });
 
 /** The renderer only receives UpdateStatus and actions; no feed URL or downloaded path crosses it. */
 export class UpdateController {
@@ -126,14 +122,15 @@ export class UpdateController {
     });
     listen("update-available", (value) => {
       if (this.stage?.stage !== "checking") return;
-      const info = value as UpdateInfo;
-      if (!validInfo(info)) {
+      const parsed = updateInfoSchema.safeParse(value);
+      if (!parsed.success) {
         this.downloaded = null;
         this.availableFiles = null;
         this.downloadingVersion = null;
         this.setStage("error", "invalid_update_metadata");
         return;
       }
+      const info = parsed.data;
       this.latest = info.version;
       this.availableFiles = JSON.stringify(info.files);
       this.downloaded = null;
@@ -150,16 +147,17 @@ export class UpdateController {
       }
     });
     listen("download-progress", (value) => {
-      const progress = value as ProgressInfo;
       if (this.stage?.stage !== "downloading") return;
-      if (!progress || !Number.isFinite(progress.percent)) return;
-      this.stage = { ...this.stage, progress: Math.max(0, Math.min(100, progress.percent)) };
+      const progress = progressSchema.safeParse(value);
+      if (!progress.success) return;
+      this.stage = { ...this.stage, progress: Math.max(0, Math.min(100, progress.data.percent)) };
       this.emit();
     });
     listen("update-downloaded", (value) => {
-      const info = value as UpdateInfo;
+      const parsed = updateInfoSchema.safeParse(value);
+      if (!parsed.success) return;
+      const info = parsed.data;
       if (
-        !validInfo(info) ||
         info.version !== this.latest ||
         info.version !== this.downloadingVersion ||
         JSON.stringify(info.files) !== this.availableFiles ||

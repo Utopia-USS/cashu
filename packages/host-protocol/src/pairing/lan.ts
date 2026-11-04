@@ -39,6 +39,13 @@ export interface LanDescriptor {
   readonly spki: string;
 }
 
+const lanDescriptorSchema = z.strictObject({
+  v: z.literal(LAN_VERSION),
+  ip: z.string(),
+  port: z.number().int().min(1).max(65_535),
+  spki: hex64,
+});
+
 export function encodeLanDescriptor(value: LanDescriptor, allowLoopback = false): string {
   if (
     !canonicalIpv4(value.ip, allowLoopback) ||
@@ -62,20 +69,9 @@ export function decodeLanDescriptor(
   } catch {
     return undefined;
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
-  const value = raw as Record<string, unknown>;
-  if (
-    value.v !== LAN_VERSION ||
-    typeof value.ip !== "string" ||
-    !canonicalIpv4(value.ip, allowLoopback) ||
-    !Number.isSafeInteger(value.port) ||
-    (value.port as number) < 1 ||
-    (value.port as number) > 65_535 ||
-    typeof value.spki !== "string" ||
-    !/^[0-9a-f]{64}$/.test(value.spki)
-  )
-    return undefined;
-  const descriptor = value as unknown as LanDescriptor;
+  const parsed = lanDescriptorSchema.safeParse(raw);
+  if (!parsed.success || !canonicalIpv4(parsed.data.ip, allowLoopback)) return undefined;
+  const descriptor = parsed.data;
   return encodeLanDescriptor(descriptor, allowLoopback) === text ? descriptor : undefined;
 }
 
