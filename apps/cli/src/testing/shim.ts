@@ -9,7 +9,6 @@ const REPO = fileURLToPath(new URL("../../../../", import.meta.url));
 const SHIM = join(REPO, "apps/cli/src/index.ts");
 const RESOLVE_TS = join(REPO, "tools/node-ts/resolveTs.ts");
 const HOST_INTERPOSER = join(REPO, "apps/cli/src/testing/hostInterposer.ts");
-export const FAKE_PYTHON = join(REPO, "apps/host/test-fixtures/fake-python-cli.mjs");
 const NODE_ARGS = [
   "--no-warnings",
   "--experimental-transform-types",
@@ -29,11 +28,7 @@ export interface ShimRun {
 
 const hostDirs = new Set<string>();
 
-export function spawnShim(
-  args: readonly string[],
-  env: NodeJS.ProcessEnv,
-  cwd: string,
-): ChildProcess {
+function spawnShim(args: readonly string[], env: NodeJS.ProcessEnv, cwd: string): ChildProcess {
   if (env.CASHU_DATA_DIR !== undefined) hostDirs.add(env.CASHU_DATA_DIR);
   return spawn(process.execPath, [...NODE_ARGS, ...args], { env, cwd, stdio: "pipe" });
 }

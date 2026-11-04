@@ -1,4 +1,4 @@
-// The dev checkout's Python app for oracle and parity tests (tests only). CI has no Python, so those
+// The dev checkout's Python app for oracle tests (tests only). CI has no Python, so those
 // suites are skipped there (describe.skipIf(!HAS_PYTHON)); locally they run against the repo's
 // `.venv`. Every run gets a temp data dir, a temp HOME and CASHU_TESTING=1 (no `.env.dev`, no network
 // fetches, the legacy migration refuses real paths): never the owner's data, never the lab copy.

@@ -83,7 +83,7 @@ function execParams(options: ExecOptions): CliExecParams {
   };
 }
 
-/** Runs one `cli.exec` on `conn`; resolves with the host's reply (exit or delegate). */
+/** Runs one `cli.exec` on `conn`; resolves with the host's exit reply. */
 export function runExec(conn: HostConnection, options: ExecOptions): Promise<CliExecResult> {
   const EXEC = 1;
   let nextId = 2;

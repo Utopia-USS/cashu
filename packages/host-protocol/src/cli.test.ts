@@ -15,11 +15,12 @@ const exec = {
 };
 
 describe("cli.exec", () => {
-  it("accepts the shim's request and both reply kinds", () => {
+  it("accepts the shim's request and the exit reply only", () => {
     expect(cliExecParamsSchema.parse(exec)).toEqual(exec);
     expect(cliExecResultSchema.parse({ kind: "exit", code: 3 })).toEqual({ kind: "exit", code: 3 });
+    // The host runs every command natively: there is no reply that hands the shim another binary.
     const delegate = { kind: "delegate", command: "/repo/.venv/bin/cashu", args: [] };
-    expect(cliExecResultSchema.parse(delegate)).toEqual(delegate);
+    expect(cliExecResultSchema.safeParse(delegate).success).toBe(false);
   });
 
   it("forwards only the listed environment variables", () => {
@@ -43,9 +44,6 @@ describe("cli.exec", () => {
   it("refuses relative paths and out-of-range codes", () => {
     expect(cliExecParamsSchema.safeParse({ ...exec, cwd: "work" }).success).toBe(false);
     expect(mcpOpenParamsSchema.safeParse({ cwd: "work", env: {} }).success).toBe(false);
-    expect(
-      cliExecResultSchema.safeParse({ kind: "delegate", command: "cashu", args: [] }).success,
-    ).toBe(false);
     expect(cliExecResultSchema.safeParse({ kind: "exit", code: 256 }).success).toBe(false);
   });
 

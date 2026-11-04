@@ -5,14 +5,14 @@ import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
 import { cleanEnv } from "./testing/python.js";
-import { FAKE_PYTHON, hostPid, runShim, stopHosts } from "./testing/shim.js";
+import { hostPid, runShim, stopHosts } from "./testing/shim.js";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 afterEach(async () => {
   await stopHosts();
   removeTempDirs();
 });
-it("uses the second caller's home through an already-running host and never delegates native skills", async () => {
+it("uses the second caller's home through an already-running host", async () => {
   const firstHome = tempDir("cashu-skills-first-home-");
   const secondHome = tempDir("cashu-skills-second-home-");
   const cwd = tempDir("cashu-skills-cwd-");
@@ -22,7 +22,6 @@ it("uses the second caller's home through an already-running host and never dele
     CASHU_DATA_DIR: data,
     CASHU_TESTING: "1",
     CASHU_LANG: "en",
-    CASHU_PYTHON_CLI: FAKE_PYTHON,
     HOME: firstHome,
   };
   const path = await runShim(["skills", "path"], env, { cwd });
