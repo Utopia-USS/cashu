@@ -51,8 +51,8 @@ from cashu.modules.investments.rules.expr.limits import (
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "packages" / "domain" / "test" / "vectors"
 TESTS = [
-    ROOT / "tests" / "investments" / "rules" / "test_rules_expr_grammar.py",
-    ROOT / "tests" / "investments" / "rules" / "test_rules_expr_security.py",
+    ROOT / "parity" / "python" / "oracle" / "tests" / "investments" / "rules" / "test_rules_expr_grammar.py",
+    ROOT / "parity" / "python" / "oracle" / "tests" / "investments" / "rules" / "test_rules_expr_security.py",
 ]
 SEED = 2026_11_01
 SCOPES = list(Scope)

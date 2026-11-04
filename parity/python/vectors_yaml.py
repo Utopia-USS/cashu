@@ -36,7 +36,7 @@ from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 ROOT = Path(__file__).resolve().parents[2]
 SEED = 20261031
 OUT = ROOT / "packages" / "domain" / "test" / "vectors"
-EXAMPLE = ROOT / "src" / "cashu" / "modules" / "investments" / "importing" / "generic_csv_example.yaml"
+EXAMPLE = ROOT / "parity" / "python" / "oracle" / "src" / "cashu" / "modules" / "investments" / "importing" / "generic_csv_example.yaml"
 
 if yaml.__version__ != "6.0.3":
     raise SystemExit(f"vectors_yaml.py pins PyYAML 6.0.3, found {yaml.__version__}")

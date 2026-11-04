@@ -1,4 +1,4 @@
-{"meta": {"name": "research-sections", "count": 301, "layout": "[markdown, [[kind, heading, text]]]", "seed": 2110, "generator": "packages/domain/test/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "research-sections", "count": 301, "layout": "[markdown, [[kind, heading, text]]]", "seed": 2110, "generator": "parity/python/generators/domain/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["y\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\n\n",[]]
 ["  ## Wci\u0119ty\r\n# Strategia\r\n\r\n# w kodzie\r\n  ```python\r\nKupuj\u0119 na spadkach.\r\n## Approach\u2028x\r\n## Beliefs\r\r\n\u00a0\r\n\r\n## Zasady wej\u015bcia i wyj\u015bcia ##",[]]
 ["# w kodzie\r\n~~~\r\n  ```python",[]]

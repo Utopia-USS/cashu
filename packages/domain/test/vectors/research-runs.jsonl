@@ -1,4 +1,4 @@
-{"meta": {"name": "research-runs", "count": 82, "layout": "[kind, raw, {ok} | {issues, message}]", "seed": 2110, "generator": "packages/domain/test/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "research-runs", "count": 82, "layout": "[kind, raw, {ok} | {issues, message}]", "seed": 2110, "generator": "parity/python/generators/domain/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["scope",null,{"ok":{"held":true,"watchlist":true,"candidates":true,"themes":[],"segments":[],"instruments":[],"scheduled":false,"full_refresh":false}}]
 ["scope",{},{"ok":{"held":true,"watchlist":true,"candidates":true,"themes":[],"segments":[],"instruments":[],"scheduled":false,"full_refresh":false}}]
 ["scope",{"themes":["Banki","banki","Energia"],"scheduled":true},{"ok":{"held":true,"watchlist":true,"candidates":true,"themes":["Banki","Energia"],"segments":[],"instruments":[],"scheduled":true,"full_refresh":false}}]

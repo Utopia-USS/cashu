@@ -34,7 +34,7 @@ def generate(root: Path, privacy_mode: str):
         PYTHON_KEYRING_BACKEND="keyring.backends.fail.Keyring",
     )
     # Environment isolation is established BEFORE any actual cashu application import.
-    sys.path.insert(0, str(REPO / "tests/investments/persistence"))
+    sys.path.insert(0, str(REPO / "parity/python/oracle/tests/investments/persistence"))
     import httpx
     from invp_support import HEADER, add_account, make_profile
 

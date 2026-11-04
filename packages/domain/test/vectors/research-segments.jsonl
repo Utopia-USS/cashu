@@ -1,4 +1,4 @@
-{"meta": {"name": "research-segments", "count": 256, "layout": "[auto|label|catalog, ...]", "seed": 2110, "generator": "packages/domain/test/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "research-segments", "count": 256, "layout": "[auto|label|catalog, ...]", "seed": 2110, "generator": "parity/python/generators/domain/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["auto","equity","GDXJ",[["yahoo",""]],"gold","macro_risk","agent",["gold","auto"]]
 ["auto","equity","GDXJ.L",[["xtb","GDX.US"]],"gold",null,null,["gold","auto"]]
 ["auto","equity","gdxj.us",[["stooq","tlt.us"]],"gold","uranium",null,["power","owner"]]

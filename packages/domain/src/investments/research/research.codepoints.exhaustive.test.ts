@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // The code point sweeps against Python (exhaustive tier, see references/testing.md): `\w`, `\d`, `\s`,
 // `.`, casefold, NFKD and NFKC over every code point, one test per Unicode plane, and the IGNORECASE
-// units over the BMP. Vectors: packages/domain/test/research_vectors.py.
+// units over the BMP. Vectors: parity/python/generators/domain/research_vectors.py.
 import { describe, expect, it } from "vitest";
 import { pyCasefold } from "../../casefold.js";
 import { PY_D, PY_W, translatePyPattern } from "../../pyRegex.js";

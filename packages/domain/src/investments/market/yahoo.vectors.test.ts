@@ -1,5 +1,5 @@
 // Yahoo price parsing (float32 noise removal, Python `f"{v:.{p}g}"` half-even digits) and exchange dates
-// against Python-generated vectors: packages/domain/test/market_vectors.py -> test/vectors/market-yahoo-price.jsonl.
+// against Python-generated vectors: parity/python/generators/domain/market_vectors.py -> test/vectors/market-yahoo-price.jsonl.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";

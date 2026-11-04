@@ -189,7 +189,7 @@ def main():
         env = {
             "PATH": os.environ.get("PATH", ""),
             "HOME": str(home),
-            "PYTHONPATH": str(ROOT / "src"),
+            "PYTHONPATH": str(ROOT / "parity" / "python" / "oracle" / "src"),
             "PYTHONIOENCODING": "utf-8",
             "CASHU_TESTING": "1",
             "CASHU_LANG": "en",

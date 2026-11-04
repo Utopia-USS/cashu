@@ -1,4 +1,4 @@
-{"meta": {"name": "research-urls", "count": 1301, "layout": "[url, check_url]", "seed": 2110, "generator": "packages/domain/test/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "research-urls", "count": 1301, "layout": "[url, check_url]", "seed": 2110, "generator": "parity/python/generators/domain/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["https://www.example.pl/rynki/artykul,123.html?x=1",null]
 ["https://example.com/news/2026/10/07/spolka-x-wyniki",null]
 ["ftp://example.com/a","must be an http(s) URL"]

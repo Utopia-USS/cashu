@@ -38,7 +38,7 @@ def generate(root: Path) -> dict:
         CASHU_LANG="en",
     )
     os.environ.pop("CASHU_DATABASE_URL", None)
-    sys.path.insert(0, str(REPO / "tests/investments/persistence"))
+    sys.path.insert(0, str(REPO / "parity/python/oracle/tests/investments/persistence"))
     from invp_support import (
         HEADER,
         FakeFx,

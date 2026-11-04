@@ -1,4 +1,4 @@
-{"meta": {"name": "research-signals", "count": 352, "layout": "[sources|message|candidate|key|is_key, ...]", "seed": 2110, "generator": "packages/domain/test/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "research-signals", "count": 352, "layout": "[sources|message|candidate|key|is_key, ...]", "seed": 2110, "generator": "parity/python/generators/domain/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["sources","pl",0,"0 \u017ar\u00f3de\u0142"]
 ["sources","pl",1,"1 \u017ar\u00f3d\u0142o"]
 ["sources","pl",2,"2 \u017ar\u00f3d\u0142a"]

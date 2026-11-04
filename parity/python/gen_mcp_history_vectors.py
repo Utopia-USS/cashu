@@ -87,7 +87,7 @@ def generate(root):
         CASHU_LANG="en",
     )
     os.environ.pop("CASHU_DATABASE_URL", None)
-    sys.path.insert(0, str(REPO / "tests/investments/persistence"))
+    sys.path.insert(0, str(REPO / "parity/python/oracle/tests/investments/persistence"))
     from invp_support import HEADER, add_account, import_file, make_profile
 
     from cashu.core.db import get_session, init_db

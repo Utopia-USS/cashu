@@ -8,7 +8,7 @@ files imported through the REAL Python import service into a temp data dir.
 The gate: dedupHashV2 rebuilt by genesis from the stored rows equals the dedupHashV2 a TS re-import of
 the same file computes. This harness writes both sides' inputs to
 ``packages/store/src/genesis/testing/invHashParity.json``. Every value is synthetic (the canonical
-files below and the generic CSV fixture of ``tests/investments/importing/imp_support.py``); the data
+files below and the generic CSV fixture of ``oracle/tests/investments/importing/imp_support.py``); the data
 dir, workspaces, HOME and launch agents point into a temp dir (refused otherwise) and the clock is
 frozen (``frozen.py``), so two runs write identical bytes.
 
@@ -205,7 +205,7 @@ def _isolate(tmp: Path) -> None:
 def build(tmp: Path) -> dict:
     _isolate(tmp)
     sys.path.insert(0, str(ROOT / "parity" / "python"))
-    sys.path.insert(0, str(ROOT / "tests" / "investments" / "importing"))
+    sys.path.insert(0, str(ROOT / "parity" / "python" / "oracle" / "tests" / "investments" / "importing"))
     import frozen
     from imp_support import pl_export_utf8_bom, pl_mapping_yaml
     from sqlmodel import select

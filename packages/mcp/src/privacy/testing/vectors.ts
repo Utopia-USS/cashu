@@ -1,6 +1,6 @@
 /// <reference types="node" />
 /**
- * Test helpers for the Python-generated privacy vectors (`packages/mcp/test/privacy_vectors.py`):
+ * Test helpers for the Python-generated privacy vectors (`parity/python/generators/mcp/privacy_vectors.py`):
  * loading, typed-value decoding (the generator's `enc`), tree decoding and a mismatch collector.
  */
 import { createHash } from "node:crypto";

@@ -1,4 +1,4 @@
-{"meta": {"name": "macro-formats", "count": 6680, "layout": "[metric|pct|pp|bond, lang, value, args, text]", "seed": 2020, "generator": "packages/domain/test/macro_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "macro-formats", "count": 6680, "layout": "[metric|pct|pp|bond, lang, value, args, text]", "seed": 2020, "generator": "parity/python/generators/domain/macro_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["metric","pl",0.0,["pct",1,""],"0,0 %"]
 ["metric","pl",0.0,["pp",1,""],"0,0 pp"]
 ["metric","pl",0.0,["bp",0,""],"0 bp"]

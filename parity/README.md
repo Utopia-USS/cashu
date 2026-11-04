@@ -3,6 +3,30 @@
 Deterministic outputs of the Python app, the oracle the TypeScript port is compared against
 (`packages/parity`, scope S03). Scope S02 of the TS migration.
 
+## Oracle
+
+The retired Python app lives on only here, frozen, as the oracle. It is never shipped (the desktop
+package bundles the TS host, `.claude/skills` and `connectors/`; nothing under `parity/`).
+
+| Path | What |
+|---|---|
+| `python/oracle/` | the app: `pyproject.toml`, `constraints.txt`, `alembic.ini`, `src/cashu`, `scripts/demo_data.py` |
+| `python/oracle/tests/` | only the Python tests the vector generators import or replay under pytest (`conftest.py` isolates every path) |
+| `python/*.py`, `python/checks/` | the golden harness (`golden.py`, `canon.py`, `frozen.py`, `offline.py`, bridges) and the vector generators of the TS packages |
+| `python/generators/` | the generators that lived in the TS packages: `domain/` (macro, research, market vectors), `mcp/` (privacy vectors) |
+
+The oracle keeps the checkout as its project root (`core/paths.py` `PROJECT_ROOT`), so it reads
+`connectors/`, `.claude/skills` and `.env.dev` exactly as it did from the old `src/`. The checkout's
+`.venv` holds it as an editable install:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e "parity/python/oracle[dev]" -c parity/python/oracle/constraints.txt
+.venv/bin/python -c "import cashu; print(cashu.__file__)"   # .../parity/python/oracle/src/cashu/__init__.py
+```
+
+Offline, an existing editable install is re-pointed by writing `<repo>/parity/python/oracle/src` into
+`.venv/lib/python3.*/site-packages/_editable_impl_cashu.pth`.
+
 ```bash
 .venv/bin/python parity/python/golden.py --make-demo           # once: the synthetic demo dataset
 .venv/bin/python parity/python/golden.py                       # both datasets, every check
@@ -15,7 +39,7 @@ Deterministic outputs of the Python app, the oracle the TypeScript port is compa
 | Name | Source | Goldens |
 |---|---|---|
 | `lab` | `~/cashu-lab/data` (a copy of real data, schema 0025) | `~/cashu-lab/parity/out/lab/`, never in git |
-| `demo` | `~/cashu-lab/parity/demo-data`, made by `scripts/demo_data.py --data-dir ... --today 2026-10-01` | `~/cashu-lab/parity/out/demo/`, committed copy in `parity/golden-demo/` |
+| `demo` | `~/cashu-lab/parity/demo-data`, made by `python/oracle/scripts/demo_data.py --data-dir ... --today 2026-10-01` | `~/cashu-lab/parity/out/demo/`, committed copy in `parity/golden-demo/` |
 
 The demo dataset is generated once and reused: its rows carry the wall-clock creation timestamps of
 that generation, so the committed demo goldens belong to that exact dataset. `index.json` records the

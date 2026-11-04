@@ -12,7 +12,7 @@ fields, sets sorted, Decimals as ``str()``, floats as JSON numbers), so the issu
 lines and columns, the config, the partial config and the inactive rules are all compared.
 
 Inputs are synthetic: every ``(yaml, md)`` the oracle test files pass to the loader (recorded while
-pytest runs ``tests/investments/strategy`` and ``tests/test_message_codes.py``), the shipped templates,
+pytest runs ``oracle/tests/investments/strategy`` and ``oracle/tests/test_message_codes.py``), the shipped templates,
 hand-written documents for the codes and scalar forms the tests do not reach, then seeded line and
 token mutations of those documents. An input on which Python raises outside the loader's contract (an exception from
 an odd explicitly tagged scalar, an integer id that canon cannot place) is recorded as ``raises`` with
@@ -41,8 +41,9 @@ from cashu.modules.investments.templates import STRATEGY_TEMPLATE_NAMES, strateg
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "packages" / "domain" / "test" / "vectors"
-TESTS = ROOT / "tests" / "investments" / "strategy"
-CODES_TEST = ROOT / "tests" / "test_message_codes.py"
+ORACLE = ROOT / "parity" / "python" / "oracle"
+TESTS = ORACLE / "tests" / "investments" / "strategy"
+CODES_TEST = ORACLE / "tests" / "test_message_codes.py"
 SEED = 2026_11_01
 LAYOUT = ["kind", "yaml", "md", "result | exception type"]
 

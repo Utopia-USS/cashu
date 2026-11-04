@@ -38,7 +38,7 @@ FRONT_OUT = ROOT / "packages" / "store" / "test" / "vectors" / "strategy-frontma
 if yaml.__version__ != "6.0.3":
     raise SystemExit(f"vectors_yaml_safe_load.py pins PyYAML 6.0.3, found {yaml.__version__}")
 
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "parity" / "python" / "oracle" / "src"))
 from cashu.modules.investments.service.strategy_docs import frontmatter  # noqa: E402
 
 SAFE_CASES = [

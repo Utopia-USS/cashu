@@ -23,7 +23,7 @@ from cashu.modules.investments.alerts.catalog import (
 from cashu.modules.investments.domain import Currency, InstrumentStatus, SignalSeverity
 from cashu.modules.investments.rules import DataQualityPolicy, SignalPolarity
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/investments/rules"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "parity/python/oracle/tests/investments/rules"))
 from rules_fixtures import AS_OF, alloc, bars, context, h, instrument, portfolio
 
 

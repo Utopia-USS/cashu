@@ -12,7 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tests/investments/rules"))
+sys.path.insert(0, str(ROOT / "parity/python/oracle/tests/investments/rules"))
 from rules_fixtures import AS_OF, alloc, bars, context, d, day, h, instrument, portfolio
 
 from cashu.core.i18n import use_language

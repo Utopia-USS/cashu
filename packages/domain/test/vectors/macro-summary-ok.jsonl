@@ -1,4 +1,4 @@
-{"meta": {"name": "macro-summary-ok", "count": 1807, "layout": "[text, summary_ok]", "seed": 2020, "generator": "packages/domain/test/macro_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "macro-summary-ok", "count": 1807, "layout": "[text, summary_ok]", "seed": 2020, "generator": "parity/python/generators/domain/macro_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["Za ma\u0142o aktualnych notowa\u0144, by opisa\u0107 ten rynek.",true]
 ["1234567",false]
 ["Jan Kowalski rosn\u0105.",false]

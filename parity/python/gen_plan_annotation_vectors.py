@@ -92,8 +92,8 @@ def generate():
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
             code = pytest.main(
                 [
-                    str(ROOT / "tests/investments/plan/test_plan_hints.py"),
-                    str(ROOT / "tests/investments/plan/test_plan_freshness.py"),
+                    str(ROOT / "parity/python/oracle/tests/investments/plan/test_plan_hints.py"),
+                    str(ROOT / "parity/python/oracle/tests/investments/plan/test_plan_freshness.py"),
                     "-q",
                     "-p",
                     "no:cacheprovider",

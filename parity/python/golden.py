@@ -17,7 +17,7 @@ natural keys; it must resolve inside ``~/cashu-lab/parity/``.
 
 Datasets (both live outside git):
 - ``lab``:  ``~/cashu-lab/data`` (a copy of real data; its goldens never go into git);
-- ``demo``: ``~/cashu-lab/parity/demo-data`` made by ``scripts/demo_data.py --today 2026-10-01``
+- ``demo``: ``~/cashu-lab/parity/demo-data`` made by ``oracle/scripts/demo_data.py --today 2026-10-01``
   (synthetic; its goldens may be committed under ``parity/golden-demo/``).
 
 Every run copies the dataset into a fresh ``~/cashu-lab/parity/run-<ts>-<dataset>/`` and runs the
@@ -50,6 +50,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+ORACLE = HERE / "oracle"  # the frozen Python app (pyproject, src/cashu, scripts, tests)
 LAB_ROOT = Path(os.path.expanduser("~")) / "cashu-lab"
 PARITY_ROOT = LAB_ROOT / "parity"
 OUT_ROOT = PARITY_ROOT / "out"  # the shared goldens: written from lab/ts-stack HEAD only
@@ -143,7 +144,7 @@ def make_demo() -> int:
     env.pop("CASHU_DATA_DIR")  # demo_data.py sets it from --data-dir before importing cashU
     cmd = [
         sys.executable,
-        str(REPO / "scripts" / "demo_data.py"),
+        str(ORACLE / "scripts" / "demo_data.py"),
         "--data-dir",
         str(target),
         "--today",
@@ -314,7 +315,7 @@ def payee_key(data: Path) -> None:
 
 def offline_sources() -> None:
     """The market sources the app would call are replaced by the offline ones the test suite uses
-    (``tests/conftest.py``), on top of the network guard: nothing even tries to fetch."""
+    (``oracle/tests/conftest.py``), on top of the network guard: nothing even tries to fetch."""
     from cashu.modules.investments.service import daily, instrument_search, prices
 
     instrument_search.default_sources = instrument_search.offline_sources

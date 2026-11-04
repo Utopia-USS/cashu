@@ -1,4 +1,4 @@
-{"meta": {"name": "macro-tables", "count": 26, "layout": "[name, sha256 of the canonical JSON, value]", "seed": 2020, "generator": "packages/domain/test/macro_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "macro-tables", "count": 26, "layout": "[name, sha256 of the canonical JSON, value]", "seed": 2020, "generator": "parity/python/generators/domain/macro_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["ORDER","c9edf77bf2667352de880745d4444625869b8c7e7b4d78e1ee47fae57fcb7432",["risk","dollar","em","commodities","rates"]]
 ["LABELS","06306e5ae7baeebf5640635c0d445552d25f7127a31163af38195e2235c8a713",[["risk","Rynek akcji"],["dollar","Dolar"],["em","Rynki wschodz\u0105ce"],["commodities","Surowce"],["rates","Obligacje i stopy"]]]
 ["LABELS_EN","52b271253fba5d5699df6a26ad219f8a92ae2c7f1826658a138c2b0007debbf6",[["risk","Stock market"],["dollar","Dollar"],["em","Emerging markets"],["commodities","Commodities"],["rates","Bonds and rates"]]]

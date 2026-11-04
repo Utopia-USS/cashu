@@ -1,7 +1,7 @@
 /// <reference types="node" />
-// Differential tests against Python (packages/domain/test/macro_vectors.py): every section replays the
+// Differential tests against Python (parity/python/generators/domain/macro_vectors.py): every section replays the
 // oracle's synthetic inputs through the TS port and expects the same output. Regenerate with
-// `.venv/bin/python packages/domain/test/macro_vectors.py` after a Python change.
+// `.venv/bin/python parity/python/generators/domain/macro_vectors.py` after a Python change.
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { UiLang } from "../../core/i18n.js";

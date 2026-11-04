@@ -187,7 +187,7 @@ def _dec(value: Decimal | None) -> str | None:
 def build(tmp: Path) -> list:
     _isolate(tmp)
     sys.path.insert(0, str(ROOT / "parity" / "python"))
-    sys.path.insert(0, str(ROOT / "src"))
+    sys.path.insert(0, str(ROOT / "parity" / "python" / "oracle" / "src"))
     import frozen
     from sqlmodel import select
 

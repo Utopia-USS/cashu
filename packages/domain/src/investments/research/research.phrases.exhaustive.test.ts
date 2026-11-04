@@ -1,6 +1,6 @@
 // The phrase checks against Python (exhaustive tier, see references/testing.md): 1,600 generated texts
 // through every verdict, the sentence split and each pattern's matches, in 8 slices. Vectors:
-// packages/domain/test/research_vectors.py.
+// parity/python/generators/domain/research_vectors.py.
 import { describe, it } from "vitest";
 import { pyRegex } from "../../pyRegex.js";
 import { expectAll, loadVectors, Mismatches } from "../../testing/vectors.js";

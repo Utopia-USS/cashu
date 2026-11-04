@@ -1,4 +1,4 @@
-{"meta": {"name": "research-moments", "count": 1588, "layout": "[text, parse_moment isoformat | null | {error}]", "seed": 2110, "generator": "packages/domain/test/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
+{"meta": {"name": "research-moments", "count": 1588, "layout": "[text, parse_moment isoformat | null | {error}]", "seed": 2110, "generator": "parity/python/generators/domain/research_vectors.py", "python": "3.14.6", "unicode": "16.0.0"}}
 ["2026-10-03","2026-10-03T00:00:00+00:00"]
 ["2026-10-03T08:00:00Z","2026-10-03T08:00:00+00:00"]
 ["yesterday",null]

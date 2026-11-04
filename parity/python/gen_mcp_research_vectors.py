@@ -58,7 +58,7 @@ def generate(root: Path):
         PYTHON_KEYRING_BACKEND="keyring.backends.fail.Keyring",
         CASHU_LANG="pl",
     )
-    sys.path.insert(0, str(REPO / "tests/investments/persistence"))
+    sys.path.insert(0, str(REPO / "parity/python/oracle/tests/investments/persistence"))
     from invp_support import HEADER, add_account, import_file, make_profile
     from sqlmodel import select
 
