@@ -335,6 +335,7 @@ describe("native vault session", () => {
         const params: CliExecParams = {
           argv,
           cwd: dataDir,
+          paths: { home: dataDir },
           env: { CASHU_LANG: "en" },
           tty: { stdin: false, stdout: false, stderr: false },
         };

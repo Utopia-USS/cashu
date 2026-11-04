@@ -17,7 +17,7 @@ function fixture() {
 }
 
 describe("SqlAttemptJournal", () => {
-  it("refuses an existing journal without the current digest column", () => {
+  it("refuses an existing journal whose columns differ from the current schema", () => {
     const driver = openNodeSqlite(fixture());
     try {
       driver.exec("CREATE TABLE host_attempts (key TEXT PRIMARY KEY NOT NULL)");

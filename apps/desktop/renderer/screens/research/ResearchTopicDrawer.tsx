@@ -1,6 +1,5 @@
-import { Button, DateText, Modal } from "@cashu/ui";
+import { Button, DateText, Modal, useVirtualRows } from "@cashu/ui";
 import { useRef } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import type { researchTopicModel } from "./presentation.js";
 import { S } from "./Research.strings.js";
 import { ResearchValuationFacts } from "./ResearchValuationFacts.js";

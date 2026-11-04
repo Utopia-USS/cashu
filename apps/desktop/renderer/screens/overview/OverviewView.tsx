@@ -18,7 +18,6 @@ const chartChoice =
   "rounded-sm px-2 py-1 text-fg-muted hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent aria-pressed:bg-accent-muted aria-pressed:font-strong aria-pressed:text-accent";
 
 export interface OverviewViewProps {
-  nativeModules?: readonly string[];
   cash: CashDrawerState;
   assets: AssetDrawerState;
   investmentPlan: InvestmentPlanState;
@@ -27,17 +26,17 @@ export interface OverviewViewProps {
   onModuleOpened(module: string): void;
 }
 
-/** A pure first overview. Complete legacy widgets/drawers remain TRANSITIONAL(S55b). */
+/** The overview tab as a pure View. TRANSITIONAL(S55b): the investments-only layout of the frozen
+ * Python app (frontend `MinimalOverview`: deposit plan, holdings, six-month flows in a narrow shell)
+ * is not ported; an investments-only profile gets this full overview. */
 export function OverviewView({
   state,
   cash,
   assets,
   investmentPlan,
-  nativeModules = [],
   onCurrencyPicked,
   onModuleOpened,
 }: OverviewViewProps) {
-  const canOpenModule = (module: string) => nativeModules.includes(module);
   const month = state.budget.month;
   const barWidth = (amount: Decimal) =>
     month === null || month.income.isZero()
@@ -400,11 +399,7 @@ export function OverviewView({
               <strong>{moduleLabel(module.id)}</strong> · {W.stepsDone(module.done, module.total)}
             </span>
             <span className="flex gap-2">
-              <button
-                type="button"
-                disabled={!canOpenModule(module.id)}
-                onClick={() => onModuleOpened(module.id)}
-              >
+              <button type="button" onClick={() => onModuleOpened(module.id)}>
                 {W.continueSetup}
               </button>
               <button type="button" onClick={() => state.hidePending(module.id, module.state)}>
@@ -432,12 +427,7 @@ export function OverviewView({
               </p>
               <div className="mt-3 flex items-center justify-between gap-3">
                 <span>{W.stepsDone(module.done, module.total)}</span>
-                <button
-                  type="button"
-                  disabled={!canOpenModule(module.id)}
-                  title={canOpenModule(module.id) ? undefined : S.legacyUnavailable}
-                  onClick={() => onModuleOpened(module.id)}
-                >
+                <button type="button" onClick={() => onModuleOpened(module.id)}>
                   {W.continueSetup}
                 </button>
               </div>
@@ -449,8 +439,6 @@ export function OverviewView({
             <button
               key={module.id}
               type="button"
-              disabled={!canOpenModule(module.id)}
-              title={canOpenModule(module.id) ? undefined : S.legacyUnavailable}
               onClick={() => onModuleOpened(module.id)}
               className="flex items-center justify-between rounded-md border border-border bg-surface-raised p-4 text-left hover:bg-surface-sunken"
             >

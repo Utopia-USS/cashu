@@ -1,4 +1,6 @@
 import { S as AlertS, CARD_LABEL } from "@cashu/i18n/investments/v2/Alerts.strings";
+import { Button } from "@cashu/ui";
+import { field as fieldClass } from "./controls.js";
 import { G } from "./Signals.strings.js";
 import type { AlertEditorState } from "./useAlertEditor.js";
 /** All eleven canonical kinds and their parameter descriptors use the same owner form. */
@@ -42,9 +44,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
     >
       <div className="flex items-center justify-between">
         <h2 className="text-title">{alert ? G.alertsEdit : G.alertsNew}</h2>
-        <button type="button" onClick={state.onClose} aria-label={G.close}>
-          {G.close}
-        </button>
+        <Button onPress={state.onClose}>{G.close}</Button>
       </div>
       <form
         className="grid gap-3"
@@ -68,7 +68,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                   if (!kinds.some((entry) => entry.kind === values.kind) && kinds[0])
                     form.setFieldValue("kind", kinds[0].kind);
                 }}
-                className="block w-full rounded-sm border border-border bg-surface p-2"
+                className={fieldClass}
               >
                 {["instrument", "portfolio", "bucket"].map((scope) => (
                   <option key={scope} value={scope}>
@@ -91,7 +91,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                 value={field.state.value}
                 disabled={!!alert}
                 onChange={(event) => field.handleChange(event.target.value)}
-                className="block w-full rounded-sm border border-border bg-surface p-2"
+                className={fieldClass}
               >
                 {data.catalog
                   .filter((entry) => entry.scopes.includes(values.scope as never))
@@ -113,7 +113,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                   value={field.state.value}
                   disabled={!!alert}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  className="block w-full rounded-sm border border-border bg-surface p-2"
+                  className={fieldClass}
                 >
                   <option value="">-</option>
                   {data.instruments.map((instrument) => (
@@ -136,7 +136,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                   id={`signals-alert-${param.name}`}
                   value={values.params[param.name] ?? ""}
                   onChange={(event) => setParam(param.name, event.target.value)}
-                  className="block w-full rounded-sm border border-border bg-surface p-2"
+                  className={fieldClass}
                 >
                   <option value="">-</option>
                   {data.context.allocation.buckets.map((bucket) => (
@@ -150,7 +150,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                   id={`signals-alert-${param.name}`}
                   value={values.params[param.name] ?? ""}
                   onChange={(event) => setParam(param.name, event.target.value)}
-                  className="block w-full rounded-sm border border-border bg-surface p-2"
+                  className={fieldClass}
                 >
                   {param.choices.map((choice) => (
                     <option key={choice} value={choice}>
@@ -164,7 +164,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                   value={values.params[param.name] ?? ""}
                   onChange={(event) => setParam(param.name, event.target.value)}
                   inputMode={param.type === "text" ? "text" : "decimal"}
-                  className="block w-full rounded-sm border border-border bg-surface p-2"
+                  className={fieldClass}
                 />
               )}
             </label>
@@ -176,7 +176,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
               <input
                 value={field.state.value}
                 onChange={(event) => field.handleChange(event.target.value)}
-                className="block w-full rounded-sm border border-border bg-surface p-2"
+                className={fieldClass}
               />
             </label>
           )}
@@ -191,7 +191,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                 list="signals-alert-tags"
                 onChange={(event) => field.handleChange(event.target.value)}
                 aria-describedby="signals-alert-tag-hint"
-                className="block w-full rounded-sm border border-border bg-surface p-2"
+                className={fieldClass}
               />
               <span id="signals-alert-tag-hint" className="block text-caption text-fg-muted">
                 {G.alertTagHint}
@@ -217,7 +217,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
               <textarea
                 value={field.state.value}
                 onChange={(event) => field.handleChange(event.target.value)}
-                className="block w-full rounded-sm border border-border bg-surface p-2"
+                className={fieldClass}
               />
             </label>
           )}
@@ -230,7 +230,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                 <select
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  className="block w-full rounded-sm border border-border bg-surface p-2"
+                  className={fieldClass}
                 >
                   <option value="positive">{G.positive}</option>
                   <option value="negative">{G.negative}</option>
@@ -246,7 +246,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                 <select
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  className="block w-full rounded-sm border border-border bg-surface p-2"
+                  className={fieldClass}
                 >
                   <option value="info">{G.info}</option>
                   <option value="action">{G.urgent}</option>
@@ -262,7 +262,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
                   inputMode="numeric"
-                  className="block w-full rounded-sm border border-border bg-surface p-2"
+                  className={fieldClass}
                 />
               </label>
             )}
@@ -275,7 +275,7 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
                   type="date"
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  className="block w-full rounded-sm border border-border bg-surface p-2"
+                  className={fieldClass}
                 />
               </label>
             )}
@@ -283,16 +283,10 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
         </div>
         {state.error && <p role="alert">{String(state.error)}</p>}
         <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={state.busy}
-            className="rounded-sm bg-accent px-3 py-2 text-on-accent"
-          >
+          <Button type="submit" variant="primary" disabled={state.busy}>
             {G.save}
-          </button>
-          <button type="button" onClick={state.onClose}>
-            {G.cancel}
-          </button>
+          </Button>
+          <Button onPress={state.onClose}>{G.cancel}</Button>
         </div>
       </form>
     </section>

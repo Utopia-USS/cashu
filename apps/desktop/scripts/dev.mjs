@@ -22,8 +22,6 @@ const env = {
   CASHU_AUTO_DAILY: "0",
   // The shell refuses a data dir outside this folder.
   CASHU_DESKTOP_ALLOWED_DATA_ROOT: process.env.CASHU_DESKTOP_ALLOWED_DATA_ROOT || lab,
-  // Connector secrets stay out of the login keychain in dev runs.
-  PYTHON_KEYRING_BACKEND: process.env.PYTHON_KEYRING_BACKEND || "keyring.backends.null.Keyring",
 };
 
 const build = spawnSync("pnpm", ["run", "build"], { cwd: app, stdio: "inherit" });

@@ -2,8 +2,8 @@
 // registry and fetch lease (`packages/sync/src/devices`). They travel in the same frames as view
 // events, but the frame gate reads them from the encrypted log (where their signatures and stream
 // positions are), never from the store. The store therefore recognises them and skips them: they are
-// neither folded, nor held in `event_log` (the bridge would pipe them to the Python app), nor parked
-// (that would ask the owner to upgrade the app), nor rejected. `snapshot.*` (S32) is not defined yet
+// neither folded, nor held in `event_log`, nor parked (that would ask the owner to upgrade the app),
+// nor rejected. `snapshot.*` (S32) is not defined yet
 // and stays parked like any unknown type.
 
 /** Type prefixes of the sync statements the store skips (a subset of the reserved prefixes). */

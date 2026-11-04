@@ -14,9 +14,16 @@ import type { ModalProps } from "./Modal.types.js";
 const placements = {
   fill: "inset-4 rounded-lg border border-border bg-surface-raised p-4",
   center:
-    "inset-4 m-auto h-fit max-h-[calc(100%-2rem)] max-w-3xl rounded-lg border border-border bg-surface-raised p-6 shadow-lg",
+    "inset-4 m-auto h-fit max-h-[calc(100%-2rem)] rounded-lg border border-border bg-surface-raised p-6 shadow-lg",
   end: "inset-y-0 right-0 w-full max-w-xl border-l border-border bg-surface p-6 shadow-xl",
   screen: "inset-0 bg-surface",
+} as const;
+const centerWidths = {
+  sm: "max-w-xl",
+  md: "max-w-2xl",
+  lg: "max-w-3xl",
+  xl: "max-w-4xl",
+  "2xl": "max-w-6xl",
 } as const;
 const focusable = "a[href], button, input, select, textarea, [tabindex]";
 let nextModalId = 0;
@@ -65,14 +72,17 @@ function handleBack() {
     ?.close();
 }
 
-/** Desktop modal dialog: traps Tab, closes on Escape, backdrop or browser back, restores focus to the opener. */
+/** Desktop modal dialog: traps Tab, closes on Escape, browser back or (unless turned off) the backdrop, restores focus to the opener. */
 export function Modal({
   label,
   labelledBy,
+  describedBy,
   onClose,
   children,
   className = "",
   placement = "fill",
+  width = "lg",
+  closeOnBackdrop = true,
   focus = "first",
   panelRef,
   onKeyDown,
@@ -218,7 +228,7 @@ export function Modal({
         className="fixed inset-0 bg-overlay"
         style={{ zIndex: `calc(var(--modal-backdrop-layer) + ${depth} * var(--modal-layer-step))` }}
         aria-hidden="true"
-        onClick={onClose}
+        onClick={closeOnBackdrop ? onClose : undefined}
       />
       <section
         ref={panel}
@@ -231,8 +241,9 @@ export function Modal({
         aria-modal="true"
         aria-label={labelledBy ? undefined : label}
         aria-labelledby={labelledBy}
+        aria-describedby={describedBy}
         onKeyDown={onKeyDown}
-        className={`fixed overflow-auto ${placements[placement]} ${className}`}
+        className={`fixed overflow-auto ${placements[placement]} ${placement === "center" ? centerWidths[width] : ""} ${className}`}
         style={{ zIndex: `calc(var(--modal-panel-layer) + ${depth} * var(--modal-layer-step))` }}
       >
         <ModalParent.Provider value={modalId}>{children}</ModalParent.Provider>

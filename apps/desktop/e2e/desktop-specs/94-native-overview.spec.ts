@@ -299,19 +299,20 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     const edited = assets[editIndex];
     if (!edited || edited.balance === null) throw new Error("synthetic asset valuation is absent");
     await assetsWidget.locator("li").nth(editIndex).getByRole("button").click();
-    const assetDialog = page.locator("dialog[open]");
-    await assetDialog
+    const editDialog = page.getByRole("dialog", { name: /^Edytuj: /u });
+    await editDialog
       .getByRole("textbox", { name: "Wartość", exact: true })
       .fill(String(edited.balance + 1));
-    await assetDialog.getByRole("textbox", { name: "Notatka" }).fill("Synthetic UI note");
-    await assetDialog.getByRole("button", { name: "Zapisz" }).click();
-    await expect(assetDialog).toHaveCount(0);
+    await editDialog.getByRole("textbox", { name: "Notatka" }).fill("Synthetic UI note");
+    await editDialog.getByRole("button", { name: "Zapisz" }).click();
+    await expect(editDialog).toHaveCount(0);
     await expect(assetsWidget).toContainText(rendered(edited.balance + 1, edited.currency));
     await expect(assetsWidget.getByText("notatka", { exact: true })).toBeVisible();
     await expect(page.getByTestId("net-worth")).toHaveText(
       rendered(expected.anna.summary.breakdown.net + 1, expected.anna.summary.breakdown.currency),
     );
     await assetsWidget.getByRole("button", { name: "+ Dodaj" }).click();
+    const assetDialog = page.getByRole("dialog", { name: "Nowa pozycja", exact: true });
     await assetDialog.getByRole("combobox", { name: "Typ" }).selectOption("vehicle");
     await assetDialog.getByRole("textbox", { name: "Cena zakupu" }).fill("12000");
     const firstPreview = await assetDialog.getByText(/dziś ≈/u).textContent();

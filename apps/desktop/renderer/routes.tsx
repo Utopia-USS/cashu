@@ -319,7 +319,6 @@ function OverviewBound({
           });
         })
       }
-      nativeModules={["budget", "loans", "assets", "investments"]}
       onModuleOpened={(module) => {
         if (module === "assets")
           void router.navigate({ to: "/$slug/setup/assets", params: { slug }, search: { vault } });

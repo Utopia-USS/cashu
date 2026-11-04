@@ -380,6 +380,7 @@ it("routes core commands through the native CLI socket and refuses unsupported a
     const params = (argv: string[]) => ({
       argv,
       cwd: dir,
+      paths: { home: dir },
       env: { CASHU_LANG: "en" },
       tty: { stdin: false, stdout: false, stderr: false },
     });

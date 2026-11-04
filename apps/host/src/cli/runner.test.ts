@@ -14,6 +14,7 @@ afterEach(cleanup);
 const params = (argv: string[], env: Record<string, string> = {}): CliExecParams => ({
   argv,
   cwd: "/tmp",
+  paths: { home: "/tmp" },
   env,
   tty: { stdin: false, stdout: false, stderr: false },
 });

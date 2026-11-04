@@ -52,9 +52,9 @@ export function admitStart(options: LocalHostOptions): Admission {
   const vaultSource = options.vaultSource;
   if (vaultSource === undefined) throw new Error("native_vault_provider_unavailable");
   const assertNativeSourceAdmission = () => {
-    // T54 replaces this temporary absence proof with authenticated completed migration.
+    // Python data is imported once into a new data dir (migration/), never opened beside it.
     if (legacyDataAdmission(options.dataDir) !== "no_legacy_sentinel")
-      throw new Error("legacy_python_db_awaits_s62");
+      throw new Error("python_data_present");
     options.assertNativeSourceAdmission?.();
   };
   if (vaultSource.kind === "native-production") assertNativeSourceAdmission();

@@ -20,15 +20,10 @@ export const S = catalog({
     pl: "Ten adres pasuje do kilku otwartych profili. Wybierz profil z listy.",
     en: "This address matches several open profiles. Choose a profile from the list.",
   },
-  legacyUnavailable: {
-    pl: "Tego profilu nie można jednoznacznie otworzyć w poprzednim widoku.",
-    en: "This profile cannot be uniquely opened in the previous view.",
-  },
   vaultProfile: {
     pl: (name: string, identity: string) => `${name} (${identity})`,
     en: (name: string, identity: string) => `${name} (${identity})`,
   },
-  legacy: { pl: "Pełny przegląd i pozostałe widoki", en: "Full overview and other views" },
   currency: { pl: "Waluta", en: "Currency" },
   netWorth: { pl: "Wartość netto", en: "Net worth" },
   liquid: { pl: "Płynne środki", en: "Liquid funds" },

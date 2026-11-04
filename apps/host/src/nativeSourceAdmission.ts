@@ -1,4 +1,4 @@
-/** Read-only temporary source refusal until authenticated T54 migration admission is bound. */
+/** Refuses native vaults while a source root of this entry holds a Python cashU database. */
 
 import { legacyDataAdmission, legacySourceRoots } from "@cashu/node-host/admission";
 
@@ -19,7 +19,6 @@ export function nativeSourceAdmission(input: {
     input.explicitDataDir,
   );
   return () => {
-    if (legacyDataAdmission(roots) !== "no_legacy_sentinel")
-      throw new Error("legacy_python_db_awaits_s62");
+    if (legacyDataAdmission(roots) !== "no_legacy_sentinel") throw new Error("python_data_present");
   };
 }

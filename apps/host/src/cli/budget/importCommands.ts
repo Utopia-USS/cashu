@@ -11,7 +11,7 @@ import {
   reportCliProjectionUnavailable,
   runCliVaultCommand,
 } from "../commandOutcome.js";
-import { printConsole, supportsConsoleUnicode } from "../core/console.js";
+import { printConsole } from "../core/console.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
 import { importInput, importTextSupported } from "./importInput.js";
 
@@ -95,7 +95,7 @@ export async function runImportCommand(
 ): Promise<number | typeof UNHANDLED> {
   const input = importInput(args, directory);
   const slug = root.profile || io.env.CASHU_PROFILE;
-  if (!input || !slug || !supportsConsoleUnicode(io)) return UNHANDLED;
+  if (!input || !slug) return UNHANDLED;
   if (input.bank !== undefined && !registry.institutions.csvIds().includes(input.bank))
     return UNHANDLED;
   if (!registry.accountTypes.ids().includes(input.accountType)) return UNHANDLED;

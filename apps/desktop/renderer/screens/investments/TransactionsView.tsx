@@ -1,7 +1,6 @@
 import { Money as MoneyValue } from "@cashu/domain";
-import { Amount, DateText, Money } from "@cashu/ui";
+import { Amount, DateText, Money, useVirtualRows } from "@cashu/ui";
 import { useRef } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { I } from "./Portfolio.strings.js";
 import { investmentButton } from "./PortfolioView.js";
 import type { PortfolioScreenState } from "./usePortfolioScreen.js";

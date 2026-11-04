@@ -13,5 +13,4 @@ test("native Investments tab remains available without legacy access", () => {
   const investmentsButton = markup.match(new RegExp(`<button[^>]*>${S.investments}</button>`))?.[0];
   expect(investmentsButton).toBeDefined();
   expect(investmentsButton).not.toContain("disabled");
-  expect(investmentsButton).not.toContain(S.legacyUnavailable);
 });

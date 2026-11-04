@@ -5,11 +5,18 @@ export interface ModalProps {
   label: string;
   /** Id of a visible heading inside the panel that names the dialog; replaces `label` as the DOM name. */
   labelledBy?: string;
+  /** Ids of elements that describe the dialog (validation or error text), as `aria-describedby`. */
+  describedBy?: string;
   onClose(): void;
   children: ReactNode;
   /** Where the panel sits: `fill` (inset sheet, default), `center` (content-height dialog), `end`
    * (full-height side drawer) or `screen` (the whole window, for a flow such as a wizard). */
   placement?: "fill" | "center" | "end" | "screen";
+  /** Maximum width of a `center` panel: `sm` (a short form) up to `2xl` (a wide table); default `lg`. */
+  width?: "sm" | "md" | "lg" | "xl" | "2xl";
+  /** Whether a click on the backdrop closes the dialog (default true). Forms that keep a draft turn
+   * it off so a stray click cannot discard the draft; Escape and browser back still close. */
+  closeOnBackdrop?: boolean;
   /** Layout only (width, inner layout); identity comes from `placement`. */
   className?: string;
   panelRef?: Ref<HTMLElement>;

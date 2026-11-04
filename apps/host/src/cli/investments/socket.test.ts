@@ -40,6 +40,7 @@ it("answers native investment commands over a real socket and refuses unavailabl
       const params: CliExecParams = {
         argv,
         cwd,
+        paths: { home: cwd },
         env: { CASHU_LANG: "en" },
         tty: { stdin: false, stdout: false, stderr: false },
       };
@@ -171,6 +172,7 @@ it("adds and reads a brokerage account through a genuine encrypted native host s
           params: {
             argv,
             cwd: tempDir(),
+            paths: { home: tempDir() },
             env: { CASHU_LANG: "en" },
             tty: { stdin: false, stdout: false, stderr: false },
           } satisfies CliExecParams,
@@ -261,7 +263,8 @@ it("adds and reads a brokerage account through a genuine encrypted native host s
         now: Date.now,
         sources: {},
         performance: new PerformanceService(),
-      }));
+      }),
+    );
     await expect.poll(() => vault.queue.pending).toBeGreaterThan(1);
     controller.abort();
     release?.();

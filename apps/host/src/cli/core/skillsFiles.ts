@@ -146,7 +146,7 @@ export function directoryTarget(absolute: string): string | undefined {
   }
   return current;
 }
-/** copytree follows links; exceptional/cyclic sources must fail in legacy before native I/O. */
+/** cp follows links: an exceptional or cyclic source is refused before any write. */
 export function copyableTree(path: string, ancestors = new Set<string>()): boolean {
   const entry = stat(path);
   if (entry === undefined) return false;

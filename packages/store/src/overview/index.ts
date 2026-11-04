@@ -554,19 +554,6 @@ export const profileIdentity = defineQuery({
     )[0] ?? null,
 });
 
-/** Explicit matching legacy identity only. It grants no financial writer coherence or authority. */
-export function legacyNavigation(
-  available?: (vault: string, slug: string) => boolean,
-): Query<undefined, boolean> {
-  return defineQuery({
-    id: "core.legacyNavigation",
-    run: (read) => {
-      const profile = read<{ gid: string; slug: string }>("SELECT gid, slug FROM profiles")[0];
-      return profile !== undefined && available?.(profile.gid, profile.slug) === true;
-    },
-  });
-}
-
 /**
  * The overview queries of a process, over the device's price cache (null: no cache, last trade
  * prices). The optional process-local change source wakes cache consumers after committed cache

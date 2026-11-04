@@ -62,8 +62,7 @@ interface VaultLog {
 type Check = "ok" | "invalid_event" | "det_mismatch";
 
 /**
- * `parseEvent` (with `placeholder`'s envelope fields) and the `detPartsOf` self-check of one draft;
- * the S31a bridge validates its events with it too.
+ * `parseEvent` (with `placeholder`'s envelope fields) and the `detPartsOf` self-check of one draft.
  */
 function checkEvent(
   e: EventDraft,

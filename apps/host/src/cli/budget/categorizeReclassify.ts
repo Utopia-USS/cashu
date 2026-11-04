@@ -11,7 +11,7 @@ import {
   reportCliProjectionUnavailable,
   runCliVaultCommand,
 } from "../commandOutcome.js";
-import { printConsole, supportsConsoleUnicode } from "../core/console.js";
+import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { S } from "./categorize.strings.js";
 import {
@@ -114,7 +114,7 @@ export async function runReclassifyCommand(
   const input = options(args),
     slug = root.profile || io.env.CASHU_PROFILE,
     provider = deps.classifier;
-  if (!input || !slug || !supportsConsoleUnicode(io)) return UNHANDLED;
+  if (!input || !slug) return UNHANDLED;
   const matches = [...deps.stores.vaults.values()].filter(
     (v) => mcpProfile(v.store.read.bind(v.store))?.slug === slug,
   );

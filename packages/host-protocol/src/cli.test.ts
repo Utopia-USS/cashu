@@ -10,6 +10,7 @@ import { mcpOpenParamsSchema } from "./mcp.js";
 const exec = {
   argv: ["--profile", "demo-anna", "stats"],
   cwd: "/tmp/work",
+  paths: { home: "/caller/home" },
   env: { CASHU_LANG: "pl", NO_COLOR: "1" },
   tty: { stdin: true, stdout: false, stderr: true, columns: 120 },
 };
@@ -55,16 +56,18 @@ describe("cli.exec", () => {
   });
 });
 
-it("carries optional caller path/terminal context without forwarding HOME as environment", () => {
+it("requires the caller path context and carries terminal context without forwarding HOME", () => {
+  const { paths: _paths, ...withoutPaths } = exec;
+  expect(cliExecParamsSchema.safeParse(withoutPaths).success).toBe(false);
   const paths = { home: "/caller/home" };
   expect(cliExecParamsSchema.parse({ ...exec, paths }).paths).toEqual(paths);
-  expect(cliExecParamsSchema.parse({ ...exec, paths: { home: "" } }).paths?.home).toBe("");
+  expect(cliExecParamsSchema.parse({ ...exec, paths: { home: "" } }).paths.home).toBe("");
   expect(cliExecParamsSchema.safeParse({ ...exec, paths: { home: "bad\u0000path" } }).success).toBe(
     false,
   );
   expect(cliExecParamsSchema.safeParse({ ...exec, env: { HOME: "/caller/home" } }).success).toBe(
     false,
   );
-  const tty = { ...exec.tty, compatible: false, unicodeVersion: "17.0.0" };
+  const tty = { ...exec.tty, compatible: false };
   expect(cliExecParamsSchema.parse({ ...exec, tty }).tty).toEqual(tty);
 });

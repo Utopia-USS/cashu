@@ -7,5 +7,4 @@ export default {
 };
 
 export const MigrationRequired = {};
-export const MigrationPending = { args: { status: "migration_pending" } };
 export const Refused = { args: { status: "refused" } };

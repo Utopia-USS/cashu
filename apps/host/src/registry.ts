@@ -65,7 +65,6 @@ import {
 import { strategiesQueries } from "@cashu/store/investments/strategies-screen";
 import { createUiLoan, loansScreen, setUiLoanPayment } from "@cashu/store/loans/screen";
 import {
-  legacyNavigation,
   type OverviewSources,
   overviewCashWallet,
   overviewQueries,
@@ -81,7 +80,6 @@ export type AnyCommand = Command<unknown, unknown> | DeviceCommand<unknown, unkn
 /** Process-local providers are bound here, never supplied by the renderer. */
 export function servedQueries(
   env: Parameters<typeof overviewQueries>[0] & {
-    readonly legacyIdentity?: Parameters<typeof legacyNavigation>[0];
     readonly sources?: OverviewSources;
     readonly investments?: InvestmentScreenSources;
     readonly strategies?: Parameters<typeof strategiesQueries>[0];
@@ -107,7 +105,6 @@ export function servedQueries(
     env.proposalImages ? proposalDetailWithImages(env.proposalImages) : proposalDetail,
     profileIdentity,
     vaultPaymentPatterns,
-    legacyNavigation(env.legacyIdentity),
     overviewCashWallet,
     loansScreen,
     budgetScreenCashflow,

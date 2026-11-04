@@ -368,7 +368,7 @@ describe("v1.1 acceptance of real shapes", () => {
 
 describe("wire form (own-log carrier)", () => {
   it("round-trips through the spike's {t, v, h, d} keys plus i, g, a, c, o", () => {
-    const env = envelope("alert.deleted", {}, { cause: ULID_B, origin: "bridge", sig: "x" });
+    const env = envelope("alert.deleted", {}, { cause: ULID_B, origin: "genesis", sig: "x" });
     const wire = toWire(envelopeSchema.parse(env));
     expect(wire).toMatchObject({ t: "alert.deleted", v: 1, h: HLC, d: {}, i: ULID_A, c: ULID_B });
     expect(wire).not.toHaveProperty("vault");
@@ -388,16 +388,19 @@ describe("wire form (own-log carrier)", () => {
 describe("envelope", () => {
   it("accepts the documented example shape", () => {
     const r = envelopeSchema.safeParse(
-      envelope(
-        "alert.statusSet",
-        { status: "muted", snoozedUntil: null },
-        {
-          cause: ULID_B,
-          origin: "bridge",
-        },
-      ),
+      envelope("alert.statusSet", { status: "muted", snoozedUntil: null }, { cause: ULID_B }),
     );
     expect(r.success).toBe(true);
+  });
+
+  it("refuses an origin other than genesis", () => {
+    for (const origin of ["bridge", "native", ""])
+      expect(envelopeSchema.safeParse(envelope("alert.deleted", {}, { origin })).success).toBe(
+        false,
+      );
+    expect(
+      envelopeSchema.safeParse(envelope("alert.deleted", {}, { origin: "genesis" })).success,
+    ).toBe(true);
   });
 
   it("requires the HLC device suffix to equal the device", () => {

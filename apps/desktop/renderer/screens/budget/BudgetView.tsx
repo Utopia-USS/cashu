@@ -1,6 +1,16 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { BarChart, Button, Card, DateText, Donut, Money, Percent, VirtualList } from "@cashu/ui";
-import { type ReactNode, useEffect, useRef } from "react";
+import {
+  BarChart,
+  Button,
+  Card,
+  DateText,
+  Donut,
+  Modal,
+  Money,
+  Percent,
+  VirtualList,
+} from "@cashu/ui";
+import type { ReactNode } from "react";
 import { B } from "./Budget.strings.js";
 import type { BudgetScreenState } from "./useBudgetScreen.js";
 
@@ -391,7 +401,12 @@ function MonthClose({ state }: { state: BudgetScreenState }) {
 
 function CushionForm({ state }: { state: BudgetScreenState }) {
   return (
-    <Drawer label={B.cushion} onClose={state.closeCushion}>
+    <Modal
+      label={B.cushion}
+      onClose={state.closeCushion}
+      placement="center"
+      closeOnBackdrop={false}
+    >
       <h2 className="text-title">{B.cushion}</h2>
       {state.message && <p role="status">{state.message}</p>}
       <form
@@ -538,40 +553,10 @@ function CushionForm({ state }: { state: BudgetScreenState }) {
           <Button onPress={state.closeCushion}>{B.close}</Button>
         </div>
       </form>
-    </Drawer>
+    </Modal>
   );
 }
 const fieldClass = field;
-
-function Drawer({
-  label,
-  onClose,
-  children,
-}: {
-  label: string;
-  onClose(): void;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      aria-label={label}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      onClose={onClose}
-      className="m-auto max-h-full w-full max-w-3xl overflow-auto rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken"
-    >
-      {children}
-    </dialog>
-  );
-}
 
 export interface BudgetViewProps {
   state: BudgetScreenState;
@@ -723,7 +708,12 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
         </Card>
       )}
       {state.categoriesOpen && (
-        <Drawer label={B.uncategorized} onClose={state.closeCategories}>
+        <Modal
+          label={B.uncategorized}
+          onClose={state.closeCategories}
+          placement="center"
+          closeOnBackdrop={false}
+        >
           {state.message && <p role="status">{state.message}</p>}
           <div className="mb-4 flex justify-between">
             <h2 className="text-title">{B.uncategorized}</h2>
@@ -748,11 +738,16 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
               </div>
             ))
           )}
-        </Drawer>
+        </Modal>
       )}
       {state.cushionOpen && <CushionForm state={state} />}
       {state.importOpen && (
-        <Drawer label={B.import} onClose={() => state.setImportOpen(false)}>
+        <Modal
+          label={B.import}
+          onClose={() => state.setImportOpen(false)}
+          placement="center"
+          closeOnBackdrop={false}
+        >
           <h2 className="text-title">{B.import}</h2>
           <ol className="my-4 flex flex-wrap gap-4">
             {[B.source, B.file, B.preview, B.done].map((step, index) => (
@@ -769,7 +764,7 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
           <div className="mt-4 flex gap-3">
             <Button onPress={() => state.setImportOpen(false)}>{B.close}</Button>
           </div>
-        </Drawer>
+        </Modal>
       )}
     </main>
   );

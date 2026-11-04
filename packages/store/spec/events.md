@@ -2,7 +2,7 @@
 
 Status: v1.3 (S29c-B4, 2026-11-03), building on v1.2 (scope S04, 2026-10-31), after the independent review and its v1.1 re-check
 (`~/cashu-lab/checkpoints/S04-review.md`) and the lead's decisions on both. Consumers: S23 store-core,
-S24/S25 materializers, S26 genesis, S28a carrier contract, S29 devices / lease, S30 Python outbox,
+S24/S25 materializers, S26 genesis, S28a carrier contract, S29 devices / lease,
 S31a/b bridge.
 
 Companion documents: [`gid.md`](gid.md) (global ids, keyed DET construction, id-coupled strings).
@@ -58,8 +58,7 @@ Logical form (what readers, reducers and tests see):
   "v": 1,
   "gid": "01JC0ZA1B2C3D4E5F6G7H8J9K0",
   "data": { "status": "muted", "snoozedUntil": null },
-  "cause": "01JC0Z9A2B3C4D5E6F7G8H9J0A",
-  "origin": "bridge"
+  "cause": "01JC0Z9A2B3C4D5E6F7G8H9J0A"
 }
 ```
 
@@ -75,7 +74,7 @@ Logical form (what readers, reducers and tests see):
 | `gid` | yes | gid ([`gid.md`](gid.md)); the vault id for `profile.*` events | The entity the event is about (the row it creates or changes, as the writer saw it; identity resolution may redirect it, 6.4). |
 | `data` | yes | JSON object | Payload, validated by the (type, v) schema. |
 | `cause` | no | ULID | The `eid` of the event that caused this one in the same batch (side effects of an approval, a candidate acceptance). Causal suppression (6.6). |
-| `origin` | no | `genesis` \| `bridge` | `genesis`: produced by the genesis exporter (S26); `bridge`: by the Python outbox shipper (S31a). Informational; reducers MUST NOT branch on it. |
+| `origin` | no | `genesis` | `genesis`: produced by the genesis exporter (S26); absent on events the app writes. Any other value is invalid. Informational; reducers MUST NOT branch on it. |
 
 Rules:
 
@@ -785,8 +784,7 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 
 #### v1.3 device head gossip (S29c-B4)
 
-`device.headsGossiped` remains payload `v: 1`; the catalog bump reserves the new event type without
-changing frame, signed-head, key, or older event bytes. Its payload is exactly
+`device.headsGossiped` is payload `v: 1`. Its payload is exactly
 `{heads: string[], signer: deviceId, sig: lower-case Ed25519 signature}`. `heads` contains 1-16
 strictly increasing, unique, lower-case canonical encoded signed heads of data stream 1 in this
 vault. Each inner head retains its writer signature. The outer `signer` MUST be the frame writer,
@@ -841,9 +839,8 @@ list names the writer exactly once, the recovery recipient, and each remaining t
 the wrap map has exactly those recipients and excludes revoked devices. This allows a cold reopen
 after accepted append but before durable ring save to recover the new key from the authenticated
 old-key frame. A writer confirms that this replay has supplied the expected key before merging its
-prepared clone, saves the ring durably, and only then marks the keyed attempt completed. Readers
-continue to accept historical `device.keysRotated` events without a self wrap; this rule adds a
-recovery property to newly authored rotations and does not change the older wire format.
+prepared clone, saves the ring durably, and only then marks the keyed attempt completed. Readers do
+not require the self wrap: it is a recovery property of the writer, not a validity condition.
 
 The store skips `device.*` and `lease.*` events (`packages/store/src/statements.ts`): they are sync
 statements the frame gate reads from the encrypted log, so a store neither folds, holds, parks nor
@@ -878,10 +875,7 @@ The fetch leader (S29c R4; rule 6 must not rest on an unstated linearizable remo
   predecessor acknowledges it. A revoked device cannot act, but its absence does not authorize the
   next leader to act. If it cannot acknowledge, the owner must explicitly confirm a force pin, with
   the existing possible-overlap warning. A subsequent non-force pin waits for the leader established
-  by that force pin. This is a safety behavior change without a wire, event, or key format change.
-  Mixed old and new lease actors are unsafe around revocation and auto-to-pinned exit: an old actor
-  may clear pending on revocation or accept a non-force exit from a stale auto view while a new actor
-  waits or refuses it. Upgrade or pause all active lease actors before relying on these guarantees.
+  by that force pin.
 - **Mode `auto`** (an owner opt-in, `lease.pinned {mode: "auto", leader: null}`): claims start a term,
   renewals extend it (`0 < until - at <= 24 h`, optional `waive`), releases end it. A device uses it
   only while its transport declares bounded propagation (`Transport.consistency`, proven by the
@@ -928,7 +922,7 @@ Lease state never enters the view fold (6.2 LEADER), so the reference fold does 
 | Enable Banking keys / sessions, connector secrets, API token, run locks, the vault salt and data key in plaintext | device keychain (the salt and key travel only wrapped, at pairing) |
 | local integer ids | view-internal |
 
-## 11. Notes for genesis (S26) and the outbox (S30)
+## 11. Notes for genesis (S26)
 
 - Genesis emits per vault one create / snapshot event per row in dependency order, `origin:
   "genesis"`, every timestamp column in `stamps` (4.4), soft-deleted rows with their deletion state.
@@ -945,21 +939,6 @@ Lease state never enters the view fold (6.2 LEADER), so the reference fold does 
 - Genesis clock, device, eids, collisions and dangling references: [`gid.md`](gid.md) 7.1-7.6.
 - Genesis gids follow [`gid.md`](gid.md) 7. A conformance test validates real lab rows through the zod
   schemas (counts only): `lab-conformance.test.ts`, enabled by `CASHU_LAB_DB`.
-- The outbox captures field diffs of synced columns (section 9 excluded) and maps them to these types;
-  explicit emits for `instrument_merge.py`, decision / review undo, thesis delete, cash expense delete,
-  binding removal and every bulk `update()/delete()` on a synced table (R6).
-- The S25 deltas (S25-F1..F6: refresh fields, `run` on refresh / close, close `payloadSet` / reopen
-  `payloadUnset`, `note.candidateUpdated`, `note.signalLinked`, `alert.restored.rearm`) come from ORM
-  writes the outbox already captures as field diffs; the shipper maps them by merging the update rows
-  of one row within one transaction, splitting a close / reopen payload diff into `payloadSet` /
-  `payloadUnset`, and telling a restore re-arm (status `triggered -> active` together with
-  `deleted_at -> null`) from the daily re-arm (status alone).
-- Python-side derived writes MUST NOT be shipped. The Python side SHOULD validate outbound events
-  against JSON Schema generated from these zod schemas (`z.toJSONSchema`).
-- The outbox computes DET gids itself, so the per-vault gid salt ([`gid.md`](gid.md) 3) MUST be
-  available to the Python outbox (S30) exactly as to the TS store: S27 stores it where both runtimes
-  read it (the device keyring entry next to the data key; Python via `keyring`), never in a file in the
-  data dir.
 
 ## 12. Open items
 
@@ -982,5 +961,5 @@ Resolved in v1.2 (lead decisions on the re-check):
   of a stale run no longer holds; any device closes a stale run `failed {interrupted}` on its next start
   / note, made safe by first-writer-wins on the run's status (8.9).
 
-Remaining: none from S04. Hand-offs: the lease payloads and watermark wait (S29), the salt wrapping,
-recovery and dual-runtime storage (S27, [`gid.md`](gid.md) G5).
+Remaining: none from S04. Hand-offs: the lease payloads and watermark wait (S29), the salt wrapping
+and recovery (S27, [`gid.md`](gid.md) G5).

@@ -3,8 +3,6 @@
  * known shapes with a slug-shaped profile and a numeric id are accepted. */
 
 export const LINK_SCHEME = "cashu";
-// legacy name: notifications posted before the rename carry this scheme
-export const LEGACY_LINK_SCHEME = "finanse";
 export const MAX_LINK = 512;
 export const INVESTMENTS_VIEW = "investments.portfolio";
 
@@ -20,7 +18,7 @@ function decode(segment: string): string {
 }
 
 /**
- * The dashboard hash route for a `cashu://` link (or the legacy scheme of notifications posted before the rename):
+ * The dashboard hash route for a `cashu://` link:
  * "" = just bring the app to the front, null = not a link this app opens.
  */
 export function linkToHash(url: unknown): string | null {
@@ -28,7 +26,7 @@ export function linkToHash(url: unknown): string | null {
   const match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)([?#].*)?$/i.exec(url);
   if (!match) return null;
   const scheme = (match[1] ?? "").toLowerCase();
-  if ((scheme !== LINK_SCHEME && scheme !== LEGACY_LINK_SCHEME) || match[4]) return null;
+  if (scheme !== LINK_SCHEME || match[4]) return null;
   const kind = match[2] ?? "";
   const segs = (match[3] ?? "").split("/").filter(Boolean).map(decode);
   if (kind === "open" && segs.length === 0) return "";
@@ -43,7 +41,7 @@ export function linkToHash(url: unknown): string | null {
   return null;
 }
 
-/** The first `cashu://` (or legacy) link in a command line (second instance, `open -a ... --args`). */
+/** The first `cashu://` link in a command line (second instance, `open -a ... --args`). */
 export function linkFromArgv(argv: readonly string[]): string | null {
   for (const arg of argv) {
     const value = arg.startsWith("--open-link=") ? arg.slice("--open-link=".length) : arg;

@@ -1,4 +1,4 @@
-// Host compatibility wrapper around the portable private SQL command attempt journal.
+// The host's binding of the portable private SQL command attempt journal (table `host_attempts`).
 import type { JsonValue } from "@cashu/host-protocol/store";
 import { SqlCommandAttemptJournal, type SqlDriver } from "@cashu/store";
 

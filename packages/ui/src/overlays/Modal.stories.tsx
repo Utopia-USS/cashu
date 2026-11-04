@@ -5,6 +5,7 @@ import type { ModalProps } from "./Modal.types.js";
 
 const closeLabel = "Close";
 const heading = "Details";
+const hint = "Fill in every field.";
 const meta = {
   title: "Overlays/Modal",
   component: Modal,
@@ -29,5 +30,21 @@ export const LabelledByHeading: Story<ModalProps> = {
   },
 };
 export const Center: Story<ModalProps> = { args: { placement: "center" } };
+export const CenterNarrow: Story<ModalProps> = { args: { placement: "center", width: "sm" } };
+export const CenterWide: Story<ModalProps> = { args: { placement: "center", width: "2xl" } };
+export const DescribedForm: Story<ModalProps> = {
+  args: {
+    placement: "center",
+    width: "sm",
+    closeOnBackdrop: false,
+    describedBy: "modal-story-hint",
+    children: (
+      <>
+        <p id="modal-story-hint">{hint}</p>
+        <Button>{closeLabel}</Button>
+      </>
+    ),
+  },
+};
 export const EndDrawer: Story<ModalProps> = { args: { placement: "end" } };
 export const Screen: Story<ModalProps> = { args: { placement: "screen" } };

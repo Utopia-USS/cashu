@@ -134,7 +134,6 @@ describe("Store as EventSink", () => {
     ]);
     expect(page.last).toBeDefined();
     const last = page.last ?? { seq: 0, eid: "" };
-    expect(sa.eidAt(last.seq)).toBe(last.eid);
     expect(sa.foreignEvents(last.seq, new Set([A]), 10)).toEqual({ events: [], last: undefined });
     // Paging: one row per page still moves the cursor past an excluded row.
     const first = sa.foreignEvents(0, new Set([A]), 1);

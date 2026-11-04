@@ -161,7 +161,6 @@ if (process.argv[2] === "rename") {
     overview: {
       prices,
       changes: combinedChanges(prices, images.source.changes),
-      legacyIdentity: (vault, slug) => imported.get(slug)?.vault === vault,
       sources: {
         plannedContribution: (read) => {
           const strategy = images.source.current(read);

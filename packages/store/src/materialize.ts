@@ -673,7 +673,7 @@ export class Store {
   }
 
   // ------------------------------------------------------------------------------------------- //
-  // Log reads of the sync bridge (S31a spec 5.4)
+  // Log reads (native creation proof, uncertain-write recovery)
 
   /** The HLC of each of `eids` held in the log (any state); absent eids are missing from the map. */
   eventHlcs(eids: readonly string[]): ReadonlyMap<string, string> {
@@ -690,8 +690,6 @@ export class Store {
    * Logical envelopes (`fromWire` shape, the vault re-attached) of the log rows after `afterSeq` in
    * insertion order whose writing device is not in `exclude`, at most `limit`; `last` is the
    * `(seq, eid)` of the last row scanned (excluded rows included), so a cursor moves past them too.
-   * A cursor whose `seq` no longer carries its eid (the store was rebuilt) is the caller's to detect
-   * with `eidAt`.
    */
   foreignEvents(
     afterSeq: number,
@@ -711,12 +709,6 @@ export class Store {
     }
     const tail = rows.at(-1);
     return { events, last: tail === undefined ? undefined : { seq: tail.seq, eid: tail.eid } };
-  }
-
-  /** The eid of the log row at `seq`, undefined when there is none. */
-  eidAt(seq: number): string | undefined {
-    return this.#stmts.get("SELECT eid FROM event_log WHERE seq = ?").get<{ eid: string }>(seq)
-      ?.eid;
   }
 
   // ------------------------------------------------------------------------------------------- //

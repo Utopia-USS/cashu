@@ -66,7 +66,6 @@ export async function openNativeVault(
   now: () => number,
 ): Promise<NativeVaultSession> {
   lease.assertHeld();
-  if (entry.legacyBridge !== undefined) throw new Error("legacy_bridge_unbound");
   const root = entry.vaultRoot;
   const privatePath = existing(join(root, "private.db"), "file");
   const viewPath = existing(join(root, "view.db"), "file");

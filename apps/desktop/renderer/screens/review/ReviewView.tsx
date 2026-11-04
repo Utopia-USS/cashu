@@ -1,34 +1,29 @@
-import { Button, Card, DateText } from "@cashu/ui";
+import { Button, Card, DateText, Modal } from "@cashu/ui";
 import { useEffect, useRef } from "react";
 import { R } from "./Review.strings.js";
 import { CardContent } from "./ReviewCardContent.js";
 import type { ReviewScreenState } from "./useReviewScreen.js";
 
 export function ReviewView({ state }: { state: ReviewScreenState }) {
-  const ref = useRef<HTMLDialogElement>(null),
+  const ref = useRef<HTMLElement>(null),
     pointer = useRef<{ x: number; y: number } | null>(null);
 
-  useEffect(() => {
-    const element = ref.current,
-      previous = document.activeElement;
-    if (!state.privacy && !state.suspended && !state.reader && !element?.open) element?.showModal();
-    if ((state.privacy || state.suspended || state.reader) && element?.open) element.close();
-    return () => {
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-    };
-  }, [state.privacy, state.suspended, state.reader]);
+  // A new card moves focus back to the panel so the arrow keys keep driving the deck.
   useEffect(() => {
     if (state.card) ref.current?.focus();
   }, [state.card]);
   if (state.privacy) return <p>{R.privacy}</p>;
+  // The research reader replaces the deck while it is open; a suspended session shows nothing.
+  if (state.suspended || state.reader) return null;
   return (
-    <dialog
-      ref={ref}
-      tabIndex={-1}
-      aria-label={state.session?.snapshot.name ?? R.title}
-      className="m-auto max-h-full w-full max-w-4xl overflow-auto rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken"
-      onCancel={(event) => {
-        event.preventDefault();
+    <Modal
+      panelRef={ref}
+      focus="panel"
+      label={state.session?.snapshot.name ?? R.title}
+      placement="center"
+      width="xl"
+      closeOnBackdrop={false}
+      onClose={() => {
         if (state.noteOpen) state.setNoteOpen(false);
         else if (state.detail) state.setDetail(false);
         else state.onClosed();
@@ -128,6 +123,6 @@ export function ReviewView({ state }: { state: ReviewScreenState }) {
           {state.notice}
         </p>
       )}
-    </dialog>
+    </Modal>
   );
 }

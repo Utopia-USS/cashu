@@ -1,6 +1,6 @@
 import { parseDateTime } from "@cashu/domain";
-import type { InvestmentSearchIo } from "@cashu/mcp";
 import { performance as perf } from "@cashu/domain/investments";
+import type { InvestmentSearchIo } from "@cashu/mcp";
 import { enabledModuleIds, mcpProfile } from "@cashu/store/core";
 import type { PerformanceService } from "@cashu/store/investments/performance";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
@@ -9,7 +9,6 @@ import type { MarketInput } from "@cashu/store/investments/views";
 import type { HostStores, OpenVault } from "../../stores.js";
 import type { HostWorker } from "../../worker/service.js";
 import { localDate } from "../budget/context.js";
-import { supportsConsoleUnicode } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 
 export interface InvestmentCliDeps {
@@ -46,7 +45,7 @@ export function investmentVault(
   deps: Pick<InvestmentCliDeps, "stores">,
 ): OpenVault | null {
   const slug = root.profile || io.env.CASHU_PROFILE;
-  if (!slug || !supportsConsoleUnicode(io)) return null;
+  if (!slug) return null;
   const matches = [...deps.stores.vaults.values()].filter(
     (vault) => mcpProfile(vault.store.read.bind(vault.store))?.slug === slug,
   );
@@ -63,7 +62,7 @@ export function investmentContext(
   deps: InvestmentCliDeps,
 ): InvestmentContext | null {
   const slug = root.profile || io.env.CASHU_PROFILE;
-  if (!slug || !supportsConsoleUnicode(io)) return null;
+  if (!slug) return null;
   const matches = [...deps.stores.vaults.values()].filter(
     (vault) => mcpProfile(vault.store.read.bind(vault.store))?.slug === slug,
   );

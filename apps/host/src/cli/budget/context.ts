@@ -1,7 +1,6 @@
 import { mcpProfile } from "@cashu/store/core";
 import type { StrategyFilesPort } from "@cashu/store/investments/services";
 import type { HostStores, OpenVault } from "../../stores.js";
-import { supportsConsoleUnicode } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./categorizeOllama.js";
 
@@ -22,7 +21,7 @@ export function budgetVault(
   stores: Pick<HostStores, "vaults">,
 ): OpenVault | null {
   const slug = root.profile || io.env.CASHU_PROFILE;
-  if (!slug || !supportsConsoleUnicode(io)) return null;
+  if (!slug) return null;
   const matches = [...stores.vaults.values()].filter(
     (vault) => mcpProfile(vault.store.read.bind(vault.store))?.slug === slug,
   );

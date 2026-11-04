@@ -14,14 +14,11 @@ describe("cashu:// links (notify.link_to_hash)", () => {
       "#/demo-anna/investments.portfolio/?review=1",
     );
     expect(linkToHash("cashu://investments/demo-piotr")).toBe("#/demo-piotr/investments.portfolio");
-    // legacy name: the scheme of notifications posted before the rename
-    expect(linkToHash("finanse://investments/demo-piotr")).toBe(
-      "#/demo-piotr/investments.portfolio",
-    );
   });
 
   it("rejects everything else", () => {
     for (const bad of [
+      "finanse://investments/demo-piotr",
       "cashu://signal/demo-anna/abc",
       "cashu://signal/Demo/1",
       "cashu://signal/../1",

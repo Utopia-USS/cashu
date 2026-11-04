@@ -8,23 +8,13 @@ import assets, {
   Privacy as PrivateAssets,
   Ready as ReadyAssets,
 } from "./screens/overview/AssetsWidgetView.stories.js";
-import cashDrawer, {
-  Empty as EmptyCash,
-  Privacy as PrivateCash,
-  Ready as ReadyCash,
-} from "./screens/overview/CashDrawerView.stories.js";
 import investments, {
   Privacy as PrivateInvestments,
   Ready as ReadyInvestments,
   Unavailable as UnavailableInvestments,
   ZeroStart,
 } from "./screens/overview/InvestmentsWidgetView.stories.js";
-import overview, {
-  Empty,
-  LegacyUnavailable,
-  Privacy,
-  Ready,
-} from "./screens/overview/OverviewView.stories.js";
+import overview, { Empty, Privacy, Ready } from "./screens/overview/OverviewView.stories.js";
 import bootstrap, { Failed, Waiting } from "./shell/BootstrapView.stories.js";
 import shell, {
   NoProfile,
@@ -52,9 +42,9 @@ it("renders actual Overview CSF states and masks exact accessible amounts in its
   expect(renderToStaticMarkup(<overview.component {...overview.args} {...Empty.args} />)).toContain(
     'data-testid="net-worth"',
   );
-  expect(
-    renderToStaticMarkup(<overview.component {...overview.args} {...LegacyUnavailable.args} />),
-  ).toContain("disabled");
+  expect(renderToStaticMarkup(<overview.component {...overview.args} {...Ready} />)).not.toContain(
+    "disabled",
+  );
   const hidden = renderToStaticMarkup(
     Privacy.decorators[0]?.(() => <overview.component {...overview.args} />),
   );
@@ -63,7 +53,7 @@ it("renders actual Overview CSF states and masks exact accessible amounts in its
   expect(hidden).toContain("hidden");
 });
 
-it("renders asset, cash and investment widget stories from synthetic state", () => {
+it("renders asset and investment widget stories from synthetic state", () => {
   expect(renderToStaticMarkup(<assets.component {...assets.args} {...ReadyAssets} />)).toContain(
     "Synthetic property",
   );
@@ -76,21 +66,6 @@ it("renders asset, cash and investment widget stories from synthetic state", () 
   expect(
     renderToStaticMarkup(<assets.component {...assets.args} {...PrivateAssets.args} />),
   ).not.toContain("Synthetic property");
-  expect(
-    renderToStaticMarkup(
-      <cashDrawer.component {...cashDrawer.args} {...ReadyCash} privacy={false} />,
-    ),
-  ).toContain("Synthetic purchase");
-  expect(
-    renderToStaticMarkup(
-      <cashDrawer.component {...cashDrawer.args} {...EmptyCash.args} privacy={false} />,
-    ),
-  ).toContain("groceries");
-  expect(
-    renderToStaticMarkup(
-      PrivateCash.decorators[0]?.(() => <cashDrawer.component {...cashDrawer.args} privacy />),
-    ),
-  ).not.toContain("Synthetic purchase");
   expect(
     renderToStaticMarkup(<investments.component {...investments.args} {...ReadyInvestments} />),
   ).toContain("overview-investments-title");

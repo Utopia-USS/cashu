@@ -29,7 +29,7 @@ it.each(["finanse.db", "cashu.db-wal"])(
         },
         launcher: false,
       }),
-    ).rejects.toThrow("legacy_python_db_awaits_s62");
+    ).rejects.toThrow("python_data_present");
     expect(existsSync(join(dataDir, "native", "v1", "creation.json"))).toBe(false);
   },
 );
@@ -60,7 +60,7 @@ it("refuses a pre-rename source root before opening zero-vault Create", async ()
       assertNativeSourceAdmission,
       launcher: false,
     }),
-  ).rejects.toThrow("legacy_python_db_awaits_s62");
+  ).rejects.toThrow("python_data_present");
   expect(existsSync(join(dataDir, "native", "v1", "creation.json"))).toBe(false);
 });
 

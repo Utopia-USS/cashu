@@ -1,4 +1,4 @@
-/** Portable S62 legacy-source projection primitives shared with the parity oracle. */
+/** Portable Python-source projection primitives shared by `migrate verify` and the parity oracle. */
 
 export {
   bool,

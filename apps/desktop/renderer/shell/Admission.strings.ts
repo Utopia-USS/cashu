@@ -6,10 +6,6 @@ export const S = catalog({
     pl: "Wykryto dane z poprzedniej wersji. Otwieranie ich w tej wersji będzie dostępne po bezpiecznej migracji.",
     en: "Data from the previous version was found. Opening it here requires a safe migration.",
   },
-  migrationPending: {
-    pl: "Migracja danych wymaga dokończenia lub sprawdzenia. Dane pozostają bez zmian.",
-    en: "The data migration needs to be completed or checked. Your data remains unchanged.",
-  },
   refused: {
     pl: "Nie można bezpiecznie otworzyć tych danych. Sprawdź instalację przed ponowną próbą.",
     en: "This data cannot be opened safely. Check the installation before trying again.",

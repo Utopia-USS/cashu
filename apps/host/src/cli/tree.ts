@@ -21,7 +21,6 @@ export interface CommandIo {
     readonly stderr: boolean;
     readonly columns?: number;
     readonly compatible?: boolean;
-    readonly unicodeVersion?: string;
   };
   /** Aborted when the user presses Ctrl-C (the command should stop and return 130). */
   readonly signal: AbortSignal;
@@ -129,7 +128,10 @@ export async function runTree(
   const endOptions = args.indexOf("--");
   const helpAt = args.findIndex((arg) => arg === "--help" || arg === "-h");
   if (command && helpAt >= 0 && (endOptions < 0 || helpAt < endOptions)) {
-    const help = commandHelp([name, ...args.slice(0, helpAt).filter((arg) => !arg.startsWith("-"))]);
+    const help = commandHelp([
+      name,
+      ...args.slice(0, helpAt).filter((arg) => !arg.startsWith("-")),
+    ]);
     if (help) {
       io.stdout(`${io.t.tr(help)}\n`);
       return { kind: "exit", code: 0 };

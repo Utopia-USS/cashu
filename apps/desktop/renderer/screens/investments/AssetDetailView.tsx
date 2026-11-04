@@ -1,7 +1,6 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, DateText, LineChart, Money, Percent } from "@cashu/ui";
-import { useEffect, useRef } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
+import { Amount, DateText, LineChart, Modal, Money, Percent, useVirtualRows } from "@cashu/ui";
+import { useRef } from "react";
 import { I } from "./Portfolio.strings.js";
 import { investmentButton } from "./PortfolioView.js";
 import type { PortfolioScreenState } from "./usePortfolioScreen.js";
@@ -10,33 +9,26 @@ const ratio = (value: number | null) => (value === null ? null : D(String(value)
 
 /** One native held/watched/saved detail surface in a page or modal panel. */
 export function AssetDetailView({ state }: { state: PortfolioScreenState }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const element = ref.current;
-    if (state.selected !== null && !state.isPage && !element?.open) element?.showModal();
-    if (state.selected === null && element?.open) element.close();
-  }, [state.selected, state.isPage]);
   if (state.isPage)
     return (
       <main className="grid gap-6 p-6" data-testid="native-asset-page">
         <AssetBody state={state} />
       </main>
     );
+  if (state.selected === null) return null;
   return (
-    <dialog
-      ref={ref}
-      aria-label={I.details}
-      onCancel={(event) => {
-        event.preventDefault();
-        state.setSelected(null);
-      }}
-      className="m-auto max-h-full w-full max-w-6xl overflow-auto rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken"
+    <Modal
+      label={I.details}
+      onClose={() => state.setSelected(null)}
+      placement="center"
+      width="2xl"
+      closeOnBackdrop={false}
     >
       <AssetBody state={state} />
       <button type="button" className={investmentButton} onClick={() => state.setSelected(null)}>
         {I.close}
       </button>
-    </dialog>
+    </Modal>
   );
 }
 

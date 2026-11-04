@@ -34,14 +34,7 @@ export function hostLaunch(input: HostLaunchInput): HostLaunch {
   const env = { ...input.env };
   if (input.isPackaged) {
     for (const key of Object.keys(env)) {
-      if (
-        key.startsWith("PYTHON") ||
-        key.startsWith("_PYI_") ||
-        key.startsWith("PYINSTALLER_") ||
-        key.startsWith("DYLD_") ||
-        key.startsWith("LD_")
-      )
-        delete env[key];
+      if (key.startsWith("DYLD_") || key.startsWith("LD_")) delete env[key];
     }
   }
   const entry = input.isPackaged

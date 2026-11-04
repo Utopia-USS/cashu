@@ -93,6 +93,7 @@ it("executes root and budget aliases over the native host socket", async () => {
       const result = await conn.call("cli.exec", {
         argv: ["-p", "demo", ...leaf, "statement.csv", "--bank=mbank"],
         cwd: dir,
+        paths: { home: dir },
         env: { CASHU_LANG: "en" },
         tty: { stdin: false, stdout: false, stderr: false },
       });

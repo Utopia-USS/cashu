@@ -1,26 +1,17 @@
 import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/loans/Drawers.strings";
-import { Money } from "@cashu/ui";
-import { useEffect, useRef } from "react";
+import { Modal, Money } from "@cashu/ui";
 import { L } from "./Loans.strings.js";
 import type { LoansState } from "./useLoansScreen.js";
 
 export function LoanDrawerView({ state }: { state: LoansState }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (state.drawer === "loan" && !state.privacy && !el?.open) el?.showModal();
-    if ((state.drawer !== "loan" || state.privacy) && el?.open) el.close();
-  }, [state.drawer, state.privacy]);
-  return state.privacy ? null : (
-    <dialog
-      ref={ref}
-      aria-label={S.addLoan}
-      onCancel={(e) => {
-        e.preventDefault();
-        state.close();
-      }}
-      className="m-auto max-h-full w-full max-w-xl overflow-auto rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken"
+  return state.privacy || state.drawer !== "loan" ? null : (
+    <Modal
+      label={S.addLoan}
+      onClose={state.close}
+      placement="center"
+      width="sm"
+      closeOnBackdrop={false}
     >
       <h2 className="text-headline">{S.addLoan}</h2>
       <form
@@ -147,6 +138,6 @@ export function LoanDrawerView({ state }: { state: LoansState }) {
           </button>
         </footer>
       </form>
-    </dialog>
+    </Modal>
   );
 }

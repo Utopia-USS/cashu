@@ -1,7 +1,7 @@
 // Payload-derived deterministic gids (gid.md 4, events.md 7.10): the DET domain and parts an event's
 // gid must be built from. Parts are read from the (upcast) payload as written, references unresolved.
-// One table for the store's gid check and the reference fold; genesis (S26) and the Python outbox
-// (S30) MUST build these gids from exactly these parts.
+// One table for the store's gid check and the reference fold; genesis (S26) MUST build these gids
+// from exactly these parts.
 import type { EventType } from "./catalog.js";
 import type { GidTable } from "./namespaces.js";
 

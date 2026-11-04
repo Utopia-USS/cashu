@@ -25,9 +25,7 @@ guard FileManager.default.isExecutableFile(atPath: electron),
 
 var environment = ProcessInfo.processInfo.environment
 for key in environment.keys {
-    if key.hasPrefix("PYTHON") || key.hasPrefix("_PYI_") || key.hasPrefix("PYINSTALLER_") ||
-       key.hasPrefix("DYLD_") || key.hasPrefix("LD_") || key.hasPrefix("CASHU_DESKTOP_") ||
-       key == "CASHU_PYTHON_CLI" {
+    if key.hasPrefix("DYLD_") || key.hasPrefix("LD_") || key.hasPrefix("CASHU_DESKTOP_") {
         environment.removeValue(forKey: key)
     }
 }

@@ -10,9 +10,8 @@ import {
   SECTION,
 } from "@cashu/i18n/core/Settings.strings";
 import { PRIVACY } from "@cashu/i18n/core/Wizard.strings";
-import { Button, Card, DateText } from "@cashu/ui";
+import { Button, Card, DateText, useVirtualRows } from "@cashu/ui";
 import { useEffect, useRef, useState } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { T } from "./Settings.strings.js";
 import type { SettingsScreenState } from "./useSettingsScreen.js";
 

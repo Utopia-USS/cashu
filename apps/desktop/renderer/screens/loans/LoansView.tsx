@@ -1,9 +1,8 @@
 import { Money as MoneyValue } from "@cashu/domain";
 import { S as F } from "@cashu/i18n/loans/Drawers.strings";
 import { S } from "@cashu/i18n/loans/Loans.strings";
-import { Button, DateText, LineChart, Money } from "@cashu/ui";
+import { Button, DateText, LineChart, Money, useVirtualRows } from "@cashu/ui";
 import { useRef } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { L } from "./Loans.strings.js";
 import type { LoansState } from "./useLoansScreen.js";
 

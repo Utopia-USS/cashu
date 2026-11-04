@@ -29,11 +29,7 @@ const renderer = createRoot(root);
 const retry = () => location.reload();
 renderer.render(<BootstrapView phase="waiting" onRetried={retry} />);
 const admission = new URL(location.href).searchParams.get("admission");
-if (
-  admission === "migration_required" ||
-  admission === "migration_pending" ||
-  admission === "refused"
-) {
+if (admission === "migration_required" || admission === "refused") {
   renderer.render(<AdmissionView status={admission} onRetry={retry} />);
 } else {
   let bootstrapping = true;

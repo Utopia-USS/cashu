@@ -12,7 +12,6 @@ export interface NativeVaultInventoryEntry {
   readonly state: "ready" | "provisioning" | "pairing" | "recovery";
   /** Workflow origin hint; admission comes from keys, certificates and authenticated history. */
   readonly enrollment: "creator" | "pairing" | "recovery";
-  readonly legacyBridge?: { readonly profileId: number; readonly ordinal: number };
 }
 
 class AuthorityRefusal extends Error {
@@ -46,14 +45,6 @@ function validateNativeVaultInventory(entry: NativeVaultInventoryEntry, dataDir:
     entry.enrollment !== "creator" &&
     entry.enrollment !== "pairing" &&
     entry.enrollment !== "recovery"
-  )
-    throw new AuthorityRefusal("invalid_inventory");
-  if (
-    entry.legacyBridge &&
-    (!Number.isSafeInteger(entry.legacyBridge.profileId) ||
-      entry.legacyBridge.profileId < 1 ||
-      !Number.isSafeInteger(entry.legacyBridge.ordinal) ||
-      entry.legacyBridge.ordinal < 1)
   )
     throw new AuthorityRefusal("invalid_inventory");
   if (!isAbsolute(dataDir) || !isAbsolute(entry.vaultRoot)) {
@@ -135,12 +126,7 @@ function same(a: Uint8Array, b: Uint8Array): boolean {
 export async function loadDeviceAuthority(
   input: DeviceAuthorityInput,
 ): Promise<DeviceAuthorityCandidate> {
-  const entry: NativeVaultInventoryEntry = Object.freeze({
-    ...input.entry,
-    ...(input.entry.legacyBridge
-      ? { legacyBridge: Object.freeze({ ...input.entry.legacyBridge }) }
-      : {}),
-  });
+  const entry: NativeVaultInventoryEntry = Object.freeze({ ...input.entry });
   const bootstrapCertificates = input.bootstrapCertificates.map((certificate) =>
     certificate.slice(),
   );

@@ -1,7 +1,6 @@
 import { D } from "@cashu/domain";
-import { Amount, Button, Card, DateText, Percent } from "@cashu/ui";
+import { Amount, Button, Card, DateText, Percent, useVirtualRows } from "@cashu/ui";
 import { useRef } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { type ResearchNoteRow, researchHealthLabel, researchRunStatus } from "./presentation.js";
 import { S } from "./Research.strings.js";
 import { ResearchNoteView } from "./ResearchNoteView.js";

@@ -1,29 +1,21 @@
 import { Money as MoneyValue } from "@cashu/domain";
 import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/loans/Drawers.strings";
-import { DateText, Money } from "@cashu/ui";
-import { useEffect, useId, useRef } from "react";
+import { DateText, Modal, Money } from "@cashu/ui";
+import { useId } from "react";
 import type { LoansState } from "./useLoansScreen.js";
 
 export function InstallmentDrawerView({ state }: { state: LoansState }) {
-  const ref = useRef<HTMLDialogElement>(null);
   const hintId = useId();
-  useEffect(() => {
-    const el = ref.current;
-    if (state.drawer === "payment" && !state.privacy && !el?.open) el?.showModal();
-    if ((state.drawer !== "payment" || state.privacy) && el?.open) el.close();
-  }, [state.drawer, state.privacy]);
   const row = state.matchingLoan;
   const stored = state.mode === "text" ? !!row?.paymentText : !!row?.paymentIbanTail;
-  return state.privacy ? null : (
-    <dialog
-      ref={ref}
-      aria-label={S.payments}
-      onCancel={(e) => {
-        e.preventDefault();
-        state.close();
-      }}
-      className="m-auto max-h-full w-full max-w-xl overflow-auto rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken"
+  return state.privacy || state.drawer !== "payment" ? null : (
+    <Modal
+      label={S.payments}
+      onClose={state.close}
+      placement="center"
+      width="sm"
+      closeOnBackdrop={false}
     >
       <h2>{S.payments}</h2>
       <form
@@ -164,6 +156,6 @@ export function InstallmentDrawerView({ state }: { state: LoansState }) {
           </button>
         </footer>
       </form>
-    </dialog>
+    </Modal>
   );
 }

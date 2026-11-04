@@ -261,9 +261,9 @@ describe("invalid-gid parking (events.md 7.10)", () => {
     expect(store.read("SELECT gid FROM transactions")).toEqual([]);
   });
 
-  it("does not park genesis-shaped or outbox-shaped events whose gid is DET of their parts", () => {
+  it("does not park genesis-shaped or app-written events whose gid is DET of their parts", () => {
     // Every payload-derived DET type as genesis (S26: origin genesis, explicit stamps) and as the
-    // Python outbox (S30: origin bridge) would write it: gid = DET(table)[detPartsOf(payload)].
+    // app writes it (no origin): gid = DET(table)[detPartsOf(payload)].
     const store = openTestStore();
     const f = new EventFactory();
     const envs: TestEnvelope[] = [];
@@ -271,11 +271,14 @@ describe("invalid-gid parking (events.md 7.10)", () => {
       const p = detPartsOf(type, VALID_SAMPLES[type]);
       if (p === undefined) continue;
       const gid = det(p.table, p.parts);
-      for (const origin of ["genesis", "bridge"] as const) {
-        const stamps =
-          origin === "genesis" ? { stamps: { created_at: "2026-01-01T00:00:00.000000Z" } } : {};
-        envs.push({ ...f.make(type, gid, { ...VALID_SAMPLES[type], ...stamps }), origin });
-      }
+      envs.push({
+        ...f.make(type, gid, {
+          ...VALID_SAMPLES[type],
+          stamps: { created_at: "2026-01-01T00:00:00.000000Z" },
+        }),
+        origin: "genesis",
+      });
+      envs.push(f.make(type, gid, VALID_SAMPLES[type]));
     }
     // genesis specifics (gid.md 7): a legacy budget hash, an instrument without a creation alias
     // (genesis gid), one created under its stored alias, and a manual investment entry (ULID).
@@ -306,7 +309,6 @@ describe("invalid-gid parking (events.md 7.10)", () => {
         source: "manual",
         dedupHash: `manual:${manual}`,
       }),
-      origin: "bridge",
     });
     const r = store.applyEnvelopes(envs);
     expect(r.rejected).toEqual([]);

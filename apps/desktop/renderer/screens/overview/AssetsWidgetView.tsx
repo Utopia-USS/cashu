@@ -1,8 +1,8 @@
 import { Money as MoneyValue } from "@cashu/domain";
 import { S as A } from "@cashu/i18n/assets/AssetsWidget.strings";
 import { C } from "@cashu/i18n/core/common.strings";
-import { Money } from "@cashu/ui";
-import { useEffect, useRef, useState } from "react";
+import { Modal, Money } from "@cashu/ui";
+import { useEffect, useState } from "react";
 import type { AssetDrawerState } from "./useAssetDrawer.js";
 
 export interface AssetsWidgetViewProps {
@@ -111,12 +111,7 @@ export function AssetDrawerView({
   today,
   privacy,
 }: Pick<AssetsWidgetViewProps, "state" | "today" | "privacy">) {
-  const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    const element = dialog.current;
-    if (state.open && !privacy && !element?.open) element?.showModal();
-    if (!state.open && element?.open) element.close();
-    if (privacy && element?.open) element.close();
     if (privacy && state.open) state.close();
   }, [state, privacy]);
   const target = state.target;
@@ -124,16 +119,13 @@ export function AssetDrawerView({
   const vehicle = target?.kind === "vehicle" || (target === null && form.type === "vehicle");
   return (
     <>
-      {!privacy && (
-        <dialog
-          ref={dialog}
-          aria-label={target === null ? A.newPosition : A.editOf(target.name)}
-          onCancel={(event) => {
-            event.preventDefault();
-            state.close();
-          }}
+      {state.open && !privacy && (
+        <Modal
+          label={target === null ? A.newPosition : A.editOf(target.name)}
           onClose={state.close}
-          className="m-auto max-h-full w-full max-w-xl rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken"
+          placement="center"
+          width="sm"
+          closeOnBackdrop={false}
         >
           <h3 className="text-headline font-strong">
             {target === null ? A.newPosition : A.editOf(privacy ? A.title : target.name)}
@@ -277,7 +269,7 @@ export function AssetDrawerView({
               </span>
             </div>
           </form>
-        </dialog>
+        </Modal>
       )}
     </>
   );

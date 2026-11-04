@@ -1,18 +1,13 @@
 import { S } from "./Admission.strings.js";
 
 export interface AdmissionViewProps {
-  readonly status: "migration_required" | "migration_pending" | "refused";
+  readonly status: "migration_required" | "refused";
   readonly onRetry: () => void;
 }
 
 /** A refusal-only screen. It cannot create a vault or launch the Python UI. */
 export function AdmissionView({ status, onRetry }: AdmissionViewProps) {
-  const explanation =
-    status === "migration_required"
-      ? S.migrationRequired
-      : status === "migration_pending"
-        ? S.migrationPending
-        : S.refused;
+  const explanation = status === "migration_required" ? S.migrationRequired : S.refused;
   return (
     <main className="min-h-screen bg-surface p-6 text-body text-fg">
       <h1 className="text-headline font-strong">cashU</h1>

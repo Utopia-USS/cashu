@@ -118,6 +118,7 @@ async function cliMatch(dataDir: string, profile: string, maxDays: number) {
       params: {
         argv: ["-p", profile, "match-transfers", `--max-days=${maxDays}`],
         cwd: dataDir,
+        paths: { home: dataDir },
         env: { CASHU_LANG: "en" },
         tty: { stdin: false, stdout: false, stderr: false },
       } satisfies CliExecParams,

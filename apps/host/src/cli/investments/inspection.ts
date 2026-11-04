@@ -2,15 +2,15 @@ import { alerts } from "@cashu/domain/investments";
 import { cleanSearchQuery, projectInstrumentSearch } from "@cashu/store/investments/services";
 import { localDate } from "../budget/context.js";
 import { richTable } from "../budget/richTable.js";
-import { printConsole, supportsConsoleUnicode } from "../core/console.js";
-import type { CommandIo } from "../tree.js";
+import { printConsole } from "../core/console.js";
 import { S } from "../strings.js";
+import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentVault } from "./context.js";
 
 export const UNHANDLED = { kind: "unhandled" } as const;
 
 export function alertKinds(args: readonly string[], io: CommandIo): number | typeof UNHANDLED {
-  if (args.length || !supportsConsoleUnicode(io)) return UNHANDLED;
+  if (args.length) return UNHANDLED;
   for (const info of alerts.CATALOG.values()) {
     const params = info.params
       .map(
@@ -32,7 +32,7 @@ export async function localSearch(
   deps: InvestmentCliDeps,
 ): Promise<number | typeof UNHANDLED> {
   const local = args.includes("--local");
-  if (args.length !== (local ? 2 : 1) || !supportsConsoleUnicode(io)) return UNHANDLED;
+  if (args.length !== (local ? 2 : 1)) return UNHANDLED;
   const raw = args.find((arg) => arg !== "--local");
   if (!raw || raw.startsWith("-")) return UNHANDLED;
   let query: string;

@@ -7,7 +7,6 @@ import * as strategies from "../strategies/StrategiesView.stories.js";
 import * as settings from "../strategies/StrategySettingsView.stories.js";
 import * as asset from "./AssetDetailView.stories.js";
 import * as imports from "./ImportStepsView.stories.js";
-import * as drawers from "./PortfolioDrawersView.stories.js";
 import * as portfolio from "./PortfolioView.stories.js";
 import * as transactions from "./TransactionsView.stories.js";
 
@@ -23,7 +22,6 @@ it.each(["en", "pl"] as const)(
     setLanguageForTests(language);
     for (const module of [
       asset,
-      drawers,
       imports,
       portfolio,
       transactions,

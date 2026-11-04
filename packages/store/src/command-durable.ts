@@ -1,5 +1,5 @@
 // Portable durable command boundary. The caller owns one non-reentrant per-vault queue shared with
-// sync, inbound apply and bridge writes. Call this function outside a prior queue acquisition.
+// sync and inbound apply. Call this function outside a prior queue acquisition.
 
 import { Decimal } from "@cashu/domain";
 import { ownBatchDigest, type SyncEngine, type UnstampedEvent } from "@cashu/sync";

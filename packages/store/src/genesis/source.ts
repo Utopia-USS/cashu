@@ -195,12 +195,9 @@ export function readPythonSource(
   driver: SqlDriver,
   files: GenesisFiles,
   counters: GenesisCounters,
-  options: { readonly liveSyncState?: boolean } = {},
 ): PythonSource {
   const schema = readSchemaVersion(driver);
-  // The S31a bridge reads the live rows of a synced database (its phase-1 inputs): sync state is
-  // expected there. Genesis itself always refuses it.
-  if (options.liveSyncState !== true) refuseSyncState(driver);
+  refuseSyncState(driver);
   const read = <K extends keyof PythonTables>(k: K): PythonTables[K][number][] =>
     readTable(driver, TABLES[k], schema, counters);
   return {

@@ -268,6 +268,7 @@ it("runs the mutating merge CLI through the guarded native socket", async () => 
             target.value.gid,
           ],
           cwd: fixture.home,
+          paths: { home: fixture.home },
           env: { CASHU_LANG: "en" },
           tty: { stdin: false, stdout: false, stderr: false },
         } satisfies CliExecParams,

@@ -5,11 +5,11 @@
 // forking a device stream. Only synthetic damaged views use Store.openOrRecover. Native views are
 // preserved on corruption and must be recovered from authenticated log history separately.
 //
-// TRANSITIONAL(S53b): the explicit harness uses S53's synthetic source: a device id
-// file, one database and one gid-salt file per vault under `<data dir>/stores/`, a demo vault seeded
-// on first run, commands applied straight to the view (HLC state saved with each batch). The native
-// source opens already provisioned vaults with injected exact KeyStore identity and encrypted local
-// logs; T44 still needs to bind the OS factory before ordinary production use.
+// Two sources. The synthetic test harness (`src/testing/`, never production) keeps a device id
+// file, one database and one gid-salt file per vault under `<data dir>/stores/`, seeds a demo vault on
+// first run and applies commands straight to the view (HLC state saved with each batch). The native
+// source opens already provisioned vaults with their exact KeyStore identity (the OS keyring in
+// production, `ProductionVaultSourceFactory`) and encrypted local logs.
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

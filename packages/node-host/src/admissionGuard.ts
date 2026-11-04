@@ -1,7 +1,11 @@
 import { lstatSync, type Stats } from "node:fs";
 import { join, resolve } from "node:path";
 
-/** Temporary read-only refusal until T54 supplies authenticated migration admission. */
+/**
+ * Whether a data dir may hold native vaults. A dir (or one of the entry's source roots) that holds a
+ * Python cashU database is refused: its data comes over only through the one-shot import
+ * (`apps/host/src/migration`) into a new native data dir, never by opening or creating vaults beside it.
+ */
 export type LegacyDataAdmission = "no_legacy_sentinel" | "migration_required" | "refused";
 
 function entry(path: string): Stats | null | "unreadable" {
@@ -16,7 +20,6 @@ function entry(path: string): Stats | null | "unreadable" {
 /**
  * A Python database never authorizes native Create, even if the native inventory is empty.
  * This checks only fixed filenames and returns no path or private metadata to the renderer.
- * T54 will replace it with an exact source/journal classifier before migration is offered.
  */
 export function legacySourceRoots(
   dataDir: string,

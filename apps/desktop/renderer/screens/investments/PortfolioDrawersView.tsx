@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef } from "react";
+import { Modal } from "@cashu/ui";
+import { useId } from "react";
 import { ImportStepsView } from "./ImportStepsView.js";
 import { I } from "./Portfolio.strings.js";
 import { investmentButton } from "./PortfolioView.js";
@@ -10,16 +11,10 @@ const input = "w-full rounded-sm border border-border bg-surface p-2";
 
 /** Owner forms retain drafts on refusal; capability-unavailable import remains visibly separate. */
 export function PortfolioDrawersView({ state }: { state: PortfolioScreenState }) {
-  const ref = useRef<HTMLDialogElement>(null);
   const errorId = useId();
   const validationId = useId();
   const hintId = useId();
-  useEffect(() => {
-    const element = ref.current;
-    if (state.drawer !== null && !state.privacy && !element?.open) element?.showModal();
-    if ((state.drawer === null || state.privacy) && element?.open) element.close();
-  }, [state.drawer, state.privacy]);
-  if (state.privacy) return null;
+  if (state.privacy || state.drawer === null) return null;
   const title =
     state.drawer === "account"
       ? I.addAccount
@@ -47,15 +42,13 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
             ? forms.note.handleSubmit()
             : forms.classification.handleSubmit();
   return (
-    <dialog
-      ref={ref}
-      aria-label={title}
-      aria-describedby={state.error ? `${validationId} ${errorId}` : validationId}
-      onCancel={(event) => {
-        event.preventDefault();
-        state.close();
-      }}
-      className={`m-auto max-h-full w-full ${state.drawer === "transactions" ? "max-w-6xl" : "max-w-xl"} overflow-auto rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken`}
+    <Modal
+      label={title}
+      describedBy={state.error ? `${validationId} ${errorId}` : validationId}
+      onClose={state.close}
+      placement="center"
+      width={state.drawer === "transactions" ? "2xl" : "sm"}
+      closeOnBackdrop={false}
     >
       <h2 className="text-title font-strong">{title}</h2>
       <form
@@ -446,9 +439,9 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
             {(errors) => <ValidationMessage errors={errors} id={validationId} />}
           </forms.classification.Subscribe>
         )}
-        {(state.drawer === "transactions" ||
-          state.drawer === "import" ||
-          state.drawer === null) && <p id={validationId} className="sr-only" />}
+        {(state.drawer === "transactions" || state.drawer === "import") && (
+          <p id={validationId} className="sr-only" />
+        )}
         {state.error && (
           <p role="alert" id={errorId}>
             {state.error}
@@ -470,7 +463,7 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
           )}
         </div>
       </form>
-    </dialog>
+    </Modal>
   );
 }
 

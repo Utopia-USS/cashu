@@ -76,9 +76,6 @@ function execParams(options: ExecOptions): CliExecParams {
       ...(columns === undefined ? {} : { columns }),
       ...(rows === undefined ? {} : { rows }),
       ...(compatible === "0" || compatible === "1" ? { compatible: compatible === "1" } : {}),
-      ...(options.env.UNICODE_VERSION === undefined
-        ? {}
-        : { unicodeVersion: options.env.UNICODE_VERSION }),
     },
   };
 }

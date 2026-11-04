@@ -9,9 +9,9 @@ import {
   Money,
   Percent,
   Sparkline,
+  useVirtualRows,
 } from "@cashu/ui";
 import { type ReactNode, useRef } from "react";
-import { useVirtualRows } from "../../presentation/useVirtualRows.js";
 import { I } from "./Portfolio.strings.js";
 import type { PortfolioScreenState } from "./usePortfolioScreen.js";
 

@@ -1,6 +1,6 @@
 import { reviewNotesSchema } from "@cashu/store/investments/review-screen";
+import { Modal } from "@cashu/ui";
 import { useForm } from "@tanstack/react-form";
-import { useEffect, useRef } from "react";
 import { z } from "zod";
 import { R } from "./Review.strings.js";
 
@@ -14,29 +14,13 @@ export function ReviewNoteForm({
   onSaved(note: string): void;
   onClosed(): void;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
   const form = useForm({
     defaultValues: { note: initial },
     validators: { onChange: z.object({ note: reviewNotesSchema }) },
     onSubmit: ({ value }) => onSaved(value.note),
   });
-  useEffect(() => {
-    const previous = document.activeElement;
-    ref.current?.showModal();
-    return () => {
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-    };
-  }, []);
   return (
-    <dialog
-      ref={ref}
-      aria-label={R.note}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClosed();
-      }}
-      className="m-auto w-full max-w-xl rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken"
-    >
+    <Modal label={R.note} onClose={onClosed} placement="center" width="sm" closeOnBackdrop={false}>
       <form
         className="grid gap-3"
         onSubmit={(event) => {
@@ -49,7 +33,7 @@ export function ReviewNoteForm({
             <label className="grid gap-2">
               {R.note}
               <textarea
-                autoFocus
+                data-autofocus
                 className="rounded-sm border border-border bg-surface p-3"
                 value={field.state.value}
                 aria-invalid={field.state.meta.errors.length > 0}
@@ -82,6 +66,6 @@ export function ReviewNoteForm({
           </button>
         </div>
       </form>
-    </dialog>
+    </Modal>
   );
 }

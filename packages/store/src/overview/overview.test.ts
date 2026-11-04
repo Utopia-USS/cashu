@@ -27,10 +27,9 @@ import { addLoan, setPaymentMatching } from "../loans/commands.js";
 import type { Store } from "../materialize.js";
 import { runQuery, watchQuery } from "../query.js";
 import { run, type TestEnv, testEnv } from "../testing/commands.js";
-import { memoryDriver, openTestStore, TEST_VAULT } from "../testing/store.js";
+import { memoryDriver, openTestStore } from "../testing/store.js";
 import {
   heroView,
-  legacyNavigation,
   moduleSetup,
   moduleStates,
   netWorthSeries,
@@ -542,25 +541,6 @@ describe("net worth over the view", () => {
 });
 
 describe("queries", () => {
-  it("requires explicit matching vault and slug provenance for a legacy identity", () => {
-    const h = vault(["budget"]);
-    expect(runQuery(h.store, legacyNavigation(), undefined).value).toBe(false);
-    const observed: [string, string][] = [];
-    const provided = legacyNavigation((vault, slug) => {
-      observed.push([vault, slug]);
-      return vault === TEST_VAULT && slug === "jan";
-    });
-    expect(runQuery(h.store, provided, undefined).value).toBe(true);
-    expect(observed).toEqual([[TEST_VAULT, "jan"]]);
-    expect(
-      runQuery(
-        h.store,
-        legacyNavigation((_vault, slug) => slug === "another"),
-        undefined,
-      ).value,
-    ).toBe(false);
-    h.store.close();
-  });
   it("the series reads the net-worth tables and re-runs when a balance is recorded", () => {
     const h = household();
     const q = overviewQueries({ prices: null });

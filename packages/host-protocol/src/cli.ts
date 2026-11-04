@@ -2,7 +2,7 @@
 // shim's frozen surface: the command tree, parsing, formatting and i18n live in the host, so a new
 // command never needs a new shim.
 //
-//   shim -> host  req  cli.exec {argv, cwd, env, tty, paths?}
+//   shim -> host  req  cli.exec {argv, cwd, env, tty, paths}
 //   host -> shim  note cli.out {stream, data}          (id = the exec request: output, in order)
 //   host -> shim  note cli.prompt {pid, text, hidden}   (ask the terminal; the shim answers cli.answer)
 //   shim -> host  req  cli.answer {exec, pid, value}    (value null: end of input or no terminal)
@@ -24,13 +24,11 @@ export const cliExecParamsSchema = z.object({
   argv: z.array(argSchema).max(4_096),
   /** The shim's working directory (absolute): relative file arguments resolve against it. */
   cwd: text(4_096).refine((p) => p.startsWith("/"), "cwd must be absolute"),
-  /** Caller path expansion context, never installed into the host's environment. Older shims omit it. */
-  paths: z
-    .object({
-      // Python expanduser honors HOME verbatim, including empty/relative values.
-      home: text(4_096).refine((p) => !p.includes("\u0000"), "home contains NUL"),
-    })
-    .optional(),
+  /** Caller path expansion context, never installed into the host's environment. */
+  paths: z.object({
+    // `~` expands to HOME verbatim, including empty/relative values.
+    home: text(4_096).refine((p) => !p.includes("\u0000"), "home contains NUL"),
+  }),
   /** Only `CLI_ENV_KEYS`. */
   env: z
     .record(z.string(), text(64 * 1024))
@@ -43,8 +41,6 @@ export const cliExecParamsSchema = z.object({
     rows: z.number().int().positive().max(10_000).optional(),
     /** Rich's explicit terminal override, independent of the fd's TTY bit. */
     compatible: z.boolean().optional(),
-    /** Explicit Unicode-width selection; absent means the installed default. */
-    unicodeVersion: text(32).optional(),
   }),
 });
 export type CliExecParams = z.infer<typeof cliExecParamsSchema>;

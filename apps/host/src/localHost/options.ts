@@ -111,8 +111,9 @@ export interface LocalHostOptions {
   /** Additional read-only source roots checked by the production entry. The selected data dir
    * is always checked here, including when Create starts before any vault or worker exists. */
   readonly assertNativeSourceAdmission?: () => void;
-  /** Actual device cache and its committed changes. Without a cache, overview uses last trades.
-   * Persistent production cache lifecycle remains TRANSITIONAL(S53b). */
+  /** Injected overview sources (tests, the synthetic harness). Production prices come from the
+   * market runtime's persistent SqlPriceCache (`marketFactory`); without a cache, overview uses last
+   * trades. */
   readonly overview?: Parameters<typeof servedQueries>[0];
   readonly dataDir: string;
   readonly build?: string;

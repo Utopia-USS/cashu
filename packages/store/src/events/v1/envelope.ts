@@ -12,7 +12,7 @@ import {
   vaultId,
 } from "./primitives.js";
 
-export const ORIGINS = ["genesis", "bridge"] as const;
+export const ORIGINS = ["genesis"] as const;
 
 export const envelopeSchema = z
   .looseObject({

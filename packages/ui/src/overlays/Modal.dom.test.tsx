@@ -178,6 +178,7 @@ it("pushes initially nested modal history parent first so closing the child remo
 });
 
 const visibleTitle = "Visible title";
+const hintText = "Every field is required.";
 it("names the dialog by a visible heading when labelledBy is given", () => {
   render(
     <Modal label="Fallback" labelledBy="modal-heading" onClose={() => {}}>
@@ -199,4 +200,30 @@ it("places the panel by role", () => {
   const panel = screen.getByRole("dialog", { name: "Drawer" });
   expect(panel.className).toContain("right-0");
   expect(panel.className).not.toContain("inset-4");
+});
+
+it("keeps a draft form open on a backdrop click when closeOnBackdrop is off", () => {
+  const close = vi.fn();
+  render(
+    <Modal label="Draft" closeOnBackdrop={false} onClose={close}>
+      <input aria-label="Field" />
+    </Modal>,
+  );
+  fireEvent.click(document.body.querySelector('[aria-hidden="true"]') as Element);
+  expect(close).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "Field" }), { key: "Escape" });
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it("describes the dialog and sizes a centered panel by width", () => {
+  render(
+    <Modal label="Form" placement="center" width="sm" describedBy="hint" onClose={() => {}}>
+      <p id="hint">{hintText}</p>
+      <button type="button" aria-label="Action" />
+    </Modal>,
+  );
+  const panel = screen.getByRole("dialog", { name: "Form" });
+  expect(panel.getAttribute("aria-describedby")).toBe("hint");
+  expect(panel.className).toContain("max-w-xl");
+  expect(panel.className).not.toContain("max-w-3xl");
 });

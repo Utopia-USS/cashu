@@ -1,7 +1,7 @@
 import { budget, Money as MoneyValue } from "@cashu/domain";
 import { lang } from "@cashu/i18n";
-import { DateText, Money } from "@cashu/ui";
-import { useEffect, useRef, useState } from "react";
+import { DateText, Modal, Money } from "@cashu/ui";
+import { useState } from "react";
 import { W } from "./OverviewWidgets.strings.js";
 import type { CashDrawerState } from "./useCashDrawer.js";
 
@@ -12,26 +12,18 @@ export interface CashDrawerViewProps {
 
 /** Pure local drawer; the screen hook owns every command and validates the active vault. */
 export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const [page, setPage] = useState(0);
-  useEffect(() => {
-    const element = dialog.current;
-    if (state.open && !element?.open) element?.showModal();
-    if (!state.open && element?.open) element.close();
-  }, [state.open]);
   const rows = state.wallet.transactions;
   const lastPage = Math.max(0, Math.ceil(rows.length / 40) - 1);
   const shownPage = Math.min(page, lastPage);
+  if (!state.open) return null;
   return (
-    <dialog
-      ref={dialog}
-      aria-label={W.wallet}
-      onCancel={(event) => {
-        event.preventDefault();
-        state.setOpen(false);
-      }}
+    <Modal
+      label={W.wallet}
       onClose={() => state.setOpen(false)}
-      className="m-auto max-h-full w-full max-w-2xl rounded-lg border border-border bg-surface-overlay p-6 text-fg backdrop:bg-surface-sunken"
+      placement="center"
+      width="md"
+      closeOnBackdrop={false}
     >
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
@@ -164,6 +156,6 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
           )}
         </div>
       )}
-    </dialog>
+    </Modal>
   );
 }

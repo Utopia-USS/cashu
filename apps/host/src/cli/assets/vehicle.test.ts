@@ -95,16 +95,26 @@ it("rejects invalid valuations and accepts Unicode text on older terminals", asy
     expect(
       await runVehicleCommand(
         ["Synthetic \u{1FAE9}", "10", "2026-10-31"],
-        { ...io, tty: { ...io.tty, unicodeVersion: "15.0.0" } },
+        io,
         { profile: "demo" },
         deps,
       ),
     ).toBe(0);
     expect(
-      await runVehicleCommand(["[red]Synthetic[/]", "10", "2026-10-31"], io, { profile: "demo" }, deps),
+      await runVehicleCommand(
+        ["[red]Synthetic[/]", "10", "2026-10-31"],
+        io,
+        { profile: "demo" },
+        deps,
+      ),
     ).toBe(0);
     expect(
-      await runVehicleCommand(["Synthetic :car:", "10", "2026-10-31"], io, { profile: "demo" }, deps),
+      await runVehicleCommand(
+        ["Synthetic :car:", "10", "2026-10-31"],
+        io,
+        { profile: "demo" },
+        deps,
+      ),
     ).toBe(0);
     expect(lines.length).toBeGreaterThan(0);
     const vault = [...host.stores.vaults.values()][0];
@@ -164,6 +174,7 @@ it("executes both aliases through the native host", async () => {
       const result = await conn.call("cli.exec", {
         argv: ["--profile", "demo", ...command, ...args],
         cwd: dir,
+        paths: { home: dir },
         env: { CASHU_LANG: "en" },
         tty: { stdin: false, stdout: false, stderr: false },
       });

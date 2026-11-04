@@ -4,7 +4,6 @@ import { setVehicle, vehicleAccount } from "@cashu/store";
 import { mcpProfile } from "@cashu/store/core";
 import type { HostStores } from "../../stores.js";
 import { cliCommandKey, reportCliCommandFailure, runCliVaultCommand } from "../commandOutcome.js";
-import { supportsConsoleUnicode } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { vehicleDecimal, vehicleInput } from "./vehicleInput.js";
 import { vehicleOutput } from "./vehicleOutput.js";
@@ -36,10 +35,6 @@ export async function runVehicleCommand(
   }
   if (!slug) {
     io.stderr("Select a profile with --profile or CASHU_PROFILE.\n");
-    return 2;
-  }
-  if (!supportsConsoleUnicode(io)) {
-    io.stderr("This terminal's Unicode version is unsupported.\n");
     return 2;
   }
   const matches = [...deps.stores.vaults.values()].filter(

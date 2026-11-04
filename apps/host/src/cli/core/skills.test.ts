@@ -137,24 +137,76 @@ it("preserves Python dircmp ignore and common-type-clash behavior without discar
   writeFileSync(join(other, "references", "note.md"), "different\n");
   expect(sameTree(join(f.source, "alpha"), other)).toBe(false);
 });
-it("delegates help, parse errors and unsupported legacy forms before output or mutation", async () => {
+it("answers usage errors and unsupported destinations natively before output or mutation", async () => {
   const f = fixture();
+  const usage = "Usage: cashu skills path | cashu skills install [--dest DIR] [--force]\n";
   for (const args of [
     [],
     ["--help"],
     ["path", "extra"],
     ["install", "--help"],
     ["install", "--dest"],
-    ["install", "--dest", "~another/skills"],
-    ["install", "--dest", "[bold]path"],
   ]) {
-    expect(await f.run(args)).toEqual({ kind: "unhandled" });
-    expect(f.output).toEqual({ stdout: "", stderr: "" });
+    f.output.stdout = "";
+    f.output.stderr = "";
+    expect(await f.run(args)).toBe(2);
+    expect(f.output).toEqual({ stdout: "", stderr: usage });
   }
-  expect(await f.run(["install"], { paths: undefined })).toEqual({ kind: "unhandled" });
+  const refusals: [string[], Partial<CommandIo>, number, string][] = [
+    [
+      ["install", "--dest", "~another/skills"],
+      {},
+      2,
+      "--dest expands only ~ and ~/. Give another user's folder as a full path.\n",
+    ],
+    [
+      ["install"],
+      { paths: undefined },
+      1,
+      "Your home folder is unknown. Give --dest as a full path.\n",
+    ],
+    [
+      ["install", "--dest", "bad\u0007dir"],
+      {},
+      2,
+      "The --dest path or a skill name contains control characters.\n",
+    ],
+    [
+      ["install", "--dest", join(f.source, "alpha", "nested")],
+      {},
+      2,
+      "The destination is inside this installation's skills.\n",
+    ],
+  ];
+  for (const [args, override, code, stderr] of refusals) {
+    f.output.stdout = "";
+    f.output.stderr = "";
+    expect(await f.run(args, override)).toBe(code);
+    expect(f.output).toEqual({ stdout: "", stderr });
+  }
+  expect(lstatSync(join(f.home, ".claude"), { throwIfNoEntry: false })).toBeUndefined();
+  expect(lstatSync(join(f.source, "alpha", "nested"), { throwIfNoEntry: false })).toBeUndefined();
+  writeFileSync(join(f.cwd, "file"), "not a folder");
+  f.output.stderr = "";
+  expect(await f.run(["install", "--dest", "file/skills"])).toBe(1);
+  expect(f.output.stderr).toBe("file/skills is not a folder.\n");
+  f.output.stderr = "";
   expect(await f.run(["install", "--dest", "explicit"], { paths: undefined })).toBe(0);
 });
-it("reports a missing source with the legacy error and leaves the destination untouched", async () => {
+it("prints markup-like destinations literally", async () => {
+  const f = fixture();
+  expect(await f.run(["install", "--dest", "[bold]path"])).toBe(0);
+  expect(readFileSync(join(f.cwd, "[bold]path", "alpha", "SKILL.md"), "utf8")).toBe(
+    "synthetic original\n",
+  );
+  expect(f.output.stdout).toContain("[bold]path/alpha");
+});
+it("reports a build without shipped skills as a missing source", async () => {
+  const f = fixture();
+  expect(await skillsCommand(undefined).run(["path"], f.io, {})).toBe(1);
+  expect(f.output).toEqual({ stdout: "", stderr: "No skills found in this installation.\n" });
+});
+it("reports a missing source and leaves the destination untouched", async () => {
   const f = fixture();
   rmSync(f.source, { recursive: true });
   expect(await f.run(["path"])).toBe(1);
@@ -174,23 +226,32 @@ it("resolves symlink/.. against the filesystem and keeps the requested spelling"
 });
 
 it.skipIf(process.getuid?.() === 0)(
-  "delegates predictable permission failures before output or filesystem writes",
+  "refuses predictable permission failures before output or filesystem writes",
   async () => {
     const f = fixture();
     const blocked = join(f.cwd, "blocked");
     mkdirSync(blocked);
     chmodSync(blocked, 0o555);
     try {
-      expect(await f.run(["install", "--dest", `${blocked}/new`])).toEqual({ kind: "unhandled" });
-      expect(f.output).toEqual({ stdout: "", stderr: "" });
+      expect(await f.run(["install", "--dest", `${blocked}/new`])).toBe(1);
+      expect(f.output).toEqual({
+        stdout: "",
+        stderr: `No permission to write to ${blocked}/new. Nothing was copied.\n`,
+      });
+      expect(lstatSync(join(blocked, "new"), { throwIfNoEntry: false })).toBeUndefined();
     } finally {
       chmodSync(blocked, 0o755);
     }
+    f.output.stderr = "";
     const unreadable = join(f.source, "alpha", "references", "note.md");
     chmodSync(unreadable, 0o000);
     try {
-      expect(await f.run(["install", "--dest", "target"])).toEqual({ kind: "unhandled" });
-      expect(f.output).toEqual({ stdout: "", stderr: "" });
+      expect(await f.run(["install", "--dest", "target"])).toBe(1);
+      expect(f.output).toEqual({
+        stdout: "",
+        stderr: "The skills shipped with this installation cannot be read.\n",
+      });
+      expect(lstatSync(join(f.cwd, "target"), { throwIfNoEntry: false })).toBeUndefined();
     } finally {
       chmodSync(unreadable, 0o644);
     }

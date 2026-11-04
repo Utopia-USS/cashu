@@ -178,4 +178,36 @@ export const C = {
     en: (month: string, currency: string) => `Spending by category ${month} (${currency})`,
   },
   spendingHeaders: { pl: ["kategoria", "kwota"], en: ["category", "amount"] },
+  skillsUsage: {
+    pl: "Użycie: cashu skills path | cashu skills install [--dest KATALOG] [--force]",
+    en: "Usage: cashu skills path | cashu skills install [--dest DIR] [--force]",
+  },
+  skillsUnreadable: {
+    pl: "Nie można odczytać skilli dołączonych do tej instalacji.",
+    en: "The skills shipped with this installation cannot be read.",
+  },
+  skillsUserHome: {
+    pl: "--dest rozwija tylko ~ i ~/. Podaj pełną ścieżkę katalogu innego użytkownika.",
+    en: "--dest expands only ~ and ~/. Give another user's folder as a full path.",
+  },
+  skillsNoHome: {
+    pl: "Katalog domowy jest nieznany. Podaj --dest jako pełną ścieżkę.",
+    en: "Your home folder is unknown. Give --dest as a full path.",
+  },
+  skillsControlText: {
+    pl: "Ścieżka --dest lub nazwa skilla zawiera znaki sterujące.",
+    en: "The --dest path or a skill name contains control characters.",
+  },
+  skillsInsideSource: {
+    pl: "Katalog docelowy leży wewnątrz skilli tej instalacji.",
+    en: "The destination is inside this installation's skills.",
+  },
+  skillsNotDirectory: {
+    pl: (dest: string) => `${dest} nie jest katalogiem.`,
+    en: (dest: string) => `${dest} is not a folder.`,
+  },
+  skillsNotWritable: {
+    pl: (dest: string) => `Brak uprawnień do zapisu w ${dest}. Nic nie zostało skopiowane.`,
+    en: (dest: string) => `No permission to write to ${dest}. Nothing was copied.`,
+  },
 } satisfies Record<string, TranslationVariants<unknown>>;

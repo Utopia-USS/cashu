@@ -193,13 +193,11 @@ export default {
     cash,
     assets,
     investmentPlan,
-    canOpenLegacy: true,
     onCurrencyPicked: () => {},
     onModuleOpened: () => {},
   },
 };
 export const Ready = {};
-export const LegacyUnavailable = { args: { canOpenLegacy: false } };
 export const Empty = { args: { state: { ...state, points: [], chart: [] } } };
 export const Privacy = {
   decorators: [

@@ -10,11 +10,7 @@ export interface ConsoleOptions {
   /** Rich Console(highlight=False): preserve explicit spans but skip automatic syntax colors. */
   readonly highlight?: boolean;
 }
-/** Native rendering remains available on terminals with older width tables. */
-export function supportsConsoleUnicode(_io: Pick<CommandIo, "tty">): boolean {
-  return true;
-}
-/** Styles are explicit spans; callers must not silently strip arbitrary legacy Rich markup. */
+/** Styles are explicit spans; text is printed as is (no Rich markup engine). */
 export function consolePolicy(
   io: Pick<CommandIo, "tty" | "env">,
   stream: "stdout" | "stderr" = "stdout",
