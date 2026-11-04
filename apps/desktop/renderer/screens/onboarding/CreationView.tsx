@@ -25,6 +25,7 @@ export function CreationView({ state }: { state: CreationScreenState }) {
   const content = (
     <main
       className={state.mode === "first" ? "min-h-screen bg-surface p-6 text-fg" : "p-6 text-fg"}
+      aria-label={state.mode === "first" ? Wizard.welcome : undefined}
       data-testid="native-creation"
     >
       <div className="mx-auto grid max-w-2xl gap-5">

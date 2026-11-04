@@ -57,10 +57,19 @@ export function groupRefusal(outcome: GroupSaveOutcome): string | null {
 }
 
 /**
- * A write that threw has an unconfirmed outcome. The cause is logged to the local console (it never
- * leaves the device) so the mapping to "unknown" does not swallow it silently.
+ * A write that threw has an unconfirmed outcome. Only the error's class and code reach the local
+ * console (never its message, which can echo the user's inputs), so the mapping to "unknown" does
+ * not swallow the cause silently.
  */
 export function thrownNotice(scope: string, error: unknown): "unknown" {
-  console.warn(`signals: ${scope} threw; the outcome is unconfirmed`, error);
+  console.warn(`signals: ${scope} threw; the outcome is unconfirmed`, errorKind(error));
   return "unknown";
+}
+
+function errorKind(error: unknown): string {
+  if (!(error instanceof Error)) return typeof error;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && /^[a-z0-9_.-]{1,64}$/i.test(code)
+    ? `${error.name}:${code}`
+    : error.name;
 }

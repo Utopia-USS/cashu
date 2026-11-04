@@ -30,9 +30,12 @@ it("maps a group save to its notice and carries the refusal of a partial or refu
   expect(groupRefusal({ status: "unknown", decisions: [] })).toBeNull();
 });
 
-it("logs a thrown write locally instead of swallowing it", () => {
+it("logs only the class and code of a thrown write, never its message", () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  const error = new Error("synthetic");
+  const error = Object.assign(new Error("quantity 12.5 for synthetic note"), { code: "conflict" });
   expect(thrownNotice("decision", error)).toBe("unknown");
-  expect(warn).toHaveBeenCalledWith(expect.stringContaining("decision"), error);
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining("decision"), "Error:conflict");
+  expect(thrownNotice("undo", new TypeError("synthetic 99.00"))).toBe("unknown");
+  expect(warn).toHaveBeenLastCalledWith(expect.stringContaining("undo"), "TypeError");
+  expect(JSON.stringify(warn.mock.calls)).not.toContain("synthetic");
 });

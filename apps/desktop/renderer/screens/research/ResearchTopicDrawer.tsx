@@ -37,7 +37,12 @@ export function ResearchTopicDrawer({
     overscan: 6,
   });
   return (
-    <Modal label={title} onClose={() => state.setTopic(null)} placement="center">
+    <Modal
+      label={title}
+      onClose={() => state.setTopic(null)}
+      placement="center"
+      closeOnBackdrop={false}
+    >
       <div className="flex justify-between gap-3">
         <h2 className="text-headline font-strong">{title}</h2>
         <Button onPress={() => state.setTopic(null)}>{S.close}</Button>

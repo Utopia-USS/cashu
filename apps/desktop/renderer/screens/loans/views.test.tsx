@@ -45,19 +45,33 @@ it.each(["pl", "en"] as const)("renders loan forms and exact values in %s", asyn
     renderToStaticMarkup(<StoryFixture component={LoansStartView} state={storyState} />),
   ).toContain("Synthetic setup step");
 });
-it("suppresses identities, amounts and forms in privacy mode", () => {
+it("suppresses identities, amounts and forms in privacy mode", async () => {
   setLanguageForTests("en");
   const state = { ...storyState, privacy: true };
   const html = renderToStaticMarkup(
     <UiEnvProvider locale="en-US" privacy={true}>
       <StoryFixture component={LoansView} state={state} />
-      <StoryFixture component={LoanDrawerView} state={state} />
-      <StoryFixture component={InstallmentDrawerView} state={state} />
     </UiEnvProvider>,
   );
   expect(html).not.toContain("Synthetic mortgage");
   expect(html).not.toContain("12,000");
-  expect(html).not.toContain('role="dialog"');
+  for (const [component, drawer] of [
+    [LoanDrawerView, "loan"],
+    [InstallmentDrawerView, "payment"],
+  ] as const) {
+    const open = await mount(
+      <UiEnvProvider locale="en-US" privacy={false}>
+        <StoryFixture component={component} state={{ ...storyState, drawer }} />
+      </UiEnvProvider>,
+    );
+    expect(open.querySelector('[role="dialog"]')).not.toBeNull();
+    const hidden = await mount(
+      <UiEnvProvider locale="en-US" privacy={true}>
+        <StoryFixture component={component} state={{ ...state, drawer }} />
+      </UiEnvProvider>,
+    );
+    expect(hidden.querySelector('[role="dialog"]')).toBeNull();
+  }
 });
 
 it("exposes selected loan/range and actionable keyboard controls through semantic tokens", () => {
