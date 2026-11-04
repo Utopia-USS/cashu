@@ -205,6 +205,48 @@ describe("migrateInPlace", () => {
     SLOW,
   );
 
+  it(
+    "moves every other device-local Python entry intact into the backup and imports none of it",
+    async () => {
+      const f = fixture();
+      const d = f.dataDir;
+      const file = (path: string, text: string) =>
+        writeFileSync(join(d, path), text, { mode: 0o600 });
+      const dir = (path: string) => mkdirSync(join(d, path), { recursive: true, mode: 0o700 });
+      file("api-token", "synthetic-token");
+      file("app-location.json", '{"path":"/synthetic"}');
+      file("desktop.json", '{"width":800}');
+      file("eb_sessions.json", "{}");
+      file("enablebanking_private.pem", "synthetic-key");
+      file("rename-migration.json", "{}");
+      dir("locks");
+      file("locks/worker.lock", "");
+      dir("tmp/connectors");
+      file("tmp/connectors/run.txt", "synthetic");
+      dir("profiles/synthetic");
+      file("profiles/synthetic/workspace.json", '{"path":"/synthetic/workspace"}');
+      const extra = [
+        "api-token",
+        "app-location.json",
+        "desktop.json",
+        "eb_sessions.json",
+        "enablebanking_private.pem",
+        "locks",
+        "profiles",
+        "rename-migration.json",
+        "tmp",
+      ];
+      const before = treeHashes(d, PYTHON_NAMES);
+      const beforeExtra = treeHashes(d, extra);
+      expect((await run(f)).result.status).toBe("migrated");
+      await expectMigrated(f, before);
+      expect(treeHashes(join(d, BACKUP), extra)).toEqual(beforeExtra);
+      const names = readdirSync(d);
+      for (const name of extra) expect(names.includes(name)).toBe(false);
+    },
+    SLOW,
+  );
+
   it("refuses without touching anything: no Python data, unknown entries, a running host", async () => {
     const empty = fixture();
     for (const name of readdirSync(empty.dataDir))

@@ -1,5 +1,7 @@
 # Python data import (`cashu migrate`)
 
+Owner's step-by-step cutover from the installed Python app, with the completeness table and known gaps: [docs/migration-runbook.md](../../../../docs/migration-runbook.md).
+
 The native app keeps the same data folder the Python app used (macOS: `~/Library/Application Support/cashU`). `cashu migrate` imports the Python data into it in place, all or nothing; `cashu migrate verify` re-checks a finished import and changes nothing. One implementation (`inPlace.ts`, `cli.ts`) serves the terminal and the app's recovery screen ("Import my data").
 
 ```sh
