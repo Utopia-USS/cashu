@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // Shared native Electron helpers. Every launch is bound to an isolated synthetic data root.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _electron, type ElectronApplication, expect, type Page, test } from "@playwright/test";
@@ -57,6 +57,35 @@ export async function dashboardWindow(
   const page = await app.firstWindow();
   await page.waitForURL(/^app:\/\/cashu\//, { timeout: 90_000 });
   return { page, origin: "app://cashu" };
+}
+
+/**
+ * The real shell behind host-spawn-guard.cjs: main cannot spawn any child (no host, no migration),
+ * so the spec's own synthetic host is the only one. The private app dir sits beside the data dir.
+ */
+export async function launchGuardedDesktop(options: DesktopOptions): Promise<ElectronApplication> {
+  const appPath = `${options.dataDir}-guard-app`;
+  mkdirSync(appPath, { recursive: true, mode: 0o700 });
+  writeFileSync(
+    join(appPath, "package.json"),
+    JSON.stringify({ name: "cashu-guarded-e2e", private: true, main: "bootstrap.cjs" }),
+    { mode: 0o600 },
+  );
+  writeFileSync(
+    join(appPath, "bootstrap.cjs"),
+    readFileSync(join(appDir(), "e2e", "host-spawn-guard.cjs")),
+    { mode: 0o600 },
+  );
+  return _electron.launch({
+    executablePath: electronBinary(),
+    args: [appPath, "--lang=pl-PL"],
+    env: launchEnv(options.dataDir, {
+      E2E_GUARD_DATA_DIR: options.dataDir,
+      E2E_GUARD_MAIN: join(appDir(), "dist", "main.js"),
+      ...options.env,
+    }),
+    timeout: 90_000,
+  });
 }
 
 /** A real shell click, followed by React's settled state after possible Suspense rebind. */

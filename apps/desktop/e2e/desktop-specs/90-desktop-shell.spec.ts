@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { appDir, dashboardWindow, expect, launchDesktop, test } from "../electron-test.ts";
+import { appDir, dashboardWindow, expect, test } from "../electron-test.ts";
 import { nativeCreationHarness } from "../native-creation-support.ts";
 
 test("native startup exposes only its own-origin bridges and pins navigation", async () => {
@@ -60,24 +60,5 @@ test("native startup exposes only its own-origin bridges and pins navigation", a
     await host.stop();
   } finally {
     await harness.cleanup();
-  }
-});
-
-test("a legacy database shows migration admission without opening a native store", async () => {
-  const root = process.env.E2E_ROOT;
-  if (!root) throw new Error("isolated root is absent");
-  const dataDir = join(root, "legacy-admission");
-  mkdirSync(dataDir, { mode: 0o700 });
-  writeFileSync(join(dataDir, "cashu.db"), "synthetic sentinel", { mode: 0o600 });
-  const app = await launchDesktop({ dataDir });
-  try {
-    const { page } = await dashboardWindow(app);
-    await expect(page.getByTestId("native-creation")).toHaveCount(0);
-    await expect(page.getByRole("region", { name: "Dane wymagają sprawdzenia" })).toBeVisible();
-    await expect(page.getByRole("alert")).toContainText("Wykryto dane z poprzedniej wersji");
-    expect(await page.evaluate(() => "pywebview" in window)).toBe(false);
-    expect(existsSync(join(dataDir, "stores"))).toBe(false);
-  } finally {
-    await app.close().catch(() => {});
   }
 });

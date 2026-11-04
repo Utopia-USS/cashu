@@ -16,6 +16,16 @@ import investments, {
 } from "./screens/overview/InvestmentsWidgetView.stories.js";
 import overview, { Empty, Privacy, Ready } from "./screens/overview/OverviewView.stories.js";
 import bootstrap, { Failed, Waiting } from "./shell/BootstrapView.stories.js";
+import recovery, {
+  ImportCancelled,
+  ImportFailed,
+  Importing,
+  InventoryUnavailable,
+  MigrationIncomplete,
+  RecoveryWords,
+  ReportUnavailable,
+  Unknown as UnknownRecovery,
+} from "./shell/RecoveryView.stories.js";
 import shell, {
   NoProfile,
   Privacy as PrivateShell,
@@ -33,6 +43,20 @@ it("renders waiting and failed bootstrap CSF states before a store connection", 
   expect(
     renderToStaticMarkup(<bootstrap.component {...bootstrap.args} {...Failed.args} />),
   ).toContain('role="alert"');
+});
+
+it("renders the start-up recovery CSF states without a host", () => {
+  const render = (story: { args?: object } = {}) =>
+    renderToStaticMarkup(<recovery.component {...recovery.args} {...story.args} />);
+  expect(render()).toContain("Import my data");
+  expect(render()).toContain('data-testid="recovery-code"');
+  expect(render(Importing)).toContain('aria-current="step"');
+  expect(render(RecoveryWords)).toContain('data-testid="migration-recovery-phrase"');
+  expect(render(ImportCancelled)).toContain("nothing was created");
+  expect(render(MigrationIncomplete)).toContain("Finish the import");
+  for (const story of [ImportFailed, InventoryUnavailable, UnknownRecovery])
+    expect(render(story)).not.toContain("Import my data");
+  expect(render(ReportUnavailable)).toContain("could not be read");
 });
 
 it("renders actual Overview CSF states and masks exact accessible amounts in its privacy decorator", () => {

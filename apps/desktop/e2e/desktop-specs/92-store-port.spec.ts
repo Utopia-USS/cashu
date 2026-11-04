@@ -48,9 +48,9 @@ test("the window reads a query and runs commands through the store port, served 
         await page.evaluate(() => ({
           ownOrigin: location.origin === "app://cashu",
           bridge: "cashuCreation" in window,
-          admission: new URL(location.href).searchParams.has("admission"),
+          recovery: new URL(location.href).searchParams.has("recovery"),
         })),
-      ).toEqual({ ownOrigin: true, bridge: true, admission: false });
+      ).toEqual({ ownOrigin: true, bridge: true, recovery: false });
       const result = await test.step(
         "query and command through host",
         () =>

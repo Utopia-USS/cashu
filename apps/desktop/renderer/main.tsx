@@ -6,8 +6,9 @@ import { installIncognitoStore } from "@cashu/ui-logic/core/incognito";
 import { createRoot } from "react-dom/client";
 import "@cashu/ui/theme.css";
 import { desktopClient } from "./port.js";
-import { AdmissionView } from "./shell/AdmissionView.js";
+import { readRecoveryReport, recoveryBridge } from "./recoveryBridge.js";
 import { BootstrapView } from "./shell/BootstrapView.js";
+import { RecoveryScreen } from "./shell/RecoveryScreen.js";
 
 installLanguageSource({
   pinned: () => localStorage.getItem("cashu.lang"),
@@ -28,9 +29,10 @@ if (root === null) throw new Error("renderer root is missing");
 const renderer = createRoot(root);
 const retry = () => location.reload();
 renderer.render(<BootstrapView phase="waiting" onRetried={retry} />);
-const admission = new URL(location.href).searchParams.get("admission");
-if (admission === "migration_required" || admission === "refused") {
-  renderer.render(<AdmissionView status={admission} onRetry={retry} />);
+// Electron main loads `?recovery=1` when the start sequence failed (Python data present, or the
+// host recorded a typed failure); that screen needs no host and opens no store channel.
+if (new URL(location.href).searchParams.get("recovery") === "1") {
+  renderer.render(<RecoveryScreen report={await readRecoveryReport()} bridge={recoveryBridge()} />);
 } else {
   let bootstrapping = true;
   try {

@@ -66,6 +66,8 @@ function setup(overrides: Partial<DesktopDeps> = {}) {
   const tray: TrayHandle = { destroy: () => events.push("tray destroyed") };
   const app = new DesktopApp({
     staticEntry: ENTRY,
+    recoveryEntry: `${ENTRY}?recovery=1`,
+    recovering: () => false,
     lang: "en",
     logFile: "/tmp/synthetic/electron.log",
     hasSingleInstanceLock: true,
@@ -99,6 +101,28 @@ describe("native desktop window", () => {
     expect(window.loaded[1]).toBe(ENTRY);
     expect(app.origin).toBe(ENTRY);
     expect(app.error).toBeNull();
+  });
+
+  it("loads the recovery screen instead while main is recovering, and the app after a retry", async () => {
+    let recovering = true;
+    const { app, window } = setup({ recovering: () => recovering });
+    expect(await app.start("cashu://review/demo-anna")).toBe("started");
+    expect(window.loaded[1]).toBe(`${ENTRY}?recovery=1`);
+    expect(app.exposesBridgeTo(`${ENTRY}?recovery=1`)).toBe(true);
+    await app.restart();
+    expect(window.loaded.at(-1)).toBe(`${ENTRY}?recovery=1`);
+    recovering = false;
+    await app.restart();
+    expect(window.loaded.at(-1)).toBe(ENTRY);
+  });
+
+  it("shows the recovery screen in the open window when a host failure is found", async () => {
+    const { app, window } = setup();
+    await app.start();
+    window.calls.length = 0;
+    await app.showRecovery();
+    expect(window.loaded.at(-1)).toBe(`${ENTRY}?recovery=1`);
+    expect(window.calls).toEqual(["show"]);
   });
 
   it("opens a pending link in the native renderer", async () => {

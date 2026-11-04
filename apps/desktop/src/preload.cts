@@ -65,6 +65,25 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     cancel: (input: unknown): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:pairing-cancel", input),
   });
+  // Start-up recovery: main holds the report, builds the prompt and owns the clipboard, the data
+  // folder, the import child and the start sequence. The page sends only the prompt language and
+  // the word confirmation; import events (progress, the one-time recovery words) come from main.
+  electron.contextBridge.exposeInMainWorld("cashuRecovery", {
+    report: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-report"),
+    copyPrompt: (lang: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:recovery-copy", lang),
+    openDataFolder: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-open"),
+    retry: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-retry"),
+    quit: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-quit"),
+    importData: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-import"),
+    confirmWords: (confirmed: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:recovery-import-words", confirmed),
+    onImportEvent: (handler: (event: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, value: unknown) => handler(value);
+      electron.ipcRenderer.on("cashu:recovery-import-event", listener);
+      return () => electron.ipcRenderer.removeListener("cashu:recovery-import-event", listener);
+    },
+  });
   electron.contextBridge.exposeInMainWorld("cashuNotifications", {
     status: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:notifications-status"),
     requestPermission: (): Promise<unknown> =>

@@ -1,7 +1,7 @@
 /// <reference types="node" />
-// The local host dies while the window is open. Electron main reconnects (starting a new host), the
-// window keeps showing its last snapshot meanwhile (marked stale), says it is starting the background
-// service, and recovers:
+// The local host dies while the window is open. Electron main reconnects, the
+// window keeps showing its last snapshot meanwhile (marked stale) and recovers once the spec starts a
+// replacement host (main's own host starts are denied by host-spawn-guard.cjs):
 //  1. the host is SIGKILLed while idle; after recovery a fresh rename runs once;
 //  2. the host dies right after committing a rename, before its reply (apps/host's fault host); the
 //     original result stays unknown until a read-only same-key lookup proves completion.
@@ -15,7 +15,7 @@ import {
   alive,
   expect,
   hostPid,
-  launchDesktop,
+  launchGuardedDesktop,
   stopHost,
   storeHarnessWindow,
   test,
@@ -87,7 +87,12 @@ async function withShell(name: string, run: ShellRun): Promise<void> {
   let undo: () => Promise<void> = async () => {};
   try {
     if (run.before) undo = await run.before(dataDir);
-    const app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_ALLOWED_DATA_ROOT: root } });
+    // Main may not start a host of its own: the production host cannot serve a synthetic vault and
+    // would show the recovery screen; the outage ends with the spec's replacement host.
+    const app = await launchGuardedDesktop({
+      dataDir,
+      env: { CASHU_DESKTOP_ALLOWED_DATA_ROOT: root },
+    });
     try {
       const page = await storeHarnessWindow(app);
       await run.during(page, dataDir);
@@ -114,7 +119,7 @@ test("a host killed while the window is open: the window recovers and runs a fre
       process.kill(first, "SIGKILL");
       await page.waitForFunction(() => {
         const s = window.cashuStoreLive.status();
-        return s === "connecting" || s === "starting";
+        return s === "connecting" || s === "starting" || s === "unavailable";
       });
       // During the outage the last snapshot stays on screen.
       const during = await page.evaluate(() => {
@@ -123,7 +128,8 @@ test("a host killed while the window is open: the window recovers and runs a fre
         const shownName = live.name();
         return { status, shownName };
       });
-      expect(["connecting", "starting"]).toContain(during.status);
+      // Main's own start is denied, so the relay may already report the host unavailable.
+      expect(["connecting", "starting", "unavailable"]).toContain(during.status);
       expect(during.shownName).toBe("Demo");
       replacement = await startSyntheticHost(dataDir);
       await page.waitForFunction(() => window.cashuStoreLive.status() === "online");

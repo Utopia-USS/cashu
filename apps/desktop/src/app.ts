@@ -22,6 +22,10 @@ export interface TrayHandle {
 export interface DesktopDeps {
   /** Native renderer served by the trusted app protocol. */
   staticEntry: string;
+  /** The same renderer's start-up recovery screen, loaded instead while `recovering()` holds. */
+  recoveryEntry: string;
+  /** Main classified a start-up failure (Python data present, or a typed host failure). */
+  recovering(): boolean;
   lang: Lang;
   logFile: string | null;
   /** Result of Electron's single instance lock for this data dir. */
@@ -38,7 +42,8 @@ export type StartResult = "started" | "already-running" | "failed";
 /**
  * Native desktop window lifecycle, independent of the host:
  *  - one instance per data dir: a second launch fronts the running window and exits,
- *  - the window opens on a loading page, then the native renderer (including a pending link),
+ *  - the window opens on a loading page, then the native renderer (including a pending link), or
+ *    the renderer's recovery screen when the start sequence failed (it needs no host),
  *  - closing the window quits and destroys the tray,
  *  - native bridges are exposed only to the app origin.
  */
@@ -84,12 +89,39 @@ export class DesktopApp {
     });
 
     try {
-      await window.loadUrl(this.links.ready(window, this.deps.staticEntry));
+      const entry = this.links.ready(window, this.deps.staticEntry);
+      await window.loadUrl(this.deps.recovering() ? this.deps.recoveryEntry : entry);
       return "started";
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
       await this.showError(window, this.error);
       return "failed";
+    }
+  }
+
+  /** Shows the recovery screen in the window (main classified a start-up failure). */
+  async showRecovery(): Promise<void> {
+    const window = this.window;
+    if (!window) return;
+    try {
+      await window.loadUrl(this.deps.recoveryEntry);
+      window.show();
+    } catch {
+      // the window is gone: nothing to show the recovery screen in
+    }
+  }
+
+  /** Loads the renderer from the start again (Retry on the recovery screen). */
+  async restart(): Promise<void> {
+    const window = this.window;
+    if (!window) return;
+    try {
+      await window.loadUrl(
+        this.deps.recovering() ? this.deps.recoveryEntry : this.deps.staticEntry,
+      );
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e);
+      await this.showError(window, this.error);
     }
   }
 

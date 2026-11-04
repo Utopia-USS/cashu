@@ -5,6 +5,8 @@
 // the window on purpose (on demand: it lingers while idle, then exits by itself).
 //   dev       Electron as Node + type stripping on apps/host/src/cli.ts (the documented dev entry)
 //   packaged  Electron as Node on the bundled `Resources/host.mjs` (bundled by packaging, S47)
+// The same entry, binary, Node mode and environment run the Python data import ("Import my data" on
+// the recovery screen) as `migrate --data-dir <dir> --json`, an attached child main talks to.
 import { join } from "node:path";
 
 /** The bundled host next to the app's resources (S47 packaging). */
@@ -22,6 +24,8 @@ export interface HostLaunchInput {
   readonly env: NodeJS.ProcessEnv;
   /** This shell's build id; the host reports it in its handshake and status. */
   readonly build: string;
+  /** `run` serves the data dir; `migrate` imports its Python data (NDJSON on stdout). */
+  readonly command: "run" | "migrate";
 }
 
 export interface HostLaunch {
@@ -49,10 +53,16 @@ export function hostLaunch(input: HostLaunchInput): HostLaunch {
     command: input.execPath,
     args: [
       ...entry,
-      "run",
-      "--data-dir",
-      input.dataDir,
-      ...(input.isPackaged ? ["--bundle", join(input.resourcesPath, PACKAGED_HOST_ENTRY)] : []),
+      ...(input.command === "migrate"
+        ? ["migrate", "--data-dir", input.dataDir, "--json"]
+        : [
+            "run",
+            "--data-dir",
+            input.dataDir,
+            ...(input.isPackaged
+              ? ["--bundle", join(input.resourcesPath, PACKAGED_HOST_ENTRY)]
+              : []),
+          ]),
     ],
     env: {
       ...env,

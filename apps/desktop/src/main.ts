@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { spawn } from "node:child_process";
 import { appendFileSync, chmodSync, existsSync, renameSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -54,6 +55,11 @@ import {
   uiPairingAllowed,
 } from "@cashu/host-protocol";
 import {
+  type RecoveryImportEvent,
+  recoveryCommand,
+  startupFailure,
+} from "@cashu/host-protocol/startup-failure";
+import {
   acquireHostLock,
   activateHost,
   assertUpdateHandoverComplete,
@@ -64,8 +70,10 @@ import {
   connectOrStart,
   HostConnectError,
   type HostLock,
+  HostStartError,
   hostRunPaths,
   publishUpdateAdmission,
+  readStartupFailureRecord,
   readUpdateAdmission,
   recoverPreparedUpdateAdmission,
   type ServiceStatus,
@@ -78,6 +86,7 @@ import { nativeImage, shell } from "electron/common";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -87,6 +96,7 @@ import {
   session,
   Tray,
 } from "electron/main";
+import { z } from "zod";
 import { DesktopApp, type WindowHandle } from "./app.js";
 import { APP_ENTRY, appAssetResponse } from "./appProtocol.js";
 import {
@@ -104,10 +114,12 @@ import { shouldRegisterProtocol } from "./deeplink.js";
 import { hostLaunch, PACKAGED_HOST_ENTRY } from "./hostLaunch.js";
 import { HostRelay, HostRelays, type RelayPort } from "./hostRelay.js";
 import { linkFromArgv } from "./links.js";
+import { type MigrateOutcome, runMigration } from "./migrateRun.js";
 import { createNotificationClickRouter } from "./notification/clickRouter.js";
 import { notificationIntake } from "./notification/early.js";
 import { loadNativeNotificationCenter, releaseResponseHandler } from "./notification/native.js";
 import type { NotificationResponsePair } from "./notification/responses.js";
+import { StartupRecovery } from "./recovery.js";
 import { ALLOW, EXTERNAL, navigationDecision, sanitizeLogLine } from "./security.js";
 import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { ensurePrivateDir } from "./state.js";
@@ -147,7 +159,6 @@ const admissionRoots = legacySourceRoots(
   process.platform,
   choice.explicit,
 );
-const admission = legacyDataAdmission(admissionRoots);
 
 // ---- log (owner-only, rotated at 1 MB, the token is never written) -----------------------------
 
@@ -200,8 +211,9 @@ function toHandle(window: BrowserWindow): WindowHandle {
 }
 
 const desktop = new DesktopApp({
-  staticEntry:
-    admission === "no_legacy_sentinel" ? APP_ENTRY : `${APP_ENTRY}?admission=${admission}`,
+  staticEntry: APP_ENTRY,
+  recoveryEntry: `${APP_ENTRY}?recovery=1`,
+  recovering: () => recovery.active,
   lang,
   logFile,
   hasSingleInstanceLock: hasLock,
@@ -225,7 +237,10 @@ const desktop = new DesktopApp({
       },
     });
     mainWindow = window;
-    window.webContents.on("did-start-navigation", () => notificationClickRouter.setUnready());
+    window.webContents.on("did-start-navigation", (details) => {
+      notificationClickRouter.setUnready();
+      if (details.isMainFrame && !details.isSameDocument) cancelPendingWords();
+    });
     window.on("closed", () => {
       mainWindow = null;
       notificationClickRouter.setUnready();
@@ -341,6 +356,129 @@ ipcMain.handle("cashu:notifications-request-permission", async (event) => {
   }
 });
 
+// ---- the recovery screen's bridge (works while the host is down) --------------------------------
+
+const promptLangSchema = z.enum(["pl", "en"]);
+const wordsAnswerSchema = z.boolean();
+/** The failures "Import my data" fixes: it imports, or finishes an interrupted cutover. */
+const IMPORTABLE = new Set(["python_data_present", "migration_incomplete"]);
+
+/** The running import: `answer` is set while the recovery words wait for the user. */
+interface ImportRun {
+  answer: ((confirmed: boolean) => void) | null;
+}
+let importRun: ImportRun | null = null;
+
+function sendImportEvent(event: RecoveryImportEvent): void {
+  mainWindow?.webContents.send("cashu:recovery-import-event", event);
+}
+
+/** The page that showed the words went away: the child is told to cancel (nothing is created). */
+function cancelPendingWords(): void {
+  const answer = importRun?.answer;
+  if (!importRun || !answer) return;
+  importRun.answer = null;
+  answer(false);
+}
+
+ipcMain.handle("cashu:recovery-report", (event) =>
+  desktop.exposesBridgeTo(fromMainFrame(event)) ? recovery.report : null,
+);
+ipcMain.handle("cashu:recovery-copy", async (event, raw: unknown) => {
+  const lang = promptLangSchema.safeParse(raw);
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !lang.success) return false;
+  const prompt = recovery.prompt(lang.data);
+  if (prompt === null) return false;
+  try {
+    await clipboard.writeText(prompt);
+    return true;
+  } catch {
+    return false;
+  }
+});
+ipcMain.handle("cashu:recovery-open", async (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !recovery.active) return false;
+  return (await shell.openPath(dataDir)) === "";
+});
+ipcMain.handle("cashu:recovery-retry", async (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !recovery.active || importRun !== null)
+    return false;
+  recovery.admit(legacyDataAdmission(admissionRoots), new Date());
+  await desktop.restart();
+  return true;
+});
+ipcMain.handle("cashu:recovery-quit", (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event))) return false;
+  desktop.requestQuit();
+  return true;
+});
+ipcMain.handle("cashu:recovery-import", (event) => {
+  const failure = recovery.failure;
+  if (
+    !desktop.exposesBridgeTo(fromMainFrame(event)) ||
+    importRun !== null ||
+    failure === null ||
+    !IMPORTABLE.has(failure.code) ||
+    !hostAdmissionOpen ||
+    (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY)))
+  )
+    return false;
+  const run: ImportRun = { answer: null };
+  importRun = run;
+  void importData(run);
+  return true;
+});
+ipcMain.handle("cashu:recovery-import-words", (event, raw: unknown) => {
+  const confirmed = wordsAnswerSchema.safeParse(raw);
+  const answer = importRun?.answer;
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !confirmed.success || !importRun || !answer)
+    return false;
+  importRun.answer = null;
+  answer(confirmed.data);
+  return true;
+});
+
+/**
+ * "Import my data": the host entry in migrate mode as an attached child (same binary, Node mode,
+ * environment and data dir as a host start). Done loads the app; failed shows the recovery screen for
+ * that code (with its report pair); cancelled returns to the python_data_present screen.
+ */
+async function importData(run: ImportRun): Promise<void> {
+  log("recovery: import started");
+  let outcome: MigrateOutcome;
+  try {
+    const launch = hostLaunch({ ...launchBase(), command: "migrate" });
+    const child = spawn(launch.command, launch.args, {
+      env: launch.env,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    outcome = await runMigration(child, {
+      progress: (stage) => sendImportEvent({ kind: "progress", stage }),
+      words: (words) =>
+        new Promise<boolean>((resolve) => {
+          run.answer = resolve;
+          sendImportEvent({ kind: "words", words });
+        }),
+    });
+  } catch {
+    outcome = { kind: "failed", failure: startupFailure("unknown") };
+  } finally {
+    run.answer = null;
+    importRun = null;
+  }
+  if (outcome.kind === "done") {
+    log(`recovery: import finished (${outcome.done.status})`);
+    recovery.clear();
+    await desktop.restart();
+  } else if (outcome.kind === "cancelled") {
+    log("recovery: import cancelled");
+    sendImportEvent({ kind: "cancelled" });
+  } else {
+    recovery.enter(outcome.failure, new Date());
+    showRecovery();
+  }
+}
+
 // ---- the renderer's store channel, relayed to the local host (S56b) -----------------------------
 
 // The data dir's host (apps/host): connected to as a `ui` client per renderer frame and started on
@@ -354,7 +492,84 @@ const HOST_BUILD = app.isPackaged
   : "desktop-dev";
 let hostAdmissionOpen = true;
 const nativeAdmissionOpen = () =>
-  hostAdmissionOpen && legacyDataAdmission(admissionRoots) === "no_legacy_sentinel";
+  hostAdmissionOpen &&
+  !recovery.active &&
+  legacyDataAdmission(admissionRoots) === "no_legacy_sentinel";
+
+// ---- start-up recovery (T54): Python data present, a typed host failure, a failed import --------
+
+const recovery = new StartupRecovery({
+  dataDir,
+  home: homedir(),
+  appVersion: app.getVersion(),
+  build: HOST_BUILD,
+  lang,
+  hostLogPath: hostRunPaths(dataDir).logPath,
+  command: () => {
+    const launcher = join(dataDir, "bin", "cashu");
+    return recoveryCommand({
+      home: homedir(),
+      launcher: existsSync(launcher) ? launcher : null,
+      isPackaged: app.isPackaged,
+      binary: process.execPath,
+      shim: join(process.resourcesPath, "shim.mjs"),
+    });
+  },
+  log,
+});
+
+/** Shows the recovery screen: no host session stays open behind it. */
+function showRecovery(): void {
+  relays.closeAll();
+  void desktop.showRecovery();
+}
+
+/** A failure record the host wrote at or after `since` (it exited instead of serving). */
+class HostFailedError extends Error {
+  constructor() {
+    super("host_start_failed");
+    this.name = "HostFailedError";
+  }
+}
+
+function checkHostFailure(since: number | null): void {
+  if (since === null) return;
+  const found = readStartupFailureRecord(dataDir, since);
+  if (found === null) return;
+  if (recovery.hostFailure(found)) showRecovery();
+  throw new HostFailedError();
+}
+
+/**
+ * A `ui` session on the data dir's host, started on demand. While it waits for a host this call
+ * started, it polls the host's failure record, so a host that refused to start shows the recovery
+ * screen at once instead of after the connect deadline.
+ */
+async function connectUi(onStarting?: () => void) {
+  if (!nativeAdmissionOpen()) throw new Error("host admission closed");
+  let since: number | null = null;
+  try {
+    return (
+      await connectOrStart({
+        dataDir,
+        role: "ui",
+        build: HOST_BUILD,
+        start: async () => {
+          since = Date.now();
+          onStarting?.();
+          await activateHost(hostService, startHost);
+        },
+        sleep: async (ms) => {
+          checkHostFailure(since);
+          await new Promise<void>((resolve) => setTimeout(resolve, ms));
+        },
+      })
+    ).connection;
+  } catch (error) {
+    if (error instanceof HostStartError) checkHostFailure(since);
+    throw error;
+  }
+}
 let updaterBridge: Awaited<ReturnType<typeof startMainUpdateBridge>> | null = null;
 let updaterController: ReturnType<typeof createElectronUpdateController> | null = null;
 let updateHoldLock: HostLock | null = null;
@@ -513,16 +728,7 @@ function creationIpc(method: "prepare" | "commit" | "inspect" | "current") {
     if (!nativeAdmissionOpen()) throw new Error("creation_unavailable");
     const parsedParams = paramsSchema.safeParse(raw);
     if (!parsedParams.success) throw new Error("creation_invalid_params");
-    const connection = (
-      await connectOrStart({
-        dataDir,
-        role: "ui",
-        build: HOST_BUILD,
-        start: async () => {
-          await activateHost(hostService, startHost);
-        },
-      })
-    ).connection;
+    const connection = await connectUi();
     try {
       const full = `native.creation.${method}`;
       if (!uiCreationAllowed(full, connection.host.protocol.minor, connection.host.features))
@@ -577,16 +783,7 @@ function devicesIpc(
       throw new Error("devices_unavailable");
     const params = paramsSchema.safeParse(raw);
     if (!params.success) throw new Error("devices_invalid_params");
-    const connection = (
-      await connectOrStart({
-        dataDir,
-        role: "ui",
-        build: HOST_BUILD,
-        start: async () => {
-          await activateHost(hostService, startHost);
-        },
-      })
-    ).connection;
+    const connection = await connectUi();
     try {
       const full = `native.devices.${method}`;
       if (!uiDevicesAllowed(full, connection.host.protocol.minor, connection.host.features))
@@ -612,16 +809,7 @@ devicesIpc("leaderInspect");
 ipcMain.handle("cashu:connectors-install", async (event) => {
   if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen() || !mainWindow)
     throw new Error("connectors_unavailable");
-  const connection = (
-    await connectOrStart({
-      dataDir,
-      role: "ui",
-      build: HOST_BUILD,
-      start: async () => {
-        await activateHost(hostService, startHost);
-      },
-    })
-  ).connection;
+  const connection = await connectUi();
   try {
     if (!connection.host.features.includes(NATIVE_CONNECTORS_FEATURE))
       throw new Error("connectors_unavailable");
@@ -658,16 +846,7 @@ ipcMain.handle("cashu:banking-configure", async (event, raw: unknown) => {
     filters: [{ name: "PEM", extensions: ["pem"] }],
   });
   if (chosen.canceled || chosen.filePaths.length !== 1) return { cancelled: true };
-  const connection = (
-    await connectOrStart({
-      dataDir,
-      role: "ui",
-      build: HOST_BUILD,
-      start: async () => {
-        await activateHost(hostService, startHost);
-      },
-    })
-  ).connection;
+  const connection = await connectUi();
   try {
     if (
       !uiBankingAllowed(
@@ -697,16 +876,7 @@ ipcMain.handle("cashu:banking-open", async (event, raw: unknown) => {
     throw new Error("banking_unavailable");
   const input = bankingConsentUrlParamsSchema.safeParse(raw);
   if (!input.success) throw new Error("banking_invalid_params");
-  const connection = (
-    await connectOrStart({
-      dataDir,
-      role: "ui",
-      build: HOST_BUILD,
-      start: async () => {
-        await activateHost(hostService, startHost);
-      },
-    })
-  ).connection;
+  const connection = await connectUi();
   try {
     if (
       !uiBankingAllowed(
@@ -744,16 +914,7 @@ function pairingIpc(method: "invite" | "confirm" | "inspect" | "cancel") {
       throw new Error("pairing_unavailable");
     const params = paramsSchema.safeParse(raw);
     if (!params.success) throw new Error("pairing_invalid_params");
-    const connection = (
-      await connectOrStart({
-        dataDir,
-        role: "ui",
-        build: HOST_BUILD,
-        start: async () => {
-          await activateHost(hostService, startHost);
-        },
-      })
-    ).connection;
+    const connection = await connectUi();
     try {
       const full = `native.pairing.${method}`;
       if (!uiPairingAllowed(full, connection.host.protocol.minor, connection.host.features))
@@ -772,12 +933,8 @@ pairingIpc("confirm");
 pairingIpc("inspect");
 pairingIpc("cancel");
 
-function startHost(): void {
-  if (!nativeAdmissionOpen()) throw new Error("host admission closed");
-  if (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY))) {
-    throw new Error("bundled host unavailable");
-  }
-  const launch = hostLaunch({
+function launchBase() {
+  return {
     root,
     dataDir,
     execPath: process.execPath,
@@ -785,7 +942,15 @@ function startHost(): void {
     resourcesPath: process.resourcesPath,
     env,
     build: HOST_BUILD,
-  });
+  };
+}
+
+function startHost(): void {
+  if (!nativeAdmissionOpen()) throw new Error("host admission closed");
+  if (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY))) {
+    throw new Error("bundled host unavailable");
+  }
+  const launch = hostLaunch({ ...launchBase(), command: "run" });
   spawnDetachedHost({ ...launch, logPath: hostRunPaths(dataDir).logPath });
   log("local host started");
 }
@@ -800,16 +965,7 @@ async function resolveNotificationClick(
 ): Promise<ResolvedNotification | null> {
   try {
     if (!nativeAdmissionOpen()) return null;
-    const connection = (
-      await connectOrStart({
-        dataDir,
-        role: "ui",
-        build: HOST_BUILD,
-        start: async () => {
-          await activateHost(hostService, startHost);
-        },
-      })
-    ).connection;
+    const connection = await connectUi();
     try {
       if (
         connection.host.protocol.minor < 4 ||
@@ -845,20 +1001,7 @@ const relays = new HostRelays(
   (port) =>
     new HostRelay({
       port,
-      connect: async (onStarting) => {
-        if (!nativeAdmissionOpen()) throw new Error("host admission closed");
-        return (
-          await connectOrStart({
-            dataDir,
-            role: "ui",
-            build: HOST_BUILD,
-            start: async () => {
-              onStarting();
-              await activateHost(hostService, startHost);
-            },
-          })
-        ).connection;
-      },
+      connect: (onStarting) => connectUi(onStarting),
       log,
     }),
 );
@@ -1065,6 +1208,8 @@ if (!hasLock) {
     if (process.platform === "darwin" && existsSync(iconPath)) {
       app.dock?.setIcon(nativeImage.createFromPath(iconPath));
     }
+    // Main's own admission: Python data shows the recovery screen; no host is started for it.
+    recovery.admit(legacyDataAdmission(admissionRoots), new Date());
     const result = await desktop.start(linkFromArgv(process.argv.slice(1)));
     log(`start: ${result}${desktop.error ? ` (${desktop.error})` : ""}`);
   });
