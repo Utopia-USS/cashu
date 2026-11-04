@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -141,6 +141,12 @@ export interface NativeVaultSession {
   readonly device: string;
   readonly epoch: object;
   isCurrent(): boolean;
+  /** Authenticated exact-session authority for workspace files; invalid after reopen/recovery. */
+  workspaceAuthority(): {
+    readonly vault: string;
+    readonly generation: string;
+    isCurrent(): boolean;
+  } | null;
   /** Read/pull may continue while this denies new writes and external effects. */
   canRunSideEffects(): boolean;
   strategyDirectoryAuthority(): StrategyDirectoryAuthority | null;
@@ -379,6 +385,7 @@ export async function openNativeVault(
       lastPairingPruneAt = at;
     };
     const epoch = {};
+    const workspaceGeneration = randomUUID();
     let current = true;
     let syncing = false;
     const syncListeners = new Set<() => void>();
@@ -527,6 +534,18 @@ export async function openNativeVault(
     attempts.pruneReceipts();
     pairingJournal.pruneReceipts(entry.vaultId, now());
     pairingJournal.pruneInvites(entry.vaultId, now());
+    const canRunSideEffects = () => {
+      try {
+        return (
+          isCurrent() &&
+          !attempts.hasPending(entry.vaultId, revokeCommand) &&
+          pairingJournal.pending(entry.vaultId).length === 0 &&
+          activeEngine.writeAdmission() === "ready"
+        );
+      } catch {
+        return false;
+      }
+    };
     return {
       id: entry.vaultId,
       store: activeStore,
@@ -536,18 +555,16 @@ export async function openNativeVault(
       device: entry.deviceId,
       epoch,
       isCurrent,
-      canRunSideEffects: () => {
-        try {
-          return (
-            isCurrent() &&
-            !attempts.hasPending(entry.vaultId, revokeCommand) &&
-            pairingJournal.pending(entry.vaultId).length === 0 &&
-            activeEngine.writeAdmission() === "ready"
-          );
-        } catch {
-          return false;
-        }
+      workspaceAuthority: () => {
+        if (!canRunSideEffects()) return null;
+        const fingerprint = pairingAuthority();
+        return {
+          vault: entry.vaultId,
+          generation: `${workspaceGeneration}:${fingerprint}`,
+          isCurrent: () => canRunSideEffects() && pairingAuthority() === fingerprint,
+        };
       },
+      canRunSideEffects,
       strategyDirectoryAuthority: () => {
         if (!isCurrent()) return null;
         try {

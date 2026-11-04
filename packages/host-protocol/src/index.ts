@@ -4,6 +4,14 @@
 // The store channel v2 (JSON value codec, idempotency keys) is the `./store` subpath; the shim's
 // `cli.*` methods and `mcp` session notes are cli.ts and mcp.ts.
 export {
+  NATIVE_BANKING_FEATURE,
+  NATIVE_BANKING_METHODS,
+  bankingConfigureParamsSchema,
+  bankingConsentUrlParamsSchema,
+  bankingNativeResultSchema,
+  uiBankingAllowed,
+} from "./banking.js";
+export {
   type AdminStatus,
   adminHandoverParamsSchema,
   adminHandoverResultSchema,

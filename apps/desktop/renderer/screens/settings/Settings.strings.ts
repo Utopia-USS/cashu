@@ -128,6 +128,11 @@ export const T = catalog({
   connectorInterpreter: { pl: "Interpreter", en: "Interpreter" },
   connectorApprove: { pl: "Zatwierdź ten kod", en: "Approve this code" },
   connectorDisable: { pl: "Wyłącz", en: "Disable" },
+  connectorRemoveAll: { pl: "Usuń konektor ze wszystkich profili", en: "Remove connector from all profiles" },
+  connectorRemoveAllConfirm: {
+    pl: "Usunąć ten konektor ze wszystkich profili? Ta operacja usunie wszystkie powiązania, zapisane sekrety konektora i lokalną historię uruchomień.",
+    en: "Remove this connector from all profiles? This deletes every binding, saved connector secret, and local run history.",
+  },
   connectorAccount: { pl: "Konto", en: "Account" },
   connectorBind: { pl: "Połącz z kontem", en: "Bind to account" },
   connectorAuto: {

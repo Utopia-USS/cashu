@@ -1,0 +1,47 @@
+export const B = {
+  title: { pl: "Bankowość otwarta", en: "Open Banking" },
+  unavailable: {
+    pl: "Bankowość otwarta jest niedostępna dla tego profilu.",
+    en: "Open Banking is unavailable for this profile.",
+  },
+  configure: { pl: "Skonfiguruj Enable Banking", en: "Configure Enable Banking" },
+  appId: { pl: "Identyfikator aplikacji", en: "Application ID" },
+  chooseKey: { pl: "Wybierz prywatny plik klucza", en: "Choose private key file" },
+  keyHint: {
+    pl: "Klucz jest odczytywany lokalnie. Hasło do banku wpisujesz tylko w przeglądarce banku.",
+    en: "The key is read locally. Enter your bank password only in the bank's browser.",
+  },
+  check: { pl: "Sprawdź aplikację", en: "Check application" },
+  banks: { pl: "Pobierz banki", en: "Load banks" },
+  bank: { pl: "Bank", en: "Bank" },
+  consent: { pl: "Połącz bank", en: "Connect bank" },
+  openBank: { pl: "Otwórz stronę banku", en: "Open bank page" },
+  manual: {
+    pl: "Wklej pełny adres powrotu z przeglądarki",
+    en: "Paste the full callback URL from the browser",
+  },
+  complete: { pl: "Dokończ połączenie", en: "Complete connection" },
+  cancel: { pl: "Anuluj połączenie", en: "Cancel connection" },
+  waiting: {
+    pl: "Czekam na zgodę w przeglądarce banku.",
+    en: "Waiting for consent in the bank browser.",
+  },
+  sessions: { pl: "Połączone banki", en: "Connected banks" },
+  sync: { pl: "Synchronizuj teraz", en: "Sync now" },
+  forget: { pl: "Usuń zapisane połączenie", en: "Forget saved connection" },
+  localForget: {
+    pl: "Usuwa połączenie z tego urządzenia.",
+    en: "Removes the connection from this device.",
+  },
+  refreshed: { pl: "Dane zostały odświeżone.", en: "Data refreshed." },
+  unknown: {
+    pl: "Wynik importu jest nieznany. Sprawdź próbę przed ponowieniem.",
+    en: "Import outcome is unknown. Check the attempt before retrying.",
+  },
+  checkAttempt: { pl: "Sprawdź próbę", en: "Check attempt" },
+  completed: { pl: "Import zakończony.", en: "Import completed." },
+  notStarted: { pl: "Import nie został rozpoczęty.", en: "Import was not started." },
+  refused: { pl: "Import odrzucony.", en: "Import refused." },
+  error: { pl: "Operacja nie powiodła się.", en: "Operation failed." },
+  busy: { pl: "Trwa operacja...", en: "Working..." },
+} as const;

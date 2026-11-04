@@ -9,7 +9,7 @@ import { command, seedWorkerHolding, workerFixture } from "../testing/worker.js"
 import { emptyWorkerState, type WorkerBindings } from "./contracts.js";
 import { nativeInvestmentJobs } from "./investments.js";
 import { localDay } from "./schedule.js";
-import { HostWorker, startWorker } from "./service.js";
+import { HostWorker, startWorker, WorkerTickBusy } from "./service.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -172,6 +172,91 @@ it("stays off by default and safe mode never starts a job", async () => {
   } finally {
     await off.stop();
     await safe.stop();
+    await f.close();
+  }
+});
+it("runs cached daily work offline without connector or bank network phases", async () => {
+  const f = await workerFixture();
+  const connectorFetch = vi.fn(async () => ({ status: "ok" as const }));
+  const bankSync = vi.fn(async () => ({ ok: true }));
+  const worker = new HostWorker(f.context, {
+    ...f.bindings,
+    connectors: { fetch: connectorFetch },
+    budget: {
+      configured: () => true,
+      hasSavedSessions: () => true,
+      sync: bankSync,
+    },
+  });
+  try {
+    await worker.tick(true, { offline: true });
+    expect(connectorFetch).not.toHaveBeenCalled();
+    expect(bankSync).not.toHaveBeenCalled();
+    expect(worker.status().jobs.some((job) => job.job === "investments.daily")).toBe(true);
+  } finally {
+    await worker.stop();
+    await f.close();
+  }
+});
+it("refuses an offline invocation while an online tick is active", async () => {
+  const f = await workerFixture();
+  let entered!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const worker = new HostWorker(f.context, {
+    ...f.bindings,
+    state: {
+      ...f.bindings.state,
+      load: async () => {
+        entered();
+        await held;
+        return f.bindings.state.load();
+      },
+    },
+  });
+  try {
+    const online = worker.tick(true);
+    await started;
+    await expect(worker.tick(true, { offline: true })).rejects.toBeInstanceOf(WorkerTickBusy);
+    release();
+    await online;
+  } finally {
+    release();
+    await worker.stop();
+    await f.close();
+  }
+});
+it("applies budget and notifier switches only to the requested tick", async () => {
+  const f = await workerFixture();
+  const bankSync = vi.fn(async () => ({ ok: true }));
+  const worker = new HostWorker(f.context, {
+    ...f.bindings,
+    fetchAuthority: (vault) => f.bindings.authority(vault),
+    budget: {
+      configured: () => true,
+      hasSavedSessions: () => true,
+      sync: bankSync,
+    },
+    notifier: { name: "synthetic", send: vi.fn(async () => ({ state: "accepted" as const })) },
+  });
+  try {
+    expect(worker.hasAppNotifier).toBe(true);
+    await worker.tick(true, { budget: false, notifier: "none" });
+    expect(bankSync).not.toHaveBeenCalled();
+    expect(
+      worker
+        .status()
+        .jobs.some((job) => ["budget.sync", "notifications", "digest"].includes(job.job)),
+    ).toBe(false);
+    await worker.tick(true, { notifier: "none" });
+    expect(bankSync).toHaveBeenCalledTimes(1);
+  } finally {
+    await worker.stop();
     await f.close();
   }
 });

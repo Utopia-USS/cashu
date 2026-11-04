@@ -543,7 +543,6 @@ function syntheticAuthority(root: string): WorkspaceVaultAuthority {
     cli: ["/synthetic/cashu"],
     tools: [{ name: "profile_overview", module: "core", write: false }],
     protected: [dataRoot],
-    legacySlugAmbiguous: false,
     publication: createTempPublication(defaultPath, dataRoot, source),
     recordConfiguredPath: (path) => {
       claims.set(vault, path);
@@ -937,7 +936,7 @@ test("stale module, privacy or currency input refuses before publication", async
   }
 });
 
-test("legacy slug manifest upgrades only when native ownership is unambiguous", async () => {
+test("unattributed legacy manifest is preserved and refused", async () => {
   const root = fresh(),
     base = syntheticAuthority(root);
   const provider = createInjectedWorkspaceProvider({ bind: () => base });
@@ -948,15 +947,10 @@ test("legacy slug manifest upgrades only when native ownership is unambiguous", 
   delete manifest.vaultId;
   writeFileSync(legacy, JSON.stringify(manifest));
   rmSync(current);
-  const ambiguous = { ...base, legacySlugAmbiguous: true };
-  const ambiguousProvider = createInjectedWorkspaceProvider({ bind: () => ambiguous });
-  expect(await ambiguousProvider.bind(base.vault)?.apply(workspaceInput)).toMatchObject({
+  expect(await provider.bind(base.vault)?.apply(workspaceInput)).toMatchObject({
     kind: "refused",
     code: "workspace_taken",
   });
   expect(readFileSync(legacy, "utf8")).toContain("synthetic");
-  const upgraded = await provider.bind(base.vault)?.apply(workspaceInput);
-  expect(upgraded?.kind).toBe("completed");
-  expect(JSON.parse(readFileSync(current, "utf8")).vaultId).toBe(base.vault);
-  expect(base.publication.kind(legacy)).toBe("missing");
+  expect(base.publication.kind(current)).toBe("missing");
 });

@@ -6,8 +6,12 @@ import { fileURLToPath } from "node:url";
 import {
   adminHandoverResultSchema,
   adminStatusResultSchema,
+  bankingConfigureParamsSchema,
+  bankingConsentUrlParamsSchema,
+  bankingNativeResultSchema,
   deviceListParamsSchema,
   deviceListResultSchema,
+  NATIVE_BANKING_FEATURE,
   NATIVE_CONNECTORS_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
   NOTIFICATION_INTENT_METHOD,
@@ -36,6 +40,7 @@ import {
   revokeInspectResultSchema,
   revokePreviewParamsSchema,
   revokePreviewResultSchema,
+  uiBankingAllowed,
   uiCreationAllowed,
   uiDevicesAllowed,
   uiPairingAllowed,
@@ -617,6 +622,85 @@ ipcMain.handle("cashu:connectors-install", async (event) => {
     if (!result || typeof result !== "object" || !("id" in result) || !("digest" in result))
       throw new Error("connector_install_failed");
     return { kind: "installed", id: result.id, digest: result.digest };
+  } finally {
+    connection.close();
+  }
+});
+
+ipcMain.handle("cashu:banking-configure", async (event, raw: unknown) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen() || !mainWindow)
+    throw new Error("banking_unavailable");
+  const selected = bankingConfigureParamsSchema.omit({ keyFilePath: true }).safeParse(raw);
+  if (!selected.success) throw new Error("banking_invalid_params");
+  const chosen = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile"],
+    securityScopedBookmarks: false,
+    filters: [{ name: "PEM", extensions: ["pem"] }],
+  });
+  if (chosen.canceled || chosen.filePaths.length !== 1) return { cancelled: true };
+  const connection = (
+    await connectOrStart({
+      dataDir,
+      role: "ui",
+      build: HOST_BUILD,
+      start: async () => {
+        await activateHost(hostService, startHost);
+      },
+    })
+  ).connection;
+  try {
+    if (
+      !uiBankingAllowed(
+        "native.banking.configure",
+        connection.host.protocol.minor,
+        connection.host.features,
+      ) ||
+      !connection.host.features.includes(NATIVE_BANKING_FEATURE)
+    )
+      throw new Error("banking_unavailable");
+    const result = bankingNativeResultSchema.parse(
+      await connection.call("native.banking.configure", {
+        ...selected.data,
+        keyFilePath: chosen.filePaths[0],
+      }),
+    );
+    return result.kind === "configured"
+      ? { ok: true, value: { configured: true } }
+      : { ok: false, error: result.kind === "refused" ? result.code : "outcome_unknown" };
+  } finally {
+    connection.close();
+  }
+});
+
+ipcMain.handle("cashu:banking-open", async (event, raw: unknown) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen())
+    throw new Error("banking_unavailable");
+  const input = bankingConsentUrlParamsSchema.safeParse(raw);
+  if (!input.success) throw new Error("banking_invalid_params");
+  const connection = (
+    await connectOrStart({
+      dataDir,
+      role: "ui",
+      build: HOST_BUILD,
+      start: async () => {
+        await activateHost(hostService, startHost);
+      },
+    })
+  ).connection;
+  try {
+    if (
+      !uiBankingAllowed(
+        "native.banking.consentUrl",
+        connection.host.protocol.minor,
+        connection.host.features,
+      )
+    )
+      throw new Error("banking_unavailable");
+    const result = bankingNativeResultSchema.parse(
+      await connection.call("native.banking.consentUrl", input.data),
+    );
+    if (result.kind !== "allowed") throw new Error("banking_unavailable");
+    await shell.openExternal(input.data.url);
   } finally {
     connection.close();
   }

@@ -84,5 +84,14 @@ it("scopes new run history by vault and rejects raw future stderr", () => {
     listConnectorRuns(driver, { kind: "global-owner", ownerAction: true, isCurrent: () => true }),
   ).toEqual([]);
   expect(device.tablesRead("SELECT id FROM connector_runs")).toEqual(new Set(["connector_runs"]));
+  expect(() =>
+    device.removeConnectorRuns("sample-fetch", { ownerAction: true, isCurrent: () => false }),
+  ).toThrow();
+  expect(
+    device.removeConnectorRuns("sample-fetch", { ownerAction: true, isCurrent: () => true }),
+  ).toBe(2);
+  expect(listConnectorRuns(driver, { kind: "vault", vault: VAULT_A })).toEqual([]);
+  expect(listConnectorRuns(driver, { kind: "vault", vault: VAULT_B })).toEqual([]);
+  expect(notified).toBe(2);
   device.close();
 });

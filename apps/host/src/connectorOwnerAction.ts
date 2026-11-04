@@ -15,6 +15,7 @@ import { brokerageAccount } from "@cashu/store/investments/queries";
 import { z } from "zod";
 import { runHostVaultCommand } from "./commands.js";
 import { connectorBindingMatches } from "./connectorImportCommand.js";
+import { removeConnectorOwner } from "./connectorRemoval.js";
 import type { ConnectorRuntime } from "./connectorRuntime.js";
 import { bindingParamsDigest, type ConnectorBinding } from "./connectors/binding.js";
 import { resolveInterpreter } from "./connectors/catalog.js";
@@ -34,6 +35,7 @@ const request = z.discriminatedUnion("op", [
     interpreter: z.string().min(1),
   }),
   z.strictObject({ op: z.literal("disable"), id }),
+  z.strictObject({ op: z.literal("remove"), id, allVaults: z.literal(true) }),
   z.strictObject({
     op: z.literal("bind"),
     id,
@@ -96,11 +98,13 @@ export function connectorOwnerAction(input: {
     current: () => boolean,
   ) => Promise<DurableCommandResult<unknown>>;
   readonly makeSecrets?: typeof boundConnectorSecrets;
+  readonly remove?: typeof removeConnectorOwner;
 }): UiActionRegistration {
   const unresolved = new Map<
     string,
     { identity: string; result: ReturnType<typeof unknownUiCommand> }
   >();
+  let mutationBusy = false;
   return {
     id: "core.settings.connectors",
     async run(stores: HostStores, vaultId, raw, sessionCurrent = () => true) {
@@ -125,6 +129,10 @@ export function connectorOwnerAction(input: {
         return prior.identity === identity
           ? prior.result
           : { status: "not_started", reason: "pending_previous_attempt" };
+      const mutating = action.op !== "list";
+      if (mutating && mutationBusy)
+        return { status: "not_started", reason: "pending_previous_attempt" };
+      if (mutating) mutationBusy = true;
       const holder = () => current() && vault.native.canFetchPublicMarket();
       try {
         if (action.op === "list") {
@@ -164,6 +172,19 @@ export function connectorOwnerAction(input: {
         if (action.op === "disable") {
           catalog.disable(action.id, { ownerAction: true, isCurrent: current });
           return { status: "completed", value: { ok: true } };
+        }
+        if (action.op === "remove") {
+          const lock = input.lock();
+          if (!lock) return { status: "not_started", reason: "capability_unavailable" };
+          return (input.remove ?? removeConnectorOwner)({
+            stores,
+            catalog,
+            id: action.id,
+            dataDir: input.dataDir,
+            lock,
+            now: input.now,
+            isCurrent: current,
+          });
         }
         if (action.op === "bind") {
           const loaded = catalog.installed(action.id);
@@ -298,10 +319,16 @@ export function connectorOwnerAction(input: {
           approvedCodeDigest: loaded.contentSha256,
           interpreter,
         };
-        const bindingCurrent = () => connectorBindingMatches(
-          vault.store.read.bind(vault.store), vaultId, fingerprint, catalog, holder,
-        );
-        if (!bindingCurrent()) return { status: "refused", reason: "binding_unavailable", preparation: "none" };
+        const bindingCurrent = () =>
+          connectorBindingMatches(
+            vault.store.read.bind(vault.store),
+            vaultId,
+            fingerprint,
+            catalog,
+            holder,
+          );
+        if (!bindingCurrent())
+          return { status: "refused", reason: "binding_unavailable", preparation: "none" };
         const lock = input.lock();
         if (!lock)
           return { status: "refused", reason: "capability_unavailable", preparation: "none" };
@@ -328,6 +355,8 @@ export function connectorOwnerAction(input: {
         return action.op === "list"
           ? { status: "refused", reason: "connector_unavailable", preparation: "none" }
           : { status: "outcome_unknown", reason: "unexpected_failure" };
+      } finally {
+        if (mutating) mutationBusy = false;
       }
     },
   };

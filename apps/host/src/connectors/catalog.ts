@@ -86,6 +86,27 @@ export class ConnectorCatalog {
       throw new ConnectorFault("changed", "installed connector directory changed");
   }
 
+  /** Pin check for host-owned auxiliary files under this private catalog directory. */
+  assertCurrentRoot(): void {
+    this.checkRoot();
+  }
+
+  /** A durable owner removal fence blocks new code or execution until reconciliation finishes. */
+  removalActive(id: string): boolean {
+    this.checkRoot();
+    try {
+      lstatSync(join(this.root, `.removing-${safeId(id)}.json`));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+  private checkNotRemoving(id: string): void {
+    if (this.removalActive(id))
+      throw new ConnectorFault("changed", "connector removal in progress");
+  }
+
   private code(id: string): string {
     return join(this.root, safeId(id));
   }
@@ -111,6 +132,7 @@ export class ConnectorCatalog {
     this.checkRoot();
     const sourceImage = scanConnector(source);
     const id = sourceImage.manifest.id;
+    this.checkNotRemoving(id);
     const target = this.code(id);
     const staging = join(this.root, `.pending-${randomUUID()}`);
     mkdirSync(staging, { mode: 0o700 });
@@ -128,6 +150,7 @@ export class ConnectorCatalog {
       const staged = scanConnector(staging);
       if (staged.contentSha256 !== sourceImage.contentSha256)
         throw new ConnectorFault("changed", "source changed during install");
+      this.checkNotRemoving(id);
       // Existing approval is invalidated before replacing installed code.
       rmSync(this.approval(id), { force: true });
       rmSync(target, { recursive: true, force: true });
@@ -202,6 +225,7 @@ export class ConnectorCatalog {
   ): ConnectorApproval {
     if (authority.ownerAction !== true || !authority.isCurrent())
       throw new ConnectorFault("changed", "owner authority unavailable");
+    this.checkNotRemoving(id);
     const loaded = this.installed(id);
     if (loaded.contentSha256 !== expectedContentSha256)
       throw new ConnectorFault("changed", "connector changed before approval");
@@ -220,7 +244,11 @@ export class ConnectorCatalog {
     const temporary = join(this.root, `.approval-${randomUUID()}`);
     try {
       writeFileSync(temporary, JSON.stringify(approval), { mode: 0o600, flag: "wx" });
-      if (!authority.isCurrent() || this.installed(id).contentSha256 !== loaded.contentSha256)
+      if (
+        !authority.isCurrent() ||
+        this.removalActive(id) ||
+        this.installed(id).contentSha256 !== loaded.contentSha256
+      )
         throw new ConnectorFault("changed", "approval source changed");
       renameSync(temporary, this.approval(id));
       return approval;
@@ -232,6 +260,7 @@ export class ConnectorCatalog {
   disable(id: string, authority: OwnerApproval): void {
     if (authority.ownerAction !== true || !authority.isCurrent())
       throw new ConnectorFault("changed", "owner authority unavailable");
+    this.checkNotRemoving(id);
     const loaded = this.installed(id);
     const approval = this.readApproval(id);
     if (approval.status !== "approved" || approval.contentSha256 !== loaded.contentSha256)
@@ -250,7 +279,39 @@ export class ConnectorCatalog {
     }
   }
 
+  /** CLI removal is deliberately limited to a connector with no binding or run-history references. */
+  removeUnbound(
+    id: string,
+    authority: OwnerApproval,
+    noReferences: () => boolean,
+    options: { readonly allowRemovalFence?: boolean } = {},
+  ): void {
+    if (authority.ownerAction !== true || !authority.isCurrent())
+      throw new ConnectorFault("changed", "owner authority unavailable");
+    if (this.removalActive(id) && options.allowRemovalFence !== true)
+      throw new ConnectorFault("changed", "connector removal in progress");
+    const loaded = this.installed(id);
+    if (!noReferences()) throw new ConnectorFault("changed", "connector references remain");
+    const target = this.code(id);
+    const quarantine = join(this.root, `.removed-${randomUUID()}`);
+    this.checkRoot();
+    if (
+      !authority.isCurrent() ||
+      (this.removalActive(id) && options.allowRemovalFence !== true) ||
+      !noReferences() ||
+      this.installed(id).contentSha256 !== loaded.contentSha256
+    )
+      throw new ConnectorFault("changed", "connector changed before removal");
+    renameSync(target, quarantine);
+    try {
+      rmSync(this.approval(id), { force: true });
+    } finally {
+      rmSync(quarantine, { recursive: true, force: true });
+    }
+  }
+
   approved(id: string, interpreter: string): LoadedConnector {
+    this.checkNotRemoving(id);
     const loaded = this.installed(id);
     const approval = this.readApproval(id);
     if (approval.status !== "approved")

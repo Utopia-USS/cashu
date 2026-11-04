@@ -44,9 +44,9 @@ export function nativeInvestmentJobs(
   const ports = bindings.investments;
   if (ports === undefined) return undefined;
   const prices = new PricesService(ports.dailyLock);
-  const guardOf = (vault: OpenVault, ui = false) => {
+  const guardOf = (vault: OpenVault, ui = false, offline = false) => {
     const current = workerGuard(host, bindings, vault, "investments.daily", {
-      network: bindings.offline !== true,
+      network: !offline && bindings.offline !== true,
       ...(ui ? { ui: true } : {}),
     });
     return () => {
@@ -109,12 +109,15 @@ export function nativeInvestmentJobs(
       return result;
     };
   return {
-    async daily(vaults: readonly OpenVault[]): Promise<ReadonlyMap<string, JobOutcome>> {
+    async daily(
+      vaults: readonly OpenVault[],
+      offlineOverride = false,
+    ): Promise<ReadonlyMap<string, JobOutcome>> {
       const results = new Map<string, JobOutcome>(),
         selected: DailyVault[] = [];
       for (const vault of vaults) {
         try {
-          const guard = guardOf(vault);
+          const guard = guardOf(vault, false, offlineOverride);
           guard();
           const files = ports.files(vault);
           if (files === null) {
@@ -146,7 +149,7 @@ export function nativeInvestmentJobs(
       }
       if (selected.length === 0) return results;
       const sources = ports.sources?.bind(ports);
-      const offline = bindings.offline === true;
+      const offline = offlineOverride || bindings.offline === true;
       const report = await runDaily(
         {
           vaults: selected,

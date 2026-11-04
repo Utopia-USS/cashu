@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
 import { afterEach, expect, it } from "vitest";
 import { ConnectorCatalog, resolveInterpreter } from "./catalog.js";
-import { boundConnectorSecrets } from "./secrets.js";
+import { boundConnectorSecrets, deletionOnlyConnectorSecrets } from "./secrets.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -70,5 +70,19 @@ it("derives secret scope from the approved manifest and refuses cross-binding ac
   catalog.disable("sample-fetch", { ownerAction: true, isCurrent: () => true });
   await expect(secrets.get("profile-a", "binding-a", "token")).rejects.toThrow();
   expect(gets).toBe(1);
+  const cleared: string[] = [];
+  const deletion = deletionOnlyConnectorSecrets({
+    catalog,
+    binding,
+    authority: { dataDir: data, lock, isCurrent: () => true, isOwnerAction: () => true },
+    makeCleanup: () => ({
+      clear: async (id) => {
+        cleared.push(id);
+      },
+    }),
+  });
+  await deletion.clear("token");
+  await expect(deletion.clear("unknown")).rejects.toThrow();
+  expect(cleared).toEqual(["token"]);
   lock.release();
 });

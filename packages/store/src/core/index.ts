@@ -12,7 +12,14 @@ export * from "./mcp-queries.js";
 export * from "./proposal-commands.js";
 export * from "./proposal-execution.js";
 export * from "./proposal-service.js";
-export { accountByGid, enabledModuleIds, type ProfileView, profile } from "./queries.js";
+export {
+  accountByExternalKey,
+  accountByGid,
+  accountByIbanKey,
+  enabledModuleIds,
+  type ProfileView,
+  profile,
+} from "./queries.js";
 
 export const coreModule: StoreModule = {
   id: "core",

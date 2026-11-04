@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
 import { connectHost, HostBusyError, HostConnectError, RefusalError } from "@cashu/node-host";
+import { legacySourceRoots } from "@cashu/node-host/admission";
 import {
   bundlePathFromEntry,
   packagedBuildId,
@@ -21,15 +22,20 @@ import {
 import { devicePreferences } from "@cashu/store/device";
 import { DailyPriceLock } from "@cashu/store/investments/services";
 import { runQuery } from "@cashu/store/query";
+import { BankingRuntime } from "./banking/runtime.js";
+import { bankingUiAction } from "./banking/uiAction.js";
+import { bankingWorkerPort } from "./banking/workerPort.js";
 import { connectorOwnerAction } from "./connectorOwnerAction.js";
 import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntime.js";
 import { startLocalHost } from "./host.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
+import { readExistingNativeInventory } from "./nativeInventory.js";
 import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
-import { currentRuntime } from "./runtime.js";
+import { currentRuntime, shimProgram, shippedSkillsSource } from "./runtime.js";
 import { hostUpdateBridge } from "./updateBridge.js";
 import { createProductionWorkerBindings } from "./worker/production.js";
+import { createProductionWorkspaceProvider } from "./workspace/production.js";
 
 const USAGE_EXIT = 64;
 const NOT_RUNNING_EXIT = 3;
@@ -165,13 +171,53 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               ? join(io.env.APPDATA || join(home, "AppData", "Roaming"), "cashU")
               : join(io.env.XDG_DATA_HOME || join(home, ".local", "share"), "cashu");
         const sourceRuntime = currentRuntime();
+        const projectRoot = sourceRuntime.checkout ?? sourceRuntime.dir;
+        const explicitDataDir = resolve(args.dataDir) !== resolve(defaultDir);
+        const legacyRoots = legacySourceRoots(
+          args.dataDir,
+          projectRoot,
+          home,
+          io.env,
+          process.platform,
+          explicitDataDir,
+        );
+        let workspaceStores: import("./stores.js").HostStores | undefined;
+        const skillSource = shippedSkillsSource(sourceRuntime);
+        const homeRoot = realpathSync.native(home);
+        const workspacesOverride = io.env.CASHU_WORKSPACES_DIR;
+        if (
+          workspacesOverride &&
+          (!isAbsolute(workspacesOverride) || resolve(workspacesOverride) !== workspacesOverride)
+        )
+          throw new Error("workspace_root_invalid");
+        const workspace =
+          skillSource === undefined
+            ? undefined
+            : createProductionWorkspaceProvider({
+                dataRoot: args.dataDir,
+                home: homeRoot,
+                workspacesRoot: workspacesOverride ?? join(homeRoot, "Documents", "cashU"),
+                protectedRoots: [
+                  sourceRuntime.dir,
+                  ...(sourceRuntime.checkout === undefined ? [] : [sourceRuntime.checkout]),
+                  ...legacyRoots,
+                ],
+                ...(sourceRuntime.checkout === undefined
+                  ? {}
+                  : { checkout: sourceRuntime.checkout }),
+                skillSource,
+                version: runtime.build,
+                program: shimProgram(sourceRuntime),
+                sessions: (vault) => workspaceStores?.vaults.get(vault)?.native ?? null,
+                inventory: () => readExistingNativeInventory(args.dataDir).entries,
+              });
         const assertNativeSourceAdmission = nativeSourceAdmission({
           dataDir: args.dataDir,
-          projectRoot: sourceRuntime.checkout ?? sourceRuntime.dir,
+          projectRoot,
           home,
           env: io.env,
           platform: process.platform,
-          explicitDataDir: resolve(args.dataDir) !== resolve(defaultDir),
+          explicitDataDir,
         });
         const assertAdmission = () => {
           assertNativeSourceAdmission();
@@ -190,6 +236,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
             : hostUpdateBridge(args.dataDir, runtime.build, runtime.fingerprint);
         const dailyLock = new DailyPriceLock();
         let connectors: ConnectorRuntime | undefined;
+        let banking: BankingRuntime | undefined;
         let connectorLock: import("@cashu/node-host").HostLock | undefined;
         let workerBindings: ReturnType<typeof createProductionWorkerBindings> | undefined;
         const language = (context: Parameters<typeof createProductionWorkerBindings>[0]) => {
@@ -212,8 +259,11 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
             },
             assertNativeSourceAdmission,
             proposals: { bind: (vault) => connectors?.proposals.bind(vault) ?? null },
+            ...(workspace === undefined ? {} : { workspace }),
             connectorCatalog: () => (connectorLock?.held ? connectors?.catalog : undefined),
+            banking: () => banking,
             uiActions: [
+              bankingUiAction(() => banking),
               connectorOwnerAction({
                 runtime: () => connectors,
                 worker: () => workerBindings,
@@ -225,6 +275,18 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
             lan: { kind: "local" },
             worker: (context, notifications, queue, lock) => {
               assertAdmission();
+              workspaceStores = context.stores;
+              if (lock?.held && (process.platform === "darwin" || process.platform === "linux")) {
+                banking = new BankingRuntime({
+                  dataDir: args.dataDir,
+                  lock,
+                  stores: context.stores,
+                  isCurrentVault: context.isCurrent,
+                  redirectUrl: "https://127.0.0.1:18888/eb/callback",
+                  language: () => language(context),
+                  isOwnerAction: () => false,
+                });
+              }
               if (process.platform === "darwin" && lock?.held) {
                 connectorLock = lock;
                 connectors = createConnectorRuntime({
@@ -257,6 +319,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                 language: () => language(context),
                 dailyLock,
                 ...(connectors === undefined ? {} : { connectors: connectors.worker }),
+                ...(banking === undefined ? {} : { budget: bankingWorkerPort(banking) }),
                 ...(queue === undefined ? {} : { notifications: queue }),
                 ...(notifier === null ? {} : { notifier }),
               });
@@ -271,6 +334,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           );
           return await host.exit;
         } finally {
+          await banking?.close();
           updateBridge?.close();
         }
       }

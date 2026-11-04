@@ -44,8 +44,9 @@ export async function syncWorkerBudget(deps: {
 }): Promise<JobOutcome> {
   const { vault, port, state, guard } = deps;
   guard();
-  if (!port.configured(vault)) return { status: "skipped", code: "eb_not_configured" };
-  if (!port.hasSavedSessions(vault)) return { status: "skipped", code: "no_bank_sessions" };
+  if (!(await port.configured(vault))) return { status: "skipped", code: "eb_not_configured" };
+  guard();
+  if (!(await port.hasSavedSessions(vault))) return { status: "skipped", code: "no_bank_sessions" };
   guard();
   const now = deps.now();
   const book = state.budget[vault.id] ?? {};
@@ -67,7 +68,7 @@ export async function syncWorkerBudget(deps: {
   }
   guard();
   const errors = result.errors ?? [];
-  if (errors.some((error) => error.includes("429") || error.toLowerCase().includes("rate limit")))
+  if (errors.some((error) => error === "rate_limited" || error.includes("429") || error.toLowerCase().includes("rate limit")))
     book.throttled_until = new Date(now + BANK_BACKOFF_MS).toISOString();
   if (!result.ok) {
     book.last_status = "failed";

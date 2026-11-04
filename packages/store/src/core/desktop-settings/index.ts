@@ -188,6 +188,7 @@ export type ConnectorSettingsInput =
       readonly interpreter: string;
     }
   | { readonly op: "disable"; readonly id: string }
+  | { readonly op: "remove"; readonly id: string; readonly allVaults: true }
   | {
       readonly op: "bind";
       readonly id: string;

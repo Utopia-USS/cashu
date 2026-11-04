@@ -1,20 +1,26 @@
 // The commands the host runs itself. S39 slices add theirs here and delete their lines from
 // delegated.ts in the same change.
 import { homedir, tmpdir } from "node:os";
+import type { HostService } from "@cashu/node-host";
 import type { PerformanceService } from "@cashu/store/investments/performance";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
 import type { StrategyFilesPort } from "@cashu/store/investments/services";
 import { currentRuntime, type HostRuntime, shippedSkillsSource } from "../runtime.js";
 import type { HostStores, OpenVault } from "../stores.js";
+import type { HostWorker } from "../worker/service.js";
+import type { WorkspaceProvider } from "../workspace/index.js";
 import { vehicleCommands } from "./assets/vehicle.js";
+import { bankingCommands, type BankingCliDeps } from "./banking.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./budget/categorizeOllama.js";
 import { budgetCommands } from "./budget/index.js";
 import { commandStatusCommand } from "./commandStatus.js";
+import { type ConnectorCliDeps, connectorCommands } from "./connectors/index.js";
 import { printConsole } from "./core/console.js";
 import { skillsCommand } from "./core/skills.js";
 import { genesisCommand } from "./genesis/command.js";
 import { investmentCommands } from "./investments/index.js";
 import type { PortedCommand } from "./tree.js";
+import { workerWorkspaceCommands } from "./workerWorkspace.js";
 
 export interface PortedDeps {
   readonly home?: string;
@@ -30,6 +36,11 @@ export interface PortedDeps {
   readonly cloudClassifier?: CloudCategorizeProvider;
   readonly investmentSources?: InvestmentScreenSources;
   readonly performance?: PerformanceService;
+  readonly workspace?: WorkspaceProvider;
+  readonly worker?: () => HostWorker | null;
+  readonly service?: () => HostService | null;
+  readonly connectors?: ConnectorCliDeps;
+  readonly banking?: BankingCliDeps;
 }
 
 export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
@@ -63,6 +74,16 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
           performance: deps.performance,
         })
       : []),
+    ...(deps.nativeStores && deps.worker
+      ? workerWorkspaceCommands({
+          stores: deps.nativeStores,
+          worker: deps.worker,
+          ...(deps.service ? { service: deps.service } : {}),
+          ...(deps.workspace ? { workspace: deps.workspace } : {}),
+        })
+      : []),
+    ...(deps.connectors ? connectorCommands(deps.connectors) : []),
+    ...(deps.banking ? bankingCommands(deps.banking) : []),
     skillsCommand(deps.skillsSource ?? shippedSkillsSource(deps.runtime ?? currentRuntime())),
     {
       // Lab / dev: the genesis event log of a Python data dir (S26). Synchronous work: it holds the

@@ -81,6 +81,63 @@ it("keeps the original MCP key unknown after an invoked native engine write fail
     );
     expect(repeated).toMatchObject({ ok: false, errorKind: "outcome_unknown", requestKey: key });
     expect(invoked).toBe(1);
+    const connectorKey = "01K9B2W000000000000000000D";
+    let proposed = 0;
+    const connectorRuntime = nativeRuntime({
+      stores: host.stores,
+      vault,
+      dataDir,
+      now: Date.now,
+      replaced: () => false,
+      log: testHostOptions(dataDir).log,
+      inventory: [],
+      connectors: {
+        proposalStatus: (candidate: string) =>
+          candidate === connectorKey ? "completed" : "absent",
+        list: async () => ({ installed: [], catalog: [] }),
+        testFile: async () => {
+          throw new Error("unused");
+        },
+        propose: async () => {
+          proposed++;
+          throw new Error("connector_path_invalid");
+        },
+      } as never,
+    });
+    const financialCollision = await new NativeMcpServer(connectorRuntime, [tool]).call(
+      "mark_review_done",
+      { module: "investments" },
+      undefined,
+      connectorKey,
+    );
+    expect(financialCollision).toMatchObject({
+      ok: false,
+      errorKind: "outcome_unknown",
+      requestKey: connectorKey,
+    });
+    expect(invoked).toBe(1);
+    await expect(
+      connectorRuntime.execute(
+        undefined,
+        async (execution) => {
+          if (!execution) throw new Error("missing native execution");
+          return execution.context.store.connectors?.propose({ catalogId: "sample" });
+        },
+        key,
+      ),
+    ).rejects.toMatchObject({ kind: "outcome_unknown" });
+    expect(proposed).toBe(0);
+    await expect(
+      connectorRuntime.execute(
+        undefined,
+        async (execution) => {
+          if (!execution) throw new Error("missing native execution");
+          return execution.context.store.connectors?.propose({ path: "invalid" });
+        },
+        "01K9B2W000000000000000000G",
+      ),
+    ).rejects.toMatchObject({ kind: "invalid" });
+    expect(proposed).toBe(1);
     expect(original.store.read("SELECT COUNT(*) AS n FROM reviews")).toEqual([{ n: 0 }]);
     const noEvent = defineCommand({
       id: "core.syntheticMcpNoEvent",

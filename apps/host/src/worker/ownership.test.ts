@@ -51,11 +51,11 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-it("persists one exact native daily owner and rechecks admission", () => {
+it("persists exact native daily, connector and bank owners and rechecks admission", () => {
   const f = fixture();
   const first = admittedWorkerOwnership(f.input);
   expect(first.isExclusive("investments.daily", f.vault)).toBe(true);
-  expect(first.isExclusive("budget.sync", f.vault)).toBe(false);
+  expect(first.isExclusive("budget.sync", f.vault)).toBe(true);
   expect(admittedWorkerOwnership(f.input).isExclusive("investments.daily", f.vault)).toBe(true);
   f.revoke();
   expect(first.isExclusive("investments.daily", f.vault)).toBe(false);

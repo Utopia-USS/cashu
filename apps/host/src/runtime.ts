@@ -98,6 +98,13 @@ export function shippedSkillsSource(rt: HostRuntime): string | undefined {
     : join(rt.checkout, ".claude", "skills");
 }
 
+/** Read-only connector catalog rooted in the verified build, never the caller's cwd. */
+export function shippedConnectorsSource(rt: HostRuntime): string | undefined {
+  return rt.checkout === undefined
+    ? packagedResource(rt, "python", "_internal", "connectors")
+    : join(rt.checkout, "connectors");
+}
+
 /** The `cashu` shim of this build. */
 export function shimProgram(rt: HostRuntime): Program {
   if (rt.checkout !== undefined) {

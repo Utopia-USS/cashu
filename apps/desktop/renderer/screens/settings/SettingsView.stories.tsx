@@ -1,3 +1,4 @@
+import type { ConnectorSettingsInput } from "@cashu/store/core/desktop-settings";
 import { UiEnvProvider } from "@cashu/ui";
 import { hmLocal, localDay } from "@cashu/ui-logic/core/time";
 import { useForm } from "@tanstack/react-form";
@@ -8,10 +9,12 @@ function SyntheticSettings({
   unavailable = false,
   approval = false,
   connectors = false,
+  onConnectorAction = async () => {},
 }: {
   unavailable?: boolean;
   approval?: boolean;
   connectors?: boolean;
+  onConnectorAction?: (input: ConnectorSettingsInput) => Promise<void>;
 }) {
   const profileForm = useForm({
     defaultValues: { name: "Synthetic Household", baseCurrency: "PLN" },
@@ -88,7 +91,7 @@ function SyntheticSettings({
       { gid: "6ad703ab-383d-8c73-82a5-1ee2d6742735", name: "Synthetic checking", type: "checking" },
     ],
     bindConnector: async () => {},
-    onConnectorAction: async () => {},
+    onConnectorAction,
     refreshConnectors: async () => {},
     installConnector: async () => {},
     workspace: unavailable
@@ -222,3 +225,10 @@ export const Ready = { render: () => <SyntheticSettings /> };
 export const UnboundProviders = { render: () => <SyntheticSettings unavailable /> };
 export const ApprovalRequired = { render: () => <SyntheticSettings approval /> };
 export const ConnectorsReady = { render: () => <SyntheticSettings connectors /> };
+export function ConnectorRemovalFixture({
+  onAction,
+}: {
+  onAction: (input: ConnectorSettingsInput) => Promise<void>;
+}) {
+  return <SyntheticSettings connectors onConnectorAction={onAction} />;
+}

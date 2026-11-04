@@ -95,8 +95,8 @@ export interface WorkerNotifier {
   send(notification: WorkerNotification): Promise<WorkerNotificationResult>;
 }
 export interface BudgetSyncPort {
-  configured(vault: OpenVault): boolean;
-  hasSavedSessions(vault: OpenVault): boolean;
+  configured(vault: OpenVault): boolean | Promise<boolean>;
+  hasSavedSessions(vault: OpenVault): boolean | Promise<boolean>;
   /** One attempt only; the adapter rechecks guard before each actual request. No login flow. */
   sync(
     vault: OpenVault,

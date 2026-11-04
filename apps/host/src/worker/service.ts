@@ -23,6 +23,11 @@ const TICK_MS = 60_000,
   UI_PRICES_MS = 15 * 60_000;
 /** Existing Python AutoRunner CHECK_EVERY: failures do not become a 60-second fetch loop. */
 const DAILY_RETRY_MS = 60 * 60_000;
+export class WorkerTickBusy extends Error {
+  constructor() {
+    super("worker_busy");
+  }
+}
 export class HostWorker {
   private readonly host: WorkerHostContext;
   private readonly bindings: WorkerBindings | undefined;
@@ -33,6 +38,8 @@ export class HostWorker {
   private stateName: WorkerStatus["state"];
   private timer: ReturnType<typeof setInterval> | undefined;
   private active: Promise<void> | undefined;
+  private tickOffline = false;
+  private tickConstrained = false;
   private working = false;
   private stopping = false;
   private lastTick: string | null = null;
@@ -62,6 +69,9 @@ export class HostWorker {
   get pending(): number {
     return this.working ? 1 : 0;
   }
+  get hasAppNotifier(): boolean {
+    return this.bindings?.notifier !== undefined;
+  }
   /** Startup is nonblocking; tick owns all errors and concurrent ticks coalesce. */
   start(): void {
     if (
@@ -77,12 +87,31 @@ export class HostWorker {
     this.timer.unref();
     void this.tick();
   }
-  tick(force = false): Promise<void> {
+  tick(
+    force = false,
+    options: {
+      readonly offline?: boolean;
+      readonly budget?: boolean;
+      readonly notifier?: "auto" | "app" | "none";
+    } = {},
+  ): Promise<void> {
     if (this.stopping || this.bindings === undefined || !this.host.jobsEnabled())
       return Promise.resolve();
-    if (this.active !== undefined) return this.active;
+    const constrained =
+      options.offline === true || options.budget === false || options.notifier === "none";
+    if (this.active !== undefined) {
+      if (constrained || this.tickConstrained) return Promise.reject(new WorkerTickBusy());
+      return this.active;
+    }
+    this.tickOffline = options.offline === true;
+    this.tickConstrained = constrained;
     this.stateName = "running";
-    this.active = this.runTick(force)
+    this.active = this.runTick(
+      force,
+      this.tickOffline,
+      options.budget !== false,
+      options.notifier !== "none",
+    )
       .then(
         () => {
           if (!this.stopping) this.stateName = "idle";
@@ -93,6 +122,8 @@ export class HostWorker {
       )
       .finally(() => {
         this.active = undefined;
+        this.tickOffline = false;
+        this.tickConstrained = false;
         this.working = false;
       });
     return this.active;
@@ -167,9 +198,10 @@ export class HostWorker {
     if (bindings === undefined) throw new WorkerAuthorityLost();
     return workerGuard(this.host, bindings, vault, job, {
       network:
-        job === "connectors.fetch" ||
-        job === "budget.sync" ||
-        (job === "investments.daily" && bindings.offline !== true),
+        !this.tickOffline &&
+        (job === "connectors.fetch" ||
+          job === "budget.sync" ||
+          (job === "investments.daily" && bindings.offline !== true)),
     });
   }
   private async due(
@@ -279,7 +311,12 @@ export class HostWorker {
       }
     }
   }
-  private async runTick(force: boolean): Promise<void> {
+  private async runTick(
+    force: boolean,
+    offline: boolean,
+    budget: boolean,
+    notifications: boolean,
+  ): Promise<void> {
     const bindings = this.bindings;
     if (bindings === undefined) return;
     if (!this.loaded) {
@@ -307,7 +344,7 @@ export class HostWorker {
       }
     }
     if (force || slotPassed(time, this.schedule)) {
-      if (bindings.connectors !== undefined) {
+      if (!offline && bindings.connectors !== undefined) {
         const connectors = bindings.connectors;
         const candidates = [
           ...new Map([...investors, ...budgeters].map((v) => [v.id, v])).values(),
@@ -325,7 +362,7 @@ export class HostWorker {
         if (due.length !== 0) {
           let outcomes: ReadonlyMap<string, JobOutcome>;
           try {
-            outcomes = await this.investments.daily(due);
+            outcomes = await this.investments.daily(due, offline);
           } catch (error) {
             if (error instanceof DurableWriteUnknown) {
               const target = error.vault ?? due[0]?.id;
@@ -364,9 +401,9 @@ export class HostWorker {
             );
           }
         }
-        await this.backfillPhase(investors, force, busy);
+        if (!offline) await this.backfillPhase(investors, force, busy);
       }
-      if (bindings.budget !== undefined)
+      if (!offline && budget && bindings.budget !== undefined)
         await this.phase("budget.sync", budgeters, force, (vault, guard) =>
           syncWorkerBudget({
             vault,
@@ -379,7 +416,7 @@ export class HostWorker {
         );
       const notifier = bindings.notifier,
         queue = bindings.investments?.notifications;
-      if (notifier !== undefined && queue !== undefined)
+      if (notifications && notifier !== undefined && queue !== undefined)
         await this.phase("notifications", investors, force, (vault, guard) =>
           deliverWorkerNotifications({
             vault,
@@ -390,7 +427,7 @@ export class HostWorker {
             guard,
           }),
         );
-      if (notifier !== undefined && bindings.investments !== undefined)
+      if (notifications && notifier !== undefined && bindings.investments !== undefined)
         await this.phase("digest", investors, force, (vault, guard) =>
           sendWorkerDigest({
             vault,
@@ -403,7 +440,12 @@ export class HostWorker {
           }),
         );
     }
-    if (this.investments !== undefined && this.host.uiCount() > 0 && !bindings.offline) {
+    if (
+      !offline &&
+      this.investments !== undefined &&
+      this.host.uiCount() > 0 &&
+      !bindings.offline
+    ) {
       for (const vault of investors) {
         const last = this.priceFinished.get(vault.id);
         if (last !== undefined && this.host.now() - last < UI_PRICES_MS) continue;

@@ -21,9 +21,13 @@ import { parseDateTime } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
 import {
   type AdminStatus,
+  bankingConfigureParamsSchema,
+  bankingConsentUrlParamsSchema,
+  bankingNativeResultSchema,
   deviceListParamsSchema,
   deviceListResultSchema,
   HOST_PROTOCOL,
+  NATIVE_BANKING_FEATURE,
   NATIVE_CONNECTORS_FEATURE,
   NATIVE_CREATION_FEATURE,
   NATIVE_DEVICES_FEATURE,
@@ -56,12 +60,14 @@ import {
   revokeInspectResultSchema,
   revokePreviewParamsSchema,
   revokePreviewResultSchema,
+  uiBankingAllowed,
   uiCreationAllowed,
   uiDevicesAllowed,
   uiPairingAllowed,
 } from "@cashu/host-protocol";
 import {
   budgetTools,
+  connectorTools,
   coreTools,
   type InvestmentAsyncCapabilities,
   type InvestmentHistoryReads,
@@ -91,12 +97,14 @@ import {
 } from "@cashu/node-host";
 import { legacyDataAdmission } from "@cashu/node-host/admission";
 import { readBundleIdentity, watchBundleIdentity } from "@cashu/node-host/bundle-identity";
-import { mcpProfile } from "@cashu/store/core";
+import { enabledModuleIds, mcpProfile } from "@cashu/store/core";
 import { NotificationQueue } from "@cashu/store/investments/local";
 import { PerformanceService } from "@cashu/store/investments/performance";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
 import type { SyncResult } from "@cashu/sync";
 import { handleAdmin } from "./admin.js";
+import { runBankingOwnerAction } from "./banking/ownerAction.js";
+import type { BankingRuntime } from "./banking/runtime.js";
 import { HANDOVER_EXIT } from "./bundle.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./cli/budget/categorizeOllama.js";
 import { DELEGATED } from "./cli/delegated.js";
@@ -112,6 +120,8 @@ import { writeLauncher } from "./launcher.js";
 import { takeWriterLease, type WriterLease } from "./lease.js";
 import { errorName, fileLog, type HostLog } from "./log.js";
 import { compositeBackend } from "./mcp/composite.js";
+import { ConnectorProposalReceipts } from "./mcp/connectorReceipt.js";
+import { connectorMcpPort } from "./mcp/connectors.js";
 import { budgetFileReader, investmentFileReader, investmentMappingReader } from "./mcp/files.js";
 import { mcpFileHome, mcpNamedHome } from "./mcp/homes.js";
 import { nativeRuntime } from "./mcp/native.js";
@@ -120,6 +130,7 @@ import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
 import { createNativeCreationService } from "./nativeCreation.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
+import { readExistingNativeInventory } from "./nativeInventory.js";
 import type { NativeVaultSource } from "./nativeVault.js";
 import {
   type HostNotificationCapability,
@@ -137,6 +148,7 @@ import {
   type Program,
   pythonProgram,
   shimProgram,
+  shippedConnectorsSource,
 } from "./runtime.js";
 import { settingsInfoQuery } from "./settingsInfo.js";
 import { settingsWorkspaceActions } from "./settingsScreen.js";
@@ -148,6 +160,7 @@ import {
 import { serveStoreChannel } from "./storeChannel.js";
 import {
   type HostStores,
+  type OpenVault,
   openHostStores,
   openNativeHostStores,
   openNativeSetupStores,
@@ -221,6 +234,7 @@ export interface LocalHostOptions {
   /** Checked S60 preparation authority, bound to the exact open vault. Absent by default. */
   readonly proposals?: ProposalApprovalProvider;
   readonly connectorCatalog?: () => import("./connectors/catalog.js").ConnectorCatalog | undefined;
+  readonly banking?: () => BankingRuntime | undefined;
   /** Exact-vault checked workspace provider. Unbound means unavailable, never absent. */
   readonly workspace?: WorkspaceProvider;
   /** Verified packaged updater, absent in unbound native builds. */
@@ -454,6 +468,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       "store.v2",
       ...(options.vaultSource.kind === "native-production" ? [NATIVE_CREATION_FEATURE] : []),
       ...(options.connectorCatalog !== undefined ? [NATIVE_CONNECTORS_FEATURE] : []),
+      ...(nativeMode && options.banking !== undefined ? [NATIVE_BANKING_FEATURE] : []),
       ...(nativeMode ? [NATIVE_DEVICES_FEATURE] : []),
       ...(nativeMode && options.lan !== undefined && options.lan.kind !== "off"
         ? [NATIVE_PAIRING_FEATURE]
@@ -580,7 +595,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   );
   // TRANSITIONAL(S39c): Python owns financial mutations in mixed sessions. Native-only builds
   // bind the explicit profile to a loaded vault until the shared authority/catalog is available.
-  const ported = nativeMode
+  let ported = nativeMode
     ? portedCommands({
         runtime,
         now,
@@ -727,6 +742,130 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     log.warn("worker.binding-failed", { error: errorName(error) });
   }
   const worker = startWorker(workerContext, workerBindings);
+  const connectorReceipts =
+    nativeMode && options.connectorCatalog !== undefined
+      ? new ConnectorProposalReceipts(server.paths.dataDir)
+      : undefined;
+  if (nativeMode) {
+    const catalog = options.connectorCatalog?.();
+    ported = portedCommands({
+      runtime,
+      now,
+      nativeStores: stores,
+      investmentSources,
+      performance: investmentPerformance,
+      classifier: options.budgetClassifiers?.local,
+      cloudClassifier: options.budgetClassifiers?.cloud,
+      workspace: options.workspace,
+      worker: () => worker,
+      ...(catalog === undefined
+        ? {}
+        : {
+            connectors: {
+              catalog,
+              shippedCatalog: shippedConnectorsSource(runtime),
+              isCurrent: () =>
+                !bundleReplaced && server.lock.held && options.connectorCatalog?.() === catalog,
+              async disable(id: string, signal: AbortSignal) {
+                const current = () =>
+                  !signal.aborted &&
+                  !bundleReplaced &&
+                  server.lock.held &&
+                  options.connectorCatalog?.() === catalog;
+                if (!current()) throw new Error("connector_authority_lost");
+                catalog.disable(id, { ownerAction: true, isCurrent: current });
+              },
+              async remove(id: string, signal: AbortSignal) {
+                const current = () =>
+                  !signal.aborted &&
+                  !bundleReplaced &&
+                  server.lock.held &&
+                  options.connectorCatalog?.() === catalog;
+                if (!current()) throw new Error("connector_authority_lost");
+                const vaults = [...stores.vaults.values()].sort((a, b) => a.id.localeCompare(b.id));
+                // Native startup opens the entire verified inventory as one set. Refuse any incomplete authority.
+                if (
+                  vaults.length === 0 ||
+                  vaults.some((vault) => vault.mode !== "native" || !vault.native.isCurrent())
+                )
+                  throw new Error("connector_inventory_unavailable");
+                const inventory = readExistingNativeInventory(server.paths.dataDir);
+                if (
+                  inventory.entries.length !== vaults.length ||
+                  inventory.entries.some(
+                    (entry) =>
+                      entry.state !== "ready" ||
+                      !vaults.some((vault) => vault.id === entry.vaultId),
+                  )
+                )
+                  throw new Error("connector_inventory_unavailable");
+                const withVaults = async <T>(index: number, task: () => Promise<T>): Promise<T> => {
+                  const selected = vaults[index];
+                  return selected === undefined
+                    ? task()
+                    : selected.queue.run(() => withVaults(index + 1, task));
+                };
+                return withVaults(0, () =>
+                  stores.device.queue.run(() => {
+                    const noReferences = () =>
+                      current() &&
+                      readExistingNativeInventory(server.paths.dataDir).fingerprint ===
+                        inventory.fingerprint &&
+                      vaults.every(
+                        (vault) =>
+                          stores.vaults.get(vault.id) === vault &&
+                          vault.mode === "native" &&
+                          vault.native.isCurrent() &&
+                          vault.store.read<{ n: number }>(
+                            "SELECT COUNT(*) AS n FROM connector_bindings WHERE connector_id = ?",
+                            id,
+                          )[0]?.n === 0,
+                      ) &&
+                      stores.device.store.read<{ n: number }>(
+                        "SELECT COUNT(*) AS n FROM connector_runs WHERE connector_id = ?",
+                        id,
+                      )[0]?.n === 0;
+                    catalog.removeUnbound(
+                      id,
+                      { ownerAction: true, isCurrent: current },
+                      noReferences,
+                    );
+                    return { bindings: 0 };
+                  }),
+                );
+              },
+            },
+          }),
+      ...(options.banking === undefined
+        ? {}
+        : {
+            banking: {
+              vaults: stores.vaults,
+              async perform(vault, action, signal) {
+                const active = options.banking?.();
+                const current = () =>
+                  !signal.aborted &&
+                  !bundleReplaced &&
+                  !server.stopping &&
+                  server.lock.held &&
+                  stores.vaults.get(vault.id) === vault &&
+                  vault.mode === "native" &&
+                  vault.native.isCurrent();
+                if (!active || !current()) return { ok: false as const, error: "authorization" };
+                const result = await active.withOwnerAction(vault.id, current, () =>
+                  runBankingOwnerAction({
+                    runtime: active,
+                    profileId: vault.id,
+                    isOwnerAction: current,
+                    action,
+                  }),
+                );
+                return current() ? result : { ok: false as const, error: "outcome_unknown" };
+              },
+            },
+          }),
+    }).filter((command) => command.name !== "genesis" && command.name !== "skills");
+  }
   settingsStores = stores;
   currentWorkerStatus = () => worker.status();
 
@@ -1172,6 +1311,113 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     creationRequests.add(request);
   };
 
+  const serveBankingRequest = (
+    session: HostSession,
+    frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
+    sessionCurrent: () => boolean,
+  ) => {
+    if (
+      !nativeMode ||
+      server.stopping ||
+      stopping !== undefined ||
+      bundleReplaced ||
+      !uiBankingAllowed(frame.method, session.protocol.minor, [NATIVE_BANKING_FEATURE])
+    ) {
+      session.send({
+        t: "res",
+        id: frame.id,
+        outcome: { ok: false, error: { code: "unknown-method", message: "method unavailable" } },
+      });
+      return;
+    }
+    const request = Promise.resolve()
+      .then(async () => {
+        const runtime = options.banking?.();
+        if (!runtime || !server.lock.held) return { kind: "refused", code: "unavailable" } as const;
+        if (frame.method === "native.banking.configure") {
+          const input = bankingConfigureParamsSchema.safeParse(frame.params);
+          if (!input.success) return { kind: "refused", code: "invalid_input" } as const;
+          const vault = stores.vaults.get(input.data.vaultId);
+          const current = () =>
+            sessionCurrent() &&
+            !bundleReplaced &&
+            server.lock.held &&
+            vault?.mode === "native" &&
+            stores.vaults.get(input.data.vaultId) === vault &&
+            vault.native.isCurrent() &&
+            enabledModuleIds(vault.store.read.bind(vault.store)).has("budget");
+          if (!current()) return { kind: "refused", code: "authorization" } as const;
+          const result = await runtime.withOwnerAction(input.data.vaultId, current, () =>
+            runBankingOwnerAction({
+              runtime,
+              profileId: input.data.vaultId,
+              isOwnerAction: current,
+              action: {
+                type: "configure",
+                appId: input.data.appId,
+                keyFilePath: input.data.keyFilePath,
+              },
+            }),
+          );
+          if (!current() || (!result.ok && result.error === "outcome_unknown"))
+            return { kind: "outcome_unknown" } as const;
+          return result.ok
+            ? ({ kind: "configured" } as const)
+            : ({
+                kind: "refused",
+                code: result.error === "configuration" ? "configuration" : "authorization",
+              } as const);
+        }
+        const input = bankingConsentUrlParamsSchema.safeParse(frame.params);
+        if (!input.success) return { kind: "refused", code: "invalid_input" } as const;
+        const vault = stores.vaults.get(input.data.vaultId);
+        const current = () =>
+          sessionCurrent() &&
+          !bundleReplaced &&
+          server.lock.held &&
+          vault?.mode === "native" &&
+          stores.vaults.get(input.data.vaultId) === vault &&
+          vault.native.isCurrent() &&
+          enabledModuleIds(vault.store.read.bind(vault.store)).has("budget");
+        if (!current()) return { kind: "refused", code: "authorization" } as const;
+        const status = await runtime.withOwnerAction(input.data.vaultId, current, async () =>
+          runtime.service(input.data.vaultId)?.status(),
+        );
+        return current() && status?.pendingConsent === input.data.url
+          ? ({ kind: "allowed" } as const)
+          : ({ kind: "refused", code: "authorization" } as const);
+      })
+      .then((result) => {
+        session.send({
+          t: "res",
+          id: frame.id,
+          outcome: { ok: true, result: bankingNativeResultSchema.parse(result) },
+        });
+      })
+      .catch(() => {
+        try {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: {
+              ok: true,
+              result:
+                frame.method === "native.banking.configure"
+                  ? { kind: "outcome_unknown" }
+                  : { kind: "refused", code: "unavailable" },
+            },
+          });
+        } catch {
+          /* disconnected caller */
+        }
+      })
+      .finally(() => {
+        creationRequests.delete(request);
+        armIdle();
+      });
+    creationRequests.add(request);
+  };
+
   const host: LocalHost = {
     server,
     get lan() {
@@ -1218,9 +1464,16 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     });
     switch (session.role) {
       case "ui": {
+        let sessionOpen = true;
+        session.onClose(() => {
+          sessionOpen = false;
+        });
         const installConnector = connectorInstallRpc(session, () => options.connectorCatalog?.());
         serveStoreChannel(session, {
-          ...(creation === undefined && notificationIntents === undefined && options.connectorCatalog === undefined && !nativeMode
+          ...(creation === undefined &&
+          notificationIntents === undefined &&
+          options.connectorCatalog === undefined &&
+          !nativeMode
             ? {}
             : {
                 onRequest: (frame) =>
@@ -1228,11 +1481,13 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                     ? serveNotificationRequest(session, frame)
                     : frame.method.startsWith("native.connectors.")
                       ? installConnector(frame)
-                      : frame.method.startsWith("native.pairing.")
-                        ? servePairingRequest(session, frame)
-                        : frame.method.startsWith("native.devices.")
-                          ? serveDevicesRequest(session, frame)
-                          : serveCreationRequest(session, frame),
+                      : frame.method.startsWith("native.banking.")
+                        ? serveBankingRequest(session, frame, () => sessionOpen)
+                        : frame.method.startsWith("native.pairing.")
+                          ? servePairingRequest(session, frame)
+                          : frame.method.startsWith("native.devices.")
+                            ? serveDevicesRequest(session, frame)
+                            : serveCreationRequest(session, frame),
               }),
           stores,
           queries,
@@ -1359,6 +1614,24 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
               investmentScope === undefined ? undefined : investmentFileReader(investmentScope);
             const readInvestmentMapping =
               investmentScope === undefined ? undefined : investmentMappingReader(investmentScope);
+            const catalog = nativeMode ? options.connectorCatalog?.() : undefined;
+            const connectorPort =
+              nativeMode && catalog && connectorReceipts
+                ? connectorMcpPort({
+                    catalog,
+                    vault,
+                    device: stores.device,
+                    receipts: connectorReceipts,
+                    shippedCatalog: shippedConnectorsSource(runtime),
+                    workspace: options.workspace,
+                    now,
+                    isCurrent: () =>
+                      !bundleReplaced &&
+                      stores.vaults.get(vault.id) === vault &&
+                      vault.native?.isCurrent() === true &&
+                      options.connectorCatalog?.() === catalog,
+                  })
+                : undefined;
             // TRANSITIONAL(S22c): cached-market reads remain on the legacy source until a real
             // device cache is supplied. The restrictive bridge still enforces this vault's policy.
             const tools = coreTools().filter((tool) =>
@@ -1435,6 +1708,12 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
               };
               tools.splice(0, tools.length, ...tools.filter((tool) => enabled(tool.name)));
             }
+            if (connectorPort)
+              tools.push(
+                ...connectorTools().filter(
+                  (tool) => tool.name !== "test_connector" || options.workspace !== undefined,
+                ),
+              );
             const inventory =
               child === undefined
                 ? TOOL_INVENTORY.filter((entry) => tools.some((tool) => tool.name === entry.name))
@@ -1456,6 +1735,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 research: options.mcpResearch,
                 investmentWrites: options.mcpInvestmentWrites,
                 investmentAsync,
+                connectors: connectorPort,
                 readInvestmentImportFile: readInvestmentFile,
                 readInvestmentMappingFile: readInvestmentMapping,
               }),

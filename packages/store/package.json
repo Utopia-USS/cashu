@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./core": "./src/core/index.ts",
     "./core/desktop-settings": "./src/core/desktop-settings/index.ts",
+    "./core/banking-settings": "./src/core/banking-settings.ts",
     "./core/desktop-proposals": "./src/core/desktop-proposals/index.ts",
     "./budget/queries": "./src/budget/mcp-queries.ts",
     "./budget/proposals": "./src/budget/import-proposals.ts",

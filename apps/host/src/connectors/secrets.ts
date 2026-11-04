@@ -2,6 +2,7 @@ import {
   type ConnectorSecretAuthority,
   type ConnectorSecretIdentity,
   type ConnectorSecretVault,
+  createProductionConnectorSecretCleanup,
   createProductionConnectorSecretVault,
 } from "@cashu/node-host/connector-secrets";
 import type { ConnectorBinding, ConnectorSecretStore } from "./binding.js";
@@ -72,6 +73,43 @@ export function boundConnectorSecrets(input: {
     async clear(secretId) {
       check(identity.profileId, identity.bindingId, secretId);
       return vault.clear(secretId);
+    },
+  };
+}
+
+/** Deletion-only owner capability; installed code is inspected but never approved or executed. */
+export function deletionOnlyConnectorSecrets(input: {
+  readonly catalog: ConnectorCatalog;
+  readonly binding: ConnectorBinding;
+  readonly authority: ConnectorSecretAuthority;
+  readonly makeCleanup?: (
+    authority: ConnectorSecretAuthority,
+    identity: ConnectorSecretIdentity,
+  ) => Pick<ConnectorSecretVault, "clear">;
+}): Pick<ConnectorSecretVault, "clear"> & { readonly secretIds: readonly string[] } {
+  const loaded = input.catalog.installed(input.binding.connectorId);
+  if (loaded.manifest.kind !== "fetch" || loaded.manifest.module !== input.binding.module)
+    throw new ConnectorFault("invalid_manifest", "binding does not match installed connector");
+  const identity: ConnectorSecretIdentity = {
+    profileId: input.binding.profileId,
+    bindingId: input.binding.id,
+    connectorId: input.binding.connectorId,
+    secretIds: Object.freeze(loaded.manifest.fetch?.secrets.map((spec) => spec.id) ?? []),
+  };
+  const cleanup = (input.makeCleanup ?? createProductionConnectorSecretCleanup)(
+    input.authority,
+    identity,
+  );
+  return {
+    secretIds: identity.secretIds,
+    async clear(secretId) {
+      if (
+        !input.authority.isOwnerAction() ||
+        !input.authority.isCurrent(identity) ||
+        !identity.secretIds.includes(secretId)
+      )
+        throw new ConnectorFault("changed", "binding cleanup authority unavailable");
+      await cleanup.clear(secretId);
     },
   };
 }

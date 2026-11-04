@@ -38,9 +38,4 @@ export const DELEGATED: Readonly<Record<string, string>> = {
   "set-vehicle": "S39c",
   // TRANSITIONAL(S39d): investments CLI
   invest: "S39d",
-  // TRANSITIONAL(S39e): worker and workspace CLI
-  worker: "S39e",
-  workspace: "S39e",
-  // TRANSITIONAL(S39f): connectors CLI
-  connectors: "S39f",
 };

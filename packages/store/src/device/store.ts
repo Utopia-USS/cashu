@@ -93,6 +93,26 @@ export class DeviceStore implements QuerySource {
     return id;
   }
 
+  /** Owner-only local audit cleanup after every vault binding has been removed. */
+  removeConnectorRuns(
+    id: string,
+    authority: { readonly ownerAction: true; isCurrent(): boolean },
+  ): number {
+    if (
+      !/^[a-z][a-z0-9-]{1,39}$/.test(id) ||
+      authority.ownerAction !== true ||
+      !authority.isCurrent()
+    )
+      throw new Error("connector_run_removal_unavailable");
+    const count = this.driver.transaction(() => {
+      if (!authority.isCurrent()) throw new Error("connector_run_removal_unavailable");
+      return this.driver.prepare("DELETE FROM connector_runs WHERE connector_id = ?").run(id)
+        .changes;
+    });
+    this.#hub.notify(new Set(["connector_runs"]));
+    return count;
+  }
+
   tablesRead(sql: string): ReadonlySet<string> {
     const out = new Set<string>();
     for (const word of sql.toLowerCase().match(/[a-z_][a-z0-9_]*/g) ?? []) {

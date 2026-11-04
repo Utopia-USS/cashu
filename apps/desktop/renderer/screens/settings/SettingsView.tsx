@@ -48,11 +48,13 @@ export function SettingsView({
   section,
   strategyPanel,
   devicesPanel,
+  bankingPanel,
 }: {
   state: SettingsScreenState;
   section?: string;
   strategyPanel?: React.ReactNode;
   devicesPanel?: React.ReactNode;
+  bankingPanel?: React.ReactNode;
 }) {
   const [active, setActive] = useState<string>(
     section && sections.some((s) => s === section) ? section : "profile",
@@ -125,6 +127,7 @@ export function SettingsView({
         </Card>
         <Card id="connectors" title={SECTION.connectors}>
           <ConnectorsSection state={state} />
+          {bankingPanel}
         </Card>
         <Card id="data" title={SECTION.data}>
           <DataSection state={state} />
@@ -736,6 +739,17 @@ function ConnectorCard({
           {T.connectorDisable}
         </button>
       )}
+      <button
+        className={button}
+        type="button"
+        disabled={state.connectorBusy}
+        onClick={() => {
+          if (window.confirm(T.connectorRemoveAllConfirm))
+            void state.onConnectorAction({ op: "remove", id: connector.id, allVaults: true });
+        }}
+      >
+        {T.connectorRemoveAll}
+      </button>
       {connector.approval === "approved" && connector.kind === "fetch" && (
         <div className="grid gap-2">
           <label className="grid gap-1">

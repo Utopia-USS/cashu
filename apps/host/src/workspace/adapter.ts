@@ -78,9 +78,9 @@ export interface WorkspaceVaultAuthority {
   readonly cli: readonly string[] | null;
   readonly tools: WorkspaceContentContext["tools"] | null;
   readonly protected: readonly string[];
-  /** True if a legacy slug-only manifest cannot be attributed unambiguously to this vault. */
-  readonly legacySlugAmbiguous: boolean;
   readonly publication: WorkspacePublication;
+  /** Production binds publication to the canonical target selected for this operation. */
+  publicationFor?(path: string): WorkspacePublication;
   /** Updates the complete host claim inventory after the private config is published. */
   recordConfiguredPath(path: string): void;
   isCurrent(): boolean;
@@ -186,11 +186,7 @@ function manifestAt(
 ): { value: Json | null; valid: boolean; legacy: boolean } {
   const io = authority.publication;
   const current = readJson(io, join(path, MANIFEST));
-  if (current.value !== null || !current.valid) return { ...current, legacy: false };
-  return {
-    ...readJson(io, join(path, LEGACY_MANIFEST)),
-    legacy: io.kind(join(path, LEGACY_MANIFEST)) !== "missing",
-  };
+  return { ...current, legacy: io.kind(join(path, LEGACY_MANIFEST)) !== "missing" };
 }
 
 function targetContext(
@@ -282,14 +278,14 @@ function inspectReady(
   const cfg = configured(authority);
   const raw = input.path?.trim() || cfg.path || authority.defaultPath;
   const path = checkWorkspacePath(raw, authority.vault, authority.policy);
+  if (authority.publicationFor)
+    authority = { ...authority, publication: authority.publicationFor(path) };
   const manifest = manifestAt(authority, path);
   const owner = manifest.value?.vaultId;
-  const legacyOwner = manifest.value?.profile;
   const conflict =
+    manifest.legacy ||
     (owner && owner !== authority.vault) ||
-    (!owner &&
-      truthyObject(manifest.value) &&
-      ((legacyOwner && legacyOwner !== authority.slug) || authority.legacySlugAmbiguous))
+    (!owner && truthyObject(manifest.value))
       ? "other_profile"
       : null;
   const exists = truthyObject(manifest.value) && manifest.valid && conflict === null;
@@ -481,8 +477,6 @@ function applySteps(
       io.writeText(join(path, MANIFEST), jsonText({ ...newManifest, updated_at: authority.now() }));
     },
   );
-  if (invalidManifest !== LEGACY_MANIFEST && io.kind(join(path, LEGACY_MANIFEST)) === "file")
-    add("manifest", LEGACY_MANIFEST, "removed", () => io.removeFile(join(path, LEGACY_MANIFEST)));
   const wantedConfig = {
     format: 1,
     vaultId: authority.vault,
@@ -534,30 +528,26 @@ export function createInjectedWorkspaceProvider(
               authority.vault,
               authority.policy,
             );
+            const selected = authority.publicationFor
+              ? { ...authority, publication: authority.publicationFor(path) }
+              : authority;
             const candidate = pyCasefold(path.normalize("NFC"));
             if ([...ACTIVE_PATHS].some((held) => overlaps(candidate, held)))
               return { kind: "refused", code: "busy" };
             ACTIVE_PATHS.add(candidate);
             pathLock = candidate;
-            const before = manifestAt(authority, path);
-            if (before.value?.vaultId && before.value.vaultId !== authority.vault)
+            const before = manifestAt(selected, path);
+            if (before.legacy) return { kind: "refused", code: "workspace_taken" };
+            if (before.value?.vaultId && before.value.vaultId !== selected.vault)
               return { kind: "refused", code: "workspace_taken" };
-            if (
-              !before.value?.vaultId &&
-              truthyObject(before.value) &&
-              (before.value?.profile !== authority.slug || authority.legacySlugAmbiguous)
-            )
+            if (!before.value?.vaultId && truthyObject(before.value))
               return { kind: "refused", code: "workspace_taken" };
-            const ctx = targetContext(authority, path, input.routinePermissions ?? cfg.routine);
+            const ctx = targetContext(selected, path, input.routinePermissions ?? cfg.routine);
             if (!ctx) return { kind: "refused", code: "invocation_or_tools_unavailable" };
-            const snap = snapshot(authority, path, before.value ?? {}, ctx, before.legacy);
-            const invalidManifest = !before.valid
-              ? before.legacy
-                ? LEGACY_MANIFEST
-                : MANIFEST
-              : null;
+            const snap = snapshot(selected, path, before.value ?? {}, ctx, before.legacy);
+            const invalidManifest = !before.valid ? MANIFEST : null;
             const steps = applySteps(
-              authority,
+              selected,
               input,
               path,
               ctx,
@@ -566,7 +556,7 @@ export function createInjectedWorkspaceProvider(
               invalidManifest,
             );
             return await runWorkspaceOperation({
-              current: () => authority.isCurrent() && (input.isCurrent?.() ?? true),
+              current: () => selected.isCurrent() && (input.isCurrent?.() ?? true),
               steps,
               inspect: async () => inspectReady(authority, input),
               movedFrom: cfg.path && !samePath(cfg.path, path) ? cfg.path : null,

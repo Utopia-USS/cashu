@@ -39,6 +39,14 @@ const schema = z.strictObject({
         .max(64)
         .refine((vaults) => new Set(vaults).size === vaults.length),
     }),
+    "budget.sync": z.strictObject({
+      owner: z.literal("native"),
+      vaults: z
+        .array(id)
+        .min(1)
+        .max(64)
+        .refine((vaults) => new Set(vaults).size === vaults.length),
+    }),
   }),
 });
 type Record = z.infer<typeof schema>;
@@ -152,13 +160,22 @@ export function admittedWorkerOwnership(input: {
   const connectorVaults = [
     ...new Set([...(old?.jobs["connectors.fetch"].vaults ?? []), ...expected]),
   ].sort();
-  if (combined.length > 64 || old?.generation === Number.MAX_SAFE_INTEGER)
+  const budgetVaults = [
+    ...new Set([...(old?.jobs["budget.sync"].vaults ?? []), ...expected]),
+  ].sort();
+  if (
+    combined.length > 64 ||
+    connectorVaults.length > 64 ||
+    budgetVaults.length > 64 ||
+    old?.generation === Number.MAX_SAFE_INTEGER
+  )
     throw new Error("worker_ownership_unavailable");
   if (
     combined.length !== 0 &&
     (old === null ||
       combined.length !== old.jobs["investments.daily"].vaults.length ||
-      connectorVaults.length !== old.jobs["connectors.fetch"].vaults.length)
+      connectorVaults.length !== old.jobs["connectors.fetch"].vaults.length ||
+      budgetVaults.length !== old.jobs["budget.sync"].vaults.length)
   )
     writeRecord(
       path,
@@ -168,6 +185,7 @@ export function admittedWorkerOwnership(input: {
         jobs: {
           "investments.daily": { owner: "native", vaults: combined },
           "connectors.fetch": { owner: "native", vaults: connectorVaults },
+          "budget.sync": { owner: "native", vaults: budgetVaults },
         },
       },
       old,
@@ -191,7 +209,9 @@ export function admittedWorkerOwnership(input: {
         record.jobs["investments.daily"].owner === "native" &&
         expected.every((vault) => record.jobs["investments.daily"].vaults.includes(vault)) &&
         record.jobs["connectors.fetch"].owner === "native" &&
-        expected.every((vault) => record.jobs["connectors.fetch"].vaults.includes(vault))
+        expected.every((vault) => record.jobs["connectors.fetch"].vaults.includes(vault)) &&
+        record.jobs["budget.sync"].owner === "native" &&
+        expected.every((vault) => record.jobs["budget.sync"].vaults.includes(vault))
       );
     } catch {
       return false;
@@ -201,7 +221,7 @@ export function admittedWorkerOwnership(input: {
   return {
     isExclusive(job, vault) {
       return (
-        (job === "investments.daily" || job === "connectors.fetch") &&
+        (job === "investments.daily" || job === "connectors.fetch" || job === "budget.sync") &&
         vault.mode === "native" &&
         expected.includes(vault.id) &&
         vault.native.canRunSideEffects() &&

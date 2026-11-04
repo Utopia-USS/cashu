@@ -34,7 +34,8 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
     if (sql.includes("FROM accounts") && sql.includes("type =")) return [];
     if (sql.includes("FROM accounts"))
       return [{ gid: account, name: "Synthetic", type: "checking", removed: 0 }] as R[];
-    if (sql.includes("FROM connector_bindings")) return row ? ([{ ...row, account_gid: row.account }] as R[]) : [];
+    if (sql.includes("FROM connector_bindings"))
+      return row ? ([{ ...row, account_gid: row.account }] as R[]) : [];
     return [];
   };
   const loaded = {
@@ -137,4 +138,35 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
   });
   expect(await action.run(stores, vaultId, { op: "unbind", binding: bindingId })).toEqual(removal);
   expect(writes).toEqual(["connectorBinding.set", "secret", "run"]);
+});
+
+it("routes confirmed owner Settings removal to the native deletion service", async () => {
+  const vault = {
+    id: vaultId,
+    mode: "native",
+    native: { isCurrent: () => true, canFetchPublicMarket: () => true },
+  };
+  const stores = { vaults: new Map([[vaultId, vault]]) } as unknown as HostStores;
+  const removed: string[] = [];
+  const action = connectorOwnerAction({
+    runtime: () => ({ catalog: {} }) as ConnectorRuntime,
+    worker: () => undefined,
+    dataDir: "/synthetic",
+    lock: () => ({ held: true }) as never,
+    now: () => 1,
+    remove: async (input) => {
+      removed.push(input.id);
+      return { status: "completed", value: { bindings: 2, runs: 3 } };
+    },
+  });
+  expect(await action.run(stores, vaultId, { op: "remove", id: "synthetic-fetch" })).toMatchObject({
+    status: "refused",
+  });
+  expect(
+    await action.run(stores, vaultId, { op: "remove", id: "synthetic-fetch", allVaults: true }),
+  ).toEqual({
+    status: "completed",
+    value: { bindings: 2, runs: 3 },
+  });
+  expect(removed).toEqual(["synthetic-fetch"]);
 });

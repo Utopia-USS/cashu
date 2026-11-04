@@ -68,9 +68,9 @@ def _read(path: Path) -> dict | None:
             not 1 <= value["generation"] <= 2**53 - 1):
         raise ValueError("worker ownership record invalid")
     jobs = value["jobs"]
-    if not isinstance(jobs, dict) or set(jobs) != {"investments.daily", "connectors.fetch"}:
+    if not isinstance(jobs, dict) or set(jobs) != {"investments.daily", "connectors.fetch", "budget.sync"}:
         raise ValueError("worker ownership record invalid")
-    for job in ("investments.daily", "connectors.fetch"):
+    for job in ("investments.daily", "connectors.fetch", "budget.sync"):
         record = jobs[job]
         if not isinstance(record, dict) or set(record) != {"owner", "vaults"} or record["owner"] != "native":
             raise ValueError("worker ownership record invalid")

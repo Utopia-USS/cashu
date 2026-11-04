@@ -43,6 +43,12 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
   electron.contextBridge.exposeInMainWorld("cashuConnectors", {
     installPending: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:connectors-install"),
   });
+  electron.contextBridge.exposeInMainWorld("cashuBanking", {
+    chooseKeyAndConfigure: (vaultId: string, appId: string): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:banking-configure", { vaultId, appId }),
+    openBank: (vaultId: string, url: string): Promise<void> =>
+      electron.ipcRenderer.invoke("cashu:banking-open", { vaultId, url }),
+  });
   electron.contextBridge.exposeInMainWorld("cashuPairing", {
     invite: (input: unknown): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:pairing-invite", input),

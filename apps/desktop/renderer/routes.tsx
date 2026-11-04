@@ -29,6 +29,7 @@ import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
 import { BudgetView } from "./screens/budget/BudgetView.js";
 import { type BudgetTab, useBudgetScreen } from "./screens/budget/useBudgetScreen.js";
 import { DevicesScreen } from "./screens/devices/DevicesScreen.js";
+import { BankingSettingsPanel } from "./screens/banking/BankingSettingsPanel.js";
 import { PortfolioScreen } from "./screens/investments/PortfolioScreen.js";
 import { LoansScreen } from "./screens/loans/LoansScreen.js";
 import { OverviewView } from "./screens/overview/OverviewView.js";
@@ -701,6 +702,7 @@ function SettingsBound({
   return (
     <SettingsView
       devicesPanel={<DevicesScreen />}
+      bankingPanel={state.modules.some((module) => module.id === "budget" && module.enabled) ? <BankingSettingsPanel /> : null}
       state={state}
       section={section}
       strategyPanel={

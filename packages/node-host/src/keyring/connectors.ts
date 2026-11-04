@@ -140,6 +140,15 @@ export function createProductionConnectorSecretVault(
   return make(authority, identity, `cashu-next.connectors.v1.${hash}`, nativeOsKeyring());
 }
 
+/** Owner deletion can clear known binding keys even when connector approval is disabled or changed. */
+export function createProductionConnectorSecretCleanup(
+  authority: ConnectorSecretAuthority,
+  identity: ConnectorSecretIdentity,
+): Pick<ConnectorSecretVault, "clear"> {
+  const vault = createProductionConnectorSecretVault(authority, identity);
+  return { clear: (secretId) => vault.clear(secretId) };
+}
+
 /** Strict synthetic Keyring only; never touches the real OS service. */
 export function createTestConnectorSecretVault(
   authority: ConnectorSecretAuthority,

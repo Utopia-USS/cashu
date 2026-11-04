@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   ApprovalRequired,
+  ConnectorRemovalFixture,
   ConnectorsReady,
   Ready,
   UnboundProviders,
@@ -104,6 +105,35 @@ it("shows a populated connector with a boolean control and no raw cursor", async
     );
     expect(enabled?.querySelector('input[type="checkbox"]')).not.toBeNull();
     expect(container.textContent).not.toContain("page-2");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("requires explicit all-profile confirmation before removing a connector", async () => {
+  setLanguageForTests("en");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const onAction = vi.fn(async () => undefined);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  try {
+    await act(async () => root.render(<ConnectorRemovalFixture onAction={onAction} />));
+    const remove = [...container.querySelectorAll("button")].find(
+      (item) => item.textContent === "Remove connector from all profiles",
+    );
+    expect(remove).toBeDefined();
+    await act(async () => {
+      remove?.click();
+    });
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("all profiles"));
+    expect(onAction).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    await act(async () => {
+      remove?.click();
+    });
+    expect(onAction).toHaveBeenCalledWith({ op: "remove", id: "synthetic-fetch", allVaults: true });
   } finally {
     await act(async () => root.unmount());
     container.remove();

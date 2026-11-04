@@ -8,6 +8,7 @@ import { DailyPriceLock } from "@cashu/store/investments/services";
 import type { StrategyDirectoryAuthority } from "../proposals/strategyFiles.js";
 import type { OpenVault } from "../stores.js";
 import type {
+  BudgetSyncPort,
   ConnectorFetchPort,
   WorkerBindings,
   WorkerHostContext,
@@ -32,6 +33,7 @@ export interface ProductionWorkerInput {
   readonly notifier?: WorkerNotifier;
   /** Bound host-only connector executor. Its final import command checks the D7 holder again. */
   readonly connectors?: ConnectorFetchPort;
+  readonly budget?: BudgetSyncPort;
   /** Shared with checked proposal approval so daily evaluation and imports cannot overlap. */
   readonly dailyLock?: DailyPriceLock;
 }
@@ -77,7 +79,8 @@ export function createProductionWorkerBindings(
   // Claim file-capable vaults and native connector vaults. A budget-only connector does not depend
   // on a strategy directory; an unbound worker still leaves missing file authority untouched.
   const eligible = currentVaults.filter(
-    (vault) => fileFor(vault) !== null || input.connectors !== undefined,
+    (vault) =>
+      fileFor(vault) !== null || input.connectors !== undefined || input.budget !== undefined,
   );
   const workerDir = join(input.dataDir, "worker");
   ensurePrivateDir(workerDir);
@@ -107,13 +110,13 @@ export function createProductionWorkerBindings(
         : null,
     fetchAuthority: (vault, job) =>
       (job === "investments.daily" ||
-        (job === "connectors.fetch" && input.connectors !== undefined)) &&
+        (job === "connectors.fetch" && input.connectors !== undefined) ||
+        (job === "budget.sync" && input.budget !== undefined)) &&
       vault.mode === "native" &&
       input.canFetchPublicMarket !== undefined
         ? { isHolder: () => host.isCurrent(vault) && input.canFetchPublicMarket?.(vault) === true }
         : null,
-    // A real public-market source and cache-write lease binding is a separate T56 capability.
-    // Offline local evaluation remains available with the exact authenticated strategy files.
+    // Public sources remain absent until the production cache/transport binding is admitted.
     offline: true,
     language: input.language,
     investments: {
@@ -123,6 +126,7 @@ export function createProductionWorkerBindings(
       ...(input.notifications === undefined ? {} : { notifications: input.notifications }),
     },
     ...(input.connectors === undefined ? {} : { connectors: input.connectors }),
+    ...(input.budget === undefined ? {} : { budget: input.budget }),
     ...(input.notifier === undefined ? {} : { notifier: input.notifier }),
     unavailable(vault, job) {
       if (vault.mode !== "native" || !host.isCurrent(vault)) return "native_admission_unavailable";
@@ -142,7 +146,16 @@ export function createProductionWorkerBindings(
                 ? null
                 : "ownership_unavailable"
           : null;
-      if (job === "budget.sync") return modules.has("budget") ? "bank_provider_unavailable" : null;
+      if (job === "budget.sync")
+        return modules.has("budget")
+          ? input.budget === undefined
+            ? "bank_provider_unavailable"
+            : input.canFetchPublicMarket?.(vault) !== true
+              ? "fetch_authority_unavailable"
+              : ownership.isExclusive(job, vault)
+                ? null
+                : "ownership_unavailable"
+          : null;
       return modules.has("investments") &&
         (input.notifier === undefined || input.notifications === undefined)
         ? "notifier_unavailable"

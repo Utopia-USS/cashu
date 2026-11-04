@@ -27,6 +27,7 @@ import { finishMcpCall, startMcpCall } from "@cashu/store/device";
 import { runHostVaultCommand } from "../commands.js";
 import type { HostLog } from "../log.js";
 import type { HostStores, OpenVault } from "../stores.js";
+import type { connectorMcpPort } from "./connectors.js";
 
 export interface NativeMcpOptions {
   readonly investmentAsync?: InvestmentAsyncCapabilities;
@@ -55,6 +56,7 @@ export interface NativeMcpOptions {
     readonly name: string;
     readonly bytes: Uint8Array;
   };
+  readonly connectors?: ReturnType<typeof connectorMcpPort>;
 }
 function localDay(ms: number): string {
   const date = new Date(ms);
@@ -63,6 +65,7 @@ function localDay(ms: number): string {
 const unique = (values: readonly string[]): string[] => [...new Set(values)];
 export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
   const { vault, stores, now } = options;
+  const connectorPort = options.connectors;
   const readBudgetImportFile = options.readBudgetImportFile;
   const readInvestmentImportFile = options.readInvestmentImportFile;
   const readInvestmentMappingFile = options.readInvestmentMappingFile;
@@ -170,6 +173,74 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
       let investmentWritesResolved = false;
       const store: NativeToolStore = {
         read: scopedRead,
+        ...(connectorPort === undefined
+          ? {}
+          : {
+              connectors: {
+                list: connectorPort.list,
+                testFile: connectorPort.testFile,
+                propose: async (input: { readonly path?: string; readonly catalogId?: string }) => {
+                  if (preparation) throw new Error("native preparation cannot write");
+                  assertContextCurrent();
+                  if (ran) throw new Error("multiple native MCP write commands require an overlay");
+                  if (!vault.native)
+                    throw new Error("connector proposals require native durable authority");
+                  ran = true;
+                  writePending = true;
+                  writeUncertain = true;
+                  const key = requestKey ?? mintUlid(now(), (n) => new Uint8Array(randomBytes(n)));
+                  dispatchedKey = key;
+                  try {
+                    const result = await vault.queue.run(async () => {
+                      assertContextCurrent();
+                      const existing = await vault.native?.attempts.lookup(vault.id, key);
+                      if (existing?.phase !== "absent")
+                        throw new ToolError(
+                          "request key already belongs to another write",
+                          "outcome_unknown",
+                          { system: true, requestKey: key },
+                        );
+                      return connectorPort.propose(input, key);
+                    });
+                    writeCompleted = true;
+                    writeUncertain = false;
+                    return result;
+                  } catch (error) {
+                    if (error instanceof ToolError) throw error;
+                    const state = connectorPort.proposalStatus(key);
+                    if (state === "absent") {
+                      const code = error instanceof Error ? error.message : "";
+                      const invalid = [
+                        "connector_path_invalid",
+                        "connector_proposal_invalid",
+                        "invalid_manifest",
+                      ].includes(code);
+                      const unavailable = [
+                        "connector_catalog_entry_unavailable",
+                        "connector_workspace_unavailable",
+                        "connector_profile_unavailable",
+                        "connector_mcp_authority_lost",
+                      ].includes(code);
+                      if (invalid || unavailable) {
+                        writeUncertain = false;
+                        throw new ToolError(
+                          invalid ? "invalid connector proposal" : "connector proposal unavailable",
+                          invalid ? "invalid" : "unavailable",
+                          { system: true },
+                        );
+                      }
+                    }
+                    throw new ToolError(
+                      "connector proposal outcome unknown; inspect the original key",
+                      "outcome_unknown",
+                      { system: true, requestKey: key },
+                    );
+                  } finally {
+                    writePending = false;
+                  }
+                },
+              },
+            }),
         get investmentAsync() {
           assertContextCurrent();
           const candidate = options.investmentAsync;
@@ -261,11 +332,29 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
           if (ran) throw new Error("multiple native MCP write commands require an overlay");
           ran = true;
           if (vault.native !== undefined) {
-            writePending = true;
-            writeUncertain = true;
             const key = requestKey ?? mintUlid(now(), (n) => new Uint8Array(randomBytes(n)));
             dispatchedKey = key;
-            return runHostVaultCommand(vault, command, input, key, currentForWrite)
+            try {
+              if (connectorPort && connectorPort.proposalStatus(key) !== "absent")
+                throw new Error("request_key_conflict");
+            } catch {
+              throw new ToolError(
+                "this key belongs to a connector proposal; inspect its original status",
+                "outcome_unknown",
+                { system: true, requestKey: key },
+              );
+            }
+            writePending = true;
+            writeUncertain = true;
+            return runHostVaultCommand(
+              vault,
+              command,
+              input,
+              key,
+              () =>
+                currentForWrite() &&
+                (!connectorPort || connectorPort.proposalStatus(key) === "absent"),
+            )
               .then((outcome) => {
                 const result = outcome;
                 if (result.kind === "completed") {
@@ -375,6 +464,11 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
                   return { kind: "outcome_unknown" as const };
                 try {
                   const status = await vault.native.attempts.lookup(vault.id, key);
+                  const connector = connectorPort?.proposalStatus(key);
+                  if (connector !== undefined && connector !== "absent")
+                    return connector === "completed" && status.phase === "absent"
+                      ? { kind: "completed" as const }
+                      : { kind: "outcome_unknown" as const };
                   if (status.phase === "completed") return { kind: "completed" as const };
                   if (status.phase === "terminal") return status.result;
                   return { kind: "outcome_unknown" as const };

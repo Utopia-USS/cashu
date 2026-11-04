@@ -18,6 +18,7 @@ def _native_record(root, vault: str = "a" * 32) -> None:
         "jobs": {
             "investments.daily": {"owner": "native", "vaults": [vault]},
             "connectors.fetch": {"owner": "native", "vaults": [vault]},
+            "budget.sync": {"owner": "native", "vaults": [vault]},
         },
     }), encoding="utf-8")
     os.chmod(path, 0o600)
@@ -30,11 +31,11 @@ def test_missing_switch_keeps_python_owner(tmp_path, monkeypatch):
     assert not ownership.python_owns("unknown")
 
 
-def test_native_daily_and_connector_switch_exclude_python_but_not_bank(tmp_path, monkeypatch):
+def test_native_daily_connector_and_bank_switch_exclude_python(tmp_path, monkeypatch):
     monkeypatch.setattr(ownership.paths, "data_dir", lambda: tmp_path)
     _native_record(tmp_path)
     assert not ownership.python_owns("investments.daily")
-    assert ownership.python_owns("budget.sync")
+    assert not ownership.python_owns("budget.sync")
     assert not ownership.python_owns("connectors.fetch")
     assert ownership.python_owns("notifications")
 
