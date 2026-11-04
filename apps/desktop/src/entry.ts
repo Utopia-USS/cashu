@@ -29,6 +29,10 @@ if (
     registerEarlyResponses: registerEarlyNotificationResponses,
     loadMain: () => import("./main.js"),
     runHelper: async () => (await import("./notification/helper.js")).runNotificationHelper(),
+    refuseCommand: (command) =>
+      process.stderr.write(
+        `cashU: "${command}" is not a command of this app; use ${process.execPath} only to open the window, and the bundled shim (Contents/Resources/shim.mjs) for the CLI\n`,
+      ),
   });
   if (exitCode !== null) app.exit(exitCode);
 }
