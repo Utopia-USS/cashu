@@ -5,7 +5,7 @@ import { useUiEnv } from "@cashu/ui";
 import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { useDurableCommands } from "../useDurableCommand.js";
-import { groupSection, railRows, railSummary } from "./signalModels.js";
+import { dayReadInstant, groupSection, railRows, railSummary } from "./signalModels.js";
 import { useAlertsPage } from "./useAlertsPage.js";
 import { useDecisionDialog } from "./useDecisionDialog.js";
 import { useDecisionUndo } from "./useDecisionUndo.js";
@@ -43,9 +43,9 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   const today = useCalendarDay();
   const displayNow = useDisplayClock(today);
   const snapshot = useQuery(query, {
-    // The host's live clock wins when bound; a local day-scoped read clock keeps native displays
-    // usable before that provider is installed. It never grants write or fetch authority.
-    now: displayNow,
+    // The host's live clock wins when bound. The key holds only day-scoped values: the per-minute
+    // display clock stays out of it, so remounting a surface a minute later reuses the same read.
+    now: dayReadInstant(today),
     today,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     lang: lang(),
@@ -98,7 +98,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     /** The live snapshot, or null while unavailable (privacy mode, module off). */
     data,
     privacy,
-    /** The read clock of this instance (an ISO instant). */
+    /** The display clock of this instance (an ISO instant, current minute); display-only. */
     displayNow,
     feedback: feedback.state,
     rail: {

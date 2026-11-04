@@ -13,11 +13,13 @@ export function ReviewView({ state }: { state: ReviewScreenState }) {
     if (state.card) ref.current?.focus();
   }, [state.card]);
   if (state.privacy) return <p>{R.privacy}</p>;
-  // The research reader replaces the deck while it is open; a suspended session shows nothing.
-  if (state.suspended || state.reader) return null;
+  // A suspended session shows nothing. The research reader opens as a dialog over the deck: the deck stays
+  // mounted (hidden, inert under the reader) so its scroll position, focus return and history entry survive.
+  if (state.suspended) return null;
   return (
     <Modal
       panelRef={ref}
+      className={state.reader ? "invisible" : ""}
       focus="panel"
       label={state.session?.snapshot.name ?? R.title}
       placement="center"

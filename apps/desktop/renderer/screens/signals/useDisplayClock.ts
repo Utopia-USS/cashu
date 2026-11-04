@@ -2,10 +2,9 @@ import { useState } from "react";
 import { minuteInstant } from "./signalModels.js";
 
 /**
- * A read-only fallback clock for the Signals query, per hook instance and refreshed when the
- * calendar day changes; the host's live clock overrides it once bound. It never grants write or
- * fetch authority. The first read suspends and React retries the render without kept state, so the
- * instant is the current minute: retries within that minute ask for the same query key.
+ * A display-only clock per hook instance (the current minute, refreshed when the calendar day changes)
+ * for values such as note ages. It is never part of a query key: the Signals query reads
+ * `dayReadInstant(today)`, so a new instance after a minute does not change what is asked for.
  */
 export function useDisplayClock(day: string, now: () => Date = () => new Date()): string {
   const [clock, setClock] = useState(() => ({ day, instant: minuteInstant(now()) }));

@@ -10,6 +10,7 @@ import {
 import { journalModel } from "./journalModels.js";
 import { signalGroups } from "./presentation.js";
 import {
+  dayReadInstant,
   decisionHeader,
   groupOfSignal,
   groupSection,
@@ -81,8 +82,9 @@ it("maps a suggestion to the form action and the deposit day to its local end", 
   expect(snoozeInstant("2026-11-10")).toBe(new Date("2026-11-10T23:59:00").toISOString());
 });
 
-it("keeps one read clock per minute so Suspense retries share a query key", () => {
+it("rounds the display clock to the minute and reads the query at the start of the day", () => {
   expect(minuteInstant(new Date("2026-11-03T12:34:56.789Z"))).toBe("2026-11-03T12:34:00.000Z");
+  expect(dayReadInstant("2026-11-03")).toBe(new Date("2026-11-03T00:00:00").toISOString());
 });
 
 describe("alerts", () => {
