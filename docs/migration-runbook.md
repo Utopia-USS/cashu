@@ -91,7 +91,8 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
    Check: `launchctl list | grep -E 'cashu|finanse'` prints nothing and
    `ls ~/Library/LaunchAgents | grep -E 'cashu|finanse'` prints nothing. This matters: the native
    executable `Contents/MacOS/cashU` has the same name as the Python `cashu` on a case-insensitive
-   disk, so a leftover agent would start the native app every day.
+   disk, so a leftover agent would call the native app every day (it refuses any command argument
+   with exit code 64 and opens no window, but the agent would keep failing).
 3. **Remove the Python MCP registrations** for the same reason. Note the scope and slug first:
    ```sh
    claude mcp get cashu-profile-a      # args end in: mcp --profile profile-a ; note the scope
@@ -192,7 +193,9 @@ migrate verify". Exit code 0 means done. Run again on an imported folder (with o
 10. **Sparkle**: the native bundle has no Sparkle and its updater has no release feed configured yet,
     so nothing updates it automatically. Replacing the bundle removed the Python updater. Do not
     publish further Python releases (`scripts/release_macos.sh`); a Python install elsewhere would
-    still follow `releases/latest` of the Python feed.
+    still follow `releases/latest` of the Python feed. The native app's version starts at 0.5.0,
+    above the last Python release (0.4.6), so any later version comparison between the two orders
+    them correctly.
 11. **Old keychain items** (service `cashu`: `anthropic`, `connector/...`; legacy service `finanse`)
     stay untouched and unused. Remove them only after you are sure you will not roll back.
 
