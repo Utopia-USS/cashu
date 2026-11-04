@@ -4,159 +4,134 @@ What this is: the inventory of the repository (what lives where), so an agent re
 
 ## How to use this
 
-Find the file that owns a concern before adding one. The app is a **core** plus **modules**: core is
-always on (profiles, accounts, balances, net worth, registries, data dir, migrations, local API
-security); each module owns its tables, API router, CLI commands and blank-page setup steps and
-registers them with a `ModuleSpec`. A module never imports another module's internals: cross-module
-needs go through core (net-worth contributors, account types, institutions, categorization hooks).
-Rows marked (+) were added when this map moved out of `AGENTS.md`; they describe files that existed
-but were not listed before.
-
-## TypeScript workspace
+Find the file that owns a concern before adding one. The app is a **core** plus **modules** (budget,
+assets, loans, investments): core is always on (profiles, accounts, balances, net worth, registries,
+proposals, workspaces); each module owns its domain rules, events, views, commands, CLI commands,
+MCP tools and setup steps. A module never imports another module's internals: cross-module needs go
+through core (net-worth contributors, account types, institutions, categorization hooks).
 
 Dependencies point down the [layer table](../../tools/claude-dev/skills/cashu-ts-architecture/references/layers.md),
-enforced by `LAYERS` in [depcruise.config.cjs](../../tools/arch/depcruise.config.cjs).
-Apps compose packages and never import another app. `frontend/` remains the legacy SPA workspace member.
+enforced by `LAYERS` in [depcruise.config.cjs](../../tools/arch/depcruise.config.cjs) (`pnpm arch:check`).
+Apps compose packages and never import another app.
+
+## Workspace members
 
 | Path | Layer | Purpose |
 |---|---|---|
-| `packages/domain/` | Domain | Pure core/module types, validation, calculations, import parsing and rules; no IO or external runtime imports. |
-| `packages/sync/` | Sync | Event log, HLC, crypto, carrier/transport interfaces and device membership; may depend on domain. |
-| `packages/market/` | Market | Leader-only HTTP market/calendar sources behind injected fetch; parsing contracts live in domain. |
-| `packages/store/` | Store | Event schemas, materializers, queries, commands and device-local state; depends on domain/sync. |
-| `packages/store-react/` | Store bindings | React query/command hooks and providers, plus React-free client/local/host/protocol store-port subpaths. |
-| `packages/i18n/` | i18n | PL/EN catalogs, plurals, formatting and explicit backend translation contexts; depends on domain. |
-| `packages/ui/` | UI system | Shared tokens, display components and platform controls; no store access. |
-| `packages/ui-logic/` | UI logic | Platform-free reusable UI logic and feature hooks; no app screens. |
-| `packages/api/` | Services | HTTP surface scaffold; route implementations are not ported yet. |
-| `packages/mcp/` | Services | Privacy/redaction and tool registry; the MCP server/tools remain a later scope. |
-| `packages/parity/` | Verification tooling | TS producers and Python-golden comparer; may import domain, store and mcp. |
-| `apps/desktop/` | Apps | Electron main/preload/renderer shell, Python sidecar and opt-in TS store utility process. |
+| `packages/domain/` | Domain | Pure core/module types, validation, calculations, bank parsers, categorization and investments rules; no IO or external runtime imports. |
+| `packages/sync/` | Sync | Event log, HLC, crypto, carrier/transport interfaces and device membership; depends on domain. |
+| `packages/market/` | Market | Leader-only HTTP market/calendar sources (Yahoo, stooq, NBP) behind an injected fetch; parsing contracts live in domain. |
+| `packages/llm/` | LLM | Ollama and Anthropic clients for categorization behind ports. |
+| `packages/store/` | Store | Event schemas, materializers, queries, commands and services per module; vault and device stores; genesis import of Python data. |
+| `packages/store-react/` | Store bindings | React `useQuery` / command hooks and providers, plus React-free client/local/host/protocol store ports. |
+| `packages/i18n/` | i18n | PL/EN catalogs, plurals, formatting and explicit backend translators; depends on domain. |
+| `packages/ui/` | UI system | Shared tokens, display components, charts and platform controls; no store access. |
+| `packages/ui-logic/` | UI logic | Platform-free UI logic and feature hooks (formatters, backend code labels, module logic); no app screens. |
+| `packages/mcp/` | Services | MCP tool registry, tool handlers per module, privacy labels / redaction / audit and the native server runtime. |
+| `packages/api/` | Services | HTTP surface scaffold. |
+| `packages/host-protocol/` | Protocol | The host wire protocol: frames, handshake, roles, CLI / MCP / store / admin / banking messages, packaged-build rules (`packaged-build.md`, `native-creation.md`). |
+| `packages/node-host/` | Node platform | Node adapters: SQLite, keyring (and the `cashu-next-test.*` test key store), folder IO, guards, language source, host service helpers. |
+| `packages/parity/` | Verification tooling | TS producers and the comparer against the Python goldens (`pnpm parity`, `pnpm parity:produce`). |
+| `apps/host/` | Apps | One local host per data dir: exclusive stores, CLI and MCP sessions, worker, connectors, workspaces, banking, sync, Python-data migration. |
+| `apps/desktop/` | Apps | Electron main/preload, React renderer, e2e suite, macOS packaging and native helpers. |
+| `apps/cli/` | Apps | The `cashu` shim: a thin client of the host; bundled into the app as `shim.mjs`. |
 | `apps/mobile/` | Apps | Expo/Hermes development client, routes/screens and native store/crypto/platform adapters. |
-| `apps/cli/` | Apps | Node CLI entry; currently dispatches the lab genesis command, not the full Python command tree. |
-| `apps/relay/` | Apps | Relay app scaffold. |
-| `apps/host/` | Apps | One local host per data dir: exclusive stores, CLI and MCP sessions, sync carrier and Python outbox bridge; `src/sync/harness/` runs bridge parity through the host. |
-| `tools/arch/` | Development tooling | Architecture runner, dependency graph, lint/unused-code/package checks and regression guards. |
-| `tools/claude-dev/` | Development tooling | Repo-local TS architecture/UI skills and file-check hook; not shipped to profile workspaces. |
-| `tools/node-ts/` | Development tooling | Resolver for running workspace TS sources with Node type stripping. |
-| `parity/` | Verification fixtures/oracle | Python golden producers, synthetic committed demo outputs and canonicalization rules; see its README. |
+| `apps/relay/` | Apps | Sync relay scaffold. |
+| `tools/arch/` | Development tooling | `pnpm arch:check`: runner, dependency graph, ESLint (react-hooks), Knip, sherif and the guard tests (`src/guards/`). |
+| `tools/claude-dev/` | Development tooling | Repo-local TS architecture/UI skills and the file-check hook; not shipped to profile workspaces. |
+| `tools/node-ts/` | Development tooling | Resolver for running workspace TS sources with Node type stripping (`resolveTs.ts`). |
+| `parity/` | Verification oracle | `parity/python/`: the frozen Python app used only to produce goldens, plus synthetic committed demo outputs; never shipped. See [parity/README.md](../../parity/README.md). |
 
-## `src/cashu/` (top level)
+## `packages/domain/src/`
 
 | Path | Purpose |
 |---|---|
-| `cli.py` | Typer root: `--profile`, core + module commands, `stats` (entry point) |
-| `config.py` | Settings (pydantic-settings), reads the checkout's `.env`, then `<data dir>/.env` (wins; the packaged app's) (`CASHU_` prefix) |
-| `models.py` | facade: every table (scripts, Alembic env) |
-| `db.py` | alias of `core/db.py` (`cashu.db.engine` still works) |
-| `desktop/` | `cashu app` (pywebview window over in-process uvicorn, single instance), `cashu skills install`, `entry.py` = the packaged app's entry point, `updater.py` = Sparkle auto-update of cashU.app (own user driver; the dashboard card is its UI) |
-| `api/app.py` | FastAPI composition: `/api/p/{slug}/...` + legacy `/api/...` aliases, SPA |
-| `api/static/index.html` | fallback page "build the frontend" (when `webdist/` is absent) |
-| `api/webdist/` | built React SPA (git-ignored, `npm run build`) |
+| `core/profiles.ts` | slugs, the default slug, module choice, privacy levels (`strict` / `amounts`) |
+| `core/modules.ts`, `core/builtinModules.ts` | `ModuleSpec`, `MODULE_IDS`, the four built-in module specs and the core registry |
+| `core/accountTypes.ts` | account type registry: sign, liquid, net-worth bucket, labels |
+| `core/institutions.ts` | bank/broker registry (`BUILTIN_INSTITUTIONS`): CSV importer, Open Banking ASPSP patterns |
+| `core/networth.ts`, `core/valuation.ts` | net worth per currency over a `NetWorthBook`; `NetWorthContributor` and valuations |
+| `core/setup.ts` | blank-page setup steps and copyable command prefixes |
+| `core/workspace/` | the agent workspace plan: `MODULE_SKILLS`, managed CLAUDE.md sections, `.mcp.json` and settings rules |
+| `budget/ingestion/statements/` | the built-in bank CSV parsers (`mbank.ts`, `erste.ts`, `pekao.ts`, `registry.ts`); `ingestion/` also holds dedup, content keys and the canonical budget import format |
+| `budget/categorize/` | taxonomy, ~420 PL seed rules (`seedRules.ts`), engine, reclassify planning, LLM prompts (`llm/prompts.ts`) |
+| `budget/analytics/`, `budget/cash.ts`, `budget/transfers.ts` | cashflow, spending, recurring payments; the cash pool; internal transfers by IBAN |
+| `assets/` | manual positions, vehicle depreciation, net-worth contributor |
+| `loans/` | amortization, valuation, installment phrases (`patterns.ts`), net-worth contributor |
+| `investments/` | pure investments core: `domain/`, `portfolio/`, `market/`, `strategy/`, `rules/` (expression language: `rules/expr/EXPRESSIONS.md`), `importing/` (cashU import format, generic CSV mapping), `alerts/`, `plan/`, `performance/`, `research/`, `macro/`, `views/` |
+| `testing/` | synthetic seeds (`seedHousehold.ts`, `netWorthProfile.ts`) and vector loaders |
+| `pyJson.ts`, `pyRepr.ts`, `pyRegex.ts`, `pycsv.ts`, `pyYaml/` | Python-compatible primitives the port keeps byte-identical behaviour with (parsing old data and user files) |
 
-## `src/cashu/core/`
-
-| Path | Purpose |
-|---|---|
-| `db.py` | SQLite engine + pragmas (WAL, busy_timeout, foreign_keys), `init_db` |
-| `models.py` | Profile, ProfileModule, Account, Balance (+ AccountType, Source) |
-| `profiles.py` | profiles, slugs, the default profile, module choice per profile |
-| `modules.py` | `ModuleSpec` + registry (`cashu/modules/<id>/module.py`), `MODULE_IDS` |
-| `account_types.py` | account type registry: sign, liquid, net-worth bucket, PL label |
-| `institutions.py` | bank/broker registry: CSV importer, Open Banking ASPSP names (`BUILTIN`) |
-| `accounts.py` | `get_or_create_account`, balances, own IBANs (per profile) |
-| `networth.py` | net worth per currency from module `NetWorthContributor`s |
-| `api.py` | profile resolution, `/api/system(/update)`, `/modules`, `/profiles`, accounts, net worth |
-| `updates.py` | update check: version vs `pyproject.toml` on a GitHub branch (`CASHU_UPDATE_*`) |
-| `cli.py` | `init-db`, `serve`, `migrate-data`, `accounts`, `set-balance`, `profiles`, `secrets` |
-| `cliutil.py` (+) | shared CLI output helpers: `profile(session)`, one `console` for every module |
-| `text.py` | IBAN / text normalization shared by all modules |
-| `paths.py` | per-user data dir (platformdirs, `CASHU_DATA_DIR`), legacy `data/` detection |
-| `legacy.py` | `cashu migrate-data` (copy `data/` into the data dir with a backup) |
-| `env.py` | `env()`: `CASHU_*` variables, `FINANSE_*` (legacy name) as a fallback |
-| `migrate_legacy.py` | startup move of a pre-rename install (data dir, DB file, keychain, launchd) |
-| `migrations/` | Alembic: `env.py` + `versions/` (0001 baseline = upstream schema, 0002 profiles, ...) |
-| `security.py` | API token + Host check middleware, token meta tag |
-| `i18n.py` | UI language of backend texts: `tr(pl=, en=)`, `X-Cashu-Lang` middleware, app language in `settings.json` ([localization.md](localization.md)) |
-| `secrets.py` | OS keychain via keyring (`cashu secrets ...`) |
-| `runtime.py` | source checkout vs packaged app: the command other programs run (launchd, MCP snippets), bundled skills, `bundle_replaced()` (an update replaced the app under a running process) |
-| `worker/` | `cashu worker run|install|uninstall|status`: daily jobs for every profile, notifications, weekly digest, launchd agent (state + log in the data dir) |
-| `events.py` | typed `change_events` written in the same transaction as ORM writes (session hooks; live data) |
-| `live.py` | per-profile SSE change stream `GET /api/p/{slug}/changes/stream`, woken by `PRAGMA data_version` |
-| `changes.py` (+) | change token of the database: the open app re-reads views after another process committed |
-| `locks.py` (+) | named run locks shared by every process of one data dir (CLI, server, worker) |
-| `mcp/` (+) | MCP server (`cashu mcp --profile <slug>`): `server.py`, `registry.py` (`ToolSpec`), `labels.py`, `redaction.py`, `audit.py`, `tools/<module>.py` |
-| `agent_api.py`, `agent_models.py` (+) | agent layer API and tables: proposals, MCP call audit log, weekly reviews, MCP snippet |
-| `proposals.py`, `reviews.py` (+) | agent proposals applied only on owner approval; weekly review records |
-| `connectors/` (+) | owner-approved third-party connectors run out of process in a sandbox (manifest, protocol, runner, sandbox; `catalog.py` = the shipped community catalog `connectors/`) |
-| `workspace/` (+) | per-profile agent workspace (managed CLAUDE.md, `.mcp.json`, permissions); `skills.py` holds `CORE_SKILLS` / `MODULE_SKILLS` |
-| `uploads.py`, `types.py` (+) | size-capped multipart uploads of the local API; custom SQLAlchemy column types |
-
-## `src/cashu/modules/`
+## `packages/store/src/`
 
 | Path | Purpose |
 |---|---|
-| `budget/` | bank accounts, categorization, cashflow, recurring, cash pool |
-| `budget/module.py` | `ModuleSpec` (router, CLI, cash net-worth contributor, setup) |
-| `budget/models.py` | Transaction, CategoryRule, ImportBatch |
-| `budget/service.py` | ingestion choke point, CSV import, `categorize_all` |
-| `budget/cash.py` | the cash pool (one virtual account per currency and profile) |
-| `budget/analytics.py` | cashflow, spending, drill-down, recurring payments |
-| `budget/api.py`, `cli.py`, `setup.py`, `queries.py` | router, CLI commands, setup steps, queries |
-| `budget/imports.py` | in-app statement import: preview (staged, read-only) -> commit |
-| `budget/monthclose.py` | month close (`GET /budget/month-close`); `investing_link.py` reads the strategy's `contributions` |
-| `budget/ingestion/` | normalize, dedup, transfers, `csv_import/` (per-bank parsers on `base.py`), `enable_banking/`, `canonical.py` (cashu-budget-import, `docs/budget-import-format.md`) |
-| `budget/categorize/` | taxonomy (25 categories + ~420 PL rules), engine, rules, llm, local_llm, reclassify |
-| `assets/` | manual positions, vehicles (`depreciation.py`), net-worth contributor |
-| `loans/` | many loans per profile: `amortization.py`, `valuation.py`, `patterns.py`, api, cli |
-| `investments/` | brokerage accounts, imports, portfolio, strategy + rules, signals (`cashu invest`) |
-| `investments/domain/`, `portfolio/`, `market/`, `strategy/`, `rules/`, `importing/` | pure core (no DB, no IO) |
-| `investments/models.py`, `store/` | `inv_*` tables and repositories |
-| `investments/service/` | imports, daily check, strategy files, portfolio views, `prices.py`, `autorun.py` |
-| `investments/module.py`, `api.py`, `cli.py`, `networth.py`, `setup.py` | spec, router, CLI, contributor, setup |
-| `investments/live.py` | watched tables and list-row payloads for live data (pattern: `modules/<id>/live.py`) |
-| `investments/alerts/`, `plan/`, `performance/`, `research/` (+) | dynamic alerts, recommendation checks, performance vs benchmark, sourced research notes and segments |
-| `investments/perf_api.py`, `research_api.py` (+) | performance and research routes included into the investments router |
+| `events/v1/` | the normative v1 event catalog per module (spec: `packages/store/spec/events.md`) |
+| `registry.ts`, `modules.ts` | `StoreModule` (materializers, events, derivers, net worth, setup) and the built-in modules in fold order |
+| `materialize.ts`, `rebuild.ts`, `upcast.ts` | applying events to views, view rebuilds on a changed fingerprint, event upcasters |
+| `query.ts`, `subscribe.ts`, `command.ts` | `defineQuery`, the change hub (live queries), commands and durable command attempts |
+| `core/`, `budget/`, `assets/`, `loans/`, `investments/` | each module's views, queries, commands and services (profiles, profile modules, proposals, net worth book, prices, strategy documents, ...) |
+| `device/` | the device-local store (no event log) |
+| `genesis/` | converting a Python data dir into the first events of a vault (used by `cashu migrate`) |
+| `sql/` | system tables (`SYSTEM_SCHEMA_VERSION`) |
 
-## `frontend/` (React + Vite + TS SPA; UI strings are Polish)
+## `packages/mcp/src/`
 
 | Path | Purpose |
 |---|---|
-| `src/core/` | shell, profile switcher, wizard, settings, API client; `messages.ts` (Polish labels for backend codes), `live.ts` + `useLive.ts` |
-| `src/modules/<id>/` | each module's tabs and its SetupPage |
-| `src/widgets.tsx`, `grid.ts` | v2 widget grid on thirds (Grid, Widget, Facts, Hero, badges) |
-| `src/charts.tsx` (geometry and texts: `@cashu/ui/charts/geometry`, `@cashu/ui/charts/strings`) | v2 SVG charts (line + benchmark + levels, bars, donut, sparkline); the TS stack's charts (web + native) are `packages/ui/src/charts/` on the same geometry |
-| `src/ui.tsx`, `css.ts`, `index.css` (formatters: `@cashu/ui-logic/core/format`) | shared primitives and tokens |
-| `src/core/platform.ts`; `packages/i18n` (`@cashu/i18n`), `packages/ui-logic` (`@cashu/ui-logic`) | browser wiring of the platform-free packages: UI language and `catalog({ key: { pl, en } })` text catalogs, the pure logic (formatters, time, backend code labels, module `logic.ts`) ([localization.md](localization.md)) |
-| `src/core/api.ts`, `src/modules/<id>/api.ts` | typed API functions; `j` / `jpost` / `jdel` (in `core/api.ts`) send the token |
-| `src/modules/investments/v2/priceRefresh.ts` | open-app quote refresh (on open and every 15 min) |
-| `src/components/ScrollableChart.tsx` | window+scroll+axis+grid charts of the budget and loan pages |
-| `e2e/` | Playwright smoke suite (see [running.md](running.md)) |
+| `registry.ts` | `ToolSpec`, `toolSpec()`, `ToolError`, module gating (`enabledIn`), provider order |
+| `tools/` | tool handlers per module (`core`, `budget`, `loans`, `investments`, `investmentWrites`, `research`, `connectors`) |
+| `runtime/` | `NativeMcpServer` (`server.ts`), the canonical tool order and schemas (`toolSchemas.ts`, `metadata.ts`) |
+| `privacy/` | sensitivity labels, the redactor (strict drops amounts, identifiers never pass), name guard, scrub, audit |
+| `providers/` | per-call store providers and the name guard |
+
+## `apps/host/src/`
+
+| Path | Purpose |
+|---|---|
+| `main.ts`, `host.ts`, `cli.ts` | host entry (`run` / `status` / `stop` / `migrate`), lifecycle, idle linger (10 min) |
+| `localHost/` | startup (stores, launcher, worker), UI / CLI / MCP session wiring, RPCs (banking, devices, notifications, market) |
+| `stores.ts`, `nativeVault/`, `nativeCreation*.ts` | opening the device store and the per-profile vaults; native profile creation with the 24-word recovery phrase |
+| `launcher.ts`, `runtime.ts` | the stable launcher `<data dir>/bin/cashu`; source vs packaged runtime, shipped skills and connector catalog |
+| `cli/` | the hosted `cashu` command tree: `tree.ts` (routing, retired commands), `ported.ts` (registration), `help.strings.ts`, per-module dirs (`budget/`, `assets/`, `loans/`, `investments/`, `connectors/`, `core/`), `banking.ts`, `workerWorkspace.ts` |
+| `mcp/` | MCP sessions and the native backend; `tools.test.ts` pins the tool inventory |
+| `worker/` | daily jobs (connectors fetch, investments daily check, budget sync, notifications, weekly digest), schedule (default 07:30) |
+| `connectors/`, `connectorRuntime.ts`, `connector*.ts` | connector manifest, catalog, interpreter lookup, sandbox runner, egress proxy, secrets, offline test, install / approval / removal |
+| `banking/` | Enable Banking client, consent callback, sync into the budget |
+| `classification/` | categorization providers (Ollama, Anthropic with owner consent) |
+| `workspace/` | per-profile agent workspace (managed CLAUDE.md, `.mcp.json`, `.claude/settings.json`, skills); `skillReferences.ts` = the reference copies inside skills |
+| `migration/` | `cashu migrate` / `cashu migrate verify`: the in-place import of a Python data dir ([runbook](../migration-runbook.md)) |
+| `market/`, `notifications/`, `proposals/`, `sync/`, `pairing/`, `devices/` | market data wiring and price cache; OS notifications; proposal approval; sync carrier; device pairing |
+| `*Screen.ts` | screen data the renderer asks for (overview, investments, signals, review, research, strategies, proposals, settings) |
+| `testing/` | synthetic hosts and demos (`devDemo.ts`, `seedOverviewDemo.ts`, ...) |
+| `scripts/genConnectorSchemas.ts`, `scripts/syncSkillReferences.ts` | `gen:connector-schemas` and `skills:sync` (`--check` verifies) |
+
+## `apps/desktop/`
+
+| Path | Purpose |
+|---|---|
+| `src/main.ts`, `src/entry.ts`, `src/entryDispatch.ts` | Electron main: window, tray, deep links, host launch and relay, recovery; refuses CLI commands on the app binary |
+| `src/update/` | auto-update (electron-updater) authority, controller and release policy |
+| `renderer/` | React renderer: `routes.tsx`, `shell/`, `screens/<feature>/` (screen hook `use*Screen.ts` + pure `*View.tsx` + `*.strings.ts` + stories) |
+| `e2e/` | Playwright suite (`desktop-specs/`, `global-setup.ts`) |
+| `scripts/` | `dev.mjs` (dev run on a demo), `build-main.mjs`, `build-host.mjs` (bundles `host.mjs` and `shim.mjs`), `build-native.mjs`, `package-macos.mjs`, `verify-package.mjs` |
+| `build/electron-builder.config.cjs`, `build/entitlements.mac.plist` | packaging config |
+| `native/`, `service/` | the macOS notification and host-service helpers, the host LaunchAgent |
 
 ## Other top-level paths
 
 | Path | Purpose |
 |---|---|
-| `docs/connectors.md` | connector contract for outside authors (manifest, protocol, sandbox); schemas in `docs/schemas/` |
+| `docs/connectors.md` | connector contract for outside authors (manifest, protocol, sandbox); schemas in `docs/schemas/` (generated) |
 | `docs/import-format.md`, `docs/budget-import-format.md` | cashU investments / budget import formats |
-| `connectors/` | community connector catalog (contrib status, one dir per connector with `fixtures/`; shipped with the app, see its `README.md`) |
-| `examples/connectors/` | three tested example connectors (budget CSV, investments JSON, fetch with a fixture) |
-| `packaging/` | PyInstaller spec, entitlements, icon (macOS); `windows/` = documented stub; `README.md` = build decisions |
-| `scripts/build_macos.sh` | builds cashU.app (SPA, icon, bundle; signs/notarizes from env vars; bundles Sparkle with `SPARKLE_PUBLIC_ED_KEY`) |
-| `scripts/make_appcast.py` | signs a release archive for Sparkle and writes its update feed |
-| `scripts/release_macos.sh` | the owner's local release: preflight, signed + notarized build of `origin/main`, update feed, GitHub release ([RELEASING.md](../../packaging/RELEASING.md)) |
-| `scripts/fetch_sparkle.sh` | fetches the pinned Sparkle release (framework + signing tools) |
-| `scripts/bump_version.py` | version bump run by `.github/workflows/bump-version.yml` on every push to `main` |
-| `scripts/demo_data.py` | two synthetic demo profiles (see [running.md](running.md)) |
-| `scripts/gen_connector_schemas.py` (+) | regenerates `docs/schemas/*.json` from the pydantic models (`--check` in tests) |
-| `scripts/sync_skill_references.py` (+) | refreshes the reference copies inside `.claude/skills/*/references/` (`--check` in tests) |
-| `scripts/render_research_prototype.py` | renders the headline-first research prototype (`scripts/prototypes/research_story.html`) with a profile's own data from the installed app, locally, into git-ignored `build/prototypes/` |
+| `docs/migration-runbook.md` | moving an install from the Python app to the native app |
+| `connectors/` | community connector catalog (contrib status, one dir per connector with `fixtures/`; shipped with the app, see its `README.md`); `<bank>-csv/` are the Deno twins of the built-in parsers |
+| `examples/connectors/` | tested example connectors (budget CSV, investments JSON and fetch in Python; a Deno budget example) |
+| `packaging/icon/` | the app icon used by electron-builder |
 | `.claude/skills/` | the shipped product skills (see [skills.md](skills.md)) |
-| `.claude/launch.json` | `dashboard` preview config (`cashu serve`) |
 | `.claude/settings.json`, `.claude-plugin/`, `tools/claude-dev/` | repo-local dev plugin `cashu-dev`: the TS development skills (`cashu-ts-architecture`, `cashu-ui`), `scripts/check-file.sh` and its PostToolUse hook; never shipped to workspaces |
-| `tools/arch/` | `pnpm arch:check`: Biome layer overrides live in `biome.json`; here the ESLint (react-hooks), dependency-cruiser and Knip configs, the runner and the guard tests (`src/guards/`) |
-| `tests/` | pytest - synthetic data, no real data |
-| `data/` | (git-ignored) legacy location of DB/keys/sessions (see `cashu migrate-data`) |
+| `.github/workflows/ts.yml` | CI: install, `turbo run typecheck lint test`, exhaustive tests, `arch:check`, mobile bundle check |
+| `data/` | (git-ignored) local drop folder (`data/incoming/` is the default of `cashu import-dir`) |
 | `statements/` | (git-ignored) drop CSV statements here - empty in the repo |
 
 ## When to add a new entry

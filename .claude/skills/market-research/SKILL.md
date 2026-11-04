@@ -89,7 +89,7 @@ What they mean here:
 - Public web pages only: no logins, no paywall or bot-protection workarounds; a blocked source is
   skipped and counted.
 - The profile's data reaches you only through its cashU MCP server, logged in Ustawienia > Agent AI.
-  Never read the data dir, `cashu.db`, backups, exports or statements (the workspace denies it; never
+  Never read the data dir (vaults), backups, exports or statements (the workspace denies it; never
   look for a way around a denial), and never run `cashu` commands that print positions, balances or
   transactions.
 

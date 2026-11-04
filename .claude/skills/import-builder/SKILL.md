@@ -68,7 +68,7 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
   A fetch connector's key is entered by the owner in the app (binding form in Ustawienia > Konektory).
   If the user pastes a secret, do not repeat or store it, and tell them to enter it in the app instead.
 - Never run `cashu invest import`, `cashu invest positions`, `cashu import-dir`, `cashu
-  import-csv` (they print the user's data), never open `cashu.db`, backups or the import archive.
+  import-csv` (they print the user's data), never open the cashU data dir (vaults, backups, the import archive).
 - Never download exports or fetch data from a broker's or bank's site for the user, and never bypass
   bot protection. Public documentation of an export format or an API may be looked up (with the source).
 

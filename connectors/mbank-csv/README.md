@@ -2,7 +2,7 @@
 
 Converts an **mBank** CSV export of the account history into `cashu-budget-import` v1 JSON. A
 TypeScript (Deno) port of the parser cashU has built in
-(`src/cashu/modules/budget/ingestion/csv_import/mbank.py`): every row gets the same date, amount,
+(`parity/python/oracle/src/cashu/modules/budget/ingestion/csv_import/mbank.py`): every row gets the same date, amount,
 counterparty and texts, so a file imported earlier with the built-in parser is recognised as a
 duplicate, and the account is found again by its number (institution `mbank`).
 

@@ -1,5 +1,11 @@
 # Connector sandbox on Linux and Windows
 
+> **Historical note.** This spike was written against the retired Python app: file references such as
+> `core/connectors/*.py`, `process.py` or `tests/test_*.py` point at code that now survives only as the
+> frozen parity oracle under `parity/python/` (never shipped). The native connector runtime is
+> `apps/host/src/connectors/` and `apps/host/src/connectorRuntime.ts`; it runs connectors on macOS
+> (`sandbox-exec`) and refuses them elsewhere (`sandbox_unavailable`) until a native layer is built.
+
 Connectors are third-party programs, possibly malicious. The contract (`docs/connectors.md`, "Security
 model") is the same on every OS: read only the system runtime, the connector's own directory and the run
 directory; write only the run directory; no network for a `file` connector; only the app's egress proxy
@@ -159,14 +165,9 @@ same way. What remains, by severity:
 - Ideally also on one Ubuntu 24.04 host (namespace refused by AppArmor, ABI 4+) and one Debian 12 host
   (ABI 2, namespace path required).
 
-**How to run the Linux tests** (from macOS with Docker Desktop running):
-
-```bash
-docker run --rm -v "$PWD":/w -w /w python:3.12 bash -c \
-  'pip install -e ".[dev]" -c constraints.txt && pytest -s tests/test_connectors_sandbox_linux.py'
-```
-
-`-s` prints the kernel's Landlock ABI, the probe output, and whether the namespace was applied.
+**How the Linux tests were run** (Python app, from macOS with Docker Desktop running): the Python test
+suite in a `python:3.12` container, printing the kernel's Landlock ABI, the probe output, and whether
+the namespace was applied. A native port gets its own vitest suite in `apps/host/src/connectors/`.
 
 - Docker's default seccomp profile blocks `unshare(CLONE_NEWUSER)`, so expect `netns: false`.
 - Docker Desktop's LinuxKit kernel is recent, so expect ABI >= 4 (recalled, not checked).

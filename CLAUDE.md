@@ -1,7 +1,8 @@
 # cashU
 
-A local personal-finance tracker for Polish banks and brokers: Python 3.12 app (CLI, FastAPI, MCP
-server) + React dashboard, data per profile, everything runs locally.
+A local personal-finance tracker for Polish banks and brokers: a native desktop app (Electron shell +
+a TypeScript local host that owns the encrypted per-profile stores, the `cashu` CLI and the MCP
+server), data per profile, everything runs locally. pnpm + turbo monorepo.
 
 > This file is also accessible as `AGENTS.md` (symlink) for tools that follow the OpenAI / Codex
 > convention, and `.agents/skills` links to `.claude/skills`. Edit `CLAUDE.md` and `.claude/skills/`;
@@ -14,14 +15,21 @@ project. It is the inventory and routing map; the deep content lives in [`docs/a
 
 ```
 cashu/
-├── src/cashu/          # Python app: core/ (always on) + modules/<id>/ (budget, assets, loans, investments), api/, desktop/
-├── frontend/           # React + Vite + TS SPA (UI strings are Polish), e2e/ = Playwright smoke suite
-├── tests/              # pytest - synthetic data only
+├── apps/
+│   ├── desktop/        # Electron shell: main, preload, React renderer (screens), e2e/, macOS packaging scripts
+│   ├── host/           # the local host (one per data dir): stores, `cashu` command tree, MCP sessions, worker,
+│   │                   #   connectors, agent workspaces, Open Banking, Python-data migration
+│   ├── cli/            # the `cashu` shim: thin client of the host (bundled into the app as shim.mjs)
+│   └── mobile/, relay/ # Expo dev client and the sync relay scaffold (in development)
+├── packages/           # domain, store, sync, i18n, ui, ui-logic, store-react, mcp, market, llm,
+│                       #   host-protocol, node-host, api, parity
+├── tools/              # arch/ (`pnpm arch:check`), claude-dev/ (dev plugin), node-ts/ (TS source resolver)
+├── parity/             # parity/python/: the frozen Python oracle (never shipped) + goldens, see parity/README.md
 ├── .claude/skills/     # product skills shipped to each profile's agent workspace
-├── docs/               # import formats, connector contract + schemas, agents/ = dev guide
+├── docs/               # import formats, connector contract + schemas, migration runbook, agents/ = dev guide
 ├── connectors/         # community connector catalog (contrib status), shipped read-only with the app
-├── examples/connectors/, packaging/, scripts/
-└── data/, statements/  # git-ignored: legacy data location, CSV drop folder
+├── examples/connectors/
+└── data/, statements/  # git-ignored: local drop folders (CSV statements), never committed
 ```
 
 ## Data-safety rules (most important - do not break them)
@@ -29,56 +37,57 @@ cashu/
 This project works with the user's real financial data. **Never** leak data into the repository or
 off the machine:
 
-1. **Never commit data.** These never go into git: `data/**` (DB, backups, keys, sessions),
-   `statements/**` (CSVs), `.env`, `*.pem`. They are all in `.gitignore`. Before every commit, run
-   `git status` - if you see a data file staged, **stop and report it to the user**. The DB, Open
-   Banking sessions and key, backups and the API token now live in the per-user data dir outside the
-   repo (`core/paths.py`); `data/` only holds them in older checkouts until `cashu migrate-data`.
-   Tests always set `CASHU_DATA_DIR` to a temp dir; `tests/conftest.py` also points HOME, the
-   pre-rename data dir, workspaces and launch agents at temp dirs and sets `CASHU_TESTING=1`, under
-   which `core/migrate_legacy.py` refuses any path in the real home.
+1. **Never commit data.** These never go into git: `data/**`, `statements/**` (CSVs), `.env*`,
+   `*.pem`. They are all in `.gitignore`. Before every commit, run
+   `git status` - if you see a data file staged, **stop and report it to the user**. The real data
+   lives in the per-user data dir outside the repo (macOS `~/Library/Application Support/cashU`,
+   Linux `~/.local/share/cashu`, `CASHU_DATA_DIR` overrides; `apps/cli/src/dataDir.ts`): one encrypted
+   vault per profile under `stores/vaults/`, keys in the OS keychain.
+   Tests and fixtures always use temp data dirs and the test keychain namespace (`cashu-next-test.*`,
+   `createTestKeyStore` from `@cashu/node-host/testing`); never a real keychain item.
    Outside tests, a git-ignored `.env.dev` at the checkout root (also read by every git worktree of
-   it, `src/cashu/_devenv.py`) points CLI, scripts and servers of a dev checkout at a demo data dir.
+   it, `apps/cli/src/devenv.ts`) points the CLI and the dev host of a checkout at a demo data dir.
 2. **Never write balances, IBANs, names, or transactions** into files that could land in the repo
    (code, tests, docs). Tests use synthetic data; never paste real statements.
-3. **Never send data to a cloud LLM.** The `anthropic` backend sends only the merchant-name string -
-   never IBANs, balances, or names. The default backend is local `ollama` (offline). Don't change
-   this without the user's explicit OK.
+3. **Never send data to a cloud LLM.** The `anthropic` categorization backend sends only the
+   merchant-name string - never IBANs, balances, or names - and only after the owner's consent in
+   the app. The default backend is local `ollama` (offline). Don't change this without the user's
+   explicit OK.
 4. **Bank credentials (login/password/SCA) are entered only by the user** in the bank's browser. The
    code never sees them and must never ask for them.
 5. **Net worth is computed per-currency** (never sum currencies); **internal transfers are matched by
    counterparty IBAN only** (never by name/amount).
 6. **Never run `eb resync` / `reclassify` in a loop** - banks throttle PSD2 (429), and the local LLM
    is slow. Sync ~once a day.
-7. **Never query a profile-scoped table without the profile**: data of one profile must never show
-   up in another.
+7. **Never mix profiles**: each profile is its own vault; a query, command or MCP session works on
+   exactly one vault, and data of one profile must never show up in another.
 
 Full "What NOT to do" list with reasons: [docs/agents/conventions.md](docs/agents/conventions.md).
 
 ## Language convention
 
-The codebase is English (comments, docstrings, CLI help, docs). The **UI is Polish and English**:
-every text the app shows lives in both languages (frontend `*.strings.ts` catalogs, backend
-`core/i18n.py` `tr(pl=..., en=...)`); the language follows the OS, else English, and Settings can pin
-it. Agent-written content (research notes, theses) is shown as written. Full contract and glossary:
-[docs/agents/localization.md](docs/agents/localization.md).
+The codebase is English (comments, docs, CLI help). The **UI is Polish and English**: every text the
+app shows lives in both languages (`*.strings.ts` catalogs through `catalog()` from `@cashu/i18n`;
+backend code renders through an explicit `Translator`); the language follows the OS, else English,
+and Settings can pin it. Agent-written content (research notes, theses) is shown as written. Full
+contract and glossary: [docs/agents/localization.md](docs/agents/localization.md).
 
 **Matching data is intentionally Polish and must stay Polish**: parser CSV headers (`#Data operacji`,
-`Rachunek źródłowy`, ...), the ~420 PL keyword rules in `taxonomy.py`, installment phrases in
-`loans/patterns.py`, patterns in `engine.py`/`reclassify.py`, LLM prompts in
-`local_llm.py`/`reclassify.py`, word lists in `research/validation.py` / `similarity.py`. Translating
-them breaks matching on real data.
+`Rachunek źródłowy`, ...) in `packages/domain/src/budget/ingestion/statements/`, the ~420 PL seed
+rules in `budget/categorize/seedRules.ts`, installment phrases in
+`packages/domain/src/loans/patterns.ts`, the LLM prompts in `budget/categorize/llm/prompts.ts`, the
+word lists in `packages/domain/src/investments/research/`. Translating them breaks matching on real
+data.
 
 Rule of thumb: **explanation for a developer -> English; text shown to the user -> both languages
-through a catalog / `tr()`; data** (matched, or sent to the LLM as a prompt/enum) **-> Polish**. Never
-the em dash; use a hyphen. Full form: [docs/agents/conventions.md](docs/agents/conventions.md).
+through a catalog / `Translator`; data** (matched, or sent to the LLM as a prompt/enum) **-> Polish**.
+Never the em dash; use a hyphen. Full form: [docs/agents/conventions.md](docs/agents/conventions.md).
 
 ## Required setup
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]" && cashu init-db
-cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build && cd ..   # pnpm workspace (corepack enable); webdist/ is git-ignored: build once after clone
+corepack enable && pnpm install --frozen-lockfile    # Node >=22 (.nvmrc), pnpm pinned in package.json
+pnpm --filter @cashu/desktop dev                     # builds the desktop app and opens it on a synthetic demo
 ```
 
 **If the user is just getting started** -> walk them through setup following
@@ -90,36 +99,43 @@ cashU pulls transactions from Polish banks (**mBank**, **Erste** / former Santan
 CSV export and optionally Open Banking (Enable Banking), normalizes them to a common model,
 deduplicates, detects internal transfers between the user's own accounts, categorizes spending, and
 computes net worth, monthly cashflow, and recurring payments. Data is kept per **profile** (a person
-or a household), and features come in **modules** (budget, assets, loans, investments) chosen per
-profile. The dashboard is FastAPI + a React SPA. Everything runs **locally**. Stack: Python 3.12+,
-SQLModel/SQLite, Typer (CLI), FastAPI (API), React + Vite + TypeScript + Recharts (frontend).
+or a household; one encrypted vault each), and features come in **modules** (budget, assets, loans,
+investments) chosen per profile. The product is the native desktop app: an Electron window over a
+local host process that owns the stores and serves the UI, the `cashu` CLI and the MCP server.
+Everything runs **locally**. Stack: TypeScript (strict ESM), Node 22, Electron, React, SQLite
+event-sourced stores, Biome, vitest, Playwright.
 
 | Workspace | Purpose |
 |---|---|
-| `src/cashu/core/` | always on: profiles, accounts, balances, net worth, registries, data dir, migrations, API security, MCP server, worker, connectors, agent workspaces |
-| `src/cashu/modules/<id>/` | budget, assets, loans, investments: each owns its tables, router, CLI, setup steps (`ModuleSpec`); never imports another module's internals |
-| `src/cashu/api/`, `src/cashu/desktop/` | FastAPI composition + SPA serving; `cashu app` desktop window and packaged-app entry |
-| `frontend/` | React SPA: `src/core/` shell, `src/modules/<id>/` tabs, v2 widgets and SVG charts; `e2e/` Playwright |
-| `tests/` | pytest on synthetic data; guard tests for profile isolation, migrations, skills |
+| `packages/domain/` | pure rules: profiles, modules (`ModuleSpec`), accounts, net worth, institutions, bank parsers, categorization, loans, assets, investments math; no IO |
+| `packages/store/` | event log, materialized views, queries, commands per module; vault and device stores |
+| `packages/mcp/` | MCP tool registry, privacy labels and redaction, the native MCP server runtime |
+| `packages/i18n/`, `ui/`, `ui-logic/`, `store-react/` | PL/EN catalogs and translators; UI system; platform-free UI logic; React query/command bindings |
+| `packages/sync/`, `market/`, `llm/`, `host-protocol/`, `node-host/`, `api/`, `parity/` | sync engine; market data sources; Ollama / Anthropic clients; host wire protocol; Node platform adapters (SQLite, keychain, guards); API scaffold; TS-vs-Python parity comparer |
+| `apps/host/` | the local host: stores, CLI tree (`src/cli/`), MCP sessions (`src/mcp/`), worker, connectors runtime, workspaces, banking, migration |
+| `apps/desktop/` | Electron main/preload, renderer screens, e2e, packaging (`scripts/package-macos.mjs`) |
+| `apps/cli/` | the `cashu` shim: routes `app`, `host`, `migrate`, `mcp` and forwards every other command to the host |
 | `.claude/skills/` | the 9 shipped product skills (inventory below) |
-| `docs/` | `import-format.md`, `budget-import-format.md`, `connectors.md`, `schemas/`, `agents/` |
-| `examples/connectors/`, `packaging/`, `scripts/` | example connectors; macOS app build; build, version bump, demo data, schema / skill-reference sync |
+| `docs/` | `import-format.md`, `budget-import-format.md`, `connectors.md`, `schemas/`, `migration-runbook.md`, `agents/` |
+| `tools/`, `parity/` | architecture checks and dev plugin; the frozen Python oracle |
 
 Full file-level map: [docs/agents/code-map.md](docs/agents/code-map.md).
 
 ## Skills inventory
 
-These are **product skills**, not dev tooling: they ship with cashU and are copied into each
-profile's agent workspace (`src/cashu/core/workspace`). Every skill follows the utopia-ai-arch:layer
-shape (POSITIVE / NEGATIVE applicability in the description, References table, See also, Self-audit);
-`tests/test_workspace.py::test_shipped_skills_follow_the_layer_shape` enforces it. A new skill must be
-added to `MODULE_SKILLS` / `CORE_SKILLS` in `src/cashu/core/workspace/skills.py`. Details and editing
-rules: [docs/agents/skills.md](docs/agents/skills.md).
+These are **product skills**, not dev tooling: they ship with cashU (inside the app's Resources) and
+are copied into each profile's agent workspace (`apps/host/src/workspace/`). Every skill follows the
+utopia-ai-arch:layer shape (POSITIVE / NEGATIVE applicability in the description, References table,
+See also, Self-audit); `apps/host/src/workspace/workspace.test.ts` checks the inventory and
+applicability. A new skill must be added to `MODULE_SKILLS` in
+`packages/domain/src/core/workspace/plan.ts` (or to the always-on list in
+`apps/host/src/workspace/production.ts`). Details and editing rules:
+[docs/agents/skills.md](docs/agents/skills.md).
 
 | Skill | Module | Applicability |
 |---|---|---|
 | `workspace-setup` | core | Agent layout of a profile workspace (CLAUDE.md inventory, `AGENTS.md` + `.agents/skills` links for Codex) and the user's own skills in the same shape - NOT module setup, importers, portfolio rules or research |
-| `budget-setup` | budget | Budget module setup: install check, banks, CSV vs Open Banking, categorization backend (Ollama vs Anthropic), first categorization pass via MCP - NOT broker exports, manual assets, loans or investments |
+| `budget-setup` | budget | Budget module setup: app check, banks, CSV vs Open Banking, categorization backend (Ollama vs Anthropic), first categorization pass via MCP - NOT broker exports, manual assets, loans or investments |
 | `assets-setup` | assets | Manually valued assets (property, car with a depreciation curve, other), CLI placeholders, revaluing, MCP check - NOT loans, bank accounts and cash, or brokerage accounts |
 | `loans-setup` | loans | Each loan's terms, installments recognised by a title phrase, balance the bank reports, MCP check - NOT the property or car itself, bank imports or spending categories |
 | `investments-setup` | investments | Strategy interview (goals, horizon, risk, history retrospective), strategy.md + strategy.yaml proposals, weekly / monthly / quarterly check-ins - NOT broker-export conversion, one custom rule or market research; never recommends instruments or trades |
@@ -132,9 +148,9 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 
 ## Development skills
 
-The skills above are **product skills** (they ship to users' workspaces; `.claude/skills/` is guarded
-by tests and holds nothing else). Skills for **developing** the TypeScript stack live in the repo-local
-plugin `cashu-dev` (`tools/claude-dev/`, marketplace `.claude-plugin/marketplace.json`), which
+The skills above are **product skills** (they ship to users' workspaces; `.claude/skills/` holds
+nothing else). Skills for **developing** the TypeScript stack live in the repo-local plugin
+`cashu-dev` (`tools/claude-dev/`, marketplace `.claude-plugin/marketplace.json`), which
 `.claude/settings.json` enables for every session in this checkout:
 
 | Skill | Applicability |
@@ -151,60 +167,63 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Situation | Read first | Files / guards |
 |---|---|---|
 | Orient in the code, find where something lives | [code-map.md](docs/agents/code-map.md) | - |
-| Touch money, net worth, transfers, loans, cash, categorization, investments math | [data-model.md](docs/agents/data-model.md) | `core/networth.py`, `modules/<id>/networth.py` |
-| Add a module | [extending.md](docs/agents/extending.md) "Adding a module" | `core/modules.py` `MODULE_IDS`, `ModuleSpec` |
-| Add an API route / dashboard feature | [extending.md](docs/agents/extending.md) "Adding a dashboard feature" | `tests/test_profiles.py` `PROFILE_GETS`, `tests/investments/persistence/test_invp_isolation.py` |
-| Add an MCP tool | [extending.md](docs/agents/extending.md) "Adding an MCP tool" | `core/mcp/registry.py`, `labels.py`, `redaction.py`, `tools/<module>.py` |
-| Change a model / add a migration | [data-model.md](docs/agents/data-model.md) rule 15 | `core/migrations/versions/`, `tests/test_migrations.py` |
-| Add a bank CSV parser | [extending.md](docs/agents/extending.md) "Adding a new bank" | `csv_import/base.py`, `core/institutions.py` `BUILTIN`, `tests/test_parsing.py` |
-| Add an importer / connector | [extending.md](docs/agents/extending.md), [docs/connectors.md](docs/connectors.md), [connectors/README.md](connectors/README.md) (catalog) | `docs/import-format.md`, `docs/budget-import-format.md`, `examples/connectors/`, `scripts/gen_connector_schemas.py`, `tests/test_connector_catalog.py` |
-| Add a CLI command | [conventions.md](docs/agents/conventions.md) "CLI" | module `cli.py`, `core/cliutil.py` |
-| Edit or add a shipped skill | [skills.md](docs/agents/skills.md) | `core/workspace/skills.py`, `scripts/sync_skill_references.py`, `tests/test_workspace.py` |
-| Add or change any user-visible text (UI copy, backend label, notification) | [localization.md](docs/agents/localization.md) | `packages/i18n` (`@cashu/i18n`), `*.strings.ts`, `src/cashu/core/i18n.py`, `frontend/tests/i18n-guard.test.mjs`, `tools/arch/src/guards/` |
-| Frontend change (UI copy, charts, API client) | [conventions.md](docs/agents/conventions.md) "Frontend copy", [extending.md](docs/agents/extending.md) | `packages/ui-logic/src/core/messages.ts`, `charts.tsx`, `frontend/e2e/specs/` |
-| Research / MCP privacy (what the agent may see) | [skills.md](docs/agents/skills.md) "Rules every skill follows" | `core/mcp/redaction.py`, `core/mcp/labels.py`, `tests/test_fxb_mcp_privacy.py` |
-| Run, demo data, e2e, verify in the browser | [running.md](docs/agents/running.md) | `.claude/launch.json`, `scripts/demo_data.py` |
-| Write tests | [conventions.md](docs/agents/conventions.md) "Tests" | `tests/conftest.py`, `tests/upstream_db.py` |
-| Packaging / desktop app build | [packaging/README.md](packaging/README.md) | `scripts/build_macos.sh`, `packaging/cashu.spec` |
-| Release to installed apps (owner only) | [packaging/RELEASING.md](packaging/RELEASING.md) | `scripts/release_macos.sh`, `scripts/make_appcast.py`, `desktop/updater.py` |
-| Versioning / release | [conventions.md](docs/agents/conventions.md) "Versions" | `.github/workflows/bump-version.yml`, `scripts/bump_version.py` |
+| Touch money, net worth, transfers, loans, cash, categorization, investments math | [data-model.md](docs/agents/data-model.md) | `packages/domain/src/core/networth.ts`, `packages/domain/src/<module>/networth.ts` |
+| Add a module | [extending.md](docs/agents/extending.md) "Adding a module" | `packages/domain/src/core/modules.ts` `MODULE_IDS`, `builtinModules.ts`, `packages/store/src/modules.ts` |
+| Add a screen / UI feature | [extending.md](docs/agents/extending.md) "Adding a screen", `cashu-ts-architecture` skill | `apps/desktop/renderer/screens/`, `packages/ui-logic/`, `apps/desktop/e2e/desktop-specs/` |
+| Add an MCP tool | [extending.md](docs/agents/extending.md) "Adding an MCP tool" | `packages/mcp/src/registry.ts`, `runtime/toolSchemas.ts`, `privacy/`, `apps/host/src/mcp/tools.test.ts` |
+| Change an event or a view (store schema) | [data-model.md](docs/agents/data-model.md) rule 15 | `packages/store/spec/events.md`, `packages/store/src/upcast.ts`, `upgrade.test.ts`, `view-upgrade.test.ts` |
+| Fix a built-in bank CSV parser | [extending.md](docs/agents/extending.md) "Bank CSV parsers" | `packages/domain/src/budget/ingestion/statements/`, `connectors/<bank>-csv/` |
+| Add an importer / connector | [extending.md](docs/agents/extending.md), [docs/connectors.md](docs/connectors.md), [connectors/README.md](connectors/README.md) (catalog) | `docs/import-format.md`, `docs/budget-import-format.md`, `examples/connectors/`, `apps/host/src/connectors/`, `pnpm --filter @cashu/host gen:connector-schemas` |
+| Add a CLI command | [extending.md](docs/agents/extending.md) "Adding a CLI command" | `apps/host/src/cli/ported.ts`, `tree.ts`, `help.strings.ts` |
+| Edit or add a shipped skill | [skills.md](docs/agents/skills.md) | `packages/domain/src/core/workspace/plan.ts`, `apps/host/src/workspace/skillReferences.ts`, `pnpm --filter @cashu/host skills:sync` |
+| Add or change any user-visible text (UI copy, backend label, notification) | [localization.md](docs/agents/localization.md) | `packages/i18n` (`@cashu/i18n`), `*.strings.ts`, `tools/arch/src/guards/` |
+| UI copy, charts, components | [conventions.md](docs/agents/conventions.md) "UI copy", `cashu-ui` skill | `packages/ui/`, `packages/ui-logic/src/core/messages.ts` |
+| Research / MCP privacy (what the agent may see) | [skills.md](docs/agents/skills.md) "Rules every skill follows" | `packages/mcp/src/privacy/`, `packages/mcp/src/runtime/server.ts` |
+| Run, demo data, e2e, verify in the app | [running.md](docs/agents/running.md) | `apps/desktop/scripts/dev.mjs`, `apps/host/src/testing/devDemo.ts`, `apps/desktop/e2e/` |
+| Write tests | [conventions.md](docs/agents/conventions.md) "Tests" | `vitest.tiers.ts`, `@cashu/node-host/testing`, `packages/domain/src/testing/` |
+| Moving a user from the Python app | [docs/migration-runbook.md](docs/migration-runbook.md) | `apps/host/src/migration/` (`cashu migrate`, `cashu migrate verify`) |
+| Packaging / desktop app build | [running.md](docs/agents/running.md) "Packaging" | `apps/desktop/scripts/package-macos.mjs`, `apps/desktop/build/electron-builder.config.cjs` |
+| Updates and releases (owner only) | [s47-update-operator.md](docs/agents/s47-update-operator.md) | `apps/desktop/src/update/` |
 | Help the end user set up | [ONBOARDING.md](ONBOARDING.md) | the module setup skills |
 
 ## Common commands
 
 | Task | Command |
 |---|---|
-| Install (dev) | `pip install -e ".[dev]"` (inside `.venv`) |
-| Create / upgrade the DB | `cashu init-db` (every command and server start also upgrades to head) |
-| Tests (synthetic data - safe) | `pytest` |
-| Lint | `ruff check src tests` (configured in `pyproject.toml`) |
-| Build the dashboard | `cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build` (frontend/ is a pnpm workspace member) |
-| Serve the dashboard | `cashu serve` (http://127.0.0.1:8500) |
-| Dev mode with HMR | `cashu serve` + `cd frontend && npm run dev` (Vite :5173, proxies `/api` -> :8500) |
-| Desktop window | `cashu app` |
-| Frontend typecheck / unit tests | `cd frontend && npm run typecheck` / `npm test` |
-| Browser e2e | `cd frontend && npm run build && npm run e2e` (one spec: `npm run e2e -- specs/05-alerts.spec.ts`) |
-| Demo data | `.venv/bin/python scripts/demo_data.py --data-dir /tmp/cashu-demo`, then `CASHU_DATA_DIR=/tmp/cashu-demo cashu serve` |
-| New migration | `CASHU_DATA_DIR=/tmp/x alembic revision --autogenerate -m "..."` (repo root) |
-| Regenerate connector schemas | `python scripts/gen_connector_schemas.py` (`--check` to verify) |
-| Refresh skill reference copies | `python scripts/sync_skill_references.py` (`--check` to verify) |
-| Connect a profile's MCP server | `claude mcp add cashu-<slug> -- cashu mcp --profile <slug>` |
-| Profile agent workspace | `cashu workspace init` / `cashu workspace update` |
-| Move legacy `data/` into the data dir | `cashu migrate-data` |
-| Build cashU.app (macOS) | `scripts/build_macos.sh` |
-| TS architecture checks | `pnpm arch:check` (whole repo); `tools/claude-dev/scripts/check-file.sh <file>` (one file) |
+| Install | `pnpm install --frozen-lockfile` |
+| Typecheck / lint / tests (synthetic data - safe) | `pnpm typecheck`, `pnpm lint`, `pnpm test` (all three: `pnpm check`) |
+| Exhaustive test tier | `pnpm test:exhaustive` |
+| Architecture checks | `pnpm arch:check` (whole repo); `tools/claude-dev/scripts/check-file.sh <file>` (one file) |
+| Full handoff gate | `pnpm check:handoff` (check + exhaustive + arch) |
+| Mobile bundle budget | `pnpm bundle:check` |
+| Desktop app on a synthetic demo | `pnpm --filter @cashu/desktop dev` |
+| Desktop e2e | `pnpm --filter @cashu/desktop build && pnpm --filter @cashu/desktop e2e` |
+| `cashu` from a checkout | `pnpm cashu-next <command>` (e.g. `pnpm cashu-next --help`; `.env.dev` decides the data dir) |
+| `cashu` of an installed app | `"<data dir>/bin/cashu" <command>` (the launcher the host writes), or `ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /Applications/cashU.app/Contents/Resources/shim.mjs <command>` |
+| Regenerate connector schemas | `pnpm --filter @cashu/host gen:connector-schemas` (`--check` to verify) |
+| Refresh skill reference copies | `pnpm --filter @cashu/host skills:sync` (`--check` to verify) |
+| Connect a profile's MCP server | the profile's agent workspace registers it in `.mcp.json`; by hand: `claude mcp add cashu-<slug> -- "<data dir>/bin/cashu" mcp --profile <slug>` |
+| Profile agent workspace | Settings > AI agent (MCP) in the app, or `cashu --profile <slug> workspace init` / `workspace update` |
+| Import data from the Python app | `cashu migrate --recovery-file <file>`, then `cashu migrate verify` ([runbook](docs/migration-runbook.md)) |
+| Build cashU.app (macOS) | `node apps/desktop/scripts/package-macos.mjs arm64` (`x64`; `--dmg` for a disk image) |
+| Parity against the Python oracle | `pnpm parity:produce`, `pnpm parity --dataset demo --actual <dir>` ([parity/README.md](parity/README.md)) |
 
 ## Documentation
 
 - [docs/agents/code-map.md](docs/agents/code-map.md) - file-level repository map
-- [docs/agents/data-model.md](docs/agents/data-model.md) - how the numbers work, live data, migrations
+- [docs/agents/data-model.md](docs/agents/data-model.md) - how the numbers work, vaults, live data, store schema evolution
 - [docs/agents/conventions.md](docs/agents/conventions.md) - language, versions, CLI, tests, UI copy, what NOT to do
-- [docs/agents/localization.md](docs/agents/localization.md) - Polish / English UI: language choice, catalogs, backend `tr()`, glossary
-- [docs/agents/extending.md](docs/agents/extending.md) - recipes: bank, module, dashboard feature, MCP tool, migration, connector
-- [docs/agents/running.md](docs/agents/running.md) - running, demo data, e2e
+- [docs/agents/localization.md](docs/agents/localization.md) - Polish / English UI: language choice, catalogs, backend translators, glossary
+- [docs/agents/extending.md](docs/agents/extending.md) - recipes: module, screen, MCP tool, CLI command, store schema change, connector
+- [docs/agents/running.md](docs/agents/running.md) - running, demo data, e2e, packaging
 - [docs/agents/skills.md](docs/agents/skills.md) - shipped skills, their rules, editing them
+- [docs/agents/strategies.md](docs/agents/strategies.md) - design note: strategies as documents
 - [docs/agents/connector-runtime.md](docs/agents/connector-runtime.md) - design spike: connectors on macOS, Linux and Windows (Deno tier)
+- [docs/agents/connector-sandbox-platforms.md](docs/agents/connector-sandbox-platforms.md) - design spike: connector sandboxes per OS
+- [docs/agents/sync-and-mobile.md](docs/agents/sync-and-mobile.md) - design spike: multi-device sync, mobile app, TypeScript stack
+- [docs/agents/s47-update-operator.md](docs/agents/s47-update-operator.md) - update and release contract of the desktop app (owner)
+- [docs/migration-runbook.md](docs/migration-runbook.md) - moving an install from the Python app to the native app
 - [ONBOARDING.md](ONBOARDING.md) - end-user setup the agent walks through
 - [README.md](README.md) - product overview
 - [docs/connectors.md](docs/connectors.md), [docs/import-format.md](docs/import-format.md), [docs/budget-import-format.md](docs/budget-import-format.md) - external formats and contracts
-- [packaging/README.md](packaging/README.md) - macOS build decisions
+- [parity/README.md](parity/README.md) - the frozen Python oracle and its goldens (verification only, never shipped)

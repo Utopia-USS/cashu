@@ -78,7 +78,7 @@ privacy level from `profile_overview` (`privacy`: `strict` or `amounts`):
 
 Rules that follow from it:
 
-- Never open `cashu.db`, backups or the import archive. The privacy level covers what the MCP tools
+- Never open the cashU data dir (vaults, backups, the import archive). The privacy level covers what the MCP tools
   give you; an export or statement the user hands you themselves may be read for the task they asked
   for (values stay in the conversation, never in notes or files). Never run
   CLI commands whose output contains balances, positions, transactions, account names or file names

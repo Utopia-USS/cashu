@@ -1,40 +1,43 @@
-# Install and dashboard (source checkout)
+# The app, the `cashu` command and the finish
 
-What this is: the install steps (step 2) and the dashboard build plus the git-ignore check (step 10)
-of `/budget-setup` for a cashU source checkout. A packaged app (cashU.app) needs none of this.
+What this is: step 2 (getting cashU.app running, the `cashu` command) and step 10 (finish and the
+git-ignore check) of `/budget-setup`. cashU is a native desktop app: there is nothing to install
+besides the app itself.
 
-## Step 2 - Prerequisites and install (source checkout only)
+## Step 2 - The app and the `cashu` command
 
-Check `python3 --version` (3.12+), `node --version` (18+, for the dashboard), optionally `ollama`.
-Missing on macOS: `brew install python node ollama`. Then:
+1. **The app.** The user installs cashU.app into `/Applications` (the published app, or a build of the
+   cashU source made by whoever maintains their copy) and opens it. Do not copy or move the app
+   yourself. An app built and signed only ad hoc opens on the Mac that built it; on another Mac macOS
+   blocks it until the user confirms it in System Settings > Privacy & Security > "Open Anyway".
+2. **First launch.** The profile wizard opens (step 3). If the user used the older Python cashU app
+   on this Mac, the app shows a recovery screen instead: its "Import my data" button (or
+   `cashu migrate`) brings the old data over once, in place, with a backup. The user does that
+   themselves, then continues here.
+3. **The `cashu` command.** Every start of the app writes a launcher into the data dir. The user adds
+   an alias in their own terminal:
+
+   ```bash
+   alias cashu="$HOME/Library/Application Support/cashU/bin/cashu"
+   cashu --help          # safe for you to run too: no personal data
+   ```
+
+   Before the app has run once the launcher does not exist yet; the app's own binary works then:
+   `ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /Applications/cashU.app/Contents/Resources/shim.mjs --help`.
+   In a profile workspace, its `CLAUDE.md` names the exact command for this install.
+4. Optional for categorization: **Ollama** (`brew install ollama`), see step 7.
+
+## Step 10 - Finish
+
+The user walks the app: the overview (net worth per currency), the budget page (spending, cashflow,
+subscriptions, month close) and Settings. Do not take screenshots of real data yourself.
+
+If the user keeps statements inside a git repository (for example a copy of the cashU source), check
+that they cannot be committed (prints nothing when all is well; run it in that repository):
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-cashu init-db          # prints the database location in the per-user data dir
-pytest                   # synthetic data only
+for p in data/x.db statements/mbank/x.csv .env key.pem; do git check-ignore -q "$p" || echo "NOT IGNORED: $p"; done
 ```
 
-Older checkout with `data/finanse.db` (legacy name): every command prints a notice; the user runs `cashu
-migrate-data` (copies the DB, Open Banking sessions and key into the data dir with a backup).
-
-## Step 10 - Dashboard and finish
-
-Packaged app: the user opens cashU.app. Source checkout:
-
-```bash
-cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build && cd ..   # needs pnpm: corepack enable
-cashu serve            # http://127.0.0.1:8500 (127.0.0.1 only, per-launch token)
-```
-
-The user opens it and walks the tabs (Przegląd, Wydatki, Przepływy, Subskrypcje). Opening an `/api/...`
-URL directly answers 401, which is expected.
-
-Source checkout only: finally check that user data cannot be committed (prints nothing when all is
-well):
-
-```bash
-for p in data/cashu.db statements/mbank/x.csv .env key.pem; do git check-ignore -q "$p" || echo "NOT IGNORED: $p"; done
-```
-
-Any `NOT IGNORED` line: stop and fix `.gitignore` before the user commits anything.
+Any `NOT IGNORED` line: stop and fix `.gitignore` before the user commits anything. A workspace
+outside any git repository needs no check.

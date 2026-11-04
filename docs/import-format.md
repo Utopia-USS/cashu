@@ -314,7 +314,7 @@ Notes:
 Validate before importing; validation needs no database and changes nothing:
 
 - Agent (MCP): `validate_import(path)` on the converted file: counts and errors by kind with row numbers.
-- Terminal: `cashu investments validate converted.csv` (or `.json`; `--mapping <file.yaml>` for a CSV
+- Terminal: `cashu invest validate converted.csv` (or `.json`; `--mapping <file.yaml>` for a CSV
   with a column mapping) prints counts, then every error and warning with row and field, and exits 0
   when the file can be imported.
 

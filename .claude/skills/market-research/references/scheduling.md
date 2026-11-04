@@ -2,7 +2,7 @@
 
 The routine runs on the user's Mac, inside the profile's agent workspace (default
 `~/Documents/cashU/<slug>/`; the app shows the path in Ustawienia > Agent AI, the CLI prints it with
-`cashu workspace path`). It has to be local: the cashU MCP server reads the profile's database on
+`cashu workspace path`). It has to be local: the cashU MCP server reads the profile's vault on
 this Mac, and the workspace's `.mcp.json` and `.claude/settings.json` (data only through MCP, reads of
 the data dir denied) apply only to runs in that folder. The cashU app only explains the schedule;
 Claude Code owns it; the app never starts Claude itself.

@@ -1,125 +1,122 @@
 # Extending cashU
 
-What this is: step-by-step recipes for the typical extensions - a bank, a module, a dashboard feature, a migration, an MCP tool, a connector - in the order the existing code expects.
+What this is: step-by-step recipes for the typical extensions - a module, a screen, an MCP tool, a CLI command, a store schema change, a connector - in the order the existing code expects.
 
 ## When this applies
 
-Adding a capability rather than fixing one. Read [conventions.md](conventions.md) and
-[data-model.md](data-model.md) first; paths are relative to the repo root.
+Adding a capability rather than fixing one. Read [conventions.md](conventions.md),
+[data-model.md](data-model.md) and the `cashu-ts-architecture` dev skill first; paths are relative to
+the repo root. Every step ends with `pnpm check` and `pnpm arch:check`.
 
-## Adding a new bank (CSV parser)
+## Bank CSV parsers
 
-**Don't, for a new bank.** New banks, brokers and exchanges are connectors
+**Don't add one for a new bank.** New banks, brokers and exchanges are connectors
 ([`docs/connectors.md`](../connectors.md)): no code change, and the user's agent can write one
 (`import-builder` skill). The built-in parsers are frozen (no new ones) and will move to connectors;
 the steps below are only for maintaining the existing mBank / Erste / Pekao parsers.
 
-The three built-ins already have catalog twins, Deno ports that produce the same rows:
-[`connectors/mbank-csv`](../../connectors/mbank-csv/), [`erste-csv`](../../connectors/erste-csv/) and
-[`pekao-csv`](../../connectors/pekao-csv/). The switch-over (removing the built-ins, the import path
-then going through the connectors) is pending the owner's check on real exports. Until then **a fix to
-a built-in parser must be ported to its twin** (`parse.ts`; the shared `pycompat.ts` holds the
-Python-compatible primitives): `tests/test_catalog_bank_parsers.py` asserts that both give the same
-content keys, account, currency and balances on every fixture, and fails otherwise. It also pins the
-differences that remain by design: a connector document goes through the newest-day rule (a late row
-inside the stored span is overlap, not new), and a title over 200 characters or a counterparty
-account number under 8 characters cannot be carried as the built-in keeps them.
+The three built-ins (`packages/domain/src/budget/ingestion/statements/`: `mbank.ts`, `erste.ts`,
+`pekao.ts`, detection in `registry.ts`) already have catalog twins, Deno connectors that produce the
+same rows: [`connectors/mbank-csv`](../../connectors/mbank-csv/), [`erste-csv`](../../connectors/erste-csv/)
+and [`pekao-csv`](../../connectors/pekao-csv/). The switch-over (removing the built-ins, the import
+path then going through the connectors) is pending the owner's check on real exports. Until then
+**a fix to a built-in parser must be ported to its twin** (`parse.ts`; `pycompat.ts` next to it holds the
+Python-compatible primitives). Differences that remain by design: a connector document goes
+through the newest-day rule (a late row inside the stored span is overlap, not new), and a title over
+200 characters or a counterparty account number under 8 characters cannot be carried as the built-in
+keeps them.
 
-1. New file `src/cashu/modules/budget/ingestion/csv_import/<bank>.py` - a thin config on top of the
-   engine in `base.py` (model it on `mbank.py`/`pekao.py`: encoding, separator, columns, where
-   currency/IBAN/balance come from; set `bank = "<id>"`). Keep the bank's Polish CSV headers verbatim -
-   they are matched against the file.
-2. Add one `Institution` entry to `BUILTIN` in `src/cashu/core/institutions.py`: id, kind `bank`,
-   display name, `csv_importer="<module path>:<Class>"` and the `aspsp_patterns` that map its Enable
-   Banking ASPSP name. Import, auto-detection, `--bank` choices and `statements/<id>/` directories pick
-   it up from there. An ASPSP without an entry already syncs under a generic id slugged from its name
-   (`institutions.slug_id`, e.g. `ing-bank-slaski`); when you add an entry for such a bank, use that
-   slug as the id, or its existing Open Banking accounts no longer match the new id.
-3. Add a test in `tests/test_parsing.py` using a **synthetic** sample of the format.
+1. Change the parser and keep the bank's Polish CSV headers verbatim - they are matched against the
+   file. Each bank has `<bank>.test.ts` next to it; the synthetic fixtures in
+   `packages/domain/test/fixtures/budget-csv/` are byte copies of the connectors' `fixtures/`
+   (`fixtures.test.ts` checks it), so a new fixture goes into both.
+2. A bank's registry entry is one `Institution` in `BUILTIN_INSTITUTIONS`
+   (`packages/domain/src/core/institutions.ts`): id, kind `bank`, display name, its CSV importer and
+   the `aspsp_patterns` that map its Enable Banking ASPSP name. An ASPSP without an entry syncs under a
+   generic id slugged from its name (e.g. `ing-bank-slaski`); when you add an entry for such a bank,
+   use that slug as the id, or its existing Open Banking accounts no longer match the new id.
 
 ## Adding a module
 
-1. A package `src/cashu/modules/<id>/` with its tables (`models.py`, plus an Alembic revision, see
-   below).
-2. `module.py` exporting `MODULE = ModuleSpec(...)`: Polish name/description (wizard), router, CLI
-   `register` (and/or `cli_module` for its sub-app, named `cli_name` or the id), optional
-   `NetWorthContributor`, account types / buckets / institutions it owns, categorization hooks,
-   `setup_status(session, profile_id)` (blank-page steps) and its setup skill.
-3. Add the id to `MODULE_IDS` in `src/cashu/core/modules.py`.
-4. Live data for its list entities: watched tables and list-row payloads in `modules/<id>/live.py`
-   (see [data-model.md](data-model.md) rule 14).
-5. Its setup skill: see [skills.md](skills.md) (register it in `MODULE_SKILLS`).
+1. Domain: a folder `packages/domain/src/<id>/` with its pure rules, setup steps (`setup.ts` +
+   `setup.strings.ts`) and, if it values accounts, a `NetWorthContributor` (`networth.ts`); its
+   `ModuleSpec` in `packages/domain/src/core/builtinModules.ts` and its id in `MODULE_IDS`
+   (`core/modules.ts`).
+2. Store: `packages/store/src/<id>/` with its events (`events/v1/`, documented in
+   `packages/store/spec/events.md`), materializers, queries and commands, registered as a
+   `StoreModule` in `packages/store/src/modules.ts`.
+3. Text: catalogs in `packages/i18n/src/<id>/`, platform-free UI logic in `packages/ui-logic/src/<id>/`.
+4. Surfaces: screens in `apps/desktop/renderer/screens/<id>/` (below), CLI commands in
+   `apps/host/src/cli/<id>/`, MCP tools in `packages/mcp/src/tools/<id>.ts`.
+5. Its setup skill: see [skills.md](skills.md) (add it to `MODULE_SKILLS`).
 6. Never import another module's internals.
 
-## Adding a dashboard feature
+## Adding a screen
 
-1. Endpoint in the module's `api.py` router (plain JSON). Take the profile with a
-   `profile: CurrentProfile` parameter and pass `profile_id=profile.id` to every query; the app mounts
-   module routers under `/api/p/{slug}/...` and as legacy `/api/...` aliases.
-2. Add the route to `PROFILE_GETS` in `tests/test_profiles.py` (a guard test fails otherwise): it
-   checks that two profiles never see each other's data. Investments routes have their own list in
-   `tests/investments/persistence/test_invp_isolation.py`.
-3. Every `/api/*` route is behind the token + Host check automatically (`core/security.py`); in tests
-   use a `TestClient` with `base_url=security.get_config().base_url` and the `X-Cashu-Token` header
-   (see `tests/conftest.py`).
-4. Type + function in the frontend API client (mirror the JSON shape); call it through
-   `j`/`jpost`/`jdel` (`frontend/src/core/api.ts`), which send the token; each module keeps its
-   client in `frontend/src/modules/<id>/api.ts`.
-5. Component in `frontend/src/components/` or a new tab (UI strings stay Polish); module tabs live in
-   `frontend/src/modules/<id>/`.
-6. Line/bar charts: widgets on Przegląd / Inwestycje use `charts.tsx` (SVG drawn at the measured
-   width, colours from the CSS tokens, geometry tested in `chart.ts`); the budget and loan pages use
-   `components/ScrollableChart.tsx` (window+scroll+axis+grid). Don't add zoom/pan plugins to
-   Chart.js - they were removed as janky.
-7. Copy: follow the frontend copy rules in [conventions.md](conventions.md); new backend codes get a
-   Polish label in `packages/ui-logic/src/core/messages.ts`; update the matching e2e spec
-   ([running.md](running.md)).
+1. Data: a query in the module's store folder (`defineQuery`), or host screen data
+   (`apps/host/src/*Screen.ts`) when it needs host-only sources; writes are commands.
+2. UI: `apps/desktop/renderer/screens/<feature>/` with a screen hook `use<Feature>Screen.ts` (all state
+   and data, `useQuery` from `@cashu/store-react`), a pure `<Feature>View.tsx` (props in, no store
+   access), a `<Feature>.strings.ts` catalog and a Storybook story for the View (a guard requires it);
+   wire the route in `apps/desktop/renderer/routes.tsx`. Shared components and charts come from
+   `@cashu/ui` with design tokens only (no raw colours or spacing; a guard checks it).
+3. Copy: follow the UI copy rules in [conventions.md](conventions.md); new backend codes get a label in
+   `packages/ui-logic/src/core/messages.ts`; update or add the matching e2e spec in
+   `apps/desktop/e2e/desktop-specs/` ([running.md](running.md)).
 
 ## Adding a CLI command
 
-Put it in the module's `cli.py`, add it through `register(app)` and/or the module's sub-app, resolve
-the profile with `core.cliutil.profile(session)` and print through `core.cliutil.console`
-([conventions.md](conventions.md) rule 7).
+Implement a `PortedCommand` (`{ name, run(args, io, root) }`, `apps/host/src/cli/tree.ts`) in the
+module's folder under `apps/host/src/cli/`, register it in `portedCommands()`
+(`apps/host/src/cli/ported.ts`), add its usage to `HELP` in `apps/host/src/cli/help.strings.ts` and
+its texts to a `*.strings.ts` catalog. Resolve the profile from `root.profile` (else `CASHU_PROFILE`,
+else the default profile) and print only through `io.stdout` / `io.stderr`
+([conventions.md](conventions.md) rule 7). Try it from the checkout with `pnpm cashu-next <command>`.
 
-## Adding a migration
+## Changing an event or a view
 
-Change the model, then from the repo root
-`CASHU_DATA_DIR=/tmp/x alembic revision --autogenerate -m "..."`; use `op.batch_alter_table` for
-existing tables; run `pytest tests/test_migrations.py`. Backup and stamping behaviour:
-[data-model.md](data-model.md) rule 15.
+Follow [data-model.md](data-model.md) rule 15: a new event version with an upcaster (or an optional
+field that keeps the old meaning), or a bumped materializer / deriver version; update
+`packages/store/spec/events.md` in the same change (the catalog test compares them); run
+`pnpm --filter @cashu/store test`, which includes the upgrade and view-upgrade tests.
 
 ## Adding an MCP tool
 
-The MCP server lives in `src/cashu/core/mcp/` (read the module docstrings before editing):
+The MCP server lives in `packages/mcp/src/` (read the module comments before editing):
 
-- A provider module `core/mcp/tools/<module>.py` exports `TOOLS: tuple[ToolSpec, ...]`
-  (`core/mcp/registry.py`). A spec names its module (`core` = always available, otherwise listed and
-  callable only while that module is enabled), an input schema (JSON Schema, no additional
-  properties, never a profile argument: the server serves one profile) and a handler returning a
-  labelled tree; raise `ToolError` for problems the agent can fix.
-- Every returned value is wrapped with a sensitivity label (`core/mcp/labels.py`); the redaction layer
-  (`core/mcp/redaction.py`) decides per label and privacy level what is sent, and an unlabelled leaf
+- A tool is a `ToolSpec` (`registry.ts`, built with `toolSpec()`) in the module's
+  `packages/mcp/src/tools/<module>.ts`. A spec names its module (`core` = always available, otherwise
+  listed and callable only while that module is enabled, `also` for extra modules), an input schema
+  (no additional properties, never a profile argument: the session serves one vault) and a handler
+  returning a labelled tree; throw `ToolError` for problems the agent can fix. Add it to `TOOL_ORDER`
+  / the schemas in `runtime/toolSchemas.ts` and to the matching authority set in
+  `apps/host/src/localHost/mcp.ts`.
+- Every returned value is wrapped with a sensitivity label (`privacy/labels.ts`); the redactor
+  (`privacy/redactor.ts`) decides per label and privacy level what is sent, and an unlabelled leaf
   fails the call closed. Configuration changes an agent suggests are proposals the owner approves in
-  the app (`core/proposals.py`).
-- Tests: `tests/test_mcp_tools.py`, `tests/test_mcp_redaction.py`, `tests/test_fxb_mcp_privacy.py`
-  and the module-specific `tests/test_*_mcp.py`.
+  the app (`packages/store/src/core/proposals.ts`).
+- Tests: the module's `packages/mcp/src/tools/<module>.test.ts`, `runtime/server.test.ts`, the
+  privacy tests in `privacy/`, and `apps/host/src/mcp/tools.test.ts` (pins the tool inventory).
 - Skills may only use tool names the server exposes ([skills.md](skills.md)).
 
 ## Adding an importer or connector
 
 - Investments imports: the cashU format ([`docs/import-format.md`](../import-format.md)), a generic
   CSV mapping or an approved connector - never a broker-specific parser in the code base.
-- Budget imports: a bank CSV parser (above), the budget import format
-  ([`docs/budget-import-format.md`](../budget-import-format.md)) or a connector.
+- Budget imports: the budget import format ([`docs/budget-import-format.md`](../budget-import-format.md))
+  or a connector.
 - Connectors: contract in [`docs/connectors.md`](../connectors.md), JSON Schemas in `docs/schemas/`
-  (regenerate with `python scripts/gen_connector_schemas.py` after changing a model), tested examples
-  in `examples/connectors/`, code in `src/cashu/core/connectors/`.
+  (generated from `apps/host/src/connectors/jsonSchemas.ts` and the domain import schemas:
+  `pnpm --filter @cashu/host gen:connector-schemas` after a change, `--check` verifies), tested
+  examples in `examples/connectors/`, the runtime in `apps/host/src/connectors/` and
+  `apps/host/src/connectorRuntime.ts`. After editing a doc a skill copies, run
+  `pnpm --filter @cashu/host skills:sync` ([skills.md](skills.md)).
 
 ## Packaging
 
-`scripts/build_macos.sh` builds cashU.app; the decisions behind the build inputs (hash-pinned
-`packaging/requirements-build.lock`, entitlements, signing) are in
-[`packaging/README.md`](../../packaging/README.md).
+`node apps/desktop/scripts/package-macos.mjs <arm64|x64>` builds cashU.app; details in
+[running.md](running.md) "Packaging", update and release rules in
+[s47-update-operator.md](s47-update-operator.md).
 
 ## See also
 

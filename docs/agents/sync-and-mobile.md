@@ -11,7 +11,9 @@ Decided (owner and lead; the plan of record keeps the full list and the scope id
 
 - **Strangler**, same repo: Python keeps running and writing; TypeScript packages and apps grow next to
   it (`packages/*`, `apps/*`, pnpm + turbo); a Python module is retired only after TS parity on the
-  synthetic demo set and a local copy of real data, translated pytest oracles and a clean shadow run.
+  synthetic demo set and a local copy of real data, translated Python test oracles and a clean shadow run.
+  (Since then the strangler finished: the Python app is retired and survives only as the frozen parity
+  oracle under `parity/python/`, see `parity/README.md`.)
 - **Carrier: our own log** (phase 0 spike): Evolu was 30-50x slower, has no folder transport and no
   Node runtime; LiveStore needs a sync backend that sees plaintext and lost data in the spike. The log
   is per profile (vault) and per device: compress-then-encrypt segments (XChaCha20-Poly1305, the

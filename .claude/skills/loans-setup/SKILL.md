@@ -22,7 +22,7 @@ user runs them. Conversation in Polish, files in English, regular hyphens only.
 |---|---|
 | privacy level, boundaries, the MCP tool list, where files go | which loan terms are needed and where the user finds them |
 | which profile the workspace serves | the `loans add` / `set-payment` / `set-balance` commands with placeholders for the user |
-| the `cashu` CLI name (packaged app or checkout) | installment recognition by a title phrase, so installments leave Subskrypcje |
+| the `cashu` command of this install (the app's launcher) | installment recognition by a title phrase, so installments leave Subskrypcje |
 
 ## Problem -> reference mapping
 
@@ -72,8 +72,8 @@ Privacy and boundaries (say the first two lines at the start):
    profiles). In the profile's agent workspace (its `CLAUDE.md` names the profile) it is configured in
    `.mcp.json`. Elsewhere, if none is connected: the `claude mcp add` line from Ustawienia > Agent AI,
    then restart Claude Code (or create the workspace there and start Claude Code in it). `cashu` in
-   the commands below is the CLI named in the workspace's `CLAUDE.md` (in the packaged app, the app's
-   binary). Call `profile_overview` and `setup_status("loans")`; state the privacy level.
+   the commands below is the command named in the workspace's `CLAUDE.md` (the app's launcher
+   `~/Library/Application Support/cashU/bin/cashu`). Call `profile_overview` and `setup_status("loans")`; state the privacy level.
 2. **What loans** (one at a time): mortgage (`--type mortgage`) or another loan (`--type loan`: car,
    cash, instalment). A profile can have any number of loans. For each the user needs, from the
    agreement or the bank's app: amount borrowed, annual rate in percent (for a variable rate: today's

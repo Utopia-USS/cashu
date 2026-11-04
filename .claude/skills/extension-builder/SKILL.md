@@ -53,8 +53,8 @@ in English, regular hyphens only.
   asks; never bypass bot protection.
 - Never read strategy files, exports or the database directly, and never ask for passwords, IBANs or
   account numbers.
-- Custom expressions run in the app's own safe evaluator (no code execution). Script rules (Python
-  extensions run out of process) are not available yet: if an idea needs one, say so and record it as a
+- Custom expressions run in the app's own safe evaluator (no code execution). Script rules (code run
+  out of process) are not available yet: if an idea needs one, say so and record it as a
   manual check instead.
 
 ### MCP tools used
