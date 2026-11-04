@@ -1,5 +1,5 @@
 /** Exit code of a refused command-line invocation (EX_USAGE). */
-export const COMMAND_REFUSED = 64;
+const COMMAND_REFUSED = 64;
 
 /** Select a one-shot helper before importing any ordinary desktop startup module. */
 export async function dispatchDesktopEntry(
