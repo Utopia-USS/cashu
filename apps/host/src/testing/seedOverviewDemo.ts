@@ -138,7 +138,6 @@ if (process.argv[2] === "rename") {
     dataDir: target,
     vaultSource: { kind: "synthetic-harness" },
     home: process.env.HOME,
-    python: null,
     launcher: false,
     strategyImages: images,
     strategies: { bind: (vault) => capabilities.get(vault) ?? null },
@@ -267,7 +266,6 @@ if (process.argv[2] === "rename") {
     dataDir: target,
     vaultSource: { kind: "synthetic-harness" },
     home: process.env.HOME,
-    python: null,
     launcher: false,
     ported: [],
   });

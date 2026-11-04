@@ -26,7 +26,6 @@ it("starts a native first-Create host without constructing a worker or KeyStore"
       home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: { kind: "native-production", factory },
       worker: () => {
         constructed++;
@@ -56,7 +55,6 @@ it("takes checked ownership before investments is enabled and follows live modul
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
       now: () => time,
       worker: (context) =>
@@ -110,7 +108,6 @@ it("binds an authenticated local daily run and retains its one native owner afte
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     now: () => Date.UTC(2026, 10, 3, 12),
     worker: (context: Parameters<typeof createProductionWorkerBindings>[0]) =>
@@ -159,7 +156,6 @@ it("reports missing file authority without claiming or recording a daily run", a
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     now: () => Date.UTC(2026, 10, 3, 12),
     worker: (context) =>
@@ -193,7 +189,6 @@ it("claims a budget connector without a strategy directory", async () => {
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     now: () => Date.UTC(2026, 10, 3, 12),
     worker: (context) =>

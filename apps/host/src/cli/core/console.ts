@@ -10,12 +10,9 @@ export interface ConsoleOptions {
   /** Rich Console(highlight=False): preserve explicit spans but skip automatic syntax colors. */
   readonly highlight?: boolean;
 }
-/** Native cell widths use Unicode 17; older explicit versions need the legacy renderer. */
-export function supportsConsoleUnicode(io: Pick<CommandIo, "tty">): boolean {
-  return (
-    io.tty.unicodeVersion === undefined ||
-    ["", "latest", "auto", "17", "17.0", "17.0.0"].includes(io.tty.unicodeVersion)
-  );
+/** Native rendering remains available on terminals with older width tables. */
+export function supportsConsoleUnicode(_io: Pick<CommandIo, "tty">): boolean {
+  return true;
 }
 /** Styles are explicit spans; callers must not silently strip arbitrary legacy Rich markup. */
 export function consolePolicy(

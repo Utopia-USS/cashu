@@ -33,7 +33,7 @@ import {
   snapshot,
 } from "./runner.js";
 
-export interface OfflineFileTestInput {
+interface OfflineFileTestInput {
   readonly workspaceRoot: string;
   readonly connectorPath: string;
   readonly samplePath?: string;
@@ -43,7 +43,7 @@ export interface OfflineFileTestInput {
   isCurrent(): boolean;
   now?(): number;
 }
-export interface OfflineFileTestReport {
+interface OfflineFileTestReport {
   readonly ok: boolean;
   readonly id: string | null;
   readonly version: string | null;
@@ -121,9 +121,7 @@ function checked(path: string, root: string): string {
 }
 
 /** Unapproved code only: a no-network sandbox run with a checked sample or recorded fixture. */
-export async function testConnectorOffline(
-  input: OfflineFileTestInput,
-): Promise<OfflineFileTestReport> {
+async function testConnectorOffline(input: OfflineFileTestInput): Promise<OfflineFileTestReport> {
   if (!input.isCurrent()) return refused("authority_lost");
   if (
     process.platform !== "darwin" ||

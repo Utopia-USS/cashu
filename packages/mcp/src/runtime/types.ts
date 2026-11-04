@@ -95,7 +95,7 @@ export interface NativeToolStore {
     readonly bytes: Uint8Array;
   };
   /** Profile-only YAML authority; deliberately separate from general import-file authority. */
-  readonly readInvestmentMappingFile?: (rawPath: string) => string;
+  readonly readInvestmentMappingFile?: (rawPath: string) => string | Promise<string>;
   readonly read: Read;
   run<I, R>(command: Command<I, R>, input: unknown): CommandResult<R> | Promise<CommandResult<R>>;
   readonly prices: market.PriceCache | null;

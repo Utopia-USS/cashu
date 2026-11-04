@@ -130,10 +130,12 @@ def uncategorized(
 @router.post("/merchant-category")
 def set_merchant_category(profile: CurrentProfile, payload: dict) -> dict:
     from .categorize import taxonomy
+    from .ingestion.normalize import normalize_text
     from .service import recategorize_merchant
 
-    mk = (payload or {}).get("merchant_key")
+    raw = (payload or {}).get("merchant_key")
     cat = (payload or {}).get("category")
+    mk = normalize_text(raw) if isinstance(raw, str) else ""
     if not mk or cat not in taxonomy.CATEGORY_KEYS:
         return {"error": "invalid merchant_key or category"}
     with get_session() as s:

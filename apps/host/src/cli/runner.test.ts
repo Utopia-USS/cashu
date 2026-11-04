@@ -1,5 +1,5 @@
 // The host's CLI runner over a real host socket (in-process host, temp data dir): the routing reply
-// (delegate with the Python CLI, exit for a ported command), output notes in order, prompts answered by
+// (native exit for every command), output notes in order, prompts answered by
 // the client (hidden flag passed on), stdin on demand, Ctrl-C (cancel -> 130), one exec per session,
 // a build without Python, and refusals of malformed requests.
 import { CLI_INTERRUPTED_EXIT, type CliExecParams, type HostFrame } from "@cashu/host-protocol";
@@ -10,8 +10,6 @@ import { cleanup, tempDir, testHostOptions } from "../testing/harness.js";
 import type { PortedCommand } from "./tree.js";
 
 afterEach(cleanup);
-
-const PYTHON = { command: "/opt/fake/bin/cashu", args: ["--from-test"] };
 
 const params = (argv: string[], env: Record<string, string> = {}): CliExecParams => ({
   argv,
@@ -57,11 +55,10 @@ const TEST_COMMANDS: PortedCommand[] = [
   },
 ];
 
-async function host(python: typeof PYTHON | null = PYTHON) {
+async function host() {
   const dir = tempDir();
   const h = await startLocalHost({
     ...testHostOptions(dir),
-    python,
     ported: TEST_COMMANDS,
     launcher: false,
   });
@@ -97,24 +94,47 @@ function exec(
 }
 
 describe("cli.exec", () => {
-  it("delegates a Python command with the Python CLI, without output", async () => {
+  it("uses the oldest profile for native cash and stats without a profile option", async () => {
+    const dir = tempDir();
+    const h = await startLocalHost({ ...testHostOptions(dir), launcher: false });
+    const cash = await connectHost({ dataDir: dir, role: "cli", build: "test" });
+    expect(await exec(cash, params(["cash"])).result).toEqual({ kind: "exit", code: 0 });
+    cash.close();
+    const stats = await connectHost({ dataDir: dir, role: "cli", build: "test" });
+    expect(await exec(stats, params(["stats"])).result).toEqual({ kind: "exit", code: 0 });
+    stats.close();
+    const unknown = await connectHost({ dataDir: dir, role: "cli", build: "test" });
+    expect(await exec(unknown, params(["--profile", "missing", "stats"])).result).toEqual({
+      kind: "exit",
+      code: 2,
+    });
+    unknown.close();
+    const configured = await connectHost({ dataDir: dir, role: "cli", build: "test" });
+    expect(await exec(configured, params(["stats"], { CASHU_PROFILE: "missing" })).result).toEqual({
+      kind: "exit",
+      code: 2,
+    });
+    configured.close();
+    await h.stop();
+  });
+
+  it("never delegates an unknown command even when a Python program is configured", async () => {
     const { h, conn } = await host();
     const e = exec(conn, params(["--profile", "demo-anna", "stats", "--months", "3"]));
-    expect(await e.result).toEqual({
-      kind: "delegate",
-      command: PYTHON.command,
-      args: PYTHON.args,
-    });
-    expect(e.notes).toEqual([]);
+    expect(await e.result).toEqual({ kind: "exit", code: 2 });
+    expect(e.notes[0]?.params).toMatchObject({ stream: "stderr" });
     conn.close();
     await h.stop();
   });
 
-  it("delegates the root help, unknown commands and root parse errors (Python prints them)", async () => {
+  it("answers root help, unknown commands and root parse errors natively", async () => {
     const { h, conn } = await host();
     for (const argv of [[], ["--help"], ["nonexistent"], ["--profile"]]) {
       const c = await connectHost({ dataDir: h.server.paths.dataDir, role: "cli", build: "test" });
-      expect(await exec(c, params(argv)).result).toMatchObject({ kind: "delegate" });
+      expect(await exec(c, params(argv)).result).toEqual({
+        kind: "exit",
+        code: argv[0] === "--help" ? 0 : 2,
+      });
       c.close();
     }
     conn.close();
@@ -211,7 +231,7 @@ describe("cli.exec", () => {
   });
 
   it("reports unsupported native commands in the command's language", async () => {
-    const { h, conn } = await host(null);
+    const { h, conn } = await host();
     const e = exec(conn, params(["stats"], { CASHU_LANG: "pl" }));
     expect(await e.result).toEqual({ kind: "exit", code: 2 });
     expect(e.notes).toHaveLength(1);

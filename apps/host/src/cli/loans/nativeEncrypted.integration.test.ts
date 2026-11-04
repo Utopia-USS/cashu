@@ -13,7 +13,6 @@ it("appends CLI loans and assets to an encrypted vault and reopens their project
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
   } as const;
   const io: CommandIo = {
@@ -53,9 +52,7 @@ it("appends CLI loans and assets to an encrypted vault and reopens their project
           "50000",
         ],
         io,
-        commands,
-        {},
-      ),
+        commands),
     ).toEqual({ kind: "exit", code: 0 });
     expect(
       await runTree(
@@ -71,9 +68,7 @@ it("appends CLI loans and assets to an encrypted vault and reopens their project
           "4",
         ],
         io,
-        commands,
-        {},
-      ),
+        commands),
     ).toEqual({ kind: "exit", code: 0 });
     expect(vault?.store.read("SELECT COUNT(*) AS n FROM accounts")).toEqual([{ n: 2 }]);
     await host.stop();

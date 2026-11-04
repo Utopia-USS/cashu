@@ -95,7 +95,6 @@ describe("Signals UI action on actual host stores", () => {
   it("keeps source-supported text fallback and refuses caller-owned resolution fields", async () => {
     const host = await startLocalHost({
       ...testHostOptions(tempDir()),
-      python: null,
       launcher: false,
     });
     try {
@@ -138,7 +137,6 @@ describe("Signals UI action on actual host stores", () => {
   it("reports saved-but-cleanup-unconfirmed after a durable snooze and skips cleanup on undo", async () => {
     const host = await startLocalHost({
       ...testHostOptions(tempDir()),
-      python: null,
       launcher: false,
     });
     try {

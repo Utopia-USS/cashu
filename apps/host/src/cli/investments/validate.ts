@@ -10,7 +10,7 @@ import {
 } from "@cashu/domain/investments/importing";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
-import { DELEGATE } from "./inspection.js";
+import { UNHANDLED } from "./inspection.js";
 
 interface ValidateInput {
   readonly file: string;
@@ -55,27 +55,27 @@ async function bounded(path: string, cwd: string, max: number): Promise<Uint8Arr
   }
 }
 
-/** Standalone file inspection: no vault or database, and unsupported I/O delegates before output. */
+/** Standalone file inspection: no vault or database; unsupported I/O exits before output. */
 export async function validateFile(
   args: readonly string[],
   io: CommandIo,
-): Promise<number | typeof DELEGATE> {
+): Promise<number | typeof UNHANDLED> {
   const input = parse(args);
-  if (!input || io.signal.aborted) return DELEGATE;
+  if (!input || io.signal.aborted) return UNHANDLED;
   // Source's generic importer is CSV only; XLSX requires a separately authorized decoder.
-  if (input.file.toLowerCase().endsWith(".xlsx")) return DELEGATE;
+  if (input.file.toLowerCase().endsWith(".xlsx")) return UNHANDLED;
   let file: Uint8Array | null;
   let mapping: string | null = null;
   try {
     file = await bounded(input.file, io.cwd, MAX_FILE_BYTES);
-    if (file === null) return DELEGATE;
+    if (file === null) return UNHANDLED;
     if (input.mapping !== undefined) {
       const raw = await bounded(input.mapping, io.cwd, 1_048_576);
-      if (raw === null) return DELEGATE;
+      if (raw === null) return UNHANDLED;
       mapping = new TextDecoder("utf-8", { fatal: true }).decode(raw);
     }
   } catch {
-    return DELEGATE;
+    return UNHANDLED;
   }
   if (io.signal.aborted) return 130;
   let importer: GenericCsvImporter | undefined;

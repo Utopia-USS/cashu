@@ -24,13 +24,13 @@ import {
 import { classifierInput } from "./classifierInput.js";
 import { importTextSupported } from "./importInput.js";
 
-const DELEGATE = { kind: "delegate" } as const;
+const UNHANDLED = { kind: "unhandled" } as const;
 export async function runMerchantClassification(
   vault: OpenVault,
   slug: string,
   io: CommandIo,
   deps: CategorizeDeps,
-): Promise<number | typeof DELEGATE> {
+): Promise<number | typeof UNHANDLED> {
   // Native per-vault owner consent selects cloud. The old env request alone never grants it.
   const backend = () => {
     const explicit = io.env.CASHU_CATEGORIZE_LLM_BACKEND?.toLowerCase();
@@ -46,7 +46,7 @@ export async function runMerchantClassification(
   const initial = await vault.queue.run(() =>
     io.signal.aborted ? null : classifierInput(vault, slug, deps.stores.vaults),
   );
-  if (initial === null) return io.signal.aborted ? 130 : cloud ? refuseCloud() : DELEGATE;
+  if (initial === null) return io.signal.aborted ? 130 : cloud ? refuseCloud() : UNHANDLED;
   let context: ClassifierTransportContext;
   let cloudGuard: { consent: ReviewedCloudConsent; config: CurrentCloudConfig } | undefined;
   let options: ReturnType<typeof ollamaOptions>;
@@ -130,7 +130,7 @@ export async function runMerchantClassification(
         !hasClassifierAuthority(provider, vault.id) ||
         !importTextSupported(options.model)
       )
-        return DELEGATE;
+        return UNHANDLED;
       const selected = options;
       context = {
         vault: vault.id,

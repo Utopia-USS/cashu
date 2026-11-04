@@ -6,6 +6,7 @@ import {
   importStatement,
   runCommand,
   setLlmCategories,
+  setModules,
   setTransactionCategory,
 } from "@cashu/store";
 import { budgetBook } from "@cashu/store/budget/queries";
@@ -20,7 +21,6 @@ it("counts all rows, preserves manual/cash/LLM claims and pins only the eligible
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   let stdout = "";
   const io: CommandIo = {
@@ -61,6 +61,7 @@ it("counts all rows, preserves manual/cash/LLM claims and pins only the eligible
       const result = runCommand(vault.store, vault.writer, command, input, vault.env);
       expect(result.ok).toBe(true);
     };
+    run(setModules, { moduleIds: ["budget"] });
     run(importStatement, {
       statement: {
         bank: "mbank",
@@ -90,7 +91,7 @@ it("counts all rows, preserves manual/cash/LLM claims and pins only the eligible
     stdout = "";
     expect(
       await runCategorizeCommand("categorize", ["--llm"], io, { profile: "demo" }, deps),
-    ).toEqual({ kind: "delegate" });
+    ).toEqual({ kind: "unhandled" });
     expect(stdout).toBe("");
     expect(
       await runCategorizeCommand(
@@ -130,11 +131,41 @@ it("counts all rows, preserves manual/cash/LLM claims and pins only the eligible
         { profile: "demo" },
         deps,
       ),
-    ).toEqual({ kind: "delegate" });
+    ).toBe(0);
     expect(await runCategorizeCommand("categorize", [], io, { profile: "other" }, deps)).toEqual({
-      kind: "delegate",
+      kind: "unhandled",
     });
-    expect(stdout).toBe("");
+    expect(stdout).toBe("UNKNOWN SHOP → cash_withdrawal (2 transactions)\n");
+
+    let release = () => {};
+    let started = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const blocked = vault.queue.run(async () => {
+      started();
+      await gate;
+    });
+    await ready;
+    const pending = runCategorizeCommand(
+      "set-category",
+      ["unknown shop", "dining"],
+      io,
+      { profile: "demo" },
+      deps,
+    );
+    run(setModules, { moduleIds: [] });
+    release();
+    await blocked;
+    expect(await pending).not.toBe(0);
+    expect(
+      book()
+        .transactions.slice(1, 3)
+        .map((t) => t.category),
+    ).toEqual(["cash_withdrawal", "cash_withdrawal"]);
   } finally {
     await host.stop();
   }

@@ -144,7 +144,6 @@ it.skipIf(!existsSync(PYTHON))(
     const host = await startLocalHost({
       ...testHostOptions(tempDir()),
       launcher: false,
-      python: null,
     });
     try {
       const vault = [...host.stores.vaults.values()][0];

@@ -35,7 +35,7 @@ it("expires a beforeExecute read and retains the last key if the action throws a
       throw new Error("synthetic failure after append");
     },
   });
-  const host = await startLocalHost({ ...testHostOptions(dir), python: null });
+  const host = await startLocalHost({ ...testHostOptions(dir) });
   const vault = [...host.stores.vaults.values()][0];
   if (!vault) throw new Error("missing synthetic vault");
   try {
@@ -80,7 +80,6 @@ it("retains an uncertain action only for its original parsed input", async () =>
   });
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
-    python: null,
     uiActions: [action],
   });
   const vault = [...host.stores.vaults.values()][0];
@@ -143,7 +142,6 @@ it("snapshots command identity before queueing and rejects stale privacy after a
   };
   const host = await startLocalHost({
     ...testHostOptions(dir),
-    python: null,
     uiActions: [action, throwing],
   });
   const client = await storeClient(dir);
@@ -245,7 +243,6 @@ it("bounds outstanding hydration including replaced subscriptions and catches sy
   const dir = tempDir();
   const host = await startLocalHost({
     ...testHostOptions(dir),
-    python: null,
     maxInFlight: 1,
     prepareUiQuery: () => {
       calls++;
@@ -300,7 +297,6 @@ it("parks resumed private reads while public and pending reads recover across po
   const dir = tempDir();
   const host = await startLocalHost({
     ...testHostOptions(dir),
-    python: null,
     privateUiQuery: (_query, args) => (args as { private?: boolean } | null)?.private === true,
     prepareUiQuery: (_vault, _query, args) =>
       (args as { pending?: boolean } | null)?.pending === true ? gate.promise : Promise.resolve(),

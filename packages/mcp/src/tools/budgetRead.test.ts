@@ -1,7 +1,18 @@
-import { removeAccount, setModules } from "@cashu/store";
+import {
+  addCashExpense,
+  type Command,
+  deleteCashTransaction,
+  removeAccount,
+  setMerchantCategory,
+  setModules,
+} from "@cashu/store";
 import { afterEach, expect, it } from "vitest";
+import * as L from "../privacy/labels.js";
+import { pyDumps } from "../privacy/pyJson.js";
+import { Redactor } from "../privacy/redactor.js";
 import { bankAccount, bankTxn, callTool } from "../testing/budget.js";
 import { nativeFixture } from "../testing/native.js";
+import { budgetTools } from "./budget.js";
 
 const fixtures: ReturnType<typeof nativeFixture>[] = [];
 const fixture = () => {
@@ -11,6 +22,103 @@ const fixture = () => {
 };
 afterEach(() => {
   for (const f of fixtures.splice(0)) f.close();
+});
+async function setCategory(
+  f: ReturnType<typeof nativeFixture>,
+  merchant: string,
+  category: string,
+) {
+  const ctx = f.context("strict");
+  const spec = budgetTools().find((tool) => tool.name === "set_merchant_category");
+  if (!spec) throw new Error("missing setter");
+  const output = new Redactor({ privacy: ctx.privacy, guard: ctx.guard }).apply(
+    await spec.handler(ctx, { merchant, category }),
+  );
+  return JSON.parse(pyDumps(output)) as Record<string, unknown>;
+}
+it("learns only a unique in-vault merchant and preserves an owner pin", async () => {
+  const f = fixture();
+  const other = fixture();
+  const a = bankAccount(f);
+  const b = bankAccount(other);
+  bankTxn(f, a, { amount: "-10", merchant: "ZXQ SETTER TEST" });
+  bankTxn(f, a, { amount: "-20", merchant: "ZXQ SETTER TEST", currency: "EUR" });
+  bankTxn(other, b, { amount: "-30", merchant: "ZXQ OTHER TEST" });
+  const before = f.committed();
+  await expect(setCategory(f, "ZXQ OTHER TEST", "dining")).rejects.toThrow("no such merchant");
+  await expect(setCategory(f, "ZXQ SETTER TEST", "invalid-category")).rejects.toThrow(
+    "unknown category",
+  );
+  expect(f.committed()).toBe(before);
+  expect(await setCategory(f, "ZXQ SETTER TEST", "dining")).toMatchObject({
+    updated_transactions: 2,
+  });
+  expect(await setCategory(f, "ZXQ SETTER TEST", "dining")).toMatchObject({
+    updated_transactions: 0,
+  });
+  expect(other.store.read("SELECT * FROM category_rules")).toHaveLength(0);
+  expect(
+    f.run(setMerchantCategory, { merchantKey: "ZXQ SETTER TEST", category: "shopping" }).ok,
+  ).toBe(true);
+  expect(await setCategory(f, "ZXQ SETTER TEST", "dining")).toMatchObject({
+    category: "shopping",
+    updated_transactions: 0,
+    rule: "kept: the owner set this merchant's category by hand",
+  });
+});
+it("accepts only unique redacted display or this vault's guard token", async () => {
+  const f = fixture();
+  const other = nativeFixture({ vault: "22222222222222222222222222222222" });
+  fixtures.push(other);
+  const a = bankAccount(f);
+  const b = bankAccount(other);
+  bankTxn(f, a, { amount: "-10", merchant: "ZXQ 123456789012 TEST" });
+  bankTxn(f, a, { amount: "-20", merchant: "ZXQ 987654321098 TEST" });
+  bankTxn(f, a, { amount: "-30", merchant: "Piotr Kowalski" });
+  bankTxn(other, b, { amount: "-40", merchant: "Piotr Kowalski" });
+  const ctx = f.context("strict");
+  const display = new Redactor({ privacy: ctx.privacy, guard: ctx.guard }).apply(
+    L.merchant("ZXQ 123456789012 TEST"),
+  ) as string;
+  const before = f.committed();
+  await expect(setCategory(f, display, "dining")).rejects.toThrow("no such merchant");
+  await expect(
+    setCategory(f, other.context("strict").guard.payeeRef("Piotr Kowalski"), "dining"),
+  ).rejects.toThrow("no such merchant");
+  expect(f.committed()).toBe(before);
+  const token = ctx.guard.payeeRef("Piotr Kowalski");
+  expect(token).toMatch(/^payee:/);
+  expect(await setCategory(f, token, "dining")).toMatchObject({ updated_transactions: 1 });
+});
+it("refuses a merchant removed while its setter waits to execute", async () => {
+  const f = fixture();
+  const added = f.run(addCashExpense, {
+    amount: "10",
+    title: "ZXQ STALE TEST",
+    category: "dining",
+  });
+  if (!added.ok) throw new Error(added.reason);
+  const ctx = f.context("strict");
+  const store = {
+    ...ctx.store,
+    run: async <I, R>(command: Command<I, R>, input: unknown) => {
+      const removed = f.run(deleteCashTransaction, { txn: added.value.txn });
+      if (!removed.ok) throw new Error(removed.reason);
+      return ctx.store.run(command, input);
+    },
+  };
+  const spec = budgetTools().find((tool) => tool.name === "set_merchant_category");
+  if (!spec) throw new Error("missing setter");
+  await expect(
+    spec.handler(
+      { ...ctx, store },
+      {
+        merchant: "ZXQ STALE TEST",
+        category: "shopping",
+      },
+    ),
+  ).rejects.toThrow("no such merchant");
+  expect(f.store.read("SELECT * FROM category_rules")).toHaveLength(0);
 });
 it("reports empty periods and zero cashflow without invented values", () => {
   const f = fixture();

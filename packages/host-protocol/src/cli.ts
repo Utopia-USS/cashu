@@ -9,11 +9,7 @@
 //   host -> shim  note cli.stdin {}                     (start sending standard input)
 //   shim -> host  req  cli.stdin {exec, data, eof}      (base64 chunks; the reply is the flow control)
 //   shim -> host  cancel {id: exec}                     (Ctrl-C: the command is asked to stop)
-//   host -> shim  res  cli.exec {kind: "exit", code} | {kind: "delegate", command, args}
-//
-// `delegate`: the command is not ported yet; the shim runs `command [...args, ...argv]` itself with
-// its own terminal (so the Python CLI's TTY, colours and hidden prompts stay native) and exits with
-// its code. TRANSITIONAL(S49): the reply kind goes when the last Python command is ported.
+//   host -> shim  res  cli.exec {kind: "exit", code}
 import { z } from "zod";
 
 /** Environment variables the shim forwards to a command run in the host (never the whole env). */
@@ -53,16 +49,10 @@ export const cliExecParamsSchema = z.object({
 });
 export type CliExecParams = z.infer<typeof cliExecParamsSchema>;
 
-export const cliExecResultSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("exit"), code: z.number().int().min(0).max(255) }),
-  z.object({
-    kind: z.literal("delegate"),
-    /** An absolute executable path. */
-    command: text(4_096).refine((p) => p.startsWith("/"), "command must be absolute"),
-    /** Arguments placed before the shim's argv. */
-    args: z.array(argSchema).max(64),
-  }),
-]);
+export const cliExecResultSchema = z.object({
+  kind: z.literal("exit"),
+  code: z.number().int().min(0).max(255),
+});
 export type CliExecResult = z.infer<typeof cliExecResultSchema>;
 
 export const cliOutNoteSchema = z.object({

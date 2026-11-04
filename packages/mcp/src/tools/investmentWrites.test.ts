@@ -14,9 +14,9 @@ import { Labelled } from "../privacy/labels.js";
 import { type JsonValue, pyDumps } from "../privacy/pyJson.js";
 import { investmentWriteServices } from "../providers/investmentWrites.js";
 import type { ToolContext } from "../registry.js";
-import { DELEGATED_TOOLS } from "../runtime/delegated.generated.js";
 import { decodeEntityRef, type EntityRefKind, encodeEntityRef } from "../runtime/refs.js";
 import { NativeMcpServer, type NativeRuntime, restrictivePrivacy } from "../runtime/server.js";
+import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.generated.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { nativeFixture } from "../testing/native.js";
 import vectors from "./fixtures/investmentWrites.json" with { type: "json" };
@@ -74,7 +74,6 @@ async function setup(privacy: "strict" | "amounts" = "strict") {
     replaced: () => false,
     warn: () => {},
     policy: async () => ({ privacy, modules: new Set(["investments"]) }),
-    delegation: async () => undefined,
     audit: { start: async () => 1, finish: async () => {} },
     execute: async (ceiling, fn) => {
       const base = f.context(restrictivePrivacy(privacy, ceiling)),
@@ -261,7 +260,7 @@ describe("native MCP local investment writes", () => {
       true,
     );
     for (const tool of tools) {
-      const source = DELEGATED_TOOLS.find((t) => t.name === tool.name);
+      const source = NATIVE_TOOL_SCHEMAS.find((t) => t.name === tool.name);
       expect(source).toBeDefined();
       expect(tool.description).toBe(source?.description);
       expect(tool.write).toBe(source?.write);

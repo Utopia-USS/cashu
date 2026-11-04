@@ -31,7 +31,6 @@ it("serves genuine overview, suppresses unchanged cache wakes and releases exter
   const dir = tempDir();
   const host = await startLocalHost({
     ...testHostOptions(dir),
-    python: null,
     overview: { prices, changes },
   });
   const client = await storeClient(dir);

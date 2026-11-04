@@ -1,5 +1,5 @@
-// TRANSITIONAL(S49): the genesis folder reads the Python schema (Alembic 0025-0029) and goes away
-// when the Python app is retired (spec D-G15).
+// The T54 one-shot importer and parity oracle read a private copy of the Python schema here.
+// This reader is retained after Python runtime retirement; it does not open the source database.
 //
 // Genesis source reader (S26 spec 2.2 schema versions, 2.3 value decoding, 2.4 profile scoping,
 // 3.1 tables read; impl notes "C3 provides"). Reads a COPY of the Python database through a
@@ -102,19 +102,9 @@ function selectList(
     .join(", ");
 }
 
-export type RowResult<R> =
+type RowResult<R> =
   | { readonly ok: true; readonly value: R; readonly tally: JsonTally }
   | { readonly ok: false; readonly reason: DecodeFailure };
-
-/**
- * Decodes one raw row of a table spec (every field of the spec): the S31a bridge decodes outbox
- * `post` values with it, so a shipped row is the typed row genesis would have read.
- */
-export function decodeSourceRow<R>(spec: TableSpec<R>, raw: SqlRow): RowResult<R> {
-  const fields: (keyof R & string)[] = [];
-  for (const field in spec.fields) fields.push(field);
-  return decodeRow(spec, fields, raw);
-}
 
 function decodeRow<R>(
   spec: TableSpec<R>,

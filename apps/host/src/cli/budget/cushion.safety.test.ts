@@ -27,7 +27,6 @@ it("turns off and reads a cushion without discarding its selected account", asyn
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   try {
     const vault = [...host.stores.vaults.values()][0];
@@ -51,15 +50,16 @@ it("turns off and reads a cushion without discarding its selected account", asyn
     ).toBe(true);
     const out: string[] = [];
     const commands = budgetCommands({ stores: host.stores, now: () => Date.now() });
-    expect(
-      await runTree(["-p", "demo", "budget", "cushion", "--off"], io(out), commands, {}),
-    ).toEqual({ kind: "exit", code: 0 });
+    expect(await runTree(["-p", "demo", "budget", "cushion", "--off"], io(out), commands)).toEqual({
+      kind: "exit",
+      code: 0,
+    });
     expect(out.join("")).toBe("Cushion rule: off\n");
     const settings = budgetCliSettings(vault.store.read.bind(vault.store));
     expect(settings?.cushion.enabled).toBe(false);
     expect(settings?.cushion.accountIds).toEqual([account.value.account]);
     out.length = 0;
-    expect(await runTree(["-p", "demo", "budget", "cushion"], io(out), commands, {})).toEqual({
+    expect(await runTree(["-p", "demo", "budget", "cushion"], io(out), commands)).toEqual({
       kind: "exit",
       code: 0,
     });
@@ -69,11 +69,68 @@ it("turns off and reads a cushion without discarding its selected account", asyn
   }
 });
 
+it("sets and reads selected native account gids only in the chosen vault", async () => {
+  const host = await startLocalHost({ ...testHostOptions(tempDir()), launcher: false });
+  const other = await startLocalHost({ ...testHostOptions(tempDir()), launcher: false });
+  try {
+    const vault = [...host.stores.vaults.values()][0];
+    const otherVault = [...other.stores.vaults.values()][0];
+    if (!vault || !otherVault) throw new Error("missing synthetic vault");
+    const makeAccount = (selected: typeof vault, suffix: string) => {
+      const result = runCommand(
+        selected.store,
+        selected.writer,
+        openAccount,
+        {
+          bank: "mbank",
+          type: "savings",
+          currency: "PLN",
+          iban: `PL100000000000000000000000${suffix}`,
+        },
+        selected.env,
+      );
+      if (!result.ok) throw new Error("synthetic account refused");
+      return result.value.account;
+    };
+    const first = makeAccount(vault, "07");
+    const second = makeAccount(vault, "08");
+    const foreign = makeAccount(otherVault, "09");
+    const out: string[] = [];
+    const commands = budgetCommands({ stores: host.stores, now: () => Date.now() });
+    const call = (...args: string[]) =>
+      runTree(["-p", "demo", "budget", "cushion", ...args], io(out), commands);
+
+    expect(await call("--target", "100", "--account", first, `--account=${second}`)).toEqual({
+      kind: "exit",
+      code: 0,
+    });
+    expect(budgetCliSettings(vault.store.read.bind(vault.store))?.cushion.accountIds).toEqual([
+      first,
+      second,
+    ]);
+    expect(out.join("").replace(/\s+/g, " ")).toContain(`accounts [${first}, ${second}]`);
+    out.length = 0;
+    expect(await call()).toEqual({ kind: "exit", code: 0 });
+    expect(out.join("").replace(/\s+/g, " ")).toContain(`accounts [${first}, ${second}]`);
+
+    for (const gid of ["12", foreign]) {
+      out.length = 0;
+      expect((await call("--account", gid)).code).not.toBe(0);
+      expect(budgetCliSettings(vault.store.read.bind(vault.store))?.cushion.accountIds).toEqual([
+        first,
+        second,
+      ]);
+    }
+  } finally {
+    await other.stop();
+    await host.stop();
+  }
+});
+
 it("does not append a queued cash expense after its loaded vault is replaced", async () => {
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   try {
     const vault = [...host.stores.vaults.values()][0];
@@ -84,11 +141,11 @@ it("does not append a queued cash expense after its loaded vault is replaced", a
       ["-p", "demo", "cash-add", "1", "Synthetic", "dining", "--date", "2026-10-31"],
       io(out),
       budgetCommands({ stores: host.stores, now: () => Date.now() }),
-      {},
     );
     vaults.set(vault.id, { ...vault });
-    expect(await pending).toEqual({ kind: "delegate" });
-    expect(out).toEqual([]);
+    expect(await pending).toEqual({ kind: "exit", code: 1 });
+    expect(out).toHaveLength(1);
+    expect(out[0]).toContain("session_unavailable");
     expect(vault.store.read("SELECT COUNT(*) AS n FROM transactions")).toEqual([{ n: 0 }]);
     vaults.set(vault.id, vault);
   } finally {

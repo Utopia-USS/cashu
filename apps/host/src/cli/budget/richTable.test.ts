@@ -139,9 +139,23 @@ it.skipIf(!existsSync(PYTHON))(
     }
   },
 );
-it("leaves genuinely unsupported markup, controls and extremely narrow layouts explicit", () => {
+it("renders markup-shaped cells literally without interpreting Rich tags or emoji aliases", () => {
   const target = io({ width: 80, tty: false, env: {} });
-  for (const value of ["[red]markup[/]", "a\nb", "a\tb", ":money_bag:"])
+  const table = richTable(
+    target,
+    [{ header: "[title]" }, { header: "amount", justify: "right" }],
+    [["[red]markup[/] :money_bag:", "12,34 PLN"]],
+    "[Cash] :money_bag:",
+  );
+  expect(table).not.toBeNull();
+  expect(table).toContain("[Cash] :money_bag:");
+  expect(table).toContain("[title]");
+  expect(table).toContain("[red]markup[/] :money_bag:");
+  expect(table).toContain("12,34 PLN");
+});
+it("leaves controls and extremely narrow layouts explicit", () => {
+  const target = io({ width: 80, tty: false, env: {} });
+  for (const value of ["a\nb", "a\tb", "a\u001b[31m", "a\u007f"])
     expect(richTable(target, [{ header: "title" }], [[value]])).toBeNull();
   expect(
     richTable(io({ width: 3, tty: false, env: {} }), [{ header: "title" }], [["x"]]),

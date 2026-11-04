@@ -1,6 +1,6 @@
 import { mcpProfile } from "@cashu/store/core";
 import type { HostStores, OpenVault } from "../stores.js";
-import { N } from "./nativeStrings.js";
+import { N } from "./native.strings.js";
 import type { CommandIo } from "./tree.js";
 
 export interface LoanAssetDeps {

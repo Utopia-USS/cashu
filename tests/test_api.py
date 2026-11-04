@@ -35,7 +35,7 @@ UPSTREAM_ROUTES = {
 }
 
 def _today() -> date:
-    return date.today()  # noqa: DTZ011 - the code under test uses the naive local date
+    return date.today()  # The code under test uses the naive local date.
 
 
 ACCOUNT_KEYS = {"id", "bank", "bank_name", "name", "type", "currency", "iban_tail", "balance", "as_of", "is_liability"}
@@ -348,6 +348,9 @@ def test_merchant_category(api):
     # invalid input is a 200 with an error body (upstream convention)
     bad = api.post("/api/merchant-category", json={"merchant_key": "X", "category": "nope"})
     assert bad.status_code == 200 and bad.json() == {"error": "invalid merchant_key or category"}
+    malformed = api.post("/api/merchant-category", json={"merchant_key": 12, "category": "shopping"})
+    assert malformed.status_code == 200
+    assert malformed.json() == {"error": "invalid merchant_key or category"}
 
 
 def test_transaction_category(api):

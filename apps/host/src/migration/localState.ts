@@ -337,21 +337,6 @@ function proofOf(
   };
 }
 
-/** Derive verification expectations from the frozen source without reading target state. */
-export function expectedLocalStateProof(conversion: StrictConversion): LocalStateProof {
-  try {
-    const calendar = sourceCalendarBytes(conversion);
-    return proofOf(
-      conversion,
-      sha(expectedOf(conversion, sourceMappings(conversion), calendar)),
-      calendar,
-    );
-  } catch (error) {
-    if (error instanceof MigrationError) throw error;
-    throw new MigrationError("mapping_invalid");
-  }
-}
-
 /** Write exact verified source-local state into the fresh device database before inventory. */
 export function hydrateLocalState(
   driver: SqlDriver,

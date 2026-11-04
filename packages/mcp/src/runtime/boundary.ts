@@ -10,17 +10,6 @@ import type { NativeToolStore } from "./types.js";
 export const APP_UPDATED =
   "cashU was updated while this MCP server was running, so this server stops now and nothing was run. Reconnect it (Claude Code: /mcp) to use the new version, then repeat the call.";
 export const CEILING_KEY = "cashu/privacyCeiling";
-export const EFFECTIVE_PRIVACY_KEY = "cashu/effectivePrivacy";
-export const BRIDGE_CAPABILITY = "cashu/hostPolicyV1";
-export const NAME_GUARD_KEY = "cashu/nameGuard";
-export const NAME_GUARD_APPLIED_KEY = "cashu/nameGuardApplied";
-/** Restrictive raw sources only: no replacement targets, symbols, secrets or profile identifiers. */
-export interface DelegatedNameSources {
-  readonly persons: readonly string[];
-  readonly strongNames: readonly string[];
-  readonly privatePayees: readonly string[];
-  readonly strictNames: readonly string[];
-}
 
 export interface NativeExecution {
   readonly context: ToolContext<NativeToolStore>;
@@ -61,8 +50,6 @@ export interface NativeRuntime {
     | { readonly kind: "completed" }
     | { readonly kind: "refused" | "not_started"; readonly reason: string }
   >;
-  /** Captures current policy and restrictive name sources in the same vault queue step. */
-  delegation(): Promise<(NativePolicy & { readonly names: DelegatedNameSources }) | undefined>;
   warn(code: string): void;
 }
 export interface NativeCallResult {

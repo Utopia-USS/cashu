@@ -12,7 +12,6 @@ afterEach(cleanup);
 async function fixture(empty = false) {
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
-    python: null,
     launcher: false,
   });
   const vault = [...host.stores.vaults.values()][0];

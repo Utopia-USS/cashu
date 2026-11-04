@@ -13,7 +13,7 @@ import { cleanup, tempDir, testHostOptions } from "./testing/harness.js";
 afterEach(cleanup);
 
 it("checks source identity and invalidates only a live injected image", async () => {
-  const host = await startLocalHost({ ...testHostOptions(tempDir()), python: null });
+  const host = await startLocalHost({ ...testHostOptions(tempDir()) });
   try {
     const vault = [...host.stores.vaults.values()][0];
     if (!vault) throw new Error("missing synthetic vault");
@@ -61,7 +61,7 @@ it("checks source identity and invalidates only a live injected image", async ()
 });
 
 it("encodes a genuine Research query result from current store sources", async () => {
-  const host = await startLocalHost({ ...testHostOptions(tempDir()), python: null });
+  const host = await startLocalHost({ ...testHostOptions(tempDir()) });
   try {
     const vault = [...host.stores.vaults.values()][0];
     if (!vault) throw new Error("missing synthetic vault");

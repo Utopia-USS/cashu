@@ -9,7 +9,7 @@ import { createVaultBankingImportPort } from "./hostImport.js";
 afterEach(cleanup);
 
 it("refuses banking imports and account lookup for a synthetic vault", async () => {
-  const host = await startLocalHost({ ...testHostOptions(tempDir()), python: null });
+  const host = await startLocalHost({ ...testHostOptions(tempDir()) });
   try {
     const vault = [...host.stores.vaults.values()][0];
     if (!vault) throw new Error("synthetic vault missing");
@@ -58,7 +58,7 @@ it("refuses banking imports and account lookup for a synthetic vault", async () 
 });
 
 it("looks up a bank account by bank and excludes brokerage accounts", async () => {
-  const host = await startLocalHost({ ...testHostOptions(tempDir()), python: null });
+  const host = await startLocalHost({ ...testHostOptions(tempDir()) });
   try {
     const vault = [...host.stores.vaults.values()][0];
     if (!vault) throw new Error("synthetic vault missing");

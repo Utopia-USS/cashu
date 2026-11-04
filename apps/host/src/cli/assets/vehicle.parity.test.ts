@@ -100,7 +100,6 @@ it.skipIf(!existsSync(PYTHON))(
     const host = await startLocalHost({
       ...testHostOptions(tempDir()),
       launcher: false,
-      python: null,
     });
     try {
       const commands = vehicleCommands({
@@ -130,7 +129,7 @@ it.skipIf(!existsSync(PYTHON))(
             throw new Error("unexpected stdin");
           },
         };
-        const outcome = await runTree(run.args, io, commands, {});
+        const outcome = await runTree(run.args, io, commands);
         expect(outcome, `native case ${index}`).toEqual({ kind: "exit", code: 0 });
         if (outcome.kind === "exit") actual.code = outcome.code;
         expect(actual, `Python byte case ${index}`).toEqual(expected[index]);

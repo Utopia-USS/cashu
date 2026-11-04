@@ -9,18 +9,18 @@ import {
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentVault } from "./context.js";
-import { DELEGATE } from "./inspection.js";
-import { investmentCliText as M } from "./strings.js";
+import { UNHANDLED } from "./inspection.js";
+import { investmentCliText as M, mergeRefusal } from "./strings.js";
 
 export async function instrumentsMerge(
   args: readonly string[],
   io: CommandIo,
   root: { readonly profile?: string },
   deps: InvestmentCliDeps,
-): Promise<number | typeof DELEGATE> {
-  if (args[0] !== "merge" || args.length < 3 || args.length > 4) return DELEGATE;
+): Promise<number | typeof UNHANDLED> {
+  if (args[0] !== "merge" || args.length < 3 || args.length > 4) return UNHANDLED;
   const [_, source, target, option] = args;
-  if (!source || !target || (option !== undefined && option !== "--dry-run")) return DELEGATE;
+  if (!source || !target || (option !== undefined && option !== "--dry-run")) return UNHANDLED;
   const parsed = investmentsCommands.mergeInstruments.input.safeParse({ source, target });
   if (!parsed.success) {
     io.stderr(`${io.t.tr(M.mergeNativeIds)}\n`);
@@ -37,7 +37,7 @@ export async function instrumentsMerge(
     target,
   );
   if (!preview.ok) {
-    io.stderr(`${io.t.tr(M.mergeRefusal[preview.reason])}\n`);
+    io.stderr(`${io.t.tr(mergeRefusal[preview.reason])}\n`);
     return 1;
   }
   let plan = preview.plan;
@@ -50,7 +50,7 @@ export async function instrumentsMerge(
       deps.stores.vaults.get(vault.id) === vault &&
       mcpProfile(vault.store.read.bind(vault.store))?.slug === slug &&
       enabledModuleIds(vault.store.read.bind(vault.store)).has("investments");
-    if (!current()) return DELEGATE;
+    if (!current()) return UNHANDLED;
     const result = await runCliVaultCommand(
       vault,
       investmentsCommands.mergeInstruments,
@@ -58,8 +58,8 @@ export async function instrumentsMerge(
       key,
       current,
     );
-    if (result.kind === "refused" && result.reason in M.mergeRefusal) {
-      io.stderr(`${io.t.tr(M.mergeRefusal[result.reason as keyof typeof M.mergeRefusal])}\n`);
+    if (result.kind === "refused" && result.reason in mergeRefusal) {
+      io.stderr(`${io.t.tr(mergeRefusal[result.reason as keyof typeof mergeRefusal])}\n`);
       return 1;
     }
     if (result.kind === "not_started" && result.reason === "checkpoint_unavailable")

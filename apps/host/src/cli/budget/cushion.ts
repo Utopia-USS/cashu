@@ -3,6 +3,7 @@ import type { BudgetSettings } from "@cashu/domain/budget";
 import { setCushion } from "@cashu/store";
 import { budgetCliSettings } from "@cashu/store/budget/queries";
 import { mcpProfile } from "@cashu/store/core";
+import type { Read } from "@cashu/store/query";
 import {
   cliCommandKey,
   reportCliCommandFailure,
@@ -11,10 +12,11 @@ import {
 } from "../commandOutcome.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
 import { type BudgetCliDeps, budgetVault } from "./context.js";
+import { S } from "./cushion.strings.js";
 import { cushionInput } from "./cushionInput.js";
 import { cushionOutput } from "./cushionOutput.js";
 
-const DELEGATE = { kind: "delegate" } as const;
+const UNHANDLED = { kind: "unhandled" } as const;
 
 function nextSettings(
   current: BudgetSettings,
@@ -56,8 +58,16 @@ function nextSettings(
     targetAmount,
     targetMonths,
     monthlyMax,
-    accounts: [...old.accountIds],
+    accounts: input.accounts === null ? [...old.accountIds] : [...input.accounts],
   };
+}
+
+function visibleAccounts(read: Read, gids: readonly string[]): boolean {
+  return gids.every(
+    (gid) =>
+      read<{ gid: string }>("SELECT gid FROM accounts WHERE gid = ? AND removed_at IS NULL", gid)
+        .length === 1,
+  );
 }
 
 async function runCushion(
@@ -68,34 +78,34 @@ async function runCushion(
 ) {
   const input = cushionInput(args);
   const vault = budgetVault(io, root, deps.stores);
-  if (input === null || vault === null) return DELEGATE;
+  if (input === null || vault === null) return UNHANDLED;
   if (io.signal.aborted) return 130;
   const read = vault.store.read.bind(vault.store);
   const current = budgetCliSettings(read);
-  if (
-    current === null ||
-    (current.cushion.accountIds.length !== 0 &&
-      !input.off &&
-      (input.changing || current.cushion.enabled))
-  )
-    return DELEGATE;
-  if (!input.changing) return cushionOutput(io, current) ? 0 : DELEGATE;
+  if (current === null) return UNHANDLED;
+  if (input.accounts !== null && !visibleAccounts(read, input.accounts)) {
+    io.stderr(`${io.t.tr(S.unknownAccount)}\n`);
+    return 2;
+  }
+  if (!input.changing) return cushionOutput(io, current) ? 0 : UNHANDLED;
   const key = cliCommandKey();
-  if (io.signal.aborted) return 130;
   if (io.signal.aborted) return 130;
   const now = budgetCliSettings(vault.store.read.bind(vault.store));
   const slug = root.profile || io.env.CASHU_PROFILE;
   if (
     deps.stores.vaults.get(vault.id) !== vault ||
     mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug ||
-    now === null ||
-    (now.cushion.accountIds.length !== 0 && !input.off)
+    now === null
   )
-    return DELEGATE;
+    return UNHANDLED;
   const proposed = nextSettings(now, input);
+  if (!input.off && !visibleAccounts(read, proposed.accounts)) {
+    io.stderr(`${io.t.tr(S.unknownAccount)}\n`);
+    return 2;
+  }
   // The legacy view cannot print an enabled rule without a target; refuse before appending.
   if (proposed.enabled && proposed.targetAmount === null && proposed.targetMonths === null)
-    return DELEGATE;
+    return UNHANDLED;
   const result = await runCliVaultCommand(vault, setCushion, proposed, key, () => {
     const latest = budgetCliSettings(vault.store.read.bind(vault.store));
     return (
@@ -103,8 +113,8 @@ async function runCushion(
       deps.stores.vaults.get(vault.id) === vault &&
       mcpProfile(vault.store.read.bind(vault.store))?.slug === slug &&
       latest !== null &&
-      (latest.cushion.accountIds.length === 0 || input.off) &&
-      JSON.stringify(nextSettings(latest, input)) === JSON.stringify(proposed)
+      JSON.stringify(nextSettings(latest, input)) === JSON.stringify(proposed) &&
+      (input.off || visibleAccounts(vault.store.read.bind(vault.store), proposed.accounts))
     );
   });
   if (result.kind !== "completed") return reportCliCommandFailure(io, result, key, setCushion.id);

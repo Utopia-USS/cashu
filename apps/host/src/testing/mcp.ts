@@ -1,5 +1,3 @@
-import { tempDir } from "./harness.js";
-
 type Json = Record<string, unknown>;
 export function mcpClient(
   send: (line: string) => void,
@@ -34,17 +32,4 @@ export async function initializeMcp(client: ReturnType<typeof mcpClient>) {
     clientInfo: { name: "synthetic-test", version: "1" },
   });
   client.notify("notifications/initialized");
-}
-export function isolatedMcpEnv(dataDir: string): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  for (const key of Object.keys(env))
-    if (key.startsWith("CASHU_") || key.startsWith("FINANSE_")) delete env[key];
-  return {
-    ...env,
-    CASHU_DATA_DIR: dataDir,
-    CASHU_WORKSPACES_DIR: tempDir(),
-    CASHU_AUTO_DAILY: "0",
-    CASHU_TESTING: "1",
-    HOME: tempDir(),
-  };
 }

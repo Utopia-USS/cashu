@@ -10,9 +10,9 @@ const SHIM = join(REPO, "apps/cli/src/index.ts");
 const RESOLVE_TS = join(REPO, "tools/node-ts/resolveTs.ts");
 const HOST_INTERPOSER = join(REPO, "apps/cli/src/testing/hostInterposer.ts");
 export const FAKE_PYTHON = join(REPO, "apps/host/test-fixtures/fake-python-cli.mjs");
-export const NODE_ARGS = [
+const NODE_ARGS = [
   "--no-warnings",
-  "--experimental-strip-types",
+  "--experimental-transform-types",
   "--import",
   RESOLVE_TS,
   "--import",
@@ -28,11 +28,6 @@ export interface ShimRun {
 }
 
 const hostDirs = new Set<string>();
-
-/** Registers a data dir whose host a test started some other way (stopped by `stopHosts`). */
-export function trackHostDir(dataDir: string): void {
-  hostDirs.add(dataDir);
-}
 
 export function spawnShim(
   args: readonly string[],

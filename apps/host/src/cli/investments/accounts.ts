@@ -12,8 +12,8 @@ import {
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentVault } from "./context.js";
-import { DELEGATE } from "./inspection.js";
-import { investmentCliText as M } from "./strings.js";
+import { UNHANDLED } from "./inspection.js";
+import { columns, investmentCliText as M } from "./strings.js";
 
 type AddInput = { name: string; broker: string; wrapper: string; currency: string };
 
@@ -47,10 +47,10 @@ export async function accounts(
   io: CommandIo,
   root: { readonly profile?: string },
   deps: InvestmentCliDeps,
-): Promise<number | typeof DELEGATE> {
+): Promise<number | typeof UNHANDLED> {
   const [action, ...rest] = args;
   const vault = investmentVault(io, root, deps);
-  if (!vault) return DELEGATE;
+  if (!vault) return UNHANDLED;
   const read = vault.store.read.bind(vault.store);
   if (action === "list" && rest.length === 0) {
     const rows = views.accountsView(brokerageAccountFacts(read, io.t.language), null);
@@ -61,14 +61,14 @@ export async function accounts(
     const table = richTable(
       io,
       [
-        M.columns.id,
-        M.columns.name,
-        M.columns.broker,
-        M.columns.wrapper,
-        M.columns.currency,
-        M.columns.importer,
-        M.columns.snapshot,
-        M.columns.lastImport,
+        columns.id,
+        columns.name,
+        columns.broker,
+        columns.wrapper,
+        columns.currency,
+        columns.importer,
+        columns.snapshot,
+        columns.lastImport,
       ].map((label) => ({ header: io.t.tr(label) })),
       rows.map((r) => [
         r.id,
@@ -82,15 +82,15 @@ export async function accounts(
       ]),
       io.t.tr(M.accountsTitle),
     );
-    if (table === null) return DELEGATE;
+    if (table === null) return UNHANDLED;
     io.stdout(table);
     // A 26-character native GID is otherwise ellipsized in an 80-column table.
     for (const row of rows) printConsole(io, `  ${row.id}  ${row.name}`, { highlight: false });
     return 0;
   }
-  if (action !== "add") return DELEGATE;
+  if (action !== "add") return UNHANDLED;
   const input = parseAdd(rest);
-  if (!input) return DELEGATE;
+  if (!input) return UNHANDLED;
   if (io.signal.aborted) return 130;
   // The native command performs the same broker, wrapper, currency and duplicate validation.
   const key = cliCommandKey();
@@ -100,7 +100,7 @@ export async function accounts(
     deps.stores.vaults.get(vault.id) === vault &&
     mcpProfile(read)?.slug === slug &&
     enabledModuleIds(read).has("investments");
-  if (!current()) return DELEGATE;
+  if (!current()) return UNHANDLED;
   const result = await runCliVaultCommand(
     vault,
     investmentsCommands.addBrokerageAccount,
@@ -108,7 +108,7 @@ export async function accounts(
     key,
     current,
   );
-  if (result.kind === "refused" && result.reason === "cli_context_changed") return DELEGATE;
+  if (result.kind === "refused" && result.reason === "cli_context_changed") return UNHANDLED;
   if (result.kind !== "completed")
     return reportCliCommandFailure(io, result, key, investmentsCommands.addBrokerageAccount.id);
   const account = result.value.account;

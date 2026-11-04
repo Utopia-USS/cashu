@@ -22,7 +22,6 @@ it("reviews a local-start target and commits one recovery-authorized revoke unde
     home: fixture.home,
     vaultSource: fixture.vaultSource,
     launcher: false,
-    python: null,
   });
   const ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "device-test" });
   try {
@@ -110,7 +109,6 @@ for (const failure of ["append_response_lost", "ring_save_response_lost"] as con
       home: fixture.home,
       vaultSource: fixture.vaultSource,
       launcher: false,
-      python: null,
     });
     let ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "device-test" });
     try {
@@ -171,7 +169,6 @@ for (const failure of ["append_response_lost", "ring_save_response_lost"] as con
         home: fixture.home,
         vaultSource: fixture.vaultSource,
         launcher: false,
-        python: null,
       });
       ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "device-test" });
       const listed = (await ui.call("native.devices.list", { vault: fixture.vaultId })) as {
@@ -201,7 +198,6 @@ for (const failure of ["append_response_lost", "ring_save_response_lost"] as con
         home: fixture.home,
         vaultSource: fixture.vaultSource,
         launcher: false,
-        python: null,
       });
       const third = host.stores.vaults.get(fixture.vaultId)?.native;
       if (!third) throw new Error("second reopened native vault unavailable");
@@ -227,7 +223,6 @@ it("marks the original keyed revoke not started only after a complete cold own-t
     home: fixture.home,
     vaultSource: fixture.vaultSource,
     launcher: false,
-    python: null,
   });
   let ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "device-test" });
   let renameSpy: ReturnType<typeof vi.spyOn> | undefined;
@@ -261,7 +256,6 @@ it("marks the original keyed revoke not started only after a complete cold own-t
       home: fixture.home,
       vaultSource: fixture.vaultSource,
       launcher: false,
-      python: null,
     });
     ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "device-test" });
     expect(host.stores.vaults.get(fixture.vaultId)?.native?.canRunSideEffects()).toBe(true);
@@ -303,7 +297,6 @@ it("keeps read and pull open while a bounded fetch and other effects lose author
     home: fixture.home,
     vaultSource: fixture.vaultSource,
     launcher: false,
-    python: null,
     worker: (current) => {
       context = current;
       return bindings;

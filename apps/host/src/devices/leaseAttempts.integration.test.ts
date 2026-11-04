@@ -26,7 +26,6 @@ it("records a checked native fetch as an authenticated durable lease event", asy
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
   });
   try {
@@ -60,7 +59,6 @@ it("routes a typed owner re-pin through the native UI socket and inspects its du
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
   });
   const ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "test" });
@@ -125,7 +123,6 @@ it("refuses a self-authored non-force handover while an old-leader fetch is in f
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
   });
   try {
@@ -229,7 +226,6 @@ it("keeps a remote non-force pin pending until the old leader's fetch drains and
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: {
       kind: "native",
       provider: { ...fixture.vaultSource.provider, remoteTransports: () => [peerLocal] },
@@ -319,7 +315,6 @@ it("keeps a force pin's unknown outcome inspectable across native reopen", async
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
   let host = await start();

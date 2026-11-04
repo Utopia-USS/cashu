@@ -77,7 +77,6 @@ it.skipIf(!existsSync(PYTHON))(
     const host = await startLocalHost({
       ...testHostOptions(tempDir()),
       launcher: false,
-      python: null,
     });
     try {
       const vault = [...host.stores.vaults.values()][0];
@@ -91,18 +90,15 @@ it.skipIf(!existsSync(PYTHON))(
           vault.env,
         ).ok,
       ).toBe(true);
+      const unsupportedOutput: string[] = [];
       const withoutFiles: CommandIo = {
         cwd: home,
         env,
         tty: { stdin: false, stdout: false, stderr: false },
         signal: new AbortController().signal,
         t: createTranslator("en"),
-        stdout: () => {
-          throw new Error("unexpected output before delegation");
-        },
-        stderr: () => {
-          throw new Error("unexpected output before delegation");
-        },
+        stdout: (text) => unsupportedOutput.push(text),
+        stderr: (text) => unsupportedOutput.push(text),
         prompt: async () => null,
         stdin: async function* () {},
       };
@@ -110,10 +106,9 @@ it.skipIf(!existsSync(PYTHON))(
         await runTree(
           ["-p", "demo", "budget", "month-close", "--month", "2026-10"],
           withoutFiles,
-          budgetCommands({ stores: host.stores, now: () => Date.now() }),
-          {},
-        ),
-      ).toEqual({ kind: "delegate" });
+          budgetCommands({ stores: host.stores, now: () => Date.now() })),
+      ).toEqual({ kind: "exit", code: 2 });
+      expect(unsupportedOutput).toHaveLength(1);
       let yaml: string | null = null;
       const commands = budgetCommands({
         stores: host.stores,
@@ -155,9 +150,7 @@ it.skipIf(!existsSync(PYTHON))(
         const result = await runTree(
           ["-p", "demo", "budget", "month-close", "--month", "2026-10"],
           io,
-          commands,
-          {},
-        );
+          commands);
         expect(result, `strategy state ${index}`).toEqual({ kind: "exit", code: 0 });
         if (result.kind === "exit") actual.code = result.code;
         expect(actual, `Python strategy byte case ${index}`).toEqual(expected[index]);

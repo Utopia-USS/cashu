@@ -167,7 +167,7 @@ it.skipIf(!existsSync(PYTHON))(
     );
     for (const [index, { args, terminal }] of cases.entries()) {
       const actual = io(cwd, terminal);
-      const outcome = await runTree(["invest", ...args], actual.io, investmentCommands(deps), {});
+      const outcome = await runTree(["invest", ...args], actual.io, investmentCommands(deps));
       expect(outcome.kind).toBe("exit");
       if (outcome.kind !== "exit") continue;
       expect({ code: outcome.code, ...actual.output }, `case ${index}`).toEqual(expected[index]);
@@ -178,7 +178,6 @@ it.skipIf(!existsSync(PYTHON))(
 it("renders a folded multi-currency vault with current strategy and market inputs", async () => {
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
-    python: null,
     launcher: false,
   });
   try {
@@ -198,6 +197,7 @@ it("renders a folded multi-currency vault with current strategy and market input
     );
     expect(account.ok).toBe(true);
     if (!account.ok) throw new Error(account.reason);
+    expect(account.value.account).toMatch(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
     const deposited = runCommand(
       vault.store,
       vault.writer,
@@ -330,9 +330,7 @@ it("renders a folded multi-currency vault with current strategy and market input
       const result = await runTree(
         ["-p", "demo", "invest", ...args],
         actual.io,
-        investmentCommands(deps),
-        {},
-      );
+        investmentCommands(deps));
       expect(result).toEqual({ kind: "exit", code: 0 });
       expect(actual.output.stdout).toContain(fragment);
     }
@@ -341,9 +339,7 @@ it("renders a folded multi-currency vault with current strategy and market input
       await runTree(
         ["-p", "demo", "invest", "accounts", "add", "Synthetic third", "--broker", "xtb"],
         added.io,
-        investmentCommands(deps),
-        {},
-      ),
+        investmentCommands(deps)),
     ).toEqual({ kind: "exit", code: 0 });
     expect(added.output.stdout).toMatch(
       /Brokerage account 'Synthetic third' \(id [0-9A-HJKMNP-TV-Z]{26}, xtb,\s+regular\)/,
@@ -366,7 +362,7 @@ it("renders a folded multi-currency vault with current strategy and market input
     });
     const initialized = io(tempDir());
     expect(
-      await runTree(["-p", "demo", "invest", "strategy", "init"], initialized.io, withStrategy, {}),
+      await runTree(["-p", "demo", "invest", "strategy", "init"], initialized.io, withStrategy),
     ).toEqual({ kind: "exit", code: 0 });
     expect(strategyFiles.has("strategy.yaml")).toBe(true);
     const validated = io(tempDir());
@@ -374,15 +370,13 @@ it("renders a folded multi-currency vault with current strategy and market input
       await runTree(
         ["-p", "demo", "invest", "strategy", "validate"],
         validated.io,
-        withStrategy,
-        {},
-      ),
+        withStrategy),
     ).toEqual({ kind: "exit", code: 0 });
     expect(validated.output.stdout).toContain("strategy.yaml: valid");
     const polish = io(tempDir());
     const polishIo = { ...polish.io, t: createTranslator("pl") };
     expect(
-      await runTree(["-p", "demo", "invest", "signals"], polishIo, investmentCommands(deps), {}),
+      await runTree(["-p", "demo", "invest", "signals"], polishIo, investmentCommands(deps)),
     ).toEqual({ kind: "exit", code: 0 });
     expect(polish.output.stdout).toContain("Brak sygnałów.");
     for (const [args, fragment] of [
@@ -394,9 +388,7 @@ it("renders a folded multi-currency vault with current strategy and market input
       const result = await runTree(
         ["-p", "demo", "invest", ...args],
         actual.io,
-        investmentCommands(deps),
-        {},
-      );
+        investmentCommands(deps));
       expect(result).toEqual({ kind: "exit", code: 0 });
       expect(actual.output.stdout).toContain(fragment);
       rendered.set(args[0], actual.output.stdout);
@@ -476,20 +468,34 @@ it("renders a folded multi-currency vault with current strategy and market input
         await runTree(
           ["-p", "demo", "invest", "positions"],
           terminalPositions.io,
-          investmentCommands(deps),
-          {},
-        ),
+          investmentCommands(deps)),
       ).toEqual({ kind: "exit", code: 0 });
       expect(terminalPositions.output.stdout).toBe(terminal[0]);
+      const scopedPositions = io(tempDir());
+      expect(
+        await runTree(
+          ["-p", "demo", "invest", "positions", "--account", account.value.account],
+          scopedPositions.io,
+          investmentCommands(deps),
+        ),
+      ).toEqual({ kind: "exit", code: 0 });
+      expect(scopedPositions.output.stdout).toContain("broker");
+      expect(scopedPositions.output.stdout).not.toContain("account");
+      const scopedPerformance = io(tempDir());
+      expect(
+        await runTree(
+          ["-p", "demo", "invest", "performance", "--account", account.value.account],
+          scopedPerformance.io,
+          investmentCommands(deps),
+        ),
+      ).toEqual({ kind: "exit", code: 0 });
       expect(rendered.get("search")).toBe(plain[1]);
       const terminalSearch = io(tempDir(), true);
       expect(
         await runTree(
           ["-p", "demo", "invest", "search", "--local", "syn"],
           terminalSearch.io,
-          investmentCommands(deps),
-          {},
-        ),
+          investmentCommands(deps)),
       ).toEqual({ kind: "exit", code: 0 });
       expect(terminalSearch.output.stdout).toBe(terminal[1]);
       expect(rendered.get("performance")).toBe(plain[2]);
@@ -498,9 +504,7 @@ it("renders a folded multi-currency vault with current strategy and market input
         await runTree(
           ["-p", "demo", "invest", "performance", "--range", "1m", "--attribution"],
           terminalPerformance.io,
-          investmentCommands(deps),
-          {},
-        ),
+          investmentCommands(deps)),
       ).toEqual({ kind: "exit", code: 0 });
       expect(terminalPerformance.output.stdout).toBe(terminal[2]);
     }
@@ -509,27 +513,56 @@ it("renders a folded multi-currency vault with current strategy and market input
       await runTree(
         ["-p", "demo", "invest", "positions", "--account", "1"],
         refused.io,
-        investmentCommands(deps),
-        {},
-      ),
-    ).toEqual({ kind: "delegate" });
-    expect(refused.output).toEqual({ stdout: "", stderr: "" });
+        investmentCommands(deps)),
+    ).toEqual({ kind: "exit", code: 2 });
+    expect(refused.output.stdout).toBe("");
+    expect(refused.output.stderr).not.toBe("");
     for (const args of [
       ["validate", "missing.csv", "--unsupported"],
       ["performance", "--account", "1"],
-      ["search", "syn"],
     ]) {
       const unsupported = io(tempDir());
       expect(
         await runTree(
           ["-p", "demo", "invest", ...args],
           unsupported.io,
-          investmentCommands(deps),
-          {},
-        ),
-      ).toEqual({ kind: "delegate" });
-      expect(unsupported.output).toEqual({ stdout: "", stderr: "" });
+          investmentCommands(deps)),
+      ).toEqual({ kind: "exit", code: 2 });
+      expect(unsupported.output.stdout).toBe("");
+      expect(unsupported.output.stderr).not.toBe("");
     }
+    const offlineSearch = io(tempDir());
+    expect(
+      await runTree(
+        ["-p", "demo", "invest", "search", "syn"],
+        offlineSearch.io,
+        investmentCommands(deps),
+      ),
+    ).toEqual({ kind: "exit", code: 0 });
+    expect(offlineSearch.output.stdout).toContain("SYN");
+    expect(offlineSearch.output.stderr).toContain("Online search is unavailable");
+    let remoteCalls = 0;
+    const onlineSearch = io(tempDir());
+    expect(
+      await runTree(
+        ["-p", "demo", "invest", "search", "syn"],
+        onlineSearch.io,
+        investmentCommands({
+          ...deps,
+          searchIo: () => ({
+            vault: vault.id,
+            binding: {},
+            isCurrent: () => true,
+            async remoteHits() {
+              remoteCalls += 1;
+              return { hits: [], status: "ok" as const };
+            },
+          }),
+        }),
+      ),
+    ).toEqual({ kind: "exit", code: 0 });
+    expect(remoteCalls).toBe(1);
+    expect(onlineSearch.output.stderr).toBe("");
     const ambiguous = io(tempDir());
     expect(
       await runTree(
@@ -543,11 +576,10 @@ it("renders a folded multi-currency vault with current strategy and market input
               ["two", vault],
             ]),
           },
-        }),
-        {},
-      ),
-    ).toEqual({ kind: "delegate" });
-    expect(ambiguous.output).toEqual({ stdout: "", stderr: "" });
+        })),
+    ).toEqual({ kind: "exit", code: 2 });
+    expect(ambiguous.output.stdout).toBe("");
+    expect(ambiguous.output.stderr).not.toBe("");
   } finally {
     await host.stop();
   }

@@ -42,8 +42,23 @@ export function investmentImportSummary(preview: ImportPreview) {
   };
 }
 export type ImportProposalCreation =
-  | { readonly stored: false; readonly preview: ImportPreview }
-  | { readonly stored: true; readonly proposalGid: string; readonly preview: ImportPreview };
+  | { readonly stored: false; readonly preview: ImportProposalPreview }
+  | {
+      readonly stored: true;
+      readonly proposalGid: string;
+      readonly preview: ImportProposalPreview;
+    };
+/** The durable command result carries only the fields used by the MCP answer. */
+export interface ImportProposalPreview {
+  readonly summary: ReturnType<typeof investmentImportSummary>;
+  readonly warnings: ImportPreview["warnings"];
+  readonly errors: ImportPreview["errors"];
+}
+const answerPreview = (preview: ImportPreview): ImportProposalPreview => ({
+  summary: investmentImportSummary(preview),
+  warnings: preview.warnings,
+  errors: preview.errors,
+});
 /** Construct only inside final reentry; no command/read/clock is retained over publication. */
 export function createInvestmentImportProposal(
   authority: { readonly vault: string; isCurrent(): boolean },
@@ -74,7 +89,8 @@ export function createInvestmentImportProposal(
       if (!checked.ok) return refuse(checked.reason);
       const preview = checked.preview,
         summary = investmentImportSummary(preview);
-      if (!preview.canCommit) return ok({ stored: false as const, preview });
+      if (!preview.canCommit)
+        return ok({ stored: false as const, preview: answerPreview(preview) });
       const out = createProposal.run(
         ctx,
         createProposal.input.parse({
@@ -95,7 +111,11 @@ export function createInvestmentImportProposal(
         }),
       );
       if (!out.ok) return out;
-      return ok({ stored: true as const, proposalGid: out.value.proposalGid, preview });
+      return ok({
+        stored: true as const,
+        proposalGid: out.value.proposalGid,
+        preview: answerPreview(preview),
+      });
     },
   });
 }

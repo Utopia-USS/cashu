@@ -22,7 +22,6 @@ it("answers native investment commands over a real socket and refuses unavailabl
   const host = await startLocalHost({
     ...testHostOptions(dataDir),
     launcher: false,
-    python: null,
   });
   const command = async (argv: string[]) => {
     const connection = await connectHost({ dataDir, role: "cli", build: "test" });
@@ -145,7 +144,6 @@ it("adds and reads a brokerage account through a genuine encrypted native host s
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
     const execute = async (argv: string[]) => {
@@ -263,9 +261,7 @@ it("adds and reads a brokerage account through a genuine encrypted native host s
         now: Date.now,
         sources: {},
         performance: new PerformanceService(),
-      }),
-      {},
-    );
+      }));
     await expect.poll(() => vault.queue.pending).toBeGreaterThan(1);
     controller.abort();
     release?.();

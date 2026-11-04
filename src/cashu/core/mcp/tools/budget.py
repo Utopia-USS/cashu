@@ -307,20 +307,25 @@ def _shown_as(ctx: ToolContext, shown: str, keys: set[str]) -> str | None:
 def set_merchant_category(ctx: ToolContext, merchant: str, category: str) -> dict:
     """A learned rule from the agent: stored like an LLM rule (not locked), so the owner's manual
     rule for the merchant wins, and only transactions the owner did not categorize by hand change."""
-    from cashu.modules.budget.categorize.rules import upsert_rule
     from cashu.modules.budget.ingestion.normalize import merchant_key
+    from cashu.modules.budget.service import learn_merchant_category
 
     if category not in _category_keys():
         raise ToolError("unknown category; uncategorized_merchants lists the categories")
     rows = _all_transactions(ctx)
     keys = {merchant_key(t.counterparty_name, t.reference, t.description) for t in rows}
     keys.discard("")
-    key = ctx.guard.resolve(merchant, keys) or _shown_as(ctx, merchant, keys)
+    from ..names import is_payee_ref
+
+    if is_payee_ref(merchant):
+        matches = [k for k in keys if ctx.guard.resolve(merchant, [k]) == k]
+        key = matches[0] if len(matches) == 1 else None
+    else:
+        key = _shown_as(ctx, merchant, keys)
     if key is None:
         raise ToolError("no such merchant in this profile's transactions", "not_found")
-    rule = upsert_rule(
-        ctx.session, key, category, source="llm", locked=False, profile_id=ctx.profile_id
-    )
+    updated, rule = learn_merchant_category(ctx.session, key, category,
+                                             profile_id=ctx.profile_id)
     if rule.locked and rule.category != category:
         return {
             "merchant": L.merchant(key),
@@ -328,15 +333,6 @@ def set_merchant_category(ctx: ToolContext, merchant: str, category: str) -> dic
             "updated_transactions": L.count(0),
             "rule": L.fixed_text("kept: the owner set this merchant's category by hand"),
         }
-    updated = 0
-    for t in rows:
-        if merchant_key(t.counterparty_name, t.reference, t.description) != key:
-            continue
-        if t.category_source in OWNER_SOURCES or t.is_internal_transfer:
-            continue
-        t.category, t.category_source = category, "llm"
-        ctx.session.add(t)
-        updated += 1
     return {
         "merchant": L.merchant(key),
         "category": L.category(category),

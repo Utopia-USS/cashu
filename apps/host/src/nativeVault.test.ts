@@ -311,7 +311,6 @@ describe("native vault session", () => {
       home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: {
         kind: "native",
         provider: {
@@ -428,7 +427,6 @@ describe("native vault session", () => {
       home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: {
         kind: "native",
         provider: {

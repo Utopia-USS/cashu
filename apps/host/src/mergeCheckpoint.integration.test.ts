@@ -18,7 +18,6 @@ it("publishes a pre-merge checkpoint, merges once, and retains the keyed result 
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
     const vault = host.stores.vaults.get(fixture.vaultId);
@@ -79,7 +78,6 @@ it("publishes a pre-merge checkpoint, merges once, and retains the keyed result 
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
     const reopened = host.stores.vaults.get(fixture.vaultId);
@@ -103,7 +101,6 @@ it("does not record a merge intent when encrypted checkpoint capture fails", asy
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
     const vault = host.stores.vaults.get(fixture.vaultId);
@@ -153,7 +150,6 @@ it("retains the original key and one checkpoint when a merge reply is lost after
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
     const vault = host.stores.vaults.get(fixture.vaultId);
@@ -197,7 +193,6 @@ it("retains the original key and one checkpoint when a merge reply is lost after
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
     const reopened = host.stores.vaults.get(fixture.vaultId);
@@ -227,7 +222,6 @@ it("runs the mutating merge CLI through the guarded native socket", async () => 
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
     const vault = host.stores.vaults.get(fixture.vaultId);

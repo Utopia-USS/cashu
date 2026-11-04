@@ -13,8 +13,8 @@ import * as Q from "@cashu/store/investments/queries";
 import { addResearchNoteWithPlans } from "@cashu/store/investments/services";
 import * as L from "../privacy/labels.js";
 import { type ToolArgs, type ToolContext, ToolError, type ToolSpec } from "../registry.js";
-import { DELEGATED_TOOLS } from "../runtime/delegated.generated.js";
 import { decodeEntityRef } from "../runtime/refs.js";
+import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.generated.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { researchContext } from "./researchContext.js";
 import * as F from "./researchLabels.js";
@@ -373,7 +373,7 @@ const handlers: Readonly<Record<string, ToolSpec<NativeToolStore>["handler"]>> =
 };
 /** Approved native-only schema difference: run refs are strings, never local integer aliases. */
 export function researchTools(): readonly ToolSpec<NativeToolStore>[] {
-  return DELEGATED_TOOLS.flatMap((metadata) => {
+  return NATIVE_TOOL_SCHEMAS.flatMap((metadata) => {
     const handler = handlers[metadata.name];
     if (handler === undefined) return [];
     const instrumentProperties =

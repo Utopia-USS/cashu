@@ -9,7 +9,6 @@ import {
   type InvestmentWriteServices,
   loadAccountLabels,
   loadGuard,
-  loadNameSources,
   loadPayeeSecret,
   type NativeExecution,
   type NativeRuntime,
@@ -22,7 +21,7 @@ import {
   toolContext,
 } from "@cashu/mcp";
 import { mintUlid, runCommand, type v1 } from "@cashu/store";
-import { mcpAccounts, mcpProfile } from "@cashu/store/core";
+import { mcpProfile } from "@cashu/store/core";
 import { finishMcpCall, startMcpCall } from "@cashu/store/device";
 import { runHostVaultCommand } from "../commands.js";
 import type { HostLog } from "../log.js";
@@ -52,7 +51,7 @@ export interface NativeMcpOptions {
     path: string,
     slug: string,
   ) => { readonly name: string; readonly bytes: Uint8Array };
-  readonly readInvestmentMappingFile?: (path: string, slug: string) => string;
+  readonly readInvestmentMappingFile?: (path: string, slug: string) => string | Promise<string>;
   readonly readBudgetImportFile?: (
     rawPath: string,
     profileSlug: string,
@@ -66,7 +65,6 @@ function localDay(ms: number): string {
   const date = new Date(ms);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
-const unique = (values: readonly string[]): string[] => [...new Set(values)];
 export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
   const { vault, stores, now } = options;
   const connectorPort = options.connectors;
@@ -490,38 +488,6 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
               })
               .catch(() => ({ kind: "outcome_unknown" as const })),
         }),
-    delegation: () =>
-      vault.queue.run(() => {
-        if (
-          options.replaced() ||
-          stores.vaults.get(vault.id) !== vault ||
-          (vault.native !== undefined && !vault.native.canRunSideEffects())
-        )
-          return undefined;
-        const current = policy();
-        const profile = mcpProfile(read);
-        if (!current || !profile) return undefined;
-        const providers = loadNameSources(read);
-        return {
-          ...current,
-          names: {
-            persons: unique([
-              ...mcpAccounts(read).flatMap((account) => (account.name ? [account.name] : [])),
-              ...providers.flatMap((provider) => [...provider.persons]),
-            ]),
-            strongNames: unique([
-              profile.name,
-              ...providers.flatMap((provider) => [...(provider.strongNames ?? [])]),
-            ]),
-            privatePayees: unique(providers.flatMap((provider) => [...provider.privatePayees])),
-            strictNames: unique(
-              providers.flatMap((provider) =>
-                [...(provider.strictAliases ?? [])].map(([origin]) => origin),
-              ),
-            ),
-          },
-        };
-      }),
     audit: {
       start: (tool, args) =>
         stores.device.queue.run(() => {

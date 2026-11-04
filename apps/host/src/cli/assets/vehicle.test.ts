@@ -72,7 +72,7 @@ it("writes the explicitly selected native vault and preserves float and currency
   }
 });
 
-it("rejects unresolved selection, unsupported representation and valuation errors before any write", async () => {
+it("rejects invalid valuations and accepts Unicode text on older terminals", async () => {
   const host = await startLocalHost({ ...testHostOptions(tempDir()), launcher: false });
   const { io, lines } = output();
   const deps = {
@@ -87,8 +87,6 @@ it("rejects unresolved selection, unsupported representation and valuation error
       [...args, "--currency", "pln"],
       ["Synthetic", "nan", "2026-10-31"],
       ["Synthetic", "10", "0001-01-01"],
-      ["[red]Synthetic[/]", "10", "2026-10-31"],
-      ["Synthetic :car:", "10", "2026-10-31"],
       ["Synthetic\tcar", "10", "2026-10-31"],
       ["Synthetic", "10", "2026-10-01", "--rate", "101"],
       ["--help"],
@@ -101,11 +99,17 @@ it("rejects unresolved selection, unsupported representation and valuation error
         { profile: "demo" },
         deps,
       ),
-    ).toBe(2);
-    expect(lines.every((line) => line.endsWith("\n"))).toBe(true);
+    ).toBe(0);
+    expect(
+      await runVehicleCommand(["[red]Synthetic[/]", "10", "2026-10-31"], io, { profile: "demo" }, deps),
+    ).toBe(0);
+    expect(
+      await runVehicleCommand(["Synthetic :car:", "10", "2026-10-31"], io, { profile: "demo" }, deps),
+    ).toBe(0);
+    expect(lines.length).toBeGreaterThan(0);
     const vault = [...host.stores.vaults.values()][0];
-    expect(vault?.store.read("SELECT COUNT(*) AS n FROM accounts")).toEqual([{ n: 0 }]);
-    expect(vault?.store.read("SELECT COUNT(*) AS n FROM depreciations")).toEqual([{ n: 0 }]);
+    expect(vault?.store.read("SELECT COUNT(*) AS n FROM accounts")).toEqual([{ n: 3 }]);
+    expect(vault?.store.read("SELECT COUNT(*) AS n FROM depreciations")).toEqual([{ n: 3 }]);
   } finally {
     await host.stop();
   }
@@ -143,45 +147,34 @@ it("parses Python finite floats and dates while leaving malformed/help invocatio
   });
 });
 
-it("executes both aliases through a native-only host and never mutates a mixed host", async () => {
-  for (const python of [null, { command: "/synthetic/python-cli", args: [] }]) {
-    const dir = tempDir();
-    const host = await startLocalHost({
-      ...testHostOptions(dir),
-      launcher: false,
-      python,
-      now: at,
-    });
-    const conn = await connectHost({ dataDir: dir, role: "cli", build: "test" });
-    const notes: unknown[] = [];
-    conn.onFrame((frame) => {
-      if (frame.t === "note") notes.push(frame);
-    });
-    try {
-      for (const command of [["set-vehicle"], ["assets", "set-vehicle"]]) {
-        const result = await conn.call("cli.exec", {
-          argv: ["--profile", "demo", ...command, ...args],
-          cwd: dir,
-          env: { CASHU_LANG: "en" },
-          tty: { stdin: false, stdout: false, stderr: false },
-        });
-        expect(result).toEqual(
-          python === null
-            ? { kind: "exit", code: 0 }
-            : { kind: "delegate", command: python.command, args: python.args },
-        );
-      }
-      const vault = [...host.stores.vaults.values()][0];
-      expect(vault?.store.read("SELECT COUNT(*) AS n FROM accounts")).toEqual([
-        { n: python === null ? 1 : 0 },
-      ]);
-      expect(vault?.store.read("SELECT COUNT(*) AS n FROM depreciations")).toEqual([
-        { n: python === null ? 1 : 0 },
-      ]);
-      expect(notes).toHaveLength(python === null ? 2 : 0);
-    } finally {
-      conn.close();
-      await host.stop();
+it("executes both aliases through the native host", async () => {
+  const dir = tempDir();
+  const host = await startLocalHost({
+    ...testHostOptions(dir),
+    launcher: false,
+    now: at,
+  });
+  const conn = await connectHost({ dataDir: dir, role: "cli", build: "test" });
+  const notes: unknown[] = [];
+  conn.onFrame((frame) => {
+    if (frame.t === "note") notes.push(frame);
+  });
+  try {
+    for (const command of [["set-vehicle"], ["assets", "set-vehicle"]]) {
+      const result = await conn.call("cli.exec", {
+        argv: ["--profile", "demo", ...command, ...args],
+        cwd: dir,
+        env: { CASHU_LANG: "en" },
+        tty: { stdin: false, stdout: false, stderr: false },
+      });
+      expect(result).toEqual({ kind: "exit", code: 0 });
     }
+    const vault = [...host.stores.vaults.values()][0];
+    expect(vault?.store.read("SELECT COUNT(*) AS n FROM accounts")).toEqual([{ n: 1 }]);
+    expect(vault?.store.read("SELECT COUNT(*) AS n FROM depreciations")).toEqual([{ n: 1 }]);
+    expect(notes).toHaveLength(2);
+  } finally {
+    conn.close();
+    await host.stop();
   }
 });

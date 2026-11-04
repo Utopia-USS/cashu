@@ -45,8 +45,8 @@ import { NativeBlobPublication } from "./nativeBlobs.js";
 import { createNativeCheckpoint, scrubIncompleteNativeCheckpoints } from "./nativeCheckpoint.js";
 import { readNativeRecoveryWrap } from "./nativeCreationArtifacts.js";
 import { HostLanCarrier } from "./pairing/carrier.js";
-import { type PairingAttempt, PairingJournal } from "./pairing/journal.js";
-import { pairingReadCapability } from "./pairing/readCapability.js";
+import { PairingJournal } from "./pairing/journal.js";
+import { type PairingReads, pairingReadCapability } from "./pairing/readCapability.js";
 import type { StrategyDirectoryAuthority } from "./proposals/strategyFiles.js";
 import { WriteQueue } from "./queue.js";
 import {
@@ -137,7 +137,7 @@ function parseRevokeIntentProof(value: string): RevokeIntentProof {
   };
 }
 
-export interface NativeVaultSession {
+export interface NativeVaultSession extends PairingReads {
   readonly id: string;
   readonly store: Store;
   readonly engine: SyncEngine;
@@ -230,16 +230,6 @@ export interface NativeVaultSession {
     readonly qr: string;
     readonly rendezvous: string;
   }): Promise<"completed" | "outcome_unknown" | "refused">;
-  pairingAttempt(session: string): Promise<PairingAttempt | undefined>;
-  pairingOperation(operationId: string): Promise<PairingAttempt | undefined>;
-  pairingHasActive(): Promise<boolean>;
-  pairingKnown(device: string, purpose: "carrier" | "resume", session?: string): Promise<boolean>;
-  pairingTrust(
-    device: string,
-    signKey: Uint8Array,
-    boxKey: Uint8Array,
-    certificate: Uint8Array,
-  ): Promise<boolean>;
   carrierRequest(
     request: LanCarrierRequest,
     expiresAt: number,

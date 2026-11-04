@@ -14,7 +14,7 @@ export class SourceCacheError extends Error {
   }
 }
 
-export interface SourcePriceBar {
+interface SourcePriceBar {
   readonly id: number;
   readonly instrumentId: number;
   readonly date: string;
@@ -28,7 +28,7 @@ export interface SourcePriceBar {
   readonly fetchedAt: string | null;
 }
 
-export interface SourceFxRate {
+interface SourceFxRate {
   readonly id: number;
   readonly base: string;
   readonly quote: string;
@@ -38,7 +38,7 @@ export interface SourceFxRate {
   readonly fetchedAt: string | null;
 }
 
-export interface SourceMacroBar {
+interface SourceMacroBar {
   readonly id: number;
   readonly series: string;
   readonly date: string;

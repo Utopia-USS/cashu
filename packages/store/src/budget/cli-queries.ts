@@ -19,7 +19,7 @@ export interface CashCliSnapshot {
   readonly rows: readonly CashCliRow[];
 }
 
-/** Python `get_cash_account(create=False)` plus unambiguous date ordering. */
+/** Python `get_cash_account(create=False)` with stable native row ordering. */
 export function cashCliSnapshot(
   read: Read,
   requestedCurrency: string | null,
@@ -43,17 +43,12 @@ export function cashCliSnapshot(
     currency: string;
   }>(
     `SELECT booking_date AS bookingDate, reference, description, category, amount, currency
-     FROM transactions WHERE account_id = ? ORDER BY booking_date DESC, id DESC`,
+     FROM transactions WHERE account_id = ?
+     ORDER BY booking_date DESC, created_at DESC, gid DESC, dedup_hash DESC, occurrence DESC`,
     account.id,
   );
-  // A local ViewId is assigned on fold, not the legacy Python row id. Check the displayed first
-  // 40 rows and row 41, whose tie with row 40 could change which row reaches the cutoff.
-  if (
-    transactions
-      .slice(0, 41)
-      .some((txn, i) => i > 0 && txn.bookingDate === transactions[i - 1]?.bookingDate)
-  )
-    return undefined;
+  // Event-backed timestamps and keys keep same-day ties stable across independent folds.
+  // Their order may differ from old Python ids after genesis; no legacy id is reconstructed.
   let balance = D("0");
   for (const t of transactions) balance = balance.add(D(t.amount));
   return {

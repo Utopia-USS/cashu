@@ -10,21 +10,26 @@ it("keeps budget extensions unchanged and grants only the explicit investment/pr
   const f = fixture(),
     scope = { cwd: f.cwd, home: f.home, dataDir: f.dataDir, legacyDataDir: f.legacyDataDir };
   const read = investmentFileReader(scope),
-    mapping = investmentMappingReader(scope);
+    workspace = join(f.root, "profile-workspace"),
+    mapping = investmentMappingReader({
+      ...scope,
+      profileOnlyRoot: workspace,
+      profileOnlySlug: "demo",
+    });
   for (const extension of ["csv", "tsv", "txt", "json", "xlsx"]) {
     const path = f.file(join(f.cwd, `export.${extension}`));
     expect(read(path, "demo").name).toBe(`export.${extension}`);
     if (!["csv", "json"].includes(extension))
       expect(() => f.read(path, "demo")).toThrow("unsupported file type");
   }
-  const own = f.file(join(f.dataDir, "profiles", "demo", "map.yaml"));
+  const own = f.file(join(workspace, "map.yaml"));
   expect(mapping(own, "demo")).toBe("synthetic");
-  expect(() => mapping(own, "other")).toThrow("must be in the profile's folder");
+  expect(() => mapping(own, "other")).toThrow("native workspace mapping is unavailable");
   const outside = f.file(join(f.cwd, "map.yml"));
-  expect(() => mapping(outside, "demo")).toThrow("must be in the profile's folder");
-  const alias = join(f.dataDir, "profiles", "demo", "alias.yaml");
+  expect(() => mapping(outside, "demo")).toThrow("must be in the selected profile's workspace");
+  const alias = join(workspace, "alias.yaml");
   symlinkSync(outside, alias);
-  expect(() => mapping(alias, "demo")).toThrow("must be in the profile's folder");
+  expect(() => mapping(alias, "demo")).toThrow("must be in the selected profile's workspace");
   truncateSync(own, 256 * 1024 + 1);
   expect(() => mapping(own, "demo")).toThrow("mapping file is too large");
   for (const path of [
@@ -33,6 +38,23 @@ it("keeps budget extensions unchanged and grants only the explicit investment/pr
     f.file(join(f.cwd, ".hidden", "private.xlsx")),
   ])
     expect(() => read(path, "demo")).toThrow();
+});
+
+it("confines native mapping YAML to the checked workspace root", () => {
+  const f = fixture();
+  const workspace = join(f.root, "native-workspace");
+  const mapping = investmentMappingReader({
+    cwd: f.cwd,
+    home: f.home,
+    dataDir: f.dataDir,
+    profileOnlyRoot: workspace,
+    profileOnlySlug: "demo",
+  });
+  const own = f.file(join(workspace, "mapping.yaml"));
+  expect(mapping(own, "demo")).toBe("synthetic");
+  expect(() => mapping(f.file(join(f.cwd, "mapping.yaml")), "demo")).toThrow(
+    "must be in the selected profile's workspace",
+  );
 });
 function fixture() {
   const root = tempDir();

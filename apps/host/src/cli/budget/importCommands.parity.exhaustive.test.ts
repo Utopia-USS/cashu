@@ -156,7 +156,6 @@ it.skipIf(!existsSync(PYTHON))(
     const host = await startLocalHost({
       ...testHostOptions(tempDir()),
       launcher: false,
-      python: null,
     });
     try {
       const deps = { stores: host.stores, now: Date.now };

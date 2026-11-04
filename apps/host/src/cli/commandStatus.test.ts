@@ -30,7 +30,7 @@ it("looks up the original CLI key without rerunning the financial command or pri
     const status = commandStatusCommand(host.stores);
     expect(
       await status.run([addCashExpenseCli.id, `8${key.slice(1)}`], io, { profile: "demo" }),
-    ).toEqual({ kind: "delegate" });
+    ).toEqual({ kind: "unhandled" });
     expect(await status.run([addCashExpenseCli.id, key], io, { profile: "demo" })).toBe(1);
     expect(lines.pop()).toBe(`outcome_unknown: ${addCashExpenseCli.id} ${key}\n`);
     const result = await runCliVaultCommand(

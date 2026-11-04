@@ -66,7 +66,7 @@ export interface BankingAuthority {
   isHolder(): boolean;
   isOwnerAction(): boolean;
 }
-export interface BankingStatement {
+interface BankingStatement {
   readonly bank: string;
   readonly accountNumber: string | null;
   readonly accountName: string | null;
@@ -75,7 +75,7 @@ export interface BankingStatement {
   readonly balances: readonly [];
   readonly closingBalances: readonly { date: string; amount: RawTransaction["amount"] }[];
 }
-export type ImportOutcome =
+type ImportOutcome =
   | { readonly ok: true; readonly account: string; readonly numInserted: number }
   | { readonly ok: false; readonly reason: string; readonly attempt?: BankingAttempt };
 export interface BankingAttempt {

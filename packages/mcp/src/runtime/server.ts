@@ -28,13 +28,8 @@ import type { NativeToolStore } from "./types.js";
 export {
   APP_UPDATED,
   type AuditPort,
-  BRIDGE_CAPABILITY,
   CEILING_KEY,
-  type DelegatedNameSources,
-  EFFECTIVE_PRIVACY_KEY,
   failure,
-  NAME_GUARD_APPLIED_KEY,
-  NAME_GUARD_KEY,
   type NativeCallResult,
   type NativeExecution,
   type NativeRuntime,

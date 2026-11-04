@@ -1,0 +1,7 @@
+[
+  {"action":"learn","category":"dining","updated":2,"pairs":[["dining","llm"],["dining","llm"],["gifts","manual_txn"],["other","default"]]},
+  {"action":"learn","category":"dining","updated":0,"pairs":[["dining","llm"],["dining","llm"],["gifts","manual_txn"],["other","default"]]},
+  {"action":"pin","category":"dining","updated":2,"pairs":[["dining","manual"],["dining","manual"],["gifts","manual_txn"],["other","default"]]},
+  {"action":"learn","category":"shopping","updated":0,"pairs":[["dining","manual"],["dining","manual"],["gifts","manual_txn"],["other","default"]]},
+  {"action":"pin","category":"dining","updated":0,"pairs":[["dining","manual"],["dining","manual"],["gifts","manual_txn"],["other","default"]]}
+]

@@ -12,7 +12,7 @@ afterEach(cleanup);
 
 it("uses the native private-file boundary and returns only sanitized owner outcomes", async () => {
   const dataDir = tempDir();
-  const host = await startLocalHost({ ...testHostOptions(dataDir), python: null });
+  const host = await startLocalHost({ ...testHostOptions(dataDir) });
   const opened = [...host.stores.vaults.values()][0];
   if (!opened) throw new Error("synthetic profile missing");
   (host.stores.vaults as Map<string, OpenVault>).set(opened.id, {

@@ -59,13 +59,19 @@ export function monthCloseOutput(io: CommandIo, value: MonthCloseView): boolean 
           rows,
         );
   if (table === null) return false;
-  // Preflight every data-bearing line before printing so unsupported Rich markup never leaks a partial result.
-  for (const c of value.currencies) {
-    if (
-      c.spendingByCategory.slice(0, 5).some((r) => r.label.includes("[") || r.label.includes("]"))
+  // Refuse controls before printing any line; printable labels are rendered literally.
+  if (
+    value.currencies.some((c) =>
+      c.spendingByCategory
+        .slice(0, 5)
+        .some((r) =>
+          Array.from(r.label).some(
+            (ch) => (ch.codePointAt(0) ?? 0) < 32 || ch.codePointAt(0) === 127,
+          ),
+        ),
     )
-      return false;
-  }
+  )
+    return false;
   const head = `Month close ${value.month}${value.complete ? "" : " (month in progress)"}`;
   printConsole(io, head, {
     spans: [{ start: 0, end: `Month close ${value.month}`.length, style: { bold: true } }],

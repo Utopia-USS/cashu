@@ -8,7 +8,7 @@ import { cleanup, storeClient, tempDir, testHostOptions } from "./testing/harnes
 afterEach(cleanup);
 it("serves budget queries and bounded native commands over the actual vault channel", async () => {
   const dir = tempDir();
-  const host = await startLocalHost({ ...testHostOptions(dir), python: null });
+  const host = await startLocalHost({ ...testHostOptions(dir) });
   const client = await storeClient(dir);
   try {
     const vault = [...host.stores.vaults.values()][0];

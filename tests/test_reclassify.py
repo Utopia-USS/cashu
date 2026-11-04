@@ -2,8 +2,10 @@
 and the direction (sign) guardrail. The LLM transport is stubbed so these run
 offline."""
 
+import json
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 from cashu.core.accounts import get_or_create_account
 from cashu.models import AccountType, Source, Transaction
@@ -244,6 +246,66 @@ def test_merchant_pin_leaves_rows_with_their_own_decision(session):
             session.get(Transaction, chosen.id).category_source) == ("gifts", "manual_txn")
     assert session.get(Transaction, leg.id).category_source == "cash_leg"
     assert session.get(Transaction, internal.id).category == "transfer"
+
+
+def test_learned_merchant_rule_respects_loan_and_full_claims(session, monkeypatch):
+    from cashu.core import modules
+    from cashu.modules.budget.service import learn_merchant_category, recategorize_merchant
+
+    account = get_or_create_account(session, bank="mbank", name="Synthetic",
+                                    iban="PL10 1140 0000 0000 0000 1234")
+    session.flush()
+    loan = _txn(session, account.id, "-10", cp="ZXQ LOAN TEST", ref="RATA ZXQ",
+                cat="loans", dh="d24loan")
+    loan.category_source = "keyword"
+    full = _txn(session, account.id, "-20", cp="ZXQ FULL TEST", cat="shopping",
+                dh="d24full")
+    full.category_source = "llm_full"
+    session.flush()
+    monkeypatch.setattr(modules, "payment_patterns", lambda _session, _pid: [
+        modules.PaymentPattern(category="loans", text="RATA ZXQ")])
+
+    n, rule = learn_merchant_category(session, "ZXQ LOAN TEST", "dining",
+                                       profile_id=account.profile_id)
+    assert n == 0 and rule.source == "llm" and rule.locked is False
+    assert (loan.category, loan.category_source) == ("loans", "keyword")
+    n, _ = learn_merchant_category(session, "ZXQ FULL TEST", "dining",
+                                   profile_id=account.profile_id)
+    assert n == 0 and (full.category, full.category_source) == ("shopping", "llm_full")
+    assert recategorize_merchant(session, "ZXQ LOAN TEST", "dining",
+                                 profile_id=account.profile_id) == 1
+    assert (loan.category, loan.category_source) == ("dining", "manual")
+
+
+def test_d24_setter_shared_action_oracle(session):
+    """The same synthetic actions and expected effective pairs are consumed by the TS store test."""
+    from cashu.modules.budget.service import learn_merchant_category, recategorize_merchant
+
+    fixture = Path(__file__).resolve().parents[1] / "packages/store/test/vectors/d24-setter.json"
+    actions = json.loads(fixture.read_text())
+    account = get_or_create_account(session, bank="mbank", name="Synthetic",
+                                    iban="PL10 1140 0000 0000 0000 1234")
+    session.flush()
+    rows = [
+        _txn(session, account.id, "-11", cp="ZXQ RULE TEST", cat="other", dh="d24a"),
+        _txn(session, account.id, "-12", cp="ZXQ RULE TEST", cat="other", dh="d24b"),
+        _txn(session, account.id, "-13", cp="ZXQ RULE TEST", cat="gifts", dh="d24c"),
+        _txn(session, account.id, "-14", cp="ZXQ OTHER TEST", cat="other", dh="d24d"),
+    ]
+    rows[1].currency = "EUR"
+    rows[2].category_source = "manual_txn"
+    for row in (rows[0], rows[1], rows[3]):
+        row.category_source = "default"
+    session.flush()
+    for action in actions:
+        if action["action"] == "learn":
+            count, _ = learn_merchant_category(session, "ZXQ RULE TEST", action["category"],
+                                               profile_id=account.profile_id)
+        else:
+            count = recategorize_merchant(session, "ZXQ RULE TEST", action["category"],
+                                          profile_id=account.profile_id)
+        assert count == action["updated"]
+        assert [[row.category, row.category_source] for row in rows] == action["pairs"]
 
 
 def test_structural_answer_beats_owner_configuration_on_llm_rows(session):

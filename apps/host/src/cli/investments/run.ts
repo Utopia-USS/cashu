@@ -4,8 +4,8 @@ import { WorkerTickBusy } from "../../worker/service.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentVault } from "./context.js";
-import { DELEGATE } from "./inspection.js";
-import { investmentCliText as M } from "./strings.js";
+import { UNHANDLED } from "./inspection.js";
+import { investmentCliText as M, runStatus } from "./strings.js";
 
 function countStatuses(items: readonly { readonly status: string }[]): string {
   const counts = new Map<string, number>();
@@ -18,8 +18,8 @@ export async function runInvestment(
   io: CommandIo,
   root: { readonly profile?: string },
   deps: InvestmentCliDeps,
-): Promise<number | typeof DELEGATE> {
-  if (args.some((arg) => arg !== "--all" && arg !== "--offline")) return DELEGATE;
+): Promise<number | typeof UNHANDLED> {
+  if (args.some((arg) => arg !== "--all" && arg !== "--offline")) return UNHANDLED;
   const all = args.includes("--all");
   const offline = args.includes("--offline");
   const vaults = all
@@ -81,14 +81,14 @@ export async function runInvestment(
       const slug = slugs.get(vault.id) ?? vault.id;
       if (!row) {
         const outcome = outcomes.get(vault.id);
-        printConsole(io, `${slug}: ${io.t.tr(M.runStatus[outcome?.status ?? "failed"])}`);
+        printConsole(io, `${slug}: ${io.t.tr(runStatus[outcome?.status ?? "failed"])}`);
         failed ||= outcome?.status === "failed" || outcome === undefined;
         continue;
       }
       const stats = row.result?.stats;
       printConsole(
         io,
-        `${slug}: ${io.t.tr(M.runStatus[row.status])} (${io.t.tr(M.strategyLabel)} ${String(stats?.strategy ?? "-")}); ${io.t.tr(M.holdings)} ${String(stats?.holdings ?? 0)}, ${io.t.tr(M.total)} ${String(stats?.total_base ?? "-")} ${String(stats?.base_currency ?? "")}; ${io.t.tr(M.signalsNew)} ${row.result?.newSignals.length ?? 0}, ${io.t.tr(M.signalsEscalated)} ${row.result?.escalatedSignals.length ?? 0}; ${io.t.tr(M.alertsResolved)} ${String(stats?.alert_signals_resolved ?? 0)}, ${io.t.tr(M.plansResolved)} ${String(stats?.plan_signals_resolved ?? 0)}, ${io.t.tr(M.researchResolved)} ${String(stats?.research_signals_resolved ?? 0)}`,
+        `${slug}: ${io.t.tr(runStatus[row.status])} (${io.t.tr(M.strategyLabel)} ${String(stats?.strategy ?? "-")}); ${io.t.tr(M.holdings)} ${String(stats?.holdings ?? 0)}, ${io.t.tr(M.total)} ${String(stats?.total_base ?? "-")} ${String(stats?.base_currency ?? "")}; ${io.t.tr(M.signalsNew)} ${row.result?.newSignals.length ?? 0}, ${io.t.tr(M.signalsEscalated)} ${row.result?.escalatedSignals.length ?? 0}; ${io.t.tr(M.alertsResolved)} ${String(stats?.alert_signals_resolved ?? 0)}, ${io.t.tr(M.plansResolved)} ${String(stats?.plan_signals_resolved ?? 0)}, ${io.t.tr(M.researchResolved)} ${String(stats?.research_signals_resolved ?? 0)}`,
         { highlight: false },
       );
       for (const signal of [

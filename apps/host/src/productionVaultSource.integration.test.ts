@@ -135,7 +135,6 @@ it("opens an enrolled encrypted vault through the sealed-file test KeyStore, app
         home,
         build: "test",
         launcher: false,
-        python: null,
         vaultSource: { kind: "native-production", factory: makeFactory() },
       });
     const first = await open();

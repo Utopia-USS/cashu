@@ -20,7 +20,10 @@ interface FileScope {
   readonly home: string | undefined;
   readonly namedHome?: (name: string) => string | undefined;
   readonly dataDir: string;
-  readonly legacyDataDir: string;
+  readonly legacyDataDir?: string;
+  /** Checked native workspace root for profile-only mapping files. */
+  readonly profileOnlyRoot?: string;
+  readonly profileOnlySlug?: string;
 }
 const pathKey = (path: string) => pyCasefold(path.normalize("NFC"));
 function inside(path: string, root: string): boolean {
@@ -75,16 +78,23 @@ function checkedFileReader(scope: FileScope, policy: FilePolicy) {
       throw new ToolError("hidden files and files inside hidden directories are not read");
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(profileSlug))
       throw new ToolError("invalid profile folder");
-    const own = resolveReal(join(scope.dataDir, "profiles", profileSlug));
+    if (
+      policy.profileOnly &&
+      (!scope.profileOnlyRoot || !scope.profileOnlySlug || scope.profileOnlySlug !== profileSlug)
+    )
+      throw new ToolError("native workspace mapping is unavailable", "unsupported");
+    const own = resolveReal(
+      policy.profileOnly
+        ? (scope.profileOnlyRoot as string)
+        : join(scope.dataDir, "profiles", profileSlug),
+    );
     if (policy.profileOnly && !inside(path, own))
-      throw new ToolError(
-        "this file must be in the profile's folder (profiles/<slug>/ in the data dir)",
-      );
+      throw new ToolError("this file must be in the selected profile's workspace");
     if (inside(path, resolveReal(scope.dataDir)) && !inside(path, own))
       throw new ToolError(
         "files inside the cashU data dir are not read (except the profile folder)",
       );
-    if (inside(path, resolveReal(scope.legacyDataDir)))
+    if (scope.legacyDataDir && inside(path, resolveReal(scope.legacyDataDir)))
       throw new ToolError("files inside the legacy data folder are not read");
     // Pin the checked file, refuse a final symlink/nonregular replacement, and bound reads even if
     // another process grows the file after the size check. No contents or paths enter diagnostics.

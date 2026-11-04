@@ -38,7 +38,6 @@ it("dispatches an injected UI action through a native encrypted host", async () 
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     uiActions: [action],
   } as const;

@@ -33,7 +33,6 @@ it("binds an approval closure to proposal and prepared-object identity", () => {
 it("retains the original unknown proposal attempt without re-dispatch", async () => {
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
-    python: null,
     launcher: false,
   });
   const vault = [...host.stores.vaults.values()][0];
@@ -101,7 +100,6 @@ it("retains the original unknown proposal attempt without re-dispatch", async ()
 it("returns real S60 approved, refused cleanup, failed and recovery receipts for canonical proposals", async () => {
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
-    python: null,
     launcher: false,
   });
   const vault = [...host.stores.vaults.values()][0];

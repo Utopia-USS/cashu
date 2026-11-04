@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { type Command, type DurableCommandResult, mintUlid } from "@cashu/store";
 import { runHostVaultCommand } from "../commands.js";
 import type { OpenVault } from "../stores.js";
-import { N } from "./nativeStrings.js";
+import { N } from "./native.strings.js";
 import type { CommandIo } from "./tree.js";
 
 /** Mint once for this CLI dispatch. Never generate a replacement after an uncertain answer. */

@@ -14,7 +14,7 @@ afterEach(cleanup);
 
 it("keeps the original MCP key unknown after an invoked native engine write fails", async () => {
   const dataDir = tempDir();
-  const host = await startLocalHost({ ...testHostOptions(dataDir), launcher: false, python: null });
+  const host = await startLocalHost({ ...testHostOptions(dataDir), launcher: false });
   const original = [...host.stores.vaults.values()][0];
   if (!original) throw new Error("missing synthetic vault");
   const driver = openNodeSqlite(`${dataDir}/attempts-test.db`);

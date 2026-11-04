@@ -1,6 +1,5 @@
 import { budget, core } from "@cashu/domain";
 import { reportOk, validateImportFile } from "@cashu/domain/investments/importing";
-import { previewImport } from "@cashu/store/investments/queries";
 
 const registry = core.builtinRegistry();
 export type ValidatedConnectorDocument =
@@ -37,30 +36,4 @@ export function validateConnectorDocument(
   const report = validateImportFile({ name: "connector.json", content: bytes });
   if (!reportOk(report)) return { ok: false, code: "invalid_document" };
   return { ok: true, module, warnings: report.warnings.length };
-}
-
-/** Read-only account/dedup/reconciliation preview. The caller stages and commits through S60/D7. */
-export function previewConnectorInvestment(input: {
-  readonly read: Parameters<typeof previewImport>[0];
-  readonly bytes: Uint8Array;
-  readonly account: string;
-  readonly connectorId: string;
-  readonly connectorName: string;
-  readonly now: string;
-}) {
-  const validated = validateConnectorDocument("investments", input.bytes);
-  if (!validated.ok) return { ok: false as const, reason: validated.code };
-  const preview = previewImport(
-    input.read,
-    {
-      file: { name: "connector.json", content: input.bytes },
-      account: input.account,
-      importer: `connector:${input.connectorId}`,
-      connectorName: input.connectorName,
-      boundAccount: true,
-    },
-    input.now,
-  );
-  if (!preview.ok) return { ok: false as const, reason: preview.reason };
-  return { ok: true as const, preview: preview.preview, domainWarnings: validated.warnings };
 }

@@ -25,7 +25,6 @@ async function fixture() {
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   closers.push(async () => {
     await host.stop();

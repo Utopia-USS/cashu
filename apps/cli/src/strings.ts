@@ -1,5 +1,5 @@
 // Texts the `cashu` shim prints itself (PL + EN, docs/agents/localization.md). Everything else the user
-// sees comes from the host (or, for commands not ported yet, from the Python CLI). The language is the
+// sees comes from the host. The language is the
 // backend one (`@cashu/i18n` createBackendI18n: CASHU_LANG, settings.json, the OS, English), read
 // through a Translator; MCP texts carry both languages (the agent reads them, Python's MCP output is
 // fixed, not localized per user).
@@ -36,11 +36,6 @@ export const S = {
     pl: (detail: string) => `Nie można ustalić katalogu danych cashU: ${detail}.`,
     en: (detail: string) => `Cannot work out the cashU data dir: ${detail}.`,
   } satisfies Fn<[string]>,
-  delegateFailed: {
-    pl: "Nie można uruchomić części cashU w Pythonie.",
-    en: "Cannot start the Python part of cashU.",
-  } satisfies Text,
-
   // `cashu host ...`
   hostUsage: {
     pl: "użycie: cashu host <status|stop|run>\n  status  stan usługi w tle (kod 0 działa, 3 nie działa)\n  stop    zatrzymaj usługę w tle\n  run     uruchom usługę w tle na pierwszym planie",

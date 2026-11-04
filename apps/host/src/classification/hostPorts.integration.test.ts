@@ -26,7 +26,6 @@ it("binds production classifier consent through a native host owner action", asy
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     budgetClassifiers: { local: ports.local, cloud: ports.cloud },
     uiActions: [ports.action],

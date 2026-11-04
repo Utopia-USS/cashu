@@ -1,4 +1,4 @@
-/** Device-local job switch for a native-only data dir. The Python side reads this exact record. */
+/** Durable device-local job ownership record for an admitted native data dir. */
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -138,8 +138,8 @@ export function admittedWorkerOwnership(input: {
   readonly dataDir: string;
   /** Only vaults whose current file/write authority has already been checked. */
   readonly vaults: readonly OpenVault[];
-  /** Mandatory host capability. Before T54 it rejects every legacy source root; afterward it may
-   * accept only authenticated completed admission while retaining the rollback database. */
+  /** Mandatory host capability. Legacy source directories require explicit one-shot import into a
+   * separate native target before this record can authorize worker jobs. */
   assertAdmission(): void;
 }): AdmittedWorkerOwnership {
   input.assertAdmission();

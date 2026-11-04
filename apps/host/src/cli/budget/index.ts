@@ -6,7 +6,7 @@ import { cushionCommand } from "./cushion.js";
 import { importCommands } from "./importCommands.js";
 import { monthCloseCommand } from "./monthClose.js";
 
-/** The root and `budget` aliases share each native handler. Unknown subcommands delegate. */
+/** The root and `budget` aliases share each native handler. Unknown subcommands get usage. */
 export function budgetCommands(deps: BudgetCliDeps): PortedCommand[] {
   const rootLeaves = [...cashCommands(deps), ...importCommands(deps), ...categorizeCommands(deps)];
   const leaves = [...rootLeaves, monthCloseCommand(deps), cushionCommand(deps)];
@@ -17,7 +17,7 @@ export function budgetCommands(deps: BudgetCliDeps): PortedCommand[] {
       run(args, io, root) {
         const [name, ...rest] = args;
         const leaf = leaves.find((c) => c.name === name);
-        return leaf ? leaf.run(rest, io, root) : Promise.resolve({ kind: "delegate" as const });
+        return leaf ? leaf.run(rest, io, root) : Promise.resolve({ kind: "unhandled" as const });
       },
     },
   ];

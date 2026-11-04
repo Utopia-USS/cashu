@@ -117,7 +117,6 @@ export function asyncFixture() {
     now: f.env.clock.now,
     replaced: () => replaced,
     policy: async () => policy(),
-    delegation: async () => undefined,
     warn: (code) => warnings.push(code),
     audit: {
       start: async () => {

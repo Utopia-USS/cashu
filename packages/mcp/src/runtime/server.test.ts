@@ -40,15 +40,6 @@ function setup() {
     replaced: () => replaced,
     warn: (code) => audit.push(code),
     policy: async () => policy(),
-    delegation: async () => {
-      const current = policy();
-      return current
-        ? {
-            ...current,
-            names: { persons: [], strongNames: [], privatePayees: [], strictNames: [] },
-          }
-        : undefined;
-    },
     audit: {
       start: async (tool, args) => {
         if (unavailable) throw new Error("unavailable");

@@ -7,7 +7,7 @@ import { openTestStore } from "../testing/store.js";
 import { cashCliSnapshot } from "./cli-queries.js";
 import { addCashExpenseCli, importStatement, setTransactionCategory } from "./commands.js";
 
-it("delegates same-day cash expense and withdrawal-leg ordering across rebuild", () => {
+it("renders same-day cash ties and keeps a stable cutoff across rebuild", () => {
   const store = openTestStore();
   try {
     const env = testEnv();
@@ -50,15 +50,32 @@ it("delegates same-day cash expense and withdrawal-leg ordering across rebuild",
       }).ok,
     ).toBe(true);
     const read = store.read.bind(store);
-    expect(cashCliSnapshot(read, null)).toBeUndefined();
+    const before = cashCliSnapshot(read, null);
+    expect(before?.rows).toHaveLength(2);
     store.rebuild();
-    expect(cashCliSnapshot(read, null)).toBeUndefined();
+    expect(cashCliSnapshot(read, null)).toEqual(before);
+    for (let i = 0; i < 41; i++) {
+      expect(
+        run(store, env, addCashExpenseCli, {
+          amount: "1",
+          title: `Synthetic tie ${i}`,
+          category: "dining",
+          onDate: "2026-10-31",
+        }).ok,
+      ).toBe(true);
+    }
+    const cutoff = cashCliSnapshot(read, null);
+    expect(cutoff?.rows).toHaveLength(40);
+    expect(cutoff?.balance.toString()).toBe("-26");
+    expect(new Set(cutoff?.rows.map((row) => row.reference || row.description)).size).toBe(40);
+    store.rebuild();
+    expect(cashCliSnapshot(read, null)).toEqual(cutoff);
   } finally {
     store.close();
   }
 });
 
-it("accepts older ties but delegates a tie crossing the first 40 cash rows", () => {
+it("keeps a deterministic cutoff and full balance across same-day cash ties", () => {
   const rows = Array.from({ length: 42 }, (_, i) => ({
     bookingDate: new Date(Date.UTC(2026, 10, 30 - i)).toISOString().slice(0, 10),
     reference: `Synthetic ${i}`,
@@ -79,5 +96,9 @@ it("accepts older ties but delegates a tie crossing the first 40 cash rows", () 
   row41.bookingDate = row40.bookingDate;
   expect(cashCliSnapshot(read, null)?.rows).toHaveLength(40);
   row40.bookingDate = row39.bookingDate;
-  expect(cashCliSnapshot(read, null)).toBeUndefined();
+  const snapshot = cashCliSnapshot(read, null);
+  expect(snapshot?.rows).toHaveLength(40);
+  expect(snapshot?.rows.at(-1)?.reference).toBe("Synthetic 39");
+  expect(snapshot?.balance.toString()).toBe("-42");
+  expect(cashCliSnapshot(read, null)).toEqual(snapshot);
 });

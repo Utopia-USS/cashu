@@ -6,7 +6,7 @@ import { bankingUiAction } from "./uiAction.js";
 afterEach(cleanup);
 
 it("rejects a forged configure action before any runtime or key-file access", async () => {
-  const host = await startLocalHost({ ...testHostOptions(tempDir()), python: null });
+  const host = await startLocalHost({ ...testHostOptions(tempDir()) });
   try {
     const vaultId = [...host.stores.vaults.keys()][0];
     if (!vaultId) throw new Error("synthetic vault missing");

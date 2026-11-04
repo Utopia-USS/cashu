@@ -11,6 +11,7 @@ import {
 import {
   createInvestmentImportProposal,
   type ImportPublication,
+  type ImportProposalPreview,
   investmentImportSummary,
   publishCheckedImportBlob,
 } from "@cashu/store/investments/services";
@@ -118,9 +119,9 @@ function preview(ctx: Context, input: ImportRequest): ImportPreview {
     );
   return out.preview;
 }
-function labelled(pv: ImportPreview): L.LabelledTree {
+function labelled(pv: ImportProposalPreview): L.LabelledTree {
   const result: Record<string, L.LabelledTree> = {};
-  for (const [key, value] of Object.entries(investmentImportSummary(pv)))
+  for (const [key, value] of Object.entries(pv.summary))
     result[key] =
       typeof value === "boolean"
         ? L.flag(value)
@@ -131,7 +132,7 @@ function labelled(pv: ImportPreview): L.LabelledTree {
   result.errors_by_kind = byKind(pv.errors);
   return result;
 }
-const blocked = (pv: ImportPreview) => ({
+const blocked = (pv: ImportProposalPreview) => ({
   stored: L.flag(false),
   preview: labelled(pv),
   note: L.text("not stored: the preview has blocking errors (by kind above)"),
@@ -169,7 +170,7 @@ export const investmentImportAdapter: NativeAsyncAdapter = {
       if (!candidate) mappingYaml = null;
       else if (!candidate.includes("\n") && /\.ya?ml$/iu.test(candidate)) {
         if (!io.readMapping) throw new Error("checked mapping reader unavailable");
-        mappingYaml = io.readMapping(candidate);
+        mappingYaml = await io.readMapping(candidate);
       }
       return ownedValue({
         kind: "read",
@@ -199,7 +200,13 @@ export const investmentImportAdapter: NativeAsyncAdapter = {
       const pv = preview(ctx, input);
       if (pv.canCommit)
         throw new ToolError("the preview changed while preparing; propose again", "conflict");
-      return { answer: blocked(pv) };
+      return {
+        answer: blocked({
+          summary: investmentImportSummary(pv),
+          warnings: pv.warnings,
+          errors: pv.errors,
+        }),
+      };
     }
     const blob = object(state.blob ?? null);
     const saved = await execute(

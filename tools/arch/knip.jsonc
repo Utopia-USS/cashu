@@ -38,7 +38,9 @@
         "src/testing/seedOverviewDemo.ts",
         "src/testing/syntheticCliHost.ts"
       ],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts"],
+      // OS FIFO utility used by the native blob security test.
+      "ignoreBinaries": ["mkfifo"]
     },
     "apps/cli": {
       // Loaded by a test-only Node --import path before the real shim entry.

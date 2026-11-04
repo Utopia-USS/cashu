@@ -374,7 +374,7 @@ it("keeps the Create operation ID visible when the commit reply throws", async (
 
 it("routes core commands through the native CLI socket and refuses unsupported arguments", async () => {
   const dir = tempDir();
-  const host = await startLocalHost({ ...testHostOptions(dir), launcher: false, python: null });
+  const host = await startLocalHost({ ...testHostOptions(dir), launcher: false });
   const conn = await connectHost({ dataDir: dir, role: "cli", build: "test" });
   try {
     const params = (argv: string[]) => ({

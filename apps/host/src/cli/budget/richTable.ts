@@ -17,12 +17,7 @@ function width(text: string): number {
   return cellSpans(text).reduce((n, cell) => n + cell.width, 0);
 }
 function plain(text: string): boolean {
-  return (
-    !text.includes("[") &&
-    !text.includes("]") &&
-    !/:[^:\s]+:/.test(text) &&
-    !Array.from(text).some((ch) => (ch.codePointAt(0) ?? 0) < 32 || ch.codePointAt(0) === 127)
-  );
+  return !Array.from(text).some((ch) => (ch.codePointAt(0) ?? 0) < 32 || ch.codePointAt(0) === 127);
 }
 function styled(text: string, code: number, enabled: boolean): string {
   return enabled && text ? `\u001b[${code}m${text}\u001b[0m` : text;
@@ -105,7 +100,7 @@ function cellLines(text: string, size: number, justify: "left" | "right"): strin
   );
 }
 
-/** Null is an explicit unsupported markup/control/extremely narrow layout, before any output. */
+/** Null is an explicit unsupported control/extremely narrow layout, before any output. */
 export function richTable(
   io: CommandIo,
   columns: readonly TableColumn[],

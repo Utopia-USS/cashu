@@ -9,14 +9,12 @@ import { cashAddInput, cashReadInput } from "./cashInput.js";
 import { cashAddLine, cashNoPool, cashReadOutput } from "./cashOutput.js";
 import { type BudgetCliDeps, budgetVault } from "./context.js";
 
-const DELEGATE = { kind: "delegate" } as const;
+const UNHANDLED = { kind: "unhandled" } as const;
 const ISO_CURRENCY = /^[A-Z]{3}$/;
 
 function safeEcho(text: string): boolean {
   return (
     text.length > 0 &&
-    !text.includes("[") &&
-    !text.includes("]") &&
     !Array.from(text).some((ch) => (ch.codePointAt(0) ?? 0) < 32 || ch.codePointAt(0) === 127)
   );
 }
@@ -29,11 +27,11 @@ async function readCash(
 ) {
   const requested = cashReadInput(args);
   const vault = budgetVault(io, root, deps.stores);
-  if (requested === undefined || vault === null) return DELEGATE;
+  if (requested === undefined || vault === null) return UNHANDLED;
   const state = cashCliSnapshot(vault.store.read.bind(vault.store), requested);
-  if (state === undefined) return DELEGATE;
+  if (state === undefined) return UNHANDLED;
   if (state === null) cashNoPool(io);
-  else if (!cashReadOutput(io, state)) return DELEGATE;
+  else if (!cashReadOutput(io, state)) return UNHANDLED;
   return 0;
 }
 
@@ -45,12 +43,12 @@ async function addCash(
 ) {
   const input = cashAddInput(args);
   const vault = budgetVault(io, root, deps.stores);
-  if (input === null || vault === null) return DELEGATE;
+  if (input === null || vault === null) return UNHANDLED;
   if (io.signal.aborted) return 130;
   if (!isCategoryKey(input.category) || !safeEcho(input.title) || input.amount === 0)
-    return DELEGATE;
+    return UNHANDLED;
   const currency = input.currency ? pyUpper(input.currency) : null;
-  if (currency !== null && !ISO_CURRENCY.test(currency)) return DELEGATE;
+  if (currency !== null && !ISO_CURRENCY.test(currency)) return UNHANDLED;
   // Python stores the title verbatim. The CLI command retains it; the API command still strips it.
   const key = cliCommandKey();
   const slug = root.profile || io.env.CASHU_PROFILE;
@@ -58,7 +56,7 @@ async function addCash(
     deps.stores.vaults.get(vault.id) !== vault ||
     mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug
   )
-    return DELEGATE;
+    return UNHANDLED;
   const result = await runCliVaultCommand(
     vault,
     addCashExpenseCli,
@@ -74,7 +72,7 @@ async function addCash(
       deps.stores.vaults.get(vault.id) === vault &&
       mcpProfile(vault.store.read.bind(vault.store))?.slug === slug,
   );
-  if (result.kind === "refused" && result.reason === "cli_context_changed") return DELEGATE;
+  if (result.kind === "refused" && result.reason === "cli_context_changed") return UNHANDLED;
   if (result.kind !== "completed")
     return reportCliCommandFailure(io, result, key, addCashExpenseCli.id);
   cashAddLine(io, input.amount, input.title, input.category);

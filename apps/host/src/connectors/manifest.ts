@@ -12,9 +12,9 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseDocument } from "yaml";
 import { z } from "zod";
 
-export const MAX_MANIFEST_BYTES = 64 * 1024;
-export const MAX_FILES = 200;
-export const MAX_TOTAL_BYTES = 5 * 1024 * 1024;
+const MAX_MANIFEST_BYTES = 64 * 1024;
+const MAX_FILES = 200;
+const MAX_TOTAL_BYTES = 5 * 1024 * 1024;
 const nofollow = constants.O_NOFOLLOW ?? 0;
 const nonblock = constants.O_NONBLOCK ?? 0;
 const id = z.string().regex(/^[a-z][a-z0-9_]{0,31}$/);
@@ -106,7 +106,7 @@ export const manifestSchema = z
         if (new Set(values).size !== values.length)
           ctx.addIssue({ code: "custom", message: "duplicate fetch setting" });
   });
-export type ConnectorManifest = z.infer<typeof manifestSchema>;
+type ConnectorManifest = z.infer<typeof manifestSchema>;
 
 export class ConnectorFault extends Error {
   constructor(
@@ -116,7 +116,7 @@ export class ConnectorFault extends Error {
     super(message);
   }
 }
-export interface FileEntry {
+interface FileEntry {
   readonly path: string;
   readonly size: number;
   readonly sha256: string;
@@ -171,7 +171,7 @@ function boundedFile(
   }
 }
 
-export function parseManifest(bytes: Buffer): ConnectorManifest {
+function parseManifest(bytes: Buffer): ConnectorManifest {
   if (bytes.length > MAX_MANIFEST_BYTES)
     throw new ConnectorFault("invalid_manifest", "manifest too large");
   try {

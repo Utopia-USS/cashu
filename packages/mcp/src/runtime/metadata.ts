@@ -3,17 +3,17 @@ import { budgetTools } from "../tools/budget.js";
 import { coreTools } from "../tools/core.js";
 import { investmentTools } from "../tools/investments.js";
 import { loansTools } from "../tools/loans.js";
-import { DELEGATED_TOOLS, TOOL_ORDER } from "./delegated.generated.js";
+import { NATIVE_TOOL_SCHEMAS, TOOL_ORDER } from "./toolSchemas.generated.js";
 
 export type { ToolMetadata } from "../registry.js";
 
-/** Native specs own migrated entries; the remaining contracts describe actual Python delegation. */
+/** Native specs own migrated entries; retained source schemas cover the remaining native tools. */
 export function mcpToolMetadata(): readonly ToolMetadata[] {
   const entries = [
     ...[...coreTools(), ...budgetTools(), ...loansTools(), ...investmentTools()].map(
       ({ handler: _handler, ...metadata }) => metadata,
     ),
-    ...DELEGATED_TOOLS,
+    ...NATIVE_TOOL_SCHEMAS,
   ];
   const byName = new Map(entries.map((tool) => [tool.name, tool]));
   if (byName.size !== entries.length || byName.size !== TOOL_ORDER.length)

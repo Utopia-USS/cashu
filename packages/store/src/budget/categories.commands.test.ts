@@ -6,6 +6,7 @@
 // test_a_manual_merchant_rule_still_wins_over_the_loans_payment_account; plus the batch shapes,
 // value-free refusals, idempotence and the cloud gate of the classifier query (PRIVACY(D-09.5)).
 // Synthetic data only.
+import { readFileSync } from "node:fs";
 import { D } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
 import { describe, expect, it } from "vitest";
@@ -18,6 +19,7 @@ import {
   cacheLlmRules,
   deleteCashTransaction,
   importStatement,
+  learnMerchantCategory,
   setLlmCategories,
   setMerchantCategory,
   setTransactionCategory,
@@ -214,6 +216,69 @@ describe("addCashExpense (test_cash.py)", () => {
 });
 
 describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
+  it("matches the corrected Python setter action oracle", () => {
+    const actions = JSON.parse(
+      readFileSync(new URL("../../test/vectors/d24-setter.json", import.meta.url), "utf8"),
+    ) as { action: "learn" | "pin"; category: string; updated: number; pairs: string[][] }[];
+    const { store, env } = vault();
+    ingest(store, env, [
+      raw("-11.00", { cp: "ZXQ RULE TEST" }),
+      { ...raw("-12.00", { cp: "ZXQ RULE TEST" }), currency: "EUR" },
+      raw("-13.00", { cp: "ZXQ RULE TEST" }),
+      raw("-14.00", { cp: "ZXQ OTHER TEST" }),
+    ]);
+    run(store, env, setTransactionCategory, { txn: gidOf(store, "-13.00"), category: "gifts" });
+    const gids = ["-11.00", "-12.00", "-13.00", "-14.00"].map((amount) => gidOf(store, amount));
+    for (const action of actions) {
+      const command = action.action === "learn" ? learnMerchantCategory : setMerchantCategory;
+      const result = run(store, env, command, {
+        merchantKey: "ZXQ RULE TEST",
+        category: action.category,
+      });
+      expect(result.ok && result.value.updated).toBe(action.updated);
+      expect(
+        gids.map((gid) => {
+          const pair = catOf(store, gid);
+          return [pair?.category, pair?.category_source];
+        }),
+      ).toEqual(action.pairs);
+    }
+  });
+  it("counts effective pair changes for unlocked rules across currencies and preserves owner pins", () => {
+    const { store, env } = vault();
+    ingest(store, env, [
+      raw("-11.00", { cp: "ZXQ RULE TEST" }),
+      { ...raw("-12.00", { cp: "ZXQ RULE TEST" }), currency: "EUR" },
+    ]);
+    const first = run(store, env, learnMerchantCategory, {
+      merchantKey: "ZXQ RULE TEST",
+      category: "dining",
+    });
+    expect(first.ok && first.value).toMatchObject({ changed: true, updated: 2, kept: false });
+    expect(first.ok && first.events).toHaveLength(1);
+    const repeat = run(store, env, learnMerchantCategory, {
+      merchantKey: "ZXQ RULE TEST",
+      category: "dining",
+    });
+    expect(repeat.ok && repeat.value).toMatchObject({ changed: false, updated: 0 });
+    expect(repeat.ok && repeat.events).toHaveLength(0);
+    const pin = run(store, env, setMerchantCategory, {
+      merchantKey: "ZXQ RULE TEST",
+      category: "dining",
+    });
+    expect(pin.ok && pin.value).toMatchObject({ changed: true, updated: 2 });
+    const kept = run(store, env, learnMerchantCategory, {
+      merchantKey: "ZXQ RULE TEST",
+      category: "shopping",
+    });
+    expect(kept.ok && kept.value).toMatchObject({
+      changed: false,
+      updated: 0,
+      kept: true,
+      category: "dining",
+    });
+    expect(kept.ok && kept.events).toHaveLength(0);
+  });
   it("test_merchant_pin_leaves_rows_with_their_own_decision", () => {
     const { store, env } = vault();
     ingest(store, env, [], OWN);
@@ -225,7 +290,7 @@ describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
     const chosen = gidOf(store, "-20.00");
     run(store, env, setTransactionCategory, { txn: chosen, category: "gifts" });
     const out = run(store, env, setMerchantCategory, {
-      merchantKey: "SKLEP PIN TEST",
+      merchantKey: "  sklep pin test  ",
       category: "shopping",
     });
     expect(out.ok && out.events.map((e) => [e.type, e.data])).toEqual([
@@ -250,6 +315,9 @@ describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
     });
     expect(again.ok && again.events).toEqual([]);
     expect(run(store, env, setMerchantCategory, { merchantKey: "", category: "shopping" })).toEqual(
+      { ok: false, reason: "invalid_input" },
+    );
+    expect(run(store, env, setMerchantCategory, { merchantKey: 12, category: "shopping" })).toEqual(
       { ok: false, reason: "invalid_input" },
     );
   });
@@ -294,6 +362,12 @@ describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
     ]);
     ingest(store, env, [raw("-700.00", { cp: "BANK AUTO TEST", iban: OWN })]);
     const t = gidOf(store, "-700.00");
+    expect(catOf(store, t)).toEqual({ category: "loans", category_source: "keyword" });
+    const learned = run(store, env, learnMerchantCategory, {
+      merchantKey: "BANK AUTO TEST",
+      category: "dining",
+    });
+    expect(learned.ok && learned.value).toMatchObject({ updated: 0, kept: false });
     expect(catOf(store, t)).toEqual({ category: "loans", category_source: "keyword" });
     run(store, env, setMerchantCategory, { merchantKey: "BANK AUTO TEST", category: "housing" });
     expect(catOf(store, t)).toEqual({ category: "housing", category_source: "manual" });

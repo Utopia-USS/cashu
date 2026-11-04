@@ -4,9 +4,9 @@ import type { SqlAttemptJournal } from "../attemptJournal.js";
 import { errorName } from "../log.js";
 import type { WriteQueue } from "../queue.js";
 
-export const FETCH_REPORT_COMMAND = "native.devices.fetchReport";
+const FETCH_REPORT_COMMAND = "native.devices.fetchReport";
 export const LEADER_PIN_COMMAND = "native.devices.leaderPin";
-export const LEADER_RELEASE_COMMAND = "native.devices.leaderRelease";
+const LEADER_RELEASE_COMMAND = "native.devices.leaderRelease";
 const LEASE_COMMANDS = new Set([FETCH_REPORT_COMMAND, LEADER_PIN_COMMAND, LEADER_RELEASE_COMMAND]);
 type LeaseOutcome = "completed" | "not_started" | "outcome_unknown";
 

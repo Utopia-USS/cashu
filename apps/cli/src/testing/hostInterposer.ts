@@ -65,7 +65,7 @@ if (realpathSync(home) !== home || !lstatSync(home).isDirectory()) {
 
 const expected = [
   "--no-warnings",
-  "--experimental-strip-types",
+  "--experimental-transform-types",
   "--import",
   RESOLVE_TS,
   "--import",

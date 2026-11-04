@@ -17,7 +17,7 @@ import { cliCommandKey, reportCliCommandFailure, runCliVaultCommand } from "../c
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentVault } from "./context.js";
-import { DELEGATE } from "./inspection.js";
+import { UNHANDLED } from "./inspection.js";
 import { investmentCliText as M } from "./strings.js";
 
 interface Input {
@@ -114,10 +114,10 @@ export async function importFile(
   io: CommandIo,
   root: { readonly profile?: string },
   deps: InvestmentCliDeps,
-): Promise<number | typeof DELEGATE> {
+): Promise<number | typeof UNHANDLED> {
   const input = parse(args);
   const vault = investmentVault(io, root, deps);
-  if (!input || !vault) return DELEGATE;
+  if (!input || !vault) return UNHANDLED;
   if (io.signal.aborted) return 130;
   const slug = root.profile || io.env.CASHU_PROFILE;
   const read = vault.store.read.bind(vault.store);
@@ -128,20 +128,20 @@ export async function importFile(
     enabledModuleIds(read).has("investments") &&
     vault.mode === "native" &&
     vault.native.isCurrent();
-  if (!current()) return DELEGATE;
+  if (!current()) return UNHANDLED;
   let content: Uint8Array | null;
   let mappingYaml: string | undefined;
   try {
     content = await readBounded(io.cwd, input.file, MAX_FILE_BYTES);
     if (input.mapping) {
       const mapped = await readBounded(io.cwd, input.mapping, 1_048_576);
-      if (mapped === null) return DELEGATE;
+      if (mapped === null) return UNHANDLED;
       mappingYaml = new TextDecoder("utf-8", { fatal: true }).decode(mapped);
     }
   } catch {
-    return DELEGATE;
+    return UNHANDLED;
   }
-  if (content === null || content.length === 0 || !current()) return DELEGATE;
+  if (content === null || content.length === 0 || !current()) return UNHANDLED;
   if (io.signal.aborted) return 130;
   const file = { name: basename(input.file), content };
   const request = {
@@ -151,7 +151,7 @@ export async function importFile(
     ...(mappingYaml === undefined ? {} : { mappingYaml }),
   };
   const previewed = previewImport(read, request, new Date(deps.now()).toISOString());
-  if (!previewed.ok) return DELEGATE;
+  if (!previewed.ok) return UNHANDLED;
   const preview = previewed.preview;
   printConsole(io, `${file.name}: ${io.t.tr(M.importer)} ${preview.importerId ?? "-"}`, {
     highlight: false,

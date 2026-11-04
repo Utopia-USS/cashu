@@ -28,7 +28,6 @@ it.each(["finanse.db", "cashu.db-wal"])(
           factory: new ProductionVaultSourceFactory(dataDir),
         },
         launcher: false,
-        python: null,
       }),
     ).rejects.toThrow("legacy_python_db_awaits_s62");
     expect(existsSync(join(dataDir, "native", "v1", "creation.json"))).toBe(false);
@@ -60,7 +59,6 @@ it("refuses a pre-rename source root before opening zero-vault Create", async ()
       },
       assertNativeSourceAdmission,
       launcher: false,
-      python: null,
     }),
   ).rejects.toThrow("legacy_python_db_awaits_s62");
   expect(existsSync(join(dataDir, "native", "v1", "creation.json"))).toBe(false);
@@ -73,7 +71,6 @@ it("serves clean first-run Create under the real host lock with zero vaults", as
     home: tempDir(),
     vaultSource: { kind: "native-production", factory: new ProductionVaultSourceFactory(dataDir) },
     launcher: false,
-    python: null,
   });
   const ui = await connectHost({ dataDir, role: "ui", build: "creation-rpc-test" });
   try {
@@ -109,7 +106,6 @@ it("refuses the Create RPC to an older UI minor even when the host advertises th
     home: tempDir(),
     vaultSource: { kind: "native-production", factory: new ProductionVaultSourceFactory(dataDir) },
     launcher: false,
-    python: null,
   });
   const old = await connectHost({
     dataDir,
@@ -132,7 +128,6 @@ it("refuses a new Create request on an existing UI session after shutdown begins
     home: tempDir(),
     vaultSource: { kind: "native-production", factory: new ProductionVaultSourceFactory(dataDir) },
     launcher: false,
-    python: null,
   });
   const ui = await connectHost({ dataDir, role: "ui", build: "creation-rpc-test" });
   let release = () => {};

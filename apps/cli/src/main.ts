@@ -1,4 +1,4 @@
-// The `cashu` shim: resolve the data dir (Python's rules, `.env.dev` included), then route the argv
+// The `cashu` shim: resolve the data dir (`.env.dev` included), then route the argv
 // (route.ts) to the host's admin methods, an MCP session or `cli.exec`. Exit codes of its own: 64 usage
 // (`cashu host ...`), 69 no host could be reached or started (never a fallback that would open a store
 // in this process), 70 the host broke off or broke the protocol. Everything else is the command's code.
@@ -14,9 +14,9 @@ import {
 } from "@cashu/node-host";
 import { forwardedEnv, HostLostError, ProtocolError, runExec } from "./cliClient.js";
 import { type ResolvedDataDir, resolveDataDir } from "./dataDir.js";
-import { delegateEnv, runDelegate } from "./delegate.js";
 import { desktopLaunch, runDesktopApp } from "./desktop.js";
 import { checkoutRoot } from "./devenv.js";
+import { foregroundEnv, runForeground } from "./foreground.js";
 import {
   existingHost,
   type HostTarget,
@@ -34,7 +34,7 @@ const USAGE_EXIT = 64;
 const NOT_RUNNING_EXIT = 3;
 const FAILURE_EXIT = 70;
 
-/** How the shim ends: an exit code, or the signal its delegated child died of (re-raised). */
+/** How the shim ends: an exit code, or the signal its foreground host died of (re-raised). */
 export type MainOutcome = { readonly code: number } | { readonly signal: NodeJS.Signals };
 
 export interface ShimProcess {
@@ -64,7 +64,7 @@ interface Context {
   readonly dataDir: ResolvedDataDir;
   readonly t: Translator;
   readonly target: HostTarget;
-  /** The environment as the Python CLI would see it after loading `.env.dev`. */
+  /** The caller environment after loading `.env.dev`. */
   readonly env: NodeJS.ProcessEnv;
 }
 
@@ -123,19 +123,8 @@ async function runCli(ctx: Context, argv: readonly string[]): Promise<MainOutcom
     return unreachable(ctx, error);
   }
   conn.close();
-  if (result.kind === "exit") return { code: result.code };
-  // TRANSITIONAL(S49): not ported yet, the Python CLI runs it with this terminal.
-  const outcome = await runDelegate({
-    command: result.command,
-    args: [...result.args, ...argv],
-    env: delegateEnv(ctx.proc.env, ctx.dataDir.devEnv.added),
-    cwd: ctx.proc.cwd,
-  });
-  if (outcome.kind === "failed") {
-    say(ctx.proc, "stderr", ctx.t.tr(S.delegateFailed));
-    return { code: FAILURE_EXIT };
-  }
-  return outcome.kind === "signal" ? { signal: outcome.signal } : { code: outcome.code };
+  if (result.kind !== "exit") return unreachable(ctx, new ProtocolError("unexpected CLI reply"));
+  return { code: result.code };
 }
 
 async function runMcp(ctx: Context, profile: string): Promise<MainOutcome> {
@@ -187,7 +176,7 @@ async function runHostAdmin(ctx: Context, action: "status" | "stop" | "run"): Pr
       ctx.proc.execArgv,
       ctx.proc.cwd,
     );
-    const outcome = await runDelegate({ command, args, env: ctx.target.env, cwd: ctx.proc.cwd });
+    const outcome = await runForeground({ command, args, env: ctx.target.env, cwd: ctx.proc.cwd });
     if (outcome.kind === "failed") return { code: FAILURE_EXIT };
     return outcome.kind === "signal" ? { signal: outcome.signal } : { code: outcome.code };
   }
@@ -271,7 +260,7 @@ export async function main(argv: readonly string[], proc: ShimProcess): Promise<
     say(proc, "stderr", t.tr(S.dataDirUnresolved)(error instanceof Error ? error.message : "?"));
     return { code: FAILURE_EXIT };
   }
-  const env = delegateEnv(proc.env, dataDir.devEnv.added);
+  const env = foregroundEnv(proc.env, dataDir.devEnv.added);
   const t = createTranslator(
     createBackendI18n(nodeLanguageSource({ env, dataDir: dataDir.path })).appLanguage(),
   );

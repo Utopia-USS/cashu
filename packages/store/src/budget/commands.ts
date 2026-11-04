@@ -26,7 +26,7 @@ import {
   RECLASSIFY_KEYS,
   ruleUpsert,
 } from "@cashu/domain/budget";
-import { pyStrip, pyUpper } from "@cashu/domain/text";
+import { normalizeText, pyStrip, pyUpper } from "@cashu/domain/text";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../command.js";
 import { emitBalance, ensureAccount } from "../core/commands.js";
@@ -34,6 +34,7 @@ import { accountByGid, profileOf } from "../core/queries.js";
 import { BALANCE_SOURCES } from "../events/v1/core.js";
 import { blobRef, calendarDate, gid } from "../events/v1/primitives.js";
 import { vaultPaymentPatterns } from "../overview/index.js";
+import { projectedMerchantRuleChanges } from "./derive/categories.js";
 import {
   reclassifyRowByGid,
   ruleByMerchant,
@@ -186,6 +187,7 @@ export const importStatement = defineCommand({
 // ------------------------------------------------------------------------------- categories
 
 const categoryKey = z.string().refine(isCategoryKey, "unknown category");
+const ownerMerchantKey = z.string().transform(normalizeText).refine(Boolean, "empty merchant");
 
 /**
  * The cash pool account of `currency` (Python `get_cash_account(create=True)`): the vault's
@@ -232,19 +234,66 @@ export const setTransactionCategory = defineCommand({
  */
 export const setMerchantCategory = defineCommand({
   id: "budget.setMerchantCategory",
-  input: z.object({ merchantKey: z.string().min(1), category: categoryKey }),
+  input: z.object({ merchantKey: ownerMerchantKey, category: categoryKey }),
   run(ctx, input) {
     const prev = ruleByMerchant(ctx.read, input.merchantKey);
     if (prev?.locked && prev.source === "manual" && prev.category === input.category) {
-      return ok({ changed: false });
+      return ok({ changed: false, updated: 0 });
     }
+    const updated = projectedMerchantRuleChanges(
+      ctx.read,
+      {
+        merchantKey: input.merchantKey,
+        category: input.category,
+        source: "manual",
+        locked: true,
+      },
+      vaultPaymentPatterns(ctx.read),
+    );
     ctx.emit("categoryRule.set", ctx.det("category_rules", [input.merchantKey]), {
       merchantKey: input.merchantKey,
       category: input.category,
       source: "manual",
       locked: true,
     });
-    return ok({ changed: true });
+    return ok({ changed: true, updated });
+  },
+});
+
+/** Agent suggestion: an unlocked rule, subordinate to every owner and structural decision. */
+export const learnMerchantCategory = defineCommand({
+  id: "budget.learnMerchantCategory",
+  input: z.object({ merchantKey: z.string().min(1), category: categoryKey }),
+  run(ctx, input) {
+    if (
+      ctx.read<{ present: number }>(
+        "SELECT 1 AS present FROM fold_txn_keys WHERE merchant_key = ? LIMIT 1",
+        input.merchantKey,
+      ).length === 0
+    )
+      return refuse("no_merchant");
+    const prev = ruleByMerchant(ctx.read, input.merchantKey);
+    if (prev?.locked)
+      return ok({ changed: false, updated: 0, kept: true, category: prev.category });
+    if (prev?.source === "llm" && prev.category === input.category)
+      return ok({ changed: false, updated: 0, kept: false, category: input.category });
+    const updated = projectedMerchantRuleChanges(
+      ctx.read,
+      {
+        merchantKey: input.merchantKey,
+        category: input.category,
+        source: "llm",
+        locked: false,
+      },
+      vaultPaymentPatterns(ctx.read),
+    );
+    ctx.emit("categoryRule.set", ctx.det("category_rules", [input.merchantKey]), {
+      merchantKey: input.merchantKey,
+      category: input.category,
+      source: "llm",
+      locked: false,
+    });
+    return ok({ changed: true, updated, kept: false, category: input.category });
   },
 });
 

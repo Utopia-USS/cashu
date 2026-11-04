@@ -1,5 +1,15 @@
-// The agent write remains delegated: Python's direct assignments differ from D-24.1 derivation.
-import { type ToolSpec, toolSpec } from "../registry.js";
+import { budget } from "@cashu/domain";
+import { learnMerchantCategory } from "@cashu/store";
+import { budgetBook } from "@cashu/store/budget/queries";
+import * as L from "../privacy/labels.js";
+import { Redactor } from "../privacy/redactor.js";
+import {
+  type ToolArgs,
+  type ToolContext,
+  ToolError,
+  type ToolSpec,
+  toolSpec,
+} from "../registry.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { validateBudgetImport } from "./budgetImport.js";
 import {
@@ -14,7 +24,47 @@ const CURRENCY = {
   maxLength: 3,
   description: "3-letter code (default: base currency)",
 };
-/** Python descriptors, in provider order; set_merchant_category is intentionally not native yet. */
+async function setMerchantCategory(
+  ctx: ToolContext<NativeToolStore>,
+  args: ToolArgs,
+): Promise<L.LabelledTree> {
+  const merchant = args.merchant;
+  const category = args.category;
+  if (typeof category !== "string" || !budget.CATEGORY_KEYS.includes(category))
+    throw new ToolError("unknown category; uncategorized_merchants lists the categories");
+  const keys = new Set(
+    budgetBook(ctx.store.read)
+      .transactions.map((t) => budget.merchantKey(t.counterpartyName, t.reference, t.description))
+      .filter(Boolean),
+  );
+  const redactor = new Redactor({ privacy: ctx.privacy, guard: ctx.guard });
+  const token = typeof merchant === "string" && /^payee:[a-p]{10}$/.test(merchant);
+  const matches = [...keys].filter((key) =>
+    token
+      ? ctx.guard.resolve(merchant, [key]) === key
+      : redactor.apply(L.merchant(key)) === merchant,
+  );
+  const key = matches.length === 1 ? matches[0] : null;
+  if (!key) throw new ToolError("no such merchant in this profile's transactions", "not_found");
+  const result = await ctx.store.run(learnMerchantCategory, { merchantKey: key, category });
+  if (!result.ok) {
+    if (result.reason === "no_merchant")
+      throw new ToolError("no such merchant in this profile's transactions", "not_found");
+    throw new ToolError("category update refused", "invalid");
+  }
+  return {
+    merchant: L.merchant(key),
+    category: L.category(result.value.category),
+    updated_transactions: L.count(result.value.updated),
+    rule: L.fixedText(
+      result.value.kept && result.value.category !== category
+        ? "kept: the owner set this merchant's category by hand"
+        : "learned rule saved for this profile (like an LLM rule: the owner's manual choices win)",
+    ),
+  };
+}
+
+/** Python descriptors, in provider order. */
 export function budgetTools(): readonly ToolSpec<NativeToolStore>[] {
   return [
     toolSpec({
@@ -54,6 +104,19 @@ export function budgetTools(): readonly ToolSpec<NativeToolStore>[] {
         "Merchants without a category (by count) and the list of category keys for set_merchant_category.",
       handler: uncategorizedMerchants,
       properties: { limit: { type: "integer", minimum: 1, maximum: 200, default: 30 } },
+    }),
+    toolSpec({
+      name: "set_merchant_category",
+      module: "budget",
+      description:
+        "Teach the profile a category for a merchant (a learned rule; also re-categorizes its transactions). merchant: the name as listed, or a payee:... reference.",
+      handler: setMerchantCategory,
+      properties: {
+        merchant: { type: "string", maxLength: 200 },
+        category: { type: "string", maxLength: 40 },
+      },
+      required: ["merchant", "category"],
+      write: true,
     }),
     toolSpec({
       name: "validate_budget_import",

@@ -70,7 +70,7 @@ export async function workerFixture(
 ) {
   const hosts = await Promise.all(
     Array.from({ length: options.two ? 2 : 1 }, () =>
-      startLocalHost({ ...testHostOptions(tempDir()), python: null, launcher: false }),
+      startLocalHost({ ...testHostOptions(tempDir()), launcher: false }),
     ),
   );
   const vaults = hosts.flatMap((h) => [...h.stores.vaults.values()]);

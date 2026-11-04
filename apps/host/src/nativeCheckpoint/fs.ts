@@ -29,7 +29,7 @@ import {
 export function unavailable(): never {
   throw new Error("native_checkpoint_unavailable");
 }
-export function sha(bytes: Uint8Array): string {
+function sha(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 export function syncDirectory(path: string): void {

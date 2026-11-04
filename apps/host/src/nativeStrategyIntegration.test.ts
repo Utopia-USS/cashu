@@ -13,7 +13,6 @@ it("serves desktop Strategies source and refresh action from a native vault with
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
   });
   const client = await storeClient(fixture.dataDir);

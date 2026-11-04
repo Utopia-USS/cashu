@@ -1,4 +1,4 @@
-import { N } from "../nativeStrings.js";
+import { N } from "../native.strings.js";
 import type { PortedCommand } from "../tree.js";
 import { positionCommands, runAddPosition } from "./position.js";
 import { runVehicleCommand, type VehicleDeps } from "./vehicle.js";

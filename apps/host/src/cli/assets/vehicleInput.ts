@@ -1,4 +1,4 @@
-// Side-effect-free eligibility parsing. Python retains help, parse errors and unsupported values.
+// Side-effect-free native argument parsing for the vehicle CLI.
 import { D, floatRepr, fromIsoFormat, type IsoDate, pyStrip, unicodeDecimal } from "@cashu/domain";
 
 export interface VehicleInput {

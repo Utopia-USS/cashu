@@ -19,7 +19,7 @@ const base64 = z
   .max(64 * 1024)
   .regex(/^[A-Za-z0-9_-]+$/);
 
-export const locatorSchema = z.strictObject({
+const locatorSchema = z.strictObject({
   format: z.literal(1),
   vault: z.string().regex(ID),
   device: z.string().regex(ID),
@@ -29,7 +29,7 @@ export const locatorSchema = z.strictObject({
   certificates: z.array(base64).min(1).max(64),
 });
 
-export const manifestSchema = z.strictObject({
+const manifestSchema = z.strictObject({
   format: z.literal(1),
   vault: z.string().regex(ID),
   device: z.string().regex(ID),

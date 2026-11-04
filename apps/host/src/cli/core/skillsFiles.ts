@@ -53,7 +53,7 @@ function sameFile(a: string, b: string): boolean {
     if (right !== undefined) closeSync(right);
   }
 }
-/** undefined means a recursive symlink cycle: preserve Python's error through pre-write delegation. */
+/** undefined means a recursive symlink cycle; refuse before any write. */
 export function sameTree(a: string, b: string, ancestors = new Set<string>()): boolean | undefined {
   const sa = statSync(a);
   const sb = statSync(b);
@@ -126,7 +126,7 @@ export function expandHome(path: string, home: string): string {
 export function filesystemPath(cwd: string, path: string): string {
   return isAbsolute(path) ? path : `${cwd}/${path}`;
 }
-/** Resolve existing links without creating missing components before a possible delegation. */
+/** Resolve existing links without creating missing components before preflight completes. */
 export function directoryTarget(absolute: string): string | undefined {
   let current = "/";
   for (const part of absolute.split("/")) {
@@ -160,7 +160,7 @@ export function copyableTree(path: string, ancestors = new Set<string>()): boole
   const next = new Set(ancestors).add(identity);
   return readdirSync(path).every((name) => copyableTree(join(path, name), next));
 }
-/** Access checks are only preflight. A later filesystem race never triggers a Python retry. */
+/** Access checks are only preflight. A later filesystem race never triggers a retry. */
 export function writableAncestor(path: string): void {
   let current = path;
   while (stat(current) === undefined) current = dirname(current);

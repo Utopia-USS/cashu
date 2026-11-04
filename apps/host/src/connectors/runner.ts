@@ -39,7 +39,7 @@ export type ConnectorCommand = "detect" | "convert" | "fetch" | "check";
 export type RunResult =
   | { readonly outcome: "ok"; readonly response: unknown; readonly documentBytes?: Uint8Array }
   | { readonly outcome: "refused" | "failed" | "timeout"; readonly errorKind: string };
-export interface FileInput {
+interface FileInput {
   readonly path: string;
   readonly name: string;
 }

@@ -1,7 +1,7 @@
-// The commands the host runs itself. S39 slices add theirs here and delete their lines from
-// delegated.ts in the same change.
+// Native product commands the host runs for an open vault.
 import { homedir, tmpdir } from "node:os";
 import type { market } from "@cashu/domain/investments";
+import type { InvestmentSearchIo } from "@cashu/mcp";
 import type { HostService } from "@cashu/node-host";
 import type { PerformanceService } from "@cashu/store/investments/performance";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
@@ -36,7 +36,7 @@ export interface PortedDeps {
   readonly runtime?: HostRuntime;
   /** Explicit packaged resource location; source builds derive it from the checkout. */
   readonly skillsSource?: string;
-  /** Supplied only when Python is absent: mixed sessions retain Python financial ownership. */
+  /** Open native vaults selected by the host. */
   readonly nativeStores?: Pick<HostStores, "vaults">;
   readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyCliFiles | null;
   readonly classifier?: CategorizeProvider;
@@ -45,6 +45,7 @@ export interface PortedDeps {
   readonly performance?: PerformanceService;
   readonly prices?: market.PriceCache | null;
   readonly marketData?: (read: Read, vault: string) => market.CachedMarketData | null;
+  readonly investmentSearch?: (vault: OpenVault) => InvestmentSearchIo | undefined;
   readonly creation?: Pick<
     ReturnType<typeof createNativeCreationService>,
     "prepare" | "commit" | "inspect"
@@ -105,6 +106,7 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
           performance: deps.performance,
           strategyFiles: deps.strategyFiles,
           worker: deps.worker,
+          searchIo: deps.investmentSearch,
         })
       : []),
     ...(deps.nativeStores && deps.worker

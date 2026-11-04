@@ -1,11 +1,9 @@
 // `cli.exec` from the shim's side: send the argv, cwd, forwarded env and terminal facts; write the
 // host's output notes to our stdout / stderr in order; answer prompts from the terminal (hidden ones
 // without echo); stream stdin when the host asks; Ctrl-C asks the host to cancel (a second Ctrl-C
-// leaves at once). The reply is an exit code, or `delegate` for a command not ported yet.
+// leaves at once). The reply is an exit code.
 //
-// Standard input is never read before the host asks for it: a delegated command inherits fd 0, and
-// bytes the shim had buffered would be lost to it. For the same reason a `delegate` reply after the
-// shim touched stdin or printed output is refused as a protocol error.
+// Standard input is read only when the host asks for it.
 
 import { userInfo } from "node:os";
 import { isatty } from "node:tty";
@@ -90,7 +88,6 @@ export function runExec(conn: HostConnection, options: ExecOptions): Promise<Cli
   const EXEC = 1;
   let nextId = 2;
   const input = new TerminalInput(options.terminal);
-  let touched = false;
   let interrupts = 0;
   return new Promise<CliExecResult>((resolve, reject) => {
     let done = false;
@@ -116,7 +113,6 @@ export function runExec(conn: HostConnection, options: ExecOptions): Promise<Cli
     });
 
     const streamStdin = async () => {
-      touched = true;
       for await (const chunk of input.stdinChunks(CLI_STDIN_CHUNK)) {
         if (done) return;
         await request("cli.stdin", {
@@ -142,9 +138,8 @@ export function runExec(conn: HostConnection, options: ExecOptions): Promise<Cli
         const result = cliExecResultSchema.safeParse(frame.outcome.result);
         if (!result.success)
           return finish(() => reject(new ProtocolError("invalid cli.exec reply")));
-        if (result.data.kind === "delegate" && touched) {
-          return finish(() => reject(new ProtocolError("delegate after output or input")));
-        }
+        if (result.data.kind !== "exit")
+          return finish(() => reject(new ProtocolError("unexpected cli.exec reply")));
         return finish(() => resolve(result.data));
       }
       if (frame.t !== "note" || frame.id !== EXEC) return;
@@ -152,14 +147,12 @@ export function runExec(conn: HostConnection, options: ExecOptions): Promise<Cli
         case "cli.out": {
           const note = cliOutNoteSchema.safeParse(frame.params);
           if (!note.success) return;
-          touched = true;
           options.terminal.write(note.data.stream, note.data.data);
           return;
         }
         case "cli.prompt": {
           const note = cliPromptNoteSchema.safeParse(frame.params);
           if (!note.success) return;
-          touched = true;
           const { pid, text, hidden } = note.data;
           void input.prompt(text, hidden).then((answer) => {
             if (answer === "interrupt") {

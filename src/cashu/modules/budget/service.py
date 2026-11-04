@@ -21,7 +21,7 @@ from .cash import cash_account_ids, get_cash_account, sync_cash_leg
 from .ingestion.csv_import import ParsedStatement, parse_file
 from .ingestion.dedup import prepare_new_transactions
 from .ingestion.normalize import RawTransaction
-from .models import ImportBatch, Transaction
+from .models import CategoryRule, ImportBatch, Transaction
 from .queries import transactions
 
 
@@ -280,32 +280,61 @@ def recategorize_one(session: Session, t: Transaction) -> None:
     session.add(t)
 
 
-# Category sources a merchant pin never overwrites (see ``recategorize_merchant``).
-_KEEP_ON_MERCHANT_PIN = frozenset({"manual_txn", "cash_leg", "transfer"})
+def _apply_merchant_rule(session: Session, key: str, category: str, *, source: str,
+                         locked: bool, profile_id: int) -> tuple[int, CategoryRule]:
+    """Recompute effective pairs after one rule upsert, preserving row claims and structure."""
+    from . import analytics
+    from .categorize import engine
+    from .categorize.rules import load_rules, upsert_rule
+    from .ingestion.normalize import merchant_key
+
+    rows = session.exec(transactions(profile_id)).all()
+    selected = [t for t in rows if merchant_key(
+        t.counterparty_name, t.reference, t.description) == key]
+    before = {t.id: (t.category, t.category_source) for t in selected}
+    rule = upsert_rule(session, key, category, source=source, locked=locked,
+                       profile_id=profile_id)
+    session.flush()
+    rules = load_rules(session, profile_id)
+    own = own_ibans(session, profile_id)
+    patterns = modules.payment_patterns(session, profile_id)
+    subs = {c.counterparty for c in analytics.detect_recurring(session, profile_id=profile_id)}
+    cash_ids = cash_account_ids(session, profile_id)
+    changed = 0
+    for t in selected:
+        if t.account_id in cash_ids or t.category_source in ("manual_txn", "cash_leg"):
+            continue
+        if t.category_source in ("llm_full", "llm_fallback"):
+            after = engine.owner_decision(t, own_ibans=own, rules=rules, patterns=patterns)
+            after = after or before[t.id]
+        else:
+            after = engine.categorize(t, own_ibans=own, rules=rules,
+                                      subscription_keys=subs, patterns=patterns)
+        if after != before[t.id]:
+            t.category, t.category_source = after
+            session.add(t)
+            changed += 1
+    return changed, rule
 
 
 def recategorize_merchant(
     session: Session, merchant_key_value: str, category: str, *, profile_id: int | None = None
 ) -> int:
-    """Pin a merchant to a category (manual, locked) for the profile and re-apply
-    to its rows. Rows with their own decision are left alone: a per-transaction
-    choice (``manual_txn``), a cash-pool mirror leg (``cash_leg``) and structural
-    transfers (internal or to an own account)."""
-    from .categorize.rules import upsert_rule
-    from .ingestion.normalize import merchant_key
-
+    """Pin a merchant and count visible effective pair changes in this profile."""
     pid = profiles.scope(session, profile_id, create=True)
-    upsert_rule(session, merchant_key_value, category, source="manual", locked=True, profile_id=pid)
-    n = 0
-    for t in session.exec(transactions(pid)).all():
-        if (
-            t.is_internal_transfer
-            or t.category_source in _KEEP_ON_MERCHANT_PIN
-            or t.category in ("transfer", "cash_withdrawal")
-        ):
-            continue
-        if merchant_key(t.counterparty_name, t.reference, t.description) == merchant_key_value:
-            t.category, t.category_source = category, "manual"
-            session.add(t)
-            n += 1
+    n, _ = _apply_merchant_rule(session, merchant_key_value, category, source="manual",
+                                locked=True, profile_id=pid)
     return n
+
+
+def learn_merchant_category(session: Session, key: str, category: str, *,
+                            profile_id: int) -> tuple[int, CategoryRule]:
+    """Save an unlocked agent rule without replacing an owner's lock."""
+    from .categorize.rules import load_rules
+
+    pid = profiles.scope(session, profile_id)
+    existing = load_rules(session, pid).get(key)
+    if existing is not None and existing.locked:
+        return 0, existing
+    return _apply_merchant_rule(session, key, category, source="llm", locked=False,
+                                profile_id=pid)

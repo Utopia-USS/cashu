@@ -27,7 +27,6 @@ it("registers native public search and import publication through actual host st
     vaultSource: fixture.vaultSource,
     build: "test",
     launcher: false,
-    python: null,
     marketFactory: (stores, isCurrent, now) => {
       market = createProductionMarket({
         stores,

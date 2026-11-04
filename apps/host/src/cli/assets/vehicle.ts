@@ -62,11 +62,9 @@ export async function runVehicleCommand(
   const existing = vehicleAccount(read, input.name);
   const currency = existing?.currency || input.currency || profile.baseCurrency || "PLN";
   const name = existing?.name ?? (input.name || "manual");
-  // Rich markup and control characters cannot be represented as plain native labels.
+  // The native renderer prints names literally; only control characters are unsafe in one line.
   if (
     !/^[A-Z]{3}$/.test(currency) ||
-    name.includes("[") ||
-    /:[^:\s]+:/.test(name) ||
     Array.from(name).some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)
   ) {
     io.stderr("Invalid vehicle name or currency.\n");

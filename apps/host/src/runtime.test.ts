@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import {
   type HostRuntime,
-  pythonProgram,
   shimProgram,
   shippedConnectorsSource,
   shippedSkillsSource,
@@ -41,7 +40,6 @@ it("uses independent packaged skills and connectors beside host.mjs", () => {
   const b = packaged();
   expect(shippedSkillsSource(b.rt)).toBe(b.skills);
   expect(shippedConnectorsSource(b.rt)).toBe(b.connectors);
-  expect(pythonProgram(b.rt)).toBeUndefined();
   expect(shimProgram(b.rt)).toEqual({
     command: b.rt.execPath,
     args: [join(b.resources, "shim.mjs")],
@@ -50,8 +48,7 @@ it("uses independent packaged skills and connectors beside host.mjs", () => {
 });
 
 it("refuses packaged resource symlinks escaping the bundle", () => {
-  const b = packaged({ CASHU_PYTHON_CLI: "/tmp/other" });
-  expect(pythonProgram(b.rt)).toBeUndefined();
+  const b = packaged();
   const outside = join(b.root, "other");
   writeFileSync(outside, "synthetic");
   rmSync(b.skills, { recursive: true });

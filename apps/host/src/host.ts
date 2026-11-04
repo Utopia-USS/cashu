@@ -92,7 +92,7 @@ import { runBankingOwnerAction } from "./banking/ownerAction.js";
 import type { BankingRuntime } from "./banking/runtime.js";
 import { HANDOVER_EXIT } from "./bundle.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./cli/budget/categorizeOllama.js";
-import { DELEGATED } from "./cli/delegated.js";
+import { defaultProfileSlug } from "./cli/defaultProfile.js";
 import { portedCommands } from "./cli/ported.js";
 import { serveCliSession } from "./cli/runner.js";
 import type { PortedCommand } from "./cli/tree.js";
@@ -105,13 +105,13 @@ import { writeLauncher } from "./launcher.js";
 import { takeWriterLease, type WriterLease } from "./lease.js";
 import { errorName, fileLog, type HostLog } from "./log.js";
 import type { ProductionMarket } from "./market/production.js";
-import { compositeBackend } from "./mcp/composite.js";
+import { nativeBackend } from "./mcp/backend.js";
 import { ConnectorProposalReceipts } from "./mcp/connectorReceipt.js";
 import { connectorMcpPort } from "./mcp/connectors.js";
-import { budgetFileReader, investmentFileReader, investmentMappingReader } from "./mcp/files.js";
+import { budgetFileReader, investmentFileReader } from "./mcp/files.js";
 import { mcpFileHome, mcpNamedHome } from "./mcp/homes.js";
+import { nativeMappingReader } from "./mcp/mapping.js";
 import { nativeRuntime } from "./mcp/native.js";
-import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
 import { createNativeCreationService } from "./nativeCreation.js";
@@ -134,8 +134,6 @@ import { servedCommands, servedQueries } from "./registry.js";
 import {
   currentRuntime,
   type HostRuntime,
-  type Program,
-  pythonProgram,
   shimProgram,
   shippedConnectorsSource,
 } from "./runtime.js";
@@ -172,6 +170,7 @@ const NATIVE_MCP_STORE_TOOLS = new Set([
   "cashflow_summary",
   "recurring_payments",
   "uncategorized_merchants",
+  "set_merchant_category",
   "loans_summary",
   "signals",
   "theses",
@@ -183,6 +182,9 @@ const NATIVE_MCP_STORE_TOOLS = new Set([
   "set_topic_market_view",
   "upsert_topic_thesis",
   "set_instrument_segment",
+  "validate_budget_import",
+  "inspect_export",
+  "validate_import",
 ]);
 const NATIVE_MCP_INVESTMENT_READS = new Set([
   "portfolio_overview",
@@ -280,8 +282,6 @@ export interface LocalHostOptions {
   readonly afterCommit?: () => void;
   /** Where this host runs from (default: this process); picks the shim and the Python CLI. */
   readonly runtime?: HostRuntime;
-  /** TRANSITIONAL(S49): the Python CLI for delegated commands and MCP sessions (null: none). */
-  readonly python?: Program | null;
   /** The commands run in the host (default: `portedCommands()`). */
   readonly ported?: readonly PortedCommand[];
   /** Write `<data dir>/bin/cashu` at start (default true). */
@@ -297,7 +297,6 @@ export interface LocalHostOptions {
   /** Explicit per-call vault/plan/file authority for optional investment write services. */
   readonly mcpInvestmentWrites?: (context: ToolContext<NativeToolStore>) => InvestmentWriteServices;
   /** Explicit legacy-file authority for packaged hosts or an external Python program. */
-  readonly mcpLegacyDataDir?: string;
 }
 
 export interface LocalHost {
@@ -614,15 +613,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const uiCommands = servedCommands({ strategy: investmentSources.strategy });
   const safeMode = record.safeMode;
   const runtime = options.runtime ?? currentRuntime();
-  const python = nativeMode
-    ? undefined
-    : options.python === undefined
-      ? pythonProgram(runtime)
-      : (options.python ?? undefined);
   const workerBound = !nativeMode || options.worker !== undefined;
   const capabilities = { jobs: !safeMode && workerBound, network: !safeMode && workerBound };
-  // TRANSITIONAL(S39c): Python owns financial mutations in mixed sessions. Native-only builds
-  // bind the explicit profile to a loaded vault until the shared authority/catalog is available.
+  // Production exposes native product commands; synthetic harnesses may inject isolated test commands.
   let ported = nativeMode
     ? portedCommands({
         runtime,
@@ -637,30 +630,20 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         classifier: options.budgetClassifiers?.local,
         cloudClassifier: options.budgetClassifiers?.cloud,
       }).filter((command) => command.name !== "genesis" && command.name !== "skills")
-    : [
-        ...(options.ported ??
-          portedCommands({
-            runtime,
-            now,
-            ...(python === undefined
-              ? {
-                  nativeStores: stores,
-                  prices: marketPrices,
-                  marketData: marketRuntime?.marketData,
-                  creation,
-                  onCreationReady: () => setTimeout(() => void stop("handover"), 0),
-                  investmentSources,
-                  performance: investmentPerformance,
-                  classifier: options.budgetClassifiers?.local,
-                  cloudClassifier: options.budgetClassifiers?.cloud,
-                }
-              : {}),
-          })),
-      ];
-  const portedNames = new Set(ported.map((command) => command.name));
-  const delegated = nativeMode
-    ? {}
-    : Object.fromEntries(Object.entries(DELEGATED).filter(([name]) => !portedNames.has(name)));
+    : (options.ported ??
+      portedCommands({
+        runtime,
+        now,
+        nativeStores: stores,
+        prices: marketPrices,
+        marketData: marketRuntime?.marketData,
+        creation,
+        onCreationReady: () => setTimeout(() => void stop("handover"), 0),
+        investmentSources,
+        performance: investmentPerformance,
+        classifier: options.budgetClassifiers?.local,
+        cloudClassifier: options.budgetClassifiers?.cloud,
+      }));
   if (options.launcher ?? true) {
     try {
       if (writeLauncher(server.paths.dataDir, shimProgram(runtime)))
@@ -793,6 +776,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       onCreationReady: () => setTimeout(() => void stop("handover"), 0),
       investmentSources,
       performance: investmentPerformance,
+      investmentSearch: (vault) => marketAsync?.(vault.id)?.search,
       strategyFiles: (vault, slug) => {
         const capability = strategies?.bind(vault.id);
         if (
@@ -1461,8 +1445,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         serveCliSession(session, {
           dataDir: server.paths.dataDir,
           ported,
-          delegated,
-          python,
+          defaultProfile: () => defaultProfileSlug(stores),
           log,
         });
         return;
@@ -1480,52 +1463,22 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             const vault = matchingVaults[0];
             if (nativeMode && (vault?.native === undefined || !vault.native.isCurrent()))
               return undefined;
-            const child =
-              python === undefined || (nativeMode && !vault?.native?.canRunSideEffects())
-                ? undefined
-                : startPythonMcp({
-                    program: python,
-                    dataDir: server.paths.dataDir,
-                    profile,
-                    open,
-                    env: runtime.env,
-                  });
-            // TRANSITIONAL(S53b): a profile with no native vault is still owned wholly by Python.
-            // Never take this path for a native profile after a policy or bridge failure.
-            if (vault === undefined) return child;
-            const legacyDataDir = nativeMode
-              ? undefined
-              : (options.mcpLegacyDataDir ??
-                (runtime.checkout !== undefined &&
-                (python === undefined ||
-                  (python.command === join(runtime.checkout, ".venv", "bin", "cashu") &&
-                    python.args.length === 0))
-                  ? join(runtime.checkout, "data")
-                  : undefined));
-            const fileReader =
-              legacyDataDir === undefined
-                ? undefined
-                : budgetFileReader({
-                    cwd: existsSync(open.cwd) ? open.cwd : server.paths.dataDir,
-                    home: mcpFileHome(runtime.env),
-                    namedHome: (name) => mcpNamedHome(name, runtime.env),
-                    dataDir: server.paths.dataDir,
-                    legacyDataDir,
-                  });
-            const investmentScope =
-              legacyDataDir === undefined
-                ? undefined
-                : {
-                    cwd: existsSync(open.cwd) ? open.cwd : server.paths.dataDir,
-                    home: mcpFileHome(runtime.env),
-                    namedHome: (name: string) => mcpNamedHome(name, runtime.env),
-                    dataDir: server.paths.dataDir,
-                    legacyDataDir,
-                  };
-            const readInvestmentFile =
-              investmentScope === undefined ? undefined : investmentFileReader(investmentScope);
-            const readInvestmentMapping =
-              investmentScope === undefined ? undefined : investmentMappingReader(investmentScope);
+            if (vault === undefined) return undefined;
+            const fileScope = {
+              cwd: existsSync(open.cwd) ? open.cwd : server.paths.dataDir,
+              home: mcpFileHome(runtime.env),
+              namedHome: (name: string) => mcpNamedHome(name, runtime.env),
+              dataDir: server.paths.dataDir,
+            };
+            const fileReader = budgetFileReader(fileScope);
+            const readInvestmentFile = investmentFileReader(fileScope);
+            const readInvestmentMapping = nativeMappingReader({
+              workspace: options.workspace,
+              stores,
+              vault,
+              replaced: () => bundleReplaced,
+              fileScope,
+            });
             const catalog = nativeMode ? options.connectorCatalog?.() : undefined;
             const connectorPort =
               nativeMode && catalog && connectorReceipts
@@ -1549,42 +1502,29 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 ? marketPrices !== null && marketFxNewest !== undefined
                 : tool.name !== "networth_breakdown" || marketPrices !== null,
             );
-            // TRANSITIONAL(S38b): mixed sessions keep financial reads beside the Python writer.
-            // Native payee identities and unsynchronized native category views cannot form a
-            // consistent categorization workflow with the delegated setter. Loans also use cashflow.
-            // S56c ingestion alone does not settle the blocked native classification write contract.
-            tools.push(
-              ...budgetTools().filter((tool) =>
-                tool.name === "validate_budget_import"
-                  ? fileReader !== undefined
-                  : child === undefined,
-              ),
-            );
-            if (child === undefined) tools.push(...loansTools());
+            tools.push(...budgetTools());
+            tools.push(...loansTools());
             tools.push(
               ...investmentTools().filter((tool) =>
                 tool.name === "inspect_export" || tool.name === "validate_import"
-                  ? readInvestmentFile !== undefined
-                  : child === undefined &&
-                    (tool.name === "signals" ||
-                      tool.name === "theses" ||
-                      (tool.name === "history_metrics"
-                        ? mcpInvestmentHistory !== undefined
-                        : mcpInvestmentReads !== undefined)),
+                  ? true
+                  : tool.name === "signals" ||
+                    tool.name === "theses" ||
+                    (tool.name === "history_metrics"
+                      ? mcpInvestmentHistory !== undefined
+                      : mcpInvestmentReads !== undefined),
               ),
             );
-            if (child === undefined)
-              tools.push(
-                ...researchTools().filter((tool) =>
-                  tool.name === "research_context" ? mcpResearch !== undefined : true,
-                ),
-              );
-            if (child === undefined)
-              tools.push(
-                ...investmentWriteTools().filter(
-                  (tool) => tool.name !== "watchlist" || mcpInvestmentWrites !== undefined,
-                ),
-              );
+            tools.push(
+              ...researchTools().filter((tool) =>
+                tool.name === "research_context" ? mcpResearch !== undefined : true,
+              ),
+            );
+            tools.push(
+              ...investmentWriteTools().filter(
+                (tool) => tool.name !== "watchlist" || mcpInvestmentWrites !== undefined,
+              ),
+            );
             const investmentAsync = marketAsync?.(vault.id);
             if (nativeMode) {
               const enabled = (name: string): boolean => {
@@ -1627,10 +1567,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                   (tool) => tool.name !== "test_connector" || options.workspace !== undefined,
                 ),
               );
-            const inventory =
-              child === undefined
-                ? TOOL_INVENTORY.filter((entry) => tools.some((tool) => tool.name === entry.name))
-                : TOOL_INVENTORY;
+            const inventory = TOOL_INVENTORY.filter((entry) =>
+              tools.some((tool) => tool.name === entry.name),
+            );
             const native = new NativeMcpServer(
               nativeRuntime({
                 stores,
@@ -1666,7 +1605,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                   : []),
               ],
             );
-            return compositeBackend({ native, python: child, inventory, profile });
+            return nativeBackend({ native, inventory, profile });
           },
           track: (backend) => {
             mcpServers.add(backend);

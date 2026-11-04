@@ -1,3 +1,4 @@
+import { slugify } from "@cashu/domain/core";
 import { nativeCreationPrepareParamsSchema } from "@cashu/host-protocol";
 import { mcpProfile } from "@cashu/store/core";
 import type { createNativeCreationService } from "../../nativeCreation.js";
@@ -15,18 +16,6 @@ interface ProfileDeps {
   readonly stores: Pick<HostStores, "vaults">;
   readonly creation?: Creation;
   readonly onCreationReady?: () => void;
-}
-
-function slugify(name: string): string {
-  const base = name
-    .replaceAll("ł", "l")
-    .replaceAll("Ł", "L")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return base.slice(0, 40).replace(/-$/g, "") || "profil";
 }
 
 async function add(args: readonly string[], io: CommandIo, deps: ProfileDeps): Promise<number> {

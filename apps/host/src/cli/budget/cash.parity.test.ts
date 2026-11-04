@@ -85,7 +85,6 @@ it.skipIf(!existsSync(PYTHON))("matches Python cash CLI bytes and one-append sta
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   try {
     const commands = budgetCommands({
@@ -113,16 +112,10 @@ it.skipIf(!existsSync(PYTHON))("matches Python cash CLI bytes and one-append sta
           throw new Error("unexpected stdin");
         },
       };
-      const outcome = await runTree(run.args, io, commands, {});
+      const outcome = await runTree(run.args, io, commands);
       if (index === runs.length - 1) {
         expect(expected[index]?.code).toBe(2);
-        expect(outcome).toEqual({ kind: "delegate" });
-        continue;
-      }
-      if (index === 5 || index === 6) {
-        // Python's row id cannot be reconstructed from the local fold id for same-day ties.
-        expect(outcome).toEqual({ kind: "delegate" });
-        expect(actual).toEqual({ code: -1, stdout: "", stderr: "" });
+        expect(outcome).toEqual({ kind: "exit", code: 2 });
         continue;
       }
       expect(outcome, `native cash case ${index}`).toEqual({ kind: "exit", code: 0 });

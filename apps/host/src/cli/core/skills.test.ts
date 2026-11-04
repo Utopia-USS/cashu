@@ -148,10 +148,10 @@ it("delegates help, parse errors and unsupported legacy forms before output or m
     ["install", "--dest", "~another/skills"],
     ["install", "--dest", "[bold]path"],
   ]) {
-    expect(await f.run(args)).toEqual({ kind: "delegate" });
+    expect(await f.run(args)).toEqual({ kind: "unhandled" });
     expect(f.output).toEqual({ stdout: "", stderr: "" });
   }
-  expect(await f.run(["install"], { paths: undefined })).toEqual({ kind: "delegate" });
+  expect(await f.run(["install"], { paths: undefined })).toEqual({ kind: "unhandled" });
   expect(await f.run(["install", "--dest", "explicit"], { paths: undefined })).toBe(0);
 });
 it("reports a missing source with the legacy error and leaves the destination untouched", async () => {
@@ -181,7 +181,7 @@ it.skipIf(process.getuid?.() === 0)(
     mkdirSync(blocked);
     chmodSync(blocked, 0o555);
     try {
-      expect(await f.run(["install", "--dest", `${blocked}/new`])).toEqual({ kind: "delegate" });
+      expect(await f.run(["install", "--dest", `${blocked}/new`])).toEqual({ kind: "unhandled" });
       expect(f.output).toEqual({ stdout: "", stderr: "" });
     } finally {
       chmodSync(blocked, 0o755);
@@ -189,7 +189,7 @@ it.skipIf(process.getuid?.() === 0)(
     const unreadable = join(f.source, "alpha", "references", "note.md");
     chmodSync(unreadable, 0o000);
     try {
-      expect(await f.run(["install", "--dest", "target"])).toEqual({ kind: "delegate" });
+      expect(await f.run(["install", "--dest", "target"])).toEqual({ kind: "unhandled" });
       expect(f.output).toEqual({ stdout: "", stderr: "" });
     } finally {
       chmodSync(unreadable, 0o644);

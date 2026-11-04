@@ -20,7 +20,7 @@ import {
   writableAncestor,
 } from "./skillsFiles.js";
 
-const DELEGATE = { kind: "delegate" } as const;
+const UNHANDLED = { kind: "unhandled" } as const;
 const RESTART =
   "Restart Claude Code to pick up new skills. Each skill talks to a profile's MCP server: see Settings > Agent AI in the app for the `claude mcp add` line, or create the profile's agent workspace (server, skills and permissions in one folder): `cashu workspace init --profile <slug>`.";
 interface Install {
@@ -112,34 +112,34 @@ export function skillsCommand(source: string | undefined): PortedCommand {
     name: "skills",
     async run(args, io) {
       const parsed = parse(args);
-      if (parsed === undefined || source === undefined) return DELEGATE;
+      if (parsed === undefined || source === undefined) return UNHANDLED;
       // TRANSITIONAL(S39a): legacy help/errors/markup and older explicit Unicode versions stay delegated.
-      if (!supportsConsoleUnicode(io)) return DELEGATE;
+      if (!supportsConsoleUnicode(io)) return UNHANDLED;
       try {
         if (!stat(source)?.isDirectory()) return missingSource(io);
       } catch {
-        return DELEGATE;
+        return UNHANDLED;
       }
       if (parsed.kind === "path") {
         io.stdout(`${source}\n`);
         return 0;
       }
       const spelling = pathSpelling(parsed.dest);
-      if (/^~[^/]/.test(spelling)) return DELEGATE;
+      if (/^~[^/]/.test(spelling)) return UNHANDLED;
       const expands = spelling === "~" || spelling.startsWith("~/");
-      if (expands && io.paths === undefined) return DELEGATE;
+      if (expands && io.paths === undefined) return UNHANDLED;
       const dest = expands ? expandHome(spelling, io.paths?.home ?? "") : spelling;
-      if (legacyText(dest)) return DELEGATE;
+      if (legacyText(dest)) return UNHANDLED;
       const absolute = filesystemPath(io.cwd, dest);
       let actions: Action[] | undefined;
       try {
         const target = directoryTarget(absolute);
-        if (target === undefined) return DELEGATE;
+        if (target === undefined) return UNHANDLED;
         actions = plan(source, dest, target, parsed.force);
       } catch {
-        return DELEGATE;
+        return UNHANDLED;
       }
-      if (actions === undefined) return DELEGATE;
+      if (actions === undefined) return UNHANDLED;
       if (io.signal.aborted) return 130;
       await mkdir(absolute, { recursive: true });
       let skipped = 0;

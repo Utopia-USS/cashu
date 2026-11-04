@@ -10,6 +10,7 @@ import {
   reportCliProjectionUnavailable,
   runCliVaultCommand,
 } from "../commandOutcome.js";
+import { N } from "../native.strings.js";
 import {
   type LoanAssetDeps,
   localDay,
@@ -18,7 +19,6 @@ import {
   usage,
 } from "../nativeContext.js";
 import { date, decimal, parse, positiveInt } from "../nativeInput.js";
-import { N } from "../nativeStrings.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
 
 function resolveLoanAccount(vault: OpenVault, reference: string): string | null {

@@ -17,7 +17,6 @@ it("builds all seven cards from generated event facts and actual domain computat
   vi.stubEnv("CASHU_TESTING", "1");
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
-    python: null,
     now: () => Date.parse("2026-10-31T12:00:00Z"),
   });
   const driver = openNodeSqlite(":memory:");
@@ -87,7 +86,7 @@ it("builds all seven cards from generated event facts and actual domain computat
   }
 });
 it("encodes the actual tracked Review result with current files and market sources", async () => {
-  const host = await startLocalHost({ ...testHostOptions(tempDir()), python: null });
+  const host = await startLocalHost({ ...testHostOptions(tempDir()) });
   try {
     const vault = [...host.stores.vaults.values()][0];
     if (!vault) throw new Error("missing synthetic vault");

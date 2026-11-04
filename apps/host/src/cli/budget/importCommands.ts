@@ -15,7 +15,7 @@ import { printConsole, supportsConsoleUnicode } from "../core/console.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
 import { importInput, importTextSupported } from "./importInput.js";
 
-const DELEGATE = { kind: "delegate" } as const;
+const UNHANDLED = { kind: "unhandled" } as const;
 const registry = core.builtinRegistry();
 export interface ImportDeps {
   readonly stores: Pick<HostStores, "vaults">;
@@ -61,8 +61,7 @@ async function prepare(
   try {
     bytes = await readFile(resolve(cwd, path));
   } catch {
-    // Python's OS exception contains platform-specific path/error representation. Delegate before
-    // the first write instead of manufacturing a diagnostic after a partial native import.
+    // Refuse before the first write; a later file failure must not leave a partial import.
     return undefined;
   }
   const parsed = budget.parseStatementFile(bytes, registry.institutions, bank);
@@ -93,44 +92,44 @@ export async function runImportCommand(
   io: CommandIo,
   root: { readonly profile?: string },
   deps: ImportDeps,
-): Promise<number | typeof DELEGATE> {
+): Promise<number | typeof UNHANDLED> {
   const input = importInput(args, directory);
   const slug = root.profile || io.env.CASHU_PROFILE;
-  if (!input || !slug || !supportsConsoleUnicode(io)) return DELEGATE;
+  if (!input || !slug || !supportsConsoleUnicode(io)) return UNHANDLED;
   if (input.bank !== undefined && !registry.institutions.csvIds().includes(input.bank))
-    return DELEGATE;
-  if (!registry.accountTypes.ids().includes(input.accountType)) return DELEGATE;
+    return UNHANDLED;
+  if (!registry.accountTypes.ids().includes(input.accountType)) return UNHANDLED;
   const vault = selected(deps, slug);
-  if (!vault) return DELEGATE;
+  if (!vault) return UNHANDLED;
   const path = normalize(input.path);
   if (!importTextSupported(path) || (input.name !== undefined && !importTextSupported(input.name)))
-    return DELEGATE;
+    return UNHANDLED;
   let paths: string[];
   try {
     const info = await stat(resolve(io.cwd, path));
     if (directory) {
-      if (!info.isDirectory()) return DELEGATE;
+      if (!info.isDirectory()) return UNHANDLED;
       paths = (await filesIn(path, io.cwd, input.recursive)).sort(pathCompare);
     } else {
-      if (!info.isFile()) return DELEGATE;
+      if (!info.isFile()) return UNHANDLED;
       paths = [path];
     }
   } catch {
-    return DELEGATE;
+    return UNHANDLED;
   }
-  // Prepare the entire invocation before mutation, so an unsupported later representation never
-  // causes delegation after an earlier file already committed. Ordinary known parser failures
+  // Prepare the entire invocation before mutation, so a later unsupported representation never
+  // follows an earlier committed file. Ordinary known parser failures
   // remain per-file failures, printed in the original sorted order.
   const prepared: PreparedFile[] = [];
   for (const file of paths) {
     if (io.signal.aborted) return 130;
-    if (!importTextSupported(file)) return DELEGATE;
+    if (!importTextSupported(file)) return UNHANDLED;
     const parent = basename(join(file, "..")).toLowerCase();
     const hint =
       input.bank ||
       (directory && registry.institutions.csvIds().includes(parent) ? parent : undefined);
     const value = await prepare(file, io.cwd, hint);
-    if (!value || (!directory && value.error)) return DELEGATE;
+    if (!value || (!directory && value.error)) return UNHANDLED;
     if (value.statement) {
       const stmt = value.statement;
       const command = {
@@ -141,22 +140,22 @@ export async function runImportCommand(
         filename: basename(file),
         newestDayRule: false,
       };
-      if (!importStatement.input.safeParse(command).success) return DELEGATE;
+      if (!importStatement.input.safeParse(command).success) return UNHANDLED;
       if (
         !/^[A-Z]{3}$/.test(stmt.currency) ||
         stmt.transactions.some((t) => !/^[A-Z]{3}$/.test(t.currency.toUpperCase()))
       )
-        return DELEGATE;
+        return UNHANDLED;
       const names = [input.name ?? "", stmt.accountName ?? ""];
       const key = stmt.accountNumber ? ibanKey(stmt.accountNumber) : null;
       for (const account of mcpAccounts(vault.store.read.bind(vault.store))) {
         if (key && ibanKey(account.iban) === key) {
           // Python's bank-local account identity differs from native cross-source IBAN identity.
-          if (account.bank !== stmt.bank) return DELEGATE;
+          if (account.bank !== stmt.bank) return UNHANDLED;
           names.push(account.name);
         }
       }
-      if (names.some((name) => !importTextSupported(name))) return DELEGATE;
+      if (names.some((name) => !importTextSupported(name))) return UNHANDLED;
     }
     prepared.push(value);
   }
@@ -175,7 +174,7 @@ export async function runImportCommand(
       return 130;
     }
     if (deps.stores.vaults.get(vault.id) !== vault || selected(deps, slug) !== vault) {
-      if (!started) return DELEGATE;
+      if (!started) return UNHANDLED;
       return stopped("vault_changed");
     }
     if (file.error) {
@@ -193,7 +192,7 @@ export async function runImportCommand(
         (account.bank !== file.statement?.bank || !importTextSupported(account.name)),
     );
     if (changedAccount) {
-      if (!started) return DELEGATE;
+      if (!started) return UNHANDLED;
       return stopped("account_changed");
     }
     const result = await runCliVaultCommand(

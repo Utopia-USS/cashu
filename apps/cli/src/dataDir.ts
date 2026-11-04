@@ -22,7 +22,7 @@ export interface ResolvedDataDir {
   readonly path: string;
   /** Where the value came from. */
   readonly source: "env" | "env.dev" | "default";
-  /** What `.env.dev` added to the environment (the Python child gets the same, as Python would). */
+  /** What `.env.dev` added to the environment for the local host and CLI. */
   readonly devEnv: DevEnv;
 }
 

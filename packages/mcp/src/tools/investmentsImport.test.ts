@@ -19,13 +19,13 @@ const fixtures: ReturnType<typeof nativeFixture>[] = [];
 afterEach(() => {
   for (const f of fixtures.splice(0)) f.close();
 });
-it.each(vectors)("matches Python value-free import diagnostics: $mapping", (vector) => {
+it.each(vectors)("matches Python value-free import diagnostics: $mapping", async (vector) => {
   const f = nativeFixture();
   fixtures.push(f);
   for (const mode of ["strict", "amounts"] as const) {
     const ctx = f.context(mode),
       redactor = new Redactor({ privacy: mode, guard: ctx.guard });
-    const tree = validateInvestmentImport(
+    const tree = await validateInvestmentImport(
       {
         ...ctx,
         store: {

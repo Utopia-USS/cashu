@@ -20,7 +20,7 @@ import { workerStrategyFiles } from "./strategyFiles.js";
 
 export interface ProductionWorkerInput {
   readonly dataDir: string;
-  /** Host-checked native-only admission now; T54 may replace it with verified migration. */
+  /** Host-checked native-only admission; legacy source directories use a separate import target. */
   assertAdmission(): void;
   /** Exact authenticated vault root and pinned private strategy directory, never a slug guess. */
   strategyDirectory(vault: OpenVault): StrategyDirectoryAuthority | null;
@@ -48,9 +48,8 @@ export interface ProductionWorkerInput {
 }
 
 /**
- * One host instance owns the daily lock and the device-local cache. Bank jobs remain absent until
- * their own authenticated sessions, per-binding state and handover land.
- * Public market sources are absent too; a lease check alone is not a configured source.
+ * One host instance owns the daily lock and the device-local cache. Bank, connector and market
+ * jobs require their checked providers and current native authority.
  */
 export function createProductionWorkerBindings(
   host: WorkerHostContext,
@@ -103,8 +102,7 @@ export function createProductionWorkerBindings(
   });
   const prices = input.market?.prices ?? new SqlPriceCache(host.stores.device.driver);
   const dailyLock = input.dailyLock ?? new DailyPriceLock();
-  // The switch is the last preparation step: an earlier file/cache/state failure leaves Python
-  // eligible. A later ambiguous failure keeps the durable native owner and refuses a second run.
+  // Publish durable native job ownership only after file, cache and state preparation succeeds.
   const ownership = admittedWorkerOwnership({
     dataDir: input.dataDir,
     vaults: eligible,

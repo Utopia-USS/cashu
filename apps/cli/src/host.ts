@@ -1,6 +1,6 @@
 // How the shim reaches the data dir's host: connect, or start one detached and wait (connect-or-start,
 // @cashu/node-host). The host runs from the same build as the shim: from source in a dev checkout
-// (`node <strip-types flags> apps/host/src/cli.ts`), else the bundle's `host.mjs` next to the shim's
+// (`node <transform-types flags> apps/host/src/cli.ts`), else the bundle's `host.mjs` next to the shim's
 // bundle with the same runtime (the app's binary in Node mode, S47). Never a fallback: when no host can
 // be started the caller reports it and stops (exit 69).
 import { execFileSync } from "node:child_process";
@@ -26,7 +26,7 @@ const absoluteSpecifier = (spec: string, cwd: string) =>
   spec.startsWith("./") || spec.startsWith("../") ? resolve(cwd, spec) : spec;
 
 /** Node flags that run TypeScript from source; anything else (an inspector, a loader) is not passed on. */
-const SOURCE_FLAG = /^--(experimental-strip-types|no-warnings|disable-warning=.+|import=.+)$/;
+const SOURCE_FLAG = /^--(experimental-transform-types|no-warnings|disable-warning=.+|import=.+)$/;
 
 /** The `--import <x>` style flags of `execArgv` that run TypeScript from source, in order. */
 function sourceRunFlags(execArgv: readonly string[], cwd: string): string[] {
@@ -38,7 +38,8 @@ function sourceRunFlags(execArgv: readonly string[], cwd: string): string[] {
       i++;
     } else if (arg.startsWith("--import=")) {
       out.push(`--import=${absoluteSpecifier(arg.slice("--import=".length), cwd)}`);
-    } else if (SOURCE_FLAG.test(arg)) out.push(arg);
+    } else if (arg === "--experimental-strip-types") out.push("--experimental-transform-types");
+    else if (SOURCE_FLAG.test(arg)) out.push(arg);
   }
   return out;
 }

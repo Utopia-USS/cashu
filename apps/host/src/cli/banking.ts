@@ -2,6 +2,7 @@ import { mcpProfile } from "@cashu/store/core";
 import { z } from "zod";
 import type { BankingOwnerResult } from "../banking/ownerAction.js";
 import type { OpenVault } from "../stores.js";
+import { M } from "./banking.strings.js";
 import type { PortedCommand } from "./tree.js";
 
 type Action = {
@@ -16,26 +17,6 @@ export interface BankingCliDeps {
   perform(vault: OpenVault, action: Action, signal: AbortSignal): Promise<BankingOwnerResult>;
 }
 
-const M = {
-  usage: {
-    pl: "Użycie: cashu --profile PROFIL eb status|sessions|check|banks|resync|sync|forget|attempt-status [opcje]",
-    en: "Usage: cashu --profile PROFILE eb status|sessions|check|banks|resync|sync|forget|attempt-status [options]",
-  },
-  profile: { pl: "Wybierz jeden otwarty profil natywny.", en: "Select one open native profile." },
-  uiOnly: {
-    pl: "Konfigurację i zgodę bankową wykonaj w Ustawieniach aplikacji.",
-    en: "Use app Settings for bank setup and consent.",
-  },
-  unavailable: {
-    pl: "Operacja bankowa jest niedostępna.",
-    en: "The banking operation is unavailable.",
-  },
-  unknown: {
-    pl: "Wynik operacji jest nieznany. Sprawdź próbę przed ponowieniem.",
-    en: "The outcome is unknown. Check the attempt before retrying.",
-  },
-  done: { pl: "Gotowe.", en: "Done." },
-} as const;
 const statusSchema = z.object({
   configured: z.boolean(),
   sessions: z
@@ -80,9 +61,7 @@ const attemptSchema = z.object({
   status: z.enum(["completed", "outcome_unknown", "not_started", "refused"]),
 });
 
-function options(
-  args: readonly string[],
-): {
+function options(args: readonly string[]): {
   leaf: string;
   profile?: string;
   country: string;

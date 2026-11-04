@@ -1,6 +1,6 @@
 /** Native bodies share the frozen Python descriptors while S38c completes the whole provider. */
 import type { ToolSpec } from "../registry.js";
-import { INVESTMENT_READ_TOOLS } from "../runtime/delegated.generated.js";
+import { INVESTMENT_READ_TOOLS } from "../runtime/toolSchemas.generated.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { inspectExport } from "./exports.js";
 import { historyMetrics } from "./investmentsHistory.js";

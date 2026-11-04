@@ -20,6 +20,7 @@ export {
   cacheLlmRules,
   deleteCashTransaction,
   importStatement,
+  learnMerchantCategory,
   setCushion,
   setLlmCategories,
   setMerchantCategory,

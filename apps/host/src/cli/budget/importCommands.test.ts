@@ -34,7 +34,6 @@ it("refuses unsupported selection, later-file representation and abort before an
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   const cwd = tempDir();
   mkdirSync(join(cwd, "in"));
@@ -45,7 +44,7 @@ it("refuses unsupported selection, later-file representation and abort before an
   writeFileSync(join(cwd, "in/z[red].csv"), "bad\n");
   const io = commandIo(cwd);
   const deps = { stores: host.stores, now: Date.now };
-  const delegate = { kind: "delegate" };
+  const delegate = { kind: "unhandled" };
   try {
     expect(await runImportCommand(false, ["in/a.csv"], io, {}, deps)).toEqual(delegate);
     expect(await runImportCommand(false, ["in/a.csv"], io, { profile: "missing" }, deps)).toEqual(
@@ -80,52 +79,31 @@ it("refuses unsupported selection, later-file representation and abort before an
   }
 });
 
-it("executes root and budget aliases over the real host socket and keeps mixed ownership delegated", async () => {
-  for (const python of [null, { command: "/synthetic/python-cli", args: [] }]) {
-    const dir = tempDir();
-    copyFileSync(
-      join(ROOT, "connectors/mbank-csv/fixtures/mbank-zestawienie.csv"),
-      join(dir, "statement.csv"),
-    );
-    const host = await startLocalHost({ ...testHostOptions(dir), launcher: false, python });
-    const conn = await connectHost({ dataDir: dir, role: "cli", build: "test" });
-    try {
-      for (const leaf of [["import-csv"], ["budget", "import-csv"]]) {
-        const result = await conn.call("cli.exec", {
-          argv: ["-p", "demo", ...leaf, "statement.csv", "--bank=mbank"],
-          cwd: dir,
-          env: { CASHU_LANG: "en" },
-          tty: { stdin: false, stdout: false, stderr: false },
-        });
-        expect(result).toEqual(
-          python === null
-            ? { kind: "exit", code: 0 }
-            : { kind: "delegate", command: python.command, args: python.args },
-        );
-      }
+it("executes root and budget aliases over the native host socket", async () => {
+  const dir = tempDir();
+  copyFileSync(
+    join(ROOT, "connectors/mbank-csv/fixtures/mbank-zestawienie.csv"),
+    join(dir, "statement.csv"),
+  );
+  const host = await startLocalHost({ ...testHostOptions(dir), launcher: false });
+  const conn = await connectHost({ dataDir: dir, role: "cli", build: "test" });
+  try {
+    for (const leaf of [["import-csv"], ["budget", "import-csv"]]) {
       const result = await conn.call("cli.exec", {
-        argv: ["--profile=demo", "budget", "categorize"],
+        argv: ["-p", "demo", ...leaf, "statement.csv", "--bank=mbank"],
         cwd: dir,
         env: { CASHU_LANG: "en" },
         tty: { stdin: false, stdout: false, stderr: false },
       });
-      expect(result).toEqual(
-        python === null
-          ? { kind: "exit", code: 0 }
-          : { kind: "delegate", command: python.command, args: python.args },
-      );
-      const vault = [...host.stores.vaults.values()][0];
-      if (!vault) throw new Error("missing synthetic vault");
-      expect(vault.store.read("SELECT * FROM import_batches")).toHaveLength(
-        python === null ? 2 : 0,
-      );
-      expect(budgetBook(vault.store.read.bind(vault.store)).transactions.length > 0).toBe(
-        python === null,
-      );
-    } finally {
-      conn.close();
-      await host.stop();
+      expect(result).toEqual({ kind: "exit", code: 0 });
     }
+    const vault = [...host.stores.vaults.values()][0];
+    if (!vault) throw new Error("missing synthetic vault");
+    expect(vault.store.read("SELECT * FROM import_batches")).toHaveLength(2);
+    expect(budgetBook(vault.store.read.bind(vault.store)).transactions.length > 0).toBe(true);
+  } finally {
+    conn.close();
+    await host.stop();
   }
 });
 
@@ -133,7 +111,6 @@ it("stops a directory import after a completed file when its vault selection cha
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   const cwd = tempDir();
   mkdirSync(join(cwd, "in"));

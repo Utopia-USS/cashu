@@ -2,7 +2,7 @@ import type { PortedCommand } from "../tree.js";
 import { accounts } from "./accounts.js";
 import type { InvestmentCliDeps } from "./context.js";
 import { importFile } from "./import.js";
-import { alertKinds, DELEGATE, localSearch } from "./inspection.js";
+import { alertKinds, UNHANDLED, localSearch } from "./inspection.js";
 import { macroRefresh } from "./macro.js";
 import { instrumentsMerge } from "./merge.js";
 import { performance, positions } from "./reports.js";
@@ -33,7 +33,7 @@ export function investmentCommands(deps: InvestmentCliDeps): PortedCommand[] {
         if (name === "search") return Promise.resolve(localSearch(rest, io, root, deps));
         if (name === "alerts" && rest[0] === "kinds")
           return Promise.resolve(alertKinds(rest.slice(1), io));
-        return Promise.resolve(DELEGATE);
+        return Promise.resolve(UNHANDLED);
       },
     },
   ];

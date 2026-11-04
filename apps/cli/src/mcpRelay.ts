@@ -92,7 +92,7 @@ export class McpRelay {
 
   /**
    * The client closed stdin: the server's input ends too, and the relay exits with the server's code
-   * when it is gone (as the Python server ran directly would). Without a session there is nothing to
+   * when it is gone. Without a session there is nothing to
    * wait for.
    */
   stdinEnd(): void {

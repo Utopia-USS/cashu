@@ -40,7 +40,6 @@ it("appends a native daily result and reopens its encrypted view", async () => {
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     now: () => Date.UTC(2026, 10, 3, 12),
   } as const;
@@ -121,7 +120,6 @@ it("persists an uncertain native daily append and suppresses a fresh write after
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     now: () => Date.UTC(2026, 10, 3, 12),
   } as const;

@@ -1,6 +1,5 @@
 // The host side of an `mcp` session (S56d): `mcp.open {cwd, env}` first, then MCP JSON-RPC lines both
-// ways (and `mcp.eof` when the client's stdin ended) between the shim and the session's server (a backend; today the Python child, python.ts,
-// TRANSITIONAL(S38f); the S38 slices plug the host's own tool registry in here). The session is bound
+// ways (and `mcp.eof` when the client's stdin ended) between the shim and its native server. The session is bound
 // to the profile named at hello. The transport adds one thing to the server's answer: the reply to
 // `initialize` advertises `tools.listChanged`, because the shim sends
 // `notifications/tools/list_changed` after it reconnected to a restarted host. When the server exits on
@@ -25,7 +24,7 @@ export interface McpBackend {
 }
 
 export interface McpSessionDeps {
-  /** Starts the session's server; undefined when this build cannot serve MCP (no Python, TRANSITIONAL(S49)). */
+  /** Starts the session's native server; undefined when the requested vault is unavailable. */
   start(profile: string, open: McpOpenParams): McpBackend | undefined;
   readonly log: HostLog;
   /** Tracks running servers so a stopping host can end them. */
@@ -48,7 +47,7 @@ function parse(line: string): Json | undefined {
 }
 
 /** The server's `initialize` reply with `capabilities.tools.listChanged` set; other lines unchanged. */
-export function advertiseListChanged(line: string, initializeIds: Set<string>): string {
+function advertiseListChanged(line: string, initializeIds: Set<string>): string {
   const msg = parse(line);
   if (msg === undefined || "method" in msg || !initializeIds.has(JSON.stringify(msg.id)))
     return line;

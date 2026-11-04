@@ -1,13 +1,20 @@
 import type { SyncEngine } from "@cashu/sync";
-import type { NativeVaultSession } from "../nativeVault.js";
 import type { WriteQueue } from "../queue.js";
 import type { loadDeviceAuthority } from "../sync/keys/deviceAuthority.js";
-import type { PairingJournal } from "./journal.js";
+import type { PairingAttempt, PairingJournal } from "./journal.js";
 
-type PairingReads = Pick<
-  NativeVaultSession,
-  "pairingAttempt" | "pairingOperation" | "pairingHasActive" | "pairingKnown" | "pairingTrust"
->;
+export interface PairingReads {
+  pairingAttempt(session: string): Promise<PairingAttempt | undefined>;
+  pairingOperation(operationId: string): Promise<PairingAttempt | undefined>;
+  pairingHasActive(): Promise<boolean>;
+  pairingKnown(device: string, purpose: "carrier" | "resume", session?: string): Promise<boolean>;
+  pairingTrust(
+    device: string,
+    signKey: Uint8Array,
+    boxKey: Uint8Array,
+    certificate: Uint8Array,
+  ): Promise<boolean>;
+}
 
 /** Read-side pairing proof stays serialized with writes and never mints a new attempt. */
 export function pairingReadCapability(input: {

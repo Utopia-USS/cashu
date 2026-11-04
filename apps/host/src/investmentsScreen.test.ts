@@ -12,7 +12,7 @@ const bytes = new TextEncoder().encode(
   "format_version,record,date,type,currency,cash_amount\n1,txn,2026-01-05,deposit,PLN,10.25\n",
 );
 async function fixture(cleanupFails = false) {
-  const host = await startLocalHost({ ...testHostOptions(tempDir()), python: null });
+  const host = await startLocalHost({ ...testHostOptions(tempDir()) });
   const vault = [...host.stores.vaults.values()][0];
   if (!vault) throw new Error("missing synthetic vault");
   const account = await vault.queue.run(() => {

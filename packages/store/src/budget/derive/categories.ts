@@ -166,6 +166,31 @@ function allRows(ctx: DeriveContext): Row[] {
   return ctx.sql.all<Loaded>(`${SELECT_ROWS} WHERE t.dedup_hash NOT LIKE '${CASHLEG}%'`).map(toRow);
 }
 
+/** Predict the exact visible pair changes of one merchant rule before its event is appended. */
+export function projectedMerchantRuleChanges(
+  read: Read,
+  rule: budget.MerchantRule,
+  patterns: readonly core.PaymentPattern[],
+): number {
+  const rows = read<Loaded>(`${SELECT_ROWS} WHERE t.dedup_hash NOT LIKE '${CASHLEG}%'`).map(toRow);
+  const registry = core.builtinRegistry();
+  const previous = budgetEngineContext(read, patterns, registry);
+  const rules = new Map(previous.rules);
+  rules.set(rule.merchantKey, rule);
+  const projected = budget.categorizeAll(
+    rows.map((row) => row.input),
+    { ...previous, rules },
+    budget.subscriptionExclusions(registry),
+  ).results;
+  let changed = 0;
+  for (const row of rows) {
+    const after = projected.get(row.input.key);
+    if (after && (row.current[0] !== after.category || row.current[1] !== after.source)) changed++;
+    if (after === null && (row.current[0] !== null || row.current[1] !== null)) changed++;
+  }
+  return changed;
+}
+
 /**
  * The view rows the row keys name now, in a few batched reads: import rows per account root by
  * hash, cash expenses by gid. Keys naming no row are absent from the result.

@@ -36,7 +36,6 @@ it("holds idle exit for native sync and an encrypted write queued behind it", as
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     lingerMs: 30,
   });
@@ -80,7 +79,6 @@ it("holds idle exit for native sync and an encrypted write queued behind it", as
       home: fixture.home,
       build: "test",
       launcher: false,
-      python: null,
       vaultSource: fixture.vaultSource,
     });
     const reopened = next.stores.vaults.get(fixture.vaultId);
@@ -118,7 +116,6 @@ it("daily startup, duplicate wake and restart keep one encrypted completed run",
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     now: () => Date.UTC(2026, 10, 3, 12),
   } as const;
@@ -165,7 +162,6 @@ it("safe-mode native startup suppresses the worker and network capability", asyn
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
     now: () => Date.UTC(2026, 10, 3, 12),
   } as const;
@@ -224,7 +220,6 @@ it("graceful handover drains native queued work before releasing the host lock",
     home: fixture.home,
     build: "test",
     launcher: false,
-    python: null,
     vaultSource: fixture.vaultSource,
   } as const;
   const host = await startLocalHost(options);

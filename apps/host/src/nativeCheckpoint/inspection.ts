@@ -61,7 +61,7 @@ export function manifestAt(
     plain.fill(0);
   }
 }
-export function verifyFiles(
+function verifyFiles(
   root: string,
   manifest: Manifest,
   sodium: crypto.Sodium,

@@ -43,7 +43,7 @@ const command = z.discriminatedUnion("type", [
 ]);
 
 /** Native chooser passes a path; only the owner host reads this private regular PEM file. */
-export async function readPrivateBankingKey(path: string): Promise<string> {
+async function readPrivateBankingKey(path: string): Promise<string> {
   if (!isAbsolute(path) || path.includes("\0")) throw new BankingFault("configuration");
   let file: Awaited<ReturnType<typeof open>>;
   try {

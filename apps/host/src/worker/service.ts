@@ -1,4 +1,4 @@
-/** S40 host-lifetime worker. No default ownership, Python handover or closed-app wake binding. */
+/** S40 host-lifetime worker with native job ownership and an optional closed-app wake service. */
 import { enabledModuleIds } from "@cashu/store/core";
 import { DurableWriteUnknown, lastOkDay, type runDaily } from "@cashu/store/investments/services";
 import type { OpenVault } from "../stores.js";

@@ -25,7 +25,7 @@ import { classifierInput } from "./classifierInput.js";
 import { importTextSupported } from "./importInput.js";
 import { richTable } from "./richTable.js";
 
-const DELEGATE = { kind: "delegate" } as const;
+const UNHANDLED = { kind: "unhandled" } as const;
 interface Options {
   readonly model?: string;
   readonly batchSize: number;
@@ -110,23 +110,23 @@ export async function runReclassifyCommand(
   io: CommandIo,
   root: { readonly profile?: string },
   deps: CategorizeDeps,
-): Promise<number | typeof DELEGATE> {
+): Promise<number | typeof UNHANDLED> {
   const input = options(args),
     slug = root.profile || io.env.CASHU_PROFILE,
     provider = deps.classifier;
-  if (!input || !slug || !supportsConsoleUnicode(io)) return DELEGATE;
+  if (!input || !slug || !supportsConsoleUnicode(io)) return UNHANDLED;
   const matches = [...deps.stores.vaults.values()].filter(
     (v) => mcpProfile(v.store.read.bind(v.store))?.slug === slug,
   );
   const vault = matches.length === 1 ? matches[0] : undefined;
-  if (!vault || (provider && !hasClassifierAuthority(provider, vault.id))) return DELEGATE;
+  if (!vault || (provider && !hasClassifierAuthority(provider, vault.id))) return UNHANDLED;
   const clock = new Date(deps.now());
   const today: IsoDate = `${String(clock.getFullYear()).padStart(4, "0")}-${String(clock.getMonth() + 1).padStart(2, "0")}-${String(clock.getDate()).padStart(2, "0")}`;
   let cutoff: IsoDate | undefined;
   try {
     if (input.recentDays !== undefined) cutoff = addDays(today, -input.recentDays);
   } catch {
-    return DELEGATE;
+    return UNHANDLED;
   }
   const initial = await vault.queue.run(() => {
     if (
@@ -139,7 +139,7 @@ export async function runReclassifyCommand(
     const input = classifierInput(vault, slug, deps.stores.vaults);
     return input === null ? null : { ...snapshot(vault), input };
   });
-  if (initial === null) return io.signal.aborted ? 130 : DELEGATE;
+  if (initial === null) return io.signal.aborted ? 130 : UNHANDLED;
   const bands =
     cutoff === undefined
       ? [{ model: input.model, tag: input.model || "llm", range: {} }]
@@ -156,14 +156,14 @@ export async function runReclassifyCommand(
     }),
   }));
   const networkNeeded = prepared.some((band) => band.plan.groups.length > 0);
-  if (networkNeeded && !hasClassifierAuthority(provider, vault.id)) return DELEGATE;
+  if (networkNeeded && !hasClassifierAuthority(provider, vault.id)) return UNHANDLED;
   if (
     prepared.some(
       (band) =>
         !band.config || !importTextSupported(band.config.model) || !importTextSupported(band.tag),
     )
   )
-    return DELEGATE;
+    return UNHANDLED;
   // A complete worst-case distribution must fit before network/progress output starts.
   if (
     richTable(
@@ -173,7 +173,7 @@ export async function runReclassifyCommand(
       "Category distribution",
     ) === null
   )
-    return DELEGATE;
+    return UNHANDLED;
   const rows = new Map(initial.rows.map((r) => [r.key, r]));
   const claims: { txn: string; category: string }[] = [];
   const distribution = new Map<string, number>();

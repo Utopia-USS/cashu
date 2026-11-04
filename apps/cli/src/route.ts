@@ -2,7 +2,7 @@
 // (that lives in the host, so the shim never changes when commands do):
 //   `host status|stop|run`              the shim's own admin commands (status never starts a host);
 //   `[root profile] mcp [profile]`      an MCP session for one profile (stdio lines <-> the host);
-//   anything else                       `cli.exec` in the host (which may delegate to Python).
+//   anything else                       native `cli.exec` in the host.
 // The MCP shape mirrors the Python CLI: the profile is the root `--profile/-p` or `mcp --profile/-p`
 // (both only if equal) and nothing else may follow; every other form (help, a typo, two different
 // profiles, no profile, a slug the protocol cannot carry) goes to the host as a normal command, so the

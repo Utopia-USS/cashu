@@ -140,7 +140,7 @@ describe("native budget desktop adapters", () => {
           merchantKey: key,
           category: "groceries",
         });
-        expect(outcome.ok && outcome.value.updated).toBe(1);
+        expect(outcome.ok && outcome.value.updated).toBe(i === 0 ? 1 : 0);
       }
       expect(snapshots.at(-1)).toBe(0);
       expect(

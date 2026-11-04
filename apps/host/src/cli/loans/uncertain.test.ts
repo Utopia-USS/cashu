@@ -20,7 +20,6 @@ it("reports a durable unknown outcome once and does not replay the loan write", 
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   try {
     runDurable.mockImplementation(async (_vault, _command, _input, key) => ({
@@ -42,9 +41,7 @@ it("reports a durable unknown outcome once and does not replay the loan write", 
     const result = await runTree(
       ["-p", "demo", "loans", "add", "Synthetic debt", "--principal", "1000", "--rate", "5"],
       io,
-      loansCommands({ stores: host.stores, now: Date.now }),
-      {},
-    );
+      loansCommands({ stores: host.stores, now: Date.now }));
     expect(result).toEqual({ kind: "exit", code: 1 });
     expect(runDurable).toHaveBeenCalledTimes(1);
     expect(stderr.join("")).toContain(

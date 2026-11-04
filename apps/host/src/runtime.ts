@@ -1,6 +1,5 @@
-// Where this host runs from, and the programs it hands out: the `cashu` shim (for the stable launcher)
-// and the development Python CLI (for remaining delegated commands). From source in a dev
-// checkout the host is `node <strip-types flags> apps/host/src/cli.ts`; packaged it is the bundle's
+// Where this host runs from, and the `cashu` shim it hands out for the stable launcher. From source in a dev
+// checkout the host is `node <transform-types flags> apps/host/src/cli.ts`; packaged it is the bundle's
 // `host.mjs` run by the app's binary in Node mode, with `shim.mjs` beside it (S47).
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -30,7 +29,7 @@ const absoluteSpecifier = (spec: string, cwd: string) =>
   spec.startsWith("./") || spec.startsWith("../") ? resolve(cwd, spec) : spec;
 
 /** Node flags that run TypeScript from source; anything else (an inspector, a loader) stays here. */
-const SOURCE_FLAG = /^--(experimental-strip-types|no-warnings|disable-warning=.+|import=.+)$/;
+const SOURCE_FLAG = /^--(experimental-transform-types|no-warnings|disable-warning=.+|import=.+)$/;
 
 function sourceRunFlags(execArgv: readonly string[], cwd: string): string[] {
   const out: string[] = [];
@@ -41,7 +40,8 @@ function sourceRunFlags(execArgv: readonly string[], cwd: string): string[] {
       i++;
     } else if (arg.startsWith("--import=")) {
       out.push(`--import=${absoluteSpecifier(arg.slice("--import=".length), cwd)}`);
-    } else if (SOURCE_FLAG.test(arg)) out.push(arg);
+    } else if (arg === "--experimental-strip-types") out.push("--experimental-transform-types");
+    else if (SOURCE_FLAG.test(arg)) out.push(arg);
   }
   return out;
 }
@@ -109,20 +109,4 @@ export function shimProgram(rt: HostRuntime): Program {
     args: [join(rt.dir, "shim.mjs")],
     ...(rt.env.ELECTRON_RUN_AS_NODE === undefined ? {} : { env: { ELECTRON_RUN_AS_NODE: "1" } }),
   };
-}
-
-/**
- * TRANSITIONAL(S49): delegated Python CLI is available only in a development checkout.
- * Packaged builds carry no Python runtime.
- */
-export function pythonProgram(rt: HostRuntime): Program | undefined {
-  if (rt.checkout === undefined) return undefined;
-  const override = rt.env.CASHU_PYTHON_CLI;
-  if (override !== undefined && override !== "") {
-    return isAbsolute(override) && existsSync(override)
-      ? { command: override, args: [] }
-      : undefined;
-  }
-  const venv = join(rt.checkout, ".venv", "bin", "cashu");
-  return existsSync(venv) ? { command: venv, args: [] } : undefined;
 }

@@ -31,11 +31,6 @@ export const investmentCliText = {
     pl: "Brak strategii (strategy.yaml). Utwórz: cashu invest strategy init",
     en: "No strategy yet (strategy.yaml). Create one: cashu invest strategy init",
   },
-  strategyState: {
-    valid: { pl: "poprawna", en: "valid" },
-    partial: { pl: "częściowa", en: "partial" },
-    invalid: { pl: "niepoprawna", en: "invalid" },
-  },
   version: { pl: "wersja", en: "version" },
   error: { pl: "błąd", en: "error" },
   inactiveRule: { pl: "nieaktywna reguła", en: "inactive rule" },
@@ -98,12 +93,6 @@ export const investmentCliText = {
     pl: "Źródło danych makro jest niedostępne.",
     en: "Macro source is unavailable.",
   },
-  macroStatus: {
-    ok: { pl: "ok", en: "ok" },
-    no_data: { pl: "brak danych", en: "no data" },
-    skipped: { pl: "pominięto", en: "skipped" },
-    error: { pl: "błąd", en: "error" },
-  },
   bars: { pl: "punktów", en: "bars" },
   stored: { pl: "zapisano", en: "stored" },
   closes: { pl: "zamknięć", en: "closes" },
@@ -118,13 +107,6 @@ export const investmentCliText = {
   plansResolved: { pl: "rozwiązane plany", en: "resolved plans" },
   researchResolved: { pl: "rozwiązane badania", en: "resolved research" },
   profileError: { pl: "!", en: "!" },
-  runStatus: {
-    ok: { pl: "ukończono", en: "ok" },
-    partial: { pl: "częściowo", en: "partial" },
-    failed: { pl: "niepowodzenie", en: "failed" },
-    refused: { pl: "odmowa", en: "refused" },
-    skipped: { pl: "pominięto", en: "skipped" },
-  },
   mergeNativeIds: {
     pl: "Użyj pełnych natywnych identyfikatorów instrumentów.",
     en: "Use full native instrument IDs.",
@@ -142,28 +124,51 @@ export const investmentCliText = {
     pl: "Zaszyfrowana kopia przed scaleniem:",
     en: "Encrypted pre-merge checkpoint:",
   },
-  mergeRefusal: {
-    same_instrument: { pl: "To ten sam instrument.", en: "These are the same instrument." },
-    no_instrument: { pl: "Nie znaleziono instrumentu.", en: "Instrument not found." },
-    different_currency: {
-      pl: "Instrumenty mają różne waluty.",
-      en: "Instruments have different currencies.",
-    },
-    different_isin: { pl: "Instrumenty mają różne ISIN.", en: "Instruments have different ISINs." },
+} as const;
+
+export const strategyState = {
+  valid: { pl: "poprawna", en: "valid" },
+  partial: { pl: "częściowa", en: "partial" },
+  invalid: { pl: "niepoprawna", en: "invalid" },
+} as const;
+
+export const macroStatus = {
+  ok: { pl: "ok", en: "ok" },
+  no_data: { pl: "brak danych", en: "no data" },
+  skipped: { pl: "pominięto", en: "skipped" },
+  error: { pl: "błąd", en: "error" },
+} as const;
+
+export const runStatus = {
+  ok: { pl: "ukończono", en: "ok" },
+  partial: { pl: "częściowo", en: "partial" },
+  failed: { pl: "niepowodzenie", en: "failed" },
+  refused: { pl: "odmowa", en: "refused" },
+  skipped: { pl: "pominięto", en: "skipped" },
+} as const;
+
+export const mergeRefusal = {
+  same_instrument: { pl: "To ten sam instrument.", en: "These are the same instrument." },
+  no_instrument: { pl: "Nie znaleziono instrumentu.", en: "Instrument not found." },
+  different_currency: {
+    pl: "Instrumenty mają różne waluty.",
+    en: "Instruments have different currencies.",
   },
-  columns: {
-    id: { pl: "id", en: "id" },
-    name: { pl: "nazwa", en: "name" },
-    broker: { pl: "broker", en: "broker" },
-    wrapper: { pl: "konto", en: "wrapper" },
-    currency: { pl: "waluta", en: "currency" },
-    importer: { pl: "importer", en: "importer" },
-    snapshot: { pl: "migawka", en: "snapshot" },
-    lastImport: { pl: "ostatni import", en: "last import" },
-    severity: { pl: "ważność", en: "severity" },
-    status: { pl: "stan", en: "status" },
-    rule: { pl: "reguła", en: "rule" },
-    message: { pl: "wiadomość", en: "message" },
-    since: { pl: "od", en: "since" },
-  },
+  different_isin: { pl: "Instrumenty mają różne ISIN.", en: "Instruments have different ISINs." },
+} as const;
+
+export const columns = {
+  id: { pl: "id", en: "id" },
+  name: { pl: "nazwa", en: "name" },
+  broker: { pl: "broker", en: "broker" },
+  wrapper: { pl: "konto", en: "wrapper" },
+  currency: { pl: "waluta", en: "currency" },
+  importer: { pl: "importer", en: "importer" },
+  snapshot: { pl: "migawka", en: "snapshot" },
+  lastImport: { pl: "ostatni import", en: "last import" },
+  severity: { pl: "ważność", en: "severity" },
+  status: { pl: "stan", en: "status" },
+  rule: { pl: "reguła", en: "rule" },
+  message: { pl: "wiadomość", en: "message" },
+  since: { pl: "od", en: "since" },
 } as const;

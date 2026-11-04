@@ -3,18 +3,18 @@ import { richTable } from "../budget/richTable.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentVault } from "./context.js";
-import { DELEGATE } from "./inspection.js";
-import { investmentCliText as M } from "./strings.js";
+import { UNHANDLED } from "./inspection.js";
+import { columns, investmentCliText as M } from "./strings.js";
 
 export function signals(
   args: readonly string[],
   io: CommandIo,
   root: { readonly profile?: string },
   deps: InvestmentCliDeps,
-): number | typeof DELEGATE {
-  if (args.length > 1 || (args.length === 1 && args[0] !== "--history")) return DELEGATE;
+): number | typeof UNHANDLED {
+  if (args.length > 1 || (args.length === 1 && args[0] !== "--history")) return UNHANDLED;
   const vault = investmentVault(io, root, deps);
-  if (!vault) return DELEGATE;
+  if (!vault) return UNHANDLED;
   const read = vault.store.read.bind(vault.store);
   const history = args[0] === "--history";
   const rows = history
@@ -39,12 +39,12 @@ export function signals(
   const table = richTable(
     io,
     [
-      M.columns.id,
-      M.columns.severity,
-      M.columns.status,
-      M.columns.rule,
-      M.columns.message,
-      M.columns.since,
+      columns.id,
+      columns.severity,
+      columns.status,
+      columns.rule,
+      columns.message,
+      columns.since,
     ].map((label) => ({ header: io.t.tr(label) })),
     sorted.map((row) => [
       row.gid,
@@ -56,7 +56,7 @@ export function signals(
     ]),
     io.t.tr(M.signalsTitle),
   );
-  if (table === null) return DELEGATE;
+  if (table === null) return UNHANDLED;
   io.stdout(table);
   for (const row of sorted) printConsole(io, `  ${row.gid}`, { highlight: false });
   return 0;

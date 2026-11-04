@@ -34,7 +34,6 @@ it("uses native commands only in the selected vault and writes loans and assets 
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   try {
     const deps = {
@@ -44,7 +43,7 @@ it("uses native commands only in the selected vault and writes loans and assets 
     };
     const commands = [...assetCommands(deps), ...loansCommands(deps)];
     const { io, stdout, stderr } = output();
-    const run = (args: string[]) => runTree(args, io, commands, {});
+    const run = (args: string[]) => runTree(args, io, commands);
     expect(
       await run(["add-position", "Synthetic flat", "--type", "property", "--value", "250000"]),
     ).toEqual({ kind: "exit", code: 2 });
@@ -147,7 +146,6 @@ it("rejects malformed and unsupported native arguments without delegation or wri
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   try {
     const deps = { stores: host.stores, now: Date.now, render: () => {} };
@@ -159,16 +157,14 @@ it("rejects malformed and unsupported native arguments without delegation or wri
       ["-p", "demo", "add-position", "Synthetic", "--type", "property"],
       ["-p", "demo", "loans", "--help"],
     ])
-      expect(await runTree(args, io, [...assetCommands(deps), ...loansCommands(deps)], {})).toEqual(
+      expect(await runTree(args, io, [...assetCommands(deps), ...loansCommands(deps)])).toEqual(
         { kind: "exit", code: 2 },
       );
     expect(
       await runTree(
         ["-p", "demo", "loans", "--help"],
         { ...io, t: createTranslator("pl") },
-        [...assetCommands(deps), ...loansCommands(deps)],
-        {},
-      ),
+        [...assetCommands(deps), ...loansCommands(deps)]),
     ).toEqual({ kind: "exit", code: 2 });
     expect(stderr.some((line) => line.includes("Użycie: cashu loans"))).toBe(true);
     const vault = [...host.stores.vaults.values()][0];
@@ -182,7 +178,6 @@ it("refuses ambiguous exact loan account names before a loan append", async () =
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
-    python: null,
   });
   try {
     const vault = [...host.stores.vaults.values()][0];
@@ -213,9 +208,7 @@ it("refuses ambiguous exact loan account names before a loan append", async () =
           "5",
         ],
         io,
-        loansCommands({ stores: host.stores, now: Date.now }),
-        {},
-      ),
+        loansCommands({ stores: host.stores, now: Date.now })),
     ).toEqual({ kind: "exit", code: 2 });
     expect(vault.store.read("SELECT COUNT(*) AS n FROM loans")).toEqual([{ n: 0 }]);
   } finally {

@@ -57,7 +57,7 @@ function checkedAncestors(path: string): readonly { path: string; dev: number; i
   }
   return identities;
 }
-export function readCheckedBytes(path: string, maxBytes: number): Buffer | null {
+function readCheckedBytes(path: string, maxBytes: number): Buffer | null {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > MAX_SKILL_BYTES)
     throw new WorkspacePathError("unsafe_read");
   const ancestors = checkedAncestors(dirname(path));

@@ -17,9 +17,9 @@ import { type JsonValue, pyDumps } from "../privacy/pyJson.js";
 import { leakCheck, Redactor } from "../privacy/redactor.js";
 import { researchServices } from "../providers/research.js";
 import type { ToolContext } from "../registry.js";
-import { DELEGATED_TOOLS } from "../runtime/delegated.generated.js";
 import { decodeEntityRef, encodeEntityRef } from "../runtime/refs.js";
 import { NativeMcpServer, type NativeRuntime, restrictivePrivacy } from "../runtime/server.js";
+import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.generated.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { nativeFixture } from "../testing/native.js";
 import vectors from "./fixtures/research.json" with { type: "json" };
@@ -125,7 +125,6 @@ async function setup(privacy = "strict", withProvider = true) {
     replaced: () => false,
     warn: () => {},
     policy: async () => policy(),
-    delegation: async () => undefined,
     audit: { start: async () => 1, finish: async () => {} },
     execute: async (ceiling, fn) => {
       const p = policy();
@@ -243,7 +242,7 @@ describe("native research MCP tools", () => {
     const tools = researchTools();
     expect(tools).toHaveLength(8);
     for (const tool of tools) {
-      const source = DELEGATED_TOOLS.find((spec) => spec.name === tool.name);
+      const source = NATIVE_TOOL_SCHEMAS.find((spec) => spec.name === tool.name);
       expect(source).toBeDefined();
       if (source === undefined) continue;
       const { handler: _handler, ...metadata } = tool;

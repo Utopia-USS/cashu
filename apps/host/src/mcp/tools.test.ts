@@ -1,39 +1,26 @@
-// The S38 assignment of the Python MCP tools against the Python registry (oracle: the repo's .venv;
-// skipped where there is no Python): every tool has exactly one slice, nothing extra is listed.
-
 import {
   budgetTools,
+  connectorTools,
   coreTools,
   investmentTools,
   investmentWriteTools,
   loansTools,
   researchTools,
 } from "@cashu/mcp";
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup } from "../testing/harness.js";
-import { HAS_PYTHON, python } from "../testing/python.js";
-import { PYTHON_TOOLS, TOOL_INVENTORY } from "./tools.js";
+import { expect, it } from "vitest";
+import { TOOL_INVENTORY } from "./tools.js";
 
-afterEach(cleanup);
-
-describe.skipIf(!HAS_PYTHON)("Python MCP tools (Python oracle)", () => {
-  it("are each assigned to one S38 slice", () => {
-    const names = python(
-      "from cashu.core.mcp.registry import all_tools\nprint('\\n'.join(sorted(all_tools())))",
-    )
-      .trim()
-      .split("\n");
-    const native = [
-      ...coreTools(),
-      ...budgetTools(),
-      ...loansTools(),
-      ...investmentTools(),
-      ...investmentWriteTools(),
-      ...researchTools(),
-    ].map((spec) => spec.name);
-    expect([...Object.keys(PYTHON_TOOLS), ...native].sort()).toEqual(names);
-    expect(new Set(TOOL_INVENTORY.map((entry) => entry.name)).size).toBe(45);
-    expect(native.every((name) => !(name in PYTHON_TOOLS))).toBe(true);
-    expect(names).toHaveLength(45);
-  });
+it("assigns every canonical MCP descriptor to one native handler", () => {
+  const names = [
+    ...coreTools(),
+    ...budgetTools(),
+    ...loansTools(),
+    ...investmentTools(),
+    ...researchTools(),
+    ...investmentWriteTools(),
+    ...connectorTools(),
+  ].map((tool) => tool.name);
+  expect(new Set(names).size).toBe(names.length);
+  expect(names.sort()).toEqual(TOOL_INVENTORY.map((entry) => entry.name).sort());
+  expect(names).toHaveLength(45);
 });

@@ -40,11 +40,7 @@ export function importInput(args: readonly string[], directory: boolean): Import
     ...(options.has("--name") ? { name: options.get("--name") as string } : {}),
   };
 }
-/** Python Rich interprets markup, emoji and control sequences in interpolated labels. */
+/** Control characters cannot appear in a single-line CLI label. Native output is literal text. */
 export function importTextSupported(value: string): boolean {
-  return (
-    !value.includes("[") &&
-    !/:[^:\s]+:/.test(value) &&
-    !Array.from(value).some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)
-  );
+  return !Array.from(value).some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127);
 }

@@ -1,11 +1,13 @@
 import { formatFloat } from "@cashu/domain";
-import { asProfileId, performance as perf } from "@cashu/domain/investments";
+import { asAccountId, asProfileId, performance as perf } from "@cashu/domain/investments";
 import { readPositions } from "@cashu/store/investments/views";
+import { investmentEntityIdSchema } from "@cashu/store/investments/screen-sources";
 import { richTable } from "../budget/richTable.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
+import { S } from "../strings.js";
 import { type InvestmentCliDeps, investmentContext, performanceStrategy } from "./context.js";
-import { DELEGATE } from "./inspection.js";
+import { UNHANDLED } from "./inspection.js";
 
 const num = (value: number | null | undefined, digits = 2): string =>
   value == null ? "-" : formatFloat(value, `,.${digits}f`).replaceAll(",", " ");
@@ -13,16 +15,39 @@ const pct = (value: number | null | undefined, digits = 1): string =>
   value == null ? "-" : `${formatFloat(value * 100, `.${digits}f`)}%`;
 const decimal = (value: { toFloat(): number } | null | undefined, digits = 2): string =>
   num(value?.toFloat(), digits);
+const validAccount = (value: string): boolean => investmentEntityIdSchema.safeParse(value).success;
+
+function accountOption(args: readonly string[]): string | null | undefined {
+  if (args.length === 0) return null;
+  if (args.length === 2 && (args[0] === "--account" || args[0] === "-a"))
+    return validAccount(args[1] ?? "") ? args[1] : undefined;
+  if (args.length === 1) {
+    const value = args[0]?.startsWith("--account=")
+      ? args[0].slice("--account=".length)
+      : args[0]?.startsWith("-a")
+        ? args[0].slice(2)
+        : "";
+    return validAccount(value ?? "") ? value : undefined;
+  }
+  return undefined;
+}
 
 export function positions(
   args: readonly string[],
   io: CommandIo,
   root: { readonly profile?: string },
   deps: InvestmentCliDeps,
-): number | typeof DELEGATE {
-  if (args.length) return DELEGATE;
+): number | typeof UNHANDLED {
+  const account = accountOption(args);
+  if (account === undefined) {
+    if (args.some((arg) => arg === "--account" || arg === "-a" || arg.startsWith("--account="))) {
+      io.stderr(`${io.t.tr(S.investmentAccountGid)}\n`);
+      return 2;
+    }
+    return UNHANDLED;
+  }
   const context = investmentContext(io, root, deps);
-  if (!context) return DELEGATE;
+  if (!context) return UNHANDLED;
   const read = context.vault.store.read.bind(context.vault.store);
   const result = readPositions(read, {
     ...context.market,
@@ -32,8 +57,15 @@ export function positions(
     strategy: context.strategy,
     lang: io.t.language,
     forOwner: true,
+    ...(account === null ? {} : { accounts: [asAccountId(account)] }),
   });
-  if (!result.ok) return DELEGATE;
+  if (!result.ok) {
+    if (result.reason === "unknown_account") {
+      io.stderr(`${io.t.tr(S.investmentAccountUnknown)}\n`);
+      return 2;
+    }
+    return UNHANDLED;
+  }
   const data = result.value;
   if (!data.positions.length && !data.cash.length) {
     printConsole(io, "No positions yet. Import a file: cashu invest import FILE --account ID");
@@ -77,7 +109,7 @@ export function positions(
       ],
     },
   );
-  if (table === null) return DELEGATE;
+  if (table === null) return UNHANDLED;
   io.stdout(table);
   return 0;
 }
@@ -85,15 +117,21 @@ export function positions(
 interface PerformanceArgs {
   readonly range: string;
   readonly attribution: boolean;
+  readonly account: string | null;
 }
 function parsePerformance(args: readonly string[]): PerformanceArgs | null {
   let range = "1y";
   let attribution = false;
   let seenRange = false;
+  let account: string | null = null;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--attribution" && !attribution) attribution = true;
-    else if (arg === "--range" && !seenRange && args[i + 1]) {
+    else if ((arg === "--account" || arg === "-a") && account === null && args[i + 1]) {
+      account = args[++i] as string;
+    } else if (arg?.startsWith("--account=") && account === null) {
+      account = arg.slice("--account=".length);
+    } else if (arg === "--range" && !seenRange && args[i + 1]) {
       range = args[++i] as string;
       seenRange = true;
     } else if (arg?.startsWith("--range=") && !seenRange) {
@@ -101,7 +139,9 @@ function parsePerformance(args: readonly string[]): PerformanceArgs | null {
       seenRange = true;
     } else return null;
   }
-  return perf.isRangeKey(range) ? { range, attribution } : null;
+  return perf.isRangeKey(range) && (account === null || validAccount(account))
+    ? { range, attribution, account }
+    : null;
 }
 
 export function performance(
@@ -109,22 +149,38 @@ export function performance(
   io: CommandIo,
   root: { readonly profile?: string },
   deps: InvestmentCliDeps,
-): number | typeof DELEGATE {
+): number | typeof UNHANDLED {
   const parsed = parsePerformance(args);
-  if (!parsed) return DELEGATE;
+  if (!parsed) {
+    if (args.some((arg) => arg === "--account" || arg === "-a" || arg.startsWith("--account="))) {
+      io.stderr(`${io.t.tr(S.investmentAccountGid)}\n`);
+      return 2;
+    }
+    return UNHANDLED;
+  }
   const context = investmentContext(io, root, deps);
-  if (!context) return DELEGATE;
+  if (!context) return UNHANDLED;
   const request = {
     ...context.market,
     asOf: context.asOf,
     strategy: performanceStrategy(context),
     range: parsed.range,
+    ...(parsed.account === null ? {} : { accounts: [parsed.account] }),
   };
   const view = deps.performance.performanceView(context.vault.store, request);
   const attribution = parsed.attribution
     ? deps.performance.attributionView(context.vault.store, request)
     : null;
-  if (!view.ok || (attribution && !attribution.ok)) return DELEGATE;
+  if (!view.ok || (attribution && !attribution.ok)) {
+    if (
+      (!view.ok && view.reason === "unknown_account") ||
+      (attribution && !attribution.ok && attribution.reason === "unknown_account")
+    ) {
+      io.stderr(`${io.t.tr(S.investmentAccountUnknown)}\n`);
+      return 2;
+    }
+    return UNHANDLED;
+  }
   const data = view.value;
   const summary = data.summary;
   if (summary === null) {
@@ -152,7 +208,7 @@ export function performance(
     ],
     rows,
   );
-  if (table === null) return DELEGATE;
+  if (table === null) return UNHANDLED;
   let attrTable: string | null = null;
   let attrLine: string | null = null;
   const concentration = attribution?.ok ? attribution.value.concentration : null;
@@ -172,7 +228,7 @@ export function performance(
         pct(row.share_of_pnl, 2),
       ]),
     );
-    if (attrTable === null || concentration === null) return DELEGATE;
+    if (attrTable === null || concentration === null) return UNHANDLED;
     const top2 = concentration.top.find((entry) => entry.n === 2)?.share ?? null;
     attrLine = `top 2 share of P/L: ${pct(top2, 2)}; P/L without them: ${num(concentration.pnl_without_top2)} (${pct(concentration.pnl_without_top2_pct_of_contributions, 2)} of contributions); benchmark: ${num(concentration.benchmark_pnl)} (${pct(concentration.benchmark_pnl_pct_of_contributions, 2)})`;
   }

@@ -49,7 +49,6 @@ it("resolves the exact genuinely created native vault after host restart and con
       factory: new ProductionVaultSourceFactory(dataDir, createKeyStore),
     },
     launcher: false,
-    python: null,
   });
   const setup = await startLocalHost(options());
   const creator = await connectHost({ dataDir, role: "ui", build: "notification-create-test" });
@@ -121,7 +120,6 @@ it("resolves persisted locators after native host restart but never opens an abs
       factory: new ProductionVaultSourceFactory(dataDir),
     },
     launcher: false,
-    python: null,
   });
   const first = await startLocalHost(options());
   const ledger = privateNotificationIntents(dataDir, () => true, Date.now);

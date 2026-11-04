@@ -13,8 +13,8 @@ import { cliCommandKey, runCliVaultCommand } from "../commandOutcome.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentVault } from "./context.js";
-import { DELEGATE } from "./inspection.js";
-import { investmentCliText as M } from "./strings.js";
+import { UNHANDLED } from "./inspection.js";
+import { investmentCliText as M, strategyState } from "./strings.js";
 
 function initArgs(args: readonly string[]): { template: string; force: boolean } | null {
   let template: string = STRATEGY_TEMPLATE_NAMES[0] ?? "passive_etf";
@@ -39,18 +39,18 @@ export async function strategy(
   io: CommandIo,
   root: { readonly profile?: string },
   deps: InvestmentCliDeps,
-): Promise<number | typeof DELEGATE> {
+): Promise<number | typeof UNHANDLED> {
   const [action, ...rest] = args;
-  if (action !== "init" && action !== "validate") return DELEGATE;
-  if (action === "validate" && rest.length) return DELEGATE;
+  if (action !== "init" && action !== "validate") return UNHANDLED;
+  if (action === "validate" && rest.length) return UNHANDLED;
   const parsed = action === "init" ? initArgs(rest) : null;
-  if (action === "init" && !parsed) return DELEGATE;
+  if (action === "init" && !parsed) return UNHANDLED;
   const vault = investmentVault(io, root, deps);
   const slug = root.profile || io.env.CASHU_PROFILE;
-  if (!vault || !slug || !deps.strategyFiles) return DELEGATE;
+  if (!vault || !slug || !deps.strategyFiles) return UNHANDLED;
   const source = deps.strategyFiles(vault, slug);
-  if (!source) return DELEGATE;
-  if (action === "init" && !source.createAbsent) return DELEGATE;
+  if (!source) return UNHANDLED;
+  if (action === "init" && !source.createAbsent) return UNHANDLED;
   if (action === "init" && parsed?.force && !source.replaceForced) {
     io.stderr(`${io.t.tr(M.forceUnavailable)}\n`);
     return 2;
@@ -61,7 +61,7 @@ export async function strategy(
     deps.stores.vaults.get(vault.id) === vault &&
     mcpProfile(read)?.slug === slug &&
     enabledModuleIds(read).has("investments");
-  if (!current()) return DELEGATE;
+  if (!current()) return UNHANDLED;
   const files: StrategyFilesPort = {
     read(name) {
       if (!current()) throw new Error("strategy_authority_changed");
@@ -148,7 +148,7 @@ export async function strategy(
     }
     printConsole(
       io,
-      `strategy.yaml: ${io.t.tr(M.strategyState[state.state])}${state.version ? ` (${io.t.tr(M.version)} ${state.version.version})` : ""}`,
+      `strategy.yaml: ${io.t.tr(strategyState[state.state])}${state.version ? ` (${io.t.tr(M.version)} ${state.version.version})` : ""}`,
       { highlight: false },
     );
     if (state.readError)

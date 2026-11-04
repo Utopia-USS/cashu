@@ -10,7 +10,7 @@ function canonical(value: unknown): string {
   if (
     typeof value !== "object" ||
     value === null ||
-    Object.getPrototypeOf(value) !== Object.prototype
+    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
   ) {
     throw new RangeError("batch proof requires canonical JSON");
   }

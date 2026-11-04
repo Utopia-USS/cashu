@@ -47,10 +47,10 @@ export function byKind(issues: readonly importing.ImportWarning[]): L.LabelledTr
       example: L.text(importValueFree(items[0]?.message ?? "")),
     }));
 }
-export function validateInvestmentImport(
+export async function validateInvestmentImport(
   ctx: ToolContext<NativeToolStore>,
   args: ToolArgs,
-): L.LabelledTree {
+): Promise<L.LabelledTree> {
   const path = typeof args.path === "string" ? args.path : "",
     mapping = typeof args.mapping === "string" ? args.mapping : undefined;
   refuseScript(path, "path");
@@ -68,7 +68,7 @@ export function validateInvestmentImport(
       const readMapping = ctx.store.readInvestmentMappingFile;
       if (readMapping === undefined)
         throw new ToolError("local mapping files are unavailable", "unsupported");
-      text = readMapping(candidate);
+      text = await readMapping(candidate);
     }
     const parsed = importing.csvMappingFromYaml(text);
     if (!parsed.ok)

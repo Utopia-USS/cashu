@@ -320,7 +320,6 @@ it("pairs through the real native host composition and mirrors initial encrypted
     home: fixture.home,
     vaultSource: fixture.vaultSource,
     launcher: false,
-    python: null,
     lan: { kind: "loopback", port: 0 },
   });
   const ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "pairing-test" });
@@ -509,7 +508,6 @@ it("retrieves the exact committed welcome with the same staged identity after re
     home: fixture.home,
     vaultSource: fixture.vaultSource,
     launcher: false,
-    python: null,
     lan: { kind: "loopback", port: 0 },
   });
   let ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "pairing-test" });
@@ -559,7 +557,6 @@ it("retrieves the exact committed welcome with the same staged identity after re
       home: fixture.home,
       vaultSource: fixture.vaultSource,
       launcher: false,
-      python: null,
       lan: { kind: "loopback", port: descriptor.port },
     });
     expect(host.lan).toBeDefined(); // Completed trusted pairing is the persisted serving opt-in.

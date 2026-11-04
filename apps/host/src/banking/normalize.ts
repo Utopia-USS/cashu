@@ -1,5 +1,10 @@
 import { Decimal } from "@cashu/domain";
-import type { RawJson, RawTransaction } from "@cashu/domain/budget";
+import {
+  CREDIT_ACCOUNT_LABEL_TERMS,
+  type RawJson,
+  type RawTransaction,
+  SAVINGS_ACCOUNT_LABEL_TERMS,
+} from "@cashu/domain/budget";
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -93,9 +98,9 @@ export function pickBalance(
 export function accountType(details: Record<string, unknown>): "checking" | "credit" | "savings" {
   const kind = string(details.cash_account_type)?.toUpperCase();
   const label = `${string(details.product) ?? ""} ${string(details.name) ?? ""}`.toLowerCase();
-  if (kind === "CARD" || ["credit", "kredyt", "karta"].some((term) => label.includes(term)))
+  if (kind === "CARD" || CREDIT_ACCOUNT_LABEL_TERMS.some((term) => label.includes(term)))
     return "credit";
-  if (kind === "SVGS" || ["saving", "oszczęd", "oszczed"].some((term) => label.includes(term)))
+  if (kind === "SVGS" || SAVINGS_ACCOUNT_LABEL_TERMS.some((term) => label.includes(term)))
     return "savings";
   return "checking";
 }

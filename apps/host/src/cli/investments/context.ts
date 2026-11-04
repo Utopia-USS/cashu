@@ -1,4 +1,5 @@
 import { parseDateTime } from "@cashu/domain";
+import type { InvestmentSearchIo } from "@cashu/mcp";
 import { performance as perf } from "@cashu/domain/investments";
 import { enabledModuleIds, mcpProfile } from "@cashu/store/core";
 import type { PerformanceService } from "@cashu/store/investments/performance";
@@ -18,6 +19,7 @@ export interface InvestmentCliDeps {
   readonly performance: PerformanceService;
   readonly strategyFiles?: (vault: OpenVault, slug: string) => StrategyCliFiles | null;
   readonly worker?: () => HostWorker | null;
+  readonly searchIo?: (vault: OpenVault) => InvestmentSearchIo | undefined;
 }
 
 export interface StrategyCliFiles extends StrategyFilesPort {

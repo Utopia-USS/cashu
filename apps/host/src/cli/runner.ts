@@ -1,7 +1,6 @@
 // The host side of a `cli` session (S56d): one `cli.exec` at a time. The argv goes through the hosted
 // command tree; a ported command runs here with a `CommandIo` whose output, prompts and stdin travel
-// as session frames; anything not ported is answered `delegate` with the Python CLI to run
-// (TRANSITIONAL(S49)). Ctrl-C (`cancel`) aborts the command's signal. Unexpected errors end the
+// as session frames. Ctrl-C (`cancel`) aborts the command's signal. Unexpected errors end the
 // command with exit 70 and the error's class name only (messages may quote data); logs carry codes.
 import {
   CLI_INTERRUPTED_EXIT,
@@ -14,7 +13,6 @@ import {
 import { createBackendI18n, createTranslator, type Translator } from "@cashu/i18n";
 import { type HostSession, nodeLanguageSource } from "@cashu/node-host";
 import { errorName, type HostLog } from "../log.js";
-import type { Program } from "../runtime.js";
 import { S } from "./strings.js";
 import { type CommandIo, type PortedCommand, runTree } from "./tree.js";
 
@@ -23,9 +21,7 @@ const FAILURE_EXIT = 70;
 export interface CliRunnerDeps {
   readonly dataDir: string;
   readonly ported: readonly PortedCommand[];
-  readonly delegated: Readonly<Record<string, string>>;
-  /** TRANSITIONAL(S49): the Python CLI, undefined when this build has none. */
-  readonly python: Program | undefined;
+  readonly defaultProfile?: () => string | undefined;
   readonly log: HostLog;
 }
 
@@ -113,15 +109,8 @@ export function serveCliSession(session: HostSession, deps: CliRunnerDeps): void
         return stdin.read();
       },
     };
-    const outcome = await runTree(params.argv, io, deps.ported, deps.delegated);
-    if (outcome.kind === "exit") {
-      return { kind: "exit", code: abort.signal.aborted ? CLI_INTERRUPTED_EXIT : outcome.code };
-    }
-    if (deps.python === undefined) {
-      io.stderr(`${t.tr(S.unsupported)}\n`);
-      return { kind: "exit", code: 2 };
-    }
-    return { kind: "delegate", command: deps.python.command, args: [...deps.python.args] };
+    const outcome = await runTree(params.argv, io, deps.ported, deps.defaultProfile);
+    return { kind: "exit", code: abort.signal.aborted ? CLI_INTERRUPTED_EXIT : outcome.code };
   };
 
   session.onFrame((frame) => {
@@ -141,7 +130,7 @@ export function serveCliSession(session: HostSession, deps: CliRunnerDeps): void
           (result) => {
             deps.log.info("cli.exec", {
               kind: result.kind,
-              ...(result.kind === "exit" ? { code: result.code } : {}),
+              code: result.code,
             });
             running = undefined;
             reply(frame.id, result);
