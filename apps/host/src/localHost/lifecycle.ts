@@ -16,6 +16,8 @@ import type { HostLog } from "../log.js";
 import type { HostStores } from "../stores.js";
 
 const CLEAN_EXIT = 0;
+/** The internal stop result of an aborted start; no caller holds that host, so nothing reads it. */
+const START_FAILED_EXIT = 1;
 const IDLE_RECHECK_MS = 1000;
 const DEFAULT_BUNDLE_CHECK_MS = 15_000;
 
@@ -36,6 +38,12 @@ interface HostLifecycle {
   /** No new host work: the server is stopping, a stop began or the bundle was replaced. */
   closing(): boolean;
   stop(reason?: ExitReason): Promise<number>;
+  /**
+   * Undoes a start that failed after this lifecycle existed: no idle stop can fire afterwards, the
+   * services started so far are released, the stores drain and close and the server closes (lock
+   * and socket). The crash record stays: a failed start is not a clean exit. `exit` never resolves.
+   */
+  abortStart(): Promise<void>;
   /** Schedules the next stop on handover from a later task (never inside the caller's reply). */
   handoverSoon(): void;
   /** (Re)arms the idle timer: with no session and nothing pending the host stops after the linger. */
@@ -112,6 +120,35 @@ export function createHostLifecycle(input: {
     return stopping;
   };
 
+  const abortStart = async (): Promise<void> => {
+    // A stop already in flight closes everything itself.
+    if (stopping !== undefined) {
+      await stopping;
+      return;
+    }
+    const aborting = (async () => {
+      stores.invalidate();
+      server.beginStop();
+      stopBundle();
+      if (idleTimer !== undefined) clearTimeout(idleTimer);
+      idleTimer = undefined;
+      try {
+        await input.release("stop");
+      } finally {
+        try {
+          await stores.drain();
+          await stores.close();
+        } finally {
+          await server.close();
+        }
+      }
+      log.info("host.start-aborted");
+      return START_FAILED_EXIT;
+    })();
+    stopping = aborting;
+    await aborting;
+  };
+
   const armIdle = () => {
     if (idleTimer !== undefined) clearTimeout(idleTimer);
     idleTimer = undefined;
@@ -139,6 +176,7 @@ export function createHostLifecycle(input: {
     bundleReplaced: () => replaced,
     closing: () => server.stopping || stopping !== undefined || replaced,
     stop,
+    abortStart,
     handoverSoon: () => {
       setTimeout(() => void stop("handover"), 0);
     },

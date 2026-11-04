@@ -140,7 +140,8 @@ interface HostState {
 
 /**
  * Under the host lock: records the start, takes the writer lease, opens the creation service and
- * the stores. On failure logs `host.start-failed`, closes the server and rethrows.
+ * the stores. On failure logs `host.start-failed`, closes the stores it opened and the server, and
+ * rethrows.
  */
 export async function openHostState(input: {
   readonly server: RunningHost;
@@ -151,6 +152,7 @@ export async function openHostState(input: {
 }): Promise<HostState> {
   const { server, admission, nativeMode, log, now } = input;
   const { vaultSource, startup } = admission;
+  let stores: HostStores | undefined;
   try {
     const record = recordStart(server.paths.runDir, now());
     const lease = takeWriterLease(server.lock);
@@ -178,7 +180,7 @@ export async function openHostState(input: {
         throw new StartupFailureError("native_inventory_unavailable", undefined, { vaults: 0 });
       validateNativeVaultInventorySet(source.provider.inventory, server.paths.dataDir);
     }
-    const stores =
+    stores =
       source.kind === "native"
         ? await openNativeHostStores(server.paths.dataDir, source.provider, lease, log, now)
         : source.kind === "native-production"
@@ -201,7 +203,12 @@ export async function openHostState(input: {
       code: failure.code,
       detail: failure.detail ?? null,
     });
-    await server.close();
+    // Stores opened before the failure close before the lock goes (their exclusive SQLite opens).
+    try {
+      await stores?.close();
+    } finally {
+      await server.close();
+    }
     throw error;
   }
 }
