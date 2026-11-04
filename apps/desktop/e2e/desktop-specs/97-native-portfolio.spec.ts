@@ -4,19 +4,35 @@ import { join } from "node:path";
 import { D } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
 import {
-  bridgeToken,
   dashboardWindow,
   expect,
   launchDesktop,
+  setPrivacy,
   stopHost,
   test,
   until,
 } from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 
 test("native Portfolio uses generated-source valuations, owner drawers and privacy lifetimes", async () => {
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
+  restoreNativeBaseline(dataDir);
+  const oraclePath = process.env.E2E_OVERVIEW_ORACLE;
+  if (!oraclePath) throw new Error("isolated positions oracle is absent");
+  const oracle = JSON.parse(readFileSync(oraclePath, "utf8")) as {
+    anna: {
+      positions: {
+        total: number;
+        base_currency: string;
+        positions: { instrument: { label: string } }[];
+      };
+    };
+  };
+  const expected = oracle.anna.positions;
+  if (expected.positions.length === 0)
+    throw new Error("synthetic positions oracle has no holdings");
   const host: ChildProcess = spawn(
     process.execPath,
     [
@@ -40,8 +56,9 @@ test("native Portfolio uses generated-source valuations, owner drawers and priva
         host.exitCode !== null,
     );
     expect(host.exitCode, errors).toBeNull();
-    app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_NATIVE_OVERVIEW: "1" } });
-    const { page, origin } = await dashboardWindow(app);
+    app = await launchDesktop({ dataDir });
+    const { page } = await dashboardWindow(app);
+    await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
@@ -51,25 +68,15 @@ test("native Portfolio uses generated-source valuations, owner drawers and priva
       .click();
     const portfolio = page.getByTestId("native-portfolio");
     await expect(portfolio).toBeVisible();
-    const token = await bridgeToken(page);
-    const sourceReply = await page.request.get(`${origin}/api/p/demo-anna/investments/positions`, {
-      headers: { "X-Cashu-Token": token },
-    });
-    expect(sourceReply.ok()).toBe(true);
-    const source = (await sourceReply.json()) as {
-      total: number;
-      base_currency: string;
-      positions: { instrument: { name: string | null; symbol: string | null; label: string } }[];
-    };
-    expect(source.positions.length).toBeGreaterThan(0);
-    const total = formatDecimalValue(D(String(source.total)), "pl-PL", {
-      currency: source.base_currency,
+    const valueCard = portfolio
+      .getByRole("heading", { name: "Wartość", exact: true })
+      .locator("xpath=..");
+    await expect(valueCard).toBeVisible();
+    const total = formatDecimalValue(D(String(expected.total)), "pl-PL", {
+      currency: expected.base_currency,
     }).text;
-    await expect(portfolio.getByText(total, { exact: true }).first()).toBeVisible();
-    const label =
-      source.positions[0]?.instrument.label ??
-      source.positions[0]?.instrument.name ??
-      source.positions[0]?.instrument.symbol;
+    await expect(valueCard).toContainText(total);
+    const label = expected.positions[0]?.instrument.label;
     if (!label) throw new Error("synthetic held instrument label is absent");
     await expect(portfolio.getByRole("button", { name: label, exact: true })).toBeVisible();
     await page.screenshot({ path: join(dataDir, "native-portfolio.png"), fullPage: true });
@@ -144,10 +151,10 @@ test("native Portfolio uses generated-source valuations, owner drawers and priva
     await expect(importer.getByRole("button", { name: "Wybierz", exact: true })).toBeDisabled();
     await importer.getByRole("button", { name: "Anuluj", exact: true }).click();
 
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).check();
+    await setPrivacy(page, true);
     await expect(portfolio.getByRole("button", { name: label, exact: true })).toHaveCount(0);
     await expect(portfolio.getByText(total, { exact: true })).toHaveCount(0);
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).uncheck();
+    await setPrivacy(page, false);
     await expect(portfolio.getByRole("button", { name: label, exact: true })).toBeVisible();
     await portfolio.getByRole("combobox", { name: "Okres", exact: true }).selectOption("3m");
     await expect(page).toHaveURL(/period=3m/u);

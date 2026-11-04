@@ -1,12 +1,22 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { dashboardWindow, expect, launchDesktop, stopHost, test, until } from "../electron-test.ts";
+import {
+  dashboardWindow,
+  expect,
+  launchDesktop,
+  setPrivacy,
+  stopHost,
+  test,
+  until,
+} from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 
 test("native budget tabs use the real generated demo vault, update categories and cushion, and retain honest import boundaries", async () => {
   const repo = process.env.E2E_REPO,
     dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("isolated native demo absent");
+  restoreNativeBaseline(dataDir);
   const host: ChildProcess = spawn(
     process.execPath,
     [
@@ -25,11 +35,15 @@ test("native budget tabs use the real generated demo vault, update categories an
   try {
     await until(() => existsSync(join(dataDir, "overview-ready")) || host.exitCode !== null);
     expect(host.exitCode, error).toBeNull();
-    app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_NATIVE_OVERVIEW: "1" } });
+    app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
+    await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
+    await expect(
+      page.getByRole("combobox", { name: "Profil", exact: true }).locator("option:checked"),
+    ).toHaveText("Demo Anna");
     await page
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Budżet", exact: true })
@@ -94,7 +108,7 @@ test("native budget tabs use the real generated demo vault, update categories an
     });
     await expect(cushion).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Ustaw poduszkę", exact: true })).toBeDisabled();
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).uncheck();
+    await setPrivacy(page, false);
     await page.getByRole("button", { name: "Ustaw poduszkę", exact: true }).click();
     await expect(cushion.getByRole("textbox", { name: "Cel", exact: true })).toHaveValue("1000.00");
     await cushion.getByRole("button", { name: "Zamknij", exact: true }).click();
@@ -102,11 +116,11 @@ test("native budget tabs use the real generated demo vault, update categories an
     await expect(page.getByRole("heading", { name: "Subskrypcje", level: 1 })).toBeVisible();
     await page.getByRole("button", { name: "Synchronizuj bank", exact: true }).click();
     await expect(page.getByRole("main")).toContainText(
-      "Synchronizacja banku i konektorów jest dostępna w poprzednim widoku.",
+      "Synchronizacja banków i konektorów nie jest jeszcze dostępna w aplikacji.",
     );
     await page.getByRole("button", { name: "Import", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Import", exact: true })).toContainText(
-      "jeszcze niedostępny",
+      "Import plików nie jest jeszcze dostępny w aplikacji.",
     );
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
@@ -119,9 +133,9 @@ test("native budget tabs use the real generated demo vault, update categories an
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Budżet", exact: true })
       .click();
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).check();
+    await setPrivacy(page, true);
     await expect(page.getByRole("main")).toContainText("•••");
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).uncheck();
+    await setPrivacy(page, false);
     await page.screenshot({
       path: "/Users/owner/cashu-lab/checkpoints/S55c-gpt.png",
       fullPage: true,

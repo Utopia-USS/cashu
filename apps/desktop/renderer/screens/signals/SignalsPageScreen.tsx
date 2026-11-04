@@ -1,5 +1,6 @@
 import { useProfile } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
+import { useEffect } from "react";
 import { AlertEditorScreen } from "./AlertEditorScreen.js";
 import { SignalsPageView } from "./SignalsView.js";
 import { type SignalsScreenOptions, useSignalsScreen } from "./useSignalsScreen.js";
@@ -16,19 +17,31 @@ function downloadCsv(filename: string, content: string) {
 }
 
 export function SignalsPageScreen(
-  props: SignalsScreenOptions & { page: "alerts" | "watchlist" | "journal" },
+  props: SignalsScreenOptions & {
+    page: "alerts" | "watchlist" | "journal";
+    initialNewAlert?: boolean;
+  },
 ) {
   const vault = useProfile();
   const { privacy } = useUiEnv();
   return (
     <BoundSignals
-      key={`${vault}:${privacy}:${props.page}:${props.initialInstrument ?? ""}`}
+      key={`${vault}:${privacy}:${props.page}:${props.initialInstrument ?? ""}:${props.initialNewAlert ?? false}`}
       {...props}
     />
   );
 }
-function BoundSignals(props: SignalsScreenOptions & { page: "alerts" | "watchlist" | "journal" }) {
+function BoundSignals(
+  props: SignalsScreenOptions & {
+    page: "alerts" | "watchlist" | "journal";
+    initialNewAlert?: boolean;
+  },
+) {
   const state = useSignalsScreen({ ...props, onExportCsv: downloadCsv });
+  const { setEditingAlert } = state;
+  useEffect(() => {
+    if (props.initialNewAlert) setEditingAlert("new");
+  }, [props.initialNewAlert, setEditingAlert]);
   const selected = state.data?.alerts.find((row) => row.gid === state.editingAlert) ?? null;
   const editor =
     state.editingAlert && state.data ? (

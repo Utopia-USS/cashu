@@ -2,15 +2,12 @@ packages:
   - "packages/*"
   - "apps/*"
   - "tools/arch"
-  # The legacy React SPA (served by the Python app); it imports @cashu/i18n and @cashu/ui-logic.
-  - "frontend"
 # Install scripts run only for packages listed here as true. electron (45+) ships none: its binary is
 # downloaded and checksum-verified on the first `require("electron")` (node_modules/electron/index.js),
 # so there is nothing to build; pnpm still asks, and the answer is no.
 allowBuilds:
   electron: false
-  # frontend/'s vite 5 bundles esbuild 0.21, whose postinstall only re-checks the binary that its optional
-  # @esbuild/<platform> package already installed; nothing needs building.
+  # Vite bundles esbuild, whose optional platform package already ships a binary.
   esbuild: false
   # apps/mobile: react-native-libsodium's postinstall only unpacks the prebuilt libsodium it ships
   # (libsodium/build.tgz) for its iOS / Android build; without it the native module has no library.
@@ -32,16 +29,6 @@ packageExtensions:
   dependency-cruiser:
     peerDependencies:
       typescript: ">=5 <7"
-  # recharts 2 (frontend/, React 18) ships .d.ts files that import "react" but declares no @types/react, so
-  # TypeScript used whichever @types/react pnpm hoisted into the virtual store: React 19's as soon as
-  # apps/mobile or packages/ui changed what is hoisted, which breaks every recharts JSX element in frontend/.
-  # An optional peer makes pnpm link the importer's own (React 18) @types/react beside recharts.
-  recharts:
-    peerDependencies:
-      "@types/react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
-    peerDependenciesMeta:
-      "@types/react":
-        optional: true
 # TRANSITIONAL(xcode-27): Expo SDK 58 (apps/mobile) targets Xcode 27 / Swift 6.4; with Xcode 26 (Swift 6.2)
 # expo-modules-jsi fails to compile one isolated closure ("sending 'slot' risks causing data races"). The patch
 # passes the same pointer as a Sendable integer (same thread, synchronous). Drop it with Xcode 27 everywhere.

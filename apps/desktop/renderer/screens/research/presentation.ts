@@ -238,15 +238,6 @@ export function researchHomeModel(data: ResearchScreenSnapshot) {
   };
 }
 
-export function researchCandidateRail(data: ResearchScreenSnapshot) {
-  if (data.status !== "current" || data.lastRun === null) return null;
-  return data.candidateRail.map((note) => ({
-    note,
-    day: researchDisplayDay(note.observed_at),
-    facts: researchNoteFacts(note),
-  }));
-}
-
 export function researchAssetModel(
   data: ResearchScreenSnapshot,
   instrument: string,

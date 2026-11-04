@@ -1,6 +1,6 @@
 import { LinkRouter, type LinkWindow, linkFromArgv } from "./links.js";
 import { dataUrl, errorHtml, loadingHtml } from "./pages.js";
-import { bridgeAllowed, tokenForSender } from "./security.js";
+import { bridgeAllowed } from "./security.js";
 import type { SidecarInfo } from "./sidecar.js";
 import type { Lang } from "./strings.js";
 import { type TrayAction, type TrayItem, trayItems } from "./tray.js";
@@ -157,16 +157,9 @@ export class DesktopApp {
     window.focus();
   }
 
-  /** TRANSITIONAL(S55z): whether the preload exposes the `window.pywebview` shim to this page. */
+  /** Whether the preload exposes native bridges to this page. */
   exposesBridgeTo(senderUrl: string | null | undefined): boolean {
     return bridgeAllowed(senderUrl, this.origin);
-  }
-
-  /** `window.pywebview.api.token()`: the token, for the app's own origin only. */
-  tokenFor(senderUrl: string | null | undefined): string | null {
-    return this.info && !this.deps.staticEntry
-      ? tokenForSender(senderUrl, this.info.origin, this.info.token)
-      : null;
   }
 
   requestQuit(): void {

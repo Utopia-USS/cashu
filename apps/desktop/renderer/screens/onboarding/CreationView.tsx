@@ -177,7 +177,15 @@ export function CreationView({ state }: { state: CreationScreenState }) {
                       .map((module) => module.name)
                       .join(", ") || Wizard.noModules}
                   </p>
-                  <p>{C.workspaceLater}</p>
+                  <label className="flex gap-3">
+                    <input
+                      type="checkbox"
+                      checked={state.workspaceEnabled}
+                      onChange={(event) => state.onWorkspaceEnabled(event.target.checked)}
+                    />
+                    <span>{C.workspaceChoice}</span>
+                  </label>
+                  <small className="text-fg-muted">{C.workspaceChoiceHint}</small>
                 </div>
                 {state.refusal && <p role="alert">{C.refused}</p>}
               </>
@@ -231,6 +239,76 @@ export function CreationView({ state }: { state: CreationScreenState }) {
         )}
         {state.phase === "committing" && <p role="status">{C.committing}</p>}
         {state.phase === "verifying" && <p role="status">{C.verifying}</p>}
+        {state.phase === "workspace_checking" && <p role="status">{C.workspaceChecking}</p>}
+        {state.phase === "workspace_applying" && <p role="status">{C.workspaceApplying}</p>}
+        {(
+          [
+            "workspace_ready",
+            "workspace_failed",
+            "workspace_unknown",
+            "workspace_unavailable",
+          ] as const
+        ).includes(
+          state.phase as
+            | "workspace_ready"
+            | "workspace_failed"
+            | "workspace_unknown"
+            | "workspace_unavailable",
+        ) && (
+          <section className={card} role="status">
+            <h2 className="text-title">{C.workspaceChoice}</h2>
+            {state.phase === "workspace_unavailable" && <p>{C.workspaceUnavailable}</p>}
+            {state.phase === "workspace_failed" && <p>{C.workspaceFailed}</p>}
+            {state.phase === "workspace_unknown" && <p>{C.workspaceUnknown}</p>}
+            {state.workspaceStatus?.availability === "ready" && (
+              <>
+                <label className="grid gap-1">
+                  {C.workspacePath}
+                  <input
+                    data-testid="workspace-path"
+                    value={state.workspacePath}
+                    onChange={(event) => state.onWorkspacePathChanged(event.target.value)}
+                    className="rounded-sm border border-border bg-surface p-2"
+                  />
+                  <small className="text-fg-muted">
+                    {C.workspaceDefault}: {state.workspaceStatus.defaultPath}
+                  </small>
+                </label>
+                {state.values.modules.includes("investments") && (
+                  <label className="flex gap-3">
+                    <input
+                      type="checkbox"
+                      checked={state.routinePermissions}
+                      onChange={(event) => state.onRoutinePermissionsChanged(event.target.checked)}
+                    />
+                    {C.workspaceRoutine}
+                  </label>
+                )}
+              </>
+            )}
+            <div className="flex gap-3">
+              {(state.phase === "workspace_ready" || state.phase === "workspace_failed") &&
+                state.workspaceStatus?.availability === "ready" && (
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={!state.workspaceInspected}
+                    onClick={state.onWorkspaceApply}
+                  >
+                    {state.phase === "workspace_ready" ? C.workspaceApply : C.workspaceRetry}
+                  </button>
+                )}
+              {(state.phase === "workspace_unknown" || state.phase === "workspace_unavailable") && (
+                <button type="button" className={button} onClick={state.onWorkspaceInspect}>
+                  {C.workspaceCheck}
+                </button>
+              )}
+              <button type="button" className={button} onClick={state.onWorkspaceSkip}>
+                {C.workspaceSkip}
+              </button>
+            </div>
+          </section>
+        )}
         {(state.phase === "pending" || state.phase === "unknown") && (
           <section className={card} role="status">
             <p>{state.phase === "pending" ? C.pending : C.unknown}</p>

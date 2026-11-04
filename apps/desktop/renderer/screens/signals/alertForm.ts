@@ -10,6 +10,7 @@ export type AlertDraft = {
   scope: string;
   instrument: string;
   title: string;
+  tag: string;
   note: string;
   polarity: string;
   severity: string;
@@ -25,6 +26,7 @@ export function alertDraft(row: AlertRow | null, catalog: ReadySignals["catalog"
     scope: row?.scope ?? info?.scopes[0] ?? "instrument",
     instrument: row?.instrument ?? "",
     title: row?.title ?? "",
+    tag: row?.tag ?? "",
     note: row?.note ?? "",
     polarity: row?.polarity ?? "neutral",
     severity: row?.severity ?? "info",
@@ -93,6 +95,12 @@ export function alertInput(
       : draft.title.trim();
   const expiry = draft.expiry ? new Date(`${draft.expiry}T23:59:00`).toISOString() : null;
   const cooldownDays = draft.cooldown.trim() === "" ? null : Number(draft.cooldown);
+  let tag: string | null;
+  try {
+    tag = alerts.validateTag(draft.tag);
+  } catch {
+    return { ok: false, reason: "alert_invalid" };
+  }
   if (
     draft.cooldown.trim() !== "" &&
     (cooldownDays === null || !Number.isInteger(cooldownDays) || cooldownDays < 0)
@@ -106,6 +114,7 @@ export function alertInput(
         scope: draft.scope,
         instrument: draft.scope === "instrument" ? draft.instrument || null : null,
         title,
+        tag,
         params,
         polarity: draft.polarity,
         severity: draft.severity,
@@ -119,6 +128,7 @@ export function alertInput(
     if (JSON.stringify(value) !== JSON.stringify(prior)) changes[key] = value;
   };
   compare("title", title, row.title);
+  compare("tag", tag, row.tag);
   compare("params", params, row.params);
   compare("polarity", draft.polarity, row.polarity);
   compare("severity", draft.severity, row.severity);

@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 # Build a relocatable, pinned Python onedir sidecar for Resources/python.
-# Usage: build-packaged-python.sh <Python 3.12+ executable> <built webdist> <build root> <wheelhouse>
+# Usage: build-packaged-python.sh <Python 3.12+ executable> <build root> <wheelhouse>
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-[[ $# == 4 ]] || { echo "usage: $0 <python> <webdist> <build-root> <wheelhouse>" >&2; exit 2; }
+[[ $# == 3 ]] || { echo "usage: $0 <python> <build-root> <wheelhouse>" >&2; exit 2; }
 PYTHON="$1"
-WEBDIST="$2"
-BUILD="$3"
-WHEELHOUSE="$4"
+BUILD="$2"
+WHEELHOUSE="$3"
 [[ "$BUILD" == "$ROOT"/build/* ]] || { echo "build root must be inside repo build/" >&2; exit 2; }
 case "$BUILD" in
   */../*|*/..|*/./*|*/.|*//*) echo "build root has noncanonical segments" >&2; exit 2 ;;
 esac
 [[ -d "$ROOT/build" && ! -L "$ROOT/build" && "$(cd "$ROOT/build" && pwd -P)" == "$ROOT/build" ]] || { echo "repo build/ must be a real directory" >&2; exit 2; }
-[[ -f "$WEBDIST/index.html" ]] || { echo "built webdist is missing" >&2; exit 2; }
 [[ -d "$WHEELHOUSE" ]] || { echo "local wheelhouse is missing" >&2; exit 2; }
 
 # Resolve the nearest existing ancestor before mkdir: a symlink inside build/
@@ -58,7 +56,6 @@ awk '/^[A-Za-z]/ { keep = ($1 ~ /^(pip|setuptools)==/) } keep && !/^[[:space:]]*
 
 cd "$ROOT"
 export PYINSTALLER_CONFIG_DIR="$BUILD/pyinstaller-cache"
-export CASHU_PACKAGE_WEBDIST="$WEBDIST"
 "$BUILD/venv/bin/python" -m PyInstaller --noconfirm --clean --log-level WARN \
   --distpath "$BUILD/dist" --workpath "$BUILD/work" \
   "$ROOT/apps/host/scripts/packaged-python.spec"

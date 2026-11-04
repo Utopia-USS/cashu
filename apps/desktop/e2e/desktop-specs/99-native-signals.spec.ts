@@ -1,7 +1,15 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { dashboardWindow, expect, launchDesktop, stopHost, test, until } from "../electron-test.ts";
+import {
+  dashboardWindow,
+  expect,
+  launchDesktop,
+  setPrivacy,
+  stopHost,
+  test,
+  until,
+} from "../electron-test.ts";
 
 test("native Signals uses generated owner state across Home, dialogs and pages", async () => {
   const repo = process.env.E2E_REPO;
@@ -35,8 +43,39 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
         host.exitCode !== null,
     );
     expect(host.exitCode, errors).toBeNull();
-    app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_NATIVE_OVERVIEW: "1" } });
+    app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
+    const pageErrors: string[] = [];
+    let consoleErrors = 0;
+    page.on("pageerror", (error) => pageErrors.push(error.name));
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors++;
+    });
+    const attachRouteDiagnostics = async (phase: string) => {
+      const state = await page.evaluate(() => ({
+        connected:
+          document
+            .querySelector('[data-testid="host-connection"]')
+            ?.textContent?.includes("Połączono") ?? false,
+        loading: document.body.textContent?.includes("Otwieranie danych lokalnych") ?? false,
+        portfolio: document.querySelector('[data-testid="native-portfolio"]') !== null,
+      }));
+      await test.info().attach("signals-route-diagnostics", {
+        body: Buffer.from(
+          JSON.stringify({
+            phase,
+            ...state,
+            pageErrors,
+            consoleErrors,
+            hostExit: host.exitCode,
+            hostSignal: host.signalCode,
+            hostStderrLines: errors.trim() ? errors.trim().split("\n").length : 0,
+          }),
+        ),
+        contentType: "application/json",
+      });
+    };
+    await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
@@ -44,11 +83,31 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Inwestycje", exact: true })
       .click();
-    const rail = page.getByTestId("native-signals-rail");
+    const homeRail = page.getByTestId("native-investment-home-rail");
+    try {
+      await expect(homeRail).toBeVisible();
+    } catch (error) {
+      await attachRouteDiagnostics("home");
+      throw error;
+    }
+    await homeRail.getByRole("button", { name: "+ Nowy", exact: true }).click();
+    const openedFromHome = page.getByTestId("native-signals-alerts");
+    try {
+      await expect(openedFromHome.getByRole("region", { name: "Nowy alert" })).toBeVisible();
+    } catch (error) {
+      await attachRouteDiagnostics("new-alert");
+      throw error;
+    }
+    await page.goBack();
+    await expect(homeRail).toBeVisible();
+    const rail = homeRail;
     await expect(rail).toBeVisible();
     await expect(rail).toContainText("S55F");
     await page.screenshot({ path: join(artifactDir, "native-signals-home.png"), fullPage: true });
-    await rail.getByRole("button", { name: /Wszystkie/u }).click();
+    await rail
+      .getByRole("region", { name: "Sygnały" })
+      .getByRole("button", { name: /Wszystkie/u })
+      .click();
     const dialog = page.getByRole("dialog", { name: "Sygnały", exact: true });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Synthetic watched chance");
@@ -65,7 +124,10 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
     await decisionDialog.getByRole("button", { name: "Zapisz" }).click();
     await expect(decisionDialog).toHaveCount(0);
     await dialog.getByRole("button", { name: "Zamknij" }).click();
-    await rail.getByRole("button", { name: "Alerty" }).click();
+    await rail
+      .getByRole("region", { name: "Alerty" })
+      .getByRole("button", { name: /Wszystkie/u })
+      .click();
     const alerts = page.getByTestId("native-signals-alerts");
     await expect(alerts).toBeVisible();
     await expect(alerts).toContainText("Synthetic Signals alert");
@@ -123,7 +185,11 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
     expect(csv.subarray(0, 3).toString("hex")).toBe("efbbbf");
     expect(csv.toString("utf8")).toContain("Synthetic Signals alert");
     await alerts.getByRole("button", { name: "Portfel", exact: true }).first().click();
-    await rail.getByRole("button", { name: "Lista obserwowanych" }).click();
+    await rail
+      .getByRole("region", { name: "Sygnały" })
+      .getByRole("button", { name: /Wszystkie/u })
+      .click();
+    await dialog.getByRole("button", { name: "Lista obserwowanych" }).click();
     const watchlist = page.getByTestId("native-signals-watchlist");
     await expect(watchlist).toContainText("WATCH");
     await watchlist.getByRole("combobox", { name: "Szukaj instrumentu" }).fill("NEW.WA");
@@ -140,7 +206,11 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
       fullPage: true,
     });
     await watchlist.getByRole("button", { name: "Portfel", exact: true }).first().click();
-    await rail.getByRole("button", { name: "Dziennik" }).click();
+    await rail
+      .getByRole("region", { name: "Sygnały" })
+      .getByRole("button", { name: /Wszystkie/u })
+      .click();
+    await dialog.getByRole("button", { name: "Dziennik" }).click();
     const journal = page.getByTestId("native-signals-journal");
     await expect(journal).toBeVisible();
     await journal.getByRole("combobox", { name: "Instrument" }).selectOption({ label: "WATCH" });
@@ -151,7 +221,26 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
     await expect(savedDecision).toBeVisible();
     await savedDecision.getByRole("button", { name: "Cofnij" }).click();
     await expect(journal).not.toContainText("Synthetic decision99");
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).check();
+    const privacy = page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true });
+    await privacy.click();
+    await test.info().attach("privacy-transition-scalar", {
+      body: Buffer.from(
+        JSON.stringify(
+          await page.evaluate(() => ({
+            route: `${location.pathname}${location.search}${location.hash}`,
+            journal: document.querySelector('[data-testid="native-signals-journal"]') !== null,
+            portfolio:
+              document.querySelector('[data-testid="native-investment-home-rail"]') !== null,
+            loading: document.body.textContent?.includes("Otwieranie danych lokalnych") ?? false,
+            hostConnection: document.querySelector('[data-testid="host-connection"]')?.textContent,
+            checked: (document.querySelector('input[type="checkbox"]') as HTMLInputElement | null)
+              ?.checked,
+          })),
+        ),
+      ),
+      contentType: "application/json",
+    });
+    await expect(privacy).toBeChecked();
     await expect(page.getByTestId("native-signals-journal")).toContainText(
       "Ukryto w trybie prywatnym.",
     );

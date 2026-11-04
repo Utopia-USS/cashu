@@ -4,13 +4,11 @@ import type { ReactNode } from "react";
 import { S } from "../Desktop.strings.js";
 import type { ShellScreenState } from "./useShellScreen.js";
 
-const NATIVE_MODULES = new Set(["budget", "investments", "assets", "loans", "settings"]);
-
 export interface ShellViewProps {
   state: ShellScreenState;
   activeModule?: string;
   onOverviewOpened(): void;
-  onLegacyOpened(tab: string): void;
+  onModuleOpened(tab: string): void;
   onAddProfile?: () => void;
   children: ReactNode;
 }
@@ -18,7 +16,7 @@ export interface ShellViewProps {
 export function ShellView({
   state,
   onOverviewOpened,
-  onLegacyOpened,
+  onModuleOpened,
   onAddProfile,
   children,
   activeModule = "overview",
@@ -101,12 +99,8 @@ export function ShellView({
               <button
                 key={id}
                 type="button"
-                disabled={!NATIVE_MODULES.has(id) && !state.canOpenLegacy}
                 aria-current={activeModule === id ? "page" : undefined}
-                title={
-                  state.canOpenLegacy || NATIVE_MODULES.has(id) ? undefined : S.legacyUnavailable
-                }
-                onClick={() => onLegacyOpened(id)}
+                onClick={() => onModuleOpened(id)}
                 className={`rounded-sm px-4 py-2 ${activeModule === id ? "bg-accent-muted text-accent" : "hover:bg-surface-sunken"}`}
               >
                 {label}
@@ -129,19 +123,6 @@ export function ShellView({
           </div>
         )}
         {children}
-        <footer className="px-6 pb-6">
-          {!state.canOpenLegacy && state.profile !== null && (
-            <p role="status">{S.legacyUnavailable}</p>
-          )}
-          <button
-            type="button"
-            disabled={!state.canOpenLegacy}
-            onClick={() => onLegacyOpened("overview")}
-            className="text-accent underline"
-          >
-            {S.legacy}
-          </button>
-        </footer>
       </div>
     </UiEnvProvider>
   );

@@ -1,22 +1,30 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { D } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
 import {
-  bridgeToken,
   dashboardWindow,
   expect,
   launchDesktop,
+  setPrivacy,
   stopHost,
   test,
   until,
 } from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 
 test("native loans and asset first steps use actual host stores and reset drafts on vault switches", async () => {
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
+  restoreNativeBaseline(dataDir);
+  const oraclePath = process.env.E2E_OVERVIEW_ORACLE;
+  if (!oraclePath) throw new Error("isolated loans oracle is absent");
+  const oracle = JSON.parse(readFileSync(oraclePath, "utf8")) as {
+    anna: { loans: { name: string; monthly_payment: number; currency: string }[] };
+  };
+  if (oracle.anna.loans.length === 0) throw new Error("synthetic loans oracle has no loans");
   const host: ChildProcess = spawn(
     process.execPath,
     [
@@ -35,8 +43,9 @@ test("native loans and asset first steps use actual host stores and reset drafts
   try {
     await until(() => existsSync(join(dataDir, "overview-ready")) || host.exitCode !== null);
     expect(host.exitCode, error).toBeNull();
-    app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_NATIVE_OVERVIEW: "1" } });
-    const { page, origin } = await dashboardWindow(app);
+    app = await launchDesktop({ dataDir });
+    const { page } = await dashboardWindow(app);
+    await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
@@ -45,17 +54,9 @@ test("native loans and asset first steps use actual host stores and reset drafts
       .getByRole("button", { name: "Kredyty", exact: true })
       .click();
     await expect(page.getByTestId("native-loans")).toBeVisible();
-    const token = await bridgeToken(page);
-    const api = await page.request.get(`${origin}/api/p/demo-anna/loans`, {
-      headers: { "X-Cashu-Token": token },
-    });
-    expect(api.ok()).toBe(true);
-    const source = (await api.json()) as {
-      name: string;
-      monthly_payment: number;
-      currency: string;
-    }[];
-    for (const loan of source) {
+    await expect(page.getByRole("combobox", { name: "Wybierz kredyt" })).toBeVisible();
+    await expect(page.getByRole("table", { name: "Kredyty", exact: true })).toBeVisible();
+    for (const loan of oracle.anna.loans) {
       await expect(page.getByRole("combobox", { name: "Wybierz kredyt" })).toContainText(loan.name);
       await expect(page.getByRole("table", { name: "Kredyty", exact: true })).toContainText(
         formatDecimalValue(D(String(loan.monthly_payment)), "pl-PL", { currency: loan.currency })
@@ -117,12 +118,12 @@ test("native loans and asset first steps use actual host stores and reset drafts
     );
     await matching.getByRole("button", { name: "wyczyść", exact: true }).click();
     await expect(matching).toBeHidden();
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).check();
+    await setPrivacy(page, true);
     await expect(page.getByText("Synthetic UI loan", { exact: true })).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Dodaj kredyt", exact: true }).first(),
     ).toBeDisabled();
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).uncheck();
+    await setPrivacy(page, false);
 
     await page.getByRole("button", { name: "Dodaj kredyt", exact: true }).first().click();
     await expect(drawer).toBeVisible();

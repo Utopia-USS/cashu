@@ -5,7 +5,15 @@ import type { StoreToClient } from "@cashu/host-protocol/store";
 import { decodeValue } from "@cashu/host-protocol/store";
 import { connectHost } from "@cashu/node-host";
 import { z } from "zod";
-import { dashboardWindow, expect, launchDesktop, stopHost, test, until } from "../electron-test.ts";
+import {
+  dashboardWindow,
+  expect,
+  launchDesktop,
+  setPrivacy,
+  stopHost,
+  test,
+  until,
+} from "../electron-test.ts";
 
 const researchTopicsShape = z.object({
   status: z.literal("current"),
@@ -83,8 +91,9 @@ test("native Research reads generated events, opens a note, and separates vault 
         host.exitCode !== null,
     );
     expect(host.exitCode, errors).toBeNull();
-    app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_NATIVE_OVERVIEW: "1" } });
+    app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
+    await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
@@ -212,10 +221,10 @@ test("native Research reads generated events, opens a note, and separates vault 
       });
     await research.getByRole("button", { name: "Przebiegi", exact: true }).click();
     await expect(research.getByText("Zakończony", { exact: true }).first()).toBeVisible();
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).check();
+    await setPrivacy(page, true);
     await expect(research.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
     await expect(research.getByText("Ukryte w trybie prywatności", { exact: true })).toBeVisible();
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).uncheck();
+    await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Piotr" });

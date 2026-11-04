@@ -16,6 +16,7 @@ import { alertCounts, watchlist } from "../queries/alerts.js";
 import { heldSince } from "../queries/holdings.js";
 import { loadInstruments, vaultInstrumentGids } from "../queries/instruments.js";
 import { decisionSignalGids, decisions, theses } from "../queries/journal.js";
+import { lastReview } from "../queries/reviews.js";
 import { lastRun } from "../queries/signals.js";
 import { brokerageAccounts } from "../queries/transactions.js";
 import { readOverview } from "../views/overview.js";
@@ -122,6 +123,7 @@ export function signalsQueries(sources: SignalsScreenSources = {}) {
           watchlist: watchlist(read),
           held: [...heldSince(read, args.today).keys()],
           lastRun: lastRun(read) ?? null,
+          lastReviewAt: lastReview(read, "investments")?.doneAt ?? null,
           context: valuationContext(read, effectiveArgs, sources),
         };
       },

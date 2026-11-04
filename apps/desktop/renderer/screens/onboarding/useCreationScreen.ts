@@ -6,6 +6,8 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { CreationBridge } from "../../creationBridge.js";
 import { toggleModuleSelection } from "./selection.js";
+import { type WorkspaceTarget, workspaceMatches } from "./workspaceMatch.js";
+import type { CreationWorkspacePort, CreationWorkspaceStatus } from "./workspacePort.js";
 
 const registry = builtinRegistry();
 type Phase =
@@ -22,12 +24,20 @@ type Phase =
   | "restart_possible"
   | "refused"
   | "verifying"
+  | "workspace_checking"
+  | "workspace_ready"
+  | "workspace_applying"
+  | "workspace_failed"
+  | "workspace_unknown"
+  | "workspace_unavailable"
   | "ready";
 
 export interface CreationScreenOptions {
   readonly mode: "first" | "additional";
   readonly bridge: CreationBridge | null;
   readonly onReady: (locator: NativeCreationReady) => Promise<boolean>;
+  readonly workspace?: CreationWorkspacePort;
+  readonly onComplete?: (locator: NativeCreationReady) => Promise<void> | void;
   readonly onClosed?: () => void;
 }
 
@@ -39,6 +49,16 @@ export function useCreationScreen(options: CreationScreenOptions) {
   const [stage, setStage] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [workspaceEnabled, setWorkspaceEnabled] = useState(true);
+  const [workspacePath, setWorkspacePath] = useState("");
+  const [workspacePathDirty, setWorkspacePathDirty] = useState(false);
+  const [routinePermissions, setRoutinePermissions] = useState(false);
+  const [workspaceStatus, setWorkspaceStatus] = useState<CreationWorkspaceStatus | null>(null);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceInspected, setWorkspaceInspected] = useState(false);
+  const verified = useRef<NativeCreationReady | null>(null);
+  const attemptedWorkspace = useRef<WorkspaceTarget | null>(null);
+  const completed = useRef(false);
   const attempt = useRef<{ operationId: string; phraseSession: string | null } | null>(null);
   const lifetime = useRef(0);
   const actionBusy = useRef(false);
@@ -101,14 +121,85 @@ export function useCreationScreen(options: CreationScreenOptions) {
     selected: values.modules.includes(spec.id),
   }));
 
+  const complete = async (locator: NativeCreationReady, generation: number) => {
+    if (!isCurrent(generation) || completed.current) return;
+    if (options.workspace && !options.workspace.isCurrent(locator)) {
+      setPhase("workspace_unknown");
+      return;
+    }
+    completed.current = true;
+    try {
+      await options.onComplete?.(locator);
+      if (isCurrent(generation)) setPhase("ready");
+    } catch {
+      completed.current = false;
+      if (isCurrent(generation)) setPhase("workspace_unknown");
+    }
+  };
+
+  const inspectWorkspace = async (locator: NativeCreationReady, generation: number) => {
+    if (!isCurrent(generation)) return;
+    setPhase("workspace_checking");
+    setWorkspaceInspected(false);
+    const port = options.workspace;
+    if (!port?.isCurrent(locator)) {
+      setWorkspaceStatus({ availability: "unavailable", reason: "source_unbound" });
+      setPhase("workspace_unavailable");
+      return;
+    }
+    try {
+      const status = await port.inspect(locator);
+      if (!isCurrent(generation) || !port.isCurrent(locator)) return;
+      setWorkspaceStatus(status);
+      setWorkspaceInspected(true);
+      if (status.availability === "ready") {
+        if (!workspacePathDirty) setWorkspacePath(status.path || status.defaultPath);
+        const target = attemptedWorkspace.current;
+        if (target) {
+          if (workspaceMatches(status, target)) await complete(locator, generation);
+          else setPhase("workspace_unknown");
+        } else setPhase("workspace_ready");
+      } else setPhase("workspace_unavailable");
+    } catch {
+      if (isCurrent(generation) && port.isCurrent(locator)) {
+        setWorkspaceStatus({ availability: "unavailable", reason: "inspect_failed" });
+        setPhase("workspace_unavailable");
+      }
+    }
+  };
+
   const acceptReady = async (locator: NativeCreationReady, generation: number) => {
     if (!isCurrent(generation)) return;
     setPhase("verifying");
     try {
       const accepted = await options.onReady(locator);
-      if (isCurrent(generation)) setPhase(accepted ? "ready" : "unknown");
+      if (!isCurrent(generation)) return;
+      if (!accepted) {
+        setPhase("unknown");
+        return;
+      }
+      verified.current = locator;
+      if (!workspaceEnabled) await complete(locator, generation);
+      else await inspectWorkspace(locator, generation);
     } catch {
       if (isCurrent(generation)) setPhase("unknown");
+    }
+  };
+
+  const reverifyWorkspaceOwner = async (locator: NativeCreationReady, generation: number) => {
+    if (!isCurrent(generation)) return false;
+    if (phase !== "workspace_unknown") return true;
+    try {
+      const accepted = await options.onReady(locator);
+      if (!isCurrent(generation) || !accepted) {
+        if (isCurrent(generation)) setPhase("workspace_unknown");
+        return false;
+      }
+      verified.current = locator;
+      return true;
+    } catch {
+      if (isCurrent(generation)) setPhase("workspace_unknown");
+      return false;
     }
   };
 
@@ -132,6 +223,9 @@ export function useCreationScreen(options: CreationScreenOptions) {
     const generation = ++lifetime.current;
     const lifetimeRef = lifetime;
     const attemptRef = attempt;
+    verified.current = null;
+    attemptedWorkspace.current = null;
+    completed.current = false;
     actionBusy.current = false;
     const bridge = options.bridge;
     // Bridge replacement invalidates in-flight display state without discarding a durable ID.
@@ -273,6 +367,64 @@ export function useCreationScreen(options: CreationScreenOptions) {
     }
   };
 
+  const applyWorkspace = async () => {
+    const locator = verified.current;
+    const port = options.workspace;
+    if (!locator || !port?.isCurrent(locator) || actionBusy.current || !workspaceInspected) return;
+    if (workspaceStatus?.availability !== "ready") return;
+    actionBusy.current = true;
+    const generation = lifetime.current;
+    const target: WorkspaceTarget = {
+      path: workspacePath.trim() || workspaceStatus.defaultPath,
+      routinePermissions: values.modules.includes("investments") ? routinePermissions : false,
+    };
+    attemptedWorkspace.current = target;
+    setPhase("workspace_applying");
+    setWorkspaceError(null);
+    try {
+      const result = await port.apply(locator, target);
+      if (!isCurrent(generation) || !port.isCurrent(locator)) return;
+      if (result.kind === "completed" && workspaceMatches(result.status, target)) {
+        setWorkspaceStatus(result.status);
+        await complete(locator, generation);
+        return;
+      }
+      setWorkspaceError(result.kind === "completed" ? "not_configured" : result.code);
+      // A write can have happened even when its reply was lost. Inspect before offering Retry.
+      setWorkspaceInspected(false);
+      const uncertain = result.kind !== "refused";
+      setPhase(uncertain ? "workspace_unknown" : "workspace_failed");
+      if (uncertain) {
+        const status = await port.inspect(locator);
+        if (!isCurrent(generation) || !port.isCurrent(locator)) return;
+        setWorkspaceStatus(status);
+        setWorkspaceInspected(status.availability === "ready");
+        if (workspaceMatches(status, target)) await complete(locator, generation);
+      } else {
+        attemptedWorkspace.current = null;
+        setWorkspaceInspected(true);
+      }
+    } catch {
+      if (isCurrent(generation) && port.isCurrent(locator)) {
+        setWorkspaceError("outcome_unknown");
+        setWorkspaceInspected(false);
+        setPhase("workspace_unknown");
+        try {
+          const status = await port.inspect(locator);
+          if (isCurrent(generation) && port.isCurrent(locator)) {
+            setWorkspaceStatus(status);
+            setWorkspaceInspected(status.availability === "ready");
+            if (workspaceMatches(status, target)) await complete(locator, generation);
+          }
+        } catch {
+          /* Keep unknown until a later read-only check. */
+        }
+      }
+    } finally {
+      if (isCurrent(generation)) actionBusy.current = false;
+    }
+  };
+
   return {
     phase,
     mode: options.mode,
@@ -285,6 +437,12 @@ export function useCreationScreen(options: CreationScreenOptions) {
     stage,
     refusal,
     checkingStatus,
+    workspaceEnabled,
+    workspacePath,
+    routinePermissions,
+    workspaceStatus,
+    workspaceError,
+    workspaceInspected,
     canClose: ["profile", "modules", "privacy", "recovery", "refused"].includes(phase),
     onClosed: options.onClosed
       ? () => {
@@ -314,6 +472,43 @@ export function useCreationScreen(options: CreationScreenOptions) {
     onPrivacyPicked: (choice: "strict" | "amounts") => {
       setRefusal(null);
       form.setFieldValue("mcpPrivacy", choice);
+    },
+    onWorkspaceEnabled: setWorkspaceEnabled,
+    onWorkspacePathChanged: (path: string) => {
+      setWorkspacePathDirty(true);
+      setWorkspacePath(path);
+    },
+    onRoutinePermissionsChanged: setRoutinePermissions,
+    onWorkspaceApply: () => void applyWorkspace(),
+    onWorkspaceInspect: () => {
+      const locator = verified.current;
+      const generation = lifetime.current;
+      if (locator && !actionBusy.current) {
+        actionBusy.current = true;
+        void (async () => {
+          try {
+            if (await reverifyWorkspaceOwner(locator, generation))
+              await inspectWorkspace(locator, generation);
+          } finally {
+            if (isCurrent(generation)) actionBusy.current = false;
+          }
+        })();
+      }
+    },
+    onWorkspaceSkip: () => {
+      const locator = verified.current;
+      const generation = lifetime.current;
+      if (locator && !actionBusy.current) {
+        actionBusy.current = true;
+        void (async () => {
+          try {
+            if (await reverifyWorkspaceOwner(locator, generation))
+              await complete(locator, generation);
+          } finally {
+            if (isCurrent(generation)) actionBusy.current = false;
+          }
+        })();
+      }
     },
     onNext: () => {
       if (phase === "profile" && values.name.trim().length > 0 && values.name.trim().length <= 40)

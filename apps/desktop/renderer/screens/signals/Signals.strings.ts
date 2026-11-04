@@ -122,6 +122,11 @@ export const G = catalog({
   instrument: { pl: "Instrument", en: "Instrument" },
   bucket: { pl: "Koszyk", en: "Bucket" },
   titleField: { pl: "Tytuł", en: "Title" },
+  alertTag: { pl: "Znacznik", en: "Tag" },
+  alertTagHint: {
+    pl: "Krótki znacznik, np. cena. Wpisz własny lub użyj już stosowanego.",
+    en: "A short tag, such as price. Enter your own or reuse one already in use.",
+  },
   note: { pl: "Notatka", en: "Note" },
   polarity: { pl: "Wydźwięk", en: "Polarity" },
   severity: { pl: "Ważność", en: "Severity" },

@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CreationBridge } from "../../creationBridge.js";
 import { CreationScreen } from "./CreationScreen.js";
+import type { CreationWorkspacePort } from "./workspacePort.js";
 
 const operationId = "1".repeat(32);
 const phraseSession = "2".repeat(32);
@@ -138,6 +139,106 @@ it("prepares once, clears the phrase before commit, and reconciles unknown witho
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(commit).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("in progress");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("retains the verified profile through uncertain workspace publication and retries workspace only", async () => {
+  const ready = {
+    kind: "ready" as const,
+    operationId,
+    vaultId: "a".repeat(32),
+    profileSlug: "synthetic",
+    reconnectRequired: true as const,
+  };
+  const prepare = vi.fn(async () => ({
+    kind: "prepared" as const,
+    operationId,
+    phraseSession,
+    words,
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  }));
+  const commit = vi.fn(async () => ready);
+  const inspect = vi.fn(async () => ({
+    availability: "ready" as const,
+    path: "/tmp/old-workspace",
+    defaultPath: "/tmp/synthetic-workspace",
+    configured: true,
+    upToDate: true,
+    routinePermissions: true,
+  }));
+  const apply = vi.fn(async () => ({ kind: "outcome_unknown" as const, code: "inspect_failed" }));
+  const workspace: CreationWorkspacePort = { isCurrent: () => true, inspect, apply };
+  const onReady = vi.fn(async () => true);
+  const onComplete = vi.fn(async () => {});
+  const bridge: CreationBridge = {
+    current: async () => ({ kind: "none" }),
+    inspect: async ({ operationId: id }) => ({ kind: "not_found", operationId: id }),
+    prepare,
+    commit,
+  };
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const button = (label: string) =>
+    [...container.querySelectorAll("button")].find((item) => item.textContent?.includes(label));
+  try {
+    await act(async () =>
+      root.render(
+        <CreationScreen
+          mode="first"
+          bridge={bridge}
+          onReady={onReady}
+          workspace={workspace}
+          onComplete={onComplete}
+        />,
+      ),
+    );
+    const name = container.querySelector('input[name="profileName"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        name,
+        "Synthetic Home",
+      );
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button("Next")?.click());
+    await act(async () => button("Next")?.click());
+    await act(async () =>
+      (container.querySelector('input[name="mcpPrivacy"]') as HTMLInputElement)?.click(),
+    );
+    await act(async () => button("Save your recovery phrase")?.click());
+    await act(async () =>
+      (container.querySelector('input[type="checkbox"]') as HTMLInputElement)?.click(),
+    );
+    await act(async () => button("Create secure profile")?.click());
+    expect(onReady).toHaveBeenCalledWith(ready);
+    expect(container.textContent).toContain("Create workspace");
+    const path = container.querySelector('[data-testid="workspace-path"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        path,
+        "/tmp/new-workspace",
+      );
+      path.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button("Create workspace")?.click());
+    expect(apply).toHaveBeenCalledWith(ready, {
+      path: "/tmp/new-workspace",
+      routinePermissions: false,
+    });
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(button("Retry workspace only")).toBeUndefined();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+    await act(async () => button("Skip workspace")?.click());
+    expect(onReady).toHaveBeenCalledTimes(2);
+    expect(onComplete).toHaveBeenCalledWith(ready);
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledTimes(1);
   } finally {
     await act(async () => root.unmount());
     container.remove();

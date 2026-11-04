@@ -1,9 +1,7 @@
 /// <reference types="node" />
 import { randomBytes } from "node:crypto";
 
-/** Port of the window-side policy of desktop/shell.py: same-origin check, navigation decision
- * (PK5) and the token bridge answer (PK1). The server side (Host allowlist, token header) stays in
- * the Python sidecar for v1 (core/security.py). */
+/** Window-side same-origin and navigation policy. */
 
 export const ALLOW = "allow";
 export const EXTERNAL = "external";
@@ -81,25 +79,12 @@ export function redactToken(text: string, token?: string | null): string {
 }
 
 /**
- * TRANSITIONAL(S55z): the preload exposes the `window.pywebview` shim only to a page on the app's
- * own origin (the legacy SPA needs it until S55z retires the SPA from the window). The main process
- * decides from the sending frame's URL, never from what the page claims.
+ * The preload exposes native bridges only to the app's own origin. The main process decides
+ * from the sending frame's URL, never from what the page claims.
  */
 export function bridgeAllowed(
   senderUrl: string | null | undefined,
   origin: string | null,
 ): boolean {
   return Boolean(senderUrl && origin && sameOrigin(senderUrl, origin));
-}
-
-/**
- * `window.pywebview.api.token()`: answered only while the sending page shows the app's own
- * origin, so a foreign page (which the navigation policy keeps out anyway) never gets the token.
- */
-export function tokenForSender(
-  senderUrl: string | null | undefined,
-  origin: string,
-  token: string,
-): string | null {
-  return senderUrl && sameOrigin(senderUrl, origin) ? token : null;
 }

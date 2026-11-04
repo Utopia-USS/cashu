@@ -99,8 +99,6 @@ function Fixture(props: {
   const view: BudgetViewProps = {
     state,
     onTabPicked: noop,
-    canOpenLegacy: false,
-    onLegacyOpened: noop,
   };
   return (
     <UiEnvProvider privacy={props.privacy ?? false} locale="en-US">

@@ -12,8 +12,6 @@ const state: ShellViewProps["state"] = {
   enabledModules: ["budget", "assets"],
   locale: "en-US",
   profile,
-  canOpenLegacy: true,
-  onLegacyRefused: () => {},
   profiles: [
     profile,
     { ...profile, slug: "second", name: "Second", displayName: "Second", vault: "b" },
@@ -37,13 +35,11 @@ export default {
     state,
     children: <p>{S.overview}</p>,
     onOverviewOpened: () => {},
-    onLegacyOpened: () => {},
+    onModuleOpened: () => {},
   },
 };
 export const Ready = {};
-export const LegacyUnavailable = {
-  args: { state: { ...state, canOpenLegacy: false }, children: <p>{S.ambiguousProfile}</p> },
-};
+export const NoProfile = { args: { state: { ...state, profile: null } } };
 export const Privacy = { args: { state: { ...state, privacy: true } } };
 export const Reconnecting = {
   args: { state: { ...state, connectionText: "Reconnecting; displayed data may be stale." } },

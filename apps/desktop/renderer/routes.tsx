@@ -42,6 +42,8 @@ import { SettingsView } from "./screens/settings/SettingsView.js";
 import { UpdateNoticeView } from "./screens/settings/UpdateNoticeView.js";
 import { useSettingsScreen } from "./screens/settings/useSettingsScreen.js";
 import { useUpdateNotice } from "./screens/settings/useUpdateNotice.js";
+import type { SetupNavigation } from "./screens/setup/actionIntent.js";
+import { SetupScreen } from "./screens/setup/SetupScreen.js";
 import { SignalsPageScreen } from "./screens/signals/SignalsPageScreen.js";
 import { StrategiesScreen } from "./screens/strategies/StrategiesScreen.js";
 import { StrategySettingsView } from "./screens/strategies/StrategiesView.js";
@@ -54,34 +56,9 @@ import { useShellScreen } from "./shell/useShellScreen.js";
 
 const budgetCurrencyByVault = new Map<string, string>();
 
-const LEGACY_TABS: Record<string, string> = {
-  overview: "overview",
-  budget: "budget.expenses",
-  investments: "investments.portfolio",
-  assets: "overview/assets",
-  loans: "loans.list",
-  settings: "settings",
-};
-const LegacyNavigation = createContext<{
-  allowed: boolean;
-  open(tab: string): void;
-  openModule(module: string): void;
-}>({
-  allowed: false,
-  open: () => {},
-  openModule: () => {},
-});
 const ProposalNavigation = createContext<{
   open(gid: string, onResumed?: () => void): boolean;
 }>({ open: () => false });
-
-/** TRANSITIONAL(S55z): unported SPA pages retain their own routes and deep-link search. */
-function openLegacy(slug: string, tab: string) {
-  const url = new URL("/", location.origin);
-  url.searchParams.set("native", "1");
-  url.hash = `/${encodeURIComponent(slug)}/${LEGACY_TABS[tab] ?? tab}`;
-  location.assign(url.href);
-}
 
 /** Route-owned proposal selection resets when the vault or owner policy scope changes. */
 function ProposalScope({
@@ -169,16 +146,7 @@ function ShellRoute() {
       });
     else if (module === "settings")
       void router.navigate({ to: "/$slug/settings", params: { slug }, search: { vault } });
-    else if (state.canOpenLegacy) openLegacy(slug, module);
-    else state.onLegacyRefused();
-  };
-  const legacy = {
-    openModule,
-    allowed: state.canOpenLegacy,
-    open: (tab: string) => {
-      if (state.profile !== null && state.canOpenLegacy) openLegacy(state.profile.slug, tab);
-      else state.onLegacyRefused();
-    },
+    else void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
   };
   return (
     <ProposalScope
@@ -210,22 +178,20 @@ function ShellRoute() {
                     ? "investments"
                     : "overview"
         }
-        onLegacyOpened={openModule}
+        onModuleOpened={openModule}
       >
-        <LegacyNavigation value={legacy}>
-          {selection !== null &&
-          (selection.kind !== "ready" || selection.profile.vault !== state.vault) ? (
-            <p role="status" className="p-6">
-              {selection.kind === "ambiguous"
-                ? S.ambiguousProfile
-                : selection.kind === "unavailable"
-                  ? S.noProfile
-                  : S.waiting}
-            </p>
-          ) : (
-            <Outlet />
-          )}
-        </LegacyNavigation>
+        {selection !== null &&
+        (selection.kind !== "ready" || selection.profile.vault !== state.vault) ? (
+          <p role="status" className="p-6">
+            {selection.kind === "ambiguous"
+              ? S.ambiguousProfile
+              : selection.kind === "unavailable"
+                ? S.noProfile
+                : S.waiting}
+          </p>
+        ) : (
+          <Outlet />
+        )}
       </ShellView>
       <UpdateNoticeView state={updateNotice} />
     </ProposalScope>
@@ -263,16 +229,7 @@ function StartRoute() {
 }
 
 function LegacyRoute() {
-  useEffect(() => {
-    const url = new URL("/?native=1", location.origin);
-    url.hash = location.hash;
-    location.replace(url.href);
-  }, []);
-  return (
-    <p role="status" className="p-6">
-      {S.waiting}
-    </p>
-  );
+  return <RouteFailure />;
 }
 
 const rootRoute = createRootRoute({
@@ -336,7 +293,6 @@ function OverviewBound({
   slug: string;
   currency?: string;
 }) {
-  const legacy = use(LegacyNavigation);
   const today = useCalendarDay();
   const state = useOverviewScreen({
     today,
@@ -352,7 +308,6 @@ function OverviewBound({
       cash={cash}
       assets={assets}
       investmentPlan={investmentPlan}
-      canOpenLegacy={legacy.allowed}
       onCurrencyPicked={(next) =>
         startTransition(() => {
           void router.navigate({
@@ -363,7 +318,24 @@ function OverviewBound({
         })
       }
       nativeModules={["budget", "loans", "assets", "investments"]}
-      onModuleOpened={legacy.openModule}
+      onModuleOpened={(module) => {
+        if (module === "assets")
+          void router.navigate({ to: "/$slug/setup/assets", params: { slug }, search: { vault } });
+        else if (module === "loans")
+          void router.navigate({ to: "/$slug/loans.list", params: { slug }, search: { vault } });
+        else if (module === "budget")
+          void router.navigate({
+            to: "/$slug/budget/$tab",
+            params: { slug, tab: "expenses" },
+            search: { vault },
+          });
+        else if (module === "investments")
+          void router.navigate({
+            to: "/$slug/investments.portfolio",
+            params: { slug },
+            search: { vault, period: "1y", view: "chart" },
+          });
+      }}
     />
   );
 }
@@ -413,7 +385,6 @@ function BudgetBound({
   vault: string;
   filters: ReturnType<typeof budgetRoute.useSearch>;
 }) {
-  const legacy = use(LegacyNavigation);
   const today = useCalendarDay();
   const modules = useQuery(profileIdentity);
   const state = useBudgetScreen({
@@ -434,8 +405,6 @@ function BudgetBound({
   return (
     <BudgetView
       state={state}
-      canOpenLegacy={legacy.allowed}
-      onLegacyOpened={() => legacy.open("budget")}
       onTabPicked={(next) => {
         void router.navigate({
           to: "/$slug/budget/$tab",
@@ -483,6 +452,98 @@ const assetsStartRoute = createRoute({
   ),
   errorComponent: RouteFailure,
 });
+const setupGuideRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/setup/$module/cli",
+  validateSearch: (raw) => search.pick({ vault: true }).parse(raw),
+  component: SetupGuideRoute,
+  errorComponent: RouteFailure,
+});
+const setupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/setup/$module",
+  validateSearch: (raw) => search.pick({ vault: true }).parse(raw),
+  component: SetupGuideRoute,
+  errorComponent: RouteFailure,
+});
+function SetupGuideRoute() {
+  const { slug, module } = useParams({ strict: false });
+  const vault = useProfile();
+  const onNavigate = (target: SetupNavigation) => {
+    if (target.kind === "settings") {
+      const section = z
+        .enum(["profile", "modules", "agent", "connectors", "data", "worker", "secrets", "app"])
+        .safeParse(target.section);
+      if (!section.success) return;
+      void router.navigate({
+        to: "/$slug/settings",
+        params: { slug: slug ?? "" },
+        search: { vault, section: section.data },
+      });
+    } else if (target.kind === "overview")
+      void router.navigate({
+        to: "/$slug/overview",
+        params: { slug: slug ?? "" },
+        search: { vault },
+      });
+    else if (target.module === "budget")
+      void router.navigate({
+        to: "/$slug/budget/$tab",
+        params: { slug: slug ?? "", tab: target.tab },
+        search: { vault },
+      });
+    else if (target.module === "loans")
+      void router.navigate({
+        to: "/$slug/loans.list",
+        params: { slug: slug ?? "" },
+        search: { vault },
+      });
+    else if (target.module === "investments") {
+      if (target.tab === "strategies")
+        void router.navigate({
+          to: "/$slug/investments.strategies",
+          params: { slug: slug ?? "" },
+          search: { vault },
+        });
+      else if (["alerts", "watchlist", "journal"].includes(target.tab))
+        void router.navigate({
+          to:
+            target.tab === "alerts"
+              ? "/$slug/investments.alerts"
+              : target.tab === "watchlist"
+                ? "/$slug/investments.watchlist"
+                : "/$slug/investments.journal",
+          params: { slug: slug ?? "" },
+          search: { vault },
+        });
+      else if (target.tab === "research")
+        void router.navigate({
+          to: "/$slug/investments.research",
+          params: { slug: slug ?? "" },
+          search: { vault },
+        });
+      else if (["portfolio", "review"].includes(target.tab))
+        void router.navigate({
+          to: "/$slug/investments.portfolio",
+          params: { slug: slug ?? "" },
+          search: {
+            vault,
+            period: "1y",
+            view: "chart",
+            ...(target.tab === "review" ? { review: "1" as const } : {}),
+          },
+        });
+    }
+  };
+  return (
+    <SetupScreen
+      moduleId={module ?? ""}
+      agent={{ kind: "unavailable", reason: "source_unbound" }}
+      onNavigate={onNavigate}
+      onCopy={async (value) => navigator.clipboard.writeText(value)}
+    />
+  );
+}
 function LoansRoute() {
   const enabled = useQuery(budgetModuleQuery).some(
     (module) => module.id === "loans" && module.enabled,
@@ -528,6 +589,7 @@ const investmentPageSearch = z.object({
   vault: search.shape.vault,
   instrument: investmentEntityIdSchema.optional(),
   alert: investmentEntityIdSchema.optional(),
+  newAlert: z.literal("1").optional(),
 });
 const researchSearch = z.object({
   vault: search.shape.vault,
@@ -698,6 +760,7 @@ function InvestmentPageRoute() {
     <SignalsPageScreen
       page={page}
       initialInstrument={selected.instrument}
+      initialNewAlert={page === "alerts" && selected.newAlert === "1"}
       onClose={() =>
         void router.navigate({
           to: "/$slug/investments.portfolio",
@@ -771,7 +834,6 @@ function PortfolioRoute() {
   const selected = useSearch({ strict: false }) as z.infer<typeof investmentSearch>;
   const vault = useProfile();
   const modules = useQuery(overviewQueries({ prices: null }).moduleStates);
-  const legacy = use(LegacyNavigation);
   const proposals = use(ProposalNavigation);
   const notificationSignal = use(NotificationSignalFocus);
   if (!modules.some((module) => module.id === "investments" && module.enabled))
@@ -809,7 +871,7 @@ function PortfolioRoute() {
       onReviewOpened={() => navigate({ review: "1" })}
       onProposalOpened={proposals.open}
       onSignalsClosed={() => navigate({ signals: undefined })}
-      onSignalsPageOpened={(page) =>
+      onSignalsPageOpened={(page, newAlert) =>
         void router.navigate({
           to:
             page === "alerts"
@@ -818,7 +880,7 @@ function PortfolioRoute() {
                 ? "/$slug/investments.watchlist"
                 : "/$slug/investments.journal",
           params: { slug: slug ?? "" },
-          search: { vault },
+          search: { vault, ...(newAlert ? { newAlert: "1" as const } : {}) },
         })
       }
       onResearchOpened={(tab, topic, note) =>
@@ -866,7 +928,7 @@ function PortfolioRoute() {
             search: { vault },
           });
         else if (tab === "investments.review") navigate({ review: "1" });
-        else legacy.open(tab);
+        else navigate({});
       }}
     />
   );
@@ -893,6 +955,8 @@ export const router = createRouter({
     loansRoute,
     loansSetupRoute,
     assetsStartRoute,
+    setupGuideRoute,
+    setupRoute,
     portfolioRoute,
     investmentAssetRoute,
     strategiesRoute,

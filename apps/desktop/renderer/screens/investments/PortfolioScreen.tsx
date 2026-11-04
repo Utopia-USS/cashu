@@ -5,13 +5,18 @@ import { useUiEnv } from "@cashu/ui";
 import { useEffect } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { AssetResearchBlock } from "../research/AssetResearchBlock.js";
-import { ResearchCandidatesRail, ResearchHomeSection } from "../research/ResearchHomeSection.js";
+import { ResearchHomeSection } from "../research/ResearchHomeSection.js";
+import { useResearchCandidatesRail } from "../research/useResearchCandidatesRail.js";
 import { ReviewEntryView } from "../review/ReviewEntryView.js";
 import { ReviewScreen } from "../review/ReviewScreen.js";
 import { useReviewEntry } from "../review/useReviewEntry.js";
-import { SignalsDialogView, SignalsHomeRailView } from "../signals/SignalsView.js";
+import { SignalsDialogView } from "../signals/SignalsView.js";
 import { type SignalsPageKind, useSignalsScreen } from "../signals/useSignalsScreen.js";
 import { AssetDetailView } from "./AssetDetailView.js";
+import { candidateRailModel } from "./candidateRailModel.js";
+import { CandidatesRailView } from "./home-rail/CandidatesRailView.js";
+import { HomeRailView } from "./home-rail/HomeRailView.js";
+import { homeRailModel } from "./homeRailModel.js";
 import { PortfolioDrawersView } from "./PortfolioDrawersView.js";
 import { PortfolioView } from "./PortfolioView.js";
 import { type PortfolioScreenOptions, usePortfolioScreen } from "./usePortfolioScreen.js";
@@ -25,7 +30,7 @@ type PortfolioExtras = {
   onReviewOpened?(): void;
   onProposalOpened?(gid: string, onResumed: () => void): boolean;
   onSignalsClosed?(): void;
-  onSignalsPageOpened?(page: SignalsPageKind): void;
+  onSignalsPageOpened?(page: SignalsPageKind, newAlert?: boolean): void;
   onResearchOpened?(tab?: string, topic?: string, note?: string): void;
 };
 type Props = Omit<PortfolioScreenOptions, "today"> & PortfolioExtras;
@@ -91,12 +96,21 @@ function PortfolioHome({
     if (props.signalsOpen) setDialogOpen(true);
   }, [props.signalsOpen, setDialogOpen]);
   const research = useQuery(researchQueries.screen, { today: useCalendarDay(), lang: lang() });
-  const review = useReviewEntry(props.onReviewOpened);
+  const candidateActions = useResearchCandidatesRail();
+  const review = useReviewEntry(props.onReviewOpened, state.account);
+  const homeRail = homeRailModel(
+    signals,
+    review,
+    props.onReviewOpened ?? (() => {}),
+    () => props.onSignalsPageOpened?.("alerts"),
+    () => props.onSignalsPageOpened?.("alerts", true),
+    props.openPage,
+  );
   const openAsset = (gid: string, note?: string) =>
     note ? props.onResearchOpened?.(undefined, undefined, note) : props.openPage?.(gid);
   return (
     <>
-      <PortfolioView state={state} homeRail={<SignalsHomeRailView state={signals} />} />
+      <PortfolioView state={state} homeRail={<HomeRailView privacy={privacy} {...homeRail} />} />
       <div className="grid gap-6 px-6 pb-6" data-testid="native-investment-home-rails">
         <ResearchHomeSection
           data={research}
@@ -105,11 +119,15 @@ function PortfolioHome({
           onOpenTopic={(topic) => props.onResearchOpened?.(undefined, topic)}
           onOpenAsset={openAsset}
         />
-        <ResearchCandidatesRail
-          data={research}
-          privacy={privacy}
-          onOpenResearch={(tab) => props.onResearchOpened?.(tab)}
-          onOpenNote={(note) => props.onResearchOpened?.(undefined, undefined, note)}
+        <CandidatesRailView
+          {...candidateRailModel(
+            research,
+            privacy,
+            candidateActions,
+            () => props.onResearchOpened?.("candidates"),
+            (note) => props.onResearchOpened?.(undefined, undefined, note),
+            Date.parse(signals.displayNow),
+          )}
         />
         <ReviewEntryView state={review} onOpened={props.onReviewOpened ?? (() => {})} />
         <SignalsDialogView state={signals} />

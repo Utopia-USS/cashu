@@ -95,7 +95,7 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
         host.exitCode !== null,
     );
     expect(host.exitCode, errors).toBeNull();
-    app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_NATIVE_OVERVIEW: "1" } });
+    app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
     const selector = page.getByRole("combobox", { name: "Profil", exact: true });
     await selector.selectOption({ label: "Demo Anna" });

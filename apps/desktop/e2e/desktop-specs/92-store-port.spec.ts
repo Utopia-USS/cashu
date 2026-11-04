@@ -1,51 +1,81 @@
 /// <reference types="node" />
 // The renderer's store port, relayed by Electron main to an explicit synthetic local host: the
 // sandboxed window reads a query and runs commands through it with the real
-// port client (bundled from e2e/store-harness). Own shell, own data dir under ~/cashu-lab (never a real
-// one), removed afterwards together with the host.
+// port client (bundled from e2e/store-harness). Own shell and isolated data dir are removed
+// afterwards together with the host.
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { userInfo } from "node:os";
 import { join } from "node:path";
 import {
   alive,
-  dashboardWindow,
   expect,
   hostPid,
   launchDesktop,
   stopHost,
-  storeHarnessScript,
+  storeHarnessWindow,
   test,
 } from "../electron-test.ts";
 import { startSyntheticHost } from "../synthetic-host.ts";
 
-// The account's real home: the e2e global setup points HOME at a temp folder for the Python side.
-const LAB_TMP = join(userInfo().homedir, "cashu-lab", "tmp");
+function isolatedRoot(): string {
+  const root = process.env.E2E_ROOT;
+  if (!root) throw new Error("isolated E2E root is absent");
+  return join(root, "native-host");
+}
 
 test("the window reads a query and runs commands through the store port, served by the host", async () => {
-  mkdirSync(LAB_TMP, { recursive: true });
-  const dataDir = mkdtempSync(join(LAB_TMP, "s56b-store-port-"));
-  const syntheticHost = await startSyntheticHost(dataDir);
+  const root = isolatedRoot();
+  mkdirSync(root, { recursive: true });
+  const dataDir = mkdtempSync(join(root, "s56b-store-port-"));
+  const syntheticHost = await test.step("start synthetic host", () => startSyntheticHost(dataDir), {
+    timeout: 20_000,
+  });
   try {
-    const app = await launchDesktop({
-      dataDir,
-      env: { CASHU_DESKTOP_ALLOWED_DATA_ROOT: LAB_TMP },
-    });
+    const app = await test.step(
+      "launch native Electron",
+      () => launchDesktop({ dataDir, env: { CASHU_DESKTOP_ALLOWED_DATA_ROOT: root } }),
+      { timeout: 20_000 },
+    );
     try {
-      const { page } = await dashboardWindow(app);
+      const page = await test.step(
+        "open isolated native store page",
+        () => storeHarnessWindow(app),
+        {
+          timeout: 20_000,
+        },
+      );
       expect(hostPid(dataDir)).toBe(syntheticHost.child.pid);
-      await page.evaluate(await storeHarnessScript());
-      const result = await page.evaluate(() =>
-        (
-          window as unknown as {
-            cashuStoreHarness(): Promise<{
-              vaults: number;
-              before: string | null;
-              renamed: unknown;
-              after: string | null;
-              refused: unknown;
-            }>;
-          }
-        ).cashuStoreHarness(),
+      expect(
+        await page.evaluate(() => ({
+          ownOrigin: location.origin === "app://cashu",
+          bridge: "cashuCreation" in window,
+          admission: new URL(location.href).searchParams.has("admission"),
+        })),
+      ).toEqual({ ownOrigin: true, bridge: true, admission: false });
+      const result = await test.step(
+        "query and command through host",
+        () =>
+          page.evaluate(() => {
+            const harness = window as unknown as {
+              cashuStoreHarness(): Promise<{
+                vaults: number;
+                before: string | null;
+                renamed: unknown;
+                after: string | null;
+                refused: unknown;
+              }>;
+              cashuStoreStage(): string;
+            };
+            return Promise.race([
+              harness.cashuStoreHarness(),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error(`store harness stalled at ${harness.cashuStoreStage()}`)),
+                  10_000,
+                ),
+              ),
+            ]);
+          }),
+        { timeout: 20_000 },
       );
       expect(result).toEqual({
         vaults: 1,
@@ -54,7 +84,7 @@ test("the window reads a query and runs commands through the store port, served 
         after: "Demo E2E",
         refused: { kind: "refused", reason: "exists" },
       });
-      // The host owns the stores in the data dir, beside (not inside) the Python sidecar's files.
+      // The host owns the stores in this isolated data dir.
       const pid = hostPid(dataDir);
       expect(pid !== null && alive(pid)).toBe(true);
       expect(existsSync(join(dataDir, "stores", "device.db"))).toBe(true);
@@ -69,10 +99,4 @@ test("the window reads a query and runs commands through the store port, served 
     await syntheticHost.stop();
     rmSync(dataDir, { recursive: true, force: true });
   }
-});
-
-test("the shared shell does not start a host while no page asked for a store port", async ({
-  desktop,
-}) => {
-  expect(hostPid(desktop.dataDir)).toBeNull();
 });

@@ -3,7 +3,7 @@
 // The host is supervised with a persisted fake OS KeyStore. The Electron bootstrap denies ordinary
 // detached host spawning throughout both handovers and the later renderer restart.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { dashboardWindow, expect, test, until } from "../electron-test.ts";
 import { nativeCreationHarness, type TestHost } from "../native-creation-support.ts";
@@ -44,6 +44,12 @@ async function createThroughWizard(page: Page, visualRoot?: string): Promise<voi
   ).toBe(true);
 }
 
+async function skipUnavailableWorkspace(page: Page): Promise<void> {
+  const skip = page.getByRole("button", { name: "Pomiń workspace" });
+  await expect(skip).toBeVisible();
+  await skip.click();
+}
+
 async function restartHostAfterHandover(
   host: TestHost,
   deniedMarker: string,
@@ -60,10 +66,7 @@ function denialCount(path: string): number {
 }
 
 test("first native Create, explicit Add, authenticated handover, and read-only restart", async () => {
-  const visualRoot = process.env.CASHU_E2E_VISUALS;
-  const allowedVisualRoot = "/Users/owner/cashu-lab/checkpoints/visuals/T44";
-  if (!visualRoot || resolve(visualRoot) !== allowedVisualRoot)
-    throw new Error("synthetic_creation_visual_root_required");
+  const visualRoot = test.info().outputPath("native-create");
   mkdirSync(visualRoot, { recursive: true, mode: 0o700 });
   const harness = nativeCreationHarness();
   try {
@@ -73,6 +76,7 @@ test("first native Create, explicit Add, authenticated handover, and read-only r
     const deniedMarker = `${harness.dataDir}/test-spawn-denied`;
     await createThroughWizard(page, visualRoot);
     host = await restartHostAfterHandover(host, deniedMarker, 0, () => harness.startHost());
+    await skipUnavailableWorkspace(page);
     await expect(page.getByRole("combobox", { name: "Profil", exact: true })).toBeVisible();
     const picker = page.getByRole("combobox", { name: "Profil", exact: true });
     await expect(picker.locator("option")).toHaveCount(1);
@@ -99,6 +103,7 @@ test("first native Create, explicit Add, authenticated handover, and read-only r
     host = await restartHostAfterHandover(host, deniedMarker, firstDenials, () =>
       harness.startHost(),
     );
+    await skipUnavailableWorkspace(page);
     await expect(picker.locator("option")).toHaveCount(2);
     const secondVault = await picker.inputValue();
     expect(secondVault).toMatch(/^[0-9a-f]{32}$/u);

@@ -51,40 +51,6 @@ jobs:
       - name: Tests
         run: pytest -q
 
-  # frontend/ is a member of the pnpm workspace (it imports packages/i18n and packages/ui-logic): install it and
-  # the packages it depends on from the root lockfile.
-  frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v5
-
-      # The pnpm version comes from "packageManager" in the root package.json.
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: pnpm
-
-      # The whole workspace, not only this package's closure: what the other members pull in (React 19 types
-      # for apps/mobile) changes what is hoisted for frontend/, and the typecheck must see the same tree as a
-      # developer's checkout.
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Unit tests
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
   checks:
     name: Generated files
     runs-on: ubuntu-latest

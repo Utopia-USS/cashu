@@ -52,6 +52,22 @@ export const workerStatusSchema = z.object({
   schedule: z.string().max(64),
   nextRunAt: z.iso.datetime().nullable(),
   lastTickAt: z.iso.datetime().nullable(),
+  unavailable: z
+    .array(
+      z.object({
+        job: z.enum([
+          "connectors.fetch",
+          "investments.daily",
+          "budget.sync",
+          "notifications",
+          "digest",
+        ]),
+        ordinal: z.number().int().nonnegative(),
+        code: z.string().min(1).max(64),
+      }),
+    )
+    .max(10_000)
+    .optional(),
   jobs: z
     .array(
       z.object({

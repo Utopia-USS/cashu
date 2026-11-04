@@ -18,7 +18,6 @@ const chartChoice =
   "rounded-sm px-2 py-1 text-fg-muted hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent aria-pressed:bg-accent-muted aria-pressed:font-strong aria-pressed:text-accent";
 
 export interface OverviewViewProps {
-  canOpenLegacy: boolean;
   nativeModules?: readonly string[];
   cash: CashDrawerState;
   assets: AssetDrawerState;
@@ -34,12 +33,11 @@ export function OverviewView({
   cash,
   assets,
   investmentPlan,
-  canOpenLegacy,
   nativeModules = [],
   onCurrencyPicked,
   onModuleOpened,
 }: OverviewViewProps) {
-  const canOpenModule = (module: string) => canOpenLegacy || nativeModules.includes(module);
+  const canOpenModule = (module: string) => nativeModules.includes(module);
   const month = state.budget.month;
   const barWidth = (amount: Decimal) =>
     month === null || month.income.isZero()

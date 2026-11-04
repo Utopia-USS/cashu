@@ -8,7 +8,8 @@
     "./keyring": "./src/keyring/production.ts",
     "./sqlite": "./src/sqlite.ts",
     "./testing": "./src/testing.ts",
-    "./bundle-identity": "./src/bundleIdentity.ts"
+    "./bundle-identity": "./src/bundleIdentity.ts",
+    "./admission": "./src/admissionGuard.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

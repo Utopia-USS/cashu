@@ -7,7 +7,7 @@ test("native Investments tab remains available without legacy access", () => {
   const markup = renderToStaticMarkup(
     <shell.component
       {...shell.args}
-      state={{ ...shell.args.state, enabledModules: ["investments"], canOpenLegacy: false }}
+      state={{ ...shell.args.state, enabledModules: ["investments"] }}
     />,
   );
   const investmentsButton = markup.match(new RegExp(`<button[^>]*>${S.investments}</button>`))?.[0];

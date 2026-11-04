@@ -11,7 +11,7 @@ import { reviewDisplayDay } from "./presentation.js";
 import { useReviewLifetime } from "./useReviewLifetime.js";
 
 const queries = reviewScreenQueries();
-export function useReviewEntry(onOpened?: () => void) {
+export function useReviewEntry(onOpened?: () => void, account?: string | null) {
   const vault = useProfile(),
     { privacy } = useUiEnv();
   const data = useQuery(queries.screen, {
@@ -19,6 +19,7 @@ export function useReviewEntry(onOpened?: () => void) {
     lang: lang(),
     open: false,
     privacy,
+    account,
   });
   const undoCommand = useCommand(undoSavedReview);
   const durable = useDurableCommands();

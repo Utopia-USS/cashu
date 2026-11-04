@@ -1,12 +1,15 @@
 /** Canonical owner subjects. Frozen membership never supplies authority for a later write. */
 import { utcIso } from "@cashu/domain";
-import { views } from "@cashu/domain/investments";
+import { asProfileId, buildSnapshot, views } from "@cashu/domain/investments";
 import { pendingProposals } from "../../core/proposal-execution.js";
 import type { Read } from "../../query.js";
 import type { ResearchInputs } from "../desktop-research/inputs.js";
 import type { SignalRow } from "../desktop-signals/reads.js";
 import { readSignalRows } from "../desktop-signals/reads.js";
+import { heldSince } from "../queries/holdings.js";
 import { theses } from "../queries/journal.js";
+import { instrumentRoot } from "../queries/shared.js";
+import { renames, transactions } from "../queries/transactions.js";
 
 export interface ReviewDecideItem {
   readonly key: string;
@@ -28,6 +31,9 @@ export interface ReviewDecideItem {
   readonly ladder?: { readonly count: number; readonly since: string };
   readonly whySource?: "research" | "rule" | "health";
   readonly health?: { readonly from: string; readonly to: string };
+  readonly fresh?: boolean;
+  readonly seenAt?: number;
+  readonly snoozedUntil?: string | null;
 }
 export function readReviewDecide(
   read: Read,
@@ -35,7 +41,11 @@ export function readReviewDecide(
     now: string;
     since: string;
     account: string | null;
+    today?: string;
     research: ReturnType<ResearchInputs["digest"]>["value"];
+    includeSnoozed?: boolean;
+    lastReviewAt?: string | null;
+    limit?: number;
   },
 ) {
   const now = Date.parse(input.now),
@@ -51,9 +61,21 @@ export function readReviewDecide(
       healthRelation[row.to] ? [[row.instrument_id, healthRelation[row.to] ?? ""] as const] : [],
     ),
   );
-  const rows = readSignalRows(read, input.now, "open").filter(
-    (row) => input.account === null || row.account === null || row.account === input.account,
-  );
+  const today = input.today ?? input.now.slice(0, 10);
+  const inView =
+    input.account === null
+      ? null
+      : new Set(
+          buildSnapshot(asProfileId("vault"), transactions(read, [input.account]), today, {
+            renames: renames(read),
+          }).holdings.map((holding) => instrumentRoot(read, holding.instrumentId)),
+        );
+  const heldAnywhere = input.account === null ? null : heldSince(read, today);
+  const rows = readSignalRows(read, input.now, "open").filter((row) => {
+    if (inView === null || row.instrument === null) return true;
+    const root = instrumentRoot(read, row.instrument);
+    return inView.has(root) || !heldAnywhere?.has(root);
+  });
   const selection = views.reviewDecideSelection(
     rows.map((row) => ({
       id: row.gid,
@@ -73,7 +95,13 @@ export function readReviewDecide(
       bucket: typeof row.payload.bucket_id === "string" ? row.payload.bucket_id : null,
       row,
     })),
-    { now, since, health },
+    {
+      now,
+      since,
+      health,
+      includeSnoozed: input.includeSnoozed,
+      lastReviewAt: input.lastReviewAt ? Date.parse(input.lastReviewAt) : undefined,
+    },
   );
   const currentTheses = theses(read);
   const items: ReviewDecideItem[] = [],
@@ -135,6 +163,14 @@ export function readReviewDecide(
       thesis: thesis?.thesis ?? null,
       invalidation: thesis?.invalidation ?? null,
       exitPlan: thesis?.exitPlan ?? null,
+      fresh: selected.isNew,
+      seenAt: last,
+      snoozedUntil: all.every((row) => row.snoozed)
+        ? (all
+            .map((row) => row.row.snoozedUntil)
+            .filter((value): value is string => value !== null)
+            .sort()[0] ?? null)
+        : null,
     });
   }
   const covered = new Set(items.map((row) => row.instrument));
@@ -160,7 +196,8 @@ export function readReviewDecide(
   }
   const order = ["risk", "chance", "mixed", "plan", "fix"];
   items.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
-  const shown = items.slice(0, 6);
+  const limit = input.limit ?? 6;
+  const shown = items.slice(0, limit);
   for (const proposal of pendingProposals(read))
     shown.push({
       key: `p:${proposal.gid}`,
@@ -193,5 +230,5 @@ export function readReviewDecide(
       invalidation: null,
       exitPlan: null,
     });
-  return { items: shown, more: Math.max(0, items.length - 6), rest };
+  return { items: shown, more: Math.max(0, items.length - limit), rest, total: rows.length };
 }

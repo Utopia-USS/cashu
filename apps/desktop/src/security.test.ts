@@ -8,25 +8,12 @@ import {
   navigationDecision,
   redactToken,
   sameOrigin,
-  tokenForSender,
 } from "./security.js";
 
 const ORIGIN = "http://127.0.0.1:8500";
 const TOKEN = "tok_abcdefghijklmnopqrstuvwxyz0123";
 
-describe("token bridge (shell.token_bridge)", () => {
-  it("answers only the app's own page", () => {
-    expect(tokenForSender(`${ORIGIN}/#/demo-anna/overview`, ORIGIN, TOKEN)).toBe(TOKEN);
-    expect(tokenForSender("https://evil.example/", ORIGIN, TOKEN)).toBeNull();
-    expect(tokenForSender("http://127.0.0.1:8501/", ORIGIN, TOKEN)).toBeNull();
-    expect(tokenForSender("http://localhost:8500/", ORIGIN, TOKEN)).toBeNull();
-    expect(tokenForSender("http://127.0.0.1.evil.example:8500/", ORIGIN, TOKEN)).toBeNull();
-    expect(tokenForSender("data:text/html,<p>x</p>", ORIGIN, TOKEN)).toBeNull();
-    expect(tokenForSender("", ORIGIN, TOKEN)).toBeNull();
-    expect(tokenForSender(null, ORIGIN, TOKEN)).toBeNull();
-    expect(tokenForSender("not a url", ORIGIN, TOKEN)).toBeNull();
-  });
-
+describe("origin matching", () => {
   it("compares scheme, host and port exactly", () => {
     expect(sameOrigin("http://127.0.0.1:8500/x?y=1", ORIGIN)).toBe(true);
     expect(sameOrigin("https://127.0.0.1:8500/", ORIGIN)).toBe(false);
@@ -67,7 +54,7 @@ describe("the per-launch token", () => {
   });
 });
 
-describe("the pywebview shim is exposed to the app origin only", () => {
+describe("native bridge is exposed to the app origin only", () => {
   it("allows the app's own page and nothing else", () => {
     expect(bridgeAllowed(`${ORIGIN}/#/demo-anna/overview`, ORIGIN)).toBe(true);
     for (const url of [

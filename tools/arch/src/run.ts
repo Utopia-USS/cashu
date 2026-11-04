@@ -86,14 +86,9 @@ const steps: Promise<StepResult>[] = [
   ]),
   // TRANSITIONAL(arch-tools): TS 6 pinned in tools/arch for parsing only, until typescript-eslint and
   // dependency-cruiser read TS 7; so sherif sees two typescript versions. All else stays single-version.
-  // TRANSITIONAL(S55z): the legacy SPA (frontend/, package cashu-dashboard) stays on React 18
-  // while apps/mobile (Expo SDK 58) needs React 19; like knip, sherif does not judge the legacy SPA. Drop the
-  // flag with frontend/ once the renderer lives in apps/ (S55z retires the SPA).
   run("sherif", "package.json hygiene, one version per dependency", join(TOOLS_BIN, "sherif"), [
     "--ignore-dependency",
     "typescript",
-    "--ignore-package",
-    "cashu-dashboard",
   ]),
   run(
     "guards",

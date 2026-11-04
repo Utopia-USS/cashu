@@ -67,6 +67,16 @@ export interface SignalsScreenOptions {
 }
 
 type Signal = ReadySignals["signals"][number];
+let displayClockDay = "";
+let displayClockNow = "";
+/** Stable across React's first-render Suspense retries; the host's clock overrides this read-only fallback. */
+function displayClock(day: string): string {
+  if (day !== displayClockDay) {
+    displayClockDay = day;
+    displayClockNow = new Date().toISOString();
+  }
+  return displayClockNow;
+}
 function decisionDefaults(action: string, quantity: string, price: string, currency: string) {
   return { action, account: "", quantity, price, currency, reason: "" };
 }
@@ -74,9 +84,11 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
   const { privacy } = useUiEnv();
   const connection = useConnection();
   const today = useCalendarDay();
+  const displayNow = displayClock(today);
   const snapshot = useQuery(query, {
-    // The open host supplies current time and a subscribed change source. This fallback is stable.
-    now: "1970-01-01T00:00:00Z",
+    // The host's live clock wins when bound; a local day-scoped read clock keeps native displays
+    // usable before that provider is installed. It never grants write or fetch authority.
+    now: displayNow,
     today,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     lang: lang(),
@@ -674,6 +686,7 @@ export function useSignalsScreen(options: SignalsScreenOptions = {}) {
     data,
     privacy,
     today,
+    displayNow,
     groups,
     dialogOpen,
     setDialogOpen,

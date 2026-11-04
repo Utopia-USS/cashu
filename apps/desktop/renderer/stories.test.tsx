@@ -27,7 +27,7 @@ import overview, {
 } from "./screens/overview/OverviewView.stories.js";
 import bootstrap, { Failed, Waiting } from "./shell/BootstrapView.stories.js";
 import shell, {
-  LegacyUnavailable as LegacyShell,
+  NoProfile,
   Privacy as PrivateShell,
   Ready as ReadyShell,
   Reconnecting,
@@ -109,12 +109,12 @@ it("renders asset, cash and investment widget stories from synthetic state", () 
   ).toContain("overview-investments-title");
 });
 
-it("renders actual shell CSF states without enabling disabled legacy navigation", () => {
+it("renders actual shell CSF states", () => {
   expect(renderToStaticMarkup(<shell.component {...shell.args} {...ReadyShell} />)).toContain(
     "Synthetic",
   );
-  expect(renderToStaticMarkup(<shell.component {...shell.args} {...LegacyShell.args} />)).toContain(
-    "disabled",
+  expect(renderToStaticMarkup(<shell.component {...shell.args} {...NoProfile.args} />)).toContain(
+    "Synthetic",
   );
   expect(
     renderToStaticMarkup(<shell.component {...shell.args} {...PrivateShell.args} />),

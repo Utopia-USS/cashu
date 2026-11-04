@@ -1,24 +1,20 @@
-"""FastAPI app serving the dashboard + JSON API over the local finance DB.
+"""FastAPI JSON API over the local finance DB.
 
 The app is the composition layer. Profile-scoped routes (core accounts and net
 worth, the overview summary, the router of every registered module) are mounted
 under ``/api/p/{slug}/...`` and again under ``/api/...``, where they act on the
-default profile so the legacy static page and existing scripts keep working.
+default profile so existing API clients keep working.
 Platform routes (``/api/system``, ``/api/modules``, ``/api/profiles``) are not
 profile-scoped.
 """
 
 from __future__ import annotations
 
-import logging
 from contextlib import asynccontextmanager
 from decimal import Decimal
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi import Path as PathParam
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 
 from ..core import i18n, modules, networth, security
 from ..core.agent_api import router as agent_router
@@ -28,10 +24,6 @@ from ..core.connectors import api as connectors_api
 from ..core.db import get_session, init_db
 from ..core.workspace import api as workspace_api
 from ..modules.budget import analytics as budget_analytics
-
-STATIC = Path(__file__).parent / "static"
-WEBDIST = Path(__file__).parent / "webdist"  # built React SPA (frontend/ → npm run build)
-
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -126,35 +118,3 @@ for _router in [*_profile_only, *_profile_routers]:
     app.include_router(_router, prefix=PROFILE_PREFIX, dependencies=[Depends(_profile_slug)])
 for _router in _profile_routers:  # legacy aliases: the default profile
     app.include_router(_router, prefix="/api")
-
-
-@app.get("/")
-def index() -> HTMLResponse:
-    # Prefer the built React SPA; fall back to the minimal "build the frontend" page.
-    # The page never carries the API token (PK1: any local process can GET /); the SPA gets
-    # it from the desktop bridge or the `#token=` fragment (core/security.py, frontend
-    # core/token.ts). CASHU_DEV_EMBED_TOKEN=1 embeds it again, for development only.
-    spa = WEBDIST / "index.html"
-    html = (spa if spa.exists() else STATIC / "index.html").read_text(encoding="utf-8")
-    if security.embed_token_enabled():
-        _warn_embedded_token()
-        html = security.inject_token_meta(html, security.get_config().token)
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
-
-
-_embed_warned = False
-
-
-def _warn_embedded_token() -> None:
-    global _embed_warned
-    if not _embed_warned:
-        _embed_warned = True
-        logging.getLogger("cashu.security").warning(
-            "%s=1: the API token is embedded into / and readable by any local client "
-            "(development only)", security.DEV_EMBED_ENV
-        )
-
-
-if (WEBDIST / "assets").is_dir():
-    app.mount("/assets", StaticFiles(directory=WEBDIST / "assets"), name="assets")
-app.mount("/static", StaticFiles(directory=STATIC), name="static")

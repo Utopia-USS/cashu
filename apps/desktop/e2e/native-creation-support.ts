@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // Isolated Electron Create harness. Only a supervised fake-KeyStore host can serve this data dir.
 
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
   existsSync,
@@ -34,12 +34,8 @@ export interface NativeCreationHarness {
 
 export function nativeCreationHarness(): NativeCreationHarness {
   const repo = process.env.E2E_REPO;
-  const python = process.env.E2E_PYTHON;
-  const offlineScript = process.env.E2E_SERVE_OFFLINE;
-  if (!repo || !python || !offlineScript) throw new Error("synthetic_creation_e2e_setup_missing");
+  if (!repo) throw new Error("synthetic_creation_e2e_setup_missing");
   const repoPath: string = repo;
-  const pythonPath: string = python;
-  const offlineScriptPath: string = offlineScript;
   const root = realpathSync(mkdtempSync(join(tmpdir(), "t44-test-")));
   const dataDir = join(root, "data");
   const appPath = join(root, "app");
@@ -54,24 +50,8 @@ export function nativeCreationHarness(): NativeCreationHarness {
     CASHU_LEGACY_DATA_DIR: join(root, "legacy"),
     CASHU_WORKSPACES_DIR: join(root, "workspaces"),
     CASHU_LAUNCH_AGENTS_DIR: join(root, "LaunchAgents"),
-    PYTHON_KEYRING_BACKEND: "memory_keyring.MemoryKeyring",
+    TMPDIR: process.env.TMPDIR ?? tmpdir(),
   };
-  const preflight = spawnSync(
-    pythonPath,
-    ["-c", "from cashu.core import paths; print(paths.data_dir())"],
-    {
-      env: {
-        ...process.env,
-        ...isolation,
-      },
-      encoding: "utf8",
-      timeout: 30_000,
-    },
-  );
-  if (preflight.status !== 0 || preflight.stdout.trim() !== dataDir) {
-    rmSync(root, { recursive: true, force: true });
-    throw new Error("synthetic_creation_python_path_preflight_failed");
-  }
   const service = `cashu-next-test.${randomBytes(16).toString("hex")}`;
   writeFileSync(
     join(appPath, "package.json"),
@@ -161,13 +141,10 @@ export function nativeCreationHarness(): NativeCreationHarness {
       args: [appPath, "--lang=pl-PL"],
       env: launchEnv(dataDir, {
         ...isolation,
-        CASHU_DESKTOP_NATIVE_OVERVIEW: "1",
         CASHU_DESKTOP_ALLOWED_DATA_ROOT: root,
         CASHU_DESKTOP_NO_TRAY: "1",
-        E2E_T44_DATA_DIR: dataDir,
-        E2E_T44_MAIN: join(appDir(), "dist", "main.js"),
-        E2E_PYTHON: pythonPath,
-        E2E_SERVE_OFFLINE: offlineScriptPath,
+        E2E_NATIVE_CREATE_DATA_DIR: dataDir,
+        E2E_NATIVE_CREATE_MAIN: join(appDir(), "dist", "main.js"),
       }),
       timeout: 90_000,
     });

@@ -7,6 +7,7 @@ import {
   alertDistance,
   alertLevelText,
 } from "@cashu/ui-logic/investments/v2/logic";
+import { alertTag } from "@cashu/ui-logic/investments/v2/railLogic";
 export type SignalFilter = "all" | "positive" | "negative";
 /** SQLite stores naive UTC; browser-local Date.parse would hide a fresh undo in Warsaw. */
 export function decisionUndoOpen(asOf: string, createdAt: string): boolean {
@@ -238,6 +239,7 @@ export function alertPresentation(row: ReadySignals["alerts"][number]) {
     state: row.state as AlertLike["state"],
   };
   return {
+    tag: alertTag({ kind: row.kind, tag: row.tag }),
     condition: alertConditionText(source),
     level: alertLevelText(source),
     distance: alertDistance(source),

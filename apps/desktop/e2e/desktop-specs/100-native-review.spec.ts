@@ -1,7 +1,15 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { dashboardWindow, expect, launchDesktop, stopHost, test, until } from "../electron-test.ts";
+import {
+  dashboardWindow,
+  expect,
+  launchDesktop,
+  setPrivacy,
+  stopHost,
+  test,
+  until,
+} from "../electron-test.ts";
 import { readNativeReview } from "../review-support.ts";
 
 const cardHeadings: Readonly<Record<string, string>> = {
@@ -43,8 +51,9 @@ test("native Review preserves its seven-card session, writes actual owner outcom
         host.exitCode !== null,
     );
     expect(host.exitCode, errors).toBeNull();
-    app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_NATIVE_OVERVIEW: "1" } });
+    app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
+    await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
@@ -149,12 +158,13 @@ test("native Review preserves its seven-card session, writes actual owner outcom
     await page.screenshot({ path: screenshot, fullPage: true });
     process.stdout.write(`Review screenshots: ${worldScreenshot} ${screenshot}\n`);
     expect((await readNativeReview(dataDir, vault)).last).toBeNull();
+    // The open native dialog intercepts pointer input. Dispatch the external shell
+    // checkbox event to prove it invalidates the active modal and hides the deck.
     const privacy = page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true });
-    // An external shell change must invalidate an active modal too. Dispatch the real owner handler.
     await privacy.dispatchEvent("click");
     await expect(privacy).toBeChecked();
     await expect(deck).toHaveCount(0);
-    await privacy.uncheck();
+    await setPrivacy(page, false);
     await expect(deck.getByRole("heading", { name: "Świat", exact: true })).toBeVisible();
     const fresh = await readNativeReview(dataDir, vault);
     for (const card of fresh.cards) {

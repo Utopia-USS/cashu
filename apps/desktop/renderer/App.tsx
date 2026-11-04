@@ -36,6 +36,7 @@ function AdditionalCreationOverlay({
   privacy,
   bridge,
   onReady,
+  onComplete,
   onClosed,
   onLifetimeEnded,
   onVaultChanged,
@@ -43,6 +44,7 @@ function AdditionalCreationOverlay({
   privacy: boolean;
   bridge: CreationBridge | null;
   onReady: (locator: NativeCreationReady, sourceVault?: string) => Promise<boolean>;
+  onComplete: (locator: NativeCreationReady) => Promise<void>;
   onClosed: () => void;
   onLifetimeEnded: () => void;
   onVaultChanged: (vault: string) => void;
@@ -61,6 +63,7 @@ function AdditionalCreationOverlay({
         mode="additional"
         bridge={bridge}
         onReady={(locator) => onReady(locator, vault)}
+        onComplete={onComplete}
         onClosed={onClosed}
       />
     </div>
@@ -70,23 +73,49 @@ function AdditionalCreationOverlay({
 export function App({ client }: { client: StoreClient }) {
   const [additional, setAdditional] = useState(false);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
+  const [firstCreation] = useState(() => client.vaults.length === 0);
+  const [firstCompleted, setFirstCompleted] = useState(false);
+  const hostEpoch = useRef(0);
   const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const bridge = creationBridge();
   const lifetime = useRef(new CreationTransition());
   const cancelWait = useRef<(() => void) | null>(null);
+  const verified = useRef<{
+    vaultId: string;
+    profileSlug: string;
+    sourceVault?: string;
+    privacy: boolean;
+    generation: number;
+    hostEpoch: number;
+  } | null>(null);
+  useEffect(() => {
+    let previous = client.connection.getSnapshot();
+    return client.connection.subscribe(() => {
+      const next = client.connection.getSnapshot();
+      if (next !== previous) {
+        previous = next;
+        hostEpoch.current++;
+        verified.current = null;
+      }
+    });
+  }, [client]);
   const [endLifetime] = useState(() => () => {
     lifetime.current.end();
     cancelWait.current?.();
+    verified.current = null;
   });
   const [onVaultChanged] = useState(() => (vault: string) => {
-    if (!lifetime.current.vaultChanged(vault)) cancelWait.current?.();
+    if (!lifetime.current.vaultChanged(vault)) {
+      cancelWait.current?.();
+      verified.current = null;
+    }
   });
   useEffect(() => {
     endLifetime();
     return endLifetime;
   }, [privacy, endLifetime]);
   useEffect(() => {
-    if (!bridge || client.vaults.length === 0) return;
+    if (!bridge || client.vaults.length === 0 || (firstCreation && !firstCompleted)) return;
     let active = true;
     void bridge
       .current()
@@ -98,7 +127,7 @@ export function App({ client }: { client: StoreClient }) {
     return () => {
       active = false;
     };
-  }, [bridge, client]);
+  }, [bridge, client, firstCompleted, firstCreation]);
   const onReady = async (locator: NativeCreationReady, sourceVault?: string): Promise<boolean> => {
     const generation = lifetime.current.begin();
     const active = () => lifetime.current.active(generation) && isIncognito() === privacy;
@@ -152,6 +181,52 @@ export function App({ client }: { client: StoreClient }) {
         return false;
     }
     if (!active()) return false;
+    if (
+      client.connection.getSnapshot() !== "online" &&
+      client.connection.getSnapshot() !== "recovered"
+    )
+      return false;
+    verified.current = {
+      vaultId: locator.vaultId,
+      profileSlug: locator.profileSlug,
+      sourceVault,
+      privacy,
+      generation,
+      hostEpoch: hostEpoch.current,
+    };
+    return true;
+  };
+  const onComplete = async (locator: NativeCreationReady): Promise<void> => {
+    const receipt = verified.current;
+    if (
+      receipt === null ||
+      receipt.vaultId !== locator.vaultId ||
+      receipt.profileSlug !== locator.profileSlug ||
+      receipt.privacy !== isIncognito() ||
+      receipt.hostEpoch !== hostEpoch.current ||
+      !lifetime.current.active(receipt.generation) ||
+      !client.vaults.includes(locator.vaultId)
+    )
+      throw new Error("creation_lifetime_changed");
+    if (receipt.sourceVault !== undefined) {
+      const selectedEntry = client.entry(DEVICE_TARGET, currentVault, undefined);
+      await selectedEntry.ready;
+      const selectedSnapshot = selectedEntry.getSnapshot();
+      if (
+        selectedSnapshot.status !== "value" ||
+        selectedSnapshot.value !== receipt.sourceVault ||
+        !lifetime.current.active(receipt.generation)
+      )
+        throw new Error("creation_source_changed");
+    }
+    if (
+      verified.current !== receipt ||
+      receipt.hostEpoch !== hostEpoch.current ||
+      receipt.privacy !== isIncognito() ||
+      !lifetime.current.active(receipt.generation) ||
+      !client.vaults.includes(locator.vaultId)
+    )
+      throw new Error("creation_lifetime_changed");
     lifetime.current.expect(locator.vaultId);
     let selected: Awaited<ReturnType<typeof client.run>>;
     try {
@@ -162,9 +237,14 @@ export function App({ client }: { client: StoreClient }) {
       lifetime.current.clearExpected();
       throw error;
     }
-    if (selected.kind !== "completed" || !active()) {
+    if (
+      selected.kind !== "completed" ||
+      !lifetime.current.active(receipt.generation) ||
+      receipt.hostEpoch !== hostEpoch.current ||
+      isIncognito() !== receipt.privacy
+    ) {
       lifetime.current.clearExpected();
-      return false;
+      throw new Error("creation_selection_failed");
     }
     setConnectionEpoch((value) => value + 1);
     setAdditional(false);
@@ -173,7 +253,8 @@ export function App({ client }: { client: StoreClient }) {
       params: { slug: locator.profileSlug },
       search: { vault: locator.vaultId },
     });
-    return true;
+    verified.current = null;
+    setFirstCompleted(true);
   };
   return (
     <StoreProvider client={client}>
@@ -192,37 +273,35 @@ export function App({ client }: { client: StoreClient }) {
                 setAdditional(true);
               }}
             >
-              <ProfileProvider
-                fallback={
-                  client.vaults.length === 0 ? (
-                    <CreationScreen
-                      key={`first:${privacy}`}
-                      mode="first"
+              {firstCreation && !firstCompleted ? (
+                <CreationScreen
+                  key={`first:${privacy}`}
+                  mode="first"
+                  bridge={bridge}
+                  onReady={onReady}
+                  onComplete={onComplete}
+                />
+              ) : (
+                <ProfileProvider fallback={<p className="p-6">{S.noProfile}</p>}>
+                  <div aria-hidden={additional || undefined} inert={additional}>
+                    <RouterProvider key={connectionEpoch} router={router} />
+                  </div>
+                  {additional && (
+                    <AdditionalCreationOverlay
+                      privacy={privacy}
                       bridge={bridge}
                       onReady={onReady}
+                      onComplete={onComplete}
+                      onClosed={() => {
+                        lifetime.current.clearExpected();
+                        setAdditional(false);
+                      }}
+                      onLifetimeEnded={endLifetime}
+                      onVaultChanged={onVaultChanged}
                     />
-                  ) : (
-                    <p className="p-6">{S.noProfile}</p>
-                  )
-                }
-              >
-                <div aria-hidden={additional || undefined} inert={additional}>
-                  <RouterProvider key={connectionEpoch} router={router} />
-                </div>
-                {additional && (
-                  <AdditionalCreationOverlay
-                    privacy={privacy}
-                    bridge={bridge}
-                    onReady={onReady}
-                    onClosed={() => {
-                      lifetime.current.clearExpected();
-                      setAdditional(false);
-                    }}
-                    onLifetimeEnded={endLifetime}
-                    onVaultChanged={onVaultChanged}
-                  />
-                )}
-              </ProfileProvider>
+                  )}
+                </ProfileProvider>
+              )}
             </CreationContext>
           </NotificationRouteController>
         </Suspense>

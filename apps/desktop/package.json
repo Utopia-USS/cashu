@@ -49,5 +49,5 @@
     "vite": "^5.4.11"
   },
   "main": "dist/main.js",
-  "description": "cashU desktop shell (Electron). Strangler v1: spawns the Python `cashu serve` as a sidecar; the renderer's store port is relayed by main to the local host (apps/host), started on demand."
+  "description": "cashU native desktop shell (Electron) with a supervised local host and an independent renderer."
 }

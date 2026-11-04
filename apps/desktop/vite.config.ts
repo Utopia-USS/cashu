@@ -16,7 +16,8 @@ export default defineConfig({
   resolve: { extensions: [".mjs", ".js", ".ts", ".tsx", ".json"] },
   build: {
     target: "esnext",
-    outDir: "../../../src/cashu/api/webdist/assets/desktop",
+    // The native renderer is a desktop artifact, independent of Python's retired SPA output.
+    outDir: "../dist/renderer",
     emptyOutDir: true,
     sourcemap: true,
   },

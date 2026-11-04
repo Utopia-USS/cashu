@@ -2,17 +2,14 @@
 // Run from the repo root by `pnpm arch:check` (tools/arch/src/run.ts).
 {
   "$schema": "../../node_modules/.pnpm/knip@6.41.0/node_modules/knip/schema-jsonc.json",
-  // TRANSITIONAL(S55z): the legacy SPA in frontend/ is a workspace member only so that its imports
-  // count as uses of @cashu/i18n and @cashu/ui-logic; its own dead code was never under these checks (nor under
-  // Biome or dependency-cruiser) and is not reported. Drop this with frontend/ once the renderer lives in apps/ (S55z).
+  // Historical SPA reference files are outside the TypeScript workspace graph.
   "ignore": ["frontend/**"],
   "workspaces": {
     // The root holds only tooling; the Python app is not part of the TS monorepo.
     ".": {
       "entry": [],
       "project": [],
-      // The frontend and e2e jobs in ci.yml, and the root vitest's catch-all *.spec.ts pattern, would
-      // pull frontend/ in; each TS workspace below runs its own vitest plugin.
+      // Each TS workspace below runs its own Vitest plugin.
       "github-actions": false,
       "playwright": false,
       "vitest": { "config": ["vitest.config.ts"], "entry": [] }
@@ -70,18 +67,6 @@
       "ignoreBinaries": ["pgrep"],
       // Invoked by scripts/package-macos.mjs through its CLI, not imported as a module.
       "ignoreDependencies": ["electron-builder"]
-    },
-    "frontend": {
-      "entry": [
-        "src/main.tsx",
-        "tests/*.test.mjs",
-        "tests/setup.mjs",
-        "e2e/**/*.ts",
-        "vite.config.ts"
-      ],
-      "project": ["src/**/*.{ts,tsx}", "tests/**/*.mjs", "e2e/**/*.ts", "*.ts"],
-      // The Playwright config is loaded through e2e/ above; node:test needs no plugin.
-      "playwright": false
     },
     "tools/arch": {
       "entry": ["src/run.ts", "src/depcruise.ts", "depcruise.config.cjs"],

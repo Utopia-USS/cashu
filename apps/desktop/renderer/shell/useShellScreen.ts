@@ -1,7 +1,7 @@
 import { intlLocale, type Lang, lang, setLanguage } from "@cashu/i18n";
 import { S as Connection } from "@cashu/i18n/core/hostConnection.strings";
 import { setCurrentVault, setDevicePreferences } from "@cashu/store/device";
-import { legacyNavigation, overviewQueries, profileIdentity } from "@cashu/store/overview";
+import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import {
   isStale,
   useCommand,
@@ -17,7 +17,6 @@ import { S } from "../Desktop.strings.js";
 import { commandFailure, useDurableCommands } from "../screens/useDurableCommand.js";
 
 const queries = overviewQueries({ prices: null });
-const legacyQuery = legacyNavigation();
 const profileSources = new WeakMap<
   StoreClient,
   { inventory: string; source: ReturnType<typeof openProfiles> }
@@ -72,7 +71,6 @@ export function useShellScreen(args: {
   });
   const profile = useQuery(profileIdentity);
   const modules = useQuery(queries.moduleStates);
-  const legacyAvailable = useQuery(legacyQuery);
   const vault = useProfile();
   const switchProfile = useCommand(setCurrentVault);
   const savePreferences = useCommand(setDevicePreferences);
@@ -97,11 +95,6 @@ export function useShellScreen(args: {
     language: lang(),
     locale: intlLocale(),
     enabledModules: modules.filter((module) => module.enabled).map((module) => module.id),
-    canOpenLegacy:
-      legacyAvailable &&
-      profile !== null &&
-      profiles.filter((row) => row.slug === profile.slug).length === 1,
-    onLegacyRefused: () => setToast(S.legacyUnavailable),
     isSwitching: switchProfile.isPending,
     onPrivacyChanged: setIncognito,
     onLanguagePicked: async (value: Lang) => {

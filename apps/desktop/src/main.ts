@@ -58,6 +58,7 @@ import {
   spawnDetachedHost,
   waitForHostLock,
 } from "@cashu/node-host";
+import { legacyDataAdmission, legacySourceRoots } from "@cashu/node-host/admission";
 import { packagedBuildId, readBundleIdentity } from "@cashu/node-host/bundle-identity";
 import { nativeImage, shell } from "electron/common";
 import {
@@ -94,8 +95,7 @@ import { loadNativeNotificationCenter, releaseResponseHandler } from "./notifica
 import type { NotificationResponsePair } from "./notification/responses.js";
 import { ALLOW, EXTERNAL, navigationDecision, redactToken } from "./security.js";
 import { desktopHostService, nextDailyWake } from "./service/runtime.js";
-import { Sidecar, sidecarSpec, verifyDataDir } from "./sidecar.js";
-import { ensurePrivateDir, loadState, rememberedPort, rememberPort, statePath } from "./state.js";
+import { ensurePrivateDir } from "./state.js";
 import { pickLang, t } from "./strings.js";
 import { releaseAuthority } from "./update/authority.js";
 import { startMainUpdateBridge } from "./update/bridge.js";
@@ -124,11 +124,15 @@ const problem = checkDataDir({
 });
 if (problem) fatal(problem);
 
-const spec = app.isPackaged ? null : sidecarSpec(root, env);
-if (spec && env[ENV.skipDataDirCheck] !== "1") {
-  const mismatch = verifyDataDir(spec, dataDir, env);
-  if (mismatch) fatal(mismatch);
-}
+const admissionRoots = legacySourceRoots(
+  dataDir,
+  root,
+  homedir(),
+  env,
+  process.platform,
+  choice.explicit,
+);
+const admission = legacyDataAdmission(admissionRoots);
 
 // ---- log (owner-only, rotated at 1 MB, the token is never written) -----------------------------
 
@@ -179,10 +183,8 @@ function toHandle(window: BrowserWindow): WindowHandle {
 }
 
 const desktop = new DesktopApp({
-  staticEntry: app.isPackaged ? APP_ENTRY : undefined,
-  // TRANSITIONAL(S53b): real-vault identity is not enabled by selecting the native renderer.
-  rendererPath:
-    env.CASHU_DESKTOP_NATIVE_OVERVIEW === "1" ? "/assets/desktop/index.html" : undefined,
+  staticEntry:
+    admission === "no_legacy_sentinel" ? APP_ENTRY : `${APP_ENTRY}?admission=${admission}`,
   lang,
   logFile,
   hasSingleInstanceLock: hasLock,
@@ -215,19 +217,8 @@ const desktop = new DesktopApp({
     void window.loadURL(loadingUrl);
     return toHandle(window);
   },
-  createSidecar: (onExit) => {
-    if (!spec) throw new Error("Packaged Python awaits S62 admission");
-    return new Sidecar({
-      spec,
-      dataDir,
-      baseEnv: env,
-      preferredPort: rememberedPort(loadState(statePath(dataDir))),
-      onLog: (line) => log(`sidecar: ${line}`),
-      onExit: (message) => {
-        log(message);
-        onExit(message);
-      },
-    });
+  createSidecar: () => {
+    throw new Error("legacy_ui_unavailable");
   },
   createTray(items, onAction) {
     if (env[ENV.noTray] === "1") return null;
@@ -247,7 +238,7 @@ const desktop = new DesktopApp({
     return { destroy: () => tray.destroy() };
   },
   quit: () => app.quit(),
-  rememberPort: (port) => rememberPort(statePath(dataDir), port),
+  rememberPort: () => {},
 });
 
 /** Pin the window to the app's own origin (PK5): links elsewhere open in the browser or are dropped. */
@@ -275,8 +266,6 @@ function openExternal(url: string): void {
   shell.openExternal(url).catch(() => log("could not open a link in the browser"));
 }
 
-// ---- token bridge (PK1): the page asks, the main process answers for the app's origin only ------
-
 /** The sender is the main window's top frame (no iframe, no other window). */
 function fromMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): string | null {
   const frame = event.senderFrame;
@@ -288,19 +277,8 @@ function fromMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEven
   return ok ? frame.url : null;
 }
 
-// TRANSITIONAL(S55z): the preload asks (synchronously, before page scripts run) whether to expose
-// the `window.pywebview` shim at all; only the app's own origin gets it.
 ipcMain.on("cashu:bridge-allowed", (event) => {
   event.returnValue = desktop.exposesBridgeTo(fromMainFrame(event));
-});
-ipcMain.on("cashu:legacy-bridge-allowed", (event) => {
-  event.returnValue = !app.isPackaged && desktop.exposesBridgeTo(fromMainFrame(event));
-});
-
-ipcMain.handle("cashu:token", (event) => {
-  const token = desktop.tokenFor(fromMainFrame(event));
-  if (token === null) log("token request from a page outside the app refused");
-  return token;
 });
 
 // Registration belongs to the OS, not the host worker snapshot. The page can request only a
@@ -324,7 +302,7 @@ ipcMain.handle("cashu:service-set-enabled", async (event, enabled: unknown) => {
   if (
     !desktop.exposesBridgeTo(fromMainFrame(event)) ||
     typeof enabled !== "boolean" ||
-    !hostAdmissionOpen
+    !nativeAdmissionOpen()
   ) {
     return { state: "unavailable" };
   }
@@ -362,6 +340,8 @@ const HOST_BUILD = app.isPackaged
     })()
   : "desktop-dev";
 let hostAdmissionOpen = true;
+const nativeAdmissionOpen = () =>
+  hostAdmissionOpen && legacyDataAdmission(admissionRoots) === "no_legacy_sentinel";
 let updaterBridge: Awaited<ReturnType<typeof startMainUpdateBridge>> | null = null;
 let updaterController: ReturnType<typeof createElectronUpdateController> | null = null;
 let updateHoldLock: HostLock | null = null;
@@ -517,7 +497,7 @@ function creationIpc(method: "prepare" | "commit" | "inspect" | "current") {
   }[method];
   ipcMain.handle(`cashu:creation-${method}`, async (event, raw: unknown) => {
     if (!desktop.exposesBridgeTo(fromMainFrame(event))) throw new Error("creation_unavailable");
-    if (!hostAdmissionOpen) throw new Error("creation_unavailable");
+    if (!nativeAdmissionOpen()) throw new Error("creation_unavailable");
     const parsedParams = paramsSchema.safeParse(raw);
     if (!parsedParams.success) throw new Error("creation_invalid_params");
     const connection = (
@@ -566,7 +546,7 @@ function devicesIpc(
     revokeCancel: revokeCancelResultSchema,
   }[method];
   ipcMain.handle(`cashu:devices-${method}`, async (event, raw: unknown) => {
-    if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !hostAdmissionOpen)
+    if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen())
       throw new Error("devices_unavailable");
     const params = paramsSchema.safeParse(raw);
     if (!params.success) throw new Error("devices_invalid_params");
@@ -613,7 +593,7 @@ function pairingIpc(method: "invite" | "confirm" | "inspect" | "cancel") {
     cancel: pairingCancelResultSchema,
   }[method];
   ipcMain.handle(`cashu:pairing-${method}`, async (event, raw: unknown) => {
-    if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !hostAdmissionOpen)
+    if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen())
       throw new Error("pairing_unavailable");
     const params = paramsSchema.safeParse(raw);
     if (!params.success) throw new Error("pairing_invalid_params");
@@ -646,7 +626,7 @@ pairingIpc("inspect");
 pairingIpc("cancel");
 
 function startHost(): void {
-  if (!hostAdmissionOpen) throw new Error("host admission closed");
+  if (!nativeAdmissionOpen()) throw new Error("host admission closed");
   if (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY))) {
     throw new Error("bundled host unavailable");
   }
@@ -672,7 +652,7 @@ async function resolveNotificationClick(
   pair: NotificationResponsePair,
 ): Promise<ResolvedNotification | null> {
   try {
-    if (!hostAdmissionOpen) return null;
+    if (!nativeAdmissionOpen()) return null;
     const connection = (
       await connectOrStart({
         dataDir,
@@ -719,7 +699,7 @@ const relays = new HostRelays(
     new HostRelay({
       port,
       connect: async (onStarting) => {
-        if (!hostAdmissionOpen) throw new Error("host admission closed");
+        if (!nativeAdmissionOpen()) throw new Error("host admission closed");
         return (
           await connectOrStart({
             dataDir,
@@ -742,7 +722,7 @@ const watchedPages = new Set<number>();
 // one end and relays it to its own host session for that frame; the other end goes back to that frame.
 ipcMain.on("cashu:store-port", (event) => {
   const frame = event.senderFrame;
-  if (!hostAdmissionOpen || frame === null || !desktop.exposesBridgeTo(fromMainFrame(event))) {
+  if (!nativeAdmissionOpen() || frame === null || !desktop.exposesBridgeTo(fromMainFrame(event))) {
     log("store port request from a page outside the app refused");
     return;
   }
@@ -818,8 +798,13 @@ if (!hasLock) {
   app.quit();
 } else {
   app.whenReady().then(async () => {
+    protocol.handle("app", (request) =>
+      appAssetResponse(
+        request.url,
+        app.isPackaged ? process.resourcesPath : join(root, "apps", "desktop", "dist"),
+      ),
+    );
     if (app.isPackaged) {
-      protocol.handle("app", (request) => appAssetResponse(request.url, process.resourcesPath));
       const bundle = dirname(dirname(dirname(process.execPath)));
       const identity = readBundleIdentity(bundle);
       const authority = releaseAuthority(

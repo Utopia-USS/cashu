@@ -1,6 +1,4 @@
-// An explicit isolated synthetic host for Electron store-port tests. Ordinary desktop startup has no
-// native vault provider until the production KeyStore factory is bound, so these tests never ask it
-// to manufacture a demo vault.
+// An explicit isolated synthetic host for Electron store-port tests. The real KeyStore is never used.
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -56,12 +54,25 @@ export async function startSyntheticHost(
   try {
     await new Promise<void>((resolve, reject) => {
       let output = "";
+      const timeout = setTimeout(
+        () => reject(new Error("synthetic host did not become ready")),
+        15_000,
+      );
       child.stdout?.on("data", (chunk: Buffer) => {
         output += chunk.toString();
-        if (output.includes("ready")) resolve();
+        if (output.includes("ready")) {
+          clearTimeout(timeout);
+          resolve();
+        }
       });
-      child.once("exit", (code) => reject(new Error(`synthetic host exited (${code})`)));
-      child.once("error", reject);
+      child.once("exit", (code) => {
+        clearTimeout(timeout);
+        reject(new Error(`synthetic host exited (${code})`));
+      });
+      child.once("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   } catch (error) {
     await stop();

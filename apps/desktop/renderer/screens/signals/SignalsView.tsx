@@ -685,7 +685,17 @@ export function SignalsDialogView({ state }: { state: SignalsScreenState }) {
             <GroupList state={state} scope="watched" />
           </div>
         )}
-        <footer className="border-t border-border pt-3">
+        <footer className="flex flex-wrap gap-2 border-t border-border pt-3">
+          <button
+            type="button"
+            className={button}
+            onClick={() => {
+              state.setDialogOpen(false);
+              state.options.onOpenPage?.("watchlist");
+            }}
+          >
+            {G.watchlist}
+          </button>
           <button
             type="button"
             className={button}
@@ -830,6 +840,11 @@ function AlertsPage({ state, editor }: { state: SignalsScreenState; editor?: Rea
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <strong>{row.title}</strong>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs ${row.status === "triggered" ? "bg-positive-bg text-positive" : row.status === "active" ? "bg-info-bg text-accent" : "bg-surface-sunken text-fg-muted"}`}
+                          >
+                            {alert.tag}
+                          </span>
                           <span className="rounded-sm border border-border px-1.5 py-0.5 text-xs">
                             {status(row.status)}
                           </span>

@@ -622,11 +622,9 @@ function Drawer({
 export interface BudgetViewProps {
   state: BudgetScreenState;
   onTabPicked(tab: BudgetScreenState["tab"]): void;
-  canOpenLegacy: boolean;
-  onLegacyOpened(): void;
 }
 /** Three budget tabs over live, vault-scoped native queries and commands. */
-export function BudgetView({ state, onTabPicked, canOpenLegacy, onLegacyOpened }: BudgetViewProps) {
+export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
   return (
     <main
       className="mx-auto flex max-w-6xl flex-col gap-6 p-6"
@@ -683,11 +681,6 @@ export function BudgetView({ state, onTabPicked, canOpenLegacy, onLegacyOpened }
       {state.message !== null && (
         <div role="status" className="rounded-md bg-info-bg p-3">
           {state.message}
-          {state.message === B.syncUnavailable && canOpenLegacy && (
-            <button type="button" className={button} onClick={onLegacyOpened}>
-              {B.legacy}
-            </button>
-          )}
         </div>
       )}
       {state.tab === "expenses" && <Spending state={state} />}
@@ -832,14 +825,6 @@ export function BudgetView({ state, onTabPicked, canOpenLegacy, onLegacyOpened }
           </ol>
           <p>{B.importUnavailable}</p>
           <div className="mt-4 flex gap-3">
-            <button
-              type="button"
-              className={button}
-              disabled={!canOpenLegacy}
-              onClick={onLegacyOpened}
-            >
-              {B.legacy}
-            </button>
             <button type="button" className={button} onClick={() => state.setImportOpen(false)}>
               {B.close}
             </button>

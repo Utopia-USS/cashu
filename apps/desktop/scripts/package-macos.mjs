@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkedRendererArtifact, rendererArtifactRoot } from "./renderer-artifact.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const build = join(root, "build", "t46");
@@ -59,7 +60,7 @@ if (reuseDesktop) {
   if (
     !existsSync(join(root, "apps/desktop/dist/main.js")) ||
     !existsSync(join(root, "apps/desktop/dist/preload.cjs")) ||
-    !existsSync(join(root, "src/cashu/api/webdist/assets/desktop/index.html"))
+    !existsSync(join(rendererArtifactRoot(root), "index.html"))
   )
     throw new Error("Built desktop inputs are missing");
 } else run("pnpm", ["--filter", "@cashu/desktop", "build"]);
@@ -70,8 +71,7 @@ copyFileSync(
   join(resources, "notify-catalog-v1.json"),
 );
 cpSync(python, join(resources, "python"), { recursive: true, force: true, verbatimSymlinks: true });
-const renderer = join(root, "src/cashu/api/webdist/assets/desktop");
-if (!existsSync(join(renderer, "index.html"))) throw new Error("Native renderer build missing");
+const renderer = checkedRendererArtifact(root);
 cpSync(renderer, join(resources, "renderer"), {
   recursive: true,
   force: true,

@@ -6,26 +6,28 @@
 //  2. the host dies right after committing a rename, before its reply (apps/host's fault host); the
 //     original result stays unknown until a read-only same-key lookup proves completion.
 // The vault database is read afterwards (host stopped) to count the applied events. Own shell, own data
-// dir under ~/cashu-lab (synthetic demo vault, never a real one), removed afterwards with every host.
+// dir under the isolated E2E root (synthetic demo vault), removed afterwards with every host.
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { userInfo } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { Page } from "@playwright/test";
 import {
   alive,
-  dashboardWindow,
   expect,
   hostPid,
   launchDesktop,
   stopHost,
-  storeHarnessScript,
+  storeHarnessWindow,
   test,
   until,
 } from "../electron-test.ts";
 import { type SyntheticHost, startSyntheticHost } from "../synthetic-host.ts";
 
-const LAB_TMP = join(userInfo().homedir, "cashu-lab", "tmp");
+function isolatedRoot(): string {
+  const root = process.env.E2E_ROOT;
+  if (!root) throw new Error("isolated E2E root is absent");
+  return join(root, "native-host");
+}
 const NEW_NAME = "Demo po restarcie";
 
 type Live = {
@@ -79,15 +81,15 @@ interface ShellRun {
 }
 
 async function withShell(name: string, run: ShellRun): Promise<void> {
-  mkdirSync(LAB_TMP, { recursive: true });
-  const dataDir = mkdtempSync(join(LAB_TMP, `s56b-${name}-`));
+  const root = isolatedRoot();
+  mkdirSync(root, { recursive: true });
+  const dataDir = mkdtempSync(join(root, `s56b-${name}-`));
   let undo: () => Promise<void> = async () => {};
   try {
     if (run.before) undo = await run.before(dataDir);
-    const app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_ALLOWED_DATA_ROOT: LAB_TMP } });
+    const app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_ALLOWED_DATA_ROOT: root } });
     try {
-      const { page } = await dashboardWindow(app);
-      await page.evaluate(await storeHarnessScript());
+      const page = await storeHarnessWindow(app);
       await run.during(page, dataDir);
     } finally {
       await app.close().catch(() => {});

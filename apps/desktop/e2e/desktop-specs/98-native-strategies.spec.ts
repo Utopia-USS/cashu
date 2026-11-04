@@ -1,7 +1,15 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { dashboardWindow, expect, launchDesktop, stopHost, test, until } from "../electron-test.ts";
+import {
+  dashboardWindow,
+  expect,
+  launchDesktop,
+  setPrivacy,
+  stopHost,
+  test,
+  until,
+} from "../electron-test.ts";
 import { seedNativeStrategyDocuments } from "../strategies-support.ts";
 
 test("native Strategies reads actual generated files, virtualizes source and suppresses prose in privacy mode", async () => {
@@ -32,8 +40,9 @@ test("native Strategies reads actual generated files, virtualizes source and sup
         host.exitCode !== null,
     );
     expect(host.exitCode, errors).toBeNull();
-    app = await launchDesktop({ dataDir, env: { CASHU_DESKTOP_NATIVE_OVERVIEW: "1" } });
+    app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
+    await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
@@ -65,10 +74,10 @@ test("native Strategies reads actual generated files, virtualizes source and sup
     });
     await expect(source).toContainText("synthetic line 140");
     expect(await source.locator("pre").count()).toBeLessThan(50);
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).check();
+    await setPrivacy(page, true);
     await expect(page.getByText("Synthetic reference", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Synthetic private description", { exact: true })).toHaveCount(0);
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).uncheck();
+    await setPrivacy(page, false);
     await expect(page.getByTestId("native-strategies")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Synthetic reference", exact: true }),

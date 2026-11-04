@@ -181,6 +181,35 @@ export function AlertEditorView({ state }: { state: AlertEditorState }) {
             </label>
           )}
         </form.Field>
+        <form.Field name="tag">
+          {(field) => (
+            <label>
+              {G.alertTag}
+              <input
+                value={field.state.value}
+                maxLength={24}
+                list="signals-alert-tags"
+                onChange={(event) => field.handleChange(event.target.value)}
+                aria-describedby="signals-alert-tag-hint"
+                className="block w-full rounded-sm border border-border bg-surface p-2"
+              />
+              <span id="signals-alert-tag-hint" className="block text-caption text-fg-muted">
+                {G.alertTagHint}
+              </span>
+              <datalist id="signals-alert-tags">
+                {[
+                  ...new Set(
+                    data.alerts.map((row) => row.tag).filter((tag): tag is string => !!tag),
+                  ),
+                ]
+                  .sort()
+                  .map((tag) => (
+                    <option key={tag} value={tag} />
+                  ))}
+              </datalist>
+            </label>
+          )}
+        </form.Field>
         <form.Field name="note">
           {(field) => (
             <label>

@@ -7,7 +7,8 @@ import { createProposal } from "../../core/proposal-commands.js";
 import { pendingProposals } from "../../core/proposal-execution.js";
 import { watchQuery } from "../../query.js";
 import { createThesis, updateThesis } from "../commands/journal.js";
-import { applyRaw, raw, rawGid, stock, vault } from "../commands/testing/fixtures.js";
+import { addManualTransaction } from "../commands/manual.js";
+import { applyRaw, brokerage, raw, rawGid, stock, vault } from "../commands/testing/fixtures.js";
 import { addToWatchlist } from "../commands/watchlist.js";
 import { strategySnapshot } from "../desktop/sources.js";
 import { signalsOwnerCommands } from "../desktop-signals/commands.js";
@@ -160,6 +161,86 @@ describe("native Review owner and tracked projection", () => {
         thesis: "Current",
         invalidation: "Current invalidation",
       });
+    } finally {
+      v.store.close();
+    }
+  });
+  it("projects one carried rail subject from two open signals while preserving the full signal count", () => {
+    const { v, read, instrument } = fixture();
+    try {
+      applyRaw(v, [raw.signalOpened(rawGid(841), "first", { instrument })]);
+      v.env.advance(60_000);
+      applyRaw(v, [raw.signalOpened(rawGid(842), "second", { instrument })]);
+      applyRaw(v, [
+        { type: "signal.snoozed", gid: rawGid(841), data: { until: "2026-11-03T12:00:00Z" } },
+      ]);
+      const now = "2026-11-02T12:01:00Z";
+      const lastReviewAt = "2026-11-01T12:00:00Z";
+      const result = readReviewDecide(read, {
+        now,
+        since: lastReviewAt,
+        lastReviewAt,
+        includeSnoozed: true,
+        limit: Number.MAX_SAFE_INTEGER,
+        account: null,
+        research: researchDigest(read, {
+          now: viewInstant(toStorage(now)),
+          since: viewInstant(toStorage(lastReviewAt)),
+        }),
+      });
+      expect(result.total).toBe(2);
+      expect(result.items.filter((item) => item.kind === "subject")).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        kind: "subject",
+        fresh: false,
+      });
+      expect(new Set(result.items[0]?.signals)).toEqual(new Set([rawGid(841), rawGid(842)]));
+      expect(result.items[0]?.seenAt).toBe(Date.parse("2026-10-31T12:01:00Z"));
+      expect(result.items[0]?.snoozedUntil).toBeNull();
+    } finally {
+      v.store.close();
+    }
+  });
+  it("keeps portfolio-wide and watched-only signals under an account filter but excludes holdings elsewhere", () => {
+    const { v, read } = fixture();
+    try {
+      const selected = brokerage(v, "Selected");
+      const elsewhere = brokerage(v, "Elsewhere");
+      const held = stock(v, "HELD", "PL0000000102");
+      const watched = stock(v, "WATCH", "PL0000000103");
+      applyRaw(v, [raw.watchAdded(v, held), raw.watchAdded(v, watched)]);
+      v.value(addManualTransaction, {
+        account: elsewhere,
+        type: "deposit",
+        tradeDate: "2026-10-30",
+        cashAmount: "100",
+      });
+      v.value(addManualTransaction, {
+        account: elsewhere,
+        instrument: held,
+        type: "buy",
+        tradeDate: "2026-10-30",
+        quantity: "1",
+        price: "10",
+      });
+      applyRaw(v, [
+        raw.signalOpened(rawGid(851), "held", { instrument: held }),
+        raw.signalOpened(rawGid(852), "watched", { instrument: watched }),
+        raw.signalOpened(rawGid(853), "portfolio"),
+      ]);
+      const now = "2026-10-31T12:01:00Z";
+      const result = readReviewDecide(read, {
+        now,
+        since: "2026-10-24T00:00:00Z",
+        today: "2026-10-31",
+        account: selected,
+        research: researchDigest(read, { now: viewInstant(toStorage(now)), since: null }),
+      });
+      expect(result.total).toBe(2);
+      expect(result.items.flatMap((item) => item.signals)).not.toContain(rawGid(851));
+      expect(result.items.flatMap((item) => item.signals)).toEqual(
+        expect.arrayContaining([rawGid(852), rawGid(853)]),
+      );
     } finally {
       v.store.close();
     }

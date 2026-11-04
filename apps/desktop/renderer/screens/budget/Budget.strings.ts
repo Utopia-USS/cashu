@@ -92,20 +92,19 @@ export const B = catalog({
   import: { pl: "Import", en: "Import" },
   sync: { pl: "Synchronizuj bank", en: "Sync bank" },
   importUnavailable: {
-    pl: "Import pliku w tym widoku jest jeszcze niedostępny. Otwórz import w poprzednim widoku.",
-    en: "File import is not yet available in this view. Open import in the previous view.",
+    pl: "Import plików nie jest jeszcze dostępny w aplikacji.",
+    en: "File import is not yet available in the app.",
   },
   syncUnavailable: {
-    pl: "Synchronizacja banku i konektorów jest dostępna w poprzednim widoku.",
-    en: "Bank and connector sync is available in the previous view.",
+    pl: "Synchronizacja banków i konektorów nie jest jeszcze dostępna w aplikacji.",
+    en: "Bank and connector sync is not yet available in the app.",
   },
-  legacy: { pl: "Otwórz poprzedni widok", en: "Open previous view" },
   source: { pl: "Źródło", en: "Source" },
   file: { pl: "Plik", en: "File" },
   preview: { pl: "Podgląd", en: "Preview" },
   done: { pl: "Gotowe", en: "Done" },
   unsupported: {
-    pl: "Ta funkcja nie jest jeszcze dostępna w tym widoku.",
-    en: "This feature is not yet available in this view.",
+    pl: "Ta funkcja nie jest jeszcze dostępna.",
+    en: "This feature is not yet available.",
   },
 });

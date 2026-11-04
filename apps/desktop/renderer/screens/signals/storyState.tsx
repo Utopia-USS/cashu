@@ -145,6 +145,7 @@ export function signalsStorySnapshot(): ReadySignals {
   return {
     status: "ready",
     asOf: now,
+    lastReviewAt: null,
     signals: [signal],
     open: [signal],
     alerts: [alert],
@@ -212,6 +213,7 @@ export function useSignalsStoryState(privacy = false): SignalsScreenState {
     data,
     privacy,
     today: "2026-11-03",
+    displayNow: "2026-11-03T12:00:00.000Z",
     groups,
     filter: "all",
     cursor: episode,

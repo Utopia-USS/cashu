@@ -1,10 +1,9 @@
 import { D } from "@cashu/domain";
 import type { ResearchScreenSnapshot } from "@cashu/store/investments/research-screen";
 import { Amount, DateText, Percent } from "@cashu/ui";
-import { researchCandidateRail, researchHomeModel } from "./presentation.js";
+import { researchHomeModel } from "./presentation.js";
 import { S } from "./Research.strings.js";
 import { ResearchValuationFacts } from "./ResearchValuationFacts.js";
-import { useResearchCandidatesRail } from "./useResearchCandidatesRail.js";
 
 const card = "rounded-lg border border-border bg-surface-raised p-4";
 const button =
@@ -162,128 +161,6 @@ function ResearchHomeView({
           )}
         </>
       )}
-    </section>
-  );
-}
-
-/** The Home candidate rail uses actual accepted/dismissed candidate notes. */
-export function ResearchCandidatesRail({
-  data,
-  privacy,
-  onOpenResearch,
-  onOpenNote,
-}: {
-  data: ResearchScreenSnapshot;
-  privacy: boolean;
-  onOpenResearch(tab?: string): void;
-  onOpenNote(gid: string): void;
-}) {
-  const actions = useResearchCandidatesRail();
-  const candidates = researchCandidateRail(data);
-  if (candidates === null) return null;
-  return (
-    <ResearchCandidatesView
-      candidates={candidates}
-      privacy={privacy}
-      onOpenResearch={onOpenResearch}
-      onOpenNote={onOpenNote}
-      actions={actions}
-    />
-  );
-}
-
-function ResearchCandidatesView({
-  candidates,
-  privacy,
-  onOpenResearch,
-  onOpenNote,
-  actions,
-}: {
-  candidates: NonNullable<ReturnType<typeof researchCandidateRail>>;
-  privacy: boolean;
-  onOpenResearch(tab?: string): void;
-  onOpenNote(gid: string): void;
-  actions: ReturnType<typeof useResearchCandidatesRail>;
-}) {
-  return (
-    <section className={card}>
-      <div className="flex justify-between">
-        <h2 className="font-strong">{S.candidates}</h2>
-        <button type="button" className={button} onClick={() => onOpenResearch("candidates")}>
-          {S.allCandidates}
-        </button>
-      </div>
-      {actions.notice && <p role="status">{actions.notice}</p>}
-      {privacy ? (
-        <p>{S.hidden}</p>
-      ) : candidates.length === 0 ? (
-        <p>{S.noCandidates}</p>
-      ) : (
-        <ul className="mt-3 grid gap-2">
-          {candidates.map(({ note, day, facts }) => (
-            <li key={note.id}>
-              <button
-                type="button"
-                className="text-left text-accent underline"
-                onClick={() => onOpenNote(note.id)}
-              >
-                {note.title}
-              </button>
-              <span className="ml-2 text-sm text-text-muted">
-                <DateText value={day} />
-              </span>
-              <div className="mt-1 text-sm text-text-muted">
-                {facts.candidateName ?? facts.candidateSymbol}
-                {facts.candidateName && facts.candidateSymbol ? ` (${facts.candidateSymbol})` : ""}
-                {note.created_by === "agent" ? ` · ${S.agentNote}` : ""}
-              </div>
-              <details className="mt-2 text-sm">
-                <summary>{S.details}</summary>
-                {facts.context && (
-                  <p>
-                    {S.context}: {facts.context}
-                  </p>
-                )}
-                {facts.criteria.length > 0 && (
-                  <ul className="list-disc pl-5">
-                    {facts.criteria.map((criterion) => (
-                      <li key={criterion.text}>
-                        {criterion.met ? S.met : S.notMet}: {criterion.text}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </details>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  className={button}
-                  disabled={actions.busy || note.instrument_id === null}
-                  onClick={() => actions.watch(note.id, note.instrument_id)}
-                >
-                  {S.watch}
-                </button>
-                <button
-                  type="button"
-                  className={button}
-                  disabled={actions.busy}
-                  onClick={() => {
-                    void actions.dismiss(note.id);
-                  }}
-                >
-                  {S.dismiss}
-                </button>
-              </div>
-              {note.instrument_id === null && (
-                <p className="text-sm text-text-muted">{S.resolutionUnavailable}</p>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      <span className="sr-only">
-        <Amount value={D(String(candidates.length))} fractionDigits={0} />
-      </span>
     </section>
   );
 }

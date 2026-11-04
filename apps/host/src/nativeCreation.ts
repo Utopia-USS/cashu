@@ -458,6 +458,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
       const vaults = ensureChild(dataDir, "vaults");
       const root = newChild(vaults, vaultId);
       const log = newChild(root, "log");
+      newChild(root, "strategy");
       privateNewFile(
         join(root, NATIVE_CERTIFICATES),
         canonicalArtifact({

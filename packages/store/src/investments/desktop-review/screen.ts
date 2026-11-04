@@ -144,7 +144,18 @@ function assemble(read: Read, args: ReviewScreenArgs, sources: ReviewScreenSourc
     now: utcIso(clock.now),
     since: digest.since_at,
     account: args.account ?? null,
+    today: clock.today,
     research: research.value,
+  });
+  const railDecide = readReviewDecide(read, {
+    now: utcIso(clock.now),
+    since: digest.since_at,
+    account: args.account ?? null,
+    today: clock.today,
+    research: research.value,
+    includeSnoozed: true,
+    lastReviewAt: lastReview(read, "investments")?.doneAt ?? null,
+    limit: Number.MAX_SAFE_INTEGER,
   });
   const week = session.computed === null ? null : perf.performanceView(session.computed, "1m");
   const year = session.computed === null ? null : perf.performanceView(session.computed, "1y");
@@ -212,6 +223,7 @@ function assemble(read: Read, args: ReviewScreenArgs, sources: ReviewScreenSourc
         dismissed: note.dismissed,
       })),
     decide,
+    railDecide,
     macro: session.macro,
     macroChanges,
     riskBrief:

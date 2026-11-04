@@ -1,12 +1,10 @@
-// Playwright against the Electron window (`_electron`): the repo's e2e smoke specs plus the desktop
-// specs, run on a temp demo data dir. Run: `pnpm --filter @cashu/desktop build && pnpm --filter @cashu/desktop e2e`
-// (one spec: `pnpm --filter @cashu/desktop e2e 01-settings`). Needs the built SPA (frontend/ `npm run build`).
+// Playwright against the native Electron window and synthetic local host.
+// Run: `pnpm --filter @cashu/desktop build && pnpm --filter @cashu/desktop e2e`.
 import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
 import { GENERATED, prepareSpecs } from "./prepare-specs.ts";
 
-// Workers load this file again: only the main process (re)builds the tree.
-const specs = process.env.TEST_WORKER_INDEX ? join(GENERATED, "specs") : prepareSpecs();
+const specs = prepareSpecs();
 
 export default defineConfig({
   testDir: specs,

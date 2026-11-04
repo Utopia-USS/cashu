@@ -36,6 +36,12 @@ const state = {
   stage: null,
   refusal: null,
   checkingStatus: false,
+  workspaceEnabled: true,
+  workspacePath: "",
+  routinePermissions: false,
+  workspaceStatus: null,
+  workspaceError: null,
+  workspaceInspected: false,
   canClose: true,
   onClosed() {},
   onNameChanged() {},
@@ -43,6 +49,12 @@ const state = {
   onDeviceAliasChanged() {},
   onModuleToggled() {},
   onPrivacyPicked() {},
+  onWorkspaceEnabled() {},
+  onWorkspacePathChanged() {},
+  onRoutinePermissionsChanged() {},
+  onWorkspaceApply() {},
+  onWorkspaceInspect() {},
+  onWorkspaceSkip() {},
   onNext() {},
   onBack() {},
   onPrepare() {},
@@ -68,3 +80,24 @@ export const Unavailable = { args: { state: { ...state, phase: "unavailable" } }
 export const Pending = { args: { state: { ...state, phase: "pending", stage: "history" } } };
 export const Unknown = { args: { state: { ...state, phase: "unknown", stage: "admission" } } };
 export const Ready = { args: { state: { ...state, phase: "ready" } } };
+export const WorkspaceUnavailable = {
+  args: { state: { ...state, phase: "workspace_unavailable" } },
+};
+export const WorkspaceReady = {
+  args: {
+    state: {
+      ...state,
+      phase: "workspace_ready",
+      workspaceInspected: true,
+      workspaceStatus: {
+        availability: "ready",
+        path: "/tmp/synthetic-workspace",
+        defaultPath: "/tmp/synthetic-workspace",
+        configured: false,
+        upToDate: false,
+        routinePermissions: false,
+      },
+    },
+  },
+};
+export const WorkspaceUnknown = { args: { state: { ...state, phase: "workspace_unknown" } } };

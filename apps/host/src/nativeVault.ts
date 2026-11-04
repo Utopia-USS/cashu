@@ -41,6 +41,7 @@ import { SqlAttemptJournal } from "./attemptJournal.js";
 import type { WriterLease } from "./lease.js";
 import { HostLanCarrier } from "./pairing/carrier.js";
 import { type PairingAttempt, PairingJournal } from "./pairing/journal.js";
+import type { StrategyDirectoryAuthority } from "./proposals/strategyFiles.js";
 import { WriteQueue } from "./queue.js";
 import {
   assertReplayedDeviceAuthority,
@@ -141,6 +142,8 @@ export interface NativeVaultSession {
   isCurrent(): boolean;
   /** Read/pull may continue while this denies new writes and external effects. */
   canRunSideEffects(): boolean;
+  strategyDirectoryAuthority(): StrategyDirectoryAuthority | null;
+  canFetchPublicMarket(): boolean;
   isSyncing(): boolean;
   onSyncSettled(listener: () => void): () => void;
   /** Serialize inbound fold and push with UI commands on this vault. */
@@ -537,6 +540,43 @@ export async function openNativeVault(
             pairingJournal.pending(entry.vaultId).length === 0 &&
             activeEngine.writeAdmission() === "ready"
           );
+        } catch {
+          return false;
+        }
+      },
+      strategyDirectoryAuthority: () => {
+        if (!isCurrent()) return null;
+        try {
+          const rootInfo = lstatSync(root);
+          const directory = existing(join(root, "strategy"), "directory");
+          const strategyInfo = lstatSync(directory);
+          if (
+            !rootInfo.isDirectory() ||
+            rootInfo.isSymbolicLink() ||
+            (rootInfo.mode & 0o077) !== 0 ||
+            (strategyInfo.mode & 0o077) !== 0
+          )
+            return null;
+          return { vault: entry.vaultId, privateRoot: root, directory, isCurrent };
+        } catch {
+          return null;
+        }
+      },
+      canFetchPublicMarket: () => {
+        if (!isCurrent() || activeEngine.writeAdmission() !== "ready") return false;
+        try {
+          const transport = activeEngine.leaseTransport();
+          return devices.holdsLease(activeCandidate.devices.lease, {
+            me: entry.deviceId,
+            now: now(),
+            lastPullAt: transport.kind === "bounded" ? transport.lastPullAt : undefined,
+            transport,
+            own: () => undefined,
+            firstSeen: (eid) => activeCandidate.devices.firstSeen(eid),
+            // The host has no persisted clock-warning authority yet. A recent pull and write
+            // admission do not prove the HLC clock is healthy, so fetch stays unavailable.
+            clockOk: false,
+          });
         } catch {
           return false;
         }

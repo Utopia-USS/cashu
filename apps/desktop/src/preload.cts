@@ -1,11 +1,6 @@
 /// <reference types="node" />
 // Sandboxed preload (CommonJS: a sandboxed preload cannot be an ES module).
 //
-// TRANSITIONAL(S55z): `window.pywebview.api.token()` is a shim for the unmodified legacy SPA
-// (frontend/src/core/token.ts asks it, and `"pywebview" in window` tells it that it runs in the
-// desktop window); TS screens use the typed preload bridge (S55a) and S55z removes the shim with the SPA. Until then it is exposed only when
-// the main process confirms (from the sending frame's URL, not from anything the page says) that
-// this frame shows the app's own origin, and the token itself is again checked on every call.
 import electron = require("electron");
 
 /** The page's window as this preload uses it (the shell's tsconfig has no DOM lib). */
@@ -71,14 +66,6 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
       return () => electron.ipcRenderer.removeListener("cashu:notification-target", listener);
     },
   });
-  if (electron.ipcRenderer.sendSync("cashu:legacy-bridge-allowed") === true) {
-    electron.contextBridge.exposeInMainWorld("pywebview", {
-      api: {
-        token: (): Promise<string | null> => electron.ipcRenderer.invoke("cashu:token"),
-      },
-    });
-  }
-
   // Store port: the renderer's store channel, which the main process relays to the local host. A
   // MessagePort cannot cross the context bridge, so the page asks with
   // `window.postMessage({ cashu: "store-port-request" })` and receives the port the same way, from

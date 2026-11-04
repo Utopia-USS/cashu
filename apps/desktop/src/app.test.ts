@@ -147,7 +147,6 @@ describe("opening the window (shell.run)", () => {
     expect(shown).toContain("&lt;boom&gt;");
     expect(shown).toContain("electron.log");
     expect(app.error).toMatch(/exit 3/);
-    expect(app.tokenFor(INFO.origin)).toBeNull(); // no token without a running sidecar
     await app.shutdown();
     expect(events).toContain("sidecar stopped");
   });
@@ -160,16 +159,7 @@ describe("opening the window (shell.run)", () => {
     expect(decodeURIComponent(window.loaded.at(-1) ?? "")).toContain("stopped unexpectedly");
   });
 
-  it("answers the token bridge for the app's own origin only", async () => {
-    const { app } = setup();
-    await app.start();
-    expect(app.tokenFor(`${INFO.origin}/#/demo-anna/overview`)).toBe(INFO.token);
-    expect(app.tokenFor("https://evil.example/")).toBeNull();
-    expect(app.tokenFor("data:text/html,x")).toBeNull();
-    expect(app.tokenFor(undefined)).toBeNull();
-  });
-
-  it("exposes the pywebview shim to the app's own origin only", async () => {
+  it("exposes native bridges to the app's own origin only", async () => {
     const { app } = setup();
     expect(app.exposesBridgeTo(`${INFO.origin}/`)).toBe(false); // the loading page: no origin yet
     await app.start();
