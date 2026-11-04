@@ -1,5 +1,6 @@
 // `cashu-host migrate` (the `cashu migrate` of the shim, and the desktop's "Import my data"):
 //   migrate --data-dir <D> [--recovery-file <path>] [--json]   the in-place import (inPlace.ts)
+//   (human mode needs --recovery-file, except on an already migrated D: that only reports it)
 //   migrate verify --data-dir <D> [--json]                     re-checks a finished import; read-only
 // Human mode prints stage lines and a count-only result in PL / EN; the recovery words go only to the
 // new `--recovery-file` (O_EXCL, 0600, outside D). `--json` speaks the child protocol of
@@ -42,8 +43,10 @@ import {
   writeStartupFailureReport,
 } from "@cashu/node-host";
 import {
+  completedMigration,
   type InPlaceKeychain,
   type InPlaceResult,
+  type MigrationMarker,
   migrateInPlace,
   readMigrationMarker,
 } from "./inPlace.js";
@@ -131,7 +134,7 @@ function parse(argv: readonly string[], env: MigrateIo["env"]): Args | null {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
     }
-  } else if (command === "import" && !json) return null;
+  }
   return {
     command,
     dataDir,
@@ -301,6 +304,10 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
     throw error;
   }
   const { marker } = result;
+  if (result.status === "already_migrated" && !args.json) {
+    printAlreadyMigrated(io, args, t, home, marker);
+    return 0;
+  }
   const backup = homeRelativePath(join(args.dataDir, marker.backupDir), home);
   if (args.json) {
     emit(io, {
@@ -311,13 +318,30 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
     });
     return 0;
   }
-  io.stdout(
-    result.status === "migrated"
-      ? t.tr(M.migrated)(countsOf(marker), backup)
-      : t.tr(M.alreadyMigrated)(new Date(marker.at).toISOString(), backup),
-  );
+  io.stdout(t.tr(M.migrated)(countsOf(marker), backup));
   io.stdout(t.tr(M.verifyHint));
   return 0;
+}
+
+function printAlreadyMigrated(
+  io: MigrateIo,
+  args: Args,
+  t: Translator,
+  home: string,
+  marker: MigrationMarker,
+): void {
+  const backup = homeRelativePath(join(args.dataDir, marker.backupDir), home);
+  io.stdout(t.tr(M.alreadyMigrated)(new Date(marker.at).toISOString(), backup));
+  io.stdout(t.tr(M.verifyHint));
+}
+
+/** D's marker when D was already migrated in place; null for anything else (read-only). */
+function completedOrNull(dataDir: string): MigrationMarker | null {
+  try {
+    return completedMigration(dataDir);
+  } catch {
+    return null;
+  }
 }
 
 async function runVerify(io: MigrateIo, args: Args, t: Translator, home: string): Promise<number> {
@@ -360,6 +384,16 @@ export async function migrateCommand(argv: readonly string[], io: MigrateIo): Pr
     return USAGE_EXIT;
   }
   const home = io.env.HOME || homedir();
+  // The words go only to a new --recovery-file; without one, only a finished import can be shown.
+  if (args.command === "import" && !args.json && args.recoveryFile === undefined) {
+    const marker = completedOrNull(args.dataDir);
+    if (marker === null) {
+      io.stderr(t.tr(M.usage));
+      return USAGE_EXIT;
+    }
+    printAlreadyMigrated(io, args, t, home, marker);
+    return 0;
+  }
   try {
     return args.command === "import"
       ? await runImport(io, args, t, home)

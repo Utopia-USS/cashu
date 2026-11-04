@@ -30,19 +30,41 @@ export interface SourceSeal {
   readonly digest: string;
 }
 
-/**
- * Process/UI files outside the financial copy. Other roots require explicit one-shot import policy.
- */
-export const DEVICE_LOCAL_EXCLUSIONS: ReadonlySet<string> = new Set([
+/** Top-level files the Python app writes through a `<name>.tmp` + rename; a crash leaves the temp. */
+const ATOMIC_ROOT_FILES = [
   "api-token",
   "app-location.json",
   "desktop.json",
+  "settings.json",
+  "rename-migration.json",
+] as const;
+
+/**
+ * Every other top-level entry the Python app (src/cashu) creates in its data dir: device-local
+ * process, UI and bookkeeping state outside the financial copy. The in-place import moves them
+ * intact into `python-backup-<time>/` and reads none of them. An entry in neither this set, the
+ * database files, `profiles/`, `imports/` nor `market/` refuses the import (`semantic_difference`).
+ */
+export const DEVICE_LOCAL_EXCLUSIONS: ReadonlySet<string> = new Set([
+  // core/security.py, core/runtime.py, desktop/shell.py, core/i18n.py, core/migrate_legacy.py:
+  // per-launch token, app location, window state, device preferences, the completed rename marker.
+  ...ATOMIC_ROOT_FILES,
+  ...ATOMIC_ROOT_FILES.map((name) => `${name}.tmp`),
   // Owner-approved one-shot omission: Enable Banking reconnects with fresh consent.
   "eb_sessions.json",
   "enablebanking_private.pem",
-  // Owner-approved one-shot device preferences and completed rename marker.
-  "settings.json",
-  "rename-migration.json",
+  // core/legacy.py (`cashu migrate-data`): its completion marker and the copy a crash left behind
+  // (Python never reads that copy).
+  "legacy-migration.json",
+  ...["", "-wal", "-shm", "-journal"].map((side) => `cashu.db.migrating${side}`),
+  // core/migrate_legacy.py: the note of the finanse to cashU folder move.
+  "MIGRATED_FROM.txt",
+  // config.py: optional settings file (classifier backend; runbook step 6.6 carries it by hand).
+  ".env",
+  // core/worker: digest dates, bank sync throttle and the worker ownership record.
+  "worker",
+  // core/mcp/names.py: the key seeding MCP payee pseudonyms.
+  "mcp",
   // Installed Python connector code and local approvals require native reinstall/reapproval.
   "connectors",
   "backups",
@@ -50,6 +72,8 @@ export const DEVICE_LOCAL_EXCLUSIONS: ReadonlySet<string> = new Set([
   "logs",
   "tmp",
 ]);
+/** `market/` children: the calendar cache and the temp a crashed cache write leaves (never read). */
+const MARKET_CHILDREN: ReadonlySet<string> = new Set(["calendar.json", "calendar.tmp"]);
 export type PythonDatabaseName = "cashu.db" | "finanse.db";
 export const GENESIS_ROOTS: ReadonlySet<string> = new Set(["profiles", "imports"]);
 
@@ -57,14 +81,15 @@ function assertKnownRoots(root: string, database: PythonDatabaseName): void {
   const databaseRoots = new Set([database, `${database}-wal`, `${database}-shm`]);
   for (const name of readdirSync(root)) {
     const path = join(root, name);
-    if (databaseRoots.has(name)) continue;
+    // Finder metadata (the owner may browse the backup before `migrate verify` seals it).
+    if (databaseRoots.has(name) || name === ".DS_Store") continue;
     if (GENESIS_ROOTS.has(name)) {
       statPrivate(path, "directory");
       continue;
     }
     if (name === "market") {
       statPrivate(path, "directory");
-      if (readdirSync(path).some((child) => child !== "calendar.json")) {
+      if (readdirSync(path).some((child) => !MARKET_CHILDREN.has(child))) {
         throw new MigrationError("semantic_difference");
       }
       continue;

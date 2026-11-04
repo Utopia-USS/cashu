@@ -330,6 +330,18 @@ describe("cashu migrate (human mode) failures", () => {
         `This data folder was already imported (2027-01-01T00:00:00.000Z); nothing was changed. Original files: ~/data/${BACKUP}.`,
       );
       expect(existsSync(join(f.base, "w2.txt"))).toBe(false);
+      // Without --recovery-file an already migrated folder is reported, not a usage error.
+      const listing = readdirSync(f.dataDir).sort();
+      const plain = await cli(f, ["--data-dir", f.dataDir]);
+      expect(plain).toEqual({
+        code: 0,
+        out: [
+          `This data folder was already imported (2027-01-01T00:00:00.000Z); nothing was changed. Original files: ~/data/${BACKUP}.`,
+          "Check the import with: cashu migrate verify",
+        ],
+        err: [],
+      });
+      expect(readdirSync(f.dataDir).sort()).toEqual(listing);
     },
     SLOW,
   );

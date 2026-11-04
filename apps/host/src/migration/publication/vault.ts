@@ -44,6 +44,7 @@ import { SqlProvenanceStore } from "../../sync/keys/sqlProvenance.js";
 import { MigrationError } from "../contract.js";
 import type { SemanticReplayProof } from "../verify.js";
 import type { MigrationVaultIdentity } from "./identity.js";
+import { latestStrategyTexts, writeMigratedStrategy } from "./strategy.js";
 
 const MAX_ARTIFACT = 32 * 1024;
 
@@ -385,6 +386,14 @@ export async function writeEncryptedMigrationVault(input: {
   try {
     reopenedHash = viewHash(reopened.store).hash;
     if (reopenedHash !== expected.viewHash) throw new MigrationError("replay_mismatch");
+    // The native app reads the strategy only from these files: the newest version, byte for byte.
+    if (!lock.held) throw new MigrationError("identity_invalid");
+    writeMigratedStrategy({
+      vaultId,
+      vaultRoot: root,
+      texts: latestStrategyTexts(exported),
+      isCurrent: () => lock.held,
+    });
   } finally {
     await reopened.close();
   }

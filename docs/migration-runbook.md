@@ -39,14 +39,11 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
   The external copy from step 3.3 is the second way back: quit everything and restore it with
   `ditto`.
 
-## 2. Known gaps at head 1fdd4b2 (read before you start)
+## 2. Known gaps (read before you start)
 
 | Gap | Effect on the cutover | What to do until it is fixed |
 |---|---|---|
-| G1: the importer refuses top-level entries it does not classify. The Python app also writes `worker/` (daily worker state), `mcp/` (MCP name key), `legacy-migration.json` (`cashu migrate-data`), `MIGRATED_FROM.txt` (the finanse to cashU rename) and reads `.env` | The import stops with `migrate_import_failed` / `semantic_difference`; nothing changes | Run the preflight check in step 3.6. If it lists any of these, stop and wait for the importer fix. Do not move them by hand |
-| G2: the import does not write the strategy files into the new vault's `strategy/` folder | The strategy history is imported, but the Strategies tab shows no strategy and no rules run until the files are back | Step 6.5 |
-| G3: a custom workspace path and the "routine permissions" opt-in (Python `profiles/<slug>/workspace.json`) are not imported | `cashu workspace update` uses `~/Documents/cashU/<slug>` and permissions off | Step 6.3 |
-| G4: classifier settings from `$D/.env` and the Anthropic key in the Python keychain are not imported | Categorization falls back to local Ollama defaults | Step 6.6 |
+| G4: classifier settings from `$D/.env` and the Anthropic key in the Python keychain are not imported (`.env` itself moves intact into the backup) | Categorization falls back to local Ollama defaults | Step 6.6 |
 
 ## 3. Prerequisites
 
@@ -71,11 +68,12 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
    data disk (`df -h "$D"`).
 6. **Preflight check of the data folder** (prints nothing when the importer will accept it):
    ```sh
-   ls -A "$D" | grep -vxE 'cashu\.db(-wal|-shm|-journal)?|finanse\.db(-wal|-shm|-journal)?|profiles|imports|market|api-token|app-location\.json|desktop\.json|eb_sessions\.json|enablebanking_private\.pem|settings\.json|rename-migration\.json|connectors|backups|locks|logs|tmp|run|diagnostics|desktop-electron|bin|update-main-capability\.json|update-preferences\.json|\.DS_Store'
-   ls -A "$D/market" 2>/dev/null | grep -vx 'calendar\.json'
+   ls -A "$D" | grep -vxE 'cashu\.db(-wal|-shm|-journal)?|finanse\.db(-wal|-shm|-journal)?|profiles|imports|market|(api-token|app-location\.json|desktop\.json|settings\.json|rename-migration\.json)(\.tmp)?|eb_sessions\.json|enablebanking_private\.pem|legacy-migration\.json|cashu\.db\.migrating(-wal|-shm|-journal)?|MIGRATED_FROM\.txt|\.env|worker|mcp|connectors|backups|locks|logs|tmp|run|diagnostics|desktop-electron|bin|update-main-capability\.json|update-preferences\.json|\.DS_Store'
+   ls -A "$D/market" 2>/dev/null | grep -vxE 'calendar\.(json|tmp)'
    test -e "$HOME/Library/Application Support/finanse" && echo "STOP: pre-rename folder present"
    ```
-   Anything printed is a stop (see G1). A leftover pre-rename `finanse` folder with a database would
+   Anything printed is a stop: an entry the importer does not know, which it refuses with
+   `semantic_difference` (nothing changes). Do not move it by hand; ask first. A leftover pre-rename `finanse` folder with a database would
    keep the native app on its recovery screen even after the import; ask before touching it.
 
 ## 4. Cutover checklist
@@ -134,7 +132,8 @@ be a real (non-symlinked) path:
 ```
 
 It prints each stage, then the counts and the backup folder, then "Check the import with: cashu
-migrate verify". Exit code 0 means done. Copy the words to paper, then delete the file
+migrate verify". Exit code 0 means done. Run again on an imported folder (with or without
+`--recovery-file`), it only says the folder was already imported and exits 0. Copy the words to paper, then delete the file
 (`rm "$HOME/cashU-recovery-words.txt"`).
 
 ## 5. Verification
@@ -145,7 +144,7 @@ migrate verify". Exit code 0 means done. Copy the words to paper, then delete th
    ```
    Expect the same counts as the import and exit code 0. It reads only.
 2. **Look at the folder**: `ls "$D"` shows `python-backup-<time>`, `migration.json`, `native`,
-   `vaults`, `stores` and no `cashu.db`; `cat "$D/migration.json"` shows `"profiles":2,"vaults":2`.
+   `vaults`, `stores` (and `workspace` when a profile had workspace settings) and no `cashu.db`; `cat "$D/migration.json"` shows `"profiles":2,"vaults":2`.
 3. **Open the app** and compare net worth per currency for both profiles with step 3.2, in the
    app's overview or with `"$D/bin/cashu" --profile profile-a stats` (and `profile-b`). Never add
    currencies together. Bank and cash balances must match exactly; positions valued with market
@@ -170,17 +169,13 @@ migrate verify". Exit code 0 means done. Copy the words to paper, then delete th
    Check that `.mcp.json` now points at the native app, that the `cashu:begin` / `cashu:end`
    sections of `CLAUDE.md` changed and nothing else did
    (`diff -rq "$HOME/Documents/cashU" "$X/workspaces"` lists only managed files), and that your own
-   skills under `.claude/skills/` are still there. A workspace in another folder (G3):
-   `"${CASHU[@]}" --profile <slug> workspace init <path>`; add `--routine-permissions` if the
-   Saturday routine had them.
+   skills under `.claude/skills/` are still there. A workspace in another folder and the
+   "routine permissions" opt-in come over with the import (`$D/workspace/v1/<vault>.json`, from the
+   Python `profiles/<slug>/workspace.json`), so `workspace update` uses that folder.
 4. **Worker**: `"${CASHU[@]}" worker install`, then `"${CASHU[@]}" worker status`.
-5. **Strategy files (G2)**: copy them out of the backup into the workspace inbox (a read of the
-   backup, nothing in `$D` changes), then ask the agent there to propose them unchanged with
-   `propose_strategy`, and approve the proposal in the app:
-   ```sh
-   cp "$D"/python-backup-*/profiles/profile-a/strategy.yaml "$D"/python-backup-*/profiles/profile-a/strategy.md ~/Documents/cashU/profile-a/inbox/
-   ```
-   Check the Strategies tab shows the strategy as valid; delete the inbox copies after.
+5. **Strategy**: the import wrote the newest stored version into each vault's strategy files, byte
+   for byte. Check the Strategies tab shows the strategy with the same state as in the Python app
+   (and the same version number, no new version).
 6. **Categorization (G4)**: in the app's classification settings choose the backend again; for
    Anthropic enter the key again (the native app keeps it in its own keychain entry). A non-default
    Ollama URL or model from `$D/python-backup-*/.env` must be set again.
@@ -213,7 +208,7 @@ delete files in `$D` by hand while you troubleshoot.
 | Code | Meaning | What to do |
 |---|---|---|
 | `python_data_present` | Python data, not imported yet | Section 4a or 4b |
-| `migrate_import_failed` | The import stopped before the switch; nothing changed. Detail: `source_changed` (something wrote to the Python files: app, worker or MCP still running), `semantic_difference` (an unclassified entry or an unreviewed difference, see G1), `unsupported_schema` (step 3.1), `cancelled` (words not confirmed), `already_migrated`, `python_data_absent`, `native_host_lock_required` (cashU or a host is running), `source_unsafe` (permissions, links), `staging_failed`, `keystore_unavailable` | Fix the cause, run the import again |
+| `migrate_import_failed` | The import stopped before the switch; nothing changed. Detail: `source_changed` (something wrote to the Python files: app, worker or MCP still running), `semantic_difference` (an unclassified entry, see step 3.6, or an unreviewed difference), `unsupported_schema` (step 3.1), `cancelled` (words not confirmed), `already_migrated`, `python_data_absent`, `native_host_lock_required` (cashU or a host is running), `source_unsafe` (permissions, links), `staging_failed`, `keystore_unavailable` | Fix the cause, run the import again |
 | `migration_incomplete` | The switch was interrupted (`cutover_failed`); the originals are in place or intact in the backup | Run `"${CASHU[@]}" migrate` again; it finishes from the journal |
 | `migrate_verify_mismatch` | The imported data does not match the copy of the Python data | Keep the backup, use nothing, send the report |
 | `native_inventory_unavailable` | The list of vaults does not match the files | Send the report; do not create a new profile |
@@ -240,8 +235,8 @@ path says otherwise.
 | sync_ids, sync_vaults, sync_outbox, sync_inbound, sync_clock | Must be empty (Python sync was never enabled in the app); a database that already synced is refused | store `source.test.ts` "refuses sync state on 0029 (sync_ids, sync_vaults, unacked outbox), naming counts only" |
 | alembic_version | Schema gate 0025 to 0030 | host `accounting.ts` `SCHEMAS`; store `source.test.ts` "refuses a database without alembic_version, or with two rows"; step 3.1 |
 | `profiles/<slug>/budget.json` (cushion) | Genesis event | store `files.test.ts` "parses like Python: decimals quantized to 0.01, currency stripped and upper-cased, ids deduplicated" |
-| `profiles/<slug>/strategy.yaml`, `strategy.md` | Checked equal to the newest stored version (else refused); versions imported; files not written into the vault (G2) | store `files.test.ts` "compares both files with the latest version's texts, bytes as UTF-8"; host `accounting.test.ts` "accepts only source-audited successful normalization counts"; step 6.5 |
-| `profiles/<slug>/workspace.json` | Moved intact to the backup, not converted (G3) | host `inPlace.test.ts` "moves every other device-local Python entry intact into the backup and imports none of it"; step 6.3 |
+| `profiles/<slug>/strategy.yaml`, `strategy.md` | Checked equal to the newest stored version (else refused); versions imported; the newest version's texts written byte for byte into `vaults/<vault>/strategy/` (where the native app reads them) and read back through the native reader by the import's verify and `migrate verify`; a profile without versions gets an empty folder | store `files.test.ts` "compares both files with the latest version's texts, bytes as UTF-8"; host `accounting.test.ts` "accepts only source-audited successful normalization counts"; host `inPlace.test.ts` "writes the newest strategy version into the vault's strategy files, byte for byte" (and the empty folder in every other `inPlace.test.ts` case); step 6.5 |
+| `profiles/<slug>/workspace.json` (custom workspace folder, routine-permissions opt-in) | Converted to the native `workspace/v1/<vault>.json` and checked by verify; the original moves intact to the backup. Read as Python does (unreadable or no folder: defaults, no native file); a value the native file cannot hold (opt-in without a folder, a relative folder) refuses the import | host `inPlace.test.ts` "moves every other device-local Python entry intact into the backup and imports none of it"; `publication/workspace.test.ts`; step 6.3 |
 | `imports/<slug>/` archives and staged proposal files | Encrypted native blobs, re-read by `migrate verify` | host `stagedBlobs.test.ts` "collects exact staged and archived bytes for their mapped fresh vault"; `oneShot.test.ts` |
 | `market/calendar.json` | Device store calendar cache | host `sourceSeal.test.ts` "seals only the known market calendar cache and refuses extra market files"; `localState.test.ts` |
 | `cashu.db-wal`, `-shm`; legacy `finanse.db` | Sealed with the database; offline snapshot | host `sourceSeal.test.ts` "seals DB, WAL, SHM and nested side files without changing source bytes"; `nativeSnapshot.test.ts` |
@@ -252,8 +247,10 @@ path says otherwise.
 | `logs/` | Moved to the backup; native logs continue in a fresh `logs/` | host `inPlace.test.ts` "imports in place, ..." (`logs` empty after the switch) |
 | `backups/` (Python DB copies) | Moved to the backup untouched | host `inPlace.test.ts` (fixture `backups/`) |
 | `locks/`, `tmp/` | Moved to the backup | host `inPlace.test.ts` "moves every other device-local Python entry ..." |
-| `worker/` (digest dates, bank sync throttle) | Refused today (G1) | host `sourceSeal.test.ts` "refuses relevant root-level state until its migration binding exists" |
-| `mcp/payee.key`, `legacy-migration.json`, `MIGRATED_FROM.txt`, `.env` | Refused today as unknown entries (G1) | host `inPlace.test.ts` "refuses without touching anything: no Python data, unknown entries, a running host" |
+| `worker/` (digest dates, bank sync throttle, worker ownership) | Moved to the backup, not imported: the native worker keeps its own bookkeeping (worst case one repeated digest) | host `sourceSeal.test.ts` "classifies every other top-level entry the Python app writes and seals none of it"; `inPlace.test.ts` "moves every other device-local Python entry ..." |
+| `mcp/payee.key` (MCP payee pseudonym key), `legacy-migration.json` (`cashu migrate-data` marker), `MIGRATED_FROM.txt` (finanse to cashU move note), `.env` (classifier settings, G4) | Moved to the backup, not imported | as `worker/` |
+| Crash leftovers of Python writes: `api-token.tmp`, `app-location.json.tmp`, `desktop.json.tmp`, `settings.json.tmp`, `rename-migration.json.tmp`, `cashu.db.migrating` (with `-wal`, `-shm`, `-journal`), `market/calendar.tmp` | Moved to the backup, never read (Python does not read them either) | as `worker/` |
+| Any other top-level entry | Refused (`semantic_difference`), nothing changes | host `sourceSeal.test.ts` "refuses an unclassified root-level entry"; `inPlace.test.ts` "refuses without touching anything: no Python data, unknown entries, a running host"; step 3.6 |
 | Classifier backend, Ollama URL and model (`.env` / environment), Anthropic key (keychain `cashu` / `anthropic`) | Not imported (G4) | step 6.6 |
 | Connector secrets (keychain `cashu` / `connector/<id>/<slug>/<binding>/<secret>`) | Not imported | step 6.7 |
 | Agent workspaces `~/Documents/cashU/<slug>` (CLAUDE.md, AGENTS.md link, `.claude/skills`, `notes/`, `research/`, `inbox/`) | Outside the data folder, untouched; same default path, markers, folders and manifest name `.claude/cashu-workspace.json` in the native app | step 6.3 |

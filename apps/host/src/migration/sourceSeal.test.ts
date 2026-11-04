@@ -57,10 +57,47 @@ describe("source byte seal", () => {
     expect(() => sealPythonSource(root)).toThrowError(new MigrationError("source_unsafe"));
   });
 
-  it("refuses relevant root-level state until its migration binding exists", () => {
+  it("refuses an unclassified root-level entry", () => {
     const root = fixture();
-    mkdirSync(join(root, "worker"), { mode: 0o700 });
+    mkdirSync(join(root, "worker-old"), { mode: 0o700 });
     expect(() => sealPythonSource(root)).toThrowError(new MigrationError("semantic_difference"));
+    rmSync(join(root, "worker-old"), { recursive: true });
+    writeFileSync(join(root, "notes.txt"), "synthetic", { mode: 0o600 });
+    expect(() => sealPythonSource(root)).toThrowError(new MigrationError("semantic_difference"));
+  });
+
+  it("classifies every other top-level entry the Python app writes and seals none of it", () => {
+    const root = fixture();
+    const dir = (path: string) => mkdirSync(join(root, path), { recursive: true, mode: 0o700 });
+    const file = (path: string, text: string) =>
+      writeFileSync(join(root, path), text, { mode: 0o600 });
+    dir("worker");
+    file("worker/state.json", "{}");
+    file("worker/ownership.json", "{}");
+    dir("mcp");
+    file("mcp/payee.key", "synthetic-key");
+    file("legacy-migration.json", "{}");
+    file("MIGRATED_FROM.txt", "synthetic note\n");
+    file(".env", "CASHU_CATEGORIZE_BACKEND=ollama\n");
+    for (const name of [
+      "api-token",
+      "app-location.json",
+      "desktop.json",
+      "settings.json",
+      "rename-migration.json",
+    ]) {
+      file(name, "{}");
+      file(`${name}.tmp`, "{}");
+    }
+    for (const side of ["", "-wal", "-shm", "-journal"])
+      file(`cashu.db.migrating${side}`, "synthetic-copy");
+    dir("locks");
+    dir("tmp/connectors");
+    dir("backups");
+    file(".DS_Store", "synthetic");
+    dir("market");
+    file("market/calendar.tmp", "{}");
+    expect(sealPythonSource(root).entries.map((e) => e.path)).toEqual(["cashu.db"]);
   });
 
   it("omits approved process and bank-consent files from the financial copy", () => {

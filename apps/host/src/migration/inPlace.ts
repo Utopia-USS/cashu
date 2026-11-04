@@ -108,6 +108,7 @@ const NATIVE_TREE_ENTRIES: ReadonlySet<string> = new Set([
   "stores",
   "vaults",
   "vault-secrets",
+  "workspace",
 ]);
 /** Finder metadata, ignored wherever it appears at the root. */
 const IGNORED_ENTRIES: ReadonlySet<string> = new Set([".DS_Store"]);
@@ -510,6 +511,21 @@ function readJournal(staging: string): Journal {
 
 // ---- the run -----------------------------------------------------------------------------------
 
+/** A finished in-place import: no journal, the marker, the native inventory, no Python data. */
+function finished(state: Inspection): MigrationMarker | null {
+  return state.journals.length === 0 &&
+    state.marker !== null &&
+    state.inventory &&
+    state.admission === "no_legacy_sentinel"
+    ? state.marker
+    : null;
+}
+
+/** Read-only, no lock: D's marker when D was already migrated in place, else null. */
+export function completedMigration(dataDir: string): MigrationMarker | null {
+  return finished(inspect(canonicalDataDir(dataDir)));
+}
+
 /** `cashu migrate` on D. Resolves migrated / already_migrated; throws a `StartupFailureError`. */
 export async function migrateInPlace(input: InPlaceInput): Promise<InPlaceResult> {
   const dataDir = canonicalDataDir(input.dataDir);
@@ -519,12 +535,10 @@ export async function migrateInPlace(input: InPlaceInput): Promise<InPlaceResult
   progress("preflight");
   // Read-only first: a finished or absent migration needs no lock and writes nothing.
   const first = inspect(dataDir);
-  if (first.journals.length === 0) {
-    if (first.marker !== null && first.inventory && first.admission === "no_legacy_sentinel")
-      return { status: "already_migrated", marker: first.marker };
-    if (first.admission === "no_legacy_sentinel")
-      fail("migrate_import_failed", "python_data_absent");
-  }
+  const done = finished(first);
+  if (done !== null) return { status: "already_migrated", marker: done };
+  if (first.journals.length === 0 && first.admission === "no_legacy_sentinel")
+    fail("migrate_import_failed", "python_data_absent");
   const lock = holdLock(dataDir);
   try {
     const state = inspect(dataDir);

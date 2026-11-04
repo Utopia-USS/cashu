@@ -40,6 +40,8 @@ export const PYTHON_NAMES = [
   "settings.json",
 ] as const;
 
+const TIMESTAMP = "2026-01-02 03:04:05.000000";
+
 export interface PythonFixture {
   /** `<tmp>/t44-test-*` (outside D: recovery files go here). */
   readonly base: string;
@@ -57,7 +59,7 @@ export function pythonFixture(): PythonFixture {
   const dataDir = join(base, "data");
   mkdirSync(dataDir, { mode: 0o700 });
   const db = new DatabaseSync(join(dataDir, "cashu.db"));
-  const timestamp = "2026-01-02 03:04:05.000000";
+  const timestamp = TIMESTAMP;
   const stagedBytes = new TextEncoder().encode("synthetic import bytes\n");
   const stagedSha = createHash("sha256").update(stagedBytes).digest("hex");
   const stagedPath = `imports/synthetic/.proposals/${stagedSha}-0123456789ab.csv`;
@@ -138,6 +140,39 @@ export function pythonFixture(): PythonFixture {
     keychain: { makeKeyStore, kek: createTestMigrationKek({ dataDir, service, keyring }) },
     remove: () => rmSync(base, { recursive: true, force: true }),
   };
+}
+
+/** The synthetic strategy versions `addStrategyVersions` writes, oldest first. */
+export const STRATEGY_VERSIONS = [
+  { yaml: "version: 1\n", md: null },
+  { yaml: "version: 1\ncele: []\n# zażółć\n", md: "# Strategia\r\n\r\nSynthetic.\n" },
+] as const;
+
+/**
+ * Stores STRATEGY_VERSIONS for the fixture's profile and writes `profiles/synthetic/strategy.yaml`
+ * and `strategy.md` equal to the newest one (the Python invariant genesis checks).
+ */
+export function addStrategyVersions(dataDir: string): void {
+  const db = new DatabaseSync(join(dataDir, "cashu.db"));
+  try {
+    for (const [index, version] of STRATEGY_VERSIONS.entries()) {
+      // Python's digest: sha256 of `yaml + "\0" + (md or "")`.
+      const sha = createHash("sha256")
+        .update(`${version.yaml}\0${version.md ?? ""}`)
+        .digest("hex");
+      db.prepare(
+        "INSERT INTO inv_strategy_versions(id,profile_id,version,sha256,yaml_text,md_text,state,issues,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+      ).run(index + 1, 1, index + 1, sha, version.yaml, version.md, "valid", "[]", TIMESTAMP);
+    }
+  } finally {
+    db.close();
+  }
+  const latest = STRATEGY_VERSIONS[1];
+  mkdirSync(join(dataDir, "profiles", "synthetic"), { recursive: true, mode: 0o700 });
+  writeFileSync(join(dataDir, "profiles", "synthetic", "strategy.yaml"), latest.yaml, {
+    mode: 0o600,
+  });
+  writeFileSync(join(dataDir, "profiles", "synthetic", "strategy.md"), latest.md, { mode: 0o600 });
 }
 
 /** Every file (sha256), directory and symlink under `names` of `root`, keyed by relative path. */

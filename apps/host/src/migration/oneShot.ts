@@ -26,11 +26,22 @@ import { NATIVE_INVENTORY, readExistingNativeInventory } from "../nativeInventor
 import { openNativeVault } from "../nativeVault.js";
 import { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 import { MigrationError } from "./contract.js";
-import { convertStrictGenesis } from "./convert.js";
+import { convertStrictGenesis, filesOf, type StrictConversion } from "./convert.js";
 import { hydrateLocalState, type LocalStateProof, verifyHydratedLocalState } from "./localState.js";
 import { createMigrationIdentitySet } from "./publication/identity.js";
 import { provisionMigrationKeyStore } from "./publication/keyStore.js";
+import {
+  assertMigratedStrategy,
+  latestStrategyTexts,
+  type StrategyTexts,
+} from "./publication/strategy.js";
 import { writeEncryptedMigrationVault } from "./publication/vault.js";
+import {
+  assertWorkspaceClaims,
+  type WorkspaceClaim,
+  workspaceClaim,
+  writeWorkspaceClaims,
+} from "./publication/workspace.js";
 import { captureOfflineSnapshot } from "./snapshot.js";
 import { assertSameSource, type PythonDatabaseName, sealPythonSource } from "./sourceSeal.js";
 import { collectStagedProposalBlobs, type StagedProposalBlob } from "./stagedBlobs.js";
@@ -227,6 +238,20 @@ function sourceSlugs(snapshot: string): string[] {
   }
 }
 
+/** What each vault gets beside its log, by ordinal: its strategy files and workspace settings. */
+interface VaultSideFiles {
+  readonly strategy: StrategyTexts | null;
+  readonly workspace: WorkspaceClaim | null;
+}
+
+function sideFilesOf(conversion: StrictConversion): VaultSideFiles[] {
+  const files = filesOf(conversion.snapshot.root, conversion.snapshot);
+  return conversion.genesis.vaults.map((vault) => ({
+    strategy: latestStrategyTexts(vault),
+    workspace: workspaceClaim(files, vault.slug),
+  }));
+}
+
 function staging(): { root: string; snapshot: string } {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "cashu-migrate-")));
   const stat = lstatSync(root);
@@ -241,6 +266,7 @@ async function verifyPublished(
   makeKeyStore: KeyStoreFactory,
   at: number,
   blobs: readonly StagedProposalBlob[],
+  sideFiles: readonly VaultSideFiles[],
 ): Promise<void> {
   const factory = new ProductionVaultSourceFactory(dataDir, makeKeyStore);
   factory.preflight();
@@ -256,7 +282,8 @@ async function verifyPublished(
       authorizedNames: new Set(source.inventory.map((entry) => crypto.keyringName(entry.vaultId))),
       sodium,
     });
-    if (source.inventory.length !== expected.length) throw new MigrationError("replay_mismatch");
+    if (source.inventory.length !== expected.length || source.inventory.length !== sideFiles.length)
+      throw new MigrationError("replay_mismatch");
     for (const [ordinal, entry] of source.inventory.entries()) {
       const match = expected[ordinal];
       if (!match || match.ordinal !== ordinal) throw new MigrationError("replay_mismatch");
@@ -270,6 +297,12 @@ async function verifyPublished(
       try {
         if (viewHash(session.store).hash !== match.viewHash)
           throw new MigrationError("replay_mismatch");
+        assertMigratedStrategy({
+          vaultId: entry.vaultId,
+          vaultRoot: entry.vaultRoot,
+          texts: sideFiles[ordinal]?.strategy ?? null,
+          isCurrent: () => lock.held,
+        });
         const referenced = blobs.filter((blob) => blob.vaultId === entry.vaultId);
         if (referenced.length) {
           const ring = await crypto.loadKeyring(keyStore, sodium, entry.vaultId);
@@ -301,6 +334,13 @@ async function verifyPublished(
         await session.close();
       }
     }
+    assertWorkspaceClaims(
+      dataDir,
+      source.inventory.map((entry, ordinal) => ({
+        vaultId: entry.vaultId,
+        claim: sideFiles[ordinal]?.workspace ?? null,
+      })),
+    );
   } finally {
     lock.release();
   }
@@ -326,6 +366,7 @@ export async function importPythonDataDir(input: OneShotInput): Promise<OneShotR
     const conversion = convertStrictGenesis(scratch.snapshot, keys, input.at);
     const proof = verifyStrictCoreReplay(conversion, keys);
     blobs = collectStagedProposalBlobs(conversion);
+    const sideFiles = sideFilesOf(conversion);
     assertSameSource(frozen.source, sealPythonSource(source, database));
     assertAbsent(target);
     await input.saveRecoveryWords(identity.takeWords());
@@ -384,6 +425,14 @@ export async function importPythonDataDir(input: OneShotInput): Promise<OneShotR
           publication.close();
         }
       }
+      if (!lock.held) throw new MigrationError("identity_invalid");
+      writeWorkspaceClaims(
+        target,
+        identity.vaults.map((candidate, ordinal) => ({
+          vaultId: candidate.created.ring.vaultId,
+          claim: sideFiles[ordinal]?.workspace ?? null,
+        })),
+      );
       localProof = withDeviceStore(target, lock, true, (store) =>
         hydrateLocalState(store.driver, conversion),
       );
@@ -402,7 +451,7 @@ export async function importPythonDataDir(input: OneShotInput): Promise<OneShotR
       lock.release();
     }
     verifyDeviceLocal(target, conversion, localProof);
-    await verifyPublished(target, proof.vaults, makeKeyStore, input.at, blobs);
+    await verifyPublished(target, proof.vaults, makeKeyStore, input.at, blobs, sideFiles);
     assertSameSource(frozen.source, sealPythonSource(source, database));
     return {
       profiles: proof.profiles,
@@ -478,7 +527,14 @@ export async function verifyPythonMigration(
       const proof = verifyStrictCoreReplay(conversion, keys);
       blobs = collectStagedProposalBlobs(conversion);
       verifyDeviceLocal(target, conversion);
-      await verifyPublished(target, proof.vaults, makeKeyStore, input.at, blobs);
+      await verifyPublished(
+        target,
+        proof.vaults,
+        makeKeyStore,
+        input.at,
+        blobs,
+        sideFilesOf(conversion),
+      );
       assertSameSource(frozen.source, sealPythonSource(source, database));
       return {
         profiles: proof.profiles,

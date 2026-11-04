@@ -1,21 +1,26 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { strategyDigest } from "@cashu/domain/investments/strategy";
 import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
 import { legacyDataAdmission } from "@cashu/node-host/admission";
+import { latestStrategyVersion } from "@cashu/store/investments/queries";
 import { afterEach, describe, expect, it } from "vitest";
 import { takeWriterLease } from "../lease.js";
 import { assertLegacyAdmission, nativeSourceAdmission } from "../nativeSourceAdmission.js";
+import { nativeStrategyCliFiles } from "../nativeStrategyDocuments.js";
 import { openNativeVault } from "../nativeVault.js";
 import { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 import { migrateInPlace } from "./inPlace.js";
 import { verifyPythonMigration } from "./oneShot.js";
 import {
+  addStrategyVersions,
   allFiles,
   PYTHON_NAMES,
   type PythonFixture,
   pythonFixture,
+  STRATEGY_VERSIONS,
   treeHashes,
 } from "./testing/inPlaceFixture.js";
 
@@ -61,8 +66,14 @@ async function failure(promise: Promise<unknown>) {
   throw new Error("expected a failure");
 }
 
+type Session = Awaited<ReturnType<typeof openNativeVault>>;
+
 /** The migrated state: originals intact in the backup, native tree in D, no staging, opens. */
-async function expectMigrated(f: PythonFixture, before: Record<string, string>) {
+async function expectMigrated(
+  f: PythonFixture,
+  before: Record<string, string>,
+  check: (session: Session) => Promise<void> = expectNoStrategy,
+) {
   const d = f.dataDir;
   expect(treeHashes(join(d, BACKUP), PYTHON_NAMES)).toEqual(before);
   const names = readdirSync(d).sort();
@@ -114,12 +125,23 @@ async function expectMigrated(f: PythonFixture, before: Record<string, string>) 
       expect(session.store.read<{ name: string }>("SELECT name FROM profiles")).toEqual([
         { name: "Synthetic" },
       ]);
+      await check(session);
     } finally {
       await session.close();
     }
   } finally {
     lock.release();
   }
+}
+
+/** A profile without a strategy: an empty strategy folder, as a vault created natively. */
+async function expectNoStrategy(session: Session) {
+  const authority = session.strategyDirectoryAuthority();
+  if (!authority) throw new Error("synthetic strategy folder missing");
+  expect(readdirSync(authority.directory)).toEqual([]);
+  const files = nativeStrategyCliFiles(authority);
+  expect(await files.read("strategy.yaml")).toBeNull();
+  expect(await files.read("strategy.md")).toBeNull();
 }
 
 describe("migrateInPlace", () => {
@@ -219,22 +241,47 @@ describe("migrateInPlace", () => {
       file("eb_sessions.json", "{}");
       file("enablebanking_private.pem", "synthetic-key");
       file("rename-migration.json", "{}");
+      file("api-token.tmp", "synthetic-token");
+      file("settings.json.tmp", "{}");
+      file("legacy-migration.json", "{}");
+      file("MIGRATED_FROM.txt", "synthetic note\n");
+      file(".env", "CASHU_CATEGORIZE_BACKEND=ollama\n");
+      file("cashu.db.migrating", "synthetic-copy");
+      dir("worker");
+      file("worker/state.json", "{}");
+      file("worker/ownership.json", "{}");
+      dir("mcp");
+      file("mcp/payee.key", "synthetic-key");
+      dir("market");
+      file("market/calendar.tmp", "{}");
       dir("locks");
       file("locks/worker.lock", "");
       dir("tmp/connectors");
       file("tmp/connectors/run.txt", "synthetic");
       dir("profiles/synthetic");
-      file("profiles/synthetic/workspace.json", '{"path":"/synthetic/workspace"}');
+      file(
+        "profiles/synthetic/workspace.json",
+        '{"path": "/synthetic/workspace", "routine_permissions": true}\n',
+      );
       const extra = [
+        ".env",
+        "MIGRATED_FROM.txt",
         "api-token",
+        "api-token.tmp",
         "app-location.json",
+        "cashu.db.migrating",
         "desktop.json",
         "eb_sessions.json",
         "enablebanking_private.pem",
+        "legacy-migration.json",
         "locks",
+        "market",
+        "mcp",
         "profiles",
         "rename-migration.json",
+        "settings.json.tmp",
         "tmp",
+        "worker",
       ];
       const before = treeHashes(d, PYTHON_NAMES);
       const beforeExtra = treeHashes(d, extra);
@@ -243,6 +290,65 @@ describe("migrateInPlace", () => {
       expect(treeHashes(join(d, BACKUP), extra)).toEqual(beforeExtra);
       const names = readdirSync(d);
       for (const name of extra) expect(names.includes(name)).toBe(false);
+      // The workspace folder and the routine opt-in carry over into the native per-vault config.
+      const [vault] = readdirSync(join(d, "vaults"));
+      expect(readdirSync(join(d, "workspace", "v1"))).toEqual([`${vault}.json`]);
+      expect(JSON.parse(readFileSync(join(d, "workspace", "v1", `${vault}.json`), "utf8"))).toEqual(
+        {
+          format: 1,
+          vaultId: vault,
+          path: "/synthetic/workspace",
+          routinePermissions: true,
+        },
+      );
+      // `migrate verify` seals the backup with all of them in it and checks the converted files.
+      const verified = await verifyPythonMigration({
+        sourceDir: join(d, BACKUP),
+        targetDir: d,
+        at: AT,
+        makeKeyStore: f.makeKeyStore,
+      });
+      expect(verified.profiles).toBe(1);
+    },
+    SLOW,
+  );
+
+  it(
+    "writes the newest strategy version into the vault's strategy files, byte for byte",
+    async () => {
+      const f = fixture();
+      addStrategyVersions(f.dataDir);
+      const latest = STRATEGY_VERSIONS[1];
+      const before = treeHashes(f.dataDir, PYTHON_NAMES);
+      expect((await run(f)).result.status).toBe("migrated");
+      await expectMigrated(f, before, async (session) => {
+        const authority = session.strategyDirectoryAuthority();
+        if (!authority) throw new Error("synthetic strategy folder missing");
+        expect(readdirSync(authority.directory).sort()).toEqual(["strategy.md", "strategy.yaml"]);
+        expect(readFileSync(join(authority.directory, "strategy.yaml"))).toEqual(
+          Buffer.from(latest.yaml),
+        );
+        expect(readFileSync(join(authority.directory, "strategy.md"))).toEqual(
+          Buffer.from(latest.md),
+        );
+        // The native reader returns the newest version, and its digest is the stored version's:
+        // the app records no new version on its first read.
+        const files = nativeStrategyCliFiles(authority);
+        const yaml = await files.read("strategy.yaml");
+        const md = await files.read("strategy.md");
+        expect(yaml).toBe(latest.yaml);
+        expect(md).toBe(latest.md.replace(/\r\n/g, "\n"));
+        const stored = latestStrategyVersion(session.store.read.bind(session.store));
+        expect(stored?.version).toBe(2);
+        expect(strategyDigest(latest.yaml, latest.md)).toBe(stored?.sha256);
+      });
+      const verified = await verifyPythonMigration({
+        sourceDir: join(f.dataDir, BACKUP),
+        targetDir: f.dataDir,
+        at: AT,
+        makeKeyStore: f.makeKeyStore,
+      });
+      expect(verified.profiles).toBe(1);
     },
     SLOW,
   );
