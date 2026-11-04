@@ -1,9 +1,8 @@
 // Where this host runs from, and the programs it hands out: the `cashu` shim (for the stable launcher)
-// and the Python CLI (for delegated commands and MCP sessions, TRANSITIONAL(S49)). From source in a dev
+// and the development Python CLI (for remaining delegated commands). From source in a dev
 // checkout the host is `node <strip-types flags> apps/host/src/cli.ts`; packaged it is the bundle's
 // `host.mjs` run by the app's binary in Node mode, with `shim.mjs` beside it (S47).
-import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /** A program: an absolute executable and the arguments before the caller's own. */
@@ -70,17 +69,6 @@ function inside(root: string, candidate: string): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
-/** Any inherited loader override makes packaged Python delegation unavailable. */
-function packagedLoaderOverride(key: string): boolean {
-  return (
-    key.startsWith("PYTHON") ||
-    key.startsWith("_PYI_") ||
-    key.startsWith("PYINSTALLER_") ||
-    key.startsWith("DYLD_") ||
-    key.startsWith("LD_")
-  );
-}
-
 function packagedResource(rt: HostRuntime, ...parts: string[]): string | undefined {
   try {
     const root = realpathSync.native(rt.dir);
@@ -94,14 +82,14 @@ function packagedResource(rt: HostRuntime, ...parts: string[]): string | undefin
 /** Source or fixed packaged skills. */
 export function shippedSkillsSource(rt: HostRuntime): string | undefined {
   return rt.checkout === undefined
-    ? packagedResource(rt, "python", "_internal", "skills")
+    ? packagedResource(rt, "skills")
     : join(rt.checkout, ".claude", "skills");
 }
 
 /** Read-only connector catalog rooted in the verified build, never the caller's cwd. */
 export function shippedConnectorsSource(rt: HostRuntime): string | undefined {
   return rt.checkout === undefined
-    ? packagedResource(rt, "python", "_internal", "connectors")
+    ? packagedResource(rt, "connectors")
     : join(rt.checkout, "connectors");
 }
 
@@ -124,41 +112,11 @@ export function shimProgram(rt: HostRuntime): Program {
 }
 
 /**
- * TRANSITIONAL(S49): delegated Python CLI. Development permits an explicit override; a packaged
- * host uses only its own fixed Resources/python/cashu-python after a read-only data-dir preflight.
- * The packaged entry itself refuses normal CLI/serve until S62 admission is implemented.
+ * TRANSITIONAL(S49): delegated Python CLI is available only in a development checkout.
+ * Packaged builds carry no Python runtime.
  */
 export function pythonProgram(rt: HostRuntime): Program | undefined {
-  if (rt.checkout === undefined) {
-    if (rt.env.CASHU_PYTHON_CLI) return undefined;
-    if (Object.keys(rt.env).some(packagedLoaderOverride)) return undefined;
-    const dataDir = rt.env.CASHU_DATA_DIR;
-    if (!dataDir || !isAbsolute(dataDir)) return undefined;
-    let canonicalDataDir: string;
-    try {
-      canonicalDataDir = realpathSync.native(dataDir);
-    } catch {
-      return undefined;
-    }
-    const executable = packagedResource(rt, "python", "cashu-python");
-    if (executable === undefined) return undefined;
-    try {
-      const file = lstatSync(executable);
-      if (!file.isFile() || (file.mode & 0o111) === 0) return undefined;
-    } catch {
-      return undefined;
-    }
-    const env: NodeJS.ProcessEnv = { ...rt.env, CASHU_DATA_DIR: canonicalDataDir };
-    const result = spawnSync(executable, ["--preflight-data-dir"], {
-      cwd: join(rt.dir, "python"),
-      env,
-      encoding: "utf8",
-      timeout: 30_000,
-    });
-    if (result.status !== 0 || result.stdout.trim().split(/\r?\n/).length !== 1) return undefined;
-    if (result.stdout.trim() !== canonicalDataDir) return undefined;
-    return { command: executable, args: [], env: { CASHU_DATA_DIR: canonicalDataDir } };
-  }
+  if (rt.checkout === undefined) return undefined;
   const override = rt.env.CASHU_PYTHON_CLI;
   if (override !== undefined && override !== "") {
     return isAbsolute(override) && existsSync(override)

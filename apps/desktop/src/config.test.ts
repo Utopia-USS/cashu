@@ -17,7 +17,7 @@ describe("data dir", () => {
     );
   });
 
-  it("resolves symlinks like Path.resolve() in the sidecar (macOS /var -> /private/var)", () => {
+  it("resolves symlinks through existing path components", () => {
     const base = realpathSync(mkdtempSync(join(tmpdir(), "cashu-desktop-config-")));
     try {
       mkdirSync(join(base, "real"));

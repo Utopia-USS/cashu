@@ -23,20 +23,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const build = join(root, "build", "t46");
 const args = process.argv.slice(2);
 const arch = args[0] ?? process.arch;
-const pythonArg = args[1];
 const withDmg = args.includes("--dmg");
 const reuseDesktop = args.includes("--reuse-desktop");
-if (!pythonArg || !["arm64", "x64"].includes(arch)) {
-  throw new Error("usage: node package-macos.mjs <arm64|x64> <build/t46/.../dist/python>");
-}
-const python = realpathSync.native(resolve(pythonArg));
-const rel = relative(build, python);
-if (rel === ".." || rel.startsWith(`..${sep}`) || !existsSync(join(python, "cashu-python"))) {
-  throw new Error("Python resource must be built inside ignored build/t46");
-}
+if (!["arm64", "x64"].includes(arch))
+  throw new Error("usage: node package-macos.mjs <arm64|x64> [--dmg] [--reuse-desktop]");
 const resources = join(build, "resources");
-if (python === resources || python.startsWith(resources + sep))
-  throw new Error("Python source cannot be staging resources");
 rmSync(resources, { recursive: true, force: true });
 rmSync(join(build, "electron-builder"), { recursive: true, force: true });
 mkdirSync(resources, { recursive: true });
@@ -70,7 +61,10 @@ copyFileSync(
   join(root, "apps/desktop/resources/notify-catalog-v1.json"),
   join(resources, "notify-catalog-v1.json"),
 );
-cpSync(python, join(resources, "python"), { recursive: true, force: true, verbatimSymlinks: true });
+for (const name of ["skills", "connectors"]) {
+  const source = name === "skills" ? join(root, ".claude", "skills") : join(root, "connectors");
+  cpSync(source, join(resources, name), { recursive: true, force: true, verbatimSymlinks: true });
+}
 const renderer = checkedRendererArtifact(root);
 cpSync(renderer, join(resources, "renderer"), {
   recursive: true,

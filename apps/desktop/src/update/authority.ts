@@ -129,7 +129,7 @@ function installedUpdateGate(
   }
 }
 
-/** `handover` is supplied by main after it has genuine host and sidecar lifecycle handles. */
+/** `handover` is supplied by main after it has genuine host lifecycle handles. */
 export function releaseAuthority(
   app: InstalledApp,
   handover: UpdateAuthority["handover"],

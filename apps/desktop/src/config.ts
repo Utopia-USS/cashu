@@ -9,30 +9,20 @@ export const TITLE = "cashU";
 export const DEFAULT_SIZE = { width: 1480, height: 940 } as const;
 export const MIN_SIZE = { width: 1024, height: 680 } as const;
 export const SCREEN_MARGIN = 80;
-export const STARTUP_TIMEOUT_MS = 60_000;
-export const STOP_TIMEOUT_MS = 10_000;
-/** The private state file next to the database (same name as the pywebview shell). */
-export const STATE_FILE = "desktop.json";
-/** The log of this shell (the sidecar's own output goes here, token redacted). */
+/** The log of the desktop shell. */
 export const LOG_FILE = "electron.log";
 /** Subdirectory of the data dir that holds Electron's profile (cookies, cache, single-instance lock). */
 export const USER_DATA_SUBDIR = "desktop-electron";
 
-/** Environment variables of the shell (everything else is the sidecar's own CASHU_* contract). */
+/** Environment variables of the desktop shell. */
 export const ENV = {
   dataDir: "CASHU_DATA_DIR",
-  /** Test / dev override: the executable that serves the dashboard (default `.venv/bin/cashu`). */
-  sidecarBin: "CASHU_DESKTOP_SIDECAR_BIN",
-  /** JSON array of arguments placed before `--port <n>` (default `["serve"]`). */
-  sidecarArgs: "CASHU_DESKTOP_SIDECAR_ARGS",
   /** The data dir must be inside this folder or the shell refuses to start (lab guard). */
   allowedRoot: "CASHU_DESKTOP_ALLOWED_DATA_ROOT",
   /** `1`: register the `cashu://` handler system-wide, packaged app only (never in dev). */
   registerProtocol: "CASHU_DESKTOP_REGISTER_PROTOCOL",
   /** `1`: closing the window hides it instead of quitting (tray keeps the app alive). */
   closeToTray: "CASHU_DESKTOP_CLOSE_TO_TRAY",
-  /** `1`: skip the sidecar data dir cross-check (never in the lab). */
-  skipDataDirCheck: "CASHU_DESKTOP_SKIP_DATADIR_CHECK",
   /** `1`: no tray icon (headless test runs). */
   noTray: "CASHU_DESKTOP_NO_TRAY",
   /** Pin the UI language (`pl` / `en`); default: the OS locale. */
@@ -56,8 +46,7 @@ export function defaultDataDir(
 }
 
 /**
- * `Path.resolve()` of core/paths.py: absolute, symlinks resolved as far as the path exists (macOS
- * temp dirs live behind /var -> /private/var, and the sidecar reports the resolved form).
+ * Resolve absolute paths and existing symlinks (macOS temp dirs live behind /var -> /private/var).
  */
 export function realResolve(path: string): string {
   const absolute = resolve(path);
@@ -100,7 +89,7 @@ function inside(root: string, dir: string): boolean {
 }
 
 /**
- * The guard in front of the sidecar launch. A dev run (not packaged) never falls back to the
+ * The guard before desktop startup. A dev run (not packaged) never falls back to the
  * platform default data dir, which is where the owner's real data lives: CASHU_DATA_DIR must name
  * one. `allowedRoot` (the lab guard) additionally pins the data dir into one folder.
  * Returns an error message, or null when the data dir is acceptable.

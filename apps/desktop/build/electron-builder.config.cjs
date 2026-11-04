@@ -15,7 +15,8 @@ module.exports = {
     })),
     { from: path.join(resources, "native"), to: "native" },
     { from: path.join(resources, "node_modules"), to: "node_modules" },
-    { from: path.join(resources, "python"), to: "python" },
+    { from: path.join(resources, "skills"), to: "skills" },
+    { from: path.join(resources, "connectors"), to: "connectors" },
     { from: path.join(resources, "renderer"), to: "renderer" },
   ],
   extraFiles: [

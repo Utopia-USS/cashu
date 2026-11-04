@@ -1,7 +1,6 @@
 import { LinkRouter, type LinkWindow, linkFromArgv } from "./links.js";
 import { dataUrl, errorHtml, loadingHtml } from "./pages.js";
 import { bridgeAllowed } from "./security.js";
-import type { SidecarInfo } from "./sidecar.js";
 import type { Lang } from "./strings.js";
 import { type TrayAction, type TrayItem, trayItems } from "./tray.js";
 
@@ -16,58 +15,45 @@ export interface WindowHandle extends LinkWindow {
   onClosed(handler: () => void): void;
 }
 
-export interface SidecarLike {
-  start(): Promise<SidecarInfo>;
-  stop(): Promise<void>;
-}
-
 export interface TrayHandle {
   destroy(): void;
 }
 
 export interface DesktopDeps {
-  /** Packaged native renderer, served by the trusted app protocol without starting Python. */
-  staticEntry?: string;
-  /** Same trusted sidecar origin; unported SPA routes remain available at its root. */
-  rendererPath?: string;
+  /** Native renderer served by the trusted app protocol. */
+  staticEntry: string;
   lang: Lang;
   logFile: string | null;
   /** Result of Electron's single instance lock for this data dir. */
   hasSingleInstanceLock: boolean;
   closeToTray: boolean;
   createWindow(loadingUrl: string): WindowHandle;
-  /** `onExit`: the sidecar died after it had started. */
-  createSidecar(onExit: (message: string) => void): SidecarLike;
   createTray(items: TrayItem[], onAction: (action: TrayAction) => void): TrayHandle | null;
   /** Ask the host to quit (Electron `app.quit()`, which ends in `shutdown`). */
   quit(): void;
-  rememberPort(port: number): void;
 }
 
 export type StartResult = "started" | "already-running" | "failed";
 
 /**
- * The behaviours of `desktop/shell.py run()`, host-independent:
+ * Native desktop window lifecycle, independent of the host:
  *  - one instance per data dir: a second launch fronts the running window and exits,
- *  - the window opens on a loading page, the sidecar starts, the window shows the dashboard (on
- *    the view of a link that arrived meanwhile), a failed start shows an error page,
- *  - closing the window quits and stops the sidecar,
- *  - the token reaches the page only through `tokenForSender` (own origin only).
+ *  - the window opens on a loading page, then the native renderer (including a pending link),
+ *  - closing the window quits and destroys the tray,
+ *  - native bridges are exposed only to the app origin.
  */
 export class DesktopApp {
   readonly links = new LinkRouter();
   private window: WindowHandle | null = null;
   private tray: TrayHandle | null = null;
-  private info: SidecarInfo | null = null;
-  private sidecar: SidecarLike | null = null;
   private quitting = false;
   private shutdownPromise: Promise<void> | null = null;
   error: string | null = null;
 
   constructor(private readonly deps: DesktopDeps) {}
 
-  get origin(): string | null {
-    return this.deps.staticEntry ?? this.info?.origin ?? null;
+  get origin(): string {
+    return this.deps.staticEntry;
   }
 
   get windowHandle(): WindowHandle | null {
@@ -94,44 +80,14 @@ export class DesktopApp {
       else this.requestQuit();
     });
 
-    if (this.deps.staticEntry) {
-      try {
-        await window.loadUrl(this.links.ready(window, this.deps.staticEntry));
-        return "started";
-      } catch (e) {
-        this.error = e instanceof Error ? e.message : String(e);
-        await this.showError(window, this.error);
-        return "failed";
-      }
-    }
-
-    const sidecar = this.deps.createSidecar((message) => {
-      if (this.quitting) return;
-      this.error = message;
-      void this.showError(window, message);
-    });
-    this.sidecar = sidecar;
     try {
-      this.info = await sidecar.start();
+      await window.loadUrl(this.links.ready(window, this.deps.staticEntry));
+      return "started";
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
       await this.showError(window, this.error);
       return "failed";
     }
-    if (this.quitting) return "started";
-    try {
-      this.deps.rememberPort(this.info.port);
-      const entry =
-        this.deps.rendererPath === undefined
-          ? this.info.url
-          : new URL(this.deps.rendererPath, this.info.url).href;
-      await window.loadUrl(this.links.ready(window, entry));
-    } catch (e) {
-      this.error = `Unexpected error while opening the window: ${e instanceof Error ? e.message : String(e)}`;
-      await this.showError(window, this.error);
-      return "failed";
-    }
-    return "started";
   }
 
   private async showError(window: WindowHandle, message: string): Promise<void> {
@@ -172,13 +128,12 @@ export class DesktopApp {
     return this.quitting;
   }
 
-  /** Stops the sidecar (once) and the tray; awaited by the host's before-quit handler. */
+  /** Destroys the tray once; awaited by Electron's before-quit handler. */
   shutdown(): Promise<void> {
     this.quitting = true;
     this.shutdownPromise ??= (async () => {
       this.tray?.destroy();
       this.tray = null;
-      await this.sidecar?.stop();
     })();
     return this.shutdownPromise;
   }

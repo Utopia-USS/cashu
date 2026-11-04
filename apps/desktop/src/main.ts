@@ -106,7 +106,7 @@ import { createNotificationClickRouter } from "./notification/clickRouter.js";
 import { notificationIntake } from "./notification/early.js";
 import { loadNativeNotificationCenter, releaseResponseHandler } from "./notification/native.js";
 import type { NotificationResponsePair } from "./notification/responses.js";
-import { ALLOW, EXTERNAL, navigationDecision, redactToken } from "./security.js";
+import { ALLOW, EXTERNAL, navigationDecision, sanitizeLogLine } from "./security.js";
 import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { ensurePrivateDir } from "./state.js";
 import { pickLang, t } from "./strings.js";
@@ -156,7 +156,9 @@ function log(line: string): void {
   try {
     if (existsSync(logFile) && statSync(logFile).size > 1_000_000)
       renameSync(logFile, `${logFile}.1`);
-    appendFileSync(logFile, `${new Date().toISOString()} ${redactToken(line)}\n`, { mode: 0o600 });
+    appendFileSync(logFile, `${new Date().toISOString()} ${sanitizeLogLine(line)}\n`, {
+      mode: 0o600,
+    });
     if (process.platform !== "win32") chmodSync(logFile, 0o600);
   } catch {
     // logging must never keep the window from opening
@@ -230,9 +232,6 @@ const desktop = new DesktopApp({
     void window.loadURL(loadingUrl);
     return toHandle(window);
   },
-  createSidecar: () => {
-    throw new Error("legacy_ui_unavailable");
-  },
   createTray(items, onAction) {
     if (env[ENV.noTray] === "1") return null;
     let image = nativeImage.createFromPath(iconPath);
@@ -251,7 +250,6 @@ const desktop = new DesktopApp({
     return { destroy: () => tray.destroy() };
   },
   quit: () => app.quit(),
-  rememberPort: () => {},
 });
 
 /** Pin the window to the app's own origin (PK5): links elsewhere open in the browser or are dropped. */

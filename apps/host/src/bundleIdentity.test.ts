@@ -25,7 +25,8 @@ function app(root: string, name: string, version: string) {
   for (const dir of [
     "Contents/MacOS",
     "Contents/Resources/native",
-    "Contents/Resources/python",
+    "Contents/Resources/skills/workspace-setup",
+    "Contents/Resources/connectors",
     "Contents/Resources/renderer",
     "Contents/Library/LaunchAgents",
   ])
@@ -37,7 +38,8 @@ function app(root: string, name: string, version: string) {
   writeFileSync(join(bundle, "Contents/Resources/native/CashUNotifications.node"), "addon");
   writeFileSync(join(bundle, "Contents/Resources/native/CashUHostService.node"), "service");
   writeFileSync(join(bundle, "Contents/Resources/notify-catalog-v1.json"), "{}");
-  writeFileSync(join(bundle, "Contents/Resources/python/cashu-python"), "python");
+  writeFileSync(join(bundle, "Contents/Resources/skills/workspace-setup/SKILL.md"), "skill");
+  writeFileSync(join(bundle, "Contents/Resources/connectors/README.md"), "catalog");
   writeFileSync(join(bundle, "Contents/Resources/renderer/index.html"), "<html></html>");
   writeFileSync(join(bundle, "Contents/Resources/app.asar"), "asar");
   writeFileSync(join(bundle, "Contents/MacOS/cashu-next-host-agent"), "agent");
@@ -52,7 +54,8 @@ function app(root: string, name: string, version: string) {
     ["Contents/Resources/native/CashUNotifications.node", "addon"],
     ["Contents/Resources/native/CashUHostService.node", "service"],
     ["Contents/Resources/notify-catalog-v1.json", "{}"],
-    ["Contents/Resources/python/cashu-python", "python"],
+    ["Contents/Resources/skills/workspace-setup/SKILL.md", "skill"],
+    ["Contents/Resources/connectors/README.md", "catalog"],
     ["Contents/Resources/renderer/index.html", "<html></html>"],
     ["Contents/Resources/app.asar", "asar"],
     ["Contents/MacOS/cashu-next-host-agent", "agent"],
@@ -88,6 +91,17 @@ it("refuses a missing or mismatched manifest before starting the watch", () => {
   expect(() => watchBundleIdentity(bundle, 10, () => undefined)).toThrow(
     "bundle_identity_unavailable",
   );
+});
+
+it("rejects modified shipped skills and connector catalog", () => {
+  const root = mkdtempSync(join(tmpdir(), "cashu-bundle-"));
+  roots.push(root);
+  const skillsBundle = app(root, "skills", "one");
+  writeFileSync(join(skillsBundle, "Contents/Resources/skills/workspace-setup/SKILL.md"), "changed");
+  expect(readBundleIdentity(skillsBundle).kind).toBe("invalid");
+  const connectorsBundle = app(root, "connectors", "one");
+  writeFileSync(join(connectorsBundle, "Contents/Resources/connectors/README.md"), "changed");
+  expect(readBundleIdentity(connectorsBundle).kind).toBe("invalid");
 });
 
 it("detects path moves and symlink target changes", async () => {

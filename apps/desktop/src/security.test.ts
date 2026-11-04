@@ -4,20 +4,19 @@ import {
   BLOCK,
   bridgeAllowed,
   EXTERNAL,
-  generateToken,
   navigationDecision,
-  redactToken,
   sameOrigin,
+  sanitizeLogLine,
 } from "./security.js";
 
-const ORIGIN = "http://127.0.0.1:8500";
+const ORIGIN = "app://cashu/index.html";
 const TOKEN = "tok_abcdefghijklmnopqrstuvwxyz0123";
 
 describe("origin matching", () => {
-  it("compares scheme, host and port exactly", () => {
-    expect(sameOrigin("http://127.0.0.1:8500/x?y=1", ORIGIN)).toBe(true);
-    expect(sameOrigin("https://127.0.0.1:8500/", ORIGIN)).toBe(false);
-    expect(sameOrigin("http://127.0.0.1/", ORIGIN)).toBe(false);
+  it("accepts only the native app origin", () => {
+    expect(sameOrigin("app://cashu/assets/x?y=1", ORIGIN)).toBe(true);
+    expect(sameOrigin("app://other/index.html", ORIGIN)).toBe(false);
+    expect(sameOrigin("http://127.0.0.1:8500/", ORIGIN)).toBe(false);
   });
 });
 
@@ -38,19 +37,12 @@ describe("navigation is pinned to the app origin (PK5)", () => {
   });
 });
 
-describe("the per-launch token", () => {
-  it("is 32 random bytes in URL-safe base64, the shape core/parent_pipe.py accepts", () => {
-    const token = generateToken();
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(generateToken()).not.toBe(token);
-    expect(generateToken(() => Buffer.alloc(32, 0xff))).toBe(`${"_".repeat(42)}8`);
-  });
-
-  it("is redacted before anything is logged", () => {
-    expect(redactToken(`Dashboard: http://127.0.0.1:8500/#token=${TOKEN} done`)).toBe(
-      "Dashboard: http://127.0.0.1:8500/#token=<redacted> done",
+describe("desktop log sanitization", () => {
+  it("strips terminal escapes and accidental credential fragments", () => {
+    expect(sanitizeLogLine(`app://cashu/#token=${TOKEN} done`)).toBe(
+      "app://cashu/#token=<redacted> done",
     );
-    expect(redactToken(`\u001b[32mgot ${TOKEN}\u001b[0m`, TOKEN)).toBe("got <redacted>");
+    expect(sanitizeLogLine("\u001b[32mstarted\u001b[0m")).toBe("started");
   });
 });
 
@@ -69,7 +61,7 @@ describe("native bridge is exposed to the app origin only", () => {
     ]) {
       expect(bridgeAllowed(url, ORIGIN)).toBe(false);
     }
-    // before the sidecar answered there is no app origin: nothing is exposed
+    // A missing app origin never exposes a bridge.
     expect(bridgeAllowed(`${ORIGIN}/`, null)).toBe(false);
   });
 });

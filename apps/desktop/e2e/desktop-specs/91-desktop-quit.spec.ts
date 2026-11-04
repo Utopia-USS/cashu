@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { dashboardWindow, expect, test } from "../electron-test.ts";
 import { nativeCreationHarness } from "../native-creation-support.ts";
 
-test("quitting the native shell leaves no Python sidecar or token file", async () => {
+test("quitting the native shell leaves no API token file", async () => {
   const harness = nativeCreationHarness();
   try {
     const host = await harness.startHost();

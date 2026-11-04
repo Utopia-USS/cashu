@@ -31,8 +31,10 @@ const required = [
   "Contents/Resources/native/CashUHostService.node",
   "Contents/Resources/node_modules/@napi-rs/keyring/index.js",
   keyringBinding,
-  "Contents/Resources/python/cashu-python",
-  "Contents/Resources/python/_internal/skills",
+  "Contents/Resources/skills",
+  "Contents/Resources/connectors",
+  "Contents/Resources/skills/workspace-setup/SKILL.md",
+  "Contents/Resources/connectors/README.md",
   "Contents/Resources/renderer/index.html",
 ];
 for (const name of required) {
@@ -46,7 +48,6 @@ for (const name of required) {
 for (const name of [
   "Contents/MacOS/cashU",
   "Contents/MacOS/cashu-next-host-agent",
-  "Contents/Resources/python/cashu-python",
 ]) {
   const path = join(app, name);
   if (!lstatSync(path).isFile() || (lstatSync(path).mode & 0o111) === 0)
@@ -77,7 +78,7 @@ if (
 )
   throw new Error("Manifest schema");
 for (const name of required) {
-  if (name === "Contents/MacOS/cashU" || name.endsWith("/skills")) continue;
+  if (name === "Contents/MacOS/cashU" || name.endsWith("/skills") || name.endsWith("/connectors")) continue;
   if (typeof manifest.files[name] !== "string") throw new Error(`Manifest missing: ${name}`);
 }
 for (const [name, expected] of Object.entries(manifest.files)) {
