@@ -26,6 +26,7 @@ import {
   commitment,
   decodeInvite,
   decodeRegistryEvents,
+  encodeInvite,
   hash,
   type Invite,
   joinerKeys,
@@ -37,6 +38,7 @@ import {
   type PairingFailure,
   type PairingStep,
   registryHash,
+  SAS_TTL_MS,
   seal,
   sessionId,
   shortAuthenticationString,
@@ -75,6 +77,19 @@ export interface JoinerWelcome {
   readonly inviter: string;
 }
 
+/** Private admission-journal material, sealed by the platform before it is written. */
+export interface PendingPairingSnapshot {
+  readonly v: 1;
+  readonly invite: string;
+  readonly device: string;
+  readonly name: string;
+  readonly nonce: string;
+  readonly helloClock: number;
+  readonly challenge: string;
+  readonly challengeAt: number;
+  readonly sas: string;
+}
+
 type JoinerState =
   | {
       readonly kind: "hello";
@@ -109,12 +124,20 @@ export class PairingJoiner {
   readonly session: string;
   readonly #o: JoinerOptions;
   #state: JoinerState;
+  readonly #hello: { readonly nonce: Uint8Array; readonly clock: number };
+  #challenge?: { readonly sealed: Uint8Array; readonly at: number };
 
-  private constructor(o: JoinerOptions, invite: Invite, state: JoinerState) {
+  private constructor(
+    o: JoinerOptions,
+    invite: Invite,
+    state: JoinerState,
+    hello: { readonly nonce: Uint8Array; readonly clock: number },
+  ) {
     this.#o = o;
     this.invite = invite;
     this.session = sessionId(o.sodium, invite.ephemeralPublicKey);
     this.#state = state;
+    this.#hello = hello;
   }
 
   /** Scans the QR and builds the hello. `now` is the joiner clock. */
@@ -132,7 +155,12 @@ export class PairingJoiner {
     const keys = joinerKeys(o.identity);
     const session = sessionId(o.sodium, invite.ephemeralPublicKey);
     const commit = commitment(o.sodium, session, keys, nonce);
-    const joiner = new PairingJoiner(o, invite, { kind: "hello", nonce, clock: now, commit });
+    const joiner = new PairingJoiner(
+      o,
+      invite,
+      { kind: "hello", nonce, clock: now, commit },
+      { nonce, clock: now },
+    );
     const hello = seal(
       o.sodium,
       {
@@ -152,6 +180,76 @@ export class PairingJoiner {
 
   get state(): JoinerState["kind"] {
     return this.#state.kind;
+  }
+
+  /** Stop an uncommitted join without sending reveal or retaining a live SAS state. */
+  rejectPending(): PairingFailed {
+    return this.#fail("aborted");
+  }
+
+  /** Persist before sending the reveal. The caller seals this record with its local KeyStore. */
+  snapshotPending(): PendingPairingSnapshot | undefined {
+    const state = this.#state;
+    const challenge = this.#challenge;
+    if (state.kind !== "sas" || !challenge) return undefined;
+    return {
+      v: 1,
+      invite: encodeInvite(this.invite),
+      device: this.#o.identity.deviceId,
+      name: this.#o.name,
+      nonce: toHex(this.#hello.nonce),
+      helloClock: this.#hello.clock,
+      challenge: toHex(challenge.sealed),
+      challengeAt: challenge.at,
+      sas: state.sas,
+    };
+  }
+
+  /** Replays the original signed challenge to reconstruct, not trust, pending SAS state. */
+  static restorePending(
+    o: JoinerOptions,
+    snapshot: PendingPairingSnapshot,
+    now: number,
+  ): PairingStep<PairingJoiner> {
+    if (
+      snapshot.v !== 1 ||
+      snapshot.device !== o.identity.deviceId ||
+      snapshot.name !== o.name ||
+      !isDeviceName(snapshot.name) ||
+      !isHex(snapshot.nonce, NONCE_BYTES) ||
+      !isHex(snapshot.challenge) ||
+      snapshot.challenge.length > 8 * 1024 * 1024 ||
+      !Number.isSafeInteger(snapshot.helloClock) ||
+      !Number.isSafeInteger(snapshot.challengeAt) ||
+      !/^\d{6}$/.test(snapshot.sas)
+    )
+      return { ok: false, reason: "malformed" };
+    const invite = decodeInvite(snapshot.invite);
+    if (
+      !invite ||
+      encodeInvite(invite) !== snapshot.invite ||
+      snapshot.challengeAt < snapshot.helloClock - (o.maxSkewMs ?? DEFAULT_MAX_DRIFT_MS) ||
+      snapshot.challengeAt > invite.expiresAt + SAS_TTL_MS ||
+      now > invite.expiresAt + 24 * 60 * 60 * 1000
+    )
+      return { ok: false, reason: "expired" };
+    const nonce = fromHex(snapshot.nonce);
+    const commit = commitment(
+      o.sodium,
+      sessionId(o.sodium, invite.ephemeralPublicKey),
+      joinerKeys(o.identity),
+      nonce,
+    );
+    const joiner = new PairingJoiner(
+      o,
+      invite,
+      { kind: "hello", nonce, clock: snapshot.helloClock, commit },
+      { nonce, clock: snapshot.helloClock },
+    );
+    const revealed = joiner.receiveChallenge(fromHex(snapshot.challenge), snapshot.challengeAt);
+    if (!revealed.ok || revealed.value.sas !== snapshot.sas)
+      return { ok: false, reason: "bad_signature" };
+    return { ok: true, value: joiner };
   }
 
   #fail(reason: PairingFailure, notify = true): PairingFailed {
@@ -211,6 +309,7 @@ export class PairingJoiner {
       return this.#fail("clock_skew");
     }
     const sas = shortAuthenticationString(this.#o.sodium, transcriptHash, state.nonce);
+    this.#challenge = { sealed: sealed.slice(), at: now };
     this.#state = { kind: "sas", transcript: transcriptHash, nonce: state.nonce, recovery, sas };
     const reply = seal(
       this.#o.sodium,

@@ -41,6 +41,7 @@ export {
   type JoinerProgress,
   type JoinerWelcome,
   PairingJoiner,
+  type PendingPairingSnapshot,
 } from "./pairingJoiner.js";
 export {
   DEFAULT_INVITE_TTL_MS,

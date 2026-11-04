@@ -139,7 +139,10 @@ export class PairingInviter {
   }
 
   /** hello -> challenge. `now` is the inviter clock. */
-  receiveHello(sealed: Uint8Array, now: number): PairingStep<{ reply: Uint8Array }> {
+  receiveHello(
+    sealed: Uint8Array,
+    now: number,
+  ): PairingStep<{ reply: Uint8Array; joiner: JoinerKeys }> {
     if (this.#state.kind !== "invited") return this.#fail("unexpected");
     const m = open(this.#o.sodium, sealed, this.#ephemeral);
     if (!m) return this.#fail("malformed");
@@ -202,7 +205,7 @@ export class PairingInviter {
       },
       joiner.boxPublicKey,
     );
-    return { ok: true, value: { reply } };
+    return { ok: true, value: { reply, joiner } };
   }
 
   /**

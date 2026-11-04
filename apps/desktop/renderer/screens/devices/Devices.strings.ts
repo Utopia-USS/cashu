@@ -58,4 +58,9 @@ export const T = catalog({
   orphanTitle: { pl: "Urządzenia, które utracą zaufanie", en: "Devices that will lose trust" },
   orphanChoice: { pl: "Zachowaj dostęp dla", en: "Keep access for" },
   refreshSelection: { pl: "Sprawdź wybrane urządzenia", en: "Review selected devices" },
+  behind: { pl: "Czeka na zmiany z tego urządzenia", en: "Changes from this device are pending" },
+  forked: {
+    pl: "Wykryto sprzeczne podpisane historie urządzenia. Wstrzymaj zmiany i sprawdź jego stan.",
+    en: "Conflicting signed device histories were detected. Pause changes and review this device.",
+  },
 });

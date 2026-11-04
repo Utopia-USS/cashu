@@ -161,6 +161,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               kind: "native-production",
               factory: new ProductionVaultSourceFactory(args.dataDir),
             },
+            lan: { kind: "local" },
             ...(args.lingerMs === undefined ? {} : { lingerMs: args.lingerMs }),
             ...(runtime.bundle === undefined ? {} : { bundlePath: runtime.bundle }),
           });

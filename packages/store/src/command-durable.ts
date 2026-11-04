@@ -2,7 +2,7 @@
 // sync, inbound apply and bridge writes. Call this function outside a prior queue acquisition.
 
 import { Decimal } from "@cashu/domain";
-import type { SyncEngine, UnstampedEvent } from "@cashu/sync";
+import { ownBatchDigest, type SyncEngine, type UnstampedEvent } from "@cashu/sync";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { canonicalJson } from "./canonical.js";
@@ -43,12 +43,14 @@ export type AttemptLookup<R> =
       readonly attemptId: string;
       readonly fingerprint: string;
       readonly eids: readonly string[];
+      readonly digest?: string;
     }
   | {
       readonly phase: "completed";
       readonly attemptId: string;
       readonly fingerprint: string;
       readonly eids: readonly string[];
+      readonly digest?: string;
       /** Undefined when the private completed-result receipt expired; the key tombstone remains. */
       readonly receipt: { readonly value: R } | undefined;
     }
@@ -72,7 +74,7 @@ export interface CommandAttemptPort<R> {
   lookup(vault: string, key: string): Promise<AttemptLookup<R>>;
   /** Atomic insert-if-absent; a conflict returns the existing record without replacing it. */
   saveMayAppend(
-    record: AttemptRecord & { readonly eids: readonly string[] },
+    record: AttemptRecord & { readonly eids: readonly string[]; readonly digest?: string },
   ): Promise<AttemptLookup<R>>;
   /** Atomically persist a private receipt and durable key tombstone before acknowledging success. */
   markCompleted(attemptId: string, receipt: R): Promise<void>;
@@ -84,7 +86,9 @@ export interface CommandAttemptPort<R> {
   ): Promise<AttemptLookup<R>>;
   unresolved(
     vault: string,
-  ): Promise<readonly (AttemptRecord & { readonly eids: readonly string[] })[]>;
+  ): Promise<
+    readonly (AttemptRecord & { readonly eids: readonly string[]; readonly digest?: string })[]
+  >;
 }
 
 /** The same queue must serialize command preparation and every local sync entry point. */
@@ -346,9 +350,14 @@ export async function executeDurableCommand<I, R>(
         return { kind: "not_started", reason: "preparation_failed" };
       }
       const eids = prepared.events.map((event) => event.eid);
+      const digest = events.length === 0 ? undefined : ownBatchDigest(events);
       let saved: AttemptLookup<R>;
       try {
-        saved = await session.attempts.saveMayAppend({ ...base, eids });
+        saved = await session.attempts.saveMayAppend({
+          ...base,
+          eids,
+          ...(digest === undefined ? {} : { digest }),
+        });
       } catch {
         return { kind: "not_started", reason: "attempt_save_failed" };
       }
@@ -357,6 +366,7 @@ export async function executeDurableCommand<I, R>(
         saved.attemptId !== attemptId ||
         saved.fingerprint !== fingerprint ||
         saved.eids.length !== eids.length ||
+        (saved.digest !== undefined && saved.digest !== digest) ||
         saved.eids.some((eid, index) => eid !== eids[index])
       ) {
         return existingResult(saved, fingerprint, key);

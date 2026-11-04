@@ -9,6 +9,7 @@ import {
   type PairingInviter,
   type PairingJoiner,
   type PairingStep,
+  type PendingPairingSnapshot,
   SAS_ATTEMPTS,
 } from "./pairing.js";
 
@@ -28,12 +29,22 @@ export interface InviterDriver {
   readonly enterCode: (attemptsLeft: number) => Promise<string | undefined>;
   /** Eid for the `device.added` event. */
   readonly eid: () => string;
+  /** Persist the decrypted hello subject before sending the signed challenge. */
+  readonly afterHello?: (joiner: {
+    readonly deviceId: string;
+    readonly signPublicKey: Uint8Array;
+    readonly boxPublicKey: Uint8Array;
+  }) => Promise<void>;
+  /** Persist the exact signed device.added and sealed receipt before any welcome byte leaves. */
+  readonly beforeWelcome?: (welcome: InviterWelcome) => Promise<void>;
 }
 
 export interface JoinerDriver {
   readonly now: () => number;
   /** Show the SAS on this screen (the owner compares it with the inviter's). */
   readonly showSas: (sas: string) => void;
+  /** Durable admission journals seal and reread this before the first reveal can leave. */
+  readonly beforeReveal?: (snapshot: PendingPairingSnapshot) => Promise<void>;
 }
 
 async function failed(link: PairingLink, step: PairingFailed): Promise<PairingFailed> {
@@ -54,6 +65,11 @@ export async function runInviter(
 ): Promise<PairingStep<InviterWelcome>> {
   const challenge = inviter.receiveHello(await link.receive(), driver.now());
   if (!challenge.ok) return failed(link, challenge);
+  try {
+    await driver.afterHello?.(challenge.value.joiner);
+  } catch {
+    return failed(link, inviter.reject());
+  }
   await link.send(challenge.value.reply);
   const shown = inviter.receiveReveal(await link.receive(), driver.now());
   if (!shown.ok) return failed(link, shown);
@@ -62,6 +78,11 @@ export async function runInviter(
     if (code === undefined) return failed(link, inviter.reject());
     const welcome = inviter.confirm(code, driver.eid(), driver.now());
     if (welcome.ok) {
+      try {
+        await driver.beforeWelcome?.(welcome.value);
+      } catch {
+        return { ok: false, reason: "unexpected" };
+      }
       await link.send(welcome.value.reply);
       for (const page of welcome.value.pages) await link.send(page);
       return welcome;
@@ -80,6 +101,15 @@ export async function runJoiner(
   await link.send(hello);
   const reveal = joiner.receiveChallenge(await link.receive(), driver.now());
   if (!reveal.ok) return failed(link, reveal);
+  if (driver.beforeReveal) {
+    const snapshot = joiner.snapshotPending();
+    if (!snapshot) return failed(link, { ok: false, reason: "unexpected" });
+    try {
+      await driver.beforeReveal(snapshot);
+    } catch {
+      return failed(link, joiner.rejectPending());
+    }
+  }
   driver.showSas(reveal.value.sas);
   await link.send(reveal.value.reply);
   let progress = joiner.receiveWelcome(await link.receive());

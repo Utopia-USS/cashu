@@ -50,7 +50,7 @@ describe("handshake", () => {
   it("matches verified packaged content builds for writers while retaining cross-build admin", () => {
     const first = `desktop-1.2.3-${"a".repeat(64)}`;
     const second = `desktop-1.2.3-${"b".repeat(64)}`;
-    expect(HOST_PROTOCOL.minor).toBe(6);
+    expect(HOST_PROTOCOL.minor).toBe(7);
     for (const role of ["ui", "cli", "mcp"] as const) {
       const h = hello({ role, ...(role === "mcp" ? { profile: "demo-anna" } : {}), build: first });
       const accepted = answerHello(h, host({ build: first }), nonce());

@@ -26,6 +26,7 @@ import {
   HOST_PROTOCOL,
   NATIVE_CREATION_FEATURE,
   NATIVE_DEVICES_FEATURE,
+  NATIVE_PAIRING_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
   NOTIFICATION_INTENT_METHOD,
   nativeCreationCommitParamsSchema,
@@ -38,6 +39,14 @@ import {
   nativeCreationPrepareResultSchema,
   notificationResolveParamsSchema,
   notificationResolveResultSchema,
+  pairingCancelParamsSchema,
+  pairingCancelResultSchema,
+  pairingConfirmParamsSchema,
+  pairingConfirmResultSchema,
+  pairingInspectParamsSchema,
+  pairingInspectResultSchema,
+  pairingInviteParamsSchema,
+  pairingInviteResultSchema,
   revokeCancelParamsSchema,
   revokeCancelResultSchema,
   revokeCommitParamsSchema,
@@ -48,6 +57,7 @@ import {
   revokePreviewResultSchema,
   uiCreationAllowed,
   uiDevicesAllowed,
+  uiPairingAllowed,
 } from "@cashu/host-protocol";
 import {
   budgetTools,
@@ -106,13 +116,14 @@ import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { TOOL_INVENTORY } from "./mcp/tools.js";
 import { createNativeCreationService } from "./nativeCreation.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
-import type { NativeVaultSource } from "./nativeVault.js";
+import type { NativeVaultSession, NativeVaultSource } from "./nativeVault.js";
 import {
   type HostNotificationCapability,
   hostNotificationCapability,
 } from "./notificationCapability.js";
 import { privateNotificationIntents } from "./notifications/intentLedger.js";
 import { type IntentVaultAuthority, resolveNotificationIntent } from "./notifications/resolve.js";
+import { type LanPairingService, localLanIp, startLanPairingService } from "./pairing/service.js";
 import type { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { type ProposalApprovalProvider, proposalScreen } from "./proposalsScreen.js";
 import { servedCommands, servedQueries } from "./registry.js";
@@ -194,6 +205,10 @@ const NATIVE_MCP_INVESTMENT_WRITES = new Set([
 type ExitReason = "stop" | "idle" | "signal" | "handover";
 
 export interface LocalHostOptions {
+  /** Explicit local LAN serving. Tests use loopback and port 0; production binds one private IPv4. */
+  readonly lan?:
+    | { readonly kind: "off" }
+    | { readonly kind: "loopback" | "local"; readonly port?: number };
   /** Explicit isolated test harness or an injected exact-vault native authority. */
   readonly vaultSource?:
     | { readonly kind: "synthetic-harness" }
@@ -272,6 +287,8 @@ export interface LocalHostOptions {
 
 export interface LocalHost {
   readonly server: RunningHost;
+  /** Present only when the bounded LAN listener was actually bound. */
+  readonly lan?: LanPairingService;
   readonly lease: WriterLease;
   readonly stores: HostStores;
   readonly safeMode: boolean;
@@ -425,6 +442,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       "store.v2",
       ...(options.vaultSource.kind === "native-production" ? [NATIVE_CREATION_FEATURE] : []),
       ...(nativeMode ? [NATIVE_DEVICES_FEATURE] : []),
+      ...(nativeMode && options.lan !== undefined && options.lan.kind !== "off"
+        ? [NATIVE_PAIRING_FEATURE]
+        : []),
       ...(nativeMode ? [NOTIFICATION_INTENT_FEATURE] : []),
       "admin.handover",
       "cli.exec",
@@ -607,6 +627,51 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   let bundleReplaced = false;
   const creationRequests = new Set<Promise<void>>();
   const devices = createDeviceService(stores, now);
+  const lanOption =
+    options.lan?.kind === "loopback" || options.lan?.kind === "local" ? options.lan : undefined;
+  let lan: LanPairingService | undefined;
+  let lanStart: Promise<LanPairingService | undefined> | undefined;
+  const ensureLan = (): Promise<LanPairingService | undefined> => {
+    if (lan !== undefined) return Promise.resolve(lan);
+    if (lanStart !== undefined) return lanStart;
+    if (!nativeMode || lanOption === undefined || safeMode) return Promise.resolve(undefined);
+    lanStart = (async () => {
+      const ip = lanOption.kind === "loopback" ? "127.0.0.1" : localLanIp();
+      if (ip === undefined) return undefined;
+      try {
+        const service = await startLanPairingService({
+          dataDir: server.paths.dataDir,
+          ip,
+          port: lanOption.port ?? (lanOption.kind === "loopback" ? 0 : 8517),
+          vault: (id) => stores.vaults.get(id)?.native,
+          now,
+        });
+        if (stopping !== undefined) {
+          await service.close();
+          return undefined;
+        }
+        lan = service;
+        armIdle();
+        return service;
+      } catch (error) {
+        log.warn("host.lan-unavailable", { error: errorName(error) });
+        return undefined;
+      }
+    })().finally(() => {
+      lanStart = undefined;
+    });
+    return lanStart;
+  };
+  // A completed trusted LAN pairing is the persisted serving opt-in. An unresolved append
+  // also keeps the listener available for exact proof and same-device receipt retrieval.
+  if (nativeMode && lanOption !== undefined && !safeMode) {
+    const paired = await Promise.all(
+      [...stores.vaults.values()].map(
+        (opened) => opened.native?.pairingHasActive() ?? Promise.resolve(false),
+      ),
+    );
+    if (paired.some(Boolean)) await ensureLan();
+  }
   // This ledger is pinned under the real host lock and survives host restart. It is also passed
   // to the eventual S40 notifier binding, so submit and click resolution use the same authority.
   const notificationAuthority: IntentVaultAuthority = {
@@ -680,6 +745,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       // The sync service's current iteration finishes and its vaults close while the lock is held.
       await (await sync)?.stop();
       await worker.stop();
+      await lanStart;
+      await lan?.close();
       notifications?.dispose();
       devices.close();
       await Promise.allSettled([...creationRequests]);
@@ -728,6 +795,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       if (sessions > 0 || stopping !== undefined) return;
       if (
         stores.pending() > 0 ||
+        (lan?.pending() ?? 0) > 0 ||
         worker.pending > 0 ||
         creation?.pending() ||
         devices.pending() > 0 ||
@@ -927,6 +995,108 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     creationRequests.add(request);
   };
 
+  const servePairingRequest = (
+    session: HostSession,
+    frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
+  ) => {
+    if (
+      server.stopping ||
+      stopping !== undefined ||
+      bundleReplaced ||
+      !uiPairingAllowed(frame.method, session.protocol.minor, [NATIVE_PAIRING_FEATURE])
+    ) {
+      session.send({
+        t: "res",
+        id: frame.id,
+        outcome: { ok: false, error: { code: "unknown-method", message: "method unavailable" } },
+      });
+      return;
+    }
+    const request = Promise.resolve()
+      .then(async () => {
+        const service =
+          lan ?? (frame.method === "native.pairing.invite" ? await ensureLan() : undefined);
+        if (service === undefined) {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: { ok: true, result: { kind: "refused", code: "unavailable" } },
+          });
+          return;
+        }
+        let result: unknown;
+        let requiresReopen = false;
+        switch (frame.method) {
+          case "native.pairing.invite": {
+            const parsed = pairingInviteParamsSchema.safeParse(frame.params);
+            result = parsed.success
+              ? pairingInviteResultSchema.parse(await service.invite(parsed.data.vault))
+              : { kind: "refused", code: "invalid" };
+            break;
+          }
+          case "native.pairing.confirm": {
+            const parsed = pairingConfirmParamsSchema.safeParse(frame.params);
+            result = parsed.success
+              ? pairingConfirmResultSchema.parse(
+                  await service.confirm(
+                    parsed.data.vault,
+                    parsed.data.operationId,
+                    parsed.data.code,
+                  ),
+                )
+              : { kind: "refused", code: "invalid" };
+            requiresReopen = (result as { kind: string }).kind === "outcome_unknown";
+            break;
+          }
+          case "native.pairing.inspect": {
+            const parsed = pairingInspectParamsSchema.safeParse(frame.params);
+            result = parsed.success
+              ? pairingInspectResultSchema.parse(
+                  await service.inspect(parsed.data.vault, parsed.data.operationId),
+                )
+              : { kind: "refused", code: "invalid" };
+            break;
+          }
+          case "native.pairing.cancel": {
+            const parsed = pairingCancelParamsSchema.safeParse(frame.params);
+            result = parsed.success
+              ? pairingCancelResultSchema.parse(
+                  await service.cancel(parsed.data.vault, parsed.data.operationId),
+                )
+              : { kind: "refused" };
+            break;
+          }
+          default:
+            result = { kind: "refused", code: "invalid" };
+        }
+        try {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: { ok: true, result: result as import("@cashu/host-protocol/store").JsonValue },
+          });
+        } finally {
+          if (requiresReopen) setTimeout(() => void stop("handover"), 0);
+        }
+      })
+      .catch(() => {
+        try {
+          session.send({
+            t: "res",
+            id: frame.id,
+            outcome: { ok: false, error: { code: "failed", message: "pairing request failed" } },
+          });
+        } catch {
+          /* Session may already be closed. */
+        }
+      });
+    creationRequests.add(request);
+    void request.finally(() => {
+      creationRequests.delete(request);
+      armIdle();
+    });
+  };
+
   const serveNotificationRequest = (
     session: HostSession,
     frame: Extract<import("@cashu/host-protocol").ClientFrame, { t: "req" }>,
@@ -983,6 +1153,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
 
   const host: LocalHost = {
     server,
+    get lan() {
+      return lan;
+    },
     lease,
     stores,
     safeMode,
@@ -1031,9 +1204,11 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
                 onRequest: (frame) =>
                   frame.method === NOTIFICATION_INTENT_METHOD
                     ? serveNotificationRequest(session, frame)
-                    : frame.method.startsWith("native.devices.")
-                      ? serveDevicesRequest(session, frame)
-                      : serveCreationRequest(session, frame),
+                    : frame.method.startsWith("native.pairing.")
+                      ? servePairingRequest(session, frame)
+                      : frame.method.startsWith("native.devices.")
+                        ? serveDevicesRequest(session, frame)
+                        : serveCreationRequest(session, frame),
               }),
           stores,
           queries,

@@ -24,6 +24,20 @@ export function DevicesView({ state }: { state: DevicesScreenState }) {
       ) : list.evidence.writeAdmission !== "ready" ? (
         <p role="alert">{T.writerPaused}</p>
       ) : null}
+      {list.devices
+        .filter((device) => device.forked)
+        .map((device) => (
+          <p role="alert" key={device.id}>
+            {device.name}: {T.forked}
+          </p>
+        ))}
+      {list.devices
+        .filter((device) => device.behind && !device.forked)
+        .map((device) => (
+          <p role="status" key={device.id}>
+            {device.name}: {T.behind}
+          </p>
+        ))}
       <label className="grid gap-2">
         <span>{T.choose}</span>
         <select

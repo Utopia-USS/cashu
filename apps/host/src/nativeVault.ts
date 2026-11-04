@@ -1,10 +1,19 @@
-import { lstatSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type {
   DeviceListResult,
   RevokeCommitResult,
   RevokeInspectResult,
 } from "@cashu/host-protocol";
+import {
+  decodeLanDescriptor,
+  LAN_CARRIER_PATH,
+  type LanCarrierReply,
+  type LanCarrierRequest,
+  lanAuthBody,
+  lanBytesDigest,
+} from "@cashu/host-protocol/pairing-lan";
 import { NodeFolderFs } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import {
@@ -26,9 +35,12 @@ import {
   type SyncEngine,
   type SyncResult,
   type Transport,
+  type UnstampedEvent,
 } from "@cashu/sync";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import type { WriterLease } from "./lease.js";
+import { HostLanCarrier } from "./pairing/carrier.js";
+import { type PairingAttempt, PairingJournal } from "./pairing/journal.js";
 import { WriteQueue } from "./queue.js";
 import {
   assertReplayedDeviceAuthority,
@@ -144,6 +156,49 @@ export interface NativeVaultSession {
     },
   ): Promise<RevokeCommitResult>;
   deviceInspect(operationId: string): Promise<RevokeInspectResult>;
+  pairingStart(
+    rendezvous: string,
+  ): Promise<
+    | devices.PairingStep<{ inviter: devices.PairingInviter; qr: string; authority: string }>
+    | { ok: false; reason: "unavailable" }
+  >;
+  pairingRegisterInvite(
+    session: string,
+    operationId: string,
+    qr: string,
+    expiresAt: number,
+  ): Promise<boolean>;
+  pairingBindJoiner(
+    session: string,
+    joiner: {
+      readonly deviceId: string;
+      readonly signPublicKey: Uint8Array;
+      readonly boxPublicKey: Uint8Array;
+    },
+  ): Promise<boolean>;
+  pairingAppend(input: {
+    readonly session: string;
+    readonly operationId: string;
+    readonly welcome: devices.InviterWelcome;
+    readonly authority: string;
+    readonly qr: string;
+    readonly rendezvous: string;
+  }): Promise<"completed" | "outcome_unknown" | "refused">;
+  pairingAttempt(session: string): Promise<PairingAttempt | undefined>;
+  pairingOperation(operationId: string): Promise<PairingAttempt | undefined>;
+  pairingHasActive(): Promise<boolean>;
+  pairingKnown(device: string, purpose: "carrier" | "resume", session?: string): Promise<boolean>;
+  pairingTrust(
+    device: string,
+    signKey: Uint8Array,
+    boxKey: Uint8Array,
+    certificate: Uint8Array,
+  ): Promise<boolean>;
+  carrierRequest(
+    request: LanCarrierRequest,
+    expiresAt: number,
+    onAuthorized?: () => void,
+  ): Promise<LanCarrierReply>;
   invalidate(): void;
   close(): Promise<void>;
 }
@@ -225,6 +280,17 @@ export async function openNativeVault(
     meta.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL");
     const provenance = SqlProvenanceStore.open(meta, ring, "existing");
     const attempts = SqlAttemptJournal.open(meta, "existing", now);
+    const pairingJournal = new PairingJournal(meta);
+    const lanCarrierRoot = join(dataDir, "lan-carrier");
+    mkdirSync(lanCarrierRoot, { recursive: true, mode: 0o700 });
+    const lanRootStat = lstatSync(lanCarrierRoot);
+    if (
+      !lanRootStat.isDirectory() ||
+      lanRootStat.isSymbolicLink() ||
+      (lanRootStat.mode & 0o077) !== 0
+    )
+      throw new Error("native_lan_carrier_invalid");
+    const lanCarrier = new HostLanCarrier(lanCarrierRoot);
     candidate = await loadDeviceAuthority({
       entry,
       dataDir,
@@ -244,11 +310,16 @@ export async function openNativeVault(
       salt,
       modules: builtinModules(),
     });
+    const localTransport = new FolderTransport({ fs: new NodeFolderFs(logPath) });
+    const lanRemote = new FolderTransport({
+      fs: new NodeFolderFs(lanCarrierRoot),
+      owner: entry.deviceId,
+    });
     engine = await createSyncEngine({
       vault: entry.vaultId,
       device: entry.deviceId,
-      local: new FolderTransport({ fs: new NodeFolderFs(logPath) }),
-      remotes: source.remoteTransports?.(entry) ?? [],
+      local: localTransport,
+      remotes: [lanRemote, ...(source.remoteTransports?.(entry) ?? [])],
       codec: createOwnLogCodec({
         sodium: source.sodium,
         ring: candidate.ring,
@@ -261,6 +332,29 @@ export async function openNativeVault(
       gossipEid: () => mintUlid(now()),
     });
     const recovered = await engine.recoverLocal();
+    for (const pending of pairingJournal.pending(entry.vaultId)) {
+      const proof = await engine.inspectOwnBatch({ eids: [pending.eid], digest: pending.digest });
+      if (proof === "committed") {
+        await engine.sync();
+        const local = (await localTransport.list(entry.vaultId)).filter(
+          (part) => part.device === entry.deviceId,
+        );
+        const remote = new Map(
+          (await lanCarrier.list(entry.vaultId))
+            .filter((part) => part.device === entry.deviceId)
+            .map((part) => [part.seg, part.size]),
+        );
+        let mirrored = local.every((part) => remote.get(part.seg) === part.size);
+        for (const part of local) {
+          if (!mirrored) break;
+          const expected = await localTransport.read(entry.vaultId, entry.deviceId, part.seg, 0);
+          const actual = await lanCarrier.read(entry.vaultId, entry.deviceId, part.seg, 0);
+          mirrored = Buffer.from(expected).equals(Buffer.from(actual));
+        }
+        if (mirrored) pairingJournal.mark(entry.vaultId, pending.session, "completed", now());
+      } else if (proof === "absent")
+        pairingJournal.mark(entry.vaultId, pending.session, "not_started", now());
+    }
     const profile = store.read<{ gid: string }>("SELECT gid FROM profiles");
     assertReplayedDeviceAuthority(
       candidate,
@@ -270,6 +364,14 @@ export async function openNativeVault(
     if (candidate.devices.rotationNeeded() !== undefined)
       throw new Error("device_rotation_required");
     const queue = new WriteQueue(() => lease.assertHeld());
+    let lastPairingPruneAt = now();
+    const prunePairing = () => {
+      const at = now();
+      if (at - lastPairingPruneAt < 60_000) return;
+      pairingJournal.pruneReceipts(entry.vaultId, at);
+      pairingJournal.pruneInvites(entry.vaultId, at);
+      lastPairingPruneAt = at;
+    };
     const epoch = {};
     let current = true;
     let syncing = false;
@@ -287,6 +389,42 @@ export async function openNativeVault(
     const activeEngine = engine;
     const activeCandidate = candidate;
     const activeMeta = meta;
+    const pairingAuthority = (): string => {
+      const recovery = activeCandidate.devices.registry.recovery;
+      const active = activeCandidate.ring.active;
+      return createHash("sha256")
+        .update(
+          JSON.stringify({
+            session: entry.deviceId,
+            signer: Buffer.from(activeCandidate.identity.signPublicKey).toString("hex"),
+            ring: [active.kid, active.epoch, active.generation, activeCandidate.ring.size],
+            recovery: [
+              Buffer.from(recovery.signPublicKey).toString("hex"),
+              Buffer.from(recovery.boxPublicKey).toString("hex"),
+            ],
+            registryEvents: activeCandidate.devices.registry.events,
+          }),
+        )
+        .digest("hex");
+    };
+    const ensureOwnLanMirror = async (): Promise<boolean> => {
+      await activeEngine.sync();
+      const local = (await localTransport.list(entry.vaultId)).filter(
+        (part) => part.device === entry.deviceId,
+      );
+      const mirror = new Map(
+        (await lanCarrier.list(entry.vaultId))
+          .filter((part) => part.device === entry.deviceId)
+          .map((part) => [part.seg, part.size]),
+      );
+      for (const part of local) {
+        if (mirror.get(part.seg) !== part.size) return false;
+        const expected = await localTransport.read(entry.vaultId, entry.deviceId, part.seg, 0);
+        const actual = await lanCarrier.read(entry.vaultId, entry.deviceId, part.seg, 0);
+        if (!Buffer.from(expected).equals(Buffer.from(actual))) return false;
+      }
+      return true;
+    };
     const revokeCommand = "native.devices.revokeCommit";
     const revokeRequest = (draft: NativeDeviceRevokeDraft): devices.RevocationPreviewRequest => {
       const view = activeStore.cursors();
@@ -380,6 +518,8 @@ export async function openNativeVault(
     // Authenticated local recovery may have merged wraps into the ring. Persist before exposure.
     await crypto.saveKeyring(source.keyStore, activeCandidate.ring);
     attempts.pruneReceipts();
+    pairingJournal.pruneReceipts(entry.vaultId, now());
+    pairingJournal.pruneInvites(entry.vaultId, now());
     return {
       id: entry.vaultId,
       store: activeStore,
@@ -394,6 +534,7 @@ export async function openNativeVault(
           return (
             isCurrent() &&
             !attempts.hasPending(entry.vaultId, revokeCommand) &&
+            pairingJournal.pending(entry.vaultId).length === 0 &&
             activeEngine.writeAdmission() === "ready"
           );
         } catch {
@@ -634,6 +775,7 @@ export async function openNativeVault(
               commandId: revokeCommand,
               fingerprint,
               eids,
+              digest,
             });
             if (
               saved.phase !== "may_append" ||
@@ -693,6 +835,333 @@ export async function openNativeVault(
           // Inspection only reconciles the original keyed operation. It never creates a new batch.
           const result = await reconcileRevoke(operationId, status.eids, status.fingerprint);
           return { kind: result, operationId } as const;
+        }),
+      pairingStart: (rendezvous) =>
+        queue.run(() => {
+          prunePairing();
+          if (
+            !isCurrent() ||
+            attempts.hasPending(entry.vaultId, revokeCommand) ||
+            pairingJournal.pending(entry.vaultId).length > 0 ||
+            activeEngine.writeAdmission() !== "ready"
+          )
+            return { ok: false, reason: "unavailable" } as const;
+          const authority = pairingAuthority();
+          const created = devices.PairingInviter.create({
+            sodium: source.sodium,
+            identity: activeCandidate.identity,
+            ring: activeCandidate.ring,
+            registry: activeCandidate.devices.registry,
+            now: now(),
+            rendezvous,
+          });
+          return created.ok ? { ok: true, value: { ...created.value, authority } } : created;
+        }),
+      pairingRegisterInvite: (session, operationId, qr, expiresAt) =>
+        queue.run(() => {
+          if (!isCurrent() || !Number.isSafeInteger(expiresAt) || expiresAt <= now()) return false;
+          pairingJournal.registerInvite({
+            session,
+            operationId,
+            vault: entry.vaultId,
+            qrDigest: createHash("sha256").update(qr).digest("hex"),
+            expiresAt,
+          });
+          return true;
+        }),
+      pairingBindJoiner: (session, joiner) =>
+        queue.run(() => {
+          if (!isCurrent()) return false;
+          const invite = pairingJournal.invite(entry.vaultId, session);
+          if (!invite || now() > invite.expiresAt) return false;
+          pairingJournal.bindJoiner(entry.vaultId, session, {
+            device: joiner.deviceId,
+            signKey: Buffer.from(joiner.signPublicKey).toString("hex"),
+            boxKey: Buffer.from(joiner.boxPublicKey).toString("hex"),
+          });
+          return true;
+        }),
+      pairingAppend: (input) =>
+        queue.run(async () => {
+          if (
+            !isCurrent() ||
+            attempts.hasPending(entry.vaultId, revokeCommand) ||
+            pairingJournal.pending(entry.vaultId).length > 0 ||
+            activeEngine.writeAdmission() !== "ready"
+          )
+            return "refused" as const;
+          if (input.authority !== pairingAuthority()) return "refused" as const;
+          const registeredInvite = pairingJournal.invite(entry.vaultId, input.session);
+          if (
+            !registeredInvite ||
+            registeredInvite.operationId !== input.operationId ||
+            registeredInvite.qrDigest !== createHash("sha256").update(input.qr).digest("hex") ||
+            registeredInvite.device !== input.welcome.device.deviceId
+          )
+            return "refused" as const;
+          const descriptor = decodeLanDescriptor(input.rendezvous, true);
+          if (!descriptor || input.qr.length > 2_048) return "refused" as const;
+          const event: UnstampedEvent = input.welcome.deviceAdded;
+          const payload = event.d;
+          if (
+            event.t !== "device.added" ||
+            typeof payload.device !== "string" ||
+            payload.device !== input.welcome.device.deviceId ||
+            typeof payload.signPublicKey !== "string" ||
+            typeof payload.boxPublicKey !== "string" ||
+            typeof payload.certificate !== "string" ||
+            payload.signPublicKey !== registeredInvite.signKey ||
+            payload.boxPublicKey !== registeredInvite.boxKey ||
+            activeCandidate.devices.registry.isRegistered(payload.device)
+          )
+            return "refused" as const;
+          const candidateBytes = Buffer.byteLength(
+            JSON.stringify({
+              v: 1,
+              vaultId: entry.vaultId,
+              deviceId: payload.device,
+              session: input.session,
+              invite: input.qr,
+              certificate: Buffer.from(input.welcome.certificate).toString("hex"),
+              registryEvents: activeCandidate.devices.registry.events.slice(
+                0,
+                devices.MAX_REGISTRY_EVENTS,
+              ),
+              ip: descriptor.ip,
+              port: descriptor.port,
+              spki: descriptor.spki,
+            }),
+            "utf8",
+          );
+          if (candidateBytes > 72 * 1024 * 1024) return "refused" as const;
+          const digest = ownBatchDigest([event]);
+          const attempt = pairingJournal.prepare({
+            session: input.session,
+            operationId: input.operationId,
+            vault: entry.vaultId,
+            device: payload.device,
+            signKey: payload.signPublicKey,
+            boxKey: payload.boxPublicKey,
+            certificate: payload.certificate,
+            event,
+            eid: event.i,
+            digest,
+            welcome: input.welcome.reply,
+            pages: input.welcome.pages,
+            phase: "may_append",
+          });
+          if (attempt.phase !== "may_append") return "refused" as const;
+          try {
+            await activeEngine.write([event]);
+            if ((await activeEngine.inspectOwnBatch({ eids: [event.i], digest })) !== "committed")
+              throw new Error("pairing_batch_unverified");
+            if (!(await ensureOwnLanMirror())) throw new Error("pairing_mirror_unavailable");
+            pairingJournal.mark(entry.vaultId, input.session, "completed", now());
+            return "completed" as const;
+          } catch {
+            // The exact authenticated batch is reconciled from the durable journal on reopen.
+            current = false;
+            queue.close();
+            return "outcome_unknown" as const;
+          }
+        }),
+      pairingAttempt: (session) =>
+        queue.run(async () => {
+          prunePairing();
+          if (!isCurrent()) return undefined;
+          const attempt = pairingJournal.get(entry.vaultId, session);
+          if (!attempt || attempt.vault !== entry.vaultId) return undefined;
+          if (attempt.phase !== "may_append") return attempt;
+          const proof = await activeEngine.inspectOwnBatch({
+            eids: [attempt.eid],
+            digest: attempt.digest,
+          });
+          if (proof === "committed" && (await ensureOwnLanMirror()))
+            pairingJournal.mark(entry.vaultId, session, "completed", now());
+          else if (proof === "absent")
+            pairingJournal.mark(entry.vaultId, session, "not_started", now());
+          return pairingJournal.get(entry.vaultId, session);
+        }),
+      pairingOperation: (operationId) =>
+        queue.run(async () => {
+          prunePairing();
+          if (!isCurrent()) return undefined;
+          const attempt = pairingJournal.forOperation(entry.vaultId, operationId);
+          if (!attempt) return undefined;
+          if (attempt.phase === "may_append") {
+            const proof = await activeEngine.inspectOwnBatch({
+              eids: [attempt.eid],
+              digest: attempt.digest,
+            });
+            if (proof === "committed" && (await ensureOwnLanMirror()))
+              pairingJournal.mark(entry.vaultId, attempt.session, "completed", now());
+            else if (proof === "absent")
+              pairingJournal.mark(entry.vaultId, attempt.session, "not_started", now());
+          }
+          return pairingJournal.forOperation(entry.vaultId, operationId);
+        }),
+      pairingHasActive: () =>
+        queue.run(() => {
+          if (!isCurrent()) return false;
+          if (pairingJournal.pending(entry.vaultId).length > 0) return true;
+          for (const device of activeCandidate.devices.registry.trusted.keys())
+            if (pairingJournal.forDevice(entry.vaultId, device) !== undefined) return true;
+          return false;
+        }),
+      pairingKnown: (device, purpose, session) =>
+        queue.run(() => {
+          if (!isCurrent()) return false;
+          if (purpose === "carrier") return activeCandidate.devices.registry.isTrusted(device);
+          if (!session) return false;
+          const attempt = pairingJournal.get(entry.vaultId, session);
+          return (
+            !!attempt &&
+            attempt.device === device &&
+            attempt.phase === "completed" &&
+            activeCandidate.devices.registry.isTrusted(device)
+          );
+        }),
+      pairingTrust: (device, signKey, boxKey, certificate) =>
+        queue.run(() => {
+          if (!isCurrent()) return false;
+          const record = activeCandidate.devices.registry.trusted.get(device);
+          const stored = pairingJournal.forDevice(entry.vaultId, device);
+          return (
+            !!record &&
+            !!stored &&
+            Buffer.from(record.signPublicKey).equals(Buffer.from(signKey)) &&
+            Buffer.from(record.boxPublicKey).equals(Buffer.from(boxKey)) &&
+            stored.signKey === Buffer.from(signKey).toString("hex") &&
+            stored.boxKey === Buffer.from(boxKey).toString("hex") &&
+            stored.certificate === Buffer.from(certificate).toString("hex")
+          );
+        }),
+      carrierRequest: (request, expiresAt, onAuthorized) =>
+        queue.run(async () => {
+          const refused = (
+            code:
+              | "unavailable"
+              | "invalid"
+              | "unauthorized"
+              | "offset_conflict"
+              | "too_large"
+              | "busy"
+              | "unknown",
+          ) => ({ v: 1 as const, kind: "refused" as const, code });
+          if (
+            !isCurrent() ||
+            request.vault !== entry.vaultId ||
+            request.auth.vault !== entry.vaultId ||
+            request.auth.device !== request.device ||
+            now() > expiresAt
+          )
+            return refused("unavailable");
+          if (
+            request.method === "append" &&
+            (attempts.hasPending(entry.vaultId, revokeCommand) ||
+              pairingJournal.pending(entry.vaultId).length > 0 ||
+              activeEngine.writeAdmission() !== "ready")
+          )
+            return refused("unavailable");
+          const registered = activeCandidate.devices.registry.trusted.get(request.device);
+          if (!registered) return refused("unauthorized");
+          const decodedBytes =
+            request.bytes === undefined ? undefined : Buffer.from(request.bytes, "base64url");
+          if (decodedBytes && decodedBytes.length > 72 * 1024 * 1024) return refused("too_large");
+          const body = lanAuthBody({
+            purpose: "carrier",
+            path: LAN_CARRIER_PATH,
+            method: request.method,
+            vault: request.vault,
+            device: request.device,
+            ...(request.writer === undefined ? {} : { writer: request.writer }),
+            ...(request.seg === undefined ? {} : { seg: request.seg }),
+            ...(request.offset === undefined ? {} : { offset: request.offset }),
+            ...(decodedBytes === undefined ? {} : { bytesDigest: lanBytesDigest(decodedBytes) }),
+            nonce: request.auth.nonce,
+            expiresAt,
+          });
+          if (
+            !crypto.verifyContextSignature(
+              "cashu/lan-auth/v1",
+              body,
+              Buffer.from(request.auth.signature, "hex"),
+              registered.signPublicKey,
+            )
+          )
+            return refused("unauthorized");
+          onAuthorized?.();
+          try {
+            prunePairing();
+            // Pull and validate any mobile stream before exposing new opaque state. The vault
+            // queue serializes this with revocation and native commands.
+            await activeEngine.sync();
+            const recovered = await activeEngine.recoverLocal();
+            const profiles = activeStore.read<{ gid: string }>("SELECT gid FROM profiles");
+            assertReplayedDeviceAuthority(
+              activeCandidate,
+              recovered,
+              profiles.length === 1 ? profiles[0]?.gid : undefined,
+            );
+            if (activeCandidate.devices.rotationNeeded() !== undefined)
+              return refused("unavailable");
+            await crypto.saveKeyring(source.keyStore, activeCandidate.ring);
+            const refreshed = activeCandidate.devices.registry.trusted.get(request.device);
+            if (
+              !refreshed ||
+              !Buffer.from(refreshed.signPublicKey).equals(Buffer.from(registered.signPublicKey)) ||
+              !Buffer.from(refreshed.boxPublicKey).equals(Buffer.from(registered.boxPublicKey))
+            )
+              return refused("unauthorized");
+            if (request.method === "list") {
+              const segments = await lanCarrier.list(entry.vaultId);
+              return {
+                v: 1,
+                kind: "list",
+                segments: segments.map((part) => ({
+                  writer: part.device,
+                  seg: part.seg,
+                  size: part.size,
+                })),
+              } as const;
+            }
+            if (
+              request.writer === undefined ||
+              request.seg === undefined ||
+              request.offset === undefined
+            )
+              return refused("invalid");
+            if (request.method === "read") {
+              const bytes = await lanCarrier.read(
+                entry.vaultId,
+                request.writer,
+                request.seg,
+                request.offset,
+              );
+              return {
+                v: 1,
+                kind: "read",
+                bytes: Buffer.from(bytes).toString("base64url"),
+              } as const;
+            }
+            if (request.writer !== request.device || decodedBytes === undefined)
+              return refused("unauthorized");
+            const size = await lanCarrier.append(
+              entry.vaultId,
+              request.writer,
+              request.seg,
+              request.offset,
+              decodedBytes,
+            );
+            // A successful remote append is promptly pulled through the authenticated engine.
+            await activeEngine.sync();
+            return { v: 1, kind: "append", size, digest: lanBytesDigest(decodedBytes) } as const;
+          } catch (error) {
+            const code = error instanceof Error ? error.message : "";
+            if (code === "carrier_offset_conflict") return refused("offset_conflict");
+            if (code === "carrier_too_large") return refused("too_large");
+            return refused("unknown");
+          }
         }),
       invalidate() {
         current = false;

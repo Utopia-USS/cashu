@@ -174,6 +174,27 @@ export {
   serializeNotifyFrame,
 } from "./notify.js";
 export {
+  NATIVE_PAIRING_FEATURE,
+  NATIVE_PAIRING_METHODS,
+  type PairingCancelParams,
+  type PairingCancelResult,
+  type PairingConfirmParams,
+  type PairingConfirmResult,
+  type PairingInspectParams,
+  type PairingInspectResult,
+  type PairingInviteParams,
+  type PairingInviteResult,
+  pairingCancelParamsSchema,
+  pairingCancelResultSchema,
+  pairingConfirmParamsSchema,
+  pairingConfirmResultSchema,
+  pairingInspectParamsSchema,
+  pairingInspectResultSchema,
+  pairingInviteParamsSchema,
+  pairingInviteResultSchema,
+  uiPairingAllowed,
+} from "./pairing/messages.js";
+export {
   NATIVE_CREATION_FEATURE,
   NATIVE_CREATION_METHODS,
   roleAllows,

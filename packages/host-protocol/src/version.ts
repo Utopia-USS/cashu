@@ -16,8 +16,9 @@ export interface ProtocolVersion {
  * 1.4: exact UI-role one-use notification intent resolution (feature `native.notification.intent.v1`).
  * 1.5: verified packaged content-build match for ui/cli/mcp handshakes; admin stays cross-build.
  * 1.6: exact UI-role native device revocation RPCs (feature `native.devices.v1`).
+ * 1.7: exact UI-role native pairing RPCs (feature `native.pairing.v1`).
  */
-export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 6 };
+export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 7 };
 
 export const protocolVersionSchema = z.object({
   major: z.number().int().min(0).max(65_535),

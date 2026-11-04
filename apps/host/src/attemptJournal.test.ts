@@ -28,11 +28,13 @@ describe("SqlAttemptJournal", () => {
       commandId: "core.renameProfile",
       fingerprint: "f".repeat(64),
       eids: ["e".repeat(26)],
+      digest: "d".repeat(64),
     };
     expect(await journal.saveMayAppend(record)).toMatchObject({
       phase: "may_append",
       attemptId: record.attemptId,
       eids: record.eids,
+      digest: record.digest,
     });
     driver.close();
     const reopened = openNodeSqlite(path);
@@ -40,11 +42,13 @@ describe("SqlAttemptJournal", () => {
     expect(again.status(record.vault, record.key, record.commandId)).toMatchObject({
       phase: "may_append",
       eids: record.eids,
+      digest: record.digest,
     });
     expect(await again.unresolved(record.vault)).toEqual([record]);
     expect(await again.saveMayAppend({ ...record, eids: ["x"] })).toMatchObject({
       phase: "may_append",
       eids: record.eids,
+      digest: record.digest,
     });
     expect(() => again.status("b".repeat(32), record.key, record.commandId)).toThrow(
       "request_key_conflict",
@@ -65,6 +69,7 @@ describe("SqlAttemptJournal", () => {
       commandId: "core.renameProfile",
       fingerprint: "f".repeat(64),
       eids: ["e".repeat(26)],
+      digest: "d".repeat(64),
     };
     await journal.saveMayAppend(record);
     await journal.markCompleted(record.attemptId, { changed: true });

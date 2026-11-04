@@ -19,6 +19,14 @@ import {
   nativeCreationPrepareParamsSchema,
   nativeCreationPrepareResultSchema,
   notificationResolveResultSchema,
+  pairingCancelParamsSchema,
+  pairingCancelResultSchema,
+  pairingConfirmParamsSchema,
+  pairingConfirmResultSchema,
+  pairingInspectParamsSchema,
+  pairingInspectResultSchema,
+  pairingInviteParamsSchema,
+  pairingInviteResultSchema,
   revokeCancelParamsSchema,
   revokeCancelResultSchema,
   revokeCommitParamsSchema,
@@ -29,6 +37,7 @@ import {
   revokePreviewResultSchema,
   uiCreationAllowed,
   uiDevicesAllowed,
+  uiPairingAllowed,
 } from "@cashu/host-protocol";
 import {
   acquireHostLock,
@@ -589,6 +598,52 @@ devicesIpc("revokePreview");
 devicesIpc("revokeCommit");
 devicesIpc("revokeInspect");
 devicesIpc("revokeCancel");
+
+function pairingIpc(method: "invite" | "confirm" | "inspect" | "cancel") {
+  const paramsSchema = {
+    invite: pairingInviteParamsSchema,
+    confirm: pairingConfirmParamsSchema,
+    inspect: pairingInspectParamsSchema,
+    cancel: pairingCancelParamsSchema,
+  }[method];
+  const resultSchema = {
+    invite: pairingInviteResultSchema,
+    confirm: pairingConfirmResultSchema,
+    inspect: pairingInspectResultSchema,
+    cancel: pairingCancelResultSchema,
+  }[method];
+  ipcMain.handle(`cashu:pairing-${method}`, async (event, raw: unknown) => {
+    if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !hostAdmissionOpen)
+      throw new Error("pairing_unavailable");
+    const params = paramsSchema.safeParse(raw);
+    if (!params.success) throw new Error("pairing_invalid_params");
+    const connection = (
+      await connectOrStart({
+        dataDir,
+        role: "ui",
+        build: HOST_BUILD,
+        start: async () => {
+          await activateHost(hostService, startHost);
+        },
+      })
+    ).connection;
+    try {
+      const full = `native.pairing.${method}`;
+      if (!uiPairingAllowed(full, connection.host.protocol.minor, connection.host.features))
+        throw new Error("pairing_unavailable");
+      const result = resultSchema.safeParse(await connection.call(full, params.data));
+      if (!result.success) throw new Error("pairing_invalid_result");
+      return result.data;
+    } finally {
+      connection.close();
+    }
+  });
+}
+
+pairingIpc("invite");
+pairingIpc("confirm");
+pairingIpc("inspect");
+pairingIpc("cancel");
 
 function startHost(): void {
   if (!hostAdmissionOpen) throw new Error("host admission closed");

@@ -48,6 +48,7 @@ export {
   runCommand,
   storeWriter,
 } from "./command.js";
+export { type CommandAttemptTable, SqlCommandAttemptJournal } from "./command-attempt-sql.js";
 export {
   type AttemptLookup,
   type AttemptRecord,

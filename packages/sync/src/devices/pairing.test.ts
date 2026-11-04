@@ -59,6 +59,40 @@ describe("pairing", () => {
     expect(decodeInvite("cashu-pair:{}")).toBeUndefined();
   });
 
+  it("wipes the inviter and aborts before challenge when durable hello registration fails", async () => {
+    const { creator } = createSimVault();
+    const phone = new SimDevice("phone", creator.remote);
+    const { inviter, qr } = invite(creator);
+    const started = PairingJoiner.start(
+      { sodium, identity: phone.identity, name: "phone" },
+      qr,
+      phone.now(),
+    );
+    if (!started.ok) throw new Error(started.reason);
+    const links = memoryLinks();
+    let shown = false;
+    const [invited, joined] = await Promise.all([
+      runInviter(inviter, links.inviter, {
+        now: () => creator.now(),
+        eid: newEid,
+        enterCode: async () => "000000",
+        afterHello: async () => {
+          throw new Error("synthetic_journal_failure");
+        },
+      }),
+      runJoiner(started.value.joiner, started.value.hello, links.joiner, {
+        now: () => phone.now(),
+        showSas: () => {
+          shown = true;
+        },
+      }),
+    ]);
+    expect(invited).toMatchObject({ ok: false, reason: "sas_rejected" });
+    expect(joined.ok).toBe(false);
+    expect(shown).toBe(false);
+    expect(inviter.state).toBe("done");
+  });
+
   it("a man in the middle that substitutes its keys is caught by the SAS; nothing is sealed", async () => {
     const { creator } = createSimVault();
     const phone = new SimDevice("phone", creator.remote);
@@ -172,6 +206,39 @@ describe("pairing", () => {
     if (!welcome.ok) throw new Error(welcome.reason);
     const done = s.value.joiner.receiveWelcome(welcome.value.reply);
     expect(done.ok && done.value.done).toBe(true);
+  });
+
+  it("restores a pending join only by replaying its original signed challenge", () => {
+    const { creator } = createSimVault();
+    const phone = new SimDevice("phone", creator.remote);
+    const { inviter, qr } = invite(creator);
+    const options = { sodium, identity: phone.identity, name: "phone" };
+    const started = PairingJoiner.start(options, qr, phone.now());
+    if (!started.ok) throw new Error(started.reason);
+    const challenged = inviter.receiveHello(started.value.hello, creator.now());
+    if (!challenged.ok) throw new Error(challenged.reason);
+    const revealed = started.value.joiner.receiveChallenge(challenged.value.reply, phone.now());
+    if (!revealed.ok) throw new Error(revealed.reason);
+    const snapshot = started.value.joiner.snapshotPending();
+    if (!snapshot) throw new Error("missing pending snapshot");
+    const restored = PairingJoiner.restorePending(options, snapshot, phone.now());
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) return;
+    expect(restored.value.snapshotPending()).toEqual(snapshot);
+    const other = createDeviceIdentity(sodium);
+    expect(
+      PairingJoiner.restorePending({ ...options, identity: other }, snapshot, phone.now()).ok,
+    ).toBe(false);
+    expect(
+      PairingJoiner.restorePending(options, { ...snapshot, sas: "000000" }, phone.now()).ok,
+    ).toBe(false);
+    expect(
+      PairingJoiner.restorePending(
+        options,
+        snapshot,
+        inviter.invite.expiresAt + 24 * 60 * 60 * 1000 + 1,
+      ).ok,
+    ).toBe(false);
   });
 
   it("a tampered welcome (other wrap, other registry) is refused", () => {

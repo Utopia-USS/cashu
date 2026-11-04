@@ -120,6 +120,7 @@ export {
   PairingInviter,
   PairingJoiner,
   type PairingStep,
+  type PendingPairingSnapshot,
   SAS_ATTEMPTS,
   SAS_TTL_MS,
   shortAuthenticationString,
