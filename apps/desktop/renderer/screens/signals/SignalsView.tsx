@@ -63,27 +63,22 @@ const decision = (value: string) =>
     }) as Record<string, string>
   )[value] ?? G.code(value);
 const notice = (value: string) =>
-  value === "unknown"
-    ? G.unknown
-    : value === "unavailable"
-      ? G.writeUnavailable
-      : value === "previous_completed"
-        ? G.previousCompleted
-        : value === "previous_refused"
-          ? G.previousRefused
-          : value === "partial"
-            ? G.savedPartial
-            : value === "skipped"
-              ? G.alreadySettled
-              : value === "cleanup"
-                ? G.savedCleanup
-                : value === "cache"
-                  ? G.savedCache
-                  : value === "watch_warning"
-                    ? G.savedWatchWarning
-                    : value === "failed"
-                      ? G.failed
-                      : G.saved;
+  (
+    ({
+      removed: G.removed,
+      restored: G.restored,
+      unknown: G.unknown,
+      unavailable: G.writeUnavailable,
+      previous_completed: G.previousCompleted,
+      previous_refused: G.previousRefused,
+      partial: G.savedPartial,
+      skipped: G.alreadySettled,
+      cleanup: G.savedCleanup,
+      cache: G.savedCache,
+      watch_warning: G.savedWatchWarning,
+      failed: G.failed,
+    }) as Record<string, string>
+  )[value] ?? G.saved;
 const runStatus = (value: string) =>
   (
     ({ ok: G.runOk, partial: G.runPartial, failed: G.runFailed, running: G.runRunning }) as Record<

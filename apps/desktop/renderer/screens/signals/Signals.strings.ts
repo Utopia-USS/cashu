@@ -154,6 +154,8 @@ export const G = catalog({
   },
   freeText: { pl: "Dodaj wpisany symbol", en: "Add typed symbol" },
   saved: { pl: "Zapisano", en: "Saved" },
+  removed: { pl: "Usunięto", en: "Removed" },
+  restored: { pl: "Przywrócono", en: "Restored" },
   warning: { pl: "Wymaga sprawdzenia notowania.", en: "Price quote needs checking." },
   lastQuote: { pl: "Ostatnie notowanie", en: "Latest quote" },
   changeDay: { pl: "1 dzień", en: "1 day" },
