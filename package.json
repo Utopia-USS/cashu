@@ -2,7 +2,7 @@
   "name": "cashu-ts",
   "private": true,
   "type": "module",
-  "description": "cashU TypeScript monorepo (migration lab). Python app and frontend/ live beside it.",
+  "description": "cashU TypeScript monorepo: desktop and mobile apps, local host, CLI and MCP server.",
   "engines": {
     "node": ">=22"
   },

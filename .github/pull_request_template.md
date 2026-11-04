@@ -10,7 +10,7 @@
 
 - [ ] Tests added or updated, on synthetic data only (no real statements, balances, IBANs or names)
 - [ ] No data files staged: nothing from `data/` or `statements/`, no `.env`, `*.pem`, database or export (`git status` checked)
-- [ ] `ruff check src tests` and `pytest` pass; for frontend changes `npm run typecheck`, `npm test` and `npm run build`
+- [ ] `pnpm check` and `pnpm arch:check` pass; for desktop changes also `pnpm --filter @cashu/desktop build`
 - [ ] Docs updated where the change affects them (`README.md`, `CLAUDE.md`, `docs/`, skills)
 - [ ] No new network call or data leaving the machine, or it is described above
 - [ ] No em dash character; UI strings in Polish, everything else in English

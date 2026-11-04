@@ -1,5 +1,4 @@
 # TypeScript monorepo (pnpm + turbo): typecheck, lint and tests for every package and app.
-# The Python and frontend jobs live in ci.yml.
 name: TypeScript
 
 on:

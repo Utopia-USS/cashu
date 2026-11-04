@@ -47,7 +47,7 @@ keep Views on tokens and existing components.
 | Task / question | Start with |
 |---|---|
 | I need a button / row / card / chart / badge / list | Storybook MCP search, then [components.md](references/components.md) |
-| Add a variant or a new component, or port one from `frontend/` | [components.md](references/components.md) |
+| Add a variant or a new component, or port one from the legacy SPA (git history) | [components.md](references/components.md) |
 | A color, spacing, type, dark mode or privacy-mode decision | [tokens.md](references/tokens.md) |
 | Stories, visual regression, a11y tests, story coverage failure | [storybook.md](references/storybook.md) |
 | UI text, plurals, number and date formatting | [copy.md](references/copy.md) |

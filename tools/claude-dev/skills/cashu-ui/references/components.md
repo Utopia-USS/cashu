@@ -84,10 +84,10 @@ Share the geometry (d3-scale, d3-shape, ticks, privacy masking) in `packages/ui`
    mode where amounts appear; export it from `src/index.ts`.
 5. `pnpm arch:check`: story coverage, a11y and render tests (Vitest addon) must pass.
 
-## Porting from frontend/
+## Porting from the legacy SPA
 
-The legacy SPA (`frontend/src/ui.tsx`, `widgets.tsx`, `charts.tsx`, module components) is React 18 +
-Vite 5 with plain CSS and inline styles. Port by moving behaviour and look into `packages/ui` with the
-conventions above (tokens, variants, stories), never by copying and leaving the original. Pointing the
-legacy SPA at `packages/ui` requires its React 19 upgrade first; until then the port serves the new
-desktop renderer only.
+The legacy SPA (`frontend/src/ui.tsx`, `widgets.tsx`, `charts.tsx`, module components; React 18 + Vite 5
+with plain CSS and inline styles) is deleted from the tree; read it from git history
+(`git log --diff-filter=D -- frontend` names the deleting commit, `git show <commit>^:frontend/src/ui.tsx`).
+Port by moving behaviour and look into `packages/ui` with the conventions above (tokens, variants,
+stories).

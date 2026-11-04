@@ -140,7 +140,6 @@ describe("backend translation scope", () => {
   ])("covers %s", (file) => expect(isBackendTranslationFile(file)).toBe(true));
 
   it.each([
-    "frontend/src/core/example.ts",
     "packages/ui-logic/src/core/example.ts",
     "packages/ui/src/Example.tsx",
     "packages/store-react/src/index.ts",

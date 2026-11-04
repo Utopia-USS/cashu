@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// Keep generated Playwright output away from the built renderer. The active suite is native
-// desktop specs; the old frontend browser specs remain in frontend/ as historical reference.
+// Keep generated Playwright output away from the built renderer. The suite is the native desktop
+// specs.
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

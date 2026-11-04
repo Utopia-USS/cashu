@@ -19,7 +19,7 @@ export const REACT_FILES = [
 export default [
   {
     basePath: repoRoot,
-    ignores: ["**/node_modules/**", "**/dist/**", "**/.turbo/**", "frontend/**"],
+    ignores: ["**/node_modules/**", "**/dist/**", "**/.turbo/**"],
   },
   {
     basePath: repoRoot,

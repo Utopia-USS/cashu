@@ -2,10 +2,8 @@
 // Run from the repo root by `pnpm arch:check` (tools/arch/src/run.ts).
 {
   "$schema": "../../node_modules/.pnpm/knip@6.41.0/node_modules/knip/schema-jsonc.json",
-  // Historical SPA reference files are outside the TypeScript workspace graph.
-  "ignore": ["frontend/**"],
   "workspaces": {
-    // The root holds only tooling; the Python app is not part of the TS monorepo.
+    // The root holds only tooling.
     ".": {
       "entry": [],
       "project": [],
@@ -46,7 +44,9 @@
     "apps/cli": {
       // Loaded by a test-only Node --import path before the real shim entry.
       "entry": ["src/testing/hostInterposer.ts"],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts"],
+      // macOS script(1) gives the terminal test a pseudo-terminal; not an npm package.
+      "ignoreBinaries": ["script"]
     },
     "apps/desktop": {
       "entry": [

@@ -1,6 +1,6 @@
 # Every push to staging opens (or reuses) the staging -> main pull request, so changes reach main in one
 # reviewed merge (docs/agents/conventions.md rule 5). Pushing to staging bumps no version and releases nothing:
-# the bump runs on main, and a release to installed apps is a separate local step (packaging/RELEASING.md).
+# the bump runs on main, and a release to installed apps is a separate local step (apps/desktop/scripts/package-macos.mjs).
 name: Staging -> main PR
 
 on:
@@ -26,5 +26,5 @@ jobs:
           else
             gh pr create --repo "$REPO" --base main --head staging \
               --title "Release: staging -> main" \
-              --body "Automatic pull request from staging. Merging it lands the changes on main (the version bump follows). A release to installed apps stays a separate step: packaging/RELEASING.md."
+              --body "Automatic pull request from staging. Merging it lands the changes on main (the version bump follows). A release to installed apps stays a separate local step: apps/desktop/scripts/package-macos.mjs."
           fi
