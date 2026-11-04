@@ -31,6 +31,7 @@ import type { InvestmentMarketSource, MarketInput } from "@cashu/store/investmen
 import { type DailySources, InstrumentSearch } from "@cashu/store/investments/services";
 import type { Read } from "@cashu/store/query";
 import type { OpenVault } from "../stores.js";
+import type { WorkspaceProvider } from "../workspace/index.js";
 import { cachedInstrumentMarketData } from "./cachedData.js";
 import { nativeInvestmentMcp } from "./mcpProduction.js";
 import { cachedResearchSources } from "./researchCache.js";
@@ -48,6 +49,7 @@ export interface ProductionMarketInput {
   readonly sleep?: Sleep;
   /** Existing native language policy, supplied by the product entry. */
   readonly language?: () => "pl" | "en";
+  readonly workspace?: WorkspaceProvider;
 }
 
 export interface ProductionMarket {
@@ -75,6 +77,7 @@ export function createProductionMarket(input: ProductionMarketInput): Production
     calendar,
     vaults: input.stores.vaults,
     isCurrent: input.isCurrent,
+    workspace: input.workspace,
   });
   let closed = false;
   const vaultFor = (id: string): OpenVault | undefined => input.stores.vaults.get(id);

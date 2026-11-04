@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { type Command, type DurableCommandResult, mintUlid } from "@cashu/store";
 import { runHostVaultCommand } from "../commands.js";
 import type { OpenVault } from "../stores.js";
+import { N } from "./nativeStrings.js";
 import type { CommandIo } from "./tree.js";
 
 /** Mint once for this CLI dispatch. Never generate a replacement after an uncertain answer. */
@@ -26,7 +27,7 @@ export function runCliVaultCommand<I, R>(
         },
       }
     : command;
-  return runHostVaultCommand(vault, checked, input, key);
+  return runHostVaultCommand(vault, checked, input, key, isCurrent);
 }
 
 /** The original key is enough for a later read-only status lookup. */
@@ -37,11 +38,9 @@ export function reportCliCommandFailure(
   commandId: string,
 ): number {
   if (result.kind === "outcome_unknown") {
-    io.stderr(
-      `Command outcome unknown. Check: cashu command-status ${commandId} ${key}. Do not issue a new attempt until reconciled.\n`,
-    );
+    io.stderr(`${io.t.tr(N.commandUnknown)(commandId, key)}\n`);
   } else {
-    io.stderr(`Command ${result.kind}: ${result.reason}. Idempotency key: ${key}.\n`);
+    io.stderr(`${io.t.tr(N.commandFailure)(result.kind, result.reason, key)}\n`);
   }
   return 1;
 }
@@ -51,8 +50,6 @@ export function reportCliProjectionUnavailable(
   key: string,
   commandId: string,
 ): number {
-  io.stderr(
-    `Command completed, but its current view is unavailable. Check: cashu command-status ${commandId} ${key}.\n`,
-  );
+  io.stderr(`${io.t.tr(N.projectionUnavailable)(commandId, key)}\n`);
   return 1;
 }

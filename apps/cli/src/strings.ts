@@ -10,6 +10,10 @@ type Text = TranslationVariants<string>;
 type Fn<A extends unknown[]> = TranslationVariants<(...args: A) => string>;
 
 export const S = {
+  desktopUnavailable: {
+    pl: "Nie można uruchomić aplikacji okienkowej cashU. W wersji deweloperskiej najpierw zbuduj @cashu/desktop.",
+    en: "Cannot launch the cashU desktop app. In a development checkout, build @cashu/desktop first.",
+  } satisfies Text,
   hostUnavailable: {
     pl: (log: string) =>
       `cashU nie może uruchomić usługi w tle. Sprawdź \`cashu host status\` i log ${log}.`,

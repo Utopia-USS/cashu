@@ -81,4 +81,6 @@ export interface WorkspaceBinding {
 
 export interface WorkspaceProvider {
   bind(vault: string): WorkspaceBinding | null;
+  /** Emitted after an operation may have changed a vault workspace. */
+  readonly changes?: { subscribe(listener: (vault: string) => void): () => void };
 }

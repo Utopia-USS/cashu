@@ -12,10 +12,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import type { NativeVaultSession } from "../nativeVault.js";
+import type { OpenVault } from "../stores.js";
 import type { NativeVaultInventoryEntry } from "../sync/keys/deviceAuthority.js";
 import { WorkspacePathError } from "./files.js";
 import { createProductionWorkspaceProvider } from "./production.js";
 import { createProductionPublication } from "./publication.js";
+import { createResearchWorkspaceInfo } from "./researchInfo.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -145,7 +147,27 @@ test("production provider binds one current native vault and refuses wrong vault
   expect(binding?.generation).toBe("session-one");
   const input = { slug: "synthetic", privacy: "strict" as const, baseCurrency: "PLN", modules: [] };
   expect(await binding?.inspect(input)).toMatchObject({ availability: "ready", path: f.workspace });
+  const open = { id: vault, mode: "native", store: native.store } as OpenVault;
+  const source = createResearchWorkspaceInfo({
+    provider,
+    vaults: new Map([[vault, open]]),
+    isCurrent: () => current,
+  });
+  const read = ((sql: string) =>
+    sql === "SELECT gid FROM profiles" ? [{ gid: vault }] : []) as never;
+  await source.refresh(vault);
+  expect(source.source.current(read)).toMatchObject({
+    status: "current",
+    value: { value: { path: f.workspace, exists: false } },
+  });
   expect(await binding?.apply(input)).toMatchObject({ kind: "completed" });
+  expect(source.source.current(read)).toMatchObject({ status: "unavailable" });
+  await source.refresh(vault);
+  expect(source.source.current(read)).toMatchObject({
+    status: "current",
+    value: { value: { path: f.workspace, exists: true, skillInstalled: false } },
+  });
+  source.close();
   expect(readFileSync(join(f.workspace, "CLAUDE.md"), "utf8")).toContain("cashU agent workspace");
   privacy = "amounts";
   expect(binding?.isCurrent()).toBe(false);

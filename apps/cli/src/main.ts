@@ -15,6 +15,7 @@ import {
 import { forwardedEnv, HostLostError, ProtocolError, runExec } from "./cliClient.js";
 import { type ResolvedDataDir, resolveDataDir } from "./dataDir.js";
 import { delegateEnv, runDelegate } from "./delegate.js";
+import { desktopLaunch, runDesktopApp } from "./desktop.js";
 import { checkoutRoot } from "./devenv.js";
 import {
   existingHost,
@@ -290,6 +291,19 @@ export async function main(argv: readonly string[], proc: ShimProcess): Promise<
   };
   const r = route(argv);
   switch (r.kind) {
+    case "app": {
+      const target = desktopLaunch(proc.build, proc.execPath, proc.cwd, env, dataDir.path, r.debug);
+      if (target === null) {
+        say(proc, "stderr", t.tr(S.desktopUnavailable));
+        return { code: HOST_UNAVAILABLE_EXIT };
+      }
+      const result = await runDesktopApp(target);
+      if (result.kind === "failed") {
+        say(proc, "stderr", t.tr(S.desktopUnavailable));
+        return { code: HOST_UNAVAILABLE_EXIT };
+      }
+      return result.kind === "signal" ? { signal: result.signal } : { code: result.code };
+    }
     case "host-usage":
       say(proc, "stderr", t.tr(S.hostUsage));
       return { code: USAGE_EXIT };

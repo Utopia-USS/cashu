@@ -19,7 +19,6 @@ import { S } from "./strings.js";
 import { type CommandIo, type PortedCommand, runTree } from "./tree.js";
 
 const FAILURE_EXIT = 70;
-const UNAVAILABLE_EXIT = 69;
 
 export interface CliRunnerDeps {
   readonly dataDir: string;
@@ -119,8 +118,8 @@ export function serveCliSession(session: HostSession, deps: CliRunnerDeps): void
       return { kind: "exit", code: abort.signal.aborted ? CLI_INTERRUPTED_EXIT : outcome.code };
     }
     if (deps.python === undefined) {
-      io.stderr(`${t.tr(S.pythonMissing)}\n`);
-      return { kind: "exit", code: UNAVAILABLE_EXIT };
+      io.stderr(`${t.tr(S.unsupported)}\n`);
+      return { kind: "exit", code: 2 };
     }
     return { kind: "delegate", command: deps.python.command, args: [...deps.python.args] };
   };

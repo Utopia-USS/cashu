@@ -1,4 +1,4 @@
-// Explicit-profile vehicle writes. Unknown global/default profile selection stays with Python.
+// Explicit-profile vehicle writes through the native durable command path.
 import { assets, D, type IsoDate } from "@cashu/domain";
 import { setVehicle, vehicleAccount } from "@cashu/store";
 import { mcpProfile } from "@cashu/store/core";
@@ -9,7 +9,6 @@ import type { CommandIo } from "../tree.js";
 import { vehicleDecimal, vehicleInput } from "./vehicleInput.js";
 import { vehicleOutput } from "./vehicleOutput.js";
 
-const DELEGATE = { kind: "delegate" } as const;
 export interface VehicleDeps {
   readonly stores: Pick<HostStores, "vaults">;
   readonly now: () => number;
@@ -26,33 +25,53 @@ export async function runVehicleCommand(
   io: CommandIo,
   root: { readonly profile?: string },
   deps: VehicleDeps,
-): Promise<number | typeof DELEGATE> {
+): Promise<number> {
   const input = vehicleInput(args);
   const slug = root.profile || io.env.CASHU_PROFILE;
-  if (!input || !slug || !supportsConsoleUnicode(io)) return DELEGATE;
+  if (!input) {
+    io.stderr(
+      "Usage: cashu set-vehicle NAME PRICE DATE [--rate PERCENT] [--floor AMOUNT] [--currency CODE]\n",
+    );
+    return 2;
+  }
+  if (!slug) {
+    io.stderr("Select a profile with --profile or CASHU_PROFILE.\n");
+    return 2;
+  }
+  if (!supportsConsoleUnicode(io)) {
+    io.stderr("This terminal's Unicode version is unsupported.\n");
+    return 2;
+  }
   const matches = [...deps.stores.vaults.values()].filter(
     (vault) => mcpProfile(vault.store.read.bind(vault.store))?.slug === slug,
   );
-  if (matches.length !== 1) return DELEGATE;
+  if (matches.length !== 1) {
+    io.stderr("Selected profile is not an open native vault.\n");
+    return 2;
+  }
   const vault = matches[0];
-  if (!vault) return DELEGATE;
+  if (!vault) return 2;
   const key = cliCommandKey();
-  if (io.signal.aborted) return 130;
   if (io.signal.aborted) return 130;
   const read = vault.store.read.bind(vault.store);
   const profile = mcpProfile(read);
-  if (profile?.slug !== slug) return DELEGATE;
+  if (profile?.slug !== slug) {
+    io.stderr("Selected profile changed.\n");
+    return 2;
+  }
   const existing = vehicleAccount(read, input.name);
   const currency = existing?.currency || input.currency || profile.baseCurrency || "PLN";
   const name = existing?.name ?? (input.name || "manual");
-  // Legacy noncanonical currencies and Rich markup need the Python representation boundary.
+  // Rich markup and control characters cannot be represented as plain native labels.
   if (
     !/^[A-Z]{3}$/.test(currency) ||
     name.includes("[") ||
     /:[^:\s]+:/.test(name) ||
     Array.from(name).some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)
-  )
-    return DELEGATE;
+  ) {
+    io.stderr("Invalid vehicle name or currency.\n");
+    return 2;
+  }
   const asOf = localDate(deps.now());
   const proposed = {
     name: input.name,
@@ -63,7 +82,7 @@ export async function runVehicleCommand(
     currency,
     asOf,
   };
-  // Delegate legacy valuation/format errors before writing. Never retry an append failure.
+  // Validate valuation and format before writing. Never retry an append failure.
   let output: string;
   try {
     const value = assets.depreciatedValue(
@@ -75,7 +94,8 @@ export async function runVehicleCommand(
     );
     output = vehicleOutput(input, { name, currency, value: value.format("f") });
   } catch {
-    return DELEGATE;
+    io.stderr("Invalid vehicle depreciation terms.\n");
+    return 2;
   }
   const result = await runCliVaultCommand(
     vault,
@@ -92,7 +112,6 @@ export async function runVehicleCommand(
   return 0;
 }
 
-/** Other assets subcommands retain their existing delegation path. */
 export function vehicleCommands(deps: VehicleDeps) {
   return [
     {
@@ -103,7 +122,9 @@ export function vehicleCommands(deps: VehicleDeps) {
     {
       name: "assets",
       run: async (args: readonly string[], io: CommandIo, root: { readonly profile?: string }) =>
-        args[0] === "set-vehicle" ? runVehicleCommand(args.slice(1), io, root, deps) : DELEGATE,
+        args[0] === "set-vehicle"
+          ? runVehicleCommand(args.slice(1), io, root, deps)
+          : Promise.resolve(2),
     },
   ];
 }

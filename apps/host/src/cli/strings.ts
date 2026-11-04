@@ -3,9 +3,9 @@
 import type { TranslationVariants } from "@cashu/i18n";
 
 export const S = {
-  pythonMissing: {
-    pl: "Tego polecenia nie przeniesiono jeszcze do nowej części cashU, a części w Pythonie nie znaleziono.",
-    en: "This command has not moved to the new part of cashU yet, and the Python part was not found.",
+  unsupported: {
+    pl: "Nieznane lub nieobsługiwane polecenie albo argumenty. Sprawdź składnię i spróbuj ponownie.",
+    en: "Unknown or unsupported command or arguments. Check the syntax and try again.",
   } satisfies TranslationVariants<string>,
   busy: {
     pl: "Ta sesja wykonuje już polecenie.",

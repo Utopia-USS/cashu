@@ -11,6 +11,7 @@ import { profileSlugSchema } from "@cashu/host-protocol";
 
 export type Route =
   | { readonly kind: "cli" }
+  | { readonly kind: "app"; readonly debug: boolean }
   | { readonly kind: "mcp"; readonly profile: string }
   | { readonly kind: "host"; readonly action: "status" | "stop" | "run" }
   | { readonly kind: "host-usage" };
@@ -28,6 +29,8 @@ function profileOption(argv: readonly string[], i: number): [string, number] | u
 }
 
 export function route(argv: readonly string[]): Route {
+  if (argv[0] === "app" && (argv.length === 1 || (argv.length === 2 && argv[1] === "--debug")))
+    return { kind: "app", debug: argv.length === 2 };
   if (argv[0] === "host") {
     const action = argv[1];
     if (argv.length === 2 && (action === "status" || action === "stop" || action === "run")) {

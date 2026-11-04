@@ -7,6 +7,8 @@ import type { SqlCalendarCache, SqlPriceCache } from "@cashu/store/investments/l
 import { z } from "zod";
 import { researchScreenSources } from "../researchScreen.js";
 import type { OpenVault } from "../stores.js";
+import type { WorkspaceProvider } from "../workspace/index.js";
+import { createResearchWorkspaceInfo } from "../workspace/researchInfo.js";
 
 export function cachedMacroCloses(prices: SqlPriceCache): macro.MacroCloses {
   const closes: Record<string, readonly macro.MacroClose[]> = {};
@@ -77,7 +79,15 @@ export function cachedResearchSources(input: {
   calendar: SqlCalendarCache;
   vaults: ReadonlyMap<string, OpenVault>;
   isCurrent(vault: OpenVault): boolean;
+  workspace?: WorkspaceProvider;
 }) {
+  const workspace =
+    input.workspace &&
+    createResearchWorkspaceInfo({
+      provider: input.workspace,
+      vaults: input.vaults,
+      isCurrent: input.isCurrent,
+    });
   const sources = researchScreenSources((id) => {
     const vault = input.vaults.get(id);
     if (vault?.mode !== "native" || !input.isCurrent(vault)) return null;
@@ -101,10 +111,11 @@ export function cachedResearchSources(input: {
   const stopPrices = input.prices.subscribe(() => sources.changed());
   const stopCalendar = input.calendar.subscribe(() => sources.changed());
   return {
-    sources,
+    sources: { ...sources, ...(workspace ? { workspace: workspace.source } : {}) },
     close() {
       stopPrices();
       stopCalendar();
+      workspace?.close();
       sources.close();
     },
   };

@@ -6,18 +6,11 @@
 // are delegated too (Python prints its own usage), until the last slice lands.
 export const DELEGATED: Readonly<Record<string, string>> = {
   // TRANSITIONAL(S39a): core CLI
-  accounts: "S39a",
-  app: "S39a",
   "init-db": "S39a",
   mcp: "S39a",
   "migrate-data": "S39a",
-  profiles: "S39a",
   secrets: "S39a",
   serve: "S39a",
-  "set-account-name": "S39a",
-  "set-account-type": "S39a",
-  "set-balance": "S39a",
-  stats: "S39a",
   sync: "S39a",
   // TRANSITIONAL(S39b): budget CLI and the Enable Banking client
   budget: "S39b",
@@ -31,11 +24,6 @@ export const DELEGATED: Readonly<Record<string, string>> = {
   reclassify: "S39b",
   "set-category": "S39b",
   // TRANSITIONAL(S39c): loans and assets CLI
-  "add-position": "S39c",
-  assets: "S39c",
-  loans: "S39c",
-  "set-loan": "S39c",
-  "set-vehicle": "S39c",
   // TRANSITIONAL(S39d): investments CLI
   invest: "S39d",
 };

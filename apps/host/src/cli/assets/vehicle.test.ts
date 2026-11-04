@@ -72,7 +72,7 @@ it("writes the explicitly selected native vault and preserves float and currency
   }
 });
 
-it("delegates unresolved selection, legacy representation and valuation errors before any write", async () => {
+it("rejects unresolved selection, unsupported representation and valuation errors before any write", async () => {
   const host = await startLocalHost({ ...testHostOptions(tempDir()), launcher: false });
   const { io, lines } = output();
   const deps = {
@@ -81,10 +81,8 @@ it("delegates unresolved selection, legacy representation and valuation errors b
     render: (text: string, target: CommandIo) => target.stdout(text),
   };
   try {
-    expect(await runVehicleCommand(args, io, {}, deps)).toEqual({ kind: "delegate" });
-    expect(await runVehicleCommand(args, io, { profile: "missing" }, deps)).toEqual({
-      kind: "delegate",
-    });
+    expect(await runVehicleCommand(args, io, {}, deps)).toBe(2);
+    expect(await runVehicleCommand(args, io, { profile: "missing" }, deps)).toBe(2);
     for (const input of [
       [...args, "--currency", "pln"],
       ["Synthetic", "nan", "2026-10-31"],
@@ -95,9 +93,7 @@ it("delegates unresolved selection, legacy representation and valuation errors b
       ["Synthetic", "10", "2026-10-01", "--rate", "101"],
       ["--help"],
     ])
-      expect(await runVehicleCommand(input, io, { profile: "demo" }, deps)).toEqual({
-        kind: "delegate",
-      });
+      expect(await runVehicleCommand(input, io, { profile: "demo" }, deps)).toBe(2);
     expect(
       await runVehicleCommand(
         ["Synthetic \u{1FAE9}", "10", "2026-10-31"],
@@ -105,8 +101,8 @@ it("delegates unresolved selection, legacy representation and valuation errors b
         { profile: "demo" },
         deps,
       ),
-    ).toEqual({ kind: "delegate" });
-    expect(lines).toEqual([]);
+    ).toBe(2);
+    expect(lines.every((line) => line.endsWith("\n"))).toBe(true);
     const vault = [...host.stores.vaults.values()][0];
     expect(vault?.store.read("SELECT COUNT(*) AS n FROM accounts")).toEqual([{ n: 0 }]);
     expect(vault?.store.read("SELECT COUNT(*) AS n FROM depreciations")).toEqual([{ n: 0 }]);
@@ -115,13 +111,13 @@ it("delegates unresolved selection, legacy representation and valuation errors b
   }
 });
 
-it("supports the assets alias and explicit environment selection while delegating its siblings", async () => {
+it("supports the assets alias and explicit environment selection while rejecting unknown leaves", async () => {
   const host = await startLocalHost({ ...testHostOptions(tempDir()), launcher: false });
   const { io } = output({ CASHU_PROFILE: "demo" });
   try {
     const commands = vehicleCommands({ stores: host.stores, now: at, render: () => {} });
     const assets = commands.find((command) => command.name === "assets");
-    expect(await assets?.run(["add-position", "Synthetic"], io, {})).toEqual({ kind: "delegate" });
+    expect(await assets?.run(["add-position", "Synthetic"], io, {})).toBe(2);
     expect(await assets?.run(["set-vehicle", ...args], io, {})).toBe(0);
   } finally {
     await host.stop();

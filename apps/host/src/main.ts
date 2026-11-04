@@ -273,6 +273,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                 now,
                 fetch: globalThis.fetch,
                 language: () => languageForStores(stores),
+                ...(workspace === undefined ? {} : { workspace }),
               });
               return market;
             },

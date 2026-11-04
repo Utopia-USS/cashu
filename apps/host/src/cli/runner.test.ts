@@ -210,13 +210,13 @@ describe("cli.exec", () => {
     await h.stop();
   });
 
-  it("says so in the command's language when this build has no Python CLI (exit 69)", async () => {
+  it("reports unsupported native commands in the command's language", async () => {
     const { h, conn } = await host(null);
     const e = exec(conn, params(["stats"], { CASHU_LANG: "pl" }));
-    expect(await e.result).toEqual({ kind: "exit", code: 69 });
+    expect(await e.result).toEqual({ kind: "exit", code: 2 });
     expect(e.notes).toHaveLength(1);
     expect(e.notes[0]?.params).toMatchObject({
-      data: expect.stringMatching(/^Tego polecenia nie przeniesiono/),
+      data: expect.stringMatching(/^Nieznane lub nieobsługiwane/),
     });
     conn.close();
     await h.stop();

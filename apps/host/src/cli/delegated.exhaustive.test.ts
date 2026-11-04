@@ -16,16 +16,17 @@ describe.skipIf(!HAS_PYTHON)("delegated commands (Python oracle)", () => {
     )
       .trim()
       .split("\n");
-    const ported = portedCommands().map((c) => c.name);
-    // Genesis is a migration-only native command, not part of the Python product tree.
+    const ported = portedCommands({ nativeStores: { vaults: new Map() } }).map((c) => c.name);
+    // Native financial commands are enabled when Python is absent. During migration some
+    // commands also remain delegated for mixed sessions.
     const nativeProduct = [
-      ...ported.filter((name) => name !== "genesis"),
+      ...ported.filter((name) => name !== "genesis" && name !== "command-status"),
+      "app",
       "connectors",
       "worker",
       "workspace",
     ];
-    expect([...Object.keys(DELEGATED), ...nativeProduct].sort()).toEqual(names);
-    for (const name of ported) expect(Object.hasOwn(DELEGATED, name)).toBe(false);
+    expect([...new Set([...Object.keys(DELEGATED), ...nativeProduct])].sort()).toEqual(names);
     expect(new Set(Object.values(DELEGATED))).toEqual(new Set(["S39a", "S39b", "S39c", "S39d"]));
   });
 });

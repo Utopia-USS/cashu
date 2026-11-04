@@ -90,6 +90,7 @@ function configClaim(dataRoot: string, vault: string): string | null {
 export function createProductionWorkspaceProvider(
   options: ProductionWorkspaceOptions,
 ): WorkspaceProvider {
+  const listeners = new Set<(vault: string) => void>();
   const baseProtectedRoots = [
     options.dataRoot,
     options.skillSource,
@@ -244,5 +245,35 @@ export function createProductionWorkspaceProvider(
       };
     },
   };
-  return createInjectedWorkspaceProvider(source);
+  const provider = createInjectedWorkspaceProvider(source);
+  return {
+    changes: {
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    },
+    bind(vault) {
+      const binding = provider.bind(vault);
+      if (!binding) return null;
+      return {
+        ...binding,
+        async apply(input) {
+          try {
+            return await binding.apply(input);
+          } finally {
+            // A partial or thrown operation may already have published file effects.
+            for (const listener of [...listeners]) {
+              try {
+                listener(vault);
+              } catch {
+                // Observation cannot change an already completed publication result.
+                process.emitWarning("workspace_change_listener_failed");
+              }
+            }
+          }
+        },
+      };
+    },
+  };
 }

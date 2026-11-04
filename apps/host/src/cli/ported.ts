@@ -1,24 +1,31 @@
 // The commands the host runs itself. S39 slices add theirs here and delete their lines from
 // delegated.ts in the same change.
 import { homedir, tmpdir } from "node:os";
+import type { market } from "@cashu/domain/investments";
 import type { HostService } from "@cashu/node-host";
 import type { PerformanceService } from "@cashu/store/investments/performance";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
 import type { StrategyFilesPort } from "@cashu/store/investments/services";
+import type { Read } from "@cashu/store/query";
+import type { createNativeCreationService } from "../nativeCreation.js";
 import { currentRuntime, type HostRuntime, shippedSkillsSource } from "../runtime.js";
 import type { HostStores, OpenVault } from "../stores.js";
 import type { HostWorker } from "../worker/service.js";
 import type { WorkspaceProvider } from "../workspace/index.js";
-import { vehicleCommands } from "./assets/vehicle.js";
-import { bankingCommands, type BankingCliDeps } from "./banking.js";
+import { assetCommands } from "./assets/index.js";
+import { type BankingCliDeps, bankingCommands } from "./banking.js";
 import type { CategorizeProvider, CloudCategorizeProvider } from "./budget/categorizeOllama.js";
 import { budgetCommands } from "./budget/index.js";
 import { commandStatusCommand } from "./commandStatus.js";
 import { type ConnectorCliDeps, connectorCommands } from "./connectors/index.js";
+import { accountCommands } from "./core/accounts.js";
 import { printConsole } from "./core/console.js";
+import { profileCommands } from "./core/profiles.js";
 import { skillsCommand } from "./core/skills.js";
+import { statsCommand } from "./core/stats.js";
 import { genesisCommand } from "./genesis/command.js";
 import { investmentCommands } from "./investments/index.js";
+import { loansCommands } from "./loans/index.js";
 import type { PortedCommand } from "./tree.js";
 import { workerWorkspaceCommands } from "./workerWorkspace.js";
 
@@ -36,6 +43,13 @@ export interface PortedDeps {
   readonly cloudClassifier?: CloudCategorizeProvider;
   readonly investmentSources?: InvestmentScreenSources;
   readonly performance?: PerformanceService;
+  readonly prices?: market.PriceCache | null;
+  readonly marketData?: (read: Read, vault: string) => market.CachedMarketData | null;
+  readonly creation?: Pick<
+    ReturnType<typeof createNativeCreationService>,
+    "prepare" | "commit" | "inspect"
+  >;
+  readonly onCreationReady?: () => void;
   readonly workspace?: WorkspaceProvider;
   readonly worker?: () => HostWorker | null;
   readonly service?: () => HostService | null;
@@ -58,7 +72,7 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
         })),
     ...(deps.nativeStores === undefined
       ? []
-      : vehicleCommands({
+      : assetCommands({
           stores: deps.nativeStores,
           now: deps.now ?? Date.now,
           render: (text, io) =>
@@ -66,6 +80,23 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
               spans: [{ start: 0, end: 7, style: { color: 32 } }],
             }),
         })),
+    ...(deps.nativeStores === undefined
+      ? []
+      : [
+          ...accountCommands({ stores: deps.nativeStores, now: deps.now ?? Date.now }),
+          ...profileCommands({
+            stores: deps.nativeStores,
+            creation: deps.creation,
+            onCreationReady: deps.onCreationReady,
+          }),
+          statsCommand({
+            stores: deps.nativeStores,
+            now: deps.now ?? Date.now,
+            prices: deps.prices ?? null,
+            marketData: deps.marketData,
+          }),
+          ...loansCommands({ stores: deps.nativeStores, now: deps.now ?? Date.now }),
+        ]),
     ...(deps.nativeStores && deps.investmentSources && deps.performance
       ? investmentCommands({
           stores: deps.nativeStores,

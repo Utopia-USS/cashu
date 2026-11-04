@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { route } from "./route.js";
 
 describe("route", () => {
+  it("routes only the exact native desktop launch forms", () => {
+    expect(route(["app"])).toEqual({ kind: "app", debug: false });
+    expect(route(["app", "--debug"])).toEqual({ kind: "app", debug: true });
+    expect(route(["app", "--unknown"])).toEqual({ kind: "cli" });
+  });
   it.each([
     [["mcp", "--profile", "demo-anna"], "demo-anna"],
     [["mcp", "-p", "demo-anna"], "demo-anna"],

@@ -164,6 +164,7 @@ import { SyncService } from "./sync/service.js";
 import { type UpdateProvider, updateScreen } from "./updateScreen.js";
 import type { WorkerBindings, WorkerHostContext } from "./worker/contracts.js";
 import { startWorker } from "./worker/service.js";
+import { workerStrategyFiles } from "./worker/strategyFiles.js";
 import type { WorkspaceProvider } from "./workspace/index.js";
 
 const DEFAULT_LINGER_MS = 10 * 60 * 1000;
@@ -637,6 +638,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         runtime,
         now,
         nativeStores: stores,
+        prices: marketPrices,
+        marketData: marketRuntime?.marketData,
+        creation,
+        onCreationReady: () => setTimeout(() => void stop("handover"), 0),
         investmentSources,
         performance: investmentPerformance,
         classifier: options.budgetClassifiers?.local,
@@ -650,6 +655,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             ...(python === undefined
               ? {
                   nativeStores: stores,
+                  prices: marketPrices,
+                  marketData: marketRuntime?.marketData,
+                  creation,
+                  onCreationReady: () => setTimeout(() => void stop("handover"), 0),
                   investmentSources,
                   performance: investmentPerformance,
                   classifier: options.budgetClassifiers?.local,
@@ -789,8 +798,24 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       runtime,
       now,
       nativeStores: stores,
+      prices: marketPrices,
+      marketData: marketRuntime?.marketData,
+      creation,
+      onCreationReady: () => setTimeout(() => void stop("handover"), 0),
       investmentSources,
       performance: investmentPerformance,
+      strategyFiles: (vault, slug) => {
+        const capability = options.strategies?.bind(vault.id);
+        if (
+          vault.mode !== "native" ||
+          !vault.native.isCurrent() ||
+          mcpProfile(vault.store.read.bind(vault.store))?.slug !== slug
+        )
+          return null;
+        if (capability?.vault === vault.id && capability.isCurrent()) return capability.files;
+        const authority = vault.native.strategyDirectoryAuthority();
+        return authority === null ? null : workerStrategyFiles(authority);
+      },
       classifier: options.budgetClassifiers?.local,
       cloudClassifier: options.budgetClassifiers?.cloud,
       workspace: options.workspace,
