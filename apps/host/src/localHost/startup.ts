@@ -13,13 +13,22 @@ import {
   NATIVE_PAIRING_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
 } from "@cashu/host-protocol";
-import { type RunningHost, refusePaths } from "@cashu/node-host";
+import {
+  classifyStartupError,
+  StartupFailureError,
+} from "@cashu/host-protocol/startup-failure";
+import {
+  hostRunPaths,
+  type RunningHost,
+  refusePaths,
+  writeStartupFailureRecord,
+} from "@cashu/node-host";
 import { legacyDataAdmission } from "@cashu/node-host/admission";
 import { readBundleIdentity } from "@cashu/node-host/bundle-identity";
-import { recordStart, type StartRecord } from "../crashLoop.js";
+import { recentUncleanStarts, recordStart, type StartRecord } from "../crashLoop.js";
 import { writeLauncher } from "../launcher.js";
 import { takeWriterLease, type WriterLease } from "../lease.js";
-import { errorName, type HostLog } from "../log.js";
+import { errorName, fileLog, type HostLog } from "../log.js";
 import { createNativeCreationService } from "../nativeCreation.js";
 import { classifyNativeCreationStartup } from "../nativeCreationJournal.js";
 import { privateNotificationIntents } from "../notifications/intentLedger.js";
@@ -47,14 +56,18 @@ interface Admission {
   readonly assertNativeSourceAdmission: () => void;
 }
 
-/** Checks everything that must hold before the host takes the lock. Throws an error code. */
+/** Checks everything that must hold before the host takes the lock. Throws a `StartupFailureError`. */
 export function admitStart(options: LocalHostOptions): Admission {
   const vaultSource = options.vaultSource;
-  if (vaultSource === undefined) throw new Error("native_vault_provider_unavailable");
+  if (vaultSource === undefined)
+    throw new StartupFailureError(
+      "native_inventory_unavailable",
+      "native_vault_provider_unavailable",
+    );
   const assertNativeSourceAdmission = () => {
     // Python data is imported once into a new data dir (migration/), never opened beside it.
     if (legacyDataAdmission(options.dataDir) !== "no_legacy_sentinel")
-      throw new Error("python_data_present");
+      throw new StartupFailureError("python_data_present");
     options.assertNativeSourceAdmission?.();
   };
   if (vaultSource.kind === "native-production") assertNativeSourceAdmission();
@@ -66,7 +79,7 @@ export function admitStart(options: LocalHostOptions): Admission {
     );
   if (vaultSource.kind === "native") {
     if (vaultSource.provider.inventory.length === 0)
-      throw new Error("native_inventory_unavailable");
+      throw new StartupFailureError("native_inventory_unavailable", undefined, { vaults: 0 });
     validateNativeVaultInventorySet(vaultSource.provider.inventory, resolve(options.dataDir));
   }
   const startup =
@@ -88,11 +101,12 @@ function assertBundleIdentity(bundlePath: string, vaultSource: VaultSource): voi
     resolve(process.execPath) !== join(identity.canonicalPath, "Contents", "MacOS", "cashU") ||
     resolve(currentRuntime().dir) !== join(identity.canonicalPath, "Contents", "Resources")
   )
-    throw new Error("bundle_identity_unavailable");
+    throw new StartupFailureError("unknown", "bundle_identity_unavailable");
   const notification = requireNative(
     join(identity.canonicalPath, "Contents", "Resources", "native", "CashUNotifications.node"),
   ) as { identity(): { verified: boolean } };
-  if (notification.identity().verified !== true) throw new Error("bundle_identity_unavailable");
+  if (notification.identity().verified !== true)
+    throw new StartupFailureError("unknown", "bundle_identity_unavailable");
 }
 
 /** The handshake features this host advertises. */
@@ -146,7 +160,8 @@ export async function openHostState(input: {
     let creation: NativeCreation | undefined;
     if (vaultSource.kind === "native-production") {
       const checked = classifyNativeCreationStartup(server.paths.dataDir);
-      if (checked !== startup) throw new Error("native_inventory_changed");
+      if (checked !== startup)
+        throw new StartupFailureError("native_inventory_unavailable", "native_inventory_changed");
       creation = createNativeCreationService({
         dataDir: server.paths.dataDir,
         lock: server.lock,
@@ -162,7 +177,8 @@ export async function openHostState(input: {
         ? { kind: "native" as const, provider: await vaultSource.factory.open(server.lock) }
         : vaultSource;
     if (source.kind === "native") {
-      if (source.provider.inventory.length === 0) throw new Error("native_inventory_unavailable");
+      if (source.provider.inventory.length === 0)
+        throw new StartupFailureError("native_inventory_unavailable", undefined, { vaults: 0 });
       validateNativeVaultInventorySet(source.provider.inventory, server.paths.dataDir);
     }
     const stores =
@@ -182,7 +198,12 @@ export async function openHostState(input: {
       : undefined;
     return { record, lease, stores, creation, notificationIntents };
   } catch (error) {
-    log.error("host.start-failed", { error: errorName(error) });
+    const failure = classifyStartupError(error);
+    log.error("host.start-failed", {
+      error: errorName(error),
+      code: failure.code,
+      detail: failure.detail ?? null,
+    });
     await server.close();
     throw error;
   }
@@ -194,5 +215,33 @@ export function writeHostLauncher(dataDir: string, runtime: HostRuntime, log: Ho
     if (writeLauncher(dataDir, shimProgram(runtime))) log.info("host.launcher-written");
   } catch (error) {
     log.warn("host.launcher-failed", { error: errorName(error) });
+  }
+}
+
+/**
+ * A failed start's last act: the typed failure record in `<data dir>/diagnostics/` (what Electron
+ * main shows on the recovery screen) and a `host.start-failure` log line with the same codes. Only
+ * codes and counts are written. Best effort: it never replaces the error being reported.
+ */
+export function recordStartupFailure(
+  dataDir: string,
+  error: unknown,
+  build: string,
+  now: number = Date.now(),
+): void {
+  try {
+    const paths = hostRunPaths(dataDir);
+    const failure = classifyStartupError(error, {
+      recentCrashes: recentUncleanStarts(paths.runDir, now),
+    });
+    writeStartupFailureRecord(paths.dataDir, failure, build, now);
+    fileLog(paths.logPath).error("host.start-failure", {
+      code: failure.code,
+      detail: failure.detail ?? null,
+      stage: failure.stage,
+      error: errorName(error),
+    });
+  } catch {
+    // No diagnostics directory (a read-only or foreign data dir): the exit code still reports it.
   }
 }

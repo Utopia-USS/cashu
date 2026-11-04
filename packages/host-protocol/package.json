@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./pairing-lan": "./src/pairing/lan.ts",
+    "./startup-failure": "./src/startupFailure/index.ts",
     "./store": "./src/store/index.ts",
     "./update-bridge": "./src/updateBridge.ts"
   },

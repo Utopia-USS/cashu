@@ -46,6 +46,13 @@ function write(path: string, unclean: readonly number[]): void {
   }
 }
 
+/** Unclean starts within the crash-loop window before `now` (read only; a failed start's fact). */
+export function recentUncleanStarts(runDir: string, now: number): number {
+  return read(join(runDir, "starts.json")).filter(
+    (at) => at <= now && now - at < CRASH_LOOP_WINDOW_MS,
+  ).length;
+}
+
 /** Records this start in `runDir` (the caller holds the machine lock). */
 export function recordStart(runDir: string, now: number): StartRecord {
   const path = join(runDir, "starts.json");

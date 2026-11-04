@@ -2,20 +2,8 @@
 // stderr, which the detached host process sends to host.log (same channel as devices/leaseAttempts).
 // Only the error class name and a short snake_case code are written: never a message that may quote
 // a value, a key, a phrase word or a path.
+import { errorCode as causeCode } from "@cashu/host-protocol/startup-failure";
 import { errorName } from "../log.js";
-
-const CODE = /^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+$/;
-const SHORT_CODE = /^[a-z][a-z0-9_-]{0,63}$/;
-
-/** A short code for a thrown value: a typed `code` field, else an internal snake_case message. */
-function causeCode(error: unknown): string {
-  if (typeof error !== "object" || error === null) return "?";
-  if ("code" in error && typeof error.code === "string" && SHORT_CODE.test(error.code))
-    return error.code;
-  if (error instanceof Error && error.message.length <= 64 && CODE.test(error.message))
-    return error.message;
-  return "?";
-}
 
 /** Writes why a native vault operation was refused or ended unknown. Best effort, never throws. */
 export function warnCause(event: string, error: unknown): void {

@@ -1,6 +1,11 @@
 // Path checks for an already provisioned native vault: nothing here creates a vault file.
 import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
+
+const unavailable = () =>
+  new StartupFailureError("native_inventory_unavailable", "native_vault_unavailable");
+const invalid = () => new StartupFailureError("native_inventory_unavailable", "native_path_invalid");
 
 /** The canonical, non-symlinked path of an existing file or directory. */
 export function existing(path: string, kind: "file" | "directory"): string {
@@ -8,16 +13,15 @@ export function existing(path: string, kind: "file" | "directory"): string {
   try {
     stat = lstatSync(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT")
-      throw new Error("native_vault_unavailable");
-    throw new Error("native_path_invalid");
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw unavailable();
+    throw invalid();
   }
   if (
     stat.isSymbolicLink() ||
     realpathSync(path) !== path ||
     (kind === "file" ? !stat.isFile() : !stat.isDirectory())
   )
-    throw new Error("native_path_invalid");
+    throw invalid();
   return path;
 }
 
@@ -29,7 +33,7 @@ export function sidecars(path: string): void {
       lstatSync(sidecar);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      throw new Error("native_path_invalid");
+      throw invalid();
     }
     existing(sidecar, "file");
   }

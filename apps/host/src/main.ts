@@ -29,6 +29,7 @@ import { ClassifierHostPorts } from "./classification/hostPorts.js";
 import { connectorOwnerAction } from "./connectorOwnerAction.js";
 import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntime.js";
 import { startLocalHost } from "./host.js";
+import { recordStartupFailure } from "./localHost/startup.js";
 import { createProductionMarket, type ProductionMarket } from "./market/production.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
@@ -423,6 +424,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
       io.stderr("cashu-host: another host owns this data dir");
       return error.exitCode;
     }
+    if (args.command === "run") recordStartupFailure(args.dataDir, error, io.build);
     if (error instanceof RefusalError) {
       io.stderr(`cashu-host: ${error.message}`);
       return error.exitCode;

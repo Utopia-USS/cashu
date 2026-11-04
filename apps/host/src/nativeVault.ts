@@ -1,6 +1,7 @@
 // Entry point of a native vault session. Opening, recovery and wiring live here; each capability of
 // the session is built in ./nativeVault/ from one shared NativeVaultContext.
 import { join } from "node:path";
+import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
 import { NodeFolderFs } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import {
@@ -81,13 +82,17 @@ export async function openNativeVault(
     const hasAttempts = probe
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='host_attempts'")
       .get();
-    if (!hasProvenance || !hasAttempts) throw new Error("native_metadata_unavailable");
+    if (!hasProvenance || !hasAttempts)
+      throw new StartupFailureError("native_inventory_unavailable", "native_metadata_unavailable");
   } finally {
     probe.close();
   }
   // Load the exact ring once to bind the provenance table before VaultDevices construction.
+  // A key store refusal keeps its typed code (keystore_corrupt / keystore_unavailable), which the
+  // start-up failure classifier maps to vault_key_unavailable.
   const ring = await crypto.loadKeyring(source.keyStore, source.sodium, entry.vaultId);
-  if (ring === null) throw new Error("native_authority_unavailable");
+  if (ring === null)
+    throw new StartupFailureError("vault_key_unavailable", "native_authority_unavailable");
   let meta: SqlDriver | undefined;
   let candidate: Awaited<ReturnType<typeof loadDeviceAuthority>> | undefined;
   let viewDriver: SqlDriver | undefined;
@@ -116,12 +121,17 @@ export async function openNativeVault(
     const salt = vaultSalt(saltKey.expose().slice());
     saltKey.wipe();
     viewDriver = openNodeSqlite(viewPath, { exclusive: lease.lock() });
-    store = Store.open({
-      driver: viewDriver,
-      vault: entry.vaultId,
-      salt,
-      modules: builtinModules(),
-    });
+    try {
+      // Opening runs a pending view upgrade (rebuild) in one transaction that rolls back on failure.
+      store = Store.open({
+        driver: viewDriver,
+        vault: entry.vaultId,
+        salt,
+        modules: builtinModules(),
+      });
+    } catch {
+      throw new StartupFailureError("view_rebuild_failed", "view_rebuild_failed");
+    }
     const localTransport = new FolderTransport({ fs: new NodeFolderFs(logPath) });
     const lanRemote = new FolderTransport({
       fs: new NodeFolderFs(carrierRoot),
@@ -156,7 +166,7 @@ export async function openNativeVault(
     });
     assertReplayedDeviceAuthority(candidate, recovered, profileGid(store));
     if (candidate.devices.rotationNeeded() !== undefined)
-      throw new Error("device_rotation_required");
+      throw new StartupFailureError("unknown", "device_rotation_required");
     const queue = new WriteQueue(() => lease.assertHeld());
     // Created here: the pruner reads the clock once, after the queue and before attempt recovery.
     const prunePairing = pairingPruner(pairingJournal, entry.vaultId, now);

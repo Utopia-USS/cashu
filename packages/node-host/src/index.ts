@@ -26,6 +26,16 @@ export {
   HOST_UNAVAILABLE_EXIT,
   HostStartError,
 } from "./host/connectOrStart.js";
+export {
+  diagnosticsDir,
+  type FoundStartupFailure,
+  readHostLogTail,
+  readStartupFailureRecord,
+  type StartupReportPaths,
+  startupReportPaths,
+  writeStartupFailureRecord,
+  writeStartupFailureReport,
+} from "./host/diagnostics.js";
 export { readDiscovery, readHostToken } from "./host/files.js";
 export { acquireHostLock, HostLock } from "./host/lock.js";
 export {

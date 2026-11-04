@@ -13,6 +13,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
 import { ensurePrivateDir } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import {
@@ -192,7 +193,8 @@ export async function openNativeHostStores(
   log: HostLog,
   now: () => number = Date.now,
 ): Promise<HostStores> {
-  if (source.inventory.length === 0) throw new Error("native_inventory_unavailable");
+  if (source.inventory.length === 0)
+    throw new StartupFailureError("native_inventory_unavailable", undefined, { vaults: 0 });
   validateNativeVaultInventorySet(source.inventory, dataDir);
   const native: NativeVaultSession[] = [];
   let deviceStore: DeviceStore | undefined;

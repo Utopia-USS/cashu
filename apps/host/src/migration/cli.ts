@@ -1,12 +1,37 @@
 #!/usr/bin/env node
-import { closeSync, constants, fsyncSync, openSync, realpathSync, writeSync } from "node:fs";
+import { closeSync, constants, fsyncSync, lstatSync, openSync, realpathSync, writeSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import {
+  buildRecoveryPrompt,
+  classifyStartupError,
+  type PromptLang,
+  startupFailure,
+  startupFailureReport,
+} from "@cashu/host-protocol/startup-failure";
+import {
+  startupReportPaths,
+  writeStartupFailureRecord,
+  writeStartupFailureReport,
+} from "@cashu/node-host";
 import { MigrationError } from "./contract.js";
 import { importPythonDataDir, verifyPythonMigration } from "./oneShot.js";
 
+/** Exit code of a malformed command line (EX_USAGE). */
+const USAGE_EXIT = 64;
+
+/** A malformed command line. Its message is fixed usage text, never a value from the arguments. */
+class MigrationUsageError extends Error {
+  readonly code = "usage_invalid";
+  constructor(message: string) {
+    super(message);
+    this.name = "MigrationUsageError";
+  }
+}
+
 function argument(value: string | undefined, flag: string): string {
   if (!value || !isAbsolute(value) || resolve(value) !== value || value.includes("\0"))
-    throw new Error(`${flag} needs an absolute canonical path`);
+    throw new MigrationUsageError(`${flag} needs an absolute canonical path`);
   return value;
 }
 
@@ -18,7 +43,8 @@ function parse(args: readonly string[]): {
   at: number;
 } {
   const [command, ...rest] = args;
-  if (command !== "import" && command !== "verify") throw new Error("expected import or verify");
+  if (command !== "import" && command !== "verify")
+    throw new MigrationUsageError("expected import or verify");
   const flags = new Map<string, string>();
   for (let i = 0; i < rest.length; i += 2) {
     const flag = rest[i];
@@ -29,19 +55,28 @@ function parse(args: readonly string[]): {
       !["--source", "--target", "--recovery-file", "--at"].includes(flag) ||
       flags.has(flag)
     )
-      throw new Error("invalid or duplicate option");
+      throw new MigrationUsageError("invalid or duplicate option");
     flags.set(flag, value);
   }
-  const sourceDir = realpathSync(argument(flags.get("--source"), "--source"));
+  let sourceDir: string;
+  try {
+    sourceDir = realpathSync(argument(flags.get("--source"), "--source"));
+  } catch (error) {
+    if (error instanceof MigrationUsageError) throw error;
+    throw new MigrationUsageError("--source must be an existing directory");
+  }
   const targetDir = argument(flags.get("--target"), "--target");
   const recoveryFile = flags.get("--recovery-file");
-  if (command === "import" && !recoveryFile) throw new Error("import requires --recovery-file");
-  if (command === "verify" && recoveryFile) throw new Error("verify does not take --recovery-file");
+  if (command === "import" && !recoveryFile)
+    throw new MigrationUsageError("import requires --recovery-file");
+  if (command === "verify" && recoveryFile)
+    throw new MigrationUsageError("verify does not take --recovery-file");
   const atText = flags.get("--at");
-  if (command === "verify" && !atText) throw new Error("verify requires the import --at value");
+  if (command === "verify" && !atText)
+    throw new MigrationUsageError("verify requires the import --at value");
   const at = atText === undefined ? Date.now() : Number(atText);
   if (!Number.isSafeInteger(at) || !Number.isFinite(new Date(at).valueOf()))
-    throw new Error("--at needs a Unix timestamp in milliseconds");
+    throw new MigrationUsageError("--at needs a Unix timestamp in milliseconds");
   return {
     command,
     sourceDir,
@@ -94,9 +129,74 @@ function saveWords(path: string, sourceDir: string, targetDir: string, words: st
   }
 }
 
-export async function migrationCli(argv: readonly string[]): Promise<number> {
+/** The prompt language: CASHU_LANG, else the process locale, else English. */
+function promptLang(env: NodeJS.ProcessEnv): PromptLang {
+  const pinned = env.CASHU_LANG?.trim().toLowerCase();
+  if (pinned === "pl" || pinned === "en") return pinned;
+  return Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase().startsWith("pl")
+    ? "pl"
+    : "en";
+}
+
+function isPrivateDir(path: string): boolean {
   try {
-    const args = parse(argv);
+    const stat = lstatSync(path);
+    return stat.isDirectory() && !stat.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A failed `verify` leaves the typed failure record and a redacted report pair (the agent prompt)
+ * in the target's `diagnostics/`, the same files the app's recovery screen writes. Best effort:
+ * returns the prompt file, or null when the target is not an existing directory.
+ */
+export function recordVerifyFailure(
+  targetDir: string,
+  error: unknown,
+  lang: PromptLang,
+  at: Date = new Date(),
+): string | null {
+  if (!isPrivateDir(targetDir)) return null;
+  try {
+    const classified = classifyStartupError(error);
+    const failure =
+      classified.code === "migrate_verify_mismatch"
+        ? classified
+        : startupFailure("migrate_verify_mismatch", "migration_failed");
+    writeStartupFailureRecord(targetDir, failure, "migrate-cli", at.valueOf());
+    const paths = startupReportPaths(targetDir, at);
+    const report = startupFailureReport({
+      failure,
+      at,
+      appVersion: "",
+      build: "migrate-cli",
+      dataDir: targetDir,
+      home: homedir(),
+      reportFile: paths.text,
+      logText: "",
+    });
+    writeStartupFailureReport(paths, report, buildRecoveryPrompt(report, lang));
+    return paths.text;
+  } catch {
+    return null;
+  }
+}
+
+export async function migrationCli(
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<number> {
+  let args: ReturnType<typeof parse>;
+  try {
+    args = parse(argv);
+  } catch (error) {
+    const message = error instanceof MigrationUsageError ? error.message : "invalid arguments";
+    process.stderr.write(`cashu-migrate: usage_invalid (${message})\n`);
+    return USAGE_EXIT;
+  }
+  try {
     const recoveryFile = args.recoveryFile;
     const result =
       args.command === "import"
@@ -133,6 +233,10 @@ export async function migrationCli(argv: readonly string[]): Promise<number> {
   } catch (error) {
     const code = error instanceof MigrationError ? error.code : "migration_failed";
     process.stderr.write(`cashu-migrate: ${code}\n`);
+    if (args.command === "verify") {
+      const report = recordVerifyFailure(args.targetDir, error, promptLang(env));
+      if (report !== null) process.stderr.write(`cashu-migrate: report ${report}\n`);
+    }
     return 1;
   }
 }

@@ -1,3 +1,4 @@
+import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
 import { type HostLock, hostRunPaths } from "@cashu/node-host";
 import { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { crypto } from "@cashu/sync";
@@ -30,13 +31,13 @@ export class ProductionVaultSourceFactory {
 
   async open(lock: HostLock): Promise<NativeVaultSource> {
     if (!lock.held || lock.path !== hostRunPaths(this.#dataDir).lockPath)
-      throw new Error("native_host_lock_required");
-    if (this.#preflightFingerprint === undefined) throw new Error("native_preflight_required");
+      throw new StartupFailureError("unknown", "native_host_lock_required");
+    if (this.#preflightFingerprint === undefined) throw new StartupFailureError("native_inventory_unavailable", "native_preflight_required");
     const found = readExistingNativeInventory(this.#dataDir);
     if (found.fingerprint !== this.#preflightFingerprint)
-      throw new Error("native_inventory_changed");
+      throw new StartupFailureError("native_inventory_unavailable", "native_inventory_changed");
     const sodium = await crypto.loadNodeSodium();
-    if (!lock.held) throw new Error("native_host_lock_required");
+    if (!lock.held) throw new StartupFailureError("unknown", "native_host_lock_required");
     const names = new Set<string>();
     for (const entry of found.entries) {
       names.add(crypto.keyringName(entry.vaultId));
@@ -63,11 +64,11 @@ export class ProductionVaultSourceFactory {
           exact.enrollment !== entry.enrollment ||
           !lock.held
         )
-          throw new Error("native_inventory_changed");
+          throw new StartupFailureError("native_inventory_unavailable", "native_inventory_changed");
         const current = readExistingNativeInventory(dataDir);
-        if (current.fingerprint !== found.fingerprint) throw new Error("native_inventory_changed");
+        if (current.fingerprint !== found.fingerprint) throw new StartupFailureError("native_inventory_unavailable", "native_inventory_changed");
         const certs = byVault.get(entry.vaultId);
-        if (!certs) throw new Error("native_inventory_invalid");
+        if (!certs) throw new StartupFailureError("native_inventory_unavailable", "native_inventory_invalid");
         return certs.map((certificate) => certificate.slice());
       },
     } satisfies NativeVaultSource);

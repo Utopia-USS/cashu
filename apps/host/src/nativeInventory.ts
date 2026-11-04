@@ -10,6 +10,7 @@ import {
   type Stats,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
 import { crypto } from "@cashu/sync";
 import {
   type NativeVaultInventoryEntry,
@@ -31,8 +32,10 @@ export interface ExistingNativeInventory {
   readonly fingerprint: string;
 }
 
-function refuse(code: string): never {
-  throw new Error(code);
+function refuse(
+  code: "native_inventory_invalid" | "native_provisioning_pending" | "native_setup_required",
+): never {
+  throw new StartupFailureError("native_inventory_unavailable", code);
 }
 
 function fields(value: unknown, expected: readonly string[]): value is Record<string, unknown> {
