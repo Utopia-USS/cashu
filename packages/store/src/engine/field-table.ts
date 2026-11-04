@@ -341,6 +341,8 @@ export const FIELD_TABLE: Readonly<Record<string, readonly string[]>> = {
   "topicThesis.marketViewSet": ["segment", "assessment", "outlook", "sources", "by", "stamps"],
   "topicThesis.ownerSaved": ["segment", "thesis", "invalidation", "stamps"],
   "topicThesis.rejected": ["stamps"],
+  "transferPair.claimed": ["run", "out", "in", "ordinal", "stamps"],
+  "transferRun.started": ["reset", "maxDays", "pairCount", "stamps"],
   "txn.cashExpenseAdded": [
     "account",
     "bookingDate",
@@ -455,6 +457,8 @@ export const FIELD_TABLE_LOCK: Readonly<Record<string, string>> = {
   "topicThesis.marketViewSet": "6:005d0de4",
   "topicThesis.ownerSaved": "4:c806205c",
   "topicThesis.rejected": "1:b4a792d5",
+  "transferPair.claimed": "5:c82691ac",
+  "transferRun.started": "4:e6626ce4",
   "txn.cashExpenseAdded": "7:70306626",
   "txn.categoryCleared": "1:b4a792d5",
   "txn.categorySet": "3:cd4369ee",

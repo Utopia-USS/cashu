@@ -447,7 +447,13 @@ export const categoriesDeriver: Deriver = {
   version: 2,
   tables: [membersTable, groupsTable, envTable],
   writes: [{ table: TRANSACTIONS, columns: ["category", "category_source"] }],
-  inputs: ["budget.transactions", "budget.category_rules", "core.accounts", CONTRIBUTIONS],
+  inputs: [
+    "budget.transactions",
+    "budget.transfer_runs",
+    "budget.category_rules",
+    "core.accounts",
+    CONTRIBUTIONS,
+  ],
   derive(dirty, ctx) {
     if (dirty.has("core.accounts") && envSignature(ctx) !== storedSignature(ctx)) {
       deriveAll(ctx);

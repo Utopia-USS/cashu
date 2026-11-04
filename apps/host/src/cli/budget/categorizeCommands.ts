@@ -15,7 +15,7 @@ import { S } from "./categorize.strings.js";
 import { runMerchantClassification } from "./categorizeLlm.js";
 import type { CategorizeDeps } from "./categorizeOllama.js";
 import { runReclassifyCommand } from "./categorizeReclassify.js";
-import { runEmptyTransfers } from "./categorizeTransfers.js";
+import { runMatchTransfers } from "./categorizeTransfers.js";
 import { importTextSupported } from "./importInput.js";
 
 export type { CategorizeDeps } from "./categorizeOllama.js";
@@ -103,6 +103,6 @@ export function categorizeCommands(deps: CategorizeDeps): PortedCommand[] {
         runCategorizeCommand(name, args, io, root, deps),
     })),
     { name: "reclassify", run: (args, io, root) => runReclassifyCommand(args, io, root, deps) },
-    { name: "match-transfers", run: (args, io, root) => runEmptyTransfers(args, io, root, deps) },
+    { name: "match-transfers", run: (args, io, root) => runMatchTransfers(args, io, root, deps) },
   ];
 }

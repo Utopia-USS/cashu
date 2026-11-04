@@ -11,6 +11,7 @@
     "./core/banking-settings": "./src/core/banking-settings.ts",
     "./core/classifier-settings": "./src/core/classifier-settings.ts",
     "./core/desktop-proposals": "./src/core/desktop-proposals/index.ts",
+    "./budget/commands": "./src/budget/commands.ts",
     "./budget/queries": "./src/budget/mcp-queries.ts",
     "./budget/proposals": "./src/budget/import-proposals.ts",
     "./loans/screen": "./src/loans/screen.ts",

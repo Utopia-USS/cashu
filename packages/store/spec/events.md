@@ -451,6 +451,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | accounts | `account.opened`, `account.identified`, `account.renamed`, `account.typeSet`, `account.removed`, `account.restored` | DET(iban) or DET(ext key), else ULID ([`gid.md`](gid.md) 4.3) | IDENTITY (6.4); name / type LWW-F; iban / externalId fill-if-null; removed SOFT |
 | balances | `balance.recorded` | DET(account, date, source) | row key 6.4; amount (and `created_at`) LWW; currency = the first applied record's (Python `upsert_balance`, S24 D-24.5) |
 | transactions | `txn.imported`, `txn.cashExpenseAdded`, `txn.categorySet`, `txn.categoryCleared`, `txn.deleted` | imported DET(account, dedupHashV2, occurrence); cash expense ULID | imported CREATE on the row key; claim GUARD; delete TOMB (cash expenses); transfers, rule categories, cash legs DERIVED |
+| transfer_runs | `transferRun.started`, `transferPair.claimed` | run ULID | append per-run header and bounded pair claims; latest complete run determines pinned pairs |
 | category_rules | `categoryRule.set` | DET(merchant_key) | GUARD (locked manual beats llm) + LWW-F |
 | import_batches | `importBatch.recorded` | ULID | APPEND |
 | loans | `loan.termsSet`, `loan.paymentMatchingSet` | DET(account) | LWW-F; the row is visible once terms exist |
@@ -542,6 +543,21 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   `budget/cash.py:delete_cash_transaction`).
 - `txn.deleted` `{}`: TOMB, only for cash expenses. Deleting a mirror leg emits `txn.categoryCleared`
   on the source bank transaction.
+- `transferRun.started` (ULID) `{reset, maxDays, pairCount}` and `transferPair.claimed`
+  `{run@, out@, in@, ordinal}` (same run gid) record one explicit transfer matching command. A run
+  becomes active only when all `pairCount` distinct ordinals `0..pairCount-1` are present;
+  out-of-range claims are ignored. A remote partial batch leaves the previous complete run visible.
+  A zero-pair run is complete. The latest complete run by `(hlc, eid)` wins. Its pair claims pin
+  currently valid, distinct
+  outflow/inflow rows with equal amount keys and own-account IBAN evidence on at least one leg;
+  missing,
+  deleted, collapsed, or stale claims do not create a pair. A command without reset snapshots
+  existing pairs and matches only ungrouped rows. Reset clears existing groups before matching.
+  `maxDays` is a signed integer for this command; the default is 3. Until a later `txn.imported`
+  creates a new transaction anchor, unclaimed rows remain ungrouped. Cash expenses and duplicate
+  imports do not release them. That later import resumes the native default-3 matcher for unclaimed
+  rows, while the complete run's valid pairs
+  remain pinned.
 - Effective category (DERIVED, S09 / S24c): a row on a cash account shows its claim, else none
   (D-09.4); otherwise `manual_txn` claim > structural transfer / locked merchant rule / loan pattern
   (`engine.owner_decision`) > `llm_full` / `llm_fallback` claim > engine. The view is a full
@@ -884,7 +900,7 @@ Lease state never enters the view fold (6.2 LEADER), so the reference fold does 
 
 | Column | Recomputed from |
 |---|---|
-| `transactions.is_internal_transfer`, `transfer_group_id` | full recompute (S24 D-24.1) with the S08 matcher over every row (cash legs and expenses included): counterparty IBAN only (rule 5) against the accounts' raw match key `iban_match` incl. removed accounts (D-08.1), amount key `transferAmountKey` (D-08.2), rows in anchor order, group id = the outflow row's gid (D-24.2) |
+| `transactions.is_internal_transfer`, `transfer_group_id` | complete explicit transfer-run claims (8.3) plus the S08 matcher over currently unclaimed rows on native imports: counterparty IBAN only (rule 5) against the accounts' raw match key `iban_match` incl. removed accounts (D-08.1), amount key `transferAmountKey` (D-08.2), rows in anchor order, group id = the outflow row's gid (D-24.2) |
 | `transactions.category`, `category_source` | claims + rules + payment patterns + recurring payees + engine (8.3), full recompute (S24 D-24.1), rule categories on every device (D8) |
 | cash mirror legs (`cashleg:<@txn>`, `raw.cash_leg_of`) | the folded `manual_txn` claim `cash_withdrawal` of a row not on a cash account, while the cash pool account `cash:<CUR>` is open (S24 D-24.3; a locked merchant rule to `cash_withdrawal` makes no leg) |
 | account key parking (`<key>~<@account>`) | per (bank, external id) group: live accounts hold the key (several live all show it, m12), else the latest opened (fold order of its first open); every other member is parked (S24 D-24.7) |

@@ -9,11 +9,13 @@ import { importBatchesMaterializer } from "./import-batches.js";
 import { budgetNetWorth, budgetSetup } from "./read-models.js";
 import { budgetSettingsMaterializer } from "./settings.js";
 import { transactionsMaterializer } from "./transactions.js";
+import { transferRunsMaterializer } from "./transfer-runs.js";
 
 export const budgetModule: StoreModule = {
   id: "budget",
   materializers: [
     transactionsMaterializer,
+    transferRunsMaterializer,
     categoryRulesMaterializer,
     importBatchesMaterializer,
     budgetSettingsMaterializer,

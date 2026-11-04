@@ -1,5 +1,13 @@
 import type { TranslationVariants } from "@cashu/i18n";
 export const S = {
+  transferCleared: {
+    pl: (count: number) => `Wyczyszczono grupowanie ${count} transakcji.`,
+    en: (count: number) => `Cleared ${count} previously-grouped transactions.`,
+  } satisfies TranslationVariants<(count: number) => string>,
+  transferMatched: {
+    pl: (count: number) => `Dopasowano ${count} par przelewów wewnętrznych.`,
+    en: (count: number) => `Matched ${count} internal-transfer pair(s).`,
+  } satisfies TranslationVariants<(count: number) => string>,
   categorized: {
     pl: (count: number) => `Skategoryzowano ${count} transakcji.`,
     en: (count: number) => `Categorized ${count} transactions.`,

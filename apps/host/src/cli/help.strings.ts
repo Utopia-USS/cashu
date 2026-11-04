@@ -153,7 +153,10 @@ export const HELP: Readonly<Record<string, Text>> = {
     pl: "Użycie: cashu import-dir [KATALOG] [--bank BANK] [--recursive|--no-recursive]",
     en: "Usage: cashu import-dir [DIRECTORY] [--bank BANK] [--recursive|--no-recursive]",
   },
-  "match-transfers": { pl: "Użycie: cashu match-transfers", en: "Usage: cashu match-transfers" },
+  "match-transfers": {
+    pl: "Użycie: cashu match-transfers [--reset|--no-reset] [--max-days DNI]",
+    en: "Usage: cashu match-transfers [--reset|--no-reset] [--max-days DAYS]",
+  },
   categorize: { pl: "Użycie: cashu categorize [--llm]", en: "Usage: cashu categorize [--llm]" },
   reclassify: { pl: "Użycie: cashu reclassify", en: "Usage: cashu reclassify" },
   connectors: {

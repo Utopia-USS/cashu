@@ -115,6 +115,8 @@ export const META: Record<EventType, EventMeta> = {
   "txn.categorySet": m("transactions", "GUARD", "DET-or-ULID"),
   "txn.categoryCleared": m("transactions", "LWW-F", "DET-or-ULID"),
   "txn.deleted": m("transactions", "TOMB", "ULID"),
+  "transferRun.started": m("transfer_runs", "APPEND", "ULID"),
+  "transferPair.claimed": m("transfer_runs", "APPEND", "ULID"),
   "categoryRule.set": m("category_rules", "GUARD", "DET"),
   "importBatch.recorded": m("import_batches", "APPEND", "ULID"),
 

@@ -10,7 +10,7 @@ import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";
 import { expectCategoriesRecomputed } from "../../testing/categories-oracle.js";
 import { Names, toEnvelopes } from "../../testing/reference-bridge.js";
-import { openTestStore } from "../../testing/store.js";
+import { EventFactory, openTestStore } from "../../testing/store.js";
 import { expectTransfersRecomputed } from "../../testing/transfers-oracle.js";
 
 function nrb(bban24: string): string {
@@ -87,6 +87,166 @@ function flags(store: Store, names: Names, row: string): [number, string | null]
 }
 
 describe("budget.transfers deriver", () => {
+  it("releases suppression once on an unrelated bank import, but not on a cash expense", () => {
+    const pool: Spec = [
+      "account.opened",
+      "pool:PLN",
+      {
+        bank: "manual",
+        name: "Gotówka",
+        externalId: "cash:PLN",
+        type: "cash",
+        keys: ["ext:manual:cash:PLN"],
+      },
+    ];
+    const { store, names } = history([
+      A1,
+      A2,
+      pool,
+      imp("release-out", "A1", "-10.00", "2026-10-01", RAW),
+      imp("release-in", "A2", "10.00", "2026-10-02"),
+    ]);
+    const f = new EventFactory();
+    store.applyEnvelopes([
+      f.make(
+        "transferRun.started",
+        "01JC0000000000000000000010",
+        {
+          reset: true,
+          maxDays: -1,
+          pairCount: 0,
+        },
+        { wall: 300 },
+      ),
+    ]);
+    expect(flags(store, names, "release-out")[0]).toBe(0);
+    const expense = complete({
+      eid: "01JG0000000000000000000010",
+      hlc: formatHlc({ wall: 1_793_448_000_400, counter: 0, device: "a".repeat(32) }),
+      at: new Date(1_793_448_000_400).toISOString(),
+      type: "txn.cashExpenseAdded",
+      gid: "X-release",
+      data: {
+        account: "pool:PLN",
+        bookingDate: "2026-10-03",
+        amount: "-5.00",
+        title: "Kawa",
+        category: "food",
+      },
+    });
+    store.applyEnvelopes(toEnvelopes([expense], names, syntheticDet([expense])));
+    expect(flags(store, names, "release-out")[0]).toBe(0);
+    const [type, gid, data] = imp("unrelated", "A1", "-99.00", "2026-10-03");
+    const imported = complete({
+      eid: "01JG0000000000000000000011",
+      hlc: formatHlc({ wall: 1_793_448_000_401, counter: 0, device: "a".repeat(32) }),
+      at: new Date(1_793_448_000_401).toISOString(),
+      type,
+      gid,
+      data,
+    });
+    store.applyEnvelopes(toEnvelopes([imported], names, syntheticDet([imported])));
+    expect(flags(store, names, "release-out")).toEqual([1, names.gid("T-release-out")]);
+    const hash = viewHash(store).hash;
+    store.rebuild();
+    expect(viewHash(store).hash).toBe(hash);
+  });
+
+  it("activates only complete runs, including a zero-pair reset, and rebuilds the same view", () => {
+    const { store, names } = history([
+      A1,
+      A2,
+      imp("claim-out", "A1", "-100.00", "2026-10-01", RAW),
+      imp("claim-in", "A2", "100.00", "2026-10-02"),
+    ]);
+    const f = new EventFactory();
+    const zero = f.make(
+      "transferRun.started",
+      "01JC0000000000000000000001",
+      { reset: true, maxDays: -1, pairCount: 0 },
+      { wall: 300 },
+    );
+    store.applyEnvelopes([zero]);
+    expect(flags(store, names, "claim-out")[0]).toBe(0);
+    const run = "01JC0000000000000000000002";
+    const header = f.make(
+      "transferRun.started",
+      run,
+      { reset: false, maxDays: 3, pairCount: 1 },
+      { wall: 301 },
+    );
+    const claim = f.make(
+      "transferPair.claimed",
+      run,
+      {
+        run,
+        out: names.gid("T-claim-out"),
+        in: names.gid("T-claim-in"),
+        ordinal: 0,
+      },
+      { wall: 302 },
+    );
+    store.applyEnvelopes([header]);
+    expect(flags(store, names, "claim-out")[0]).toBe(0);
+    store.applyEnvelopes([claim]);
+    expect(flags(store, names, "claim-out")).toEqual([1, names.gid("T-claim-out")]);
+    const later = f.make(
+      "transferRun.started",
+      "01JC0000000000000000000003",
+      {
+        reset: true,
+        maxDays: -1,
+        pairCount: 0,
+      },
+      { wall: 303 },
+    );
+    store.applyEnvelopes([later]);
+    expect(flags(store, names, "claim-out")[0]).toBe(0);
+    const shuffledRun = "01JC0000000000000000000004";
+    const shuffledHeader = f.make(
+      "transferRun.started",
+      shuffledRun,
+      {
+        reset: false,
+        maxDays: 3,
+        pairCount: 1,
+      },
+      { wall: 304 },
+    );
+    const shuffledClaim = f.make(
+      "transferPair.claimed",
+      shuffledRun,
+      {
+        run: shuffledRun,
+        out: names.gid("T-claim-out"),
+        in: names.gid("T-claim-in"),
+        ordinal: 0,
+      },
+      { wall: 305 },
+    );
+    store.applyEnvelopes([shuffledClaim]);
+    expect(flags(store, names, "claim-out")[0]).toBe(0);
+    store.applyEnvelopes([shuffledHeader]);
+    expect(flags(store, names, "claim-out")[0]).toBe(1);
+    store.applyEnvelopes([
+      f.make(
+        "transferPair.claimed",
+        shuffledRun,
+        {
+          run: shuffledRun,
+          out: names.gid("T-claim-out"),
+          in: names.gid("T-claim-in"),
+          ordinal: 1,
+        },
+        { wall: 306 },
+      ),
+    ]);
+    expect(flags(store, names, "claim-out")[0]).toBe(1);
+    const hash = viewHash(store);
+    store.rebuild();
+    expect(flags(store, names, "claim-out")[0]).toBe(1);
+    expect(viewHash(store).tables).toEqual(hash.tables);
+  });
   it("pairs an outflow and an inflow by the counterparty IBAN; the group id is the outflow's gid", () => {
     const { store, names } = history([
       A1,

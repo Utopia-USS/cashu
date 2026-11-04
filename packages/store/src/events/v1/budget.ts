@@ -53,6 +53,13 @@ export const budgetEvents = {
   "txn.categoryCleared": empty,
   "txn.deleted": empty,
 
+  "transferRun.started": payload({
+    reset: z.boolean(),
+    maxDays: z.int(),
+    pairCount: z.int().min(0),
+  }),
+  "transferPair.claimed": payload({ run: gid, out: gid, in: gid, ordinal: z.int().min(0) }),
+
   "categoryRule.set": payload({
     merchantKey: nonEmpty,
     category: key,

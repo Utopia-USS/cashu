@@ -239,6 +239,103 @@ function allRows(ctx: DeriveContext): Row[] {
   return out;
 }
 
+interface TransferRun {
+  gid: string;
+  run_ord: string;
+  pair_count: number;
+}
+
+/** Incomplete remote batches stay invisible; a later complete run supersedes an earlier one. */
+function activeRun(ctx: DeriveContext): TransferRun | undefined {
+  return ctx.sql.get<TransferRun>(
+    `SELECT r.gid, r.run_ord, r.pair_count FROM transfer_runs r
+     WHERE (SELECT count(*) FROM transfer_run_pairs p WHERE p.run = r.gid
+       AND p.ordinal >= 0 AND p.ordinal < r.pair_count) = r.pair_count
+     ORDER BY r.run_ord DESC, r.gid DESC LIMIT 1`,
+  );
+}
+
+/** Only native imported transaction anchors release an explicit run's unclaimed rows. */
+function releaseState(ctx: DeriveContext): {
+  run: TransferRun | undefined;
+  released: boolean;
+  signature: string;
+} {
+  const run = activeRun(ctx);
+  if (run === undefined) return { run, released: true, signature: "none" };
+  const newest = ctx.sql.get<{ anchor: string | null }>(
+    "SELECT max(anchor_ord) AS anchor FROM fold_txn_keys WHERE row NOT LIKE 'cashexp:%'",
+  )?.anchor;
+  const released = newest !== null && newest !== undefined && newest > run.run_ord;
+  return { run, released, signature: `${run.gid}:${released ? 1 : 0}` };
+}
+
+function storedReleaseState(ctx: DeriveContext): string | undefined {
+  return ctx.sql.get<{ v: string }>("SELECT v FROM fold_transfer_env WHERE k = 'release'")?.v;
+}
+
+function saveReleaseState(ctx: DeriveContext, state: string): void {
+  if (storedReleaseState(ctx) === state) return;
+  ctx.sql.write(
+    envTable.name,
+    "INSERT OR REPLACE INTO fold_transfer_env (k, v) VALUES ('release', ?)",
+    state,
+  );
+}
+
+/** Pin only reciprocal, currently valid pairs. Invalid or collapsed claims consume no row. */
+function runGroups(
+  ctx: DeriveContext,
+  rows: readonly Row[],
+  accounts: budget.AccountMatchKeys,
+  run: TransferRun,
+): Map<string, string> {
+  const byGid = new Map(rows.map((r) => [r.loaded.gid, r]));
+  const used = new Set<string>();
+  const groups = new Map<string, string>();
+  for (const p of ctx.sql.all<{ out_gid: string; in_gid: string }>(
+    "SELECT out_gid, in_gid FROM transfer_run_pairs WHERE run = ? AND ordinal < ? ORDER BY ordinal",
+    run.gid,
+    run.pair_count,
+  )) {
+    const out = byGid.get(p.out_gid);
+    const inc = byGid.get(p.in_gid);
+    if (!out || !inc || used.has(p.out_gid) || used.has(p.in_gid) || p.out_gid === p.in_gid)
+      continue;
+    if (out.loaded.account === inc.loaded.account) continue;
+    const outAmount = D(out.loaded.amount);
+    const inAmount = D(inc.loaded.amount);
+    if (!outAmount.isSigned() || outAmount.isZero() || inAmount.isSigned() || inAmount.isZero())
+      continue;
+    if (out.amountKey === "" || out.amountKey !== inc.amountKey) continue;
+    if (
+      budget.pairScore(
+        {
+          key: p.out_gid,
+          account: out.loaded.account,
+          bookingDate: out.loaded.booking_date,
+          amount: outAmount,
+          counterpartyIban: out.loaded.counterparty_iban,
+        },
+        {
+          key: p.in_gid,
+          account: inc.loaded.account,
+          bookingDate: inc.loaded.booking_date,
+          amount: inAmount,
+          counterpartyIban: inc.loaded.counterparty_iban,
+        },
+        accounts,
+      ) === null
+    )
+      continue;
+    used.add(p.out_gid);
+    used.add(p.in_gid);
+    groups.set(p.out_gid, p.out_gid);
+    groups.set(p.in_gid, p.out_gid);
+  }
+  return groups;
+}
+
 /** Match `rows` (whole amount-key groups) and write what changed; returns the matched rows. */
 function matchAndWrite(
   ctx: DeriveContext,
@@ -246,19 +343,26 @@ function matchAndWrite(
   accounts: budget.AccountMatchKeys,
 ): Map<string, Row> {
   const candidates = rows.filter((r) => r.amountKey !== "");
+  const { run, released } = releaseState(ctx);
+  const claimed =
+    run === undefined ? new Map<string, string>() : runGroups(ctx, rows, accounts, run);
   // anchor order (D-24.2); anchors are unique, so the order is total
   candidates.sort((a, b) => (a.anchor < b.anchor ? -1 : a.anchor > b.anchor ? 1 : 0));
-  const pairs = budget.matchTransfers(
-    candidates.map((r) => ({
-      key: r.loaded.gid,
-      account: r.loaded.account,
-      bookingDate: r.loaded.booking_date,
-      amount: D(r.loaded.amount),
-      counterpartyIban: r.loaded.counterparty_iban,
-    })),
-    accounts,
-  );
-  const group = new Map<string, string>();
+  const pairs = released
+    ? budget.matchTransfers(
+        candidates
+          .filter((r) => !claimed.has(r.loaded.gid))
+          .map((r) => ({
+            key: r.loaded.gid,
+            account: r.loaded.account,
+            bookingDate: r.loaded.booking_date,
+            amount: D(r.loaded.amount),
+            counterpartyIban: r.loaded.counterparty_iban,
+          })),
+        accounts,
+      )
+    : [];
+  const group = claimed;
   for (const p of pairs) {
     group.set(p.out, p.out);
     group.set(p.in, p.out);
@@ -324,6 +428,7 @@ function deriveAll(ctx: DeriveContext): void {
     byGid(ctx.sql.all<StoredPair>("SELECT gid, part, amount_key FROM fold_transfer_pairs")),
   );
   saveSignature(ctx, signature(accounts));
+  saveReleaseState(ctx, releaseState(ctx).signature);
 }
 
 function deriveParts(ctx: DeriveContext, parts: readonly string[]): void {
@@ -373,11 +478,19 @@ export function takeTransferFlips(ctx: DeriveContext): string[] {
 
 export const transfersDeriver: Deriver = {
   id: "budget.transfers",
-  version: 1,
+  version: 2,
   tables: [pairsTable, envTable, flipsTable],
   writes: [{ table: TRANSACTIONS, columns: ["is_internal_transfer", "transfer_group_id"] }],
-  inputs: ["budget.transactions", "core.accounts"],
+  inputs: ["budget.transactions", "budget.transfer_runs", "core.accounts"],
   derive(dirty, ctx) {
+    if (dirty.has("budget.transfer_runs")) {
+      deriveAll(ctx);
+      return;
+    }
+    if (releaseState(ctx).signature !== storedReleaseState(ctx)) {
+      deriveAll(ctx);
+      return;
+    }
     if (dirty.has("core.accounts") && signature(matchKeys(ctx)) !== storedSignature(ctx)) {
       deriveAll(ctx);
       return;

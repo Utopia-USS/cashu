@@ -5,7 +5,7 @@
 // answers it writes), `budget/settings.py` (parse), with the validation of `budget/api.py`.
 // Categories are facts (claims, rules); the effective category of every row is derived
 // (`derive/categories.ts`), so no command writes one.
-import { Decimal, floatRepr } from "@cashu/domain";
+import { D, Decimal, floatRepr } from "@cashu/domain";
 import {
   acceptMerchantAnswer,
   budgetBaseCurrency,
@@ -20,11 +20,14 @@ import {
   isCategoryKey,
   isOwnerDecided,
   isStructural,
+  matchTransfers,
   ownerDecision,
+  pairScore,
   planImport,
   type RawTransaction,
   RECLASSIFY_KEYS,
   ruleUpsert,
+  transferAmountKey,
 } from "@cashu/domain/budget";
 import { normalizeText, pyStrip, pyUpper } from "@cashu/domain/text";
 import { z } from "zod";
@@ -185,6 +188,113 @@ export const importStatement = defineCommand({
 });
 
 // ------------------------------------------------------------------------------- categories
+
+/** Current view rows in the S08 matcher's anchor order, including derived cash legs. */
+function transferRows(ctx: CommandContext) {
+  return ctx.read<{
+    gid: string;
+    account: string;
+    booking_date: string;
+    amount: string;
+    counterparty_iban: string | null;
+    transfer_group_id: string | null;
+    is_internal_transfer: number;
+    anchor: string | null;
+  }>(
+    `SELECT t.gid, v.gid AS account, t.booking_date, t.amount, t.counterparty_iban,
+       t.transfer_group_id, t.is_internal_transfer,
+       COALESCE(k.anchor_ord, sk.anchor_ord || '~') AS anchor
+     FROM transactions t JOIN view_ids v ON v.id = t.account_id
+     LEFT JOIN fold_txn_keys k ON k.row = CASE
+       WHEN t.dedup_hash LIKE 'cashexp:%' THEN t.dedup_hash
+       ELSE v.gid || '|' || t.dedup_hash || '|' || t.occurrence END
+     LEFT JOIN transactions src ON t.dedup_hash = 'cashleg:' || src.gid
+     LEFT JOIN view_ids sv ON sv.id = src.account_id
+     LEFT JOIN fold_txn_keys sk ON sk.row = sv.gid || '|' || src.dedup_hash || '|' || src.occurrence
+     WHERE k.anchor_ord IS NOT NULL OR sk.anchor_ord IS NOT NULL
+     ORDER BY anchor, t.gid`,
+  );
+}
+
+/** Re-run transfer matching over currently ungrouped rows; reset releases prior pairs first. */
+export const matchTransfersCommand = defineCommand({
+  id: "budget.matchTransfers",
+  input: z.object({ reset: z.boolean().default(false), maxDays: z.int().default(3) }),
+  run(ctx, input) {
+    const rows = transferRows(ctx);
+    const accounts = new Map(
+      ctx
+        .read<{ gid: string; iban_match: string | null }>("SELECT gid, iban_match FROM accounts")
+        .map((a) => [a.gid, a.iban_match ?? ""]),
+    );
+    const byGid = new Map(rows.map((r) => [r.gid, r]));
+    const retained: { out: string; in: string }[] = [];
+    if (!input.reset) {
+      const groups = new Map<string, typeof rows>();
+      for (const row of rows) {
+        if (row.transfer_group_id === null) continue;
+        groups.set(row.transfer_group_id, [...(groups.get(row.transfer_group_id) ?? []), row]);
+      }
+      for (const [out, members] of groups) {
+        const debit = byGid.get(out);
+        const inc = members.find((r) => r.gid !== out);
+        if (
+          !debit ||
+          !inc ||
+          members.length !== 2 ||
+          !D(debit.amount).isSigned() ||
+          D(inc.amount).isSigned()
+        )
+          continue;
+        if (transferAmountKey(D(debit.amount)) !== transferAmountKey(D(inc.amount))) continue;
+        if (
+          pairScore(
+            {
+              key: out,
+              account: debit.account,
+              bookingDate: debit.booking_date,
+              amount: D(debit.amount),
+              counterpartyIban: debit.counterparty_iban,
+            },
+            {
+              key: inc.gid,
+              account: inc.account,
+              bookingDate: inc.booking_date,
+              amount: D(inc.amount),
+              counterpartyIban: inc.counterparty_iban,
+            },
+            accounts,
+          ) !== null
+        )
+          retained.push({ out, in: inc.gid });
+      }
+    }
+    const cleared = input.reset ? rows.filter((r) => r.transfer_group_id !== null).length : 0;
+    const candidates = rows.filter((r) => input.reset || r.transfer_group_id === null);
+    const pairs = matchTransfers(
+      candidates.map((r) => ({
+        key: r.gid,
+        account: r.account,
+        bookingDate: r.booking_date,
+        amount: D(r.amount),
+        counterpartyIban: r.counterparty_iban,
+      })),
+      accounts,
+      { maxDays: input.maxDays },
+    );
+    const run = ctx.newGid();
+    const all = [...retained, ...pairs];
+    ctx.emit("transferRun.started", run, {
+      reset: input.reset,
+      maxDays: input.maxDays,
+      pairCount: all.length,
+    });
+    for (const [ordinal, pair] of all.entries()) {
+      ctx.emit("transferPair.claimed", run, { run, out: pair.out, in: pair.in, ordinal });
+    }
+    return ok({ cleared, matched: pairs.length });
+  },
+});
 
 const categoryKey = z.string().refine(isCategoryKey, "unknown category");
 const ownerMerchantKey = z.string().transform(normalizeText).refine(Boolean, "empty merchant");

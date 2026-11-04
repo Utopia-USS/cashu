@@ -75,6 +75,8 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
   "txn.categorySet": { category: "groceries", source: "manual_txn" },
   "txn.categoryCleared": {},
   "txn.deleted": {},
+  "transferRun.started": { reset: false, maxDays: 3, pairCount: 1 },
+  "transferPair.claimed": { run: ULID_A, out: ACC, in: INST, ordinal: 0 },
   "categoryRule.set": {
     merchantKey: "sklep testowy",
     category: "groceries",
