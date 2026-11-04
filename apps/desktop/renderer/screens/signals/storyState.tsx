@@ -1,10 +1,26 @@
-/** Synthetic presentation fixtures only. Stories never connect to a vault or host. */
+/** Synthetic presentation fixtures only: stories build each surface's narrow props and never connect to a vault or host. */
 import { D, toCurrency } from "@cashu/domain";
 import { alerts, asInstrumentId, instrument as makeInstrument } from "@cashu/domain/investments";
 import type { ReadySignals, SignalRow } from "@cashu/store/investments/signals-screen";
 import { useForm } from "@tanstack/react-form";
-import { journalTimeline, signalGroups } from "./presentation.js";
-import type { SignalsScreenState } from "./useSignalsScreen.js";
+import { alertHistoryLines, alertLine } from "./alertModels.js";
+import { journalModel } from "./journalModels.js";
+import type { SignalsNotice } from "./outcomes.js";
+import { signalGroups } from "./presentation.js";
+import {
+  decisionHeader,
+  estimateView,
+  groupSection,
+  railRows,
+  railSummary,
+} from "./signalModels.js";
+import type { AlertsPageState } from "./useAlertsPage.js";
+import type { DecisionDialogState } from "./useDecisionDialog.js";
+import type { JournalPageState } from "./useJournalPage.js";
+import type { SignalsFeedback } from "./useSignalsFeedback.js";
+import type { SignalsListState, SignalsRailState } from "./useSignalsScreen.js";
+import type { WatchlistPageState } from "./useWatchlistPage.js";
+import { watchRow } from "./watchModels.js";
 
 const now = "2026-11-03T12:00:00Z";
 const instrument = "00000000-0000-8000-8000-000000000101";
@@ -195,93 +211,168 @@ export function signalsStorySnapshot(): ReadySignals {
   } as ReadySignals;
 }
 
-export function useSignalsStoryState(privacy = false): SignalsScreenState {
-  const data = privacy ? null : signalsStorySnapshot();
-  const decisionForm = useForm({
-    defaultValues: {
-      action: "held",
-      account: "",
-      quantity: "",
-      price: "",
-      currency: "",
-      reason: "",
-    },
-    onSubmit: () => {},
-  });
-  const groups = data ? signalGroups(data.open, data.held, "all") : [];
+const nextDeposit = "2026-11-10";
+const noop = () => {};
+const resolved = () => Promise.resolve();
+
+export function storyFeedback(patch: Partial<SignalsFeedback> = {}): SignalsFeedback {
+  return { busy: false, notice: null, refusal: null, undoIds: [], ...patch };
+}
+
+export function storyRail(data: ReadySignals | null, privacy = false): SignalsRailState {
+  const groups = data === null ? [] : signalGroups(data.open, data.held, "all");
   return {
-    data,
+    available: data !== null,
     privacy,
-    today: "2026-11-03",
-    displayNow: "2026-11-03T12:00:00.000Z",
-    groups,
+    total: groups.length,
+    rows: railRows(groups),
+    summary: data === null ? null : railSummary(data),
+    onOpenAll: noop,
+    onOpenRow: noop,
+    onOpenPage: noop,
+    onOpenReview: noop,
+  };
+}
+
+export function storyList(
+  data: ReadySignals | null,
+  patch: Partial<SignalsListState> & {
+    notice?: SignalsNotice | null;
+    refusal?: string | null;
+  } = {},
+): Omit<SignalsListState, "open"> & { notice: SignalsNotice | null; refusal: string | null } {
+  const groups = data === null ? [] : signalGroups(data.open, data.held, "all");
+  return {
+    available: data !== null,
     filter: "all",
     cursor: episode,
-    dialogOpen: false,
-    selected: null,
-    selectedGroup: null,
-    decisionForm,
-    decisionValues: decisionForm.state.values,
-    suggestion: {
-      choice: "none",
-      quantity: null,
-      quantityUnavailable: null,
-      price: null,
-      currency: "PLN",
-    },
-    estimate: null,
+    empty: groups.every((group) => group.signals.length === 0),
+    portfolio: groupSection(groups, "portfolio", nextDeposit),
+    watched: groupSection(groups, "watched", nextDeposit),
+    deciding: false,
     busy: false,
+    canOpenNote: true,
     notice: null,
     refusal: null,
-    undoIds: [],
-    undoSnooze: null,
-    alertStatus: "all",
-    alertSource: "all",
-    shownAlerts: data?.alerts ?? [],
-    editingAlert: null,
-    removedAlert: null,
-    history: data?.signals ?? [],
-    journal: data?.signals ?? [],
-    journalDecisions: data?.decisions ?? [],
-    journalRows: journalTimeline(data?.decisions ?? [], data?.signals ?? [], "all"),
-    undoableDecisionIds: new Set<string>(),
-    watchSparks: new Map<string, number[]>(),
-    watchHits: [],
-    journalFilter: "all",
-    journalInstrument: "",
-    searchText: "",
-    searchResult: null,
-    searchBusy: false,
-    removedWatch: null,
-    next: "2026-11-10",
-    options: {},
-    setDialogOpen() {},
-    setFilter() {},
-    setCursor() {},
-    setSelectedGroup() {},
-    setAlertStatus() {},
-    setAlertSource() {},
-    setEditingAlert() {},
-    setJournalFilter() {},
-    setJournalInstrument() {},
-    setSearchText() {},
-    async undoDecisions() {},
-    async undoOne() {},
-    async snooze() {},
-    async snoozeUntil() {},
-    acknowledgeGroup() {},
-    async run() {},
-    async addWatch() {
-      return false;
+    onFilter: noop,
+    onMove: noop,
+    onDecide: noop,
+    onDecideCursor: noop,
+    onAcknowledge: noop,
+    onDefer: noop,
+    onUndoDefer: noop,
+    onUndoDecision: noop,
+    onOpenAsset: noop,
+    onOpenNote: noop,
+    onOpenPage: noop,
+    onClose: noop,
+    ...patch,
+  };
+}
+
+/** The decision dialog over the first open group, with a buy estimate when `estimate` is set. */
+export function useStoryDecision(
+  data: ReadySignals,
+  options: { busy?: boolean; estimate?: boolean } = {},
+): DecisionDialogState {
+  const group = signalGroups(data.open, data.held, "all")[0] ?? null;
+  const form = useForm({
+    defaultValues: {
+      action: options.estimate ? "bought" : "held",
+      account: "",
+      quantity: options.estimate ? "2" : "",
+      price: options.estimate ? "148.625" : "",
+      currency: "PLN",
+      reason: "",
     },
-    async removeWatch() {},
-    removeWatchByInstrument() {},
-    chooseWatchHit() {},
-    async restoreWatch() {},
-    async saveAlert() {},
-    async removeAlert() {},
-    async restoreDeletedAlert() {},
-    async setAlertState() {},
-    exportHistory() {},
-  } as SignalsScreenState;
+    onSubmit: noop,
+  });
+  return {
+    open: group !== null,
+    ...decisionHeader(group),
+    form,
+    suggestedQuantity: options.estimate ? D("2") : null,
+    quantityUnavailable: false,
+    estimate: options.estimate
+      ? estimateView({
+          amount: D("297.25"),
+          currency: "PLN",
+          allocation: { afterWeight: 0.62, target: 0.6, driftPp: 2 },
+        } as Parameters<typeof estimateView>[0])
+      : null,
+    thesis: null,
+    accounts: data.accounts,
+    nextDeposit: null,
+    busy: options.busy ?? false,
+    onClose: noop,
+  } as DecisionDialogState;
+}
+
+export function storyAlerts(
+  data: ReadySignals | null,
+  patch: Partial<AlertsPageState> = {},
+): AlertsPageState {
+  return {
+    status: "all",
+    source: "all",
+    rows: (data?.alerts ?? []).map(alertLine),
+    counts: data?.counts ?? null,
+    history: data === null ? [] : alertHistoryLines(data),
+    editing: null,
+    editingRow: null,
+    canRestore: false,
+    canExport: data !== null,
+    busy: false,
+    onStatus: noop,
+    onSource: noop,
+    onEdit: noop,
+    onSave: resolved,
+    onRemove: resolved,
+    onRestore: resolved,
+    onToggleMute: resolved,
+    onExport: noop,
+    ...patch,
+  };
+}
+
+export function storyWatchlist(
+  data: ReadySignals | null,
+  patch: Partial<WatchlistPageState> = {},
+): WatchlistPageState {
+  const ready = data?.context.status === "ready" ? data.context : null;
+  return {
+    available: ready !== null,
+    rows: ready === null ? [] : ready.watchlist.map(watchRow),
+    search: { text: "", hits: [], searching: false, remoteUnavailable: false, offerTyped: false },
+    canRestore: false,
+    onSearch: noop,
+    onChoose: noop,
+    onAddTyped: noop,
+    onRemove: noop,
+    onRestore: resolved,
+    onOpenAsset: noop,
+    ...patch,
+  };
+}
+
+export function storyJournal(data: ReadySignals | null): JournalPageState {
+  return {
+    filter: "all",
+    instrument: "",
+    instruments: (data?.instruments ?? []).map((row) => ({
+      id: row.id,
+      label: row.symbol ?? row.name,
+    })),
+    ...(data === null ? { rows: [], decisions: 0, signals: 0 } : journalModel(data, "", "all")),
+    onFilter: noop,
+    onInstrument: noop,
+    onUndo: noop,
+    onOpenAsset: noop,
+  };
+}
+
+/** A snapshot with no open signals (everything decided). */
+export function emptyStorySnapshot(): ReadySignals {
+  const data = signalsStorySnapshot();
+  return { ...data, open: [], signals: [], alerts: [], decisions: [], lastRun: null };
 }

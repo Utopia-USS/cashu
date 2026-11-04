@@ -2,7 +2,7 @@ import type { ReadySignals } from "@cashu/store/investments/signals-screen";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useState } from "react";
 import { type AlertRow, alertDraft, alertInput } from "./alertForm.js";
-import { G } from "./Signals.strings.js";
+import { refusalLabel } from "./labels.js";
 
 export type AlertEditorProps = {
   data: ReadySignals;
@@ -19,7 +19,7 @@ export function useAlertEditor(props: AlertEditorProps) {
     onSubmit: ({ value }) => {
       const result = alertInput(value, props.alert, props.data.catalog, props.data.instruments);
       if (result.ok) props.onSave({ alert: props.alert?.gid ?? null, fields: result.fields });
-      else setError(G.code(result.reason));
+      else setError(refusalLabel(result.reason));
     },
   });
   const values = useStore(form.store, (state) => state.values);

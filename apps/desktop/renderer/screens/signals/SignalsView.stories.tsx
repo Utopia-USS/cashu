@@ -1,30 +1,49 @@
 import { UiEnvProvider } from "@cashu/ui";
-import { SignalsDialogView, SignalsHomeRailView, SignalsPageView } from "./SignalsView.js";
-import { useSignalsStoryState } from "./storyState.js";
+import { AlertsPageView } from "./AlertsPageView.js";
+import { DecisionDialogView } from "./DecisionDialogView.js";
+import { SignalsListView } from "./SignalsListView.js";
+import { SignalsPageView } from "./SignalsView.js";
+import {
+  signalsStorySnapshot,
+  storyAlerts,
+  storyFeedback,
+  storyList,
+  useStoryDecision,
+} from "./storyState.js";
+import type { SignalsFeedback } from "./useSignalsFeedback.js";
 
-function Story({
-  page,
-  dialog = false,
+const data = signalsStorySnapshot();
+function Page({
+  available = true,
   privacy = false,
+  feedback = storyFeedback(),
+  dialogs = null,
 }: {
-  page?: "alerts" | "watchlist" | "journal";
-  dialog?: boolean;
+  available?: boolean;
   privacy?: boolean;
+  feedback?: SignalsFeedback;
+  dialogs?: React.ReactNode;
 }) {
-  const state = useSignalsStoryState(privacy);
-  const shown = dialog ? { ...state, dialogOpen: true } : state;
-  return page ? (
-    <SignalsPageView state={shown} page={page} />
-  ) : (
-    <>
-      <SignalsHomeRailView state={shown} />
-      {dialog && <SignalsDialogView state={shown} />}
-    </>
+  return (
+    <SignalsPageView
+      page="alerts"
+      available={available}
+      privacy={privacy}
+      feedback={feedback}
+      onBack={() => {}}
+      onUndoLast={() => {}}
+      dialogs={dialogs}
+    >
+      <AlertsPageView {...storyAlerts(data, { busy: feedback.busy })} />
+    </SignalsPageView>
   );
 }
+function WithDecision() {
+  return <Page dialogs={<DecisionDialogView {...useStoryDecision(data, { estimate: true })} />} />;
+}
 export default {
-  title: "Desktop/Signals/Surfaces",
-  component: SignalsHomeRailView,
+  title: "Desktop/Signals/Page",
+  component: SignalsPageView,
   decorators: [
     (Story: () => React.ReactNode) => (
       <UiEnvProvider locale="en-US" privacy={false}>
@@ -33,22 +52,30 @@ export default {
     ),
   ],
 };
-export const HomePartialRun = { render: () => <Story /> };
-export const FullDialog = { render: () => <Story dialog /> };
-export const AlertsAndHistory = { render: () => <Story page="alerts" /> };
-export const Watchlist = { render: () => <Story page="watchlist" /> };
-export const Journal = { render: () => <Story page="journal" /> };
+export const Ready = { render: () => <Page /> };
+export const Unavailable = { render: () => <Page available={false} /> };
 export const Privacy = {
   render: () => (
     <UiEnvProvider locale="en-US" privacy>
-      <Story privacy />
+      <Page available={false} privacy />
     </UiEnvProvider>
   ),
 };
+export const SavedWithUndo = {
+  render: () => <Page feedback={storyFeedback({ notice: "saved", undoIds: ["synthetic"] })} />,
+};
+export const Refusal = {
+  render: () => <Page feedback={storyFeedback({ notice: "failed", refusal: "no_alert" })} />,
+};
+export const Busy = { render: () => <Page feedback={storyFeedback({ busy: true })} /> };
+export const SignalsDialogOpen = {
+  render: () => <Page dialogs={<SignalsListView {...storyList(data)} />} />,
+};
+export const DecisionDialogOpen = { render: () => <WithDecision /> };
 export const Polish = {
   render: () => (
     <UiEnvProvider locale="pl-PL" privacy={false}>
-      <Story />
+      <Page feedback={storyFeedback({ notice: "removed" })} />
     </UiEnvProvider>
   ),
 };

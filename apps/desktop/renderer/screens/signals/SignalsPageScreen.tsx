@@ -2,8 +2,15 @@ import { useProfile } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { useEffect } from "react";
 import { AlertEditorScreen } from "./AlertEditorScreen.js";
-import { SignalsPageView } from "./SignalsView.js";
-import { type SignalsScreenOptions, useSignalsScreen } from "./useSignalsScreen.js";
+import { AlertsPageView } from "./AlertsPageView.js";
+import { JournalPageView } from "./JournalPageView.js";
+import { SignalsDialogView, SignalsPageView } from "./SignalsView.js";
+import {
+  type SignalsPageKind,
+  type SignalsScreenOptions,
+  useSignalsScreen,
+} from "./useSignalsScreen.js";
+import { WatchlistPageView } from "./WatchlistPageView.js";
 
 function downloadCsv(filename: string, content: string) {
   const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
@@ -16,12 +23,9 @@ function downloadCsv(filename: string, content: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-export function SignalsPageScreen(
-  props: SignalsScreenOptions & {
-    page: "alerts" | "watchlist" | "journal";
-    initialNewAlert?: boolean;
-  },
-) {
+type Props = SignalsScreenOptions & { page: SignalsPageKind; initialNewAlert?: boolean };
+
+export function SignalsPageScreen(props: Props) {
   const vault = useProfile();
   const { privacy } = useUiEnv();
   return (
@@ -31,28 +35,41 @@ export function SignalsPageScreen(
     />
   );
 }
-function BoundSignals(
-  props: SignalsScreenOptions & {
-    page: "alerts" | "watchlist" | "journal";
-    initialNewAlert?: boolean;
-  },
-) {
+function BoundSignals(props: Props) {
   const state = useSignalsScreen({ ...props, onExportCsv: downloadCsv });
-  const { setEditingAlert } = state;
+  const { alerts, data } = state;
+  const { onEdit } = alerts;
   useEffect(() => {
-    if (props.initialNewAlert) setEditingAlert("new");
-  }, [props.initialNewAlert, setEditingAlert]);
-  const selected = state.data?.alerts.find((row) => row.gid === state.editingAlert) ?? null;
+    if (props.initialNewAlert) onEdit("new");
+  }, [props.initialNewAlert, onEdit]);
   const editor =
-    state.editingAlert && state.data ? (
+    alerts.editing && data ? (
       <AlertEditorScreen
-        key={state.editingAlert}
-        data={state.data}
-        alert={selected}
-        busy={state.busy}
-        onSave={(input) => void state.saveAlert(input)}
-        onClose={() => state.setEditingAlert(null)}
+        key={alerts.editing}
+        data={data}
+        alert={alerts.editingRow}
+        busy={alerts.busy}
+        onSave={(input) => void alerts.onSave(input)}
+        onClose={() => onEdit(null)}
       />
     ) : null;
-  return <SignalsPageView state={state} page={props.page} editor={editor} />;
+  return (
+    <SignalsPageView
+      page={props.page}
+      available={data !== null}
+      privacy={state.privacy}
+      feedback={state.feedback}
+      onBack={state.onBack}
+      onUndoLast={state.onUndoLast}
+      dialogs={<SignalsDialogView state={state} />}
+    >
+      {props.page === "alerts" ? (
+        <AlertsPageView {...alerts} editor={editor} />
+      ) : props.page === "watchlist" ? (
+        <WatchlistPageView {...state.watchlist} />
+      ) : (
+        <JournalPageView {...state.journal} />
+      )}
+    </SignalsPageView>
+  );
 }

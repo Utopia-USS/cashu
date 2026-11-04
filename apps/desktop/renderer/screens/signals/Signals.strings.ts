@@ -182,4 +182,62 @@ export const G = catalog({
   noDecision: { pl: "Bez decyzji", en: "No decision" },
   opens: { pl: "Otwórz instrument", en: "Open instrument" },
   code: { pl: (value: string) => `Kod: ${value}`, en: (value: string) => `Code: ${value}` },
+  journalKind: { pl: "Rodzaj wpisów", en: "Entry type" },
+  glyphPositive: { pl: "●", en: "●" },
+  glyphNegative: { pl: "◆", en: "◆" },
+  glyphNeutral: { pl: "■", en: "■" },
+  multiple: { pl: "×", en: "×" },
+  refusedScopeChanged: {
+    pl: "Widok zmienił się w trakcie zapisu. Sprawdź dziennik.",
+    en: "The view changed while saving. Check the journal.",
+  },
+  refusedUndoExpired: {
+    pl: "Na cofnięcie jest już za późno.",
+    en: "It is too late to undo this.",
+  },
+  refusedSignalClosed: {
+    pl: "Sygnał jest już zamknięty albo nie istnieje.",
+    en: "The signal is closed or no longer exists.",
+  },
+  refusedNoDecision: { pl: "Tej decyzji już nie ma.", en: "This decision no longer exists." },
+  refusedNoAlert: { pl: "Tego alertu już nie ma.", en: "This alert no longer exists." },
+  refusedAlertInvalid: {
+    pl: "Ustawienia alertu są nieprawidłowe.",
+    en: "The alert settings are invalid.",
+  },
+  refusedAlertExpired: { pl: "Alert wygasł.", en: "The alert has expired." },
+  refusedAgentAlertLimit: {
+    pl: "Osiągnięto limit alertów agenta.",
+    en: "The agent alert limit is reached.",
+  },
+  refusedNoItem: {
+    pl: "Tej pozycji nie ma już na liście obserwowanych.",
+    en: "This item is no longer on the watchlist.",
+  },
+  refusedWatchlistFull: { pl: "Lista obserwowanych jest pełna.", en: "The watchlist is full." },
+  refusedUnknownMarket: {
+    pl: "Nie rozpoznano rynku tego instrumentu.",
+    en: "The market of this instrument is not recognised.",
+  },
+  refusedModuleDisabled: {
+    pl: "Moduł inwestycji jest wyłączony.",
+    en: "The investments module is turned off.",
+  },
+  refusedNoAccount: {
+    pl: "Wybrany rachunek nie istnieje.",
+    en: "The selected account does not exist.",
+  },
+  refusedInstrument: {
+    pl: "Instrument nie pasuje do sygnałów.",
+    en: "The instrument does not match the signals.",
+  },
+  refusedCurrency: { pl: "Waluta jest nieprawidłowa.", en: "The currency is invalid." },
+  refusedNegative: {
+    pl: "Ilość i cena nie mogą być ujemne.",
+    en: "Quantity and price cannot be negative.",
+  },
+  refusedCode: {
+    pl: (value: string) => `Nie zapisano zmiany (kod: ${value}).`,
+    en: (value: string) => `The change was not saved (code: ${value}).`,
+  },
 });
