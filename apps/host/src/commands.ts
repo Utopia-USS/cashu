@@ -12,6 +12,7 @@ import {
   type DurableCommandResult,
   type EventWriter,
   executeDurableCommand,
+  investmentsCommands,
   mintUlid,
   runCommand,
 } from "@cashu/store";
@@ -56,6 +57,7 @@ export function runVaultCommand(
   key: string,
   current: () => boolean = () => true,
 ): KeyedRun | Promise<KeyedRun> {
+  const merge = command.id === investmentsCommands.mergeInstruments.id;
   if (vault.native !== undefined) {
     const native = vault.native;
     const checked: Command<unknown, JsonValue> = {
@@ -86,8 +88,11 @@ export function runVaultCommand(
       checked,
       input,
       key,
+      merge ? () => native.createMergeCheckpoint() : undefined,
     ).then((result) => ({ result, replayed: false }));
   }
+  if (merge)
+    return { result: { kind: "not_started", reason: "checkpoint_unavailable" }, replayed: false };
   return vault.driver.transaction(() => {
     const prior = stored(vault, key, command.id);
     if (prior !== undefined) return { result: prior, replayed: true };

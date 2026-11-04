@@ -7,7 +7,9 @@
 // and statement `run` up front. This is how a host reads Python's live WAL database: each
 // `transaction(fn)` is one short read transaction (one consistent snapshot, ended when `fn` returns,
 // so WAL checkpoints are never starved); reads outside a transaction see the latest commit each.
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+
+import { closeSync, constants, openSync } from "node:fs";
+import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
 import type { SqlDriver, SqlRunResult, SqlStatement, SqlValue } from "@cashu/store";
 import type { HostLock } from "./host/lock.js";
 
@@ -37,6 +39,26 @@ export class ReadOnlyDriverError extends Error {
     super(`${what} refused: this driver was opened read-only`);
     this.name = "ReadOnlyDriverError";
   }
+}
+
+const liveBackups = new WeakMap<SqlDriver, { db: DatabaseSync; lock: HostLock; closed: boolean }>();
+
+/** Online backup from this process's live exclusive SQLite connection, including committed WAL. */
+export async function backupNodeSqlite(driver: SqlDriver, destination: string): Promise<void> {
+  const source = liveBackups.get(driver);
+  if (!source || source.closed || !source.lock.held)
+    throw new ExclusiveOpenError("live exclusive database required");
+  // node:sqlite otherwise creates a 0644 file under an ordinary process umask.
+  closeSync(
+    openSync(
+      destination,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+      0o600,
+    ),
+  );
+  await backup(source.db, destination);
+  if (source.closed || !source.lock.held)
+    throw new ExclusiveOpenError("live exclusive database changed");
 }
 
 /** Open (or, read-write, create) a database file, or `":memory:"`. `close()` closes it. */
@@ -73,7 +95,7 @@ export function openNodeSqlite(path: string, options: NodeSqliteOptions = {}): S
       return stmt.all(...params) as R[];
     },
   });
-  return {
+  const driver: SqlDriver = {
     exec(sql) {
       if (readOnly) throw new ReadOnlyDriverError("exec");
       db.exec(sql);
@@ -103,8 +125,13 @@ export function openNodeSqlite(path: string, options: NodeSqliteOptions = {}): S
       }
     },
     close() {
+      const source = liveBackups.get(driver);
+      if (source) source.closed = true;
       statements.clear();
       db.close();
     },
   };
+  if (options.exclusive !== undefined)
+    liveBackups.set(driver, { db, lock: options.exclusive, closed: false });
+  return driver;
 }

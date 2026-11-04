@@ -1,10 +1,11 @@
 // The node:sqlite SqlDriver on a temp database: read-write basics (transactions, savepoints,
 // rollback) and the read-only mode a host uses on a live WAL database written by another connection.
-import { mkdtempSync } from "node:fs";
+import { lstatSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { openNodeSqlite, ReadOnlyDriverError } from "./nodeSqlite.js";
+import { acquireHostLock } from "./host/lock.js";
+import { backupNodeSqlite, openNodeSqlite, ReadOnlyDriverError } from "./nodeSqlite.js";
 
 const tempDb = () => join(mkdtempSync(join(tmpdir(), "cashu-node-host-sqlite-")), "t.db");
 
@@ -98,5 +99,37 @@ describe("node:sqlite driver, read-only", () => {
 
   it("does not create a missing file", () => {
     expect(() => openNodeSqlite(tempDb(), { readOnly: true })).toThrow();
+  });
+});
+
+describe("live exclusive online backup", () => {
+  it("captures committed WAL through the held writer and refuses a stale or ordinary driver", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cashu-node-backup-"));
+    const lock = acquireHostLock(join(dir, "host.lock.db"));
+    if (!lock) throw new Error("synthetic lock unavailable");
+    const source = openNodeSqlite(join(dir, "source.db"), { exclusive: lock });
+    try {
+      source.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE t(v TEXT)");
+      source.prepare("INSERT INTO t(v) VALUES (?)").run("synthetic");
+      const destination = join(dir, "copy.db");
+      await backupNodeSqlite(source, destination);
+      expect(lstatSync(destination).mode & 0o777).toBe(0o600);
+      const copy = openNodeSqlite(destination, { readOnly: true });
+      try {
+        expect(copy.prepare("SELECT v FROM t").get()).toEqual({ v: "synthetic" });
+      } finally {
+        copy.close();
+      }
+      const ordinary = openNodeSqlite(":memory:");
+      try {
+        await expect(backupNodeSqlite(ordinary, join(dir, "other.db"))).rejects.toThrow();
+      } finally {
+        ordinary.close();
+      }
+    } finally {
+      source.close();
+      lock.release();
+    }
+    await expect(backupNodeSqlite(source, join(dir, "late.db"))).rejects.toThrow();
   });
 });

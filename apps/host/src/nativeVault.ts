@@ -15,7 +15,7 @@ import {
   lanBytesDigest,
 } from "@cashu/host-protocol/pairing-lan";
 import { NodeFolderFs } from "@cashu/node-host";
-import { openNodeSqlite } from "@cashu/node-host/sqlite";
+import { backupNodeSqlite, openNodeSqlite } from "@cashu/node-host/sqlite";
 import {
   builtinModules,
   metaClockStore,
@@ -42,6 +42,8 @@ import { LEADER_PIN_COMMAND, leaseAttempts } from "./devices/leaseAttempts.js";
 import type { WriterLease } from "./lease.js";
 import { nativeClockGuard } from "./market/clockGuard.js";
 import { NativeBlobPublication } from "./nativeBlobs.js";
+import { createNativeCheckpoint, scrubIncompleteNativeCheckpoints } from "./nativeCheckpoint.js";
+import { readNativeRecoveryWrap } from "./nativeCreationArtifacts.js";
 import { HostLanCarrier } from "./pairing/carrier.js";
 import { type PairingAttempt, PairingJournal } from "./pairing/journal.js";
 import { pairingReadCapability } from "./pairing/readCapability.js";
@@ -152,6 +154,9 @@ export interface NativeVaultSession {
   } | null;
   /** Read/pull may continue while this denies new writes and external effects. */
   canRunSideEffects(): boolean;
+  /** Call only inside the durable command queue, before the merge's may-append intent. */
+  createMergeCheckpoint(): Promise<void>;
+  checkpointDirectory(): string;
   strategyDirectoryAuthority(): StrategyDirectoryAuthority | null;
   canFetchPublicMarket(): boolean;
   /** A live external fetch holds back non-force leader handover ACK until it settles. */
@@ -332,6 +337,7 @@ export async function openNativeVault(
     )
       throw new Error("native_lan_carrier_invalid");
     const lanCarrier = new HostLanCarrier(lanCarrierRoot);
+    const certificates = await source.bootstrapCertificates(entry);
     candidate = await loadDeviceAuthority({
       entry,
       dataDir,
@@ -339,7 +345,7 @@ export async function openNativeVault(
       sodium: source.sodium,
       provenance,
       clock: now,
-      bootstrapCertificates: await source.bootstrapCertificates(entry),
+      bootstrapCertificates: certificates,
     });
     const saltKey = candidate.ring.gidSalt();
     const salt = vaultSalt(saltKey.expose().slice());
@@ -628,6 +634,7 @@ export async function openNativeVault(
         (activeFetches === 0 && canFetchPublicMarket()),
     });
     await leaseReports.reconcilePending();
+    scrubIncompleteNativeCheckpoints(root);
     return {
       id: entry.vaultId,
       store: activeStore,
@@ -647,6 +654,25 @@ export async function openNativeVault(
         };
       },
       canRunSideEffects,
+      createMergeCheckpoint: async () => {
+        if (!canRunSideEffects()) throw new Error("native_checkpoint_unavailable");
+        await createNativeCheckpoint({
+          root,
+          vault: entry.vaultId,
+          device: entry.deviceId,
+          sodium: source.sodium,
+          ring: activeCandidate.ring,
+          identity: activeCandidate.identity,
+          baseRecoveryWrap: readNativeRecoveryWrap(dataDir, entry.vaultId),
+          certificates,
+          frontier: () =>
+            JSON.stringify([...activeStore.cursors()].sort(([a], [b]) => a.localeCompare(b))),
+          isCurrent: canRunSideEffects,
+          backupDatabase: (name, destination) =>
+            backupNodeSqlite(name === "private.db" ? activeMeta : activeStore.driver, destination),
+        });
+      },
+      checkpointDirectory: () => join(root, "checkpoints"),
       strategyDirectoryAuthority: () => {
         if (!isCurrent()) return null;
         try {

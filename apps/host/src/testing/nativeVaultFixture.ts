@@ -1,5 +1,5 @@
 // Synthetic encrypted vault with genuine creator authority for native host socket tests.
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFolderFs } from "@cashu/node-host";
@@ -67,8 +67,30 @@ export async function nativeVaultFixture(
   const profileSlug = options.profileSlug ?? "synthetic";
   const vaultRoot = join(dataDir, "vaults", vaultId);
   const log = join(vaultRoot, "log");
-  mkdirSync(log, { recursive: true });
+  mkdirSync(log, { recursive: true, mode: 0o700 });
+  chmodSync(join(dataDir, "vaults"), 0o700);
+  chmodSync(vaultRoot, 0o700);
+  chmodSync(log, 0o700);
   mkdirSync(join(vaultRoot, "strategy"), { mode: 0o700 });
+  writeFileSync(
+    join(vaultRoot, "certificates.v1.json"),
+    JSON.stringify({
+      format: 1,
+      vaultId,
+      deviceId: identity.deviceId,
+      certificates: [Buffer.from(created.creatorCertificate).toString("base64url")],
+    }),
+    { flag: "wx", mode: 0o600 },
+  );
+  writeFileSync(
+    join(vaultRoot, "recovery-wrap.v1"),
+    JSON.stringify({
+      format: 1,
+      vaultId,
+      wrap: Buffer.from(created.recoveryWrap).toString("base64url"),
+    }),
+    { flag: "wx", mode: 0o600 },
+  );
   const entry: NativeVaultInventoryEntry = {
     vaultId,
     deviceId: identity.deviceId,

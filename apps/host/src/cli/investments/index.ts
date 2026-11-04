@@ -29,7 +29,7 @@ export function investmentCommands(deps: InvestmentCliDeps): PortedCommand[] {
         if (name === "import") return importFile(rest, io, root, deps);
         if (name === "run") return runInvestment(rest, io, root, deps);
         if (name === "macro") return macroRefresh(rest, io, root, deps);
-        if (name === "instruments") return Promise.resolve(instrumentsMerge(rest, io, root, deps));
+        if (name === "instruments") return instrumentsMerge(rest, io, root, deps);
         if (name === "search") return Promise.resolve(localSearch(rest, io, root, deps));
         if (name === "alerts" && rest[0] === "kinds")
           return Promise.resolve(alertKinds(rest.slice(1), io));

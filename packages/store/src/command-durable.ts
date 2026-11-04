@@ -292,6 +292,7 @@ export async function executeDurableCommand<I, R>(
   cmd: Command<I, R>,
   raw: unknown,
   key: string,
+  beforeMayAppend?: () => Promise<void>,
 ): Promise<DurableCommandResult<R>> {
   let parsed: { readonly ok: true; readonly value: I } | CommandRefusal;
   try {
@@ -351,6 +352,14 @@ export async function executeDurableCommand<I, R>(
       }
       const eids = prepared.events.map((event) => event.eid);
       const digest = events.length === 0 ? undefined : ownBatchDigest(events);
+      if (beforeMayAppend) {
+        try {
+          await beforeMayAppend();
+        } catch {
+          return { kind: "not_started", reason: "checkpoint_failed" };
+        }
+        if (!sessionCurrent(session)) return { kind: "not_started", reason: "session_unavailable" };
+      }
       let saved: AttemptLookup<R>;
       try {
         saved = await session.attempts.saveMayAppend({

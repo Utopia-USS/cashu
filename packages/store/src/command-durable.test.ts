@@ -199,6 +199,46 @@ describe("portable durable commands", () => {
     expect(s.attempts.rows.size).toBe(0);
   });
 
+  it("captures after preparation and before the may-append intent, then skips capture on replay", async () => {
+    const s = setup();
+    const order: string[] = [];
+    s.attempts.onSave = () => order.push("intent");
+    const capture = async () => {
+      expect(s.runs).toBe(1);
+      expect(s.attempts.rows.size).toBe(0);
+      order.push("checkpoint");
+    };
+    expect((await executeDurableCommand(s.session, s.cmd, {}, "merge-key", capture)).kind).toBe(
+      "completed",
+    );
+    expect(order).toEqual(["checkpoint", "intent"]);
+    expect((await executeDurableCommand(s.session, s.cmd, {}, "merge-key", capture)).kind).toBe(
+      "completed",
+    );
+    expect(order).toEqual(["checkpoint", "intent"]);
+    expect(s.writes).toBe(1);
+  });
+
+  it("refuses a failed or stale checkpoint before saving an attempt or invoking the engine", async () => {
+    const failed = setup();
+    expect(
+      await executeDurableCommand(failed.session, failed.cmd, {}, "failed-key", async () => {
+        throw new Error("synthetic capture fault");
+      }),
+    ).toEqual({ kind: "not_started", reason: "checkpoint_failed" });
+    expect(failed.attempts.rows.size).toBe(0);
+    expect(failed.writes).toBe(0);
+
+    const stale = setup();
+    expect(
+      await executeDurableCommand(stale.session, stale.cmd, {}, "stale-key", async () => {
+        stale.setCurrent(false);
+      }),
+    ).toEqual({ kind: "not_started", reason: "session_unavailable" });
+    expect(stale.attempts.rows.size).toBe(0);
+    expect(stale.writes).toBe(0);
+  });
+
   it("retains original EIDs and never reruns an ambiguous same-key write", async () => {
     const s = setup();
     s.setFailWrite(true);

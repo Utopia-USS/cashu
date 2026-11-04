@@ -134,8 +134,14 @@ export const investmentCliText = {
     en: "Merge requires an encrypted vault checkpoint before writing. That capability is unavailable.",
   },
   wouldMerge: { pl: "Scalono by", en: "Would merge" },
+  merged: { pl: "Scalono", en: "Merged" },
   into: { pl: "z", en: "into" },
   moved: { pl: "przeniesiono by", en: "would move" },
+  didMove: { pl: "przeniesiono", en: "moved" },
+  mergeCheckpointSaved: {
+    pl: "Zaszyfrowana kopia przed scaleniem:",
+    en: "Encrypted pre-merge checkpoint:",
+  },
   mergeRefusal: {
     same_instrument: { pl: "To ten sam instrument.", en: "These are the same instrument." },
     no_instrument: { pl: "Nie znaleziono instrumentu.", en: "Instrument not found." },
