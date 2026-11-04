@@ -39,6 +39,9 @@ export interface StartupRecoveryDeps {
 
 /** Main's own admission result as a failure (null: no Python data, nothing to recover from). */
 export function admissionFailure(admission: LegacyDataAdmission): StartupFailure | null {
+  // A cutover journal: `cashu migrate` ("Import my data") finishes the interrupted cutover.
+  if (admission === "migration_incomplete")
+    return startupFailure("migration_incomplete", "cutover_failed");
   if (admission === "migration_required")
     return startupFailure("python_data_present", "python_data_found");
   if (admission === "refused") return startupFailure("python_data_present", "python_data_unsafe");

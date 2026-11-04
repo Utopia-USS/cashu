@@ -1,7 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { legacyDataAdmission, legacySourceRoots } from "@cashu/node-host/admission";
+import {
+  legacyDataAdmission,
+  legacySourceRoots,
+  migrationJournals,
+} from "@cashu/node-host/admission";
 import { afterEach, expect, test } from "vitest";
 
 const roots: string[] = [];
@@ -72,4 +76,25 @@ test("explicit portable data ignores automatic home and checkout roots", () => {
   const roots = legacySourceRoots(selected, project, home, {}, "darwin", true);
   expect(roots).toEqual([selected]);
   expect(legacyDataAdmission(roots)).toBe("no_legacy_sentinel");
+});
+
+test("an in-place migration's own entries are not Python data; its journal is migration_incomplete", () => {
+  const dir = fixture();
+  // A finished migration: backup, marker, diagnostics and a journal-less staging leftover.
+  mkdirSync(join(dir, "python-backup-20270101T000000000Z"));
+  writeFileSync(join(dir, "python-backup-20270101T000000000Z", "cashu.db"), "synthetic");
+  writeFileSync(join(dir, "python-backup-20270101T000000000Z", "cashu.db-wal"), "synthetic");
+  writeFileSync(join(dir, "migration.json"), "{}");
+  mkdirSync(join(dir, "diagnostics"));
+  mkdirSync(join(dir, ".migration-20270101T000000000Z"));
+  expect(legacyDataAdmission(dir)).toBe("no_legacy_sentinel");
+  // A journal wins over whatever the root shows mid-cutover (here a WAL without its database).
+  writeFileSync(join(dir, ".migration-20270101T000000000Z", "journal.json"), "{}");
+  writeFileSync(join(dir, "cashu.db-wal"), "synthetic", { mode: 0o600 });
+  expect(legacyDataAdmission(dir)).toBe("migration_incomplete");
+  expect(migrationJournals(dir)).toEqual([".migration-20270101T000000000Z"]);
+  const home = fixture();
+  expect(legacyDataAdmission(legacySourceRoots(dir, fixture(), home, {}, "darwin", true))).toBe(
+    "migration_incomplete",
+  );
 });

@@ -33,7 +33,7 @@ export interface SourceSeal {
 /**
  * Process/UI files outside the financial copy. Other roots require explicit one-shot import policy.
  */
-const DEVICE_LOCAL_EXCLUSIONS = new Set([
+export const DEVICE_LOCAL_EXCLUSIONS: ReadonlySet<string> = new Set([
   "api-token",
   "app-location.json",
   "desktop.json",
@@ -51,7 +51,7 @@ const DEVICE_LOCAL_EXCLUSIONS = new Set([
   "tmp",
 ]);
 export type PythonDatabaseName = "cashu.db" | "finanse.db";
-const GENESIS_ROOTS = new Set(["profiles", "imports"]);
+export const GENESIS_ROOTS: ReadonlySet<string> = new Set(["profiles", "imports"]);
 
 function assertKnownRoots(root: string, database: PythonDatabaseName): void {
   const databaseRoots = new Set([database, `${database}-wal`, `${database}-shm`]);

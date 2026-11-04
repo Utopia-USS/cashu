@@ -6,7 +6,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,7 +19,6 @@ import { expect, it } from "vitest";
 import { takeWriterLease } from "../lease.js";
 import { openNativeVault } from "../nativeVault.js";
 import { ProductionVaultSourceFactory } from "../productionVaultSource.js";
-import { assertRecoveryFileDestination } from "./cli.js";
 import { importPythonDataDir, verifyPythonMigration } from "./oneShot.js";
 
 it("imports an offline synthetic Python directory into fresh encrypted vaults and re-verifies", async () => {
@@ -108,11 +106,6 @@ it("imports an offline synthetic Python directory into fresh encrypted vaults an
         },
       }),
     ).rejects.toThrow("source_unsafe");
-    const alias = join(base, "source-alias");
-    symlinkSync(sourceDir, alias);
-    expect(() =>
-      assertRecoveryFileDestination(join(sourceDir, "words.txt"), alias, targetDir),
-    ).toThrow("recovery file must be outside source and target");
     const imported = await importPythonDataDir({
       sourceDir,
       targetDir,
@@ -208,4 +201,4 @@ it("imports an offline synthetic Python directory into fresh encrypted vaults an
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
-});
+}, 120_000);

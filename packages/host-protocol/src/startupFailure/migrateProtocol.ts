@@ -4,6 +4,8 @@
 //   {"event":"recovery-words","words":"<12-24 lowercase words>"}   the child then reads one stdin
 //                                                                 line: "confirm" or "cancel"
 //   {"event":"done","status":"migrated"|"already_migrated",...}   last line, exit 0
+// `migrate verify --data-dir <dir> --json` prints one final line: done with status "verified" (exit
+// 0) or failed (exit 1); it never asks for words.
 //   {"event":"failed","code":"<StartupFailureCode>","detail":"..."} last line, exit 1
 // Every line is parsed strictly (a trust boundary); anything else, a crash or another exit is an
 // `unknown` failure. The words line is the new recovery phrase: it is shown once and never logged.
@@ -39,7 +41,7 @@ export const migrateWordsSchema = z.strictObject({
 
 export const migrateDoneSchema = z.strictObject({
   event: z.literal("done"),
-  status: z.enum(["migrated", "already_migrated"]),
+  status: z.enum(["migrated", "already_migrated", "verified"]),
   profiles: count.optional(),
   financialTables: count.optional(),
   financialRows: count.optional(),

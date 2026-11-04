@@ -2,7 +2,7 @@
 // synthetic host: native CLI output and exit codes travel over the host socket; host status / stop never start a host; no host means
 // exit 69 and nothing run; a host command (genesis) prints through the host; MCP sessions relay, end
 // with the server, and survive a host killed mid-session.
-import { writeFileSync } from "node:fs";
+import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
@@ -104,6 +104,38 @@ describe("cashu shim: host admin and failures", () => {
     expect(run.stderr).toContain("CLI test interposer: HOME is outside the temporary directory");
     expect(hostPid(e.CASHU_DATA_DIR as string)).toBeUndefined();
   });
+});
+
+describe("cashu shim: migrate", () => {
+  it(
+    "runs the host binary's migrate in the foreground for the resolved data dir, never a host",
+    async () => {
+      const e = env();
+      const dataDir = e.CASHU_DATA_DIR as string;
+      const usage = await runShim(["migrate"], e, { cwd: tempDir() });
+      expect(usage.code).toBe(64);
+      expect(usage.stdout).toBe("");
+      expect(usage.stderr).toMatch(/^usage: cashu migrate \[--recovery-file <path>\] \[--json\]\n/);
+      const twice = await runShim(["migrate", "--data-dir", dataDir, "--json"], e, {
+        cwd: tempDir(),
+      });
+      expect(twice.code).toBe(64);
+      // An empty data dir has nothing to import: one protocol line, nothing created, no host.
+      const absent = await runShim(["migrate", "--json"], e, { cwd: tempDir() });
+      expect(absent.code).toBe(1);
+      expect(absent.stdout).toBe(
+        '{"event":"progress","stage":"preflight"}\n{"event":"failed","code":"migrate_import_failed","detail":"python_data_absent"}\n',
+      );
+      const human = await runShim(["migrate", "verify"], e, { cwd: tempDir() });
+      expect(human.code).toBe(1);
+      expect(human.stderr).toBe(
+        "Verification failed (migrate_verify_mismatch, python_data_absent). Nothing was changed.\n",
+      );
+      expect(readdirSync(dataDir)).toEqual([]);
+      expect(hostPid(dataDir)).toBeUndefined();
+    },
+    SLOW,
+  );
 });
 
 describe("cashu shim: MCP", () => {

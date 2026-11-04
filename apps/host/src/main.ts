@@ -1,9 +1,11 @@
 // `cashu-host <command>`: the host's own entry (the `cashu host ...` commands of the shim, S56d, call
-// the same protocol). Commands:
+// the same protocol; `cashu migrate ...` runs `migrate` here in the foreground). Commands:
 //   run     become the data dir's host (foreground; a detached spawn runs this too) until stopped,
 //           idle, or handed over. Exit 0 clean, 3 another host owns the data dir, 75 handover.
 //   status  ask the running host (role admin); exit 0 running, 3 not running. Never starts a host.
 //   stop    ask the running host to stop; exit 0 stopped or not running.
+//   migrate import the data dir's Python data in place, or `migrate verify` it (migration/cli.ts);
+//           exit 0 done, 1 failed, 64 usage. Never a host session: a host refuses Python data.
 // The data dir is `--data-dir <absolute path>` or CASHU_DATA_DIR; nothing else is guessed until the
 // shim's data dir resolution lands (S56d). Output is English for operators; the shim maps exit codes to
 // its localized texts (S56d).
@@ -31,6 +33,7 @@ import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntim
 import { startLocalHost } from "./host.js";
 import { recordStartupFailure } from "./localHost/startup.js";
 import { createProductionMarket, type ProductionMarket } from "./market/production.js";
+import { migrateCommand } from "./migration/cli.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
 import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
@@ -45,9 +48,11 @@ const NOT_RUNNING_EXIT = 3;
 const FAILURE_EXIT = 70;
 
 const USAGE = `usage: cashu-host <run|status|stop> [--data-dir <absolute path>] [--linger-ms <ms>] [--bundle <file>]
+       cashu-host migrate [verify] [--data-dir <absolute path>] [--recovery-file <file>] [--json]
   run     serve the data dir until stopped or idle (exit 0, 3 busy, 75 handover)
   status  show the running host (exit 0, 3 not running)
-  stop    stop the running host`;
+  stop    stop the running host
+  migrate import the data dir's Python data in place (exit 0, 1 failed); verify re-checks it`;
 
 export interface MainEnv {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -56,6 +61,8 @@ export interface MainEnv {
   /** `run` installs SIGTERM / SIGINT handlers through this (tests pass a no-op). */
   readonly onSignal: (handler: () => void) => void;
   readonly build: string;
+  /** One line of stdin without its newline, null at end of input (`migrate --json` words answer). */
+  readonly readLine?: () => Promise<string | null>;
 }
 
 interface Args {
@@ -105,7 +112,7 @@ async function admin(dataDir: string, build: string) {
 }
 
 function checkedRuntime(
-  args: Args,
+  args: Pick<Args, "bundle">,
   io: MainEnv,
 ): { bundle?: string; build: string; fingerprint?: string } {
   if (!requiresPackagedIdentity(currentRuntime().checkout)) {
@@ -155,8 +162,27 @@ function checkedRuntime(
   }
 }
 
+/** `migrate ...`: the in-place Python import, in this process (never through a host session). */
+async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
+  let build: string;
+  try {
+    build = checkedRuntime({}, io).build;
+  } catch (error) {
+    io.stderr(`cashu-host: ${error instanceof RefusalError ? error.message : "failed"}`);
+    return error instanceof RefusalError ? error.exitCode : FAILURE_EXIT;
+  }
+  return migrateCommand(argv, {
+    env: io.env,
+    stdout: io.stdout,
+    stderr: io.stderr,
+    readLine: io.readLine ?? (async () => null),
+    build,
+  });
+}
+
 /** Runs one command; resolves with the exit code. */
 export async function main(argv: readonly string[], io: MainEnv): Promise<number> {
+  if (argv[0] === "migrate") return migrate(argv.slice(1), io);
   const args = parse(argv, io.env);
   if (typeof args === "string") {
     io.stderr(`cashu-host: ${args}\n${USAGE}`);

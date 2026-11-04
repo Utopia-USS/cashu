@@ -11,8 +11,9 @@ import {
   writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
+import { PYTHON_BACKUP_PREFIX } from "@cashu/node-host/admission";
 import { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { vaultSalt, viewHash } from "@cashu/store";
@@ -35,7 +36,7 @@ import { assertSameSource, type PythonDatabaseName, sealPythonSource } from "./s
 import { collectStagedProposalBlobs, type StagedProposalBlob } from "./stagedBlobs.js";
 import { verifyStrictCoreReplay } from "./verify.js";
 
-type KeyStoreFactory = typeof createProductionKeyStore;
+export type KeyStoreFactory = typeof createProductionKeyStore;
 
 export interface OneShotInput {
   readonly sourceDir: string;
@@ -426,7 +427,10 @@ export async function verifyPythonMigration(
 ): Promise<OneShotResult> {
   const source = realpathSync(canonical(input.sourceDir));
   const target = realpathSync(canonical(input.targetDir));
-  disjoint(source, target);
+  // `migrate verify` after an in-place import reads the backup its cutover left in the target.
+  const inPlaceBackup =
+    dirname(source) === target && basename(source).startsWith(PYTHON_BACKUP_PREFIX);
+  if (!inPlaceBackup) disjoint(source, target);
   const database = databaseName(source);
   const scratch = staging();
   let blobs: readonly StagedProposalBlob[] = [];

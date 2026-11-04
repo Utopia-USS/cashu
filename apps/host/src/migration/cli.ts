@@ -1,110 +1,149 @@
-#!/usr/bin/env node
-import { closeSync, constants, fsyncSync, lstatSync, openSync, realpathSync, writeSync } from "node:fs";
+// `cashu-host migrate` (the `cashu migrate` of the shim, and the desktop's "Import my data"):
+//   migrate --data-dir <D> [--recovery-file <path>] [--json]   the in-place import (inPlace.ts)
+//   migrate verify --data-dir <D> [--json]                     re-checks a finished import; read-only
+// Human mode prints stage lines and a count-only result in PL / EN; the recovery words go only to the
+// new `--recovery-file` (O_EXCL, 0600, outside D). `--json` speaks the child protocol of
+// @cashu/host-protocol/startup-failure (migrateProtocol.ts): the words travel once on stdout and the
+// run blocks for one stdin line (`confirm`, anything else aborts with nothing created). A failure
+// leaves its typed record in `D/diagnostics/` (and, in human mode, the redacted report pair; the app
+// writes its own pair for the recovery screen). Exit 0 done, 1 failed, 64 usage.
+import {
+  closeSync,
+  constants,
+  fsyncSync,
+  lstatSync,
+  openSync,
+  realpathSync,
+  rmSync,
+  writeSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   buildRecoveryPrompt,
   classifyStartupError,
+  homeRelativePath,
+  type MigrateLine,
+  migrateLineSchema,
   type PromptLang,
+  RECOVERY_WORDS,
+  type StartupFailure,
+  StartupFailureError,
   startupFailure,
   startupFailureReport,
 } from "@cashu/host-protocol/startup-failure";
+import { createBackendI18n, createTranslator, type Translator } from "@cashu/i18n";
 import {
+  acquireHostLock,
+  hostRunPaths,
+  nodeLanguageSource,
   startupReportPaths,
   writeStartupFailureRecord,
   writeStartupFailureReport,
 } from "@cashu/node-host";
-import { MigrationError } from "./contract.js";
-import { importPythonDataDir, verifyPythonMigration } from "./oneShot.js";
+import {
+  type InPlaceKeychain,
+  type InPlaceResult,
+  migrateInPlace,
+  readMigrationMarker,
+} from "./inPlace.js";
+import { M, type MigrateCounts } from "./migrate.strings.js";
+import { type KeyStoreFactory, verifyPythonMigration } from "./oneShot.js";
 
 /** Exit code of a malformed command line (EX_USAGE). */
 const USAGE_EXIT = 64;
 
-/** A malformed command line. Its message is fixed usage text, never a value from the arguments. */
-class MigrationUsageError extends Error {
-  readonly code = "usage_invalid";
-  constructor(message: string) {
-    super(message);
-    this.name = "MigrationUsageError";
+export interface MigrateIo {
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly stdout: (line: string) => void;
+  readonly stderr: (line: string) => void;
+  /** One line of stdin without its newline; null at end of input. */
+  readonly readLine: () => Promise<string | null>;
+  /** The build id recorded with a failure. */
+  readonly build: string;
+  readonly now?: () => number;
+  /** Synthetic test namespace only. */
+  readonly keychain?: InPlaceKeychain;
+  /** Tests: fault injection during the cutover. */
+  readonly afterCutoverMove?: (moves: number) => void;
+}
+
+interface Args {
+  readonly command: "import" | "verify";
+  readonly dataDir: string;
+  readonly recoveryFile?: string;
+  readonly json: boolean;
+}
+
+/** The user typed something else than `cancel` / `confirm`, or input ended: nothing is created. */
+class MigrationCancelled extends Error {
+  readonly code = "cancelled";
+  constructor() {
+    super("cancelled");
+    this.name = "MigrationCancelled";
   }
 }
 
-function argument(value: string | undefined, flag: string): string {
-  if (!value || !isAbsolute(value) || resolve(value) !== value || value.includes("\0"))
-    throw new MigrationUsageError(`${flag} needs an absolute canonical path`);
-  return value;
+const canonicalPath = (value: string) =>
+  isAbsolute(value) && resolve(value) === value && !value.includes("\0");
+
+function inside(path: string, root: string): boolean {
+  const nested = relative(root, path);
+  return (
+    nested === "" || (nested !== ".." && !nested.startsWith(`..${sep}`) && !isAbsolute(nested))
+  );
 }
 
-function parse(args: readonly string[]): {
-  command: "import" | "verify";
-  sourceDir: string;
-  targetDir: string;
-  recoveryFile?: string;
-  at: number;
-} {
-  const [command, ...rest] = args;
-  if (command !== "import" && command !== "verify")
-    throw new MigrationUsageError("expected import or verify");
-  const flags = new Map<string, string>();
-  for (let i = 0; i < rest.length; i += 2) {
+function parse(argv: readonly string[], env: MigrateIo["env"]): Args | null {
+  const command = argv[0] === "verify" ? "verify" : "import";
+  const rest = command === "verify" ? argv.slice(1) : argv;
+  let dataDir: string | undefined;
+  let recoveryFile: string | undefined;
+  let json = false;
+  for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
+    if (flag === "--json" && !json) {
+      json = true;
+      continue;
+    }
     const value = rest[i + 1];
-    if (
-      !flag ||
-      !value ||
-      !["--source", "--target", "--recovery-file", "--at"].includes(flag) ||
-      flags.has(flag)
-    )
-      throw new MigrationUsageError("invalid or duplicate option");
-    flags.set(flag, value);
+    if (value === undefined) return null;
+    if (flag === "--data-dir" && dataDir === undefined) dataDir = value;
+    else if (flag === "--recovery-file" && recoveryFile === undefined) recoveryFile = value;
+    else return null;
+    i++;
   }
-  let sourceDir: string;
-  try {
-    sourceDir = realpathSync(argument(flags.get("--source"), "--source"));
-  } catch (error) {
-    if (error instanceof MigrationUsageError) throw error;
-    throw new MigrationUsageError("--source must be an existing directory");
-  }
-  const targetDir = argument(flags.get("--target"), "--target");
-  const recoveryFile = flags.get("--recovery-file");
-  if (command === "import" && !recoveryFile)
-    throw new MigrationUsageError("import requires --recovery-file");
-  if (command === "verify" && recoveryFile)
-    throw new MigrationUsageError("verify does not take --recovery-file");
-  const atText = flags.get("--at");
-  if (command === "verify" && !atText)
-    throw new MigrationUsageError("verify requires the import --at value");
-  const at = atText === undefined ? Date.now() : Number(atText);
-  if (!Number.isSafeInteger(at) || !Number.isFinite(new Date(at).valueOf()))
-    throw new MigrationUsageError("--at needs a Unix timestamp in milliseconds");
+  dataDir ??= env.CASHU_DATA_DIR;
+  if (dataDir === undefined || !canonicalPath(dataDir)) return null;
+  if (recoveryFile !== undefined) {
+    if (command === "verify" || json || !canonicalPath(recoveryFile)) return null;
+    // A new file in an existing canonical directory outside the data dir.
+    try {
+      const realData = realpathSync(dataDir);
+      if (realpathSync(dirname(recoveryFile)) !== dirname(recoveryFile)) return null;
+      if (inside(recoveryFile, dataDir) || inside(recoveryFile, realData)) return null;
+    } catch {
+      return null;
+    }
+    try {
+      lstatSync(recoveryFile);
+      return null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
+    }
+  } else if (command === "import" && !json) return null;
   return {
     command,
-    sourceDir,
-    targetDir,
-    at,
-    ...(recoveryFile === undefined
-      ? {}
-      : { recoveryFile: argument(recoveryFile, "--recovery-file") }),
+    dataDir,
+    json,
+    ...(recoveryFile === undefined ? {} : { recoveryFile }),
   };
 }
 
-export function assertRecoveryFileDestination(
-  path: string,
-  sourceDir: string,
-  targetDir: string,
-): void {
-  const parent = realpathSync(dirname(path));
-  if (parent !== dirname(path)) throw new Error("recovery file parent must be canonical");
-  for (const root of [realpathSync(sourceDir), targetDir]) {
-    const nested = relative(root, path);
-    if (nested === "" || (nested !== ".." && !nested.startsWith(`..${sep}`) && !isAbsolute(nested)))
-      throw new Error("recovery file must be outside source and target");
-  }
-}
-
-function saveWords(path: string, sourceDir: string, targetDir: string, words: string): void {
-  assertRecoveryFileDestination(path, sourceDir, targetDir);
-  const parent = dirname(path);
+/** Writes the words once to a new private file (O_EXCL, 0600) and fsyncs it and its directory. */
+function saveWords(path: string, dataDir: string, words: string): void {
+  if (realpathSync(dirname(path)) !== dirname(path) || inside(path, realpathSync(dataDir)))
+    throw new Error("recovery_file_invalid");
   const fd = openSync(
     path,
     constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
@@ -114,14 +153,17 @@ function saveWords(path: string, sourceDir: string, targetDir: string, words: st
     const bytes = Buffer.from(`${words}\n`);
     for (let offset = 0; offset < bytes.length; ) {
       const written = writeSync(fd, bytes, offset, bytes.length - offset);
-      if (written <= 0) throw new Error("recovery file write failed");
+      if (written <= 0) throw new Error("recovery_file_invalid");
       offset += written;
     }
     fsyncSync(fd);
   } finally {
     closeSync(fd);
   }
-  const dir = openSync(parent, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  const dir = openSync(
+    dirname(path),
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
   try {
     fsyncSync(dir);
   } finally {
@@ -129,16 +171,7 @@ function saveWords(path: string, sourceDir: string, targetDir: string, words: st
   }
 }
 
-/** The prompt language: CASHU_LANG, else the process locale, else English. */
-function promptLang(env: NodeJS.ProcessEnv): PromptLang {
-  const pinned = env.CASHU_LANG?.trim().toLowerCase();
-  if (pinned === "pl" || pinned === "en") return pinned;
-  return Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase().startsWith("pl")
-    ? "pl"
-    : "en";
-}
-
-function isPrivateDir(path: string): boolean {
+function isDirectory(path: string): boolean {
   try {
     const stat = lstatSync(path);
     return stat.isDirectory() && !stat.isSymbolicLink();
@@ -148,99 +181,198 @@ function isPrivateDir(path: string): boolean {
 }
 
 /**
- * A failed `verify` leaves the typed failure record and a redacted report pair (the agent prompt)
- * in the target's `diagnostics/`, the same files the app's recovery screen writes. Best effort:
- * returns the prompt file, or null when the target is not an existing directory.
+ * Leaves the typed failure record in `D/diagnostics/` and, unless the app writes its own
+ * (`withReport` false), the redacted report pair. Best effort: returns the prompt file, or null.
  */
-export function recordVerifyFailure(
-  targetDir: string,
-  error: unknown,
-  lang: PromptLang,
-  at: Date = new Date(),
+function recordMigrationFailure(
+  dataDir: string,
+  failure: StartupFailure,
+  options: { lang: PromptLang; build: string; home: string; withReport: boolean; at?: Date },
 ): string | null {
-  if (!isPrivateDir(targetDir)) return null;
+  if (!isDirectory(dataDir)) return null;
+  const at = options.at ?? new Date();
   try {
-    const classified = classifyStartupError(error);
-    const failure =
-      classified.code === "migrate_verify_mismatch"
-        ? classified
-        : startupFailure("migrate_verify_mismatch", "migration_failed");
-    writeStartupFailureRecord(targetDir, failure, "migrate-cli", at.valueOf());
-    const paths = startupReportPaths(targetDir, at);
+    writeStartupFailureRecord(dataDir, failure, options.build, at.valueOf());
+    if (!options.withReport) return null;
+    const paths = startupReportPaths(dataDir, at);
     const report = startupFailureReport({
       failure,
       at,
       appVersion: "",
-      build: "migrate-cli",
-      dataDir: targetDir,
-      home: homedir(),
+      build: options.build,
+      dataDir,
+      home: options.home,
       reportFile: paths.text,
       logText: "",
     });
-    writeStartupFailureReport(paths, report, buildRecoveryPrompt(report, lang));
+    writeStartupFailureReport(paths, report, buildRecoveryPrompt(report, options.lang));
     return paths.text;
   } catch {
     return null;
   }
 }
 
-export async function migrationCli(
-  argv: readonly string[],
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<number> {
-  let args: ReturnType<typeof parse>;
-  try {
-    args = parse(argv);
-  } catch (error) {
-    const message = error instanceof MigrationUsageError ? error.message : "invalid arguments";
-    process.stderr.write(`cashu-migrate: usage_invalid (${message})\n`);
-    return USAGE_EXIT;
-  }
-  try {
-    const recoveryFile = args.recoveryFile;
-    const result =
-      args.command === "import"
-        ? await importPythonDataDir({
-            sourceDir: args.sourceDir,
-            targetDir: args.targetDir,
-            at: args.at,
-            async saveRecoveryWords(words) {
-              if (!recoveryFile) throw new Error("recovery file required");
-              saveWords(recoveryFile, args.sourceDir, args.targetDir, words);
-            },
-          })
-        : await verifyPythonMigration({
-            sourceDir: args.sourceDir,
-            targetDir: args.targetDir,
-            at: args.at,
-          });
-    process.stdout.write(
-      `${JSON.stringify({
-        status: "pass",
-        command: args.command,
-        at: args.at,
-        profiles: result.profiles,
-        financialTables: result.financialTables,
-        financialRows: result.financialRows,
-        vaults: result.vaults.map(({ ordinal, vaultId, viewHash }) => ({
-          ordinal,
-          vaultId,
-          viewHash,
-        })),
-      })}\n`,
-    );
-    return 0;
-  } catch (error) {
-    const code = error instanceof MigrationError ? error.code : "migration_failed";
-    process.stderr.write(`cashu-migrate: ${code}\n`);
-    if (args.command === "verify") {
-      const report = recordVerifyFailure(args.targetDir, error, promptLang(env));
-      if (report !== null) process.stderr.write(`cashu-migrate: report ${report}\n`);
-    }
-    return 1;
-  }
+/** One protocol line, checked against the schema before it leaves (never a free value). */
+function emit(io: MigrateIo, line: MigrateLine): void {
+  io.stdout(JSON.stringify(migrateLineSchema.parse(line)));
 }
 
-if (process.argv[1] === import.meta.filename) {
-  process.exitCode = await migrationCli(process.argv.slice(2));
+const countsOf = (marker: MigrateCounts): MigrateCounts => ({
+  profiles: marker.profiles,
+  financialTables: marker.financialTables,
+  financialRows: marker.financialRows,
+  vaults: marker.vaults,
+});
+
+/** Failures after which nothing needs recovering: no record, no report. */
+const QUIET_DETAILS = new Set(["cancelled", "python_data_absent"]);
+
+function reportFailure(
+  io: MigrateIo,
+  args: Args,
+  t: Translator,
+  home: string,
+  failure: StartupFailure,
+): number {
+  const quiet = failure.detail !== undefined && QUIET_DETAILS.has(failure.detail);
+  const report = quiet
+    ? null
+    : recordMigrationFailure(args.dataDir, failure, {
+        lang: t.language,
+        build: io.build,
+        home,
+        withReport: !args.json,
+      });
+  if (args.json) {
+    emit(io, {
+      event: "failed",
+      code: failure.code,
+      ...(failure.detail === undefined ? {} : { detail: failure.detail }),
+    });
+    return 1;
+  }
+  const detail = failure.detail ?? "";
+  io.stderr(
+    args.command === "verify"
+      ? t.tr(M.verifyFailed)(failure.code, detail)
+      : t.tr(M.failed)(failure.code, detail),
+  );
+  if (args.command === "import") {
+    if (failure.code === "migration_incomplete") io.stderr(t.tr(M.incomplete));
+    else if (failure.originalsUntouched) io.stderr(t.tr(M.originalsUntouched));
+  }
+  if (report !== null) io.stderr(t.tr(M.report)(homeRelativePath(report, home)));
+  return 1;
+}
+
+async function runImport(io: MigrateIo, args: Args, t: Translator, home: string): Promise<number> {
+  let wordsFile: string | undefined;
+  let result: InPlaceResult;
+  try {
+    result = await migrateInPlace({
+      dataDir: args.dataDir,
+      at: io.now?.() ?? Date.now(),
+      onProgress(stage) {
+        if (args.json) emit(io, { event: "progress", stage });
+        else io.stdout(t.tr(M.stage)(stage));
+      },
+      async saveRecoveryWords(words) {
+        if (!RECOVERY_WORDS.test(words)) throw new Error("identity_invalid");
+        if (!args.json) {
+          const file = args.recoveryFile;
+          if (file === undefined) throw new Error("recovery_file_invalid");
+          saveWords(file, args.dataDir, words);
+          wordsFile = file;
+          io.stdout(t.tr(M.wordsSaved)(homeRelativePath(file, home)));
+          return;
+        }
+        emit(io, { event: "recovery-words", words });
+        if ((await io.readLine()) !== "confirm") throw new MigrationCancelled();
+      },
+      ...(io.keychain === undefined ? {} : { keychain: io.keychain }),
+      ...(io.afterCutoverMove === undefined ? {} : { afterCutoverMove: io.afterCutoverMove }),
+    });
+  } catch (error) {
+    // Words of an identity that no longer exists would only mislead: remove the file we created,
+    // unless the cutover started (then its vaults are real and the words are theirs).
+    const incomplete =
+      error instanceof StartupFailureError && error.failure.code === "migration_incomplete";
+    if (wordsFile !== undefined && !incomplete) rmSync(wordsFile, { force: true });
+    throw error;
+  }
+  const { marker } = result;
+  const backup = homeRelativePath(join(args.dataDir, marker.backupDir), home);
+  if (args.json) {
+    emit(io, {
+      event: "done",
+      status: result.status,
+      ...countsOf(marker),
+      backupDir: marker.backupDir,
+    });
+    return 0;
+  }
+  io.stdout(
+    result.status === "migrated"
+      ? t.tr(M.migrated)(countsOf(marker), backup)
+      : t.tr(M.alreadyMigrated)(new Date(marker.at).toISOString(), backup),
+  );
+  io.stdout(t.tr(M.verifyHint));
+  return 0;
+}
+
+async function runVerify(io: MigrateIo, args: Args, t: Translator, home: string): Promise<number> {
+  const marker = readMigrationMarker(args.dataDir);
+  if (marker === null) throw new Error("python_data_absent");
+  // A running host holds D's lock; verification reopens the vaults and needs it free.
+  const lock = acquireHostLock(hostRunPaths(args.dataDir).lockPath);
+  if (!lock) throw new Error("native_host_lock_required");
+  lock.release();
+  const backup = join(args.dataDir, marker.backupDir);
+  const makeKeyStore: KeyStoreFactory | undefined = io.keychain?.makeKeyStore;
+  const verified = await verifyPythonMigration({
+    sourceDir: backup,
+    targetDir: args.dataDir,
+    at: marker.at,
+    ...(makeKeyStore === undefined ? {} : { makeKeyStore }),
+  });
+  const counts: MigrateCounts = {
+    profiles: verified.profiles,
+    financialTables: verified.financialTables,
+    financialRows: verified.financialRows,
+    vaults: verified.vaults.length,
+  };
+  if (JSON.stringify(counts) !== JSON.stringify(countsOf(marker)))
+    throw new Error("replay_mismatch");
+  if (args.json)
+    emit(io, { event: "done", status: "verified", ...counts, backupDir: marker.backupDir });
+  else io.stdout(t.tr(M.verified)(counts, homeRelativePath(backup, home)));
+  return 0;
+}
+
+/** `migrate ...` (argv after the command word). Resolves with the exit code. */
+export async function migrateCommand(argv: readonly string[], io: MigrateIo): Promise<number> {
+  const args = parse(argv, io.env);
+  const t = createTranslator(
+    createBackendI18n(nodeLanguageSource({ env: io.env, dataDir: args?.dataDir })).appLanguage(),
+  );
+  if (args === null) {
+    io.stderr(t.tr(M.usage));
+    return USAGE_EXIT;
+  }
+  const home = io.env.HOME || homedir();
+  try {
+    return args.command === "import"
+      ? await runImport(io, args, t, home)
+      : await runVerify(io, args, t, home);
+  } catch (error) {
+    let failure = classifyStartupError(
+      error,
+      {},
+      args.command === "verify" ? "migrate_verify_mismatch" : "migrate_import_failed",
+    );
+    // `verify` reads what the import left; a refusal of that state is a verification failure.
+    if (args.command === "verify" && failure.code === "migrate_import_failed")
+      failure = startupFailure("migrate_verify_mismatch", failure.detail);
+    return reportFailure(io, args, t, home, failure);
+  }
 }

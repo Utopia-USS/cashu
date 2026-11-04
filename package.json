@@ -19,7 +19,6 @@
     "format": "biome format --write .",
     "parity": "node --disable-warning=ExperimentalWarning --experimental-strip-types packages/parity/src/cli.ts",
     "cashu-next": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tools/node-ts/resolveTs.ts apps/cli/src/index.ts",
-    "migrate": "node --disable-warning=ExperimentalWarning --experimental-transform-types --import ./tools/node-ts/resolveTs.ts apps/host/src/migration/cli.ts",
     "parity:produce": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tools/node-ts/resolveTs.ts packages/parity/src/producers/cli.ts"
   },
   "devDependencies": {

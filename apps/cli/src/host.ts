@@ -99,30 +99,35 @@ function packagedShimBuild(
   return packagedBuildId(version, identity.contentDigest);
 }
 
-/** The command line that runs the host of `dataDir`. */
+/** What the host binary runs: serve the data dir, or the in-place migration with its arguments. */
+export type HostEntryCommand =
+  | { readonly kind: "run" }
+  | { readonly kind: "migrate"; readonly args: readonly string[] };
+
+/** The command line that runs the host binary for `dataDir`. */
 export function hostCommand(
   build: ShimBuild,
   dataDir: string,
   execPath: string,
   execArgv: readonly string[],
   cwd: string,
+  run: HostEntryCommand = { kind: "run" },
 ): { command: string; args: string[] } {
   const entry =
     build.checkout === undefined
       ? join(dirname(build.self), "host.mjs")
       : join(build.checkout, "apps", "host", "src", "cli.ts");
   const flags = build.checkout === undefined ? [] : sourceRunFlags(execArgv, cwd);
-  return {
-    command: execPath,
-    args: [
-      ...flags,
-      entry,
-      "run",
-      "--data-dir",
-      dataDir,
-      ...(build.checkout === undefined ? ["--bundle", entry] : []),
-    ],
-  };
+  const command =
+    run.kind === "migrate"
+      ? ["migrate", ...run.args, "--data-dir", dataDir]
+      : [
+          "run",
+          "--data-dir",
+          dataDir,
+          ...(build.checkout === undefined ? ["--bundle", entry] : []),
+        ];
+  return { command: execPath, args: [...flags, entry, ...command] };
 }
 
 function assertPackagedShim(target: HostTarget): void {

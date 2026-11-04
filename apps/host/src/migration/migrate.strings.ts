@@ -1,0 +1,109 @@
+// What `cashu migrate` and `cashu migrate verify` print in human mode (PL + EN). Values are counts,
+// enum codes, an ISO time, the backup directory's name and `~`-relative paths; never data or words.
+import type { MigrateStage, StartupFailureCode } from "@cashu/host-protocol/startup-failure";
+import type { TranslationVariants } from "@cashu/i18n";
+
+type Text = TranslationVariants<string>;
+type Fn<A extends unknown[]> = TranslationVariants<(...args: A) => string>;
+
+export interface MigrateCounts {
+  readonly profiles: number;
+  readonly financialTables: number;
+  readonly financialRows: number;
+  readonly vaults: number;
+}
+
+export const M = {
+  usage: {
+    pl: [
+      "użycie: cashu migrate [--recovery-file <ścieżka>] [--json]",
+      "        cashu migrate verify [--json]",
+      "  migrate         importuje dane starej aplikacji (Python) do tego folderu danych, wszystko albo nic;",
+      "                  oryginalne pliki trafiają nienaruszone do python-backup-<czas>/ w tym folderze",
+      "  --recovery-file nowy plik (ścieżka bezwzględna poza folderem danych), do którego trafią słowa",
+      "                  odzyskiwania; wymagany bez --json",
+      "  verify          porównuje zaimportowane dane z kopią zapasową danych Pythona; niczego nie zmienia",
+      "  --json          protokół aplikacji: jeden obiekt JSON na wiersz (słowa potwierdza wiersz `confirm`)",
+    ].join("\n"),
+    en: [
+      "usage: cashu migrate [--recovery-file <path>] [--json]",
+      "       cashu migrate verify [--json]",
+      "  migrate         imports the old (Python) app's data into this data folder, all or nothing;",
+      "                  the original files move intact into python-backup-<time>/ in this folder",
+      "  --recovery-file a new file (absolute path outside the data folder) that receives the",
+      "                  recovery words; required without --json",
+      "  verify          compares the imported data with the backup of the Python data; changes nothing",
+      "  --json          the app's protocol: one JSON object per line (a `confirm` line accepts the words)",
+    ].join("\n"),
+  } satisfies Text,
+  stage: {
+    pl: (stage: MigrateStage) =>
+      ({
+        preflight: "Sprawdzanie folderu danych...",
+        copy: "Kopiowanie danych Pythona do folderu roboczego...",
+        import: "Importowanie kopii...",
+        verify: "Weryfikacja importu...",
+        cutover: "Przenoszenie oryginałów do kopii zapasowej i włączanie nowych danych...",
+      })[stage],
+    en: (stage: MigrateStage) =>
+      ({
+        preflight: "Checking the data folder...",
+        copy: "Copying the Python data into a working folder...",
+        import: "Importing the copy...",
+        verify: "Verifying the import...",
+        cutover: "Moving the originals into the backup and switching to the new data...",
+      })[stage],
+  } satisfies Fn<[MigrateStage]>,
+  wordsSaved: {
+    pl: (file: string) =>
+      `Słowa odzyskiwania zapisano w ${file}. Przechowuj je bezpiecznie, a po zrobieniu kopii usuń ten plik.`,
+    en: (file: string) =>
+      `The recovery words were saved to ${file}. Keep them safe, and delete this file once backed up.`,
+  } satisfies Fn<[string]>,
+  migrated: {
+    pl: (c: MigrateCounts, backup: string) =>
+      `Import zakończony: profile ${c.profiles}, tabele ${c.financialTables}, wiersze ${c.financialRows}, sejfy ${c.vaults}. Oryginalne pliki: ${backup}.`,
+    en: (c: MigrateCounts, backup: string) =>
+      `Import finished: profiles ${c.profiles}, tables ${c.financialTables}, rows ${c.financialRows}, vaults ${c.vaults}. Original files: ${backup}.`,
+  } satisfies Fn<[MigrateCounts, string]>,
+  alreadyMigrated: {
+    pl: (at: string, backup: string) =>
+      `Ten folder danych został już zaimportowany (${at}); niczego nie zmieniono. Oryginalne pliki: ${backup}.`,
+    en: (at: string, backup: string) =>
+      `This data folder was already imported (${at}); nothing was changed. Original files: ${backup}.`,
+  } satisfies Fn<[string, string]>,
+  verifyHint: {
+    pl: "Sprawdź import poleceniem: cashu migrate verify",
+    en: "Check the import with: cashu migrate verify",
+  } satisfies Text,
+  verified: {
+    pl: (c: MigrateCounts, backup: string) =>
+      `Weryfikacja zgodna: profile ${c.profiles}, tabele ${c.financialTables}, wiersze ${c.financialRows}, sejfy ${c.vaults} (źródło: ${backup}).`,
+    en: (c: MigrateCounts, backup: string) =>
+      `Verification passed: profiles ${c.profiles}, tables ${c.financialTables}, rows ${c.financialRows}, vaults ${c.vaults} (source: ${backup}).`,
+  } satisfies Fn<[MigrateCounts, string]>,
+  failed: {
+    pl: (code: StartupFailureCode, detail: string) =>
+      `Import się nie powiódł (${code}${detail === "" ? "" : `, ${detail}`}).`,
+    en: (code: StartupFailureCode, detail: string) =>
+      `The import failed (${code}${detail === "" ? "" : `, ${detail}`}).`,
+  } satisfies Fn<[StartupFailureCode, string]>,
+  verifyFailed: {
+    pl: (code: StartupFailureCode, detail: string) =>
+      `Weryfikacja się nie powiodła (${code}${detail === "" ? "" : `, ${detail}`}). Niczego nie zmieniono.`,
+    en: (code: StartupFailureCode, detail: string) =>
+      `Verification failed (${code}${detail === "" ? "" : `, ${detail}`}). Nothing was changed.`,
+  } satisfies Fn<[StartupFailureCode, string]>,
+  originalsUntouched: {
+    pl: "Oryginalne pliki Pythona pozostały nietknięte.",
+    en: "The original Python files are untouched.",
+  } satisfies Text,
+  incomplete: {
+    pl: "Przenoszenie zostało przerwane; uruchom ponownie `cashu migrate`, aby je dokończyć.",
+    en: "Moving the files was interrupted; run `cashu migrate` again to finish it.",
+  } satisfies Text,
+  report: {
+    pl: (file: string) => `Raport dla asystenta: ${file}`,
+    en: (file: string) => `Report for your assistant: ${file}`,
+  } satisfies Fn<[string]>,
+} as const;

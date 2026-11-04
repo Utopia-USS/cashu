@@ -61,6 +61,11 @@ describe("admissionFailure", () => {
     );
     expect(admissionFailure("no_legacy_sentinel")).toBeNull();
   });
+  it("maps an unfinished in-place cutover to migration_incomplete", () => {
+    expect(admissionFailure("migration_incomplete")).toEqual(
+      startupFailure("migration_incomplete", "cutover_failed"),
+    );
+  });
 });
 
 describe("StartupRecovery", () => {

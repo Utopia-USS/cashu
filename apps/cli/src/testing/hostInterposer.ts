@@ -1,6 +1,8 @@
 // Test-only preload. The real CLI shim still runs as the entry point; its one expected detached
-// source host spawn is routed to an explicit synthetic-harness host. This file is never imported by
-// the production launcher.
+// source host spawn is routed to an explicit synthetic-harness host. The one foreground spawn it
+// lets through unchanged is `cashu migrate`: the real host entry's `migrate` for the same temp data
+// dir (tests drive it only to paths that end before any key store access). This file is never
+// imported by the production launcher.
 import childProcess, { type SpawnOptions } from "node:child_process";
 import { lstatSync, realpathSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -54,7 +56,8 @@ if (process.env.CASHU_TESTING !== "1") {
   throw new Error("CLI test interposer requires CASHU_TESTING=1");
 }
 const entry = process.argv[1];
-if (entry !== SHIM && entry !== SYNTHETIC_HOST) {
+const migrateChild = entry === HOST_CLI && process.argv[2] === "migrate";
+if (entry !== SHIM && entry !== SYNTHETIC_HOST && !migrateChild) {
   throw new Error("CLI test interposer requires an exact test process entry");
 }
 const dataDir = testPath(process.env.CASHU_DATA_DIR, "data dir");
@@ -85,6 +88,19 @@ childProcess.spawn = ((...input: unknown[]) => {
     return Reflect.apply(originalSpawn, childProcess, input);
   }
   const actual = [...argv];
+  if (
+    spawnOptions?.detached !== true &&
+    entry === SHIM &&
+    command === process.execPath &&
+    actual.length >= expected.length &&
+    expected.slice(0, 7).every((arg, index) => actual[index] === arg) &&
+    actual[7] === "migrate" &&
+    actual.at(-2) === "--data-dir" &&
+    actual.at(-1) === dataDir &&
+    spawnOptions?.env?.CASHU_TESTING === "1" &&
+    spawnOptions.env.HOME === home
+  )
+    return Reflect.apply(originalSpawn, childProcess, input);
   if (
     spawnOptions?.detached !== true ||
     entry !== SHIM ||

@@ -13,10 +13,7 @@ import {
   NATIVE_PAIRING_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
 } from "@cashu/host-protocol";
-import {
-  classifyStartupError,
-  StartupFailureError,
-} from "@cashu/host-protocol/startup-failure";
+import { classifyStartupError, StartupFailureError } from "@cashu/host-protocol/startup-failure";
 import {
   hostRunPaths,
   type RunningHost,
@@ -31,6 +28,7 @@ import { takeWriterLease, type WriterLease } from "../lease.js";
 import { errorName, fileLog, type HostLog } from "../log.js";
 import { createNativeCreationService } from "../nativeCreation.js";
 import { classifyNativeCreationStartup } from "../nativeCreationJournal.js";
+import { assertLegacyAdmission } from "../nativeSourceAdmission.js";
 import { privateNotificationIntents } from "../notifications/intentLedger.js";
 import { currentRuntime, type HostRuntime, shimProgram } from "../runtime.js";
 import {
@@ -65,9 +63,8 @@ export function admitStart(options: LocalHostOptions): Admission {
       "native_vault_provider_unavailable",
     );
   const assertNativeSourceAdmission = () => {
-    // Python data is imported once into a new data dir (migration/), never opened beside it.
-    if (legacyDataAdmission(options.dataDir) !== "no_legacy_sentinel")
-      throw new StartupFailureError("python_data_present");
+    // Python data is imported in place once (`cashu migrate`), never opened beside native vaults.
+    assertLegacyAdmission(legacyDataAdmission(options.dataDir));
     options.assertNativeSourceAdmission?.();
   };
   if (vaultSource.kind === "native-production") assertNativeSourceAdmission();
