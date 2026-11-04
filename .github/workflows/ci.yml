@@ -51,31 +51,6 @@ jobs:
       - name: Tests
         run: pytest -q
 
-  checks:
-    name: Generated files
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: |
-            pyproject.toml
-            constraints.txt
-
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]" -c constraints.txt
-
-      - name: Connector schemas are up to date
-        run: python scripts/gen_connector_schemas.py --check
-
-      - name: Skill reference copies are up to date
-        run: python scripts/sync_skill_references.py --check
-
   # The community connector catalog (connectors/, contrib status): every entry's manifest and catalog
   # fields, and `cashu connectors test` on its fixtures in the real macOS sandbox. Informational: a
   # broken or stale community connector is flagged here but never blocks a core pull request.

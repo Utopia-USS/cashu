@@ -1,22 +1,13 @@
-"""The connector JSON Schemas in docs/schemas/ are generated from the pydantic models and current (F10)."""
+"""The connector JSON Schemas in docs/schemas/ describe the contract (F10). The TypeScript side
+(apps/host/scripts/genConnectorSchemas.ts) generates them and checks they are current."""
 
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 
 from cashu.core import paths
 
-SCRIPT = paths.PROJECT_ROOT / "scripts" / "gen_connector_schemas.py"
 SCHEMAS = paths.PROJECT_ROOT / "docs" / "schemas"
-
-
-def test_connector_schemas_are_current():
-    res = subprocess.run(
-        [sys.executable, str(SCRIPT), "--check"], capture_output=True, text=True, check=False
-    )
-    assert res.returncode == 0, res.stderr
 
 
 def test_schemas_describe_the_contract():

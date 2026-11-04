@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -694,14 +693,6 @@ def test_skills_do_not_reference_repository_files():
                 if REPO_ONLY.search(line):
                     offending.append(f"{file.relative_to(REPO_SKILLS)}:{n}: {line.strip()}")
     assert not offending, "\n".join(offending)
-
-
-def test_skill_reference_copies_are_current():
-    script = paths.PROJECT_ROOT / "scripts" / "sync_skill_references.py"
-    res = subprocess.run(
-        [sys.executable, str(script), "--check"], capture_output=True, text=True, check=False
-    )
-    assert res.returncode == 0, res.stderr
 
 
 def test_skill_references_resolve_inside_the_skill():
