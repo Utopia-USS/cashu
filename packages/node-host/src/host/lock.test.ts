@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { lstatSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ExclusiveOpenError, openNodeSqlite } from "../nodeSqlite.js";
@@ -40,6 +41,26 @@ describe("host lock", () => {
   it("cannot be forged", () => {
     const Forged = HostLock as unknown as new (k: symbol, p: string, d: unknown) => HostLock;
     expect(() => new Forged(Symbol("HostLock"), "x", undefined)).toThrow(TypeError);
+  });
+
+  it("creates private lock bytes and invalidates a replaced lock path", () => {
+    const dir = trackDir(tempDir());
+    const path = join(dir, "host.lock.db");
+    const lock = acquireHostLock(path);
+    if (!lock) throw new Error("lock");
+    expect(lstatSync(path).mode & 0o777).toBe(0o600);
+    expect(lstatSync(`${path}-journal`).mode & 0o777).toBe(0o600);
+    renameSync(path, `${path}.moved`);
+    writeFileSync(path, "replacement", { mode: 0o600 });
+    expect(lock.held).toBe(false);
+    lock.release();
+  });
+
+  it("refuses an existing symlink lock path", () => {
+    const dir = trackDir(tempDir());
+    writeFileSync(join(dir, "target"), "synthetic", { mode: 0o600 });
+    symlinkSync(join(dir, "target"), join(dir, "host.lock.db"));
+    expect(() => acquireHostLock(join(dir, "host.lock.db"))).toThrow("host_lock_path_invalid");
   });
 });
 

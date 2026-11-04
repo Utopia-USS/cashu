@@ -1,6 +1,7 @@
 import { D, parseDateTime } from "@cashu/domain";
 import { Currencies, market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
+import type { SourceCacheReceipt } from "../../genesis/verification/sourceCache.js";
 import { memoryDriver } from "../../testing/store.js";
 import { vault } from "../commands/testing/fixtures.js";
 import { PerformanceService } from "../performance/service.js";
@@ -117,5 +118,94 @@ it("rolls back split-window replacement and versions atomically, publishing only
   expect(cache.version()).toBe(version + 2);
   expect(notifications).toBe(1);
   expect(observed).toEqual({ version: version + 2, close: "20" });
+  driver.close();
+});
+
+it("masks imported split-window bars while preserving exact source rows and unrelated providers", () => {
+  const driver = memoryDriver();
+  const cache = new SqlPriceCache(driver);
+  const receipt: SourceCacheReceipt = {
+    format: 1,
+    schema: "0029_sync_inbound",
+    priceBars: [
+      {
+        id: 1,
+        instrumentId: 1,
+        date: "2025-09-29",
+        close: "10",
+        open: null,
+        high: null,
+        low: null,
+        volume: null,
+        currency: "EUR",
+        source: "yahoo",
+        fetchedAt: null,
+      },
+      {
+        id: 2,
+        instrumentId: 1,
+        date: "2025-09-30",
+        close: "20",
+        open: null,
+        high: null,
+        low: null,
+        volume: null,
+        currency: "EUR",
+        source: "yahoo",
+        fetchedAt: null,
+      },
+      {
+        id: 3,
+        instrumentId: 1,
+        date: "2025-09-29",
+        close: "30",
+        open: null,
+        high: null,
+        low: null,
+        volume: null,
+        currency: "EUR",
+        source: "stooq",
+        fetchedAt: null,
+      },
+      {
+        id: 4,
+        instrumentId: 2,
+        date: "2025-09-29",
+        close: "40",
+        open: null,
+        high: null,
+        low: null,
+        volume: null,
+        currency: "EUR",
+        source: "yahoo",
+        fetchedAt: null,
+      },
+    ],
+    fxRates: [],
+    macroBars: [],
+  };
+  cache.restoreSourceCache(
+    receipt,
+    [
+      { instrumentId: 1, vault: "vault", gid: "gid1" },
+      { instrumentId: 2, vault: "vault", gid: "gid2" },
+    ],
+    [
+      { instrumentId: 1, provider: "yahoo", symbol: "SPLIT" },
+      { instrumentId: 1, provider: "stooq", symbol: "SPLIT" },
+      { instrumentId: 2, provider: "yahoo", symbol: "OTHER" },
+    ],
+  );
+  const key = market.marketSymbol("yahoo", "SPLIT");
+  expect(cache.bars(key)).toHaveLength(2);
+  cache.batch(() => {
+    cache.deleteBars(key, "2025-09-29", "2025-09-30");
+    cache.upsertBars(key, [bar("25")], now);
+  });
+  expect(cache.bars(key).map((row) => [row.date, row.close.toString()])).toEqual([[AS_OF, "25"]]);
+  expect(cache.bars(market.marketSymbol("stooq", "SPLIT"))[0]?.close.toString()).toBe("30");
+  expect(cache.bars(market.marketSymbol("yahoo", "OTHER"))[0]?.close.toString()).toBe("40");
+  expect(cache.sourceCacheRows(receipt.schema).priceBars).toEqual(receipt.priceBars);
+  expect(new SqlPriceCache(driver).bars(key)).toHaveLength(1);
   driver.close();
 });

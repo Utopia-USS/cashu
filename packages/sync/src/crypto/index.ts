@@ -1,4 +1,13 @@
 export {
+  BLOB_HEADER_BYTES,
+  BLOB_VERSION,
+  type BlobRef,
+  blobSize,
+  MAX_BLOB_PLAINTEXT,
+  openBlob,
+  sealBlob,
+} from "./blob.js";
+export {
   type CandidateKey,
   CERT_BYTES,
   CertificateCache,

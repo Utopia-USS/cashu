@@ -17,6 +17,20 @@ export interface NotificationState {
   readonly hidden: boolean;
   readonly snoozedUntil: string | null;
 }
+export interface ImportedNotification {
+  readonly signal: string;
+  readonly severity: string;
+  readonly createdAt: string;
+  readonly sentAt: string | null;
+  readonly channel: string | null;
+}
+export interface ImportedConnectorFetch {
+  readonly binding: string;
+  readonly lastRunAt: string | null;
+  readonly lastStatus: string | null;
+  readonly lastOkAt: string | null;
+  readonly backoffUntil: string | null;
+}
 /** Python runner policy uses queued severity; hidden entries close, snoozes wait before handling. */
 export function notificationDisposition(
   row: QueuedNotification,
@@ -42,7 +56,56 @@ export class NotificationQueue {
       id INTEGER PRIMARY KEY, vault TEXT NOT NULL, signal TEXT NOT NULL,
       severity TEXT NOT NULL, created_at TEXT NOT NULL, sent_at TEXT, channel TEXT,
       UNIQUE(vault, signal, severity)
+    );
+    CREATE TABLE IF NOT EXISTS local_connector_fetch (
+      vault TEXT NOT NULL, binding TEXT NOT NULL, last_run_at TEXT, last_status TEXT,
+      last_ok_at TEXT, backoff_until TEXT, PRIMARY KEY(vault,binding)
     )`);
+  }
+  /** Exact one-shot history preserves sent and unsent dedup state per fresh vault. */
+  restoreHistory(vault: string, rows: readonly ImportedNotification[]): void {
+    this.driver.transaction(() => {
+      const insert = this.driver.prepare(
+        `INSERT INTO local_investment_notifications
+         (vault,signal,severity,created_at,sent_at,channel) VALUES (?,?,?,?,?,?)`,
+      );
+      for (const row of rows)
+        insert.run(vault, row.signal, row.severity, row.createdAt, row.sentAt, row.channel);
+    });
+  }
+  history(vault: string): readonly ImportedNotification[] {
+    return this.driver
+      .prepare(
+        `SELECT signal,severity,created_at AS createdAt,sent_at AS sentAt,channel
+         FROM local_investment_notifications WHERE vault=? ORDER BY signal,severity`,
+      )
+      .all<ImportedNotification>(vault);
+  }
+  restoreConnectorFetch(vault: string, rows: readonly ImportedConnectorFetch[]): void {
+    this.driver.transaction(() => {
+      const insert = this.driver.prepare(
+        `INSERT INTO local_connector_fetch
+         (vault,binding,last_run_at,last_status,last_ok_at,backoff_until) VALUES (?,?,?,?,?,?)`,
+      );
+      for (const row of rows)
+        insert.run(
+          vault,
+          row.binding,
+          row.lastRunAt,
+          row.lastStatus,
+          row.lastOkAt,
+          row.backoffUntil,
+        );
+    });
+  }
+  connectorFetch(vault: string): readonly ImportedConnectorFetch[] {
+    return this.driver
+      .prepare(
+        `SELECT binding,last_run_at AS lastRunAt,last_status AS lastStatus,
+                last_ok_at AS lastOkAt,backoff_until AS backoffUntil
+         FROM local_connector_fetch WHERE vault=? ORDER BY binding`,
+      )
+      .all<ImportedConnectorFetch>(vault);
   }
   enqueue(vault: string, signal: string, severity: string, at: string): boolean {
     return (

@@ -2,6 +2,15 @@
 
 export { finishMcpCall, startMcpCall } from "./audit.js";
 export {
+  appendConnectorRun,
+  type ConnectorRunReadScope,
+  type ConnectorRunRecord,
+  ensureConnectorRunHistory,
+  listConnectorRuns,
+  type NewConnectorRun,
+  restoreConnectorRuns,
+} from "./connector-runs.js";
+export {
   currentVault,
   devicePreferences,
   setCurrentVault,

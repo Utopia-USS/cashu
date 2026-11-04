@@ -17,7 +17,9 @@ const CONTEXTS: SigningContext[] = [
   "cashu/cert/v1",
   "cashu/registry/v1",
   "cashu/lease/v1",
+  "cashu/gossip/v1",
   "cashu/pairing/v1",
+  "cashu/lan-auth/v1",
   "cashu/head/v1",
   "cashu/state/v1",
 ];

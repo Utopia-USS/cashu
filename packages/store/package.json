@@ -21,6 +21,7 @@
     "./device": "./src/device/index.ts",
     "./bridge": "./src/bridge/index.ts",
     "./genesis": "./src/genesis/index.ts",
+    "./genesis/verification": "./src/genesis/verification/index.ts",
     "./overview": "./src/overview/index.ts",
     "./query": "./src/query.ts",
     "./ui-actions": "./src/ui-actions.ts",

@@ -37,7 +37,7 @@ const US = "\x1f";
 const SKEW_ALLOWANCE_MS = 366 * 24 * 60 * 60 * 1000;
 
 /** Where a gid came from: the Python table and its `sync_outbox._local_id`. */
-export interface GidSource {
+interface GidSource {
   readonly table: string;
   readonly localId: string;
 }

@@ -10,9 +10,14 @@ import type { QuerySource } from "../query.js";
 import type { SqlDriver, SqlValue } from "../sql/driver.js";
 import { ChangeHub, type TablesListener } from "../subscribe.js";
 import type { McpAuditFinish, McpAuditStart } from "./audit-types.js";
+import {
+  appendConnectorRun,
+  ensureConnectorRunHistory,
+  type NewConnectorRun,
+} from "./connector-runs.js";
 
 /** Device-local tables (a closed set: `tablesRead` is exact). */
-export const DEVICE_TABLES = ["device_settings", "mcp_calls"] as const;
+export const DEVICE_TABLES = ["device_settings", "mcp_calls", "connector_runs"] as const;
 
 const DDL = `CREATE TABLE IF NOT EXISTS device_settings (
   key TEXT PRIMARY KEY,
@@ -72,12 +77,20 @@ export class DeviceStore implements QuerySource {
   /** Open (or create) the device store on an opened database. */
   static open(driver: SqlDriver): DeviceStore {
     driver.exec(DDL);
+    ensureConnectorRunHistory(driver);
     return new DeviceStore(driver);
   }
 
   read<R>(sql: string, ...params: SqlValue[]): R[] {
     if (!/^\s*(SELECT|WITH)\b/i.test(sql)) throw new Error("read() accepts SELECT / WITH only");
     return this.driver.prepare(sql).all<R>(...params);
+  }
+
+  /** Persist one value-free connector audit and notify local history readers. */
+  appendConnectorRun(row: NewConnectorRun): number {
+    const id = this.driver.transaction(() => appendConnectorRun(this.driver, row));
+    this.#hub.notify(new Set(["connector_runs"]));
+    return id;
   }
 
   tablesRead(sql: string): ReadonlySet<string> {

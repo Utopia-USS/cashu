@@ -1,8 +1,13 @@
 import { D } from "@cashu/domain";
+import { PyFloat as SharedPyFloat } from "@cashu/store/genesis/verification";
 import { describe, expect, it } from "vitest";
-import { dumps, pyFloat } from "./output.ts";
+import { dumps, PyFloat, pyFloat } from "./output.ts";
 
 describe("producer output", () => {
+  it("uses the same float class as the portable migration verifier", () => {
+    expect(PyFloat).toBe(SharedPyFloat);
+    expect(pyFloat(0.1)).toBeInstanceOf(SharedPyFloat);
+  });
   it("writes canonical JSON: sorted keys, compact, decimals as Python str()", () => {
     expect(dumps({ b: [D("1.50"), D("1E+1"), null], a: { y: true, x: "ż" } })).toBe(
       '{"a":{"x":"ż","y":true},"b":["1.50","1E+1",null]}\n',
