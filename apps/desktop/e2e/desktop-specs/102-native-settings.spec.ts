@@ -4,7 +4,16 @@ import { join, resolve } from "node:path";
 import type { StoreToClient } from "@cashu/host-protocol/store";
 import { decodeValue } from "@cashu/host-protocol/store";
 import { connectHost } from "@cashu/node-host";
-import { dashboardWindow, expect, launchDesktop, stopHost, test, until } from "../electron-test.ts";
+import {
+  dashboardWindow,
+  expect,
+  launchDesktop,
+  rewriteHash,
+  stopHost,
+  test,
+  until,
+} from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 
 type Profile = { name: string; baseCurrency: string; mcpPrivacy: "strict" | "amounts" };
 type Proposal = { gid: string; kind: string; status: string; summary: string };
@@ -63,6 +72,7 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("generated native demo is absent");
+  await restoreNativeBaseline(dataDir);
   const visualRoot = process.env.CASHU_E2E_VISUALS;
   const visualPrefix = "/Users/owner/cashu-lab/checkpoints/visuals/S55j";
   const visuals =
@@ -98,18 +108,17 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
     const selector = page.getByRole("combobox", { name: "Profil", exact: true });
-    await selector.selectOption({ label: "Demo Anna" });
-    const anna = await selector.inputValue();
+    // The vault ids come from the options, never from the select's value right after a change:
+    // the controlled select shows the previous vault until the host confirms the switch.
+    const anna = await selector.locator("option", { hasText: "Demo Anna" }).getAttribute("value");
     const piotrOption = await selector
       .locator("option", { hasText: "Demo Piotr" })
       .getAttribute("value");
-    if (!piotrOption || anna === piotrOption) throw new Error("synthetic vault pair absent");
-    const openSettings = () =>
-      page.evaluate(() => {
-        const next = new URL(location.href);
-        next.hash = next.hash.replace(/\/overview(?=\?|$)/u, "/settings");
-        location.assign(next.href);
-      });
+    if (!anna || !piotrOption || anna === piotrOption)
+      throw new Error("synthetic vault pair absent");
+    await selector.selectOption(anna);
+    await expect(selector).toHaveValue(anna);
+    const openSettings = () => rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
     await openSettings();
     const settingsNav = page.getByRole("navigation", { name: "Moduły" }).getByRole("button", {
       name: "Ustawienia",
@@ -281,11 +290,7 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     await expect(incognito).not.toBeChecked();
     await expect(drawer).toHaveCount(0);
     await expect(proposals).toContainText("Synthetic Settings102 rule");
-    await page.evaluate(() => {
-      const next = new URL(location.href);
-      next.hash = next.hash.replace(/\/settings(?=\?|$)/u, "/investments.strategies");
-      location.assign(next.href);
-    });
+    await rewriteHash(page, /\/settings(?=\?|$)/u, "/investments.strategies");
     const strategies = page.getByTestId("native-strategies");
     await expect(strategies).toBeVisible();
     const strategyState = await readStore<{ proposals: Proposal[] }>(
@@ -307,11 +312,7 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
       .click();
     await expect(drawer).toContainText("Synthetic Settings102 rule");
     await drawer.getByRole("button", { name: "Zamknij" }).click();
-    await page.evaluate(() => {
-      const next = new URL(location.href);
-      next.hash = next.hash.replace(/\/investments\.strategies(?=\?|$)/u, "/settings");
-      location.assign(next.href);
-    });
+    await rewriteHash(page, /\/investments\.strategies(?=\?|$)/u, "/settings");
     await expect(profile).toBeVisible();
     await selector.selectOption(piotrOption);
     await expect(page).toHaveURL(/\/overview(?:\?|$)/u);

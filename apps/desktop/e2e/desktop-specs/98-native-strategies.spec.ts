@@ -5,17 +5,20 @@ import {
   dashboardWindow,
   expect,
   launchDesktop,
+  rewriteHash,
   setPrivacy,
   stopHost,
   test,
   until,
 } from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 import { seedNativeStrategyDocuments } from "../strategies-support.ts";
 
 test("native Strategies reads actual generated files, virtualizes source and suppresses prose in privacy mode", async () => {
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
+  await restoreNativeBaseline(dataDir);
   await seedNativeStrategyDocuments(dataDir);
   const host: ChildProcess = spawn(
     process.execPath,
@@ -46,11 +49,7 @@ test("native Strategies reads actual generated files, virtualizes source and sup
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
-    await page.evaluate(() => {
-      const next = new URL(location.href);
-      next.hash = next.hash.replace(/\/overview(?:\?.*)?$/u, "/investments.strategies");
-      location.assign(next.href);
-    });
+    await rewriteHash(page, /\/overview(?:\?.*)?$/u, "/investments.strategies");
     await expect(page.getByTestId("native-strategies")).toBeVisible();
     await page.getByRole("button", { name: "Synthetic reference", exact: true }).click();
     await expect(page.getByText("Read-only reference prose.", { exact: true })).toBeVisible();

@@ -1,8 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { D } from "@cashu/domain";
-import { formatDecimalValue } from "@cashu/i18n/values";
+import { demoExpectations, rendered } from "../demo-expectations.ts";
 import {
   dashboardWindow,
   expect,
@@ -18,21 +17,8 @@ test("native Portfolio uses generated-source valuations, owner drawers and priva
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
-  restoreNativeBaseline(dataDir);
-  const oraclePath = process.env.E2E_OVERVIEW_ORACLE;
-  if (!oraclePath) throw new Error("isolated positions oracle is absent");
-  const oracle = JSON.parse(readFileSync(oraclePath, "utf8")) as {
-    anna: {
-      positions: {
-        total: number;
-        base_currency: string;
-        positions: { instrument: { label: string } }[];
-      };
-    };
-  };
-  const expected = oracle.anna.positions;
-  if (expected.positions.length === 0)
-    throw new Error("synthetic positions oracle has no holdings");
+  await restoreNativeBaseline(dataDir);
+  const expected = demoExpectations().anna.portfolio;
   const host: ChildProcess = spawn(
     process.execPath,
     [
@@ -72,12 +58,9 @@ test("native Portfolio uses generated-source valuations, owner drawers and priva
       .getByRole("heading", { name: "Wartość", exact: true })
       .locator("xpath=..");
     await expect(valueCard).toBeVisible();
-    const total = formatDecimalValue(D(String(expected.total)), "pl-PL", {
-      currency: expected.base_currency,
-    }).text;
+    const total = rendered(expected.total, expected.currency);
     await expect(valueCard).toContainText(total);
-    const label = expected.positions[0]?.instrument.label;
-    if (!label) throw new Error("synthetic held instrument label is absent");
+    const label = expected.firstLabel;
     await expect(portfolio.getByRole("button", { name: label, exact: true })).toBeVisible();
     await page.screenshot({ path: join(dataDir, "native-portfolio.png"), fullPage: true });
 
@@ -133,9 +116,7 @@ test("native Portfolio uses generated-source valuations, owner drawers and priva
     await expect(table).toBeVisible();
     const saved = table.getByRole("row").filter({ hasText: "Synthetic native owner write" });
     await expect(saved).toBeVisible();
-    await expect(saved).toContainText(
-      formatDecimalValue(D("1.25"), "pl-PL", { currency: "PLN" }).text,
-    );
+    await expect(saved).toContainText(rendered("1.25", "PLN"));
     const count = Number(await table.getAttribute("aria-rowcount"));
     expect(count).toBeGreaterThan(1);
     if (count > 51) {

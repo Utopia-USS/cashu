@@ -131,6 +131,12 @@ export async function seedResearchDemo(
     instrument: resolvedCandidate.gid,
     createdBy: "agent",
   });
+  // An agent draft for the topic the resolved candidate belongs to; the owner confirms or edits it.
+  await command(vault, investmentsResearch.proposeTopicDraft, {
+    segment: "equity_global",
+    thesis: "Synthetic agent topic draft",
+    invalidation: "Synthetic topic invalidation",
+  });
   const archivedDay = addDays(today, -1);
   for (let number = 100; number < 155; number++) {
     await command(vault, investmentsResearch.addResearchNote, {

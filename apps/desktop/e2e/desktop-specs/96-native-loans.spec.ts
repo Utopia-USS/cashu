@@ -1,12 +1,12 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { D } from "@cashu/domain";
-import { formatDecimalValue } from "@cashu/i18n/values";
+import { demoExpectations, rendered } from "../demo-expectations.ts";
 import {
   dashboardWindow,
   expect,
   launchDesktop,
+  rewriteHash,
   setPrivacy,
   stopHost,
   test,
@@ -18,13 +18,9 @@ test("native loans and asset first steps use actual host stores and reset drafts
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
-  restoreNativeBaseline(dataDir);
-  const oraclePath = process.env.E2E_OVERVIEW_ORACLE;
-  if (!oraclePath) throw new Error("isolated loans oracle is absent");
-  const oracle = JSON.parse(readFileSync(oraclePath, "utf8")) as {
-    anna: { loans: { name: string; monthly_payment: number; currency: string }[] };
-  };
-  if (oracle.anna.loans.length === 0) throw new Error("synthetic loans oracle has no loans");
+  await restoreNativeBaseline(dataDir);
+  const expected = demoExpectations().anna.loans;
+  if (expected.length === 0) throw new Error("synthetic loans expectations have no loans");
   const host: ChildProcess = spawn(
     process.execPath,
     [
@@ -56,11 +52,10 @@ test("native loans and asset first steps use actual host stores and reset drafts
     await expect(page.getByTestId("native-loans")).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Wybierz kredyt" })).toBeVisible();
     await expect(page.getByRole("table", { name: "Kredyty", exact: true })).toBeVisible();
-    for (const loan of oracle.anna.loans) {
+    for (const loan of expected) {
       await expect(page.getByRole("combobox", { name: "Wybierz kredyt" })).toContainText(loan.name);
       await expect(page.getByRole("table", { name: "Kredyty", exact: true })).toContainText(
-        formatDecimalValue(D(String(loan.monthly_payment)), "pl-PL", { currency: loan.currency })
-          .text,
+        rendered(loan.monthlyPayment, loan.currency),
       );
     }
 
@@ -99,7 +94,7 @@ test("native loans and asset first steps use actual host stores and reset drafts
       .selectOption({ label: "Synthetic UI loan" });
     await expect(page.getByRole("table", { name: "Harmonogram" })).toBeVisible();
     await expect(page.getByRole("table", { name: "Kredyty", exact: true })).toContainText(
-      formatDecimalValue(D("1000"), "pl-PL", { currency: "PLN" }).text,
+      rendered("1000", "PLN"),
     );
     await page.screenshot({ path: test.info().outputPath("native-loans.png"), fullPage: true });
     await expect(page.getByRole("table", { name: "Harmonogram" }).getByRole("row")).toHaveCount(13);
@@ -132,22 +127,14 @@ test("native loans and asset first steps use actual host stores and reset drafts
       .selectOption({ label: "Demo" });
     await expect(page.getByRole("dialog")).toHaveCount(0);
     for (const route of ["loans.list", "budget/expenses"]) {
-      await page.evaluate((route) => {
-        const next = new URL(location.href);
-        next.hash = next.hash.replace(/\/overview(?:\?.*)?$|\/loans\.list(?:\?.*)?$/u, `/${route}`);
-        location.assign(next.href);
-      }, route);
+      await rewriteHash(page, /\/overview(?:\?.*)?$|\/loans\.list(?:\?.*)?$/u, `/${route}`);
       await expect(page.getByText("Rozpocznij konfigurację", { exact: true })).toBeVisible();
       await expect(page.getByTestId("native-loans")).toHaveCount(0);
     }
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
-    await page.evaluate(() => {
-      const next = new URL(location.href);
-      next.hash = next.hash.replace(/\/overview(?:\?.*)?$/u, "/setup/assets");
-      location.assign(next.href);
-    });
+    await rewriteHash(page, /\/overview(?:\?.*)?$/u, "/setup/assets");
     await expect(page.getByTestId("native-assets-start")).toBeVisible();
     await page.getByRole("button", { name: "Dodaj auto", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();

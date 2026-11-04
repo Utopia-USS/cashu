@@ -16,7 +16,7 @@ test("native budget tabs use the real generated demo vault, update categories an
   const repo = process.env.E2E_REPO,
     dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("isolated native demo absent");
-  restoreNativeBaseline(dataDir);
+  await restoreNativeBaseline(dataDir);
   const host: ChildProcess = spawn(
     process.execPath,
     [
@@ -137,7 +137,7 @@ test("native budget tabs use the real generated demo vault, update categories an
     await expect(page.getByRole("main")).toContainText("•••");
     await setPrivacy(page, false);
     await page.screenshot({
-      path: "/Users/owner/cashu-lab/checkpoints/S55c-gpt.png",
+      path: test.info().outputPath("native-budget.png"),
       fullPage: true,
     });
     await page.getByRole("combobox", { name: "Język", exact: true }).selectOption("en");

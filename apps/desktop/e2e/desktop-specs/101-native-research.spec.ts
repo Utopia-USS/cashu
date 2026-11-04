@@ -9,11 +9,14 @@ import {
   dashboardWindow,
   expect,
   launchDesktop,
+  rewriteHash,
   setPrivacy,
+  settleModalHistory,
   stopHost,
   test,
   until,
 } from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 
 const researchTopicsShape = z.object({
   status: z.literal("current"),
@@ -68,6 +71,7 @@ test("native Research reads generated events, opens a note, and separates vault 
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
+  await restoreNativeBaseline(dataDir);
   const host: ChildProcess = spawn(
     process.execPath,
     [
@@ -100,11 +104,7 @@ test("native Research reads generated events, opens a note, and separates vault 
     const selectedVault = await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .inputValue();
-    await page.evaluate(() => {
-      const next = new URL(location.href);
-      next.hash = next.hash.replace(/\/overview(?:\?.*)?$/u, "/investments.research");
-      location.assign(next.href);
-    });
+    await rewriteHash(page, /\/overview(?:\?.*)?$/u, "/investments.research");
     const research = page.getByTestId("native-research");
     await expect(research).toBeVisible();
     const researchHash = await page.evaluate(() => location.hash);
@@ -123,6 +123,7 @@ test("native Research reads generated events, opens a note, and separates vault 
     const deepNote = asset.getByRole("button", { name: "Synthetic research fact 1", exact: true });
     await expect(deepNote).toBeVisible();
     await expect(deepNote).toBeFocused();
+    await settleModalHistory(page);
     await page.evaluate((hash) => {
       location.hash = hash;
     }, researchHash);

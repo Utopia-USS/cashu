@@ -10,11 +10,13 @@ import {
   test,
   until,
 } from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 
 test("native Signals uses generated owner state across Home, dialogs and pages", async () => {
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
+  await restoreNativeBaseline(dataDir);
   const artifactDir = process.env.E2E_SIGNALS_ARTIFACT_DIR ?? dataDir;
   mkdirSync(artifactDir, { recursive: true });
   const host: ChildProcess = spawn(

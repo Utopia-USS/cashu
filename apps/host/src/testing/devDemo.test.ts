@@ -56,7 +56,7 @@ it("creates and serves the two synthetic demo profiles", async () => {
       )
       .map((row) => row.module_id);
   expect(modules(anna)).toEqual(["assets", "budget", "investments", "loans"]);
-  expect(modules(piotr)).toEqual(["budget"]);
+  expect(modules(piotr)).toEqual(["budget", "investments"]);
   for (const vault of [anna, piotr]) {
     expect(read(vault, "SELECT COUNT(*) AS n FROM transactions")).toBeGreaterThan(100);
     // Both legs of every checking -> savings transfer are matched as internal.

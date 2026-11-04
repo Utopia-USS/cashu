@@ -1,18 +1,8 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { D } from "@cashu/domain";
-import { formatDecimalValue } from "@cashu/i18n/values";
 import { _electron } from "@playwright/test";
+import { demoExpectations, negate, plus, rendered } from "../demo-expectations.ts";
 import {
   alive,
   appDir,
@@ -26,6 +16,7 @@ import {
   test,
   until,
 } from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 
 function paths() {
   const repo = process.env.E2E_REPO;
@@ -37,59 +28,6 @@ function paths() {
     loader: join(repo, "tools/node-ts/resolveTs.ts"),
     helper: join(repo, "apps/host/src/testing/seedOverviewDemo.ts"),
   };
-}
-
-interface Summary {
-  breakdown: { net: number; currency: string };
-  networth: Record<string, number>;
-}
-interface Oracle {
-  anna: {
-    summary: Summary;
-    monthCloses: Record<
-      string,
-      {
-        base_currency: string;
-        currencies: { currency: string; income: number; spending: number; surplus: number }[];
-      }
-    >;
-    networth: {
-      accounts: { type: string; bank: string; balance: number | null; currency: string }[];
-    };
-    assets: { balance: number | null; currency: string; kind: string; is_liability: boolean }[];
-    loans: { outstanding: number; currency: string }[];
-    investments: { base_currency: string; kpis: { value: { total: number } } };
-    series: { currency: string; points: { date: string; value: number }[] };
-  };
-  piotr: { summary: Summary };
-}
-
-function oracle(): Oracle {
-  const file = process.env.E2E_OVERVIEW_ORACLE;
-  if (!file) throw new Error("isolated Overview oracle is absent");
-  return JSON.parse(readFileSync(file, "utf8")) as Oracle;
-}
-
-function restoreExactOverviewBaseline(dataDir: string) {
-  const root = process.env.E2E_ROOT;
-  const baseline = process.env.E2E_NATIVE_BASELINE_DIR;
-  const tempRoot = realpathSync(tmpdir());
-  if (
-    !root ||
-    !baseline ||
-    realpathSync(root) !== root ||
-    !root.startsWith(`${tempRoot}/cashu-e2e-desktop-`) ||
-    baseline !== join(root, "native-baseline") ||
-    dataDir !== join(root, "native-data") ||
-    realpathSync(baseline) !== baseline ||
-    realpathSync(dataDir) !== dataDir
-  )
-    throw new Error("isolated Overview baseline paths are absent");
-  const previous = hostPid(dataDir);
-  if (previous !== null && alive(previous))
-    throw new Error("synthetic Overview baseline restore refused while a host is live");
-  rmSync(dataDir, { recursive: true, force: true });
-  cpSync(baseline, dataDir, { recursive: true });
 }
 
 async function launchGuardedOverview(dataDir: string) {
@@ -120,7 +58,7 @@ async function launchGuardedOverview(dataDir: string) {
 
 test("the native Overview reads isolated stores, preserves privacy, and updates live", async () => {
   const { repo, dataDir, loader, helper } = paths();
-  restoreExactOverviewBaseline(dataDir);
+  await restoreNativeBaseline(dataDir);
   const host: ChildProcess = spawn(process.execPath, ["--import", loader, helper, "serve"], {
     env: process.env,
     stdio: ["ignore", "ignore", "pipe"],
@@ -138,46 +76,37 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     app = await launchGuardedOverview(dataDir);
     const { page, origin } = await dashboardWindow(app);
     expect(origin).toBe("app://cashu");
-    const expected = oracle();
-    const rendered = (value: number, currency: string, locale = "pl-PL") =>
-      formatDecimalValue(D(String(value)), locale, { currency }).text;
+    const expected = demoExpectations();
     await expect(page.getByRole("heading", { name: "Przegląd", exact: true })).toBeVisible();
     await setPrivacy(page, false);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
     await expect(page).toHaveURL(/\/overview/u);
-    const annaWorth = rendered(
-      expected.anna.summary.breakdown.net,
-      expected.anna.summary.breakdown.currency,
-    );
+    const annaWorth = rendered(expected.anna.net, expected.anna.currency);
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     const budgetWidget = page.locator('section[aria-labelledby="overview-budget-month-title"]');
     await expect(budgetWidget).toBeVisible();
     const monthLabel = (await budgetWidget.locator("h2").textContent())?.match(/\d{4}-\d{2}/u)?.[0];
     if (!monthLabel) throw new Error("native budget month label is absent");
-    const monthClose = expected.anna.monthCloses[monthLabel];
-    if (!monthClose) throw new Error("native budget month is outside the isolated oracle range");
-    const chosen =
-      monthClose.currencies.find((row) => row.currency === monthClose.base_currency) ??
-      monthClose.currencies[0];
-    if (!chosen) throw new Error("synthetic oracle budget currency is absent");
+    const chosen = expected.anna.months[monthLabel];
+    if (!chosen) throw new Error("native budget month is outside the synthetic expectations");
     for (const amount of [chosen.income, chosen.spending, chosen.surplus])
       await expect(budgetWidget).toContainText(rendered(amount, chosen.currency));
 
     const accountsWidget = page.locator('section[aria-labelledby="overview-accounts-title"]');
     await expect(accountsWidget).toBeVisible();
-    const listed = expected.anna.networth.accounts.filter(
+    const listed = expected.anna.accounts.filter(
       (account) =>
         ["checking", "savings", "credit", "investment", "other"].includes(account.type) &&
         !(account.bank === "manual" && account.type === "other") &&
-        account.balance !== null &&
-        Math.abs(account.balance) >= 0.005,
+        account.amount !== null &&
+        Math.abs(Number(account.amount)) >= 0.005,
     );
     await expect(accountsWidget.locator("li")).toHaveCount(listed.length);
     for (const account of listed)
-      if (account.balance !== null)
-        await expect(accountsWidget).toContainText(rendered(account.balance, account.currency));
+      if (account.amount !== null)
+        await expect(accountsWidget).toContainText(rendered(account.amount, account.currency));
     await accountsWidget.getByRole("button").last().click();
     await expect(page.getByRole("dialog", { name: "Portfel gotówkowy" })).toBeVisible();
     await page
@@ -192,24 +121,22 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
       .selectOption({ label: "Demo Anna" });
     await expect(page.getByRole("dialog", { name: "Portfel gotówkowy" })).toHaveCount(0);
 
-    const assets = expected.anna.assets.filter((asset) => !asset.is_liability);
+    const assets = expected.anna.assets;
     const assetsWidget = page.locator('section[aria-labelledby="overview-assets-title"]');
     await expect(assetsWidget.locator("li")).toHaveCount(Math.min(assets.length, 5));
     for (const asset of assets.slice(0, 5))
-      if (asset.balance !== null)
-        await expect(assetsWidget).toContainText(rendered(asset.balance, asset.currency));
+      if (asset.amount !== null)
+        await expect(assetsWidget).toContainText(rendered(asset.amount, asset.currency));
     const loansWidget = page.locator('section[aria-labelledby="overview-loans-title"]');
     if (expected.anna.loans.length > 0) {
       await expect(loansWidget.locator("li")).toHaveCount(expected.anna.loans.length);
       for (const loan of expected.anna.loans)
-        await expect(loansWidget).toContainText(rendered(-loan.outstanding, loan.currency));
+        await expect(loansWidget).toContainText(rendered(negate(loan.outstanding), loan.currency));
     }
     await expect(
       page.locator('section[aria-labelledby="overview-investments-title"]'),
-    ).toContainText(
-      rendered(expected.anna.investments.kpis.value.total, expected.anna.investments.base_currency),
-    );
-    if (Object.keys(expected.anna.summary.networth).includes("EUR")) {
+    ).toContainText(rendered(expected.anna.investments.value, expected.anna.investments.currency));
+    if (expected.anna.currencies.includes("EUR")) {
       await page.getByRole("combobox", { name: "Waluta" }).selectOption("EUR");
       await expect(page).toHaveURL(/currency=EUR/u);
       await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
@@ -218,9 +145,9 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Piotr" });
     await expect(page.getByTestId("net-worth")).toHaveText(
-      rendered(expected.piotr.summary.breakdown.net, expected.piotr.summary.breakdown.currency),
+      rendered(expected.piotr.net, expected.piotr.currency),
     );
-    expect(expected.piotr.summary.breakdown.net).not.toBe(expected.anna.summary.breakdown.net);
+    expect(expected.piotr.net).not.toBe(expected.anna.net);
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Anna" });
@@ -229,7 +156,7 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     await chartControl.focus();
     await chartControl.press("End");
     await expect(chartControl.getByRole("status")).toContainText(
-      rendered(expected.anna.series.points.at(-1)?.value ?? 0, expected.anna.series.currency),
+      rendered(expected.anna.seriesEnd.value, expected.anna.seriesEnd.currency),
     );
     const privacy = page.getByRole("checkbox", { name: "Ukryj kwoty" });
     await privacy.click();
@@ -281,35 +208,31 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     await page.getByRole("combobox", { name: "Język" }).selectOption("en");
     await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
     await expect(page.getByTestId("net-worth")).toHaveText(
-      rendered(
-        expected.anna.summary.breakdown.net,
-        expected.anna.summary.breakdown.currency,
-        "en-US",
-      ),
+      rendered(expected.anna.net, expected.anna.currency, "en-US"),
     );
     await page.getByRole("combobox", { name: "Language" }).selectOption("pl");
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     const editIndex = assets.findIndex(
       (asset) =>
         asset.kind === "manual" &&
-        asset.currency === expected.anna.summary.breakdown.currency &&
-        asset.balance !== null,
+        asset.currency === expected.anna.currency &&
+        asset.amount !== null,
     );
     if (editIndex < 0) throw new Error("synthetic demo lacks an editable base-currency asset");
     const edited = assets[editIndex];
-    if (!edited || edited.balance === null) throw new Error("synthetic asset valuation is absent");
+    if (!edited || edited.amount === null) throw new Error("synthetic asset valuation is absent");
     await assetsWidget.locator("li").nth(editIndex).getByRole("button").click();
     const editDialog = page.getByRole("dialog", { name: /^Edytuj: /u });
     await editDialog
       .getByRole("textbox", { name: "Wartość", exact: true })
-      .fill(String(edited.balance + 1));
+      .fill(plus(edited.amount, "1"));
     await editDialog.getByRole("textbox", { name: "Notatka" }).fill("Synthetic UI note");
     await editDialog.getByRole("button", { name: "Zapisz" }).click();
     await expect(editDialog).toHaveCount(0);
-    await expect(assetsWidget).toContainText(rendered(edited.balance + 1, edited.currency));
+    await expect(assetsWidget).toContainText(rendered(plus(edited.amount, "1"), edited.currency));
     await expect(assetsWidget.getByText("notatka", { exact: true })).toBeVisible();
     await expect(page.getByTestId("net-worth")).toHaveText(
-      rendered(expected.anna.summary.breakdown.net + 1, expected.anna.summary.breakdown.currency),
+      rendered(plus(expected.anna.net, "1"), expected.anna.currency),
     );
     await assetsWidget.getByRole("button", { name: "+ Dodaj" }).click();
     const assetDialog = page.getByRole("dialog", { name: "Nowa pozycja", exact: true });
@@ -396,7 +319,7 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     );
     expect(afterRestart.status, afterRestart.stderr).toBe(0);
     await expect(page.getByTestId("net-worth")).toHaveText(
-      rendered(expected.anna.summary.breakdown.net - 1, expected.anna.summary.breakdown.currency),
+      rendered(plus(expected.anna.net, "-1"), expected.anna.currency),
     );
     const scoped = spawnSync(process.execPath, ["--import", loader, helper, "cross-profile"], {
       env: process.env,

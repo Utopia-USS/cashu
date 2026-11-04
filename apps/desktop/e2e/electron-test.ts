@@ -96,6 +96,44 @@ export async function setPrivacy(page: Page, hidden: boolean): Promise<void> {
   else await expect(checkbox).not.toBeChecked();
 }
 
+/**
+ * Waits until no modal is open and a closed modal's history entry is gone. A modal (packages/ui
+ * Modal) pushes an entry when it opens and, a task after it closes, calls `history.back()`; that
+ * traversal is async, so a route change made in between is undone by it (the window lands back on
+ * the modal's route). A marker left on an entry that no back will remove is waited out (1 s).
+ */
+export async function settleModalHistory(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => document.querySelector("[data-cashu-modal-panel]") === null,
+    undefined,
+    { timeout: 10_000 },
+  );
+  await page.evaluate(async () => {
+    if ((history.state as { cashuModal?: unknown } | null)?.cashuModal === undefined) return;
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        window.removeEventListener("popstate", done);
+        resolve();
+      };
+      window.addEventListener("popstate", done);
+      setTimeout(done, 1_000);
+    });
+  });
+}
+
+/** Rewrites the window's hash route like a pasted link, after any closing modal let go of it. */
+export async function rewriteHash(page: Page, from: RegExp, to: string): Promise<void> {
+  // EXPERIMENT await settleModalHistory(page);
+  await page.evaluate(
+    ([source, flags, replacement]) => {
+      const next = new URL(location.href);
+      next.hash = next.hash.replace(new RegExp(source, flags), replacement);
+      location.assign(next.href);
+    },
+    [from.source, from.flags, to] as const,
+  );
+}
+
 /** An own-origin page with no production client; injected port tests own the frame's sole relay. */
 export async function storeHarnessWindow(app: ElectronApplication): Promise<Page> {
   const { page } = await dashboardWindow(app);

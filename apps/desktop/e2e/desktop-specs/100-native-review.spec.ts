@@ -10,6 +10,7 @@ import {
   test,
   until,
 } from "../electron-test.ts";
+import { restoreNativeBaseline } from "../native-baseline.ts";
 import { readNativeReview } from "../review-support.ts";
 
 const cardHeadings: Readonly<Record<string, string>> = {
@@ -26,6 +27,7 @@ test("native Review preserves its seven-card session, writes actual owner outcom
   const repo = process.env.E2E_REPO,
     dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("generated native demo is absent");
+  await restoreNativeBaseline(dataDir);
   const screenshot = process.env.E2E_REVIEW_SCREENSHOT ?? join(dataDir, "native-review.png");
   const worldScreenshot = screenshot.replace(/\.png$/u, "-world.png");
   const host: ChildProcess = spawn(
