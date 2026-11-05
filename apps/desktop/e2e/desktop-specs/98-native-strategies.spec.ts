@@ -5,6 +5,7 @@ import {
   dashboardWindow,
   expect,
   launchDesktop,
+  pickProfile,
   rewriteHash,
   setPrivacy,
   stopHost,
@@ -46,9 +47,7 @@ test("native Strategies reads actual generated files, virtualizes source and sup
     app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
     await setPrivacy(page, false);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await rewriteHash(page, /\/overview(?:\?.*)?$/u, "/investments.strategies");
     await expect(page.getByTestId("native-strategies")).toBeVisible();
     await page.getByRole("button", { name: "Synthetic reference", exact: true }).click();

@@ -5,9 +5,12 @@ import type { StoreToClient } from "@cashu/host-protocol/store";
 import { decodeValue } from "@cashu/host-protocol/store";
 import { connectHost } from "@cashu/node-host";
 import {
+  currentVault,
   dashboardWindow,
   expect,
   launchDesktop,
+  openProfileMenuItem,
+  pickProfile,
   rewriteHash,
   stopHost,
   test,
@@ -107,25 +110,17 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     expect(host.exitCode, errors).toBeNull();
     app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
-    const selector = page.getByRole("combobox", { name: "Profil", exact: true });
-    // The vault ids come from the options, never from the select's value right after a change:
-    // the controlled select shows the previous vault until the host confirms the switch.
-    const anna = await selector.locator("option", { hasText: "Demo Anna" }).getAttribute("value");
-    const piotrOption = await selector
-      .locator("option", { hasText: "Demo Piotr" })
-      .getAttribute("value");
+    // The vault ids come from the route once the pill shows the host-confirmed profile.
+    await pickProfile(page, "Demo Piotr");
+    const piotrOption = currentVault(page);
+    await pickProfile(page, "Demo Anna");
+    const anna = currentVault(page);
     if (!anna || !piotrOption || anna === piotrOption)
       throw new Error("synthetic vault pair absent");
-    await selector.selectOption(anna);
-    await expect(selector).toHaveValue(anna);
     const openSettings = () => rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
-    await openSettings();
-    const settingsNav = page.getByRole("navigation", { name: "Moduły" }).getByRole("button", {
-      name: "Ustawienia",
-      exact: true,
-    });
-    await expect(settingsNav).toBeEnabled();
-    await expect(settingsNav).toHaveAttribute("aria-current", "page");
+    // Ustawienia sits in the profile menu (Python app layout).
+    await openProfileMenuItem(page, "Ustawienia");
+    await expect(page).toHaveURL(/\/settings(?:\?|$)/u);
     const profile = page.getByRole("region", { name: "Profil", exact: true });
     await expect(profile).toBeVisible();
     const original = await readStore<Profile>(dataDir, anna, "core.profile");
@@ -144,12 +139,13 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     expect(await readStore<Profile>(dataDir, piotrOption, "core.profile")).toMatchObject(
       otherOriginal,
     );
-    await selector.selectOption(piotrOption);
+    await pickProfile(page, "Demo Piotr");
     await expect(page).toHaveURL(/\/overview(?:\?|$)/u);
     await openSettings();
     await expect(profile).toBeVisible();
     await expect(profile.getByRole("textbox", { name: "Nazwa" })).toHaveValue(otherOriginal.name);
-    await selector.selectOption(anna);
+    // Anna carries the name saved above.
+    await pickProfile(page, "Synthetic Settings102");
     await expect(page).toHaveURL(/\/overview(?:\?|$)/u);
     await openSettings();
     await expect(profile).toBeVisible();
@@ -314,24 +310,20 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     await drawer.getByRole("button", { name: "Zamknij" }).click();
     await rewriteHash(page, /\/investments\.strategies(?=\?|$)/u, "/settings");
     await expect(profile).toBeVisible();
-    await selector.selectOption(piotrOption);
+    await pickProfile(page, "Demo Piotr");
     await expect(page).toHaveURL(/\/overview(?:\?|$)/u);
     await openSettings();
     await expect(profile).toBeVisible();
     await expect(agent.getByText("Brak oczekujących propozycji.")).toBeVisible();
-    const language = page.locator("header").getByRole("combobox", { name: "Język" });
+    const language = page.getByRole("combobox", { name: "Język", exact: true });
     await language.selectOption("en");
-    await expect(page.locator("header").getByRole("combobox", { name: "Language" })).toHaveValue(
-      "en",
-    );
+    await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("en");
     await page.reload();
-    await expect(page.locator("header").getByRole("combobox", { name: "Language" })).toHaveValue(
-      "en",
-    );
-    await page.locator("header").getByRole("combobox", { name: "Language" }).selectOption("pl");
-    await expect(page.locator("header").getByRole("combobox", { name: "Język" })).toHaveValue("pl");
+    await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("en");
+    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("pl");
+    await expect(page.getByRole("combobox", { name: "Język", exact: true })).toHaveValue("pl");
     await page.reload();
-    await expect(page.locator("header").getByRole("combobox", { name: "Język" })).toHaveValue("pl");
+    await expect(page.getByRole("combobox", { name: "Język", exact: true })).toHaveValue("pl");
   } finally {
     if (app) {
       await app.close().catch(() => {});

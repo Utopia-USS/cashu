@@ -88,12 +88,66 @@ export async function launchGuardedDesktop(options: DesktopOptions): Promise<Ele
   });
 }
 
-/** A real shell click, followed by React's settled state after possible Suspense rebind. */
+/** A real shell click (the header's eye toggle), followed by React's settled state after possible Suspense rebind. */
 export async function setPrivacy(page: Page, hidden: boolean): Promise<void> {
   const checkbox = page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true });
   if ((await checkbox.isChecked()) !== hidden) await checkbox.click();
   if (hidden) await expect(checkbox).toBeChecked();
   else await expect(checkbox).not.toBeChecked();
+}
+
+/** The header's profile pill (packages/ui ProfilePill, title "Profil"); its name is the active profile. */
+export function profilePill(page: Page) {
+  return page.locator("header").getByTitle("Profil", { exact: true });
+}
+
+/**
+ * Switches the profile through the pill's menu and waits until the shell shows it. While a modal's
+ * scrim covers the header (a switch that arrives from elsewhere), the clicks go to the DOM directly.
+ */
+export async function pickProfile(page: Page, name: string): Promise<void> {
+  const pill = profilePill(page);
+  await expect(pill).toBeEnabled();
+  const item = page
+    .locator("header")
+    .getByRole("menu")
+    .getByRole("menuitemradio", { name, exact: true });
+  if ((await page.locator("[data-cashu-modal-panel]").count()) > 0) {
+    await pill.evaluate((node) => (node as HTMLButtonElement).click());
+    await item.evaluate((node) => (node as HTMLButtonElement).click());
+  } else {
+    await pill.click();
+    await item.click();
+  }
+  await expect(pill).toHaveAccessibleName(name);
+}
+
+/** Runs one action row of the profile menu ("Nowy profil…", "Ustawienia"). */
+export async function openProfileMenuItem(page: Page, name: string): Promise<void> {
+  await profilePill(page).click();
+  await page
+    .locator("header")
+    .getByRole("menu")
+    .getByRole("menuitem", { name, exact: true })
+    .click();
+}
+
+/** How many profiles the pill's menu lists (opens and closes it). */
+export async function profileCount(page: Page): Promise<number> {
+  await profilePill(page).click();
+  const rows = page.locator("header").getByRole("menu").getByRole("menuitemradio");
+  await expect(rows.first()).toBeVisible();
+  const count = await rows.count();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("header").getByRole("menu")).toHaveCount(0);
+  return count;
+}
+
+/** The vault of the current route (`?vault=` of the hash URL). */
+export function currentVault(page: Page): string {
+  const raw = new URL(page.url()).hash.match(/[?&]vault=([^&]+)/u)?.[1];
+  if (raw === undefined) throw new Error("the route names no vault");
+  return decodeURIComponent(raw).replace(/^"|"$/gu, "");
 }
 
 /**

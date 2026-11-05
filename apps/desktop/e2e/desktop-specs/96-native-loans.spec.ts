@@ -6,6 +6,7 @@ import {
   dashboardWindow,
   expect,
   launchDesktop,
+  pickProfile,
   rewriteHash,
   setPrivacy,
   stopHost,
@@ -42,9 +43,7 @@ test("native loans and asset first steps use actual host stores and reset drafts
     app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
     await setPrivacy(page, false);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await page
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Kredyty", exact: true })
@@ -122,18 +121,14 @@ test("native loans and asset first steps use actual host stores and reset drafts
 
     await page.getByRole("button", { name: "Dodaj kredyt", exact: true }).first().click();
     await expect(drawer).toBeVisible();
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo" });
+    await pickProfile(page, "Demo");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     for (const route of ["loans.list", "budget/expenses"]) {
       await rewriteHash(page, /\/overview(?:\?.*)?$|\/loans\.list(?:\?.*)?$/u, `/${route}`);
       await expect(page.getByText("Rozpocznij konfigurację", { exact: true })).toBeVisible();
       await expect(page.getByTestId("native-loans")).toHaveCount(0);
     }
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await rewriteHash(page, /\/overview(?:\?.*)?$/u, "/setup/assets");
     await expect(page.getByTestId("native-assets-start")).toBeVisible();
     await page.getByRole("button", { name: "Dodaj auto", exact: true }).click();

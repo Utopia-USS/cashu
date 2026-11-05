@@ -6,6 +6,7 @@ import {
   dashboardWindow,
   expect,
   launchDesktop,
+  pickProfile,
   setPrivacy,
   stopHost,
   test,
@@ -45,9 +46,7 @@ test("investments Home shows generated-source valuations, its filters, the Impor
     app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
     await setPrivacy(page, false);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await page
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Inwestycje", exact: true })
@@ -154,9 +153,7 @@ test("investments Home shows generated-source valuations, its filters, the Impor
     await expect(hero).not.toContainText(value ?? "");
     await setPrivacy(page, false);
     await expect(hero).toContainText(value ?? "");
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Piotr" });
+    await pickProfile(page, "Demo Piotr");
     await expect(page.getByRole("main", { name: "Przegląd", exact: true })).toBeVisible();
     expect(await page.getByRole("dialog").count()).toBe(0);
   } finally {

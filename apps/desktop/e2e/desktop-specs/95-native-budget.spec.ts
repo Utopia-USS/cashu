@@ -5,6 +5,9 @@ import {
   dashboardWindow,
   expect,
   launchDesktop,
+  pickProfile,
+  profilePill,
+  rewriteHash,
   setPrivacy,
   stopHost,
   test,
@@ -38,12 +41,8 @@ test("native budget tabs use the real generated demo vault, update categories an
     app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
     await setPrivacy(page, false);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
-    await expect(
-      page.getByRole("combobox", { name: "Profil", exact: true }).locator("option:checked"),
-    ).toHaveText("Demo Anna");
+    await pickProfile(page, "Demo Anna");
+    await expect(profilePill(page)).toHaveAccessibleName("Demo Anna");
     await page
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Budżet", exact: true })
@@ -99,10 +98,9 @@ test("native budget tabs use the real generated demo vault, update categories an
     await cushion.getByRole("textbox", { name: "Cel", exact: true }).fill("777");
     // A real device setting push can arrive while the modal owns focus.
     await page.evaluate(() => {
-      const label = [...document.querySelectorAll("label")].find((node) =>
-        node.textContent?.includes("Ukryj kwoty"),
+      const toggle = document.querySelector<HTMLInputElement>(
+        'header input[type="checkbox"][aria-label="Ukryj kwoty"]',
       );
-      const toggle = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
       if (!toggle) throw new Error("privacy control absent");
       toggle.click();
     });
@@ -122,13 +120,9 @@ test("native budget tabs use the real generated demo vault, update categories an
     await expect(page.getByRole("dialog", { name: "Import", exact: true })).toContainText(
       "Import plików nie jest jeszcze dostępny w aplikacji.",
     );
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo" });
+    await pickProfile(page, "Demo");
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await page
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Budżet", exact: true })
@@ -140,7 +134,14 @@ test("native budget tabs use the real generated demo vault, update categories an
       path: test.info().outputPath("native-budget.png"),
       fullPage: true,
     });
+    // The language lives in Settings, as in the Python app.
+    await rewriteHash(page, /\/budget\/[^?]*(?=\?|$)/u, "/settings");
     await page.getByRole("combobox", { name: "Język", exact: true }).selectOption("en");
+    await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("en");
+    await page
+      .getByRole("navigation", { name: "Modules" })
+      .getByRole("button", { name: "Budget", exact: true })
+      .click();
     await expect(page.getByRole("heading", { name: "Spending", level: 1 })).toBeVisible();
   } finally {
     await app?.close();

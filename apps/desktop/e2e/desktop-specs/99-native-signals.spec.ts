@@ -5,6 +5,7 @@ import {
   dashboardWindow,
   expect,
   launchDesktop,
+  pickProfile,
   setPrivacy,
   stopHost,
   test,
@@ -78,9 +79,7 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
       });
     };
     await setPrivacy(page, false);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await page
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Inwestycje", exact: true })

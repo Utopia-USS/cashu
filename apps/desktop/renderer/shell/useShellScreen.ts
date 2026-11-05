@@ -1,6 +1,6 @@
-import { intlLocale, type Lang, lang, setLanguage } from "@cashu/i18n";
+import { intlLocale } from "@cashu/i18n";
 import { S as Connection } from "@cashu/i18n/core/hostConnection.strings";
-import { setCurrentVault, setDevicePreferences } from "@cashu/store/device";
+import { setCurrentVault } from "@cashu/store/device";
 import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import {
   isStale,
@@ -73,7 +73,6 @@ export function useShellScreen(args: {
   const modules = useQuery(queries.moduleStates);
   const vault = useProfile();
   const switchProfile = useCommand(setCurrentVault);
-  const savePreferences = useCommand(setDevicePreferences);
   const durable = useDurableCommands();
   const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const [toast, setToast] = useState<string | null>(null);
@@ -92,16 +91,16 @@ export function useShellScreen(args: {
     connectionText: isStale(connection)
       ? `${Connection[connection]} ${Connection.stale}`
       : Connection[connection],
-    language: lang(),
+    // The Python app showed no connection line: the status is drawn only while the link is not OK.
+    connectionOk: connection === "online" || connection === "recovered",
     locale: intlLocale(),
     enabledModules: modules.filter((module) => module.enabled).map((module) => module.id),
+    // Enabled modules whose setup is not done: the warning dot on their tab (old `.dot`).
+    pendingModules: modules
+      .filter((module) => module.enabled && module.setupState !== "ready")
+      .map((module) => module.id),
     isSwitching: switchProfile.isPending,
     onPrivacyChanged: setIncognito,
-    onLanguagePicked: async (value: Lang) => {
-      const result = await durable.run("language", savePreferences, { languagePin: value });
-      if (result.kind === "completed") setLanguage(value);
-      else setToast(commandFailure(result, S.refused));
-    },
     onProfilePicked: (next: string) => {
       const chosen = profiles.find((profile) => profile.vault === next);
       if (chosen === undefined) return;

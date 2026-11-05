@@ -6,9 +6,11 @@ import { decodeValue } from "@cashu/host-protocol/store";
 import { connectHost } from "@cashu/node-host";
 import { z } from "zod";
 import {
+  currentVault,
   dashboardWindow,
   expect,
   launchDesktop,
+  pickProfile,
   rewriteHash,
   setPrivacy,
   settleModalHistory,
@@ -98,12 +100,8 @@ test("native Research reads generated events, opens a note, and separates vault 
     app = await launchDesktop({ dataDir });
     const { page } = await dashboardWindow(app);
     await setPrivacy(page, false);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
-    const selectedVault = await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .inputValue();
+    await pickProfile(page, "Demo Anna");
+    const selectedVault = currentVault(page);
     await rewriteHash(page, /\/overview(?:\?.*)?$/u, "/investments.research");
     const research = page.getByTestId("native-research");
     await expect(research).toBeVisible();
@@ -226,9 +224,7 @@ test("native Research reads generated events, opens a note, and separates vault 
     await expect(research.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
     await expect(research.getByText("Ukryte w trybie prywatności", { exact: true })).toBeVisible();
     await setPrivacy(page, false);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Piotr" });
+    await pickProfile(page, "Demo Piotr");
     await expect(page.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
   } finally {
     if (app) {

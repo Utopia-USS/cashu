@@ -5,7 +5,16 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { dashboardWindow, expect, test, until } from "../electron-test.ts";
+import {
+  currentVault,
+  dashboardWindow,
+  expect,
+  openProfileMenuItem,
+  profileCount,
+  profilePill,
+  test,
+  until,
+} from "../electron-test.ts";
 import { nativeCreationHarness, type TestHost } from "../native-creation-support.ts";
 
 test.use({ trace: "off", screenshot: "off", video: "off" });
@@ -77,10 +86,9 @@ test("first native Create, explicit Add, authenticated handover, and read-only r
     await createThroughWizard(page, visualRoot);
     host = await restartHostAfterHandover(host, deniedMarker, 0, () => harness.startHost());
     await skipUnavailableWorkspace(page);
-    await expect(page.getByRole("combobox", { name: "Profil", exact: true })).toBeVisible();
-    const picker = page.getByRole("combobox", { name: "Profil", exact: true });
-    await expect(picker.locator("option")).toHaveCount(1);
-    const firstVault = await picker.inputValue();
+    await expect(profilePill(page)).toBeVisible();
+    await expect.poll(() => profileCount(page)).toBe(1);
+    const firstVault = currentVault(page);
     expect(firstVault).toMatch(/^[0-9a-f]{32}$/u);
     await expect(page).toHaveURL(/\/overview/u);
     expect(page.url()).toContain(firstVault);
@@ -98,14 +106,14 @@ test("first native Create, explicit Add, authenticated handover, and read-only r
     expect(firstStatus.kind).toBe("ready");
 
     // A completed anchor may coexist with a fresh explicit Add, even with the same name and slug.
-    await page.getByRole("button", { name: "Dodaj profil" }).click();
+    await openProfileMenuItem(page, "Nowy profil…");
     await createThroughWizard(page);
     host = await restartHostAfterHandover(host, deniedMarker, firstDenials, () =>
       harness.startHost(),
     );
     await skipUnavailableWorkspace(page);
-    await expect(picker.locator("option")).toHaveCount(2);
-    const secondVault = await picker.inputValue();
+    await expect.poll(() => profileCount(page)).toBe(2);
+    const secondVault = currentVault(page);
     expect(secondVault).toMatch(/^[0-9a-f]{32}$/u);
     expect(secondVault).not.toBe(firstVault);
     await expect(page).toHaveURL(/\/overview/u);
@@ -124,9 +132,7 @@ test("first native Create, explicit Add, authenticated handover, and read-only r
     await app.close();
     const restarted = await harness.launchDesktop();
     page = (await dashboardWindow(restarted)).page;
-    await expect(
-      page.getByRole("combobox", { name: "Profil", exact: true }).locator("option"),
-    ).toHaveCount(2);
+    await expect.poll(() => profileCount(page)).toBe(2);
     expect(
       await page.evaluate(() => document.querySelector('[data-testid="recovery-phrase"]') === null),
     ).toBe(true);

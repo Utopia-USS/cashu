@@ -10,6 +10,7 @@ const profile = {
 };
 const state: ShellViewProps["state"] = {
   enabledModules: ["budget", "assets"],
+  pendingModules: ["assets"],
   locale: "en-US",
   profile,
   profiles: [
@@ -20,10 +21,9 @@ const state: ShellViewProps["state"] = {
   privacy: false,
   toast: null,
   connectionText: "Connected.",
-  language: "en",
+  connectionOk: true,
   isSwitching: false,
   onPrivacyChanged: () => {},
-  onLanguagePicked: async () => {},
   onProfilePicked: async () => {},
   onRouteVaultPicked: async () => {},
   onToastDismissed: () => {},
@@ -42,6 +42,12 @@ export const Ready = {};
 export const NoProfile = { args: { state: { ...state, profile: null } } };
 export const Privacy = { args: { state: { ...state, privacy: true } } };
 export const Reconnecting = {
-  args: { state: { ...state, connectionText: "Reconnecting; displayed data may be stale." } },
+  args: {
+    state: {
+      ...state,
+      connectionText: "Reconnecting; displayed data may be stale.",
+      connectionOk: false,
+    },
+  },
 };
 export const Toast = { args: { state: { ...state, toast: "Profile changed." } } };

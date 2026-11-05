@@ -29,6 +29,7 @@ export type {
 } from "./charts/types.js";
 export { Button } from "./controls/Button.js";
 export type { ButtonProps } from "./controls/Button.types.js";
+export { IconToggle, type IconToggleProps } from "./controls/IconToggle.js";
 export { Seg, type SegProps } from "./controls/Seg.js";
 export { Select } from "./controls/Select.js";
 export type { SelectOption, SelectProps } from "./controls/Select.types.js";
@@ -64,6 +65,14 @@ export { createVirtualRows, type VirtualRowsOptions } from "./lists/virtualRows.
 export { Drawer, type DrawerProps } from "./overlays/Drawer.js";
 export { Modal } from "./overlays/Modal.js";
 export type { ModalProps } from "./overlays/Modal.types.js";
+export { AppHeader, type AppHeaderProps } from "./shell/AppHeader.js";
+export {
+  ProfilePill,
+  type ProfilePillAction,
+  type ProfilePillProfile,
+  type ProfilePillProps,
+} from "./shell/ProfilePill.js";
+export { TabBar, type TabBarProps, type TabBarTab } from "./shell/TabBar.js";
 export { Card } from "./surfaces/Card.js";
 export type { CardProps } from "./surfaces/Card.types.js";
 export { Fact, type FactProps, Facts, type FactsProps } from "./surfaces/Fact.js";

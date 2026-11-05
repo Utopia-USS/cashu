@@ -11,6 +11,8 @@ import {
   expect,
   hostPid,
   launchEnv,
+  pickProfile,
+  rewriteHash,
   setPrivacy,
   stopHost,
   test,
@@ -79,9 +81,7 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     const expected = demoExpectations();
     await expect(page.getByRole("heading", { name: "Przegląd", exact: true })).toBeVisible();
     await setPrivacy(page, false);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await expect(page).toHaveURL(/\/overview/u);
     const annaWorth = rendered(expected.anna.net, expected.anna.currency);
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
@@ -109,16 +109,13 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
         await expect(accountsWidget).toContainText(rendered(account.amount, account.currency));
     await accountsWidget.getByRole("button").last().click();
     await expect(page.getByRole("dialog", { name: "Portfel gotówkowy" })).toBeVisible();
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo" });
+    await pickProfile(page, "Demo");
     await expect(page.getByRole("dialog", { name: "Portfel gotówkowy" })).toHaveCount(0);
+    // Przegląd only: Ustawienia moved into the profile menu (Python app layout).
     await expect(page.getByRole("navigation", { name: "Moduły" }).getByRole("button")).toHaveCount(
-      2,
+      1,
     );
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await expect(page.getByRole("dialog", { name: "Portfel gotówkowy" })).toHaveCount(0);
 
     const assets = expected.anna.assets;
@@ -141,16 +138,12 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
       await expect(page).toHaveURL(/currency=EUR/u);
       await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     }
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Piotr" });
+    await pickProfile(page, "Demo Piotr");
     await expect(page.getByTestId("net-worth")).toHaveText(
       rendered(expected.piotr.net, expected.piotr.currency),
     );
     expect(expected.piotr.net).not.toBe(expected.anna.net);
-    await page
-      .getByRole("combobox", { name: "Profil", exact: true })
-      .selectOption({ label: "Demo Anna" });
+    await pickProfile(page, "Demo Anna");
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     const chartControl = page.getByRole("group", { name: /^Historia wartości netto/u });
     await chartControl.focus();
@@ -205,12 +198,19 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     await privacy.click();
     await expect(privacy).not.toBeChecked();
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
-    await page.getByRole("combobox", { name: "Język" }).selectOption("en");
+    // The language lives in Settings, as in the Python app.
+    await rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
+    await page.getByRole("combobox", { name: "Język", exact: true }).selectOption("en");
+    await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("en");
+    await rewriteHash(page, /\/settings(?=\?|$)/u, "/overview");
     await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
     await expect(page.getByTestId("net-worth")).toHaveText(
       rendered(expected.anna.net, expected.anna.currency, "en-US"),
     );
-    await page.getByRole("combobox", { name: "Language" }).selectOption("pl");
+    await rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
+    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("pl");
+    await expect(page.getByRole("combobox", { name: "Język", exact: true })).toHaveValue("pl");
+    await rewriteHash(page, /\/settings(?=\?|$)/u, "/overview");
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     const editIndex = assets.findIndex(
       (asset) =>
