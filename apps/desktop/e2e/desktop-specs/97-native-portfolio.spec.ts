@@ -13,7 +13,7 @@ import {
 } from "../electron-test.ts";
 import { restoreNativeBaseline } from "../native-baseline.ts";
 
-test("native Portfolio uses generated-source valuations, owner drawers and privacy lifetimes", async () => {
+test("investments Home shows generated-source valuations, its filters, the Import drawer and the asset page transaction flow", async () => {
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
@@ -52,41 +52,69 @@ test("native Portfolio uses generated-source valuations, owner drawers and priva
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Inwestycje", exact: true })
       .click();
+    // The investments Home (ab24ab6 v2/Home.tsx): head, hero, the split of widgets and rail.
     const portfolio = page.getByTestId("native-portfolio");
     await expect(portfolio).toBeVisible();
-    const valueCard = portfolio
-      .getByRole("heading", { name: "Wartość", exact: true })
-      .locator("xpath=..");
-    await expect(valueCard).toBeVisible();
-    const total = rendered(expected.total, expected.currency);
-    await expect(valueCard).toContainText(total);
+    await expect(portfolio.getByRole("heading", { name: "Inwestycje", exact: true })).toBeVisible();
+    const hero = portfolio.getByRole("region", { name: "Wartość portfela", exact: true });
+    await expect(hero).toBeVisible();
+    // The Python app's money format groups thousands always (ui-logic GROUP: "6 372,48 zł").
+    const total = new Intl.NumberFormat("pl-PL", {
+      style: "currency",
+      currency: expected.currency,
+      useGrouping: "always",
+    } as Intl.NumberFormatOptions).format(Number(expected.total));
+    await expect(hero).toContainText(total);
+    await expect(
+      portfolio.getByRole("heading", { name: "Wartość vs benchmark", exact: true }),
+    ).toBeVisible();
+    await expect(portfolio.getByRole("region", { name: "Sygnały", exact: true })).toBeVisible();
+    await expect(portfolio.getByRole("region", { name: "Alerty", exact: true })).toBeVisible();
     const label = expected.firstLabel;
-    await expect(portfolio.getByRole("button", { name: label, exact: true })).toBeVisible();
+    // The Aktywa table names the instrument and shows its symbol under it (old `.il`).
+    const assetRow = portfolio
+      .getByRole("region", { name: "Aktywa", exact: true })
+      .getByRole("row")
+      .filter({ hasText: label });
+    const asset = assetRow.getByRole("button").first();
+    await expect(asset).toBeVisible();
     await page.screenshot({ path: join(dataDir, "native-portfolio.png"), fullPage: true });
 
-    const accounts = portfolio.getByRole("combobox", { name: "Rachunek", exact: true });
-    await accounts.selectOption({ index: 1 });
-    await expect(page).toHaveURL(/account=/u);
-    await expect(
-      portfolio.getByRole("heading", { name: "Wartość", exact: true }).first(),
-    ).toBeVisible();
-    await accounts.selectOption("");
-    await expect(portfolio.getByRole("button", { name: label, exact: true })).toBeVisible();
+    // The account filter (head Seg, more than one account): the route keeps it, "Wszystkie" clears it.
+    const accounts = portfolio.getByRole("group", { name: "Rachunek", exact: true });
+    if ((await accounts.count()) > 0) {
+      await accounts.getByRole("button").nth(1).click();
+      await expect(page).toHaveURL(/account=/u);
+      await expect(hero).toBeVisible();
+      await accounts.getByRole("button", { name: "Wszystkie", exact: true }).click();
+      await expect(page).not.toHaveURL(/account=/u);
+      await expect(asset).toBeVisible();
+    }
 
-    await portfolio.getByRole("button", { name: label, exact: true }).click();
-    const details = page.getByRole("dialog", { name: "Szczegóły", exact: true });
-    await expect(details.getByRole("heading", { name: label, exact: true })).toBeVisible();
-    await expect(details.getByRole("table", { name: "Transakcje", exact: true })).toBeVisible();
-    await page.screenshot({ path: join(dataDir, "native-asset.png"), fullPage: true });
-    await details.getByRole("button", { name: "Otwórz stronę instrumentu", exact: true }).click();
-    await expect(
-      page.getByTestId("native-asset-page").getByRole("heading", { name: label, exact: true }),
-    ).toBeVisible();
+    // The value chart range (widget Seg) goes into the route.
+    await portfolio
+      .getByRole("group", { name: "Zakres", exact: true })
+      .getByRole("button", { name: "3M", exact: true })
+      .click();
+    await expect(page).toHaveURL(/period=3m/u);
+
+    // The Import drawer opens from the head and closes again.
+    await portfolio.getByRole("button", { name: "Import", exact: true }).click();
+    const importer = page.getByRole("dialog", { name: "Import transakcji", exact: true });
+    await expect(importer).toBeVisible();
+    await page.screenshot({ path: join(dataDir, "native-import.png"), fullPage: true });
+    await importer.getByRole("button", { name: "Zamknij", exact: true }).click();
+    await expect(importer).toHaveCount(0);
+
+    // An asset row opens the instrument page; its transaction flow writes an owner transaction.
+    await asset.click();
+    const assetPage = page.getByTestId("native-asset-page");
+    await expect(assetPage.getByRole("heading", { name: label, exact: true })).toBeVisible();
     await page.screenshot({ path: join(dataDir, "native-asset-page.png"), fullPage: true });
-    await page.goBack();
-    await portfolio.getByRole("button", { name: label, exact: true }).click();
-    await expect(details.getByRole("heading", { name: label, exact: true })).toBeVisible();
-    await details.getByRole("button", { name: "Dodaj transakcję", exact: true }).click();
+    const table = assetPage.getByRole("table", { name: "Transakcje", exact: true });
+    await expect(table).toBeVisible();
+    const rowsBefore = Number(await table.getAttribute("aria-rowcount"));
+    await assetPage.getByRole("button", { name: "Dodaj transakcję", exact: true }).click();
     const transaction = page.getByRole("dialog", { name: "Dodaj transakcję", exact: true });
     const type = transaction.getByRole("combobox", { name: "Typ transakcji", exact: true });
     await type.selectOption("fx_conversion");
@@ -95,50 +123,37 @@ test("native Portfolio uses generated-source valuations, owner drawers and priva
     await type.selectOption("buy");
     await transaction.getByRole("textbox", { name: "Ilość", exact: true }).fill("1,25");
     await transaction.getByRole("button", { name: "Anuluj", exact: true }).click();
-    await details.getByRole("button", { name: "Dodaj transakcję", exact: true }).click();
+    await assetPage.getByRole("button", { name: "Dodaj transakcję", exact: true }).click();
     await expect(transaction.getByRole("textbox", { name: "Ilość", exact: true })).toHaveValue("");
-    await type.selectOption("deposit");
+    // An owner buy of this instrument.
+    await type.selectOption("buy");
+    await transaction.getByRole("textbox", { name: "Ilość", exact: true }).fill("1,25");
+    await transaction.getByRole("textbox", { name: "Cena", exact: true }).fill("10");
     await transaction.getByRole("textbox", { name: "Waluta", exact: true }).fill("PLN");
     await transaction.getByRole("textbox", { name: "Waluta gotówki", exact: true }).fill("PLN");
     await transaction
       .getByRole("textbox", { name: "Zmiana gotówki ze znakiem", exact: true })
-      .fill("1,25");
+      .fill("-12,5");
     await transaction
       .getByRole("textbox", { name: "Notatka", exact: true })
       .fill("Synthetic native owner write");
     await transaction.getByRole("button", { name: "Zapisz", exact: true }).click();
     await expect(transaction).not.toBeVisible();
-    await details.getByRole("button", { name: "Zamknij", exact: true }).click();
+    // The instrument's transactions table (no note column) gains the owner's buy.
+    await expect(table).toHaveAttribute("aria-rowcount", String(rowsBefore + 1));
+    await expect(
+      table.getByRole("row").filter({ hasText: rendered("-12.5", "PLN") }),
+    ).not.toHaveCount(0);
+    await page.goBack();
+    await expect(hero).toBeVisible();
 
-    await portfolio.getByRole("button", { name: "Transakcje", exact: true }).click();
-    const history = page.getByRole("dialog", { name: "Transakcje", exact: true });
-    const table = history.getByRole("table", { name: "Transakcje", exact: true });
-    await expect(table).toBeVisible();
-    const saved = table.getByRole("row").filter({ hasText: "Synthetic native owner write" });
-    await expect(saved).toBeVisible();
-    await expect(saved).toContainText(rendered("1.25", "PLN"));
-    const count = Number(await table.getAttribute("aria-rowcount"));
-    expect(count).toBeGreaterThan(1);
-    if (count > 51) {
-      await table.locator("xpath=..").evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-      });
-      await expect(table.getByRole("row").last()).toHaveAttribute("aria-rowindex", String(count));
-      expect(await table.getByRole("row").count()).toBeLessThan(count);
-    }
-    await history.getByRole("button", { name: "Anuluj", exact: true }).click();
-    await portfolio.getByRole("button", { name: "Importuj", exact: true }).click();
-    const importer = page.getByRole("dialog", { name: "Importuj", exact: true });
-    await expect(importer.getByRole("button", { name: "Wybierz", exact: true })).toBeDisabled();
-    await importer.getByRole("button", { name: "Anuluj", exact: true }).click();
-
+    // Privacy hides the amounts of the Home and brings them back (the buy moved the value).
+    const value = /\d[\d\u00a0 ]*,\d{2}\u00a0zł/u.exec((await hero.textContent()) ?? "")?.[0];
+    expect(value).toBeDefined();
     await setPrivacy(page, true);
-    await expect(portfolio.getByRole("button", { name: label, exact: true })).toHaveCount(0);
-    await expect(portfolio.getByText(total, { exact: true })).toHaveCount(0);
+    await expect(hero).not.toContainText(value ?? "");
     await setPrivacy(page, false);
-    await expect(portfolio.getByRole("button", { name: label, exact: true })).toBeVisible();
-    await portfolio.getByRole("combobox", { name: "Okres", exact: true }).selectOption("3m");
-    await expect(page).toHaveURL(/period=3m/u);
+    await expect(hero).toContainText(value ?? "");
     await page
       .getByRole("combobox", { name: "Profil", exact: true })
       .selectOption({ label: "Demo Piotr" });
