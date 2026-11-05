@@ -22,8 +22,10 @@ const accCols = (wide: boolean) =>
   wide
     ? "grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(15)_--spacing(24)_--spacing(30)] max-narrow:grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(13)_--spacing(21.5)]"
     : "grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(13)_--spacing(21)_--spacing(21)]";
-const arow = "grid items-center gap-1.75 py-1 text-xs-plus tabular-nums";
-const arowHead = "pb-0.5 text-3xs-plus uppercase tracking-label text-fg-muted";
+const arowBase = "grid items-center gap-1.75 pt-1 tabular-nums";
+// `.arow` 12.5px rows; `.arow.head` 10.5px muted uppercase .05em with a 2px bottom padding.
+const arow = `${arowBase} pb-1 text-xs-plus`;
+const arowHead = `${arowBase} pb-0.5 text-3xs-plus uppercase tracking-label text-fg-muted`;
 const num = "whitespace-nowrap text-right";
 const name = "overflow-hidden text-ellipsis whitespace-nowrap";
 
@@ -94,7 +96,7 @@ export function AllocationWidgetView({
         <div className={allocGrid(wide)}>
           <Donut size={wide ? 128 : 112} {...body.donut} />
           <div>
-            <div className={`${arow} ${arowHead} ${accCols(wide)}`}>
+            <div className={`${arowHead} ${accCols(wide)}`}>
               <span />
               <span>{body.head.name}</span>
               <span className={num}>{body.head.now}</span>
@@ -131,7 +133,7 @@ export function AllocationWidgetView({
         <div className={allocGrid(wide)}>
           <Donut size={wide ? 128 : 112} {...body.donut} />
           <div>
-            <div className={`${arow} ${arowHead} ${rowCols(wide)}`}>
+            <div className={`${arowHead} ${rowCols(wide)}`}>
               <span />
               <span>{body.head.name}</span>
               <span className={num}>{body.head.now}</span>
