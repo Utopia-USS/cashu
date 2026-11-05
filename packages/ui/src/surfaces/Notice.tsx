@@ -4,8 +4,9 @@ const notices = {
   neutral: "border-border bg-chip",
   info: "border-info bg-info-bg",
   warning: "border-warning bg-warning-bg",
-  negative: "border-negative bg-negative-bg",
-  positive: "border-positive bg-positive-bg",
+  // old `.notice.neg` / `.notice.pos` also take the global `.neg` / `.pos` text colour
+  negative: "border-negative bg-negative-bg text-negative",
+  positive: "border-positive bg-positive-bg text-positive",
 } as const;
 
 /** Soft message box (old `.notice`, softer than `.err`). `className` is layout only (margin). */

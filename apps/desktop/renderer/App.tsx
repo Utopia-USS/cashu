@@ -56,17 +56,16 @@ function AdditionalCreationOverlay({
     previousVault.current = vault;
   }, [vault, onVaultChanged]);
   useEffect(() => () => onLifetimeEnded(), [onLifetimeEnded]);
+  // The wizard brings its own overlay (WizardFrame `overlay`: scrim over the dimmed app, old `.overlay`).
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-surface">
-      <CreationScreen
-        key={`additional:${vault}:${privacy}`}
-        mode="additional"
-        bridge={bridge}
-        onReady={(locator) => onReady(locator, vault)}
-        onComplete={onComplete}
-        onClosed={onClosed}
-      />
-    </div>
+    <CreationScreen
+      key={`additional:${vault}:${privacy}`}
+      mode="additional"
+      bridge={bridge}
+      onReady={(locator) => onReady(locator, vault)}
+      onComplete={onComplete}
+      onClosed={onClosed}
+    />
   );
 }
 

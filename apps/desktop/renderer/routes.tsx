@@ -188,17 +188,19 @@ function ShellRoute() {
         activeModule={
           pathname.endsWith("/settings")
             ? "settings"
-            : pathname.includes("/budget/")
-              ? `budget.${pathname.split("/budget/")[1]?.split("/")[0] ?? "expenses"}`
-              : pathname.endsWith("/setup/budget")
-                ? "budget.expenses"
-                : pathname.endsWith("/loans.list") || pathname.endsWith("/setup/loans")
+            : /\/setup\/budget(\/cli)?$/u.test(pathname)
+              ? "budget.expenses"
+              : pathname.includes("/budget/")
+                ? `budget.${pathname.split("/budget/")[1]?.split("/")[0] ?? "expenses"}`
+                : pathname.endsWith("/loans.list") || /\/setup\/loans(\/cli)?$/u.test(pathname)
                   ? "loans"
-                  : pathname.endsWith("/investments.strategies")
-                    ? "investments.strategies"
-                    : pathname.includes("/investments.") || pathname.includes("/assets/")
-                      ? "investments"
-                      : "overview"
+                  : /\/setup\/investments(\/cli)?$/u.test(pathname)
+                    ? "investments"
+                    : pathname.endsWith("/investments.strategies")
+                      ? "investments.strategies"
+                      : pathname.includes("/investments.") || pathname.includes("/assets/")
+                        ? "investments"
+                        : "overview"
         }
         narrow={assetPage || pageNarrow}
         onModuleOpened={openModule}
