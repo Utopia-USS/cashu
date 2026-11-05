@@ -25,7 +25,6 @@ import {
   CARD_ORDER,
   type CardId,
   type DecideItem,
-  type DecideRest,
   decideItems,
   decideSubjects,
   deckCards,
@@ -205,7 +204,7 @@ export function useReviewDeckData({
   };
 }
 export type ReviewDeckData = ReturnType<typeof useReviewDeckData>;
-export type { DecideItem, DecideRest };
+export type { DecideItem };
 
 /** The deck's writes (ReviewDeck.tsx decide / Home.tsx markDone + undo) on the native commands. Each answers null
  * when it went through, else the old toast's message; the live queries carry the readback. */
@@ -221,6 +220,9 @@ export function useReviewDeckCommands() {
   const notes = useResearchNoteActions();
 
   const failedWith = (message: string) => S.decisionFailed(message);
+  /** Every signal of the item closed since the deck was built (the old 409 retry found none open): nothing to write. */
+  const closed = (r: { kind: string; reason?: string }) =>
+    r.kind === "refused" && (r.reason === "no_open_signal" || r.reason === "not_open");
   const gids = (ids: readonly number[]) =>
     ids.flatMap((id) => {
       const gid = gidOf(id);
@@ -236,6 +238,8 @@ export function useReviewDeckCommands() {
       const until = addDays(today, 7);
       for (const signal of ids) {
         const r = await snooze.run({ signal, until });
+        // A signal closed since the deck was built (the old 409): the write goes on with the open ones.
+        if (r.status === "refused" && r.reason === "not_open") continue;
         if (r.status !== "completed") return failedWith(label(`error.${r.reason}`) ?? r.reason);
       }
       return null;
@@ -256,7 +260,7 @@ export function useReviewDeckCommands() {
         action: decision,
         reason: S.decisionReason,
       });
-      return r.kind === "completed" ? null : failedWith(commandFailure(r));
+      return r.kind === "completed" || closed(r) ? null : failedWith(commandFailure(r));
     }
     const first = ids[0];
     if (first === undefined) return null;
@@ -265,7 +269,7 @@ export function useReviewDeckCommands() {
       action: decision,
       reason: S.decisionReason,
     });
-    return r.kind === "completed" ? null : failedWith(commandFailure(r));
+    return r.kind === "completed" || closed(r) ? null : failedWith(commandFailure(r));
   };
 
   /** "Zamknij przegląd" (Home.tsx markDone): the review with the deck's cards, agenda, decisions and skipped
@@ -308,6 +312,9 @@ export function useReviewDeckCommands() {
     /** The Okazje card's Obserwuj / Nie interesuje mnie (research/data.ts useResearchActions). */
     watch: notes.watch,
     dismiss: notes.dismiss,
+    /** The undo of watch / dismiss from the toast. */
+    unwatch: notes.unwatch,
+    restore: notes.restore,
     noteBusy: notes.busy,
     busy:
       snooze.isPending ||
@@ -318,4 +325,3 @@ export function useReviewDeckCommands() {
       undo.isPending,
   };
 }
-export type ReviewDeckCommands = ReturnType<typeof useReviewDeckCommands>;
