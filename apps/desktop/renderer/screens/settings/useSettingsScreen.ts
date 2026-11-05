@@ -70,6 +70,12 @@ interface WorkspaceSummary {
   readonly routinePermissions?: boolean;
   readonly mcpCommandStale?: boolean;
 }
+/** One workspace write (see `saveWorkspace`). */
+export interface WorkspaceRun {
+  readonly path?: string | null;
+  readonly force?: boolean;
+  readonly routinePermissions?: boolean;
+}
 type ConnectorSummary = ConnectorSettingsSnapshot["connectors"][number];
 type ConnectorDraft = Readonly<Record<string, string | boolean>>;
 interface ScopedConnectorState {
@@ -381,7 +387,6 @@ export function useSettingsScreen(
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspacePath, setWorkspacePath] = useState("");
   const [editingPath, setEditingPath] = useState(false);
-  const [force, setForce] = useState(false);
   const [routinePermissions, setRoutinePermissions] = useState(false);
   const workspaceRun = useRef(0);
   const workspaceOperation = useRef<"idle" | "read" | "apply">("idle");
@@ -484,9 +489,14 @@ export function useSettingsScreen(
       }
     }
   };
-  const saveWorkspace = async () => {
+  // One click applies one change, as in the Python app's workspace panel: `path` null = keep the folder
+  // (Update, Replace changed, the routine switch), a string = create there / move; omitted = the edited path
+  // while the folder field is open. `force` (replace locally changed files) is off unless asked for;
+  // `routinePermissions` defaults to its draft.
+  const saveWorkspace = async (run: WorkspaceRun = {}) => {
     if (workspaceOperation.current !== "idle") return;
-    if (editingPath && workspace.configured && !workspacePath.trim()) {
+    const path = run.path === undefined ? (editingPath ? workspacePath : null) : run.path;
+    if (path !== null && workspace.configured && !path.trim()) {
       setNotice(T.workspacePathRequired);
       return;
     }
@@ -494,9 +504,9 @@ export function useSettingsScreen(
     setWorkspaceBusy(true);
     try {
       const result = await apply.run({
-        ...(editingPath ? { path: workspacePath } : {}),
-        force,
-        routinePermissions,
+        ...(path !== null ? { path } : {}),
+        force: run.force ?? false,
+        routinePermissions: run.routinePermissions ?? routinePermissions,
       });
       if (result.status !== "completed") {
         setNotice(result.status === "outcome_unknown" ? T.workspaceUnknown : T.saveFailed);
@@ -646,7 +656,6 @@ export function useSettingsScreen(
     workspaceBusy,
     workspacePath,
     editingPath,
-    force,
     routinePermissions,
     setWorkspacePath: (value: string) => {
       workspacePathDirty.current = true;
@@ -659,7 +668,6 @@ export function useSettingsScreen(
         hydrateWorkspaceDrafts(workspace);
       }
     },
-    setForce,
     setRoutinePermissions: (value: boolean) => {
       routinePermissionsDirty.current = true;
       setRoutinePermissions(value);

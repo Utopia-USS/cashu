@@ -315,15 +315,36 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     await openSettings();
     await expect(profile).toBeVisible();
     await expect(agent.getByText("Brak oczekujących propozycji.")).toBeVisible();
-    const language = page.getByRole("combobox", { name: "Język", exact: true });
-    await language.selectOption("en");
-    await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("en");
+    await page
+      .getByRole("group", { name: "Język", exact: true })
+      .getByRole("button", { name: "English", exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("group", { name: "Language", exact: true })
+        .getByRole("button", { name: "English", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await page.reload();
-    await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("en");
-    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("pl");
-    await expect(page.getByRole("combobox", { name: "Język", exact: true })).toHaveValue("pl");
+    await expect(
+      page
+        .getByRole("group", { name: "Language", exact: true })
+        .getByRole("button", { name: "English", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page
+      .getByRole("group", { name: "Language", exact: true })
+      .getByRole("button", { name: "Polski", exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("group", { name: "Język", exact: true })
+        .getByRole("button", { name: "Polski", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await page.reload();
-    await expect(page.getByRole("combobox", { name: "Język", exact: true })).toHaveValue("pl");
+    await expect(
+      page
+        .getByRole("group", { name: "Język", exact: true })
+        .getByRole("button", { name: "Polski", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
   } finally {
     if (app) {
       await app.close().catch(() => {});

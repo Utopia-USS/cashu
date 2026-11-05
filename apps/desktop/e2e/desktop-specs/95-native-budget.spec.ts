@@ -136,8 +136,15 @@ test("native budget tabs use the real generated demo vault, update categories an
     });
     // The language lives in Settings, as in the Python app.
     await rewriteHash(page, /\/budget\/[^?]*(?=\?|$)/u, "/settings");
-    await page.getByRole("combobox", { name: "Język", exact: true }).selectOption("en");
-    await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("en");
+    await page
+      .getByRole("group", { name: "Język", exact: true })
+      .getByRole("button", { name: "English", exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("group", { name: "Language", exact: true })
+        .getByRole("button", { name: "English", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await page
       .getByRole("navigation", { name: "Modules" })
       .getByRole("button", { name: "Budget", exact: true })

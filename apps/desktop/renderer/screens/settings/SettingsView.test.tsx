@@ -36,10 +36,8 @@ it("offers a pending approval cancellation without showing enabled", async () =>
       item.textContent?.includes("Cancel pending approval"),
     );
     expect(cancel?.disabled).toBe(false);
-    const label = [...container.querySelectorAll("label")].find((item) =>
-      item.textContent?.includes("Enable daily start"),
-    );
-    expect(label?.querySelector("input")?.checked).toBe(false);
+    const toggle = container.querySelector('[role="switch"][aria-label="Enable daily start"]');
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -60,7 +58,6 @@ it.each(["pl", "en"] as const)(
     try {
       await act(async () => root.render(<Ready.render />));
       expect(container.textContent).toContain("synthetic_tool");
-      expect(container.textContent).toContain("Synthetic Household");
       expect(container.textContent).toContain("08:30");
       expect(container.textContent).toContain(
         language === "pl" ? "Włącz codzienne uruchamianie" : "Enable daily start",
@@ -79,12 +76,11 @@ it("disables registration when no OS service provider is bound", async () => {
   const root = createRoot(container);
   try {
     await act(async () => root.render(<UnboundProviders.render />));
-    const label = [...container.querySelectorAll("label")].find((item) =>
-      item.textContent?.includes("Enable daily start"),
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '[role="switch"][aria-label="Enable daily start"]',
     );
-    const toggle = label?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
     expect(container.textContent).toContain("Unavailable in this environment");
-    expect(toggle?.checked).toBe(false);
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
     expect(toggle?.disabled).toBe(true);
   } finally {
     await act(async () => root.unmount());

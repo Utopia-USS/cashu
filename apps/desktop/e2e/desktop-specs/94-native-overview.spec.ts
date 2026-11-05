@@ -200,16 +200,30 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     // The language lives in Settings, as in the Python app.
     await rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
-    await page.getByRole("combobox", { name: "Język", exact: true }).selectOption("en");
-    await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("en");
+    await page
+      .getByRole("group", { name: "Język", exact: true })
+      .getByRole("button", { name: "English", exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("group", { name: "Language", exact: true })
+        .getByRole("button", { name: "English", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await rewriteHash(page, /\/settings(?=\?|$)/u, "/overview");
     await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
     await expect(page.getByTestId("net-worth")).toHaveText(
       rendered(expected.anna.net, expected.anna.currency, "en-US"),
     );
     await rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
-    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("pl");
-    await expect(page.getByRole("combobox", { name: "Język", exact: true })).toHaveValue("pl");
+    await page
+      .getByRole("group", { name: "Language", exact: true })
+      .getByRole("button", { name: "Polski", exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("group", { name: "Język", exact: true })
+        .getByRole("button", { name: "Polski", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await rewriteHash(page, /\/settings(?=\?|$)/u, "/overview");
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     const editIndex = assets.findIndex(

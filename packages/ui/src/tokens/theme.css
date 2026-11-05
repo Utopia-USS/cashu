@@ -186,11 +186,14 @@
 
   /* Breakpoints of the Python app (max-width 1180 / 900 / 860 / 760 / 480): `max-wide:` = width <= 1180px,
      `max-split:` <= 900px, `max-story:` <= 860px (the research strip, story.css), `max-narrow:` <= 760px,
-     `max-phone:` <= 480px; `min-split:` >= 901px. */
+     `max-phone:` <= 480px; `min-split:` >= 901px. Settings: `max-settings:` <= 1000px (the section nav goes
+     above the cards), `max-kv:` <= 640px (key-value rows stack). */
   --breakpoint-phone: 481px;
+  --breakpoint-kv: 641px;
   --breakpoint-narrow: 761px;
   --breakpoint-story: 861px;
   --breakpoint-split: 901px;
+  --breakpoint-settings: 1001px;
   --breakpoint-wide: 1181px;
 
   /* Container sizes besides Tailwind's 3xs..7xl (`max-w-*` and the `@max-*` / `@min-*` container
