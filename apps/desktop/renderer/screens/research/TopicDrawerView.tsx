@@ -235,54 +235,60 @@ export function TopicDrawerView({ m, a }: { m: TopicDrawerModel; a: TopicDrawerA
       onCrumb={a.onCrumb}
       onClose={a.onClose}
     >
-      <div
-        data-topic-drawer={m.key}
-        className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] items-start gap-3.5 max-narrow:grid-cols-1"
-      >
-        <div className="grid min-w-0 gap-3.5">
-          {left.kind === "regime" ? (
-            <RegimeState r={left.regime} />
-          ) : (
-            <>
-              <ThesisWidget m={left.thesis} topic={m.key} a={a} />
-              <Widget title={S.instruments} id="topic-members" count={left.members.count} tight>
-                {!left.members.items.length ? (
-                  <div className={empty}>{S.noInstruments}</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {left.members.items.map((x) => (
-                      <div key={x.symbol} data-member={x.symbol}>
-                        <InstLabel
-                          density="compact"
-                          {...x.tile}
-                          name={x.name}
-                          onOpen={x.onOpen}
-                          sub={x.sub}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Widget>
-            </>
-          )}
+      {m.hidden ? (
+        <div data-topic-drawer={m.key} className="text-sm text-fg-muted">
+          {m.hidden}
         </div>
-        <Widget title={S.notes} id="topic-notes" count={m.notes.count} tight>
-          {!m.notes.rows.length ? (
-            <div className={empty}>{S.noNotes}</div>
-          ) : (
-            m.notes.rows.map((n) => (
-              <NoteRowItem
-                key={n.id}
-                n={n}
-                onToggle={n.onToggle}
-                onDismiss={n.onDismiss}
-                onRestore={n.onRestore}
-              />
-            ))
-          )}
-        </Widget>
-      </div>
+      ) : (
+        <div
+          data-topic-drawer={m.key}
+          className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] items-start gap-3.5 max-narrow:grid-cols-1"
+        >
+          <div className="grid min-w-0 gap-3.5">
+            {left.kind === "regime" ? (
+              <RegimeState r={left.regime} />
+            ) : (
+              <>
+                <ThesisWidget m={left.thesis} topic={m.key} a={a} />
+                <Widget title={S.instruments} id="topic-members" count={left.members.count} tight>
+                  {!left.members.items.length ? (
+                    <div className={empty}>{S.noInstruments}</div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {left.members.items.map((x) => (
+                        <div key={x.symbol} data-member={x.symbol}>
+                          <InstLabel
+                            density="compact"
+                            {...x.tile}
+                            name={x.name}
+                            onOpen={x.onOpen}
+                            sub={x.sub}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Widget>
+              </>
+            )}
+          </div>
+          <Widget title={S.notes} id="topic-notes" count={m.notes.count} tight>
+            {!m.notes.rows.length ? (
+              <div className={empty}>{S.noNotes}</div>
+            ) : (
+              m.notes.rows.map((n) => (
+                <NoteRowItem
+                  key={n.id}
+                  n={n}
+                  onToggle={n.onToggle}
+                  onDismiss={n.onDismiss}
+                  onRestore={n.onRestore}
+                />
+              ))
+            )}
+          </Widget>
+        </div>
+      )}
     </DetailDrawer>
   );
 }

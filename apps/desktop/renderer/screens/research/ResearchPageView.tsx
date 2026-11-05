@@ -2,7 +2,7 @@
 // then the story (summary sentence and tabs) and the selected tab's widgets, or the never-ran state. Pure: the
 // texts come from researchPageModel.ts, the state from the screen hook.
 import { S } from "@cashu/i18n/investments/v2/research/Page.strings";
-import { Crumb, Grid, type GridItem, PageHead } from "@cashu/ui";
+import { Crumb, Grid, type GridItem, PageHead, Widget } from "@cashu/ui";
 import type { ResearchPageModel, ResearchPageUi } from "./researchPageModel.js";
 import {
   CalendarTab,
@@ -31,6 +31,15 @@ function Head({ ui, runNow }: { ui: HeadUi; runNow: ResearchPageModel["runNow"] 
   );
 }
 
+/** Privacy mode: one card with the hidden line instead of the story and the tabs. */
+function Hidden({ text }: { text: string }) {
+  return (
+    <Widget title={S.research} tight>
+      <div className="text-sm text-fg-muted">{text}</div>
+    </Widget>
+  );
+}
+
 export function ResearchPageView({
   model,
   ui,
@@ -40,18 +49,20 @@ export function ResearchPageView({
 }) {
   const b = model.body;
   const items: GridItem[] =
-    b.kind === "empty"
-      ? [
-          {
-            id: "empty",
-            span: 3,
-            node: <EmptyResearch m={b.empty} onSettings={ui.onSettings} onHow={ui.onHow} />,
-          },
-        ]
-      : [
-          { id: "story", span: 3, node: <StoryHead m={b.head} onTab={ui.onTab} /> },
-          ...tabItems(b.tab),
-        ];
+    b.kind === "hidden"
+      ? [{ id: "hidden", span: 3, node: <Hidden text={b.text} /> }]
+      : b.kind === "empty"
+        ? [
+            {
+              id: "empty",
+              span: 3,
+              node: <EmptyResearch m={b.empty} onSettings={ui.onSettings} onHow={ui.onHow} />,
+            },
+          ]
+        : [
+            { id: "story", span: 3, node: <StoryHead m={b.head} onTab={ui.onTab} /> },
+            ...tabItems(b.tab),
+          ];
   return (
     <div data-testid="native-research">
       <Head ui={ui} runNow={model.runNow} />

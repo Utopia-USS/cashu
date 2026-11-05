@@ -211,6 +211,11 @@ test("Research page reads generated events, opens a note and a topic, and separa
       });
     await tab("Przebiegi").click();
     await expect(research.getByText("zakończony", { exact: true }).first()).toBeVisible();
+    // Privacy mode hides the research text (native rule, kept over the old app's parity).
+    await setPrivacy(page, true);
+    await expect(research.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
+    await expect(research.getByText("Ukryte w trybie prywatności", { exact: true })).toBeVisible();
+    await setPrivacy(page, false);
     await pickProfile(page, "Demo Piotr");
     await expect(page.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
   } finally {

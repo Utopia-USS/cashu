@@ -127,6 +127,7 @@ export function useResearchPage(o: ResearchPageOptions) {
       today: data.today,
       now,
       privacy: mcpPrivacy,
+      hidden: data.privacy,
       runs: r.runs,
       summary: r.summary,
       candidates: r.candidates,

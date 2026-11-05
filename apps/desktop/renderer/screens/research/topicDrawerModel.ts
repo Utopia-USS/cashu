@@ -138,6 +138,8 @@ export interface RegimeModel {
 
 export interface TopicDrawerModel {
   key: string;
+  /** Privacy mode: the hidden line in place of the thesis, the members and the notes. */
+  hidden?: string | null;
   crumb: { section: string; name: string };
   left:
     | { kind: "regime"; regime: RegimeModel | null }
