@@ -11,6 +11,7 @@ const profile = {
 const state: ShellViewProps["state"] = {
   enabledModules: ["budget", "assets"],
   pendingModules: ["assets"],
+  investmentsTag: false,
   locale: "en-US",
   profile,
   profiles: [

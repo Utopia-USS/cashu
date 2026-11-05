@@ -8,7 +8,14 @@ import { formatDecimalValue } from "@cashu/i18n/values";
 import type { PortfolioSnapshot } from "@cashu/store/investments/screen";
 import type { InvestmentWidgets } from "@cashu/store/overview";
 import { MONTH_NOM } from "@cashu/ui-logic/core/format";
-import { accountLabel, dm, nInstruments } from "@cashu/ui-logic/investments/labels";
+import {
+  accountLabel,
+  dm,
+  money,
+  money0,
+  nInstruments,
+  pct,
+} from "@cashu/ui-logic/investments/labels";
 import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import {
   heroBenchmark,
@@ -68,11 +75,21 @@ interface MinimalStep {
 interface MinimalCurrentStep extends MinimalStep {
   /** Deposited this month or planned: the step shows a check instead of its number. */
   readonly done: boolean;
+  /** Deposited this month (the check's label is `zrobione`, else `krok 2`). */
+  readonly deposited: boolean;
   readonly canPlan: boolean;
 }
 
 export interface MinimalOverviewModel {
   readonly heroLabel: string;
+  /** The hero's figures as the old view printed them (ui-logic labels, masked in privacy mode). */
+  readonly text: {
+    readonly value: string;
+    readonly pnl: { readonly text: string; readonly tone: "positive" | "negative" } | null;
+    readonly deposited: string;
+    readonly benchmark: string;
+    readonly due: string;
+  };
   readonly value: Money;
   readonly pnl: { readonly amount: Money; readonly ratio: Decimal } | null;
   readonly deposited: Money | null;
@@ -184,8 +201,23 @@ export function minimalOverviewModel(input: {
             : ""
         }`
       : (account ?? I.perPlan);
+  const pnlNum = summary?.pnl ?? null;
+  const net = summary?.net_contributions ?? null;
   return {
     heroLabel: `${I.portfolio} · ${MONTH_NOM[Number(today.slice(5, 7)) - 1] ?? ""}`,
+    text: {
+      value: money(kpis.value.total.toFloat(), currency),
+      pnl:
+        pnlNum == null || !net
+          ? null
+          : {
+              text: `${money(pnlNum, currency, true)} (${pct(pnlNum / net, true)})`,
+              tone: pnlNum >= 0 ? "positive" : "negative",
+            },
+      deposited: net != null ? money0(net, currency) : "-",
+      benchmark: bench ? pct(bench.value, true) : "-",
+      due: dm(due),
+    },
     value: new Money(kpis.value.total, currency),
     pnl,
     deposited:
@@ -240,6 +272,7 @@ export function minimalOverviewModel(input: {
           },
     current: {
       done: doneThisMonth || plan !== null,
+      deposited: doneThisMonth,
       label: I.depositBy(plannedText ?? "", dm(due)),
       detail: currentDetail,
       canPlan: !doneThisMonth && plan === null && planAmount !== null,

@@ -142,6 +142,16 @@ export interface HomeViewProps extends HomeHeadProps {
         /** The research strip (last grid cell), null before the first run. */
         research: ReactNode;
       }
+    | {
+        /** The light grid of a zero-start profile (Home.tsx:537-540): hero, Wpłaty, Rachunki, Obserwowane. */
+        kind: "light";
+        hero: HeroModel;
+        reviewSlot: ReactNode;
+        contributions: ReactNode;
+        accounts: ReactNode;
+        /** Only with watched instruments or on the watch route. */
+        watch: ReactNode;
+      }
     | { kind: "start"; start: StartModel; onCopy(): void; onSettings(): void };
   /** Layers over the page: the review deck, the signals dialog, the Import drawer. */
   overlays?: ReactNode;
@@ -151,10 +161,53 @@ export function HomeView({ content, overlays, ...head }: HomeViewProps) {
   return (
     <>
       <HomeHead {...head} />
-      {content.kind === "home" ? <HomeGrid {...content} /> : <StartView {...content} />}
+      {content.kind === "home" ? (
+        <HomeGrid {...content} />
+      ) : content.kind === "light" ? (
+        <LightGrid {...content} />
+      ) : (
+        <StartView {...content} />
+      )}
       {overlays}
     </>
   );
+}
+
+function HeroCell({ hero, reviewSlot }: { hero: HeroModel; reviewSlot: ReactNode }) {
+  return (
+    <Hero
+      label={S.portfolioValue}
+      caption={S.portfolioValue}
+      value={hero.value}
+      delta={
+        hero.week ? (
+          <>
+            <span className={tones[hero.week.tone]}>{hero.week.text}</span>
+            {S.thisWeek}
+          </>
+        ) : undefined
+      }
+      facts={hero.facts.map(factProps)}
+    >
+      {reviewSlot}
+    </Hero>
+  );
+}
+
+function LightGrid({
+  hero,
+  reviewSlot,
+  contributions,
+  accounts,
+  watch,
+}: Extract<HomeViewProps["content"], { kind: "light" }>) {
+  const items: GridItem[] = [
+    { id: "hero", span: 3, node: <HeroCell hero={hero} reviewSlot={reviewSlot} /> },
+    { id: "contrib", span: 2, node: contributions },
+    { id: "accounts", span: 1, node: accounts },
+  ];
+  if (watch != null) items.push({ id: "watch", span: 1, node: watch });
+  return <Grid items={items} />;
 }
 
 function HomeGrid({
@@ -165,28 +218,7 @@ function HomeGrid({
   research,
 }: Extract<HomeViewProps["content"], { kind: "home" }>) {
   const items: GridItem[] = [
-    {
-      id: "hero",
-      span: 3,
-      node: (
-        <Hero
-          label={S.portfolioValue}
-          caption={S.portfolioValue}
-          value={hero.value}
-          delta={
-            hero.week ? (
-              <>
-                <span className={tones[hero.week.tone]}>{hero.week.text}</span>
-                {S.thisWeek}
-              </>
-            ) : undefined
-          }
-          facts={hero.facts.map(factProps)}
-        >
-          {reviewSlot}
-        </Hero>
-      ),
-    },
+    { id: "hero", span: 3, node: <HeroCell hero={hero} reviewSlot={reviewSlot} /> },
     { id: "split", span: 3, node: <Split main={main} rail={rail} /> },
   ];
   if (research != null) items.push({ id: "research", span: 3, node: research });

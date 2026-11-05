@@ -5,12 +5,13 @@
 
 import { ToastProvider } from "@cashu/ui";
 import { Suspense } from "react";
+import { useFrameNarrow } from "../../../shell/narrowFrame.js";
 import { ResearchPageScreen } from "../../research/ResearchPageScreen.js";
 import { TopicDrawerScreen } from "../../research/TopicDrawerScreen.js";
 import { ReviewDeckScreen } from "../../review/deck/ReviewDeckScreen.js";
 import { ReviewSlotView } from "../../review/deck/ReviewSlotView.js";
 import { SignalsDialogScreen } from "../../signals/SignalsDialogScreen.js";
-import { InstrumentSearchScreen } from "../../signals/WatchlistScreens.js";
+import { InstrumentSearchScreen, WatchlistWidgetScreen } from "../../signals/WatchlistScreens.js";
 import { AssetDrawerScreen, AssetPage } from "../asset/AssetDetailScreen.js";
 import {
   AccountDrawer,
@@ -28,17 +29,21 @@ import {
   type InvestmentsHomeOptions,
   useInvestmentsHomeScreen,
 } from "./useInvestmentsHomeScreen.js";
-import { AllocationWidgetView } from "./widgets/AllocationWidgetView.js";
+import { AccountsWidgetView, AllocationWidgetView } from "./widgets/AllocationWidgetView.js";
 import { AssetListView } from "./widgets/AssetListView.js";
-import { allocationProps } from "./widgets/allocationModel.js";
+import { accountsWidgetProps, allocationProps } from "./widgets/allocationModel.js";
 import { assetListProps } from "./widgets/assetListModel.js";
+import { ContributionsWidgetView } from "./widgets/ContributionsWidgetView.js";
+import { useContributionsWidget } from "./widgets/useContributionsWidget.js";
 import { ValueChartWidgetView } from "./widgets/ValueChartWidgetView.js";
 import { valueChartProps } from "./widgets/valueChartModel.js";
 
 export function InvestmentsHomeScreen(props: InvestmentsHomeOptions) {
+  // The shell's frame: the asset page (its route) or the light grid (the Home asks, shell/narrowFrame.ts).
+  const narrow = useFrameNarrow();
   return (
     <ToastProvider>
-      <HomePage narrow={!!props.page && !!props.instrument}>
+      <HomePage narrow={narrow || (!!props.page && !!props.instrument)}>
         <Suspense fallback={<HomeLoadingView />}>
           <HomeBound {...props} />
         </Suspense>
@@ -47,9 +52,26 @@ export function InvestmentsHomeScreen(props: InvestmentsHomeOptions) {
   );
 }
 
+/** The Home's first-load state as the route's pending state too: a deep link (`assets/{gid}?page=1` included)
+ * shows the old Home skeleton in its frame, never a bare waiting line (old Home.tsx:373-380). */
+export function InvestmentsHomeLoading({ narrow }: { narrow: boolean }) {
+  return (
+    <HomePage narrow={narrow}>
+      <HomeLoadingView />
+    </HomePage>
+  );
+}
+
 function ImportDrawer({ input }: { input: ImportDrawerInput }) {
   return <ImportDrawerView state={useImportDrawer(input)} />;
 }
+
+/** The light grid's Wpłaty (its plan fallback reads only while the light grid shows). */
+function Contributions({ data }: { data: InvestmentsHomeScreenState["data"] }) {
+  return <ContributionsWidgetView {...useContributionsWidget(data)} />;
+}
+
+type InvestmentsHomeScreenState = ReturnType<typeof useInvestmentsHomeScreen>;
 
 function HomeBound(props: InvestmentsHomeOptions) {
   const s = useInvestmentsHomeScreen(props);
@@ -123,6 +145,42 @@ function HomeBound(props: InvestmentsHomeOptions) {
       />
     );
   }
+  const allocUi = {
+    ...s.widgets,
+    view: s.allocView,
+    onView: s.setAllocView,
+    filtered: s.filtered,
+    onAddAccount: s.onAddAccount,
+    onReconcile: s.onReconcile,
+    onSettings: s.onSettings,
+  };
+  const deck = s.deck && <ReviewDeckScreen {...s.deck} />;
+  const reviewSlot = s.reviewSlot ? <ReviewSlotView slot={s.reviewSlot} /> : null;
+  // The light grid (Home.tsx:537-540): Wpłaty, Rachunki and, with watched instruments or on the watch route,
+  // Obserwowane (its search open on the watch route).
+  if (s.light)
+    return (
+      <HomeView
+        {...head}
+        content={{
+          kind: "light",
+          hero: s.hero,
+          reviewSlot,
+          contributions: <Contributions data={s.data} />,
+          accounts: <AccountsWidgetView {...accountsWidgetProps(s.data, allocUi)} />,
+          watch:
+            (s.data.watchQ.data ?? []).length || props.watch ? (
+              <WatchlistWidgetScreen data={s.data} autoAdd={!!props.watch} onOpen={s.openPage} />
+            ) : null,
+        }}
+        overlays={
+          <>
+            {deck}
+            {overlays}
+          </>
+        }
+      />
+    );
   const strip = researchStripProps(s.data, s.research);
   return (
     <HomeView
@@ -130,7 +188,7 @@ function HomeBound(props: InvestmentsHomeOptions) {
       content={{
         kind: "home",
         hero: s.hero,
-        reviewSlot: s.reviewSlot ? <ReviewSlotView slot={s.reviewSlot} /> : null,
+        reviewSlot,
         main: [
           {
             id: "value",
@@ -142,20 +200,7 @@ function HomeBound(props: InvestmentsHomeOptions) {
           },
           {
             id: "alloc",
-            node: (
-              <AllocationWidgetView
-                {...allocationProps(s.data, {
-                  ...s.widgets,
-                  view: s.allocView,
-                  onView: s.setAllocView,
-                  filtered: s.filtered,
-                  wide: true,
-                  onAddAccount: s.onAddAccount,
-                  onReconcile: s.onReconcile,
-                  onSettings: s.onSettings,
-                })}
-              />
-            ),
+            node: <AllocationWidgetView {...allocationProps(s.data, { ...allocUi, wide: true })} />,
           },
           {
             id: "assets",
@@ -193,7 +238,7 @@ function HomeBound(props: InvestmentsHomeOptions) {
       }}
       overlays={
         <>
-          {s.deck && <ReviewDeckScreen {...s.deck} />}
+          {deck}
           {overlays}
         </>
       }

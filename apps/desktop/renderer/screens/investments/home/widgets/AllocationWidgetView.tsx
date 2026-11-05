@@ -2,7 +2,7 @@
 // (+ the Rachunki view's `ostrzezenia (n)` link and `+ Rachunek`), the donut + `.arow` rows (`.alloc`, `.wide`,
 // `.acc`) and the portfolio priority banner.
 import { Button, Donut, Drawer, emptyCls, Seg, Swatch, Tag, Widget } from "@cashu/ui";
-import type { AllocationWidgetProps } from "./allocationModel.js";
+import type { AccountsWidgetProps, AllocationWidgetProps } from "./allocationModel.js";
 
 // `.w .alloc` (112px donut column, gap 14) / `.alloc.wide` (128px, gap 20; back to 112 / 14 at <= 760).
 const allocGrid = (wide: boolean) =>
@@ -27,6 +27,97 @@ const arow = `${arowBase} pb-1 text-xs-plus`;
 const arowHead = `${arowBase} pb-0.5 text-3xs-plus uppercase tracking-label text-fg-muted`;
 const num = "whitespace-nowrap text-right";
 const name = "overflow-hidden text-ellipsis whitespace-nowrap";
+
+type Body = AllocationWidgetProps["body"];
+
+/** The Rachunki controls: `ostrzezenia (n)` (opens the data warnings drawer) and `+ Rachunek`. */
+function AccountsControls({ accounts, drawer }: Pick<AccountsWidgetProps, "accounts" | "drawer">) {
+  return (
+    <>
+      {accounts.warnings && (
+        <Button
+          variant="link"
+          size="md"
+          title={accounts.warnings.title}
+          onPress={accounts.warnings.onOpen}
+        >
+          {accounts.warnings.text}
+        </Button>
+      )}
+      <Button size="sm" onPress={accounts.add.onPress}>
+        {accounts.add.text}
+      </Button>
+      {drawer && <WarningsDrawer drawer={drawer} />}
+    </>
+  );
+}
+
+function WarningsDrawer({ drawer }: { drawer: NonNullable<AccountsWidgetProps["drawer"]> }) {
+  return (
+    <Drawer title={drawer.title} label={drawer.title} onClose={drawer.onClose} width={520}>
+      <div className="mb-2.5 grid gap-1 text-xs-plus text-warning">
+        {drawer.lines.map((line) => (
+          <span key={line.text} title={line.title}>
+            {line.text} ·{" "}
+            <Button variant="link" size="md" onPress={line.onLink}>
+              {line.link}
+            </Button>
+          </span>
+        ))}
+      </div>
+    </Drawer>
+  );
+}
+
+/** AccountsRows (Portfolio.tsx:236-265): the donut by account and `rachunek | teraz | wartosc | snapshot`. */
+function AccountsBody({ body, wide }: { body: Exclude<Body, { kind: "rows" }>; wide: boolean }) {
+  if (body.kind === "empty") return <div className={emptyCls}>{body.text}</div>;
+  return (
+    <div className={allocGrid(wide)}>
+      <Donut size={wide ? 128 : 112} {...body.donut} />
+      <div>
+        <div className={`${arowHead} ${accCols(wide)}`}>
+          <span />
+          <span>{body.head.name}</span>
+          <span className={num}>{body.head.now}</span>
+          <span className={num}>{body.head.value}</span>
+          <span className={`${num} ${wide ? "max-narrow:hidden" : ""}`}>{body.head.snapshot}</span>
+        </div>
+        {body.rows.map((r) => (
+          <div key={r.key} className={`${arow} ${accCols(wide)}`} title={r.title}>
+            <Swatch color={r.color} />
+            <span className={name}>{r.name}</span>
+            <span className={num}>{r.share}</span>
+            <span className={num}>{r.value}</span>
+            <span className={`${num} text-fg-muted ${wide ? "max-narrow:hidden" : ""}`}>
+              {r.onReconcile ? (
+                <Button variant="link" size="md" className="text-warning!" onPress={r.onReconcile}>
+                  {r.snapshot}
+                </Button>
+              ) : (
+                r.snapshot
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** AccountsWidget (Portfolio.tsx:357-367): `Widget#inv-accounts`, the Rachunki controls and rows, not wide. */
+export function AccountsWidgetView({ title, accounts, body, drawer }: AccountsWidgetProps) {
+  return (
+    <Widget
+      title={title}
+      id="inv-accounts"
+      tight
+      controls={<AccountsControls accounts={accounts} drawer={drawer} />}
+    >
+      {body.kind === "rows" ? null : <AccountsBody body={body} wide={false} />}
+    </Widget>
+  );
+}
 
 export function AllocationWidgetView({
   title,
@@ -55,79 +146,13 @@ export function AllocationWidgetView({
       controls={
         <>
           <Seg quiet label={viewLabel} value={view} onChange={onView} items={views} />
-          {accounts && (
-            <>
-              {accounts.warnings && (
-                <Button
-                  variant="link"
-                  size="md"
-                  title={accounts.warnings.title}
-                  onPress={accounts.warnings.onOpen}
-                >
-                  {accounts.warnings.text}
-                </Button>
-              )}
-              <Button size="sm" onPress={accounts.add.onPress}>
-                {accounts.add.text}
-              </Button>
-            </>
-          )}
-          {drawer && (
-            <Drawer title={drawer.title} label={drawer.title} onClose={drawer.onClose} width={520}>
-              <div className="mb-2.5 grid gap-1 text-xs-plus text-warning">
-                {drawer.lines.map((line) => (
-                  <span key={line.text} title={line.title}>
-                    {line.text} ·{" "}
-                    <Button variant="link" size="md" onPress={line.onLink}>
-                      {line.link}
-                    </Button>
-                  </span>
-                ))}
-              </div>
-            </Drawer>
-          )}
+          {accounts && <AccountsControls accounts={accounts} drawer={drawer} />}
+          {!accounts && drawer && <WarningsDrawer drawer={drawer} />}
         </>
       }
     >
-      {body.kind === "empty" ? (
-        <div className={emptyCls}>{body.text}</div>
-      ) : body.kind === "accounts" ? (
-        <div className={allocGrid(wide)}>
-          <Donut size={wide ? 128 : 112} {...body.donut} />
-          <div>
-            <div className={`${arowHead} ${accCols(wide)}`}>
-              <span />
-              <span>{body.head.name}</span>
-              <span className={num}>{body.head.now}</span>
-              <span className={num}>{body.head.value}</span>
-              <span className={`${num} ${wide ? "max-narrow:hidden" : ""}`}>
-                {body.head.snapshot}
-              </span>
-            </div>
-            {body.rows.map((r) => (
-              <div key={r.key} className={`${arow} ${accCols(wide)}`} title={r.title}>
-                <Swatch color={r.color} />
-                <span className={name}>{r.name}</span>
-                <span className={num}>{r.share}</span>
-                <span className={num}>{r.value}</span>
-                <span className={`${num} text-fg-muted ${wide ? "max-narrow:hidden" : ""}`}>
-                  {r.onReconcile ? (
-                    <Button
-                      variant="link"
-                      size="md"
-                      className="text-warning!"
-                      onPress={r.onReconcile}
-                    >
-                      {r.snapshot}
-                    </Button>
-                  ) : (
-                    r.snapshot
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {body.kind !== "rows" ? (
+        <AccountsBody body={body} wide={wide} />
       ) : (
         <div className={allocGrid(wide)}>
           <Donut size={wide ? 128 : 112} {...body.donut} />

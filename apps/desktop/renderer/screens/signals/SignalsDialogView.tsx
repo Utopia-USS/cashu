@@ -3,8 +3,18 @@
 // `.ddlg`): the scope columns (Portfel 2/3, Obserwowane 1/3), one subject per row with its fact, thesis and
 // actions or the inline decision form, the footer, the position decision dialog on top. Pure: every text and
 // callback comes from signalsDialogModel.ts through the screen hook.
-import { Button, Dialog, PolDot, Seg, Tag } from "@cashu/ui";
-import { useEffect, useRef } from "react";
+import {
+  Button,
+  Dialog,
+  HoverCard,
+  InstCardBody,
+  PolDot,
+  Seg,
+  Tag,
+  useHoverCard,
+  useTouch,
+} from "@cashu/ui";
+import { useEffect, useId, useRef } from "react";
 import { inputCls, selectCls, textareaCls } from "./fields.js";
 import type {
   DecisionFormProps,
@@ -79,6 +89,32 @@ const AgeText = ({ a, plain }: { a: Age; plain?: boolean }) =>
     </span>
   ) : null;
 
+/** Old InstLabel `inline` (`.il.inl`): the ticker button and its symbol; hovering (350 ms) or keyboard focus of the
+ * ticker opens the instrument card, without hover the label carries the one-line title. */
+function InlineLabel({ t }: { t: Extract<TitleProps, { kind: "inst" }> }) {
+  const id = useId();
+  const touch = useTouch();
+  const hover = useHoverCard(!!t.card && !touch);
+  return (
+    <span title={touch ? t.card?.touchTitle : undefined} {...hover.handlers}>
+      <button
+        type="button"
+        onClick={t.onOpen}
+        aria-describedby={hover.anchor ? id : undefined}
+        className="cursor-pointer border-0 bg-transparent p-0 text-left hover:text-accent"
+      >
+        {t.ticker}
+      </button>
+      {t.sym && <span className="ml-1.25 text-xs font-medium text-fg-muted">{t.sym}</span>}
+      {hover.anchor && t.card && (
+        <HoverCard anchor={hover.anchor} id={id}>
+          <InstCardBody {...t.card.card} />
+        </HoverCard>
+      )}
+    </span>
+  );
+}
+
 function Title({ t, quiet }: { t: TitleProps; quiet: boolean }) {
   return (
     <div
@@ -87,14 +123,7 @@ function Title({ t, quiet }: { t: TitleProps; quiet: boolean }) {
       {t.kind === "inst" ? (
         <>
           <span className="font-heavy">
-            <button
-              type="button"
-              onClick={t.onOpen}
-              className="cursor-pointer border-0 bg-transparent p-0 text-left hover:text-accent"
-            >
-              {t.ticker}
-            </button>
-            {t.sym && <span className="ml-1.25 text-xs font-medium text-fg-muted">{t.sym}</span>}
+            <InlineLabel t={t} />
           </span>
           {t.name && <span className="text-xs-plus font-medium text-fg-muted">{t.name}</span>}
         </>

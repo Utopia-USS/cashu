@@ -1,9 +1,13 @@
 // The old SignalsCtx data (ab24ab6 v2/Home.tsx signalsCtx) from the Home's reads: positions in view, buckets,
 // totals, accounts, today, the contribution day, alerts by id, the held set (positions in view + the server's
 // `held` on a signal), the watchlist, the last good run and the research effect line. Pure.
+import { S } from "@cashu/i18n/investments/v2/Signals.strings";
+import { accountLabel } from "@cashu/ui-logic/investments/labels";
 import type { AccountRow } from "@cashu/ui-logic/investments/types";
 import type { DigestResearch } from "@cashu/ui-logic/investments/v2/research/types";
 import type { InvestmentsHomeData } from "../investments/home/useInvestmentsHomeData.js";
+import { instCardOf } from "../investments/home/widgets/assetListModel.js";
+import { instStateOf } from "../investments/home/widgets/instState.js";
 import { researchEffectLine, type SignalsCtx } from "./signalsModel.js";
 
 export function signalsCtxOf(data: InvestmentsHomeData): SignalsCtx {
@@ -15,12 +19,14 @@ export function signalsCtxOf(data: InvestmentsHomeData): SignalsCtx {
     if (s.held === true && s.instrument_id != null) held.add(String(s.instrument_id));
   const lastRun = overview?.kpis.last_run ?? null;
   const research = data.research;
+  const accounts = (overview?.accounts ?? []) as AccountRow[];
+  const st = instStateOf(data);
   return {
     positions,
     buckets: overview?.allocation.buckets ?? [],
     total: overview?.allocation.total ?? 0,
     base: overview?.base_currency ?? "PLN",
-    accounts: (overview?.accounts ?? []) as AccountRow[],
+    accounts,
     today,
     contributionDay: data.strat.data?.facts?.contributions?.day_of_month ?? null,
     alertsById: new Map((data.alertsQ.data ?? []).map((a) => [a.id, a])),
@@ -41,5 +47,15 @@ export function signalsCtxOf(data: InvestmentsHomeData): SignalsCtx {
             today,
           })
         : null,
+    // Old SubjectTitle: the inline label's card with the position's accounts, its stale price date and hints.
+    instCard: (io) =>
+      instCardOf(io.inst, st, {
+        accounts: io.pos?.accounts.map((a) => {
+          const row = accounts.find((x) => x.id === a.account_id);
+          return row ? accountLabel(row, accounts) : S.account(a.account_id);
+        }),
+        stale: io.pos?.is_stale ? io.pos.price_date : null,
+        hints: io.hints,
+      }),
   };
 }

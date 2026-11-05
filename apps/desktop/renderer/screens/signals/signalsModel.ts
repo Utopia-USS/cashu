@@ -4,6 +4,7 @@
 // form's default action and the research effect line (research/ReviewBlock.tsx researchEffectLine). Pure.
 import { S as R } from "@cashu/i18n/investments/v2/research/ReviewBlock.strings";
 import { S } from "@cashu/i18n/investments/v2/Signals.strings";
+import type { InstCardProps } from "@cashu/ui";
 import { localDay, parseServerTime } from "@cashu/ui-logic/core/time";
 import { dm, ENTRY_TYPE } from "@cashu/ui-logic/investments/labels";
 import type {
@@ -50,6 +51,8 @@ export interface SignalsCtx {
   lastRunAt: string | null;
   /** The research effect line of an instrument for the decision form (`research z soboty: ...`), or null. */
   researchEffect: (instrumentId: number) => string | null;
+  /** The identity label's hover card of a title's instrument (old InstLabel inline: accounts, stale price, hints). */
+  instCard?: (io: InstOf) => { card: InstCardProps; touchTitle: string };
 }
 
 export interface Age {

@@ -21,6 +21,7 @@ import { canonKey, isSegment } from "@cashu/ui-logic/investments/v2/research/seg
 import type { CardId } from "@cashu/ui-logic/investments/v2/reviewDeckLogic";
 import type { PerfRange } from "@cashu/ui-logic/investments/v2/types";
 import { startTransition, useEffect, useRef, useState } from "react";
+import { useNarrowFrame } from "../../../shell/narrowFrame.js";
 import { reviewSlotModel } from "../../review/deck/reviewSlotModel.js";
 import {
   type DeckStats,
@@ -37,7 +38,7 @@ import type {
   TxnDrawerInput,
   TxnsDrawerInput,
 } from "../drawers/useInvestmentDrawers.js";
-import { hasDataOf, headModel, heroModel, startModel } from "./homeModel.js";
+import { hasDataOf, headModel, heroModel, lightOf, startModel } from "./homeModel.js";
 import { gidOf, legacyIdOf } from "./legacyWire.js";
 import {
   alertsBriefProps,
@@ -102,6 +103,10 @@ export interface InvestmentsHomeOptions {
   onAssetClosed?(): void;
   /** `otwórz jako stronę`: `assets/{gid}?page=1`. */
   onAssetPageOpened?(gid: string): void;
+  /** `investments.watchlist` (old sub-route `watch`): Aktywa on the Obserwowane tab with the search open. */
+  readonly watch?: boolean;
+  /** The header tag's `?alloc=accounts&t=` (a new value per click): Alokacja on its Rachunki view. */
+  readonly allocRequest?: number | null;
   /** The alerts manager for one instrument (old `alerts?instrument=id`, `&new=1` for a new alert). */
   onAlertsOpened?(instrument: string, newAlert: boolean): void;
   /** The decision journal for one instrument (old `journal?instrument=id`). */
@@ -114,7 +119,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   const data = useInvestmentsHomeData({ filter, chartRange: o.range });
   const commands = useInvestmentsHomeCommands(data);
   const deckCommands = useReviewDeckCommands();
-  const widgets = useHomeWidgetsState();
+  const widgets = useHomeWidgetsState({ adding: !!o.watch });
   const displayNow = useDisplayClock(data.today);
   // The signals dialog (old Home.tsx sigDialog): the rail's `Wszystkie`, the route's `signals=1` and a
   // notification (its signal focused) open it.
@@ -128,8 +133,16 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
     (o.signalsOpen ? { filter: "all" as const, focusId: o.signalFocusId ?? null } : null);
 
   // Alokacja's view (home v3 Q2): the page owns it so the stale-prices tag can land on Rachunki.
-  const [allocView, setAllocView] = useState<AllocView | null>(null);
-  const [assetTab, setAssetTab] = useState<AssetsTab>("positions");
+  // The header tag (`?alloc=accounts`) lands on Rachunki, again on every click (a new `t`).
+  const [allocView, setAllocView] = useState<AllocView | null>(
+    o.allocRequest != null ? "accounts" : null,
+  );
+  const [allocSeen, setAllocSeen] = useState(o.allocRequest ?? null);
+  if ((o.allocRequest ?? null) !== allocSeen) {
+    setAllocSeen(o.allocRequest ?? null);
+    if (o.allocRequest != null) setAllocView("accounts");
+  }
+  const [assetTab, setAssetTab] = useState<AssetsTab>(o.watch ? "watch" : "positions");
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   // A proposal opened from a deck card lies over the Home (route drawer): the deck hides meanwhile.
   const [proposalOpen, setProposalOpen] = useState(false);
@@ -186,6 +199,19 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
     names,
     open: o.review,
   });
+
+  // Minimal profile density (Home.tsx:204-205): the light grid in the narrow frame (also under its asset drawer
+  // and on the watch route); the asset page asks for the frame through its route.
+  const light = lightOf({
+    positions,
+    signals: data.signals.length,
+    alerts: (alertsList ?? []).length,
+    perf1y: data.perf1y.data,
+    overview,
+    today,
+  });
+  const homeLike = !o.research && !o.topic && !(o.instrument && o.page);
+  useNarrowFrame(light && homeLike);
 
   // ---- navigation ------------------------------------------------------------------------------------------
   const openAsset = (id: number | string, noteId?: number | string | null) => {
@@ -346,7 +372,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
       startTransition(() => o.onAccountPicked?.(id == null ? null : gidOf(id))),
     onStale: () => {
       setAllocView("accounts");
-      setTimeout(() => scrollTo("inv-alloc"), 30);
+      setTimeout(() => scrollTo(light ? "inv-accounts" : "inv-alloc"), 30);
     },
     onImport: () => setDrawer({ kind: "import", account: filter }),
     onAddTxn: () => setDrawer({ kind: "txn" }),
@@ -361,8 +387,10 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
             perfYtd: data.perfYtd.data,
             perf1m: data.perf1m.data,
             strategy,
+            light,
           })
         : null,
+    light,
     reviewSlot,
     start:
       phase === "start"
@@ -422,24 +450,26 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
         })
       : null,
     // Named by the signal's own title, never the strategy's rule id (old Home.tsx:516, FE-A A6).
-    signalsDialog: dialog
-      ? ({
-          data,
-          filter: dialog.filter,
-          focusId: dialog.focusId,
-          review: o.review,
-          expired: (digest?.signals.resolved ?? [])
-            .filter((x) => x.status === "expired")
-            .map((x) => ({ title: x.instrument_label ?? signalText(x).title })),
-          onHistory: () => o.onSignalsPageOpened?.("journal"),
-          onClose: () => {
-            setSigDialog(null);
-            if (o.signalsOpen) o.onSignalsClosed?.();
-          },
-          onOpenAsset: (gid: string) => o.openPage?.(gid),
-          onOpenNote: openNote,
-        } satisfies SignalsDialogInput)
-      : null,
+    // The light grid shows no signals dialog (old Home.tsx:551 `!light`).
+    signalsDialog:
+      dialog && !light
+        ? ({
+            data,
+            filter: dialog.filter,
+            focusId: dialog.focusId,
+            review: o.review,
+            expired: (digest?.signals.resolved ?? [])
+              .filter((x) => x.status === "expired")
+              .map((x) => ({ title: x.instrument_label ?? signalText(x).title })),
+            onHistory: () => o.onSignalsPageOpened?.("journal"),
+            onClose: () => {
+              setSigDialog(null);
+              if (o.signalsOpen) o.onSignalsClosed?.();
+            },
+            onOpenAsset: (gid: string) => o.openPage?.(gid),
+            onOpenNote: openNote,
+          } satisfies SignalsDialogInput)
+        : null,
     // ---- widgets ui (H2) ----
     widgets,
     unwatch,

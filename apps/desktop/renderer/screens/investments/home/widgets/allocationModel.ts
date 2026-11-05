@@ -227,6 +227,28 @@ function dataWarnings(data: InvestmentsHomeData, ui: AllocationUi) {
   };
 }
 
+/** AccountsWidget (Portfolio.tsx:357-367): Rachunki on the light grid (no Alokacja there), the same rows, the same
+ * `ostrzeżenia (n)` link and `+ Rachunek`, no footer; never wide. */
+export interface AccountsWidgetProps {
+  title: string;
+  accounts: NonNullable<AllocationWidgetProps["accounts"]>;
+  body: AllocationBody;
+  drawer: AllocationWidgetProps["drawer"];
+}
+
+export function accountsWidgetProps(
+  data: InvestmentsHomeData,
+  ui: AllocationUi,
+): AccountsWidgetProps {
+  const warnings = dataWarnings(data, ui);
+  return {
+    title: S.viewAccounts,
+    accounts: { warnings: warnings.link, add: { text: S.addAccount, onPress: ui.onAddAccount } },
+    body: accountsBody(data.ov.data as Overview, data.today, ui),
+    drawer: warnings.drawer,
+  };
+}
+
 export function allocationProps(
   data: InvestmentsHomeData,
   ui: AllocationUi,

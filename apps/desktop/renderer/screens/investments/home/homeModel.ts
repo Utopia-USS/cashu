@@ -19,6 +19,7 @@ import { weekMove } from "@cashu/ui-logic/investments/v2/homeLogic";
 import {
   benchmarkLabel,
   contributionFacts,
+  daysSince,
   monthlyFlows,
   staleBenchmark,
 } from "@cashu/ui-logic/investments/v2/logic";
@@ -119,6 +120,8 @@ export function heroModel(input: {
   perfYtd: Performance | null | undefined;
   perf1m: Performance | null | undefined;
   strategy: StrategyStatus | null | undefined;
+  /** The light grid keeps its Wpłaty widget: no Obsunięcie / Wpłaty facts in the hero (Home.tsx:488). */
+  light?: boolean;
 }): HeroModel {
   const { overview, base, today } = input;
   const k = overview.kpis;
@@ -163,15 +166,15 @@ export function heroModel(input: {
     value: money0(k.unrealized.amount, base, true),
     detail: k.unrealized.pct != null ? S.vsCost(pct(k.unrealized.pct, true)) : S.costUnknown,
   });
-  // The light grid (one position, no history) is not ported: its two facts always show here.
-  if (ddNow != null)
+  // The light grid keeps its Wpłaty widget: no duplicate facts there.
+  if (!input.light && ddNow != null)
     facts.push({
       label: S.drawdown,
       value: pct(ddNow),
       title: S.drawdownTitle,
       ...(ddMax != null ? { detail: S.max(pct(ddMax)) } : {}),
     });
-  if (input.perf1y !== undefined)
+  if (!input.light && input.perf1y !== undefined)
     facts.push({
       label: S.contributions,
       value: contrib.deposits != null ? money0(contrib.deposits, base) : "-",
@@ -191,6 +194,28 @@ export function heroModel(input: {
       : null,
     facts,
   };
+}
+
+/** Minimal profile density (Home.tsx:204-205, ia-v2.md 9): at most one position, no signals, no alerts, under six
+ * months of history and no allocation buckets; widgets appear when their data does. */
+export function lightOf(input: {
+  positions: PositionsV2 | undefined;
+  signals: number;
+  alerts: number;
+  perf1y: Performance | null | undefined;
+  overview: OverviewV2 | undefined;
+  today: string;
+}): boolean {
+  const first = input.perf1y?.points[0]?.date;
+  const historyMonths = first ? daysSince(first, input.today) / 30.4 : 0;
+  return (
+    !!input.positions &&
+    input.positions.positions.length <= 1 &&
+    !input.signals &&
+    !input.alerts &&
+    historyMonths < 6 &&
+    !input.overview?.allocation.buckets.length
+  );
 }
 
 /** Empty portfolio: no positions and no non-zero cash (Home.tsx:177). */

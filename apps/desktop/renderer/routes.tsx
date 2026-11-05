@@ -38,12 +38,12 @@ import { BudgetStartScreen } from "./screens/budget/start/BudgetStartScreen.js";
 import { SubscriptionsScreen } from "./screens/budget/subs/SubscriptionsScreen.js";
 import { ClassificationPanel } from "./screens/classification/ClassificationPanel.js";
 import { DevicesScreen } from "./screens/devices/DevicesScreen.js";
+import { InvestmentsHomeLoading } from "./screens/investments/home/InvestmentsHomeScreen.js";
 import { PortfolioScreen } from "./screens/investments/PortfolioScreen.js";
 import { LoansScreen } from "./screens/loans/LoansScreen.js";
-import { MinimalOverviewView } from "./screens/overview/MinimalOverviewView.js";
+import { MinimalOverviewScreen } from "./screens/overview/MinimalOverviewScreen.js";
 import { investmentsOnlyOverview } from "./screens/overview/minimalOverview.js";
 import { OverviewScreen } from "./screens/overview/OverviewScreen.js";
-import { useMinimalOverview } from "./screens/overview/useMinimalOverview.js";
 import { ProposalDrawerScreen } from "./screens/proposals/ProposalDrawerScreen.js";
 import { SettingsView } from "./screens/settings/SettingsView.js";
 import { UpdateNoticeView } from "./screens/settings/UpdateNoticeView.js";
@@ -54,6 +54,8 @@ import { SetupScreen } from "./screens/setup/SetupScreen.js";
 import { SignalsPageScreen } from "./screens/signals/SignalsPageScreen.js";
 import { StrategiesScreen } from "./screens/strategies/StrategiesScreen.js";
 import { StrategySettings } from "./screens/strategies/StrategySettings.js";
+import { InvestmentsHeaderTag } from "./shell/InvestmentsHeaderTag.js";
+import { NarrowFrameContext } from "./shell/narrowFrame.js";
 import { resolveProfileRoute } from "./shell/profileRoute.js";
 import { ProfileRouteSync } from "./shell/profileRouteSync.js";
 import { ShellView } from "./shell/ShellView.js";
@@ -122,6 +124,8 @@ function ShellRoute() {
       location.pathname.includes("/assets/") &&
       String((location.search as { page?: unknown }).page ?? "") === "1",
   });
+  // Old Shell `narrow`: a page asks for the 1120px frame (shell/narrowFrame.ts); the asset page asks through its route.
+  const [pageNarrow, setPageNarrow] = useState(false);
   const requested = useSearch({ strict: false });
   const selection =
     params.slug === undefined
@@ -198,8 +202,38 @@ function ShellRoute() {
                       ? "investments"
                       : "overview"
         }
-        narrow={assetPage}
+        narrow={assetPage || pageNarrow}
         onModuleOpened={openModule}
+        headerTags={
+          state.investmentsTag && state.profile !== null ? (
+            <InvestmentsHeaderTag
+              key={state.vault}
+              onOpen={() => {
+                const slug = state.profile?.slug ?? "";
+                // Alokacja on its Rachunki view; `t` makes a repeated click a new request (old F8 FE-7).
+                void router.navigate({
+                  to: "/$slug/investments.portfolio",
+                  params: { slug },
+                  search: {
+                    vault: state.vault,
+                    period: "1y",
+                    view: "chart",
+                    alloc: "accounts",
+                    t: Date.now(),
+                  },
+                });
+                setTimeout(
+                  () =>
+                    (
+                      document.getElementById("inv-alloc") ??
+                      document.getElementById("inv-accounts")
+                    )?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                  400,
+                );
+              }}
+            />
+          ) : undefined
+        }
         tabActions={
           pathname.includes("/budget/") && state.profile !== null ? (
             <BudgetTabActions
@@ -223,9 +257,13 @@ function ShellRoute() {
                 : S.waiting}
           </p>
         ) : (
-          <Outlet />
+          <NarrowFrameContext value={{ narrow: assetPage || pageNarrow, request: setPageNarrow }}>
+            <Outlet />
+          </NarrowFrameContext>
         )}
       </ShellView>
+      {/* UpdateNotice slot (old core/App.tsx under the shell): agent C's ported UpdateNotice replaces this native
+          view once contract-C.md says "ready". */}
       <UpdateNoticeView state={updateNotice} />
     </ProposalScope>
   );
@@ -329,22 +367,25 @@ function OverviewBound(props: { vault: string; slug: string; currency?: string }
 }
 
 function MinimalOverviewBound({ vault, slug }: { vault: string; slug: string }) {
-  const state = useMinimalOverview({
-    today: useCalendarDay(),
-    openNewAlert: () =>
-      void router.navigate({
-        to: "/$slug/investments.alerts",
-        params: { slug },
-        search: { vault, newAlert: "1" },
-      }),
-    openWatchlist: () =>
-      void router.navigate({
-        to: "/$slug/investments.watchlist",
-        params: { slug },
-        search: { vault },
-      }),
-  });
-  return <MinimalOverviewView state={state} />;
+  return (
+    <MinimalOverviewScreen
+      today={useCalendarDay()}
+      openNewAlert={() =>
+        void router.navigate({
+          to: "/$slug/investments.alerts",
+          params: { slug },
+          search: { vault, newAlert: "1" },
+        })
+      }
+      openWatchlist={() =>
+        void router.navigate({
+          to: "/$slug/investments.watchlist",
+          params: { slug },
+          search: { vault, period: "1y", view: "chart" },
+        })
+      }
+    />
+  );
 }
 
 /** A profile switch discards drawer drafts before commands can bind to the newly selected vault. */
@@ -726,6 +767,9 @@ const investmentSearch = z.object({
   page: z.literal("1").optional(),
   /** The research page's tab (`investments.research?tab=`). */
   tab: z.enum(["topics", "mine", "notes", "calendar", "candidates", "runs"]).optional(),
+  /** The header tag's `?alloc=accounts&t=`: Alokacja on its Rachunki view, `t` a fresh request per click. */
+  alloc: z.literal("accounts").optional(),
+  t: z.number().int().optional(),
   /** The topic drawer over the Home (old `topics/<key>`): a segment key or a macro regime's `macro_<key>`. */
   topic: z
     .string()
@@ -737,17 +781,22 @@ const investmentPageSearch = z.object({
   instrument: investmentEntityIdSchema.optional(),
   alert: investmentEntityIdSchema.optional(),
   newAlert: z.literal("1").optional(),
+  /** Old `alerts?edit=<id>`: the alert in the form. */
+  edit: investmentEntityIdSchema.optional(),
 });
+/** The investments routes' pending state: the Home skeleton, in the 1120px frame for the asset page. */
+function InvestmentsPending() {
+  const page = useLocation({
+    select: (l) => String((l.search as { page?: unknown }).page ?? "") === "1",
+  });
+  return <InvestmentsHomeLoading narrow={page} />;
+}
 const portfolioRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/investments.portfolio",
   validateSearch: (raw) => investmentSearch.parse(raw),
   component: PortfolioRoute,
-  pendingComponent: () => (
-    <p role="status" className="p-6">
-      {S.waiting}
-    </p>
-  ),
+  pendingComponent: InvestmentsPending,
   errorComponent: RouteFailure,
 });
 const investmentAssetRoute = createRoute({
@@ -755,11 +804,7 @@ const investmentAssetRoute = createRoute({
   path: "/$slug/assets/$instrument",
   validateSearch: (raw) => investmentSearch.parse(raw),
   component: PortfolioRoute,
-  pendingComponent: () => (
-    <p role="status" className="p-6">
-      {S.waiting}
-    </p>
-  ),
+  pendingComponent: InvestmentsPending,
   errorComponent: RouteFailure,
 });
 const strategiesRoute = createRoute({
@@ -868,11 +913,13 @@ const alertsRoute = createRoute({
   component: InvestmentPageRoute,
   errorComponent: RouteFailure,
 });
+// Old sub-route `watch`: the Home with Aktywa on the Obserwowane tab and the instrument search open.
 const watchlistRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/investments.watchlist",
-  validateSearch: (raw) => investmentPageSearch.parse(raw),
-  component: InvestmentPageRoute,
+  validateSearch: (raw) => investmentSearch.parse(raw),
+  component: PortfolioRoute,
+  pendingComponent: InvestmentsPending,
   errorComponent: RouteFailure,
 });
 const journalRoute = createRoute({
@@ -901,16 +948,13 @@ function InvestmentPageRoute() {
   const vault = useProfile();
   const enabled = useInvestmentEnabled();
   if (!enabled) return <p className="p-6">{S.setup}</p>;
-  const page = pathname.endsWith("investments.alerts")
-    ? "alerts"
-    : pathname.endsWith("investments.watchlist")
-      ? "watchlist"
-      : "journal";
+  const page = pathname.endsWith("investments.alerts") ? "alerts" : "journal";
   return (
     <SignalsPageScreen
       page={page}
       initialInstrument={selected.instrument}
       initialNewAlert={page === "alerts" && selected.newAlert === "1"}
+      initialEdit={page === "alerts" ? (selected.edit ?? null) : null}
       onClose={() =>
         void router.navigate({
           to: "/$slug/investments.portfolio",
@@ -952,6 +996,7 @@ function PortfolioRoute() {
   const notificationSignal = use(NotificationSignalFocus);
   // `investments.research`: the research page in place of the Home grid (old sub-route `research`).
   const research = useLocation({ select: (l) => l.pathname.endsWith("/investments.research") });
+  const watch = useLocation({ select: (l) => l.pathname.endsWith("/investments.watchlist") });
   if (!modules.some((module) => module.id === "investments" && module.enabled))
     return <p className="p-6">{S.setup}</p>;
   if (instrument !== undefined && !investmentEntityIdSchema.safeParse(instrument).success)
@@ -976,6 +1021,8 @@ function PortfolioRoute() {
     <PortfolioScreen
       {...(instrument === undefined ? {} : { instrument })}
       page={selected.page === "1"}
+      watch={watch}
+      allocRequest={selected.alloc === "accounts" ? (selected.t ?? 0) : null}
       slug={slug ?? ""}
       onSetupOpened={() =>
         void router.navigate({

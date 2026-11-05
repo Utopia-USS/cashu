@@ -4,6 +4,7 @@
 import { S as D } from "@cashu/i18n/investments/v2/Decide.strings";
 import { S as RI } from "@cashu/i18n/investments/v2/research/index.strings";
 import { S } from "@cashu/i18n/investments/v2/Signals.strings";
+import type { InstCardProps } from "@cashu/ui";
 import { accountLabel, dm, numInput, parseNum, qty } from "@cashu/ui-logic/investments/labels";
 import { decisionEffect, decisionTag } from "@cashu/ui-logic/investments/logic";
 import type { Thesis } from "@cashu/ui-logic/investments/types";
@@ -56,6 +57,8 @@ export type TitleProps =
       extra: string | null;
       age: Age;
       onOpen(): void;
+      /** The identity label's hover card and its one-line touch title (old InstLabel inline). */
+      card: { card: InstCardProps; touchTitle: string } | null;
     }
   | { kind: "plain"; title: string; sym: string | null; extra: string | null; age: Age };
 
@@ -350,6 +353,7 @@ export function titleProps(
       extra,
       age,
       onOpen: () => onOpen(Number(io.inst.id)),
+      card: ctx.instCard?.(io) ?? null,
     };
   }
   const t = plainTitle(s, ctx);

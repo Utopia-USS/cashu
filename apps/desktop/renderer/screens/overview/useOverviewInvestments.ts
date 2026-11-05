@@ -170,8 +170,8 @@ export function useOverviewInvestments(args: {
   return { ov, perf1y, perfYtd, perf1m, sig, dig, monthClose, plans, plan, actions };
 }
 
-/** Save / undo / change of the month's planned deposit, with toasts (old usePlanActions). */
-function usePlanActions() {
+/** Save / undo / change of the month's planned deposit, with toasts (old usePlanActions; also the minimal view's). */
+export function usePlanActions() {
   const toast = useToast();
   const create = useCommand(createPlannedDeposit);
   const cancel = useCommand(cancelPlannedDeposit);
@@ -182,7 +182,13 @@ function usePlanActions() {
     if (result.kind === "completed") toast(S.undonePlan, 2500);
     else toast(S.undoFailed(commandFailure(result)), 5000);
   };
-  const save = async (amount: number, currency: string, date: string, accountId: number | null) => {
+  /** `accountId`: a legacy account number or its gid. */
+  const save = async (
+    amount: number,
+    currency: string,
+    date: string,
+    accountId: number | string | null,
+  ) => {
     setBusy(true);
     try {
       const result = await durable.run("plan-create", create, {

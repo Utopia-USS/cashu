@@ -18,7 +18,6 @@ import minimal, {
   Planned,
   Privacy as PrivateMinimal,
   Ready as ReadyMinimal,
-  Refused,
   Unavailable as UnavailableMinimal,
 } from "./screens/overview/MinimalOverviewView.stories.js";
 import overview, { Empty, Privacy, Ready } from "./screens/overview/OverviewView.stories.js";
@@ -109,20 +108,16 @@ it("renders the investments-only overview stories in every phase", () => {
     renderToStaticMarkup(<minimal.component {...minimal.args} {...story.args} />);
   const ready = render(ReadyMinimal);
   expect(ready).toContain('data-testid="minimal-portfolio-value"');
-  expect(ready).toContain("minimal-deposits-title");
-  expect(ready).toContain('aria-current="step"');
-  expect(ready).toContain(">Plan</button>");
-  expect(render(Planned)).not.toContain(">Plan</button>");
+  expect(ready).toContain("Contributions");
+  expect(ready).toContain(">Plan</");
+  expect(render(Planned)).not.toContain(">Plan</");
   expect(render(FirstDeposit)).toContain("set it in the strategy");
-  expect(render(Refused)).toContain('role="alert"');
   const unavailable = render(UnavailableMinimal);
-  expect(unavailable).toContain('aria-label="Portfolio"');
-  expect(unavailable).not.toContain("minimal-deposits-title");
-  const hidden = renderToStaticMarkup(
-    PrivateMinimal.decorators[0]?.(() => <minimal.component {...minimal.args} />),
-  );
+  expect(unavailable).toContain("Portfolio");
+  expect(unavailable).not.toContain("Contributions");
+  const hidden = render(PrivateMinimal);
   expect(hidden).not.toContain("10,450");
-  expect(hidden).toContain("hidden");
+  expect(hidden).toContain("•••");
 });
 
 it("renders actual shell CSF states", () => {

@@ -212,7 +212,9 @@ function hintOf(hints: Hint[] | null | undefined, held: boolean): HintChipProps 
   };
 }
 
-function cardOf(
+/** The InstCard hover card of an instrument label and the one-line touch title (InstLabel.tsx InstCard /
+ * instSummary); also the signals dialog's inline labels. */
+export function instCardOf(
   inst: InstLike,
   st: InstState,
   opts: { accounts?: string[]; stale?: string | null; hints?: Hint[] | null },
@@ -335,7 +337,7 @@ export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): Asse
     const cost = p.valuation_mode === "cost";
     const parts = ui.split === "account" && p.accounts.length > 1 ? p.accounts : [];
     const accountNames = p.accounts.map((a) => accLabel(a.account_id));
-    const { card, touchTitle } = cardOf(i, st, {
+    const { card, touchTitle } = instCardOf(i, st, {
       accounts: accountNames,
       stale: p.is_stale ? p.price_date : null,
       hints: p.hints,
@@ -406,7 +408,7 @@ export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): Asse
           const recommendation = planLabel(w.instrument?.plan, false);
           let label: RowLabel | null = null;
           if (w.instrument) {
-            const { card, touchTitle } = cardOf(w.instrument, st, { hints: w.hints });
+            const { card, touchTitle } = instCardOf(w.instrument, st, { hints: w.hints });
             label = {
               tile: tileOf(w.instrument, st),
               name,

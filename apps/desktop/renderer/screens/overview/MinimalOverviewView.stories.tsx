@@ -1,5 +1,4 @@
 import { D, Money } from "@cashu/domain";
-import { UiEnvProvider } from "@cashu/ui";
 import { MinimalOverviewView } from "./MinimalOverviewView.js";
 import type { MinimalOverviewState } from "./useMinimalOverview.js";
 
@@ -7,6 +6,13 @@ import type { MinimalOverviewState } from "./useMinimalOverview.js";
 const ready: MinimalOverviewState = {
   kind: "ready",
   heroLabel: "Portfolio · October",
+  text: {
+    value: "PLN 10,450.25",
+    pnl: { text: "+PLN 450.25 (+4.5%)", tone: "positive" },
+    deposited: "PLN 10,000",
+    benchmark: "+3.1%",
+    due: "10.10",
+  },
   value: new Money(D("10450.25"), "PLN"),
   pnl: { amount: new Money(D("450.25"), "PLN"), ratio: D("0.045") },
   deposited: new Money(D("10000"), "PLN"),
@@ -33,11 +39,11 @@ const ready: MinimalOverviewState = {
     label: "Contribution PLN 2,000 by Oct 10",
     detail: "Synthetic broker · regular",
     done: false,
+    deposited: false,
     canPlan: true,
   },
   plan: { amount: D("2000"), date: "2026-10-10", currency: "PLN", account: null },
   busy: false,
-  error: null,
   onPlan: () => {},
   onAddAlert: () => {},
   onWatchInstrument: () => {},
@@ -63,6 +69,7 @@ export const FirstDeposit = {
     state: {
       ...ready,
       value: new Money(D("0"), "PLN"),
+      text: { value: "PLN 0.00", pnl: null, deposited: "-", benchmark: "-", due: "10.10" },
       pnl: null,
       deposited: null,
       depositedDetail: null,
@@ -86,22 +93,21 @@ export const FirstDeposit = {
         label: "Contribution  by Oct 10",
         detail: "as planned",
         done: false,
+        deposited: false,
         canPlan: false,
       },
       plan: null,
     },
   },
 };
-export const Refused = {
-  args: { state: { ...ready, error: "The contribution could not be planned." } },
-};
 export const Unavailable = { args: { state: { kind: "unavailable" } } };
+/** Privacy mode: the model hands over masked texts (ui-logic labels). */
 export const Privacy = {
-  decorators: [
-    (Story: () => React.ReactNode) => (
-      <UiEnvProvider privacy>
-        <Story />
-      </UiEnvProvider>
-    ),
-  ],
+  args: {
+    state: {
+      ...ready,
+      text: { ...ready.text, value: "•••", pnl: null, deposited: "•••" },
+      depositedDetail: "5 contributions of •••",
+    },
+  },
 };

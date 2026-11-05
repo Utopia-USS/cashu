@@ -99,6 +99,10 @@ export function useShellScreen(args: {
     pendingModules: modules
       .filter((module) => module.enabled && module.setupState !== "ready")
       .map((module) => module.id),
+    // Old Shell.tsx: a module's header tag shows once it is enabled and past its empty state (investments only).
+    investmentsTag: modules.some(
+      (module) => module.id === "investments" && module.enabled && module.setupState !== "empty",
+    ),
     isSwitching: switchProfile.isPending,
     onPrivacyChanged: setIncognito,
     onProfilePicked: (next: string) => {

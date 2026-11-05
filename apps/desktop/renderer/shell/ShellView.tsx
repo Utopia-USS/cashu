@@ -27,6 +27,8 @@ export interface ShellViewProps {
   onAddProfile?: () => void;
   /** The open module's tab bar actions after the spacer (old `TabAction`, the budget's Import / sync). */
   tabActions?: ReactNode;
+  /** The modules' header tags before the privacy toggle (old `.hdr-right` `HeaderTag`: investments stale prices). */
+  headerTags?: ReactNode;
   children: ReactNode;
 }
 
@@ -81,6 +83,7 @@ export function ShellView({
   onModuleOpened,
   onAddProfile,
   tabActions,
+  headerTags,
   children,
   activeModule = "overview",
   narrow = false,
@@ -142,14 +145,17 @@ export function ShellView({
               />
             }
             actions={
-              <IconToggle
-                checked={state.privacy}
-                onChange={state.onPrivacyChanged}
-                label={S.privacy}
-                title={state.privacy ? T.showAmounts : S.privacy}
-              >
-                <EyeGlyph crossed={state.privacy} />
-              </IconToggle>
+              <>
+                {headerTags}
+                <IconToggle
+                  checked={state.privacy}
+                  onChange={state.onPrivacyChanged}
+                  label={S.privacy}
+                  title={state.privacy ? T.showAmounts : S.privacy}
+                >
+                  <EyeGlyph crossed={state.privacy} />
+                </IconToggle>
+              </>
             }
           />
           {/* Kept in the tree for screen readers and the live status; drawn only while not connected. */}
