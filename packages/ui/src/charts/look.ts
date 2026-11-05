@@ -6,6 +6,8 @@ import type { ChartRole } from "./scene.js";
 export const LOOK = {
   /** `.chart .ax` / `.chart .lbl`: 10.5px tabular figures (fill set per tone). */
   text: "text-3xs-plus tabular-nums",
+  /** The old recharts axis ticks (`tick={{ fontSize: 11 }}`, ScrollableChart). */
+  textMd: "text-2xs tabular-nums",
   /** `.chart:focus-visible`: 2px accent outline, 4px offset, radius 4px. */
   focusRing:
     "rounded-2xs focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus",
@@ -43,7 +45,11 @@ export const BG: Record<ChartRole, string> = {
   info: "bg-info",
   plan: "bg-chip",
   surface: "bg-surface-raised",
+  axis: "bg-chart-axis",
+  rule: "bg-chart-rule",
+  paper: "bg-on-accent",
   accent: "bg-accent",
+  net: "bg-net",
   bench: "bg-bench",
   "inv-global": "bg-inv-global",
   "inv-pl": "bg-inv-pl",
@@ -74,7 +80,11 @@ export const BORDER: Record<ChartRole, string> = {
   info: "border-info",
   plan: "border-chip",
   surface: "border-surface-raised",
+  axis: "border-chart-axis",
+  rule: "border-chart-rule",
+  paper: "border-on-accent",
   accent: "border-accent",
+  net: "border-net",
   bench: "border-bench",
   "inv-global": "border-inv-global",
   "inv-pl": "border-inv-pl",

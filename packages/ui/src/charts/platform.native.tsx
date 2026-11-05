@@ -101,8 +101,8 @@ function Mark({
           cy={node.cy}
           r={node.r}
           fill={color(node.fill)}
-          stroke={node.ring ? color("surface") : undefined}
-          strokeWidth={node.ring ? 2 : undefined}
+          stroke={node.stroke ? color(node.stroke) : node.ring ? color("surface") : undefined}
+          strokeWidth={node.stroke ? (node.strokeWidth ?? 1) : node.ring ? 2 : undefined}
         />
       );
     case "text":

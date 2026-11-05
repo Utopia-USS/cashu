@@ -46,6 +46,9 @@
   --color-chart-7: #dc2626;
   --color-chart-8: #4b5563;
   --color-chart-grid: #eef0f3;
+  /* old recharts axis / tick stroke (#666) and grid rule (ScrollableChart) */
+  --color-chart-axis: #666666;
+  --color-chart-rule: rgba(0, 0, 0, 0.1);
   --color-focus: #2563eb;
   /* Python-app roles (old index.css names in tokens-map.md): chips, quiet bands, the benchmark, the
      scrim, skeleton shimmer, brand ink, the deck flag violet, the ticker tile, text on the accent,
@@ -310,6 +313,8 @@
       --color-chart-7: #f87171;
       --color-chart-8: #9ca3af;
       --color-chart-grid: #1f252d;
+      --color-chart-axis: #666666;
+      --color-chart-rule: rgba(255, 255, 255, 0.12);
       --color-focus: #60a5fa;
       --color-chip: #232a33;
       --color-chip-fg: #cbd5e1;
@@ -368,6 +373,8 @@
       --color-chart-7: #dc2626;
       --color-chart-8: #4b5563;
       --color-chart-grid: #eef0f3;
+      --color-chart-axis: #666666;
+      --color-chart-rule: rgba(0, 0, 0, 0.1);
       --color-focus: #2563eb;
       --color-chip: #eef1f5;
       --color-chip-fg: #374151;

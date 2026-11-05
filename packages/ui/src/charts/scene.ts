@@ -22,6 +22,12 @@ export type ChartRole =
   | "info"
   | "plan"
   | "surface"
+  /** The old recharts axis and tick lines (`#666`, ScrollableChart). */
+  | "axis"
+  /** The old recharts grid rule (`rgba(0,0,0,.10)` / `rgba(255,255,255,.12)`, ScrollableChart). */
+  | "rule"
+  /** The white face of the old recharts line dots (`fill: #fff` in both themes). */
+  | "paper"
   | NamedColor;
 
 /** A categorical series colour, `chart.series1..8` (cashu-ui tokens). */
@@ -31,6 +37,8 @@ export type SeriesColor = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
  * benchmark grey and the investment bucket palette (old `--inv-*`, index.css), by their theme.css names. */
 export type NamedColor =
   | "accent"
+  /** The old `--net` violet (the cash flow net line). */
+  | "net"
   | "bench"
   | "inv-global"
   | "inv-pl"
@@ -69,7 +77,11 @@ export const ROLE_VAR: Record<ChartRole, string> = {
   /** A planned, not yet done bar: the old `.bx.plan` chip grey. */
   plan: "--color-chip",
   surface: "--color-surface-raised",
+  axis: "--color-chart-axis",
+  rule: "--color-chart-rule",
+  paper: "--color-on-accent",
   accent: "--color-accent",
+  net: "--color-net",
   bench: "--color-bench",
   "inv-global": "--color-inv-global",
   "inv-pl": "--color-inv-pl",
@@ -126,6 +138,9 @@ interface CircleNode {
   fill: ChartRole;
   /** A ring in the surface colour separates a marker from the lines under it. */
   ring?: boolean;
+  /** An outline in a role colour (the old recharts line dot: white face, line-coloured 2px stroke). */
+  stroke?: ChartRole;
+  strokeWidth?: number;
 }
 
 /** A label: `y` is the text baseline, `anchor` the horizontal alignment at `x`. Numbers use tabular figures. */
@@ -136,6 +151,8 @@ export interface TextNode {
   text: string;
   anchor: "start" | "middle" | "end";
   tone: "muted" | "text";
+  /** Font size: 10.5px (default, the old `.chart` labels) or 11px (`md`, the old recharts axis ticks). */
+  size?: "md";
 }
 
 export type SceneNode = LineNode | PathNode | RectNode | CircleNode | TextNode;

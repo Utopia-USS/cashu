@@ -28,7 +28,11 @@ const STROKE: Record<ChartRole, string> = {
   info: "stroke-info",
   plan: "stroke-chip",
   surface: "stroke-surface-raised",
+  axis: "stroke-chart-axis",
+  rule: "stroke-chart-rule",
+  paper: "stroke-on-accent",
   accent: "stroke-accent",
+  net: "stroke-net",
   bench: "stroke-bench",
   "inv-global": "stroke-inv-global",
   "inv-pl": "stroke-inv-pl",
@@ -58,7 +62,11 @@ const FILL: Record<ChartRole, string> = {
   info: "fill-info",
   plan: "fill-chip",
   surface: "fill-surface-raised",
+  axis: "fill-chart-axis",
+  rule: "fill-chart-rule",
+  paper: "fill-on-accent",
   accent: "fill-accent",
+  net: "fill-net",
   bench: "fill-bench",
   "inv-global": "fill-inv-global",
   "inv-pl": "fill-inv-pl",
@@ -149,8 +157,11 @@ function Node({
           cx={node.cx}
           cy={node.cy}
           r={node.r}
-          className={cls(FILL[node.fill], node.ring && "stroke-surface-raised")}
-          strokeWidth={node.ring ? 2 : undefined}
+          className={cls(
+            FILL[node.fill],
+            node.stroke ? STROKE[node.stroke] : node.ring && "stroke-surface-raised",
+          )}
+          strokeWidth={node.stroke ? (node.strokeWidth ?? 1) : node.ring ? 2 : undefined}
         />
       );
     case "text":
@@ -159,7 +170,10 @@ function Node({
           x={node.x}
           y={node.y}
           textAnchor={node.anchor}
-          className={cls(LOOK.text, node.tone === "muted" ? "fill-fg-muted" : "fill-fg")}
+          className={cls(
+            node.size === "md" ? LOOK.textMd : LOOK.text,
+            node.tone === "muted" ? "fill-fg-muted" : "fill-fg",
+          )}
         >
           {node.text}
         </text>
