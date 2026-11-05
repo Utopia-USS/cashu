@@ -351,7 +351,7 @@ export function useAssetDetail(input: AssetDetailInput) {
     },
   };
 }
-export type AssetDetailState = ReturnType<typeof useAssetDetail>;
+type AssetDetailState = ReturnType<typeof useAssetDetail>;
 
 /** The instrument's name for the drawer label and crumb before the detail loads (old `assetName`: positions,
  * then the watchlist, then a name seen this session). */

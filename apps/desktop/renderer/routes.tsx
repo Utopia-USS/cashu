@@ -626,6 +626,8 @@ const investmentSearch = z.object({
   review: z.literal("1").optional(),
   signals: z.literal("1").optional(),
   note: investmentEntityIdSchema.optional(),
+  /** `assets/{gid}?page=1`: the asset page in place of the Home grid (else the asset drawer over it). */
+  page: z.literal("1").optional(),
 });
 const investmentPageSearch = z.object({
   vault: search.shape.vault,
@@ -910,6 +912,7 @@ function PortfolioRoute() {
   return (
     <PortfolioScreen
       {...(instrument === undefined ? {} : { instrument })}
+      page={selected.page === "1"}
       slug={slug ?? ""}
       onSetupOpened={() =>
         void router.navigate({
@@ -958,10 +961,38 @@ function PortfolioRoute() {
       }
       account={selected.account ?? null}
       range={selected.period}
-      table={selected.view === "table"}
       onAccountPicked={(account) => navigate({ account: account ?? undefined })}
       onRangePicked={(period) => navigate({ period: investmentSearch.shape.period.parse(period) })}
-      onTablePicked={(table) => navigate({ view: table ? "table" : "chart" })}
+      onAssetClosed={() =>
+        startTransition(() => {
+          void router.navigate({
+            to: "/$slug/investments.portfolio",
+            params: { slug: slug ?? "" },
+            search: { ...selected, page: undefined, note: undefined, vault },
+          });
+        })
+      }
+      onAssetPageOpened={(next) =>
+        void router.navigate({
+          to: "/$slug/assets/$instrument",
+          params: { slug: slug ?? "", instrument: next },
+          search: { ...selected, note: undefined, page: "1", vault },
+        })
+      }
+      onAlertsOpened={(next, newAlert) =>
+        void router.navigate({
+          to: "/$slug/investments.alerts",
+          params: { slug: slug ?? "" },
+          search: { vault, instrument: next, ...(newAlert ? { newAlert: "1" as const } : {}) },
+        })
+      }
+      onJournalOpened={(next) =>
+        void router.navigate({
+          to: "/$slug/investments.journal",
+          params: { slug: slug ?? "" },
+          search: { vault, instrument: next },
+        })
+      }
       openPage={(next) => {
         void router.navigate({
           to: "/$slug/assets/$instrument",
@@ -973,28 +1004,6 @@ function PortfolioRoute() {
             ...(selected.account === undefined ? {} : { account: selected.account }),
           },
         });
-      }}
-      openAdjacent={(tab) => {
-        if (tab === "investments.strategies")
-          void router.navigate({
-            to: "/$slug/investments.strategies",
-            params: { slug: slug ?? "" },
-            search: { vault },
-          });
-        else if (tab === "investments.signals")
-          void router.navigate({
-            to: "/$slug/investments.portfolio",
-            params: { slug: slug ?? "" },
-            search: { vault, period: selected.period, view: selected.view, signals: "1" },
-          });
-        else if (tab === "investments.research")
-          void router.navigate({
-            to: "/$slug/investments.research",
-            params: { slug: slug ?? "" },
-            search: { vault },
-          });
-        else if (tab === "investments.review") navigate({ review: "1" });
-        else navigate({});
       }}
     />
   );

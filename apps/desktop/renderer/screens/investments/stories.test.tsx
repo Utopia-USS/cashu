@@ -5,9 +5,6 @@ import { expect, it } from "vitest";
 import * as markdown from "../strategies/MarkdownDocument.stories.js";
 import * as strategies from "../strategies/StrategiesView.stories.js";
 import * as settings from "../strategies/StrategySettingsView.stories.js";
-import * as asset from "./AssetDetailView.stories.js";
-import * as imports from "./ImportStepsView.stories.js";
-import * as transactions from "./TransactionsView.stories.js";
 
 type Decorator = (Story: ComponentType) => ReactElement;
 type Story = { args?: Record<string, unknown>; decorators?: Decorator[] };
@@ -19,7 +16,7 @@ it.each(["en", "pl"] as const)(
   "renders all actual investment and strategy story phases in %s",
   (language) => {
     setLanguageForTests(language);
-    for (const module of [asset, imports, transactions, strategies, markdown, settings]) {
+    for (const module of [strategies, markdown, settings]) {
       const meta = module.default as unknown as Meta;
       for (const [name, value] of Object.entries(module)) {
         if (name === "default") continue;

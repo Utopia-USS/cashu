@@ -201,55 +201,6 @@ export function researchScopeModel(data: ResearchScreenSnapshot) {
   };
 }
 
-export function researchAssetModel(
-  data: ResearchScreenSnapshot,
-  instrument: string,
-  held: boolean,
-  today: string,
-  noteGid: string | null | undefined,
-  older: boolean,
-) {
-  if (data.status !== "current" && data.status !== "partial") return null;
-  const rows = data.notes.filter(
-    (row) => row.instrument_id === instrument && row.kind !== "candidate",
-  );
-  const summary =
-    data.status === "current" && data.summary.status === "current"
-      ? (data.summary.value.instruments.find((row) => row.instrument_id === instrument) ?? null)
-      : null;
-  if (!held && !summary?.held && !rows.some((row) => !row.expired && !row.dismissed)) return null;
-  const cutoff = addDays(today, -30);
-  const recent = rows.filter(
-    (row) =>
-      (row.observed_at ?? row.created_at ?? "").slice(0, 10) >= cutoff &&
-      !row.expired &&
-      !row.dismissed,
-  );
-  const hidden = rows.filter((row) => !recent.includes(row) && !row.dismissed);
-  const shown = [
-    ...recent,
-    ...(older || (noteGid && hidden.some((row) => row.id === noteGid)) ? hidden : []),
-  ];
-  const run = data.runs.find((item) => item.id === data.lastRun);
-  const runDay = researchDisplayDay(run?.finished_at ?? run?.started_at);
-  return {
-    data,
-    summary,
-    focusedNote: noteGid ?? null,
-    runStatus: run?.status ?? null,
-    runDay,
-    runFreshness:
-      run?.status === "done" && runDay !== null
-        ? runDay < addDays(today, -7)
-          ? "stale"
-          : "fresh"
-        : null,
-    lastResearchDay: researchDisplayDay(summary?.last_researched_at),
-    shown: shown.map((note) => ({ note, day: researchDisplayDay(note.observed_at) })),
-    hasOlder: hidden.length > 0 && !older,
-  };
-}
-
 export function researchTopicModel(
   data: ResearchScreenSnapshot,
   key: string | null,
@@ -320,21 +271,6 @@ export function researchHealthLabel(value: string): string {
       return S.healthNoThesis;
     default:
       return S.unavailable;
-  }
-}
-
-export function researchRelationLabel(value: string): string | null {
-  switch (value) {
-    case "supports":
-      return S.healthSupported;
-    case "weakens":
-      return S.healthWeakened;
-    case "invalidates":
-      return S.healthInvalidated;
-    case "fulfills":
-      return S.healthFulfilled;
-    default:
-      return null;
   }
 }
 

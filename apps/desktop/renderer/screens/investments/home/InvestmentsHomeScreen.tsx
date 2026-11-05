@@ -7,6 +7,7 @@ import { Suspense } from "react";
 import { ReviewDeckScreen } from "../../review/deck/ReviewDeckScreen.js";
 import { ReviewSlotView } from "../../review/deck/ReviewSlotView.js";
 import { SignalsDialogView } from "../../signals/SignalsView.js";
+import { AssetDrawerScreen, AssetPage } from "../asset/AssetDetailScreen.js";
 import {
   AccountDrawer,
   ThesisDrawer,
@@ -49,8 +50,20 @@ function ImportDrawer({ input }: { input: ImportDrawerInput }) {
 function HomeBound(props: InvestmentsHomeOptions) {
   const s = useInvestmentsHomeScreen(props);
   if (s.phase === "error" || !s.head) return <HomeErrorView message={s.error} />;
+  const a = s.asset;
   const overlays = (
     <>
+      {a && !a.page && (
+        <AssetDrawerScreen
+          instrument={a.instrument}
+          filter={a.filter}
+          noteGid={a.noteGid}
+          onClose={a.onClose}
+          onPage={a.onPage}
+          onCrumb={a.onCrumb}
+          {...a.actions}
+        />
+      )}
       {s.phase === "home" && <SignalsDialogView state={s.signalsScreen} />}
       {s.importDrawer && <ImportDrawer input={s.importDrawer} />}
       {s.txnDrawer && <TxnDrawer {...s.txnDrawer} />}
@@ -59,6 +72,21 @@ function HomeBound(props: InvestmentsHomeOptions) {
       {s.txnsDrawer && <TxnsDrawer {...s.txnsDrawer} />}
     </>
   );
+  // `assets/{id}?page=1`: the page replaces the grid and shares the Home's drawers (old Home.tsx:412-421).
+  if (a?.page)
+    return (
+      <>
+        <AssetPage
+          instrument={a.instrument}
+          filter={a.filter}
+          noteGid={a.noteGid}
+          onBack={a.onClose}
+          onPanel={a.onPanel}
+          {...a.actions}
+        />
+        {overlays}
+      </>
+    );
   const head = {
     head: s.head,
     onAccount: s.onAccount,

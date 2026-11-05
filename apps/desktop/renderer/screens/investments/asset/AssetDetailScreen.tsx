@@ -4,10 +4,9 @@
 // first load inside a Suspense fallback.
 import { S as D } from "@cashu/i18n/investments/v2/AssetDrawer.strings";
 import { S as H } from "@cashu/i18n/investments/v2/Home.strings";
-import { Button, Crumb, DetailDrawer, HealthPill, Skeleton, ToastProvider } from "@cashu/ui";
+import { Button, Crumb, DetailDrawer, HealthPill, Skeleton } from "@cashu/ui";
 import type { Position, Thesis } from "@cashu/ui-logic/investments/types";
 import { type ReactNode, Suspense } from "react";
-import { HomePage } from "../home/HomeView.js";
 import { gidOf } from "../home/legacyWire.js";
 import { AssetDetailView } from "./AssetDetailView.js";
 import { AssetResearchView } from "./AssetResearchView.js";
@@ -15,7 +14,7 @@ import type { AssetMode } from "./assetModel.js";
 import { useAssetDetail, useAssetName } from "./useAssetDetail.js";
 
 /** The old AssetDetail callbacks (Home.tsx:403-411; A3's drawer contract shapes). */
-export interface AssetActions {
+interface AssetActions {
   /** `+ Alert` / `+ Nowy`: the alerts manager with a new alert for the instrument. */
   onNewAlert(instrument: string): void;
   /** `+ Transakcja`: the transaction drawer preset to the instrument. */
@@ -139,16 +138,13 @@ function DrawerBound({ onClose, onPage, onCrumb, ...props }: AssetDrawerScreenPr
   );
 }
 
-/** The asset page (old Home.tsx:414: `nav.crumb` + AssetDetail "page") in the Home's page box. */
-export function AssetPageScreen(props: AssetPageScreenProps) {
+/** The asset page (old Home.tsx:412-421: `nav.crumb` + AssetDetail "page"): the Home renders it in place of
+ * its grid, inside its page box and toasts, and shares its drawers. */
+export function AssetPage(props: AssetPageScreenProps) {
   return (
-    <ToastProvider>
-      <HomePage>
-        <Suspense fallback={<Loading mode="page" />}>
-          <PageBound {...props} />
-        </Suspense>
-      </HomePage>
-    </ToastProvider>
+    <Suspense fallback={<Loading mode="page" />}>
+      <PageBound {...props} />
+    </Suspense>
   );
 }
 

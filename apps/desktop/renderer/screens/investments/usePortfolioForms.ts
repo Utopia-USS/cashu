@@ -61,7 +61,7 @@ const transactionAmounts = [
 ] as const;
 type AmountField = (typeof transactionAmounts)[number];
 
-export function fieldsForTransaction(type: string): readonly AmountField[] {
+function fieldsForTransaction(type: string): readonly AmountField[] {
   if (type === "split") return ["splitRatio"];
   if (type === "transfer_out") return ["quantity"];
   if (type === "transfer_in" || type === "adjustment") return ["quantity", "price"];
@@ -138,7 +138,7 @@ export const classificationDefaults = {
   tags: "",
   aliases: "",
 };
-export function classificationInput(value: typeof classificationDefaults) {
+function classificationInput(value: typeof classificationDefaults) {
   return classifyUiInstrument.input.parse({
     instrument: value.instrument,
     patch: {

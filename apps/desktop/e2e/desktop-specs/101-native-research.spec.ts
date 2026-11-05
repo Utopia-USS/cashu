@@ -116,11 +116,10 @@ test("native Research reads generated events, opens a note, and separates vault 
       "https://example.test/research/1",
     );
     await reader.getByRole("button", { name: "Otwórz aktywo" }).click();
-    const asset = page.getByTestId("native-asset-research");
+    // The asset drawer over the investments Home (ab24ab6 `assets/{id}?note=`) opens with the note's row.
+    const asset = page.getByRole("dialog").last();
     await expect(asset).toBeVisible();
-    const deepNote = asset.getByRole("button", { name: "Synthetic research fact 1", exact: true });
-    await expect(deepNote).toBeVisible();
-    await expect(deepNote).toBeFocused();
+    await expect(asset.getByText("Synthetic research fact 1").first()).toBeVisible();
     await settleModalHistory(page);
     await page.evaluate((hash) => {
       location.hash = hash;

@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { demoExpectations, rendered } from "../demo-expectations.ts";
+import { demoExpectations, } from "../demo-expectations.ts";
 import {
   dashboardWindow,
   expect,
@@ -105,45 +105,38 @@ test("investments Home shows generated-source valuations, its filters, the Impor
     await importer.getByRole("button", { name: "Zamknij", exact: true }).click();
     await expect(importer).toHaveCount(0);
 
-    // An asset row opens the instrument page; its transaction flow writes an owner transaction.
+    // An asset row opens the asset drawer over the Home (ab24ab6 `assets/{id}`); its transactions drawer and
+    // the manual transaction drawer (old Drawers.tsx TxnsDrawer / TxnDrawer) write an owner transaction.
     await asset.click();
-    const assetPage = page.getByTestId("native-asset-page");
-    await expect(assetPage.getByRole("heading", { name: label, exact: true })).toBeVisible();
-    await page.screenshot({ path: join(dataDir, "native-asset-page.png"), fullPage: true });
-    const table = assetPage.getByRole("table", { name: "Transakcje", exact: true });
-    await expect(table).toBeVisible();
-    const rowsBefore = Number(await table.getAttribute("aria-rowcount"));
-    await assetPage.getByRole("button", { name: "Dodaj transakcję", exact: true }).click();
+    const assetDrawer = page.getByRole("dialog", { name: label, exact: true });
+    await expect(assetDrawer).toBeVisible();
+    await expect(page).toHaveURL(/\/assets\//u);
+    await page.screenshot({ path: join(dataDir, "native-asset-drawer.png"), fullPage: true });
+    await assetDrawer.getByRole("button", { name: /^\d+ transakcj/u }).click();
+    const txns = page.getByRole("dialog", { name: "Transakcje instrumentu", exact: true });
+    await expect(txns).toBeVisible();
+    const rowsBefore = await txns.getByRole("row").count();
+    await txns.getByRole("button", { name: "Dodaj transakcję", exact: true }).click();
     const transaction = page.getByRole("dialog", { name: "Dodaj transakcję", exact: true });
-    const type = transaction.getByRole("combobox", { name: "Typ transakcji", exact: true });
-    await type.selectOption("fx_conversion");
-    await expect(transaction.getByText(/Drugą nogę wymiany/u)).toBeVisible();
+    await expect(transaction).toBeVisible();
+    const type = transaction.getByRole("combobox", { name: "Typ", exact: true });
+    await type.selectOption("deposit");
     await expect(transaction.getByRole("textbox", { name: "Ilość", exact: true })).toHaveCount(0);
     await type.selectOption("buy");
     await transaction.getByRole("textbox", { name: "Ilość", exact: true }).fill("1,25");
-    await transaction.getByRole("button", { name: "Anuluj", exact: true }).click();
-    await assetPage.getByRole("button", { name: "Dodaj transakcję", exact: true }).click();
-    await expect(transaction.getByRole("textbox", { name: "Ilość", exact: true })).toHaveValue("");
-    // An owner buy of this instrument.
-    await type.selectOption("buy");
-    await transaction.getByRole("textbox", { name: "Ilość", exact: true }).fill("1,25");
-    await transaction.getByRole("textbox", { name: "Cena", exact: true }).fill("10");
-    await transaction.getByRole("textbox", { name: "Waluta", exact: true }).fill("PLN");
-    await transaction.getByRole("textbox", { name: "Waluta gotówki", exact: true }).fill("PLN");
-    await transaction
-      .getByRole("textbox", { name: "Zmiana gotówki ze znakiem", exact: true })
-      .fill("-12,5");
+    await transaction.getByRole("textbox", { name: /^Cena \(/u }).fill("10");
     await transaction
       .getByRole("textbox", { name: "Notatka", exact: true })
       .fill("Synthetic native owner write");
     await transaction.getByRole("button", { name: "Zapisz", exact: true }).click();
-    await expect(transaction).not.toBeVisible();
-    // The instrument's transactions table (no note column) gains the owner's buy.
-    await expect(table).toHaveAttribute("aria-rowcount", String(rowsBefore + 1));
-    await expect(
-      table.getByRole("row").filter({ hasText: rendered("-12.5", "PLN") }),
-    ).not.toHaveCount(0);
-    await page.goBack();
+    await expect(transaction).toHaveCount(0);
+    await expect(page.getByText("Zapisano transakcję", { exact: false })).toBeVisible();
+    // The asset's transactions list gains the owner's buy.
+    await assetDrawer.getByRole("button", { name: /^\d+ transakcj/u }).click();
+    await expect(txns.getByRole("row")).toHaveCount(rowsBefore + 1);
+    await txns.getByRole("button", { name: "Zamknij", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(assetDrawer).toHaveCount(0);
     await expect(hero).toBeVisible();
 
     // Privacy hides the amounts of the Home and brings them back (the buy moved the value).

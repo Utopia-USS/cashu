@@ -73,6 +73,20 @@ export interface InvestmentsHomeOptions {
   onProposalOpened?(gid: string, onResumed: () => void): boolean;
   onSetupOpened?(): void;
   onSettingsOpened?(): void;
+  /** The asset of the route (`assets/{gid}`): its drawer over the Home, or its page with `page`. */
+  readonly instrument?: string;
+  /** `?page=1`: the asset page replaces the grid (old Home.tsx:412). */
+  readonly page?: boolean;
+  /** `?note=`: a research note of the asset to open and highlight. */
+  readonly noteGid?: string | null;
+  /** Close the asset drawer / leave the page (back to `investments.portfolio`). */
+  onAssetClosed?(): void;
+  /** `otwórz jako stronę`: `assets/{gid}?page=1`. */
+  onAssetPageOpened?(gid: string): void;
+  /** The alerts manager for one instrument (old `alerts?instrument=id`, `&new=1` for a new alert). */
+  onAlertsOpened?(instrument: string, newAlert: boolean): void;
+  /** The decision journal for one instrument (old `journal?instrument=id`). */
+  onJournalOpened?(instrument: string): void;
 }
 
 export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
@@ -428,12 +442,35 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
     accountDrawer,
     thesisDrawer,
     txnsDrawer,
-    // ---- the asset detail's drawers (Home.tsx assetDetail: onAddTxn / onTxns / onThesis) ----
-    assetDrawers: {
-      onAddTxn: (instrumentId: number | string) => setDrawer({ kind: "txn", instrumentId }),
-      onTxns: (position: Position) => setDrawer({ kind: "txns", position }),
-      onThesis: (inst: { id: number | string; label: string }, thesis: Thesis | null) =>
-        setDrawer({ kind: "thesis", instrumentId: inst.id, label: inst.label, thesis }),
-    },
+    // ---- the asset detail (Home.tsx:402-427): the drawer over the grid or the page in its place ----
+    asset: o.instrument
+      ? {
+          instrument: o.instrument,
+          page: !!o.page,
+          noteGid: o.noteGid ?? null,
+          filter,
+          actions: {
+            onNewAlert: (instrument: string) => o.onAlertsOpened?.(instrument, true),
+            onAlerts: (instrument: string) => o.onAlertsOpened?.(instrument, false),
+            onJournal: (instrument: string) => o.onJournalOpened?.(instrument),
+            onAddTxn: (instrumentId: number) => setDrawer({ kind: "txn", instrumentId }),
+            onTxns: (position: Position) => setDrawer({ kind: "txns", position }),
+            onThesis: (inst: { id: number; label: string }, thesis: Thesis | null) =>
+              setDrawer({ kind: "thesis", instrumentId: inst.id, label: inst.label, thesis }),
+            // old ctx.onOpenNote: the note in the research view, else the segment's topic.
+            onOpenNote: (_instrument: string, note: string | null, segment: string | null) =>
+              note
+                ? o.onResearchOpened?.(undefined, undefined, note)
+                : o.onResearchOpened?.(undefined, segment ?? undefined),
+          },
+          onClose: () => o.onAssetClosed?.(),
+          onPage: () => o.onAssetPageOpened?.(o.instrument ?? ""),
+          onPanel: () => o.openPage?.(o.instrument ?? ""),
+          onCrumb: (where: "home" | "assets") => {
+            o.onAssetClosed?.();
+            if (where === "assets") setTimeout(() => scrollTo("inv-assets"), 60);
+          },
+        }
+      : null,
   };
 }
