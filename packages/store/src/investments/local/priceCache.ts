@@ -280,6 +280,27 @@ export class SqlPriceCache implements TransactionalPriceCache {
         fetchedAt: r.fetched_at === null ? null : parseDateTime(r.fetched_at),
       }));
   }
+  /**
+   * Every rate of `base`/`quote` with its provider, by date then provider. Native refreshes write
+   * only NBP; other providers come from an import (Python kept one rate per base, quote and day
+   * whatever its source, so an imported day is never ambiguous).
+   */
+  ratesOfEveryProvider(
+    base: string,
+    quote: Currency,
+  ): readonly (market.CachedRate & { readonly provider: string })[] {
+    return this.driver
+      .prepare(
+        "SELECT provider,date,rate,fetched_at FROM local_market_rates WHERE base=? AND quote=? ORDER BY date,provider",
+      )
+      .all<RateRow & { provider: string }>(base, quote)
+      .map((r) => ({
+        provider: r.provider,
+        date: r.date as CalendarDate,
+        rate: D(r.rate),
+        fetchedAt: r.fetched_at === null ? null : parseDateTime(r.fetched_at),
+      }));
+  }
   upsertRates(
     provider: string,
     quote: Currency,

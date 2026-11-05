@@ -16,7 +16,7 @@ import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
 import { PYTHON_BACKUP_PREFIX } from "@cashu/node-host/admission";
 import { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
-import { vaultSalt, viewHash } from "@cashu/store";
+import { type SqlDriver, vaultSalt, viewHash } from "@cashu/store";
 import { DeviceStore } from "@cashu/store/device";
 import { publishCheckedImportBlob } from "@cashu/store/investments/services";
 import { crypto } from "@cashu/sync";
@@ -103,7 +103,7 @@ function assertAbsent(path: string): void {
   throw new MigrationError("identity_invalid");
 }
 
-function databaseName(source: string): PythonDatabaseName {
+export function databaseName(source: string): PythonDatabaseName {
   const present = (name: PythonDatabaseName) => {
     try {
       lstatSync(join(source, name));
@@ -183,6 +183,17 @@ function verifyDeviceLocal(
     withDeviceStore(dataDir, lock, false, (store) =>
       verifyHydratedLocalState(store.driver, conversion, expected),
     );
+  } finally {
+    lock.release();
+  }
+}
+
+/** Reads a migrated data dir's device store under the host lock (refused while a host runs). */
+export function readMigratedDeviceStore<T>(dataDir: string, use: (driver: SqlDriver) => T): T {
+  const lock = acquireHostLock(hostRunPaths(dataDir).lockPath);
+  if (!lock) throw new Error("native_host_lock_required");
+  try {
+    return withDeviceStore(dataDir, lock, false, (store) => use(store.driver));
   } finally {
     lock.release();
   }

@@ -115,3 +115,59 @@ it("values alias-less imported bars by exact vault identity and invalidates on n
     driver.close();
   }
 });
+
+it("reads imported PLN rates of a non-NBP provider where NBP has no rate that day", () => {
+  const driver = openNodeSqlite(":memory:");
+  try {
+    const prices = new SqlPriceCache(driver);
+    const rate = (id: number, date: string, value: string) => ({
+      id,
+      base: "PLN",
+      quote: "EUR",
+      date,
+      rate: value,
+      source: "synthetic",
+      fetchedAt: null,
+    });
+    prices.restoreSourceCache(
+      {
+        format: 1,
+        schema: "synthetic",
+        fxRates: [rate(1, "2026-10-29", "4.30"), rate(2, "2026-10-30", "4.31")],
+        macroBars: [],
+        priceBars: [],
+      },
+      [],
+      [],
+    );
+    const eur = instrument({
+      id: asInstrumentId("instrument-eur"),
+      name: "Synthetic EUR",
+      currency: Currencies.EUR,
+      assetClass: "etf",
+    });
+    const imported = cachedInstrumentMarketData([eur], "vault-a", prices).data;
+    expect(
+      imported.fxRates(Currencies.EUR).map((r) => [r.date, r.rate.toString(), r.source]),
+    ).toEqual([
+      ["2026-10-29", "4.30", "synthetic"],
+      ["2026-10-30", "4.31", "synthetic"],
+    ]);
+    expect(imported.hasRateOnOrBefore(Currencies.EUR, "2026-10-30")).toBe(true);
+    prices.upsertRates(
+      "nbp",
+      Currencies.EUR,
+      [{ date: "2026-10-30", rate: D("4.4"), fetchedAt: null }],
+      parseDateTime("2026-11-02T12:00:00Z"),
+    );
+    const mixed = cachedInstrumentMarketData([eur], "vault-a", prices).data;
+    expect(mixed.fxRates(Currencies.EUR).map((r) => [r.date, r.rate.toString(), r.source])).toEqual(
+      [
+        ["2026-10-29", "4.30", "synthetic"],
+        ["2026-10-30", "4.4", "nbp"],
+      ],
+    );
+  } finally {
+    driver.close();
+  }
+});

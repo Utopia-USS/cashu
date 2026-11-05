@@ -1,6 +1,8 @@
 /** Per-vault market projection of exact imported history and shared native public prices. */
 import {
   type Currency,
+  type FxRate,
+  fxRate,
   type Instrument,
   type InstrumentId,
   market,
@@ -77,7 +79,19 @@ export function cachedInstrumentMarketData(
     }
     return byDate([...best.values()].map((entry) => entry.bar));
   };
-  const fxRates = (quote: Currency) => native.fxRates(quote);
+  // NBP rates (native refreshes) win a day; an imported day of another provider fills a gap, as
+  // Python valued with its one stored rate per day whatever the source.
+  const fxRates = (quote: Currency): readonly FxRate[] => {
+    const nbp = native.fxRates(quote);
+    const days = new Set(nbp.map((rate) => rate.date));
+    const imported: FxRate[] = [];
+    for (const row of prices.ratesOfEveryProvider("PLN", quote)) {
+      if (days.has(row.date)) continue;
+      days.add(row.date);
+      imported.push(fxRate({ ...row, quote, source: row.provider }));
+    }
+    return imported.length === 0 ? nbp : byDate([...nbp, ...imported]);
+  };
   const data: market.CachedMarketData = {
     series,
     fxRates,

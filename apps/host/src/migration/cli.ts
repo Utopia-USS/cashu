@@ -51,8 +51,9 @@ import {
   migrateInPlace,
   readMigrationMarker,
 } from "./inPlace.js";
-import { M, type MigrateCounts } from "./migrate.strings.js";
+import { M, type MigrateCounts, type UnpricedLine } from "./migrate.strings.js";
 import { type KeyStoreFactory, verifyPythonMigration } from "./oneShot.js";
+import { unpricedAfterMigration } from "./priceReach.js";
 
 /** Exit code of a malformed command line (EX_USAGE). */
 const USAGE_EXIT = 64;
@@ -320,8 +321,31 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
     return 0;
   }
   io.stdout(t.tr(M.migrated)(countsOf(marker), backup));
+  printUnpriced(io, t, args.dataDir, marker.backupDir, false);
   io.stdout(t.tr(M.verifyHint));
   return 0;
+}
+
+/**
+ * Names every imported instrument the app cannot price (human mode), instead of a silent 0. After a
+ * finished cutover a failing check must not turn the import into a reported failure (`strict`
+ * false: the verify that the hint asks for runs it strictly).
+ */
+function printUnpriced(
+  io: MigrateIo,
+  t: Translator,
+  dataDir: string,
+  backupDir: string,
+  strict: boolean,
+): void {
+  let unpriced: readonly UnpricedLine[];
+  try {
+    unpriced = unpricedAfterMigration(dataDir, backupDir);
+  } catch (error) {
+    if (strict) throw error;
+    return;
+  }
+  if (unpriced.length > 0) io.stdout(t.tr(M.unpriced)(unpriced));
 }
 
 function printAlreadyMigrated(
@@ -379,7 +403,10 @@ async function runVerify(io: MigrateIo, args: Args, t: Translator, home: string)
     throw new Error("replay_mismatch");
   if (args.json)
     emit(io, { event: "done", status: "verified", ...counts, backupDir: marker.backupDir });
-  else io.stdout(t.tr(M.verified)(counts, homeRelativePath(backup, home)));
+  else {
+    io.stdout(t.tr(M.verified)(counts, homeRelativePath(backup, home)));
+    printUnpriced(io, t, args.dataDir, marker.backupDir, true);
+  }
   return 0;
 }
 

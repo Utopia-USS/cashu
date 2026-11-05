@@ -1,5 +1,6 @@
 // What `cashu migrate` and `cashu migrate verify` print in human mode (PL + EN). Values are counts,
-// enum codes, an ISO time, the backup directory's name and `~`-relative paths; never data or words.
+// enum codes, an ISO time, the backup directory's name, `~`-relative paths and the public tickers of
+// instruments the app cannot price; never personal data or words.
 import type { MigrateStage, StartupFailureCode } from "@cashu/host-protocol/startup-failure";
 import type { TranslationVariants } from "@cashu/i18n";
 
@@ -11,6 +12,13 @@ export interface MigrateCounts {
   readonly financialTables: number;
   readonly financialRows: number;
   readonly vaults: number;
+}
+
+/** An instrument the app cannot price after the import (`priceReach.ts`). */
+export interface UnpricedLine {
+  readonly label: string;
+  readonly currency: string;
+  readonly reason: "no_prices" | "no_fx";
 }
 
 export const M = {
@@ -82,6 +90,24 @@ export const M = {
     en: (c: MigrateCounts, backup: string) =>
       `Verification passed: profiles ${c.profiles}, tables ${c.financialTables}, rows ${c.financialRows}, vaults ${c.vaults} (source: ${backup}).`,
   } satisfies Fn<[MigrateCounts, string]>,
+  unpriced: {
+    pl: (items: readonly UnpricedLine[]) =>
+      [
+        `Uwaga: aplikacja nie wyceni ${items.length} instrumentów (wartość 0 zł, dopóki nie będzie notowań):`,
+        ...items.map(
+          (i) =>
+            `  ${i.label} (${i.currency}): ${i.reason === "no_fx" ? `brak kursu PLN/${i.currency}` : "brak notowań"}`,
+        ),
+      ].join("\n"),
+    en: (items: readonly UnpricedLine[]) =>
+      [
+        `Warning: the app cannot value ${items.length} instruments (0 until it has prices):`,
+        ...items.map(
+          (i) =>
+            `  ${i.label} (${i.currency}): ${i.reason === "no_fx" ? `no PLN/${i.currency} rate` : "no prices"}`,
+        ),
+      ].join("\n"),
+  } satisfies Fn<[readonly UnpricedLine[]]>,
   failed: {
     pl: (code: StartupFailureCode, detail: string) =>
       `Import się nie powiódł (${code}${detail === "" ? "" : `, ${detail}`}).`,
