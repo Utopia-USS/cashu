@@ -27,7 +27,7 @@ export function Select({
       aria-describedby={describedBy}
       data-testid={testID}
       onChange={(event) => onChange(event.target.value)}
-      className={`${fieldLook} ${labelHidden ? className : ""}`}
+      className={`${fieldLook("select", !labelHidden && !inline)} ${labelHidden ? className : ""}`}
     >
       {options.map((option) => (
         <option key={option.value} value={option.value} disabled={option.disabled}>

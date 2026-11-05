@@ -1,9 +1,9 @@
 /* The token source of the cashU UI (cashu-ui skill, references/tokens.md): a Tailwind v4 theme compiled
    by @tailwindcss/vite for the desktop renderer and Storybook, and by Uniwind (Metro) for apps/mobile.
    Roles only: the default palette and scales are reset, so `bg-red-500` generates nothing. Light values
-   live in @theme and again in `@variant light` (Uniwind's explicit light theme); the guard
-   tools/arch/src/guards/theme.test.ts keeps the two identical, every role defined in dark, and every
-   text / surface pair at WCAG AA. */
+   live in @theme and again in `@variant light` (Uniwind's explicit light theme); keep the two identical
+   and every role defined in dark (no guard checks it yet). The old-name -> token table of the Python
+   app port is ~/cashu-lab/checkpoints/investments-ui-poc/tokens-map.md. */
 @import "tailwindcss";
 @import "uniwind";
 
@@ -16,26 +16,27 @@
   --radius-*: initial;
   --font-weight-*: initial;
 
-  --color-fg: #15181c;
+  /* Values match the Python app 1:1 (owner chose Python parity over AA contrast). */
+  --color-fg: #1a1d21;
   --color-fg-secondary: #374151;
-  --color-fg-muted: #5b6472;
+  --color-fg-muted: #6b7280;
   --color-fg-inverse: #ffffff;
-  --color-surface: #f4f5f7;
+  --color-surface: #f6f7f9;
   --color-surface-raised: #ffffff;
   --color-surface-sunken: #eceef1;
   --color-surface-overlay: #ffffff;
-  --color-border: #dfe3e8;
+  --color-border: #e5e7eb;
   --color-border-strong: #b8c0ca;
-  --color-accent: #1d4ed8;
+  --color-accent: #2563eb;
   --color-accent-muted: #dbe5fb;
-  --color-positive: #116a33;
-  --color-positive-bg: rgba(17, 106, 51, 0.1);
-  --color-negative: #b91c1c;
-  --color-negative-bg: rgba(185, 28, 28, 0.1);
-  --color-warning: #874d06;
-  --color-warning-bg: rgba(135, 77, 6, 0.12);
-  --color-info: #1d4ed8;
-  --color-info-bg: rgba(29, 78, 216, 0.1);
+  --color-positive: #16a34a;
+  --color-positive-bg: rgba(22, 163, 74, 0.1);
+  --color-negative: #dc2626;
+  --color-negative-bg: rgba(220, 38, 38, 0.1);
+  --color-warning: #b45309;
+  --color-warning-bg: rgba(180, 83, 9, 0.12);
+  --color-info: #2563eb;
+  --color-info-bg: rgba(37, 99, 235, 0.1);
   --color-chart-1: #2563eb;
   --color-chart-2: #db2777;
   --color-chart-3: #059669;
@@ -44,18 +45,58 @@
   --color-chart-6: #0891b2;
   --color-chart-7: #dc2626;
   --color-chart-8: #4b5563;
-  --color-chart-grid: #eceef1;
+  --color-chart-grid: #eef0f3;
   --color-focus: #2563eb;
+  /* Python-app roles (old index.css names in tokens-map.md): chips, quiet bands, the benchmark, the
+     scrim, skeleton shimmer, brand ink, the deck flag violet, the ticker tile, text on the accent,
+     allocation buckets and net-worth kinds. */
+  --color-chip: #eef1f5;
+  --color-chip-fg: #374151;
+  --color-subtle: #f9fafb;
+  --color-bench: #9aa4b2;
+  --color-scrim: rgba(15, 18, 22, 0.35);
+  --color-shimmer: rgba(255, 255, 255, 0.55);
+  --color-ink: #111316;
+  --color-net: #7c3aed;
+  --color-av-bg: #000000;
+  --color-av-fg: #e8e8e8;
+  --color-av-coin: #000000;
+  --color-on-accent: #ffffff;
+  --color-inv-global: #2563eb;
+  --color-inv-pl: #d97706;
+  --color-inv-bonds: #0891b2;
+  --color-inv-cash: #7c3aed;
+  --color-inv-other: #6b7280;
+  --color-inv-5: #16a34a;
+  --color-inv-6: #db2777;
+  --color-inv-7: #ca8a04;
+  --color-nw-money: #2563eb;
+  --color-nw-property: #0891b2;
+  --color-nw-vehicle: #16a34a;
+  --color-nw-mortgage: #dc2626;
+  --color-nw-loan: #ea580c;
 
-  /* 4-point spacing: p-1 = 4px. Uniwind's safe-area utilities need the multiplier, so off-scale
-     steps (p-13) are rejected by the class lint, not by the theme (SPACING_STEPS in src/layout.ts). */
+  /* 4-point spacing: p-1 = 4px. Uniwind's safe-area utilities need the multiplier; SPACING_STEPS in
+     src/layout.ts is the vocabulary of the `layout` prop. */
   --spacing: 4px;
   --spacing-row: 64px;
 
+  /* Radii: the scale continues around the original sm / md / lg; `control` is the Python app's 8px of
+     buttons, fields, segments and skeletons, `widget` its 12px of widgets and big buttons. */
+  --radius-4xs: 2px;
+  --radius-3xs: 3px;
+  --radius-2xs: 4px;
+  --radius-xs: 5px;
   --radius-sm: 6px;
+  --radius-sm-plus: 7px;
+  --radius-control: 8px;
   --radius-md: 10px;
+  --radius-widget: 12px;
   --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 20px;
 
+  /* Role sizes (with their own line height) for the native screens. */
   --text-caption: 12px;
   --text-caption--line-height: 16px;
   --text-body: 15px;
@@ -67,8 +108,98 @@
   --text-display: 30px;
   --text-display--line-height: 36px;
 
+  /* Primitive sizes: every font size of the Python app's CSS. No line height of their own, so the line
+     height inherits like the old CSS (page root 15px / 1.5); set `leading-*` where an old rule did.
+     `-plus` = the old size just above that step which has no step name of its own. */
+  --text-5xs: 8px;
+  --text-5xs-plus: 8.5px;
+  --text-4xs: 9px;
+  --text-4xs-plus: 9.5px;
+  --text-3xs: 10px;
+  --text-3xs-plus: 10.5px;
+  --text-2xs: 11px;
+  --text-2xs-plus: 11.5px;
+  --text-xs: 12px;
+  --text-xs-plus: 12.5px;
+  --text-sm: 13px;
+  --text-sm-plus: 13.5px;
+  --text-md: 14px;
+  --text-md-plus: 14.5px;
+  --text-base: 15px;
+  --text-base-plus: 16px;
+  --text-lg: 17px;
+  --text-lg-plus: 18px;
+  --text-xl: 19px;
+  --text-2xl: 20px;
+  --text-3xl: 21px;
+  --text-3xl-plus: 22px;
+  --text-4xl: 26px;
+  --text-4xl-plus: 30px;
+  --text-5xl: 34px;
+  --text-6xl: 40px;
+
+  /* Line heights besides Tailwind's none 1 / tight 1.25 / snug 1.375 / normal 1.5. */
+  /* `control` = CSS `normal`: the old buttons that kept the UA font shorthand (segments, icon buttons). */
+  --leading-control: normal;
+  --leading-hero: 1.15;
+  --leading-dense: 1.2;
+  --leading-cozy: 1.4;
+  --leading-widget: 1.45;
+  --leading-sheet: 1.55;
+
   --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-demi: 550;
   --font-weight-strong: 600;
+  --font-weight-heavy: 650;
+  --font-weight-bold: 700;
+  --font-weight-black: 750;
+
+  /* Letter spacing besides Tailwind's tight -0.025em / wider 0.05em. */
+  --tracking-eyebrow: 0.06em;
+  --tracking-label: 0.05em;
+  --tracking-caps: 0.04em;
+  --tracking-snug: -0.01em;
+  --tracking-heading: -0.02em;
+  --tracking-dense: -0.03em;
+
+  /* Shadows. `card` follows the theme (none in dark) through --elevation-card, the rest are the same in
+     both themes. Tailwind inlines theme shadow values into the utility, hence the indirection; dark is a transparent
+     shadow, not `none`, so a ring on the same element still composes. */
+  --shadow-card: var(--elevation-card);
+  --shadow-deck: 0 1px 2px rgba(16, 18, 22, 0.04), 0 12px 32px rgba(16, 18, 22, 0.1);
+  --shadow-tip: 0 6px 20px rgba(0, 0, 0, 0.14);
+  --shadow-toast: 0 10px 34px rgba(0, 0, 0, 0.28);
+  --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.35);
+  --shadow-panel: -16px 0 48px rgba(0, 0, 0, 0.22);
+
+  /* Breakpoints of the Python app (max-width 1180 / 900 / 760 / 480): `max-wide:` = width <= 1180px,
+     `max-split:` <= 900px, `max-narrow:` <= 760px, `max-phone:` <= 480px; `min-split:` >= 901px. */
+  --breakpoint-phone: 481px;
+  --breakpoint-narrow: 761px;
+  --breakpoint-split: 901px;
+  --breakpoint-wide: 1181px;
+
+  /* Motion: the review deck's fly-out curve (with duration-260), skeleton shimmer, toast entry. */
+  --ease-deck: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --animate-shimmer: shimmer 1.3s infinite;
+  --animate-toast-in: toast-in 0.16s ease-out;
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 @layer theme {
@@ -76,27 +207,28 @@
     --modal-backdrop-layer: 40;
     --modal-panel-layer: 50;
     --modal-layer-step: 20;
+    --elevation-card: 0 1px 2px rgba(16, 18, 22, 0.04);
     @variant dark {
-      --color-fg: #e8eaed;
-      --color-fg-secondary: #c9cfd8;
+      --color-fg: #e6e8eb;
+      --color-fg-secondary: #cbd5e1;
       --color-fg-muted: #9aa4b2;
       --color-fg-inverse: #0f1216;
       --color-surface: #0f1216;
       --color-surface-raised: #171b21;
       --color-surface-sunken: #0a0c0f;
-      --color-surface-overlay: #1e232a;
+      --color-surface-overlay: #171b21;
       --color-border: #262c34;
       --color-border-strong: #3a424d;
-      --color-accent: #7aa7ff;
+      --color-accent: #60a5fa;
       --color-accent-muted: #1e2a44;
-      --color-positive: #4ade80;
-      --color-positive-bg: rgba(74, 222, 128, 0.14);
+      --color-positive: #34d399;
+      --color-positive-bg: rgba(52, 211, 153, 0.14);
       --color-negative: #f87171;
       --color-negative-bg: rgba(248, 113, 113, 0.14);
       --color-warning: #fbbf24;
       --color-warning-bg: rgba(251, 191, 36, 0.14);
-      --color-info: #7aa7ff;
-      --color-info-bg: rgba(122, 167, 255, 0.14);
+      --color-info: #60a5fa;
+      --color-info-bg: rgba(96, 165, 250, 0.14);
       --color-chart-1: #60a5fa;
       --color-chart-2: #f472b6;
       --color-chart-3: #34d399;
@@ -106,29 +238,55 @@
       --color-chart-7: #f87171;
       --color-chart-8: #9ca3af;
       --color-chart-grid: #1f252d;
-      --color-focus: #7aa7ff;
+      --color-focus: #60a5fa;
+      --color-chip: #232a33;
+      --color-chip-fg: #cbd5e1;
+      --color-subtle: #141820;
+      --color-bench: #6b7684;
+      --color-scrim: rgba(0, 0, 0, 0.6);
+      --color-shimmer: rgba(255, 255, 255, 0.09);
+      --color-ink: #0b0d10;
+      --color-net: #a78bfa;
+      --color-av-bg: #000000;
+      --color-av-fg: #e8e8e8;
+      --color-av-coin: #2b323c;
+      --color-on-accent: #ffffff;
+      --color-inv-global: #3b82f6;
+      --color-inv-pl: #d97706;
+      --color-inv-bonds: #0e9fbf;
+      --color-inv-cash: #8b5cf6;
+      --color-inv-other: #9aa4b2;
+      --color-inv-5: #34d399;
+      --color-inv-6: #f472b6;
+      --color-inv-7: #facc15;
+      --color-nw-money: #60a5fa;
+      --color-nw-property: #22d3ee;
+      --color-nw-vehicle: #34d399;
+      --color-nw-mortgage: #f87171;
+      --color-nw-loan: #fb923c;
+      --elevation-card: 0 0 #0000;
     }
     @variant light {
-      --color-fg: #15181c;
+      --color-fg: #1a1d21;
       --color-fg-secondary: #374151;
-      --color-fg-muted: #5b6472;
+      --color-fg-muted: #6b7280;
       --color-fg-inverse: #ffffff;
-      --color-surface: #f4f5f7;
+      --color-surface: #f6f7f9;
       --color-surface-raised: #ffffff;
       --color-surface-sunken: #eceef1;
       --color-surface-overlay: #ffffff;
-      --color-border: #dfe3e8;
+      --color-border: #e5e7eb;
       --color-border-strong: #b8c0ca;
-      --color-accent: #1d4ed8;
+      --color-accent: #2563eb;
       --color-accent-muted: #dbe5fb;
-      --color-positive: #116a33;
-      --color-positive-bg: rgba(17, 106, 51, 0.1);
-      --color-negative: #b91c1c;
-      --color-negative-bg: rgba(185, 28, 28, 0.1);
-      --color-warning: #874d06;
-      --color-warning-bg: rgba(135, 77, 6, 0.12);
-      --color-info: #1d4ed8;
-      --color-info-bg: rgba(29, 78, 216, 0.1);
+      --color-positive: #16a34a;
+      --color-positive-bg: rgba(22, 163, 74, 0.1);
+      --color-negative: #dc2626;
+      --color-negative-bg: rgba(220, 38, 38, 0.1);
+      --color-warning: #b45309;
+      --color-warning-bg: rgba(180, 83, 9, 0.12);
+      --color-info: #2563eb;
+      --color-info-bg: rgba(37, 99, 235, 0.1);
       --color-chart-1: #2563eb;
       --color-chart-2: #db2777;
       --color-chart-3: #059669;
@@ -137,8 +295,61 @@
       --color-chart-6: #0891b2;
       --color-chart-7: #dc2626;
       --color-chart-8: #4b5563;
-      --color-chart-grid: #eceef1;
+      --color-chart-grid: #eef0f3;
       --color-focus: #2563eb;
+      --color-chip: #eef1f5;
+      --color-chip-fg: #374151;
+      --color-subtle: #f9fafb;
+      --color-bench: #9aa4b2;
+      --color-scrim: rgba(15, 18, 22, 0.35);
+      --color-shimmer: rgba(255, 255, 255, 0.55);
+      --color-ink: #111316;
+      --color-net: #7c3aed;
+      --color-av-bg: #000000;
+      --color-av-fg: #e8e8e8;
+      --color-av-coin: #000000;
+      --color-on-accent: #ffffff;
+      --color-inv-global: #2563eb;
+      --color-inv-pl: #d97706;
+      --color-inv-bonds: #0891b2;
+      --color-inv-cash: #7c3aed;
+      --color-inv-other: #6b7280;
+      --color-inv-5: #16a34a;
+      --color-inv-6: #db2777;
+      --color-inv-7: #ca8a04;
+      --color-nw-money: #2563eb;
+      --color-nw-property: #0891b2;
+      --color-nw-vehicle: #16a34a;
+      --color-nw-mortgage: #dc2626;
+      --color-nw-loan: #ea580c;
+      --elevation-card: 0 1px 2px rgba(16, 18, 22, 0.04);
+    }
+  }
+}
+
+/* The Python app's global keyboard focus ring (old index.css `:focus-visible`); components that draw their
+   own ring (inset rows, fields) override it with utilities. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+
+/* Skeleton shimmer (old `.skeleton::after`): a light band sweeping over a chip-coloured block. The host
+   element needs `relative overflow-hidden`. */
+@utility shimmer {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, var(--color-shimmer), transparent);
+    animation: var(--animate-shimmer);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      animation: none;
     }
   }
 }

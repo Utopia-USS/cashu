@@ -4,8 +4,13 @@ export interface ButtonProps {
   /** Visible content: usually the translated label, or inline content such as a title with an amount. */
   children: ReactNode;
   onPress?: () => void;
-  variant?: "primary" | "secondary" | "danger" | "ghost";
+  /** `secondary` is the plain chip button; `ghost` the same on a transparent face; `link` an underlined
+   * text action; `icon` a bare glyph (pass `label`). */
+  variant?: "primary" | "secondary" | "danger" | "ghost" | "link" | "icon";
+  /** Box sizes for the framed variants; for `link`: sm = widget footer, md = widget body, lg = plain text. */
   size?: "sm" | "md" | "lg";
+  /** Label weight (default regular, like the Python app's buttons). */
+  weight?: "regular" | "strong";
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
   /** Layout only (margin, width, alignment); identity comes from `variant`. */

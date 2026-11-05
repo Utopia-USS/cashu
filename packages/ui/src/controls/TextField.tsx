@@ -57,7 +57,7 @@ export function TextField({
     "aria-invalid": invalid || undefined,
     "data-testid": testID,
     "data-autofocus": autoFocus ? "" : undefined,
-    className: `${fieldLook} placeholder:text-fg-muted aria-[invalid=true]:border-negative ${labelHidden ? className : ""}`,
+    className: `${fieldLook(multiline ? "textarea" : "input", !labelHidden && !inline)} placeholder:text-fg-muted aria-[invalid=true]:border-negative ${labelHidden ? className : ""}`,
   };
   const control = multiline ? (
     <textarea {...shared} rows={rows} onChange={(event) => onChange(event.target.value)} />
