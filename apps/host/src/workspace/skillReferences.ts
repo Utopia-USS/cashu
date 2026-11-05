@@ -78,6 +78,7 @@ const REWRITES: readonly (readonly [string, string])[] = [
   [`\`${GENERIC_CSV}\``, "`generic_csv_example.yaml`"],
   [GENERIC_CSV, "generic_csv_example.yaml"],
   [`\`${TEMPLATES_TEST}\``, "the cashU test suite"],
+  ["`apps/host/scripts/genConnectorSchemas.ts`", "the cashU schema generator"],
   [`../${EXAMPLES}/`, "connector-examples/"],
   [`${EXAMPLES}/`, "connector-examples/"],
   ["docs/import-format.md", "import-format.md"],

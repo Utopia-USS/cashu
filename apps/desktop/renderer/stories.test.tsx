@@ -74,8 +74,10 @@ it("renders actual Overview CSF states and masks exact accessible amounts in its
   expect(renderToStaticMarkup(<overview.component {...overview.args} {...Empty.args} />)).toContain(
     'data-testid="net-worth"',
   );
-  expect(renderToStaticMarkup(<overview.component {...overview.args} {...Ready} />)).not.toContain(
-    "disabled",
+  // The ready Overview has no disabled control (Select classes carry `disabled:` variants, so
+  // match the attribute, not the word).
+  expect(renderToStaticMarkup(<overview.component {...overview.args} {...Ready} />)).not.toMatch(
+    /\sdisabled(?:=|\s|>)/,
   );
   const hidden = renderToStaticMarkup(
     Privacy.decorators[0]?.(() => <overview.component {...overview.args} />),

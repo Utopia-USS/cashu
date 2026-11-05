@@ -16,7 +16,7 @@ same preview and deduplication as a bank export. This document is the complete s
   repeat a value from the file (they name the kind, the row and the field), so they are safe to show to
   an agent.
 - JSON Schema of the JSON variant: [`schemas/cashu-budget-import.v1.json`](schemas/cashu-budget-import.v1.json)
-  (generated from the validator's models by `apps/host/scripts/genConnectorSchemas.ts`).
+  (generated from the validator's models by the cashU schema generator).
 
 The investments module has its own format ([`import-format.md`](import-format.md)); the two are separate.
 
