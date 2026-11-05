@@ -9,10 +9,9 @@ import assets, {
   Ready as ReadyAssets,
 } from "./screens/overview/AssetsWidgetView.stories.js";
 import investments, {
+  NoChart,
   Privacy as PrivateInvestments,
   Ready as ReadyInvestments,
-  Unavailable as UnavailableInvestments,
-  ZeroStart,
 } from "./screens/overview/InvestmentsWidgetView.stories.js";
 import minimal, {
   FirstDeposit,
@@ -67,24 +66,16 @@ it("renders the start-up recovery CSF states without a host", () => {
   expect(render(ReportUnavailable)).toContain("could not be read");
 });
 
-it("renders actual Overview CSF states and masks exact accessible amounts in its privacy decorator", () => {
+it("renders actual Overview CSF states with the masked privacy hero", () => {
   expect(renderToStaticMarkup(<overview.component {...overview.args} {...Ready} />)).toContain(
     'data-testid="net-worth"',
   );
   expect(renderToStaticMarkup(<overview.component {...overview.args} {...Empty.args} />)).toContain(
-    'data-testid="net-worth"',
+    "Turn on modules",
   );
-  // The ready Overview has no disabled control (Select classes carry `disabled:` variants, so
-  // match the attribute, not the word).
-  expect(renderToStaticMarkup(<overview.component {...overview.args} {...Ready} />)).not.toMatch(
-    /\sdisabled(?:=|\s|>)/,
-  );
-  const hidden = renderToStaticMarkup(
-    Privacy.decorators[0]?.(() => <overview.component {...overview.args} />),
-  );
+  const hidden = renderToStaticMarkup(<overview.component {...overview.args} {...Privacy.args} />);
   expect(hidden).not.toContain("12,000");
-  expect(hidden).not.toContain("11,000");
-  expect(hidden).toContain("hidden");
+  expect(hidden).toContain("•••");
 });
 
 it("renders asset and investment widget stories from synthetic state", () => {
@@ -93,7 +84,7 @@ it("renders asset and investment widget stories from synthetic state", () => {
   );
   expect(
     renderToStaticMarkup(<assets.component {...assets.args} {...EmptyAssets.args} />),
-  ).toContain("overview-assets-title");
+  ).toContain('id="ov-assets"');
   expect(
     renderToStaticMarkup(<assets.component {...assets.args} {...OpenAssets.args} />),
   ).toContain("Synthetic property");
@@ -102,20 +93,15 @@ it("renders asset and investment widget stories from synthetic state", () => {
   ).not.toContain("Synthetic property");
   expect(
     renderToStaticMarkup(<investments.component {...investments.args} {...ReadyInvestments} />),
-  ).toContain("overview-investments-title");
+  ).toContain("Investments");
+  expect(
+    renderToStaticMarkup(<investments.component {...investments.args} {...NoChart.args} />),
+  ).toContain("YTD");
   expect(
     renderToStaticMarkup(
-      <investments.component {...investments.args} {...UnavailableInvestments.args} />,
+      <investments.component {...investments.args} {...PrivateInvestments.args} />,
     ),
-  ).toContain('aria-label="Investments"');
-  expect(
-    renderToStaticMarkup(<investments.component {...investments.args} {...ZeroStart.args} />),
-  ).toContain("overview-investments-title");
-  expect(
-    renderToStaticMarkup(
-      PrivateInvestments.decorators[0]?.(() => <investments.component {...investments.args} />),
-    ),
-  ).toContain("overview-investments-title");
+  ).toContain("•••");
 });
 
 it("renders the investments-only overview stories in every phase", () => {

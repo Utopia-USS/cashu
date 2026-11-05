@@ -9,7 +9,13 @@ import {
 } from "@cashu/store";
 import { overviewQueries } from "@cashu/store/overview";
 import { useCommand, useQuery } from "@cashu/store-react";
-import { curvePreview, monthlyLoss, ratePct, valuationLabel } from "@cashu/ui-logic/assets/logic";
+import {
+  curvePreview,
+  dmy,
+  monthlyLoss,
+  ratePct,
+  valuationLabel,
+} from "@cashu/ui-logic/assets/logic";
 import { cur0s, round0, TYPE_LABEL } from "@cashu/ui-logic/core/format";
 import { useState } from "react";
 import { O } from "../CommandOutcome.strings.js";
@@ -310,9 +316,32 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
       setError(W.assetRefused);
     }
   };
+  // Display strings of the Majątek widget and the drawer (old AssetsWidget.tsx), formatted here so the Views
+  // stay pure; the old formatters mask the digits in privacy mode.
+  const totalsText = orderedTotals.map(([c, v]) => cur0s(v.toFloat(), c)).join(" · ");
+  const widgetRows = displayRows.map((row) => ({
+    gid: row.gid,
+    name: row.name,
+    note: row.note,
+    value: cur0s(row.amount?.toFloat(), row.currency),
+    sub: row.valuation,
+    lossLine: row.lossLine,
+  }));
+  const drawerText =
+    target === null
+      ? { title: A.newPosition, tag: null, readOnlyValue: null, lastValuation: null }
+      : {
+          title: target.name,
+          tag: TYPE_LABEL[target.type] ?? target.type,
+          readOnlyValue: cur0s(target.amount?.toFloat(), target.currency),
+          lastValuation: target.asOf ? A.lastValuation(dmy(target.asOf)) : null,
+        };
   return {
     rows,
     displayRows,
+    widgetRows,
+    totalsText,
+    drawerText,
     orderedTotals,
     lossSummary,
     preview,

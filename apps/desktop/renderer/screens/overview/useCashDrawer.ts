@@ -1,8 +1,10 @@
 import { budget, D } from "@cashu/domain";
 import { lang } from "@cashu/i18n";
+import { S as K } from "@cashu/i18n/core/components/CashCard.strings";
 import { addCashExpense, deleteCashTransaction } from "@cashu/store";
 import { overviewCashWallet } from "@cashu/store/overview";
 import { useCommand, useQuery } from "@cashu/store-react";
+import { cur } from "@cashu/ui-logic/core/format";
 import { useState } from "react";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { W } from "./OverviewWidgets.strings.js";
@@ -62,8 +64,28 @@ export function useCashDrawer() {
       setError(W.cashRefused);
     }
   };
+  // Display strings of the old CashCard (formatted here so the drawer View stays pure; masked in privacy mode).
+  const c = wallet.currency || "PLN";
+  const display = {
+    balance: cur(wallet.balance.toFloat(), c),
+    negative: wallet.balance.lt(D("0")),
+    withdrawnSpent: K.withdrawnSpent(
+      cur(wallet.withdrawals.toFloat(), c),
+      cur(wallet.expenses.toFloat(), c),
+    ),
+    rows: wallet.transactions.map((row) => ({
+      gid: row.gid,
+      date: row.date,
+      withdrawal: row.kind === "withdrawal",
+      title: row.title ?? "",
+      category: row.category ? budget.categoryLabel(row.category, lang()) : "-",
+      amount: cur(row.amount.toFloat(), c),
+      negative: row.amount.lt(D("0")),
+    })),
+  };
   return {
     wallet,
+    display,
     open,
     amount,
     title,

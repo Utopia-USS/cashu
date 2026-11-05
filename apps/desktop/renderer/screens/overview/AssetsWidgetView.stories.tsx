@@ -37,6 +37,18 @@ const state: AssetsWidgetViewProps["state"] = {
       valuation: { text: "Synthetic valuation", stale: false },
     },
   ],
+  widgetRows: [
+    {
+      gid: "synthetic-asset",
+      name: "Synthetic property",
+      note: null,
+      value: "350,000 PLN",
+      sub: { text: "Synthetic valuation", stale: false },
+      lossLine: null,
+    },
+  ],
+  totalsText: "350,000 PLN",
+  drawerText: { title: "New position", tag: null, readOnlyValue: null, lastValuation: null },
   orderedTotals: [["PLN", D("350000")]],
   lossSummary: null,
   preview: null,
@@ -72,12 +84,16 @@ const args: AssetsWidgetViewProps = {
   today: "2026-10-01",
   baseCurrency: "PLN",
   privacy: false,
+  onSetup: () => {},
 };
 
 export default { title: "Desktop/Overview/Assets", component: AssetsWidgetView, args };
 export const Ready = {};
 export const Empty = {
-  args: { ...args, state: { ...state, rows: [], displayRows: [], orderedTotals: [] } },
+  args: {
+    ...args,
+    state: { ...state, rows: [], displayRows: [], widgetRows: [], orderedTotals: [] },
+  },
 };
 export const Open = { args: { ...args, state: { ...state, open: true } } };
 export const Privacy = { args: { ...args, privacy: true } };

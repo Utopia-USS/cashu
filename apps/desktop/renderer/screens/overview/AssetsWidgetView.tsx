@@ -1,241 +1,367 @@
-import { Money as MoneyValue } from "@cashu/domain";
+// Majątek on Przegląd (ab24ab6 modules/assets/AssetsWidget.tsx): the manually valued positions (valuation date
+// or a vehicle's curve, monthly loss), `+ Dodaj`, the footer totals and `wszystkie (n)`; with no position the
+// widget is the module's first steps. The add / edit drawer (AssetDrawer) is shared with the Majątek page.
 import { S as A } from "@cashu/i18n/assets/AssetsWidget.strings";
+import { S as ST } from "@cashu/i18n/assets/Steps.strings";
 import { C } from "@cashu/i18n/core/common.strings";
-import { Button, Modal, Money, Select, TextField } from "@cashu/ui";
-import { useEffect, useState } from "react";
+import {
+  Button,
+  Drawer,
+  FormRow,
+  Notice,
+  rowLinkCls,
+  Select,
+  SetupSteps,
+  Tag,
+  TextField,
+  tableCls,
+  tdCls,
+  Widget,
+} from "@cashu/ui";
+import { useState } from "react";
 import type { AssetDrawerState } from "./useAssetDrawer.js";
+
+const sym = "block -mt-px text-2xs-plus text-fg-muted";
+const nameBtn =
+  "cursor-pointer border-0 bg-transparent p-0 text-left font-strong text-fg [font:inherit] hover:text-accent";
+const CAP = 5;
+const MASK = "•••";
 
 export interface AssetsWidgetViewProps {
   state: AssetDrawerState;
   today: string;
   baseCurrency: string;
   privacy: boolean;
+  /** The Majątek page (old `Instrukcja Claude Code i CLI` link of the first steps). */
+  onSetup(): void;
 }
 
-/** Manual positions and their native edit drawer. Financial values remain Decimals in the View. */
-export function AssetsWidgetView({ state, today, baseCurrency, privacy }: AssetsWidgetViewProps) {
+export function AssetsWidgetView({
+  state,
+  today,
+  baseCurrency,
+  privacy,
+  onSetup,
+}: AssetsWidgetViewProps) {
   const [all, setAll] = useState(false);
-  const shown = all ? state.displayRows : state.displayRows.slice(0, 5);
+  const rows = state.widgetRows;
+  const drawer = <AssetDrawerView state={state} today={today} privacy={privacy} />;
+  const add = (type: string) => state.openNew(type, baseCurrency);
+  if (!rows.length)
+    return (
+      <Widget
+        title={A.title}
+        tight
+        id="ov-assets"
+        footer={
+          <Button variant="link" size="sm" onPress={onSetup}>
+            {A.setupLink}
+          </Button>
+        }
+      >
+        <SetupSteps
+          compact
+          steps={[
+            {
+              key: "position",
+              status: "on",
+              title: ST.position,
+              hint: ST.positionHint,
+              actions: (
+                <Button variant="primary" disabled={privacy} onPress={() => add("property")}>
+                  {ST.addPosition}
+                </Button>
+              ),
+            },
+            {
+              key: "vehicle",
+              status: "todo",
+              title: ST.vehicle,
+              optional: true,
+              hint: ST.vehicleHint,
+              actions: (
+                <Button disabled={privacy} onPress={() => add("vehicle")}>
+                  {ST.addVehicle}
+                </Button>
+              ),
+            },
+          ]}
+        />
+        {drawer}
+      </Widget>
+    );
+  const shown = all ? rows : rows.slice(0, CAP);
   return (
-    <section
-      className="rounded-lg border border-border bg-surface-raised p-6"
-      aria-labelledby="overview-assets-title"
-    >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 id="overview-assets-title" className="text-title font-strong">
-          {A.title} {state.rows.length > 0 && `(${state.rows.length})`}
-        </h2>
-        <button type="button" onClick={() => state.openNew("property", baseCurrency)}>
+    <Widget
+      title={A.title}
+      count={rows.length}
+      id="ov-assets"
+      controls={
+        <Button size="sm" disabled={privacy} onPress={() => add("property")}>
           {A.addPlus}
-        </button>
-      </div>
-      {state.rows.length === 0 ? (
-        <div>
-          <p className="text-fg-muted">{A.empty}</p>
-          <button type="button" onClick={() => state.openNew("vehicle", baseCurrency)}>
-            {state.vehicleLabel}
-          </button>
-        </div>
-      ) : (
-        <ul className="divide-y divide-border">
+        </Button>
+      }
+      tight
+      flush
+      footer={
+        <>
+          <span>
+            {A.total} <b>{state.totalsText}</b>
+          </span>
+          {state.lossSummary && (
+            <span>
+              {A.cars(state.lossSummary.count)} <b>-{state.lossSummary.text}</b>
+              {A.perMonth}
+            </span>
+          )}
+          <span className="flex-1" />
+          {state.undone !== null && (
+            <Button variant="link" size="sm" onPress={() => void state.undo()}>
+              {C.undo}
+            </Button>
+          )}
+          {rows.length > CAP && (
+            <Button variant="link" size="sm" onPress={() => setAll(!all)}>
+              {all ? A.less : A.all(rows.length)}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <table className={tableCls(true)}>
+        <tbody>
           {shown.map((row) => (
-            <li key={row.gid} className="flex items-center justify-between gap-3 py-3">
-              <div>
+            <tr
+              key={row.gid}
+              className={privacy ? undefined : rowLinkCls}
+              onClick={privacy ? undefined : () => state.openEdit(row.gid)}
+            >
+              <td className={tdCls()}>
                 <button
                   type="button"
-                  onClick={() => state.openEdit(row.gid)}
+                  className={nameBtn}
+                  disabled={privacy}
                   aria-label={A.editOf(privacy ? A.title : row.name)}
-                  className="font-strong"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    state.openEdit(row.gid);
+                  }}
                 >
-                  {privacy ? "•••" : row.name}
+                  {privacy ? MASK : row.name}
                 </button>
                 {!privacy && row.note && (
+                  <>
+                    {" "}
+                    <Tag title={row.note}>{A.note}</Tag>
+                  </>
+                )}
+                {row.sub && (
                   <span
-                    className="ml-2 rounded-sm bg-surface-sunken px-1 text-caption"
-                    title={row.note}
+                    className={`${sym} ${row.sub.stale ? "text-warning" : ""}`}
+                    title={row.sub.stale ? A.staleTitle : undefined}
                   >
-                    {A.note}
+                    {row.sub.text}
                   </span>
                 )}
-                {row.valuation && (
-                  <p
-                    className={`text-caption ${row.valuation.stale ? "text-warning" : "text-fg-muted"}`}
-                    title={row.valuation.stale ? A.staleTitle : undefined}
-                  >
-                    {row.valuation.text}
-                  </p>
-                )}
-              </div>
-              <div className="text-right">
-                <Money
-                  value={row.amount === null ? null : new MoneyValue(row.amount, row.currency)}
-                />
-                {row.lossLine && <p className="text-caption text-fg-muted">{row.lossLine}</p>}
-              </div>
-            </li>
+              </td>
+              <td className={tdCls(true)}>
+                {row.value}
+                {row.lossLine && <span className={sym}>{row.lossLine}</span>}
+              </td>
+            </tr>
           ))}
-        </ul>
-      )}
-      <div className="mt-4 flex flex-wrap justify-between gap-3 border-t border-border pt-3 text-caption">
-        <span>
-          {A.total}{" "}
-          {state.orderedTotals.map(([currency, amount]) => (
-            <Money key={currency} value={new MoneyValue(amount, currency)} />
-          ))}
-        </span>
-        {state.lossSummary && (
-          <span>
-            {A.cars(state.lossSummary.count)} -{state.lossSummary.text}
-            {A.perMonth}
-          </span>
-        )}
-        {state.rows.length > 5 && (
-          <button type="button" onClick={() => setAll(!all)}>
-            {all ? A.less : A.all(state.rows.length)}
-          </button>
-        )}
-        {state.undone !== null && (
-          <button type="button" onClick={() => void state.undo()}>
-            {C.undo}
-          </button>
-        )}
-      </div>
-      <AssetDrawerView state={state} today={today} privacy={privacy} />
-    </section>
+        </tbody>
+      </table>
+      {drawer}
+    </Widget>
   );
 }
 
-/** Shared native asset dialog used by Overview and assets first steps. */
+const sub = "-mt-1.5 mb-3 text-2xs-plus text-fg-muted";
+
+/** The add / edit form in a drawer (old AssetDrawer, 480px): a new position (name, type, value, currency, date,
+ * note; a vehicle: its curve instead), a manual row (value, date, note) or a vehicle (read-only value, its curve,
+ * note). Shared by Przegląd and the Majątek page; refused (closed) in privacy mode. */
 export function AssetDrawerView({
   state,
   today,
   privacy,
 }: Pick<AssetsWidgetViewProps, "state" | "today" | "privacy">) {
-  useEffect(() => {
-    if (privacy && state.open) state.close();
-  }, [state, privacy]);
+  if (!state.open || privacy) return null;
   const target = state.target;
   const form = state.form;
-  const vehicle = target?.kind === "vehicle" || (target === null && form.type === "vehicle");
-  return (
+  const vehicle = target?.kind === "vehicle";
+  const newVehicle = target === null && form.type === "vehicle";
+  const t = state.drawerText;
+  const field = "mb-3";
+  const value = (
+    <TextField
+      label={A.value}
+      inputMode="decimal"
+      autoComplete="off"
+      value={form.value}
+      onChange={(v) => state.set("value", v)}
+      className={field}
+    />
+  );
+  const date = (
+    <TextField
+      label={A.valuationDate}
+      type="date"
+      max={today}
+      value={form.onDate}
+      onChange={(v) => state.set("onDate", v)}
+      className={field}
+    />
+  );
+  const currency = (
+    <TextField
+      label={A.currency}
+      maxLength={3}
+      autoComplete="off"
+      value={form.currency}
+      onChange={(v) => state.set("currency", v.toUpperCase())}
+      className={field}
+    />
+  );
+  const price = (
+    <TextField
+      label={A.purchasePrice}
+      inputMode="decimal"
+      autoComplete="off"
+      value={form.purchasePrice}
+      onChange={(v) => state.set("purchasePrice", v)}
+      className={field}
+    />
+  );
+  const curve = (
     <>
-      {state.open && !privacy && (
-        <Modal
-          label={target === null ? A.newPosition : A.editOf(target.name)}
-          onClose={state.close}
-          placement="center"
-          width="sm"
-          closeOnBackdrop={false}
-        >
-          <h3 className="text-headline font-strong">
-            {target === null ? A.newPosition : A.editOf(privacy ? A.title : target.name)}
-          </h3>
-          <form
-            className="mt-4 grid gap-3 sm:grid-cols-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void state.submit();
-            }}
-          >
-            {target === null && (
-              <>
-                <TextField
-                  label={A.name}
-                  value={form.name}
-                  onChange={(value) => state.set("name", value)}
-                  autoComplete="off"
-                />
-                <Select
-                  label={A.type}
-                  value={form.type}
-                  onChange={(value) => state.set("type", value)}
-                  options={state.positionTypes}
-                />
-                <TextField
-                  label={A.currency}
-                  value={form.currency}
-                  maxLength={3}
-                  onChange={(value) => state.set("currency", value.toUpperCase())}
-                />
-              </>
-            )}
-            {vehicle ? (
-              <>
-                <TextField
-                  label={A.purchasePrice}
-                  inputMode="decimal"
-                  value={form.purchasePrice}
-                  onChange={(value) => state.set("purchasePrice", value)}
-                />
-                <TextField
-                  label={A.purchaseDate}
-                  type="date"
-                  max={today}
-                  value={form.purchaseDate}
-                  onChange={(value) => state.set("purchaseDate", value)}
-                />
-                <TextField
-                  label={A.yearlyDecline}
-                  inputMode="decimal"
-                  value={form.annualRate}
-                  onChange={(value) => state.set("annualRate", value)}
-                />
-                <TextField
-                  label={A.floor}
-                  inputMode="decimal"
-                  value={form.floor}
-                  onChange={(value) => state.set("floor", value)}
-                />
-                {state.preview && (
-                  <p className="text-caption text-fg-muted sm:col-span-2">{state.preview}</p>
-                )}
-              </>
+      {target === null ? (
+        <FormRow>
+          {price}
+          {currency}
+        </FormRow>
+      ) : (
+        price
+      )}
+      <FormRow>
+        <TextField
+          label={A.purchaseDate}
+          type="date"
+          max={today}
+          value={form.purchaseDate}
+          onChange={(v) => state.set("purchaseDate", v)}
+          className={field}
+        />
+        <TextField
+          label={A.yearlyDecline}
+          inputMode="decimal"
+          autoComplete="off"
+          value={form.annualRate}
+          onChange={(v) => state.set("annualRate", v)}
+          className={field}
+        />
+      </FormRow>
+      <TextField
+        label={A.floor}
+        inputMode="decimal"
+        autoComplete="off"
+        value={form.floor}
+        onChange={(v) => state.set("floor", v)}
+        className={field}
+      />
+      {state.preview && <div className={sub}>{state.preview}</div>}
+    </>
+  );
+  const note = (
+    <TextField
+      label={A.noteLabel}
+      maxLength={500}
+      autoComplete="off"
+      value={form.note}
+      onChange={(v) => state.set("note", v)}
+      className={field}
+    />
+  );
+  return (
+    <Drawer
+      width={480}
+      label={A.title}
+      title={t.title}
+      tag={t.tag ? <Tag>{t.tag}</Tag> : undefined}
+      onClose={state.close}
+      footer={
+        <>
+          <Button variant="primary" disabled={state.busy} onPress={() => void state.submit()}>
+            {state.busy ? A.saving : C.save}
+          </Button>
+          <Button onPress={state.close}>{C.cancel}</Button>
+          {target !== null && (
+            <Button disabled={state.busy} onPress={() => void state.remove()}>
+              {C.remove}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          void state.submit();
+        }}
+      >
+        {state.error !== null && <Notice tone="negative">{state.error}</Notice>}
+        {target === null ? (
+          <>
+            <TextField
+              label={A.name}
+              maxLength={120}
+              autoComplete="off"
+              value={form.name}
+              onChange={(v) => state.set("name", v)}
+              className={field}
+            />
+            <Select
+              label={A.type}
+              value={form.type}
+              onChange={(v) => state.set("type", v)}
+              options={state.positionTypes}
+              className={field}
+            />
+            {newVehicle ? (
+              curve
             ) : (
               <>
-                <TextField
-                  label={A.value}
-                  inputMode="decimal"
-                  value={form.value}
-                  onChange={(value) => state.set("value", value)}
-                />
-                <TextField
-                  label={A.valuationDate}
-                  type="date"
-                  max={today}
-                  value={form.onDate}
-                  onChange={(value) => state.set("onDate", value)}
-                />
+                <FormRow>
+                  {value}
+                  {currency}
+                </FormRow>
+                {date}
               </>
             )}
-            <TextField
-              label={A.noteLabel}
-              multiline
-              value={form.note}
-              maxLength={500}
-              onChange={(value) => state.set("note", value)}
-              className="sm:col-span-2"
-            />
-            {state.error !== null && (
-              <p role="alert" className="text-negative sm:col-span-2">
-                {state.error}
-              </p>
-            )}
-            <div className="flex justify-between gap-3 sm:col-span-2">
-              {target !== null && (
-                <Button variant="danger" disabled={state.busy} onPress={() => void state.remove()}>
-                  {C.remove}
-                </Button>
-              )}
-              <span className="flex gap-2">
-                <Button onPress={state.close}>{C.cancel}</Button>
-                <Button variant="primary" type="submit" disabled={state.busy}>
-                  {state.busy ? A.saving : C.save}
-                </Button>
-              </span>
+            {note}
+          </>
+        ) : vehicle ? (
+          <>
+            <div className={`${field} grid gap-1`}>
+              <span className="text-xs text-fg-muted">{A.value}</span>
+              <output className="py-0.5 text-md font-strong tabular-nums">{t.readOnlyValue}</output>
             </div>
-          </form>
-        </Modal>
-      )}
-    </>
+            {curve}
+            {note}
+          </>
+        ) : (
+          <>
+            <FormRow>
+              {value}
+              {date}
+            </FormRow>
+            {t.lastValuation && <div className={sub}>{t.lastValuation}</div>}
+            {note}
+          </>
+        )}
+      </form>
+    </Drawer>
   );
 }

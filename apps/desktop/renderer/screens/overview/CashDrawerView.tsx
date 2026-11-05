@@ -1,8 +1,21 @@
-import { budget, Money as MoneyValue } from "@cashu/domain";
-import { lang } from "@cashu/i18n";
-import { Button, DateText, Modal, Money, Select, TextField } from "@cashu/ui";
-import { useState } from "react";
-import { W } from "./OverviewWidgets.strings.js";
+// Gotówka w portfelu (ab24ab6 core/overview/CoreWidgets.tsx AccountsWidget drawer + components/CashCard.tsx): the
+// cash balance with withdrawn / spent, the quick add row (amount, title, category) and the cash transactions.
+// Pure: the strings come formatted from useCashDrawer; the hook owns every command.
+
+import { C } from "@cashu/i18n/core/common.strings";
+import { S as K } from "@cashu/i18n/core/components/CashCard.strings";
+import { S as CW } from "@cashu/i18n/core/overview/CoreWidgets.strings";
+import {
+  Button,
+  Drawer,
+  dataTableCls,
+  dataTdCls,
+  dataThCls,
+  Notice,
+  Select,
+  scrollCls,
+  TextField,
+} from "@cashu/ui";
 import type { CashDrawerState } from "./useCashDrawer.js";
 
 export interface CashDrawerViewProps {
@@ -10,127 +23,123 @@ export interface CashDrawerViewProps {
   privacy: boolean;
 }
 
-/** Pure local drawer; the screen hook owns every command and validates the active vault. */
+const MASK = "•••";
+const DOWN = "⬇︎ ";
+const REMOVE = "✕";
+
 export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
-  const [page, setPage] = useState(0);
-  const rows = state.wallet.transactions;
-  const lastPage = Math.max(0, Math.ceil(rows.length / 40) - 1);
-  const shownPage = Math.min(page, lastPage);
   if (!state.open) return null;
+  const d = state.display;
   return (
-    <Modal
-      label={W.wallet}
+    <Drawer
+      width={560}
+      title={CW.walletTitle}
+      label={CW.walletTitle}
       onClose={() => state.setOpen(false)}
-      placement="center"
-      width="md"
-      closeOnBackdrop={false}
     >
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-headline font-strong">{W.wallet}</h2>
-          <Money value={new MoneyValue(state.wallet.balance, state.wallet.currency)} size="title" />
+      <section className="rounded-widget border border-border bg-surface-raised px-4.5 py-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2.5">
+          <strong className="text-md" title={K.cashHint}>
+            {K.cash}
+          </strong>
+          <span className={`text-base font-heavy ${d.negative ? "text-negative" : ""}`}>
+            {d.balance}
+          </span>
+          <span className="flex-1" />
+          <span className="text-xs text-fg-muted">{d.withdrawnSpent}</span>
         </div>
-        <Button onPress={() => state.setOpen(false)} label={W.close}>
-          {W.close}
-        </Button>
-      </div>
-      <div className="mb-5 flex flex-wrap gap-4 text-caption text-fg-muted">
-        <span>
-          {W.withdrawnSpent}:{" "}
-          <Money value={new MoneyValue(state.wallet.withdrawals, state.wallet.currency)} />
-          {" / "}
-          <Money value={new MoneyValue(state.wallet.expenses, state.wallet.currency)} />
-        </span>
-      </div>
-      <form
-        className="mb-5 grid gap-3 sm:grid-cols-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void state.submit();
-        }}
-      >
-        <TextField
-          label={W.amount}
-          inputMode="decimal"
-          autoComplete="off"
-          value={state.amount}
-          onChange={state.setAmount}
-        />
-        <TextField
-          label={W.title}
-          autoComplete="off"
-          value={state.title}
-          onChange={state.setTitle}
-          className="sm:col-span-2"
-        />
-        <Select
-          label={W.category}
-          value={state.category}
-          onChange={state.setCategory}
-          options={state.categories.map((option) => ({ value: option.key, label: option.label }))}
-        />
-        <Button variant="primary" type="submit" disabled={state.busy} className="sm:col-span-4">
-          {W.add}
-        </Button>
-      </form>
-      {state.error && (
-        <p role="alert" className="mb-3 text-negative">
-          {state.error}
-        </p>
-      )}
-      {rows.length === 0 ? (
-        <p className="text-fg-muted">{W.noCash}</p>
-      ) : (
-        <div className="max-h-80 overflow-auto">
-          <table className="w-full text-left">
+        <form
+          className="mb-3.5 flex flex-wrap items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void state.submit();
+          }}
+        >
+          <TextField
+            label={K.amount}
+            labelHidden
+            placeholder={K.amount}
+            inputMode="decimal"
+            autoComplete="off"
+            value={state.amount}
+            onChange={state.setAmount}
+            className="w-27.5"
+          />
+          <TextField
+            label={K.title}
+            labelHidden
+            placeholder={K.title}
+            autoComplete="off"
+            value={state.title}
+            onChange={state.setTitle}
+            className="min-w-35 flex-1"
+          />
+          <Select
+            label={K.category}
+            labelHidden
+            value={state.category}
+            onChange={state.setCategory}
+            options={state.categories.map((o) => ({ value: o.key, label: o.label }))}
+          />
+          <Button variant="primary" type="submit" disabled={state.busy}>
+            {C.add}
+          </Button>
+        </form>
+        {state.error && (
+          <Notice tone="negative" className="mb-2.5">
+            {state.error}
+          </Notice>
+        )}
+        <div className={scrollCls(true)}>
+          <table className={dataTableCls}>
             <thead>
-              <tr className="border-b border-border text-fg-muted">
-                <th scope="col">{W.title}</th>
-                <th scope="col">{W.category}</th>
-                <th scope="col">{W.amount}</th>
-                <th scope="col">{W.remove}</th>
+              <tr>
+                <th className={dataThCls()}>{K.date}</th>
+                <th className={dataThCls()}>{K.title}</th>
+                <th className={dataThCls()}>{K.category}</th>
+                <th className={dataThCls(true)}>{K.amount}</th>
+                <th className={dataThCls()} />
               </tr>
             </thead>
             <tbody>
-              {rows.slice(shownPage * 40, (shownPage + 1) * 40).map((row) => (
-                <tr key={row.gid} className="border-b border-border">
-                  <td>
-                    <DateText value={row.date} /> {privacy ? "•••" : (row.title ?? "-")}
-                  </td>
-                  <td>{row.category ? budget.categoryLabel(row.category, lang()) : "-"}</td>
-                  <td>
-                    <Money value={new MoneyValue(row.amount, state.wallet.currency)} />
-                  </td>
-                  <td>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      disabled={state.busy}
-                      onPress={() => void state.deleteRow(row.gid)}
-                      label={`${W.remove}: ${privacy ? W.cash : (row.title ?? W.cash)}`}
-                    >
-                      {W.remove}
-                    </Button>
+              {d.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className={`${dataTdCls()} text-fg-muted`}>
+                    {K.empty}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                d.rows.map((t) => (
+                  <tr key={t.gid}>
+                    <td className={dataTdCls()}>{t.date}</td>
+                    <td className={dataTdCls()}>
+                      {t.withdrawal ? DOWN : ""}
+                      {privacy ? MASK : t.title}
+                    </td>
+                    <td className={`${dataTdCls()} text-fg-muted`}>{t.category}</td>
+                    <td
+                      className={`${dataTdCls(true)} ${t.negative ? "text-negative" : "text-positive"}`}
+                    >
+                      {t.amount}
+                    </td>
+                    <td className={dataTdCls(true)}>
+                      <Button
+                        variant="icon"
+                        title={C.remove}
+                        label={`${C.remove}: ${privacy ? K.cash : t.title || K.cash}`}
+                        disabled={state.busy}
+                        onPress={() => void state.deleteRow(t.gid)}
+                      >
+                        {REMOVE}
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
-          {lastPage > 0 && (
-            <div className="mt-3 flex justify-between gap-3">
-              <Button disabled={shownPage === 0} onPress={() => setPage(shownPage - 1)}>
-                {"<"}
-              </Button>
-              <span>
-                {shownPage + 1} / {lastPage + 1}
-              </span>
-              <Button disabled={shownPage === lastPage} onPress={() => setPage(shownPage + 1)}>
-                {">"}
-              </Button>
-            </div>
-          )}
         </div>
-      )}
-    </Modal>
+      </section>
+    </Drawer>
   );
 }

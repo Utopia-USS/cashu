@@ -1,223 +1,141 @@
-import { D, Money as MoneyValue } from "@cashu/domain";
-import { intlLocale } from "@cashu/i18n";
-import { S as I } from "@cashu/i18n/investments/v2/Overview.strings";
-import { formatCalendarDate, formatDecimalValue } from "@cashu/i18n/values";
-import { LineChart, Money, Percent, TextField } from "@cashu/ui";
-import { W } from "./OverviewWidgets.strings.js";
-import type { InvestmentPlanState } from "./useInvestmentPlan.js";
-import type { OverviewScreenState } from "./useOverviewScreen.js";
+// The investments widgets of Przegląd (ab24ab6 modules/investments/v2/Overview.tsx): Inwestycje (YTD vs the
+// benchmark, chances, risks, the 12-month line) and Nadwyżka -> wpłata (the month's surplus, the plan, what stays,
+// the cushion / bucket checks and the plan action). Pure: the models come from investmentsModel.ts.
+import { Button, Fact, FactFlow, LineChart, Skeleton, Tag, TextField, Widget } from "@cashu/ui";
+import type { InvestmentsSummaryModel, SurplusModel } from "./investmentsModel.js";
+import { FootFacts, RichText } from "./OverviewWidgetsView.js";
 
-export interface InvestmentsWidgetViewProps {
-  investment: OverviewScreenState["investment"];
-  budget: OverviewScreenState["budget"];
-  lastRunDate: string;
-  plan: InvestmentPlanState;
-  today: string;
-  privacy: boolean;
+export function InvestmentsSummaryWidgetView({ m }: { m: InvestmentsSummaryModel }) {
+  return (
+    <Widget
+      title={m.title}
+      count={m.count ?? undefined}
+      controls={
+        <Button variant="link" onPress={m.link.onPress}>
+          {m.link.label}
+        </Button>
+      }
+      tight
+      footer={
+        <>
+          {m.review && (
+            <span>
+              <RichText runs={m.review} />
+            </span>
+          )}
+          <span className="flex-1" />
+          <span>
+            <RichText runs={m.rules} />
+          </span>
+        </>
+      }
+    >
+      <div className="grid grid-cols-3 gap-x-4.5 gap-y-3">
+        {m.facts.map((f) => (
+          <Fact
+            key={String(f.label)}
+            {...f}
+            detail={
+              typeof f.detail === "object" && f.detail !== null ? (
+                <RichText runs={f.detail} />
+              ) : (
+                f.detail
+              )
+            }
+          />
+        ))}
+      </div>
+      {m.chart && (
+        <div className="mt-2">
+          <LineChart
+            label={m.chart.label}
+            height={96}
+            yFormat={false}
+            padR={8}
+            yTicks={2}
+            valueKind="amount"
+            series={[{ values: m.chart.values, color: "accent", area: true }]}
+          />
+        </div>
+      )}
+    </Widget>
+  );
 }
 
-/** The widget stays honest when no vault-scoped strategy/market source is bound. */
-export function InvestmentsWidgetView({
-  investment,
-  budget,
-  plan,
-  today,
-  privacy,
-  lastRunDate,
-}: InvestmentsWidgetViewProps) {
-  if (investment.status !== "available")
+export function SurplusWidgetView({ m, loading }: { m: SurplusModel; loading?: boolean }) {
+  if (m.kind === "none")
     return (
-      <section
-        className="rounded-lg border border-border bg-surface-raised p-6"
-        aria-label={I.investments}
-      >
-        <h2 className="text-title font-strong">{I.investments}</h2>
-        <p className="text-fg-muted">{W.investmentUnavailable}</p>
-      </section>
+      <Widget title={m.title} tight>
+        {loading ? <Skeleton height={70} /> : <div className="text-sm text-fg-muted">{m.text}</div>}
+      </Widget>
     );
-  const currency = investment.currency;
-  const value = (amount: number) =>
-    formatDecimalValue(D(String(amount)), intlLocale(), { currency }).text;
-  const summary =
-    investment.yearPoints.length > 0
-      ? formatDecimalValue(D(String(investment.yearPoints.at(-1)?.value ?? 0)), intlLocale(), {
-          currency,
-        }).text
-      : undefined;
-  const suggested = budget.month?.suggestedTransfer ?? null;
-  const monthly = investment.monthPlan;
-  const zeroStart = investment.value.isZero();
+  const a = m.actions;
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <section
-        className="rounded-lg border border-border bg-surface-raised p-6"
-        aria-labelledby="overview-investments-title"
-      >
-        <h2 id="overview-investments-title" className="text-title font-strong">
-          {I.investments}
-        </h2>
-        <Money value={new MoneyValue(investment.value, currency)} size="title" />
-        {!zeroStart && (
+    <Widget
+      title={m.title}
+      highlight={m.highlight}
+      tags={<Tag>{m.tag}</Tag>}
+      controls={
+        <Button variant="link" onPress={m.link.onPress}>
+          {m.link.label}
+        </Button>
+      }
+      tight
+      footer={
+        <>
+          <FootFacts items={m.foot} />
+          <span className="flex-1" />
+          <span>{m.footRight}</span>
+        </>
+      }
+    >
+      <FactFlow items={m.flow} />
+      <div className="mt-3 text-xs-plus text-fg-muted">
+        <RichText runs={m.checks} />
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        {a.kind === "tag" ? (
+          <Tag solid tone="positive">
+            {a.text}
+          </Tag>
+        ) : a.kind === "buttons" ? (
           <>
-            <dl className="mt-3 grid grid-cols-3 gap-3">
-              <div>
-                <dt>YTD</dt>
-                <dd>
-                  <Percent value={investment.ytd === null ? null : D(String(investment.ytd))} />
-                </dd>
-                <dd className="text-caption text-fg-muted">
-                  {investment.benchmarkStatus === "ok" && investment.benchmarkYtd !== null ? (
-                    <Percent value={D(String(investment.benchmarkYtd))} />
-                  ) : (
-                    I.noBenchmark
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>{I.chancesLabel}</dt>
-                <dd>{investment.positive}</dd>
-              </div>
-              <div>
-                <dt>{I.risksLabel}</dt>
-                <dd>{investment.risks}</dd>
-                <dd className="text-caption text-fg-muted">
-                  {investment.alertsTriggered > 0 ? I.alertsMet(investment.alertsTriggered) : null}
-                </dd>
-              </div>
-            </dl>
-            {investment.yearPoints.length > 2 && (
-              <div className="mt-4">
-                <LineChart
-                  label={I.valueChart12m}
-                  height={110}
-                  yFormat={false}
-                  valueKind="amount"
-                  series={[
-                    {
-                      values: investment.yearPoints.map((point) => point.value),
-                      name: currency,
-                      area: true,
-                      accessibleSummary: summary,
-                    },
-                  ]}
-                  tooltip={(index) => {
-                    const point = investment.yearPoints[index];
-                    return point === undefined
-                      ? { title: I.valueChart12m, rows: [] }
-                      : {
-                          title: formatCalendarDate(point.date, intlLocale()),
-                          rows: [{ name: I.investments, value: value(point.value), amount: true }],
-                        };
-                  }}
-                />
-              </div>
+            {a.primary && (
+              <Button variant="primary" disabled={a.primary.disabled} onPress={a.primary.onPress}>
+                {a.primary.label}
+              </Button>
             )}
-            <p className="mt-3 text-caption text-fg-muted">
-              {investment.lastRun === null ? (
-                I.rulesNeverRan
-              ) : (
-                <>
-                  {I.rules}{" "}
-                  {investment.lastRun.status === "ok"
-                    ? I.runOk
-                    : investment.lastRun.status === "partial"
-                      ? I.runPartial
-                      : I.runError}{" "}
-                  · {lastRunDate}
-                </>
-              )}
-            </p>
+            <Button onPress={a.other.onPress}>{a.other.label}</Button>
+          </>
+        ) : (
+          <>
+            <TextField
+              label={a.label}
+              labelHidden
+              autoFocus
+              inputMode="decimal"
+              value={a.value}
+              onChange={a.onChange}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") a.onEnter();
+                if (event.key === "Escape") a.onEscape();
+              }}
+              className="w-27.5"
+            />
+            <Button variant="primary" disabled={a.plan.disabled} onPress={a.plan.onPress}>
+              {a.plan.label}
+            </Button>
+            <Button variant="link" size="lg" onPress={a.cancel.onPress}>
+              {a.cancel.label}
+            </Button>
           </>
         )}
-      </section>
-      <section
-        className="rounded-lg border border-border bg-surface-raised p-6"
-        aria-labelledby="overview-surplus-title"
-      >
-        <h2 id="overview-surplus-title" className="text-title font-strong">
-          {zeroStart ? I.thisMonth : I.surplusTitle}
-        </h2>
-        {budget.month === null || suggested === null ? (
-          <p className="text-fg-muted">{I.noMonthClose}</p>
-        ) : (
-          <div className="mt-3 grid gap-2">
-            <p>
-              {I.surplusOf(Number(budget.month.label.slice(5, 7)) - 1)}{" "}
-              <Money value={new MoneyValue(suggested, budget.month.currency)} />
-            </p>
-            <p>
-              {I.depositPlan}{" "}
-              {monthly?.monthlyAmount === null || monthly === null ? (
-                I.noPlanInStrategy
-              ) : (
-                <Money value={new MoneyValue(monthly.monthlyAmount, monthly.currency)} />
-              )}
-            </p>
-            {monthly?.remaining !== null && monthly?.remaining !== undefined && (
-              <p>
-                {I.missing} <Money value={new MoneyValue(monthly.remaining, monthly.currency)} />
-              </p>
-            )}
-            {monthly?.covered && <p>{I.planCovered}</p>}
-          </div>
+        {m.change && (
+          <Button variant="link" size="lg" onPress={m.change.onPress}>
+            {m.change.label}
+          </Button>
         )}
-        {monthly !== null && (
-          <form
-            className="mt-4 flex flex-wrap gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void plan.submit();
-            }}
-          >
-            <TextField
-              label={I.plan}
-              inputMode="decimal"
-              value={plan.amount}
-              onFocus={plan.start}
-              onChange={(value) => plan.setAmount(value)}
-            />
-            <TextField
-              label={I.nextDeposit}
-              type="date"
-              value={plan.date}
-              min={today}
-              onChange={(value) => plan.setDate(value)}
-            />
-            <button type="submit" disabled={plan.busy}>
-              {I.plan}
-            </button>
-          </form>
-        )}
-        {plan.error !== null && (
-          <p role="alert" className="text-negative">
-            {plan.error}
-          </p>
-        )}
-        {investment.openPlans.length > 0 && (
-          <ul className="mt-3 text-caption">
-            {investment.openPlans.map((entry) => (
-              <li key={entry.gid} className="flex justify-between gap-2">
-                <span>
-                  {I.tagPlanned(
-                    privacy
-                      ? "•••"
-                      : formatDecimalValue(entry.amount, intlLocale(), { currency: entry.currency })
-                          .text,
-                    entry.plannedDate,
-                  )}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void plan.remove(entry.gid)}
-                  disabled={plan.busy}
-                >
-                  {W.remove}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+      </div>
+    </Widget>
   );
 }

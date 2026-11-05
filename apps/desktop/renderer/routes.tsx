@@ -34,13 +34,9 @@ import { DevicesScreen } from "./screens/devices/DevicesScreen.js";
 import { PortfolioScreen } from "./screens/investments/PortfolioScreen.js";
 import { LoansScreen } from "./screens/loans/LoansScreen.js";
 import { MinimalOverviewView } from "./screens/overview/MinimalOverviewView.js";
+import { OverviewScreen } from "./screens/overview/OverviewScreen.js";
 import { investmentsOnlyOverview } from "./screens/overview/minimalOverview.js";
-import { OverviewView } from "./screens/overview/OverviewView.js";
-import { useAssetDrawer } from "./screens/overview/useAssetDrawer.js";
-import { useCashDrawer } from "./screens/overview/useCashDrawer.js";
-import { useInvestmentPlan } from "./screens/overview/useInvestmentPlan.js";
 import { useMinimalOverview } from "./screens/overview/useMinimalOverview.js";
-import { useOverviewScreen } from "./screens/overview/useOverviewScreen.js";
 import { ProposalDrawerScreen } from "./screens/proposals/ProposalDrawerScreen.js";
 import { SettingsView } from "./screens/settings/SettingsView.js";
 import { UpdateNoticeView } from "./screens/settings/UpdateNoticeView.js";
@@ -333,61 +329,64 @@ function MinimalOverviewBound({ vault, slug }: { vault: string; slug: string }) 
 }
 
 /** A profile switch discards drawer drafts before commands can bind to the newly selected vault. */
-function FullOverviewBound({
-  vault,
-  slug,
-  currency,
-}: {
-  vault: string;
-  slug: string;
-  currency?: string;
-}) {
-  const today = useCalendarDay();
-  const state = useOverviewScreen({
-    today,
-    vault,
-    ...(currency === undefined ? {} : { currency }),
-  });
-  const cash = useCashDrawer();
-  const assets = useAssetDrawer(today, state.net?.currency ?? state.currency);
-  const investmentPlan = useInvestmentPlan(state.investment, today);
+function FullOverviewBound({ vault, slug }: { vault: string; slug: string; currency?: string }) {
+  const budgetTab = (tab: string) =>
+    void router.navigate({ to: "/$slug/budget/$tab", params: { slug, tab }, search: { vault } });
   return (
-    <OverviewView
-      state={state}
-      cash={cash}
-      assets={assets}
-      investmentPlan={investmentPlan}
-      onCurrencyPicked={(next) =>
-        startTransition(() => {
-          void router.navigate({
-            to: "/$slug/overview",
-            params: { slug },
-            search: { currency: next, vault },
-          });
-        })
-      }
-      onModuleOpened={(module) => {
-        if (module === "assets")
-          void router.navigate({ to: "/$slug/setup/assets", params: { slug }, search: { vault } });
-        else if (module === "loans")
-          void router.navigate({ to: "/$slug/loans.list", params: { slug }, search: { vault } });
-        else if (module === "budget")
-          void router.navigate({
-            to: "/$slug/budget/$tab",
-            params: { slug, tab: "expenses" },
-            search: { vault },
-          });
-        else if (module === "investments")
+    <OverviewScreen
+      vault={vault}
+      nav={{
+        openExpenses: () => budgetTab("expenses"),
+        openFlows: () => budgetTab("flows"),
+        openSubscriptions: () => budgetTab("subs"),
+        openLoans: () =>
+          void router.navigate({ to: "/$slug/loans.list", params: { slug }, search: { vault } }),
+        openInvestments: () =>
           void router.navigate({
             to: "/$slug/investments.portfolio",
             params: { slug },
             search: { vault, period: "1y", view: "chart" },
-          });
+          }),
+        openSetup: (module) => {
+          if (module === "assets")
+            void router.navigate({
+              to: "/$slug/setup/assets",
+              params: { slug },
+              search: { vault },
+            });
+          else if (module === "loans")
+            void router.navigate({ to: "/$slug/setup/loans", params: { slug }, search: { vault } });
+          else
+            void router.navigate({
+              to: "/$slug/setup/$module",
+              params: { slug, module },
+              search: { vault },
+            });
+        },
+        openModulesSettings: () =>
+          void router.navigate({
+            to: "/$slug/settings",
+            params: { slug },
+            search: { vault, section: "modules" },
+          }),
       }}
     />
   );
 }
 
+/** Old deep links to the budget module (`#/<slug>/budget`) open its first tab, Wydatki. */
+const budgetIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$slug/budget",
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$slug/budget/$tab",
+      params: { slug: params.slug, tab: "expenses" },
+      search: { vault: (search as { vault?: string }).vault },
+      replace: true,
+    });
+  },
+});
 const budgetRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/budget/$tab",

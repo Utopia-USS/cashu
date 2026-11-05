@@ -20,6 +20,17 @@ import {
 } from "../electron-test.ts";
 import { restoreNativeBaseline } from "../native-baseline.ts";
 
+/** A whole amount as the Python Przegląd widgets show it (old `cur0s`: no decimals). */
+function rendered0(amount: string, currency: string, locale = "pl-PL"): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    useGrouping: "always",
+  } as Intl.NumberFormatOptions).format(Math.round(Number(amount)));
+}
+
 function paths() {
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
@@ -79,22 +90,23 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     const { page, origin } = await dashboardWindow(app);
     expect(origin).toBe("app://cashu");
     const expected = demoExpectations();
-    await expect(page.getByRole("heading", { name: "Przegląd", exact: true })).toBeVisible();
+    await expect(page.getByTestId("net-worth")).toBeVisible();
     await setPrivacy(page, false);
     await pickProfile(page, "Demo Anna");
     await expect(page).toHaveURL(/\/overview/u);
     const annaWorth = rendered(expected.anna.net, expected.anna.currency);
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
-    const budgetWidget = page.locator('section[aria-labelledby="overview-budget-month-title"]');
+    const budgetWidget = page.getByRole("region", { name: /^Budżet/u });
     await expect(budgetWidget).toBeVisible();
-    const monthLabel = (await budgetWidget.locator("h2").textContent())?.match(/\d{4}-\d{2}/u)?.[0];
-    if (!monthLabel) throw new Error("native budget month label is absent");
-    const chosen = expected.anna.months[monthLabel];
+    const budgetText = (await budgetWidget.textContent()) ?? "";
+    const chosen = Object.values(expected.anna.months).find((month) =>
+      budgetText.includes(rendered0(month.income, month.currency)),
+    );
     if (!chosen) throw new Error("native budget month is outside the synthetic expectations");
     for (const amount of [chosen.income, chosen.spending, chosen.surplus])
-      await expect(budgetWidget).toContainText(rendered(amount, chosen.currency));
+      await expect(budgetWidget).toContainText(rendered0(amount, chosen.currency));
 
-    const accountsWidget = page.locator('section[aria-labelledby="overview-accounts-title"]');
+    const accountsWidget = page.getByRole("region", { name: "Konta", exact: true });
     await expect(accountsWidget).toBeVisible();
     const listed = expected.anna.accounts.filter(
       (account) =>
@@ -103,41 +115,37 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
         account.amount !== null &&
         Math.abs(Number(account.amount)) >= 0.005,
     );
-    await expect(accountsWidget.locator("li")).toHaveCount(listed.length);
+    await expect(accountsWidget.locator("tbody tr")).toHaveCount(listed.length);
     for (const account of listed)
       if (account.amount !== null)
         await expect(accountsWidget).toContainText(rendered(account.amount, account.currency));
     await accountsWidget.getByRole("button").last().click();
-    await expect(page.getByRole("dialog", { name: "Portfel gotówkowy" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Gotówka w portfelu" })).toBeVisible();
     await pickProfile(page, "Demo");
-    await expect(page.getByRole("dialog", { name: "Portfel gotówkowy" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Gotówka w portfelu" })).toHaveCount(0);
     // Przegląd only: Ustawienia moved into the profile menu (Python app layout).
     await expect(page.getByRole("navigation", { name: "Moduły" }).getByRole("button")).toHaveCount(
       1,
     );
     await pickProfile(page, "Demo Anna");
-    await expect(page.getByRole("dialog", { name: "Portfel gotówkowy" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Gotówka w portfelu" })).toHaveCount(0);
 
     const assets = expected.anna.assets;
-    const assetsWidget = page.locator('section[aria-labelledby="overview-assets-title"]');
-    await expect(assetsWidget.locator("li")).toHaveCount(Math.min(assets.length, 5));
+    const assetsWidget = page.getByRole("region", { name: "Majątek", exact: true });
+    await expect(assetsWidget.locator("tbody tr")).toHaveCount(Math.min(assets.length, 5));
     for (const asset of assets.slice(0, 5))
       if (asset.amount !== null)
-        await expect(assetsWidget).toContainText(rendered(asset.amount, asset.currency));
-    const loansWidget = page.locator('section[aria-labelledby="overview-loans-title"]');
+        await expect(assetsWidget).toContainText(rendered0(asset.amount, asset.currency));
+    const loansWidget = page.getByRole("region", { name: "Kredyty", exact: true });
     if (expected.anna.loans.length > 0) {
-      await expect(loansWidget.locator("li")).toHaveCount(expected.anna.loans.length);
+      await expect(loansWidget.locator("tbody tr")).toHaveCount(expected.anna.loans.length);
       for (const loan of expected.anna.loans)
         await expect(loansWidget).toContainText(rendered(negate(loan.outstanding), loan.currency));
     }
-    await expect(
-      page.locator('section[aria-labelledby="overview-investments-title"]'),
-    ).toContainText(rendered(expected.anna.investments.value, expected.anna.investments.currency));
-    if (expected.anna.currencies.includes("EUR")) {
-      await page.getByRole("combobox", { name: "Waluta" }).selectOption("EUR");
-      await expect(page).toHaveURL(/currency=EUR/u);
-      await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
-    }
+    // The investments hero fact (old InvestmentsHeroFact: whole units).
+    await expect(page.getByRole("region", { name: "Wartość netto", exact: true })).toContainText(
+      rendered0(expected.anna.investments.value, expected.anna.investments.currency),
+    );
     await pickProfile(page, "Demo Piotr");
     await expect(page.getByTestId("net-worth")).toHaveText(
       rendered(expected.piotr.net, expected.piotr.currency),
@@ -145,7 +153,7 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     expect(expected.piotr.net).not.toBe(expected.anna.net);
     await pickProfile(page, "Demo Anna");
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
-    const chartControl = page.getByRole("group", { name: /^Historia wartości netto/u });
+    const chartControl = page.getByRole("group", { name: /^Wartość netto w czasie/u });
     await chartControl.focus();
     await chartControl.press("End");
     await expect(chartControl.getByRole("status")).toContainText(
@@ -188,7 +196,7 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     if (immediatePrivacy.amountRetained) expect(playwrightAmountVisible).toBe(false);
     await expect(privacy).toBeChecked();
     await expect(page.getByTestId("net-worth")).not.toContainText(/\d/u);
-    await expect(page.getByRole("img", { name: /^Historia wartości netto/u })).not.toHaveAttribute(
+    await expect(page.getByRole("img", { name: /^Wartość netto w czasie/u })).not.toHaveAttribute(
       "aria-label",
       /\d/u,
     );
@@ -210,7 +218,6 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
         .getByRole("button", { name: "English", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     await rewriteHash(page, /\/settings(?=\?|$)/u, "/overview");
-    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
     await expect(page.getByTestId("net-worth")).toHaveText(
       rendered(expected.anna.net, expected.anna.currency, "en-US"),
     );
@@ -235,21 +242,21 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     if (editIndex < 0) throw new Error("synthetic demo lacks an editable base-currency asset");
     const edited = assets[editIndex];
     if (!edited || edited.amount === null) throw new Error("synthetic asset valuation is absent");
-    await assetsWidget.locator("li").nth(editIndex).getByRole("button").click();
-    const editDialog = page.getByRole("dialog", { name: /^Edytuj: /u });
+    await assetsWidget.locator("tbody tr").nth(editIndex).getByRole("button").click();
+    const editDialog = page.getByRole("dialog", { name: "Majątek", exact: true });
     await editDialog
       .getByRole("textbox", { name: "Wartość", exact: true })
       .fill(plus(edited.amount, "1"));
     await editDialog.getByRole("textbox", { name: "Notatka" }).fill("Synthetic UI note");
     await editDialog.getByRole("button", { name: "Zapisz" }).click();
     await expect(editDialog).toHaveCount(0);
-    await expect(assetsWidget).toContainText(rendered(plus(edited.amount, "1"), edited.currency));
+    await expect(assetsWidget).toContainText(rendered0(plus(edited.amount, "1"), edited.currency));
     await expect(assetsWidget.getByText("notatka", { exact: true })).toBeVisible();
     await expect(page.getByTestId("net-worth")).toHaveText(
       rendered(plus(expected.anna.net, "1"), expected.anna.currency),
     );
     await assetsWidget.getByRole("button", { name: "+ Dodaj" }).click();
-    const assetDialog = page.getByRole("dialog", { name: "Nowa pozycja", exact: true });
+    const assetDialog = page.getByRole("dialog", { name: "Majątek", exact: true });
     await assetDialog.getByRole("combobox", { name: "Typ" }).selectOption("vehicle");
     await assetDialog.getByRole("textbox", { name: "Cena zakupu" }).fill("12000");
     const firstPreview = await assetDialog.getByText(/dziś ≈/u).textContent();

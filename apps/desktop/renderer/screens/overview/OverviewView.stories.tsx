@@ -1,210 +1,36 @@
-import { D, Money } from "@cashu/domain";
-import { UiEnvProvider } from "@cashu/ui";
 import { OverviewView, type OverviewViewProps } from "./OverviewView.js";
+import type { HeroModel } from "./overviewModel.js";
 
-const state: OverviewViewProps["state"] = {
-  today: "2026-10-01",
-  privacy: false,
-  chartSummary: "Latest 12,000.00 PLN; low 11,000.00 PLN; high 12,000.00 PLN",
-  chartTip: () => ({
-    title: "Sep 30, 2026",
-    rows: [{ name: "Net worth", value: "12,000.00 PLN", amount: true }],
-  }),
-  chartMode: "line",
-  setChartMode: () => {},
-  scope: "total",
-  setScope: () => {},
-  granularity: "monthly",
-  setGranularity: () => {},
-  rangeDays: null,
-  setRangeDays: () => {},
-  annualTotal: { money: new Money(D("1000"), "PLN"), percent: D("0.0909") },
-  annualLiquid: { money: new Money(D("500"), "PLN"), percent: D("0.0667") },
-  layers: [{ key: "cash", name: "Cash", color: 1, values: [8000, 9000] }],
-  stackTip: () => ({ title: "Sep 30, 2026", rows: [] }),
-  net: new Money(D("12000"), "PLN"),
-  liquid: new Money(D("8000"), "PLN"),
-  liabilities: new Money(D("2000"), "PLN"),
-  homeEquity: null,
-  otherCurrencies: [new Money(D("400"), "EUR")],
-  change: new Money(D("50"), "PLN"),
-  since: "2026-09-30",
-  currency: "PLN",
-  currencies: ["EUR", "PLN"],
-  chart: [11000, 12000],
-  points: [
-    { date: "2026-08-31", value: new Money(D("11000"), "PLN") },
-    { date: "2026-09-30", value: new Money(D("12000"), "PLN") },
+const hero: HeroModel = {
+  label: "Net worth",
+  caption: "Net worth",
+  value: "12,000.00 PLN",
+  delta: [{ text: "+50 PLN (+0.4%)", tone: "positive" }, { text: " since September" }],
+  facts: [
+    { label: "Assets", value: "14,000 PLN", detail: "3 accounts · 2 modules" },
+    { label: "Liabilities", value: "-2,000 PLN", detail: "loan" },
+    { label: "Liquid", value: "8,000 PLN", detail: "accounts and cash" },
   ],
-  modules: [
-    { id: "budget", enabled: true, setupState: "ready" },
-    { id: "assets", enabled: true, setupState: "ready" },
-    { id: "investments", enabled: true, setupState: "ready" },
-  ],
-  pending: [],
-  hidePending: () => {},
-  budget: {
-    month: {
-      label: "2026-09",
-      complete: true,
-      income: D("9000"),
-      spending: D("4275.75"),
-      surplus: D("4724.25"),
-      suggestedTransfer: D("4724.25"),
-      currency: "PLN",
-      otherCurrencies: ["EUR"],
-    },
-    norm: { income: D("9000"), expense: D("4200"), months: 6 },
-    averageSavingsRate: D("0.51"),
-    subscriptions: { count: 2, monthlyTotal: D("60"), monthlyTotals: { PLN: D("60") } },
-    subscriptionCurrency: "PLN",
-    subscriptionNorm: { income: D("9000"), expense: D("4200"), months: 6 },
-    dueThisWeek: ["Synthetic subscription"],
-    dueCount: 1,
-    staleCount: 0,
-    strategyUnavailable: false,
-  },
-  loans: [],
-  investment: { status: "unavailable" },
-  investmentLastRunDate: "-",
-  accounts: [
-    {
-      gid: "synthetic-account",
-      name: "Synthetic account",
-      bank: "mbank",
-      type: "checking",
-      currency: "PLN",
-      ibanTail: "0001",
-      amount: D("8000"),
-      asOf: "2026-09-30",
-      liability: false,
-      balance: new Money(D("8000"), "PLN"),
-      empty: false,
-    },
-  ],
-  showEmptyAccounts: false,
-  setShowEmptyAccounts: () => {},
+  other: "other currencies: 400.00 EUR",
+  meta: "not converted",
 };
-const cash: OverviewViewProps["cash"] = {
-  wallet: {
-    exists: false,
-    currency: "PLN",
-    balance: D("0"),
-    withdrawals: D("0"),
-    expenses: D("0"),
-    transactions: [],
-  },
-  open: false,
-  amount: "",
-  title: "",
-  category: "groceries",
-  categories: [{ key: "groceries", label: "Groceries" }],
-  error: null,
-  busy: false,
-  setOpen: () => {},
-  setAmount: () => {},
-  setTitle: () => {},
-  setCategory: () => {},
-  submit: async () => {},
-  deleteRow: async () => {},
-};
-const assets: OverviewViewProps["assets"] = {
-  rows: [
-    {
-      gid: "synthetic-asset",
-      name: "Synthetic property",
-      bank: "manual",
-      type: "property",
-      currency: "PLN",
-      ibanTail: null,
-      amount: D("350000"),
-      asOf: "2026-09-30",
-      liability: false,
-      kind: "manual",
-      note: null,
-      depreciation: null,
-    },
-  ],
-  displayRows: [
-    {
-      gid: "synthetic-asset",
-      name: "Synthetic property",
-      bank: "manual",
-      type: "property",
-      currency: "PLN",
-      ibanTail: null,
-      amount: D("350000"),
-      asOf: "2026-09-30",
-      liability: false,
-      kind: "manual",
-      note: null,
-      depreciation: null,
-      loss: null,
-      lossLine: null,
-      valuation: { text: "Synthetic valuation", stale: false },
-    },
-  ],
-  orderedTotals: [["PLN", D("350000")]],
-  lossSummary: null,
-  preview: null,
-  positionTypes: [{ value: "property", label: "Synthetic property" }],
-  vehicleLabel: "Synthetic vehicle",
-  target: null,
-  open: false,
-  form: {
-    name: "",
-    type: "property",
-    value: "",
-    currency: "PLN",
-    onDate: "2026-10-01",
-    note: "",
-    purchasePrice: "",
-    purchaseDate: "2026-10-01",
-    annualRate: "15",
-    floor: "",
-  },
-  error: null,
-  undone: null,
-  busy: false,
-  openNew: () => {},
-  openEdit: () => {},
-  close: () => {},
-  set: () => {},
-  submit: async () => {},
-  remove: async () => {},
-  undo: async () => {},
-};
-const investmentPlan: OverviewViewProps["investmentPlan"] = {
-  amount: "",
-  date: "2026-10-01",
-  error: null,
-  busy: false,
-  setAmount: () => {},
-  setDate: () => {},
-  start: () => {},
-  submit: async () => {},
-  remove: async () => {},
-};
-export default {
-  title: "Desktop/Overview",
-  component: OverviewView,
-  args: {
-    state,
-    cash,
-    assets,
-    investmentPlan,
-    onCurrencyPicked: () => {},
-    onModuleOpened: () => {},
-  },
-};
+const args: OverviewViewProps = { hero, slots: [], noModules: null };
+
+export default { title: "Desktop/Overview", component: OverviewView, args };
 export const Ready = {};
-export const Empty = { args: { state: { ...state, points: [], chart: [] } } };
+export const Empty = {
+  args: { ...args, noModules: { label: "Turn on modules", onPress: () => {} } },
+};
 export const Privacy = {
-  decorators: [
-    (Story: () => React.ReactNode) => (
-      <UiEnvProvider privacy>
-        <Story />
-      </UiEnvProvider>
-    ),
-  ],
+  args: {
+    ...args,
+    hero: {
+      ...hero,
+      value: "••• PLN",
+      delta: null,
+      facts: hero.facts.map((f) => ({ ...f, value: "••• PLN" })),
+      other: null,
+      meta: null,
+    },
+  },
 };

@@ -48,6 +48,12 @@ export type NamedColor =
   | "inv-5"
   | "inv-6"
   | "inv-7"
+  /** The old net worth component colours (`--nw-*`, the Warstwy chart of Przegląd). */
+  | "nw-money"
+  | "nw-property"
+  | "nw-vehicle"
+  | "nw-mortgage"
+  | "nw-loan"
   /** The muted grey (the old spending donut's "Reszta" slice and its members). */
   | "muted"
   /** The old 22-colour categorical PALETTE (format.ts, the spending donut), the same in both themes. */
@@ -116,6 +122,11 @@ export const ROLE_VAR: Record<ChartRole, string> = {
   "inv-5": "--color-inv-5",
   "inv-6": "--color-inv-6",
   "inv-7": "--color-inv-7",
+  "nw-money": "--color-nw-money",
+  "nw-property": "--color-nw-property",
+  "nw-vehicle": "--color-nw-vehicle",
+  "nw-mortgage": "--color-nw-mortgage",
+  "nw-loan": "--color-nw-loan",
   "palette-1": "--color-palette-1",
   "palette-2": "--color-palette-2",
   "palette-3": "--color-palette-3",

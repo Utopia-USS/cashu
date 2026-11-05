@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The cash and asset drawers are portaled Modals, so their stories render into a DOM document.
+// The cash and asset drawers are portaled Drawers, so their stories render into a DOM document.
 import { setLanguageForTests } from "@cashu/i18n";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -33,21 +33,23 @@ it("renders the cash drawer stories as a named dialog and masks titles in privac
   const ready = await mount(
     <cashDrawer.component {...cashDrawer.args} {...ReadyCash} privacy={false} />,
   );
-  expect(ready.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Cash wallet");
+  expect(ready.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe(
+    "Cash in the wallet",
+  );
   expect(ready.textContent).toContain("Synthetic purchase");
   const empty = await mount(
     <cashDrawer.component {...cashDrawer.args} {...EmptyCash.args} privacy={false} />,
   );
   expect(empty.innerHTML).toContain("groceries");
   const hidden = await mount(
-    PrivateCash.decorators[0]?.(() => <cashDrawer.component {...cashDrawer.args} privacy />),
+    <cashDrawer.component {...cashDrawer.args} {...PrivateCash.args} privacy />,
   );
   expect(hidden.textContent).not.toContain("Synthetic purchase");
 });
 
 it("renders the asset drawer story as a named dialog and nothing in privacy mode", async () => {
   const ready = await mount(<assetDrawer.component {...assetDrawer.args} />);
-  expect(ready.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("New position");
+  expect(ready.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Assets");
   expect(ready.querySelector('[role="dialog"] form')).not.toBeNull();
   const hidden = await mount(
     <assetDrawer.component {...assetDrawer.args} {...PrivateAsset.args} />,

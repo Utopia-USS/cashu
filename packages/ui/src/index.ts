@@ -164,6 +164,7 @@ export { dataTableCls, dataTdCls, dataThCls, scrollCls } from "./surfaces/dataTa
 export { Empty, type EmptyProps } from "./surfaces/Empty.js";
 export { Fact, type FactProps, Facts, type FactsProps } from "./surfaces/Fact.js";
 export { FactFlow, type FactFlowProps, type FlowFact } from "./surfaces/FactFlow.js";
+export { FormRow, type FormRowProps } from "./surfaces/FormRow.js";
 export { Hero, type HeroProps } from "./surfaces/Hero.js";
 export { type KeyValueRow, KeyValues, type KeyValuesProps } from "./surfaces/KeyValues.js";
 export { Notice, type NoticeProps } from "./surfaces/Notice.js";

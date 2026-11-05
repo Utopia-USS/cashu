@@ -23,16 +23,20 @@ export interface SetupStepItem {
 /** Vertical step list with live status (old `.setup-steps`). */
 export interface SetupStepsProps {
   steps: readonly SetupStepItem[];
+  /** Inside a widget (old `.setup-steps.compact`): the actions under the text, 10px rows, 13.5px titles. */
+  compact?: boolean;
 }
 
-export function SetupSteps({ steps }: SetupStepsProps) {
+export function SetupSteps({ steps, compact = false }: SetupStepsProps) {
   return (
     <div>
       {steps.map((step, index) => (
         <div
           key={step.key}
-          className="grid items-start gap-3 border-b border-border py-3 last:border-b-0 last:pb-1"
-          style={{ gridTemplateColumns: "28px minmax(0, 1fr) auto" }}
+          className={`grid items-start border-b border-border last:border-b-0 last:pb-1 ${compact ? "gap-x-3 gap-y-2 py-2.5" : "gap-3 py-3"}`}
+          style={{
+            gridTemplateColumns: compact ? "28px minmax(0, 1fr)" : "28px minmax(0, 1fr) auto",
+          }}
         >
           <span>
             <b
@@ -47,7 +51,7 @@ export function SetupSteps({ steps }: SetupStepsProps) {
           </span>
           <div className="min-w-0">
             <div
-              className={`flex flex-wrap items-center gap-2 text-md font-strong ${step.status === "todo" ? "text-fg-muted" : ""}`}
+              className={`flex flex-wrap items-center gap-2 font-strong ${compact ? "text-sm-plus" : "text-md"} ${step.status === "todo" ? "text-fg-muted" : ""}`}
             >
               {step.title}
               {SP}
@@ -59,7 +63,9 @@ export function SetupSteps({ steps }: SetupStepsProps) {
               <div className="mt-0.5 max-w-measure text-xs-plus text-fg-muted">{step.hint}</div>
             )}
           </div>
-          <div className="mt-px flex flex-wrap items-center justify-end gap-1.5">
+          <div
+            className={`flex flex-wrap items-center gap-1.5 ${compact ? "col-start-2 mt-0.5 justify-start" : "mt-px justify-end"}`}
+          >
             {step.actions}
           </div>
         </div>

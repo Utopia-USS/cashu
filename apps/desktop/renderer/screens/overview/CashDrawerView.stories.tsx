@@ -1,5 +1,4 @@
 import { D } from "@cashu/domain";
-import { UiEnvProvider } from "@cashu/ui";
 import { CashDrawerView, type CashDrawerViewProps } from "./CashDrawerView.js";
 
 const state: CashDrawerViewProps["state"] = {
@@ -17,6 +16,22 @@ const state: CashDrawerViewProps["state"] = {
         title: "Synthetic purchase",
         category: "groceries",
         kind: "expense",
+      },
+    ],
+  },
+  display: {
+    balance: "42.00 PLN",
+    negative: false,
+    withdrawnSpent: "withdrawn 50.00 PLN, spent 8.00 PLN",
+    rows: [
+      {
+        gid: "synthetic-row",
+        date: "2026-10-01",
+        withdrawal: false,
+        title: "Synthetic purchase",
+        category: "Groceries",
+        amount: "-8.00 PLN",
+        negative: true,
       },
     ],
   },
@@ -42,14 +57,12 @@ export default {
 };
 export const Ready = {};
 export const Empty = {
-  args: { state: { ...state, wallet: { ...state.wallet, transactions: [] } } },
+  args: {
+    state: {
+      ...state,
+      wallet: { ...state.wallet, transactions: [] },
+      display: { ...state.display, rows: [] },
+    },
+  },
 };
-export const Privacy = {
-  decorators: [
-    (Story: () => React.ReactNode) => (
-      <UiEnvProvider privacy>
-        <Story />
-      </UiEnvProvider>
-    ),
-  ],
-};
+export const Privacy = { args: { state, privacy: true } };
