@@ -113,6 +113,12 @@ function ShellRoute() {
   });
   const params = useParams({ strict: false });
   const pathname = useLocation({ select: (location) => location.pathname });
+  // Old v2/Home.tsx setNarrow(assetPage): the asset page (`assets/{gid}?page=1`) keeps the 1120px frame.
+  const assetPage = useLocation({
+    select: (location) =>
+      location.pathname.includes("/assets/") &&
+      String((location.search as { page?: unknown }).page ?? "") === "1",
+  });
   const requested = useSearch({ strict: false });
   const selection =
     params.slug === undefined
@@ -189,6 +195,7 @@ function ShellRoute() {
                       ? "investments"
                       : "overview"
         }
+        narrow={assetPage}
         onModuleOpened={openModule}
       >
         {selection !== null &&

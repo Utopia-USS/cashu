@@ -57,13 +57,16 @@ type SectionId = (typeof sections)[number];
 
 // Old global classes: `.controls` (+ `.spacer`), `.hint`, `.foot`, `.muted`, bare `input` / `select`, `code`.
 const controls = "flex flex-wrap items-center gap-2";
-const hint = "text-xs text-fg-muted";
+/** Old `.hint`: the strategy-hint chip rule (index.css P2) overrides the plain helper text, so it is a chip. */
+const hint =
+  "inline-flex max-w-full items-center whitespace-nowrap rounded-full border border-border px-1.5 py-px align-middle text-2xs leading-normal text-fg-muted tabular-nums";
 const foot = "mt-2.5 text-xs-plus text-fg-muted";
 const inputCls =
   "rounded-control border border-border bg-chip px-2.25 py-1.25 text-sm text-fg focus:border-accent focus:outline-none focus-visible:outline-none";
 const selectCls =
   "rounded-control border border-border bg-chip px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none focus-visible:outline-none";
-const code = "font-mono [font-variant-ligatures:none]";
+/** Old global `code`: 0.92em of the surrounding text, monospace, no ligatures. */
+const code = "font-mono text-code-ui [font-variant-ligatures:none]";
 
 const sectionTitle = (id: SectionId) => (id === "devices" ? T.devicesTitle : SECTION[id]);
 
@@ -276,7 +279,7 @@ function ProfileSection({ state }: { state: SettingsScreenState }) {
             label: S.slug,
             value: (
               <>
-                <code className={`${code} text-sm`}>{slug}</code>
+                <code className={code}>{slug}</code>
                 <span className={hint}>
                   {S.slugHint} (<code className={code}>--profile {slug}</code>)
                 </span>
@@ -459,7 +462,7 @@ function WorkspacePanel({
               label: S.folder,
               value: (
                 <>
-                  <code className={`${code} text-sm`}>{ws.path}</code>
+                  <code className={code}>{ws.path}</code>
                   {ws.custom && <Tag>{S.customFolder}</Tag>}
                   <Button
                     variant="link"
@@ -588,7 +591,7 @@ function WorkspacePanel({
                   title: S.routineTitle,
                   value: (
                     <>
-                      <code className={`${code} text-sm`}>/market-research rutyna</code>
+                      <code className={code}>/market-research rutyna</code>
                       <span className={hint}>{S.routineHint}</span>
                     </>
                   ),
@@ -1029,7 +1032,7 @@ function DataSection({ state }: { state: SettingsScreenState }) {
           label: S.dataDir,
           value: (
             <>
-              <code className={`${code} text-sm wrap-anywhere`}>{dir ?? "-"}</code>
+              <code className={`${code} wrap-anywhere`}>{dir ?? "-"}</code>
               {dir && <Button onPress={() => void state.onDataDirCopied()}>{S.copy}</Button>}
             </>
           ),

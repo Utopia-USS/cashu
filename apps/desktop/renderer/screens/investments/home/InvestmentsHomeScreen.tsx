@@ -38,7 +38,7 @@ import { valueChartProps } from "./widgets/valueChartModel.js";
 export function InvestmentsHomeScreen(props: InvestmentsHomeOptions) {
   return (
     <ToastProvider>
-      <HomePage>
+      <HomePage narrow={!!props.page && !!props.instrument}>
         <Suspense fallback={<HomeLoadingView />}>
           <HomeBound {...props} />
         </Suspense>

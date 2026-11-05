@@ -144,6 +144,7 @@
   --text-control: 13.3333px;
   /* Inline code of rendered Markdown (old `.md code { font-size: .88em }`, relative to its text). */
   --text-code: 0.88em;
+  --text-code-ui: 0.92em;
 
   /* The UA button font of the old bare buttons that kept the UA `font` shorthand (Chromium on macOS
      computes and draws Arial): deck buttons, the review button, icon buttons. */

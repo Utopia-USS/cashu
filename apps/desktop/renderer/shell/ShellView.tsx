@@ -19,6 +19,8 @@ import type { ShellScreenState } from "./useShellScreen.js";
 export interface ShellViewProps {
   state: ShellScreenState;
   activeModule?: string;
+  /** The page asks for the 1120px frame (old Shell `narrow`, e.g. the asset page of the investments Home). */
+  narrow?: boolean;
   onOverviewOpened(): void;
   onModuleOpened(tab: string): void;
   onAddProfile?: () => void;
@@ -70,6 +72,7 @@ export function ShellView({
   onAddProfile,
   children,
   activeModule = "overview",
+  narrow = false,
 }: ShellViewProps) {
   const actions: ProfilePillAction[] = [
     ...(onAddProfile
@@ -107,7 +110,9 @@ export function ShellView({
   return (
     <UiEnvProvider privacy={state.privacy} locale={state.locale}>
       <div className="min-h-screen bg-surface text-body text-fg">
-        <div className={`mx-auto px-5 pt-6 ${WIDE.has(activeModule) ? "max-w-360" : "max-w-280"}`}>
+        <div
+          className={`mx-auto px-5 pt-6 ${WIDE.has(activeModule) && !narrow ? "max-w-360" : "max-w-280"}`}
+        >
           <AppHeader
             logo={{ light: logoLight, dark: logoDark, label: T.brand }}
             brand={

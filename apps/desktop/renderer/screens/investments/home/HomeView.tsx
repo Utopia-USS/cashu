@@ -24,12 +24,12 @@ import {
 import type { ReactNode } from "react";
 import type { HeadModel, HeroFact, HeroModel, StartModel } from "./homeModel.js";
 
-/** The old `.wrap.wide` page box (max 1440px, 20px sides, 70px bottom, centred; the shell above it carries the 24px top) with the old body type (15px / 1.5). */
-export function HomePage({ children }: { children: ReactNode }) {
+/** The old `.wrap.wide` page box (max 1440px, 20px sides, 70px bottom, centred; the shell above it carries the 24px top) with the old body type (15px / 1.5); `narrow` = the old `.wrap.narrow` (1120px, the asset page). */
+export function HomePage({ children, narrow = false }: { children: ReactNode; narrow?: boolean }) {
   return (
     <main
       data-testid="native-portfolio"
-      className="mx-auto max-w-360 px-5 pb-17.5 text-base leading-normal text-fg"
+      className={`mx-auto px-5 pb-17.5 text-base leading-normal text-fg ${narrow ? "max-w-280" : "max-w-360"}`}
     >
       {children}
     </main>

@@ -211,7 +211,8 @@ export function JournalView(p: JournalProps) {
                   <div className="px-4 pb-3 text-center text-sm text-fg-muted">{h.empty}</div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className={tableCls(true)}>
+                    {/* old `.wb > .scroll:first-child table { margin-top: -2px }` */}
+                    <table className={`${tableCls(true)} -mt-0.5`}>
                       <thead>
                         <tr>
                           {h.head.map((t) => (

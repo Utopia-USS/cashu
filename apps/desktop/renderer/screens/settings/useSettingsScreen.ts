@@ -1,5 +1,9 @@
 import { builtinRegistry } from "@cashu/domain/core";
 import { lang, setLanguage } from "@cashu/i18n";
+import { S as ASSETS } from "@cashu/i18n/assets/index.strings";
+import { S as BUDGET } from "@cashu/i18n/budget/index.strings";
+import { S as INVESTMENTS } from "@cashu/i18n/investments/index.strings";
+import { S as LOANS } from "@cashu/i18n/loans/index.strings";
 import { setModules, setProfileSettings } from "@cashu/store";
 import { profile } from "@cashu/store/core";
 import { proposalList } from "@cashu/store/core/desktop-proposals";
@@ -35,6 +39,27 @@ import {
 import { createServiceStatusCoordinator, type DesktopServiceStatus } from "../../serviceBridge.js";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { T } from "./Settings.strings.js";
+
+/** Old core/registry.ts MODULES: the navigation order of the module rows (unknown ids after, in their order). */
+const MODULE_ORDER = ["budget", "loans", "assets", "investments"];
+function orderModules<M extends { id: string }>(items: readonly M[]): M[] {
+  const rank = (id: string) => {
+    const i = MODULE_ORDER.indexOf(id);
+    return i < 0 ? MODULE_ORDER.length : i;
+  };
+  return items
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => rank(a.m.id) - rank(b.m.id) || a.i - b.i)
+    .map(({ m }) => m);
+}
+/** Old ModuleDef `short` (each module's index.tsx catalog): the module row's line. */
+function moduleShort(id: string): string | undefined {
+  if (id === "budget") return BUDGET.short;
+  if (id === "loans") return LOANS.short;
+  if (id === "assets") return ASSETS.desc;
+  if (id === "investments") return INVESTMENTS.short;
+  return undefined;
+}
 
 const registry = builtinRegistry();
 const modulesQuery = overviewQueries({ prices: null }).moduleStates;
@@ -626,16 +651,17 @@ export function useSettingsScreen(
     current,
     profileForm,
     profileBusy: save.isPending,
-    modules: modules.map((state) => {
+    modules: orderModules(modules).map((state) => {
       const spec = registry.modules.get(state.id);
       return {
         ...state,
         available: spec?.available ?? false,
         name: lang() === "pl" ? (spec?.name ?? state.id) : (spec?.nameEn ?? spec?.name ?? state.id),
         description:
-          lang() === "pl"
+          moduleShort(state.id) ??
+          (lang() === "pl"
             ? (spec?.description ?? "")
-            : (spec?.descriptionEn ?? spec?.description ?? ""),
+            : (spec?.descriptionEn ?? spec?.description ?? "")),
         dependsOn: spec?.dependsOn ?? [],
       };
     }),

@@ -15,16 +15,18 @@ const grid =
 const withSide =
   "grid-cols-[--spacing(65)_minmax(0,1fr)_--spacing(80)] max-strat:grid-cols-[--spacing(60)_minmax(0,1fr)]";
 const card = "rounded-widget border border-border bg-surface-raised";
-const rowButton =
-  "flex w-full cursor-pointer border-0 bg-transparent text-left text-fg hover:bg-subtle";
+/** Tree row button; `on` swaps the transparent background and text colour (one utility each, no order clash). */
+const rowButton = "flex w-full cursor-pointer border-0 text-left hover:bg-subtle";
+const rowIdle = "bg-transparent text-fg";
 const mono = "font-mono";
 /** `padding-left: 22 + depth * 12` of the tree rows. */
 const indent = ["pl-5.5", "pl-8.5", "pl-11.5", "pl-14.5", "pl-17.5", "pl-20.5"] as const;
 const indentOf = (depth: number) => indent[Math.min(depth, indent.length - 1)];
+/** `.strat-ext.md` also matched the Markdown `.md` rule (14.5px, line height 1.65): kept as the old app drew it. */
 const ext = {
-  md: "bg-info-bg text-info",
-  yaml: "bg-warning-bg text-warning",
-  text: "bg-chip text-chip-fg",
+  md: "bg-info-bg text-info text-md-plus leading-prose",
+  yaml: "bg-warning-bg text-warning text-4xs-plus",
+  text: "bg-chip text-chip-fg text-4xs-plus",
 } as const;
 
 const tag = (t: TagModel) => (
@@ -40,7 +42,7 @@ function Tree({ s }: { s: Ready }) {
         <div key={d.key} className={i > 0 ? "mt-1 border-t border-border pt-1" : ""}>
           <button
             type="button"
-            className={`${rowButton} flex-wrap items-center gap-x-1.5 gap-y-1 px-3 py-2 ${d.on ? "bg-chip" : ""}`}
+            className={`${rowButton} flex-wrap items-center gap-x-1.5 gap-y-1 px-3 py-2 ${d.on ? "bg-chip text-fg" : rowIdle}`}
             onClick={() => s.pick(d.select)}
           >
             <span className="basis-full text-sm-plus font-strong wrap-anywhere">{d.title}</span>
@@ -70,12 +72,10 @@ function Tree({ s }: { s: Ready }) {
                 <button
                   key={r.key}
                   type="button"
-                  className={`${rowButton} items-center gap-1.5 py-1 pr-3 text-xs-plus ${mono} ${indentOf(r.depth)} ${r.on ? "bg-info-bg text-info" : ""}`}
+                  className={`${rowButton} items-center gap-1.5 py-1 pr-3 text-xs-plus ${mono} ${indentOf(r.depth)} ${r.on ? "bg-info-bg text-info" : rowIdle}`}
                   onClick={() => s.pick({ id: d.id, path: r.path })}
                 >
-                  <span
-                    className={`rounded-2xs px-1 py-px text-4xs-plus font-bold tracking-caps ${ext[r.ext]}`}
-                  >
+                  <span className={`rounded-2xs px-1 py-px font-bold tracking-caps ${ext[r.ext]}`}>
                     {r.extText}
                   </span>
                   {r.name}
@@ -109,12 +109,13 @@ function Main({ s }: { s: Ready }) {
   const b = m.body;
   return (
     <section className={`${card} min-h-80 overflow-hidden p-0`}>
-      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+      {/* old global `header` rule: space-between and a 14px bottom margin (the spacer does not grow) */}
+      <header className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <div className="text-sm-plus wrap-anywhere">
           <strong>{m.crumb}</strong>
           <span className="text-fg-muted"> / {m.path}</span>
         </div>
-        <span className="flex-1" />
+        <span />
         {m.mode && (
           <Seg
             quiet

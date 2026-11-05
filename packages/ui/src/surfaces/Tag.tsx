@@ -30,7 +30,7 @@ const fill = {
   info: "border-transparent bg-info-bg text-info",
 } as const;
 const shape =
-  "inline-block whitespace-nowrap rounded-full border px-1.75 py-px text-2xs font-regular leading-normal";
+  "inline-block whitespace-nowrap rounded-full border px-1.75 py-px text-2xs leading-normal";
 
 /** Small outlined status label (old `.tag`, tones `.pos .neg .warn .info`, `.solid`). */
 export function Tag({

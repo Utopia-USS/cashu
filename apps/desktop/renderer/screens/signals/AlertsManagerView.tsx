@@ -379,7 +379,8 @@ function Table({ p }: { p: AlertsManagerProps["list"] }) {
   const h = p.head;
   return (
     <div className="overflow-x-auto">
-      <table className={tableCls(true)}>
+      {/* old `.wb > .scroll:first-child table { margin-top: -2px }` */}
+      <table className={`${tableCls(true)} -mt-0.5`}>
         <thead>
           <tr>
             <th className={thCls()}>{h.status}</th>
@@ -412,10 +413,11 @@ function Table({ p }: { p: AlertsManagerProps["list"] }) {
                 {r.scope.kind === "text" ? (
                   r.scope.text
                 ) : (
-                  <span>
-                    {r.scope.name}
+                  // old InstLabel inline in a table cell (`.il.inl`, `.nmt`, `.sym`): a centred flex row
+                  <span className="flex items-center">
+                    <span className="block">{r.scope.name}</span>
                     {r.scope.sym && (
-                      <span className="-mt-px ml-1.25 block text-2xs-plus text-fg-muted">
+                      <span className="ml-1.25 block text-2xs-plus text-fg-muted">
                         {r.scope.sym}
                       </span>
                     )}

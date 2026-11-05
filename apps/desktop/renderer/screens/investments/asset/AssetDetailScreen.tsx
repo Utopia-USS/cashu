@@ -4,7 +4,7 @@
 // first load inside a Suspense fallback.
 import { S as D } from "@cashu/i18n/investments/v2/AssetDrawer.strings";
 import { S as H } from "@cashu/i18n/investments/v2/Home.strings";
-import { Button, Crumb, DetailDrawer, HealthPill, Skeleton } from "@cashu/ui";
+import { Crumb, DetailDrawer, HealthPill, Skeleton } from "@cashu/ui";
 import type { Position, Thesis } from "@cashu/ui-logic/investments/types";
 import { type ReactNode, Suspense } from "react";
 import { AlertRow } from "../../signals/AlertRowView.js";
@@ -180,11 +180,7 @@ function PageBound({ onBack, onPanel, ...props }: AssetPageScreenProps) {
           { label: H.assets, onPress: onBack },
           { label: name },
         ]}
-        end={
-          <Button variant="link" size="lg" onPress={onPanel}>
-            {H.openInPanel}
-          </Button>
-        }
+        endLink={{ label: H.openInPanel, onPress: onPanel }}
       />
       <Suspense fallback={<Loading mode="page" />}>
         <Detail key={props.instrument} {...props} mode="page" />
