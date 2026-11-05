@@ -68,6 +68,15 @@ export function rendered(amount: string, currency: string, locale = "pl-PL"): st
   return formatDecimalValue(D(amount), locale, { currency }).text;
 }
 
+/** A decimal as the screens ported from the Python app show it (old `cur`: grouping always, so "2 995,32 zł"). */
+export function renderedGrouped(amount: string, currency: string, locale = "pl-PL"): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    useGrouping: "always",
+  } as Intl.NumberFormatOptions).format(Number(amount));
+}
+
 /** `-amount` as decimal text. */
 export function negate(amount: string): string {
   return D(amount).neg().toString();

@@ -9,6 +9,7 @@ import { overviewQueries } from "@cashu/store/overview";
 import { useQuery } from "@cashu/store-react";
 import { type GridItem, Page, Skeleton, ToastProvider, useUiEnv } from "@cashu/ui";
 import { Suspense, useEffect, useState } from "react";
+import { S } from "../../Desktop.strings.js";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { AssetsWidgetView } from "./AssetsWidgetView.js";
 import { CashDrawerView } from "./CashDrawerView.js";
@@ -38,7 +39,7 @@ export interface OverviewScreenProps {
 export function OverviewScreen(props: OverviewScreenProps) {
   return (
     <ToastProvider>
-      <Page width="wide" label={D.netWorth}>
+      <Page width="wide" label={S.overview}>
         <Suspense fallback={<OverviewLoading />}>
           <OverviewBound {...props} />
         </Suspense>

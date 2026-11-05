@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { demoExpectations, rendered } from "../demo-expectations.ts";
+import { demoExpectations, renderedGrouped } from "../demo-expectations.ts";
 import {
   dashboardWindow,
   expect,
@@ -9,6 +9,7 @@ import {
   pickProfile,
   rewriteHash,
   setPrivacy,
+  settleModalHistory,
   stopHost,
   test,
   until,
@@ -53,7 +54,7 @@ test("native loans and asset first steps use actual host stores and reset drafts
     await expect(list).toBeVisible();
     for (const loan of expected) {
       await expect(list).toContainText(loan.name);
-      await expect(list).toContainText(rendered(loan.monthlyPayment, loan.currency));
+      await expect(list).toContainText(renderedGrouped(loan.monthlyPayment, loan.currency));
     }
 
     // The old tab renders the whole schedule in a scrolling card (no virtual rows).
@@ -94,8 +95,9 @@ test("native loans and asset first steps use actual host stores and reset drafts
     await matching.getByRole("button", { name: "wyczyść", exact: true }).click();
     await expect(matching).toBeHidden();
 
+    await settleModalHistory(page);
     await rewriteHash(page, /\/setup\/loans(?:\?.*)?$/u, "/loans.list");
-    await expect(list).toContainText(rendered("1000", "PLN"));
+    await expect(list).toContainText(renderedGrouped("1000", "PLN"));
     await list.getByRole("button", { name: "Synthetic UI loan", exact: true }).click();
     await page.screenshot({ path: test.info().outputPath("native-loans.png"), fullPage: true });
     await expect(page.getByRole("table", { name: "Harmonogram" }).getByRole("row")).toHaveCount(13);
