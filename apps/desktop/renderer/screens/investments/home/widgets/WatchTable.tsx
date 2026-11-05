@@ -1,11 +1,21 @@
 // The Obserwowane tab of Aktywa (ab24ab6 v2/Watchlist.tsx WatchTable `wide`): Instrument | Rekomendacja (+ the
 // coverage `n/m`) | 30 dni | Cena | tydz. | Alerty | X; rows open the asset. Texts come from assetListModel.ts.
-import { Button, Skeleton, Sparkline, Tag } from "@cashu/ui";
+import {
+  Button,
+  emptyCls,
+  HintChip,
+  rowLinkCls,
+  Skeleton,
+  Sparkline,
+  Tag,
+  tableCls,
+  tdCls,
+  thCls,
+  toneCls,
+} from "@cashu/ui";
 import { cHint, cHintTd, cInst, cNarrowHidden, splitNowrap } from "./assetColumns.js";
 import type { AssetListProps } from "./assetListModel.js";
 import { RowLabelCell } from "./assetParts.js";
-import { HintChip } from "./marks.js";
-import { emptyCls, rowLinkCls, tableCls, tdCls, thCls, toneCls } from "./table.js";
 
 const plan =
   "inline-flex max-w-39.5 whitespace-nowrap rounded-full border px-1.75 py-px text-2xs-plus leading-normal";

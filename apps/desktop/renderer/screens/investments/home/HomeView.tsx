@@ -7,12 +7,14 @@ import { S as P } from "@cashu/i18n/core/SetupPage.strings";
 import { S } from "@cashu/i18n/investments/v2/Home.strings";
 import {
   Button,
+  CodeLine,
   type FactProps,
   Grid,
   type GridItem,
   Hero,
   PageHead,
   Seg,
+  SetupSteps,
   Skeleton,
   Split,
   type SplitItem,
@@ -21,7 +23,6 @@ import {
 } from "@cashu/ui";
 import type { ReactNode } from "react";
 import type { HeadModel, HeroFact, HeroModel, StartModel } from "./homeModel.js";
-import { CodeLine, SetupSteps } from "./parts.js";
 
 /** The old `.wrap.wide` page box (max 1440px, 20px sides, 70px bottom, centred; the shell above it carries the 24px top) with the old body type (15px / 1.5). */
 export function HomePage({ children }: { children: ReactNode }) {

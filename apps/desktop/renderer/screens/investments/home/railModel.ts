@@ -3,6 +3,7 @@
 // candidate rows, formatted here so HomeRailView stays pure.
 import { S } from "@cashu/i18n/investments/v2/HomeRail.strings";
 import { S as C } from "@cashu/i18n/investments/v2/research/Strip.strings";
+import type { RailRowData } from "@cashu/ui";
 import { dm } from "@cashu/ui-logic/investments/labels";
 import { type InstLike, instMono } from "@cashu/ui-logic/investments/v2/logic";
 import { railAlerts, railSignals } from "@cashu/ui-logic/investments/v2/railLogic";
@@ -26,7 +27,6 @@ import type {
   CandidatesRailProps,
   RailGroup,
   RailPill,
-  RailRowData,
   SignalsBriefProps,
 } from "./HomeRailView.js";
 

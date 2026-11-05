@@ -1,9 +1,8 @@
 // AllocationWidget (ab24ab6 v2/Portfolio.tsx:267-355): `Widget#inv-alloc` with the band tag, the quiet view Seg
 // (+ the Rachunki view's `ostrzezenia (n)` link and `+ Rachunek`), the donut + `.arow` rows (`.alloc`, `.wide`,
 // `.acc`) and the portfolio priority banner.
-import { Button, Donut, Drawer, Seg, Swatch, Tag, Widget } from "@cashu/ui";
+import { Button, Donut, Drawer, emptyCls, Seg, Swatch, Tag, Widget } from "@cashu/ui";
 import type { AllocationWidgetProps } from "./allocationModel.js";
-import { emptyCls } from "./table.js";
 
 // `.w .alloc` (112px donut column, gap 14) / `.alloc.wide` (128px, gap 20; back to 112 / 14 at <= 760).
 const allocGrid = (wide: boolean) =>

@@ -1,8 +1,8 @@
 // The instrument hover card (ab24ab6 v2/InstLabel.tsx: useTouch, useHoverCard, HoverCard, InstCard; index.css
 // `.ilc`): a fixed-position portal under the anchor (above it when there is no room below), opened 350 ms after the
 // pointer enters or at once on keyboard focus of the name, closed on leave, blur, Esc, scroll and resize. Without
-// hover (touch) there is no card: the caller sets a one-line title instead. Candidate for packages/ui.
-import { InstTile, type InstTileProps, Tag } from "@cashu/ui";
+// hover (touch) there is no card: the caller sets a one-line title instead.
+
 import {
   type CSSProperties,
   type FocusEvent,
@@ -15,6 +15,8 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { InstTile, type InstTileProps } from "../instruments/InstTile.js";
+import { Tag } from "../surfaces/Tag.js";
 
 const OPEN_DELAY = 350;
 
@@ -111,18 +113,15 @@ export function useHoverCard(enabled: boolean): {
 }
 
 /** The `.ilc` frame: fixed under the anchor, kept inside the viewport. */
-export function HoverCard({
-  anchor,
-  id,
-  gain,
-  children,
-}: {
+export interface HoverCardProps {
   anchor: HTMLElement;
   id: string;
   /** `.ilc.gain`: no minimum width, values right-aligned. */
   gain?: boolean;
   children: ReactNode;
-}) {
+}
+
+export function HoverCard({ anchor, id, gain, children }: HoverCardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<CSSProperties>({ top: 0, left: 0, visibility: "hidden" });
   useLayoutEffect(() => {

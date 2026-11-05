@@ -1,12 +1,21 @@
 // Cells of the Aktywa / Obserwowane tables with hover state (ab24ab6): the instrument label of a row (`.w td > .il`
 // with RowMarks, the agent badge, the classify icon and the InstCard hover card) and the Wynik % cell (Portfolio.tsx
 // GainCell, `.ilc.gain`). Pure apart from the hover state; texts come from assetListModel.ts.
-import { InstLabel } from "@cashu/ui";
+import {
+  AgentTag,
+  CardRows,
+  ClassifyButton,
+  HoverCard,
+  InstCardBody,
+  InstLabel,
+  RowMarks,
+  tdCls,
+  toneCls,
+  useHoverCard,
+  useTouch,
+} from "@cashu/ui";
 import { useId } from "react";
 import type { GainCellProps, RowLabel } from "./assetListModel.js";
-import { CardRows, HoverCard, InstCardBody, useHoverCard, useTouch } from "./HoverCard.js";
-import { AgentTag, ClassifyButton, RowMarks } from "./marks.js";
-import { tdCls, toneCls } from "./table.js";
 
 /** The row's instrument label (a flex row of at least 31px) with its hover card. */
 export function RowLabelCell({ label, onOpen }: { label: RowLabel; onOpen(): void }) {

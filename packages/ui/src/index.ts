@@ -29,7 +29,9 @@ export type {
 } from "./charts/types.js";
 export { Button } from "./controls/Button.js";
 export type { ButtonProps } from "./controls/Button.types.js";
+export { CodeLine, type CodeLineProps } from "./controls/CodeLine.js";
 export { IconToggle, type IconToggleProps } from "./controls/IconToggle.js";
+export { RadioList, type RadioListProps, type RadioOption } from "./controls/RadioList.js";
 export { Seg, type SegProps } from "./controls/Seg.js";
 export { Select } from "./controls/Select.js";
 export type { SelectOption, SelectProps } from "./controls/Select.types.js";
@@ -57,12 +59,35 @@ export {
   PlanGlyph,
   type PlanGlyphProps,
 } from "./instruments/InstTile.js";
+export {
+  AgentTag,
+  ClassifyButton,
+  type ClassifyButtonProps,
+  HintChip,
+  type HintChipProps,
+  type MarksProps,
+  RowMarks,
+} from "./instruments/RowMarks.js";
 export { type Layout, type LayoutClass, layoutClass, SPACING_STEPS, type Step } from "./layout.js";
+export { RailRow, type RailRowData, type RailRowProps } from "./lists/RailRow.js";
+export { type SetupStepItem, SetupSteps, type SetupStepsProps } from "./lists/SetupSteps.js";
+export { Stepper, type StepperProps } from "./lists/Stepper.js";
 export { useVirtualRows } from "./lists/useVirtualRows.js";
 export { VirtualList } from "./lists/VirtualList.js";
 export type { VirtualListProps } from "./lists/VirtualList.types.js";
 export { createVirtualRows, type VirtualRowsOptions } from "./lists/virtualRows.js";
 export { Drawer, type DrawerProps } from "./overlays/Drawer.js";
+export {
+  type CardRow,
+  CardRows,
+  HoverCard,
+  type HoverCardProps,
+  type HoverHandlers,
+  InstCardBody,
+  type InstCardProps,
+  useHoverCard,
+  useTouch,
+} from "./overlays/HoverCard.js";
 export { Modal } from "./overlays/Modal.js";
 export type { ModalProps } from "./overlays/Modal.types.js";
 export { AppHeader, type AppHeaderProps } from "./shell/AppHeader.js";
@@ -77,9 +102,21 @@ export { Card } from "./surfaces/Card.js";
 export type { CardProps } from "./surfaces/Card.types.js";
 export { Fact, type FactProps, Facts, type FactsProps } from "./surfaces/Fact.js";
 export { Hero, type HeroProps } from "./surfaces/Hero.js";
+export { Notice, type NoticeProps } from "./surfaces/Notice.js";
 export { PageHead, type PageHeadProps } from "./surfaces/PageHead.js";
 export { Pill, type PillProps, Tag, type TagProps, type TagTone } from "./surfaces/Tag.js";
 export { Widget, type WidgetProps } from "./surfaces/Widget.js";
+export {
+  codeCls,
+  emptyCls,
+  rowLinkCls,
+  sumRowCls,
+  type Tone,
+  tableCls,
+  tdCls,
+  thCls,
+  toneCls,
+} from "./surfaces/widgetTable.js";
 export { Amount } from "./values/Amount.js";
 export { DateText } from "./values/DateText.js";
 export { Delta } from "./values/Delta.js";
@@ -93,3 +130,4 @@ export type {
   PercentProps,
   ValueStyle,
 } from "./values/types.js";
+export { WeightBar, type WeightBarProps } from "./values/WeightBar.js";

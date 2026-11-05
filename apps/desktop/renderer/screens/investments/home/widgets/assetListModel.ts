@@ -5,7 +5,15 @@
 import { S as IL } from "@cashu/i18n/investments/v2/InstLabel.strings";
 import { S } from "@cashu/i18n/investments/v2/Portfolio.strings";
 import { KIND_WORD, S as W } from "@cashu/i18n/investments/v2/Watchlist.strings";
-import type { InstTileProps, SparklineProps } from "@cashu/ui";
+import type {
+  CardRow,
+  HintChipProps,
+  InstCardProps,
+  InstTileProps,
+  MarksProps,
+  SparklineProps,
+  Tone,
+} from "@cashu/ui";
 import {
   accountLabel,
   dm,
@@ -36,10 +44,7 @@ import { S as L } from "@cashu/ui-logic/investments/v2/logic.strings";
 import type { PositionV2, WatchItem } from "@cashu/ui-logic/investments/v2/types";
 import { gidOf } from "../legacyWire.js";
 import type { InvestmentsHomeData } from "../useInvestmentsHomeData.js";
-import type { CardRow, InstCardProps } from "./HoverCard.js";
 import { type InstState, instStateOf, isHeld, tileOf } from "./instState.js";
-import type { HintChipProps, MarksProps } from "./marks.js";
-import type { Tone } from "./table.js";
 
 export type AssetsTab = "positions" | "watch";
 export type AssetSort = "value" | "result" | "week";

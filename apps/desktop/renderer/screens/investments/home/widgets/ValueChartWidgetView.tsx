@@ -1,8 +1,18 @@
 // ValueChartWidget (ab24ab6 v2/Perf.tsx:26-107): `Widget#inv-value` with the quiet range Seg, the legend
 // (the portfolio mark stacked above its word, old `.split .main` cascade), the line chart / table / empty line and
 // the footer facts with the chart | table toggle.
-import { Button, ChartLegend, LineChart, Seg, Widget } from "@cashu/ui";
-import { codeCls, emptyCls, tableCls, tdCls, thCls } from "./table.js";
+import {
+  Button,
+  ChartLegend,
+  codeCls,
+  emptyCls,
+  LineChart,
+  Seg,
+  tableCls,
+  tdCls,
+  thCls,
+  Widget,
+} from "@cashu/ui";
 import type { ValueChartWidgetProps } from "./valueChartModel.js";
 
 export function ValueChartWidgetView({

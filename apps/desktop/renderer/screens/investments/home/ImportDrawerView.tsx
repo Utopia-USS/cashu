@@ -2,8 +2,7 @@
 // account radios, importer and mapping, the checked preview with the reconciliation, the result. Pure: the state
 // and every formatted row come from useImportDrawer.ts.
 import { S } from "@cashu/i18n/investments/Drawers.strings";
-import { Button, Drawer, Select, Tag, TextField } from "@cashu/ui";
-import { Notice, RadioList, Stepper } from "./parts.js";
+import { Button, Drawer, Notice, RadioList, Select, Stepper, Tag, TextField } from "@cashu/ui";
 import type { ImportDrawerState, ImportWarningText } from "./useImportDrawer.js";
 
 const th =

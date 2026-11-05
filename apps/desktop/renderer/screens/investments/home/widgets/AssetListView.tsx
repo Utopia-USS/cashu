@@ -1,12 +1,25 @@
 // AssetList (ab24ab6 v2/Portfolio.tsx:41-176): `Widget#inv-assets` (a size container) with the `Portfel n |
 // Obserwowane n` tabs, the split Seg and the sort select (or `+ Dodaj` on the watch tab), the positions table or
 // the watch table, and the footer (`+ transakcja` / the live alerts count).
-import { Button, Seg, Select, Sparkline, Tag, Widget } from "@cashu/ui";
+import {
+  Button,
+  HintChip,
+  rowLinkCls,
+  Seg,
+  Select,
+  Sparkline,
+  sumRowCls,
+  Tag,
+  tableCls,
+  tdCls,
+  thCls,
+  toneCls,
+  WeightBar,
+  Widget,
+} from "@cashu/ui";
 import { cHint, cHintTd, cInst, cNarrowHidden, splitNowrap } from "./assetColumns.js";
 import type { AssetListProps, AssetSort } from "./assetListModel.js";
 import { GainCell, RowLabelCell } from "./assetParts.js";
-import { HintChip, WeightBar } from "./marks.js";
-import { rowLinkCls, sumRowCls, tableCls, tdCls, thCls, toneCls } from "./table.js";
 import { WatchTable } from "./WatchTable.js";
 
 export function AssetListView({ title, tabs, tab, positions, watch }: AssetListProps) {

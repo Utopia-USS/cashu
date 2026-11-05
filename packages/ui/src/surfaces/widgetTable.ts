@@ -1,6 +1,5 @@
 // The compact widget table of the old Home (index.css:569-592 `.w table`, `.w th`, `.w td`, `.num`, the flush
-// first / last cell padding, `.w tr.rowlink`, `.w tr.sum`): class strings shared by the widget views.
-// Candidate for packages/ui (a `WidgetTable` primitive) once a second screen needs it.
+// first / last cell padding, `.w tr.rowlink`, `.w tr.sum`): class strings shared by every widget table.
 
 /** `.w table` (13px, collapsed, no rule under the last row); `flush` = `.wb.flush` first / last cells at 16px. */
 export const tableCls = (flush: boolean): string =>

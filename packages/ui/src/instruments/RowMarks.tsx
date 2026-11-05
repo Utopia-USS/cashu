@@ -1,7 +1,8 @@
+// biome-ignore-all lint/correctness/noReactNativeRawText: DOM-only markup (text nodes kept 1:1 with the old DOM); the native side gets its own pair when needed.
 // The small marks of the Aktywa / Obserwowane rows (ab24ab6): RowMarks (Portfolio.tsx:27-35, the signal glyph
 // `.flag`, the bell / page `.mk` of widgets.tsx Mark), HintChip (hints.tsx, `.hint`), AgentTag mono
 // (widgets.tsx:140, `.tag.agent.mono`) and the classify icon (InstLabel.tsx ClassifyButton, `.il-cls`). Pure;
-// every text comes formatted from the model. Candidates for packages/ui (instrument marks) once reused.
+// every text comes formatted from the model.
 
 type FlagState = "positive" | "negative" | "neutral" | "mixed";
 
@@ -113,17 +114,14 @@ export function AgentTag({ text }: { text: string }) {
 }
 
 /** `.il-cls`: the tag icon that opens the classification (warn glyph, warn tint while hovered or open). */
-export function ClassifyButton({
-  title,
-  label,
-  expanded,
-  onToggle,
-}: {
+export interface ClassifyButtonProps {
   title: string;
   label: string;
   expanded: boolean;
   onToggle(): void;
-}) {
+}
+
+export function ClassifyButton({ title, label, expanded, onToggle }: ClassifyButtonProps) {
   return (
     <button
       type="button"
@@ -148,23 +146,5 @@ export function ClassifyButton({
         <circle cx={5.75} cy={5.75} r={1} fill="currentColor" stroke="none" />
       </svg>
     </button>
-  );
-}
-
-/** `.wbar` + the percentage of a `td.wcell`: a 56 x 5 bar, the fill relative to the largest weight. */
-export function WeightBar({ fill, text }: { fill: number; text: string }) {
-  return (
-    <>
-      <span
-        aria-hidden="true"
-        className="relative mr-1.5 inline-block h-1.25 w-14 overflow-hidden rounded-3xs bg-chip align-middle"
-      >
-        <i
-          className="absolute inset-y-0 left-0 rounded-3xs bg-fg-muted"
-          style={{ width: `${fill}%` }}
-        />
-      </span>
-      {text}
-    </>
   );
 }
