@@ -47,7 +47,32 @@ export type NamedColor =
   | "inv-other"
   | "inv-5"
   | "inv-6"
-  | "inv-7";
+  | "inv-7"
+  /** The muted grey (the old spending donut's "Reszta" slice and its members). */
+  | "muted"
+  /** The old 22-colour categorical PALETTE (format.ts, the spending donut), the same in both themes. */
+  | "palette-1"
+  | "palette-2"
+  | "palette-3"
+  | "palette-4"
+  | "palette-5"
+  | "palette-6"
+  | "palette-7"
+  | "palette-8"
+  | "palette-9"
+  | "palette-10"
+  | "palette-11"
+  | "palette-12"
+  | "palette-13"
+  | "palette-14"
+  | "palette-15"
+  | "palette-16"
+  | "palette-17"
+  | "palette-18"
+  | "palette-19"
+  | "palette-20"
+  | "palette-21"
+  | "palette-22";
 
 /** Any colour a series, a donut segment, a legend mark or a swatch takes. */
 export type ChartColor = SeriesColor | NamedColor;
@@ -91,6 +116,28 @@ export const ROLE_VAR: Record<ChartRole, string> = {
   "inv-5": "--color-inv-5",
   "inv-6": "--color-inv-6",
   "inv-7": "--color-inv-7",
+  "palette-1": "--color-palette-1",
+  "palette-2": "--color-palette-2",
+  "palette-3": "--color-palette-3",
+  "palette-4": "--color-palette-4",
+  "palette-5": "--color-palette-5",
+  "palette-6": "--color-palette-6",
+  "palette-7": "--color-palette-7",
+  "palette-8": "--color-palette-8",
+  "palette-9": "--color-palette-9",
+  "palette-10": "--color-palette-10",
+  "palette-11": "--color-palette-11",
+  "palette-12": "--color-palette-12",
+  "palette-13": "--color-palette-13",
+  "palette-14": "--color-palette-14",
+  "palette-15": "--color-palette-15",
+  "palette-16": "--color-palette-16",
+  "palette-17": "--color-palette-17",
+  "palette-18": "--color-palette-18",
+  "palette-19": "--color-palette-19",
+  "palette-20": "--color-palette-20",
+  "palette-21": "--color-palette-21",
+  "palette-22": "--color-palette-22",
 };
 
 interface LineNode {

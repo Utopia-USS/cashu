@@ -8,6 +8,11 @@ export { ChartLegend } from "./charts/ChartLegend.js";
 export { Donut } from "./charts/Donut.js";
 export { LineChart } from "./charts/LineChart.js";
 export { Sparkline } from "./charts/Sparkline.js";
+export {
+  SpendingDonut,
+  type SpendingDonutProps,
+  type SpendingSlice,
+} from "./charts/SpendingDonut.js";
 export { Swatch } from "./charts/Swatch.js";
 export type { ChartColor, ChartRole, NamedColor, SeriesColor } from "./charts/scene.js";
 export type {
@@ -37,6 +42,7 @@ export {
   type CopyCommandProps,
 } from "./controls/CopyCommand.js";
 export { IconToggle, type IconToggleProps } from "./controls/IconToggle.js";
+export { PeriodStepper, type PeriodStepperProps } from "./controls/PeriodStepper.js";
 export { RadioList, type RadioListProps, type RadioOption } from "./controls/RadioList.js";
 export { Seg, type SegProps } from "./controls/Seg.js";
 export { Select } from "./controls/Select.js";
@@ -85,6 +91,7 @@ export {
   type PolDotProps,
 } from "./instruments/SignalGlyphs.js";
 export { type Layout, type LayoutClass, layoutClass, SPACING_STEPS, type Step } from "./layout.js";
+export { LegendRow, type LegendRowProps } from "./lists/LegendRow.js";
 export { RailRow, type RailRowData, type RailRowProps } from "./lists/RailRow.js";
 export { SettingRow, type SettingRowProps } from "./lists/SettingRow.js";
 export { type SetupStepItem, SetupSteps, type SetupStepsProps } from "./lists/SetupSteps.js";
@@ -163,6 +170,7 @@ export { Notice, type NoticeProps } from "./surfaces/Notice.js";
 export { Page, type PageProps } from "./surfaces/Page.js";
 export { PageHead, type PageHeadProps } from "./surfaces/PageHead.js";
 export { SectionCard, type SectionCardProps } from "./surfaces/SectionCard.js";
+export { SumStrip, type SumStripItem } from "./surfaces/SumStrip.js";
 export { Pill, type PillProps, Tag, type TagProps, type TagTone } from "./surfaces/Tag.js";
 export { tintInk, Widget, type WidgetProps } from "./surfaces/Widget.js";
 export {

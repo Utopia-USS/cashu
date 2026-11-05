@@ -78,6 +78,29 @@
   --color-nw-vehicle: #16a34a;
   --color-nw-mortgage: #dc2626;
   --color-nw-loan: #ea580c;
+  /* old format.ts PALETTE (the spending donut), one value for both themes */
+  --color-palette-1: #2563eb;
+  --color-palette-2: #16a34a;
+  --color-palette-3: #dc2626;
+  --color-palette-4: #7c3aed;
+  --color-palette-5: #ea580c;
+  --color-palette-6: #0891b2;
+  --color-palette-7: #ca8a04;
+  --color-palette-8: #db2777;
+  --color-palette-9: #4f46e5;
+  --color-palette-10: #059669;
+  --color-palette-11: #e11d48;
+  --color-palette-12: #9333ea;
+  --color-palette-13: #f59e0b;
+  --color-palette-14: #0ea5e9;
+  --color-palette-15: #65a30d;
+  --color-palette-16: #c026d3;
+  --color-palette-17: #14b8a6;
+  --color-palette-18: #f43f5e;
+  --color-palette-19: #6366f1;
+  --color-palette-20: #84cc16;
+  --color-palette-21: #a855f7;
+  --color-palette-22: #ef4444;
 
   /* 4-point spacing: p-1 = 4px. Uniwind's safe-area utilities need the multiplier; SPACING_STEPS in
      src/layout.ts is the vocabulary of the `layout` prop. */
@@ -203,6 +226,8 @@
      above the cards), `max-kv:` <= 640px (key-value rows stack). */
   --breakpoint-phone: 481px;
   --breakpoint-kv: 641px;
+  /* max-width: 560px (budget.css: the month close figures shrink) */
+  --breakpoint-close: 561px;
   --breakpoint-narrow: 761px;
   --breakpoint-story: 861px;
   --breakpoint-split: 901px;

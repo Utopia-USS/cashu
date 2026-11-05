@@ -8,6 +8,8 @@ const SIZE: Record<NonNullable<SwatchProps["size"]>, string> = {
   md: "size-2.5 rounded-3xs",
   /** `.legend i.sw`: 9 px, radius 2 px. */
   sm: "size-2.25 rounded-4xs",
+  /** `.swatch`: 12 px, radius 3 px. */
+  lg: "size-3 rounded-3xs",
 };
 
 /** The colour key of a donut segment or a stacked layer in a row or a legend (decorative). */

@@ -7,20 +7,27 @@ export interface FactProps {
   /** Muted line under the value; omitted when null or empty. */
   detail?: ReactNode;
   /** Colour of the value. */
-  tone?: "positive" | "negative" | "warning";
-  /** Value size: `lg` 17px (default), `md` 16px (hero strip), `sm` 14px. */
-  size?: "lg" | "md" | "sm";
+  tone?: "positive" | "negative" | "warning" | "accent";
+  /** Value size: `lg` 17px (default), `md` 16px (hero strip), `sm` 14px; `xl` = the month close figure (old
+   * `.mc-fig`: caption .04em, value 19px 4px below (17px at <= 560px), detail 2px below). */
+  size?: "xl" | "lg" | "md" | "sm";
   /** Tooltip of the whole fact. */
   title?: string;
   /** Layout only (padding and dividers of a strip, grid placement). */
   className?: string;
 }
 
-const sizes = { lg: "text-lg", md: "text-base-plus", sm: "text-md" } as const;
+const sizes = {
+  xl: "mt-1 text-xl max-close:text-lg",
+  lg: "mt-px text-lg",
+  md: "mt-px text-base-plus",
+  sm: "mt-px text-md",
+} as const;
 const tones = {
   positive: "text-positive",
   negative: "text-negative",
   warning: "text-warning",
+  accent: "text-accent",
 } as const;
 
 /** Label-value-detail triplet of a widget or the hero strip (old `.fact .l .v .d`). */
@@ -35,14 +42,20 @@ export function Fact({
 }: FactProps) {
   return (
     <div title={title} className={`min-w-0 ${className}`}>
-      <div className="text-2xs uppercase tracking-label text-fg-muted">{label}</div>
       <div
-        className={`mt-px font-heavy tracking-snug tabular-nums ${sizes[size]} ${tone ? tones[tone] : ""}`}
+        className={`text-2xs uppercase text-fg-muted ${size === "xl" ? "tracking-caps" : "tracking-label"}`}
+      >
+        {label}
+      </div>
+      <div
+        className={`font-heavy tracking-snug tabular-nums ${sizes[size]} ${tone ? tones[tone] : ""}`}
       >
         {value}
       </div>
       {detail != null && detail !== "" && (
-        <div className="mt-px text-xs text-fg-muted">{detail}</div>
+        <div className={`text-xs text-fg-muted ${size === "xl" ? "mt-0.5" : "mt-px"}`}>
+          {detail}
+        </div>
       )}
     </div>
   );

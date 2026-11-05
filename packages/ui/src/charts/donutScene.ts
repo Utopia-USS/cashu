@@ -12,6 +12,8 @@ export function donutScene(p: DonutProps): Built {
   const arcs = donutArcs(
     p.segments.map((s) => s.value),
     size,
+    p.thickness,
+    p.gap,
   );
   const nodes: SceneNode[] = [];
   arcs.forEach((d, i) => {

@@ -127,6 +127,10 @@ export interface DonutProps {
   onSegmentSelected?: (index: number) => void;
   segments: DonutSegment[];
   size?: number;
+  /** Ring width in px (default 13, the allocation donut; the old spending donut: about 46). */
+  thickness?: number;
+  /** Surface gap between segments in px (default 2; 0 = touching slices, the old recharts pie). */
+  gap?: number;
   /** Centre text (old `.donut .c`: 15px bold value, 10.5px muted caption); `amount` hides the value in
    * privacy mode. */
   center?: { title: string; caption?: string; amount?: boolean };
@@ -174,6 +178,7 @@ export interface ChartLegendProps {
 
 export interface SwatchProps {
   color: ChartColor;
-  /** md: 10 px, radius 3 (old `.arow .sw`, allocation rows); sm: 9 px, radius 2 (old `.legend i.sw`). */
-  size?: "sm" | "md";
+  /** md: 10 px, radius 3 (old `.arow .sw`, allocation rows); sm: 9 px, radius 2 (old `.legend i.sw`); lg: 12 px,
+   * radius 3 (old `.swatch`, the spending legend rows). */
+  size?: "sm" | "md" | "lg";
 }
