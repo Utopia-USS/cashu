@@ -58,7 +58,7 @@ it("discards a delayed phrase from a replaced bridge lifetime", async () => {
       ...container.querySelectorAll('input[name="mcpPrivacy"]'),
     ] as HTMLInputElement[];
     await act(async () => radios[0]?.click());
-    await act(async () => button("Save your recovery phrase")?.click());
+    await act(async () => button("Next")?.click());
     await act(async () => root.render(view(newBridge)));
     await act(async () =>
       finishPrepare({
@@ -125,7 +125,7 @@ it("prepares once, clears the phrase before commit, and reconciles unknown witho
       ...container.querySelectorAll('input[name="mcpPrivacy"]'),
     ] as HTMLInputElement[];
     await act(async () => radios[0]?.click());
-    await act(async () => button("Save your recovery phrase")?.click());
+    await act(async () => button("Next")?.click());
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain(words);
     const backup = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
@@ -209,7 +209,7 @@ it("retains the verified profile through uncertain workspace publication and ret
     await act(async () =>
       (container.querySelector('input[name="mcpPrivacy"]') as HTMLInputElement)?.click(),
     );
-    await act(async () => button("Save your recovery phrase")?.click());
+    await act(async () => button("Next")?.click());
     await act(async () =>
       (container.querySelector('input[type="checkbox"]') as HTMLInputElement)?.click(),
     );

@@ -45,28 +45,13 @@ export const C = catalog({
     en: "Checking the new profile after reconnecting…",
   },
   ready: { pl: "Profil jest gotowy.", en: "Your profile is ready." },
-  workspaceLater: {
-    pl: "Tworzenie workspace agenta jest obecnie niedostępne.",
-    en: "Creating an agent workspace is currently unavailable.",
-  },
   workspaceUnavailable: {
     pl: "Tworzenie workspace w tym kroku jest niedostępne.",
     en: "Creating the workspace in this step is unavailable.",
   },
-  workspaceChoice: { pl: "Utwórz workspace agenta", en: "Create an agent workspace" },
-  workspaceChoiceHint: {
-    pl: "Możesz pominąć ten krok i wrócić do niego później w ustawieniach.",
-    en: "You can skip this step and return to it later in Settings.",
-  },
-  workspacePath: { pl: "Folder workspace", en: "Workspace folder" },
   workspaceDefault: { pl: "Domyślny folder", en: "Default folder" },
-  workspaceRoutine: {
-    pl: "Zezwól na rutynę badań inwestycji bez każdorazowego pytania",
-    en: "Allow the investments research routine without asking each time",
-  },
   workspaceChecking: { pl: "Sprawdzanie workspace…", en: "Checking workspace…" },
   workspaceApply: { pl: "Utwórz workspace", en: "Create workspace" },
-  workspaceApplying: { pl: "Tworzenie workspace…", en: "Creating workspace…" },
   workspaceFailed: {
     pl: "Profil jest gotowy, ale workspace nie został ukończony.",
     en: "Your profile is ready, but the workspace was not completed.",

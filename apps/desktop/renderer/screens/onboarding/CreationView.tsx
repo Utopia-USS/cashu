@@ -1,309 +1,477 @@
+// The new-profile wizard (ab24ab6 core/Wizard.tsx): Profil -> Moduły -> Prywatność (+ the agent workspace), full
+// page on the first launch, over the dimmed app otherwise. Native steps keep their place in the same card: the
+// device name next to the profile fields, the recovery phrase after the privacy step, the host's progress and the
+// workspace created after the profile. Pure view.
 import { PRIVACY, S as Wizard } from "@cashu/i18n/core/Wizard.strings";
-import { Button, Card, Modal, Select, TextField } from "@cashu/ui";
-import { type FormEvent, useEffect, useId, useRef } from "react";
+import { WS } from "@cashu/i18n/core/workspace.strings";
+import {
+  Button,
+  ChoiceCard,
+  ChoiceCards,
+  FieldNote,
+  FormRow,
+  KeyValues,
+  Notice,
+  RadioList,
+  Select,
+  Switch,
+  Tag,
+  TextField,
+  WizardFrame,
+} from "@cashu/ui";
+import { type FormEvent, type ReactNode, useEffect, useRef } from "react";
 import { C } from "./Creation.strings.js";
 import type { CreationScreenState } from "./useCreationScreen.js";
 
+const CURRENCIES = ["PLN", "EUR", "USD", "CHF", "GBP"] as const;
+const DOT = " · ";
+type Phase = CreationScreenState["phase"];
+const FORM: readonly Phase[] = ["profile", "modules", "privacy", "preparing"];
+const WORKSPACE: readonly Phase[] = [
+  "workspace_checking",
+  "workspace_ready",
+  "workspace_applying",
+  "workspace_failed",
+  "workspace_unknown",
+  "workspace_unavailable",
+];
+
+/** The wizard's step for the stepper: the profile step until the name is in, the privacy step afterwards. */
+const stepOf = (phase: Phase): number =>
+  phase === "modules" ? 1 : ["checking", "unavailable", "profile"].includes(phase) ? 0 : 2;
+
+// Old global classes: `.controls` (+ `.spacer`), muted small lines, the step's h2 (UA 1.5em bold, 8px below).
+const controls = "flex flex-wrap items-center gap-2";
+const muted12 = "text-xs text-fg-muted";
+const muted125 = "text-xs-plus text-fg-muted";
+const stepHeading = "mt-0 mb-2 text-3xl-plus font-bold";
+const code = "font-mono text-code-ui [font-variant-ligatures:none]";
+
 export function CreationView({ state }: { state: CreationScreenState }) {
-  const nameInput = useRef<HTMLInputElement>(null);
-  const hintId = useId();
-  useEffect(() => {
-    if (state.phase === "profile") nameInput.current?.focus();
-  }, [state.phase]);
-  const stageText: Record<string, string> = {
-    recorded: C.stageRecorded,
-    keys: C.stageKeys,
-    artifacts: C.stageArtifacts,
-    history: C.stageHistory,
-    admission: C.stageAdmission,
-    publishing: C.stagePublishing,
-  };
+  const step = stepOf(state.phase);
+  const name = state.values.name.trim();
+  const first = state.mode === "first";
+  const title =
+    step === 0 || !name
+      ? first
+        ? Wizard.welcome
+        : Wizard.newProfile
+      : Wizard.newProfileNamed(name);
+  const lead = FORM.includes(state.phase)
+    ? [first ? Wizard.leadLocal : null, Wizard.leadLater, Wizard.leadMcp][step]
+    : null;
+  return (
+    <WizardFrame
+      mode={first ? "page" : "overlay"}
+      label={first ? Wizard.welcome : Wizard.newProfile}
+      title={title}
+      lead={lead}
+      steps={[Wizard.stepProfile, Wizard.stepModules, Wizard.stepPrivacy]}
+      current={step}
+      onClose={state.mode === "additional" && state.canClose ? state.onClosed : undefined}
+      testID="native-creation"
+    >
+      {FORM.includes(state.phase) ? (
+        <StepForm state={state} step={step} />
+      ) : state.phase === "recovery" || state.phase === "committing" ? (
+        <Recovery state={state} />
+      ) : WORKSPACE.includes(state.phase) ? (
+        <WorkspaceStep state={state} />
+      ) : (
+        <Progress state={state} />
+      )}
+    </WizardFrame>
+  );
+}
+
+function StepForm({ state, step }: { state: CreationScreenState; step: number }) {
+  const busy = state.phase === "preparing";
+  const picked = state.modules.filter((module) => module.selected);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (state.phase === "privacy") state.onPrepare();
+    if (busy) return;
+    if (step === 2) state.onPrepare();
     else state.onNext();
   };
-  const content = (
-    <main
-      className={state.mode === "first" ? "min-h-screen bg-surface p-6 text-fg" : "p-6 text-fg"}
-      aria-label={state.mode === "first" ? Wizard.welcome : undefined}
-      data-testid="native-creation"
-    >
-      <div className="mx-auto grid max-w-2xl gap-5">
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-headline font-strong">
-              {state.mode === "first" ? Wizard.welcome : Wizard.newProfile}
-            </h1>
-            <p className="text-fg-muted">{Wizard.leadLocal}</p>
-          </div>
-          {state.mode === "additional" && state.canClose && state.onClosed && (
-            <Button onPress={state.onClosed}>{Wizard.closeEsc}</Button>
-          )}
-        </header>
-        {state.phase === "checking" && <p role="status">{C.checking}</p>}
-        {state.phase === "unavailable" && <p role="alert">{C.unavailable}</p>}
-        {state.phase === "refused" && (
-          <Card role="alert" padding="lg" className="grid gap-5">
-            <p>{state.refusal === "prepare_expired" ? C.expired : C.refused}</p>
-            <Button onPress={state.onCheckStatus}>{C.checkStatus}</Button>
-          </Card>
+  return (
+    <form onSubmit={submit} noValidate>
+      {step === 0 && <ProfileStep state={state} />}
+      {step === 1 && (
+        <ChoiceCards>
+          {state.modules.map((module) => (
+            <ChoiceCard
+              key={module.id}
+              checked={module.selected}
+              disabled={!module.available}
+              title={module.name}
+              tag={!module.available ? <Tag>{Wizard.soon}</Tag> : undefined}
+              desc={module.description}
+              hint={
+                module.dependsOn.length ? Wizard.requires(module.dependsOn.join(", ")) : undefined
+              }
+              onChange={() => state.onModuleToggled(module.id)}
+            />
+          ))}
+        </ChoiceCards>
+      )}
+      {step === 2 && <PrivacyStep state={state} busy={busy} />}
+      <div className={`${controls} mt-4.5`}>
+        {step > 0 && (
+          <Button onPress={state.onBack} disabled={busy}>
+            {Wizard.back}
+          </Button>
         )}
-        {(["profile", "modules", "privacy"] as const).includes(
-          state.phase as "profile" | "modules" | "privacy",
-        ) && (
-          <Card as="form" onSubmit={submit} padding="lg" className="grid gap-5">
-            <p className="text-caption text-fg-muted">
-              {state.phase === "profile"
-                ? Wizard.stepOf(1)
-                : state.phase === "modules"
-                  ? Wizard.stepOf(2)
-                  : Wizard.stepOf(3)}
-            </p>
-            {state.phase === "profile" && (
-              <>
-                <TextField
-                  ref={nameInput}
-                  label={Wizard.profileName}
-                  name="profileName"
-                  required
-                  maxLength={40}
-                  value={state.values.name}
-                  onChange={(value) => state.onNameChanged(value)}
+        <span className={muted12}>
+          {Wizard.stepOf(step + 1)}
+          {step === 1 && Wizard.picked(state.pickedText)}
+        </span>
+        <span className="flex-1" />
+        {step === 1 && !picked.length && <span className={muted12}>{Wizard.noModulesHint}</span>}
+        {step === 2 && !state.values.mcpPrivacy && (
+          <span className={muted12}>{Wizard.choosePrivacy}</span>
+        )}
+        <Button
+          variant="primary"
+          type="submit"
+          disabled={busy || (step === 2 && state.values.mcpPrivacy === null)}
+        >
+          {busy ? C.preparing : Wizard.next}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function ProfileStep({ state }: { state: CreationScreenState }) {
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    nameInput.current?.focus();
+  }, []);
+  return (
+    <FormRow>
+      <TextField
+        ref={nameInput}
+        label={Wizard.profileName}
+        name="profileName"
+        maxLength={40}
+        autoComplete="off"
+        invalid={!!state.nameError}
+        value={state.values.name}
+        onChange={state.onNameChanged}
+        className="mb-3"
+        after={state.nameError ? <FieldNote tone="negative">{state.nameError}</FieldNote> : null}
+      />
+      <Select
+        label={Wizard.baseCurrency}
+        title={Wizard.baseCurrencyTitle}
+        value={state.values.baseCurrency}
+        onChange={state.onCurrencyChanged}
+        options={CURRENCIES.map((currency) => ({ value: currency, label: currency }))}
+        className="mb-3"
+      />
+      <TextField
+        label={C.deviceAlias}
+        title={C.deviceAliasHint}
+        maxLength={40}
+        autoComplete="off"
+        value={state.values.deviceAlias}
+        onChange={state.onDeviceAliasChanged}
+        className="mb-3"
+      />
+    </FormRow>
+  );
+}
+
+function PrivacyStep({ state, busy }: { state: CreationScreenState; busy: boolean }) {
+  const privacy = state.values.mcpPrivacy;
+  const name = state.values.name.trim();
+  const modules = state.modules.filter((module) => module.selected).map((module) => module.name);
+  const rows: { key: string; label: string; value: ReactNode }[] = [
+    { key: "profile", label: Wizard.profile, value: `${name}${DOT}${state.values.baseCurrency}` },
+    { key: "modules", label: Wizard.modules, value: modules.join(", ") || Wizard.noModules },
+    {
+      key: "agent",
+      label: Wizard.agent,
+      value:
+        privacy === "strict" ? (
+          <span>
+            {Wizard.strictLevel}
+            <span className="text-fg-muted">{Wizard.strictLevelHint}</span>
+          </span>
+        ) : privacy === "amounts" ? (
+          <span>
+            {Wizard.amountsLevel}
+            <span className="text-fg-muted">{Wizard.amountsLevelHint}</span>
+          </span>
+        ) : (
+          <span className="text-fg-muted">{Wizard.toChoose}</span>
+        ),
+    },
+    ...(state.values.deviceAlias.trim()
+      ? [{ key: "device", label: C.deviceAlias, value: state.values.deviceAlias.trim() }]
+      : []),
+    {
+      key: "workspace",
+      label: Wizard.workspace,
+      value: state.workspaceEnabled ? (
+        <code className={`${code} text-sm`}>{Wizard.defaultFolder}</code>
+      ) : (
+        <span className="text-sm">{Wizard.skipped}</span>
+      ),
+    },
+  ];
+  return (
+    <>
+      <h2 className={stepHeading}>{PRIVACY.question}</h2>
+      <RadioList
+        name="mcpPrivacy"
+        label={PRIVACY.question}
+        value={privacy}
+        onChange={state.onPrivacyPicked}
+        disabled={busy}
+        options={PRIVACY.options.map((option) => ({
+          value: option.value,
+          title: option.title,
+          desc: option.desc,
+          tooltip: option.example,
+        }))}
+      />
+      <div className={`${muted125} mt-1 mb-4`}>
+        {PRIVACY.common} {WS.proposalNote}
+      </div>
+      <section className="mb-4" aria-labelledby="wz-ws-h">
+        <div className={`${controls} mb-1.5`}>
+          <Switch
+            on={state.workspaceEnabled}
+            label={Wizard.createWorkspace}
+            onChange={state.onWorkspaceEnabled}
+            disabled={busy}
+          />
+          <strong id="wz-ws-h" className="text-md" title={Wizard.workspaceTitle}>
+            {Wizard.workspaceHeading}
+          </strong>
+        </div>
+        <div className={`${muted125} mb-2`}>{Wizard.workspaceDesc}</div>
+        {!state.workspaceEnabled && <div className={muted125}>{Wizard.workspaceLater}</div>}
+      </section>
+      <section className="rounded-widget bg-chip px-3.5 py-3" aria-labelledby="wz-summary-h">
+        <h2
+          id="wz-summary-h"
+          className="mt-0 mb-2 text-md font-bold uppercase tracking-caps text-fg-muted"
+        >
+          {Wizard.summary}
+        </h2>
+        <KeyValues keyWidth="narrow" rows={rows} />
+      </section>
+      {state.refusal && (
+        <Notice tone="negative" role="alert" className="mt-3.5 mb-0">
+          {C.refused}
+        </Notice>
+      )}
+    </>
+  );
+}
+
+function Recovery({ state }: { state: CreationScreenState }) {
+  const busy = state.phase === "committing";
+  return (
+    <>
+      <h2 className={stepHeading}>{C.recoveryTitle}</h2>
+      <p className={`${muted125} mt-0 mb-3`}>{C.recoveryHint}</p>
+      {!busy && (
+        <p
+          className="mt-0 mb-3 rounded-control border border-border bg-chip px-3 py-2.5 font-mono text-sm leading-loose [font-variant-ligatures:none]"
+          data-testid="recovery-phrase"
+        >
+          {state.phrase}
+        </p>
+      )}
+      <label className={`${controls} text-sm`}>
+        <input
+          type="checkbox"
+          className="accent-accent"
+          checked={state.backupConfirmed}
+          disabled={busy}
+          onChange={(event) => state.onBackupConfirmed(event.target.checked)}
+        />
+        {C.backupConfirmed}
+      </label>
+      <div className={`${controls} mt-4.5`}>
+        <span className={muted12}>{Wizard.stepOf(3)}</span>
+        <span className="flex-1" />
+        <Button
+          variant="primary"
+          disabled={busy || !state.backupConfirmed}
+          onPress={state.onCommit}
+        >
+          {busy ? C.committing : C.commit}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function WorkspaceStep({ state }: { state: CreationScreenState }) {
+  const phase = state.phase;
+  const ready = state.workspaceStatus?.availability === "ready" ? state.workspaceStatus : null;
+  const applying = phase === "workspace_applying";
+  const busy = applying || phase === "workspace_checking";
+  return (
+    <>
+      <div className={`${controls} mb-1.5`}>
+        <strong className="text-md" title={Wizard.workspaceTitle}>
+          {Wizard.workspaceHeading}
+        </strong>
+      </div>
+      <div className={`${muted125} mb-3`}>{Wizard.workspaceDesc}</div>
+      {phase === "workspace_checking" && (
+        <div role="status" className={`${muted125} mb-3`}>
+          {C.workspaceChecking}
+        </div>
+      )}
+      {phase === "workspace_unavailable" && (
+        <Notice tone="warning">{C.workspaceUnavailable}</Notice>
+      )}
+      {phase === "workspace_failed" && <Notice tone="warning">{C.workspaceFailed}</Notice>}
+      {phase === "workspace_unknown" && <Notice tone="warning">{C.workspaceUnknown}</Notice>}
+      {ready && (
+        <>
+          <TextField
+            label={Wizard.workspaceFolder}
+            testID="workspace-path"
+            value={state.workspacePath}
+            placeholder={ready.defaultPath}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+            onChange={state.onWorkspacePathChanged}
+            className="mb-3"
+            after={
+              <FieldNote>
+                {C.workspaceDefault}: {ready.defaultPath}
+              </FieldNote>
+            }
+          />
+          {state.values.modules.includes("investments") && (
+            <>
+              <div className={`${controls} mb-1 text-sm`}>
+                <Switch
+                  on={state.routinePermissions}
+                  label={WS.routinePermissionsLabel}
+                  onChange={state.onRoutinePermissionsChanged}
+                  disabled={busy}
                 />
-                <div className="grid gap-1">
-                  <Select
-                    label={Wizard.baseCurrency}
-                    describedBy={`${hintId}-currency`}
-                    value={state.values.baseCurrency}
-                    onChange={(value) => state.onCurrencyChanged(value)}
-                    options={(["PLN", "EUR", "USD", "CHF", "GBP"] as const).map((currency) => ({
-                      value: currency,
-                      label: currency,
-                    }))}
-                  />
-                  <small id={`${hintId}-currency`} className="text-fg-muted">
-                    {Wizard.baseCurrencyTitle}
-                  </small>
-                </div>
-                <div className="grid gap-1">
-                  <TextField
-                    label={C.deviceAlias}
-                    describedBy={`${hintId}-alias`}
-                    maxLength={40}
-                    value={state.values.deviceAlias}
-                    onChange={(value) => state.onDeviceAliasChanged(value)}
-                  />
-                  <small id={`${hintId}-alias`} className="text-fg-muted">
-                    {C.deviceAliasHint}
-                  </small>
-                </div>
-              </>
-            )}
-            {state.phase === "modules" && (
-              <>
-                <h2 className="text-title">{Wizard.modules}</h2>
-                <p className="text-caption text-fg-muted">{Wizard.noModulesHint}</p>
-                {state.modules.map((module) => (
-                  <label key={module.id} className="flex gap-3 rounded-sm border border-border p-3">
-                    <input
-                      type="checkbox"
-                      checked={module.selected}
-                      disabled={!module.available}
-                      onChange={() => state.onModuleToggled(module.id)}
-                    />
-                    <span className="grid gap-1">
-                      <strong>{module.name}</strong>
-                      <span className="text-caption text-fg-muted">{module.description}</span>
-                      {!module.available && <span>{Wizard.soon}</span>}
-                      {module.dependsOn.length > 0 && (
-                        <span className="text-caption text-fg-muted">
-                          {Wizard.requires(module.dependsOn.join(", "))}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                ))}
-              </>
-            )}
-            {state.phase === "privacy" && (
-              <>
-                <h2 className="text-title">{PRIVACY.question}</h2>
-                <p className="text-caption text-fg-muted">{PRIVACY.common}</p>
-                {PRIVACY.options.map((option) => (
-                  <label
-                    key={option.value}
-                    className="flex gap-3 rounded-sm border border-border p-3"
-                  >
-                    <input
-                      type="radio"
-                      name="mcpPrivacy"
-                      checked={state.values.mcpPrivacy === option.value}
-                      onChange={() => state.onPrivacyPicked(option.value)}
-                    />
-                    <span className="grid gap-1">
-                      <strong>{option.title}</strong>
-                      <span>{option.desc}</span>
-                      <small className="text-fg-muted">{option.example}</small>
-                    </span>
-                  </label>
-                ))}
-                <div className="grid gap-1 border-t border-border pt-4">
-                  <h3>{Wizard.summary}</h3>
-                  <p>
-                    {Wizard.profile}: {state.values.name.trim()} · {state.values.baseCurrency}
-                  </p>
-                  <p>
-                    {Wizard.modules}:{" "}
-                    {state.modules
-                      .filter((module) => module.selected)
-                      .map((module) => module.name)
-                      .join(", ") || Wizard.noModules}
-                  </p>
-                  <label className="flex gap-3">
-                    <input
-                      type="checkbox"
-                      checked={state.workspaceEnabled}
-                      onChange={(event) => state.onWorkspaceEnabled(event.target.checked)}
-                    />
-                    <span>{C.workspaceChoice}</span>
-                  </label>
-                  <small className="text-fg-muted">{C.workspaceChoiceHint}</small>
-                </div>
-                {state.refusal && <p role="alert">{C.refused}</p>}
-              </>
-            )}
-            <div className="flex justify-between gap-3">
-              {state.phase !== "profile" ? (
-                <Button onPress={state.onBack}>{Wizard.back}</Button>
-              ) : (
-                <span />
-              )}
-              <Button
-                type="submit"
-                disabled={state.phase === "privacy" && state.values.mcpPrivacy === null}
-              >
-                {state.phase === "privacy" ? C.recoveryTitle : Wizard.next}
-              </Button>
-            </div>
-          </Card>
+                <span>{WS.routinePermissionsLabel}</span>
+              </div>
+              <div className={muted125}>{WS.routinePermissionsHint}</div>
+            </>
+          )}
+        </>
+      )}
+      <div className={`${controls} mt-4.5`}>
+        <Button onPress={state.onWorkspaceSkip} disabled={busy}>
+          {C.workspaceSkip}
+        </Button>
+        <span className="flex-1" />
+        {(phase === "workspace_ready" || phase === "workspace_failed" || applying) && ready && (
+          <Button
+            variant="primary"
+            disabled={busy || !state.workspaceInspected}
+            onPress={state.onWorkspaceApply}
+          >
+            {applying
+              ? Wizard.creatingWorkspace
+              : phase === "workspace_ready"
+                ? C.workspaceApply
+                : C.workspaceRetry}
+          </Button>
         )}
-        {state.phase === "preparing" && <p role="status">{C.preparing}</p>}
-        {state.phase === "recovery" && (
-          <Card padding="lg" className="grid gap-5">
-            <h2 className="text-title">{C.recoveryTitle}</h2>
-            <p>{C.recoveryHint}</p>
-            <p
-              className="rounded-sm border border-border bg-surface p-4 font-mono leading-loose"
-              data-testid="recovery-phrase"
-            >
-              {state.phrase}
-            </p>
-            <label className="flex gap-3">
-              <input
-                type="checkbox"
-                checked={state.backupConfirmed}
-                onChange={(event) => state.onBackupConfirmed(event.target.checked)}
-              />
-              {C.backupConfirmed}
-            </label>
-            <Button disabled={!state.backupConfirmed} onPress={state.onCommit}>
-              {C.commit}
+        {(phase === "workspace_unknown" || phase === "workspace_unavailable") && (
+          <Button variant="primary" onPress={state.onWorkspaceInspect}>
+            {C.workspaceCheck}
+          </Button>
+        )}
+      </div>
+    </>
+  );
+}
+
+const STAGE: Readonly<Record<string, string>> = {
+  get recorded() {
+    return C.stageRecorded;
+  },
+  get keys() {
+    return C.stageKeys;
+  },
+  get artifacts() {
+    return C.stageArtifacts;
+  },
+  get history() {
+    return C.stageHistory;
+  },
+  get admission() {
+    return C.stageAdmission;
+  },
+  get publishing() {
+    return C.stagePublishing;
+  },
+};
+
+/** The host's states around the form: checking, unavailable, refused, in progress, unknown, restart, ready. */
+function Progress({ state }: { state: CreationScreenState }) {
+  const phase = state.phase;
+  const text =
+    phase === "checking"
+      ? C.checking
+      : phase === "unavailable"
+        ? C.unavailable
+        : phase === "refused"
+          ? state.refusal === "prepare_expired"
+            ? C.expired
+            : C.refused
+          : phase === "pending"
+            ? C.pending
+            : phase === "unknown"
+              ? C.unknown
+              : phase === "restart_possible"
+                ? C.restartPossible
+                : phase === "verifying"
+                  ? C.verifying
+                  : C.ready;
+  const alert = phase === "unavailable" || phase === "refused";
+  const tone =
+    phase === "unavailable" || phase === "refused"
+      ? "negative"
+      : phase === "unknown"
+        ? "warning"
+        : phase === "ready"
+          ? "positive"
+          : "info";
+  return (
+    <>
+      <Notice tone={tone} role={alert ? "alert" : "status"} className="m-0">
+        {text}
+        {(phase === "pending" || phase === "unknown") && state.stage && (
+          <div className={`${muted12} mt-0.5`}>{STAGE[state.stage]}</div>
+        )}
+      </Notice>
+      {(phase === "refused" ||
+        phase === "pending" ||
+        phase === "unknown" ||
+        phase === "restart_possible") && (
+        <div className={`${controls} mt-4.5`}>
+          <span className="flex-1" />
+          {phase === "restart_possible" ? (
+            <Button variant="primary" onPress={state.onRestart}>
+              {C.restart}
             </Button>
-          </Card>
-        )}
-        {state.phase === "committing" && <p role="status">{C.committing}</p>}
-        {state.phase === "verifying" && <p role="status">{C.verifying}</p>}
-        {state.phase === "workspace_checking" && <p role="status">{C.workspaceChecking}</p>}
-        {state.phase === "workspace_applying" && <p role="status">{C.workspaceApplying}</p>}
-        {(
-          [
-            "workspace_ready",
-            "workspace_failed",
-            "workspace_unknown",
-            "workspace_unavailable",
-          ] as const
-        ).includes(
-          state.phase as
-            | "workspace_ready"
-            | "workspace_failed"
-            | "workspace_unknown"
-            | "workspace_unavailable",
-        ) && (
-          <Card role="status" padding="lg" className="grid gap-5">
-            <h2 className="text-title">{C.workspaceChoice}</h2>
-            {state.phase === "workspace_unavailable" && <p>{C.workspaceUnavailable}</p>}
-            {state.phase === "workspace_failed" && <p>{C.workspaceFailed}</p>}
-            {state.phase === "workspace_unknown" && <p>{C.workspaceUnknown}</p>}
-            {state.workspaceStatus?.availability === "ready" && (
-              <>
-                <div className="grid gap-1">
-                  <TextField
-                    label={C.workspacePath}
-                    describedBy={`${hintId}-workspace`}
-                    testID="workspace-path"
-                    value={state.workspacePath}
-                    onChange={(value) => state.onWorkspacePathChanged(value)}
-                  />
-                  <small id={`${hintId}-workspace`} className="text-fg-muted">
-                    {C.workspaceDefault}: {state.workspaceStatus.defaultPath}
-                  </small>
-                </div>
-                {state.values.modules.includes("investments") && (
-                  <label className="flex gap-3">
-                    <input
-                      type="checkbox"
-                      checked={state.routinePermissions}
-                      onChange={(event) => state.onRoutinePermissionsChanged(event.target.checked)}
-                    />
-                    {C.workspaceRoutine}
-                  </label>
-                )}
-              </>
-            )}
-            <div className="flex gap-3">
-              {(state.phase === "workspace_ready" || state.phase === "workspace_failed") &&
-                state.workspaceStatus?.availability === "ready" && (
-                  <Button disabled={!state.workspaceInspected} onPress={state.onWorkspaceApply}>
-                    {state.phase === "workspace_ready" ? C.workspaceApply : C.workspaceRetry}
-                  </Button>
-                )}
-              {(state.phase === "workspace_unknown" || state.phase === "workspace_unavailable") && (
-                <Button onPress={state.onWorkspaceInspect}>{C.workspaceCheck}</Button>
-              )}
-              <Button onPress={state.onWorkspaceSkip}>{C.workspaceSkip}</Button>
-            </div>
-          </Card>
-        )}
-        {(state.phase === "pending" || state.phase === "unknown") && (
-          <Card role="status" padding="lg" className="grid gap-5">
-            <p>{state.phase === "pending" ? C.pending : C.unknown}</p>
-            {state.stage && <p className="text-fg-muted">{stageText[state.stage]}</p>}
-            <Button disabled={state.checkingStatus} onPress={state.onCheckStatus}>
+          ) : (
+            <Button variant="primary" disabled={state.checkingStatus} onPress={state.onCheckStatus}>
               {state.checkingStatus ? C.checkingStatus : C.checkStatus}
             </Button>
-          </Card>
-        )}
-        {state.phase === "restart_possible" && (
-          <Card role="status" padding="lg" className="grid gap-5">
-            <p>{C.restartPossible}</p>
-            <Button onPress={state.onRestart}>{C.restart}</Button>
-          </Card>
-        )}
-        {state.phase === "ready" && <p role="status">{C.ready}</p>}
-      </div>
-    </main>
-  );
-  if (state.mode !== "additional") return content;
-  return (
-    <Modal
-      label={Wizard.newProfile}
-      placement="screen"
-      onClose={() => {
-        if (state.canClose) state.onClosed?.();
-      }}
-    >
-      {content}
-    </Modal>
+          )}
+        </div>
+      )}
+    </>
   );
 }

@@ -96,11 +96,19 @@ it("shows a populated connector with a boolean control and no raw cursor", async
   try {
     await act(async () => root.render(<ConnectorsReady.render />));
     expect(container.textContent).toContain("Synthetic fetch");
-    const enabled = [...container.querySelectorAll("label")].find((item) =>
+    const press = async (label: string) => {
+      const target = [...document.querySelectorAll("button")].find(
+        (item) => item.textContent === label,
+      );
+      await act(async () => target?.click());
+    };
+    await press("Details");
+    await press("+ Bind an account");
+    const enabled = [...document.querySelectorAll("label")].find((item) =>
       item.textContent?.includes("Enabled"),
     );
     expect(enabled?.querySelector('input[type="checkbox"]')).not.toBeNull();
-    expect(container.textContent).not.toContain("page-2");
+    expect(document.body.textContent).not.toContain("page-2");
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -116,18 +124,19 @@ it("requires explicit all-profile confirmation before removing a connector", asy
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   try {
     await act(async () => root.render(<ConnectorRemovalFixture onAction={onAction} />));
-    const remove = [...container.querySelectorAll("button")].find(
-      (item) => item.textContent === "Remove connector from all profiles",
-    );
+    const button = (label: string) =>
+      [...document.querySelectorAll("button")].find((item) => item.textContent === label);
+    await act(async () => button("Details")?.click());
+    const remove = button("Delete");
     expect(remove).toBeDefined();
     await act(async () => {
       remove?.click();
     });
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("all profiles"));
+    expect(document.body.textContent).toContain("all profiles");
+    expect(confirm).not.toHaveBeenCalled();
     expect(onAction).not.toHaveBeenCalled();
-    confirm.mockReturnValue(true);
     await act(async () => {
-      remove?.click();
+      button("Yes, delete")?.click();
     });
     expect(onAction).toHaveBeenCalledWith({ op: "remove", id: "synthetic-fetch", allVaults: true });
   } finally {

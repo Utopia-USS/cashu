@@ -1,5 +1,8 @@
+// The update card in the bottom-left corner (ab24ab6 core/UpdateNotice.tsx + update.css) on the native updater
+// status: a found version waits for the owner (Aktualizuj / Pomiń / remind later), download and install stages,
+// a check on demand reports here; elsewhere a newer branch version with a link to the changes. Pure view.
 import { S } from "@cashu/i18n/core/chrome.strings";
-import { C } from "@cashu/i18n/core/common.strings";
+import { CornerNotice } from "@cashu/ui";
 import type { UpdateNoticeState } from "./useUpdateNotice.js";
 
 const safeLink = (raw: string | null) => {
@@ -19,146 +22,63 @@ export function UpdateNoticeView({ state }: { state: UpdateNoticeState }) {
   const app = status.app;
   const current = S.current(status.current);
   if (!app) {
-    if (!status.branchAvailable || !status.latest || state.closedVersion === status.latest)
-      return null;
+    const latest = status.latest;
+    if (!status.branchAvailable || !latest || state.closedVersion === latest) return null;
     const link = safeLink(status.url);
     return (
-      <Card
-        title={S.newVersion(status.latest)}
+      <CornerNotice
+        title={S.newVersion(latest)}
         sub={current}
-        onClose={() => state.onBranchClosed(status.latest ?? "")}
-        closeTitle={C.close}
-      >
-        {link && (
-          <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-sm bg-accent px-3 py-2 text-fg-inverse"
-          >
-            {S.seeChanges}
-          </a>
-        )}
-      </Card>
+        onClose={() => state.onBranchClosed(latest)}
+        actions={link ? [{ label: S.seeChanges, href: link, primary: true }] : undefined}
+      />
     );
   }
   const version = app.version ?? "";
+  const act = (choice: "install" | "skip" | "dismiss") => () => {
+    void state.onAction(choice);
+  };
   switch (app.stage) {
     case "available":
       return (
-        <Card
+        <CornerNotice
           title={S.newVersion(version)}
           sub={current}
-          closeTitle={S.remindLater}
-          onClose={() => {
-            void state.onAction("dismiss");
-          }}
-        >
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={state.busy}
-              onClick={() => {
-                void state.onAction("install");
-              }}
-              className="rounded-sm bg-accent px-3 py-2 text-fg-inverse"
-            >
-              {S.install}
-            </button>
-            <button
-              type="button"
-              disabled={state.busy}
-              onClick={() => {
-                void state.onAction("skip");
-              }}
-              title={S.skipTitle}
-              className="rounded-sm border border-border px-3 py-2"
-            >
-              {S.skip}
-            </button>
-          </div>
-        </Card>
+          onClose={act("dismiss")}
+          closeLabel={S.remindLater}
+          actions={[
+            { label: S.install, onPress: act("install"), primary: true, disabled: state.busy },
+            { label: S.skip, onPress: act("skip"), title: S.skipTitle, disabled: state.busy },
+          ]}
+        />
       );
-    case "checking":
-      return <Card title={S.checking} />;
     case "downloading": {
-      const progress =
+      const pct =
         app.progress === null ? null : Math.min(100, Math.max(0, Math.round(app.progress * 100)));
       return (
-        <Card title={S.downloading(version)} sub={progress === null ? undefined : `${progress}%`}>
-          <div
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress ?? undefined}
-            className="h-2 overflow-hidden rounded-sm bg-surface-sunken"
-          >
-            <div className="h-full bg-accent" style={{ width: `${progress ?? 0}%` }} />
-          </div>
-        </Card>
+        <CornerNotice
+          title={S.downloading(version)}
+          sub={pct === null ? "" : `${pct} %`}
+          progress={pct}
+        />
       );
     }
     case "installing":
-      return <Card title={S.installing(version)} sub={S.relaunchSoon} />;
+      return <CornerNotice title={S.installing(version)} sub={S.relaunchSoon} />;
+    case "checking":
+      return <CornerNotice title={S.checking} />;
     case "up_to_date":
       return status.manualCheck ? (
-        <Card
-          title={S.upToDate}
-          sub={status.current}
-          onClose={() => {
-            void state.onAction("dismiss");
-          }}
-          closeTitle={C.close}
-        />
+        <CornerNotice title={S.upToDate} sub={status.current} onClose={act("dismiss")} />
       ) : null;
     case "error":
       return status.manualCheck ? (
-        <Card
+        <CornerNotice
           title={S.updateFailed}
-          onClose={() => {
-            void state.onAction("dismiss");
-          }}
-          closeTitle={C.close}
+          sub={app.error ?? ""}
+          tone="warning"
+          onClose={act("dismiss")}
         />
       ) : null;
   }
-}
-
-function Card({
-  title,
-  sub,
-  children,
-  onClose,
-  closeTitle,
-}: {
-  title: string;
-  sub?: string;
-  children?: React.ReactNode;
-  onClose?: () => void;
-  closeTitle?: string;
-}) {
-  return (
-    <aside
-      role="status"
-      aria-live="polite"
-      className="fixed bottom-4 left-4 z-50 flex max-w-sm gap-3 rounded-lg border border-border bg-surface-overlay p-4 shadow-lg"
-    >
-      <span aria-hidden="true">↑</span>
-      <div className="grid gap-2">
-        <strong>{title}</strong>
-        {sub && <p className="text-sm text-fg-muted">{sub}</p>}
-        {children}
-      </div>
-      {onClose && (
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={closeTitle ?? C.close}
-          className="self-start rounded-sm border border-border px-2 py-1"
-        >
-          ×
-        </button>
-      )}
-    </aside>
-  );
 }

@@ -3,9 +3,7 @@
 // connector installs and bindings, the OS service, notification permission, agent proposals) sit in the
 // same card / row / key-value idiom.
 import { LANG_NAME } from "@cashu/i18n";
-import { S as CS } from "@cashu/i18n/core/ConnectorsSection.strings";
 import { C } from "@cashu/i18n/core/common.strings";
-import { KIND, MODULE, STATUS } from "@cashu/i18n/core/connectors.strings";
 import {
   JOB_LABEL,
   JOB_STATUS,
@@ -29,7 +27,6 @@ import {
   SectionCard,
   Seg,
   SettingRow,
-  Skeleton,
   Switch,
   scrollCls,
   Tag,
@@ -38,6 +35,7 @@ import {
   useUiEnv,
 } from "@cashu/ui";
 import { type ReactNode, useEffect, useState } from "react";
+import { ConnectorsSectionView } from "./connectors/ConnectorsSectionView.js";
 import { T } from "./Settings.strings.js";
 import { needsForce, outdatedLabel, tagTone, workspaceSummary } from "./settingsModel.js";
 import type { SettingsScreenState } from "./useSettingsScreen.js";
@@ -176,7 +174,7 @@ function SettingsPage({
           <Card id="agent">
             <AgentSection state={state} investments={investments} strategyPanel={strategyPanel} />
           </Card>
-          <ConnectorsSection state={state} bankingPanel={bankingPanel} />
+          <ConnectorsSectionView state={state} bankingPanel={bankingPanel} />
           <Card id="data">
             <DataSection state={state} />
           </Card>
@@ -719,305 +717,6 @@ function AuditLog({ state }: { state: SettingsScreenState }) {
       </div>
       <div className={foot}>{S.argNamesOnly}</div>
     </>
-  );
-}
-
-type Snapshot = NonNullable<SettingsScreenState["connectorSnapshot"]>;
-
-function ConnectorsSection({
-  state,
-  bankingPanel,
-}: {
-  state: SettingsScreenState;
-  bankingPanel?: ReactNode;
-}) {
-  const snapshot = state.connectorSnapshot;
-  const busy = state.connectorBusy;
-  const connectors = snapshot?.connectors ?? [];
-  const waiting = connectors.filter(
-    (c) => c.approval === "pending" || c.approval === "changed",
-  ).length;
-  const actions = (
-    <>
-      <Button disabled={busy} onPress={() => void state.installConnector()}>
-        {T.connectorInstall}
-      </Button>
-      <Button disabled={busy} onPress={() => void state.refreshConnectors()}>
-        {C.refresh}
-      </Button>
-    </>
-  );
-  return (
-    <SectionCard id="set-connectors" title={CS.title} className="scroll-mt-16">
-      {snapshot && (
-        <div className={`${controls} mb-1.5`}>
-          {connectors.length > 0 && <Tag>{CS.count(connectors.length)}</Tag>}
-          {waiting > 0 && (
-            <Tag tone="warning" solid>
-              {CS.toApprove(waiting)}
-            </Tag>
-          )}
-          <span className="flex-1" />
-          {actions}
-        </div>
-      )}
-      {!snapshot &&
-        (busy ? (
-          [0, 1, 2].map((k) => <Skeleton key={k} height={40} className="my-1.5" />)
-        ) : (
-          <Notice tone="negative" role="alert" action={actions}>
-            {T.connectorUnavailable}
-          </Notice>
-        ))}
-      {snapshot && connectors.length === 0 && (
-        <div className="py-2 text-md text-fg-muted">
-          <div className="font-strong text-fg">{CS.emptyTitle}</div>
-          <div className="mt-1 text-sm">
-            {CS.emptyBefore}
-            <code className={code}>/import-builder</code>
-            {CS.emptyAfter}
-          </div>
-        </div>
-      )}
-      {connectors.map((connector) => (
-        <ConnectorRow
-          key={`${state.connectorVault}:${connector.id}`}
-          connector={connector}
-          state={state}
-        />
-      ))}
-      {snapshot?.bindings.map((binding) => (
-        <BindingRow
-          key={`${state.connectorVault}:${binding.gid}`}
-          binding={binding}
-          state={state}
-        />
-      ))}
-      <div className={foot}>{CS.foot}</div>
-      {bankingPanel}
-    </SectionCard>
-  );
-}
-
-function ConnectorRow({
-  connector,
-  state,
-}: {
-  connector: Snapshot["connectors"][number];
-  state: SettingsScreenState;
-}) {
-  const [account, setAccount] = useState("");
-  const [params, setParams] = useState<Record<string, string | boolean>>({});
-  const [auto, setAuto] = useState(false);
-  const busy = state.connectorBusy;
-  const [status, tone, solid] = STATUS[connector.approval];
-  const fieldId = (spec: string) => `connector-${connector.id}-${spec}`;
-  return (
-    <SettingRow
-      title={
-        <>
-          {connector.name}
-          <Tag>{connector.module in MODULE ? MODULE[connector.module] : connector.module}</Tag>
-          <Tag>{connector.kind in KIND ? KIND[connector.kind] : connector.kind}</Tag>
-          <Tag tone={tagTone(tone)} solid={solid}>
-            {status}
-          </Tag>
-        </>
-      }
-      detail={
-        <>
-          <span className="block wrap-anywhere">
-            {T.connectorDigest}: <code className={code}>{connector.contentSha256}</code>
-          </span>
-          <span className="block wrap-anywhere">
-            {T.connectorInterpreter}:{" "}
-            <code className={code}>{connector.interpreter ?? T.unavailable}</code>
-          </span>
-        </>
-      }
-      action={
-        <div className={controls}>
-          {connector.approval !== "approved" && connector.interpreter && (
-            <Button
-              variant="primary"
-              disabled={busy}
-              onPress={() =>
-                connector.interpreter &&
-                void state.onConnectorAction({
-                  op: "approve",
-                  id: connector.id,
-                  digest: connector.contentSha256,
-                  interpreter: connector.interpreter,
-                })
-              }
-            >
-              {T.connectorApprove}
-            </Button>
-          )}
-          {connector.approval === "approved" && (
-            <Button
-              disabled={busy}
-              onPress={() => void state.onConnectorAction({ op: "disable", id: connector.id })}
-            >
-              {T.connectorDisable}
-            </Button>
-          )}
-          <Button
-            disabled={busy}
-            onPress={() => {
-              if (window.confirm(T.connectorRemoveAllConfirm))
-                void state.onConnectorAction({ op: "remove", id: connector.id, allVaults: true });
-            }}
-          >
-            {T.connectorRemoveAll}
-          </Button>
-        </div>
-      }
-    >
-      {connector.approval === "approved" && connector.kind === "fetch" && (
-        <div className={`${controls} mt-2 text-sm`}>
-          <select
-            aria-label={T.connectorAccount}
-            className={selectCls}
-            value={account}
-            onChange={(event) => setAccount(event.target.value)}
-          >
-            <option value="">{T.connectorAccount}</option>
-            {state.connectorAccounts(connector).map((item) => (
-              <option key={item.gid} value={item.gid}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-          {connector.params.map((spec) =>
-            spec.type === "boolean" ? (
-              <label key={spec.id} className="flex items-center gap-1.5" htmlFor={fieldId(spec.id)}>
-                <input
-                  id={fieldId(spec.id)}
-                  type="checkbox"
-                  className="accent-accent"
-                  checked={params[spec.id] === true}
-                  onChange={(event) =>
-                    setParams((value) => ({ ...value, [spec.id]: event.target.checked }))
-                  }
-                />
-                {spec.label || T.connectorParam}
-              </label>
-            ) : (
-              <label key={spec.id} className="flex items-center gap-1.5" htmlFor={fieldId(spec.id)}>
-                {spec.label || T.connectorParam}
-                <input
-                  id={fieldId(spec.id)}
-                  className={inputCls}
-                  type={spec.type === "date" ? "date" : spec.type === "number" ? "number" : "text"}
-                  value={typeof params[spec.id] === "string" ? (params[spec.id] as string) : ""}
-                  onChange={(event) =>
-                    setParams((value) => ({ ...value, [spec.id]: event.target.value }))
-                  }
-                />
-              </label>
-            ),
-          )}
-          <label className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={auto}
-              onChange={(event) => setAuto(event.target.checked)}
-            />
-            {T.connectorAuto}
-          </label>
-          <Button
-            disabled={busy || !account}
-            onPress={() => void state.bindConnector(connector, account, params, auto)}
-          >
-            {T.connectorBind}
-          </Button>
-        </div>
-      )}
-    </SettingRow>
-  );
-}
-
-function BindingRow({
-  binding,
-  state,
-}: {
-  binding: Snapshot["bindings"][number];
-  state: SettingsScreenState;
-}) {
-  const [values, setValues] = useState<Record<string, string>>({});
-  const busy = state.connectorBusy;
-  const connector = state.connectorSnapshot?.connectors.find(
-    (item) => item.id === binding.connector_id,
-  );
-  const account = state.connectorSnapshot?.accounts.find((item) => item.gid === binding.account);
-  return (
-    <SettingRow
-      title={`${connector?.name ?? binding.connector_id} · ${account?.name ?? binding.account}`}
-      action={
-        <div className={controls}>
-          <Button
-            variant="primary"
-            disabled={busy || connector?.approval !== "approved"}
-            onPress={() => void state.onConnectorAction({ op: "run", binding: binding.gid })}
-          >
-            {T.connectorRun}
-          </Button>
-          <Button
-            disabled={busy}
-            onPress={() => void state.onConnectorAction({ op: "unbind", binding: binding.gid })}
-          >
-            {T.connectorUnbind}
-          </Button>
-        </div>
-      }
-    >
-      {connector?.secrets.map((spec) => (
-        <div key={spec.id} className={`${controls} mt-2 text-sm`}>
-          <label className="flex items-center gap-1.5">
-            {spec.label || T.connectorSecret}
-            <input
-              className={inputCls}
-              type="password"
-              autoComplete="off"
-              value={values[spec.id] ?? ""}
-              onChange={(event) =>
-                setValues((previous) => ({ ...previous, [spec.id]: event.target.value }))
-              }
-            />
-          </label>
-          <Button
-            disabled={busy || !values[spec.id]}
-            onPress={() => {
-              const value = values[spec.id];
-              if (!value) return;
-              void state.onConnectorAction({
-                op: "setSecret",
-                binding: binding.gid,
-                secret: spec.id,
-                value,
-              });
-              setValues((previous) => ({ ...previous, [spec.id]: "" }));
-            }}
-          >
-            {T.connectorSetSecret}
-          </Button>
-          <Button
-            disabled={busy}
-            onPress={() =>
-              void state.onConnectorAction({
-                op: "clearSecret",
-                binding: binding.gid,
-                secret: spec.id,
-              })
-            }
-          >
-            {T.connectorClearSecret}
-          </Button>
-        </div>
-      ))}
-    </SettingRow>
   );
 }
 

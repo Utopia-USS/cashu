@@ -2,6 +2,8 @@ import { builtinRegistry, moduleDescription, moduleName, slugify } from "@cashu/
 import type { NativeCreationReady } from "@cashu/host-protocol";
 import { nativeCreationPrepareParamsSchema } from "@cashu/host-protocol";
 import { lang } from "@cashu/i18n";
+import { S as Wizard } from "@cashu/i18n/core/Wizard.strings";
+import { nModules } from "@cashu/ui-logic/core/format";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { CreationBridge } from "../../creationBridge.js";
@@ -48,6 +50,7 @@ export function useCreationScreen(options: CreationScreenOptions) {
   const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [workspaceEnabled, setWorkspaceEnabled] = useState(true);
   const [workspacePath, setWorkspacePath] = useState("");
@@ -436,6 +439,10 @@ export function useCreationScreen(options: CreationScreenOptions) {
     backupConfirmed,
     stage,
     refusal,
+    /** The profile step's name error (old `S.nameRequired`), shown under the field. */
+    nameError,
+    /** `2 moduły` of the modules step's counter. */
+    pickedText: nModules(values.modules.length),
     checkingStatus,
     workspaceEnabled,
     workspacePath,
@@ -455,6 +462,7 @@ export function useCreationScreen(options: CreationScreenOptions) {
       : undefined,
     onNameChanged: (name: string) => {
       setRefusal(null);
+      setNameError(null);
       form.setFieldValue("name", name);
     },
     onCurrencyChanged: (currency: string) => {
@@ -511,8 +519,8 @@ export function useCreationScreen(options: CreationScreenOptions) {
       }
     },
     onNext: () => {
-      if (phase === "profile" && values.name.trim().length > 0 && values.name.trim().length <= 40)
-        setPhase("modules");
+      if (phase === "profile" && !values.name.trim()) setNameError(Wizard.nameRequired);
+      else if (phase === "profile" && values.name.trim().length <= 40) setPhase("modules");
       else if (phase === "modules") setPhase("privacy");
     },
     onBack: () => {

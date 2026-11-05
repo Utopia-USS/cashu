@@ -1,5 +1,9 @@
 import { builtinRegistry, moduleName } from "@cashu/domain/core";
 import { lang } from "@cashu/i18n";
+import { S as BUDGET } from "@cashu/i18n/budget/index.strings";
+import { S as P } from "@cashu/i18n/core/SetupPage.strings";
+import { S as INVESTMENTS } from "@cashu/i18n/investments/index.strings";
+import { S as LOANS } from "@cashu/i18n/loans/index.strings";
 import { profile } from "@cashu/store/core";
 import { overviewQueries } from "@cashu/store/overview";
 import { useProfile, useQuery } from "@cashu/store-react";
@@ -25,6 +29,15 @@ export interface SetupScreenProps {
 }
 
 const registry = builtinRegistry();
+/** The label of a module's first tab (old `def.tabs[0].label`); a module without tabs opens on Przegląd. */
+const firstTabLabel = (module: string): string | null =>
+  module === "budget"
+    ? BUDGET.tabExpenses
+    : module === "loans"
+      ? LOANS.title
+      : module === "investments"
+        ? INVESTMENTS.tab
+        : null;
 const q = overviewQueries({ prices: null });
 
 export function useSetupScreen(props: SetupScreenProps) {
@@ -38,9 +51,11 @@ export function useSetupScreen(props: SetupScreenProps) {
     lang: lang(),
   });
   const scope = `${vault}:${incognito}:${props.agent.kind}`;
-  const [notice, setNotice] = useState<{ readonly scope: string; readonly text: string } | null>(
-    null,
-  );
+  const [notice, setNotice] = useState<{
+    readonly scope: string;
+    readonly text: string;
+    readonly n: number;
+  } | null>(null);
   const lifetime = useRef(0);
   useEffect(() => {
     lifetime.current++;
@@ -74,7 +89,10 @@ export function useSetupScreen(props: SetupScreenProps) {
     total: required.length,
     agent: incognito ? { kind: "unavailable" as const, reason: "privacy" } : props.agent,
     mcpPrivacy: identity?.mcpPrivacy ?? "strict",
-    notice: notice?.scope === scope ? notice.text : null,
+    /** A copy result for a toast; `n` changes on every copy so the same text toasts again. */
+    notice: notice?.scope === scope ? { text: notice.text, n: notice.n } : null,
+    firstTabLabel: firstTabLabel(props.moduleId),
+    skillHint: props.moduleId === "investments" ? INVESTMENTS.skillHint : null,
     onAction: async (intent: ReturnType<typeof setupActionIntent>) => {
       if (!intent || incognito) return;
       if (intent.kind === "navigate") props.onNavigate(intent.target);
@@ -82,9 +100,11 @@ export function useSetupScreen(props: SetupScreenProps) {
         const generation = lifetime.current;
         try {
           await props.onCopy(intent.text);
-          if (generation === lifetime.current) setNotice({ scope, text: S.copied });
+          if (generation === lifetime.current)
+            setNotice((old) => ({ scope, text: P.copied, n: (old?.n ?? 0) + 1 }));
         } catch {
-          if (generation === lifetime.current) setNotice({ scope, text: S.copyFailed });
+          if (generation === lifetime.current)
+            setNotice((old) => ({ scope, text: S.copyFailed, n: (old?.n ?? 0) + 1 }));
         }
       }
     },

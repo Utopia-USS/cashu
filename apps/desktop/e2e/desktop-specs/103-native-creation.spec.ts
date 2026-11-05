@@ -27,12 +27,12 @@ async function createThroughWizard(page: Page, visualRoot?: string): Promise<voi
   await wizard.getByRole("textbox", { name: "Nazwa tego urządzenia" }).fill("Test computer");
   if (visualRoot) await page.screenshot({ path: join(visualRoot, "01-profile.png") });
   await wizard.getByRole("button", { name: /Dalej/ }).click();
-  await expect(wizard.getByText("Moduły", { exact: true })).toBeVisible();
+  await expect(wizard.getByText(/Krok 2 z 3/)).toBeVisible();
   if (visualRoot) await page.screenshot({ path: join(visualRoot, "02-modules.png") });
   await wizard.getByRole("button", { name: /Dalej/ }).click();
   await wizard.getByRole("radio", { name: /Ścisły/ }).check();
   if (visualRoot) await page.screenshot({ path: join(visualRoot, "03-privacy.png") });
-  await wizard.getByRole("button", { name: "Zapisz frazę odzyskiwania" }).click();
+  await wizard.getByRole("button", { name: /Dalej/ }).click();
   await page.waitForFunction(
     () => document.querySelector('[data-testid="recovery-phrase"]') !== null,
   );

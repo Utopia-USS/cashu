@@ -96,10 +96,7 @@ export const T = catalog({
     pl: "Konektor zainstalowany. Sprawdź skrót kodu przed zatwierdzeniem.",
     en: "Connector installed. Review its code digest before approval.",
   },
-  connectorDigest: { pl: "Skrót SHA-256", en: "SHA-256 digest" },
   connectorInterpreter: { pl: "Interpreter", en: "Interpreter" },
-  connectorApprove: { pl: "Zatwierdź ten kod", en: "Approve this code" },
-  connectorDisable: { pl: "Wyłącz", en: "Disable" },
   connectorRemoveAll: {
     pl: "Usuń konektor ze wszystkich profili",
     en: "Remove connector from all profiles",
@@ -108,17 +105,7 @@ export const T = catalog({
     pl: "Usunąć ten konektor ze wszystkich profili? Ta operacja usunie wszystkie powiązania, zapisane sekrety konektora i lokalną historię uruchomień.",
     en: "Remove this connector from all profiles? This deletes every binding, saved connector secret, and local run history.",
   },
-  connectorAccount: { pl: "Konto", en: "Account" },
-  connectorBind: { pl: "Połącz z kontem", en: "Bind to account" },
-  connectorAuto: {
-    pl: "Automatycznie importuj po pierwszym zatwierdzeniu",
-    en: "Auto import after first approval",
-  },
-  connectorRun: { pl: "Pobierz i sprawdź", en: "Fetch and preview" },
-  connectorUnbind: { pl: "Usuń powiązanie", en: "Remove binding" },
   connectorSecret: { pl: "Sekret konektora", en: "Connector secret" },
-  connectorSetSecret: { pl: "Zapisz sekret", en: "Save secret" },
-  connectorClearSecret: { pl: "Usuń sekret", en: "Clear secret" },
   connectorParam: { pl: "Parametr", en: "Parameter" },
   workerUnavailable: {
     pl: "Stan harmonogramu i zadania w tle są niedostępne.",

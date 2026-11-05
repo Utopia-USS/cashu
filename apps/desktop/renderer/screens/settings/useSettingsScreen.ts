@@ -139,6 +139,22 @@ export function connectorActionMessage(
     : T.connectorSaved;
 }
 
+/** A fetch run that did not finish clean (`failed` / `partial`), for the binding row's failure block; null = clean. */
+export function connectorRunFailure(
+  input: ConnectorSettingsInput,
+  result: { readonly status: string; readonly value?: unknown },
+): ConnectorRunFailure | null {
+  if (input.op !== "run" || result.status !== "completed") return null;
+  const value = result.value as { status?: unknown; code?: unknown } | null | undefined;
+  const status = value?.status;
+  if (status !== "failed" && status !== "partial") return null;
+  return { status, code: typeof value?.code === "string" ? value.code : null };
+}
+export interface ConnectorRunFailure {
+  readonly status: "failed" | "partial";
+  readonly code: string | null;
+}
+
 export function connectorEligibleAccounts(
   snapshot: ConnectorSettingsSnapshot | null,
   connector: ConnectorSummary,
@@ -354,6 +370,9 @@ export function useSettingsScreen(
       setConnectorBusyScoped(captured, false);
     }
   }
+  const [connectorRuns, setConnectorRuns] = useState<Readonly<Record<string, ConnectorRunFailure>>>(
+    {},
+  );
   async function onConnectorAction(input: ConnectorSettingsInput) {
     if (connectorBusy) return;
     const captured = connectorScope.current;
@@ -361,6 +380,16 @@ export function useSettingsScreen(
     try {
       const result = await connectorAction.run(input);
       if (!currentConnectorScope(captured)) return;
+      if (input.op === "run") {
+        const failure = connectorRunFailure(input, result);
+        const key = `${captured.vault}:${input.binding}`;
+        setConnectorRuns((old) => {
+          const next = { ...old };
+          if (failure) next[key] = failure;
+          else delete next[key];
+          return next;
+        });
+      }
       if (result.status === "completed") {
         const listed = await connectorAction.run({ op: "list" });
         if (!currentConnectorScope(captured)) return;
@@ -675,6 +704,8 @@ export function useSettingsScreen(
     connectorVault: vault,
     connectorBusy,
     connectorAccounts,
+    /** The last unclean fetch run of a binding in this vault (old RunError under the binding row). */
+    connectorRunFailure: (binding: string) => connectorRuns[`${vault}:${binding}`] ?? null,
     bindConnector,
     refreshConnectors,
     installConnector,
