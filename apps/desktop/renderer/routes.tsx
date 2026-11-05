@@ -46,9 +46,8 @@ import { investmentsOnlyOverview } from "./screens/overview/minimalOverview.js";
 import { OverviewScreen } from "./screens/overview/OverviewScreen.js";
 import { ProposalDrawerScreen } from "./screens/proposals/ProposalDrawerScreen.js";
 import { SettingsView } from "./screens/settings/SettingsView.js";
-import { UpdateNoticeView } from "./screens/settings/UpdateNoticeView.js";
+import { UpdateNotice } from "./screens/settings/UpdateNotice.js";
 import { useSettingsScreen } from "./screens/settings/useSettingsScreen.js";
-import { useUpdateNotice } from "./screens/settings/useUpdateNotice.js";
 import type { SetupNavigation } from "./screens/setup/actionIntent.js";
 import { SetupScreen } from "./screens/setup/SetupScreen.js";
 import { SignalsPageScreen } from "./screens/signals/SignalsPageScreen.js";
@@ -110,7 +109,6 @@ function ProposalScope({
 
 function ShellRoute() {
   const openCreation = useOpenCreation();
-  const updateNotice = useUpdateNotice();
   const state = useShellScreen({
     onProfileOpened: ({ slug, vault }) => {
       void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
@@ -262,9 +260,8 @@ function ShellRoute() {
           </NarrowFrameContext>
         )}
       </ShellView>
-      {/* UpdateNotice slot (old core/App.tsx under the shell): agent C's ported UpdateNotice replaces this native
-          view once contract-C.md says "ready". */}
-      <UpdateNoticeView state={updateNotice} />
+      {/* Old core/App.tsx: the update card under the shell (agent C's port owns its hook). */}
+      <UpdateNotice />
     </ProposalScope>
   );
 }
