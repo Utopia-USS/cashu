@@ -190,7 +190,7 @@ function tickStep(start: number, stop: number, count: number): number {
 }
 
 /** d3 `scaleTime().domain([start, stop]).ticks(count)` in local time, from day intervals up. */
-export function timeTicks(start: number, stop: number, count = 5): number[] {
+function timeTicks(start: number, stop: number, count = 5): number[] {
   if (!(stop > start)) return [start];
   const target = (stop - start) / count;
   let pick = TIME_INTERVALS.findIndex(([, , d]) => d > target);

@@ -140,7 +140,7 @@ export function connectorActionMessage(
 }
 
 /** A fetch run that did not finish clean (`failed` / `partial`), for the binding row's failure block; null = clean. */
-export function connectorRunFailure(
+function connectorRunFailure(
   input: ConnectorSettingsInput,
   result: { readonly status: string; readonly value?: unknown },
 ): ConnectorRunFailure | null {

@@ -6,7 +6,6 @@ import type { SettingsScreenState } from "../useSettingsScreen.js";
 type Snapshot = NonNullable<SettingsScreenState["connectorSnapshot"]>;
 export type Connector = Snapshot["connectors"][number];
 export type Binding = Snapshot["bindings"][number];
-export type Account = Snapshot["accounts"][number];
 
 const ORDER: Readonly<Record<string, number>> = {
   changed: 0,

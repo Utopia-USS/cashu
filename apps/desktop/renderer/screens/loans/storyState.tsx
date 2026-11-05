@@ -1,7 +1,9 @@
 import { D, loans } from "@cashu/domain";
+import { S as DS } from "@cashu/i18n/loans/Drawers.strings";
+import { cur } from "@cashu/ui-logic/core/format";
 import type { ComponentType } from "react";
 import { initialLoanForm } from "./loanForm.js";
-import { listRows, loanDetail, startSteps, stepsTag } from "./loansModel.js";
+import { dmShort, listRows, loanDetail, previewText, startSteps, stepsTag } from "./loansModel.js";
 import type { LoansState } from "./useLoansScreen.js";
 
 const terms = {
@@ -70,7 +72,7 @@ export function loansStoryState(privacy: boolean): LoansState {
       },
       set: noop,
       errors: {},
-      preview: "rata ≈ 136,26 zł · 120 rat",
+      preview: previewText(136.26, 120, "PLN"),
       currencies: ["PLN", "EUR", "USD", "CHF"],
       save: noop,
     },
@@ -88,7 +90,11 @@ export function loansStoryState(privacy: boolean): LoansState {
       storedTail: null,
       stored: false,
       candidates: [
-        { key: "a", payee: "Synthetic bank", detail: "136,26 zł · co ok. 30 dni · ostatnio 5.10" },
+        {
+          key: "a",
+          payee: "Synthetic bank",
+          detail: DS.candidate(cur(136.26, "PLN"), 30, dmShort("2026-10-05")),
+        },
       ],
       send: noop,
     },
