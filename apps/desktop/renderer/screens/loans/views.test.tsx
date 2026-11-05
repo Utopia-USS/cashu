@@ -78,7 +78,7 @@ it("exposes selected loan/range and actionable keyboard controls through semanti
   const state = { ...storyState, selected: storyState.rows[0]?.id ?? null, range: 365 };
   const markup = renderToStaticMarkup(<StoryFixture component={LoansView} state={state} />);
   expect(markup).toContain("focus-visible:outline-accent");
-  expect(markup).toContain("disabled:opacity-50");
-  expect(markup).toContain("aria-pressed:bg-accent-muted");
+  expect(markup).toContain("disabled:opacity-60");
+  expect(markup).toContain("aria-pressed:border-accent");
   expect(markup).toMatch(/<tr[^>]*bg-accent-muted/);
 });
