@@ -691,6 +691,13 @@ function AssetsStartRoute() {
       onSaved={() => {
         void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
       }}
+      onGuide={() => {
+        void router.navigate({
+          to: "/$slug/setup/$module/cli",
+          params: { slug, module: "assets" },
+          search: { vault },
+        });
+      }}
     />
   ) : (
     <p className="p-6">{S.setup}</p>

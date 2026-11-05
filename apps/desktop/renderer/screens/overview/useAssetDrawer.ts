@@ -18,6 +18,7 @@ import {
 } from "@cashu/ui-logic/assets/logic";
 import { cur0s, round0, TYPE_LABEL } from "@cashu/ui-logic/core/format";
 import { useState } from "react";
+import { assetStepsModel } from "../assets/assetStepsModel.js";
 import { O } from "../CommandOutcome.strings.js";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { W } from "./OverviewWidgets.strings.js";
@@ -341,6 +342,8 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     displayRows,
     widgetRows,
     totalsText,
+    /** The first steps' statuses and figures (old Steps.tsx), shared by the widget and the Majątek page. */
+    steps: assetStepsModel(rows, totalsText),
     drawerText,
     orderedTotals,
     lossSummary,

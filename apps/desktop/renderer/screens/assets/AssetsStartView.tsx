@@ -1,73 +1,50 @@
-import { Money as MoneyValue } from "@cashu/domain";
+// `setup/assets` (ab24ab6 modules/assets/Start.tsx in core/StartPage.tsx): the assets first steps as a page, on the
+// shared module start frame (no steps tag: assets is never partial), the steps widget's footer linking the
+// Claude Code / CLI guide, the Agent AI widget beside it and the add drawer shared with the Majątek widget.
 import { S as A } from "@cashu/i18n/assets/index.strings";
-import { S } from "@cashu/i18n/assets/Steps.strings";
-import { Money } from "@cashu/ui";
-import { L } from "../loans/Loans.strings.js";
+import { S as CH } from "@cashu/i18n/core/chrome.strings";
+import { Button, ModuleStart } from "@cashu/ui";
+import type { ReactNode } from "react";
 import { AssetDrawerView } from "../overview/AssetsWidgetView.js";
 import type { AssetDrawerState } from "../overview/useAssetDrawer.js";
+import { assetStepItems } from "./AssetsStepsView.js";
 
 export interface AssetsStartViewProps {
-  state: AssetDrawerState;
+  /** null while loading: the steps widget shows three skeleton rows. */
+  state: AssetDrawerState | null;
   today: string;
   baseCurrency: string;
   privacy: boolean;
-  onOverviewOpened(): void;
+  /** The Agent AI widget (one column beside the steps). */
+  aside?: ReactNode;
+  onGuide(): void;
 }
-/** First-step actions reuse the same closed native asset drawer as Overview. */
+
 export function AssetsStartView({
   state,
   today,
   baseCurrency,
   privacy,
-  onOverviewOpened,
+  aside,
+  onGuide,
 }: AssetsStartViewProps) {
-  const vehicles = state.rows.filter((row) => row.kind === "vehicle" && row.depreciation !== null);
   return (
-    <main className="grid gap-6 p-6" data-testid="native-assets-start">
-      <header className="flex justify-between gap-3">
-        <h1 className="text-headline font-strong">{A.name}</h1>
-        <button type="button" onClick={onOverviewOpened}>
-          {L.overview}
-        </button>
-      </header>
-      <section className="rounded-lg border border-border bg-surface-raised p-6">
-        <h2>
-          {S.position} · {state.rows.length ? L.ready : L.notReady}
-        </h2>
-        <p className="my-3 text-fg-muted">
-          {state.rows.length ? L.positions(state.rows.length) : S.positionHint}
-        </p>
-        {state.orderedTotals.map(([currency, amount]) => (
-          <Money key={currency} value={new MoneyValue(amount, currency)} />
-        ))}
-        <button
-          type="button"
-          disabled={privacy || state.busy}
-          onClick={() => state.openNew("property", baseCurrency)}
-        >
-          {state.rows.length ? S.addAnother : S.addPosition}
-        </button>
-      </section>
-      <section className="rounded-lg border border-border bg-surface-raised p-6">
-        <h2>
-          {S.vehicle} · {L.optional} · {vehicles.length ? L.ready : L.notReady}
-        </h2>
-        <p className="my-3 text-fg-muted">{S.vehicleHint}</p>
-        {!privacy &&
-          vehicles.slice(0, 50).map((row) => (
-            <p key={row.gid} className="text-caption text-fg-muted">
-              {row.name} · {state.displayRows.find((display) => display.gid === row.gid)?.lossLine}
-            </p>
-          ))}
-        <button
-          type="button"
-          disabled={privacy || state.busy}
-          onClick={() => state.openNew("vehicle", baseCurrency)}
-        >
-          {S.addVehicle}
-        </button>
-      </section>
-      <AssetDrawerView state={state} today={today} privacy={privacy} />
-    </main>
+    <ModuleStart
+      title={A.name}
+      stepsTitle={CH.firstSteps}
+      footer={
+        <Button variant="link" size="sm" onPress={onGuide}>
+          {CH.cliGuide}
+        </Button>
+      }
+      steps={
+        state
+          ? assetStepItems(state.steps, privacy, (type) => state.openNew(type, baseCurrency))
+          : null
+      }
+      aside={aside}
+    >
+      {state && <AssetDrawerView state={state} today={today} privacy={privacy} />}
+    </ModuleStart>
   );
 }

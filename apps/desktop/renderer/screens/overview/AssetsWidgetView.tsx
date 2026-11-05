@@ -2,7 +2,6 @@
 // or a vehicle's curve, monthly loss), `+ Dodaj`, the footer totals and `wszystkie (n)`; with no position the
 // widget is the module's first steps. The add / edit drawer (AssetDrawer) is shared with the Majątek page.
 import { S as A } from "@cashu/i18n/assets/AssetsWidget.strings";
-import { S as ST } from "@cashu/i18n/assets/Steps.strings";
 import { C } from "@cashu/i18n/core/common.strings";
 import {
   Button,
@@ -11,7 +10,6 @@ import {
   Notice,
   rowLinkCls,
   Select,
-  SetupSteps,
   Tag,
   TextField,
   tableCls,
@@ -19,6 +17,7 @@ import {
   Widget,
 } from "@cashu/ui";
 import { useState } from "react";
+import { AssetsStepsView } from "../assets/AssetsStepsView.js";
 import type { AssetDrawerState } from "./useAssetDrawer.js";
 
 const sym = "block -mt-px text-2xs-plus text-fg-muted";
@@ -59,34 +58,7 @@ export function AssetsWidgetView({
           </Button>
         }
       >
-        <SetupSteps
-          compact
-          steps={[
-            {
-              key: "position",
-              status: "on",
-              title: ST.position,
-              hint: ST.positionHint,
-              actions: (
-                <Button variant="primary" disabled={privacy} onPress={() => add("property")}>
-                  {ST.addPosition}
-                </Button>
-              ),
-            },
-            {
-              key: "vehicle",
-              status: "todo",
-              title: ST.vehicle,
-              optional: true,
-              hint: ST.vehicleHint,
-              actions: (
-                <Button disabled={privacy} onPress={() => add("vehicle")}>
-                  {ST.addVehicle}
-                </Button>
-              ),
-            },
-          ]}
-        />
+        <AssetsStepsView compact model={state.steps} privacy={privacy} onAdd={add} />
         {drawer}
       </Widget>
     );

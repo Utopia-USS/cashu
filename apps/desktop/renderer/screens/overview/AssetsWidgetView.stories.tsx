@@ -48,6 +48,7 @@ const state: AssetsWidgetViewProps["state"] = {
     },
   ],
   totalsText: "350,000 PLN",
+  steps: { position: "done", vehicle: "todo", count: 1, totals: "350,000 PLN", vehicles: [] },
   drawerText: { title: "New position", tag: null, readOnlyValue: null, lastValuation: null },
   orderedTotals: [["PLN", D("350000")]],
   lossSummary: null,
@@ -92,7 +93,20 @@ export const Ready = {};
 export const Empty = {
   args: {
     ...args,
-    state: { ...state, rows: [], displayRows: [], widgetRows: [], orderedTotals: [] },
+    state: {
+      ...state,
+      rows: [],
+      displayRows: [],
+      widgetRows: [],
+      orderedTotals: [],
+      steps: {
+        position: "on" as const,
+        vehicle: "todo" as const,
+        count: 0,
+        totals: "",
+        vehicles: [],
+      },
+    },
   },
 };
 export const Open = { args: { ...args, state: { ...state, open: true } } };
