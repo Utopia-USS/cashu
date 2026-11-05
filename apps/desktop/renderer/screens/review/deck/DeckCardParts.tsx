@@ -81,7 +81,7 @@ function CmpRow({ row }: { row: CmpRowModel }) {
   const fill =
     row.fill === "bench" ? "bg-bench" : row.fill === "pos" ? "bg-positive" : "bg-negative";
   return (
-    <div className="grid grid-cols-[calc(var(--spacing)*24)_minmax(auto,1fr)_calc(var(--spacing)*16)] items-center gap-2.5 text-sm max-phone:grid-cols-[calc(var(--spacing)*20)_minmax(auto,1fr)_calc(var(--spacing)*14)]">
+    <div className="grid grid-cols-[--spacing(24)_minmax(auto,1fr)_--spacing(16)] items-center gap-2.5 text-sm max-phone:grid-cols-[--spacing(20)_minmax(auto,1fr)_--spacing(14)]">
       <span className={row.bench ? "text-fg-muted" : ""}>{row.label}</span>
       <div className="relative h-2.5 overflow-hidden rounded-xs bg-subtle">
         <i
@@ -218,7 +218,7 @@ export interface BodyActions {
 
 const mover = "flex justify-between gap-2 rounded-md bg-subtle px-2.5 py-2 text-sm";
 const timeline = "grid gap-3";
-const tlRow = "grid grid-cols-[calc(var(--spacing)*16)_minmax(auto,1fr)] gap-2.5";
+const tlRow = "grid grid-cols-[--spacing(16)_minmax(auto,1fr)] gap-2.5";
 const tlDate = "pt-0.5 text-xs text-fg-muted";
 const tlDay = "block text-md text-fg";
 
@@ -275,7 +275,7 @@ export function CardBodyView({ body: b, actions }: { body: CardBody; actions: Bo
             {b.rows.map((r) => (
               <div
                 key={r.key}
-                className="grid grid-cols-[minmax(0,1.1fr)_minmax(auto,1.3fr)_calc(var(--spacing)*15)] items-center gap-2.5 text-sm"
+                className="grid grid-cols-[minmax(0,1.1fr)_minmax(auto,1.3fr)_--spacing(15)] items-center gap-2.5 text-sm"
               >
                 <span className="min-w-0">
                   {r.label}

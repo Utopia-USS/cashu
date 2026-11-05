@@ -17,8 +17,8 @@ export interface MarksProps {
 // `.flag` (7px, inline-block; `.il .ln .flag` drops the 5px left margin) with the shape rules of index.css:588-592, 988.
 const flagShape: Record<FlagState, string> = {
   positive: "rounded-full bg-positive",
-  negative: "rotate-45 scale-90 rounded-[calc(var(--spacing)/4)] bg-negative",
-  neutral: "rounded-[calc(var(--spacing)/4)] bg-fg-muted",
+  negative: "rotate-45 scale-90 rounded-5xs bg-negative",
+  neutral: "rounded-5xs bg-fg-muted",
   mixed:
     "rounded-full bg-[linear-gradient(90deg,var(--color-positive)_50%,var(--color-negative)_50%)]",
 };

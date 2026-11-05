@@ -83,6 +83,7 @@
 
   /* Radii: the scale continues around the original sm / md / lg; `control` is the Python app's 8px of
      buttons, fields, segments and skeletons, `widget` its 12px of widgets and big buttons. */
+  --radius-5xs: 1px;
   --radius-4xs: 2px;
   --radius-3xs: 3px;
   --radius-2xs: 4px;
@@ -146,6 +147,8 @@
   --leading-cozy: 1.4;
   --leading-widget: 1.45;
   --leading-sheet: 1.55;
+  /* `row` = 1.3: the research strip's topic and note heads (story.css `.st-trow .hl`, `.st-note .h`). */
+  --leading-row: 1.3;
 
   --font-weight-regular: 400;
   --font-weight-medium: 500;
@@ -156,9 +159,11 @@
   --font-weight-black: 750;
 
   /* Letter spacing besides Tailwind's tight -0.025em / wider 0.05em. */
+  --tracking-section: 0.07em;
   --tracking-eyebrow: 0.06em;
   --tracking-label: 0.05em;
   --tracking-caps: 0.04em;
+  --tracking-column: 0.03em;
   --tracking-snug: -0.01em;
   --tracking-heading: -0.02em;
   --tracking-dense: -0.03em;
@@ -173,12 +178,20 @@
   --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.35);
   --shadow-panel: -16px 0 48px rgba(0, 0, 0, 0.22);
 
-  /* Breakpoints of the Python app (max-width 1180 / 900 / 760 / 480): `max-wide:` = width <= 1180px,
-     `max-split:` <= 900px, `max-narrow:` <= 760px, `max-phone:` <= 480px; `min-split:` >= 901px. */
+  /* Breakpoints of the Python app (max-width 1180 / 900 / 860 / 760 / 480): `max-wide:` = width <= 1180px,
+     `max-split:` <= 900px, `max-story:` <= 860px (the research strip, story.css), `max-narrow:` <= 760px,
+     `max-phone:` <= 480px; `min-split:` >= 901px. */
   --breakpoint-phone: 481px;
   --breakpoint-narrow: 761px;
+  --breakpoint-story: 861px;
   --breakpoint-split: 901px;
   --breakpoint-wide: 1181px;
+
+  /* Container sizes besides Tailwind's 3xs..7xl (`max-w-*` and the `@max-*` / `@min-*` container
+     variants): `measure` = the 64ch reading width of the first-steps hints, `assets` = the assets table
+     that drops its 30-day and result columns below 1000px (`@max-assets:`, old `@container (max-width: 999px)`). */
+  --container-measure: 64ch;
+  --container-assets: 1000px;
 
   /* Motion: the review deck's fly-out curve (with duration-260), skeleton shimmer, toast entry. */
   --ease-deck: cubic-bezier(0.2, 0.7, 0.3, 1);
@@ -330,6 +343,16 @@
 /* The Python app's global keyboard focus ring (old index.css `:focus-visible`); components that draw their
    own ring (inset rows, fields) override it with utilities. */
 @layer base {
+  /* Native controls and scrollbars follow the theme (old index.css `color-scheme` on :root). */
+  :root {
+    color-scheme: light;
+    @variant dark {
+      color-scheme: dark;
+    }
+    @variant light {
+      color-scheme: light;
+    }
+  }
   :focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;

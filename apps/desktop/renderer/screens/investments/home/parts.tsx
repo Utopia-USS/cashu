@@ -82,9 +82,7 @@ export function SetupSteps({ steps }: { steps: readonly SetupStepItem[] }) {
                 (step.optional && step.status !== "done" ? <Tag>{U.optional}</Tag> : null)}
             </div>
             {step.hint != null && (
-              <div className="mt-0.5 max-w-[calc(64ch)] text-xs-plus text-fg-muted">
-                {step.hint}
-              </div>
+              <div className="mt-0.5 max-w-measure text-xs-plus text-fg-muted">{step.hint}</div>
             )}
           </div>
           <div className="mt-px flex flex-wrap items-center justify-end gap-1.5">

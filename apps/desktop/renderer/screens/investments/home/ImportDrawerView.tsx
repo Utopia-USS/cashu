@@ -7,7 +7,7 @@ import { Notice, RadioList, Stepper } from "./parts.js";
 import type { ImportDrawerState, ImportWarningText } from "./useImportDrawer.js";
 
 const th =
-  "border-b border-border px-1.5 py-2 text-left text-xs font-strong uppercase tracking-[calc(0.03em)] text-fg-muted";
+  "border-b border-border px-1.5 py-2 text-left text-xs font-strong uppercase tracking-column text-fg-muted";
 const td = "border-b border-border px-1.5 py-2 text-left";
 const num = "text-right tabular-nums";
 const tones = { positive: "text-positive", negative: "text-negative" } as const;

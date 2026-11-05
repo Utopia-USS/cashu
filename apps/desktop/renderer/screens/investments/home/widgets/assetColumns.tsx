@@ -6,6 +6,6 @@
 export const cInst = "w-9/25 max-w-0";
 export const cHint = "w-42";
 export const cHintTd = "pl-1";
-export const cNarrowHidden = "max-wide:hidden min-split:portrait:table-cell @max-[1000px]:hidden!";
+export const cNarrowHidden = "max-wide:hidden min-split:portrait:table-cell @max-assets:hidden!";
 /** `.split .main table td:not(:first-child)` at <= 1180px. */
 export const splitNowrap = "max-wide:[&_td:not(:first-child)]:whitespace-nowrap";

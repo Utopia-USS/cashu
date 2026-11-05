@@ -9,13 +9,11 @@ import type {
   StoryValuation,
 } from "./researchStripModel.js";
 
-// story.css has three values the token scale lacks (proposed tokens, see contract-H3.md): letter spacing .07em
-// (`--tracking-section`), line height 1.3 (`--leading-row`) and the 860px breakpoint (written as
-// `max-[calc(861px)]`, Tailwind `max-*` being `width <` like the theme's breakpoints).
+// story.css values with their own tokens: letter spacing .07em (`tracking-section`), line height 1.3
+// (`leading-row`) and the 860px breakpoint (`max-story:`).
 
 /** `.st h4`: the strip's section heads. */
-export const storyHead =
-  "m-0 mb-2 text-2xs font-heavy uppercase tracking-[var(--tracking-section,.07em)] text-fg-muted";
+export const storyHead = "m-0 mb-2 text-2xs font-heavy uppercase tracking-section text-fg-muted";
 
 const moodTone: Record<StoryTone, string> = {
   pos: "bg-positive-bg text-positive",
@@ -50,7 +48,7 @@ export function AheadDays({ days }: { days: StoryAheadDay[] }) {
       {days.map((d) => (
         <div
           key={d.date}
-          className="grid grid-cols-[calc(var(--spacing)*18)_minmax(0,1fr)_auto] items-baseline gap-2.5 border-t border-dashed border-border py-1.75 text-sm first:border-t-0"
+          className="grid grid-cols-[--spacing(18)_minmax(0,1fr)_auto] items-baseline gap-2.5 border-t border-dashed border-border py-1.75 text-sm first:border-t-0"
         >
           <span className="whitespace-nowrap text-xs text-fg-muted">
             <b className="text-sm text-fg">{d.day}</b> {d.weekday}
@@ -101,14 +99,13 @@ const dayMine = "font-heavy text-fg";
 /** `.st-nowout div`: the quiet boxes of Teraz / Perspektywa / Wycena. */
 const box = "rounded-md bg-subtle px-2.75 py-2.25 text-sm";
 /** `.st-nowout b`: the box's small caps label. */
-const boxLabel =
-  "mb-0.5 block text-2xs uppercase tracking-[var(--tracking-section,.07em)] text-fg-muted";
+const boxLabel = "mb-0.5 block text-2xs uppercase tracking-section text-fg-muted";
 
 /** `.st-nowout`: Teraz, Perspektywa and the valuation of an expanded topic; nothing without any of them. */
 export function NowOutlook({ t }: { t: StoryTopicRow }) {
   if (!t.now && !t.outlook && !t.valuation) return null;
   return (
-    <div className="mb-1 grid w-full grid-cols-[repeat(auto-fit,minmax(calc(var(--spacing)*50),1fr))] gap-2.5 max-[calc(861px)]:grid-cols-1">
+    <div className="mb-1 grid w-full grid-cols-[repeat(auto-fit,minmax(--spacing(50),1fr))] gap-2.5 max-story:grid-cols-1">
       {t.now && (
         <div className={box}>
           <b className={boxLabel}>{S.now}</b>

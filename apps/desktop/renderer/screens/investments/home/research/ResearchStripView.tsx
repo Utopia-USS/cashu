@@ -33,10 +33,10 @@ function ResearchStory(p: ResearchStoryProps) {
         </Button>
       }
     >
-      <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-7 max-[calc(861px)]:grid-cols-1 max-[calc(861px)]:gap-4.5">
+      <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-7 max-story:grid-cols-1 max-story:gap-4.5">
         <div>
           {p.lead && (
-            <p className="m-0 mb-3 text-balance text-3xl font-bold leading-tight tracking-snug max-[calc(861px)]:text-xl">
+            <p className="m-0 mb-3 text-balance text-3xl font-bold leading-tight tracking-snug max-story:text-xl">
               {p.lead}
             </p>
           )}
@@ -103,13 +103,13 @@ function ResearchStory(p: ResearchStoryProps) {
                   data-topic={t.key}
                   aria-expanded={openTopic === t.key}
                   onClick={() => setOpenTopic(openTopic === t.key ? null : t.key)}
-                  className="group grid w-full cursor-pointer grid-cols-[calc(var(--spacing)*30)_minmax(0,1fr)_auto] items-baseline gap-3 border-0 bg-transparent px-0.5 py-2.5 text-left text-fg max-[calc(861px)]:grid-cols-[minmax(auto,1fr)_auto]"
+                  className="group grid w-full cursor-pointer grid-cols-[--spacing(30)_minmax(0,1fr)_auto] items-baseline gap-3 border-0 bg-transparent px-0.5 py-2.5 text-left text-fg max-story:grid-cols-[minmax(auto,1fr)_auto]"
                 >
-                  <span className="text-xs font-strong text-fg-muted max-[calc(861px)]:col-span-full">
+                  <span className="text-xs font-strong text-fg-muted max-story:col-span-full">
                     {t.label}
                   </span>
-                  <span className="text-md-plus font-strong leading-[var(--leading-row,1.3)] group-hover:text-accent">
-                    <Mood tone={t.mood.tone} className="mr-1.5 align-[calc(var(--spacing)*0.25)]">
+                  <span className="text-md-plus font-strong leading-row group-hover:text-accent">
+                    <Mood tone={t.mood.tone} className="mr-1.5 align-[--spacing(0.25)]">
                       {t.mood.word}
                     </Mood>
                     {t.headline}
@@ -119,7 +119,7 @@ function ResearchStory(p: ResearchStoryProps) {
                   </span>
                 </button>
                 {openTopic === t.key && (
-                  <div className="grid justify-items-start gap-1.5 pt-0 pr-0.5 pb-3 pl-33.5 max-[calc(861px)]:pl-0.5">
+                  <div className="grid justify-items-start gap-1.5 pt-0 pr-0.5 pb-3 pl-33.5 max-story:pl-0.5">
                     <NowOutlook t={t} />
                     {t.notes.map((n) => (
                       <button
