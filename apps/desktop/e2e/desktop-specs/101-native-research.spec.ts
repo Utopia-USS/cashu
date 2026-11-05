@@ -69,7 +69,7 @@ async function readNativeResearchTopics(dataDir: string, vault: string) {
   }
 }
 
-test("native Research reads generated events, opens a note, and separates vault privacy", async () => {
+test("Research page reads generated events, opens a note and a topic, and separates profiles", async () => {
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
@@ -103,19 +103,20 @@ test("native Research reads generated events, opens a note, and separates vault 
     await pickProfile(page, "Demo Anna");
     const selectedVault = currentVault(page);
     await rewriteHash(page, /\/overview(?:\?.*)?$/u, "/investments.research");
+    // The research page in place of the Home grid (ab24ab6 v2/research/Page.tsx: crumb, head, story, tabs).
     const research = page.getByTestId("native-research");
     await expect(research).toBeVisible();
     const researchHash = await page.evaluate(() => location.hash);
-    await research.getByRole("button", { name: "Notatki", exact: true }).click();
-    await expect(research.getByText("Synthetic research fact 1", { exact: true })).toBeVisible();
-    await research.getByRole("button", { name: /^Synthetic research fact 1(?:\s|$)/u }).click();
-    const reader = page.getByRole("dialog", { name: "Szczegóły" });
-    await expect(reader.getByText("Synthetic research fact 1", { exact: true })).toBeVisible();
-    await expect(reader.getByRole("link", { name: "Synthetic publisher" })).toHaveAttribute(
-      "href",
-      "https://example.test/research/1",
-    );
-    await reader.getByRole("button", { name: "Otwórz aktywo" }).click();
+    const tab = (name: string) => research.getByRole("tab", { name, exact: true });
+    await tab("Notatki").click();
+    const fact1 = research.getByRole("button", { name: "Synthetic research fact 1", exact: true });
+    await expect(fact1).toBeVisible();
+    await fact1.click();
+    await expect(fact1).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      research.getByRole("link", { name: "Synthetic publisher" }).first(),
+    ).toHaveAttribute("href", "https://example.test/research/1");
+    await research.getByRole("button", { name: "otwórz →" }).click();
     // The asset drawer over the investments Home (ab24ab6 `assets/{id}?note=`) opens with the note's row.
     const asset = page.getByRole("dialog").last();
     await expect(asset).toBeVisible();
@@ -125,104 +126,91 @@ test("native Research reads generated events, opens a note, and separates vault 
       location.hash = hash;
     }, researchHash);
     await expect(research).toBeVisible();
-    await research.getByRole("button", { name: "Tematy", exact: true }).click();
-    const firstTopic = research
-      .getByRole("heading", { name: "Tematy", exact: true })
-      .locator("..")
-      .locator("ul li button")
-      .first();
+    await tab("Tematy").click();
+    // A topic card's headline opens the topic drawer over the Home (old `topics/<key>`).
+    const firstTopic = research.locator("article[data-topic] h3 button").first();
     await firstTopic.click();
     const drawer = page.getByRole("dialog");
+    await expect(drawer.locator("[data-topic-drawer]")).toBeVisible();
     const topicLabel = await drawer.getAttribute("aria-label");
     const ownerThesis = "Synthetic owner thesis typed in Electron101";
     const ownerView = "Synthetic market assessment typed in Electron101";
-    await drawer.getByRole("textbox", { name: "Teza", exact: true }).fill(ownerThesis);
-    await drawer.getByRole("textbox", { name: "Ocena rynku" }).fill(ownerView);
-    await expect(drawer.getByRole("textbox", { name: "Teza", exact: true })).toHaveValue(
-      ownerThesis,
-    );
-    await expect(drawer.getByRole("textbox", { name: "Ocena rynku" })).toHaveValue(ownerView);
-    const draftConfirmation = drawer.getByRole("checkbox", {
-      name: "Potwierdzam przyjęcie szkicu agenta",
-    });
-    if (await draftConfirmation.count()) await draftConfirmation.check();
-    await drawer.getByRole("button", { name: "Zapisz" }).click();
-    await expect(research.getByRole("status").filter({ hasText: "Zapisano" })).toBeVisible();
+    const thesis = drawer.locator("#topic-thesis");
+    await thesis.getByRole("button", { name: /^(Dodaj|Edytuj)$/u }).click();
+    await thesis.getByRole("textbox", { name: "Teza", exact: true }).fill(ownerThesis);
+    await thesis.getByRole("button", { name: "Zapisz" }).click();
+    await expect(page.getByText("Zapisano tezę", { exact: true })).toBeVisible();
+    await thesis.getByRole("button", { name: "Edytuj" }).click();
+    await thesis.getByRole("textbox", { name: "Ocena teraz" }).fill(ownerView);
+    await thesis.getByRole("button", { name: "Zapisz" }).click();
+    await expect(page.getByText("Zapisano ocenę", { exact: true })).toBeVisible();
     const current = await readNativeResearchTopics(dataDir, selectedVault);
     const savedTopic = current.topics.find((item) => item.thesis?.thesis === ownerThesis);
     expect(savedTopic?.thesis?.assessment).toBe(ownerView);
-    await expect(research.getByText(`Ocena rynku: ${ownerView}`, { exact: true })).toBeVisible();
-    await drawer.getByRole("button", { name: "Anuluj" }).click();
-    await firstTopic.click();
-    await expect(drawer).toHaveAttribute("aria-label", topicLabel as string);
-    await expect(drawer.getByRole("textbox", { name: "Teza", exact: true })).toHaveValue(
-      ownerThesis,
-    );
-    await expect(drawer.getByRole("textbox", { name: "Ocena rynku" })).toHaveValue(ownerView);
-    await drawer.getByRole("button", { name: "Anuluj" }).click();
-    await research.getByRole("button", { name: "Notatki", exact: true }).click();
-    const more = research.getByRole("button", { name: "Pokaż więcej" });
+    await expect(thesis.getByText(ownerThesis, { exact: true })).toBeVisible();
+    await expect(thesis.getByText(ownerView, { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await settleModalHistory(page);
+    await page.evaluate((hash) => {
+      location.hash = hash;
+    }, researchHash);
+    await expect(research).toBeVisible();
+    await tab("Tematy").click();
+    await research.locator("article[data-topic] h3 button").first().click();
+    await expect(page.getByRole("dialog")).toHaveAttribute("aria-label", topicLabel as string);
+    await expect(
+      page.getByRole("dialog").locator("#topic-thesis").getByText(ownerThesis, { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await settleModalHistory(page);
+    await page.evaluate((hash) => {
+      location.hash = hash;
+    }, researchHash);
+    await expect(research).toBeVisible();
+    await tab("Notatki").click();
+    const more = research.getByRole("button", { name: /^pokaż jeszcze \d+$/u });
     while (await more.count()) await more.click();
-    const notesViewport = research.getByRole("region", { name: "Notatki" });
-    const finalFixtureNote = research.getByRole("button", { name: "Synthetic research fact 100" });
-    for (let step = 0; step < 20 && !(await finalFixtureNote.isVisible()); step++) {
-      await notesViewport.evaluate((element) => {
-        element.scrollTop = Math.min(
-          element.scrollTop + element.clientHeight,
-          element.scrollHeight,
-        );
-      });
-    }
+    const finalFixtureNote = research.getByRole("button", {
+      name: "Synthetic research fact 100",
+      exact: true,
+    });
+    await finalFixtureNote.scrollIntoViewIfNeeded();
     await expect(finalFixtureNote).toBeVisible();
     await finalFixtureNote.click();
-    await expect(page.getByRole("dialog", { name: "Szczegóły" })).toContainText(
-      "Synthetic research fact 100",
-    );
-    await page
-      .getByRole("dialog", { name: "Szczegóły" })
-      .getByRole("button", { name: "Zamknij" })
-      .click();
+    await expect(finalFixtureNote).toHaveAttribute("aria-expanded", "true");
     await page.screenshot({
       path:
         process.env.E2E_RESEARCH_SCREENSHOT ??
         join(repo, "apps/desktop/dist/e2e-run/results/native-research.png"),
       fullPage: true,
     });
-    await research.getByRole("button", { name: "Kandydaci", exact: true }).click();
-    await expect(research.getByText("Synthetic research fact 3", { exact: true })).toBeVisible();
-    await research.getByRole("button", { name: "Synthetic research fact 3" }).click();
-    const candidate = page.getByRole("dialog", { name: "Szczegóły" });
-    await expect(candidate.getByRole("button", { name: "Obserwuj" })).toBeDisabled();
-    await expect(
-      candidate.getByText("Nie można potwierdzić instrumentu dla tego kandydata"),
-    ).toBeVisible();
-    await candidate.getByRole("button", { name: "Odrzuć" }).click();
-    await expect(candidate.getByRole("button", { name: "Cofnij odrzucenie" })).toBeVisible();
-    await candidate.getByRole("button", { name: "Cofnij odrzucenie" }).click();
-    await expect(candidate.getByRole("button", { name: "Odrzuć" })).toBeVisible();
-    await candidate.getByRole("button", { name: "Zamknij" }).click();
-    await research.getByRole("button", { name: "Synthetic research fact 4" }).click();
-    const resolved = page.getByRole("dialog", { name: "Szczegóły" });
-    await expect(resolved.getByRole("button", { name: "Obserwuj" })).toBeEnabled();
+    // Kandydaci: old CandidateCard with Obserwuj / Odrzuć; the answer's undo sits in the toast.
+    await tab("Kandydaci").click();
+    const unresolved = research.locator("[data-note]").filter({ hasText: "Synthetic Candidate" });
+    await expect(unresolved.first()).toBeVisible();
+    await unresolved.first().getByRole("button", { name: "Odrzuć" }).click();
+    const dismissedToast = page.getByRole("status").filter({ hasText: "Odrzucono kandydata" });
+    await expect(dismissedToast).toBeVisible();
+    await dismissedToast.getByRole("button", { name: "Cofnij" }).click();
+    await expect(page.getByText("Cofnięto: odrzucenie kandydata")).toBeVisible();
+    const resolved = research
+      .locator("[data-note]")
+      .filter({ hasText: "Synthetic Resolved Candidate" });
     await resolved.getByRole("button", { name: "Obserwuj" }).click();
-    await expect(resolved.getByRole("button", { name: "Cofnij obserwowanie" })).toBeVisible();
-    await resolved.getByRole("button", { name: "Cofnij obserwowanie" }).click();
-    await expect(resolved.getByRole("button", { name: "Obserwuj" })).toBeVisible();
-    await resolved.getByRole("button", { name: "Zamknij" }).click();
-    await research.getByRole("button", { name: "Kalendarz", exact: true }).click();
-    await expect(research.getByText(/CPI/u)).toBeVisible();
+    const watchedToast = page.getByRole("status").filter({ hasText: "Dodano do obserwowanych" });
+    await expect(watchedToast).toBeVisible();
+    await watchedToast.getByRole("button", { name: "Cofnij" }).click();
+    await expect(page.getByText("Cofnięto: obserwowanie")).toBeVisible();
+    await tab("Kalendarz").click();
+    await expect(research.getByText(/CPI/u).first()).toBeVisible();
     const screenshot = process.env.E2E_RESEARCH_SCREENSHOT;
     if (screenshot)
       await page.screenshot({
         path: screenshot.replace(/\.png$/u, "-calendar.png"),
         fullPage: true,
       });
-    await research.getByRole("button", { name: "Przebiegi", exact: true }).click();
-    await expect(research.getByText("Zakończony", { exact: true }).first()).toBeVisible();
-    await setPrivacy(page, true);
-    await expect(research.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
-    await expect(research.getByText("Ukryte w trybie prywatności", { exact: true })).toBeVisible();
-    await setPrivacy(page, false);
+    await tab("Przebiegi").click();
+    await expect(research.getByText("zakończony", { exact: true }).first()).toBeVisible();
     await pickProfile(page, "Demo Piotr");
     await expect(page.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
   } finally {

@@ -16,6 +16,8 @@ import {
   type SignalFilter,
   signalText,
 } from "@cashu/ui-logic/investments/v2/logic";
+import { isMacroKey } from "@cashu/ui-logic/investments/v2/research/macro";
+import { canonKey, isSegment } from "@cashu/ui-logic/investments/v2/research/segments";
 import type { CardId } from "@cashu/ui-logic/investments/v2/reviewDeckLogic";
 import type { PerfRange } from "@cashu/ui-logic/investments/v2/types";
 import { startTransition, useEffect, useRef, useState } from "react";
@@ -75,10 +77,18 @@ export interface InvestmentsHomeOptions {
   onRangePicked?(range: PerfRange): void;
   onReviewOpened?(): void;
   onReviewClosed?(): void;
-  openPage?(gid: string): void;
+  /** The asset drawer over the Home (`assets/{gid}`), at a research note (`?note=`) when given. */
+  openPage?(gid: string, note?: string): void;
   onSignalsPageOpened?(page: SignalsSubPage, newAlert?: boolean): void;
   onSignalsClosed?(): void;
-  onResearchOpened?(tab?: string, topic?: string, note?: string): void;
+  /** The research page in place of the grid (old sub-route `research?tab=`), a note opened in Notatki. */
+  onResearchOpened?(tab?: string, note?: string): void;
+  /** The research page of the route (old `research`): its `?tab=` and an opened note. */
+  readonly research?: { tab?: string; note?: string | null } | null;
+  /** The topic drawer over the Home (old `topics/<key>`): a segment key or a macro regime's `macro_<key>`. */
+  readonly topic?: string | null;
+  onTopicOpened?(key: string): void;
+  onTopicClosed?(): void;
   onProposalOpened?(gid: string, onResumed: () => void): boolean;
   onSetupOpened?(): void;
   onSettingsOpened?(): void;
@@ -178,9 +188,17 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   });
 
   // ---- navigation ------------------------------------------------------------------------------------------
-  const openAsset = (id: number | string) => {
+  const openAsset = (id: number | string, noteId?: number | string | null) => {
     const gid = gidOf(id);
-    if (gid !== null) o.openPage?.(gid);
+    if (gid !== null) o.openPage?.(gid, gidOf(noteId) ?? undefined);
+  };
+  // Old ctx.onOpenNote: the asset at the note, a topic (or macro) note's signal the topic drawer, else the
+  // research page.
+  const openNote = (instrument: string | null, note: string | null, segment: string | null) => {
+    if (instrument) o.openPage?.(instrument, note ?? undefined);
+    else if (segment && (isSegment(segment) || isMacroKey(segment)))
+      o.onTopicOpened?.(isMacroKey(segment) ? segment : (canonKey(segment) ?? segment));
+    else o.onResearchOpened?.();
   };
   const openReview = () => {
     started.current ??= Date.now();
@@ -419,10 +437,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
             if (o.signalsOpen) o.onSignalsClosed?.();
           },
           onOpenAsset: (gid: string) => o.openPage?.(gid),
-          onOpenNote: (_instrument: string | null, note: string | null, segment: string | null) =>
-            note
-              ? o.onResearchOpened?.(undefined, undefined, note)
-              : o.onResearchOpened?.(undefined, segment ?? undefined),
+          onOpenNote: openNote,
         } satisfies SignalsDialogInput)
       : null,
     // ---- widgets ui (H2) ----
@@ -436,18 +451,38 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
     setAssetTab,
     filtered: filter != null,
     onReconcile: (account: number | null) => setDrawer({ kind: "import", account }),
-    openAsset,
+    openAsset: (id: number | string) => openAsset(id),
     openPage: (gid: string) => o.openPage?.(gid),
     research: {
-      onOpenAsset: (id: number, noteId?: number) => {
-        const nid = noteId != null ? gidOf(noteId) : null;
-        if (nid !== null) o.onResearchOpened?.(undefined, undefined, nid);
-        else openAsset(id);
-      },
-      onOpenTopic: (key: string) => o.onResearchOpened?.(undefined, key),
+      onOpenAsset: (id: number, noteId?: number) => openAsset(id, noteId),
+      onOpenTopic: (key: string) => o.onTopicOpened?.(key),
       onOpenResearch: (query?: string) =>
         o.onResearchOpened?.(query?.startsWith("tab=") ? query.slice(4) : undefined),
     },
+    // ---- the research page (old route `research`) and the topic drawer (`topics/<key>`) ----
+    researchPage: o.research
+      ? {
+          slug: o.slug,
+          initialTab: o.research.tab,
+          initialNote: legacyIdOf(o.research.note),
+          onBack: () => o.onAssetClosed?.(),
+          onOpenAsset: (id: number, noteId?: number) => openAsset(id, noteId),
+          onOpenTopic: (key: string) => o.onTopicOpened?.(key),
+          onSettings: () => o.onSettingsOpened?.(),
+        }
+      : null,
+    topicDrawer:
+      o.topic && !o.instrument && !o.research
+        ? {
+            topic: o.topic,
+            onClose: () => o.onTopicClosed?.(),
+            onCrumb: (where: "home" | "section") => {
+              o.onTopicClosed?.();
+              if (where === "section") setTimeout(() => scrollTo("inv-research"), 60);
+            },
+            onOpenAsset: (id: number) => openAsset(id),
+          }
+        : null,
     // ---- the review deck (R) ----
     deck:
       o.review && digest && hasData
@@ -489,11 +524,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
             onTxns: (position: Position) => setDrawer({ kind: "txns", position }),
             onThesis: (inst: { id: number; label: string }, thesis: Thesis | null) =>
               setDrawer({ kind: "thesis", instrumentId: inst.id, label: inst.label, thesis }),
-            // old ctx.onOpenNote: the note in the research view, else the segment's topic.
-            onOpenNote: (_instrument: string, note: string | null, segment: string | null) =>
-              note
-                ? o.onResearchOpened?.(undefined, undefined, note)
-                : o.onResearchOpened?.(undefined, segment ?? undefined),
+            onOpenNote: openNote,
           },
           onClose: () => o.onAssetClosed?.(),
           onPage: () => o.onAssetPageOpened?.(o.instrument ?? ""),

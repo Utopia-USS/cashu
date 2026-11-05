@@ -135,7 +135,7 @@ const ZL =
 const RICH_SOURCE = `(„[^”"]{1,80}[”"]|[+\\-−]?\\d+(?:[.,]\\d+)?\\s?(?:%|pp|pb|mld\\s?\\$|mln\\s?\\$|mld\\s?${ZL}|mln\\s?${ZL}|${ZL}|\\$|€)(?:\\s?r\\/r|\\s?m\\/m)?)`;
 
 /** Summary text with numbers and quoted thesis words in bold (primitives.tsx richSummary), as text parts. */
-function richParts(text: string): { text: string; bold: boolean; key: string }[] {
+export function richParts(text: string): { text: string; bold: boolean; key: string }[] {
   const re = new RegExp(RICH_SOURCE, "g");
   const out: { text: string; bold: boolean; key: string }[] = [];
   let last = 0;
@@ -148,7 +148,10 @@ function richParts(text: string): { text: string; bold: boolean; key: string }[]
   return out;
 }
 
-type NoteRowModel = Omit<NoteRowProps, "summary" | "onToggle" | "restore" | "dismiss" | "badge"> & {
+export type NoteRowModel = Omit<
+  NoteRowProps,
+  "summary" | "onToggle" | "restore" | "dismiss" | "badge"
+> & {
   noteId: number;
   /** `sprzed zmiany tezy` (PreTag) when the note predates the thesis' last change. */
   badge: string | null;
@@ -157,6 +160,48 @@ type NoteRowModel = Omit<NoteRowProps, "summary" | "onToggle" | "restore" | "dis
   dismiss: { label: string } | null;
   note: ResearchNote;
 };
+
+/** Old research primitives NoteRow (instrument / topic context): one note as the packages/ui row's data. */
+export function noteRowModel(
+  n: ResearchNote,
+  o: {
+    today: string;
+    open: boolean;
+    highlight: boolean;
+    restorable: boolean;
+    dismissable: boolean;
+  },
+): NoteRowModel {
+  const rel = relationIcon(n.thesis_relation);
+  const dismissed = !!n.dismissed_at;
+  const body = summaryWithoutCriteria(n.summary);
+  return {
+    noteId: n.id,
+    note: n,
+    id: `note-${n.id}`,
+    title: n.title,
+    badge: n.predates_thesis ? P.predatesThesis : null,
+    tip: noteRowTitle(n, o.today),
+    relation: { tone: rel.cls, glyph: rel.glyph, label: rel.label },
+    open: o.open,
+    dim: dismissed || isExpired(n, o.today),
+    highlight: o.highlight,
+    summary: body ? richParts(body) : null,
+    sources: {
+      label: P.sourcesN(n.sources.length),
+      items: n.sources.map((s) => {
+        const parts = sourceParts(s);
+        const url = safeUrl(s.url);
+        return { who: parts.who, url, title: s.title ?? url ?? undefined, date: parts.date };
+      }),
+    },
+    restore:
+      dismissed && o.restorable
+        ? { text: P.dismissedOn(dm(n.dismissed_at)), action: P.restore }
+        : null,
+    dismiss: o.dismissable && !dismissed ? { label: P.dismiss } : null,
+  };
+}
 
 /** The Research widget (AssetResearch): never ran / the summary row and the note rows. */
 export function assetResearchModel(
@@ -190,37 +235,15 @@ export function assetResearchModel(
   const desc = values
     .map((v) => (v == null ? P.noWeekData : v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)))
     .join(", ");
-  const rows: NoteRowModel[] = shown.map((n) => {
-    const rel = relationIcon(n.thesis_relation);
-    const dismissed = !!n.dismissed_at;
-    const body = summaryWithoutCriteria(n.summary);
-    return {
-      noteId: n.id,
-      note: n,
-      id: `note-${n.id}`,
-      title: n.title,
-      badge: n.predates_thesis ? P.predatesThesis : null,
-      tip: noteRowTitle(n, r.today),
-      relation: { tone: rel.cls, glyph: rel.glyph, label: rel.label },
+  const rows = shown.map((n) =>
+    noteRowModel(n, {
+      today: r.today,
       open: ui.openId === n.id,
-      dim: dismissed || isExpired(n, r.today),
       highlight: ui.highlightId === n.id,
-      summary: body ? richParts(body) : null,
-      sources: {
-        label: P.sourcesN(n.sources.length),
-        items: n.sources.map((s) => {
-          const parts = sourceParts(s);
-          const url = safeUrl(s.url);
-          return { who: parts.who, url, title: s.title ?? url ?? undefined, date: parts.date };
-        }),
-      },
-      restore:
-        dismissed && canRestore(n)
-          ? { text: P.dismissedOn(dm(n.dismissed_at)), action: P.restore }
-          : null,
-      dismiss: dismissed ? null : { label: P.dismiss },
-    };
-  });
+      restorable: canRestore(n),
+      dismissable: !n.dismissed_at,
+    }),
+  );
   return {
     ran: true as const,
     title: S.research,

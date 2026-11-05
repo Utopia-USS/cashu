@@ -53,6 +53,7 @@ import {
   segmentsOf,
   strategyOf,
   summaryOf,
+  topicThesesOf,
   watchlistOf,
   workspaceOf,
 } from "./homeAdapters.js";
@@ -159,6 +160,8 @@ export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
     calendar: errorOf(calendarOf(researchRead)),
     workspace: workspaceOf(researchRead),
     strategyVersion: researchRead.status === "current" ? researchRead.strategyVersion : null,
+    /** TopicDrawer's `GET /topics/{key}/thesis`, by segment key. */
+    topics: topicThesesOf(researchRead),
     /** Every note the read holds (the note sheet's lookup; dismissed and expired included). */
     notes,
   };

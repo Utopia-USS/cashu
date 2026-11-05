@@ -24,7 +24,7 @@ import type {
 } from "@cashu/ui-logic/investments/types";
 import { digestShown, isShownSignal } from "@cashu/ui-logic/investments/v2/logic";
 import { normMacro } from "@cashu/ui-logic/investments/v2/research/macro";
-import { normAttribution } from "@cashu/ui-logic/investments/v2/research/segments";
+import { normAttribution, normTopicThesis } from "@cashu/ui-logic/investments/v2/research/segments";
 import type {
   DigestResearch,
   MacroRegimes,
@@ -32,6 +32,7 @@ import type {
   ResearchRun,
   ResearchSummary,
   SegmentAttribution,
+  TopicThesis,
   Workspace,
 } from "@cashu/ui-logic/investments/v2/research/types";
 import type {
@@ -324,6 +325,17 @@ export function summaryOf(r: ResearchSnapshot): ResearchSummary | null {
 export function segmentsOf(r: ResearchSnapshot): SegmentAttribution | null {
   if (r.status !== "current" || r.segments1w.status !== "current") return null;
   return normAttribution(wire<unknown>(r.segments1w.value), "1w");
+}
+
+/** `GET /topics/{segment}/thesis` for every topic (normTopicThesis), by segment key; empty without the read. */
+export function topicThesesOf(r: ResearchSnapshot): Map<string, TopicThesis> {
+  const m = new Map<string, TopicThesis>();
+  if (r.status !== "current") return m;
+  for (const t of r.topics) {
+    const v = normTopicThesis(wire<unknown>(t.thesis));
+    if (v) m.set(t.key, v);
+  }
+  return m;
 }
 
 /** `GET /research/macro` (normMacro): `as_of` = the newest regime's data day. */

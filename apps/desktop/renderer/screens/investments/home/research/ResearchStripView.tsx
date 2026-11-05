@@ -5,8 +5,9 @@
 
 import { S as M } from "@cashu/i18n/investments/v2/research/MacroWidgets.strings";
 import { S } from "@cashu/i18n/investments/v2/research/Story.strings";
-import { Button, Widget } from "@cashu/ui";
+import { Button, MacroRows, Tag, Widget } from "@cashu/ui";
 import { useState } from "react";
+import type { MacroStripProps } from "./macroStripModel.js";
 import type { ResearchStoryProps, ResearchStripProps } from "./researchStripModel.js";
 import { AheadDays, Mood, NowOutlook, storyHead } from "./storyParts.js";
 
@@ -14,7 +15,23 @@ export function ResearchStripView(props: ResearchStripProps) {
   switch (props.kind) {
     case "story":
       return <ResearchStory {...props} />;
+    case "macro":
+      return <MacroStrip {...props} />;
   }
+}
+
+/** Old MacroWidgets MacroStrip (the Home before the first research run): the five regimes side by side. */
+function MacroStrip(p: MacroStripProps) {
+  return (
+    <Widget
+      title={p.label}
+      id="inv-macro"
+      tight
+      tags={p.asOf ? <Tag title={p.asOf.title}>{p.asOf.text}</Tag> : undefined}
+    >
+      <MacroRows label={p.label} rows={p.rows} />
+    </Widget>
+  );
 }
 
 function ResearchStory(p: ResearchStoryProps) {

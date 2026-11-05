@@ -102,7 +102,7 @@ const box = "rounded-md bg-subtle px-2.75 py-2.25 text-sm";
 const boxLabel = "mb-0.5 block text-2xs uppercase tracking-section text-fg-muted";
 
 /** `.st-nowout`: Teraz, Perspektywa and the valuation of an expanded topic; nothing without any of them. */
-export function NowOutlook({ t }: { t: StoryTopicRow }) {
+export function NowOutlook({ t }: { t: Pick<StoryTopicRow, "now" | "outlook" | "valuation"> }) {
   if (!t.now && !t.outlook && !t.valuation) return null;
   return (
     <div className="mb-1 grid w-full grid-cols-[repeat(auto-fit,minmax(--spacing(50),1fr))] gap-2.5 max-story:grid-cols-1">

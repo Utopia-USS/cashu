@@ -42,7 +42,6 @@ import { useInvestmentPlan } from "./screens/overview/useInvestmentPlan.js";
 import { useMinimalOverview } from "./screens/overview/useMinimalOverview.js";
 import { useOverviewScreen } from "./screens/overview/useOverviewScreen.js";
 import { ProposalDrawerScreen } from "./screens/proposals/ProposalDrawerScreen.js";
-import { ResearchScreen } from "./screens/research/ResearchScreen.js";
 import { SettingsView } from "./screens/settings/SettingsView.js";
 import { UpdateNoticeView } from "./screens/settings/UpdateNoticeView.js";
 import { useSettingsScreen } from "./screens/settings/useSettingsScreen.js";
@@ -562,7 +561,7 @@ function SetupGuideRoute() {
         void router.navigate({
           to: "/$slug/investments.research",
           params: { slug: slug ?? "" },
-          search: { vault },
+          search: { vault, period: "1y", view: "chart" },
         });
       else if (["portfolio", "review"].includes(target.tab))
         void router.navigate({
@@ -628,18 +627,19 @@ const investmentSearch = z.object({
   note: investmentEntityIdSchema.optional(),
   /** `assets/{gid}?page=1`: the asset page in place of the Home grid (else the asset drawer over it). */
   page: z.literal("1").optional(),
+  /** The research page's tab (`investments.research?tab=`). */
+  tab: z.enum(["topics", "mine", "notes", "calendar", "candidates", "runs"]).optional(),
+  /** The topic drawer over the Home (old `topics/<key>`): a segment key or a macro regime's `macro_<key>`. */
+  topic: z
+    .string()
+    .regex(/^[a-z0-9_]{1,120}$/)
+    .optional(),
 });
 const investmentPageSearch = z.object({
   vault: search.shape.vault,
   instrument: investmentEntityIdSchema.optional(),
   alert: investmentEntityIdSchema.optional(),
   newAlert: z.literal("1").optional(),
-});
-const researchSearch = z.object({
-  vault: search.shape.vault,
-  tab: z.enum(["topics", "mine", "notes", "calendar", "candidates", "runs"]).optional(),
-  topic: z.string().max(120).optional(),
-  note: investmentEntityIdSchema.optional(),
 });
 const portfolioRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -788,8 +788,8 @@ const journalRoute = createRoute({
 const researchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/investments.research",
-  validateSearch: (raw) => researchSearch.parse(raw),
-  component: ResearchRoute,
+  validateSearch: (raw) => investmentSearch.parse(raw),
+  component: PortfolioRoute,
   errorComponent: RouteFailure,
 });
 function useInvestmentEnabled() {
@@ -840,48 +840,12 @@ function InvestmentPageRoute() {
         void router.navigate({
           to: "/$slug/investments.research",
           params: { slug: slug ?? "" },
-          search: { vault, note },
-        })
-      }
-    />
-  );
-}
-function ResearchRoute() {
-  const { slug } = researchRoute.useParams();
-  const selected = researchRoute.useSearch();
-  const vault = useProfile();
-  const enabled = useInvestmentEnabled();
-  if (!enabled) return <p className="p-6">{S.setup}</p>;
-  return (
-    <ResearchScreen
-      initialTab={selected.tab}
-      initialTopic={selected.topic}
-      initialNote={selected.note}
-      onBack={() =>
-        void router.navigate({
-          to: "/$slug/investments.portfolio",
-          params: { slug },
-          search: { vault, period: "1y", view: "chart" },
-        })
-      }
-      onOpenAsset={(instrument, note) =>
-        void router.navigate({
-          to: "/$slug/assets/$instrument",
-          params: { slug, instrument },
           search: { vault, period: "1y", view: "chart", note },
         })
       }
-      onSettings={() =>
-        void router.navigate({
-          to: "/$slug/investments.strategies",
-          params: { slug },
-          search: { vault },
-        })
-      }
     />
   );
 }
-
 function PortfolioRoute() {
   const { slug, instrument } = useParams({ strict: false });
   const selected = useSearch({ strict: false }) as z.infer<typeof investmentSearch>;
@@ -889,6 +853,8 @@ function PortfolioRoute() {
   const modules = useQuery(overviewQueries({ prices: null }).moduleStates);
   const proposals = use(ProposalNavigation);
   const notificationSignal = use(NotificationSignalFocus);
+  // `investments.research`: the research page in place of the Home grid (old sub-route `research`).
+  const research = useLocation({ select: (l) => l.pathname.endsWith("/investments.research") });
   if (!modules.some((module) => module.id === "investments" && module.enabled))
     return <p className="p-6">{S.setup}</p>;
   if (instrument !== undefined && !investmentEntityIdSchema.safeParse(instrument).success)
@@ -952,11 +918,41 @@ function PortfolioRoute() {
           search: { vault, ...(newAlert ? { newAlert: "1" as const } : {}) },
         })
       }
-      onResearchOpened={(tab, topic, note) =>
+      research={research ? { tab: selected.tab, note: selected.note ?? null } : null}
+      onResearchOpened={(tab, note) =>
         void router.navigate({
           to: "/$slug/investments.research",
           params: { slug: slug ?? "" },
-          search: { vault, tab: tab as z.infer<typeof researchSearch>["tab"], topic, note },
+          search: {
+            vault,
+            period: selected.period,
+            view: selected.view,
+            tab: investmentSearch.shape.tab.catch(undefined).parse(tab),
+            note,
+          },
+        })
+      }
+      topic={selected.topic ?? null}
+      onTopicOpened={(key) =>
+        void router.navigate({
+          to: "/$slug/investments.portfolio",
+          params: { slug: slug ?? "" },
+          search: {
+            vault,
+            period: selected.period,
+            view: selected.view,
+            ...(selected.account === undefined ? {} : { account: selected.account }),
+            topic: key,
+          },
+        })
+      }
+      onTopicClosed={() =>
+        startTransition(() => {
+          void router.navigate({
+            to: "/$slug/investments.portfolio",
+            params: { slug: slug ?? "" },
+            search: { ...selected, topic: undefined, vault },
+          });
         })
       }
       account={selected.account ?? null}
@@ -968,7 +964,7 @@ function PortfolioRoute() {
           void router.navigate({
             to: "/$slug/investments.portfolio",
             params: { slug: slug ?? "" },
-            search: { ...selected, page: undefined, note: undefined, vault },
+            search: { ...selected, page: undefined, note: undefined, tab: undefined, vault },
           });
         })
       }
@@ -993,7 +989,7 @@ function PortfolioRoute() {
           search: { vault, instrument: next },
         })
       }
-      openPage={(next) => {
+      openPage={(next, note) => {
         void router.navigate({
           to: "/$slug/assets/$instrument",
           params: { slug: slug ?? "", instrument: next },
@@ -1002,6 +998,7 @@ function PortfolioRoute() {
             period: selected.period,
             view: selected.view,
             ...(selected.account === undefined ? {} : { account: selected.account }),
+            ...(note === undefined ? {} : { note }),
           },
         });
       }}

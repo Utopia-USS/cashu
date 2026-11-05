@@ -1,8 +1,9 @@
 // The Research widget of the asset detail (ab24ab6 v2/research/AssetResearch.tsx AssetResearch): the never-ran
 // state, else the run tag or `n notatek · date`, the older-notes toggle, the 8-week sentiment summary row and one
 // NoteRow per note. Pure: assetResearchModel.ts carries the texts.
-import { NoteRow, SentimentBars, Tag, Widget } from "@cashu/ui";
+import { SentimentBars, Tag, Widget } from "@cashu/ui";
 import type { AssetResearchModel } from "./assetResearchModel.js";
+import { NoteRowItem } from "./NoteRowItem.js";
 
 export interface AssetResearchUi {
   onToggleOlder(): void;
@@ -66,31 +67,12 @@ export function AssetResearchView({
         <div className="py-2 text-sm text-fg-muted">{r.empty}</div>
       ) : (
         r.rows.map((n) => (
-          <NoteRow
+          <NoteRowItem
             key={n.id}
-            id={n.id}
-            title={n.title}
-            tip={n.tip}
-            relation={n.relation}
-            badge={n.badge ? <Tag className="mt-px">{n.badge}</Tag> : undefined}
-            open={n.open}
-            dim={n.dim}
-            highlight={n.highlight}
-            sources={n.sources}
-            summary={
-              n.summary
-                ? n.summary.map((part) =>
-                    part.bold ? <b key={part.key}>{part.text}</b> : part.text,
-                  )
-                : undefined
-            }
+            n={n}
             onToggle={() => ui.onToggleNote(n.noteId)}
-            restore={
-              n.restore ? { ...n.restore, onRestore: () => ui.onRestore(n.noteId) } : undefined
-            }
-            dismiss={
-              n.dismiss ? { ...n.dismiss, onDismiss: () => ui.onDismiss(n.noteId) } : undefined
-            }
+            onRestore={() => ui.onRestore(n.noteId)}
+            onDismiss={() => ui.onDismiss(n.noteId)}
           />
         ))
       )}

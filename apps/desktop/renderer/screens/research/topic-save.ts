@@ -1,9 +1,15 @@
-import type { ResearchInputs } from "@cashu/store/investments/research-screen";
 import { commandFailure, type GuardedOutcome } from "../useDurableCommand.js";
 import { S } from "./Research.strings.js";
 import type { TopicFormValues } from "./types.js";
 
-type TopicRecord = ResearchInputs["topics"][number]["thesis"];
+/** The saved topic thesis and market view (the native record or the old TopicThesis shape). */
+type TopicRecord = {
+  thesis: string;
+  invalidation: string | null;
+  assessment?: string | null;
+  outlook?: string | null;
+  draft: boolean;
+} | null;
 type Outcome = GuardedOutcome<unknown>;
 
 /** Two owner commands, with a fresh scope check before the second write and every notice. */

@@ -1,9 +1,12 @@
 // The investments tab's Home (ab24ab6 v2/Home.tsx InvestmentsV2): the old `.wrap.wide` page box, a toast stack
 // for the page and the deck, the first-load skeleton as the Suspense fallback, then the page from the screen hook
-// with the widgets (widgets/), the rail, the research strip (research/) and the review deck (review/deck/).
+// with the widgets (widgets/), the rail, the research strip (research/) and the review deck (review/deck/); the
+// research page (screens/research) in place of the grid and the topic drawer over it.
 
 import { ToastProvider } from "@cashu/ui";
 import { Suspense } from "react";
+import { ResearchPageScreen } from "../../research/ResearchPageScreen.js";
+import { TopicDrawerScreen } from "../../research/TopicDrawerScreen.js";
 import { ReviewDeckScreen } from "../../review/deck/ReviewDeckScreen.js";
 import { ReviewSlotView } from "../../review/deck/ReviewSlotView.js";
 import { SignalsDialogScreen } from "../../signals/SignalsDialogScreen.js";
@@ -65,6 +68,7 @@ function HomeBound(props: InvestmentsHomeOptions) {
           {...a.actions}
         />
       )}
+      {s.topicDrawer && <TopicDrawerScreen data={s.data} {...s.topicDrawer} />}
       {s.phase === "home" && s.signalsDialog && <SignalsDialogScreen {...s.signalsDialog} />}
       {s.importDrawer && <ImportDrawer input={s.importDrawer} />}
       {s.txnDrawer && <TxnDrawer {...s.txnDrawer} />}
@@ -73,6 +77,14 @@ function HomeBound(props: InvestmentsHomeOptions) {
       {s.txnsDrawer && <TxnsDrawer {...s.txnsDrawer} />}
     </>
   );
+  // `research`: the research page replaces the grid and keeps the Home's drawers (old Home.tsx:392).
+  if (s.researchPage)
+    return (
+      <>
+        <ResearchPageScreen data={s.data} {...s.researchPage} />
+        {overlays}
+      </>
+    );
   // `assets/{id}?page=1`: the page replaces the grid and shares the Home's drawers (old Home.tsx:412-421).
   if (a?.page)
     return (

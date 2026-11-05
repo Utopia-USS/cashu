@@ -27,6 +27,7 @@ import type {
 } from "@cashu/ui-logic/investments/v2/research/types";
 import type { CalendarEvent } from "@cashu/ui-logic/investments/v2/types";
 import type { InvestmentsHomeData } from "../useInvestmentsHomeData.js";
+import { type MacroStripProps, macroStripProps } from "./macroStripModel.js";
 
 /** The research view's tab an old strip button opened (`research?tab=...`). */
 type ResearchQuery = "tab=mine" | "tab=topics" | "tab=notes";
@@ -125,15 +126,17 @@ export interface ResearchStoryProps {
   drafts: { count: number; text: string; onReview(): void } | null;
 }
 
-/** The old Home's research grid item: ResearchStory after the first run; null before it (the MacroStrip branch
- * is a follow-up, see contract-H3.md). */
-export type ResearchStripProps = ResearchStoryProps;
+/** The old Home's research grid item: ResearchStory after the first run, MacroStrip before it (when there are
+ * regimes), else nothing. */
+export type ResearchStripProps = ResearchStoryProps | MacroStripProps;
 
 const regimeTone = (t: string): StoryTone =>
   t === "pos" ? "pos" : t === "neg" ? "neg" : t === "warn" ? "warn" : "calm";
 
 /** Instrument id -> its topic's label, from the segment attribution (held and watched members). */
-function topicMap(att: SegmentAttribution | null | undefined): (id: number) => string | null {
+export function topicMap(
+  att: SegmentAttribution | null | undefined,
+): (id: number) => string | null {
   const m = new Map<number, string>();
   for (const s of att?.segments ?? []) {
     for (const i of s.instruments) m.set(i.instrument_id, s.label);
@@ -143,7 +146,7 @@ function topicMap(att: SegmentAttribution | null | undefined): (id: number) => s
   return (id) => m.get(id) ?? null;
 }
 
-const aheadSay = (events: CalendarEvent[]) => {
+export const aheadSay = (events: CalendarEvent[]) => {
   const mine = events.filter((e) => e.kind === "earnings" && e.held === true).length;
   return !events.length ? S.aheadQuiet : mine ? S.aheadMine(mine) : S.aheadNoneMine;
 };
@@ -151,7 +154,7 @@ const aheadSay = (events: CalendarEvent[]) => {
 const num = (v: number) => (Math.round(v * 10) / 10).toLocaleString(intlLocale());
 
 /** Wycena: the verdict word (from the figures, never the agent's opinion), one sentence, then where it comes from. */
-function valuationView(v: Valuation): StoryValuation {
+export function valuationView(v: Valuation): StoryValuation {
   const { verdict, multiple, growth } = valuationOf(v);
   const word =
     verdict === "cheap"
@@ -186,6 +189,32 @@ function valuationView(v: Valuation): StoryValuation {
   };
 }
 
+/** Old Story.tsx AheadDays: the coming events grouped by day (companies by topic, own positions bold, then the
+ * market releases). */
+export function aheadDayRows(
+  events: CalendarEvent[],
+  topicOf: (id: number) => string | null,
+  nameOf: (e: CalendarEvent) => string,
+): StoryAheadDay[] {
+  return aheadDays(events, topicOf, nameOf).map((d) => ({
+    date: d.date,
+    day: dm(d.date),
+    weekday: wdm(d.date).split(" ")[0] ?? "",
+    groups: d.groups.map((g) => {
+      const earn = g.items.filter((i) => i.earnings);
+      return {
+        topic: g.topic ?? S.otherTopic,
+        earnings: earn.length ? earn.map((i) => ({ text: i.name, mine: i.mine })) : null,
+        other: g.items
+          .filter((i) => !i.earnings)
+          .map((i) => ({ text: i.title ? `${i.name}: ${i.title}` : i.name, mine: i.mine })),
+      };
+    }),
+    market: d.market.length ? d.market.join(", ") : null,
+    mine: d.mine ? S.yoursN(d.mine) : "",
+  }));
+}
+
 interface Named {
   name: string;
   symbol: string | null;
@@ -196,7 +225,7 @@ export function researchStripProps(
   ui: ResearchStripUi,
 ): ResearchStripProps | null {
   const r = data.research;
-  if (!r.ran || !r.runs) return null;
+  if (!r.ran || !r.runs) return macroStripProps(r.macro, ui.onOpenTopic);
   const today = data.today;
   const held = new Map<number, Named>(
     (data.pos.data?.positions ?? []).map((p) => [
@@ -257,7 +286,7 @@ export function researchStripProps(
   }));
 
   const topicOf = topicMap(r.segments);
-  const days: StoryAheadDay[] = aheadDays(
+  const days = aheadDayRows(
     events,
     topicOf,
     (e) =>
@@ -266,25 +295,7 @@ export function researchStripProps(
         : null) ??
       e.label ??
       e.title,
-  )
-    .slice(0, 5)
-    .map((d) => ({
-      date: d.date,
-      day: dm(d.date),
-      weekday: wdm(d.date).split(" ")[0] ?? "",
-      groups: d.groups.map((g) => {
-        const earn = g.items.filter((i) => i.earnings);
-        return {
-          topic: g.topic ?? S.otherTopic,
-          earnings: earn.length ? earn.map((i) => ({ text: i.name, mine: i.mine })) : null,
-          other: g.items
-            .filter((i) => !i.earnings)
-            .map((i) => ({ text: i.title ? `${i.name}: ${i.title}` : i.name, mine: i.mine })),
-        };
-      }),
-      market: d.market.length ? d.market.join(", ") : null,
-      mine: d.mine ? S.yoursN(d.mine) : "",
-    }));
+  ).slice(0, 5);
 
   const topicRow = (t: StoryTopic): StoryTopicRow => ({
     key: t.key,

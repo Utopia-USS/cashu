@@ -51,3 +51,19 @@ const args: ResearchStripProps = {
 
 export default { title: "Desktop/Investments/ResearchStrip", component: ResearchStripView, args };
 export const Story = {};
+export const Macro = {
+  args: {
+    kind: "macro",
+    asOf: { text: "as of 2.11", title: "last session in the data" },
+    label: "Macro",
+    rows: [
+      {
+        id: "risk",
+        label: "Risk",
+        onOpen() {},
+        states: [{ text: "risk on", tone: "positive" }],
+        headline: "A synthetic brief.",
+      },
+    ],
+  } satisfies ResearchStripProps,
+};
