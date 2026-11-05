@@ -1,100 +1,98 @@
-import { toCurrency, views } from "@cashu/domain/investments";
-import { strategyStatus, strategyTemplate } from "@cashu/domain/investments/strategy";
+// Synthetic states of the Strategie tab Views (stories and the view test): no real strategy, file or path.
 import type { StrategiesScreenState } from "./useStrategiesScreen.js";
+import type { StrategySettingsState } from "./useStrategySettings.js";
 
-const template = strategyTemplate("passive_etf");
-if (!template) throw new Error("synthetic strategy template absent");
+const noop = () => {};
 export const prose =
   "# Synthetic strategy\n\nPrivate synthetic investment prose.\n\n- [x] Review\n- Keep a long horizon\n\n| Bucket | Target |\n|---|---|\n| Synthetic | 80% |\n";
-const status = strategyStatus({ yaml: template.yaml, md: prose, readError: null }, null);
-const strategy = views.strategyStatusView({
-  status,
-  profileBase: toCurrency("PLN"),
-  files: {
-    yaml: "/synthetic/strategy.yaml",
-    md: "/synthetic/strategy.md",
-    yamlExists: true,
-    mdExists: true,
-  },
-  versions: [],
-  lang: "en",
-});
-const mainDocument = {
-  id: "_main",
-  main: true,
-  executed: true,
-  title: "Synthetic strategy",
-  status: null,
-  description: "Private synthetic description",
-  mainFile: "strategy.md",
-  root: "",
-  files: [
-    { path: "strategy.md", kind: "md" as const },
-    { path: "strategy.yaml", kind: "yaml" as const },
-  ],
-};
-const selection = { document: "_main", path: "strategy.md" };
+
 export const readyState: StrategiesScreenState = {
-  data: {
-    status: "current",
-    revision: "synthetic-revision",
-    documents: [mainDocument],
-    paths: {
-      yaml: "/synthetic/strategy.yaml",
-      md: "/synthetic/strategy.md",
-      folder: "/synthetic/strategies",
+  phase: "ready",
+  withSide: true,
+  listLabel: "Strategies and their files",
+  tree: [
+    {
+      key: "_main",
+      id: "_main",
+      title: "Synthetic strategy",
+      tags: [
+        { key: "st", text: "OK", tone: "positive" },
+        { key: "ex", text: "executed", tone: "neutral" },
+      ],
+      description: "Private synthetic description",
+      on: true,
+      select: { id: "_main", path: "strategy.md" },
+      files: [
+        {
+          kind: "file",
+          key: "f:strategy.md",
+          name: "strategy.md",
+          depth: 0,
+          path: "strategy.md",
+          ext: "md",
+          extText: "MD",
+          on: true,
+        },
+        {
+          kind: "file",
+          key: "f:strategy.yaml",
+          name: "strategy.yaml",
+          depth: 0,
+          path: "strategy.yaml",
+          ext: "yaml",
+          extText: "YML",
+          on: false,
+        },
+      ],
     },
-    selected: { status: "ready", selection, text: prose },
-    strategy,
-    currentIssues: status.result?.issues ?? [],
-    inactiveRules: status.result?.inactiveRules ?? [],
-    proposals: [
-      { gid: "synthetic-proposal", summary: "Synthetic pending proposal", kind: "strategy" },
-    ],
-    versions: [{ version: 1, state: "valid", createdAt: "2026-10-31T12:00:00Z", issues: 0 }],
-    canInit: false,
-    canReload: true,
+  ],
+  noFiles: "no files",
+  pick: noop,
+  folderHint: "Your agent saves further strategies in the strategies folder.",
+  copyFolder: "Copy the folder path",
+  onCopyFolder: noop,
+  main: {
+    kind: "file",
+    crumb: "Synthetic strategy",
+    path: "strategy.md",
+    mode: {
+      label: "File view",
+      items: [
+        ["Preview", "preview"],
+        ["Source", "source"],
+      ],
+      value: "preview",
+      onChange: noop,
+    },
+    copyPath: "Copy path",
+    onCopyPath: noop,
+    notExecuted: null,
+    issuesNote: null,
+    body: { kind: "md", text: prose },
   },
-  tree: [],
-  lineIssues: [],
-  docs: [mainDocument],
-  doc: mainDocument,
-  current: selection,
-  selection,
-  pick() {},
-  mode: "preview",
-  setMode() {},
-  history: false,
-  setHistory() {},
-  notice: null,
-  privacy: false,
-  busy: false,
-  async act() {},
-  issues: [],
-  inactiveRules: [],
   onProposalOpened: undefined,
-  async copy() {},
 };
 
 export const unavailableState: StrategiesScreenState = {
-  data: { status: "unavailable", reason: "capability_unavailable", proposals: [], versions: [] },
-  tree: [],
-  lineIssues: [],
-  docs: [],
-  doc: null,
-  current: null,
-  selection: null,
-  pick() {},
-  mode: "preview",
-  setMode() {},
-  history: false,
-  setHistory() {},
-  notice: null,
-  privacy: false,
-  busy: false,
-  async act() {},
-  issues: [],
-  inactiveRules: [],
-  onProposalOpened: undefined,
-  async copy() {},
+  phase: "unavailable",
+  text: "Strategies not loaded: synthetic",
+};
+
+export const settingsState: StrategySettingsState = {
+  side: false,
+  title: "Investment strategy",
+  tag: { key: "st", text: "OK", tone: "positive" },
+  unavailableText: "Strategy file access is unavailable.",
+  popover: {
+    kind: "missing",
+    strategy: "Strategy",
+    tag: { key: "none", text: "none", tone: "warning" },
+    fromTemplate: "Create from a template",
+    copyCommand: "Copy /investments-setup",
+    onInit: noop,
+    onCopyCommand: noop,
+    notice: null,
+  },
+  view: "View",
+  onProposal: noop,
 };

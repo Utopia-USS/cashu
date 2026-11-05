@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MarkdownDocument } from "./MarkdownDocument.js";
 import { StrategiesView } from "./StrategiesView.js";
-import { readyState } from "./storyState.js";
+import { readyState, unavailableState } from "./storyState.js";
 
 describe("Strategies read-only presentation", () => {
   it.each(["en", "pl"] as const)(
@@ -13,7 +13,7 @@ describe("Strategies read-only presentation", () => {
       setLanguageForTests(language);
       const markup = renderToStaticMarkup(
         <UiEnvProvider locale="en-US" privacy={true}>
-          <StrategiesView state={{ ...readyState, privacy: true }} />
+          <StrategiesView state={unavailableState} />
         </UiEnvProvider>,
       );
       expect(markup).not.toMatch(

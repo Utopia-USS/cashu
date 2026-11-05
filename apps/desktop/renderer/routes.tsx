@@ -51,8 +51,7 @@ import type { SetupNavigation } from "./screens/setup/actionIntent.js";
 import { SetupScreen } from "./screens/setup/SetupScreen.js";
 import { SignalsPageScreen } from "./screens/signals/SignalsPageScreen.js";
 import { StrategiesScreen } from "./screens/strategies/StrategiesScreen.js";
-import { StrategySettingsView } from "./screens/strategies/StrategiesView.js";
-import { useStrategiesScreen } from "./screens/strategies/useStrategiesScreen.js";
+import { StrategySettings } from "./screens/strategies/StrategySettings.js";
 import { resolveProfileRoute } from "./shell/profileRoute.js";
 import { ProfileRouteSync } from "./shell/profileRouteSync.js";
 import { ShellView } from "./shell/ShellView.js";
@@ -149,6 +148,12 @@ function ShellRoute() {
         params: { slug },
         search: { vault, period: "1y", view: "chart" },
       });
+    else if (module === "investments.strategies")
+      void router.navigate({
+        to: "/$slug/investments.strategies",
+        params: { slug },
+        search: { vault },
+      });
     else if (module === "settings")
       void router.navigate({ to: "/$slug/settings", params: { slug }, search: { vault } });
     else void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
@@ -179,9 +184,11 @@ function ShellRoute() {
                 ? "loans"
                 : pathname.endsWith("/setup/assets")
                   ? "assets"
-                  : pathname.includes("/investments.") || pathname.includes("/assets/")
-                    ? "investments"
-                    : "overview"
+                  : pathname.endsWith("/investments.strategies")
+                    ? "investments.strategies"
+                    : pathname.includes("/investments.") || pathname.includes("/assets/")
+                      ? "investments"
+                      : "overview"
         }
         onModuleOpened={openModule}
       >
@@ -732,7 +739,6 @@ function SettingsBound({
   onModuleConfigured(id: string): void;
 }) {
   const state = useSettingsScreen(onProposalOpened, onModuleConfigured);
-  const strategies = useStrategiesScreen(onProposalOpened);
   return (
     <SettingsView
       devicesPanel={<DevicesScreen />}
@@ -750,7 +756,7 @@ function SettingsBound({
       section={section}
       strategyPanel={
         state.modules.some((module) => module.id === "investments" && module.enabled) ? (
-          <StrategySettingsView state={strategies} />
+          <StrategySettings onProposalOpened={onProposalOpened} />
         ) : null
       }
     />

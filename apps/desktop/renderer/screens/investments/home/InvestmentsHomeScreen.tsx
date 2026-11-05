@@ -7,6 +7,12 @@ import { Suspense } from "react";
 import { ReviewDeckScreen } from "../../review/deck/ReviewDeckScreen.js";
 import { ReviewSlotView } from "../../review/deck/ReviewSlotView.js";
 import { SignalsDialogView } from "../../signals/SignalsView.js";
+import {
+  AccountDrawer,
+  ThesisDrawer,
+  TxnDrawer,
+  TxnsDrawer,
+} from "../drawers/InvestmentDrawers.js";
 import { AlertsBrief, CandidatesRail, SignalsBrief } from "./HomeRailView.js";
 import { HomeErrorView, HomeLoadingView, HomePage, HomeView } from "./HomeView.js";
 import { ImportDrawerView } from "./ImportDrawerView.js";
@@ -47,6 +53,10 @@ function HomeBound(props: InvestmentsHomeOptions) {
     <>
       {s.phase === "home" && <SignalsDialogView state={s.signalsScreen} />}
       {s.importDrawer && <ImportDrawer input={s.importDrawer} />}
+      {s.txnDrawer && <TxnDrawer {...s.txnDrawer} />}
+      {s.accountDrawer && <AccountDrawer {...s.accountDrawer} />}
+      {s.thesisDrawer && <ThesisDrawer {...s.thesisDrawer} />}
+      {s.txnsDrawer && <TxnsDrawer {...s.txnsDrawer} />}
     </>
   );
   const head = {
@@ -99,7 +109,7 @@ function HomeBound(props: InvestmentsHomeOptions) {
                   onView: s.setAllocView,
                   filtered: s.filtered,
                   wide: true,
-                  onAddAccount: () => {},
+                  onAddAccount: s.onAddAccount,
                   onReconcile: s.onReconcile,
                   onSettings: s.onSettings,
                 })}

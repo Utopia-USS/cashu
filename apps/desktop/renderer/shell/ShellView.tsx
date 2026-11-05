@@ -1,3 +1,4 @@
+import { S as SS } from "@cashu/i18n/investments/v2/Strategies.strings";
 import {
   AppHeader,
   Button,
@@ -25,16 +26,23 @@ export interface ShellViewProps {
 }
 
 // Navigation order of the Python app (core/registry.ts MODULES): budget | loans | assets | investments,
-// each module its own group after Przegląd. Settings lives in the profile menu, as there.
-const MODULE_TABS = [
-  ["budget", () => S.budget],
-  ["loans", () => S.loans],
-  ["assets", () => S.assets],
-  ["investments", () => S.investments],
-] as const;
+// each module its own group after Przegląd, with its tabs (investments: Inwestycje | Strategie). Settings lives
+// in the profile menu, as there.
+const MODULE_TABS: readonly (readonly [string, readonly (readonly [string, () => string])[]])[] = [
+  ["budget", [["budget", () => S.budget]]],
+  ["loans", [["loans", () => S.loans]]],
+  ["assets", [["assets", () => S.assets]]],
+  [
+    "investments",
+    [
+      ["investments", () => S.investments],
+      ["investments.strategies", () => SS.tab],
+    ],
+  ],
+];
 
-// Przegląd and the investments workspace use the wide page (old `.wrap.wide`), everything else 1120px.
-const WIDE = new Set(["overview", "investments"]);
+// Przegląd and the investments workspace tabs use the wide page (old `.wrap.wide`), everything else 1120px.
+const WIDE = new Set(["overview", "investments", "investments.strategies"]);
 
 function EyeGlyph({ crossed }: { crossed: boolean }) {
   return (
@@ -83,18 +91,17 @@ export function ShellView({
         onPress: onOverviewOpened,
       },
     ],
-    ...MODULE_TABS.filter(([id]) => state.enabledModules.includes(id)).map(([id, label]) => {
-      const pending = state.pendingModules.includes(id);
-      return [
-        {
-          id,
-          label: label(),
-          current: activeModule === id,
-          onPress: () => onModuleOpened(id),
-          pending,
-          pendingTitle: T.notConfiguredTitle,
-        },
-      ];
+    ...MODULE_TABS.filter(([id]) => state.enabledModules.includes(id)).map(([module, tabs]) => {
+      // The setup dot sits on the module's first tab only (old Shell.tsx `pending && i === 0`).
+      const pending = state.pendingModules.includes(module);
+      return tabs.map(([id, label], i) => ({
+        id,
+        label: label(),
+        current: activeModule === id,
+        onPress: () => onModuleOpened(id),
+        pending: pending && i === 0,
+        pendingTitle: T.notConfiguredTitle,
+      }));
     }),
   ];
   return (

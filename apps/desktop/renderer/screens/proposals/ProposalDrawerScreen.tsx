@@ -1,8 +1,10 @@
+import { S } from "@cashu/i18n/core/ProposalDrawer.strings";
 import { useProfile } from "@cashu/store-react";
-import { Button, Modal, useUiEnv } from "@cashu/ui";
+import { Drawer, Notice, Skeleton, useUiEnv } from "@cashu/ui";
 import { Component, type ReactNode, Suspense } from "react";
 import { P } from "./ProposalDrawer.strings.js";
 import { ProposalDrawerView } from "./ProposalDrawerView.js";
+import { proposalDrawerModel } from "./proposalDrawerModel.js";
 import { useProposalDrawer } from "./useProposalDrawer.js";
 
 export function ProposalDrawerScreen({
@@ -23,29 +25,23 @@ export function ProposalDrawerScreen({
   const vault = useProfile();
   const { privacy } = useUiEnv();
   return (
-    <Modal label={P.title} onClose={onClose} placement="end">
-      <ProposalBoundary key={`${vault}:${privacy}:${gid}`} onClose={onClose}>
-        <Suspense fallback={<DrawerStatus onClose={onClose} text={P.loading} />}>
-          <BoundProposal gid={gid} onClose={onClose} onOutcome={onOutcome} />
-        </Suspense>
-      </ProposalBoundary>
-    </Modal>
+    <ProposalBoundary key={`${vault}:${privacy}:${gid}`} onClose={onClose}>
+      <Suspense fallback={<DrawerStatus onClose={onClose} />}>
+        <BoundProposal gid={gid} onClose={onClose} onOutcome={onOutcome} />
+      </Suspense>
+    </ProposalBoundary>
   );
 }
 function BoundProposal(props: Parameters<typeof ProposalDrawerScreen>[0]) {
   const state = useProposalDrawer(props.gid, props.onOutcome);
-  return <ProposalDrawerView state={state} onClose={props.onClose} />;
+  return <ProposalDrawerView m={proposalDrawerModel(state)} onClose={props.onClose} />;
 }
-function DrawerStatus({ onClose, text }: { onClose(): void; text: string }) {
+/** First load (old `<Skeleton h={160} />`) or a failed read (old `S.loadFailed`), inside the same drawer. */
+function DrawerStatus({ onClose, error }: { onClose(): void; error?: string }) {
   return (
-    <>
-      <Button onPress={onClose} label={P.close}>
-        {P.close}
-      </Button>
-      <p role="status" className="mt-6">
-        {text}
-      </p>
-    </>
+    <Drawer title={S.title} label={S.title} width={600} onClose={onClose}>
+      {error ? <Notice tone="negative">{error}</Notice> : <Skeleton height={160} />}
+    </Drawer>
   );
 }
 class ProposalBoundary extends Component<
@@ -58,7 +54,7 @@ class ProposalBoundary extends Component<
   }
   override render() {
     return this.state.failed ? (
-      <DrawerStatus onClose={this.props.onClose} text={P.loadFailed} />
+      <DrawerStatus onClose={this.props.onClose} error={S.loadFailed(P.loadFailed)} />
     ) : (
       this.props.children
     );

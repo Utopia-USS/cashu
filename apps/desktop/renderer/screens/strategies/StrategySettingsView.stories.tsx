@@ -1,16 +1,9 @@
-import { UiEnvProvider } from "@cashu/ui";
-import { StrategySettingsView } from "./StrategiesView.js";
-import { unavailableState } from "./storyState.js";
+import { StrategySettingsView } from "./StrategySettingsView.js";
+import { settingsState } from "./storyState.js";
+
 export default {
   title: "Desktop/Strategies/Settings",
   component: StrategySettingsView,
-  decorators: [
-    (Story: () => React.ReactNode) => (
-      <UiEnvProvider locale="en-US" privacy={false}>
-        <Story />
-      </UiEnvProvider>
-    ),
-  ],
-  args: { state: unavailableState },
+  args: { state: settingsState },
 };
-export const Unavailable = {};
+export const Missing = {};

@@ -1,383 +1,214 @@
-import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, Button, Card, DateText, Money, VirtualList } from "@cashu/ui";
+// The Strategie tab (ab24ab6 v2/Strategies.tsx + strategies.css): `.strat` grid of the file tree (`.strat-left`
+// card), the selected file (`.strat-main` card: crumb head, notes, Markdown preview or numbered source) or the
+// "no strategy" empty card, and the status card of the main strategy on the right (`.strat-side`). Pure: every
+// text and handler comes from useStrategiesScreen.ts; the status card is mounted by the screen (`side`).
+import { Button, Seg, Skeleton, Tag } from "@cashu/ui";
 import type { ReactNode } from "react";
 import { MarkdownDocument } from "./MarkdownDocument.js";
-import { S } from "./Strategies.strings.js";
+import type { TagModel, TreeGroup } from "./strategiesModel.js";
 import type { StrategiesScreenState } from "./useStrategiesScreen.js";
 
-function Rows<T>({
-  rows,
-  rowKey,
-  children,
-  label,
-}: {
-  rows: readonly T[];
-  rowKey(row: T): string;
-  children(row: T, index: number): ReactNode;
-  label: string;
-}) {
+type Ready = Extract<StrategiesScreenState, { phase: "ready" }>;
+
+const grid =
+  "grid items-start gap-3.5 grid-cols-[--spacing(65)_minmax(0,1fr)] max-narrow:grid-cols-1";
+const withSide =
+  "grid-cols-[--spacing(65)_minmax(0,1fr)_--spacing(80)] max-strat:grid-cols-[--spacing(60)_minmax(0,1fr)]";
+const card = "rounded-widget border border-border bg-surface-raised";
+const rowButton =
+  "flex w-full cursor-pointer border-0 bg-transparent text-left text-fg hover:bg-subtle";
+const mono = "font-mono";
+/** `padding-left: 22 + depth * 12` of the tree rows. */
+const indent = ["pl-5.5", "pl-8.5", "pl-11.5", "pl-14.5", "pl-17.5", "pl-20.5"] as const;
+const indentOf = (depth: number) => indent[Math.min(depth, indent.length - 1)];
+const ext = {
+  md: "bg-info-bg text-info",
+  yaml: "bg-warning-bg text-warning",
+  text: "bg-chip text-chip-fg",
+} as const;
+
+const tag = (t: TagModel) => (
+  <Tag key={t.key} tone={t.tone} title={t.title}>
+    {t.text}
+  </Tag>
+);
+
+function Tree({ s }: { s: Ready }) {
   return (
-    <VirtualList
-      items={rows}
-      getKey={rowKey}
-      renderItem={children}
-      label={label}
-      estimateSize={48}
-      rowClassName="border-b border-border py-2"
-    />
-  );
-}
-function SourceLines({ state, text }: { state: StrategiesScreenState; text: string }) {
-  const lines = text
-    .replace(/\n$/, "")
-    .split("\n")
-    .map((text, index) => ({ text, line: index + 1 }));
-  return (
-    <Rows rows={lines} rowKey={(row) => String(row.line)} label={S.source}>
-      {(row) => {
-        const issues =
-          state.current?.document === "_main" && state.current.path === "strategy.yaml"
-            ? state.lineIssues.filter((issue) => issue.line === row.line)
-            : [];
-        return (
-          <div className="flex gap-3 font-mono text-sm">
-            <span className="select-none text-text-muted">
-              <Amount value={D(String(row.line))} fractionDigits={0} />
-            </span>
-            <div className="min-w-0">
-              <pre className="whitespace-pre-wrap break-words">{row.text || " "}</pre>
-              {issues.map((issue) => (
-                <p
-                  key={`${issue.path}:${issue.line}:${issue.column}:${issue.code}`}
-                  className={issue.severity === "error" ? "text-negative" : "text-warning"}
-                >
-                  {issue.text}
-                </p>
-              ))}
-            </div>
-          </div>
-        );
-      }}
-    </Rows>
-  );
-}
-export function StrategySettingsView({ state }: { state: StrategiesScreenState }) {
-  if (state.privacy)
-    return (
-      <Card as="aside">
-        <p>{S.privacy}</p>
-      </Card>
-    );
-  const { data } = state;
-  const status = data.status === "current" ? data.strategy : null;
-  const names = {
-    valid: S.valid,
-    invalid: S.invalid,
-    partial: S.partialState,
-    missing: S.missingState,
-  };
-  return (
-    <Card as="aside" label={S.validation} className="space-y-4">
-      <h2 className="text-title">{S.main}</h2>
-      {status ? (
-        <>
-          <p>{names[status.state]}</p>
-          <p>
-            {S.errors} <Amount value={D(String(status.errors))} fractionDigits={0} /> - {S.warnings}{" "}
-            <Amount value={D(String(status.warnings))} fractionDigits={0} />
-          </p>
-          {status.changed && <p className="text-warning">{S.changed}</p>}
-          {status.state === "missing" && <p>{S.missing}</p>}
-          {status.read_error && <p role="alert">{S.readFailed}</p>}
-          {status.version !== null && (
-            <p>
-              {S.version} <Amount value={D(String(status.version))} fractionDigits={0} />{" "}
-              {data.versions[0] && <DateText value={data.versions[0].createdAt.slice(0, 10)} />}
-            </p>
-          )}
-          {status.facts && (
-            <dl className="space-y-2">
-              <dt>{S.buckets}</dt>
-              <dd>
-                <Amount value={D(String(status.facts.buckets.length))} fractionDigits={0} />
-              </dd>
-              <dt>{S.rules}</dt>
-              <dd>
-                <Amount value={D(String(status.facts.rules.length))} fractionDigits={0} />
-              </dd>
-              {status.facts.horizon_years !== null && (
-                <>
-                  <dt>{S.horizon}</dt>
-                  <dd>
-                    <Amount value={D(String(status.facts.horizon_years))} />
-                  </dd>
-                </>
-              )}
-              {status.facts.contributions && (
-                <>
-                  <dt>{S.contribution}</dt>
-                  <dd>
-                    <Money
-                      value={
-                        new MoneyValue(
-                          status.facts.contributions.monthly_amount,
-                          status.facts.base_currency,
-                        )
-                      }
-                    />
-                  </dd>
-                </>
-              )}
-            </dl>
-          )}
-          {status.base_currency_note && <p>{status.base_currency_note}</p>}
-          <h3>{S.validation}</h3>
-          <Rows
-            rows={state.issues}
-            rowKey={(i) => `${i.path}:${i.line}:${i.code}:${i.message}`}
-            label={S.validation}
+    <nav className="flex flex-col" aria-label={s.listLabel}>
+      {s.tree.map((d: TreeGroup, i) => (
+        <div key={d.key} className={i > 0 ? "mt-1 border-t border-border pt-1" : ""}>
+          <button
+            type="button"
+            className={`${rowButton} flex-wrap items-center gap-x-1.5 gap-y-1 px-3 py-2 ${d.on ? "bg-chip" : ""}`}
+            onClick={() => s.pick(d.select)}
           >
-            {(issue) => (
-              <p className={issue.severity === "error" ? "text-negative" : "text-warning"}>
-                {issue.text}
-              </p>
+            <span className="basis-full text-sm-plus font-strong wrap-anywhere">{d.title}</span>
+            <span className="flex flex-wrap gap-1">{d.tags.map(tag)}</span>
+            {d.description && (
+              <span className="basis-full text-xs leading-caption text-fg-muted">
+                {d.description}
+              </span>
             )}
-          </Rows>
-          {state.inactiveRules.length > 0 && (
-            <>
-              <h3>{S.inactive}</h3>
-              <Rows rows={state.inactiveRules} rowKey={(r) => String(r.index)} label={S.inactive}>
-                {(rule) => (
-                  <div>
-                    <strong>
-                      {rule.ruleId ?? rule.kind ?? (
-                        <Amount value={D(String(rule.index))} fractionDigits={0} />
-                      )}
-                    </strong>
-                    {rule.issues.map((issue) => (
-                      <p key={`${issue.path}:${issue.line}:${issue.column}:${issue.code}`}>
-                        {issue.text}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </Rows>
-            </>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={state.busy || !data.canReload}
-              onPress={() => {
-                void state.act("reload");
-              }}
+          </button>
+          {d.files === null ? (
+            <div
+              className={`flex items-center gap-1.5 py-1 pr-3 text-xs-plus text-fg-muted ${mono} ${indent[0]}`}
             >
-              {S.reload}
-            </Button>
-            {status.state === "missing" && (
-              <Button
-                disabled={state.busy || !data.canInit}
-                onPress={() => {
-                  void state.act("init");
-                }}
-              >
-                {S.init}
-              </Button>
-            )}
-          </div>
-          {status.state === "missing" && !data.canInit && (
-            <p className="text-text-muted">{S.actionUnavailable}</p>
-          )}
-          {data.paths && (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onPress={() => {
-                  void state.copy(data.paths?.yaml ?? "");
-                }}
-              >
-                {S.copyPath}
-              </Button>
-              <Button
-                disabled={!status.files.md_exists}
-                onPress={() => {
-                  void state.copy(data.paths?.md ?? "");
-                }}
-              >
-                MD
-              </Button>
+              {s.noFiles}
             </div>
+          ) : (
+            d.files.map((r) =>
+              r.kind === "dir" ? (
+                <div
+                  key={r.key}
+                  className={`py-1 pr-3 text-xs text-fg-muted ${mono} ${indentOf(r.depth)}`}
+                >
+                  {r.name}/
+                </div>
+              ) : (
+                <button
+                  key={r.key}
+                  type="button"
+                  className={`${rowButton} items-center gap-1.5 py-1 pr-3 text-xs-plus ${mono} ${indentOf(r.depth)} ${r.on ? "bg-info-bg text-info" : ""}`}
+                  onClick={() => s.pick({ id: d.id, path: r.path })}
+                >
+                  <span
+                    className={`rounded-2xs px-1 py-px text-4xs-plus font-bold tracking-caps ${ext[r.ext]}`}
+                  >
+                    {r.extText}
+                  </span>
+                  {r.name}
+                </button>
+              ),
+            )
           )}
-        </>
-      ) : (
-        <p>{S.unavailable}</p>
-      )}
-      <Button
-        onPress={() => {
-          void state.copy("/investments-setup");
-        }}
-      >
-        {S.copyCommand}
-      </Button>
-      <h3>
-        {S.pending} <Amount value={D(String(data.proposals.length))} fractionDigits={0} />
-      </h3>
-      <Rows rows={data.proposals} rowKey={(p) => p.gid} label={S.pending}>
-        {(proposal) => (
-          <div>
-            <p>{proposal.summary}</p>
-            <Button
-              disabled={!state.onProposalOpened}
-              onPress={() => state.onProposalOpened?.(proposal.gid)}
-            >
-              {S.open}
-            </Button>
-          </div>
-        )}
-      </Rows>
-      {data.proposals.length > 0 && !state.onProposalOpened && <p>{S.proposalUnavailable}</p>}
-      <Button expanded={state.history} onPress={() => state.setHistory(!state.history)}>
-        {S.history} <Amount value={D(String(data.versions.length))} fractionDigits={0} />
-      </Button>
-      {state.history && (
-        <Rows rows={data.versions} rowKey={(v) => String(v.version)} label={S.history}>
-          {(version) => (
-            <p>
-              {S.version} <Amount value={D(String(version.version))} fractionDigits={0} /> -{" "}
-              {names[version.state as keyof typeof names]}{" "}
-              <DateText value={version.createdAt.slice(0, 10)} /> - {S.issues}{" "}
-              <Amount value={D(String(version.issues))} fractionDigits={0} />
-            </p>
-          )}
-        </Rows>
-      )}
-    </Card>
+        </div>
+      ))}
+    </nav>
   );
 }
-/** Read-only document workbench. All private prose is suppressed before any document child renders. */
-export function StrategiesView({ state }: { state: StrategiesScreenState }) {
-  if (state.privacy)
+
+function Main({ s }: { s: Ready }) {
+  const m = s.main;
+  if (m.kind === "none")
     return (
-      <section className="p-6">
-        <h1 className="text-headline">{S.title}</h1>
-        <p>{S.privacy}</p>
+      <section className={`${card} min-h-80 overflow-hidden p-0`}>
+        <div className="px-6 py-8 text-center text-md text-fg-muted">
+          <div className="font-strong text-fg">{m.title}</div>
+          <div className="mt-1 text-sm">{m.hint}</div>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <Button variant="primary" onPress={m.onTemplate}>
+              {m.fromTemplate}
+            </Button>
+            <Button onPress={m.onCopyCommand}>{m.copyCommand}</Button>
+          </div>
+        </div>
       </section>
     );
-  const { data } = state;
-  const file = data.status === "current" ? data.selected : null;
-  const current = state.current;
-  const kind = state.doc?.files.find((f) => f.path === current?.path)?.kind;
+  const b = m.body;
   return (
-    <main className="space-y-4 p-6" data-testid="native-strategies">
-      <header className="flex items-center justify-between gap-3">
-        <h1 className="text-headline">{S.title}</h1>
-        <Button
-          disabled={state.busy}
-          onPress={() => {
-            void state.act("refresh");
-          }}
-        >
-          {S.refresh}
-        </Button>
+    <section className={`${card} min-h-80 overflow-hidden p-0`}>
+      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+        <div className="text-sm-plus wrap-anywhere">
+          <strong>{m.crumb}</strong>
+          <span className="text-fg-muted"> / {m.path}</span>
+        </div>
+        <span className="flex-1" />
+        {m.mode && (
+          <Seg
+            quiet
+            label={m.mode.label}
+            items={m.mode.items}
+            value={m.mode.value}
+            onChange={m.mode.onChange}
+          />
+        )}
+        <Button onPress={m.onCopyPath}>{m.copyPath}</Button>
       </header>
-      {state.notice && <p role="status">{state.notice}</p>}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card as="nav" label={S.files}>
-          <Rows rows={state.tree} rowKey={(r) => r.key} label={S.files}>
-            {(row) => (
-              <div className={["pl-0", "pl-3", "pl-6", "pl-9"][Math.min(row.depth, 3)]}>
-                {row.kind === "dir" ? (
-                  <p className="text-text-muted">{row.title}</p>
-                ) : (
-                  <Button
-                    className={`w-full text-left ${row.document === current?.document && row.path === current.path ? "bg-accent-muted text-accent" : ""}`}
-                    current={
-                      row.document === current?.document && row.path === current.path
-                        ? "page"
-                        : undefined
-                    }
-                    disabled={row.path === null}
-                    onPress={() => {
-                      if (row.path) state.pick({ document: row.document, path: row.path });
-                    }}
-                  >
-                    {row.title}
-                  </Button>
-                )}
-                {row.main ? (
-                  <span>{S.executed}</span>
-                ) : (
-                  row.kind === "doc" && <span>{S.document}</span>
-                )}
-                {row.status && <p>{row.status}</p>}
-                {row.description && <p>{row.description}</p>}
-              </div>
-            )}
-          </Rows>
-          {data.status === "current" && data.paths && (
-            <Button
-              onPress={() => {
-                void state.copy(data.paths?.folder ?? "");
-              }}
-            >
-              {S.copyFolder}
-            </Button>
-          )}
-        </Card>
-        <Card label={S.preview} className="min-w-0 space-y-4">
-          {data.status !== "current" ? (
-            <p>{S.unavailable}</p>
-          ) : !current ? (
-            <p>{S.noFiles}</p>
-          ) : (
-            <>
-              <h2 className="break-words text-title">{current.path}</h2>
-              {file?.status === "ready" && file.absolutePath && (
-                <Button
-                  onPress={() => {
-                    void state.copy(file.absolutePath ?? "");
-                  }}
+      {m.notExecuted && (
+        <div className="border-b border-border bg-subtle px-4 py-2 text-xs-plus text-fg-muted">
+          {m.notExecuted}
+        </div>
+      )}
+      {m.issuesNote && (
+        <div className="border-b border-border bg-warning-bg px-4 py-2 text-xs-plus text-warning">
+          {m.issuesNote}
+        </div>
+      )}
+      <div className="px-7 pt-5 pb-7 max-narrow:p-4">
+        {b.kind === "error" ? (
+          <div className="text-fg-muted">{b.text}</div>
+        ) : b.kind === "loading" ? (
+          <Skeleton height={120} />
+        ) : b.kind === "empty" ? (
+          <div className="text-fg-muted">{b.text}</div>
+        ) : b.kind === "md" ? (
+          <MarkdownDocument text={b.text} />
+        ) : (
+          <pre className={`-mx-3 my-0 overflow-x-auto text-xs-plus leading-sheet ${mono}`}>
+            <code>
+              {b.lines.map((l) => (
+                <span
+                  key={l.key}
+                  className={`block whitespace-pre pr-3 ${l.tone === "err" ? "bg-negative-bg" : l.tone === "warn" ? "bg-warning-bg" : ""}`}
+                  title={l.title}
                 >
-                  {S.copyPath}
-                </Button>
-              )}
-              {kind === "yaml" && !state.doc?.executed && <p>{S.notExecuted}</p>}
-              {kind === "md" && (
-                <div className="flex gap-2">
-                  <Button
-                    className={`${state.mode === "preview" ? "bg-accent-muted text-accent" : ""}`}
-                    pressed={state.mode === "preview"}
-                    onPress={() => state.setMode("preview")}
-                  >
-                    {S.preview}
-                  </Button>
-                  <Button
-                    className={`${state.mode === "source" ? "bg-accent-muted text-accent" : ""}`}
-                    pressed={state.mode === "source"}
-                    onPress={() => state.setMode("source")}
-                  >
-                    {S.source}
-                  </Button>
-                </div>
-              )}
-              {file?.status === "ready" ? (
-                file.text.trim() === "" ? (
-                  <p>{S.empty}</p>
-                ) : kind === "md" && state.mode === "preview" ? (
-                  <MarkdownDocument text={file.text} />
-                ) : (
-                  <SourceLines
-                    key={`${current.document}:${current.path}`}
-                    state={state}
-                    text={file.text}
-                  />
-                )
-              ) : (
-                <p>{S.readFailed}</p>
-              )}
-            </>
-          )}
-        </Card>
-        <StrategySettingsView state={state} />
+                  <span className="inline-block w-10 pr-[--spacing(3.125)] text-right text-fg-muted opacity-60 select-none">
+                    {l.n}
+                  </span>
+                  {l.text}
+                  {l.issue && (
+                    <span
+                      className={`block whitespace-normal pt-0.5 pb-1 pl-[--spacing(12.6)] font-sans text-xs ${l.tone === "err" ? "text-negative" : "text-warning"}`}
+                    >
+                      {l.issue}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </code>
+          </pre>
+        )}
       </div>
-    </main>
+    </section>
+  );
+}
+
+/** `side` = the strategy status card (the screen mounts StrategySettings). */
+export function StrategiesView({
+  state: s,
+  side,
+}: {
+  state: StrategiesScreenState;
+  side?: ReactNode;
+}) {
+  if (s.phase === "unavailable") return <div className={`${card} p-4 text-fg-muted`}>{s.text}</div>;
+  return (
+    <div className={`${grid} ${s.withSide ? withSide : ""}`} data-testid="native-strategies">
+      <aside
+        className={`${card} sticky top-3 max-h-screen overflow-auto px-0 py-1.5 max-narrow:static max-narrow:max-h-none`}
+      >
+        <Tree s={s} />
+        <div className="mt-1.5 border-t border-border px-3 pt-2.5 pb-1.5 text-xs leading-cozy text-fg-muted">
+          {s.folderHint}{" "}
+          <Button variant="link" size="lg" onPress={s.onCopyFolder}>
+            {s.copyFolder}
+          </Button>
+        </div>
+      </aside>
+      <Main s={s} />
+      {s.withSide && <aside className="max-strat:col-span-full">{side}</aside>}
+    </div>
+  );
+}
+
+/** First load (old `<div className="strat"><Skeleton h={320} /><Skeleton h={320} /></div>`). */
+export function StrategiesLoadingView() {
+  return (
+    <div className={grid}>
+      <Skeleton height={320} />
+      <Skeleton height={320} />
+    </div>
   );
 }

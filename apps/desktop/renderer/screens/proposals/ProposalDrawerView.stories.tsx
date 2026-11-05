@@ -1,6 +1,7 @@
 import type { ProposalDetail } from "@cashu/store/core/desktop-proposals";
 import { UiEnvProvider } from "@cashu/ui";
 import { ProposalDrawerView } from "./ProposalDrawerView.js";
+import { proposalDrawerModel } from "./proposalDrawerModel.js";
 import type { ProposalDrawerState } from "./useProposalDrawer.js";
 
 const detail = (kind: ProposalDetail["kind"]): ProposalDetail => ({
@@ -37,7 +38,7 @@ const detail = (kind: ProposalDetail["kind"]): ProposalDetail => ({
     detailError: null,
   },
 });
-const state = (kind: ProposalDetail["kind"], message: ProposalDrawerState["message"] = null) =>
+const raw = (kind: ProposalDetail["kind"], message: ProposalDrawerState["message"] = null) =>
   ({
     detail: detail(kind),
     busy: false,
@@ -46,6 +47,8 @@ const state = (kind: ProposalDetail["kind"], message: ProposalDrawerState["messa
     onApproved() {},
     onRejected() {},
   }) as ProposalDrawerState;
+const state = (kind: ProposalDetail["kind"], message: ProposalDrawerState["message"] = null) =>
+  proposalDrawerModel(raw(kind, message));
 
 export default {
   title: "Desktop/Proposals/Drawer",
@@ -57,17 +60,17 @@ export default {
       </UiEnvProvider>
     ),
   ],
-  args: { state: state("strategy"), onClose() {} },
+  args: { m: state("strategy"), onClose() {} },
 };
 export const Strategy = {};
-export const Rule = { args: { state: state("custom_rule") } };
-export const InvestmentImport = { args: { state: state("import") } };
-export const BudgetImport = { args: { state: state("budget_import") } };
-export const RecoveryNeeded = { args: { state: state("strategy", "recoveryRestore") } };
+export const Rule = { args: { m: state("custom_rule") } };
+export const InvestmentImport = { args: { m: state("import") } };
+export const BudgetImport = { args: { m: state("budget_import") } };
+export const RecoveryNeeded = { args: { m: state("strategy", "recoveryRestore") } };
 export const UnavailableDiff = {
   args: {
-    state: {
-      ...state("strategy"),
+    m: proposalDrawerModel({
+      ...raw("strategy"),
       detail: {
         ...detail("strategy"),
         display: {
@@ -77,6 +80,6 @@ export const UnavailableDiff = {
           mdDiff: null,
         },
       },
-    } as ProposalDrawerState,
+    } as ProposalDrawerState),
   },
 };
