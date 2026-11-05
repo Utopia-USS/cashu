@@ -93,3 +93,433 @@ export interface StrategyDocFile {
   path: string;
   kind: "md" | "yaml" | "text";
 }
+
+// ---- ab24ab6 frontend/src/modules/investments/api.ts: the payloads of the Home and the review deck ----------
+export interface Alias {
+  namespace: string;
+  value: string;
+  guessed: boolean;
+}
+
+export interface Instrument {
+  id: number | string;
+  symbol: string | null;
+  name: string;
+  label: string;
+  isin: string | null;
+  mic: string | null;
+  currency: string;
+  asset_class: string;
+  region: string | null;
+  sector: string | null;
+  tags: string[];
+  valuation_mode: string | null;
+  status: string;
+  needs_classification: boolean;
+  aliases: Alias[];
+  /** Model recommendation (legacy field name): buy_asap | buy | hold | reduce | exit_asap. */
+  plan?: string | null;
+  /** When the plan was set (UTC ISO), null without a plan. */
+  plan_at?: string | null;
+  /** The model's short reason for the recommendation, null without one. */
+  plan_reason?: string | null;
+  /** P3: whether data stored after `plan_at` puts the recommendation in question; null without a plan. Only on
+   * positions rows, watchlist rows and the asset detail. */
+  plan_freshness?: PlanFreshness | null;
+  /** P5 market segment: the effective key (set by the owner / agent, else the auto table) or null, and where it
+   * comes from: `owner` | `agent` | `auto` | null (`set` from earlier servers = owner or agent). */
+  segment?: string | null;
+  segment_source?: "owner" | "agent" | "auto" | "set" | null;
+}
+
+export interface PortfolioWarning {
+  kind: string;
+  message: string;
+  account_id: number | null;
+  instrument_id: number | null;
+}
+
+export interface Run {
+  id: number;
+  trigger: string;
+  as_of: string | null;
+  status: string; // ok | partial | failed | running
+  started_at: string | null;
+  finished_at: string | null;
+  errors: string[];
+  stats: Record<string, unknown>;
+  new_signal_ids: number[];
+  escalated_signal_ids: number[];
+}
+
+export interface StrategyBrief {
+  state: "missing" | "valid" | "partial" | "invalid" | string;
+  version: number | null;
+  changed: boolean;
+  errors: number;
+  warnings: number;
+  inactive_rules: number;
+}
+
+export interface AccountRow {
+  id: number;
+  name: string;
+  broker: string;
+  broker_name: string;
+  wrapper: string;
+  currency: string;
+  importer: string | null;
+  has_mapping: boolean;
+  active?: boolean;
+  value?: Num;
+  share?: Num;
+  snapshot_date?: string | null;
+  last_import?: { batch_id: number; at: string; file_name: string } | null;
+}
+
+export interface BucketRow {
+  bucket_id: string;
+  /** F7-generic: a template / plain asset-class bucket (missing on older servers = generic). */
+  generic?: boolean;
+  weight: Num;
+  target: number;
+  drift_pp: number;
+  value: number;
+  to_target: number;
+  out_of_band: boolean | null;
+  band_note: string | null;
+  cash_history_gap: boolean;
+  instrument_ids: (number | string)[];
+}
+
+export interface Share {
+  key: string;
+  value: number;
+  weight: Num;
+}
+
+export interface Allocation {
+  base_currency: string;
+  total: number;
+  has_strategy: boolean;
+  buckets: BucketRow[];
+  unclassified: {
+    value: number;
+    weight: Num;
+    instruments: { id: number | string; label: string }[];
+  } | null;
+  unallocated_cash: Num;
+  by_asset_class: Share[];
+  by_region: Share[];
+  band: { absolute_band_pp: number; relative_band: number; min_trade_value: number } | null;
+  /** F7-generic: at least one bucket and every bucket generic (missing on older servers = generic). */
+  buckets_generic?: boolean;
+}
+
+export interface Overview {
+  as_of: string;
+  base_currency: string;
+  accounts_filter: number[] | null;
+  kpis: {
+    value: { total: number; holdings: number; cash: number };
+    unrealized: { amount: Num; pct: Num; cost: Num };
+    cash: { amount: number; weight: Num; accounts: number };
+    signals: { action: number; info: number; new: number };
+    max_drift: { bucket_id: string; drift_pp: number; out_of_band: boolean | null } | null;
+    out_of_band: number;
+    last_run: Run | null;
+    realized: Num;
+  };
+  allocation: Allocation;
+  freshness: {
+    prices: {
+      newest_bar: string | null;
+      stale: {
+        instrument_id: number;
+        label: string;
+        price_date: string | null;
+        account_id: number;
+      }[];
+      stale_count: number;
+      stale_weight: Num;
+    };
+    fx: { newest_rate: string | null; missing: string[] };
+    strategy: StrategyBrief;
+  };
+  warnings: PortfolioWarning[];
+  accounts: AccountRow[];
+}
+
+export interface Lot {
+  account_id: number;
+  open_date: string;
+  quantity: number;
+  unit_cost: Num;
+  currency: string;
+  open_txn_id: number | string | null;
+  result: Num;
+}
+
+export interface PositionAccount {
+  account_id: number;
+  account_name: string | null;
+  quantity: number;
+  average_cost: Num;
+  cost_currency: string;
+  value: Num;
+  cost: Num;
+  unrealized_pct: Num;
+  weight: Num;
+}
+
+export interface Position {
+  instrument: Instrument;
+  bucket: string | null;
+  quantity: number;
+  price: Num;
+  price_date: string | null;
+  price_currency: string | null;
+  is_stale: boolean;
+  valuation_mode: string;
+  missing_fx_currency: string | null;
+  value: Num;
+  cost: Num;
+  unrealized: Num;
+  unrealized_pct: Num;
+  weight: Num;
+  realized: Num;
+  dividends: Record<string, number>;
+  accounts: PositionAccount[];
+  lots: Lot[];
+  open_signals: number;
+  has_thesis: boolean;
+  /** P2: the owner's rules that apply now, main first (absent on older servers). */
+  hints?: Hint[];
+}
+
+export interface CashRow {
+  account_id: number;
+  account_name: string | null;
+  currency: string;
+  amount: number;
+  amount_base: Num;
+}
+
+export interface Positions {
+  as_of: string;
+  base_currency: string;
+  positions: Position[];
+  cash: CashRow[];
+  total: number;
+}
+
+export interface Thesis {
+  id: number;
+  instrument_id: number;
+  entry_type: string | null;
+  thesis: string | null;
+  invalidation: string | null;
+  exit_plan: string | null;
+  size_plan: string | null;
+  reviewed_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  /** The last change of `exit_plan` (null without a plan); older servers omit it. */
+  exit_plan_changed_at?: string | null;
+}
+
+/** `code` + `params`: stable code of the message for the Polish label (core/messages.ts); `message` stays English. */
+export interface StrategyIssue {
+  severity: string;
+  path: string;
+  message: string;
+  line: number | null;
+  column: number | null;
+  code?: string;
+  params?: Record<string, string>;
+}
+
+export interface BucketMatch {
+  id: string;
+  asset_class: string[];
+  tags: string[];
+  mic: string[];
+  currency: string[];
+  instrument_ids: (number | string)[];
+}
+
+export interface StrategyStatus extends Omit<StrategyBrief, "inactive_rules"> {
+  files: { yaml: string; md: string; yaml_exists: boolean; md_exists: boolean };
+  read_error: string | null;
+  issues: StrategyIssue[];
+  inactive_rules: {
+    index: number;
+    rule_id: string | null;
+    kind: string | null;
+    line: number | null;
+    issues: StrategyIssue[];
+  }[];
+  facts: {
+    base_currency: string;
+    buckets: string[];
+    targets: Record<string, number>;
+    rules: { id: string; kind: string; severity: string; cooldown_days: number | null }[];
+    horizon_years: number | null;
+    contributions: { monthly_amount: number; day_of_month: number | null } | null;
+    notifications: { immediate: string[]; digest_weekday: string };
+    /** "Close to the level" thresholds of the alert icons (strategy `alerts.near_price_pct` / `near_pp`, home v3 Q11). */
+    alerts?: { near_price_pct?: number | null; near_pp?: number | null } | null;
+    bucket_matches?: BucketMatch[];
+  } | null;
+  base_currency_note: string | null;
+  versions: {
+    version: number;
+    state: string;
+    created_at: string | null;
+    sha256: string;
+    issues: number;
+  }[];
+}
+
+/** `kind` is the stable code (label `import.<kind>` in core/messages.ts); `code` when the server sends it. */
+export interface ImportWarning {
+  message: string;
+  row: number | null;
+  kind: string;
+  blocking: boolean;
+  code?: string;
+}
+
+export interface PreviewRow {
+  row: number;
+  date: string;
+  type: string;
+  instrument: { id: number | string; label: string; new: boolean } | null;
+  quantity: Num;
+  price: Num;
+  currency: string;
+  amount: number;
+  cash_currency: string;
+  status: "new" | "duplicate" | string;
+}
+
+export interface ReconRow {
+  instrument_id: number | string;
+  label: string;
+  broker_quantity: number;
+  computed_quantity: number;
+  delta: number;
+  kind: string;
+  currency: string;
+  correction: { type: string; quantity: Num; price: Num; date: string; note: string | null } | null;
+}
+
+export interface Reconciliation {
+  account_id: number;
+  as_of: string | null;
+  diffs: ReconRow[];
+  mismatches: number;
+  warnings: string[];
+}
+
+export interface ImportPreview {
+  file_id: string;
+  file_name: string;
+  size: number;
+  account: { id: number; name: string; broker: string; broker_name: string };
+  importer: { id: string | null; name: string | null; detected: string[]; requested: string };
+  can_commit: boolean;
+  warnings: ImportWarning[];
+  errors: ImportWarning[];
+  previous_imports: { batch_id: number; at: string; file_name: string }[];
+  account_hint: string | null;
+  counts: {
+    rows: number;
+    new: number;
+    duplicates: number;
+    positions: number;
+    renames: number;
+    status_changes: number;
+    new_instruments: number;
+    warnings: number;
+    errors: number;
+  } | null;
+  rows: PreviewRow[];
+  new_instruments: Instrument[];
+  renames: unknown[];
+  status_changes: unknown[];
+  reconciliation: Reconciliation | null;
+}
+
+export interface CommitResult {
+  batch_id: number;
+  inserted: number;
+  duplicates: number;
+  new_instrument_ids: (number | string)[];
+  positions: number;
+  renames: number;
+  status_changes: number;
+  corrections: number;
+  archive_path: string;
+  /** Planned deposits this import booked (F6 BE, additive). */
+  planned_booked?: number[];
+}
+
+export interface Batch {
+  id: number;
+  account_id: number;
+  importer: string;
+  broker: string | null;
+  file_name: string;
+  inserted: number;
+  duplicates: number;
+  new_instruments: number;
+  corrections: number;
+  warnings: number;
+  created_at: string;
+  account_name?: string | null;
+}
+
+export interface ReviewDigest {
+  as_of: string;
+  since: string;
+  since_at: string;
+  until_at: string;
+  baseline: "review" | "default_7d" | string;
+  last_review: { done_at: string; notes: string | null; stats: Record<string, unknown> } | null;
+  digest_weekday: string;
+  review_due: boolean;
+  value: { currency: string; then: Num; now: number; change: Num; change_pct: Num };
+  signals: {
+    new: Signal[];
+    escalated: Signal[];
+    resolved: Signal[];
+    open: number;
+    undecided: number;
+  };
+  imports: Batch[];
+  transactions: { count: number; by_type: Record<string, number>; manual: number };
+  decisions: Decision[];
+  dividends: Record<string, number>;
+  price_moves: {
+    instrument_id: number;
+    label: string;
+    from_date: string;
+    from: number;
+    to_date: string;
+    to: number;
+    change_pct: number;
+  }[];
+  warnings: PortfolioWarning[];
+  stale_count: number;
+  strategy: { version: number | null; state: string; changed_since: boolean };
+}
+
+/** Weekly review record (track M: cashu.core.reviews). */
+export interface Review {
+  id?: number;
+  module: string;
+  done_at: string;
+  notes: string | null;
+  stats?: Record<string, unknown>;
+}
