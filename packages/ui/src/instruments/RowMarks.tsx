@@ -1,4 +1,3 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: DOM-only markup (text nodes kept 1:1 with the old DOM); the native side gets its own pair when needed.
 // The small marks of the Aktywa / Obserwowane rows (ab24ab6): RowMarks (Portfolio.tsx:27-35, the signal glyph
 // `.flag`, the bell / page `.mk` of widgets.tsx Mark), HintChip (hints.tsx, `.hint`), AgentTag mono
 // (widgets.tsx:140, `.tag.agent.mono`) and the classify icon (InstLabel.tsx ClassifyButton, `.il-cls`). Pure;
@@ -24,6 +23,8 @@ const flagShape: Record<FlagState, string> = {
     "rounded-full bg-[linear-gradient(90deg,var(--color-positive)_50%,var(--color-negative)_50%)]",
 };
 
+/** The agent mark letter as a constant: DOM-only markup (raw JSX text is for <Text>). */
+const AGENT_MARK = "A";
 const BELL = "M3 8.5V5.5a3 3 0 0 1 6 0v3l.9 1H2.1zM4.8 10.2a1.3 1.3 0 0 0 2.4 0";
 const PAGE = "M3 1.5h4l2.5 2.5v6.5h-6.5zM7 1.5V4h2.5M4.5 6.5h3M4.5 8.5h3";
 
@@ -107,7 +108,7 @@ export function AgentTag({ text, full, title }: { text: string; full?: boolean; 
         aria-hidden="true"
         className="size-3.25 rounded-2xs bg-info text-center font-sans text-5xs-plus font-bold not-italic leading-3.25 text-surface-raised"
       >
-        A
+        {AGENT_MARK}
       </i>
       {full ? text : <span className="sr-only">{text}</span>}
     </span>

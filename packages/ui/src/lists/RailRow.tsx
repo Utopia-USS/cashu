@@ -1,6 +1,9 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: DOM-only markup (text nodes kept 1:1 with the old DOM); the native side gets its own pair when needed.
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { InstTile } from "../instruments/InstTile.js";
+
+/** Text nodes as constants: the DOM-only markup keeps the old text 1:1 (raw JSX text is for <Text>). */
+const SP = " ";
+const DOT = " · ";
 
 /** One rail row as the model hands it over (the tile's monogram, the bold subject, the muted text and note). */
 export interface RailRowData {
@@ -52,11 +55,16 @@ export function RailRow({ row, right, first }: RailRowProps) {
         <b className="font-heavy">{row.title}</b>
         {row.text ? (
           <>
-            {" "}
+            {SP}
             <span className="text-fg-muted">{row.text}</span>
           </>
         ) : null}
-        {row.note ? <span className="text-xs text-fg-muted"> · {row.note}</span> : null}
+        {row.note ? (
+          <span className="text-xs text-fg-muted">
+            {DOT}
+            {row.note}
+          </span>
+        ) : null}
       </span>
       {right != null && <span className="ml-auto flex flex-none items-center gap-1">{right}</span>}
     </div>

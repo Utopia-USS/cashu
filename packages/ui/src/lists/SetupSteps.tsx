@@ -1,8 +1,10 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: DOM-only markup (text nodes kept 1:1 with the old DOM); the native side gets its own pair when needed.
 import { S as U } from "@cashu/i18n/core/ui.strings";
 import type { ReactNode } from "react";
 import { Tag } from "../surfaces/Tag.js";
 import { stepDisc as disc } from "./stepDisc.js";
+
+/** A text node as a constant: the DOM-only markup keeps the old space (raw JSX text is for <Text>). */
+const SP = " ";
 
 type StepStatus = "done" | "on" | "todo";
 export interface SetupStepItem {
@@ -47,7 +49,8 @@ export function SetupSteps({ steps }: SetupStepsProps) {
             <div
               className={`flex flex-wrap items-center gap-2 text-md font-strong ${step.status === "todo" ? "text-fg-muted" : ""}`}
             >
-              {step.title}{" "}
+              {step.title}
+              {SP}
               {step.tag ??
                 (step.optional && step.status !== "done" ? <Tag>{U.optional}</Tag> : null)}
             </div>

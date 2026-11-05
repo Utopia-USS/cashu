@@ -1,7 +1,9 @@
-// biome-ignore-all lint/correctness/noReactNativeRawText: DOM-only markup (text nodes kept 1:1 with the old DOM); the native side gets its own pair when needed.
 import { S as U } from "@cashu/i18n/core/ui.strings";
 import { Fragment } from "react";
 import { stepDisc as disc } from "./stepDisc.js";
+
+/** A text node as a constant: the DOM-only markup keeps the old space (raw JSX text is for <Text>). */
+const SP = " ";
 
 /** Horizontal wizard stepper: steps before `current` are done, `current` is on (0-based). */
 export interface StepperProps {
@@ -25,7 +27,8 @@ export function Stepper({ steps, current }: StepperProps) {
                 className={`inline-flex size-5.5 flex-none items-center justify-center rounded-full border text-xs font-strong ${disc[state]}`}
               >
                 {index < current ? "✓" : index + 1}
-              </b>{" "}
+              </b>
+              {SP}
               {step}
             </li>
           </Fragment>

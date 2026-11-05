@@ -14,7 +14,8 @@ export const LOOK = {
   /** `.tip b`: bold tabular value. */
   tipValue: "font-bold tabular-nums",
   /** `.donut .c`: the centre stack over the ring; the line height inherits (1.45 inside the old `.g3` grid). */
-  center: "pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center",
+  center:
+    "pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center",
   /** `.donut .c b`: 15px bold, -0.01em, tabular. */
   centerTitle: "text-base font-bold tracking-snug tabular-nums text-fg",
   /** `.donut .c span`: 10.5px muted. */
