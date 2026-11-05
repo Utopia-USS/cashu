@@ -1,16 +1,30 @@
+// The investments sub-pages of the routes `investments.alerts`, `investments.journal` and `investments.watchlist`
+// (ab24ab6 v2/Home.tsx sub-routes `alerts`, `journal`, `watch`): the old `.wrap.wide` page box with a toast stack,
+// then the ported alerts manager, decision journal or the watchlist widget with its search open.
 import { useProfile } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
-import { useEffect } from "react";
-import { AlertEditorScreen } from "./AlertEditorScreen.js";
-import { AlertsPageView } from "./AlertsPageView.js";
-import { JournalPageView } from "./JournalPageView.js";
-import { SignalsDialogView, SignalsPageView } from "./SignalsView.js";
-import {
-  type SignalsPageKind,
-  type SignalsScreenOptions,
-  useSignalsScreen,
-} from "./useSignalsScreen.js";
-import { WatchlistPageView } from "./WatchlistPageView.js";
+import { ToastProvider, useUiEnv } from "@cashu/ui";
+import { useInvestmentsHomeData } from "../investments/home/useInvestmentsHomeData.js";
+import { AlertsManagerScreen } from "./AlertsManagerScreen.js";
+import { JournalScreen } from "./JournalScreen.js";
+import { WatchlistWidgetScreen } from "./WatchlistScreens.js";
+
+export type SignalsSubPage = "alerts" | "watchlist" | "journal";
+
+interface Props {
+  page: SignalsSubPage;
+  /** `?instrument=<gid>`: the journal's instrument filter, the new alert's instrument. */
+  initialInstrument?: string | null;
+  /** `?newAlert=1`: the alerts form as a new alert (the default without `edit`). */
+  initialNewAlert?: boolean;
+  /** `?edit=<gid>`: the alert in the form. */
+  initialEdit?: string | null;
+  /** Back to the investments Home (the crumb). */
+  onClose?(): void;
+  onOpenAsset?(gid: string): void;
+  /** The route also hands these over; the old alerts / journal / watch pages had no review or note link. */
+  onOpenReview?(): void;
+  onOpenNote?(note: string | null): void;
+}
 
 function downloadCsv(filename: string, content: string) {
   const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
@@ -23,53 +37,44 @@ function downloadCsv(filename: string, content: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-type Props = SignalsScreenOptions & { page: SignalsPageKind; initialNewAlert?: boolean };
+function Watchlist({ onOpen }: { onOpen(gid: string): void }) {
+  const data = useInvestmentsHomeData({ filter: null });
+  return <WatchlistWidgetScreen data={data} autoAdd onOpen={onOpen} />;
+}
+
+function Page(props: Props) {
+  const back = () => props.onClose?.();
+  const open = (gid: string) => props.onOpenAsset?.(gid);
+  if (props.page === "alerts")
+    return (
+      <AlertsManagerScreen
+        initialInstrument={props.initialInstrument}
+        initialEdit={props.initialEdit}
+        onBack={back}
+        onExportCsv={downloadCsv}
+      />
+    );
+  if (props.page === "journal")
+    return (
+      <JournalScreen initialInstrument={props.initialInstrument} onBack={back} onOpenAsset={open} />
+    );
+  return <Watchlist onOpen={open} />;
+}
 
 export function SignalsPageScreen(props: Props) {
   const vault = useProfile();
   const { privacy } = useUiEnv();
   return (
-    <BoundSignals
-      key={`${vault}:${privacy}:${props.page}:${props.initialInstrument ?? ""}:${props.initialNewAlert ?? false}`}
-      {...props}
-    />
-  );
-}
-function BoundSignals(props: Props) {
-  const state = useSignalsScreen({ ...props, onExportCsv: downloadCsv });
-  const { alerts, data } = state;
-  const { onEdit } = alerts;
-  useEffect(() => {
-    if (props.initialNewAlert) onEdit("new");
-  }, [props.initialNewAlert, onEdit]);
-  const editor =
-    alerts.editing && data ? (
-      <AlertEditorScreen
-        key={alerts.editing}
-        data={data}
-        alert={alerts.editingRow}
-        busy={alerts.busy}
-        onSave={(input) => void alerts.onSave(input)}
-        onClose={() => onEdit(null)}
-      />
-    ) : null;
-  return (
-    <SignalsPageView
-      page={props.page}
-      available={data !== null}
-      privacy={state.privacy}
-      feedback={state.feedback}
-      onBack={state.onBack}
-      onUndoLast={state.onUndoLast}
-      dialogs={<SignalsDialogView state={state} />}
-    >
-      {props.page === "alerts" ? (
-        <AlertsPageView {...alerts} editor={editor} />
-      ) : props.page === "watchlist" ? (
-        <WatchlistPageView {...state.watchlist} />
-      ) : (
-        <JournalPageView {...state.journal} />
-      )}
-    </SignalsPageView>
+    <ToastProvider>
+      <main
+        data-testid={`native-signals-${props.page}`}
+        className="mx-auto max-w-360 px-5 pb-17.5 text-base leading-normal text-fg"
+      >
+        <Page
+          key={`${vault}:${privacy}:${props.page}:${props.initialInstrument ?? ""}:${props.initialEdit ?? ""}`}
+          {...props}
+        />
+      </main>
+    </ToastProvider>
   );
 }

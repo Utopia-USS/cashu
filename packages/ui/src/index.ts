@@ -69,6 +69,15 @@ export {
   type MarksProps,
   RowMarks,
 } from "./instruments/RowMarks.js";
+export {
+  AlertIcon,
+  type AlertIconProps,
+  AlertStatus,
+  type GlyphState,
+  PolarityText,
+  PolDot,
+  type PolDotProps,
+} from "./instruments/SignalGlyphs.js";
 export { type Layout, type LayoutClass, layoutClass, SPACING_STEPS, type Step } from "./layout.js";
 export { RailRow, type RailRowData, type RailRowProps } from "./lists/RailRow.js";
 export { SettingRow, type SettingRowProps } from "./lists/SettingRow.js";
@@ -79,6 +88,7 @@ export { VirtualList } from "./lists/VirtualList.js";
 export type { VirtualListProps } from "./lists/VirtualList.types.js";
 export { createVirtualRows, type VirtualRowsOptions } from "./lists/virtualRows.js";
 export { DetailDrawer, type DetailDrawerProps } from "./overlays/DetailDrawer.js";
+export { Dialog, type DialogProps } from "./overlays/Dialog.js";
 export { Drawer, type DrawerProps } from "./overlays/Drawer.js";
 export {
   type CardRow,

@@ -95,12 +95,13 @@ export function HintChip({ code, text, title, severity }: HintChipProps) {
   );
 }
 
-/** `.tag.agent.mono`: the agent monogram only, the word in the title and for screen readers. */
-export function AgentTag({ text }: { text: string }) {
+/** `.tag.agent.mono`: the agent monogram only, the word in the title and for screen readers. `full` = the
+ * plain `.tag.agent` (monogram + the visible word, padding 1px 7px 1px 4px, gap 5px), titled `title`. */
+export function AgentTag({ text, full, title }: { text: string; full?: boolean; title?: string }) {
   return (
     <span
-      title={text}
-      className="inline-flex items-center whitespace-nowrap rounded-full border border-transparent bg-info-bg px-0.5 text-2xs font-medium leading-normal text-info"
+      title={full ? title : text}
+      className={`inline-flex items-center whitespace-nowrap rounded-full border border-transparent bg-info-bg text-2xs font-medium leading-normal text-info ${full ? "gap-1.25 py-px pr-1.75 pl-1" : "px-0.5"}`}
     >
       <i
         aria-hidden="true"
@@ -108,7 +109,7 @@ export function AgentTag({ text }: { text: string }) {
       >
         A
       </i>
-      <span className="sr-only">{text}</span>
+      {full ? text : <span className="sr-only">{text}</span>}
     </span>
   );
 }

@@ -222,6 +222,8 @@
   /* The asset drawer (old `.adrawer` adrawer-in .18s, its `.ascrim` ascrim-in .16s). */
   --animate-panel-in: panel-in 0.18s ease-out;
   --animate-scrim-in: scrim-in 0.16s ease-out;
+  /* A signal opened from a notification or a rail row flashes once (old `.sig.flash` sig-flash 2.4s). */
+  --animate-sig-flash: sig-flash 2.4s ease-out;
 
   @keyframes panel-in {
     from {
@@ -231,6 +233,15 @@
     to {
       transform: none;
       opacity: 1;
+    }
+  }
+  @keyframes sig-flash {
+    0%,
+    30% {
+      background: var(--color-info-bg);
+    }
+    100% {
+      background: transparent;
     }
   }
   @keyframes scrim-in {
