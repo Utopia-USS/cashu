@@ -1,5 +1,5 @@
 import { useProfile } from "@cashu/store-react";
-import { Modal, useUiEnv } from "@cashu/ui";
+import { Button, Modal, useUiEnv } from "@cashu/ui";
 import { Component, type ReactNode, Suspense } from "react";
 import { P } from "./ProposalDrawer.strings.js";
 import { ProposalDrawerView } from "./ProposalDrawerView.js";
@@ -39,9 +39,9 @@ function BoundProposal(props: Parameters<typeof ProposalDrawerScreen>[0]) {
 function DrawerStatus({ onClose, text }: { onClose(): void; text: string }) {
   return (
     <>
-      <button type="button" onClick={onClose} aria-label={P.close}>
+      <Button onPress={onClose} label={P.close}>
         {P.close}
-      </button>
+      </Button>
       <p role="status" className="mt-6">
         {text}
       </p>

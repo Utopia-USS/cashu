@@ -1,8 +1,17 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, DateText, LineChart, Modal, Money, Percent, useVirtualRows } from "@cashu/ui";
+import {
+  Amount,
+  Button,
+  DateText,
+  LineChart,
+  Modal,
+  Money,
+  Percent,
+  Select,
+  useVirtualRows,
+} from "@cashu/ui";
 import { useRef } from "react";
 import { I } from "./Portfolio.strings.js";
-import { investmentButton } from "./PortfolioView.js";
 import type { PortfolioScreenState } from "./usePortfolioScreen.js";
 
 const ratio = (value: number | null) => (value === null ? null : D(String(value)));
@@ -25,9 +34,7 @@ export function AssetDetailView({ state }: { state: PortfolioScreenState }) {
       closeOnBackdrop={false}
     >
       <AssetBody state={state} />
-      <button type="button" className={investmentButton} onClick={() => state.setSelected(null)}>
-        {I.close}
-      </button>
+      <Button onPress={() => state.setSelected(null)}>{I.close}</Button>
     </Modal>
   );
 }
@@ -61,37 +68,24 @@ function AssetBody({ state }: { state: PortfolioScreenState }) {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={investmentButton}
+          <Button
             disabled={state.privacy}
-            onClick={() => state.openTransaction(detail.instrument.id)}
+            onPress={() => state.openTransaction(detail.instrument.id)}
           >
             {I.addTransaction}
-          </button>
-          <button
-            type="button"
-            className={investmentButton}
+          </Button>
+          <Button
             disabled={state.privacy}
-            onClick={() => state.openClassification(detail.instrument.id)}
+            onPress={() => state.openClassification(detail.instrument.id)}
           >
             {I.classify}
-          </button>
+          </Button>
           {detail.entry.watch_item_id && (
-            <button
-              type="button"
-              className={investmentButton}
-              disabled={state.privacy}
-              onClick={state.openNote}
-            >
+            <Button disabled={state.privacy} onPress={state.openNote}>
               {I.note}
-            </button>
+            </Button>
           )}
-          {!state.isPage && (
-            <button type="button" className={investmentButton} onClick={state.openPage}>
-              {I.openPage}
-            </button>
-          )}
+          {!state.isPage && <Button onPress={state.openPage}>{I.openPage}</Button>}
         </div>
       </header>
       {!state.privacy && (
@@ -145,20 +139,15 @@ function AssetBody({ state }: { state: PortfolioScreenState }) {
       <section className="rounded-lg border border-border p-4">
         <header className="flex justify-between gap-3">
           <h2>{I.price}</h2>
-          <label>
-            {I.range}
-            <select
-              className="border border-border bg-surface p-2"
-              value={state.months}
-              onChange={(event) => state.setMonths(Number(event.target.value))}
-            >
-              {[1, 3, 12, 24, 60, 1200].map((months) => (
-                <option key={months} value={months}>
-                  {months === 1200 ? "max" : `${months}m`}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label={I.range}
+            value={String(state.months)}
+            onChange={(value) => state.setMonths(Number(value))}
+            options={[1, 3, 12, 24, 60, 1200].map((months) => ({
+              value: String(months),
+              label: months === 1200 ? "max" : `${months}m`,
+            }))}
+          />
         </header>
         {state.assetChart && <LineChart {...state.assetChart} yFormat={state.format} />}
         <div className="flex flex-wrap gap-4 text-caption">
@@ -177,15 +166,11 @@ function AssetBody({ state }: { state: PortfolioScreenState }) {
             {I.volatility} <Percent value={ratio(quoteFacts.volatility30)} />
           </span>
           {quoteFacts.nearest && (
-            <button
-              type="button"
-              className="text-accent"
-              onClick={() => state.adjacent("investments.alerts")}
-            >
+            <Button variant="ghost" onPress={() => state.adjacent("investments.alerts")}>
               {I.nearestAlert}{" "}
               <Money value={state.money(D(String(quoteFacts.nearest.alert.level)), currency)} />
               <Percent value={ratio(quoteFacts.nearest.distance)} />
-            </button>
+            </Button>
           )}
         </div>
       </section>
@@ -235,14 +220,9 @@ function AssetBody({ state }: { state: PortfolioScreenState }) {
       <section className="rounded-lg border border-border p-4">
         <header className="flex justify-between gap-3">
           <h2>{I.thesis}</h2>
-          <button
-            type="button"
-            className={investmentButton}
-            disabled={state.privacy}
-            onClick={() => state.openThesis(null)}
-          >
+          <Button disabled={state.privacy} onPress={() => state.openThesis(null)}>
             {I.createThesis}
-          </button>
+          </Button>
         </header>
         {detail.theses.length === 0 && <p>{I.noThesis}</p>}
         {!state.privacy &&
@@ -250,13 +230,7 @@ function AssetBody({ state }: { state: PortfolioScreenState }) {
             <article key={thesis.id} className="border-b border-border py-3">
               <div className="flex justify-between gap-2">
                 <DateText value={state.calendarDate(thesis.updated_at)} />
-                <button
-                  type="button"
-                  className={investmentButton}
-                  onClick={() => state.openThesis(thesis.id)}
-                >
-                  {I.editThesis}
-                </button>
+                <Button onPress={() => state.openThesis(thesis.id)}>{I.editThesis}</Button>
               </div>
               <p className="whitespace-pre-wrap">{thesis.thesis}</p>
               {[
@@ -289,14 +263,9 @@ function AssetBody({ state }: { state: PortfolioScreenState }) {
           ["investments.research", I.research],
           ["investments.strategies", I.strategies],
         ].map(([tab, label]) => (
-          <button
-            type="button"
-            key={tab}
-            className={investmentButton}
-            onClick={() => state.adjacent(tab ?? "")}
-          >
+          <Button key={tab} onPress={() => state.adjacent(tab ?? "")}>
             {label}
-          </button>
+          </Button>
         ))}
       </nav>
     </div>

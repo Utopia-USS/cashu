@@ -1,11 +1,8 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
-import { Amount, DateText, Money, useVirtualRows } from "@cashu/ui";
+import { Amount, Button, DateText, Money, Select, TextField, useVirtualRows } from "@cashu/ui";
 import { useRef } from "react";
 import { I } from "./Portfolio.strings.js";
-import { investmentButton } from "./PortfolioView.js";
 import type { PortfolioScreenState } from "./usePortfolioScreen.js";
-
-const input = "rounded-sm border border-border bg-surface p-2";
 
 /** The actual checked preview and reconciliation, with an explicit unavailable picker boundary. */
 export function ImportStepsView({ state }: { state: PortfolioScreenState }) {
@@ -27,62 +24,53 @@ export function ImportStepsView({ state }: { state: PortfolioScreenState }) {
         <>
           <state.importForm.Field name="account">
             {(field) => (
-              <label className="grid gap-1">
-                {I.account}
-                <select
-                  className={input}
-                  value={field.state.value}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                >
-                  <option value="">{I.select}</option>
-                  {state.portfolio.accounts.map((account) => (
-                    <option key={account.gid} value={account.gid}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                label={I.account}
+                value={field.state.value}
+                onChange={field.handleChange}
+                options={[
+                  { value: "", label: I.select },
+                  ...state.portfolio.accounts.map((account) => ({
+                    value: account.gid,
+                    label: account.name,
+                  })),
+                ]}
+              />
             )}
           </state.importForm.Field>
           <state.importForm.Field name="importer">
             {(field) => (
-              <label className="grid gap-1">
-                {I.import}
-                <select
-                  className={input}
-                  value={field.state.value}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                >
-                  {["auto", "cashu", "generic_csv"].map((importer) => (
-                    <option key={importer}>{importer}</option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                label={I.import}
+                value={field.state.value}
+                onChange={field.handleChange}
+                options={["auto", "cashu", "generic_csv"].map((importer) => ({
+                  value: importer,
+                  label: importer,
+                }))}
+              />
             )}
           </state.importForm.Field>
           {state.importDraft.importer === "generic_csv" && (
             <state.importForm.Field name="mappingYaml">
               {(field) => (
-                <label className="grid gap-1">
-                  {I.import}
-                  <textarea
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </label>
+                <TextField
+                  label={I.import}
+                  multiline
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                />
               )}
             </state.importForm.Field>
           )}
           {!state.importAvailable && <p>{I.importUnavailable}</p>}
-          <button
-            type="button"
-            className={investmentButton}
+          <Button
+            variant="primary"
             disabled={!state.importAvailable || state.busy}
-            onClick={() => void state.importForm.handleSubmit()}
+            onPress={() => void state.importForm.handleSubmit()}
           >
             {I.select}
-          </button>
+          </Button>
         </>
       )}
       {state.importStep === 2 && preview && (
@@ -112,17 +100,14 @@ export function ImportStepsView({ state }: { state: PortfolioScreenState }) {
             </p>
           ))}
           <PreviewRows state={state} />
-          <button type="button" className={investmentButton} onClick={() => state.setImportStep(1)}>
-            {I.select}
-          </button>
-          <button
-            type="button"
-            className={investmentButton}
+          <Button onPress={() => state.setImportStep(1)}>{I.select}</Button>
+          <Button
+            variant="primary"
             disabled={!preview.canCommit}
-            onClick={() => state.setImportStep(3)}
+            onPress={() => state.setImportStep(3)}
           >
             {I.reconciliation}
-          </button>
+          </Button>
         </>
       )}
       {state.importStep === 3 && preview && (
@@ -152,17 +137,14 @@ export function ImportStepsView({ state }: { state: PortfolioScreenState }) {
               <Amount value={correction.diff.brokerQuantity} />
             </label>
           ))}
-          <button type="button" className={investmentButton} onClick={() => state.setImportStep(2)}>
-            {I.transactions}
-          </button>
-          <button
-            type="button"
-            className={investmentButton}
+          <Button onPress={() => state.setImportStep(2)}>{I.transactions}</Button>
+          <Button
+            variant="primary"
             disabled={state.busy || !preview.canCommit || state.importUncertain}
-            onClick={() => void state.commitPreview()}
+            onPress={() => void state.commitPreview()}
           >
             {I.save}
-          </button>
+          </Button>
         </>
       )}
       {state.importStep === 4 && state.importOutcome?.status === "committed" && (

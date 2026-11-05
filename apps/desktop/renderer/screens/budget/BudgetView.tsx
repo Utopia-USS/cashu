@@ -8,13 +8,13 @@ import {
   Modal,
   Money,
   Percent,
+  Select,
+  TextField,
   VirtualList,
 } from "@cashu/ui";
 import type { ReactNode } from "react";
 import { B } from "./Budget.strings.js";
 import type { BudgetScreenState } from "./useBudgetScreen.js";
-
-const field = "rounded-sm border border-border bg-surface px-3 py-2";
 
 // Virtualization is presentation only; domain rows and actions arrive from the screen hook.
 function WindowRows<T>({
@@ -50,25 +50,22 @@ function CategoryChoice({
   onChange(category: string): void;
 }) {
   return (
-    <select
-      aria-label={B.category}
-      className={field}
+    <Select
+      label={B.category}
+      labelHidden
       value={value}
       disabled={state.busy}
-      onChange={(event) => onChange(event.target.value)}
-    >
-      <option value="">{B.choose}</option>
-      {state.categories
-        .filter(
-          (category) =>
-            !drill || category.kind !== "transfer" || category.key === "cash_withdrawal",
-        )
-        .map((category) => (
-          <option key={category.key} value={category.key}>
-            {category.label}
-          </option>
-        ))}
-    </select>
+      onChange={onChange}
+      options={[
+        { value: "", label: B.choose },
+        ...state.categories
+          .filter(
+            (category) =>
+              !drill || category.kind !== "transfer" || category.key === "cash_withdrawal",
+          )
+          .map((category) => ({ value: category.key, label: category.label })),
+      ]}
+    />
   );
 }
 
@@ -78,20 +75,16 @@ function Spending({ state }: { state: BudgetScreenState }) {
       <Card label={B.expenses} padding="lg">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-title font-strong">{B.expenses}</h2>
-          <label>
-            {B.range}{" "}
-            <select
-              className={field}
-              value={state.mode}
-              onChange={(event) => state.switchMode(event.target.value as typeof state.mode)}
-            >
-              {(["month", "quarter", "year", "all"] as const).map((mode) => (
-                <option key={mode} value={mode}>
-                  {B[mode]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label={B.range}
+            inline
+            value={state.mode}
+            onChange={(value) => state.switchMode(value as typeof state.mode)}
+            options={(["month", "quarter", "year", "all"] as const).map((mode) => ({
+              value: mode,
+              label: B[mode],
+            }))}
+          />
           {state.mode !== "all" && (
             <div className="flex items-center gap-3">
               <Button
@@ -171,28 +164,26 @@ function Spending({ state }: { state: BudgetScreenState }) {
               {state.categories.find((c) => c.key === state.drillCategory)?.label ??
                 state.drillCategory}
             </h2>
-            <label>
-              {B.sort}{" "}
-              <select
-                className={field}
-                value={state.sort}
-                onChange={(event) => state.patch({ sort: event.target.value as "date" | "amount" })}
-              >
-                <option value="date">{B.date}</option>
-                <option value="amount">{B.amount}</option>
-              </select>
-            </label>
-            <label>
-              {B.order}{" "}
-              <select
-                className={field}
-                value={state.order}
-                onChange={(event) => state.patch({ order: event.target.value as "asc" | "desc" })}
-              >
-                <option value="desc">{B.desc}</option>
-                <option value="asc">{B.asc}</option>
-              </select>
-            </label>
+            <Select
+              label={B.sort}
+              inline
+              value={state.sort}
+              onChange={(value) => state.patch({ sort: value as "date" | "amount" })}
+              options={[
+                { value: "date", label: B.date },
+                { value: "amount", label: B.amount },
+              ]}
+            />
+            <Select
+              label={B.order}
+              inline
+              value={state.order}
+              onChange={(value) => state.patch({ order: value as "asc" | "desc" })}
+              options={[
+                { value: "desc", label: B.desc },
+                { value: "asc", label: B.asc },
+              ]}
+            />
             <Button onPress={() => state.patch({ drill: undefined })}>{B.close}</Button>
           </div>
           {state.drill.length === 0 ? (
@@ -430,36 +421,33 @@ function CushionForm({ state }: { state: BudgetScreenState }) {
         </state.form.Field>
         <state.form.Field name="currency">
           {(field) => (
-            <label>
-              {B.currency}{" "}
-              <select
-                className={fieldClass}
-                value={field.state.value}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                  state.form.setFieldValue("accounts", []);
-                }}
-              >
-                {[...new Set([...state.codes, field.state.value])].map((code) => (
-                  <option key={code}>{code}</option>
-                ))}
-              </select>
-            </label>
+            <Select
+              label={B.currency}
+              inline
+              value={field.state.value}
+              onChange={(value) => {
+                field.handleChange(value);
+                state.form.setFieldValue("accounts", []);
+              }}
+              options={[...new Set([...state.codes, field.state.value])].map((code) => ({
+                value: code,
+                label: code,
+              }))}
+            />
           )}
         </state.form.Field>
         <state.form.Field name="targetMode">
           {(field) => (
-            <label>
-              {B.target}{" "}
-              <select
-                className={fieldClass}
-                value={field.state.value}
-                onChange={(event) => field.handleChange(event.target.value as "amount" | "months")}
-              >
-                <option value="amount">{B.amount}</option>
-                <option value="months">{B.months}</option>
-              </select>
-            </label>
+            <Select
+              label={B.target}
+              inline
+              value={field.state.value}
+              onChange={(value) => field.handleChange(value as "amount" | "months")}
+              options={[
+                { value: "amount", label: B.amount },
+                { value: "months", label: B.months },
+              ]}
+            />
           )}
         </state.form.Field>
         <state.form.Subscribe selector={(state) => state.values.targetMode}>
@@ -467,35 +455,27 @@ function CushionForm({ state }: { state: BudgetScreenState }) {
             mode === "amount" ? (
               <state.form.Field name="targetAmount">
                 {(field) => (
-                  <label>
-                    {B.target}{" "}
-                    <input
-                      className={fieldClass}
-                      value={field.state.value}
-                      inputMode="decimal"
-                      onChange={(event) => field.handleChange(event.target.value)}
-                    />
-                  </label>
+                  <TextField
+                    label={B.target}
+                    inline
+                    value={field.state.value}
+                    inputMode="decimal"
+                    onChange={field.handleChange}
+                  />
                 )}
               </state.form.Field>
             ) : (
               <state.form.Field name="targetMonths">
                 {(field) => (
-                  <label>
-                    {B.months}{" "}
-                    <input
-                      className={fieldClass}
-                      type="number"
-                      min={1}
-                      max={36}
-                      value={field.state.value ?? ""}
-                      onChange={(event) =>
-                        field.handleChange(
-                          event.target.value === "" ? null : Number(event.target.value),
-                        )
-                      }
-                    />
-                  </label>
+                  <TextField
+                    label={B.months}
+                    inline
+                    type="number"
+                    min="1"
+                    max="36"
+                    value={String(field.state.value ?? "")}
+                    onChange={(value) => field.handleChange(value === "" ? null : Number(value))}
+                  />
                 )}
               </state.form.Field>
             )
@@ -503,15 +483,13 @@ function CushionForm({ state }: { state: BudgetScreenState }) {
         </state.form.Subscribe>
         <state.form.Field name="monthlyMax">
           {(field) => (
-            <label>
-              {B.maximum}{" "}
-              <input
-                className={fieldClass}
-                value={field.state.value}
-                inputMode="decimal"
-                onChange={(event) => field.handleChange(event.target.value)}
-              />
-            </label>
+            <TextField
+              label={B.maximum}
+              inline
+              value={field.state.value}
+              inputMode="decimal"
+              onChange={field.handleChange}
+            />
           )}
         </state.form.Field>
         <state.form.Subscribe selector={(state) => state.values.currency}>
@@ -547,7 +525,7 @@ function CushionForm({ state }: { state: BudgetScreenState }) {
           {(errors) => (errors.length > 0 ? <p role="alert">{B.refused}</p> : null)}
         </state.form.Subscribe>
         <div className="flex gap-3">
-          <Button type="submit" disabled={state.busy}>
+          <Button type="submit" variant="primary" disabled={state.busy}>
             {B.save}
           </Button>
           <Button onPress={state.closeCushion}>{B.close}</Button>
@@ -556,7 +534,6 @@ function CushionForm({ state }: { state: BudgetScreenState }) {
     </Modal>
   );
 }
-const fieldClass = field;
 
 export interface BudgetViewProps {
   state: BudgetScreenState;
@@ -587,18 +564,13 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
         </nav>
         <div className="flex flex-wrap gap-3">
           {state.codes.length > 1 && state.tab !== "subs" && (
-            <label>
-              {B.currency}{" "}
-              <select
-                className={field}
-                value={state.currency}
-                onChange={(event) => state.patch({ currency: event.target.value })}
-              >
-                {state.codes.map((code) => (
-                  <option key={code}>{code}</option>
-                ))}
-              </select>
-            </label>
+            <Select
+              label={B.currency}
+              inline
+              value={state.currency}
+              onChange={(value) => state.patch({ currency: value })}
+              options={state.codes.map((code) => ({ value: code, label: code }))}
+            />
           )}
           <Button onPress={state.openCategories}>{B.uncategorized}</Button>
           <Button onPress={() => state.setImportOpen(true)}>{B.import}</Button>
@@ -619,34 +591,28 @@ export function BudgetView({ state, onTabPicked }: BudgetViewProps) {
           <Card label={B.flows} padding="lg">
             <div className="mb-4 flex flex-wrap justify-between gap-3">
               <h2 className="text-title">{B.flows}</h2>
-              <label>
-                {B.range}{" "}
-                <select
-                  className={field}
-                  value={state.gran}
-                  onChange={(event) =>
-                    state.patch({ gran: event.target.value as typeof state.gran, range: undefined })
-                  }
-                >
-                  {(["monthly", "quarterly", "yearly"] as const).map((gran) => (
-                    <option key={gran} value={gran}>
-                      {B[gran]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <select
-                aria-label={B.range}
-                className={field}
-                value={state.range}
-                onChange={(event) => state.patch({ range: Number(event.target.value) })}
-              >
-                {state.ranges.map((range) => (
-                  <option key={range} value={range}>
-                    {range === 0 ? B.all : range}
-                  </option>
-                ))}
-              </select>
+              <Select
+                label={B.range}
+                inline
+                value={state.gran}
+                onChange={(value) =>
+                  state.patch({ gran: value as typeof state.gran, range: undefined })
+                }
+                options={(["monthly", "quarterly", "yearly"] as const).map((gran) => ({
+                  value: gran,
+                  label: B[gran],
+                }))}
+              />
+              <Select
+                label={B.range}
+                labelHidden
+                value={String(state.range)}
+                onChange={(value) => state.patch({ range: Number(value) })}
+                options={state.ranges.map((range) => ({
+                  value: String(range),
+                  label: range === 0 ? B.all : String(range),
+                }))}
+              />
             </div>
             {state.flowRows.length === 0 ? (
               <p>{B.empty}</p>

@@ -1,6 +1,6 @@
 import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/loans/Drawers.strings";
-import { Modal, Money } from "@cashu/ui";
+import { Button, Modal, Money, Select, TextField } from "@cashu/ui";
 import { L } from "./Loans.strings.js";
 import type { LoansState } from "./useLoansScreen.js";
 
@@ -23,34 +23,27 @@ export function LoanDrawerView({ state }: { state: LoansState }) {
       >
         <state.loanForm.Field name="name">
           {(field) => (
-            <label className="flex flex-col gap-1">
-              {S.name}
-              <input
-                autoComplete="off"
-                maxLength={120}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-                className="rounded-sm border border-border bg-surface p-2"
-              />
-            </label>
+            <TextField
+              label={S.name}
+              autoComplete="off"
+              maxLength={120}
+              value={field.state.value}
+              onBlur={field.handleBlur}
+              onChange={(value) => field.handleChange(value)}
+            />
           )}
         </state.loanForm.Field>
         <state.loanForm.Field name="type">
           {(field) => (
-            <label className="flex flex-col gap-1">
-              {S.type}
-              <select
-                value={field.state.value}
-                onChange={(e) =>
-                  field.handleChange(e.target.value === "loan" ? "loan" : "mortgage")
-                }
-                className="rounded-sm border border-border bg-surface p-2"
-              >
-                <option value="mortgage">{S.mortgage}</option>
-                <option value="loan">{S.loan}</option>
-              </select>
-            </label>
+            <Select
+              label={S.type}
+              value={field.state.value}
+              onChange={(value) => field.handleChange(value === "loan" ? "loan" : "mortgage")}
+              options={[
+                { value: "mortgage", label: S.mortgage },
+                { value: "loan", label: S.loan },
+              ]}
+            />
           )}
         </state.loanForm.Field>
         {(
@@ -63,38 +56,29 @@ export function LoanDrawerView({ state }: { state: LoansState }) {
         ).map(([key, label]) => (
           <state.loanForm.Field key={key} name={key}>
             {(field) => (
-              <label className="flex flex-col gap-1">
-                {label}
-                <input
-                  value={field.state.value}
-                  inputMode={key === "currency" ? "text" : "decimal"}
-                  onBlur={field.handleBlur}
-                  onChange={(e) =>
-                    field.handleChange(
-                      key === "currency" ? e.target.value.toUpperCase() : e.target.value,
-                    )
-                  }
-                  className="rounded-sm border border-border bg-surface p-2"
-                />
-              </label>
+              <TextField
+                label={label}
+                value={field.state.value}
+                inputMode={key === "currency" ? "text" : "decimal"}
+                onBlur={field.handleBlur}
+                onChange={(value) =>
+                  field.handleChange(key === "currency" ? value.toUpperCase() : value)
+                }
+              />
             )}
           </state.loanForm.Field>
         ))}
         <state.loanForm.Field name="unit">
           {(field) => (
-            <label className="flex flex-col gap-1">
-              {S.unit}
-              <select
-                value={field.state.value}
-                onChange={(e) =>
-                  field.handleChange(e.target.value === "months" ? "months" : "years")
-                }
-                className="rounded-sm border border-border bg-surface p-2"
-              >
-                <option value="years">{S.years}</option>
-                <option value="months">{S.months}</option>
-              </select>
-            </label>
+            <Select
+              label={S.unit}
+              value={field.state.value}
+              onChange={(value) => field.handleChange(value === "months" ? "months" : "years")}
+              options={[
+                { value: "years", label: S.years },
+                { value: "months", label: S.months },
+              ]}
+            />
           )}
         </state.loanForm.Field>
         {(
@@ -105,16 +89,13 @@ export function LoanDrawerView({ state }: { state: LoansState }) {
         ).map(([key, label]) => (
           <state.loanForm.Field key={key} name={key}>
             {(field) => (
-              <label className="flex flex-col gap-1">
-                {label}
-                <input
-                  type="date"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  className="rounded-sm border border-border bg-surface p-2"
-                />
-              </label>
+              <TextField
+                label={label}
+                type="date"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(value) => field.handleChange(value)}
+              />
             )}
           </state.loanForm.Field>
         ))}
@@ -130,12 +111,12 @@ export function LoanDrawerView({ state }: { state: LoansState }) {
           </p>
         )}
         <footer className="flex justify-end gap-3 sm:col-span-2">
-          <button type="button" disabled={state.busy} onClick={state.close}>
+          <Button disabled={state.busy} onPress={state.close}>
             {C.cancel}
-          </button>
-          <button type="submit" disabled={state.busy}>
+          </Button>
+          <Button variant="primary" type="submit" disabled={state.busy}>
             {state.busy ? S.saving : C.add}
-          </button>
+          </Button>
         </footer>
       </form>
     </Modal>

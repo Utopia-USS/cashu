@@ -2,7 +2,7 @@ import { D, type Decimal, Money as MoneyValue } from "@cashu/domain";
 import { S as C } from "@cashu/i18n/core/overview/CoreWidgets.strings";
 import { S as N } from "@cashu/i18n/core/overview/NetWorthWidget.strings";
 import { S as L } from "@cashu/i18n/loans/index.strings";
-import { AreaChart, DateText, Delta, LineChart, Money, Percent } from "@cashu/ui";
+import { AreaChart, DateText, Delta, LineChart, Money, Percent, Select } from "@cashu/ui";
 import { S } from "../../Desktop.strings.js";
 import { AssetsWidgetView } from "./AssetsWidgetView.js";
 import { CashDrawerView } from "./CashDrawerView.js";
@@ -122,18 +122,13 @@ export function OverviewView({
           <h2 id="history-title" className="text-title font-strong">
             {S.history}
           </h2>
-          <label>
-            {S.currency}{" "}
-            <select
-              value={state.currency}
-              onChange={(event) => onCurrencyPicked(event.target.value)}
-              className="rounded-sm border border-border bg-surface p-2"
-            >
-              {state.currencies.map((currency) => (
-                <option key={currency}>{currency}</option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label={S.currency}
+            inline
+            value={state.currency}
+            onChange={onCurrencyPicked}
+            options={state.currencies.map((currency) => ({ value: currency, label: currency }))}
+          />
         </div>
         <div className="mb-4 flex flex-wrap gap-3 text-caption">
           <fieldset className={chartGroup}>

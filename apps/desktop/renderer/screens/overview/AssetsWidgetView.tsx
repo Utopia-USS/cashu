@@ -1,7 +1,7 @@
 import { Money as MoneyValue } from "@cashu/domain";
 import { S as A } from "@cashu/i18n/assets/AssetsWidget.strings";
 import { C } from "@cashu/i18n/core/common.strings";
-import { Modal, Money } from "@cashu/ui";
+import { Button, Modal, Money, Select, TextField } from "@cashu/ui";
 import { useEffect, useState } from "react";
 import type { AssetDrawerState } from "./useAssetDrawer.js";
 
@@ -139,115 +139,82 @@ export function AssetDrawerView({
           >
             {target === null && (
               <>
-                <label className="flex flex-col gap-1">
-                  {A.name}
-                  <input
-                    value={form.name}
-                    onChange={(event) => state.set("name", event.target.value)}
-                    autoComplete="off"
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  {A.type}
-                  <select
-                    value={form.type}
-                    onChange={(event) => state.set("type", event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  >
-                    {state.positionTypes.map((type) => (
-                      <option key={type.value} value={type.value}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  {A.currency}
-                  <input
-                    value={form.currency}
-                    maxLength={3}
-                    onChange={(event) => state.set("currency", event.target.value.toUpperCase())}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
+                <TextField
+                  label={A.name}
+                  value={form.name}
+                  onChange={(value) => state.set("name", value)}
+                  autoComplete="off"
+                />
+                <Select
+                  label={A.type}
+                  value={form.type}
+                  onChange={(value) => state.set("type", value)}
+                  options={state.positionTypes}
+                />
+                <TextField
+                  label={A.currency}
+                  value={form.currency}
+                  maxLength={3}
+                  onChange={(value) => state.set("currency", value.toUpperCase())}
+                />
               </>
             )}
             {vehicle ? (
               <>
-                <label className="flex flex-col gap-1">
-                  {A.purchasePrice}
-                  <input
-                    inputMode="decimal"
-                    value={form.purchasePrice}
-                    onChange={(event) => state.set("purchasePrice", event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  {A.purchaseDate}
-                  <input
-                    type="date"
-                    max={today}
-                    value={form.purchaseDate}
-                    onChange={(event) => state.set("purchaseDate", event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  {A.yearlyDecline}
-                  <input
-                    inputMode="decimal"
-                    value={form.annualRate}
-                    onChange={(event) => state.set("annualRate", event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  {A.floor}
-                  <input
-                    inputMode="decimal"
-                    value={form.floor}
-                    onChange={(event) => state.set("floor", event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
+                <TextField
+                  label={A.purchasePrice}
+                  inputMode="decimal"
+                  value={form.purchasePrice}
+                  onChange={(value) => state.set("purchasePrice", value)}
+                />
+                <TextField
+                  label={A.purchaseDate}
+                  type="date"
+                  max={today}
+                  value={form.purchaseDate}
+                  onChange={(value) => state.set("purchaseDate", value)}
+                />
+                <TextField
+                  label={A.yearlyDecline}
+                  inputMode="decimal"
+                  value={form.annualRate}
+                  onChange={(value) => state.set("annualRate", value)}
+                />
+                <TextField
+                  label={A.floor}
+                  inputMode="decimal"
+                  value={form.floor}
+                  onChange={(value) => state.set("floor", value)}
+                />
                 {state.preview && (
                   <p className="text-caption text-fg-muted sm:col-span-2">{state.preview}</p>
                 )}
               </>
             ) : (
               <>
-                <label className="flex flex-col gap-1">
-                  {A.value}
-                  <input
-                    inputMode="decimal"
-                    value={form.value}
-                    onChange={(event) => state.set("value", event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  {A.valuationDate}
-                  <input
-                    type="date"
-                    max={today}
-                    value={form.onDate}
-                    onChange={(event) => state.set("onDate", event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
+                <TextField
+                  label={A.value}
+                  inputMode="decimal"
+                  value={form.value}
+                  onChange={(value) => state.set("value", value)}
+                />
+                <TextField
+                  label={A.valuationDate}
+                  type="date"
+                  max={today}
+                  value={form.onDate}
+                  onChange={(value) => state.set("onDate", value)}
+                />
               </>
             )}
-            <label className="flex flex-col gap-1 sm:col-span-2">
-              {A.noteLabel}
-              <textarea
-                value={form.note}
-                maxLength={500}
-                onChange={(event) => state.set("note", event.target.value)}
-                className="rounded-sm border border-border bg-surface p-2"
-              />
-            </label>
+            <TextField
+              label={A.noteLabel}
+              multiline
+              value={form.note}
+              maxLength={500}
+              onChange={(value) => state.set("note", value)}
+              className="sm:col-span-2"
+            />
             {state.error !== null && (
               <p role="alert" className="text-negative sm:col-span-2">
                 {state.error}
@@ -255,17 +222,15 @@ export function AssetDrawerView({
             )}
             <div className="flex justify-between gap-3 sm:col-span-2">
               {target !== null && (
-                <button type="button" disabled={state.busy} onClick={() => void state.remove()}>
+                <Button variant="danger" disabled={state.busy} onPress={() => void state.remove()}>
                   {C.remove}
-                </button>
+                </Button>
               )}
               <span className="flex gap-2">
-                <button type="button" onClick={state.close}>
-                  {C.cancel}
-                </button>
-                <button type="submit" disabled={state.busy}>
+                <Button onPress={state.close}>{C.cancel}</Button>
+                <Button variant="primary" type="submit" disabled={state.busy}>
                   {state.busy ? A.saving : C.save}
-                </button>
+                </Button>
               </span>
             </div>
           </form>

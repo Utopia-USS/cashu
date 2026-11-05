@@ -2,7 +2,7 @@ import { D, Money as MoneyValue } from "@cashu/domain";
 import { intlLocale } from "@cashu/i18n";
 import { S as I } from "@cashu/i18n/investments/v2/Overview.strings";
 import { formatCalendarDate, formatDecimalValue } from "@cashu/i18n/values";
-import { LineChart, Money, Percent } from "@cashu/ui";
+import { LineChart, Money, Percent, TextField } from "@cashu/ui";
 import { W } from "./OverviewWidgets.strings.js";
 import type { InvestmentPlanState } from "./useInvestmentPlan.js";
 import type { OverviewScreenState } from "./useOverviewScreen.js";
@@ -169,26 +169,20 @@ export function InvestmentsWidgetView({
               void plan.submit();
             }}
           >
-            <label className="flex flex-col gap-1">
-              {I.plan}
-              <input
-                inputMode="decimal"
-                value={plan.amount}
-                onFocus={plan.start}
-                onChange={(event) => plan.setAmount(event.target.value)}
-                className="rounded-sm border border-border bg-surface p-2"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              {I.nextDeposit}
-              <input
-                type="date"
-                value={plan.date}
-                min={today}
-                onChange={(event) => plan.setDate(event.target.value)}
-                className="rounded-sm border border-border bg-surface p-2"
-              />
-            </label>
+            <TextField
+              label={I.plan}
+              inputMode="decimal"
+              value={plan.amount}
+              onFocus={plan.start}
+              onChange={(value) => plan.setAmount(value)}
+            />
+            <TextField
+              label={I.nextDeposit}
+              type="date"
+              value={plan.date}
+              min={today}
+              onChange={(value) => plan.setDate(value)}
+            />
             <button type="submit" disabled={plan.busy}>
               {I.plan}
             </button>

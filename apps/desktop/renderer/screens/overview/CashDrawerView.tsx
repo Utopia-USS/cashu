@@ -1,6 +1,6 @@
 import { budget, Money as MoneyValue } from "@cashu/domain";
 import { lang } from "@cashu/i18n";
-import { DateText, Modal, Money } from "@cashu/ui";
+import { Button, DateText, Modal, Money, Select, TextField } from "@cashu/ui";
 import { useState } from "react";
 import { W } from "./OverviewWidgets.strings.js";
 import type { CashDrawerState } from "./useCashDrawer.js";
@@ -30,9 +30,9 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
           <h2 className="text-headline font-strong">{W.wallet}</h2>
           <Money value={new MoneyValue(state.wallet.balance, state.wallet.currency)} size="title" />
         </div>
-        <button type="button" onClick={() => state.setOpen(false)} aria-label={W.close}>
+        <Button onPress={() => state.setOpen(false)} label={W.close}>
           {W.close}
-        </button>
+        </Button>
       </div>
       <div className="mb-5 flex flex-wrap gap-4 text-caption text-fg-muted">
         <span>
@@ -49,46 +49,29 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
           void state.submit();
         }}
       >
-        <label className="flex flex-col gap-1">
-          {W.amount}
-          <input
-            inputMode="decimal"
-            autoComplete="off"
-            value={state.amount}
-            onChange={(event) => state.setAmount(event.target.value)}
-            className="rounded-sm border border-border bg-surface p-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 sm:col-span-2">
-          {W.title}
-          <input
-            autoComplete="off"
-            value={state.title}
-            onChange={(event) => state.setTitle(event.target.value)}
-            className="rounded-sm border border-border bg-surface p-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          {W.category}
-          <select
-            value={state.category}
-            onChange={(event) => state.setCategory(event.target.value)}
-            className="rounded-sm border border-border bg-surface p-2"
-          >
-            {state.categories.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          disabled={state.busy}
-          className="rounded-sm bg-accent p-2 text-fg-inverse sm:col-span-4"
-        >
+        <TextField
+          label={W.amount}
+          inputMode="decimal"
+          autoComplete="off"
+          value={state.amount}
+          onChange={state.setAmount}
+        />
+        <TextField
+          label={W.title}
+          autoComplete="off"
+          value={state.title}
+          onChange={state.setTitle}
+          className="sm:col-span-2"
+        />
+        <Select
+          label={W.category}
+          value={state.category}
+          onChange={state.setCategory}
+          options={state.categories.map((option) => ({ value: option.key, label: option.label }))}
+        />
+        <Button variant="primary" type="submit" disabled={state.busy} className="sm:col-span-4">
           {W.add}
-        </button>
+        </Button>
       </form>
       {state.error && (
         <p role="alert" className="mb-3 text-negative">
@@ -119,15 +102,15 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
                     <Money value={new MoneyValue(row.amount, state.wallet.currency)} />
                   </td>
                   <td>
-                    <button
-                      type="button"
+                    <Button
+                      variant="danger"
+                      size="sm"
                       disabled={state.busy}
-                      onClick={() => void state.deleteRow(row.gid)}
-                      aria-label={`${W.remove}: ${privacy ? W.cash : (row.title ?? W.cash)}`}
-                      className="text-negative"
+                      onPress={() => void state.deleteRow(row.gid)}
+                      label={`${W.remove}: ${privacy ? W.cash : (row.title ?? W.cash)}`}
                     >
                       {W.remove}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -135,23 +118,15 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
           </table>
           {lastPage > 0 && (
             <div className="mt-3 flex justify-between gap-3">
-              <button
-                type="button"
-                disabled={shownPage === 0}
-                onClick={() => setPage(shownPage - 1)}
-              >
+              <Button disabled={shownPage === 0} onPress={() => setPage(shownPage - 1)}>
                 {"<"}
-              </button>
+              </Button>
               <span>
                 {shownPage + 1} / {lastPage + 1}
               </span>
-              <button
-                type="button"
-                disabled={shownPage === lastPage}
-                onClick={() => setPage(shownPage + 1)}
-              >
+              <Button disabled={shownPage === lastPage} onPress={() => setPage(shownPage + 1)}>
                 {">"}
-              </button>
+              </Button>
             </div>
           )}
         </div>

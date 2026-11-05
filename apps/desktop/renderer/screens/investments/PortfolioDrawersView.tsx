@@ -1,13 +1,10 @@
-import { Modal } from "@cashu/ui";
+import { Button, Modal, Select, TextField } from "@cashu/ui";
 import { useId } from "react";
 import { ImportStepsView } from "./ImportStepsView.js";
 import { I } from "./Portfolio.strings.js";
-import { investmentButton } from "./PortfolioView.js";
 import { TransactionsView } from "./TransactionsView.js";
 import { fieldsForTransaction, transactionTypes } from "./usePortfolioForms.js";
 import type { PortfolioScreenState } from "./usePortfolioScreen.js";
-
-const input = "w-full rounded-sm border border-border bg-surface p-2";
 
 /** Owner forms retain drafts on refusal; capability-unavailable import remains visibly separate. */
 export function PortfolioDrawersView({ state }: { state: PortfolioScreenState }) {
@@ -62,21 +59,16 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
           <>
             <forms.account.Field name="broker">
               {(field) => (
-                <label>
-                  {I.broker}
-                  <select
-                    aria-describedby={validationId}
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  >
-                    {state.brokers.map((broker) => (
-                      <option key={broker.id} value={broker.id}>
-                        {broker.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <Select
+                  label={I.broker}
+                  describedBy={validationId}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  options={state.brokers.map((broker) => ({
+                    value: broker.id,
+                    label: broker.name,
+                  }))}
+                />
               )}
             </forms.account.Field>
             {(
@@ -87,33 +79,27 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
             ).map(([key, label]) => (
               <forms.account.Field key={key} name={key}>
                 {(field) => (
-                  <label>
-                    {label}
-                    <input
-                      className={input}
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                      aria-describedby={state.error ? `${validationId} ${errorId}` : validationId}
-                    />
-                  </label>
+                  <TextField
+                    label={label}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={field.handleChange}
+                    describedBy={state.error ? `${validationId} ${errorId}` : validationId}
+                  />
                 )}
               </forms.account.Field>
             ))}
             <forms.account.Field name="wrapper">
               {(field) => (
-                <label>
-                  {I.wrapper}
-                  <select
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  >
-                    {["regular", "ike", "ikze", "oipe", "other"].map((wrapper) => (
-                      <option key={wrapper}>{wrapper}</option>
-                    ))}
-                  </select>
-                </label>
+                <Select
+                  label={I.wrapper}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  options={["regular", "ike", "ikze", "oipe", "other"].map((wrapper) => ({
+                    value: wrapper,
+                    label: wrapper,
+                  }))}
+                />
               )}
             </forms.account.Field>
           </>
@@ -122,45 +108,33 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
           <>
             <forms.transaction.Field name="account">
               {(field) => (
-                <label>
-                  {I.account}
-                  <select
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => {
-                      field.handleChange(event.target.value);
-                      const account = state.portfolio.accounts.find(
-                        (row) => row.gid === event.target.value,
-                      );
-                      forms.transaction.setFieldValue("cashCurrency", account?.currency ?? "");
-                      forms.transaction.setFieldValue("fxRate", "");
-                    }}
-                  >
-                    {state.portfolio.accounts.map((account) => (
-                      <option key={account.gid} value={account.gid}>
-                        {account.name} · {account.currency}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <Select
+                  label={I.account}
+                  value={field.state.value}
+                  onChange={(value) => {
+                    field.handleChange(value);
+                    const account = state.portfolio.accounts.find((row) => row.gid === value);
+                    forms.transaction.setFieldValue("cashCurrency", account?.currency ?? "");
+                    forms.transaction.setFieldValue("fxRate", "");
+                  }}
+                  options={state.portfolio.accounts.map((account) => ({
+                    value: account.gid,
+                    label: `${account.name} · ${account.currency}`,
+                  }))}
+                />
               )}
             </forms.transaction.Field>
             <forms.transaction.Field name="type">
               {(field) => (
-                <label>
-                  {I.transactionType}
-                  <select
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  >
-                    {transactionTypes.map((type) => (
-                      <option key={type} value={type}>
-                        {type === "fx_conversion" ? I.fxLeg : state.transactionTypeLabel(type)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <Select
+                  label={I.transactionType}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  options={transactionTypes.map((type) => ({
+                    value: type,
+                    label: type === "fx_conversion" ? I.fxLeg : state.transactionTypeLabel(type),
+                  }))}
+                />
               )}
             </forms.transaction.Field>
             {transaction.type === "fx_conversion" && (
@@ -170,44 +144,36 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
             )}
             <forms.transaction.Field name="tradeDate">
               {(field) => (
-                <label>
-                  {I.date}
-                  <input
-                    className={input}
-                    type="date"
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </label>
+                <TextField
+                  label={I.date}
+                  type="date"
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                />
               )}
             </forms.transaction.Field>
             {!["deposit", "withdrawal", "fx_conversion"].includes(transaction.type) && (
               <>
                 <forms.transaction.Field name="instrument">
                   {(field) => (
-                    <label>
-                      {I.instrument}
-                      <select
-                        className={input}
-                        value={field.state.value}
-                        onChange={(event) => {
-                          field.handleChange(event.target.value);
-                          forms.transaction.setFieldValue("fxRate", "");
-                          const selected = state.instrumentOptions.find(
-                            (row) => row.id === event.target.value,
-                          );
-                          if (selected)
-                            forms.transaction.setFieldValue("currency", selected.currency);
-                        }}
-                      >
-                        <option value="">{I.newInstrument}</option>
-                        {state.instrumentOptions.map((instrument) => (
-                          <option key={instrument.id} value={instrument.id}>
-                            {instrument.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <Select
+                      label={I.instrument}
+                      value={field.state.value}
+                      onChange={(value) => {
+                        field.handleChange(value);
+                        forms.transaction.setFieldValue("fxRate", "");
+                        const selected = state.instrumentOptions.find((row) => row.id === value);
+                        if (selected)
+                          forms.transaction.setFieldValue("currency", selected.currency);
+                      }}
+                      options={[
+                        { value: "", label: I.newInstrument },
+                        ...state.instrumentOptions.map((instrument) => ({
+                          value: instrument.id,
+                          label: instrument.label,
+                        })),
+                      ]}
+                    />
                   )}
                 </forms.transaction.Field>
                 {!transaction.instrument &&
@@ -221,14 +187,11 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
                   ).map(([key, label]) => (
                     <forms.transaction.Field key={key} name={key}>
                       {(field) => (
-                        <label>
-                          {label}
-                          <input
-                            className={input}
-                            value={field.state.value}
-                            onChange={(event) => field.handleChange(event.target.value)}
-                          />
-                        </label>
+                        <TextField
+                          label={label}
+                          value={field.state.value}
+                          onChange={field.handleChange}
+                        />
                       )}
                     </forms.transaction.Field>
                   ))}
@@ -236,15 +199,12 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
             )}
             <forms.transaction.Field name="currency">
               {(field) => (
-                <label>
-                  {I.currency}
-                  <input
-                    className={input}
-                    value={field.state.value}
-                    aria-describedby={transaction.type === "fx_conversion" ? hintId : undefined}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </label>
+                <TextField
+                  label={I.currency}
+                  value={field.state.value}
+                  describedBy={transaction.type === "fx_conversion" ? hintId : undefined}
+                  onChange={field.handleChange}
+                />
               )}
             </forms.transaction.Field>
             {!["split", "transfer_in", "transfer_out", "adjustment", "fx_conversion"].includes(
@@ -252,22 +212,19 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
             ) && (
               <forms.transaction.Field name="cashCurrency">
                 {(field) => (
-                  <label>
-                    {I.cashCurrency}
-                    <input
-                      className={input}
-                      value={field.state.value}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                    />
-                  </label>
+                  <TextField
+                    label={I.cashCurrency}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                  />
                 )}
               </forms.transaction.Field>
             )}
             {fieldsForTransaction(transaction.type).map((key) => (
               <forms.transaction.Field key={key} name={key}>
                 {(field) => (
-                  <label>
-                    {
+                  <TextField
+                    label={
                       {
                         quantity: I.quantity,
                         price: I.price,
@@ -279,28 +236,23 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
                         splitRatio: I.splitRatio,
                       }[key]
                     }
-                    <input
-                      className={input}
-                      inputMode="decimal"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                      aria-describedby={state.error ? `${validationId} ${errorId}` : validationId}
-                    />
-                  </label>
+                    inputMode="decimal"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={field.handleChange}
+                    describedBy={state.error ? `${validationId} ${errorId}` : validationId}
+                  />
                 )}
               </forms.transaction.Field>
             ))}
             <forms.transaction.Field name="note">
               {(field) => (
-                <label>
-                  {I.note}
-                  <textarea
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </label>
+                <TextField
+                  label={I.note}
+                  multiline
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                />
               )}
             </forms.transaction.Field>
           </>
@@ -309,18 +261,15 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
           <>
             <forms.thesis.Field name="entryType">
               {(field) => (
-                <label>
-                  {I.entryType}
-                  <select
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  >
-                    {["sentiment_correction", "trend", "special_situation"].map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
-                </label>
+                <Select
+                  label={I.entryType}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  options={["sentiment_correction", "trend", "special_situation"].map((value) => ({
+                    value,
+                    label: value,
+                  }))}
+                />
               )}
             </forms.thesis.Field>
             {(
@@ -333,32 +282,28 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
             ).map(([key, label]) => (
               <forms.thesis.Field key={key} name={key}>
                 {(field) => (
-                  <label>
-                    {label}
-                    <textarea
-                      className={input}
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                      aria-describedby={state.error ? `${validationId} ${errorId}` : validationId}
-                    />
-                  </label>
+                  <TextField
+                    label={label}
+                    multiline
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={field.handleChange}
+                    describedBy={state.error ? `${validationId} ${errorId}` : validationId}
+                  />
                 )}
               </forms.thesis.Field>
             ))}
             <forms.thesis.Field name="reviewed">
               {(field) => (
-                <label>
-                  {I.reviewed}
-                  <select
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  >
-                    <option value="no">{I.no}</option>
-                    <option value="yes">{I.yes}</option>
-                  </select>
-                </label>
+                <Select
+                  label={I.reviewed}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  options={[
+                    { value: "no", label: I.no },
+                    { value: "yes", label: I.yes },
+                  ]}
+                />
               )}
             </forms.thesis.Field>
           </>
@@ -372,15 +317,13 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
           ).map(([key, label]) => (
             <forms.note.Field key={key} name={key}>
               {(field) => (
-                <label>
-                  {label}
-                  <textarea
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    aria-describedby={state.error ? `${validationId} ${errorId}` : validationId}
-                  />
-                </label>
+                <TextField
+                  label={label}
+                  multiline
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  describedBy={state.error ? `${validationId} ${errorId}` : validationId}
+                />
               )}
             </forms.note.Field>
           ))}
@@ -400,15 +343,12 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
           ).map(([key, label]) => (
             <forms.classification.Field key={key} name={key}>
               {(field) => (
-                <label>
-                  {label}
-                  <input
-                    className={input}
-                    value={field.state.value}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    aria-describedby={state.error ? `${validationId} ${errorId}` : validationId}
-                  />
-                </label>
+                <TextField
+                  label={label}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  describedBy={state.error ? `${validationId} ${errorId}` : validationId}
+                />
               )}
             </forms.classification.Field>
           ))}
@@ -448,18 +388,13 @@ export function PortfolioDrawersView({ state }: { state: PortfolioScreenState })
           </p>
         )}
         <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            className={investmentButton}
-            disabled={state.busy}
-            onClick={state.close}
-          >
+          <Button disabled={state.busy} onPress={state.close}>
             {I.cancel}
-          </button>
+          </Button>
           {state.drawer !== "import" && state.drawer !== "transactions" && (
-            <button type="submit" className={investmentButton} disabled={state.busy}>
+            <Button type="submit" variant="primary" disabled={state.busy}>
               {state.busy ? I.pending : I.save}
-            </button>
+            </Button>
           )}
         </div>
       </form>

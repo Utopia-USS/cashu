@@ -1,11 +1,12 @@
 import { PRIVACY, S as Wizard } from "@cashu/i18n/core/Wizard.strings";
-import { Button, Card, Modal } from "@cashu/ui";
-import { type FormEvent, useEffect, useRef } from "react";
+import { Button, Card, Modal, Select, TextField } from "@cashu/ui";
+import { type FormEvent, useEffect, useId, useRef } from "react";
 import { C } from "./Creation.strings.js";
 import type { CreationScreenState } from "./useCreationScreen.js";
 
 export function CreationView({ state }: { state: CreationScreenState }) {
   const nameInput = useRef<HTMLInputElement>(null);
+  const hintId = useId();
   useEffect(() => {
     if (state.phase === "profile") nameInput.current?.focus();
   }, [state.phase]);
@@ -61,43 +62,42 @@ export function CreationView({ state }: { state: CreationScreenState }) {
             </p>
             {state.phase === "profile" && (
               <>
-                <label className="grid gap-1">
-                  {Wizard.profileName}
-                  <input
-                    ref={nameInput}
-                    name="profileName"
-                    required
-                    maxLength={40}
-                    value={state.values.name}
-                    onChange={(event) => state.onNameChanged(event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  />
-                </label>
-                <label className="grid gap-1">
-                  {Wizard.baseCurrency}
-                  <select
+                <TextField
+                  ref={nameInput}
+                  label={Wizard.profileName}
+                  name="profileName"
+                  required
+                  maxLength={40}
+                  value={state.values.name}
+                  onChange={(value) => state.onNameChanged(value)}
+                />
+                <div className="grid gap-1">
+                  <Select
+                    label={Wizard.baseCurrency}
+                    describedBy={`${hintId}-currency`}
                     value={state.values.baseCurrency}
-                    onChange={(event) => state.onCurrencyChanged(event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
-                  >
-                    {(["PLN", "EUR", "USD", "CHF", "GBP"] as const).map((currency) => (
-                      <option key={currency} value={currency}>
-                        {currency}
-                      </option>
-                    ))}
-                  </select>
-                  <small className="text-fg-muted">{Wizard.baseCurrencyTitle}</small>
-                </label>
-                <label className="grid gap-1">
-                  {C.deviceAlias}
-                  <input
+                    onChange={(value) => state.onCurrencyChanged(value)}
+                    options={(["PLN", "EUR", "USD", "CHF", "GBP"] as const).map((currency) => ({
+                      value: currency,
+                      label: currency,
+                    }))}
+                  />
+                  <small id={`${hintId}-currency`} className="text-fg-muted">
+                    {Wizard.baseCurrencyTitle}
+                  </small>
+                </div>
+                <div className="grid gap-1">
+                  <TextField
+                    label={C.deviceAlias}
+                    describedBy={`${hintId}-alias`}
                     maxLength={40}
                     value={state.values.deviceAlias}
-                    onChange={(event) => state.onDeviceAliasChanged(event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
+                    onChange={(value) => state.onDeviceAliasChanged(value)}
                   />
-                  <small className="text-fg-muted">{C.deviceAliasHint}</small>
-                </label>
+                  <small id={`${hintId}-alias`} className="text-fg-muted">
+                    {C.deviceAliasHint}
+                  </small>
+                </div>
               </>
             )}
             {state.phase === "modules" && (
@@ -237,18 +237,18 @@ export function CreationView({ state }: { state: CreationScreenState }) {
             {state.phase === "workspace_unknown" && <p>{C.workspaceUnknown}</p>}
             {state.workspaceStatus?.availability === "ready" && (
               <>
-                <label className="grid gap-1">
-                  {C.workspacePath}
-                  <input
-                    data-testid="workspace-path"
+                <div className="grid gap-1">
+                  <TextField
+                    label={C.workspacePath}
+                    describedBy={`${hintId}-workspace`}
+                    testID="workspace-path"
                     value={state.workspacePath}
-                    onChange={(event) => state.onWorkspacePathChanged(event.target.value)}
-                    className="rounded-sm border border-border bg-surface p-2"
+                    onChange={(value) => state.onWorkspacePathChanged(value)}
                   />
-                  <small className="text-fg-muted">
+                  <small id={`${hintId}-workspace`} className="text-fg-muted">
                     {C.workspaceDefault}: {state.workspaceStatus.defaultPath}
                   </small>
-                </label>
+                </div>
                 {state.values.modules.includes("investments") && (
                   <label className="flex gap-3">
                     <input

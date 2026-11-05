@@ -8,6 +8,7 @@ import {
   LineChart,
   Money,
   Percent,
+  Select,
   Sparkline,
   useVirtualRows,
 } from "@cashu/ui";
@@ -70,21 +71,19 @@ export function PortfolioView({
         </div>
       </header>
       {state.notice && <p role="status">{state.notice}</p>}
-      <label className="flex gap-2">
-        {I.account}
-        <select
-          className="rounded-sm border border-border bg-surface p-2"
-          value={state.account ?? ""}
-          onChange={(e) => state.setAccount(e.target.value || null)}
-        >
-          <option value="">{I.all}</option>
-          {data.accounts.map((account, index) => (
-            <option key={account.gid} value={account.gid}>
-              {state.privacy ? `${I.hidden} ${index + 1}` : account.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Select
+        label={I.account}
+        inline
+        value={state.account ?? ""}
+        onChange={(value) => state.setAccount(value || null)}
+        options={[
+          { value: "", label: I.all },
+          ...data.accounts.map((account, index) => ({
+            value: account.gid,
+            label: state.privacy ? `${I.hidden} ${index + 1}` : account.name,
+          })),
+        ]}
+      />
       {homeRail}
       {data.status !== "ready" ? (
         <Card>
@@ -112,18 +111,15 @@ export function PortfolioView({
             <header className="flex flex-wrap items-center justify-between gap-3">
               <h2>{I.performance}</h2>
               <div className="flex gap-2">
-                <label>
-                  {I.range}
-                  <select
-                    className="rounded-sm border border-border bg-surface p-2"
-                    value={state.range}
-                    onChange={(e) => state.setRange(e.target.value)}
-                  >
-                    {["1m", "3m", "ytd", "1y", "3y", "max"].map((range) => (
-                      <option key={range}>{range}</option>
-                    ))}
-                  </select>
-                </label>
+                <Select
+                  label={I.range}
+                  value={state.range}
+                  onChange={state.setRange}
+                  options={["1m", "3m", "ytd", "1y", "3y", "max"].map((range) => ({
+                    value: range,
+                    label: range,
+                  }))}
+                />
                 <button
                   type="button"
                   className={investmentButton}
@@ -410,26 +406,18 @@ function PositionList({ state }: { state: PortfolioScreenState }) {
         </div>
       </header>
       <div className="flex gap-2 py-3">
-        <label>
-          {I.sorting}
-          <select
-            value={state.sort}
-            onChange={(e) =>
-              state.setSort(
-                e.target.value === "value"
-                  ? "value"
-                  : e.target.value === "week"
-                    ? "week"
-                    : "result",
-              )
-            }
-            className="border border-border bg-surface p-2"
-          >
-            <option value="result">{I.result}</option>
-            <option value="value">{I.value}</option>
-            <option value="week">{I.week}</option>
-          </select>
-        </label>
+        <Select
+          label={I.sorting}
+          value={state.sort}
+          onChange={(value) =>
+            state.setSort(value === "value" ? "value" : value === "week" ? "week" : "result")
+          }
+          options={[
+            { value: "result", label: I.result },
+            { value: "value", label: I.value },
+            { value: "week", label: I.week },
+          ]}
+        />
         <button
           type="button"
           className={investmentButton}

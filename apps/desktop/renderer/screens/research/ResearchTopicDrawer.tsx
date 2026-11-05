@@ -1,4 +1,4 @@
-import { Button, DateText, Modal, useVirtualRows } from "@cashu/ui";
+import { Button, DateText, Modal, TextField, useVirtualRows } from "@cashu/ui";
 import { useRef } from "react";
 import type { researchTopicModel } from "./presentation.js";
 import { S } from "./Research.strings.js";
@@ -117,50 +117,38 @@ export function ResearchTopicDrawer({
               )}
               <ResearchValuationFacts facts={valuationFacts} />
               <div className="mt-4 grid gap-3">
-                <label>
-                  {S.thesis}
-                  <textarea
-                    className="block w-full rounded-sm border border-border bg-surface p-2"
-                    maxLength={600}
-                    value={state.topicForm.thesis}
-                    onChange={(e) =>
-                      state.setTopicForm({ ...state.topicForm, thesis: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  {S.invalidation}
-                  <textarea
-                    className="block w-full rounded-sm border border-border bg-surface p-2"
-                    maxLength={400}
-                    value={state.topicForm.invalidation}
-                    onChange={(e) =>
-                      state.setTopicForm({ ...state.topicForm, invalidation: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  {S.assessment}
-                  <textarea
-                    className="block w-full rounded-sm border border-border bg-surface p-2"
-                    maxLength={400}
-                    value={state.topicForm.assessment}
-                    onChange={(e) =>
-                      state.setTopicForm({ ...state.topicForm, assessment: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  {S.outlook}
-                  <textarea
-                    className="block w-full rounded-sm border border-border bg-surface p-2"
-                    maxLength={400}
-                    value={state.topicForm.outlook}
-                    onChange={(e) =>
-                      state.setTopicForm({ ...state.topicForm, outlook: e.target.value })
-                    }
-                  />
-                </label>
+                <TextField
+                  label={S.thesis}
+                  multiline
+                  maxLength={600}
+                  value={state.topicForm.thesis}
+                  onChange={(value) => state.setTopicForm({ ...state.topicForm, thesis: value })}
+                />
+                <TextField
+                  label={S.invalidation}
+                  multiline
+                  maxLength={400}
+                  value={state.topicForm.invalidation}
+                  onChange={(value) =>
+                    state.setTopicForm({ ...state.topicForm, invalidation: value })
+                  }
+                />
+                <TextField
+                  label={S.assessment}
+                  multiline
+                  maxLength={400}
+                  value={state.topicForm.assessment}
+                  onChange={(value) =>
+                    state.setTopicForm({ ...state.topicForm, assessment: value })
+                  }
+                />
+                <TextField
+                  label={S.outlook}
+                  multiline
+                  maxLength={400}
+                  value={state.topicForm.outlook}
+                  onChange={(value) => state.setTopicForm({ ...state.topicForm, outlook: value })}
+                />
               </div>
               {state.topicRecord?.draft && (
                 <label className="mt-3 flex items-center gap-2">
@@ -231,13 +219,13 @@ export function ResearchTopicDrawer({
                       className="absolute left-0 top-0 w-full border-b border-border py-2"
                       style={{ transform: `translateY(${item.start}px)` }}
                     >
-                      <button
-                        type="button"
-                        className="text-left text-accent underline"
-                        onClick={() => onOpenNote(row.note.id)}
+                      <Button
+                        variant="ghost"
+                        className="text-left"
+                        onPress={() => onOpenNote(row.note.id)}
                       >
                         {row.note.title}
-                      </button>
+                      </Button>
                       <span className="ml-2 text-sm text-text-muted">
                         <DateText value={row.day} />
                       </span>

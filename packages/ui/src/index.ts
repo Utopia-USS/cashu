@@ -23,6 +23,10 @@ export type {
 } from "./charts/types.js";
 export { Button } from "./controls/Button.js";
 export type { ButtonProps } from "./controls/Button.types.js";
+export { Select } from "./controls/Select.js";
+export type { SelectOption, SelectProps } from "./controls/Select.types.js";
+export { TextField } from "./controls/TextField.js";
+export type { TextFieldProps } from "./controls/TextField.types.js";
 export { type UiEnv, UiEnvProvider, useUiEnv } from "./environment/UiEnv.js";
 export { type Layout, type LayoutClass, layoutClass, SPACING_STEPS, type Step } from "./layout.js";
 export { useVirtualRows } from "./lists/useVirtualRows.js";

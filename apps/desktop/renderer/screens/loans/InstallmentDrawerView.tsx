@@ -1,7 +1,7 @@
 import { Money as MoneyValue } from "@cashu/domain";
 import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/loans/Drawers.strings";
-import { DateText, Modal, Money } from "@cashu/ui";
+import { Button, DateText, Modal, Money, Select, TextField } from "@cashu/ui";
 import { useId } from "react";
 import type { LoansState } from "./useLoansScreen.js";
 
@@ -27,88 +27,77 @@ export function InstallmentDrawerView({ state }: { state: LoansState }) {
       >
         <state.paymentForm.Field name="account">
           {(field) => (
-            <label className="flex flex-col gap-1">
-              {S.loan}
-              <select
-                value={field.state.value}
-                onChange={(e) => state.pickPayment(e.target.value)}
-                className="rounded-sm border border-border bg-surface p-2"
-              >
-                {state.rows.map((loan) => (
-                  <option key={loan.id} value={loan.accountId}>
-                    {loan.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select
+              label={S.loan}
+              value={field.state.value}
+              onChange={(value) => state.pickPayment(value)}
+              options={state.rows.map((loan) => ({
+                value: loan.accountId,
+                label: loan.name ?? "",
+              }))}
+            />
           )}
         </state.paymentForm.Field>
         <state.paymentForm.Field name="mode">
           {(field) => (
-            <label className="flex flex-col gap-1">
-              {S.method}
-              <select
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value === "iban" ? "iban" : "text")}
-                className="rounded-sm border border-border bg-surface p-2"
-              >
-                <option value="text">{S.byPhrase}</option>
-                <option value="iban">{S.byIban}</option>
-              </select>
-            </label>
+            <Select
+              label={S.method}
+              value={field.state.value}
+              onChange={(value) => field.handleChange(value === "iban" ? "iban" : "text")}
+              options={[
+                { value: "text", label: S.byPhrase },
+                { value: "iban", label: S.byIban },
+              ]}
+            />
           )}
         </state.paymentForm.Field>
         {state.mode === "text" ? (
           <state.paymentForm.Field name="text">
             {(field) => (
-              <label className="flex flex-col gap-1">
-                {S.phrase}
-                <input
-                  aria-label={S.phrase}
-                  aria-describedby={`${hintId}-phrase`}
+              <div className="grid gap-1">
+                <TextField
+                  label={S.phrase}
+                  describedBy={`${hintId}-phrase`}
                   value={field.state.value}
                   maxLength={200}
                   autoComplete="off"
                   onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  className="rounded-sm border border-border bg-surface p-2"
+                  onChange={(value) => field.handleChange(value)}
                 />
                 <span id={`${hintId}-phrase`} className="text-caption text-fg-muted">
                   {S.phraseHint}
                 </span>
-              </label>
+              </div>
             )}
           </state.paymentForm.Field>
         ) : (
           <state.paymentForm.Field name="iban">
             {(field) => (
-              <label className="flex flex-col gap-1">
-                {S.ibanLabel}
-                {row?.paymentIbanTail && <span>{S.storedIban(row.paymentIbanTail)}</span>}
-                <input
-                  aria-label={S.ibanLabel}
-                  aria-describedby={`${hintId}-iban`}
+              <div className="grid gap-1">
+                <TextField
+                  label={S.ibanLabel}
+                  describedBy={`${hintId}-iban`}
                   value={field.state.value}
                   autoComplete="off"
                   onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  className="rounded-sm border border-border bg-surface p-2"
+                  onChange={(value) => field.handleChange(value)}
                 />
+                {row?.paymentIbanTail && <span>{S.storedIban(row.paymentIbanTail)}</span>}
                 <span id={`${hintId}-iban`} className="text-caption text-fg-muted">
                   {S.ibanHint}
                 </span>
-              </label>
+              </div>
             )}
           </state.paymentForm.Field>
         )}
         {stored && (
-          <button
-            type="button"
+          <Button
+            variant="danger"
             disabled={state.busy}
-            onClick={() => void state.submitPayment(true)}
+            onPress={() => void state.submitPayment(true)}
           >
             {S.clear}
-          </button>
+          </Button>
         )}
         {state.mode === "text" && state.candidates.length > 0 && (
           <section>
@@ -127,9 +116,7 @@ export function InstallmentDrawerView({ state }: { state: LoansState }) {
                     · <DateText value={candidate.lastDate} />
                   </span>
                 </span>
-                <button type="button" onClick={() => state.setText(candidate.counterparty)}>
-                  {S.use}
-                </button>
+                <Button onPress={() => state.setText(candidate.counterparty)}>{S.use}</Button>
               </div>
             ))}
           </section>
@@ -141,10 +128,11 @@ export function InstallmentDrawerView({ state }: { state: LoansState }) {
           </p>
         )}
         <footer className="flex justify-end gap-3">
-          <button type="button" disabled={state.busy} onClick={state.close}>
+          <Button disabled={state.busy} onPress={state.close}>
             {C.cancel}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
             disabled={
               state.busy ||
@@ -153,7 +141,7 @@ export function InstallmentDrawerView({ state }: { state: LoansState }) {
             }
           >
             {state.busy ? S.saving : C.save}
-          </button>
+          </Button>
         </footer>
       </form>
     </Modal>

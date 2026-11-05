@@ -1,7 +1,7 @@
 import { Money as MoneyValue } from "@cashu/domain";
 import { S as F } from "@cashu/i18n/loans/Drawers.strings";
 import { S } from "@cashu/i18n/loans/Loans.strings";
-import { Button, DateText, LineChart, Money, useVirtualRows } from "@cashu/ui";
+import { Button, DateText, LineChart, Money, Select, useVirtualRows } from "@cashu/ui";
 import { useRef } from "react";
 import { L } from "./Loans.strings.js";
 import type { LoansState } from "./useLoansScreen.js";
@@ -37,20 +37,15 @@ export function LoansView({ state }: LoansViewProps) {
       ) : (
         <>
           <LoanListView state={state} />
-          <label className="flex flex-col gap-1">
-            {L.choose}
-            <select
-              value={state.selected ?? ""}
-              onChange={(e) => state.setSelected(e.target.value)}
-              className="rounded-sm border border-border bg-surface p-2"
-            >
-              {state.rows.map((row, i) => (
-                <option key={row.id} value={row.id}>
-                  {state.privacy ? `${L.hidden} ${i + 1}` : (row.name ?? S.loan)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label={L.choose}
+            value={state.selected ?? ""}
+            onChange={(value) => state.setSelected(value)}
+            options={state.rows.map((row, i) => ({
+              value: row.id,
+              label: state.privacy ? `${L.hidden} ${i + 1}` : (row.name ?? S.loan),
+            }))}
+          />
           <div className="grid gap-3 sm:grid-cols-3">
             {[
               [S.monthlyInstallment, loan.monthlyPayment],
