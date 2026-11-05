@@ -78,7 +78,7 @@ function Mark({
           strokeWidth={node.stroke ? (node.width ?? 1) : undefined}
           strokeDasharray={node.dash}
           strokeLinejoin={node.stroke ? "round" : undefined}
-          strokeLinecap={node.stroke ? "round" : undefined}
+          strokeLinecap={node.stroke ? (node.cap ?? "round") : undefined}
           opacity={node.opacity}
         />
       );

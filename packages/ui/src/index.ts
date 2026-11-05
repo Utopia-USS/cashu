@@ -4,21 +4,27 @@
 // jest-expo the native one (tsconfig.native.json checks that side with `moduleSuffixes`).
 export { AreaChart } from "./charts/AreaChart.js";
 export { BarChart } from "./charts/BarChart.js";
+export { ChartLegend } from "./charts/ChartLegend.js";
 export { Donut } from "./charts/Donut.js";
 export { LineChart } from "./charts/LineChart.js";
 export { Sparkline } from "./charts/Sparkline.js";
-export type { ChartRole, SeriesColor } from "./charts/scene.js";
+export { Swatch } from "./charts/Swatch.js";
+export type { ChartColor, ChartRole, NamedColor, SeriesColor } from "./charts/scene.js";
 export type {
   AreaChartProps,
   AreaLayer,
   BarChartProps,
+  ChartLegendProps,
   ChartTip,
   DonutProps,
   DonutSegment,
+  LegendItem,
+  LegendMark,
   Level,
   LineChartProps,
   LineSeries,
   SparklineProps,
+  SwatchProps,
   ValueKind,
 } from "./charts/types.js";
 export { Button } from "./controls/Button.js";

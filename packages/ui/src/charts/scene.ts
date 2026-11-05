@@ -21,12 +21,33 @@ export type ChartRole =
   | "warning"
   | "info"
   | "plan"
-  | "surface";
+  | "surface"
+  | NamedColor;
 
 /** A categorical series colour, `chart.series1..8` (cashu-ui tokens). */
 export type SeriesColor = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
+/** A named token colour besides the categorical series: the accent (the old charts' main line, `--nw`), the
+ * benchmark grey and the investment bucket palette (old `--inv-*`, index.css), by their theme.css names. */
+export type NamedColor =
+  | "accent"
+  | "bench"
+  | "inv-global"
+  | "inv-pl"
+  | "inv-bonds"
+  | "inv-cash"
+  | "inv-other"
+  | "inv-5"
+  | "inv-6"
+  | "inv-7";
+
+/** Any colour a series, a donut segment, a legend mark or a swatch takes. */
+export type ChartColor = SeriesColor | NamedColor;
+
 export const seriesRole = (c: SeriesColor): ChartRole => `series${c}`;
+
+/** The role of a series / segment colour. */
+export const colorRole = (c: ChartColor): ChartRole => (typeof c === "number" ? seriesRole(c) : c);
 
 /** The CSS variable of every role (theme.css). The native renderer resolves these through Uniwind. */
 export const ROLE_VAR: Record<ChartRole, string> = {
@@ -45,8 +66,19 @@ export const ROLE_VAR: Record<ChartRole, string> = {
   negative: "--color-negative",
   warning: "--color-warning",
   info: "--color-info",
-  plan: "--color-accent-muted",
+  /** A planned, not yet done bar: the old `.bx.plan` chip grey. */
+  plan: "--color-chip",
   surface: "--color-surface-raised",
+  accent: "--color-accent",
+  bench: "--color-bench",
+  "inv-global": "--color-inv-global",
+  "inv-pl": "--color-inv-pl",
+  "inv-bonds": "--color-inv-bonds",
+  "inv-cash": "--color-inv-cash",
+  "inv-other": "--color-inv-other",
+  "inv-5": "--color-inv-5",
+  "inv-6": "--color-inv-6",
+  "inv-7": "--color-inv-7",
 };
 
 interface LineNode {
@@ -71,6 +103,8 @@ interface PathNode {
   dash?: string;
   opacity?: number;
   evenOdd?: boolean;
+  /** Line cap of a stroked path (default round; the sparkline keeps the old butt caps). */
+  cap?: "round" | "butt";
 }
 
 interface RectNode {

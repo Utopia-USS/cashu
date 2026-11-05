@@ -1,5 +1,6 @@
 // Line chart scene (the legacy frontend LineChart, design/v2/v2.js): grid and y axis, date labels, level
-// lines, lines with fading areas, trade markers, end and level labels stacked on the right with leaders.
+// lines, lines with fading areas, trade markers, end and level labels stacked on the right with leaders
+// (drawn in the benchmark grey like the old `stroke: var(--bench)`).
 
 import { S } from "./charts.strings.js";
 import {
@@ -14,7 +15,7 @@ import {
   ticks,
 } from "./geometry.js";
 import type { Built, ChartRole, Gradient, SceneNode, Scrub } from "./scene.js";
-import { seriesRole } from "./scene.js";
+import { colorRole } from "./scene.js";
 import type { Level, LineChartProps, LineSeries } from "./types.js";
 import { chartSummary, hides, seriesSummary, wholeNumber } from "./values.js";
 
@@ -33,9 +34,10 @@ const LEVEL: Record<Level["kind"], { stroke: ChartRole; dash: string }> = {
 };
 
 function lineRole(s: LineSeries): ChartRole {
+  if (s.color != null) return colorRole(s.color);
   if (s.tone === "bench") return "muted";
   if (s.tone === "negative") return "negative";
-  return seriesRole(s.color ?? 1);
+  return "series1";
 }
 
 const lastIndex = (s: LineSeries): number => {
@@ -138,7 +140,7 @@ export function lineScene(p: LineChartProps, width: number, privacy: boolean): B
           y1: it.y,
           x2: x + 9,
           y2: it.ly,
-          stroke: "muted",
+          stroke: "bench",
           width: 1,
         });
       }
@@ -158,7 +160,7 @@ export function lineScene(p: LineChartProps, width: number, privacy: boolean): B
           y1: it.y,
           x2: right + 6,
           y2: it.ly,
-          stroke: "muted",
+          stroke: "bench",
           width: 1,
         });
       }

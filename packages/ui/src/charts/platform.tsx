@@ -4,8 +4,10 @@
 import { type KeyboardEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
 import { layoutClass } from "../layout.js";
 import { S } from "./charts.strings.js";
+import { cls } from "./classes.js";
 import { type ChartFrameProps, stepIndex } from "./frame.js";
 import { nearestIndex } from "./geometry.js";
+import { LOOK } from "./look.js";
 import { type ChartRole, type Focus, ROLE_VAR, type Scene, type SceneNode } from "./scene.js";
 
 const STROKE: Record<ChartRole, string> = {
@@ -24,8 +26,18 @@ const STROKE: Record<ChartRole, string> = {
   negative: "stroke-negative",
   warning: "stroke-warning",
   info: "stroke-info",
-  plan: "stroke-accent-muted",
+  plan: "stroke-chip",
   surface: "stroke-surface-raised",
+  accent: "stroke-accent",
+  bench: "stroke-bench",
+  "inv-global": "stroke-inv-global",
+  "inv-pl": "stroke-inv-pl",
+  "inv-bonds": "stroke-inv-bonds",
+  "inv-cash": "stroke-inv-cash",
+  "inv-other": "stroke-inv-other",
+  "inv-5": "stroke-inv-5",
+  "inv-6": "stroke-inv-6",
+  "inv-7": "stroke-inv-7",
 };
 
 const FILL: Record<ChartRole, string> = {
@@ -44,11 +56,19 @@ const FILL: Record<ChartRole, string> = {
   negative: "fill-negative",
   warning: "fill-warning",
   info: "fill-info",
-  plan: "fill-accent-muted",
+  plan: "fill-chip",
   surface: "fill-surface-raised",
+  accent: "fill-accent",
+  bench: "fill-bench",
+  "inv-global": "fill-inv-global",
+  "inv-pl": "fill-inv-pl",
+  "inv-bonds": "fill-inv-bonds",
+  "inv-cash": "fill-inv-cash",
+  "inv-other": "fill-inv-other",
+  "inv-5": "fill-inv-5",
+  "inv-6": "fill-inv-6",
+  "inv-7": "fill-inv-7",
 };
-
-const cls = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
 
 function Node({
   node,
@@ -86,7 +106,7 @@ function Node({
           strokeWidth={node.stroke ? (node.width ?? 1) : undefined}
           strokeDasharray={node.dash}
           strokeLinejoin={node.stroke ? "round" : undefined}
-          strokeLinecap={node.stroke ? "round" : undefined}
+          strokeLinecap={node.stroke ? (node.cap ?? "round") : undefined}
           opacity={node.opacity}
         />
       );
@@ -139,10 +159,7 @@ function Node({
           x={node.x}
           y={node.y}
           textAnchor={node.anchor}
-          className={cls(
-            "text-caption tabular-nums",
-            node.tone === "muted" ? "fill-fg-muted" : "fill-fg",
-          )}
+          className={cls(LOOK.text, node.tone === "muted" ? "fill-fg-muted" : "fill-fg")}
         >
           {node.text}
         </text>
@@ -250,6 +267,9 @@ function useMeasuredWidth(fixed: number | undefined) {
   return { ref, width: fixed ?? measured };
 }
 
+/** A tooltip row's name with the space before its value (old `.tip`: "name <b>value</b>"). */
+const spaced = (name: string): string => `${name} `;
+
 /** Measures, draws and makes a chart scene interactive on the desktop. */
 export function ChartFrame({
   width: fixed,
@@ -308,8 +328,7 @@ export function ChartFrame({
       className={cls(
         "relative",
         inline ? "inline-block align-middle" : "w-full",
-        scrub != null &&
-          "rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus",
+        scrub != null && LOOK.focusRing,
         layoutClass(layout),
       )}
       style={{ height, width: fixed }}
@@ -327,12 +346,9 @@ export function ChartFrame({
         />
       )}
       {center && (
-        <div
-          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
-          aria-hidden
-        >
-          <span className="text-title font-strong tabular-nums text-fg">{center.title}</span>
-          {center.caption && <span className="text-caption text-fg-muted">{center.caption}</span>}
+        <div className={LOOK.center} aria-hidden>
+          <b className={LOOK.centerTitle}>{center.title}</b>
+          {center.caption && <span className={LOOK.centerCaption}>{center.caption}</span>}
         </div>
       )}
       {/* The live region stays mounted (visually hidden while idle), so the first arrow press is announced. */}
@@ -340,21 +356,20 @@ export function ChartFrame({
         (tip && focus ? (
           <div
             role="status"
-            className={cls(
-              "pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-border bg-surface-raised px-2 py-1 text-caption text-fg",
-              right ? "-ml-2 -translate-x-full" : "ml-2",
-              !focus.tipBelow && "-translate-y-full",
-            )}
+            className={LOOK.tip}
             style={{
               left: focus.x,
               top: focus.tipBelow ? focus.tipY : Math.max(0, focus.tipY - 8),
+              // The old `.tip` offsets: 10 px right of the crosshair, or 108 % of its width left of it
+              // past 60 % of the plot; above the focused point unless it hangs below the plot top.
+              transform: `translate(${right ? "-108%" : "10px"}, ${focus.tipBelow ? "0" : "-100%"})`,
             }}
           >
-            <div className="font-strong">{tip.title}</div>
+            <div className="text-fg-muted">{tip.title}</div>
             {tip.rows.map((r) => (
-              <div key={r.name} className="flex gap-1">
-                <span className="text-fg-muted">{r.name}</span>
-                <span className="font-strong tabular-nums">{r.value}</span>
+              <div key={r.name} className={r.muted ? "text-fg-muted" : undefined}>
+                {spaced(r.name)}
+                <b className={LOOK.tipValue}>{r.value}</b>
               </div>
             ))}
           </div>

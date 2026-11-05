@@ -3,7 +3,7 @@
 import { S } from "./charts.strings.js";
 import { donutArcs } from "./geometry.js";
 import type { Built, SceneNode } from "./scene.js";
-import { seriesRole } from "./scene.js";
+import { colorRole } from "./scene.js";
 import type { DonutProps } from "./types.js";
 import { percent } from "./values.js";
 
@@ -20,7 +20,7 @@ export function donutScene(p: DonutProps): Built {
       nodes.push({
         k: "path",
         d,
-        fill: seriesRole(seg.color),
+        fill: colorRole(seg.color),
         evenOdd: true,
         ...(p.onSegmentSelected ? { activation: { index: i, label: seg.name } } : {}),
       });

@@ -16,7 +16,7 @@ import {
 } from "./geometry.js";
 import { MIN_WIDTH } from "./lineScene.js";
 import type { Built, Gradient, SceneNode, Scrub } from "./scene.js";
-import { seriesRole } from "./scene.js";
+import { colorRole } from "./scene.js";
 import type { AreaChartProps } from "./types.js";
 import { chartSummary, hides, seriesSummary, wholeNumber } from "./values.js";
 
@@ -73,7 +73,7 @@ export function areaScene(p: AreaChartProps, width: number, privacy: boolean): B
   }
   if (n >= 2) {
     layers.forEach((l, k) => {
-      const role = seriesRole(input[k]?.color ?? 1);
+      const role = colorRole(input[k]?.color ?? 1);
       const d = bandPath(
         l.hi.map((v, i): Pt => [X(i), Y(v)]),
         l.lo.map((v, i): Pt => [X(i), Y(v)]),

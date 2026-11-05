@@ -1,16 +1,17 @@
 // Props of the chart components, shared by the web and native renderers (identical props on both platforms).
 // Values are plain numbers already in one unit (one currency, or a percentage): a chart never sums currencies.
 import type { Layout } from "../layout.js";
-import type { ChartRole, SeriesColor } from "./scene.js";
+import type { ChartColor, ChartRole, SeriesColor } from "./scene.js";
 
 /** What the numbers are. Amounts disappear in privacy mode (axis labels, value labels, tooltips, the
  * accessible summary); shares (percentages, counts) stay, like the legacy incognito mode. */
 export type ValueKind = "amount" | "share";
 
-/** Tooltip content for one data index; values come formatted by the caller. */
+/** Tooltip content for one data index; values come formatted by the caller. Drawn like the old `.tip`: the
+ * title muted, each row "name <b>value</b>", a `muted` row (old `.k`, e.g. a difference) muted. */
 export interface ChartTip {
   title: string;
-  rows: { name: string; value: string; amount?: boolean; color?: ChartRole }[];
+  rows: { name: string; value: string; amount?: boolean; color?: ChartRole; muted?: boolean }[];
 }
 
 interface ChartBase {
@@ -28,8 +29,9 @@ export interface LineSeries {
   values: (number | null)[];
   /** main (series colour), bench (muted, dashed), negative (loss tone). Default main. */
   tone?: "main" | "bench" | "negative";
-  /** Series colour of a main line (default 1). */
-  color?: SeriesColor;
+  /** Line colour (default: series 1 for main, muted for bench, negative for negative); the old value chart
+   * passes "accent" for the portfolio and "bench" for the benchmark. The tone still sets dash and label. */
+  color?: ChartColor;
   /** Fill a fading area under the line. */
   area?: boolean;
   /** Area baseline value (default: the bottom of the plot); 0 for a drawdown filled up to the zero line. */
@@ -69,7 +71,7 @@ export interface LineChartProps extends ChartBase {
 export interface AreaLayer {
   key: string;
   name: string;
-  color: SeriesColor;
+  color: ChartColor;
   /** One value per point; liabilities are negative and stack downward. */
   values: number[];
 }
@@ -114,7 +116,8 @@ export interface BarChartProps extends ChartBase {
 
 export interface DonutSegment {
   value: number;
-  color: SeriesColor;
+  /** A series colour or a named token colour (allocation buckets: "inv-global", "inv-pl", ...). */
+  color: ChartColor;
   name: string;
 }
 
@@ -124,7 +127,8 @@ export interface DonutProps {
   onSegmentSelected?: (index: number) => void;
   segments: DonutSegment[];
   size?: number;
-  /** Centre text: a headline value and a caption; `amount` hides the value in privacy mode. */
+  /** Centre text (old `.donut .c`: 15px bold value, 10.5px muted caption); `amount` hides the value in
+   * privacy mode. */
   center?: { title: string; caption?: string; amount?: boolean };
   layout?: Layout;
 }
@@ -136,4 +140,40 @@ export interface SparklineProps {
   /** Accessible name; without it the sparkline is decorative (hidden from assistive tech). */
   label?: string;
   layout?: Layout;
+}
+
+/** The mark of a legend item, the old `.legend i` classes: a solid main line, the dashed benchmark, the
+ * dashed level lines (alert / rule / agent), the dotted cost line, a colour swatch, a buy / sell dot. */
+export type LegendMark =
+  | "main"
+  | "bench"
+  | "alert"
+  | "rule"
+  | "agent"
+  | "cost"
+  | "swatch"
+  | "buy"
+  | "sell";
+
+export interface LegendItem {
+  label: string;
+  mark: LegendMark;
+  /** Colour of a main line (default accent) or a swatch (required for a swatch); other marks ignore it. */
+  color?: ChartColor;
+  /** The mark on its own line above the label: reproduces the old Home legend, where `.split .main
+   * {display: grid}` (index.css:418) also hit the legend's `<i class="main">`. Hidden at <= 900 px like the
+   * old `display: contents`. */
+  stacked?: boolean;
+}
+
+export interface ChartLegendProps {
+  items: LegendItem[];
+  /** Layout only (margins, e.g. the value chart's 6 px gap above the plot: `mb-1.5`). */
+  className?: string;
+}
+
+export interface SwatchProps {
+  color: ChartColor;
+  /** md: 10 px, radius 3 (old `.arow .sw`, allocation rows); sm: 9 px, radius 2 (old `.legend i.sw`). */
+  size?: "sm" | "md";
 }

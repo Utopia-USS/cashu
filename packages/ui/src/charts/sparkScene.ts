@@ -28,7 +28,7 @@ export function sparkScene(p: SparklineProps): Built {
       gradients: [],
       nodes: g.d
         ? [
-            { k: "path", d: g.d, stroke, width: 1.5 },
+            { k: "path", d: g.d, stroke, width: 1.5, cap: "butt" },
             ...(g.last
               ? [
                   {

@@ -10,7 +10,8 @@ import { hides, wholeNumber } from "./values.js";
 const KIND: Record<"main" | "plan" | "muted", { fill: ChartRole; opacity?: number }> = {
   main: { fill: "series1" },
   plan: { fill: "plan" },
-  muted: { fill: "muted", opacity: 0.55 },
+  // The old `.bx.mutedbar`: the benchmark grey at .55.
+  muted: { fill: "bench", opacity: 0.55 },
 };
 
 /** "Wpłaty: sie 2 000, wrz 500, paź brak" (F7 FE14): a screen reader gets the numbers, not only the title;
