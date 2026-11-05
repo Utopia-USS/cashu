@@ -28,15 +28,29 @@ export interface ScrollSeries {
   values: readonly number[];
   /** A chart colour, or the tone roles of the old income / expense bars (`--pos`, `--neg`). */
   color: ChartColor | "positive" | "negative";
+  /** Line only: the r 2 dots at the points (default true; old `dot={false}` = false). */
+  dots?: boolean;
 }
 
 const roleOf = (c: ScrollSeries["color"]): ChartRole =>
   c === "positive" || c === "negative" ? c : colorRole(c);
 
+/** A continuous time X axis (old recharts `type="number" scale="time"`, domain dataMin..dataMax): the points sit
+ * at their dates, the axis shows the time scale's ~5 round dates (d3 `scaleTime().ticks(5)`). */
+export interface ScrollTime {
+  /** Date of each category (epoch ms, ascending). */
+  xs: readonly number[];
+  /** Label of an axis tick. */
+  tickFormat(ms: number): string;
+  /** Least gap between two labels (old `minTickGap`, default 20). */
+  minTickGap?: number;
+}
+
 export interface ScrollData {
   labels: readonly string[];
   bars: readonly ScrollSeries[];
   line?: ScrollSeries | undefined;
+  time?: ScrollTime | undefined;
 }
 
 /** Old `niceTicks`: about `count` round ticks covering [min, max]. */
@@ -130,9 +144,13 @@ function monotonePath(points: readonly (readonly [number, number])[]): string {
   return d;
 }
 
-/** Which category labels fit (recharts `preserveEnd` with `minTickGap` 20): the last always, then backwards
- * every label that keeps the gap to the one after it. */
-function visibleLabels(centres: readonly number[], labels: readonly string[]): boolean[] {
+/** Which category labels fit (recharts `preserveEnd` with `minTickGap`, default 20): the last always, then
+ * backwards every label that keeps the gap to the one after it. */
+function visibleLabels(
+  centres: readonly number[],
+  labels: readonly string[],
+  gap = MIN_TICK_GAP,
+): boolean[] {
   const shown = labels.map(() => false);
   let end = Number.POSITIVE_INFINITY;
   for (let i = labels.length - 1; i >= 0; i--) {
@@ -140,13 +158,79 @@ function visibleLabels(centres: readonly number[], labels: readonly string[]): b
     const c = centres[i] ?? 0;
     if (c + half <= end && c - half >= 0) {
       shown[i] = true;
-      end = c - half - MIN_TICK_GAP;
+      end = c - half - gap;
     } else if (i === labels.length - 1) {
       shown[i] = true;
-      end = c - half - MIN_TICK_GAP;
+      end = c - half - gap;
     }
   }
   return shown;
+}
+
+const DAY = 86400000;
+/** d3-time intervals from a day up (the ones a date series of loans or months reaches): [unit, step, duration]. */
+const TIME_INTERVALS: readonly (readonly ["day" | "week" | "month" | "year", number, number])[] = [
+  ["day", 1, DAY],
+  ["day", 2, 2 * DAY],
+  ["week", 1, 7 * DAY],
+  ["month", 1, 30 * DAY],
+  ["month", 3, 90 * DAY],
+  ["year", 1, 365 * DAY],
+];
+
+/** d3-array `tickStep` (positive direction). */
+function tickStep(start: number, stop: number, count: number): number {
+  const step0 = Math.abs(stop - start) / Math.max(0, count);
+  let step1 = 10 ** Math.floor(Math.log10(step0));
+  const error = step0 / step1;
+  if (error >= Math.sqrt(50)) step1 *= 10;
+  else if (error >= Math.sqrt(10)) step1 *= 5;
+  else if (error >= Math.sqrt(2)) step1 *= 2;
+  return step1;
+}
+
+/** d3 `scaleTime().domain([start, stop]).ticks(count)` in local time, from day intervals up. */
+export function timeTicks(start: number, stop: number, count = 5): number[] {
+  if (!(stop > start)) return [start];
+  const target = (stop - start) / count;
+  let pick = TIME_INTERVALS.findIndex(([, , d]) => d > target);
+  let unit: "day" | "week" | "month" | "year";
+  let step: number;
+  if (pick === -1) {
+    unit = "year";
+    step = Math.max(1, Math.floor(tickStep(start / (365 * DAY), stop / (365 * DAY), count)));
+  } else {
+    if (pick > 0) {
+      const lo = TIME_INTERVALS[pick - 1];
+      const hi = TIME_INTERVALS[pick];
+      if (lo && hi && target / lo[2] < hi[2] / target) pick -= 1;
+    }
+    const chosen = TIME_INTERVALS[pick] ?? TIME_INTERVALS[0];
+    unit = chosen?.[0] ?? "day";
+    step = chosen?.[1] ?? 1;
+  }
+  const d = new Date(start);
+  d.setHours(0, 0, 0, 0);
+  if (unit === "week") d.setDate(d.getDate() - d.getDay());
+  if (unit === "month" || unit === "year") d.setDate(1);
+  if (unit === "year") d.setMonth(0);
+  const out: number[] = [];
+  for (let guard = 0; guard < 10000 && d.getTime() <= stop; guard++) {
+    const keep =
+      unit === "day"
+        ? step === 1 || (d.getDate() - 1) % step === 0
+        : unit === "month"
+          ? d.getMonth() % step === 0
+          : unit === "year"
+            ? d.getFullYear() % step === 0
+            : true;
+    if (keep && d.getTime() >= start) out.push(d.getTime());
+    if (unit === "day") d.setDate(d.getDate() + 1);
+    else if (unit === "week") d.setDate(d.getDate() + 7);
+    else if (unit === "month") d.setMonth(d.getMonth() + 1);
+    else d.setFullYear(d.getFullYear() + 1);
+  }
+  return out;
 }
 
 /** The scrolling plot at `width` px: grid rules, the X axis, grouped bars and the line with its dots. */
@@ -162,7 +246,11 @@ export function scrollPlotScene(
   const y = yOf(ticks);
   const base = SCROLL.top + PLOT_H;
   const band = n ? plotW / n : plotW;
-  const cx = (i: number) => band * (i + 0.5);
+  const time = data.time;
+  const t0 = time?.xs[0] ?? 0;
+  const tSpan = (time?.xs.at(-1) ?? 0) - t0;
+  const tx = (ms: number) => (tSpan > 0 ? ((ms - t0) / tSpan) * plotW : plotW / 2);
+  const cx = (i: number) => (time ? tx(time.xs[i] ?? t0) : band * (i + 0.5));
   const k = data.bars.length;
   const offset = band * 0.1;
   const size = k ? Math.max(1, (band - 2 * offset - (k - 1) * 4) / k) : 0;
@@ -175,16 +263,20 @@ export function scrollPlotScene(
     stroke: "rule",
   }));
   nodes.push({ k: "line", x1: 0, x2: plotW, y1: base, y2: base, stroke: "axis" });
+  const axis = time
+    ? timeTicks(t0, t0 + tSpan).map((ms) => ({ x: tx(ms), label: time.tickFormat(ms) }))
+    : data.labels.map((label, i) => ({ x: cx(i), label }));
   const shown = visibleLabels(
-    data.labels.map((_, i) => cx(i)),
-    data.labels,
+    axis.map((a) => a.x),
+    axis.map((a) => a.label),
+    time?.minTickGap,
   );
-  data.labels.forEach((label, i) => {
+  axis.forEach(({ x, label }, i) => {
     if (!shown[i]) return;
-    nodes.push({ k: "line", x1: cx(i), x2: cx(i), y1: base, y2: base + TICK, stroke: "axis" });
+    nodes.push({ k: "line", x1: x, x2: x, y1: base, y2: base + TICK, stroke: "axis" });
     nodes.push({
       k: "text",
-      x: cx(i),
+      x,
       y: base + TICK + TICK_MARGIN + 7.8,
       text: label,
       anchor: "middle",
@@ -215,16 +307,17 @@ export function scrollPlotScene(
     const role = roleOf(line.color);
     const pts = data.labels.map((_, i) => [cx(i), y(line.values[i] ?? 0)] as const);
     nodes.push({ k: "path", d: monotonePath(pts), stroke: role, width: 2 });
-    for (const [px, py] of pts)
-      nodes.push({
-        k: "circle",
-        cx: px,
-        cy: py,
-        r: 2,
-        fill: "paper",
-        stroke: role,
-        strokeWidth: 2,
-      });
+    if (line.dots !== false)
+      for (const [px, py] of pts)
+        nodes.push({
+          k: "circle",
+          cx: px,
+          cy: py,
+          r: 2,
+          fill: "paper",
+          stroke: role,
+          strokeWidth: 2,
+        });
   }
   return {
     scene: { width, height: SCROLL.height, gradients: [], nodes },

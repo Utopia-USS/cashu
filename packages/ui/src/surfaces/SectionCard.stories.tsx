@@ -8,3 +8,6 @@ const meta = {
 } satisfies Meta<SectionCardProps>;
 export default meta;
 export const Default: Story<SectionCardProps> = {};
+export const WithTags: Story<SectionCardProps> = {
+  args: { id: "loans-list", title: "Kredyty", tags: "2 kredyty" },
+};

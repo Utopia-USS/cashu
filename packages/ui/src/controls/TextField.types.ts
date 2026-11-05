@@ -1,4 +1,4 @@
-import type { KeyboardEventHandler, Ref } from "react";
+import type { KeyboardEventHandler, ReactNode, Ref } from "react";
 
 export interface TextFieldProps {
   value: string;
@@ -44,6 +44,17 @@ export interface TextFieldProps {
   combobox?: { controls: string; expanded: boolean };
   /** Desktop only: key handling (a combobox moving through its options, Escape clearing a search). */
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
+  /** Desktop only: controls on the control's row (old `.drawer .inline`: the input grows, e.g. a unit `Seg` or a
+   * `wyczyść` link). With `trailing`, `before` or `after` the label wraps its text only. */
+  trailing?: ReactNode;
+  /** Desktop only: lines between the label and the control (old `.fhint` inside a `.field`). */
+  before?: ReactNode;
+  /** Desktop only: lines under the control (old `.field .fe` error, `.fhint`). */
+  after?: ReactNode;
+  /** Desktop only: a figure entry, right aligned with tabular digits (old `input.num`). */
+  numeric?: boolean;
+  /** Desktop only: tooltip of the control. */
+  title?: string;
   /** Layout only (width, grid placement, margin) of the labelled field; identity comes from the field. */
   className?: string;
   /** The DOM input of a single-line field on desktop, for focus management; ignored on native. */

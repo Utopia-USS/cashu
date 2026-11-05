@@ -35,6 +35,11 @@ export function TextField({
   onKeyDown,
   className = "",
   ref,
+  trailing,
+  before,
+  after,
+  numeric,
+  title,
 }: TextFieldProps) {
   const ownId = useId();
   const controlId = id ?? ownId;
@@ -57,7 +62,8 @@ export function TextField({
     "aria-invalid": invalid || undefined,
     "data-testid": testID,
     "data-autofocus": autoFocus ? "" : undefined,
-    className: `${fieldLook(multiline ? "textarea" : "input", !labelHidden && !inline)} placeholder:text-fg-muted aria-[invalid=true]:border-negative ${labelHidden ? className : ""}`,
+    title,
+    className: `${fieldLook(multiline ? "textarea" : "input", !labelHidden && !inline)} placeholder:text-fg-muted aria-[invalid=true]:border-negative ${numeric ? "text-right tabular-nums" : ""} ${trailing != null ? "min-w-0 flex-1" : ""} ${labelHidden ? className : ""}`,
   };
   const control = multiline ? (
     <textarea {...shared} rows={rows} onChange={(event) => onChange(event.target.value)} />
@@ -76,9 +82,24 @@ export function TextField({
       onChange={(event) => onChange(event.target.value)}
     />
   );
-  return labelHidden ? (
-    control
-  ) : (
+  if (labelHidden) return control;
+  if (trailing != null || before != null || after != null)
+    return (
+      <div className={`${fieldLabel(false)} ${className}`}>
+        <label htmlFor={controlId}>{label}</label>
+        {before}
+        {trailing != null ? (
+          <div className="flex items-center gap-2">
+            {control}
+            {trailing}
+          </div>
+        ) : (
+          control
+        )}
+        {after}
+      </div>
+    );
+  return (
     <label htmlFor={controlId} className={`${fieldLabel(inline)} ${className}`}>
       {label}
       {control}

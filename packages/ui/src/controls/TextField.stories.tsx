@@ -34,3 +34,14 @@ export const Combobox: Story<TextFieldProps> = {
   args: { value: "ACM", label: "Search", combobox: { controls: "story-results", expanded: true } },
 };
 export const FullWidth: Story<TextFieldProps> = { args: { className: "w-full" } };
+export const WithNotes: Story<TextFieldProps> = {
+  args: {
+    value: "25",
+    label: "Term",
+    numeric: true,
+    trailing: "years",
+    before: "saved earlier",
+    after: "Term from 1 to 50 years.",
+    title: "Whole years",
+  },
+};

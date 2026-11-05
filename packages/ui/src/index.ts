@@ -16,7 +16,7 @@ export {
 } from "./charts/SpendingDonut.js";
 export { Swatch } from "./charts/Swatch.js";
 export type { ChartColor, ChartRole, NamedColor, SeriesColor } from "./charts/scene.js";
-export type { ScrollSeries } from "./charts/scrollScene.js";
+export type { ScrollSeries, ScrollTime } from "./charts/scrollScene.js";
 export type {
   AreaChartProps,
   AreaLayer,
@@ -43,6 +43,7 @@ export {
   CopyCommand,
   type CopyCommandProps,
 } from "./controls/CopyCommand.js";
+export { FieldNote, type FieldNoteProps } from "./controls/FieldNote.js";
 export { IconToggle, type IconToggleProps } from "./controls/IconToggle.js";
 export { PeriodStepper, type PeriodStepperProps } from "./controls/PeriodStepper.js";
 export { RadioList, type RadioListProps, type RadioOption } from "./controls/RadioList.js";
@@ -54,6 +55,8 @@ export { TextField } from "./controls/TextField.js";
 export type { TextFieldProps } from "./controls/TextField.types.js";
 export { type UiEnv, UiEnvProvider, useUiEnv } from "./environment/UiEnv.js";
 export { Skeleton, type SkeletonProps } from "./feedback/Skeleton.js";
+export { SkeletonChart, type SkeletonChartProps } from "./feedback/SkeletonChart.js";
+export { SkeletonKpis, type SkeletonKpisProps } from "./feedback/SkeletonKpis.js";
 export { SkeletonTable, type SkeletonTableProps } from "./feedback/SkeletonTable.js";
 export { type ToastAction, ToastProvider, useToast, useToastClose } from "./feedback/Toast.js";
 export {
@@ -183,6 +186,7 @@ export { FactFlow, type FactFlowProps, type FlowFact } from "./surfaces/FactFlow
 export { FormRow, type FormRowProps } from "./surfaces/FormRow.js";
 export { Hero, type HeroProps } from "./surfaces/Hero.js";
 export { type KeyValueRow, KeyValues, type KeyValuesProps } from "./surfaces/KeyValues.js";
+export { Kpi, type KpiProps, Kpis, type KpisProps } from "./surfaces/Kpi.js";
 export { ModuleStart, type ModuleStartProps } from "./surfaces/ModuleStart.js";
 export { Notice, type NoticeProps } from "./surfaces/Notice.js";
 export { Page, type PageProps } from "./surfaces/Page.js";

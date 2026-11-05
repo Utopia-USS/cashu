@@ -7,6 +7,7 @@ import { ChartFrame } from "./platform.js";
 import {
   SCROLL,
   type ScrollSeries,
+  type ScrollTime,
   scrollAxisScene,
   scrollPlotScene,
   scrollTicks,
@@ -21,12 +22,17 @@ export interface ScrollableChartProps {
   label: string;
   /** Controls left of the range switch (currency switch, aggregation select). */
   controls?: ReactNode;
-  /** The range switch: [label, visible periods] (null = everything, no scroll). */
+  /** The range switch: [label, visible span] (null = everything, no scroll); the span is in periods, or in the
+   * unit of `span` when given. */
   ranges: readonly (readonly [string, number | null])[];
   range: number | null;
   onRangeChange(range: number | null): void;
   /** One category per period (x axis). */
   labels: readonly string[];
+  /** The whole X extent in the range unit (old `fullSpan`, e.g. days of a dated series); default the periods. */
+  span?: number;
+  /** Place the categories on a continuous time axis (old loans balance chart) instead of bands. */
+  time?: ScrollTime;
   /** Grouped bars per category, in drawing order. */
   bars: readonly ScrollSeries[];
   /** A monotone line with dots over the bars (the net result). */
@@ -51,8 +57,9 @@ export function ScrollableChart(props: ScrollableChartProps) {
   const { labels, range, tooltip } = props;
   const box = useRef<HTMLDivElement>(null);
   const [boxWidth, setBoxWidth] = useState(0);
-  const full = labels.length;
-  const hasData = full > 0;
+  const count = labels.length;
+  const full = props.span ?? count;
+  const hasData = count > 0;
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -69,12 +76,12 @@ export function ScrollableChart(props: ScrollableChartProps) {
   const plotWidth = Math.min(SCROLL.maxWidth, Math.max(width, Math.round(width * ratio)));
 
   const centre = useRef(1);
-  const prev = useRef({ range, n: full });
+  const prev = useRef({ range, n: count });
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const jumped = prev.current.range !== range || prev.current.n !== full;
-    prev.current = { range, n: full };
+    const jumped = prev.current.range !== range || prev.current.n !== count;
+    prev.current = { range, n: count };
     const max = el.scrollWidth - el.clientWidth;
     if (jumped) {
       el.scrollLeft = max;
@@ -84,14 +91,14 @@ export function ScrollableChart(props: ScrollableChartProps) {
         0,
         Math.min(max, centre.current * el.scrollWidth - el.clientWidth / 2),
       );
-  }, [plotWidth, range, full]);
+  }, [plotWidth, range, count]);
   const onScroll = () => {
     const el = box.current;
     if (!el || el.scrollWidth <= el.clientWidth) return;
     centre.current = (el.scrollLeft + el.clientWidth / 2) / el.scrollWidth;
   };
 
-  const data = { labels, bars: props.bars, line: props.line };
+  const data = { labels, bars: props.bars, line: props.line, time: props.time };
   const ticks = scrollTicks(data);
   return (
     <ChartCard
@@ -104,7 +111,7 @@ export function ScrollableChart(props: ScrollableChartProps) {
         </>
       }
     >
-      {!full ? (
+      {!count ? (
         props.emptyText ? (
           <div className="flex h-35 items-center justify-center px-5 py-7 text-center text-md text-fg-muted">
             {props.emptyText}

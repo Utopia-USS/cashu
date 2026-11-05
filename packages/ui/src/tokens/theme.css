@@ -160,6 +160,8 @@
   --text-2xl: 20px;
   --text-3xl: 21px;
   --text-3xl-plus: 22px;
+  /* The Kredyty KPI value (old `.kpi .value`). */
+  --text-kpi: 23px;
   /* The Strategie tab's Markdown `.md-h1`. */
   --text-4xl-minus: 24px;
   --text-4xl: 26px;
@@ -217,6 +219,8 @@
   --shadow-deck: 0 1px 2px rgba(16, 18, 22, 0.04), 0 12px 32px rgba(16, 18, 22, 0.1);
   --shadow-tip: 0 6px 20px rgba(0, 0, 0, 0.14);
   --shadow-toast: 0 10px 34px rgba(0, 0, 0, 0.28);
+  /* The update notice card (old `.upd`). */
+  --shadow-corner: 0 10px 34px rgba(0, 0, 0, 0.18);
   --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.35);
   --shadow-panel: -16px 0 48px rgba(0, 0, 0, 0.22);
 
@@ -252,6 +256,8 @@
   --ease-deck: cubic-bezier(0.2, 0.7, 0.3, 1);
   --animate-shimmer: shimmer 1.3s infinite;
   --animate-toast-in: toast-in 0.16s ease-out;
+  /* The update notice card (old `.upd` upd-in .2s: the same rise and fade). */
+  --animate-corner-in: toast-in 0.2s ease-out;
   /* The asset drawer (old `.adrawer` adrawer-in .18s, its `.ascrim` ascrim-in .16s). */
   --animate-panel-in: panel-in 0.18s ease-out;
   --animate-scrim-in: scrim-in 0.16s ease-out;
