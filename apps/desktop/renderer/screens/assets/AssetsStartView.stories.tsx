@@ -7,7 +7,9 @@ const args: AssetsStartViewProps = {
   today: assets.args.today,
   baseCurrency: assets.args.baseCurrency,
   privacy: false,
+  mcpPrivacy: "strict",
   onGuide: () => {},
+  onAgentSettings: () => {},
 };
 export default { title: "Desktop/Assets/Start", component: AssetsStartView, args };
 export const Ready = {};
@@ -27,5 +29,5 @@ export const Empty = {
     },
   },
 };
-export const Loading = { args: { ...args, state: null } };
+export const Loading = { args: { ...args, state: null, mcpPrivacy: null } };
 export const Privacy = { args: { ...args, privacy: true } };

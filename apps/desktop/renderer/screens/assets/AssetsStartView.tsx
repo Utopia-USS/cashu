@@ -3,8 +3,7 @@
 // Claude Code / CLI guide, the Agent AI widget beside it and the add drawer shared with the Majątek widget.
 import { S as A } from "@cashu/i18n/assets/index.strings";
 import { S as CH } from "@cashu/i18n/core/chrome.strings";
-import { Button, ModuleStart } from "@cashu/ui";
-import type { ReactNode } from "react";
+import { AgentWidget, Button, ModuleStart } from "@cashu/ui";
 import { AssetDrawerView } from "../overview/AssetsWidgetView.js";
 import type { AssetDrawerState } from "../overview/useAssetDrawer.js";
 import { assetStepItems } from "./AssetsStepsView.js";
@@ -15,9 +14,11 @@ export interface AssetsStartViewProps {
   today: string;
   baseCurrency: string;
   privacy: boolean;
-  /** The Agent AI widget (one column beside the steps). */
-  aside?: ReactNode;
+  /** The profile's MCP privacy level for the Agent AI widget beside the steps; null while loading (no widget). */
+  mcpPrivacy: string | null;
   onGuide(): void;
+  /** `Ustawienia` of the Agent AI widget: Ustawienia › Agent AI. */
+  onAgentSettings(): void;
 }
 
 export function AssetsStartView({
@@ -25,8 +26,9 @@ export function AssetsStartView({
   today,
   baseCurrency,
   privacy,
-  aside,
+  mcpPrivacy,
   onGuide,
+  onAgentSettings,
 }: AssetsStartViewProps) {
   return (
     <ModuleStart
@@ -42,7 +44,11 @@ export function AssetsStartView({
           ? assetStepItems(state.steps, privacy, (type) => state.openNew(type, baseCurrency))
           : null
       }
-      aside={aside}
+      aside={
+        mcpPrivacy === null ? undefined : (
+          <AgentWidget privacy={mcpPrivacy} onSettings={onAgentSettings} />
+        )
+      }
     >
       {state && <AssetDrawerView state={state} today={today} privacy={privacy} />}
     </ModuleStart>

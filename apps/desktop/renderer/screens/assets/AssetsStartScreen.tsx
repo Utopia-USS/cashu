@@ -2,10 +2,11 @@
 // asset rows (live queries replace the old 5 s setup poll) and the shared add drawer; after the first save the
 // page hands over to Przegląd (old: Przegląd with the Majątek widget ringed).
 import { S as A } from "@cashu/i18n/assets/index.strings";
+import { profile as profileQuery } from "@cashu/store/core";
 import { profileIdentity } from "@cashu/store/overview";
 import { useProfile, useQuery } from "@cashu/store-react";
 import { Page, useUiEnv } from "@cashu/ui";
-import { type ReactNode, Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { useAssetDrawer } from "../overview/useAssetDrawer.js";
 import { AssetsStartView } from "./AssetsStartView.js";
@@ -15,8 +16,8 @@ export interface AssetsStartScreenProps {
   onSaved(): void;
   /** `Instrukcja Claude Code i CLI`: the module's setup guide (`setup/assets/cli`). */
   onGuide(): void;
-  /** The Agent AI widget beside the steps. */
-  agent?: ReactNode;
+  /** `Ustawienia` of the Agent AI widget: Ustawienia › Agent AI. */
+  onAgentSettings(): void;
 }
 
 export function AssetsStartScreen(props: AssetsStartScreenProps) {
@@ -31,8 +32,9 @@ export function AssetsStartScreen(props: AssetsStartScreenProps) {
             today=""
             baseCurrency=""
             privacy={privacy}
-            aside={props.agent}
+            mcpPrivacy={null}
             onGuide={props.onGuide}
+            onAgentSettings={props.onAgentSettings}
           />
         }
       >
@@ -42,9 +44,10 @@ export function AssetsStartScreen(props: AssetsStartScreenProps) {
   );
 }
 
-function AssetsStartBound({ onSaved, onGuide, agent }: AssetsStartScreenProps) {
+function AssetsStartBound({ onSaved, onGuide, onAgentSettings }: AssetsStartScreenProps) {
   const today = useCalendarDay();
   const profile = useQuery(profileIdentity);
+  const identity = useQuery(profileQuery);
   const { privacy } = useUiEnv();
   const base = profile?.baseCurrency ?? "PLN";
   const state = useAssetDrawer(today, base);
@@ -70,8 +73,9 @@ function AssetsStartBound({ onSaved, onGuide, agent }: AssetsStartScreenProps) {
       today={today}
       baseCurrency={base}
       privacy={privacy}
-      aside={agent}
+      mcpPrivacy={identity?.mcpPrivacy ?? "strict"}
       onGuide={onGuide}
+      onAgentSettings={onAgentSettings}
     />
   );
 }

@@ -698,6 +698,13 @@ function AssetsStartRoute() {
           search: { vault },
         });
       }}
+      onAgentSettings={() => {
+        void router.navigate({
+          to: "/$slug/settings",
+          params: { slug },
+          search: { vault, section: "agent" },
+        });
+      }}
     />
   ) : (
     <p className="p-6">{S.setup}</p>
