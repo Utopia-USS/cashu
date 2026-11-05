@@ -213,6 +213,10 @@
   --container-measure: 64ch;
   /* Rendered Markdown `.md { max-width: 72ch }` (Strategie tab). */
   --container-doc: 72ch;
+  /* research page: the summary sentence (900px), an opened note (75ch), the routine how-to (86ch) */
+  --container-story: 900px;
+  --container-note: 75ch;
+  --container-sched: 86ch;
   --container-assets: 1000px;
 
   /* Motion: the review deck's fly-out curve (with duration-260), skeleton shimmer, toast entry. */

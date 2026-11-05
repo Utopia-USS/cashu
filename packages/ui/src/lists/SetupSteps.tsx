@@ -12,6 +12,8 @@ export interface SetupStepItem {
   status: StepStatus;
   tag?: ReactNode;
   actions?: ReactNode;
+  /** Extra content under the title (old `s.body`, e.g. an expanded how-to), before the hint. */
+  body?: ReactNode;
   /** Never counts toward the module state: `opcjonalnie` after the title until done (unless `tag` is given). */
   optional?: boolean;
 }
@@ -49,6 +51,7 @@ export function SetupSteps({ steps }: SetupStepsProps) {
               {step.tag ??
                 (step.optional && step.status !== "done" ? <Tag>{U.optional}</Tag> : null)}
             </div>
+            {step.body}
             {step.hint != null && (
               <div className="mt-0.5 max-w-measure text-xs-plus text-fg-muted">{step.hint}</div>
             )}

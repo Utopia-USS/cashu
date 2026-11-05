@@ -30,6 +30,12 @@ export type {
 export { Button } from "./controls/Button.js";
 export type { ButtonProps } from "./controls/Button.types.js";
 export { CodeLine, type CodeLineProps } from "./controls/CodeLine.js";
+export {
+  CommandCode,
+  type CommandCodeProps,
+  CopyCommand,
+  type CopyCommandProps,
+} from "./controls/CopyCommand.js";
 export { IconToggle, type IconToggleProps } from "./controls/IconToggle.js";
 export { RadioList, type RadioListProps, type RadioOption } from "./controls/RadioList.js";
 export { Seg, type SegProps } from "./controls/Seg.js";
@@ -103,6 +109,20 @@ export {
 } from "./overlays/HoverCard.js";
 export { Modal } from "./overlays/Modal.js";
 export type { ModalProps } from "./overlays/Modal.types.js";
+export {
+  CandidateCard,
+  type CandidateCardProps,
+  type CandidateCriterion,
+  type CandidateState,
+} from "./research/CandidateCard.js";
+export {
+  BriefList,
+  type MacroMetric,
+  MacroMetrics,
+  type MacroRowData,
+  MacroRows,
+  type MacroTone,
+} from "./research/MacroRows.js";
 export { NoteRow, type NoteRowProps, type NoteSourceItem } from "./research/NoteRow.js";
 export {
   HealthPill,
