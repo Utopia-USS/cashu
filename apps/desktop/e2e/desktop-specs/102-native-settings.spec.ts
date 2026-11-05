@@ -298,15 +298,12 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     expect(strategyState.proposals.map((row) => row.summary)).toContain(
       "Synthetic Settings102 rule",
     );
-    const pendingStrategies = strategies.getByRole("region", { name: "Oczekujące propozycje" });
-    await pendingStrategies.scrollIntoViewIfNeeded();
-    await expect(pendingStrategies).toContainText("Synthetic Settings102 rule");
-    await pendingStrategies
-      .getByText("Synthetic Settings102 rule", { exact: true })
-      .locator("..")
-      .getByRole("button", { name: "Otwórz propozycję", exact: true })
-      .click();
-    await expect(drawer).toContainText("Synthetic Settings102 rule");
+    // The ported status card (ab24ab6 StrategyPopover + Header.tsx ProposalNotice): the first pending
+    // proposal with `Zobacz`, which opens the proposal drawer.
+    const notice = strategies.getByRole("button", { name: "Zobacz", exact: true });
+    await notice.scrollIntoViewIfNeeded();
+    await notice.click();
+    await expect(drawer).toBeVisible();
     await drawer.getByRole("button", { name: "Zamknij" }).click();
     await rewriteHash(page, /\/investments\.strategies(?=\?|$)/u, "/settings");
     await expect(profile).toBeVisible();

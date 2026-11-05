@@ -118,7 +118,12 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
     const dialog = page.getByRole("dialog", { name: "Sygnały", exact: true });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Obserwowane");
-    expect(await dialog.locator("[data-signal]").count()).toBeLessThan(50);
+    // The old dialog lists every signal (no virtual window): each row once.
+    const signalIds = await dialog
+      .locator("[data-signal]")
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-signal")));
+    expect(signalIds.length).toBeGreaterThan(0);
+    expect(new Set(signalIds).size).toBe(signalIds.length);
     await page.screenshot({ path: join(artifactDir, "native-signals-dialog.png") });
     // A watched subject's `Zanotuj decyzję`: the inline form, or the position dialog for a multi-signal instrument.
     await dialog
@@ -141,7 +146,8 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
     await expect(alerts).toContainText("Synthetic Signals alert");
     await alerts.getByRole("button", { name: "Wycisz alert Synthetic Signals alert" }).click();
     await expect(
-      alerts.getByRole("row").filter({ hasText: "Synthetic Signals alert" }),
+      // the alerts table row (the triggered history below lists the alert too)
+      alerts.getByRole("row").filter({ hasText: "Synthetic Signals alert" }).first(),
     ).toContainText("wyciszony");
     await alerts.getByRole("button", { name: "Włącz alert Synthetic Signals alert" }).click();
     await expect(
@@ -217,7 +223,13 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
     await dialog.getByRole("button", { name: "dziennik" }).click();
     const journal = page.getByTestId("native-signals-journal");
     await expect(journal).toBeVisible();
-    await journal.getByRole("combobox", { name: "Instrument" }).selectOption({ label: "WATCH" });
+    // The instrument filter lists the instruments by their label (old Journal `names`).
+    const only = journal.getByRole("combobox", { name: "Instrument" });
+    const watchValue = await only
+      .locator("option", { hasText: "WATCH" })
+      .first()
+      .getAttribute("value");
+    await only.selectOption(watchValue ?? "");
     await expect(journal).toContainText("Synthetic decision99");
     // The newest decision is the first entry; its `cofnij` works for 15 minutes.
     await journal.getByRole("button", { name: "cofnij" }).first().click();

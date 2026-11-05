@@ -121,15 +121,31 @@ test("Research page reads generated events, opens a note and a topic, and separa
     const asset = page.getByRole("dialog").last();
     await expect(asset).toBeVisible();
     await expect(asset.getByText("Synthetic research fact 1").first()).toBeVisible();
+    await page.keyboard.press("Escape");
     await settleModalHistory(page);
     await page.evaluate((hash) => {
       location.hash = hash;
     }, researchHash);
     await expect(research).toBeVisible();
-    await tab("Tematy").click();
-    // A topic card's headline opens the topic drawer over the Home (old `topics/<key>`).
-    const firstTopic = research.locator("article[data-topic] h3 button").first();
-    await firstTopic.click();
+    // The topic drawer over the Home (old `topics/<key>`, native `?topic=`). Tematy shows cards only for
+    // topics with notes from the last two days (old storyTopics), so the drawer opens through its route.
+    const topicKeys = (await readNativeResearchTopics(dataDir, selectedVault)).topics.map(
+      (item) => item.key,
+    );
+    const topicKey = topicKeys.find((key) => /^[a-z0-9_]{1,120}$/u.test(key));
+    if (!topicKey) throw new Error(`synthetic_research_topic_absent: ${topicKeys.join(", ")}`);
+    const openTopic = () =>
+      page.evaluate(
+        ([hash, key]) => {
+          const [path = "", query = ""] = hash.slice(1).split("?");
+          const vault = query.split("&").find((part) => part.startsWith("vault="));
+          const search = [vault, `topic=${key}`].filter(Boolean).join("&");
+          location.hash = `${path.replace("/investments.research", "/investments.portfolio")}?${search}`;
+        },
+        [researchHash, topicKey] as const,
+      );
+    await openTopic();
+    await expect(page).toHaveURL(/topic=/u);
     const drawer = page.getByRole("dialog");
     await expect(drawer.locator("[data-topic-drawer]")).toBeVisible();
     const topicLabel = await drawer.getAttribute("aria-label");
@@ -155,8 +171,7 @@ test("Research page reads generated events, opens a note and a topic, and separa
       location.hash = hash;
     }, researchHash);
     await expect(research).toBeVisible();
-    await tab("Tematy").click();
-    await research.locator("article[data-topic] h3 button").first().click();
+    await openTopic();
     await expect(page.getByRole("dialog")).toHaveAttribute("aria-label", topicLabel as string);
     await expect(
       page.getByRole("dialog").locator("#topic-thesis").getByText(ownerThesis, { exact: true }),

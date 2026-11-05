@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { demoExpectations, } from "../demo-expectations.ts";
+import { demoExpectations } from "../demo-expectations.ts";
 import {
   dashboardWindow,
   expect,
@@ -108,13 +108,15 @@ test("investments Home shows generated-source valuations, its filters, the Impor
     // An asset row opens the asset drawer over the Home (ab24ab6 `assets/{id}`); its transactions drawer and
     // the manual transaction drawer (old Drawers.tsx TxnsDrawer / TxnDrawer) write an owner transaction.
     await asset.click();
-    const assetDrawer = page.getByRole("dialog", { name: label, exact: true });
+    // The drawer is named by the instrument's name (DetailDrawer); its head carries the symbol.
+    const assetDrawer = page.getByRole("dialog").filter({ hasText: label }).first();
     await expect(assetDrawer).toBeVisible();
     await expect(page).toHaveURL(/\/assets\//u);
     await page.screenshot({ path: join(dataDir, "native-asset-drawer.png"), fullPage: true });
     await assetDrawer.getByRole("button", { name: /^\d+ transakcj/u }).click();
     const txns = page.getByRole("dialog", { name: "Transakcje instrumentu", exact: true });
     await expect(txns).toBeVisible();
+    await expect(txns.getByRole("row").first()).toBeVisible();
     const rowsBefore = await txns.getByRole("row").count();
     await txns.getByRole("button", { name: "Dodaj transakcję", exact: true }).click();
     const transaction = page.getByRole("dialog", { name: "Dodaj transakcję", exact: true });
@@ -125,6 +127,9 @@ test("investments Home shows generated-source valuations, its filters, the Impor
     await type.selectOption("buy");
     await transaction.getByRole("textbox", { name: "Ilość", exact: true }).fill("1,25");
     await transaction.getByRole("textbox", { name: /^Cena \(/u }).fill("10");
+    // A foreign-currency instrument in a PLN account asks for the rate (old TxnDrawer `fxRequired`).
+    const rate = transaction.getByRole("textbox", { name: /^Kurs \(/u });
+    if (await rate.count()) await rate.fill("4,25");
     await transaction
       .getByRole("textbox", { name: "Notatka", exact: true })
       .fill("Synthetic native owner write");
