@@ -44,7 +44,8 @@ function RailRow({ row, right, first }: { row: RailRowData; right?: ReactNode; f
       onKeyDown={onOpen ? key : undefined}
       className={`flex items-start gap-2.5 py-2 ${first ? "" : "border-t border-border"} ${link}`}
     >
-      <span className="mt-px flex-none">
+      {/* a flex box, so the tile sits without a line box around it (old `.hr-row > .il` is the tile itself) */}
+      <span className="mt-px flex flex-none">
         <InstTile monogram={row.monogram} density="compact" quiet={row.portfolio} />
       </span>
       <span className="min-w-0 flex-1 text-sm leading-cozy">
