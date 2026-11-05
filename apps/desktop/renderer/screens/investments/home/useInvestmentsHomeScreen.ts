@@ -9,7 +9,13 @@ import { S } from "@cashu/i18n/investments/v2/Home.strings";
 import { useToast } from "@cashu/ui";
 import { dm } from "@cashu/ui-logic/investments/labels";
 import type { AccountRow, CommitResult, Position, Thesis } from "@cashu/ui-logic/investments/types";
-import { type InstLike, instName, nextWeekday } from "@cashu/ui-logic/investments/v2/logic";
+import {
+  type InstLike,
+  instName,
+  nextWeekday,
+  type SignalFilter,
+  signalText,
+} from "@cashu/ui-logic/investments/v2/logic";
 import type { CardId } from "@cashu/ui-logic/investments/v2/reviewDeckLogic";
 import type { PerfRange } from "@cashu/ui-logic/investments/v2/types";
 import { startTransition, useEffect, useRef, useState } from "react";
@@ -19,7 +25,10 @@ import {
   useReviewDeckCommands,
   useReviewDeckData,
 } from "../../review/deck/useReviewDeckData.js";
-import { type SignalsPageKind, useSignalsScreen } from "../../signals/useSignalsScreen.js";
+import type { SignalsDialogInput } from "../../signals/SignalsDialogScreen.js";
+import type { SignalsSubPage } from "../../signals/SignalsPageScreen.js";
+import { useDisplayClock } from "../../signals/useDisplayClock.js";
+import { useUnwatch } from "../../signals/WatchlistScreens.js";
 import type {
   AccountDrawerInput,
   ThesisDrawerInput,
@@ -67,7 +76,7 @@ export interface InvestmentsHomeOptions {
   onReviewOpened?(): void;
   onReviewClosed?(): void;
   openPage?(gid: string): void;
-  onSignalsPageOpened?(page: SignalsPageKind, newAlert?: boolean): void;
+  onSignalsPageOpened?(page: SignalsSubPage, newAlert?: boolean): void;
   onSignalsClosed?(): void;
   onResearchOpened?(tab?: string, topic?: string, note?: string): void;
   onProposalOpened?(gid: string, onResumed: () => void): boolean;
@@ -96,18 +105,17 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   const commands = useInvestmentsHomeCommands(data);
   const deckCommands = useReviewDeckCommands();
   const widgets = useHomeWidgetsState();
-  const signalsScreen = useSignalsScreen({
-    initialSignal: o.signalFocusId,
-    onOpenAsset: o.openPage,
-    onOpenReview: o.onReviewOpened,
-    onOpenPage: o.onSignalsPageOpened,
-    onClose: o.onSignalsClosed,
-    onOpenNote: (note) => o.onResearchOpened?.(undefined, undefined, note ?? undefined),
-  });
-  const { setDialogOpen } = signalsScreen;
-  useEffect(() => {
-    if (o.signalsOpen) setDialogOpen(true);
-  }, [o.signalsOpen, setDialogOpen]);
+  const displayNow = useDisplayClock(data.today);
+  // The signals dialog (old Home.tsx sigDialog): the rail's `Wszystkie`, the route's `signals=1` and a
+  // notification (its signal focused) open it.
+  const [sigDialog, setSigDialog] = useState<{
+    filter: SignalFilter;
+    focusId: string | number | null;
+  } | null>(null);
+  // The route flag opens it too (closing it clears the flag).
+  const dialog =
+    sigDialog ??
+    (o.signalsOpen ? { filter: "all" as const, focusId: o.signalFocusId ?? null } : null);
 
   // Alokacja's view (home v3 Q2): the page owns it so the stale-prices tag can land on Rachunki.
   const [allocView, setAllocView] = useState<AllocView | null>(null);
@@ -143,6 +151,8 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   const due = doneLocal ? false : !!digest?.review_due;
   const hasData = hasDataOf(positions);
   const watch = data.watchQ.data ?? [];
+  // The watch row's X with the undo (re-add), old removeWatchWithUndo.
+  const unwatch = useUnwatch(watch);
   // A list that never loaded reads as empty (as the old `.catch(() => [])` did).
   const alertsList = data.alertsQ.data ?? (data.alertsQ.error ? [] : null);
 
@@ -369,7 +379,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
       insts,
       onOpenAsset: openAsset,
       onOpenReview: openReview,
-      onAll: () => setDialogOpen(true),
+      onAll: () => setSigDialog({ filter: "all", focusId: null }),
     }),
     alerts: alertsBriefProps({
       alerts: alertsList,
@@ -384,7 +394,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
           watched: watchedOf(watch),
           why,
           busy: commands.research.busy,
-          now: Date.parse(signalsScreen.displayNow),
+          now: Date.parse(displayNow),
           onWhy: setWhy,
           onWatch: (n) =>
             void commands.research.watch(n).then((failure) => failure && toast(failure, 4000)),
@@ -393,9 +403,31 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
           onAll: () => o.onResearchOpened?.("candidates"),
         })
       : null,
-    signalsScreen,
+    // Named by the signal's own title, never the strategy's rule id (old Home.tsx:516, FE-A A6).
+    signalsDialog: dialog
+      ? ({
+          data,
+          filter: dialog.filter,
+          focusId: dialog.focusId,
+          review: o.review,
+          expired: (digest?.signals.resolved ?? [])
+            .filter((x) => x.status === "expired")
+            .map((x) => ({ title: x.instrument_label ?? signalText(x).title })),
+          onHistory: () => o.onSignalsPageOpened?.("journal"),
+          onClose: () => {
+            setSigDialog(null);
+            if (o.signalsOpen) o.onSignalsClosed?.();
+          },
+          onOpenAsset: (gid: string) => o.openPage?.(gid),
+          onOpenNote: (_instrument: string | null, note: string | null, segment: string | null) =>
+            note
+              ? o.onResearchOpened?.(undefined, undefined, note)
+              : o.onResearchOpened?.(undefined, segment ?? undefined),
+        } satisfies SignalsDialogInput)
+      : null,
     // ---- widgets ui (H2) ----
     widgets,
+    unwatch,
     range: o.range,
     onRange: (range: PerfRange) => startTransition(() => o.onRangePicked?.(range)),
     allocView,

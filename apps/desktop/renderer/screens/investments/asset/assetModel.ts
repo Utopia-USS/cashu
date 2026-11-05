@@ -424,6 +424,8 @@ export function assetModel(o: AssetInputs) {
     position: pos,
     watchItem: w,
     live,
+    /** Open signals no decision covers (the position decision dialog decides them all). */
+    undecided,
     head: {
       tile: inst ? o.tile : null,
       labelSub: inst

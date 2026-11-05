@@ -7,6 +7,10 @@ import { S as H } from "@cashu/i18n/investments/v2/Home.strings";
 import { Button, Crumb, DetailDrawer, HealthPill, Skeleton } from "@cashu/ui";
 import type { Position, Thesis } from "@cashu/ui-logic/investments/types";
 import { type ReactNode, Suspense } from "react";
+import { AlertRow } from "../../signals/AlertRowView.js";
+import { alertRowProps } from "../../signals/alertsModel.js";
+import { PositionDecisionScreen } from "../../signals/SignalsDialogScreen.js";
+import { useRemoveAlert } from "../../signals/useRemoveAlert.js";
 import { gidOf } from "../home/legacyWire.js";
 import { AssetDetailView } from "./AssetDetailView.js";
 import { AssetResearchView } from "./AssetResearchView.js";
@@ -73,6 +77,7 @@ function Detail(props: CommonProps & { mode: AssetMode }) {
   });
   const m = st.model;
   const pill = st.thesisPill;
+  const removeAlert = useRemoveAlert();
   const research: ReactNode =
     st.researchShown && !st.privacy ? (
       <AssetResearchView model={st.researchModel} ui={st.research} />
@@ -100,10 +105,26 @@ function Detail(props: CommonProps & { mode: AssetMode }) {
       slots={{
         thesisTags: pill ? <HealthPill {...pill} /> : null,
         research,
-        // A2 slot: AlertRow (compact) per live alert, agent alerts removable with undo (old Alerts.tsx AlertRow).
-        alertRows: null,
-        // A2 slot: PositionDecisionDialog (old Decide.tsx) while `st.decideOpen`.
-        decision: null,
+        // Old Alerts.tsx AlertRow (compact) per live alert; agent alerts removable with undo.
+        alertRows: m.live.map((a) => (
+          <AlertRow
+            key={a.id}
+            {...alertRowProps(a, {
+              compact: true,
+              onRemove: a.source === "agent" ? () => removeAlert(a) : undefined,
+            })}
+          />
+        )),
+        // Old Decide.tsx PositionDecisionDialog over the detail (`Zanotuj decyzję`).
+        decision: st.decideOpen ? (
+          <PositionDecisionScreen
+            data={st.data}
+            instrumentId={m.id}
+            signals={m.undecided}
+            thesis={m.thesis}
+            onClose={st.closeDecide}
+          />
+        ) : null,
       }}
     />
   );

@@ -6,7 +6,8 @@ import { ToastProvider } from "@cashu/ui";
 import { Suspense } from "react";
 import { ReviewDeckScreen } from "../../review/deck/ReviewDeckScreen.js";
 import { ReviewSlotView } from "../../review/deck/ReviewSlotView.js";
-import { SignalsDialogView } from "../../signals/SignalsView.js";
+import { SignalsDialogScreen } from "../../signals/SignalsDialogScreen.js";
+import { InstrumentSearchScreen } from "../../signals/WatchlistScreens.js";
 import { AssetDrawerScreen, AssetPage } from "../asset/AssetDetailScreen.js";
 import {
   AccountDrawer,
@@ -64,7 +65,7 @@ function HomeBound(props: InvestmentsHomeOptions) {
           {...a.actions}
         />
       )}
-      {s.phase === "home" && <SignalsDialogView state={s.signalsScreen} />}
+      {s.phase === "home" && s.signalsDialog && <SignalsDialogScreen {...s.signalsDialog} />}
       {s.importDrawer && <ImportDrawer input={s.importDrawer} />}
       {s.txnDrawer && <TxnDrawer {...s.txnDrawer} />}
       {s.accountDrawer && <AccountDrawer {...s.accountDrawer} />}
@@ -154,7 +155,17 @@ function HomeBound(props: InvestmentsHomeOptions) {
                   onTab: s.setAssetTab,
                   onOpenAsset: s.openPage,
                   onAddTxn: s.onAddTxn,
+                  onUnwatch: s.unwatch.onUnwatch,
+                  unwatchBusy: s.unwatch.unwatchBusy,
                 })}
+                search={
+                  s.widgets.adding ? (
+                    <InstrumentSearchScreen
+                      onClose={() => s.widgets.onAdding(false)}
+                      onOpen={s.openPage}
+                    />
+                  ) : null
+                }
               />
             ),
           },

@@ -303,6 +303,8 @@ export function useAssetDetail(input: AssetDetailInput) {
 
   return {
     model,
+    /** The Home's reads (the position decision dialog's context). */
+    data,
     privacy,
     mode: input.mode,
     decideOpen,
