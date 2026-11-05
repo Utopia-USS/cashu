@@ -1,9 +1,8 @@
 // The loans first steps (ab24ab6 modules/loans/Start.tsx in core/StartPage.tsx): the shared module start frame
 // with the loan and installment steps and the Agent AI widget. Pure; the drawers come in as children.
 import { S as A } from "@cashu/i18n/core/chrome.strings";
-import { S as P } from "@cashu/i18n/core/SetupPage.strings";
 import { S as T } from "@cashu/i18n/loans/Start.strings";
-import { Button, ModuleStart, Tag, Widget } from "@cashu/ui";
+import { AgentWidget, Button, ModuleStart, Tag } from "@cashu/ui";
 import type { ReactNode } from "react";
 import type { LoansState } from "./useLoansScreen.js";
 
@@ -47,31 +46,7 @@ export function LoansStartView({ state, onGuide, onAgentSettings, children }: Lo
             : undefined,
         })) ?? null
       }
-      aside={
-        <Widget
-          title={A.agent}
-          tight
-          footer={
-            <Button variant="link" size="sm" onPress={onAgentSettings}>
-              {A.settings}
-            </Button>
-          }
-        >
-          <div className="text-sm">
-            {start.mcpPrivacy === "amounts" ? (
-              <>
-                <b>{P.amountsBold}</b>
-                {P.amountsText}
-              </>
-            ) : (
-              <>
-                <b>{P.strictBold}</b>
-                {P.strictText}
-              </>
-            )}
-          </div>
-        </Widget>
-      }
+      aside={<AgentWidget privacy={start.mcpPrivacy} onSettings={onAgentSettings} />}
     >
       {children}
     </ModuleStart>

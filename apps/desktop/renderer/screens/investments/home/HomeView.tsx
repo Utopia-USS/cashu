@@ -2,10 +2,9 @@
 // with the widgets in the main column and the rail; the research strip last), the empty portfolio's first steps,
 // the loading skeleton and the error line. Pure: models come from homeModel.ts, the widget / rail / research /
 // review nodes from the screen.
-import { S as A } from "@cashu/i18n/core/chrome.strings";
-import { S as P } from "@cashu/i18n/core/SetupPage.strings";
 import { S } from "@cashu/i18n/investments/v2/Home.strings";
 import {
+  AgentWidget,
   Button,
   CodeLine,
   type FactProps,
@@ -277,22 +276,7 @@ function StartView({
         {
           id: "privacy",
           span: 1,
-          node: (
-            <Widget
-              title={A.agent}
-              tight
-              footer={
-                <Button variant="link" size="md" onPress={onSettings}>
-                  {A.settings}
-                </Button>
-              }
-            >
-              <div className="text-sm">
-                <b>{P.strictBold}</b>
-                {P.strictText}
-              </div>
-            </Widget>
-          ),
+          node: <AgentWidget privacy={"strict"} onSettings={onSettings} />,
         },
       ]}
     />

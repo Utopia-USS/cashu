@@ -1,8 +1,7 @@
 // The budget first steps page (ab24ab6 modules/budget/Start.tsx in core/StartPage.tsx): the shared module start
 // frame with the three steps and the Agent AI widget. Pure; the drawers come in as children.
 import { S as A } from "@cashu/i18n/core/chrome.strings";
-import { S as P } from "@cashu/i18n/core/SetupPage.strings";
-import { Button, ModuleStart, Tag, Widget } from "@cashu/ui";
+import { AgentWidget, Button, ModuleStart, Tag } from "@cashu/ui";
 import type { ReactNode } from "react";
 import type { BudgetStartState } from "./useBudgetStart.js";
 
@@ -49,31 +48,7 @@ export function BudgetStartView({
             : undefined,
         })) ?? null
       }
-      aside={
-        <Widget
-          title={A.agent}
-          tight
-          footer={
-            <Button variant="link" size="sm" onPress={onAgentSettings}>
-              {A.settings}
-            </Button>
-          }
-        >
-          <div className="text-sm">
-            {state.mcpPrivacy === "amounts" ? (
-              <>
-                <b>{P.amountsBold}</b>
-                {P.amountsText}
-              </>
-            ) : (
-              <>
-                <b>{P.strictBold}</b>
-                {P.strictText}
-              </>
-            )}
-          </div>
-        </Widget>
-      }
+      aside={<AgentWidget privacy={state.mcpPrivacy} onSettings={onAgentSettings} />}
     >
       {children}
     </ModuleStart>
