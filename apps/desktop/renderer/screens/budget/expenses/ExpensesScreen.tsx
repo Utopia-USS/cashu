@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ExpensesLoadingView, ExpensesView } from "./ExpensesView.js";
 import { type ExpensesScreenOptions, useExpensesScreen } from "./useExpensesScreen.js";
 
-export type { ExpensesFilters, ExpensesScreenOptions } from "./useExpensesScreen.js";
+export type { ExpensesScreenOptions } from "./useExpensesScreen.js";
 
 export function ExpensesScreen(props: ExpensesScreenOptions) {
   return (

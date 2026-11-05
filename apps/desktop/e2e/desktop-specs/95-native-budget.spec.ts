@@ -52,6 +52,30 @@ test("native budget tabs follow the Python app: Wydatki, Przepływy and Subskryp
       "aria-current",
       "page",
     );
+    const expenses = page.getByRole("main", { name: "Wydatki", exact: true });
+    // The currency switch (two currencies with data) is the route's choice; every view shows one currency.
+    await expenses.getByRole("button", { name: "EUR", exact: true }).click();
+    await expect(page).toHaveURL(/currency=EUR/);
+    await expenses.getByRole("button", { name: "PLN", exact: true }).click();
+    await expect(page).toHaveURL(/currency=PLN/);
+    await expenses.getByRole("button", { name: "Wszystko", exact: true }).click();
+    // A legend row (label, amount, share) opens the category's transactions.
+    await expenses.getByRole("button", { name: /%/u }).first().click();
+    const category = expenses.getByRole("combobox", { name: "Kategoria", exact: true }).first();
+    await expect(category).toBeVisible();
+    await category.selectOption(
+      (await category.inputValue()) === "groceries" ? "dining" : "groceries",
+    );
+    const toasts = page.getByRole("region", { name: "Powiadomienia", exact: true });
+    const toast = toasts.getByRole("status").filter({ hasText: "Zmieniono:" });
+    await expect(toast).toBeVisible();
+    const allFrom = toast.getByRole("button", { name: /^Wszystkie od /u });
+    if ((await allFrom.count()) > 0) {
+      await allFrom.click();
+      await expect(toasts).toContainText(/\d+ transakcji/u);
+    }
+    await expenses.getByRole("button", { name: "Zamknij", exact: true }).click();
+    await expect(expenses.getByRole("combobox", { name: "Kategoria", exact: true })).toHaveCount(0);
     await tabs.getByRole("button", { name: "Przepływy", exact: true }).click();
     const flows = page.getByRole("main", { name: "Przepływy", exact: true });
     await expect(flows).toBeVisible();
@@ -59,6 +83,30 @@ test("native budget tabs follow the Python app: Wydatki, Przepływy and Subskryp
       flows.getByRole("region", { name: "Zamknięcie miesiąca", exact: true }),
     ).toBeVisible();
     await expect(flows).toContainText(/Przepływy \([A-Z]{3}\)/u);
+    // The month close card's cushion: the inline form saves, reopens with the saved target, and privacy locks it.
+    const close = flows.getByRole("region", { name: "Zamknięcie miesiąca", exact: true });
+    await close.getByRole("button", { name: "Ustaw", exact: true }).click();
+    const cushionSwitch = close.getByRole("switch", {
+      name: "Poduszka przed inwestycjami",
+      exact: true,
+    });
+    if ((await cushionSwitch.getAttribute("aria-checked")) !== "true") await cushionSwitch.click();
+    await close
+      .getByRole("group", { name: "Cel poduszki", exact: true })
+      .getByRole("button", { name: "Kwota", exact: true })
+      .click();
+    await close.getByRole("textbox", { name: /^Kwota \([A-Z]{3}\)$/u }).fill("1000");
+    await close.getByRole("button", { name: "Zapisz", exact: true }).click();
+    await expect(close.getByRole("button", { name: "Zapisz", exact: true })).toHaveCount(0);
+    await close.getByRole("button", { name: "Ustaw", exact: true }).click();
+    await expect(close.getByRole("textbox", { name: /^Kwota \([A-Z]{3}\)$/u })).toHaveValue(
+      /^1000(\.0+)?$/u,
+    );
+    await close.getByRole("button", { name: "Anuluj", exact: true }).click();
+    await setPrivacy(page, true);
+    await expect(close.getByRole("button", { name: "Ustaw", exact: true })).toBeDisabled();
+    await setPrivacy(page, false);
+    await expect(close.getByRole("button", { name: "Ustaw", exact: true })).toBeEnabled();
     await flows.getByRole("combobox", { name: "Agregacja", exact: true }).selectOption("quarterly");
     await expect(page).toHaveURL(/gran=quarterly/);
     await flows.getByRole("button", { name: "Max", exact: true }).click();
@@ -80,8 +128,24 @@ test("native budget tabs follow the Python app: Wydatki, Przepływy and Subskryp
     await pickProfile(page, "Demo");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await pickProfile(page, "Demo Anna");
-    // An old deep link to the budget module opens Wydatki.
+    // An old deep link to the budget module opens Wydatki (the profile switch lands on Przegląd).
+    await tabs.getByRole("button", { name: "Wydatki", exact: true }).click();
     await rewriteHash(page, /\/budget\/[^?]*(?=\?|$)/u, "/budget");
+    await expect(page.getByRole("main", { name: "Wydatki", exact: true })).toBeVisible();
+    // The budget first steps: the expense categories step opens the uncategorized merchants drawer.
+    await rewriteHash(page, /\/budget\/[^?]*(?=\?|$)/u, "/setup/budget");
+    const reviewCategories = page.getByRole("button", { name: "Przejrzyj", exact: true });
+    await expect(page.getByText("Kategorie wydatków", { exact: true }).first()).toBeVisible();
+    if ((await reviewCategories.count()) > 0) {
+      await reviewCategories.first().click();
+      const merchants = page.getByRole("dialog");
+      await expect(merchants).toBeVisible();
+      const choices = merchants.getByRole("combobox");
+      if ((await choices.count()) > 0) await choices.first().selectOption("groceries");
+      await merchants.getByRole("button", { name: "Zamknij", exact: true }).click();
+      await expect(merchants).toHaveCount(0);
+    }
+    await rewriteHash(page, /\/setup\/budget[^?]*(?=\?|$)/u, "/budget");
     await expect(page.getByRole("main", { name: "Wydatki", exact: true })).toBeVisible();
     await setPrivacy(page, true);
     await expect(page.getByRole("main")).toContainText("•••");

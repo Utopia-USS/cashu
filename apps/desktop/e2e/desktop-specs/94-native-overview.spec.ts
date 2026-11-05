@@ -96,7 +96,7 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     await expect(page).toHaveURL(/\/overview/u);
     const annaWorth = rendered(expected.anna.net, expected.anna.currency);
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
-    const budgetWidget = page.getByRole("region", { name: /^Budżet/u });
+    const budgetWidget = page.getByRole("region", { name: /^Budżet · /u });
     await expect(budgetWidget).toBeVisible();
     const budgetText = (await budgetWidget.textContent()) ?? "";
     const chosen = Object.values(expected.anna.months).find((month) =>
@@ -196,9 +196,10 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     if (immediatePrivacy.amountRetained) expect(playwrightAmountVisible).toBe(false);
     await expect(privacy).toBeChecked();
     await expect(page.getByTestId("net-worth")).not.toContainText(/\d/u);
+    // The chart label keeps its month range ("maj 26"); amounts are hidden.
     await expect(page.getByRole("img", { name: /^Wartość netto w czasie/u })).not.toHaveAttribute(
       "aria-label",
-      /\d/u,
+      /\d{3}|\d\s?zł/u,
     );
     await chartControl.focus();
     await chartControl.press("End");
