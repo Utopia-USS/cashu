@@ -49,32 +49,20 @@ test("native loans and asset first steps use actual host stores and reset drafts
       .getByRole("button", { name: "Kredyty", exact: true })
       .click();
     await expect(page.getByTestId("native-loans")).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Wybierz kredyt" })).toBeVisible();
-    await expect(page.getByRole("table", { name: "Kredyty", exact: true })).toBeVisible();
+    const list = page.getByRole("table", { name: "Kredyty", exact: true });
+    await expect(list).toBeVisible();
     for (const loan of expected) {
-      await expect(page.getByRole("combobox", { name: "Wybierz kredyt" })).toContainText(loan.name);
-      await expect(page.getByRole("table", { name: "Kredyty", exact: true })).toContainText(
-        rendered(loan.monthlyPayment, loan.currency),
-      );
+      await expect(list).toContainText(loan.name);
+      await expect(list).toContainText(rendered(loan.monthlyPayment, loan.currency));
     }
 
+    // The old tab renders the whole schedule in a scrolling card (no virtual rows).
     const longSchedule = page.getByRole("table", { name: "Harmonogram", exact: true });
-    const scheduleRows = Number(await longSchedule.getAttribute("aria-rowcount"));
-    expect(scheduleRows).toBeGreaterThan(50);
-    const scheduleScroll = longSchedule.locator("xpath=..");
-    await scheduleScroll.evaluate((node) => {
-      node.scrollTop = node.scrollHeight;
-    });
-    await expect(longSchedule.getByRole("row").last()).toHaveAttribute(
-      "aria-rowindex",
-      String(scheduleRows),
-    );
-    expect(await longSchedule.getByRole("row").count()).toBeLessThan(50);
-    await scheduleScroll.evaluate((node) => {
-      node.scrollTop = 0;
-    });
+    expect(await longSchedule.getByRole("row").count()).toBeGreaterThan(50);
 
-    await page.getByRole("button", { name: "Dodaj kredyt", exact: true }).first().click();
+    // New loans and installment matching live on the first steps (old Start), as in the Python app.
+    await rewriteHash(page, /\/loans\.list(?:\?.*)?$/u, "/setup/loans");
+    await page.getByRole("button", { name: "Dodaj kolejny", exact: true }).click();
     const drawer = page.getByRole("dialog", { name: "Dodaj kredyt", exact: true });
     await expect(drawer).toBeVisible();
     await drawer.getByRole("textbox", { name: "Nazwa", exact: true }).fill("Synthetic UI loan");
@@ -85,25 +73,18 @@ test("native loans and asset first steps use actual host stores and reset drafts
     await drawer.getByRole("textbox", { name: "Okres", exact: true }).fill("1");
     await drawer.getByRole("button", { name: "Dodaj", exact: true }).click();
     await expect(drawer).toBeHidden();
-    await expect(page.getByRole("combobox", { name: "Wybierz kredyt" })).toContainText(
-      "Synthetic UI loan",
-    );
-    await page
-      .getByRole("combobox", { name: "Wybierz kredyt" })
-      .selectOption({ label: "Synthetic UI loan" });
-    await expect(page.getByRole("table", { name: "Harmonogram" })).toBeVisible();
-    await expect(page.getByRole("table", { name: "Kredyty", exact: true })).toContainText(
-      rendered("1000", "PLN"),
-    );
-    await page.screenshot({ path: test.info().outputPath("native-loans.png"), fullPage: true });
-    await expect(page.getByRole("table", { name: "Harmonogram" }).getByRole("row")).toHaveCount(13);
-    await page.getByRole("button", { name: "Rozpoznawanie rat", exact: true }).click();
+
+    const installmentStep = page.getByRole("button", { name: /^(Zmień|Wskaż ratę)$/u });
+    await installmentStep.click();
     const matching = page.getByRole("dialog", { name: "Rozpoznawanie rat", exact: true });
     await expect(matching).toBeVisible();
+    await matching
+      .getByRole("combobox", { name: "Kredyt", exact: true })
+      .selectOption({ label: "Synthetic UI loan" });
     await matching.getByRole("textbox", { name: "Fraza", exact: true }).fill("SYNTHETIC REPAYMENT");
     await matching.getByRole("button", { name: "Zapisz", exact: true }).click();
     await expect(matching).toBeHidden();
-    await page.getByRole("button", { name: "Rozpoznawanie rat", exact: true }).click();
+    await installmentStep.click();
     await matching
       .getByRole("combobox", { name: "Kredyt", exact: true })
       .selectOption({ label: "Synthetic UI loan" });
@@ -112,19 +93,29 @@ test("native loans and asset first steps use actual host stores and reset drafts
     );
     await matching.getByRole("button", { name: "wyczyść", exact: true }).click();
     await expect(matching).toBeHidden();
+
+    await rewriteHash(page, /\/setup\/loans(?:\?.*)?$/u, "/loans.list");
+    await expect(list).toContainText(rendered("1000", "PLN"));
+    await list.getByRole("button", { name: "Synthetic UI loan", exact: true }).click();
+    await page.screenshot({ path: test.info().outputPath("native-loans.png"), fullPage: true });
+    await expect(page.getByRole("table", { name: "Harmonogram" }).getByRole("row")).toHaveCount(13);
+
+    await rewriteHash(page, /\/loans\.list(?:\?.*)?$/u, "/setup/loans");
     await setPrivacy(page, true);
-    await expect(page.getByText("Synthetic UI loan", { exact: true })).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Dodaj kredyt", exact: true }).first(),
-    ).toBeDisabled();
+    await expect(page.getByText("Synthetic UI loan", { exact: false })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Dodaj kolejny", exact: true })).toBeDisabled();
     await setPrivacy(page, false);
 
-    await page.getByRole("button", { name: "Dodaj kredyt", exact: true }).first().click();
+    await page.getByRole("button", { name: "Dodaj kolejny", exact: true }).click();
     await expect(drawer).toBeVisible();
     await pickProfile(page, "Demo");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     for (const route of ["loans.list", "budget/expenses"]) {
-      await rewriteHash(page, /\/overview(?:\?.*)?$|\/loans\.list(?:\?.*)?$/u, `/${route}`);
+      await rewriteHash(
+        page,
+        /\/overview(?:\?.*)?$|\/loans\.list(?:\?.*)?$|\/setup\/loans(?:\?.*)?$/u,
+        `/${route}`,
+      );
       await expect(page.getByText("Rozpocznij konfigurację", { exact: true })).toBeVisible();
       await expect(page.getByTestId("native-loans")).toHaveCount(0);
     }

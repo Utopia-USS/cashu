@@ -1,5 +1,17 @@
+// The Kredyty route body (ab24ab6 modules/loans/index.tsx tab + Start): the old shell showed an empty module's
+// first steps on its tab, `setup/loans` always shows them. Drafts and pending completions are keyed to the
+// selected vault and the privacy mode.
+import { S as L } from "@cashu/i18n/loans/Loans.strings";
 import { useProfile } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
+import {
+  Page,
+  SkeletonChart,
+  SkeletonKpis,
+  SkeletonTable,
+  ToastProvider,
+  useUiEnv,
+} from "@cashu/ui";
+import { Suspense } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { InstallmentDrawerView } from "./InstallmentDrawerView.js";
 import { LoanDrawerView } from "./LoanDrawerView.js";
@@ -7,24 +19,52 @@ import { LoansStartView } from "./LoansStartView.js";
 import { LoansView } from "./LoansView.js";
 import { useLoansScreen } from "./useLoansScreen.js";
 
-/** Route composition keys all drafts and pending completion callbacks to the selected vault. */
-export function LoansScreen({ setup = false }: { setup?: boolean }) {
+export interface LoansScreenProps {
+  /** `setup/loans`: the first steps even when loans exist. */
+  setup?: boolean;
+  /** The empty tab's "Konfiguracja" (`setup/loans`). */
+  onSetup(): void;
+  /** The steps widget's Claude Code / CLI guide link. */
+  onGuide(): void;
+  /** The Agent AI widget's settings link. */
+  onAgentSettings(): void;
+}
+
+export function LoansScreen(props: LoansScreenProps) {
   const vault = useProfile();
   const { privacy } = useUiEnv();
-  return <LoansBound key={`${vault}:${privacy}`} setup={setup} />;
-}
-function LoansBound({ setup }: { setup: boolean }) {
-  const state = useLoansScreen(useCalendarDay());
   return (
+    <Page width="narrow" label={L.title} testID="native-loans">
+      <ToastProvider>
+        <Suspense
+          fallback={
+            <>
+              <SkeletonTable rows={2} />
+              <SkeletonKpis n={5} />
+              <SkeletonChart />
+            </>
+          }
+        >
+          <LoansBound key={`${vault}:${privacy}`} {...props} />
+        </Suspense>
+      </ToastProvider>
+    </Page>
+  );
+}
+
+function LoansBound({ setup = false, onSetup, onGuide, onAgentSettings }: LoansScreenProps) {
+  const state = useLoansScreen(useCalendarDay());
+  const drawers = (
     <>
-      <LoansView state={state} />
-      {(setup || state.rows.length === 0) && (
-        <div className="px-6 pb-6">
-          <LoansStartView state={state} />
-        </div>
-      )}
       <LoanDrawerView state={state} />
       <InstallmentDrawerView state={state} />
     </>
+  );
+  return setup || state.empty ? (
+    <LoansStartView state={state} onGuide={onGuide} onAgentSettings={onAgentSettings}>
+      {drawers}
+    </LoansStartView>
+  ) : (
+    <LoansView state={state} onSetup={onSetup} />
   );
 }

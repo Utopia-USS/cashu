@@ -1,5 +1,5 @@
 import { LoansStartView } from "./LoansStartView.js";
-import { StoryFixture, storyState } from "./storyState.js";
+import { privacyState, StoryFixture, storyState } from "./storyState.js";
 export default {
   title: "Desktop/Loans/Start",
   component: LoansStartView,
@@ -9,5 +9,7 @@ export default {
   args: { state: storyState },
 };
 export const Ready = {};
-export const Empty = { args: { state: { ...storyState, rows: [], current: null } } };
-export const Privacy = { args: { state: { ...storyState, privacy: true } } };
+export const Loading = {
+  args: { state: { ...storyState, start: { ...storyState.start, steps: null } } },
+};
+export const Privacy = { args: { state: privacyState } };

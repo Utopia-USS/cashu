@@ -1,38 +1,79 @@
-import { S } from "@cashu/i18n/loans/Start.strings";
-import { L } from "./Loans.strings.js";
+// The loans first steps (ab24ab6 modules/loans/Start.tsx in core/StartPage.tsx): the shared module start frame
+// with the loan and installment steps and the Agent AI widget. Pure; the drawers come in as children.
+import { S as A } from "@cashu/i18n/core/chrome.strings";
+import { S as P } from "@cashu/i18n/core/SetupPage.strings";
+import { S as T } from "@cashu/i18n/loans/Start.strings";
+import { Button, ModuleStart, Tag, Widget } from "@cashu/ui";
+import type { ReactNode } from "react";
 import type { LoansState } from "./useLoansScreen.js";
 
-export function LoansStartView({ state }: { state: LoansState }) {
-  const steps = state.setup.ok ? state.setup.value.steps : [];
+export interface LoansStartViewProps {
+  state: LoansState;
+  onGuide(): void;
+  onAgentSettings(): void;
+  children?: ReactNode;
+}
+
+export function LoansStartView({ state, onGuide, onAgentSettings, children }: LoansStartViewProps) {
+  const { start } = state;
   return (
-    <section className="grid gap-3 rounded-lg border border-border bg-surface-raised p-6">
-      <h2 className="text-title">{L.setup}</h2>
-      {steps.map((step) => (
-        <div
-          key={step.id}
-          className="flex flex-wrap items-center justify-between gap-3 border-t border-border py-3"
+    <ModuleStart
+      title={T.title}
+      tag={<Tag tone={start.tag.tone}>{start.tag.text}</Tag>}
+      stepsTitle={A.firstSteps}
+      footer={
+        <Button variant="link" size="sm" onPress={onGuide}>
+          {A.cliGuide}
+        </Button>
+      }
+      steps={
+        start.steps?.map((step) => ({
+          key: step.key,
+          status: step.status,
+          title: step.title,
+          hint: step.hint,
+          tag: step.tag ? <Tag tone="positive">{step.tag}</Tag> : undefined,
+          actions: step.actions.length
+            ? step.actions.map((action) => (
+                <Button
+                  key={action.label}
+                  variant={action.primary ? "primary" : "secondary"}
+                  disabled={state.privacy || state.busy}
+                  onPress={action.onPress}
+                >
+                  {action.label}
+                </Button>
+              ))
+            : undefined,
+        })) ?? null
+      }
+      aside={
+        <Widget
+          title={A.agent}
+          tight
+          footer={
+            <Button variant="link" size="sm" onPress={onAgentSettings}>
+              {A.settings}
+            </Button>
+          }
         >
-          <div>
-            <h3>
-              {step.title} · {step.status === "done" ? L.ready : L.notReady}
-            </h3>
-            <p className="text-caption text-fg-muted">{step.description}</p>
+          <div className="text-sm">
+            {start.mcpPrivacy === "amounts" ? (
+              <>
+                <b>{P.amountsBold}</b>
+                {P.amountsText}
+              </>
+            ) : (
+              <>
+                <b>{P.strictBold}</b>
+                {P.strictText}
+              </>
+            )}
           </div>
-          {step.id === "loan" ? (
-            <button type="button" disabled={state.busy || state.privacy} onClick={state.openLoan}>
-              {state.rows.length ? S.addAnother : S.addLoan}
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={state.busy || state.privacy || state.rows.length === 0}
-              onClick={state.openPayment}
-            >
-              {S.pick}
-            </button>
-          )}
-        </div>
-      ))}
-    </section>
+        </Widget>
+      }
+    >
+      {children}
+    </ModuleStart>
   );
 }

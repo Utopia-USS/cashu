@@ -1,7 +1,8 @@
-import { D, loans, Money } from "@cashu/domain";
-import { useLoanForm } from "./useLoanForm.js";
+import { D, loans } from "@cashu/domain";
+import type { ComponentType } from "react";
+import { initialLoanForm } from "./loanForm.js";
+import { listRows, loanDetail, startSteps, stepsTag } from "./loansModel.js";
 import type { LoansState } from "./useLoansScreen.js";
-import { usePaymentForm } from "./usePaymentForm.js";
 
 const terms = {
   id: "01900000-0000-8000-8000-000000000001",
@@ -25,78 +26,96 @@ const row = {
   ),
   matched: 0,
 };
-export const storyState: Omit<LoansState, "loanForm" | "paymentForm"> = {
-  candidates: [],
-  rows: [row],
-  current: row,
-  selected: row.id,
-  setSelected: () => {},
-  setup: {
-    ok: true,
-    value: {
-      state: "partial",
-      steps: [
-        {
-          id: "loan",
-          title: "Loan",
-          description: "Synthetic setup step",
-          status: "done",
-          optional: false,
-          actions: [],
-        },
-      ],
-      cliPrefix: "",
-      skill: null,
+const noop = () => {};
+const steps = [
+  { id: "loan", status: "done" as const },
+  { id: "payments", status: "on" as const },
+];
+/** The fake state, formatted now (call it with incognito on to get masked amounts). */
+export function loansStoryState(privacy: boolean): LoansState {
+  const name = privacy ? "•••" : "Synthetic mortgage";
+  return {
+    privacy,
+    empty: false,
+    rows: listRows([row], privacy),
+    count: 1,
+    selected: 0,
+    select: noop,
+    detail: loanDetail(row, name),
+    range: null,
+    setRange: noop,
+    start: {
+      tag: stepsTag({ state: "partial", steps }),
+      mcpPrivacy: "strict",
+      steps: startSteps({
+        steps,
+        budgetOn: true,
+        loans: [row],
+        base: "PLN",
+        privacy,
+        openLoan: noop,
+        openPayment: noop,
+      }),
     },
-  },
-  budgetOn: true,
-  privacy: false,
-  drawer: null,
-  form: {
-    name: "",
-    type: "mortgage",
-    principal: "12000",
-    annualRate: "6.5",
-    term: "10",
-    unit: "years",
-    startDate: "2026-01-31",
-    originationDate: "",
-    currency: "PLN",
-  },
-  mode: "text",
-  setMode: () => {},
-  text: "",
-  setText: () => {},
-  iban: "",
-  setIban: () => {},
-  error: null,
-  notice: null,
-  busy: false,
-  matchingLoan: row,
-  pickPayment: () => {},
-  openLoan: () => {},
-  openPayment: () => {},
-  close: () => {},
-  submitLoan: async () => {},
-  submitPayment: async () => {},
-  preview: new Money(D("136.26"), "PLN"),
-  range: null,
-  setRange: () => {},
-  points: row.summary.schedule,
-  chartLabels: [],
-  chartSummary: "Synthetic chart summary",
-  chartTip: () => ({ title: "Synthetic date", rows: [] }),
-};
+    drawer: null,
+    busy: false,
+    err: null,
+    close: noop,
+    loan: {
+      form: {
+        ...initialLoanForm("2026-10-01", "PLN"),
+        principal: "12000",
+        annualRate: "6,5",
+        term: "10",
+      },
+      set: noop,
+      errors: {},
+      preview: "rata ≈ 136,26 zł · 120 rat",
+      currencies: ["PLN", "EUR", "USD", "CHF"],
+      save: noop,
+    },
+    payment: {
+      loans: [{ value: row.accountId, label: name }],
+      account: row.accountId,
+      name,
+      pick: noop,
+      mode: "text",
+      setMode: noop,
+      text: "",
+      setText: noop,
+      iban: "",
+      setIban: noop,
+      storedTail: null,
+      stored: false,
+      candidates: [
+        { key: "a", payee: "Synthetic bank", detail: "136,26 zł · co ok. 30 dni · ostatnio 5.10" },
+      ],
+      send: noop,
+    },
+  };
+}
+export const storyState = loansStoryState(false);
+export const privacyState = loansStoryState(true);
 
-/** Real local form bindings keep stories independent of the store and router. */
+/** Fake state and links keep stories independent of the store and router. */
 export function StoryFixture({
   component: Component,
   state,
 }: {
-  component: import("react").ComponentType<{ state: LoansState }>;
+  component: ComponentType<{
+    state: LoansState;
+    onSetup(): void;
+    onGuide(): void;
+    onAgentSettings(): void;
+  }>;
   state?: Partial<LoansState>;
 }) {
-  const loanForm = useLoanForm("2026-10-01", "PLN", async () => {});
-  const paymentForm = usePaymentForm(async () => true);
-  return <Component state={{ ...storyState, loanForm, paymentForm, ...state }} />;
+  return (
+    <Component
+      state={{ ...storyState, ...state }}
+      onSetup={noop}
+      onGuide={noop}
+      onAgentSettings={noop}
+    />
+  );
 }

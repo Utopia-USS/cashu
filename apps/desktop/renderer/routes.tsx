@@ -710,16 +710,40 @@ function SetupGuideRoute() {
   );
 }
 function LoansRoute() {
-  const enabled = useQuery(budgetModuleQuery).some(
-    (module) => module.id === "loans" && module.enabled,
-  );
-  return enabled ? <LoansScreen /> : <p className="p-6">{S.setup}</p>;
+  return <LoansBody slug={loansRoute.useParams().slug} setup={false} />;
 }
 function LoansSetupRoute() {
+  return <LoansBody slug={loansSetupRoute.useParams().slug} setup />;
+}
+/** Kredyty (old loans tab and `setup/loans` Start) with its links: first steps, the CLI guide, Agent AI. */
+function LoansBody({ slug, setup }: { slug: string; setup: boolean }) {
+  const vault = useProfile();
   const enabled = useQuery(budgetModuleQuery).some(
     (module) => module.id === "loans" && module.enabled,
   );
-  return enabled ? <LoansScreen setup /> : <p className="p-6">{S.setup}</p>;
+  if (!enabled) return <p className="p-6">{S.setup}</p>;
+  return (
+    <LoansScreen
+      setup={setup}
+      onSetup={() =>
+        void router.navigate({ to: "/$slug/setup/loans", params: { slug }, search: { vault } })
+      }
+      onGuide={() =>
+        void router.navigate({
+          to: "/$slug/setup/$module/cli",
+          params: { slug, module: "loans" },
+          search: { vault },
+        })
+      }
+      onAgentSettings={() =>
+        void router.navigate({
+          to: "/$slug/settings",
+          params: { slug },
+          search: { vault, section: "agent" },
+        })
+      }
+    />
+  );
 }
 function AssetsStartRoute() {
   const { slug } = assetsStartRoute.useParams();

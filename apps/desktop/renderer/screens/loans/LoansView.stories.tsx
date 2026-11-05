@@ -1,6 +1,6 @@
 import { UiEnvProvider } from "@cashu/ui";
 import { LoansView } from "./LoansView.js";
-import { StoryFixture, storyState } from "./storyState.js";
+import { privacyState, StoryFixture, storyState } from "./storyState.js";
 export default {
   title: "Desktop/Loans/Loans",
   component: LoansView,
@@ -10,9 +10,9 @@ export default {
   args: { state: storyState },
 };
 export const Ready = {};
-export const Empty = { args: { state: { ...storyState, rows: [], current: null } } };
+export const Empty = { args: { state: { ...storyState, rows: [], count: 0, detail: null } } };
 export const Privacy = {
-  args: { state: { ...storyState, privacy: true } },
+  args: { state: privacyState },
   decorators: [
     (Story: () => React.ReactNode) => (
       <UiEnvProvider locale="en-US" privacy={true}>

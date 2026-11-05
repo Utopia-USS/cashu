@@ -1,44 +1,64 @@
-import { D, loans, Money } from "@cashu/domain";
-import { intlLocale, lang } from "@cashu/i18n";
-import { S as F } from "@cashu/i18n/loans/Drawers.strings";
-import { formatCalendarDate, formatDecimalValue } from "@cashu/i18n/values";
+// Kredyty (ab24ab6 modules/loans/Loans.tsx, Start.tsx, Drawers.tsx): the native loans, setup steps, recurring
+// payments and the two loan commands, adapted to what the old views got. Drawers and writes are refused in
+// privacy mode (native behaviour); command outcomes stay durable (an uncertain attempt is reconciled first).
+import { normalizeIban } from "@cashu/domain";
+import { lang } from "@cashu/i18n";
+import { S as DS } from "@cashu/i18n/loans/Drawers.strings";
+import { S as T } from "@cashu/i18n/loans/Start.strings";
 import { budgetDesktopQueries } from "@cashu/store/budget/queries";
+import { profile as profileQuery } from "@cashu/store/core";
 import { createUiLoan, loansScreen, setUiLoanPayment } from "@cashu/store/loans/screen";
 import { overviewQueries } from "@cashu/store/overview";
 import { useCommand, useQuery } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
-import { useStore } from "@tanstack/react-form";
+import { useToast, useUiEnv } from "@cashu/ui";
+import { cur } from "@cashu/ui-logic/core/format";
+import { label } from "@cashu/ui-logic/core/messages";
+import {
+  annuity,
+  installmentCandidates,
+  parseNum,
+  termMonths,
+  validateLoan,
+} from "@cashu/ui-logic/loans/logic";
 import { useEffect, useRef, useState } from "react";
 import { O } from "../CommandOutcome.strings.js";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { L } from "./Loans.strings.js";
-import { initialLoanForm, loanInput, useLoanForm } from "./useLoanForm.js";
 import {
-  initialPaymentForm,
-  type PaymentFormValues,
+  initialLoanForm,
+  type LoanFormValues,
+  loanInput,
+  type PaymentMode,
   paymentInput,
-  usePaymentForm,
-} from "./usePaymentForm.js";
+} from "./loanForm.js";
+import {
+  dmShort,
+  listRows,
+  loanDetail,
+  loanName,
+  previewText,
+  startSteps,
+  stepsTag,
+} from "./loansModel.js";
 
 const q = overviewQueries({ prices: null });
 
+type Drawer = { kind: "loan" } | { kind: "payment" } | null;
+
 export function useLoansScreen(today: string) {
+  const { privacy } = useUiEnv();
+  const toast = useToast();
   const rows = useQuery(loansScreen, { today });
   const recurring = useQuery(budgetDesktopQueries().subscriptions);
-  const candidates = recurring
-    .filter((row) => row.active && row.medianGapDays >= 25 && row.medianGapDays <= 35)
-    .sort((a, b) => b.typicalAmount.abs().compare(a.typicalAmount.abs()))
-    .slice(0, 6);
-  const profile = useQuery(q.hero, { today });
+  const hero = useQuery(q.hero, { today });
   const setup = useQuery(q.moduleSetup, { module: "loans", cli: "", lang: lang() });
   const modules = useQuery(q.moduleStates);
-  const { privacy } = useUiEnv();
-  const [selected, setSelected] = useState<string | null>(null);
-  const [drawer, setDrawer] = useState<"loan" | "payment" | null>(null);
+  const identity = useQuery(profileQuery);
+  const base = hero.facts.currency;
+  const budgetOn = modules.some((m) => m.id === "budget" && m.enabled);
+  const setupState = modules.find((m) => m.id === "loans")?.setupState ?? "empty";
+  const info = setup.ok ? setup.value : null;
 
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [range, setRange] = useState<number | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -49,216 +69,231 @@ export function useLoansScreen(today: string) {
   const create = useCommand(createUiLoan);
   const payment = useCommand(setUiLoanPayment);
   const durable = useDurableCommands();
-  const busy = create.isPending || payment.isPending;
-  const current = rows.find((r) => r.id === selected) ?? rows[0] ?? null;
-  const loanForm = useLoanForm(today, profile.facts.currency, async (value) => {
-    setError(null);
-    try {
-      const result = await durable.run("loan", create, loanInput(value));
-      if (!mounted.current) return;
-      if (result.kind !== "completed") {
-        setError(
-          result.kind === "refused" && result.reason === "loan_name_taken"
-            ? L.taken
-            : commandFailure(result, L.invalid),
-        );
-        return;
-      }
-      setDrawer(null);
-      setSelected(null);
-    } catch {
-      if (mounted.current) setError(L.invalid);
-    }
-  });
-  const runPayment = async (value: typeof initialPaymentForm, clear = false) => {
-    if (!rows.some((row) => row.accountId === value.account)) return false;
-    setError(null);
-    try {
-      const result = await durable.run(
-        `payment:${value.account}`,
-        payment,
-        paymentInput(value, clear),
-      );
-      if (!mounted.current) return false;
-      if (result.kind !== "completed") {
-        setError(commandFailure(result, L.invalidPayment));
-        return false;
-      }
-      setDrawer(null);
-      setNotice(clear ? L.cleared : F.payments);
-      return true;
-    } catch {
-      if (mounted.current) setError(L.refused);
-      return false;
-    }
+
+  // ---- the tab: selected loan (old index state) and its chart range (reset with the loan, old `key={i}`)
+  const [sel, setSel] = useState(0);
+  const [range, setRange] = useState<number | null>(null);
+  const i = Math.min(sel, Math.max(0, rows.length - 1));
+  const current = rows[i] ?? null;
+  const select = (k: number) => {
+    if (k !== i) setRange(null);
+    setSel(k);
   };
-  const [paymentDefaults, setPaymentDefaults] = useState<PaymentFormValues>(initialPaymentForm);
-  const paymentForm = usePaymentForm(runPayment, paymentDefaults);
-  const loanState = useStore(loanForm.store, (state) => state);
-  const form = loanState.values;
-  const paymentState = useStore(paymentForm.store, (state) => state);
-  const paymentValues = paymentState.values;
-  const { mode, text, iban } = paymentValues;
-  const matchingLoan = rows.find((row) => row.accountId === paymentValues.account) ?? null;
+
+  // ---- drawers
+  const [drawer, setDrawer] = useState<Drawer>(null);
+  const [form, setForm] = useState<LoanFormValues>(() => initialLoanForm(today, base));
+  const [touched, setTouched] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [payId, setPayId] = useState<string | null>(null);
+  const [mode, setModeState] = useState<PaymentMode>("text");
+  const [text, setText] = useState("");
+  const [iban, setIban] = useState("");
+  const busy = create.isPending || payment.isPending;
+  const uncertain = () =>
+    durable.uncertain("loan") || (payId !== null && durable.uncertain(`payment:${payId}`));
+
+  const draft = {
+    name: form.name,
+    principal: parseNum(form.principal),
+    rate: parseNum(form.annualRate),
+    term: parseNum(form.term),
+    unit: form.unit,
+    start: form.startDate,
+    origination: form.originationDate,
+  };
+  const errors = validateLoan(draft);
+  const months = draft.term != null ? termMonths(draft.term, form.unit) : null;
+  const preview =
+    !errors.principal && !errors.rate && !errors.term && months && draft.principal != null
+      ? previewText(annuity(draft.principal, draft.rate ?? 0, months), months, form.currency)
+      : "";
+
   const close = () => {
-    if (durable.uncertain("loan") || durable.uncertain(`payment:${paymentValues.account}`)) {
-      setError(O.unknown);
+    if (uncertain()) {
+      setErr(O.unknown);
       return;
     }
     if (!busy) {
       setDrawer(null);
-      setError(null);
-      paymentForm.setFieldValue("iban", "");
+      setErr(null);
     }
   };
   const openLoan = () => {
-    if (durable.uncertain("loan") || durable.uncertain(`payment:${paymentValues.account}`)) {
-      setError(O.unknown);
+    if (privacy) return;
+    if (uncertain()) {
+      setErr(O.unknown);
       return;
     }
-    loanForm.reset(initialLoanForm(today, profile.facts.currency));
-    setError(null);
-    setDrawer("loan");
+    setForm(initialLoanForm(today, base));
+    setTouched(false);
+    setErr(null);
+    setDrawer({ kind: "loan" });
   };
-  const pickPayment = (account: string) => {
-    if (durable.uncertain(`payment:${paymentValues.account}`)) {
-      setError(O.unknown);
+  const pick = (account: string) => {
+    setPayId(account);
+    setText(rows.find((r) => r.accountId === account)?.paymentText ?? "");
+    setIban("");
+  };
+  const openPayment = (account: string | null) => {
+    if (privacy) return;
+    if (uncertain()) {
+      setErr(O.unknown);
       return;
     }
-    const row = rows.find((entry) => entry.accountId === account);
-    const next = { ...initialPaymentForm, account, text: row?.paymentText ?? "" };
-    setPaymentDefaults(next);
-    paymentForm.reset(next);
-    setError(null);
+    const first = account ?? rows[0]?.accountId ?? null;
+    if (first === null) return;
+    pick(first);
+    setModeState("text");
+    setErr(null);
+    setDrawer({ kind: "payment" });
   };
-  const openPayment = () => {
-    if (durable.uncertain("loan") || durable.uncertain(`payment:${paymentValues.account}`)) {
-      setError(O.unknown);
+
+  const saveLoan = async () => {
+    setTouched(true);
+    if (Object.keys(errors).length || !months) return;
+    setErr(null);
+    let input: ReturnType<typeof loanInput>;
+    try {
+      input = loanInput(form);
+    } catch {
+      setErr(L.invalid);
       return;
     }
-    const first = rows.find((row) => !row.paymentText && !row.paymentIbanTail) ?? current;
-    if (first) {
-      pickPayment(first.accountId);
-      setDrawer("payment");
-      setError(null);
+    try {
+      const result = await durable.run("loan", create, input);
+      if (!mounted.current) return;
+      if (result.kind !== "completed") {
+        setErr(
+          result.kind === "refused" && result.reason === "loan_name_taken"
+            ? (label("error.loan_name_taken") ?? L.invalid)
+            : commandFailure(result, L.invalid),
+        );
+        return;
+      }
+      toast(T.added(input.name).trim(), 2500);
+      setDrawer(null);
+    } catch {
+      if (mounted.current) setErr(L.refused);
     }
   };
-  const submitLoan = () => loanForm.handleSubmit();
-  const submitPayment = async (clear = false) => {
-    if (clear) {
-      if (await runPayment(paymentValues, true)) paymentForm.setFieldValue("iban", "");
-    } else await paymentForm.handleSubmit();
+
+  // The recognised count comes from the live loans read once it shows the new matching (old `matched`).
+  const awaiting = useRef<{ account: string; mode: PaymentMode; value: string } | null>(null);
+  useEffect(() => {
+    const a = awaiting.current;
+    if (!a) return;
+    const row = rows.find((r) => r.accountId === a.account);
+    const shown =
+      a.mode === "text"
+        ? row?.paymentText === a.value
+        : row?.paymentIbanTail === Array.from(normalizeIban(a.value)).slice(-4).join("");
+    if (!row || !shown) return;
+    awaiting.current = null;
+    if (row.matched) toast(DS.matched(row.matched), 3000);
+    else toast(DS.noMatch, 4000);
+  });
+
+  const sendPayment = async (value: string) => {
+    if (payId === null) return;
+    setErr(null);
+    try {
+      const result = await durable.run(
+        `payment:${payId}`,
+        payment,
+        paymentInput(payId, mode, value),
+      );
+      if (!mounted.current) return;
+      if (result.kind !== "completed") {
+        setErr(DS.notSaved(commandFailure(result, L.invalidPayment)));
+        return;
+      }
+      if (!value) toast(DS.cleared, 2500);
+      else awaiting.current = { account: payId, mode, value };
+      setIban("");
+      setDrawer(null);
+    } catch {
+      if (mounted.current) setErr(DS.notSaved(L.refused));
+    }
   };
-  const setMode = (value: "text" | "iban") => paymentForm.setFieldValue("mode", value);
-  const setText = (value: string) => paymentForm.setFieldValue("text", value);
-  const setIban = (value: string) => paymentForm.setFieldValue("iban", value);
-  let preview: Money | null = null;
-  try {
-    const input = loanInput(form);
-    const months = input.termMonths;
-    const p = D(input.principal);
-    const rate = D(input.annualRate);
-    if (
-      p.gt(D("0")) &&
-      rate.gte(D("0")) &&
-      rate.lte(D("100")) &&
-      Number.isInteger(months) &&
-      months >= 1 &&
-      months <= 600
-    )
-      preview = new Money(loans.monthlyPayment(p, rate, months), form.currency);
-  } catch {
-    /* Incomplete form values have no preview. */
-  }
-  const schedule = current?.summary.schedule ?? [];
-  const limit =
-    range === null || schedule[0] === undefined
-      ? null
-      : new Date(Date.parse(`${schedule[0].date}T12:00:00Z`) + range * 86400000)
-          .toISOString()
-          .slice(0, 10);
-  const points = limit === null ? schedule : schedule.filter((p) => p.date <= limit);
-  const locale = intlLocale();
-  const chartLabels = [0, Math.floor(points.length / 2), points.length - 1]
-    .filter((index, position, all) => index >= 0 && all.indexOf(index) === position)
-    .flatMap((index) => {
-      const point = points[index];
-      return point ? [{ i: index, text: formatCalendarDate(point.date, locale, "short") }] : [];
-    });
-  const display = (value: ReturnType<typeof D>) =>
-    formatDecimalValue(value, locale, { currency: current?.currency ?? profile.facts.currency })
-      .text;
-  const last = points.at(-1);
-  const low = points.reduce(
-    (best, point) => (point.balance.lt(best) ? point.balance : best),
-    last?.balance ?? D("0"),
+
+  const candidates = installmentCandidates(
+    recurring.map((r) => ({
+      payee: r.counterparty,
+      currency: r.currency,
+      amount: r.typicalAmount.toFloat(),
+      gap_days: r.medianGapDays,
+      last: r.lastDate,
+      active: r.active,
+    })),
   );
-  const high = points.reduce(
-    (best, point) => (point.balance.gt(best) ? point.balance : best),
-    last?.balance ?? D("0"),
-  );
-  const chartSummary = last
-    ? L.chartSummary(display(last.balance), display(low), display(high))
-    : L.empty;
-  const chartTip = (i: number) => {
-    const p = points[i];
-    return {
-      title: p ? formatCalendarDate(p.date, locale) : "",
-      rows: p
-        ? [
-            {
-              name: F.principal,
-              value: formatDecimalValue(p.balance, locale, {
-                currency: current?.currency ?? profile.facts.currency,
-              }).text,
-              amount: true,
-            },
-          ]
-        : [],
-    };
-  };
+  const payLoan = rows.find((r) => r.accountId === payId) ?? null;
+  const payIndex = payLoan ? rows.indexOf(payLoan) : -1;
+
   return {
-    candidates,
-    rows,
-    current,
-    selected: current?.id ?? null,
-    setSelected,
-    setup,
-    budgetOn: modules.some((m) => m.id === "budget" && m.enabled),
     privacy,
-    drawer,
-    form,
-    loanForm,
-    paymentForm,
-    mode,
-    setMode,
-    text,
-    setText,
-    iban,
-    setIban,
-    error:
-      error ??
-      (loanState.isSubmitted && !loanState.isValid
-        ? L.invalid
-        : paymentState.isSubmitted && !paymentState.isValid
-          ? L.invalidPayment
-          : null),
-    notice: notice === F.payments ? F.matched(matchingLoan?.matched ?? 0) : notice,
-    busy,
-    matchingLoan,
-    pickPayment,
-    openLoan,
-    openPayment,
-    close,
-    submitLoan,
-    submitPayment,
-    preview,
+    /** Old shell: an empty module's tab is its first steps. */
+    empty: setupState === "empty",
+    rows: listRows(rows, privacy),
+    count: rows.length,
+    selected: i,
+    select,
+    detail: current ? loanDetail(current, loanName(current, i, privacy)) : null,
     range,
     setRange,
-    points,
-    chartTip,
-    chartLabels,
-    chartSummary,
+    start: {
+      tag: stepsTag(info),
+      mcpPrivacy: identity?.mcpPrivacy ?? "strict",
+      steps: startSteps({
+        steps: info?.steps ?? null,
+        budgetOn,
+        loans: rows,
+        base,
+        privacy,
+        openLoan,
+        openPayment,
+      }),
+    },
+    drawer: privacy ? null : drawer,
+    busy,
+    err,
+    close,
+    loan: {
+      form,
+      set: <K extends keyof LoanFormValues>(key: K, value: LoanFormValues[K]) =>
+        setForm((f) => ({ ...f, [key]: value })),
+      errors: touched ? errors : {},
+      preview,
+      currencies: [...new Set([base, "PLN", "EUR", "USD", "CHF"])],
+      save: (): void => {
+        void saveLoan();
+      },
+    },
+    payment: {
+      loans: rows.map((r, k) => ({ value: r.accountId, label: loanName(r, k, privacy) })),
+      account: payId ?? "",
+      name: payLoan ? loanName(payLoan, payIndex, privacy) : null,
+      pick,
+      mode,
+      setMode: (m: PaymentMode) => {
+        setModeState(m);
+        setErr(null);
+      },
+      text,
+      setText,
+      iban,
+      setIban,
+      storedTail: payLoan?.paymentIbanTail ?? null,
+      stored: mode === "text" ? !!payLoan?.paymentText : !!payLoan?.paymentIbanTail,
+      candidates: candidates.map((c) => ({
+        key: `${c.payee}|${c.currency}|${c.amount}`,
+        payee: c.payee,
+        detail: DS.candidate(cur(Math.abs(c.amount), c.currency), c.gap_days, dmShort(c.last)),
+      })),
+      send: (value: string): void => {
+        void sendPayment(value);
+      },
+    },
   };
 }
 export type LoansState = ReturnType<typeof useLoansScreen>;

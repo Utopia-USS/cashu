@@ -1,8 +1,9 @@
+// The loan and installment drawers' values (old Drawers.tsx state) and their command inputs.
 import { D } from "@cashu/domain";
 import { normalizeNumberInput } from "@cashu/i18n";
-import { createUiLoan } from "@cashu/store/loans/screen";
-import { useForm } from "@tanstack/react-form";
-import { L } from "./Loans.strings.js";
+import { firstOfMonth, type TermUnit } from "@cashu/ui-logic/loans/logic";
+
+export type { TermUnit };
 
 export const initialLoanForm = (today: string, currency: string) => ({
   name: "",
@@ -10,8 +11,8 @@ export const initialLoanForm = (today: string, currency: string) => ({
   principal: "",
   annualRate: "",
   term: "",
-  unit: "years" as "years" | "months",
-  startDate: `${today.slice(0, 7)}-01`,
+  unit: "years" as TermUnit,
+  startDate: firstOfMonth(today),
   originationDate: "",
   currency,
 });
@@ -28,7 +29,7 @@ export function loanInput(value: LoanFormValues) {
   if (!Number.isInteger(term) || term < 1 || term > (value.unit === "years" ? 50 : 600))
     throw new RangeError("invalid term");
   return {
-    name: value.name,
+    name: value.name.trim(),
     type: value.type,
     principal: canonicalLoanDecimal(value.principal),
     annualRate: canonicalLoanDecimal(value.annualRate),
@@ -38,22 +39,8 @@ export function loanInput(value: LoanFormValues) {
     currency: value.currency,
   };
 }
-export function useLoanForm(
-  today: string,
-  currency: string,
-  submit: (value: LoanFormValues) => Promise<void>,
-) {
-  return useForm({
-    defaultValues: initialLoanForm(today, currency),
-    validators: {
-      onSubmit: ({ value }) => {
-        try {
-          return createUiLoan.input.safeParse(loanInput(value)).success ? undefined : L.invalid;
-        } catch {
-          return L.invalid;
-        }
-      },
-    },
-    onSubmit: ({ value }) => submit(value),
-  });
+
+export type PaymentMode = "text" | "iban";
+export function paymentInput(account: string, mode: PaymentMode, value: string) {
+  return { account, ...(mode === "text" ? { text: value } : { iban: value }) };
 }

@@ -1,6 +1,6 @@
 import { setLanguageForTests } from "@cashu/i18n";
 import { expect, it } from "vitest";
-import { initialLoanForm, loanInput } from "./useLoanForm.js";
+import { initialLoanForm, loanInput } from "./loanForm.js";
 
 it("normalizes localized loan fields without changing percent or term units", () => {
   setLanguageForTests("pl");
