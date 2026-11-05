@@ -33,7 +33,7 @@ export function ValueChartWidgetView({
             <span className="flex-1" />
             <Button
               variant="link"
-              size="sm"
+              size="md"
               pressed={footer.toggle.pressed}
               onPress={footer.toggle.onToggle}
             >

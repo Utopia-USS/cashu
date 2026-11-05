@@ -23,12 +23,12 @@ import type { ReactNode } from "react";
 import type { HeadModel, HeroFact, HeroModel, StartModel } from "./homeModel.js";
 import { CodeLine, SetupSteps } from "./parts.js";
 
-/** The old `.wrap.wide` page box (max 1440px, 24px 20px 70px, centred) with the old body type (15px / 1.5). */
+/** The old `.wrap.wide` page box (max 1440px, 20px sides, 70px bottom, centred; the shell above it carries the 24px top) with the old body type (15px / 1.5). */
 export function HomePage({ children }: { children: ReactNode }) {
   return (
     <main
       data-testid="native-portfolio"
-      className="mx-auto max-w-360 px-5 pt-6 pb-17.5 text-base leading-normal text-fg"
+      className="mx-auto max-w-360 px-5 pb-17.5 text-base leading-normal text-fg"
     >
       {children}
     </main>
@@ -249,7 +249,7 @@ function StartView({
               title={A.agent}
               tight
               footer={
-                <Button variant="link" size="sm" onPress={onSettings}>
+                <Button variant="link" size="md" onPress={onSettings}>
                   {A.settings}
                 </Button>
               }

@@ -7,9 +7,9 @@ import type { ReviewSlotModel } from "./reviewSlotModel.js";
 // `.rv-slot`: margin-left auto, vertically centred, gap 10px.
 const slot = "ml-auto flex items-center gap-2.5 self-center";
 // `.rv-btn` (+ `.due`): 48px circle, card face (`--rv-bg`), 1px border, muted glyph; hover text + muted border.
-// A bare button: UA line height and weight.
+// A bare button: UA font, line height and weight.
 const button =
-  "relative grid size-12 cursor-pointer place-items-center rounded-full border border-border bg-surface-raised p-0 font-regular leading-control hover:border-fg-muted hover:text-fg";
+  "relative grid size-12 cursor-pointer place-items-center rounded-full border border-border bg-surface-raised p-0 font-control font-regular leading-control hover:border-fg-muted hover:text-fg";
 // `.rv-badge`: red pill top -3px right -4px, 20px high, white 11px 700, a 2px card-coloured ring.
 const badge =
   "absolute -top-0.75 -right-1 h-5 min-w-5 rounded-md bg-negative px-1.25 text-center text-2xs font-bold leading-5 text-on-accent tabular-nums ring-2 ring-surface-raised";

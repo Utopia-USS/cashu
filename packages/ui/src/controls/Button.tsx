@@ -12,7 +12,8 @@ const variants = {
   icon: "cursor-pointer border-0 bg-transparent px-1.5 py-0.5 text-base leading-control text-fg-muted hover:text-negative disabled:cursor-default disabled:opacity-60",
 } as const;
 // `.btn` 5px 10px / 12px, `.btn.sm` 2px 7px / 11.5px, lg (no old twin) 7px 14px / 14px. A link takes its
-// size from where the old `.lnk` sat: sm = widget footer (12px), md = widget body (12.5px), lg = plain (13px).
+// size from where the old `.lnk` sat: sm = drawer footers (12px), md = anywhere inside a widget, footer included
+// (`.w .lnk` 12.5px), lg = plain (13px).
 const boxSizes = {
   sm: "px-1.75 py-0.5 text-2xs-plus",
   md: "px-2.5 py-1.25 text-xs",

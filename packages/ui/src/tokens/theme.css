@@ -138,6 +138,12 @@
   --text-4xl-plus: 30px;
   --text-5xl: 34px;
   --text-6xl: 40px;
+  /* The UA button size (13.333px) of the old bare buttons that set no font size (deck "Cofnij"). */
+  --text-control: 13.3333px;
+
+  /* The UA button font of the old bare buttons that kept the UA `font` shorthand (Chromium on macOS
+     computes and draws Arial): deck buttons, the review button, icon buttons. */
+  --font-control: Arial;
 
   /* Line heights besides Tailwind's none 1 / tight 1.25 / snug 1.375 / normal 1.5. */
   /* `control` = CSS `normal`: the old buttons that kept the UA font shorthand (segments, icon buttons). */

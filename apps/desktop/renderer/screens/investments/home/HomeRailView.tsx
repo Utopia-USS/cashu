@@ -107,7 +107,7 @@ export function SignalsBrief(props: SignalsBriefProps) {
         <>
           {props.unchanged != null && <span>{props.unchanged}</span>}
           <span className="flex-1" />
-          <Button variant="link" size="sm" onPress={props.onAll} disabled={props.allDisabled}>
+          <Button variant="link" size="md" onPress={props.onAll} disabled={props.allDisabled}>
             {props.all}
           </Button>
         </>
@@ -205,7 +205,7 @@ export function AlertsBrief(props: AlertsBriefProps) {
             </span>
           </span>
           <span className="flex-1" />
-          <Button variant="link" size="sm" onPress={props.onManage}>
+          <Button variant="link" size="md" onPress={props.onManage}>
             {props.all}
           </Button>
         </>

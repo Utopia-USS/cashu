@@ -24,13 +24,13 @@ import type { DotLook, ReviewDeckState, StackEntry } from "./useReviewDeck.js";
 const layer =
   "absolute inset-0 flex flex-col items-center gap-2.5 overflow-hidden px-4 py-3.5 text-base leading-normal text-fg";
 const column = "w-full max-w-145";
-// `.rd-top` (+ `.x`, `.c .t`, `.c .s`, `.u`): bare buttons keep the UA font (system-ui, line height normal,
-// weight 400); a `font-control` token in packages/ui would name it.
+// `.rd-top` (+ `.x`, `.c .t`, `.c .s`, `.u`): bare buttons keep the UA font (Arial, line height normal,
+// weight 400): the `font-control` / `text-control` tokens.
 const top = `${column} grid grid-cols-[minmax(auto,1fr)_auto_minmax(auto,1fr)] items-center`;
 const closeX =
-  "cursor-pointer justify-self-start border-0 bg-transparent px-2 py-1 text-3xl-plus font-regular font-[family-name:system-ui] leading-none text-fg-muted";
+  "cursor-pointer justify-self-start border-0 bg-transparent px-2 py-1 text-3xl-plus font-regular font-control leading-none text-fg-muted";
 const undoBtn =
-  "cursor-pointer justify-self-end border-0 bg-transparent px-2 py-1 text-sm font-strong leading-control font-[family-name:system-ui] text-accent disabled:cursor-default disabled:text-fg-muted disabled:opacity-50";
+  "cursor-pointer justify-self-end border-0 bg-transparent px-2 py-1 text-control font-strong leading-control font-control text-accent disabled:cursor-default disabled:text-fg-muted disabled:opacity-50";
 // `.rd-dots i` (+ `.keep`, `.flag`: the global `.flag` adds margin-left 5px, `.on`).
 const dotLook: Record<DotLook, string> = {
   on: "bg-fg",
@@ -48,12 +48,12 @@ const back = [
 // `.rd-btns` (+ `.f`, `.k`), `.rd-keys` (+ kbd).
 const btns = `${column} grid grid-cols-2 gap-2.5`;
 const bigBtn =
-  "cursor-pointer rounded-widget border p-3 text-base font-heavy leading-control font-[family-name:system-ui]";
+  "cursor-pointer rounded-widget border p-3 text-base font-heavy leading-control font-control";
 const keys = "text-center text-2xs text-fg-muted max-phone:hidden";
 const kbd = "rounded-2xs bg-chip px-1.25 font-[family-name:inherit]";
 // `.rd-sheet .close`, `.rd-sheet h3`, `p`, `.srcs`.
 const sheetClose =
-  "float-right cursor-pointer rounded-control border-0 bg-chip px-2.5 py-1 text-xs font-regular leading-control font-[family-name:system-ui] text-chip-fg";
+  "float-right cursor-pointer rounded-control border-0 bg-chip px-2.5 py-1 text-xs font-regular leading-control font-control text-chip-fg";
 
 export function ReviewDeckView({ state: s }: { state: ReviewDeckState }) {
   const panel = useRef<HTMLElement>(null);

@@ -55,7 +55,7 @@ export function AssetListView({ title, tabs, tab, positions, watch }: AssetListP
         tab === "positions" ? (
           <>
             <span className="flex-1" />
-            <Button variant="link" size="sm" onPress={p.addTxn.onPress}>
+            <Button variant="link" size="md" onPress={p.addTxn.onPress}>
               {p.addTxn.text}
             </Button>
           </>

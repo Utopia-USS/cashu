@@ -13,13 +13,14 @@ import type { ModalProps } from "./Modal.types.js";
 
 // Panel chrome of the Python app: centred dialogs like `.sdlg`, the right drawer like `.drawer` (`end`
 // with an inner padding, `side` bare for the Drawer's head / body / foot), the deck's bottom sheet like
-// `.rd-sheet .in`; every placement but `screen` sits over the --scrim backdrop.
+// `.rd-sheet .in`; every placement but `screen` sits over the --scrim backdrop. Panels portal to the body,
+// so they set the old body text colour themselves; the drawers also the old body type (15px / 1.5).
 const placements = {
   fill: "overflow-auto inset-4 rounded-lg border border-border bg-surface-raised p-4",
   center:
     "overflow-auto inset-4 m-auto h-fit max-h-[calc(100%-2rem)] rounded-lg border border-border bg-surface-raised p-6 shadow-dialog",
-  end: "overflow-auto inset-y-0 right-0 w-full max-w-130 border-l border-border bg-surface-raised px-4.5 py-3.5 shadow-toast",
-  side: "inset-y-0 right-0 flex flex-col border-l border-border bg-surface-raised shadow-toast",
+  end: "overflow-auto inset-y-0 right-0 w-full max-w-130 border-l border-border bg-surface-raised px-4.5 py-3.5 text-base leading-normal shadow-toast",
+  side: "inset-y-0 right-0 flex flex-col border-l border-border bg-surface-raised text-base leading-normal shadow-toast",
   sheet:
     "inset-x-0 bottom-0 mx-auto max-h-[86%] w-full max-w-150 overflow-y-auto rounded-t-xl bg-surface-raised px-5 pt-5 pb-6 text-md leading-sheet",
   screen: "overflow-auto inset-0 bg-surface",
@@ -252,7 +253,7 @@ export function Modal({
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
         onKeyDown={onKeyDown}
-        className={`fixed outline-none ${placements[placement]} ${placement === "center" ? centerWidths[width] : ""} ${className}`}
+        className={`fixed text-fg outline-none ${placements[placement]} ${placement === "center" ? centerWidths[width] : ""} ${className}`}
         style={{
           zIndex: `calc(var(--modal-panel-layer) + ${depth} * var(--modal-layer-step))`,
           width: placement === "side" ? `min(${sideWidth}px, 100vw)` : undefined,

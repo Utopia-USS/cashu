@@ -35,7 +35,7 @@ export function Drawer({ title, label, onClose, children, tag, footer, width = 5
           title={S.closeEsc}
           aria-label={S.close}
           onClick={onClose}
-          className="cursor-pointer border-0 bg-transparent px-1.5 py-0.5 text-base leading-control text-fg-muted hover:text-fg"
+          className="cursor-pointer border-0 bg-transparent px-1.5 py-0.5 font-control text-base leading-control text-fg-muted hover:text-fg"
         >
           {CLOSE_GLYPH}
         </button>
