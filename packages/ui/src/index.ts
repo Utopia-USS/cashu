@@ -7,6 +7,7 @@ export { BarChart } from "./charts/BarChart.js";
 export { ChartLegend } from "./charts/ChartLegend.js";
 export { Donut } from "./charts/Donut.js";
 export { LineChart } from "./charts/LineChart.js";
+export { ScrollableChart, type ScrollableChartProps } from "./charts/ScrollableChart.js";
 export { Sparkline } from "./charts/Sparkline.js";
 export {
   SpendingDonut,
@@ -15,6 +16,7 @@ export {
 } from "./charts/SpendingDonut.js";
 export { Swatch } from "./charts/Swatch.js";
 export type { ChartColor, ChartRole, NamedColor, SeriesColor } from "./charts/scene.js";
+export type { ScrollSeries } from "./charts/scrollScene.js";
 export type {
   AreaChartProps,
   AreaLayer,
@@ -52,6 +54,7 @@ export { TextField } from "./controls/TextField.js";
 export type { TextFieldProps } from "./controls/TextField.types.js";
 export { type UiEnv, UiEnvProvider, useUiEnv } from "./environment/UiEnv.js";
 export { Skeleton, type SkeletonProps } from "./feedback/Skeleton.js";
+export { SkeletonTable, type SkeletonTableProps } from "./feedback/SkeletonTable.js";
 export { type ToastAction, ToastProvider, useToast, useToastClose } from "./feedback/Toast.js";
 export {
   Grid,
@@ -114,6 +117,19 @@ export {
   useHoverCard,
   useTouch,
 } from "./overlays/HoverCard.js";
+export {
+  type ImportColumn,
+  ImportCounts,
+  type ImportCountsProps,
+  ImportDone,
+  type ImportDoneProps,
+  ImportDrawer,
+  type ImportDrawerProps,
+  ImportTable,
+  type ImportTableProps,
+  importHintCls,
+  importTable,
+} from "./overlays/ImportDrawer.js";
 export { Modal } from "./overlays/Modal.js";
 export type { ModalProps } from "./overlays/Modal.types.js";
 export {
@@ -167,6 +183,7 @@ export { FactFlow, type FactFlowProps, type FlowFact } from "./surfaces/FactFlow
 export { FormRow, type FormRowProps } from "./surfaces/FormRow.js";
 export { Hero, type HeroProps } from "./surfaces/Hero.js";
 export { type KeyValueRow, KeyValues, type KeyValuesProps } from "./surfaces/KeyValues.js";
+export { ModuleStart, type ModuleStartProps } from "./surfaces/ModuleStart.js";
 export { Notice, type NoticeProps } from "./surfaces/Notice.js";
 export { Page, type PageProps } from "./surfaces/Page.js";
 export { PageHead, type PageHeadProps } from "./surfaces/PageHead.js";

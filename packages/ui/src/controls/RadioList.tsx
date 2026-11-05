@@ -4,6 +4,8 @@ export interface RadioOption<T extends string> {
   value: T;
   title: ReactNode;
   desc?: ReactNode;
+  /** A tag after the title (old `o.tag`, e.g. `nieskonfigurowany`). */
+  tag?: ReactNode;
   /** Tooltip of the whole row (old `tooltip`), e.g. an example of the choice. */
   tooltip?: string;
   /** Shown but not selectable (old `.radios label.off`). */
@@ -52,6 +54,7 @@ export function RadioList<T extends string>({
             <div>
               <div className="flex flex-wrap items-center gap-2 text-md font-strong">
                 {option.title}
+                {option.tag}
               </div>
               {option.desc != null && <div className="text-sm text-fg-muted">{option.desc}</div>}
             </div>
