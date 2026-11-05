@@ -147,6 +147,11 @@ export {
 export { TabBar, type TabBarProps, type TabBarTab } from "./shell/TabBar.js";
 export { Card } from "./surfaces/Card.js";
 export type { CardProps } from "./surfaces/Card.types.js";
+export {
+  ChartCard,
+  type ChartCardProps,
+  ControlRow,
+} from "./surfaces/ChartCard.js";
 export { Crumb, type CrumbItem, type CrumbProps } from "./surfaces/Crumb.js";
 export { dataTableCls, dataTdCls, dataThCls, scrollCls } from "./surfaces/dataTable.js";
 export { Empty, type EmptyProps } from "./surfaces/Empty.js";
