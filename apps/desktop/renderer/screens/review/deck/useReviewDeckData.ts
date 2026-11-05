@@ -7,6 +7,7 @@ import { S } from "@cashu/i18n/investments/v2/ReviewDeck.strings";
 import { researchScreenQueries } from "@cashu/store/investments/research-screen";
 import {
   reviewPositionDecision,
+  reviewScreenQueries,
   saveReview,
   undoSavedReview,
 } from "@cashu/store/investments/review-screen";
@@ -41,11 +42,11 @@ import type { DigestV2, Performance, SignalV2 } from "@cashu/ui-logic/investment
 import { useCalendarDay } from "../../../shell/useCalendarDay.js";
 import {
   allNotesOf,
-  calendarOf,
   loaded,
   macroOf,
   newestThesesOf,
   researchNotes,
+  reviewCalendarOf,
   runsOf,
   segmentsOf,
   summaryOf,
@@ -59,6 +60,7 @@ import { dayReadInstant } from "../../signals/signalModels.js";
 import { commandFailure, useDurableCommands } from "../../useDurableCommand.js";
 
 const research = researchScreenQueries().screen;
+const review = reviewScreenQueries().screen;
 const signalsQuery = signalsQueries().screen;
 
 export type Verdict = "keep" | "flag";
@@ -95,6 +97,7 @@ export function useReviewDeckData({
   const { privacy } = useUiEnv();
   const language = lang();
   const researchRead = useQuery(research, { today, lang: language });
+  const reviewRead = useQuery(review, { today, lang: language, account: null, open, privacy });
   const signalsRead = useQuery(signalsQuery, {
     now: dayReadInstant(today),
     today,
@@ -121,7 +124,7 @@ export function useReviewDeckData({
     error: null,
     loading: false as const,
   };
-  const calRead = calendarOf(researchRead);
+  const calRead = reviewCalendarOf(reviewRead);
   const cal = open
     ? { ...calRead, error: calRead.error && (label(`error.${calRead.error}`) ?? calRead.error) }
     : loaded(null);

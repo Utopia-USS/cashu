@@ -345,6 +345,14 @@ export function calendarOf(r: ResearchSnapshot): Loaded<MarketCalendar | null> {
     : failed(r.calendar.reason);
 }
 
+/** The review deck's `GET /calendar?days=14`: the review projection reads it only while the deck is open. */
+export function reviewCalendarOf(r: ReviewScreenResult): Loaded<MarketCalendar | null> {
+  if (r.status !== "current") return failed(r.reason);
+  return r.calendar.status === "current"
+    ? loaded(wire<MarketCalendar>(r.calendar.value))
+    : failed(r.calendar.reason);
+}
+
 /** `GET /workspace` (research/api.ts getWorkspace). */
 export function workspaceOf(r: ResearchSnapshot): Workspace | null {
   const w = researchRows(r)?.workspace;

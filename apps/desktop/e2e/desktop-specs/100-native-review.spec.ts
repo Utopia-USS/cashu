@@ -141,8 +141,9 @@ test("the review deck walks its seven cards, writes actual owner outcomes and sa
     await expect(card("calendar")).toContainText("Synthetic calendar release");
     await keep.click();
     await expect(card("decide")).toBeVisible();
-    await card("decide").getByRole("button", { name: "Bez zmian", exact: true }).first().click();
-    await expect(card("decide")).toContainText("✓ Bez zmian");
+    // The seeded risk item: "Trzymam" is its held outcome (old reviewDeckLogic ACTIONS.risk).
+    await card("decide").getByRole("button", { name: "Trzymam", exact: true }).first().click();
+    await expect(card("decide")).toContainText("✓ Trzymam");
     await keep.click();
     await expect(card("summary")).toBeVisible();
     await expect(card("summary")).toContainText("Synthetic Review100 agent agenda");
