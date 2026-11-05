@@ -78,7 +78,7 @@ export function SettingsView({
     return () => observer.disconnect();
   }, []);
   return (
-    <div className="grid gap-5 p-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
+    <div className="grid gap-5 p-6 lg:grid-cols-[--spacing(48)_minmax(0,1fr)]">
       <nav
         aria-label={S.sectionsNav}
         className="sticky top-4 self-start rounded-lg border border-border bg-surface-raised p-2"

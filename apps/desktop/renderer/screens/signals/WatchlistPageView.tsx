@@ -76,7 +76,7 @@ export function WatchlistPageView(props: WatchlistPageState) {
             getKey={(row) => row.id}
             label={G.watchlist}
             estimateSize={76}
-            rowClassName="grid grid-cols-1 items-center gap-2 border-b border-border p-2 md:grid-cols-[minmax(7rem,1fr)_minmax(14rem,2fr)_minmax(16rem,2fr)_auto]"
+            rowClassName="grid grid-cols-1 items-center gap-2 border-b border-border p-2 md:grid-cols-[minmax(--spacing(28),1fr)_minmax(--spacing(56),2fr)_minmax(--spacing(64),2fr)_auto]"
             renderItem={(row) => <WatchLine {...props} row={row} />}
           />
         )}
