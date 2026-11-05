@@ -134,12 +134,16 @@
   --text-2xl: 20px;
   --text-3xl: 21px;
   --text-3xl-plus: 22px;
+  /* The Strategie tab's Markdown `.md-h1`. */
+  --text-4xl-minus: 24px;
   --text-4xl: 26px;
   --text-4xl-plus: 30px;
   --text-5xl: 34px;
   --text-6xl: 40px;
   /* The UA button size (13.333px) of the old bare buttons that set no font size (deck "Cofnij"). */
   --text-control: 13.3333px;
+  /* Inline code of rendered Markdown (old `.md code { font-size: .88em }`, relative to its text). */
+  --text-code: 0.88em;
 
   /* The UA button font of the old bare buttons that kept the UA `font` shorthand (Chromium on macOS
      computes and draws Arial): deck buttons, the review button, icon buttons. */
@@ -155,6 +159,9 @@
   --leading-sheet: 1.55;
   /* `row` = 1.3: the research strip's topic and note heads (story.css `.st-trow .hl`, `.st-note .h`). */
   --leading-row: 1.3;
+  /* Strategie tab: `.strat-desc` 1.35, rendered Markdown `.md` 1.65. */
+  --leading-caption: 1.35;
+  --leading-prose: 1.65;
 
   --font-weight-regular: 400;
   --font-weight-medium: 500;
@@ -194,12 +201,16 @@
   --breakpoint-story: 861px;
   --breakpoint-split: 901px;
   --breakpoint-settings: 1001px;
+  /* Strategie tab `@media (max-width: 1100px)`: the status card goes under the file. */
+  --breakpoint-strat: 1101px;
   --breakpoint-wide: 1181px;
 
   /* Container sizes besides Tailwind's 3xs..7xl (`max-w-*` and the `@max-*` / `@min-*` container
      variants): `measure` = the 64ch reading width of the first-steps hints, `assets` = the assets table
      that drops its 30-day and result columns below 1000px (`@max-assets:`, old `@container (max-width: 999px)`). */
   --container-measure: 64ch;
+  /* Rendered Markdown `.md { max-width: 72ch }` (Strategie tab). */
+  --container-doc: 72ch;
   --container-assets: 1000px;
 
   /* Motion: the review deck's fly-out curve (with duration-260), skeleton shimmer, toast entry. */
