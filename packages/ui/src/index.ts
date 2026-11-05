@@ -36,6 +36,12 @@ export type {
 } from "./charts/types.js";
 export { Button } from "./controls/Button.js";
 export type { ButtonProps } from "./controls/Button.types.js";
+export {
+  ChoiceCard,
+  type ChoiceCardProps,
+  ChoiceCards,
+  type ChoiceCardsProps,
+} from "./controls/ChoiceCard.js";
 export { CodeLine, type CodeLineProps } from "./controls/CodeLine.js";
 export {
   CommandCode,
@@ -54,6 +60,12 @@ export { Switch, type SwitchProps } from "./controls/Switch.js";
 export { TextField } from "./controls/TextField.js";
 export type { TextFieldProps } from "./controls/TextField.types.js";
 export { type UiEnv, UiEnvProvider, useUiEnv } from "./environment/UiEnv.js";
+export {
+  CornerNotice,
+  type CornerNoticeAction,
+  type CornerNoticeProps,
+} from "./feedback/CornerNotice.js";
+export { RunError, type RunErrorProps } from "./feedback/RunError.js";
 export { Skeleton, type SkeletonProps } from "./feedback/Skeleton.js";
 export { SkeletonChart, type SkeletonChartProps } from "./feedback/SkeletonChart.js";
 export { SkeletonKpis, type SkeletonKpisProps } from "./feedback/SkeletonKpis.js";
@@ -135,6 +147,7 @@ export {
 } from "./overlays/ImportDrawer.js";
 export { Modal } from "./overlays/Modal.js";
 export type { ModalProps } from "./overlays/Modal.types.js";
+export { WizardFrame, type WizardFrameProps } from "./overlays/WizardFrame.js";
 export {
   CandidateCard,
   type CandidateCardProps,
@@ -171,6 +184,12 @@ export {
   type ProfilePillProps,
 } from "./shell/ProfilePill.js";
 export { TabBar, type TabBarProps, type TabBarTab } from "./shell/TabBar.js";
+export {
+  AgentWidget,
+  type AgentWidgetProps,
+  PrivacyLine,
+  type PrivacyLineProps,
+} from "./surfaces/AgentWidget.js";
 export { Card } from "./surfaces/Card.js";
 export type { CardProps } from "./surfaces/Card.types.js";
 export {
@@ -186,6 +205,7 @@ export { FactFlow, type FactFlowProps, type FlowFact } from "./surfaces/FactFlow
 export { FormRow, type FormRowProps } from "./surfaces/FormRow.js";
 export { Hero, type HeroProps } from "./surfaces/Hero.js";
 export { type KeyValueRow, KeyValues, type KeyValuesProps } from "./surfaces/KeyValues.js";
+export { Kicker, type KickerProps } from "./surfaces/Kicker.js";
 export { Kpi, type KpiProps, Kpis, type KpisProps } from "./surfaces/Kpi.js";
 export { ModuleStart, type ModuleStartProps } from "./surfaces/ModuleStart.js";
 export { Notice, type NoticeProps } from "./surfaces/Notice.js";

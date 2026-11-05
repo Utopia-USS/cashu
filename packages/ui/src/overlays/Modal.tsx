@@ -26,6 +26,8 @@ const placements = {
   sheet:
     "inset-x-0 bottom-0 mx-auto max-h-[86%] w-full max-w-150 overflow-y-auto rounded-t-xl bg-surface-raised px-5 pt-5 pb-6 text-md leading-sheet",
   screen: "overflow-auto inset-0 bg-surface",
+  // `.overlay`: the whole window over the scrim, scrolling, 16px sides and 40px below; the content brings its frame.
+  overlay: "inset-0 overflow-y-auto px-4 pb-10",
   // `.sdlg` / `.ddlg`: a top-anchored centred card, bare (the Dialog sets the head / body / foot and the size).
   top: "left-1/2 -translate-x-1/2 rounded-lg border border-border bg-surface-raised text-md leading-widget shadow-dialog",
 } as const;
