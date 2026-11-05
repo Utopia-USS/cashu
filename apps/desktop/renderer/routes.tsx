@@ -1,20 +1,24 @@
+import { S as BI } from "@cashu/i18n/budget/index.strings";
 import { investmentEntityIdSchema } from "@cashu/store/investments/screen-sources";
 import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import { useProfile, useQuery } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
+import { Page, SkeletonTable, ToastProvider, useUiEnv } from "@cashu/ui";
 import {
   createHashHistory,
   createRootRoute,
   createRoute,
   createRouter,
   Outlet,
+  redirect,
   useLocation,
   useParams,
   useSearch,
 } from "@tanstack/react-router";
 import {
   createContext,
+  Fragment,
   type ReactNode,
+  Suspense,
   startTransition,
   use,
   useEffect,
@@ -27,15 +31,18 @@ import { S } from "./Desktop.strings.js";
 import { NotificationSignalFocus } from "./notificationFocusContext.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
 import { BankingSettingsPanel } from "./screens/banking/BankingSettingsPanel.js";
-import { BudgetView } from "./screens/budget/BudgetView.js";
-import { type BudgetTab, useBudgetScreen } from "./screens/budget/useBudgetScreen.js";
+import { BudgetActions } from "./screens/budget/actions/BudgetActions.js";
+import { ExpensesScreen } from "./screens/budget/expenses/ExpensesScreen.js";
+import { FlowsScreen } from "./screens/budget/flows/FlowsScreen.js";
+import { BudgetStartScreen } from "./screens/budget/start/BudgetStartScreen.js";
+import { SubscriptionsScreen } from "./screens/budget/subs/SubscriptionsScreen.js";
 import { ClassificationPanel } from "./screens/classification/ClassificationPanel.js";
 import { DevicesScreen } from "./screens/devices/DevicesScreen.js";
 import { PortfolioScreen } from "./screens/investments/PortfolioScreen.js";
 import { LoansScreen } from "./screens/loans/LoansScreen.js";
 import { MinimalOverviewView } from "./screens/overview/MinimalOverviewView.js";
-import { OverviewScreen } from "./screens/overview/OverviewScreen.js";
 import { investmentsOnlyOverview } from "./screens/overview/minimalOverview.js";
+import { OverviewScreen } from "./screens/overview/OverviewScreen.js";
 import { useMinimalOverview } from "./screens/overview/useMinimalOverview.js";
 import { ProposalDrawerScreen } from "./screens/proposals/ProposalDrawerScreen.js";
 import { SettingsView } from "./screens/settings/SettingsView.js";
@@ -133,10 +140,10 @@ function ShellRoute() {
     if (state.profile === null) return;
     const slug = state.profile.slug;
     const vault = state.vault;
-    if (module === "budget")
+    if (module === "budget" || module.startsWith("budget."))
       void router.navigate({
         to: "/$slug/budget/$tab",
-        params: { slug, tab: "expenses" },
+        params: { slug, tab: module === "budget" ? "expenses" : module.slice("budget.".length) },
         search: { vault, currency: budgetCurrencyByVault.get(vault) },
       });
     else if (module === "loans")
@@ -180,11 +187,11 @@ function ShellRoute() {
           pathname.endsWith("/settings")
             ? "settings"
             : pathname.includes("/budget/")
-              ? "budget"
-              : pathname.endsWith("/loans.list") || pathname.endsWith("/setup/loans")
-                ? "loans"
-                : pathname.endsWith("/setup/assets")
-                  ? "assets"
+              ? `budget.${pathname.split("/budget/")[1]?.split("/")[0] ?? "expenses"}`
+              : pathname.endsWith("/setup/budget")
+                ? "budget.expenses"
+                : pathname.endsWith("/loans.list") || pathname.endsWith("/setup/loans")
+                  ? "loans"
                   : pathname.endsWith("/investments.strategies")
                     ? "investments.strategies"
                     : pathname.includes("/investments.") || pathname.includes("/assets/")
@@ -193,6 +200,18 @@ function ShellRoute() {
         }
         narrow={assetPage}
         onModuleOpened={openModule}
+        tabActions={
+          pathname.includes("/budget/") && state.profile !== null ? (
+            <BudgetTabActions
+              key={state.vault}
+              vault={state.vault}
+              slug={state.profile.slug}
+              profileName={
+                state.profiles.find((profile) => profile.vault === state.vault)?.displayName ?? ""
+              }
+            />
+          ) : undefined
+        }
       >
         {selection !== null &&
         (selection.kind !== "ready" || selection.profile.vault !== state.vault) ? (
@@ -401,64 +420,119 @@ const budgetRoute = createRoute({
 });
 const budgetModuleQuery = overviewQueries({ prices: null }).moduleStates;
 
+/** The budget's tab bar actions (old BudgetActions): inside the proposal scope, with their own toast stack. */
+function BudgetTabActions(props: { vault: string; slug: string; profileName: string }) {
+  const proposals = use(ProposalNavigation);
+  const enabled = useQuery(budgetModuleQuery).some(
+    (module) => module.id === "budget" && module.enabled,
+  );
+  if (!enabled) return null;
+  return (
+    <ToastProvider>
+      <BudgetActions
+        {...props}
+        onProposal={(gid) => proposals.open(gid)}
+        onInstructions={() =>
+          void router.navigate({
+            to: "/$slug/setup/$module/cli",
+            params: { slug: props.slug, module: "budget" },
+            search: { vault: props.vault },
+          })
+        }
+      />
+    </ToastProvider>
+  );
+}
+
 function BudgetRoute() {
+  const { privacy } = useUiEnv();
+  const modules = useQuery(budgetModuleQuery);
+  const budget = modules.find((module) => module.id === "budget" && module.enabled);
+  const { slug, tab } = budgetRoute.useParams();
+  const filters = budgetRoute.useSearch();
+  const vault = useProfile();
+  const today = useCalendarDay();
+  if (!budget) return <p className="p-6">{S.setup}</p>;
+  if (!["expenses", "flows", "subs"].includes(tab)) return <RouteFailure />;
+  const change = (next: typeof filters) =>
+    startTransition(() => {
+      if (next.currency) budgetCurrencyByVault.set(vault, next.currency);
+      void router.navigate({
+        to: "/$slug/budget/$tab",
+        params: { slug, tab },
+        search: { ...next, vault },
+      });
+    });
+  // An enabled budget without data: its first tab is the module's first steps (old Shell `def.Start`).
+  const body =
+    tab === "expenses" && budget.setupState === "empty" ? (
+      <BudgetStartBound slug={slug} vault={vault} inSetupView={false} />
+    ) : tab === "flows" ? (
+      <FlowsScreen today={today} filters={filters} onFilters={change} />
+    ) : tab === "subs" ? (
+      <SubscriptionsScreen />
+    ) : (
+      <ExpensesScreen today={today} filters={filters} onFilters={change} />
+    );
+  return (
+    <Page width="narrow" label={budgetTabLabel(tab)}>
+      <ToastProvider>
+        <Suspense fallback={<SkeletonTable rows={8} />}>
+          <Fragment key={`${vault}:${privacy}`}>{body}</Fragment>
+        </Suspense>
+      </ToastProvider>
+    </Page>
+  );
+}
+const budgetTabLabel = (tab: string) =>
+  tab === "flows" ? BI.tabFlows : tab === "subs" ? BI.tabSubs : BI.tabExpenses;
+
+/** `setup/budget`: the budget first steps in the page box (the budget's first tab stays lit). */
+function BudgetStartRoute({ slug, vault }: { slug: string; vault: string }) {
   const { privacy } = useUiEnv();
   const enabled = useQuery(budgetModuleQuery).some(
     (module) => module.id === "budget" && module.enabled,
   );
-  const { slug, tab } = budgetRoute.useParams();
-  const filters = budgetRoute.useSearch();
-  const vault = useProfile();
   if (!enabled) return <p className="p-6">{S.setup}</p>;
-  if (!["expenses", "flows", "subs"].includes(tab)) return <RouteFailure />;
   return (
-    <BudgetBound
-      key={`${vault}:${privacy}`}
-      slug={slug}
-      tab={tab as BudgetTab}
-      vault={vault}
-      filters={filters}
-    />
+    <Page width="narrow" label={BI.name}>
+      <Suspense fallback={<SkeletonTable rows={3} />}>
+        <BudgetStartBound key={`${vault}:${privacy}`} slug={slug} vault={vault} inSetupView />
+      </Suspense>
+    </Page>
   );
 }
-function BudgetBound({
-  slug,
-  tab,
-  vault,
-  filters,
-}: {
-  slug: string;
-  tab: BudgetTab;
-  vault: string;
-  filters: ReturnType<typeof budgetRoute.useSearch>;
-}) {
+
+function BudgetStartBound(props: { slug: string; vault: string; inSetupView: boolean }) {
   const today = useCalendarDay();
-  const modules = useQuery(profileIdentity);
-  const state = useBudgetScreen({
-    today,
-    tab,
-    filters,
-    change: (next) =>
-      startTransition(() => {
-        if (next.currency) budgetCurrencyByVault.set(vault, next.currency);
-        void router.navigate({
-          to: "/$slug/budget/$tab",
-          params: { slug, tab },
-          search: { ...next, vault },
-        });
-      }),
-  });
-  if (modules === null) return <p>{S.noProfile}</p>;
+  const go = (to: "/$slug/budget/$tab" | "/$slug/setup/$module/cli" | "/$slug/settings") => {
+    if (to === "/$slug/budget/$tab")
+      void router.navigate({
+        to,
+        params: { slug: props.slug, tab: "expenses" },
+        search: { vault: props.vault },
+      });
+    else if (to === "/$slug/settings")
+      void router.navigate({
+        to,
+        params: { slug: props.slug },
+        search: { vault: props.vault, section: "agent" },
+      });
+    else
+      void router.navigate({
+        to,
+        params: { slug: props.slug, module: "budget" },
+        search: { vault: props.vault },
+      });
+  };
   return (
-    <BudgetView
-      state={state}
-      onTabPicked={(next) => {
-        void router.navigate({
-          to: "/$slug/budget/$tab",
-          params: { slug, tab: next },
-          search: { ...filters, vault },
-        });
-      }}
+    <BudgetStartScreen
+      today={today}
+      slug={props.slug}
+      inSetupView={props.inSetupView}
+      onExpenses={() => go("/$slug/budget/$tab")}
+      onGuide={() => go("/$slug/setup/$module/cli")}
+      onAgentSettings={() => go("/$slug/settings")}
     />
   );
 }
@@ -516,6 +590,7 @@ const setupRoute = createRoute({
 function SetupGuideRoute() {
   const { slug, module } = useParams({ strict: false });
   const vault = useProfile();
+  const cli = useLocation({ select: (location) => location.pathname.endsWith("/cli") });
   const onNavigate = (target: SetupNavigation) => {
     if (target.kind === "settings") {
       const section = z
@@ -582,6 +657,8 @@ function SetupGuideRoute() {
         });
     }
   };
+  // The budget's in-app first steps at `setup/budget` (old `def.Start`); `setup/budget/cli` stays the guide.
+  if (module === "budget" && !cli) return <BudgetStartRoute slug={slug ?? ""} vault={vault} />;
   return (
     <SetupScreen
       moduleId={module ?? ""}
@@ -1029,6 +1106,7 @@ export const router = createRouter({
   routeTree: rootRoute.addChildren([
     startRoute,
     overviewRoute,
+    budgetIndexRoute,
     budgetRoute,
     loansRoute,
     loansSetupRoute,

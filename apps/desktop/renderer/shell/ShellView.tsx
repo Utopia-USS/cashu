@@ -1,3 +1,4 @@
+import { S as BI } from "@cashu/i18n/budget/index.strings";
 import { S as SS } from "@cashu/i18n/investments/v2/Strategies.strings";
 import {
   AppHeader,
@@ -24,16 +25,25 @@ export interface ShellViewProps {
   onOverviewOpened(): void;
   onModuleOpened(tab: string): void;
   onAddProfile?: () => void;
+  /** The open module's tab bar actions after the spacer (old `TabAction`, the budget's Import / sync). */
+  tabActions?: ReactNode;
   children: ReactNode;
 }
 
-// Navigation order of the Python app (core/registry.ts MODULES): budget | loans | assets | investments,
-// each module its own group after Przegląd, with its tabs (investments: Inwestycje | Strategie). Settings lives
-// in the profile menu, as there.
+// Navigation order of the Python app (core/registry.ts MODULES): budget | loans | investments, each module its
+// own group after Przegląd, with its tabs (budget: Wydatki | Przepływy | Subskrypcje, investments: Inwestycje |
+// Strategie). Majątek has no tab: it lives on Przegląd (its widget opens the Majątek page). Settings lives in
+// the profile menu, as there.
 const MODULE_TABS: readonly (readonly [string, readonly (readonly [string, () => string])[]])[] = [
-  ["budget", [["budget", () => S.budget]]],
+  [
+    "budget",
+    [
+      ["budget.expenses", () => BI.tabExpenses],
+      ["budget.flows", () => BI.tabFlows],
+      ["budget.subs", () => BI.tabSubs],
+    ],
+  ],
   ["loans", [["loans", () => S.loans]]],
-  ["assets", [["assets", () => S.assets]]],
   [
     "investments",
     [
@@ -70,6 +80,7 @@ export function ShellView({
   onOverviewOpened,
   onModuleOpened,
   onAddProfile,
+  tabActions,
   children,
   activeModule = "overview",
   narrow = false,
@@ -149,7 +160,7 @@ export function ShellView({
           >
             {state.connectionText}
           </p>
-          <TabBar label={S.modules} groups={groups} />
+          <TabBar label={S.modules} groups={groups} actions={tabActions} />
         </div>
         {state.toast !== null && (
           <div

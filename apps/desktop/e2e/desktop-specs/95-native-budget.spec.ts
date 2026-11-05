@@ -15,7 +15,7 @@ import {
 } from "../electron-test.ts";
 import { restoreNativeBaseline } from "../native-baseline.ts";
 
-test("native budget tabs use the real generated demo vault, update categories and cushion, and retain honest import boundaries", async () => {
+test("native budget tabs follow the Python app: Wydatki, Przepływy and Subskrypcje with the tab bar's Import and sync", async () => {
   const repo = process.env.E2E_REPO,
     dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("isolated native demo absent");
@@ -43,90 +43,46 @@ test("native budget tabs use the real generated demo vault, update categories an
     await setPrivacy(page, false);
     await pickProfile(page, "Demo Anna");
     await expect(profilePill(page)).toHaveAccessibleName("Demo Anna");
-    await page
-      .getByRole("navigation", { name: "Moduły" })
-      .getByRole("button", { name: "Budżet", exact: true })
-      .click();
-    await expect(page.getByRole("heading", { name: "Wydatki", level: 1 })).toBeVisible();
-    await expect(
-      page
-        .getByRole("navigation", { name: "Moduły" })
-        .getByRole("button", { name: "Budżet", exact: true }),
-    ).toHaveAttribute("aria-current", "page");
-    const currency = page.getByRole("combobox", { name: "Waluta", exact: true });
-    await expect(currency).toBeVisible();
-    await currency.selectOption("EUR");
-    await expect(page).toHaveURL(/currency=EUR/);
-    await currency.selectOption("PLN");
-    await page.getByRole("combobox", { name: "Zakres", exact: true }).selectOption("all");
-    const slices = page.getByRole("group").filter({ has: page.locator("svg") });
-    await expect(slices.first()).toBeVisible();
-    const arc = slices.first().getByRole("button").first();
-    await arc.focus();
-    await page.keyboard.press("Enter");
-    await expect(
-      page.getByRole("region", { name: "Transakcje", exact: true }).first(),
-    ).toBeVisible();
-    const category = page.getByRole("combobox", { name: "Kategoria", exact: true }).first();
-    await category.selectOption("groceries");
-    await expect(page.getByRole("status").filter({ hasText: "Zapisano." })).toBeVisible();
-    await page.getByRole("button", { name: "Odbiorcy bez kategorii", exact: true }).click();
-    const merchants = page.getByRole("dialog", { name: "Odbiorcy bez kategorii", exact: true });
-    await expect(merchants).toBeVisible();
-    const merchantChoices = merchants.getByRole("combobox", { name: "Kategoria", exact: true });
-    const merchantCount = await merchantChoices.count();
-    if (merchantCount > 0) {
-      await merchantChoices.first().selectOption("groceries");
-      await expect(merchantChoices).toHaveCount(merchantCount);
-    }
-    await merchants.getByRole("button", { name: "Zamknij", exact: true }).click();
-    await page.getByRole("button", { name: "Przepływy", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Przepływy", level: 1 })).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Zamknięcie miesiąca", exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Ustaw poduszkę", exact: true }).click();
-    const cushion = page.getByRole("dialog", { name: "Poduszka finansowa", exact: true });
-    await expect(cushion).toBeVisible();
-    await cushion.getByRole("combobox", { name: "Cel", exact: true }).selectOption("amount");
-    await cushion.getByRole("checkbox", { name: "Poduszka finansowa", exact: true }).check();
-    await cushion.getByRole("textbox", { name: "Cel", exact: true }).fill("1000");
-    await cushion.getByRole("button", { name: "Zapisz", exact: true }).click();
-    await expect(cushion).toHaveCount(0);
-    await page.getByRole("button", { name: "Ustaw poduszkę", exact: true }).click();
-    await expect(cushion.getByRole("textbox", { name: "Cel", exact: true })).toHaveValue("1000.00");
-    await cushion.getByRole("textbox", { name: "Cel", exact: true }).fill("777");
-    // A real device setting push can arrive while the modal owns focus.
-    await page.evaluate(() => {
-      const toggle = document.querySelector<HTMLInputElement>(
-        'header input[type="checkbox"][aria-label="Ukryj kwoty"]',
-      );
-      if (!toggle) throw new Error("privacy control absent");
-      toggle.click();
-    });
-    await expect(cushion).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Ustaw poduszkę", exact: true })).toBeDisabled();
-    await setPrivacy(page, false);
-    await page.getByRole("button", { name: "Ustaw poduszkę", exact: true }).click();
-    await expect(cushion.getByRole("textbox", { name: "Cel", exact: true })).toHaveValue("1000.00");
-    await cushion.getByRole("button", { name: "Zamknij", exact: true }).click();
-    await page.getByRole("button", { name: "Subskrypcje", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Subskrypcje", level: 1 })).toBeVisible();
-    await page.getByRole("button", { name: "Synchronizuj bank", exact: true }).click();
-    await expect(page.getByRole("main")).toContainText(
-      "Synchronizacja banków i konektorów nie jest jeszcze dostępna w aplikacji.",
+    const tabs = page.getByRole("navigation", { name: "Moduły" });
+    // Majątek has no tab of its own (it lives on Przegląd), the budget has three.
+    await expect(tabs.getByRole("button", { name: "Majątek", exact: true })).toHaveCount(0);
+    await tabs.getByRole("button", { name: "Wydatki", exact: true }).click();
+    await expect(page.getByRole("main", { name: "Wydatki", exact: true })).toBeVisible();
+    await expect(tabs.getByRole("button", { name: "Wydatki", exact: true })).toHaveAttribute(
+      "aria-current",
+      "page",
     );
-    await page.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Import", exact: true })).toContainText(
-      "Import plików nie jest jeszcze dostępny w aplikacji.",
-    );
+    await tabs.getByRole("button", { name: "Przepływy", exact: true }).click();
+    const flows = page.getByRole("main", { name: "Przepływy", exact: true });
+    await expect(flows).toBeVisible();
+    await expect(
+      flows.getByRole("region", { name: "Zamknięcie miesiąca", exact: true }),
+    ).toBeVisible();
+    await expect(flows).toContainText(/Przepływy \([A-Z]{3}\)/u);
+    await flows.getByRole("combobox", { name: "Agregacja", exact: true }).selectOption("quarterly");
+    await expect(page).toHaveURL(/gran=quarterly/);
+    await flows.getByRole("button", { name: "Max", exact: true }).click();
+    await expect(page).toHaveURL(/range=0/);
+    await tabs.getByRole("button", { name: "Subskrypcje", exact: true }).click();
+    const subs = page.getByRole("main", { name: "Subskrypcje", exact: true });
+    await expect(subs.getByRole("region", { name: "Subskrypcje", exact: true })).toBeVisible();
+    await expect(subs.getByRole("columnheader", { name: "Odbiorca", exact: true })).toBeVisible();
+    // The tab bar actions of a budget tab: Import opens the statement drawer at its file step.
+    await tabs.getByRole("button", { name: "Import", exact: true }).click();
+    const drawer = page.getByRole("dialog", { name: "Import wyciągu", exact: true });
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Podgląd", exact: true })).toBeDisabled();
+    await drawer.getByRole("button", { name: "← Wstecz", exact: true }).click();
+    await expect(drawer.getByRole("radio", { name: /Plik CSV z banku/u })).toBeChecked();
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+    await expect(tabs.getByRole("button", { name: "↻ Synchronizuj", exact: true })).toBeVisible();
     await pickProfile(page, "Demo");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await pickProfile(page, "Demo Anna");
-    await page
-      .getByRole("navigation", { name: "Moduły" })
-      .getByRole("button", { name: "Budżet", exact: true })
-      .click();
+    // An old deep link to the budget module opens Wydatki.
+    await rewriteHash(page, /\/budget\/[^?]*(?=\?|$)/u, "/budget");
+    await expect(page.getByRole("main", { name: "Wydatki", exact: true })).toBeVisible();
     await setPrivacy(page, true);
     await expect(page.getByRole("main")).toContainText("•••");
     await setPrivacy(page, false);
@@ -147,9 +103,9 @@ test("native budget tabs use the real generated demo vault, update categories an
     ).toHaveAttribute("aria-pressed", "true");
     await page
       .getByRole("navigation", { name: "Modules" })
-      .getByRole("button", { name: "Budget", exact: true })
+      .getByRole("button", { name: "Expenses", exact: true })
       .click();
-    await expect(page.getByRole("heading", { name: "Spending", level: 1 })).toBeVisible();
+    await expect(page.getByRole("main", { name: "Expenses", exact: true })).toBeVisible();
   } finally {
     await app?.close();
     await stopHost(dataDir);

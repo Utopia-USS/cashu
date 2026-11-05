@@ -2,13 +2,23 @@
 // account radios, importer and mapping, the checked preview with the reconciliation, the result. Pure: the state
 // and every formatted row come from useImportDrawer.ts.
 import { S } from "@cashu/i18n/investments/Drawers.strings";
-import { Button, Drawer, Notice, RadioList, Select, Stepper, Tag, TextField } from "@cashu/ui";
+import {
+  Button,
+  ImportCounts,
+  ImportDone,
+  ImportDrawer,
+  ImportTable,
+  importTable,
+  Notice,
+  RadioList,
+  Select,
+  Tag,
+  TextField,
+} from "@cashu/ui";
 import type { ImportDrawerState, ImportWarningText } from "./useImportDrawer.js";
 
-const th =
-  "border-b border-border px-1.5 py-2 text-left text-xs font-strong uppercase tracking-column text-fg-muted";
-const td = "border-b border-border px-1.5 py-2 text-left";
-const num = "text-right tabular-nums";
+const td = importTable.td();
+const num = importTable.td(true);
 const tones = { positive: "text-positive", negative: "text-negative" } as const;
 
 function Warning({ w }: { w: ImportWarningText }) {
@@ -57,16 +67,15 @@ export function ImportDrawerView({ state }: { state: ImportDrawerState }) {
     );
   const p = state.preview;
   return (
-    <Drawer
+    <ImportDrawer
       title={state.title}
-      label={state.title}
-      width={600}
-      tag={state.accountTag ? <Tag>{state.accountTag}</Tag> : undefined}
+      tag={state.accountTag}
+      steps={state.steps}
+      step={state.step}
+      error={state.error}
       footer={footer}
       onClose={state.onClose}
     >
-      <Stepper steps={state.steps} current={state.step} />
-      {state.error && <Notice tone="negative">{state.error}</Notice>}
       {state.step === 0 && (
         <>
           {state.accountOptions.length ? (
@@ -129,93 +138,71 @@ export function ImportDrawerView({ state }: { state: ImportDrawerState }) {
             </Notice>
           )}
           {p.before && <Notice tone="warning">{p.before}</Notice>}
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Tag tone="positive" solid>
-              {p.counts.fresh}
-            </Tag>
-            <Tag>{p.counts.duplicates}</Tag>
-            {p.counts.skipped && (
-              <Tag tone="warning" solid>
-                {p.counts.skipped}
-              </Tag>
-            )}
-            <span className="flex-1" />
-            <label className="flex items-center gap-1.5 text-xs text-fg-muted">
-              <input
-                type="checkbox"
-                className="size-3.75 accent-accent"
-                checked={p.problems}
-                onChange={(e) => p.onProblems(e.target.checked)}
-              />{" "}
-              {S.onlyProblems}
-            </label>
-          </div>
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr>
-                <th className={th}>{S.colDate}</th>
-                <th className={th}>{S.colType}</th>
-                <th className={th}>{S.colInstrument}</th>
-                <th className={`${th} ${num}`}>{S.colQty}</th>
-                <th className={`${th} ${num}`}>{S.colAmount}</th>
-                <th className={th}>{S.colStatus}</th>
+          <ImportCounts
+            fresh={p.counts.fresh}
+            duplicates={p.counts.duplicates}
+            skipped={p.counts.skipped}
+            filter={{ label: S.onlyProblems, on: p.problems, onChange: p.onProblems }}
+          />
+          <ImportTable
+            columns={[
+              { key: "date", label: S.colDate },
+              { key: "type", label: S.colType },
+              { key: "instrument", label: S.colInstrument },
+              { key: "qty", label: S.colQty, num: true },
+              { key: "amount", label: S.colAmount, num: true },
+              { key: "status", label: S.colStatus },
+            ]}
+            more={
+              p.more
+                ? {
+                    text: p.more,
+                    action: (
+                      <Button variant="link" size="sm" onPress={p.onAll}>
+                        {S.showAll}
+                      </Button>
+                    ),
+                  }
+                : null
+            }
+            empty={p.empty}
+          >
+            {p.rows.map((r) => (
+              <tr key={r.key} className={r.duplicate ? "text-fg-muted" : undefined}>
+                <td className={td}>{r.date}</td>
+                <td className={td}>{r.type}</td>
+                <td className={td}>
+                  {r.instrument ? (
+                    <>
+                      {r.instrument} {r.newInstrument && <Tag tone="info">{S.newInstrument}</Tag>}
+                    </>
+                  ) : (
+                    <span className="text-fg-muted">-</span>
+                  )}
+                </td>
+                <td className={num}>{r.quantity}</td>
+                <td className={`${num} ${r.tone ? tones[r.tone] : ""}`}>{r.amount}</td>
+                <td className={td}>
+                  {r.duplicate ? <Tag>{S.duplicate}</Tag> : <Tag tone="positive">{S.new}</Tag>}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {p.rows.map((r) => (
-                <tr key={r.key} className={r.duplicate ? "text-fg-muted" : undefined}>
-                  <td className={td}>{r.date}</td>
-                  <td className={td}>{r.type}</td>
-                  <td className={td}>
-                    {r.instrument ? (
-                      <>
-                        {r.instrument} {r.newInstrument && <Tag tone="info">{S.newInstrument}</Tag>}
-                      </>
-                    ) : (
-                      <span className="text-fg-muted">-</span>
-                    )}
-                  </td>
-                  <td className={`${td} ${num}`}>{r.quantity}</td>
-                  <td className={`${td} ${num} ${r.tone ? tones[r.tone] : ""}`}>{r.amount}</td>
-                  <td className={td}>
-                    {r.duplicate ? <Tag>{S.duplicate}</Tag> : <Tag tone="positive">{S.new}</Tag>}
-                  </td>
-                </tr>
-              ))}
-              {p.skipped.map((w, index) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: skipped rows have no ids.
-                <tr key={`s${index}`}>
-                  <td colSpan={4} className={`${td} text-fg-muted`}>
-                    <Warning w={w} />
-                  </td>
-                  <td className={`${td} ${num}`}>-</td>
-                  <td className={td}>
-                    <Tag tone="warning">{S.skipped}</Tag>{" "}
-                    <Button variant="link" size="sm" onPress={state.onManual}>
-                      {S.addManually}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {p.more && (
-                <tr>
-                  <td colSpan={6} className={`${td} text-center text-xs text-fg-muted`}>
-                    {p.more}
-                    <Button variant="link" size="sm" onPress={p.onAll}>
-                      {S.showAll}
-                    </Button>
-                  </td>
-                </tr>
-              )}
-              {p.empty && (
-                <tr>
-                  <td colSpan={6} className={`${td} text-fg-muted`}>
-                    {p.empty}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            ))}
+            {p.skipped.map((w, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: skipped rows have no ids.
+              <tr key={`s${index}`}>
+                <td colSpan={4} className={`${td} text-fg-muted`}>
+                  <Warning w={w} />
+                </td>
+                <td className={num}>-</td>
+                <td className={td}>
+                  <Tag tone="warning">{S.skipped}</Tag>{" "}
+                  <Button variant="link" size="sm" onPress={state.onManual}>
+                    {S.addManually}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </ImportTable>
           {p.recon && (
             <>
               <div className="mt-4 mb-1.5 flex flex-wrap items-center gap-2">
@@ -224,14 +211,14 @@ export function ImportDrawerView({ state }: { state: ImportDrawerState }) {
                 <span className="flex-1" />
                 <span className="text-xs text-fg-muted">{p.recon.state}</span>
               </div>
-              <table className="w-full border-collapse text-sm">
+              <table className={importTable.table}>
                 <thead>
                   <tr>
-                    <th className={th}>{S.colInstrument}</th>
-                    <th className={`${th} ${num}`}>{S.colAtBroker}</th>
-                    <th className={`${th} ${num}`}>{S.colAfterImport}</th>
-                    <th className={`${th} ${num}`}>{S.colDiff}</th>
-                    <th className={th} title={S.correctionTitle}>
+                    <th className={importTable.th()}>{S.colInstrument}</th>
+                    <th className={importTable.th(true)}>{S.colAtBroker}</th>
+                    <th className={importTable.th(true)}>{S.colAfterImport}</th>
+                    <th className={importTable.th(true)}>{S.colDiff}</th>
+                    <th className={importTable.th()} title={S.correctionTitle}>
                       {S.colCorrection}
                     </th>
                   </tr>
@@ -240,9 +227,9 @@ export function ImportDrawerView({ state }: { state: ImportDrawerState }) {
                   {p.recon.rows.map((d) => (
                     <tr key={d.key} className={d.delta ? "bg-warning-bg" : undefined}>
                       <td className={td}>{d.label}</td>
-                      <td className={`${td} ${num}`}>{d.broker}</td>
-                      <td className={`${td} ${num}`}>{d.computed}</td>
-                      <td className={`${td} ${num} ${d.delta ? "font-strong text-warning" : ""}`}>
+                      <td className={num}>{d.broker}</td>
+                      <td className={num}>{d.computed}</td>
+                      <td className={`${num} ${d.delta ? "font-strong text-warning" : ""}`}>
                         {d.delta ?? <span className="text-fg-muted">-</span>}
                       </td>
                       <td className={td}>
@@ -274,18 +261,18 @@ export function ImportDrawerView({ state }: { state: ImportDrawerState }) {
         </>
       )}
       {state.step === 3 && state.done && (
-        <div className="py-2 text-left text-md text-fg-muted">
-          <div className="font-strong text-fg">{state.done.title}</div>
-          <div className="mt-1 text-sm">{state.done.duplicates}</div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {state.done.classify && (
+        <ImportDone
+          title={state.done.title}
+          line={state.done.duplicates}
+          actions={
+            state.done.classify ? (
               <Button variant="primary" onPress={state.onClassify}>
                 {state.done.classify}
               </Button>
-            )}
-          </div>
-        </div>
+            ) : undefined
+          }
+        />
       )}
-    </Drawer>
+    </ImportDrawer>
   );
 }
