@@ -55,7 +55,7 @@ export interface Loaded<T> {
   readonly loading: false;
 }
 export const loaded = <T>(data: T): Loaded<T> => ({ data, error: null, loading: false });
-export const failed = <T>(reason: string): Loaded<T> => ({
+const failed = <T>(reason: string): Loaded<T> => ({
   data: undefined,
   error: reason,
   loading: false,
@@ -271,7 +271,7 @@ const researchRows = (r: ResearchSnapshot): ResearchReady | null =>
   r.status === "current" || r.status === "partial" ? r : null;
 
 /** research/api.ts normNote. */
-export function normNote(n: ResearchNote): ResearchNote {
+function normNote(n: ResearchNote): ResearchNote {
   return {
     ...n,
     sources: Array.isArray(n.sources) ? n.sources : [],

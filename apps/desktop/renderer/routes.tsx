@@ -904,6 +904,21 @@ function PortfolioRoute() {
   return (
     <PortfolioScreen
       {...(instrument === undefined ? {} : { instrument })}
+      slug={slug ?? ""}
+      onSetupOpened={() =>
+        void router.navigate({
+          to: "/$slug/setup/$module",
+          params: { slug: slug ?? "", module: "investments" },
+          search: { vault },
+        })
+      }
+      onSettingsOpened={() =>
+        void router.navigate({
+          to: "/$slug/settings",
+          params: { slug: slug ?? "" },
+          search: { vault, section: "agent" },
+        })
+      }
       review={selected.review === "1"}
       signalsOpen={selected.signals === "1"}
       signalFocusId={

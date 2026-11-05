@@ -14,7 +14,7 @@ const GID =
 const numbers = new Map<string, number>();
 const gids: string[] = [];
 
-export const isGid = (value: string): boolean => GID.test(value);
+const isGid = (value: string): boolean => GID.test(value);
 
 /** The legacy integer id of a gid (interned on first sight). */
 export function legacyId(gid: string): number {

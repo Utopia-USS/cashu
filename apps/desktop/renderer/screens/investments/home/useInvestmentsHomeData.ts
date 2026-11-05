@@ -233,7 +233,6 @@ export function useResearchNoteActions() {
       }),
   };
 }
-export type ResearchNoteActions = ReturnType<typeof useResearchNoteActions>;
 
 /** The Home's writes: the empty state's strategy init, research candidate actions and the Import drawer. Every
  * write answers null when it went through, else the old toast's message; the readback is the live queries. */

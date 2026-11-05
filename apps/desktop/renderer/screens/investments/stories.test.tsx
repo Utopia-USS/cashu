@@ -7,7 +7,6 @@ import * as strategies from "../strategies/StrategiesView.stories.js";
 import * as settings from "../strategies/StrategySettingsView.stories.js";
 import * as asset from "./AssetDetailView.stories.js";
 import * as imports from "./ImportStepsView.stories.js";
-import * as portfolio from "./PortfolioView.stories.js";
 import * as transactions from "./TransactionsView.stories.js";
 
 type Decorator = (Story: ComponentType) => ReactElement;
@@ -20,15 +19,7 @@ it.each(["en", "pl"] as const)(
   "renders all actual investment and strategy story phases in %s",
   (language) => {
     setLanguageForTests(language);
-    for (const module of [
-      asset,
-      imports,
-      portfolio,
-      transactions,
-      strategies,
-      markdown,
-      settings,
-    ]) {
+    for (const module of [asset, imports, transactions, strategies, markdown, settings]) {
       const meta = module.default as unknown as Meta;
       for (const [name, value] of Object.entries(module)) {
         if (name === "default") continue;

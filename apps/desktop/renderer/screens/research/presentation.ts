@@ -201,43 +201,6 @@ export function researchScopeModel(data: ResearchScreenSnapshot) {
   };
 }
 
-export function researchHomeModel(data: ResearchScreenSnapshot) {
-  if (data.status !== "current") return null;
-  if (data.lastRun === null && data.macro.status !== "current") return null;
-  const topics = data.segments1w.status === "current" ? data.segments1w.value.segments : [];
-  const weak =
-    data.summary.status === "current"
-      ? data.summary.value.instruments.filter(
-          (row) => row.held && (row.health === "invalidated" || row.health === "weakened"),
-        )
-      : [];
-  const through = addDays(data.today, 7);
-  const events =
-    data.calendar.status === "current"
-      ? data.calendar.value.events
-          .filter((event) => event.date >= data.today && event.date <= through)
-          .slice(0, 7)
-      : [];
-  return {
-    data,
-    riskSummary:
-      data.macro.status === "current"
-        ? (data.macro.value.find((regime) => regime.key === "risk")?.summary ?? null)
-        : null,
-    weak,
-    events,
-    quiet: topics.filter((row) => row.note === null && row.thesis !== null),
-    draftCount: topics.filter((row) => researchField(row.thesis, "draft") === true).length,
-    topics: topics.slice(0, 8).map((row) => ({
-      ...row,
-      headline: researchStringField(row.note, "title"),
-      outlook: researchStringField(row.thesis, "outlook"),
-      valuationDay: researchDisplayDay(researchStringField(row.valuation, "observed_at")),
-      valuationFacts: researchValuationFacts(row.valuation),
-    })),
-  };
-}
-
 export function researchAssetModel(
   data: ResearchScreenSnapshot,
   instrument: string,

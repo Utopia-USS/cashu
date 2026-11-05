@@ -2,8 +2,10 @@ import { Money as MoneyValue } from "@cashu/domain";
 import { Amount, DateText, Money, useVirtualRows } from "@cashu/ui";
 import { useRef } from "react";
 import { I } from "./Portfolio.strings.js";
-import { investmentButton } from "./PortfolioView.js";
 import type { PortfolioScreenState } from "./usePortfolioScreen.js";
+
+const investmentButton =
+  "rounded-sm border border-border px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-accent-muted";
 
 /** Complete canonical transaction history, independently windowed from any asset chart. */
 export function TransactionsView({ state }: { state: PortfolioScreenState }) {

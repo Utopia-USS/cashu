@@ -85,14 +85,18 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
       .getByRole("navigation", { name: "Moduły" })
       .getByRole("button", { name: "Inwestycje", exact: true })
       .click();
-    const homeRail = page.getByTestId("native-investment-home-rail");
+    // The ported Home (ab24ab6 look): the rail widgets are regions of the page box.
+    const homeRail = page.getByTestId("native-portfolio");
     try {
       await expect(homeRail).toBeVisible();
     } catch (error) {
       await attachRouteDiagnostics("home");
       throw error;
     }
-    await homeRail.getByRole("button", { name: "+ Nowy", exact: true }).click();
+    await homeRail
+      .getByRole("region", { name: "Alerty" })
+      .getByRole("button", { name: "+ Nowy", exact: true })
+      .click();
     const openedFromHome = page.getByTestId("native-signals-alerts");
     try {
       await expect(openedFromHome.getByRole("region", { name: "Nowy alert" })).toBeVisible();
@@ -231,8 +235,7 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
           await page.evaluate(() => ({
             route: `${location.pathname}${location.search}${location.hash}`,
             journal: document.querySelector('[data-testid="native-signals-journal"]') !== null,
-            portfolio:
-              document.querySelector('[data-testid="native-investment-home-rail"]') !== null,
+            portfolio: document.querySelector('[data-testid="native-portfolio"]') !== null,
             loading: document.body.textContent?.includes("Otwieranie danych lokalnych") ?? false,
             hostConnection: document.querySelector('[data-testid="host-connection"]')?.textContent,
             checked: (document.querySelector('input[type="checkbox"]') as HTMLInputElement | null)

@@ -61,7 +61,7 @@ const position = {
   open_signals: 0,
 };
 /** Synthetic visual fixture only; generated-demo Electron proves the actual data path separately. */
-export const readyPortfolio = {
+const readyPortfolio = {
   status: "ready",
   accounts: [account],
   positions: { base_currency: "PLN", total: D("1200"), positions: [position], cash: [] },
