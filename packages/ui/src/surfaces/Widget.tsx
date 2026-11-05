@@ -16,6 +16,9 @@ export interface WidgetProps {
   highlight?: boolean;
   /** Dashed placeholder frame without fill or shadow. */
   ghost?: boolean;
+  /** A state tint of the whole card (old `.w.recw.maybe` / `.out`): 14 % of the hue over the card, the border
+   * at 35 %, the title in a 72 % ink. Put the same ink on quiet text inside with `tintInk`. */
+  tint?: "warning" | "negative";
   /** Body with less top padding. */
   tight?: boolean;
   /** Body without side padding (tables edge to edge). */
@@ -28,6 +31,14 @@ export interface WidgetProps {
   className?: string;
 }
 
+/** The quiet-text colour on a tinted widget (old `.w.recw.* .muted`): 72 % text over the card. */
+export const tintInk = "text-[color-mix(in_srgb,var(--color-fg)_72%,var(--color-surface-raised))]";
+const tints = {
+  warning:
+    "border-[color-mix(in_srgb,var(--color-warning)_35%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-warning)_14%,var(--color-surface-raised))] shadow-card",
+  negative:
+    "border-[color-mix(in_srgb,var(--color-negative)_35%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-negative)_14%,var(--color-surface-raised))] shadow-card",
+} as const;
 const frames = {
   plain: "border-border bg-surface-raised shadow-card",
   highlight: "border-accent bg-surface-raised shadow-none ring-1 ring-accent",
@@ -44,6 +55,7 @@ export function Widget({
   footer,
   highlight,
   ghost,
+  tint,
   tight,
   flush,
   id,
@@ -52,7 +64,13 @@ export function Widget({
   className = "",
 }: WidgetProps) {
   const headingId = useId();
-  const frame = ghost ? frames.ghost : highlight ? frames.highlight : frames.plain;
+  const frame = ghost
+    ? frames.ghost
+    : highlight
+      ? frames.highlight
+      : tint
+        ? tints[tint]
+        : frames.plain;
   const hasHead = title != null || count != null || tags != null || controls != null;
   return (
     <section
@@ -66,7 +84,7 @@ export function Widget({
           {title != null && (
             <h3
               id={headingId}
-              className="m-0 whitespace-nowrap text-2xs-plus font-strong uppercase tracking-eyebrow text-fg-muted"
+              className={`m-0 whitespace-nowrap text-2xs-plus font-strong uppercase tracking-eyebrow ${tint ? tintInk : "text-fg-muted"}`}
             >
               {title}
             </h3>

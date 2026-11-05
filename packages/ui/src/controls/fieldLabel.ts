@@ -11,7 +11,12 @@ const face =
 /** Shared look of the text field and picker controls (old `input` / `select` / `textarea`): chip face,
  * accent border on focus. Inside a visible stacked label they take the `.field` size (13px, 6px 9px);
  * bare (hidden or inline label) an input is 13px 5px 9px and a select 12px 4px 8px. */
-export function fieldLook(kind: "input" | "select" | "textarea", stacked: boolean): string {
+export function fieldLook(
+  kind: "input" | "select" | "textarea",
+  stacked: boolean,
+  compact?: boolean,
+): string {
+  if (compact) return `${face} max-w-55 px-1.5 py-0.5 text-xs`;
   if (kind === "textarea") return `${face} w-full resize-y px-2.25 py-1.5 text-sm`;
   if (stacked) return `${face} px-2.25 py-1.5 text-sm`;
   return kind === "select" ? `${face} px-2 py-1 text-xs` : `${face} px-2.25 py-1.25 text-sm`;

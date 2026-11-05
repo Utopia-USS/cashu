@@ -166,11 +166,23 @@ export interface InstLabelProps extends InstTileProps {
   sub?: ReactNode;
   /** One-line tooltip of the whole label. */
   title?: string;
+  /** `header` density inside a heading (old `.ahead .nm .il`): the name takes the heading's size and weight,
+   * the muted text after it 13px 500 with a 3px gap. */
+  heading?: boolean;
 }
 
 /** Instrument identity: ticker tile + name (+ second line), old `.il` / `.il.cmp` / `.il.hd`. The hover card
  * of the old app is not part of it (compose one around the label where needed). */
-export function InstLabel({ name, onOpen, badges, action, sub, title, ...tile }: InstLabelProps) {
+export function InstLabel({
+  name,
+  onOpen,
+  badges,
+  action,
+  sub,
+  title,
+  heading,
+  ...tile
+}: InstLabelProps) {
   const density = tile.density ?? "row";
   const hasSub = sub != null && sub !== "";
   const nameNode = onOpen ? (
@@ -186,7 +198,7 @@ export function InstLabel({ name, onOpen, badges, action, sub, title, ...tile }:
   );
   const subLine = hasSub && (
     <span
-      className={`overflow-hidden text-ellipsis whitespace-nowrap text-2xs-plus font-regular leading-dense text-fg-muted ${density === "header" ? "" : "mt-0.5"}`}
+      className={`overflow-hidden text-ellipsis whitespace-nowrap leading-dense text-fg-muted ${heading ? "ml-0.75 text-sm font-medium" : `text-2xs-plus font-regular ${density === "header" ? "" : "mt-0.5"}`}`}
     >
       {sub}
     </span>
@@ -198,7 +210,9 @@ export function InstLabel({ name, onOpen, badges, action, sub, title, ...tile }:
     >
       <TileFace {...tile} />
       <span className="flex min-w-0 flex-col justify-center">
-        <span className={`flex min-w-0 items-center gap-1.25 font-strong leading-tight text-sm`}>
+        <span
+          className={`flex min-w-0 items-center gap-1.25 leading-tight ${heading ? "[font-size:inherit] [font-weight:inherit]" : "font-strong text-sm"}`}
+        >
           {nameNode}
           {badges}
           {action}

@@ -1,6 +1,23 @@
 import { useId } from "react";
 import { fieldLabel, fieldLook } from "./fieldLabel.js";
-import type { SelectProps } from "./Select.types.js";
+import type { SelectOption, SelectProps } from "./Select.types.js";
+
+const optionNode = (option: SelectOption) => (
+  <option key={option.value} value={option.value} disabled={option.disabled}>
+    {option.label}
+  </option>
+);
+
+/** Consecutive options of one group (ungrouped options form runs without a heading). */
+function groupsOf(options: readonly SelectOption[]) {
+  const runs: { group: string | undefined; options: SelectOption[] }[] = [];
+  for (const option of options) {
+    const last = runs.at(-1);
+    if (last && last.group === option.group) last.options.push(option);
+    else runs.push({ group: option.group, options: [option] });
+  }
+  return runs;
+}
 
 /** Labelled single-choice picker over a fixed list of translated options, with the shared field look. */
 export function Select({
@@ -11,6 +28,8 @@ export function Select({
   labelHidden,
   inline,
   disabled,
+  title,
+  compact,
   id,
   describedBy,
   testID,
@@ -25,15 +44,20 @@ export function Select({
       disabled={disabled}
       aria-label={labelHidden ? label : undefined}
       aria-describedby={describedBy}
+      title={title}
       data-testid={testID}
       onChange={(event) => onChange(event.target.value)}
-      className={`${fieldLook("select", !labelHidden && !inline)} ${labelHidden ? className : ""}`}
+      className={`${fieldLook("select", !labelHidden && !inline, compact)} ${labelHidden ? className : ""}`}
     >
-      {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>
-          {option.label}
-        </option>
-      ))}
+      {groupsOf(options).map((run) =>
+        run.group === undefined ? (
+          run.options.map(optionNode)
+        ) : (
+          <optgroup key={`${run.group}:${run.options[0]?.value ?? ""}`} label={run.group}>
+            {run.options.map(optionNode)}
+          </optgroup>
+        ),
+      )}
     </select>
   );
   return labelHidden ? (

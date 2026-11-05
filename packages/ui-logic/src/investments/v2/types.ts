@@ -1,6 +1,7 @@
 // v2 investments payload shapes the shared UI logic reads (signals, alerts, calendar, instrument search; they
 // mirror service/views.py). Types only.
 import type {
+  Decision,
   Hint,
   Instrument,
   Num,
@@ -9,6 +10,7 @@ import type {
   Positions,
   ReviewDigest,
   Signal,
+  Thesis,
 } from "../types.js";
 
 export interface Alert {
@@ -227,6 +229,82 @@ export interface WatchItem {
   research_unread?: number;
   /** P2: the owner's rules that apply now (held: the held table), main first. */
   hints?: Hint[];
+}
+
+/** One transaction of the position detail (api.ts `Txn`). */
+export interface Txn {
+  id: number | string;
+  account_id: number;
+  account_name: string | null;
+  type: string;
+  trade_date: string;
+  instrument_id: number | string | null;
+  quantity: Num;
+  price: Num;
+  currency: string;
+  gross_amount: number;
+  fee: number;
+  tax: number;
+  cash_amount: number;
+  cash_currency: string;
+  fx_rate: Num;
+  split_ratio: string | null;
+  source: string;
+  note: string | null;
+  external_ref: string | null;
+}
+
+/** `GET /positions/{id}` (api.ts `PositionDetail`): the asset detail's instrument, position and history. */
+export interface PositionDetail {
+  instrument: Instrument | null;
+  position: Position | null;
+  series: Close[];
+  high_52w: Num;
+  transactions: Txn[];
+  theses: Thesis[];
+  decisions: Decision[];
+  manual_valuations: {
+    id: number;
+    instrument_id: number;
+    as_of: string;
+    unit_value: number;
+    currency: string;
+    note: string | null;
+  }[];
+  /** P2: held = the position row's hints, watched = the watched table, else []. */
+  hints?: Hint[];
+}
+
+/** A rule threshold drawn on the price chart. */
+export interface Threshold {
+  rule_id: string;
+  kind: string;
+  threshold: number;
+  basis: "high" | "cost" | string;
+  window_days: number | null;
+  y: number;
+}
+export interface ChartMarker {
+  date: string;
+  type: "buy" | "sell" | string;
+  quantity: Num;
+  price: Num;
+  currency: string;
+  account_id: number | null;
+}
+/** `GET /positions/{id}/chart?months=` (api.ts `PositionChart`). */
+export interface PositionChart {
+  instrument_id: number;
+  label: string;
+  currency: string;
+  valuation_mode: string;
+  as_of: string;
+  series: Close[];
+  high_52w: Num;
+  last: Close | null;
+  cost: { average: Num; currency: string } | null;
+  thresholds: Threshold[];
+  markers: ChartMarker[];
 }
 
 export interface DigestEvent {

@@ -78,6 +78,7 @@ export { useVirtualRows } from "./lists/useVirtualRows.js";
 export { VirtualList } from "./lists/VirtualList.js";
 export type { VirtualListProps } from "./lists/VirtualList.types.js";
 export { createVirtualRows, type VirtualRowsOptions } from "./lists/virtualRows.js";
+export { DetailDrawer, type DetailDrawerProps } from "./overlays/DetailDrawer.js";
 export { Drawer, type DrawerProps } from "./overlays/Drawer.js";
 export {
   type CardRow,
@@ -92,6 +93,20 @@ export {
 } from "./overlays/HoverCard.js";
 export { Modal } from "./overlays/Modal.js";
 export type { ModalProps } from "./overlays/Modal.types.js";
+export { NoteRow, type NoteRowProps, type NoteSourceItem } from "./research/NoteRow.js";
+export {
+  HealthPill,
+  type HealthPillProps,
+  type HealthTone,
+  RelationIcon,
+  type RelationIconProps,
+  type RelationTone,
+} from "./research/ResearchMarks.js";
+export {
+  type SentimentBar,
+  SentimentBars,
+  type SentimentBarsProps,
+} from "./research/SentimentBars.js";
 export { AppHeader, type AppHeaderProps } from "./shell/AppHeader.js";
 export {
   ProfilePill,
@@ -102,6 +117,7 @@ export {
 export { TabBar, type TabBarProps, type TabBarTab } from "./shell/TabBar.js";
 export { Card } from "./surfaces/Card.js";
 export type { CardProps } from "./surfaces/Card.types.js";
+export { Crumb, type CrumbItem, type CrumbProps } from "./surfaces/Crumb.js";
 export { dataTableCls, dataTdCls, dataThCls, scrollCls } from "./surfaces/dataTable.js";
 export { Fact, type FactProps, Facts, type FactsProps } from "./surfaces/Fact.js";
 export { Hero, type HeroProps } from "./surfaces/Hero.js";
@@ -110,7 +126,7 @@ export { Notice, type NoticeProps } from "./surfaces/Notice.js";
 export { PageHead, type PageHeadProps } from "./surfaces/PageHead.js";
 export { SectionCard, type SectionCardProps } from "./surfaces/SectionCard.js";
 export { Pill, type PillProps, Tag, type TagProps, type TagTone } from "./surfaces/Tag.js";
-export { Widget, type WidgetProps } from "./surfaces/Widget.js";
+export { tintInk, Widget, type WidgetProps } from "./surfaces/Widget.js";
 export {
   codeCls,
   emptyCls,

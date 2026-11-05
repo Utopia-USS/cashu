@@ -21,6 +21,8 @@ const placements = {
     "overflow-auto inset-4 m-auto h-fit max-h-[calc(100%-2rem)] rounded-lg border border-border bg-surface-raised p-6 shadow-dialog",
   end: "overflow-auto inset-y-0 right-0 w-full max-w-130 border-l border-border bg-surface-raised px-4.5 py-3.5 text-base leading-normal shadow-toast",
   side: "inset-y-0 right-0 flex flex-col border-l border-border bg-surface-raised text-base leading-normal shadow-toast",
+  panel:
+    "inset-y-0 right-0 w-[min(920px,calc(100%-120px))] overflow-y-auto overscroll-contain border-l border-border bg-surface px-5 pt-3.5 pb-7 text-md leading-widget shadow-panel animate-panel-in motion-reduce:animate-none max-narrow:w-full max-narrow:border-l-0 max-narrow:px-3 max-narrow:pt-3 max-narrow:pb-6",
   sheet:
     "inset-x-0 bottom-0 mx-auto max-h-[86%] w-full max-w-150 overflow-y-auto rounded-t-xl bg-surface-raised px-5 pt-5 pb-6 text-md leading-sheet",
   screen: "overflow-auto inset-0 bg-surface",
@@ -235,7 +237,7 @@ export function Modal({
   return createPortal(
     <>
       <div
-        className={`fixed inset-0 ${placement === "screen" ? "" : "bg-scrim"}`}
+        className={`fixed inset-0 ${placement === "screen" ? "" : "bg-scrim"} ${placement === "panel" ? "animate-scrim-in motion-reduce:animate-none" : ""}`}
         style={{ zIndex: `calc(var(--modal-backdrop-layer) + ${depth} * var(--modal-layer-step))` }}
         aria-hidden="true"
         onClick={closeOnBackdrop ? onClose : undefined}

@@ -148,6 +148,8 @@
   /* The UA button font of the old bare buttons that kept the UA `font` shorthand (Chromium on macOS
      computes and draws Arial): deck buttons, the review button, icon buttons. */
   --font-control: Arial;
+  /* The research relation glyph (old `.ri` font: 700 12px/1 -apple-system, BlinkMacSystemFont, sans-serif). */
+  --font-system: -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* Line heights besides Tailwind's none 1 / tight 1.25 / snug 1.375 / normal 1.5. */
   /* `control` = CSS `normal`: the old buttons that kept the UA font shorthand (segments, icon buttons). */
@@ -217,7 +219,28 @@
   --ease-deck: cubic-bezier(0.2, 0.7, 0.3, 1);
   --animate-shimmer: shimmer 1.3s infinite;
   --animate-toast-in: toast-in 0.16s ease-out;
+  /* The asset drawer (old `.adrawer` adrawer-in .18s, its `.ascrim` ascrim-in .16s). */
+  --animate-panel-in: panel-in 0.18s ease-out;
+  --animate-scrim-in: scrim-in 0.16s ease-out;
 
+  @keyframes panel-in {
+    from {
+      transform: translateX(24px);
+      opacity: 0.6;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
   @keyframes shimmer {
     100% {
       transform: translateX(100%);
