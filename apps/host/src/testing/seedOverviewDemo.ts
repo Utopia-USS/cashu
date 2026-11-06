@@ -5,7 +5,8 @@
  *   seedOverviewDemo.ts                 the dev demo (devDemo.ts) for E2E_TODAY plus the host's
  *                                       moduleless "Demo" vault, then the frozen expectations
  *   seedOverviewDemo.ts serve           serves it until SIGTERM; CASHU_E2E_SETTINGS / _RESEARCH /
- *                                       _SIGNALS / _REVIEW add the synthetic story of one spec
+ *                                       _SIGNALS / _REVIEW add the synthetic story of one spec;
+ *                                       CASHU_E2E_WORKER binds an offline synthetic worker
  *   seedOverviewDemo.ts cross-profile   proves a vault-scoped command cannot reach another vault
  *
  * The expectations are what the TS store computes for the seed (the screens must show them), each
@@ -22,13 +23,18 @@ import { decodeValue, type JsonValue } from "@cashu/host-protocol/store";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { createProfile, investmentsLocal } from "@cashu/store";
 import { combinedChanges } from "@cashu/store/investments/screen-sources";
-import { checkedProfileSlug, readStrategyFiles } from "@cashu/store/investments/services";
+import {
+  checkedProfileSlug,
+  DailyPriceLock,
+  readStrategyFiles,
+} from "@cashu/store/investments/services";
 import type { OverviewLoan, ShellSummarySnapshot } from "@cashu/store/overview";
 import { type LocalHost, startLocalHost } from "../host.js";
 import { currentStrategyImages } from "../investmentScreenSources.js";
 import { type ResearchScreenCapability, researchScreenSources } from "../researchScreen.js";
 import { storeFiles } from "../stores.js";
 import type { StrategyScreenCapability } from "../strategiesScreen.js";
+import { privateWorkerState } from "../worker/state.js";
 import { DEV_DEMO_MARKET_DB, devDemoFacts, devDemoProfiles, initDevDemo } from "./devDemo.js";
 import { storeClient } from "./harness.js";
 import { seedResearchDemo, syntheticResearchCapability } from "./researchDemo.js";
@@ -73,6 +79,7 @@ interface DemoHostFlags {
   readonly research: boolean;
   readonly signals: boolean;
   readonly review: boolean;
+  readonly worker: boolean;
 }
 
 interface DemoHost {
@@ -126,6 +133,30 @@ async function startDemoHost(target: string, home: string, flags: DemoHostFlags)
     ...(researchSources === null ? {} : { research: researchSources }),
     ...(flags.review
       ? { review: reviewDemoSources(anna, new Date().toISOString().slice(0, 10)) }
+      : {}),
+    // An offline worker owning every job, its state in the data dir. The daily slot is the last
+    // minute of the day, so only a forced run (`cashu worker run`) records job runs.
+    ...(flags.worker
+      ? {
+          worker: (_context, _notifications, queue) => {
+            const directory = join(target, "e2e-worker");
+            mkdirSync(directory, { recursive: true, mode: 0o700 });
+            return {
+              state: privateWorkerState(directory, () => alive),
+              ownership: { isExclusive: () => true },
+              authority: () => ({ isHolder: () => alive }),
+              language: () => "pl",
+              offline: true,
+              schedule: { hour: 23, minute: 59 },
+              investments: {
+                prices,
+                notifications: queue,
+                dailyLock: new DailyPriceLock(),
+                files: (vault) => capabilities.get(vault.id)?.files ?? null,
+              },
+            };
+          },
+        }
       : {}),
     investments: {
       strategy: images.source,
@@ -417,6 +448,7 @@ async function init(root: string, target: string, today: string, home: string): 
     research: false,
     signals: false,
     review: false,
+    worker: false,
   });
   try {
     const client = await storeClient(target);
@@ -485,6 +517,7 @@ async function serve(target: string, home: string): Promise<void> {
     research: process.env.CASHU_E2E_RESEARCH === "1",
     signals: process.env.CASHU_E2E_SIGNALS === "1",
     review: process.env.CASHU_E2E_REVIEW === "1",
+    worker: process.env.CASHU_E2E_WORKER === "1",
   });
   const ready = join(target, "overview-ready");
   const readyStage = join(target, `overview-ready-${process.pid}`);

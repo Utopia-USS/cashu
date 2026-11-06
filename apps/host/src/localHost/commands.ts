@@ -63,6 +63,7 @@ export function hostedCommands(input: {
         ...common,
         classifier: options.budgetClassifiers?.local,
         cloudClassifier: options.budgetClassifiers?.cloud,
+        worker: () => input.worker,
       })
     );
   const catalog = options.connectorCatalog?.();
