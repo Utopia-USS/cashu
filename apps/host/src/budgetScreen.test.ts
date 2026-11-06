@@ -91,6 +91,8 @@ it("previews, commits once and reports the derived counts on a native vault", as
       accountName: "Oszczędności",
       lang: "pl",
     });
+    // a commit retried after an unknown outcome still answers its result once another preview ran
+    expect(await commit.run(host.stores, vault, { stage })).toEqual(c1);
     const c2 = await commit.run(host.stores, vault, {
       stage: previewed.parse((p2 as { value: unknown }).value).stage,
     });

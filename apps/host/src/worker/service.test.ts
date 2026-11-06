@@ -277,6 +277,41 @@ it("serves the in-flight daily check and quote refresh of a vault as the live ru
   }
 });
 
+it("keeps a vault running until the last of two overlapping refreshes ends", async () => {
+  const f = await workerFixture();
+  const vault = f.vaults[0];
+  if (vault === undefined) throw new Error("synthetic vault absent");
+  const worker = new HostWorker(f.context, f.bindings);
+  const inFlightFor = (
+    worker as unknown as {
+      inFlightFor: <T>(kind: "prices", vaults: string[], work: () => Promise<T>) => Promise<T>;
+    }
+  ).inFlightFor.bind(worker);
+  const seen: boolean[] = [];
+  const stop = worker.runningChanges.subscribe(() => seen.push(worker.running(vault.id).prices));
+  let endFirst!: () => void;
+  let endSecond!: () => void;
+  try {
+    const first = inFlightFor("prices", [vault.id], () => new Promise<void>((r) => (endFirst = r)));
+    const second = inFlightFor(
+      "prices",
+      [vault.id],
+      () => new Promise<void>((r) => (endSecond = r)),
+    );
+    endFirst();
+    await first;
+    expect(worker.running(vault.id).prices).toBe(true);
+    endSecond();
+    await second;
+    expect(worker.running(vault.id).prices).toBe(false);
+    expect(seen).toEqual([true, false]);
+  } finally {
+    stop();
+    await worker.stop();
+    await f.close();
+  }
+});
+
 it("refuses an offline invocation while an online tick is active", async () => {
   const f = await workerFixture();
   let entered!: () => void;

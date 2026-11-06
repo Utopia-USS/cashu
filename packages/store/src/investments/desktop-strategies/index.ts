@@ -19,9 +19,15 @@ import { jsonList } from "../queries/shared.js";
 import type { StrategyDocSummary } from "../services/strategy-docs.js";
 import { nativeStrategyStatus } from "../views/strategyStatus.js";
 
-/** A proposal payload's `summary_params` (an object, else empty). */
+/** A proposal payload's `summary_params` (an object, else empty; a malformed payload gives empty
+ * values instead of failing the whole screen query). */
 function jsonParams(payload: string): Readonly<Record<string, unknown>> {
-  const value: unknown = JSON.parse(payload);
+  let value: unknown;
+  try {
+    value = JSON.parse(payload);
+  } catch {
+    return {};
+  }
   const out =
     value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)[SUMMARY_PARAMS]

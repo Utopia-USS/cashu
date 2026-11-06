@@ -4,6 +4,7 @@ import {
   classifyStartupError,
   commandPrefix,
   failureDetail,
+  fitUnpriced,
   MIGRATE_UNPRICED_LABEL_MAX,
   MIGRATE_UNPRICED_MAX,
   MIGRATION_RUNBOOK,
@@ -473,5 +474,35 @@ describe("migrate child protocol", () => {
       JSON.stringify({ event: "progress", stage: "copy", pad: "x".repeat(40_000) }),
     ])
       expect(parseMigrateLine(line)).toBeNull();
+  });
+
+  it("cuts the unpriced list by its encoded size so the done line always fits", () => {
+    const item = (label: string, index: number) => ({
+      label,
+      currency: "EUR",
+      reason: index % 2 === 0 ? ("no_prices" as const) : ("no_fx" as const),
+    });
+    const plain = Array.from({ length: MIGRATE_UNPRICED_MAX + 5 }, (_, index) =>
+      item(`${"X".repeat(MIGRATE_UNPRICED_LABEL_MAX - 4)}${String(index).padStart(4, "0")}`, index),
+    );
+    expect(fitUnpriced(plain)).toEqual(plain.slice(0, MIGRATE_UNPRICED_MAX));
+    // Worst case: every label is 64 control characters, each escaped to six on the line.
+    const escaped = Array.from({ length: MIGRATE_UNPRICED_MAX }, (_, index) =>
+      item("\u0001".repeat(MIGRATE_UNPRICED_LABEL_MAX), index),
+    );
+    const fitted = fitUnpriced(escaped);
+    expect(fitted.length).toBeGreaterThan(0);
+    expect(fitted.length).toBeLessThan(MIGRATE_UNPRICED_MAX);
+    const line = JSON.stringify({
+      event: "done",
+      status: "already_migrated",
+      profiles: 1_000_000_000,
+      financialTables: 1_000_000_000,
+      financialRows: 1_000_000_000,
+      vaults: 1_000_000_000,
+      backupDir: `python-backup-${"x".repeat(64)}`,
+      unpriced: fitted,
+    });
+    expect(parseMigrateLine(line)).toMatchObject({ event: "done", unpriced: fitted });
   });
 });

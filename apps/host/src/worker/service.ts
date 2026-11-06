@@ -62,7 +62,11 @@ export class HostWorker {
 
   /** Vaults whose quote refresh / daily rules check is in flight (Python `priceRefresh.running`,
    * `run/status.running`); the live `investmentsRunning` query re-runs on `runningChanges`. */
-  private readonly inFlight = { prices: new Set<string>(), rules: new Set<string>() };
+  /** In-flight job count per vault and kind: overlapping runs keep the flag until the last one ends. */
+  private readonly inFlight = {
+    prices: new Map<string, number>(),
+    rules: new Map<string, number>(),
+  };
   private readonly runningListeners = new Set<() => void>();
   readonly runningChanges: ChangeSource = {
     subscribe: (listener) => {
@@ -278,7 +282,10 @@ export class HostWorker {
   }
   /** What the worker is doing for this vault right now. */
   running(vault: string): { readonly prices: boolean; readonly rules: boolean } {
-    return { prices: this.inFlight.prices.has(vault), rules: this.inFlight.rules.has(vault) };
+    return {
+      prices: (this.inFlight.prices.get(vault) ?? 0) > 0,
+      rules: (this.inFlight.rules.get(vault) ?? 0) > 0,
+    };
   }
   /** Run `work` with these vaults marked in flight, telling the live query on start and end. */
   private async inFlightFor<T>(
@@ -286,15 +293,27 @@ export class HostWorker {
     vaults: readonly string[],
     work: () => Promise<T>,
   ): Promise<T> {
-    const set = this.inFlight[kind];
-    const added = vaults.filter((vault) => !set.has(vault));
-    for (const vault of added) set.add(vault);
-    if (added.length !== 0) for (const listener of [...this.runningListeners]) listener();
+    const counts = this.inFlight[kind];
+    const unique = [...new Set(vaults)];
+    let started = false;
+    for (const vault of unique) {
+      const count = counts.get(vault) ?? 0;
+      if (count === 0) started = true;
+      counts.set(vault, count + 1);
+    }
+    if (started) for (const listener of [...this.runningListeners]) listener();
     try {
       return await work();
     } finally {
-      for (const vault of added) set.delete(vault);
-      if (added.length !== 0) for (const listener of [...this.runningListeners]) listener();
+      let ended = false;
+      for (const vault of unique) {
+        const count = (counts.get(vault) ?? 1) - 1;
+        if (count <= 0) {
+          counts.delete(vault);
+          ended = true;
+        } else counts.set(vault, count);
+      }
+      if (ended) for (const listener of [...this.runningListeners]) listener();
     }
   }
   status(): WorkerStatus {

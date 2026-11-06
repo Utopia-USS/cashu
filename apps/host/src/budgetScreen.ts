@@ -24,6 +24,8 @@ import { defineUiAction, unknownUiCommand } from "./uiActions.js";
 const STAGE_MAX_AGE_MS = 24 * 3600 * 1000;
 /** Open previews per vault; the oldest goes first. */
 const MAX_STAGES = 8;
+/** Committed outcomes kept per vault (without the file bytes) so a retried commit answers again. */
+const MAX_COMMITTED = 8;
 
 interface Stage {
   readonly vault: string;
@@ -32,7 +34,12 @@ interface Stage {
   readonly importer: string;
   readonly at: number;
   readonly key: string;
-  committed: StatementCommitOutcome | null;
+}
+
+interface Committed {
+  readonly vault: string;
+  readonly at: number;
+  readonly outcome: StatementCommitOutcome;
 }
 
 const commitInput = z.strictObject({ stage: z.string().min(1).max(100) });
@@ -54,17 +61,23 @@ const refusedWith = (code: string, detail: string | null = null): Refused => ({
  */
 export function budgetStatementActions(options: { now(): number }) {
   const stages = new Map<string, Stage>();
+  /** Stage id -> its commit's outcome, kept up to the stage age limit after the stage is dropped. */
+  const committed = new Map<string, Committed>();
   let closed = false;
   const bind = () =>
     closed
       ? null
       : { generation: "budget-statements", capabilities: null, isCurrent: () => !closed };
-  const prune = (vault: string) => {
+  /** Drops entries past the age limit and the oldest of `vault` beyond `max - 1` (room for one). */
+  const pruneMap = <T extends { readonly vault: string; readonly at: number }>(
+    map: Map<string, T>,
+    vault: string,
+    max: number,
+  ) => {
     const now = options.now();
-    for (const [id, stage] of stages)
-      if (now - stage.at > STAGE_MAX_AGE_MS || stage.committed !== null) stages.delete(id);
-    const own = [...stages.entries()].filter(([, stage]) => stage.vault === vault);
-    for (const [id] of own.slice(0, Math.max(0, own.length - MAX_STAGES + 1))) stages.delete(id);
+    for (const [id, entry] of map) if (now - entry.at > STAGE_MAX_AGE_MS) map.delete(id);
+    const own = [...map.entries()].filter(([, entry]) => entry.vault === vault);
+    for (const [id] of own.slice(0, Math.max(0, own.length - max + 1))) map.delete(id);
   };
 
   const preview = defineUiAction<StatementPreviewInput, null, StatementPreviewResult>({
@@ -94,7 +107,7 @@ export function budgetStatementActions(options: { now(): number }) {
         return { status: "completed", value: refusedWith(result.code, result.detail) };
       if (!context.isCurrent())
         return { status: "refused", reason: "stale_import", preparation: "none" };
-      prune(context.vault);
+      pruneMap(stages, context.vault, MAX_STAGES);
       const id = randomUUID();
       stages.set(id, {
         vault: context.vault,
@@ -103,7 +116,6 @@ export function budgetStatementActions(options: { now(): number }) {
         importer: result.preview.importer.id,
         at: options.now(),
         key: mintUlid(options.now()),
-        committed: null,
       });
       return {
         status: "completed",
@@ -119,6 +131,13 @@ export function budgetStatementActions(options: { now(): number }) {
     bind,
     commands: [commitStatementImport as Command<unknown, unknown>],
     async run(context, input) {
+      const done = committed.get(input.stage);
+      if (
+        done !== undefined &&
+        done.vault === context.vault &&
+        options.now() - done.at <= STAGE_MAX_AGE_MS
+      )
+        return { status: "completed", value: done.outcome };
       const stage = stages.get(input.stage);
       if (
         stage === undefined ||
@@ -126,7 +145,6 @@ export function budgetStatementActions(options: { now(): number }) {
         options.now() - stage.at > STAGE_MAX_AGE_MS
       )
         return { status: "completed", value: refusedWith("not_found") };
-      if (stage.committed !== null) return { status: "completed", value: stage.committed };
       const before = await context.readStep(transferPairCount);
       const { request } = stage;
       const result = await context.execute({
@@ -154,8 +172,14 @@ export function budgetStatementActions(options: { now(): number }) {
         categorized: batchCategorized(read, value.batch),
         transferPairs: Math.max(0, transferPairCount(read) - before),
       }));
-      stage.committed = { status: "committed", result: { ...value, ...facts } };
-      return { status: "completed", value: stage.committed };
+      const outcome: StatementCommitOutcome = {
+        status: "committed",
+        result: { ...value, ...facts },
+      };
+      stages.delete(input.stage);
+      pruneMap(committed, context.vault, MAX_COMMITTED);
+      committed.set(input.stage, { vault: context.vault, at: stage.at, outcome });
+      return { status: "completed", value: outcome };
     },
   });
 
@@ -164,6 +188,7 @@ export function budgetStatementActions(options: { now(): number }) {
     close() {
       closed = true;
       stages.clear();
+      committed.clear();
     },
   };
 }

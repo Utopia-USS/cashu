@@ -49,6 +49,25 @@ describe("native Strategies query", () => {
     expect(JSON.stringify(result)).not.toContain("Historical prose");
     f.v.store.close();
   });
+  it("lists a proposal with a malformed payload with empty summary values", () => {
+    const f = fixture();
+    const real = f.v.store.read.bind(f.v.store);
+    const read = ((sql: string, ...params: Parameters<typeof real>[1][]) =>
+      sql.includes("FROM proposals")
+        ? [{ gid: "g1", summary: "Synthetic", kind: "strategy", payload: "{not json" }]
+        : real(sql, ...params)) as typeof real;
+    const result = f.q.screen.run(read, f.args);
+    expect(result.proposals).toEqual([
+      {
+        gid: "g1",
+        summary: "Synthetic",
+        kind: "strategy",
+        summaryCode: "strategy",
+        summaryParams: {},
+      },
+    ]);
+    f.v.store.close();
+  });
   it("never sends prose, paths or reasons while privacy is enabled", () => {
     const f = fixture();
     const result = f.q.screen.run(f.v.store.read.bind(f.v.store), { ...f.args, privacy: true });

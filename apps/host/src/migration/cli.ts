@@ -23,9 +23,9 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   buildRecoveryPrompt,
   classifyStartupError,
+  fitUnpriced,
   homeRelativePath,
   MIGRATE_UNPRICED_LABEL_MAX,
-  MIGRATE_UNPRICED_MAX,
   type MigrateLine,
   migrateLineSchema,
   type PromptLang,
@@ -354,17 +354,20 @@ function printUnpriced(io: MigrateIo, t: Translator, unpriced: readonly Unpriced
   if (unpriced !== null && unpriced.length > 0) io.stdout(t.tr(M.unpriced)(unpriced));
 }
 
-/** The `unpriced` field of a protocol `done` line (absent when not checked), within its limits. */
+/** The `unpriced` field of a protocol `done` line (absent when not checked), within its limits:
+ * labels shortened, then the list cut where its encoded size would overflow the line. */
 function protocolUnpriced(unpriced: readonly UnpricedLine[] | null): {
   unpriced?: UnpricedInstrument[];
 } {
   if (unpriced === null) return {};
   return {
-    unpriced: unpriced.slice(0, MIGRATE_UNPRICED_MAX).map((item) => ({
-      label: item.label.trim().slice(0, MIGRATE_UNPRICED_LABEL_MAX) || item.currency,
-      currency: item.currency,
-      reason: item.reason,
-    })),
+    unpriced: fitUnpriced(
+      unpriced.map((item) => ({
+        label: item.label.trim().slice(0, MIGRATE_UNPRICED_LABEL_MAX) || item.currency,
+        currency: item.currency,
+        reason: item.reason,
+      })),
+    ),
   };
 }
 

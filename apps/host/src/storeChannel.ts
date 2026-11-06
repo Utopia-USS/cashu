@@ -70,6 +70,10 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
   const maxInFlight = options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT;
   const live = new Map<number, () => void>();
   const liveMessages = new Map<number, Extract<StoreToHost, { t: "sub" }>>();
+  /** The encoded value last pushed per sid, kept across a sync-settled re-subscribe so an unchanged
+   * result is not sent again; a client `sub` or any error frame of the sid starts it over. */
+  const lastPushed = new Map<number, string>();
+  const syncHooks = new Map<OpenVault, () => void>();
   const preparing = new Map<number, object>();
   const actionRequests = new Map<number, string>();
   let highestActionRid = -1;
@@ -77,6 +81,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
   let closed = false;
   let policy: { readonly generation: number; readonly privacy: boolean } | null = null;
   const post = (m: StoreToClient) => {
+    if (m.t === "error") lastPushed.delete(m.sid);
     if (!closed) session.send({ t: "store", m });
   };
 
@@ -95,12 +100,33 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     return target.kind === "device" ? stores.device.store : vaultOf(target).store;
   };
 
-  const subscribe = (m: Extract<StoreToHost, { t: "sub" }>, prepared = false) => {
+  /** Re-subscribe this vault's live queries when a native sync pass settles (once per vault, also
+   * for a vault first targeted after the session started). */
+  const hookSync = (vault: OpenVault) => {
+    if (vault.native === undefined || syncHooks.has(vault)) return;
+    syncHooks.set(
+      vault,
+      vault.native.onSyncSettled(() => {
+        if (closed) return;
+        for (const message of [...liveMessages.values()]) {
+          if (message.target.kind === "vault" && message.target.vault === vault.id)
+            subscribe(message, false, false);
+        }
+      }),
+    );
+  };
+
+  const subscribe = (m: Extract<StoreToHost, { t: "sub" }>, prepared = false, fresh = true) => {
     if (policy === null || m.generation !== policy.generation) return;
     liveMessages.set(m.sid, m);
+    if (fresh) lastPushed.delete(m.sid);
     live.get(m.sid)?.();
     live.delete(m.sid);
     if (!prepared) preparing.delete(m.sid);
+    if (m.target.kind === "vault") {
+      const vault = stores.vaults.get(m.target.vault);
+      if (vault !== undefined) hookSync(vault);
+    }
     const query = queries.get(m.query);
     if (query === undefined) {
       post({
@@ -163,7 +189,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
             )
               return;
             preparing.delete(m.sid);
-            subscribe(m, true);
+            subscribe(m, true, false);
           },
           () => {
             if (closed || preparing.get(m.sid) !== generation) return;
@@ -181,12 +207,10 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
         });
       return;
     }
-    let last: string | undefined;
     const fail = (error: unknown) => {
       if (policy?.generation !== policyAtStart) return;
       if (m.target.kind === "vault" && stores.vaults.get(m.target.vault)?.native?.isSyncing())
         return;
-      last = undefined;
       log.warn("store.query.failed", { query: query.id, error: errorName(error) });
       post({ t: "error", sid: m.sid, generation: m.generation, error: errorInfo(error) });
     };
@@ -213,8 +237,8 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
             return;
           }
           const text = JSON.stringify(encoded);
-          if (text === last) return;
-          last = text;
+          if (text === lastPushed.get(m.sid)) return;
+          lastPushed.set(m.sid, text);
           post({ t: "value", sid: m.sid, generation: m.generation, value: encoded });
         },
         onError: fail,
@@ -224,20 +248,6 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
       fail(error);
     }
   };
-
-  const syncStops = [...stores.vaults.values()].flatMap((vault) =>
-    vault.native === undefined
-      ? []
-      : [
-          vault.native.onSyncSettled(() => {
-            if (closed) return;
-            for (const message of [...liveMessages.values()]) {
-              if (message.target.kind === "vault" && message.target.vault === vault.id)
-                subscribe(message);
-            }
-          }),
-        ],
-  );
 
   const action = (m: Extract<StoreToHost, { t: "action" }>) => {
     const handler = actions.get(m.action);
@@ -486,6 +496,7 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
         return;
       case "unsub":
         liveMessages.delete(m.sid);
+        lastPushed.delete(m.sid);
         preparing.delete(m.sid);
         live.get(m.sid)?.();
         live.delete(m.sid);
@@ -503,7 +514,9 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
   });
   session.onClose(() => {
     closed = true;
-    for (const stop of syncStops) stop();
+    for (const stop of syncHooks.values()) stop();
+    syncHooks.clear();
+    lastPushed.clear();
     for (const stop of live.values()) stop();
     live.clear();
     liveMessages.clear();

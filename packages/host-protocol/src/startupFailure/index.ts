@@ -29,6 +29,7 @@ export {
   recoveryCommandSchema,
 } from "./command.js";
 export {
+  fitUnpriced,
   MIGRATE_CANCEL,
   MIGRATE_CONFIRM,
   MIGRATE_STAGES,

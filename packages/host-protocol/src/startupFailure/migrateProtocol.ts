@@ -35,8 +35,10 @@ const count = z.number().int().min(0).max(1_000_000_000);
 export const MIGRATE_UNPRICED_MAX = 200;
 /** Longest instrument label on the protocol (the child shortens longer names). */
 export const MIGRATE_UNPRICED_LABEL_MAX = 64;
-/** Longest protocol line: a full unpriced list fits with room to spare. */
+/** Longest protocol line (in UTF-16 code units, as the parent reads it). */
 const MIGRATE_LINE_MAX = 32_768;
+/** Room a `done` line keeps for its fields other than `unpriced` (status, counts, backupDir). */
+const MIGRATE_DONE_FIELDS_MAX = 1_024;
 
 /**
  * An imported instrument the app cannot value: its ticker, else ISIN, else name (public market
@@ -49,6 +51,24 @@ export const unpricedInstrumentSchema = z.strictObject({
   reason: z.enum(["no_prices", "no_fx"]),
 });
 export type UnpricedInstrument = z.infer<typeof unpricedInstrumentSchema>;
+
+/**
+ * The longest prefix of `items` (at most MIGRATE_UNPRICED_MAX) whose encoded list keeps a `done`
+ * line within the line limit. Measured on the JSON encoding, so a label of quotes or control
+ * characters counts at its escaped size and the done line always parses.
+ */
+export function fitUnpriced(items: readonly UnpricedInstrument[]): UnpricedInstrument[] {
+  const budget = MIGRATE_LINE_MAX - MIGRATE_DONE_FIELDS_MAX;
+  const fitted: UnpricedInstrument[] = [];
+  let size = 2;
+  for (const item of items.slice(0, MIGRATE_UNPRICED_MAX)) {
+    const next = JSON.stringify(item).length + (fitted.length === 0 ? 0 : 1);
+    if (size + next > budget) break;
+    fitted.push(item);
+    size += next;
+  }
+  return fitted;
+}
 
 export const migrateProgressSchema = z.strictObject({
   event: z.literal("progress"),
