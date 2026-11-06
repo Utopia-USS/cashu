@@ -27,6 +27,7 @@ import {
   setDesktopMerchantCategory,
 } from "@cashu/store/budget/queries";
 import { profile } from "@cashu/store/core";
+import { classifierSettingsState } from "@cashu/store/core/classifier-settings";
 import { proposalDetail, proposalList } from "@cashu/store/core/desktop-proposals";
 import {
   connectorActivity,
@@ -101,6 +102,7 @@ export function servedQueries(
     readonly updateQuery?: typeof updateStatus;
     readonly settingsInfoQuery?: typeof hostSettingsInfo;
     readonly connectorSettingsQuery?: typeof connectorSettingsSnapshot;
+    readonly classifierSettingsQuery?: typeof classifierSettingsState;
     readonly runningQuery?: typeof investmentsRunning;
   } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
@@ -113,6 +115,7 @@ export function servedQueries(
     mcpAudit,
     connectorActivity,
     env.connectorSettingsQuery ?? connectorSettingsSnapshot,
+    env.classifierSettingsQuery ?? classifierSettingsState,
     profile,
     proposalList,
     env.proposalImages ? proposalDetailWithImages(env.proposalImages) : proposalDetail,

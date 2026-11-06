@@ -10,6 +10,16 @@ const mock = vi.hoisted(() => ({
 }));
 vi.mock("@cashu/store-react", () => ({
   useProfile: () => mock.vault,
+  // The host pushes each vault's checked settings.
+  useQuery: () => ({
+    status: "ready",
+    snapshot: {
+      backend: mock.vault === "a".repeat(32) ? "anthropic" : "ollama",
+      model: "claude-haiku-4-5",
+      consented: mock.vault === "a".repeat(32),
+      keyPresent: true,
+    },
+  }),
   useUiAction: () => ({
     run: () =>
       new Promise((resolve) => {
@@ -18,22 +28,14 @@ vi.mock("@cashu/store-react", () => ({
   }),
 }));
 
-const complete = (backend: "ollama" | "anthropic") => ({
-  status: "completed",
-  value: {
-    backend,
-    model: "claude-haiku-4-5",
-    consented: backend === "anthropic",
-    keyPresent: true,
-  },
-});
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 function Probe() {
-  const state = useClassificationScreen();
+  const screen = useClassificationScreen();
   return (
-    <div data-vault={state.vault} data-backend={state.snapshot?.backend ?? ""}>
-      {state.snapshot?.backend ?? "unavailable"}
+    <div data-vault={screen.vault}>
+      {screen.snapshot?.backend}:{screen.notice ?? ""}
+      <button type="button" onClick={() => void screen.revokeCloud()} />
     </div>
   );
 }
@@ -49,40 +51,25 @@ afterEach(async () => {
   mock.vault = "a".repeat(32);
 });
 
-it("drops a delayed old-profile status after selecting another vault", async () => {
+it("drops a delayed old-profile change outcome after selecting another vault", async () => {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   await act(async () => {
     root?.render(<Probe />);
+  });
+  expect(container.textContent).toBe("anthropic:");
+  await act(async () => {
+    container?.querySelector("button")?.click();
   });
   expect(mock.calls).toHaveLength(1);
   mock.vault = "b".repeat(32);
   await act(async () => {
     root?.render(<Probe />);
   });
-  expect(mock.calls).toHaveLength(2);
   await act(async () => {
-    mock.calls[1]?.resolve(complete("ollama"));
+    mock.calls[0]?.resolve({ status: "outcome_unknown", reason: "interrupted" });
   });
-  expect(container.textContent).toBe("ollama");
-  await act(async () => {
-    mock.calls[0]?.resolve(complete("anthropic"));
-  });
-  expect(container.textContent).toBe("ollama");
+  expect(container.textContent).toBe("ollama:");
   expect(container.firstElementChild?.getAttribute("data-vault")).toBe("b".repeat(32));
-});
-
-it("refuses a malformed completed status snapshot", async () => {
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-  await act(async () => {
-    root?.render(<Probe />);
-  });
-  await act(async () => {
-    mock.calls[0]?.resolve({ status: "completed", value: { backend: "anthropic" } });
-  });
-  expect(container.textContent).toBe("unavailable");
-  expect(container.firstElementChild?.getAttribute("data-backend")).toBe("");
 });

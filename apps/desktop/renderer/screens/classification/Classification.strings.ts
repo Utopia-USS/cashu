@@ -33,9 +33,8 @@ export const T = catalog({
   model: { pl: "Model", en: "Model" },
   unavailable: { pl: "Klasyfikacja jest niedostępna.", en: "Classification is unavailable." },
   unknown: {
-    pl: "Wynik zmiany jest niepewny. Sprawdź stan przed kolejną zmianą.",
-    en: "The change outcome is uncertain. Check status before another change.",
+    pl: "Wynik zmiany jest niepewny. Zanim wprowadzisz kolejną, poczekaj, aż stan poniżej się zaktualizuje.",
+    en: "The change outcome is uncertain. Wait for the state below to update before another change.",
   },
   failed: { pl: "Nie udało się zmienić ustawień.", en: "Could not change settings." },
-  refresh: { pl: "Sprawdź stan", en: "Check status" },
 });

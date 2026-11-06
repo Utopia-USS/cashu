@@ -11,7 +11,6 @@ const base = {
   setModel() {},
   accepted: false,
   setAccepted() {},
-  async refresh() {},
   async chooseLocal() {},
   async grantCloud() {},
   async revokeCloud() {},

@@ -1,3 +1,4 @@
+import type { ClassifierSettingsSource } from "@cashu/store/core/classifier-settings";
 import type {
   CategorizeProvider,
   CloudCategorizeProvider,
@@ -40,8 +41,28 @@ export class ClassifierHostPorts {
       Promise.resolve({ status: "not_started", reason: "capability_unavailable" } as const),
   };
 
+  private readonly listeners = new Set<() => void>();
+
+  /** The live settings query's source: unavailable until bound, then the binding's, re-run on its changes. */
+  readonly settings: ClassifierSettingsSource = {
+    changes: {
+      subscribe: (listener) => {
+        this.listeners.add(listener);
+        return () => {
+          this.listeners.delete(listener);
+        };
+      },
+    },
+    state: (vault) => this.binding?.settings.state(vault) ?? { status: "unavailable" },
+  };
+
   bind(options: ProductionClassifierOptions): void {
     if (this.binding) throw new Error("classifier_binding_already_installed");
     this.binding = createProductionClassifierBinding(options);
+    const changed = () => {
+      for (const listener of [...this.listeners]) listener();
+    };
+    this.binding.settings.changes.subscribe(changed);
+    changed();
   }
 }

@@ -4,6 +4,7 @@
 // the stores are attached once open.
 import { parseDateTime } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
+import type { classifierSettingsQuery } from "@cashu/store/core/classifier-settings";
 import type { NotificationQueue } from "@cashu/store/investments/local";
 import { PerformanceService } from "@cashu/store/investments/performance";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
@@ -164,6 +165,7 @@ export function createScreenSurfaces(input: {
       readonly settingsInfo: ReturnType<typeof settingsInfoQuery>;
       readonly running?: ReturnType<typeof investmentsRunningQuery>;
       readonly connectorSettings?: ReturnType<typeof connectorSettingsServed>;
+      readonly classifierSettings?: ReturnType<typeof classifierSettingsQuery>;
     }) {
       const { market: marketRuntime, sources } = served;
       return servedQueries({
@@ -188,6 +190,9 @@ export function createScreenSurfaces(input: {
         ...(served.connectorSettings === undefined
           ? {}
           : { connectorSettingsQuery: served.connectorSettings }),
+        ...(served.classifierSettings === undefined
+          ? {}
+          : { classifierSettingsQuery: served.classifierSettings }),
         signals: { strategy: sources.strategy, market: sources.market, clock },
         research: {
           ...options.research,

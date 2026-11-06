@@ -9,11 +9,7 @@ export function ClassificationView({ state }: { state: State }) {
     <section className="grid gap-3" aria-label={T.title}>
       <p>{T.localDetail}</p>
       {state.notice && <p role="status">{state.notice}</p>}
-      {!state.snapshot ? (
-        <Button type="button" onPress={() => void state.refresh()}>
-          {T.refresh}
-        </Button>
-      ) : (
+      {state.snapshot && (
         <>
           <p role="status">{state.snapshot.backend === "anthropic" ? T.cloud : T.local}</p>
           <label className="grid gap-1">

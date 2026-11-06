@@ -1,7 +1,7 @@
 import type { StoreToClient } from "@cashu/host-protocol/store";
 import type { ClassifierSecretStore } from "@cashu/node-host/classifier-secrets";
 import type { ClassifierSettingsInput } from "@cashu/store/core/classifier-settings";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { startLocalHost } from "../host.js";
 import { storeClient } from "../testing/harness.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
@@ -76,13 +76,24 @@ it("binds production classifier consent through a native host owner action", asy
     return response;
   };
   try {
-    expect(await action({ op: "status" })).toMatchObject({
-      result: { status: "completed", value: { backend: "ollama", keyPresent: false } },
-    });
+    // The Settings panel reads a live state the host checks by itself (no status request).
+    expect(ports.settings.state(fixture.vaultId)).toEqual({ status: "loading" });
+    await vi.waitFor(() =>
+      expect(ports.settings.state(fixture.vaultId)).toMatchObject({
+        status: "ready",
+        snapshot: { backend: "ollama", keyPresent: false },
+      }),
+    );
     expect(ports.cloud.consent(fixture.vaultId)).toBeNull();
     expect(await action({ op: "setKey", key: "synthetic-secret" })).toMatchObject({
       result: { status: "completed" },
     });
+    await vi.waitFor(() =>
+      expect(ports.settings.state(fixture.vaultId)).toMatchObject({
+        status: "ready",
+        snapshot: { keyPresent: true },
+      }),
+    );
     expect(
       await action({
         op: "grantCloud",

@@ -11,6 +11,7 @@ import type {
   ToolContext,
 } from "@cashu/mcp";
 import type { HostLock, HostPathEnv } from "@cashu/node-host";
+import type { ClassifierSettingsSource } from "@cashu/store/core/classifier-settings";
 import type { NotificationQueue } from "@cashu/store/investments/local";
 import type { ResearchScreenSources } from "@cashu/store/investments/research-screen";
 import type { ReviewScreenSources } from "@cashu/store/investments/review-screen";
@@ -106,6 +107,8 @@ export interface LocalHostOptions {
     readonly local?: CategorizeProvider;
     readonly cloud?: CloudCategorizeProvider;
   };
+  /** The live classifier settings Settings shows (production: the classifier binding's checked state). */
+  readonly classifierSettings?: ClassifierSettingsSource;
   /** Injected only after genuine per-job ownership and per-vault authority are available. */
   readonly worker?: WorkerFactory;
   /** Additional read-only source roots checked by the production entry. The selected data dir

@@ -14,6 +14,7 @@
 import type { AdminStatus } from "@cashu/host-protocol";
 import { classifyStartupError } from "@cashu/host-protocol/startup-failure";
 import { type HostSession, type RunningHost, startHost } from "@cashu/node-host";
+import { classifierSettingsQuery } from "@cashu/store/core/classifier-settings";
 import { NotificationQueue } from "@cashu/store/investments/local";
 import type { SyncResult } from "@cashu/sync";
 import { handleAdmin } from "./admin.js";
@@ -300,6 +301,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             changes: worker.runningChanges,
             running: (vault) => worker.running(vault),
           }),
+          ...(options.classifierSettings === undefined
+            ? {}
+            : { classifierSettings: classifierSettingsQuery(options.classifierSettings) }),
           connectorSettings: connectorSettingsServed({
             catalog: () => (nativeMode ? options.connectorCatalog?.() : undefined),
             shows: (vault) => stores.vaults.get(vault)?.mode === "native",

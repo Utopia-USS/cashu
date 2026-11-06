@@ -23,6 +23,12 @@ import {
   type ClassifierSecretStore,
   createProductionClassifierSecrets,
 } from "@cashu/node-host/classifier-secrets";
+import {
+  type ClassifierSettingsSource,
+  type ClassifierSettingsState,
+  classifierSettingsSnapshotSchema,
+} from "@cashu/store/core/classifier-settings";
+import type { UiActionResult } from "@cashu/store/ui-actions";
 import { z } from "zod";
 import type {
   CategorizeProvider,
@@ -32,19 +38,20 @@ import type { HostStores, OpenVault } from "../stores.js";
 import type { UiActionRegistration } from "../uiActions.js";
 
 const ENDPOINT = "https://api.anthropic.com/v1/messages";
-const RECORD = z.strictObject({
-  revision: z.string().uuid(),
-  backend: z.enum(["ollama", "anthropic"]),
-  model: z
-    .string()
-    .min(1)
-    .max(128)
-    .regex(/^[A-Za-z0-9._:-]+$/),
-  consent: z.literal("merchant-name-residual-v1").nullable(),
-}).refine((value) => (value.backend === "anthropic") === (value.consent !== null));
+const RECORD = z
+  .strictObject({
+    revision: z.string().uuid(),
+    backend: z.enum(["ollama", "anthropic"]),
+    model: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9._:-]+$/),
+    consent: z.literal("merchant-name-residual-v1").nullable(),
+  })
+  .refine((value) => (value.backend === "anthropic") === (value.consent !== null));
 type RecordState = z.infer<typeof RECORD>;
 const ACTION = z.discriminatedUnion("op", [
-  z.strictObject({ op: z.literal("status") }),
   z.strictObject({ op: z.literal("chooseLocal") }),
   z.strictObject({
     op: z.literal("grantCloud"),
@@ -140,8 +147,12 @@ class ConfigFiles {
     // Refuse an existing link before replacement, including a hard-linked target.
     if (existsSync(path)) {
       const stat = lstatSync(path);
-      if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o077) !== 0 ||
-        (typeof process.getuid === "function" && stat.uid !== process.getuid()))
+      if (
+        !stat.isFile() ||
+        stat.nlink !== 1 ||
+        (stat.mode & 0o077) !== 0 ||
+        (typeof process.getuid === "function" && stat.uid !== process.getuid())
+      )
         throw new Error("classifier_config_unavailable");
     }
     const temp = join(this.directory, `.${randomUUID()}.tmp`);
@@ -182,6 +193,10 @@ export function createProductionClassifierBinding(options: ProductionClassifierO
   readonly local: CategorizeProvider;
   readonly cloud: CloudCategorizeProvider;
   readonly action: UiActionRegistration;
+  /** The live per-vault settings the Settings panel shows; re-checked after every owner change. */
+  readonly settings: ClassifierSettingsSource;
+  /** One authenticated check of the file and the key; a stable answer reconciles an interrupted change. */
+  inspect(id: string): Promise<UiActionResult<unknown>>;
 } {
   const files = new ConfigFiles(options.dataDir);
   const ownerScope = new AsyncLocalStorage<{ vault: string; current: () => boolean }>();
@@ -262,6 +277,108 @@ export function createProductionClassifierBinding(options: ProductionClassifierO
     },
     credentials: { apiKey: (id) => secrets(id).get() },
   };
+  /** A fresh authenticated inspection; a stable answer reconciles an ambiguous prior key/config mutation. */
+  const inspect = async (id: string): Promise<UiActionResult<unknown>> => {
+    const vault = currentVault(id);
+    if (!vault) return { status: "not_started", reason: "capability_unavailable" };
+    const current = () => currentVault(id) === vault;
+    if (busy.has(id)) return { status: "not_started", reason: "pending_previous_attempt" };
+    const pinned = generation(id);
+    let record: RecordState;
+    try {
+      record = files.read(id);
+    } catch {
+      return { status: "not_started", reason: "capability_unavailable" };
+    }
+    if (!record) return { status: "not_started", reason: "capability_unavailable" };
+    try {
+      const keyPresent = !!(await secrets(id).get());
+      const stable =
+        current() &&
+        !busy.has(id) &&
+        generation(id) === pinned &&
+        files.read(id).revision === record.revision;
+      if (stable) unresolved.delete(id);
+      return stable
+        ? {
+            status: "completed",
+            value: {
+              backend: record.backend,
+              model: record.model,
+              consented: record.consent === "merchant-name-residual-v1",
+              keyPresent,
+            },
+          }
+        : { status: "outcome_unknown", reason: "interrupted" };
+    } catch {
+      return { status: "not_started", reason: "capability_unavailable" };
+    }
+  };
+  // The Settings panel's live state: each vault is checked once, then again after every owner change (whose
+  // `finally` always re-checks, which also reconciles an interrupted one); a check that overlapped a change is
+  // superseded by the check that change starts.
+  const listeners = new Set<() => void>();
+  const images = new Map<string, { vault: OpenVault; state: ClassifierSettingsState }>();
+  const checking = new Set<string>();
+  const scheduled = new Set<string>();
+  const again = new Set<string>();
+  const emit = () => {
+    for (const listener of [...listeners]) listener();
+  };
+  const check = (id: string) => {
+    if (checking.has(id)) {
+      again.add(id);
+      return;
+    }
+    const vault = currentVault(id);
+    if (!vault) return;
+    checking.add(id);
+    void inspect(id)
+      .catch((): UiActionResult<unknown> => ({ status: "outcome_unknown", reason: "interrupted" }))
+      .then((result) => {
+        checking.delete(id);
+        if (again.delete(id)) {
+          check(id);
+          return;
+        }
+        if (currentVault(id) !== vault) return;
+        const snapshot =
+          result.status === "completed"
+            ? classifierSettingsSnapshotSchema.safeParse(result.value)
+            : null;
+        if (snapshot?.success)
+          images.set(id, { vault, state: { status: "ready", snapshot: snapshot.data } });
+        else if (result.status === "not_started" && result.reason === "capability_unavailable")
+          images.set(id, { vault, state: { status: "unavailable" } });
+        // Busy or overlapped: the change in flight re-checks when it ends.
+        else return;
+        emit();
+      });
+  };
+  const settings: ClassifierSettingsSource = {
+    changes: {
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+    state(id) {
+      const vault = currentVault(id);
+      if (!vault) return { status: "unavailable" };
+      const image = images.get(id);
+      if (image?.vault === vault) return image.state;
+      if (!checking.has(id) && !scheduled.has(id)) {
+        scheduled.add(id);
+        queueMicrotask(() => {
+          scheduled.delete(id);
+          if (!checking.has(id)) check(id);
+        });
+      }
+      return { status: "loading" };
+    },
+  };
   const action: UiActionRegistration = {
     id: "core.settings.classifier",
     async run(stores, id, raw, sessionCurrent = () => true) {
@@ -273,40 +390,6 @@ export function createProductionClassifierBinding(options: ProductionClassifierO
         return { status: "not_started", reason: "capability_unavailable" };
       const current = () => sessionCurrent() && currentVault(id) === vault;
       if (!current()) return { status: "refused", reason: "stale_action", preparation: "none" };
-      if (parsed.data.op === "status") {
-        if (busy.has(id)) return { status: "not_started", reason: "pending_previous_attempt" };
-        const pinned = generation(id);
-        // A fresh authenticated inspection reconciles an ambiguous prior key/config mutation.
-        let record: RecordState;
-        try {
-          record = files.read(id);
-        } catch {
-          return { status: "not_started", reason: "capability_unavailable" };
-        }
-        if (!record) return { status: "not_started", reason: "capability_unavailable" };
-        try {
-          const keyPresent = !!(await secrets(id).get());
-          const stable =
-            current() &&
-            !busy.has(id) &&
-            generation(id) === pinned &&
-            files.read(id).revision === record.revision;
-          if (stable) unresolved.delete(id);
-          return stable
-            ? {
-                status: "completed",
-                value: {
-                  backend: record.backend,
-                  model: record.model,
-                  consented: record.consent === "merchant-name-residual-v1",
-                  keyPresent,
-                },
-              }
-            : { status: "outcome_unknown", reason: "interrupted" };
-        } catch {
-          return { status: "not_started", reason: "capability_unavailable" };
-        }
-      }
       if (busy.has(id) || unresolved.has(id))
         return { status: "not_started", reason: "pending_previous_attempt" };
       busy.add(id);
@@ -375,8 +458,9 @@ export function createProductionClassifierBinding(options: ProductionClassifierO
       } finally {
         invalidate(id);
         busy.delete(id);
+        check(id);
       }
     },
   };
-  return { local, cloud, action };
+  return { local, cloud, action, settings, inspect };
 }

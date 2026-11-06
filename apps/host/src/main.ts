@@ -307,6 +307,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
             connectorCatalog: () => (connectorLock?.held ? connectors?.catalog : undefined),
             banking: () => banking,
             budgetClassifiers: { local: classifier.local, cloud: classifier.cloud },
+            classifierSettings: classifier.settings,
             uiActions: [
               bankingUiAction(() => banking),
               classifier.action,

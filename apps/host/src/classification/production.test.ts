@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
 import type { ClassifierSecretStore } from "@cashu/node-host/classifier-secrets";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { HostStores, OpenVault } from "../stores.js";
 import { createProductionClassifierBinding } from "./production.js";
 
@@ -139,7 +139,7 @@ it("does not reconcile a status response whose key read overlaps revocation", as
       model: "claude-haiku-4-5",
     });
     f.setDelayGet(true);
-    const status = f.binding.action.run(f.stores, f.id, { op: "status" });
+    const status = f.binding.inspect(f.id);
     f.setDelayGet(false);
     expect((await f.binding.action.run(f.stores, f.id, { op: "revokeCloud" })).status).toBe(
       "completed",
@@ -170,17 +170,44 @@ it("disarms cloud before delayed key rotation and keeps it off afterward", async
     });
     expect(f.binding.cloud.config(f.id)).toBeNull();
     expect(old?.isCurrent(f.id)).toBe(false);
-    expect((await f.binding.action.run(f.stores, f.id, { op: "status" })).status).toBe(
-      "not_started",
-    );
+    expect((await f.binding.inspect(f.id)).status).toBe("not_started");
     await Promise.resolve();
     f.release();
     expect((await rotation).status).toBe("completed");
     expect(f.binding.cloud.config(f.id)).toBeNull();
-    const status = await f.binding.action.run(f.stores, f.id, { op: "status" });
+    const status = await f.binding.inspect(f.id);
     expect(status.status).toBe("completed");
     if (status.status === "completed")
       expect(status.value).toMatchObject({ backend: "ollama", consented: false, keyPresent: true });
+  } finally {
+    f.lock.release();
+  }
+});
+
+it("pushes the checked settings and checks again after each owner change", async () => {
+  const f = fixture();
+  try {
+    let pushes = 0;
+    const stop = f.binding.settings.changes.subscribe(() => {
+      pushes++;
+    });
+    expect(f.binding.settings.state(f.id)).toEqual({ status: "loading" });
+    await vi.waitFor(() =>
+      expect(f.binding.settings.state(f.id)).toMatchObject({
+        status: "ready",
+        snapshot: { backend: "ollama", keyPresent: false },
+      }),
+    );
+    const before = pushes;
+    await f.binding.action.run(f.stores, f.id, { op: "setKey", key: "synthetic-key" });
+    await vi.waitFor(() =>
+      expect(f.binding.settings.state(f.id)).toMatchObject({
+        status: "ready",
+        snapshot: { keyPresent: true },
+      }),
+    );
+    expect(pushes).toBeGreaterThan(before);
+    stop();
   } finally {
     f.lock.release();
   }
