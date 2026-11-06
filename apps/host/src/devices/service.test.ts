@@ -136,7 +136,9 @@ describe("host device token", () => {
     ).toBe("refused");
     expect(f.commits).toBe(0);
     f.service.close();
-    expect((await f.service.list({ vault })).kind).toBe("refused");
+    expect((await f.service.preview({ vault, targets: [target], recertify: [] })).kind).toBe(
+      "refused",
+    );
   });
 
   it("does not mint a preview after shutdown and bounds outstanding challenges", async () => {

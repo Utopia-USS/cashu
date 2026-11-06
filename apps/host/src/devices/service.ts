@@ -1,7 +1,5 @@
 import { randomBytes } from "node:crypto";
 import type {
-  DeviceListParams,
-  DeviceListResult,
   LeaderCommitParams,
   LeaderCommitResult,
   LeaderInspectParams,
@@ -45,7 +43,6 @@ interface PendingLeader {
 }
 
 export interface DeviceService {
-  list(input: DeviceListParams): Promise<DeviceListResult>;
   preview(input: RevokePreviewParams): Promise<RevokePreviewResult>;
   commit(input: RevokeCommitParams): Promise<RevokeCommitResult>;
   inspect(input: RevokeInspectParams): Promise<RevokeInspectResult>;
@@ -88,10 +85,6 @@ export function createDeviceService(stores: HostStores, now: () => number): Devi
   ) => ({ kind: "refused" as const, code });
   const eid = () => mintUlid(now());
   return {
-    async list(input) {
-      const session = live(input.vault);
-      return session ? session.deviceList() : refused("unknown_vault");
-    },
     async preview(input) {
       prune();
       if (

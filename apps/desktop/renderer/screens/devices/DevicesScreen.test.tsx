@@ -11,10 +11,14 @@ const bindings = vi.hoisted(() => ({
   connection: "online",
   privacy: false,
   bridge: null as unknown,
+  /** The device list the host pushes (the live `core.settings.deviceList` query). */
+  list: null as unknown,
 }));
 vi.mock("@cashu/store-react", () => ({
   useProfile: () => bindings.vault,
   useConnection: () => bindings.connection,
+  useQuery: () =>
+    bindings.list === null ? { status: "unavailable" } : { status: "ready", list: bindings.list },
 }));
 vi.mock("@cashu/ui-logic/core/incognito", () => ({
   isIncognito: () => bindings.privacy,
@@ -86,15 +90,17 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   bindings.bridge = null;
+  bindings.list = null;
 });
 
 it("shows the warning and requires refreshed explicit orphan selection; clears words on vault change", async () => {
-  const list = vi.fn(async () => ({
+  bindings.list = {
     kind: "ready" as const,
     vault: bindings.vault,
     ownDevice: own,
     ...metadata,
     operations: [],
+    leaderOperations: [],
     evidence: {
       historyPending: false,
       overflow: false,
@@ -102,7 +108,7 @@ it("shows the warning and requires refreshed explicit orphan selection; clears w
       writeAdmission: "ready" as const,
     },
     devices: [device(own, "This device"), device(target, "Target")],
-  }));
+  };
   const revokePreview = vi.fn(async (input: { recertify: string[] }) =>
     prepared(input.recertify.includes(orphan)),
   );
@@ -112,7 +118,6 @@ it("shows the warning and requires refreshed explicit orphan selection; clears w
     operationId: "0".repeat(26),
   }));
   bindings.bridge = {
-    list,
     revokePreview,
     revokeCancel,
     revokeCommit,
@@ -183,26 +188,23 @@ it("shows a silent leader's re-pin action with force unchecked and exact typed c
     kind: "completed" as const,
     operationId: "2".repeat(26),
   }));
-  bindings.bridge = {
-    list: async () => ({
-      kind: "ready" as const,
-      vault: bindings.vault,
-      ownDevice: own,
-      leader: { ...metadata.leader, state: "silent", silentForMs: 37 * 60 * 60 * 1000, warn: true },
-      keyProvenance: metadata.keyProvenance,
-      operations: [],
-      leaderOperations: [],
-      evidence: {
-        historyPending: false,
-        overflow: false,
-        authorityUncertain: false,
-        writeAdmission: "ready",
-      },
-      devices: [device(own, "This device"), device(target, "Target")],
-    }),
-    leaderPreview,
-    leaderCommit,
+  bindings.list = {
+    kind: "ready" as const,
+    vault: bindings.vault,
+    ownDevice: own,
+    leader: { ...metadata.leader, state: "silent", silentForMs: 37 * 60 * 60 * 1000, warn: true },
+    keyProvenance: metadata.keyProvenance,
+    operations: [],
+    leaderOperations: [],
+    evidence: {
+      historyPending: false,
+      overflow: false,
+      authorityUncertain: false,
+      writeAdmission: "ready",
+    },
+    devices: [device(own, "This device"), device(target, "Target")],
   };
+  bindings.bridge = { leaderPreview, leaderCommit };
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -251,14 +253,11 @@ it("shows a silent leader's re-pin action with force unchecked and exact typed c
 it("recovers a pending leader operation and inspects its original key", async () => {
   const operationId = "3".repeat(26);
   const leaderInspect = vi.fn(async () => ({ kind: "completed" as const, operationId }));
-  bindings.bridge = {
-    list: async () => ({
-      ...leaderList(),
-      leaderOperations: [{ operationId, phase: "may_append" as const }],
-    }),
-    leaderPreview: vi.fn(),
-    leaderInspect,
+  bindings.list = {
+    ...leaderList(),
+    leaderOperations: [{ operationId, phase: "may_append" as const }],
   };
+  bindings.bridge = { leaderPreview: vi.fn(), leaderInspect };
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -286,7 +285,8 @@ it("drops a leader preview that returns after a profile switch", async () => {
         finishPreview = resolve;
       }),
   );
-  bindings.bridge = { list: async () => leaderList(), leaderPreview };
+  bindings.list = leaderList();
+  bindings.bridge = { leaderPreview };
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -333,7 +333,7 @@ it("drops a leader preview that returns after a profile switch", async () => {
 });
 
 it("clears a leader preview when the same vault gets a new bridge session", async () => {
-  const list = async () => leaderList();
+  bindings.list = leaderList();
   const leaderPreview = async () => ({
     kind: "prepared" as const,
     vault: bindings.vault,
@@ -345,7 +345,7 @@ it("clears a leader preview when the same vault gets a new bridge session", asyn
     mayStillRun: own,
     confirmationText: "PIN TARGET",
   });
-  bindings.bridge = { list, leaderPreview };
+  bindings.bridge = { leaderPreview };
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -362,7 +362,7 @@ it("clears a leader preview when the same vault gets a new bridge session", asyn
     });
     await act(async () => button("Review change")?.click());
     expect(container.querySelector('input[autocomplete="off"]')).not.toBeNull();
-    bindings.bridge = { list, leaderPreview };
+    bindings.bridge = { leaderPreview };
     await act(async () => root.render(<DevicesScreen />));
     expect(container.querySelector('input[autocomplete="off"]')).toBeNull();
     expect(
@@ -380,8 +380,8 @@ it("clears a leader preview when the same vault gets a new bridge session", asyn
 
 it("disables an expired leader preview before commit", async () => {
   const leaderCommit = vi.fn();
+  bindings.list = leaderList();
   bindings.bridge = {
-    list: async () => leaderList(),
     leaderPreview: async () => ({
       kind: "prepared" as const,
       vault: bindings.vault,
@@ -433,13 +433,13 @@ it("disables an expired leader preview before commit", async () => {
 
 it("reattaches a keyed unknown operation after disconnect and remount, then inspects the same id", async () => {
   const operationId = "1".repeat(26);
-  let listed = 0;
-  const list = vi.fn(async () => ({
+  const listed = (operations: { operationId: string; phase: "may_append" }[]) => ({
     kind: "ready" as const,
     vault: bindings.vault,
     ownDevice: own,
     ...metadata,
-    operations: listed++ === 0 ? [] : [{ operationId, phase: "may_append" as const }],
+    operations,
+    leaderOperations: [],
     evidence: {
       historyPending: false,
       overflow: false,
@@ -447,7 +447,8 @@ it("reattaches a keyed unknown operation after disconnect and remount, then insp
       writeAdmission: "ready" as const,
     },
     devices: [device(own, "This device"), device(target, "Target")],
-  }));
+  });
+  bindings.list = listed([]);
   const revokePreview = vi.fn(async () => ({ ...prepared(false), operationId }));
   const revokeCancel = vi.fn(async () => ({ kind: "cancelled" as const }));
   let finishCommit: ((value: { kind: "outcome_unknown"; operationId: string }) => void) | undefined;
@@ -458,7 +459,7 @@ it("reattaches a keyed unknown operation after disconnect and remount, then insp
       }),
   );
   const revokeInspect = vi.fn(async () => ({ kind: "completed" as const, operationId }));
-  bindings.bridge = { list, revokePreview, revokeCancel, revokeCommit, revokeInspect };
+  bindings.bridge = { revokePreview, revokeCancel, revokeCommit, revokeInspect };
   const container = document.createElement("div");
   document.body.append(container);
   let root = createRoot(container);
@@ -496,6 +497,8 @@ it("reattaches a keyed unknown operation after disconnect and remount, then insp
     await act(async () => finishCommit?.({ kind: "outcome_unknown", operationId }));
     await act(async () => root.unmount());
     root = createRoot(container);
+    // The host now records the removal as possibly appended and pushes that.
+    bindings.list = listed([{ operationId, phase: "may_append" }]);
     bindings.connection = "online";
     await act(async () => root.render(<DevicesScreen />));
     expect(container.textContent?.includes("outcome is unknown")).toBe(true);
@@ -510,12 +513,13 @@ it("reattaches a keyed unknown operation after disconnect and remount, then insp
 });
 
 it("cancels a preview that returns after the vault has changed", async () => {
-  const list = vi.fn(async () => ({
+  bindings.list = {
     kind: "ready" as const,
     vault: bindings.vault,
     ownDevice: own,
     ...metadata,
     operations: [],
+    leaderOperations: [],
     evidence: {
       historyPending: false,
       overflow: false,
@@ -523,7 +527,7 @@ it("cancels a preview that returns after the vault has changed", async () => {
       writeAdmission: "ready" as const,
     },
     devices: [device(own, "This device"), device(target, "Target")],
-  }));
+  };
   let finishPreview: ((value: ReturnType<typeof prepared>) => void) | undefined;
   const revokePreview = vi.fn(
     () =>
@@ -533,7 +537,6 @@ it("cancels a preview that returns after the vault has changed", async () => {
   );
   const revokeCancel = vi.fn(async () => ({ kind: "cancelled" as const }));
   bindings.bridge = {
-    list,
     revokePreview,
     revokeCancel,
     revokeCommit: vi.fn(),
@@ -587,16 +590,17 @@ it.each([
   ],
 ])("shows unresolved device evidence and blocks removal preview", async (evidence, message) => {
   const revokePreview = vi.fn();
+  bindings.list = {
+    kind: "ready",
+    vault: bindings.vault,
+    ownDevice: own,
+    ...metadata,
+    operations: [],
+    leaderOperations: [],
+    evidence,
+    devices: [device(own, "This device"), device(target, "Target")],
+  };
   bindings.bridge = {
-    list: async () => ({
-      kind: "ready",
-      vault: bindings.vault,
-      ownDevice: own,
-      ...metadata,
-      operations: [],
-      evidence,
-      devices: [device(own, "This device"), device(target, "Target")],
-    }),
     revokePreview,
     revokeCancel: vi.fn(),
     revokeCommit: vi.fn(),

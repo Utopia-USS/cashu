@@ -29,6 +29,7 @@ import { sessionBindings } from "./nativeVault/bindings.js";
 import { carrierEndpoint } from "./nativeVault/carrier.js";
 import { type NativeVaultContext, profileGid } from "./nativeVault/context.js";
 import { deviceReads } from "./nativeVault/deviceReads.js";
+import { warnCause } from "./nativeVault/diagnostics.js";
 import { sessionGuards } from "./nativeVault/guards.js";
 import { ensureOwnLanMirror, reconcilePendingPairings } from "./nativeVault/lanMirror.js";
 import { pairingPruner, pairingWrites } from "./nativeVault/pairing.js";
@@ -231,6 +232,22 @@ export async function openNativeVault(
     const deviceOps = deviceReads(context, guards);
     const revoke = revocation(context, guards);
     const pairing = pairingWrites(context, guards, prunePairing);
+    const deviceListeners = new Set<() => void>();
+    const devicesChanged = () => {
+      for (const listener of [...deviceListeners]) {
+        try {
+          listener();
+        } catch (error) {
+          // One subscriber cannot change device authority.
+          warnCause("native_devices_listener_failed", error);
+        }
+      }
+    };
+    syncOps.onSyncSettled(devicesChanged);
+    const thenDevicesChanged =
+      <A extends unknown[], R>(run: (...args: A) => Promise<R>) =>
+      (...args: A): Promise<R> =>
+        run(...args).finally(devicesChanged);
     return {
       id: entry.vaultId,
       store,
@@ -251,19 +268,26 @@ export async function openNativeVault(
       blobPublication: bindings.blobPublication,
       isSyncing: syncOps.isSyncing,
       onSyncSettled: syncOps.onSyncSettled,
+      onDevicesChanged(listener) {
+        deviceListeners.add(listener);
+        return () => deviceListeners.delete(listener);
+      },
       sync: syncOps.sync,
       deviceList: deviceOps.deviceList,
       devicePreview: revoke.devicePreview,
-      deviceCommit: revoke.deviceCommit,
-      deviceInspect: revoke.deviceInspect,
+      deviceCommit: thenDevicesChanged(revoke.deviceCommit),
+      deviceInspect: thenDevicesChanged(revoke.deviceInspect),
       leaderPrepare: deviceOps.leaderPrepare,
-      leaderCommit: (leader, force, confirmationText, head, operationId) =>
+      leaderCommit: thenDevicesChanged((leader, force, confirmationText, head, operationId) =>
         leaseReports.pin(leader, force, confirmationText, head, operationId),
-      leaderInspect: (operationId) => leaseReports.inspect("native.devices.leaderPin", operationId),
+      ),
+      leaderInspect: thenDevicesChanged((operationId) =>
+        leaseReports.inspect("native.devices.leaderPin", operationId),
+      ),
       pairingStart: pairing.pairingStart,
       pairingRegisterInvite: pairing.pairingRegisterInvite,
       pairingBindJoiner: pairing.pairingBindJoiner,
-      pairingAppend: pairing.pairingAppend,
+      pairingAppend: thenDevicesChanged(pairing.pairingAppend),
       ...pairingReadCapability({
         vault: entry.vaultId,
         journal: pairingJournal,

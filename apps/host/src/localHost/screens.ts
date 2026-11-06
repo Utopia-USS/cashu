@@ -5,6 +5,7 @@
 import { parseDateTime } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
 import type { classifierSettingsQuery } from "@cashu/store/core/classifier-settings";
+import type { deviceListQuery } from "@cashu/store/core/desktop-settings";
 import type { NotificationQueue } from "@cashu/store/investments/local";
 import { PerformanceService } from "@cashu/store/investments/performance";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
@@ -166,6 +167,7 @@ export function createScreenSurfaces(input: {
       readonly running?: ReturnType<typeof investmentsRunningQuery>;
       readonly connectorSettings?: ReturnType<typeof connectorSettingsServed>;
       readonly classifierSettings?: ReturnType<typeof classifierSettingsQuery>;
+      readonly deviceList?: ReturnType<typeof deviceListQuery>;
     }) {
       const { market: marketRuntime, sources } = served;
       return servedQueries({
@@ -193,6 +195,7 @@ export function createScreenSurfaces(input: {
         ...(served.classifierSettings === undefined
           ? {}
           : { classifierSettingsQuery: served.classifierSettings }),
+        ...(served.deviceList === undefined ? {} : { deviceListQuery: served.deviceList }),
         signals: { strategy: sources.strategy, market: sources.market, clock },
         research: {
           ...options.research,

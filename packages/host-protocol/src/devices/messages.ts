@@ -11,7 +11,6 @@ const deviceIds = z
 
 export const NATIVE_DEVICES_FEATURE = "native.devices.v1";
 export const NATIVE_DEVICES_METHODS = [
-  "native.devices.list",
   "native.devices.revokePreview",
   "native.devices.revokeCommit",
   "native.devices.revokeInspect",
@@ -54,7 +53,6 @@ export const deviceRefusalSchema = z.strictObject({
   ]),
 });
 
-export const deviceListParamsSchema = z.strictObject({ vault: id });
 export const deviceListResultSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("ready"),
@@ -209,7 +207,6 @@ export type RevokeInspectParams = z.infer<typeof revokeInspectParamsSchema>;
 export type RevokeInspectResult = z.infer<typeof revokeInspectResultSchema>;
 export type RevokeCancelParams = z.infer<typeof revokeCancelParamsSchema>;
 export type RevokeCancelResult = z.infer<typeof revokeCancelResultSchema>;
-export type DeviceListParams = z.infer<typeof deviceListParamsSchema>;
 export type DeviceListResult = z.infer<typeof deviceListResultSchema>;
 export type LeaderPreviewParams = z.infer<typeof leaderPreviewParamsSchema>;
 export type LeaderPreviewResult = z.infer<typeof leaderPreviewResultSchema>;

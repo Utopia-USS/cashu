@@ -15,12 +15,14 @@ import type { AdminStatus } from "@cashu/host-protocol";
 import { classifyStartupError } from "@cashu/host-protocol/startup-failure";
 import { type HostSession, type RunningHost, startHost } from "@cashu/node-host";
 import { classifierSettingsQuery } from "@cashu/store/core/classifier-settings";
+import { deviceListQuery } from "@cashu/store/core/desktop-settings";
 import { NotificationQueue } from "@cashu/store/investments/local";
 import type { SyncResult } from "@cashu/sync";
 import { handleAdmin } from "./admin.js";
 import { defaultProfileSlug } from "./cli/defaultProfile.js";
 import { serveCliSession } from "./cli/runner.js";
 import { connectorSettingsServed } from "./connectorSettings.js";
+import { deviceListSource } from "./devices/listSource.js";
 import { createDeviceService } from "./devices/service.js";
 import { investmentsRunningQuery } from "./investmentsRunning.js";
 import type { WriterLease } from "./lease.js";
@@ -304,6 +306,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           ...(options.classifierSettings === undefined
             ? {}
             : { classifierSettings: classifierSettingsQuery(options.classifierSettings) }),
+          ...(nativeMode ? { deviceList: deviceListQuery(deviceListSource(() => stores)) } : {}),
           connectorSettings: connectorSettingsServed({
             catalog: () => (nativeMode ? options.connectorCatalog?.() : undefined),
             shows: (vault) => stores.vaults.get(vault)?.mode === "native",

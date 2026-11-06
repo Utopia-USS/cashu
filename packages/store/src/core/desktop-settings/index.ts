@@ -19,6 +19,12 @@ export {
   connectorSettingsQuery,
   connectorSettingsSnapshot,
 } from "./connector-settings.js";
+export {
+  type DeviceListSource,
+  type DeviceListState,
+  deviceListQuery,
+  deviceListState,
+} from "./device-list.js";
 export { type HostSettingsInfo, hostSettingsInfo } from "./host-info.js";
 
 const registry = builtinRegistry();

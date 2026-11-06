@@ -46,9 +46,7 @@ export {
   cliStdinParamsSchema,
 } from "./cli.js";
 export {
-  type DeviceListParams,
   type DeviceListResult,
-  deviceListParamsSchema,
   deviceListResultSchema,
   deviceRefusalSchema,
   type LeaderCommitParams,

@@ -1,9 +1,10 @@
-import { useConnection, useProfile } from "@cashu/store-react";
+import { deviceListResultSchema } from "@cashu/host-protocol";
+import { deviceListState } from "@cashu/store/core/desktop-settings";
+import { useConnection, useProfile, useQuery } from "@cashu/store-react";
 import { isIncognito, onIncognitoChange } from "@cashu/ui-logic/core/incognito";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { devicesBridge } from "../../devicesBridge.js";
 
-type ListResult = Awaited<ReturnType<NonNullable<ReturnType<typeof devicesBridge>>["list"]>>;
 type Preview = Extract<
   Awaited<ReturnType<NonNullable<ReturnType<typeof devicesBridge>>["revokePreview"]>>,
   { kind: "prepared" }
@@ -14,13 +15,15 @@ export function useDevicesScreen() {
   const connection = useConnection();
   const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const bridge = devicesBridge();
+  // The device list is a live host query, pushed again after every sync pass and device change.
+  const live = useQuery(deviceListState, { privacy });
+  const parsed = live.status === "ready" ? deviceListResultSchema.safeParse(live.list) : null;
   const [scope, setScope] = useState({ vault, bridge, connection, privacy });
   const scopeActive =
     scope.vault === vault &&
     scope.bridge === bridge &&
     scope.connection === connection &&
     scope.privacy === privacy;
-  const [loadedList, setList] = useState<ListResult | null>(null);
   const [selectedTarget, setTarget] = useState("");
   const [selectedRecertify, setRecertify] = useState<string[]>([]);
   const [preparedPreview, setPreview] = useState<Preview | null>(null);
@@ -32,10 +35,10 @@ export function useDevicesScreen() {
   );
   const [refusal, setRefusal] = useState<string | null>(null);
   const [currentOperationId, setOperationId] = useState<string | null>(null);
+  const [inspectedOperationId, setInspectedOperationId] = useState<string | null>(null);
   // Reset scoped input during render, before the new vault or privacy state reaches the View.
   if (!scopeActive) {
     setScope({ vault, bridge, connection, privacy });
-    setList(null);
     setTarget("");
     setRecertify([]);
     setPreview(null);
@@ -45,10 +48,14 @@ export function useDevicesScreen() {
     setStatus("idle");
     setRefusal(null);
     setOperationId(null);
+    setInspectedOperationId(null);
   }
   const list =
-    scopeActive && !privacy && (connection === "online" || connection === "recovered")
-      ? loadedList
+    scopeActive &&
+    !privacy &&
+    (connection === "online" || connection === "recovered") &&
+    parsed?.success
+      ? parsed.data
       : null;
   const target = scopeActive ? selectedTarget : "";
   const recertify = scopeActive ? selectedRecertify : [];
@@ -56,8 +63,18 @@ export function useDevicesScreen() {
   const warningAck = scopeActive && acknowledgedWarning;
   const localAck = scopeActive && acknowledgedLocalStart;
   const phrase = scopeActive && !privacy ? enteredPhrase : "";
-  const status = scopeActive ? currentStatus : "idle";
-  const operationId = scopeActive ? currentOperationId : null;
+  // A removal the host still records as possibly appended (also one started before a restart or in another
+  // window) shows as unknown until it is inspected.
+  const pendingOperation =
+    list?.kind === "ready"
+      ? list.operations.find(
+          (operation) =>
+            operation.phase === "may_append" && operation.operationId !== inspectedOperationId,
+        )
+      : undefined;
+  const localStatus = scopeActive ? currentStatus : "idle";
+  const status = pendingOperation && localStatus !== "busy" ? "unknown" : localStatus;
+  const operationId = pendingOperation?.operationId ?? (scopeActive ? currentOperationId : null);
   const lifetime = useRef(0);
   const requestGeneration = useRef(0);
   const activeAttempt = useRef<{ vault: string; operationId: string } | null>(null);
@@ -69,36 +86,11 @@ export function useDevicesScreen() {
   }, [preview]);
 
   useEffect(() => {
-    const epoch = ++lifetime.current;
+    ++lifetime.current;
     const lifetimeRef = lifetime;
     const requestGenerationRef = requestGeneration;
     requestGeneration.current++;
     if (activeAttempt.current?.vault !== vault) activeAttempt.current = null;
-    const pendingAttempt = activeAttempt.current;
-    if (bridge && !privacy && (connection === "online" || connection === "recovered"))
-      void bridge
-        .list({ vault })
-        .then((result) => {
-          if (lifetime.current !== epoch) return;
-          setList(result);
-          if (result.kind === "ready") {
-            const latest =
-              result.operations.find((operation) => operation.phase === "may_append") ??
-              result.operations[0];
-            if (latest) {
-              activeAttempt.current =
-                latest.phase === "may_append" ? { vault, operationId: latest.operationId } : null;
-              setOperationId(latest.operationId);
-              setStatus(latest.phase === "may_append" ? "unknown" : "completed");
-            } else if (pendingAttempt) {
-              setOperationId(pendingAttempt.operationId);
-              setStatus("unknown");
-            }
-          }
-        })
-        .catch(() => {
-          if (lifetime.current === epoch) setList(null);
-        });
     return () => {
       lifetimeRef.current++;
       requestGenerationRef.current++;
@@ -216,13 +208,7 @@ export function useDevicesScreen() {
             ? "unknown"
             : "failed",
       );
-      if (result.kind === "refused") activeAttempt.current = null;
-      if (result.kind === "completed") {
-        activeAttempt.current = null;
-        void bridge.list({ vault }).then((next) => {
-          if (lifetime.current === epoch) setList(next);
-        });
-      }
+      if (result.kind === "refused" || result.kind === "completed") activeAttempt.current = null;
     } catch {
       if (lifetime.current === epoch) {
         setPreview(null);
@@ -236,9 +222,11 @@ export function useDevicesScreen() {
   async function inspect(): Promise<void> {
     if (!bridge || !operationId || status === "busy") return;
     const epoch = lifetime.current;
+    const inspected = operationId;
+    setOperationId(inspected);
     setStatus("busy");
     try {
-      const result = await bridge.revokeInspect({ vault, operationId });
+      const result = await bridge.revokeInspect({ vault, operationId: inspected });
       if (lifetime.current !== epoch) return;
       setStatus(
         result.kind === "completed"
@@ -251,8 +239,10 @@ export function useDevicesScreen() {
         result.kind === "completed" ||
         result.kind === "not_found" ||
         result.kind === "not_started"
-      )
+      ) {
         activeAttempt.current = null;
+        setInspectedOperationId(inspected);
+      }
     } catch {
       if (lifetime.current === epoch) setStatus("unknown");
     }

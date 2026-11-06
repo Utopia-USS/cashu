@@ -10,8 +10,6 @@ import {
   bankingConfigureParamsSchema,
   bankingConsentUrlParamsSchema,
   bankingNativeResultSchema,
-  deviceListParamsSchema,
-  deviceListResultSchema,
   leaderCommitParamsSchema,
   leaderCommitResultSchema,
   leaderInspectParamsSchema,
@@ -794,7 +792,6 @@ creationIpc("current");
 
 function devicesIpc(
   method:
-    | "list"
     | "revokePreview"
     | "revokeCommit"
     | "revokeInspect"
@@ -804,7 +801,6 @@ function devicesIpc(
     | "leaderInspect",
 ) {
   const paramsSchema = {
-    list: deviceListParamsSchema,
     revokePreview: revokePreviewParamsSchema,
     revokeCommit: revokeCommitParamsSchema,
     revokeInspect: revokeInspectParamsSchema,
@@ -814,7 +810,6 @@ function devicesIpc(
     leaderInspect: leaderInspectParamsSchema,
   }[method];
   const resultSchema = {
-    list: deviceListResultSchema,
     revokePreview: revokePreviewResultSchema,
     revokeCommit: revokeCommitResultSchema,
     revokeInspect: revokeInspectResultSchema,
@@ -842,7 +837,6 @@ function devicesIpc(
   });
 }
 
-devicesIpc("list");
 devicesIpc("revokePreview");
 devicesIpc("revokeCommit");
 devicesIpc("revokeInspect");

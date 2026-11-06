@@ -25,7 +25,7 @@ it("reviews a local-start target and commits one recovery-authorized revoke unde
   });
   const ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "device-test" });
   try {
-    const listed = (await ui.call("native.devices.list", { vault: fixture.vaultId })) as {
+    const listed = (await host.stores.vaults.get(fixture.vaultId)?.native?.deviceList()) as {
       kind: string;
       devices?: { id: string }[];
     };
@@ -82,7 +82,7 @@ it("reviews a local-start target and commits one recovery-authorized revoke unde
     );
     expect(JSON.stringify(attempt).includes(phrase)).toBe(false);
     expect(attempt?.phase).toBe("completed");
-    const after = (await ui.call("native.devices.list", { vault: fixture.vaultId })) as {
+    const after = (await host.stores.vaults.get(fixture.vaultId)?.native?.deviceList()) as {
       kind: string;
       devices?: { id: string; revoked: boolean }[];
     };
@@ -171,7 +171,7 @@ for (const failure of ["append_response_lost", "ring_save_response_lost"] as con
         launcher: false,
       });
       ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "device-test" });
-      const listed = (await ui.call("native.devices.list", { vault: fixture.vaultId })) as {
+      const listed = (await host.stores.vaults.get(fixture.vaultId)?.native?.deviceList()) as {
         kind: string;
         operations?: { operationId: string; phase: string }[];
       };

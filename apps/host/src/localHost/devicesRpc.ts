@@ -1,10 +1,8 @@
-// `native.devices.*`: list devices, revoke one (preview / commit / inspect / cancel) and move the
-// sync leader (preview / commit / inspect). Each method parses its params, calls the device service
+// `native.devices.*`: revoke a device (preview / commit / inspect / cancel) and move the sync leader
+// (preview / commit / inspect); the list itself is the live `core.settings.deviceList` query. Each method parses its params, calls the device service
 // and validates the result; invalid params are refused, a commit whose outcome is unknown reopens
 // the host (handover) after the reply.
 import {
-  deviceListParamsSchema,
-  deviceListResultSchema,
   leaderCommitParamsSchema,
   leaderCommitResultSchema,
   leaderInspectParamsSchema,
@@ -65,10 +63,6 @@ function method<P, R extends JsonValue & { readonly kind: string }>(
 }
 
 const DEVICE_METHODS: ReadonlyMap<string, DeviceMethod> = new Map([
-  [
-    "native.devices.list",
-    method(deviceListParamsSchema, deviceListResultSchema, (d, input) => d.list(input)),
-  ],
   [
     "native.devices.revokePreview",
     method(revokePreviewParamsSchema, revokePreviewResultSchema, (d, input) => d.preview(input)),

@@ -643,7 +643,7 @@ it("retrieves the exact committed welcome with the same staged identity after re
       progress = restored.value.receivePage(await replay.receive());
     expect(progress.ok && progress.value.done).toBe(true);
     if (progress.ok && progress.value.done) progress.value.welcome.ring.wipe();
-    const listed = (await ui.call("native.devices.list", { vault: fixture.vaultId })) as {
+    const listed = (await host.stores.vaults.get(fixture.vaultId)?.native?.deviceList()) as {
       kind: string;
       devices?: { id: string }[];
     };

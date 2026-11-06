@@ -1,6 +1,4 @@
 import type {
-  DeviceListParams,
-  DeviceListResult,
   LeaderCommitParams,
   LeaderCommitResult,
   LeaderInspectParams,
@@ -18,7 +16,6 @@ import type {
 } from "@cashu/host-protocol";
 
 export interface DevicesBridge {
-  list(input: DeviceListParams): Promise<DeviceListResult>;
   revokePreview(input: RevokePreviewParams): Promise<RevokePreviewResult>;
   revokeCommit(input: RevokeCommitParams): Promise<RevokeCommitResult>;
   revokeInspect(input: RevokeInspectParams): Promise<RevokeInspectResult>;

@@ -91,6 +91,9 @@ export interface NativeVaultSession extends PairingReads {
   blobPublication(): NativeBlobPublication | null;
   isSyncing(): boolean;
   onSyncSettled(listener: () => void): () => void;
+  /** Fires after anything the device list shows may have changed: a sync pass settled (or the session closed), a
+   * revocation or leader pin committed or was inspected, a pairing appended. */
+  onDevicesChanged(listener: () => void): () => void;
   /** Serialize inbound fold and push with UI commands on this vault. */
   sync(): Promise<SyncResult>;
   deviceList(): Promise<DeviceListResult>;

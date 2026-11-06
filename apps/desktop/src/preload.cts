@@ -34,8 +34,6 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     current: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:creation-current", {}),
   });
   electron.contextBridge.exposeInMainWorld("cashuDevices", {
-    list: (input: unknown): Promise<unknown> =>
-      electron.ipcRenderer.invoke("cashu:devices-list", input),
     revokePreview: (input: unknown): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:devices-revokePreview", input),
     revokeCommit: (input: unknown): Promise<unknown> =>
