@@ -128,6 +128,8 @@ function mark(catalog: ConnectorCatalog, row: Marker): void {
     closeSync(fd);
   }
   sync(catalog.root);
+  // The fence makes the connector unapprovable: the live Settings list shows it.
+  catalog.changed();
 }
 function updateMarker(catalog: ConnectorCatalog, row: Marker): void {
   catalog.assertCurrentRoot();
@@ -156,6 +158,7 @@ function unmark(catalog: ConnectorCatalog, id: string): void {
   catalog.assertCurrentRoot();
   rmSync(markerPath(catalog, id));
   sync(catalog.root);
+  catalog.changed();
 }
 const bindings = (vault: OpenVault, id: string): readonly { gid: string }[] =>
   vault.store.read<{ gid: string }>(

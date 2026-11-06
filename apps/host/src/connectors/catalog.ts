@@ -17,6 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import type { ChangeSource } from "@cashu/store/query";
 import { z } from "zod";
 import { ConnectorFault, type LoadedConnector, scanConnector } from "./manifest.js";
 
@@ -80,6 +81,17 @@ export class ConnectorCatalog {
   readonly root: string;
   private readonly pin: { dev: number; ino: number };
   readonly bundledDeno: string | undefined;
+  private readonly listeners = new Set<() => void>();
+  /** Fires after the installed inventory changed on disk (install, approval, disable, removal and its fence) or an
+   * owner asked to read it again: the live Settings connector list re-runs on it instead of the renderer asking. */
+  readonly changes: ChangeSource = {
+    subscribe: (listener) => {
+      this.listeners.add(listener);
+      return () => {
+        this.listeners.delete(listener);
+      };
+    },
+  };
   constructor(dataDir: string, bundledDeno?: string) {
     this.bundledDeno = bundledDeno;
     if (!dataDir || !resolve(dataDir).startsWith("/"))
@@ -93,6 +105,12 @@ export class ConnectorCatalog {
     const current = privateDirectory(this.root);
     if (current.dev !== this.pin.dev || current.ino !== this.pin.ino)
       throw new ConnectorFault("changed", "installed connector directory changed");
+  }
+
+  /** Tell inventory readers to read the directory again (every mutation here calls it; the removal journal calls it
+   * when its fence moves; an owner's Refresh calls it to pick up a change made on disk by hand). */
+  changed(): void {
+    for (const listener of [...this.listeners]) listener();
   }
 
   /** Pin check for host-owned auxiliary files under this private catalog directory. */
@@ -164,6 +182,7 @@ export class ConnectorCatalog {
       rmSync(this.approval(id), { force: true });
       rmSync(target, { recursive: true, force: true });
       renameSync(staging, target);
+      this.changed();
       return scanConnector(target);
     } finally {
       rmSync(staging, { recursive: true, force: true });
@@ -266,6 +285,7 @@ export class ConnectorCatalog {
       )
         throw new ConnectorFault("changed", "approval source changed");
       renameSync(temporary, this.approval(id));
+      this.changed();
       return approval;
     } finally {
       rmSync(temporary, { force: true });
@@ -289,6 +309,7 @@ export class ConnectorCatalog {
       if (!authority.isCurrent() || this.installed(id).contentSha256 !== loaded.contentSha256)
         throw new ConnectorFault("changed", "approval source changed");
       renameSync(temporary, this.approval(id));
+      this.changed();
     } finally {
       rmSync(temporary, { force: true });
     }
@@ -322,6 +343,7 @@ export class ConnectorCatalog {
       rmSync(this.approval(id), { force: true });
     } finally {
       rmSync(quarantine, { recursive: true, force: true });
+      this.changed();
     }
   }
 

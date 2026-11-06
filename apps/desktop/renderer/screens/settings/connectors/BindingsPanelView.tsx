@@ -87,8 +87,10 @@ export function BindingsPanelView({
       {mine.map((binding) => {
         const failure = state.connectorRunFailure(binding.gid);
         const fetchState = state.connectorActivity.bindings.find((b) => b.binding === binding.gid);
-        // The sync just finished: this connector's newest run in the profile is the one that failed.
-        const lastRun = runsOf(state.connectorActivity.runs, connector.id)[0];
+        // The sync just finished: this binding's newest run is the one that failed.
+        const lastRun = runsOf(state.connectorActivity.runs, connector.id).find(
+          (run) => run.binding === binding.gid,
+        );
         return form === binding.gid ? (
           <SecretsForm
             key={binding.gid}

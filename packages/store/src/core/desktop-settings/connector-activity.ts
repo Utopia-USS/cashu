@@ -12,6 +12,8 @@ export const CONNECTOR_RUNS_LISTED = 20;
 export interface ConnectorRunView {
   readonly id: number;
   readonly connectorId: string;
+  /** The binding gid the run fetched for; null for a run of no binding (a restored Python run, an offline test). */
+  readonly binding: string | null;
   readonly command: string;
   readonly startedAt: string;
   readonly durationMs: number;
@@ -39,9 +41,17 @@ export interface ConnectorActivity {
 
 const deniedHosts = z.array(z.string().max(255)).max(64);
 
-/** Rows are validated on write (a JSON string array); anything else lists no hosts. */
+/** Rows are validated on write (a JSON string array); anything else, malformed JSON included, lists no hosts, so one
+ * bad row never fails the whole query (Python tolerated it the same way). */
 function hosts(json: string): string[] {
-  const parsed = deniedHosts.safeParse(JSON.parse(json));
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch (error) {
+    if (error instanceof SyntaxError) return [];
+    throw error;
+  }
+  const parsed = deniedHosts.safeParse(value);
   return parsed.success ? parsed.data : [];
 }
 
@@ -54,6 +64,7 @@ export const connectorActivity = defineQuery({
     const runs = read<{
       id: number;
       connectorId: string;
+      binding: string | null;
       command: string;
       startedAt: string;
       durationMs: number;
@@ -63,9 +74,9 @@ export const connectorActivity = defineQuery({
       deniedHostsJson: string;
       stderrTail: string | null;
     }>(
-      `SELECT id, connectorId, command, startedAt, durationMs, outcome, errorKind, records,
+      `SELECT id, connectorId, binding, command, startedAt, durationMs, outcome, errorKind, records,
               deniedHostsJson, stderrTail
-         FROM (SELECT id, connector_id AS connectorId, command, started_at AS startedAt,
+         FROM (SELECT id, connector_id AS connectorId, binding, command, started_at AS startedAt,
                       duration_ms AS durationMs, outcome, error_kind AS errorKind, records,
                       denied_hosts_json AS deniedHostsJson, stderr_tail AS stderrTail,
                       ROW_NUMBER() OVER (PARTITION BY connector_id ORDER BY id DESC) AS n

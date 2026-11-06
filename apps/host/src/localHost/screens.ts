@@ -9,6 +9,7 @@ import { PerformanceService } from "@cashu/store/investments/performance";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
 import type { Read } from "@cashu/store/query";
 import { budgetStatementActions } from "../budgetScreen.js";
+import type { connectorSettingsServed } from "../connectorSettings.js";
 import { currentStrategyImages } from "../investmentScreenSources.js";
 import type { investmentsRunningQuery } from "../investmentsRunning.js";
 import { investmentImportActions } from "../investmentsScreen.js";
@@ -162,6 +163,7 @@ export function createScreenSurfaces(input: {
       readonly sources: InvestmentSources;
       readonly settingsInfo: ReturnType<typeof settingsInfoQuery>;
       readonly running?: ReturnType<typeof investmentsRunningQuery>;
+      readonly connectorSettings?: ReturnType<typeof connectorSettingsServed>;
     }) {
       const { market: marketRuntime, sources } = served;
       return servedQueries({
@@ -183,6 +185,9 @@ export function createScreenSurfaces(input: {
         updateQuery: updates.query,
         settingsInfoQuery: served.settingsInfo,
         ...(served.running === undefined ? {} : { runningQuery: served.running }),
+        ...(served.connectorSettings === undefined
+          ? {}
+          : { connectorSettingsQuery: served.connectorSettings }),
         signals: { strategy: sources.strategy, market: sources.market, clock },
         research: {
           ...options.research,

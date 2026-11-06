@@ -19,6 +19,7 @@ import type { SyncResult } from "@cashu/sync";
 import { handleAdmin } from "./admin.js";
 import { defaultProfileSlug } from "./cli/defaultProfile.js";
 import { serveCliSession } from "./cli/runner.js";
+import { connectorSettingsServed } from "./connectorSettings.js";
 import { createDeviceService } from "./devices/service.js";
 import { investmentsRunningQuery } from "./investmentsRunning.js";
 import type { WriterLease } from "./lease.js";
@@ -298,6 +299,10 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           running: investmentsRunningQuery({
             changes: worker.runningChanges,
             running: (vault) => worker.running(vault),
+          }),
+          connectorSettings: connectorSettingsServed({
+            catalog: () => (nativeMode ? options.connectorCatalog?.() : undefined),
+            shows: (vault) => stores.vaults.get(vault)?.mode === "native",
           }),
         }),
         commands: servedCommands({ strategy: investmentSources.strategy }),

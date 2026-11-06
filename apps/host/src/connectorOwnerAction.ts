@@ -28,7 +28,7 @@ import { reportSuccessfulFetch } from "./worker/leaseReport.js";
 const gid = v1.gid;
 const id = z.string().regex(/^[a-z][a-z0-9-]{1,39}$/);
 const request = z.discriminatedUnion("op", [
-  z.strictObject({ op: z.literal("list") }),
+  z.strictObject({ op: z.literal("rescan") }),
   z.strictObject({
     op: z.literal("approve"),
     id,
@@ -130,50 +130,16 @@ export function connectorOwnerAction(input: {
         return prior.identity === identity
           ? prior.result
           : { status: "not_started", reason: "pending_previous_attempt" };
-      const mutating = action.op !== "list";
+      const mutating = action.op !== "rescan";
       if (mutating && mutationBusy)
         return { status: "not_started", reason: "pending_previous_attempt" };
       if (mutating) mutationBusy = true;
       const holder = () => current() && vault.native.canFetchPublicMarket();
       try {
-        if (action.op === "list") {
-          const snapshot = await vault.queue.run(() => ({
-            connectors: catalog.list().map((item) => {
-              let params: unknown[] = [],
-                secrets: unknown[] = [],
-                facts: Record<string, unknown> = {};
-              try {
-                const { manifest } = catalog.installed(item.id);
-                params = manifest.fetch?.params ?? [];
-                secrets = manifest.fetch?.secrets ?? [];
-                // The manifest facts the old drawer showed (ab24ab6 `detail_dict`).
-                facts = {
-                  version: manifest.version,
-                  author: manifest.author ?? null,
-                  description: manifest.description ?? null,
-                  run: manifest.run,
-                  timeoutS: manifest.timeout_s,
-                  hosts: manifest.fetch?.hosts ?? [],
-                  extensions: manifest.file?.extensions ?? [],
-                  historyDays: manifest.fetch?.history_days ?? null,
-                };
-              } catch {
-                /* A changed item remains visible by catalog status. */
-              }
-              return { ...item, params, secrets, ...facts };
-            }),
-            accounts: vault.store.read<{ gid: string; name: string; type: string }>(
-              "SELECT gid, name, type FROM accounts WHERE removed_at IS NULL ORDER BY name LIMIT 100",
-            ),
-            bindings: vault.store.read<BindingRow>(
-              `SELECT b.gid, a.gid AS account, b.connector_id, b.params_json, b.cursor, b.auto_commit
-                 FROM connector_bindings b JOIN accounts a ON a.id = b.account_id
-                WHERE a.removed_at IS NULL ORDER BY b.gid LIMIT 100`,
-            ),
-          }));
-          return current()
-            ? { status: "completed", value: snapshot }
-            : { status: "refused", reason: "stale_action", preparation: "none" };
+        if (action.op === "rescan") {
+          // The old section's Refresh: the live list (connectorSettings.ts) reads the directory again.
+          catalog.changed();
+          return { status: "completed", value: { ok: true } };
         }
         if (action.op === "approve") {
           catalog.approve(action.id, action.digest, action.interpreter, {
@@ -373,7 +339,7 @@ export function connectorOwnerAction(input: {
         else await secrets.clear(action.secret);
         return { status: "completed", value: { ok: true } };
       } catch {
-        return action.op === "list"
+        return action.op === "rescan"
           ? { status: "refused", reason: "connector_unavailable", preparation: "none" }
           : { status: "outcome_unknown", reason: "unexpected_failure" };
       } finally {

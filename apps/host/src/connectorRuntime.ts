@@ -230,6 +230,9 @@ const blobRef = z.strictObject({
   ext: z.string().regex(/^[a-z0-9]{1,10}$/),
 });
 
+/** Python `MIN_INTERVAL`: a scheduled sync does not fetch a binding tried less than 20 h ago. */
+export const CONNECTOR_MIN_INTERVAL_MS = 20 * 60 * 60 * 1000;
+
 /** Python `RATE_LIMIT_BACKOFF`: a `rate_limited` answer holds scheduled syncs of the binding for 48 h. */
 export const RATE_LIMIT_BACKOFF_MS = 48 * 60 * 60 * 1000;
 
@@ -313,12 +316,17 @@ export function createConnectorRuntime(input: {
           recorded = false;
           continue;
         }
-        // Python's scheduled sync skips a binding while a rate-limit backoff holds; an owner's sync still runs.
-        const backoff =
+        // Python `due()`: a scheduled sync skips a binding while a rate-limit backoff holds or when it was tried less
+        // than 20 h ago (banks throttle PSD2); an owner's sync of the binding still runs.
+        const state =
           selected === undefined
-            ? connectorFetchState(input.device.driver, vault.id, row.id)?.backoffUntil
-            : null;
-        if (backoff && Date.parse(backoff) > input.now()) {
+            ? connectorFetchState(input.device.driver, vault.id, row.id)
+            : undefined;
+        if (
+          (state?.backoffUntil && Date.parse(state.backoffUntil) > input.now()) ||
+          (state?.lastRunAt &&
+            Date.parse(state.lastRunAt) + CONNECTOR_MIN_INTERVAL_MS > input.now())
+        ) {
           skipped++;
           recorded = false;
           continue;
@@ -654,6 +662,7 @@ export function createConnectorRuntime(input: {
               vault: vault.id,
               legacyProfileId: null,
               bindingId: null,
+              binding: row.id,
               command: "fetch",
               startedAt,
               durationMs: Math.max(0, input.now() - started),

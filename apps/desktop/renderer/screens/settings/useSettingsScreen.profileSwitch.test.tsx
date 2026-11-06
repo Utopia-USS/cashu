@@ -21,6 +21,17 @@ vi.mock("@cashu/store-react", () => ({
         return { calls: [], count7d: 0, hidden: false };
       case "device.settings.connectorActivity":
         return { runs: [], bindings: [] };
+      // The live connector list is a vault query: each profile reads its own.
+      case "core.settings.connectorSettings":
+        return {
+          connectors: [
+            testState.vault === "a".repeat(32)
+              ? { id: "old", name: "Old profile connector" }
+              : { id: "new", name: "Current profile connector" },
+          ],
+          accounts: [],
+          bindings: [],
+        };
       case "device.settings.hostInfo":
       case "device.updateStatus":
         return { availability: "unavailable" };
@@ -80,23 +91,14 @@ afterEach(() => {
   testState.vault = "a".repeat(32);
 });
 
-it("ignores an old vault's delayed connector response after switching profiles", async () => {
+it("shows each profile's live connector list and an old vault's slow refresh never makes the new one busy", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   let finishOld!: (result: unknown) => void;
   const oldResult = new Promise((resolve) => {
     finishOld = resolve;
   });
-  testState.connectorRun.mockImplementation(({ op }: { op: string }) =>
-    op === "list" && testState.vault === "a".repeat(32)
-      ? oldResult
-      : Promise.resolve({
-          status: "completed",
-          value: {
-            connectors: [{ id: "new", name: "Current profile connector" }],
-            accounts: [],
-            bindings: [],
-          },
-        }),
+  testState.connectorRun.mockImplementation(() =>
+    testState.vault === "a".repeat(32) ? oldResult : Promise.resolve({ status: "completed" }),
   );
   const container = document.createElement("div");
   document.body.append(container);
@@ -107,31 +109,22 @@ it("ignores an old vault's delayed connector response after switching profiles",
   };
   try {
     await act(async () => root.render(<Probe onState={onState} />));
+    expect(container.textContent).toBe("Old profile connector");
     await act(async () => {
       void screen.refreshConnectors();
     });
-    expect(testState.connectorRun).toHaveBeenCalledWith({ op: "list" });
+    expect(testState.connectorRun).toHaveBeenCalledWith({ op: "rescan" });
+    expect(screen.connectorBusy).toBe(true);
     testState.vault = "b".repeat(32);
     await act(async () => {
       flushSync(() => root.render(<Probe onState={onState} />));
-      expect(container.textContent).toBe("empty");
-    });
-    await act(async () => {
-      await screen.refreshConnectors();
     });
     expect(container.textContent).toBe("Current profile connector");
-    await act(async () =>
-      finishOld({
-        status: "completed",
-        value: {
-          connectors: [{ id: "old", name: "Old profile connector" }],
-          accounts: [],
-          bindings: [],
-        },
-      }),
-    );
-    expect(container.textContent).toBe("Current profile connector");
-    expect(screen.connectorSnapshot?.connectors[0]?.id).toBe("new");
+    expect(screen.connectorBusy).toBe(false);
+    await act(async () => finishOld({ status: "completed" }));
+    expect(screen.connectorBusy).toBe(false);
+    // Nothing reads the list through the action any more.
+    expect(testState.connectorRun.mock.calls.every(([input]) => input.op !== "list")).toBe(true);
   } finally {
     await act(async () => root.unmount());
     container.remove();

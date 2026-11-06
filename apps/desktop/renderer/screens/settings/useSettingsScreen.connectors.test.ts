@@ -5,7 +5,6 @@ import {
   connectorEligibleAccounts,
   connectorParams,
   connectorScopeMatches,
-  connectorStateForVault,
 } from "./useSettingsScreen.js";
 
 const firstVault = "5f0c3a9e81d24b7690ae13c7d2f4b856";
@@ -34,13 +33,7 @@ const snapshot = {
   bindings: [],
 };
 
-it("hides an old vault immediately and ignores its late result generation", () => {
-  const oldState = { vault: firstVault, snapshot, busy: true };
-  expect(connectorStateForVault(oldState, secondVault)).toEqual({
-    vault: secondVault,
-    snapshot: null,
-    busy: false,
-  });
+it("ignores an old vault's late owner-action result generation", () => {
   expect(
     connectorScopeMatches(
       { vault: secondVault, generation: 1 },

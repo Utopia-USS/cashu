@@ -12,6 +12,7 @@ const run: NewConnectorRun = {
   vault: VAULT,
   legacyProfileId: null,
   bindingId: null,
+  binding: "binding-1",
   command: "fetch",
   startedAt: "2026-11-04T12:00:00.000Z",
   durationMs: 1250,
@@ -37,6 +38,7 @@ describe("connectorActivity", () => {
     device.appendConnectorRun({
       ...run,
       connectorId: "other-fetch",
+      binding: "binding-3",
       outcome: "failed",
       errorKind: "auth_failed",
       records: 0,
@@ -62,6 +64,7 @@ describe("connectorActivity", () => {
     expect(own.runs[0]).toEqual({
       id: CONNECTOR_RUNS_LISTED + 4,
       connectorId: "other-fetch",
+      binding: "binding-3",
       command: "fetch",
       startedAt: "2026-11-04T12:00:00.000Z",
       durationMs: 1250,
@@ -99,6 +102,19 @@ describe("connectorActivity", () => {
     device.appendConnectorRun(run);
     device.updateConnectorFetch(VAULT, "binding-1", { lastOkAt: "2026-11-04T12:00:00.000Z" });
     expect(device.version(tables)).toBeGreaterThan(before);
+    device.close();
+  });
+
+  it("lists a run whose stored denied hosts are not JSON with no hosts instead of failing", () => {
+    const driver = betterSqlite3Driver(new Database(":memory:"));
+    const device = DeviceStore.open(driver);
+    device.appendConnectorRun(run);
+    driver.prepare("UPDATE connector_runs SET denied_hosts_json = ?").run("[not json");
+    const activity = connectorActivity.run(device.read.bind(device), {
+      vault: VAULT,
+      privacy: false,
+    });
+    expect(activity.runs.map((r) => [r.binding, r.deniedHosts])).toEqual([["binding-1", []]]);
     device.close();
   });
 });

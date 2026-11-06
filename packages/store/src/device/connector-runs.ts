@@ -26,6 +26,9 @@ export interface ConnectorRunRecord {
 
 export type NewConnectorRun = Omit<ConnectorRunRecord, "id" | "legacyProfileId"> & {
   readonly legacyProfileId: null;
+  /** The native binding gid the run fetched for (null for a run of no binding). Python's integer `bindingId` is a
+   * historical label of restored rows only. */
+  readonly binding: string | null;
 };
 
 /** Python `KEEP_RUNS`: the newest runs kept per connector. */
@@ -49,13 +52,18 @@ const DDL = `CREATE TABLE IF NOT EXISTS connector_runs (
   denied_hosts_json TEXT NOT NULL,
   stderr_tail TEXT,
   proposal_id INTEGER,
-  batch_ref TEXT
+  batch_ref TEXT,
+  binding TEXT
 );
 CREATE INDEX IF NOT EXISTS connector_runs_vault ON connector_runs(vault, id);
 CREATE INDEX IF NOT EXISTS connector_runs_connector ON connector_runs(connector_id, id)`;
 
 export function ensureConnectorRunHistory(driver: SqlDriver): void {
   driver.exec(DDL);
+  // A device database created before runs recorded their binding gets the column (restored rows keep null).
+  const columns = driver.prepare("PRAGMA table_info(connector_runs)").all<{ name: string }>();
+  if (!columns.some((column) => column.name === "binding"))
+    driver.exec("ALTER TABLE connector_runs ADD COLUMN binding TEXT");
 }
 
 function valid(row: ConnectorRunRecord): void {
@@ -131,11 +139,15 @@ export function restoreConnectorRuns(driver: SqlDriver, rows: readonly Connector
  * `KEEP_CONNECTOR_RUNS` rows (Python `record_run`). Caller owns the surrounding transaction.
  */
 export function appendConnectorRun(driver: SqlDriver, row: NewConnectorRun): number {
-  if (row.legacyProfileId !== null) throw new Error("invalid connector run audit");
+  if (
+    row.legacyProfileId !== null ||
+    (row.binding !== null && (row.binding.length < 1 || row.binding.length > 64))
+  )
+    throw new Error("invalid connector run audit");
   valid({ ...row, id: 1 });
   const id = driver
-    .prepare(`INSERT INTO connector_runs (${COLUMNS}) VALUES (${VALUES})`)
-    .run(...values(row)).lastInsertRowid;
+    .prepare(`INSERT INTO connector_runs (${COLUMNS}, binding) VALUES (${VALUES}, ?)`)
+    .run(...values(row), row.binding).lastInsertRowid;
   driver
     .prepare(
       `DELETE FROM connector_runs WHERE connector_id = ? AND id NOT IN

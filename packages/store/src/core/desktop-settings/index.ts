@@ -13,6 +13,12 @@ export {
   type ConnectorRunView,
   connectorActivity,
 } from "./connector-activity.js";
+export {
+  type ConnectorCatalogSource,
+  type ConnectorSettingsSnapshot,
+  connectorSettingsQuery,
+  connectorSettingsSnapshot,
+} from "./connector-settings.js";
 export { type HostSettingsInfo, hostSettingsInfo } from "./host-info.js";
 
 const registry = builtinRegistry();
@@ -156,49 +162,10 @@ export const workspaceApply: UiAction<
   unknown
 > = { id: "core.settings.workspaceApply" };
 
-export interface ConnectorSettingsSnapshot {
-  readonly connectors: readonly {
-    readonly id: string;
-    readonly name: string;
-    readonly kind: "file" | "fetch";
-    readonly module: "budget" | "investments";
-    readonly contentSha256: string;
-    readonly interpreter: string | null;
-    readonly approval: "pending" | "approved" | "changed" | "disabled";
-    readonly approvedAt: string | null;
-    /** Manifest facts; absent when the installed manifest no longer loads. */
-    readonly version?: string;
-    readonly author?: string | null;
-    readonly description?: string | null;
-    readonly run?: readonly string[];
-    readonly timeoutS?: number;
-    readonly hosts?: readonly string[];
-    readonly extensions?: readonly string[];
-    readonly historyDays?: number | null;
-    readonly params: readonly {
-      readonly id: string;
-      readonly label: string;
-      readonly type: string;
-      readonly required: boolean;
-    }[];
-    readonly secrets: readonly { readonly id: string; readonly label: string }[];
-  }[];
-  readonly accounts: readonly {
-    readonly gid: string;
-    readonly name: string;
-    readonly type: string;
-  }[];
-  readonly bindings: readonly {
-    readonly gid: string;
-    readonly account: string;
-    readonly connector_id: string;
-    readonly params_json: string;
-    readonly cursor: string | null;
-    readonly auto_commit: number;
-  }[];
-}
+/** Owner connector controls. `rescan` only makes the host read its installed-connector directory again (the old
+ * section's Refresh); the list itself is the live `connectorSettingsSnapshot` query. */
 export type ConnectorSettingsInput =
-  | { readonly op: "list" }
+  | { readonly op: "rescan" }
   | {
       readonly op: "approve";
       readonly id: string;

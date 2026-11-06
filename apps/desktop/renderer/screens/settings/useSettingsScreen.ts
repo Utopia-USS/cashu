@@ -11,6 +11,7 @@ import {
   type ConnectorSettingsInput,
   type ConnectorSettingsSnapshot,
   connectorSettings,
+  connectorSettingsSnapshot,
   hostSettingsInfo,
   mcpAudit,
   saveProfile,
@@ -109,18 +110,9 @@ export interface WorkspaceRun {
 }
 type ConnectorSummary = ConnectorSettingsSnapshot["connectors"][number];
 type ConnectorDraft = Readonly<Record<string, string | boolean>>;
-interface ScopedConnectorState {
-  readonly vault: string;
-  readonly snapshot: ConnectorSettingsSnapshot | null;
-  readonly busy: boolean;
-}
 interface ConnectorScope {
   readonly vault: string;
   readonly generation: number;
-}
-
-export function connectorStateForVault(state: ScopedConnectorState, vault: string) {
-  return state.vault === vault ? state : { vault, snapshot: null, busy: false };
 }
 
 export function connectorScopeMatches(current: ConnectorScope, captured: ConnectorScope): boolean {
@@ -309,51 +301,30 @@ export function useSettingsScreen(
   const inspect = useUiAction(workspaceInspect);
   const apply = useUiAction(workspaceApply);
   const connectorAction = useUiAction(connectorSettings);
+  // The installed connectors, accounts and bindings: a live vault query the host re-runs when its catalog changes
+  // (an install, also from MCP or the CLI, an approval, a removal) or a binding changes; nothing here re-reads it.
+  const connectorSnapshot = useQuery(connectorSettingsSnapshot);
   const connectorScope = useRef({ vault, generation: 0 });
-  const connectorRunRef = useRef(connectorAction.run);
   useLayoutEffect(() => {
     if (connectorScope.current.vault !== vault)
       connectorScope.current = { vault, generation: connectorScope.current.generation + 1 };
-    connectorRunRef.current = connectorAction.run;
   });
-  const [connectorState, setConnectorState] = useState<ScopedConnectorState>({
-    vault,
-    snapshot: null,
-    busy: false,
-  });
-  const visibleConnectorState = connectorStateForVault(connectorState, vault);
-  const connectorSnapshot = visibleConnectorState.snapshot;
-  const connectorBusy = visibleConnectorState.busy;
+  // The vault whose owner action is in flight: a switch to another profile shows that profile idle.
+  const [connectorBusyVault, setConnectorBusyVault] = useState<string | null>(null);
+  const connectorBusy = connectorBusyVault === vault;
   const currentConnectorScope = (captured: ConnectorScope) =>
     connectorScopeMatches(connectorScope.current, captured);
-  const setConnectorScoped = (
-    captured: ConnectorScope,
-    update: (old: ConnectorSettingsSnapshot | null) => ConnectorSettingsSnapshot | null,
-  ) => {
-    if (!currentConnectorScope(captured)) return;
-    setConnectorState((previous) => ({
-      vault: captured.vault,
-      snapshot: update(previous.vault === captured.vault ? previous.snapshot : null),
-      busy: previous.vault === captured.vault ? previous.busy : false,
-    }));
-  };
   const setConnectorBusyScoped = (captured: ConnectorScope, busy: boolean) => {
     if (!currentConnectorScope(captured)) return;
-    setConnectorState((previous) => ({
-      vault: captured.vault,
-      snapshot: previous.vault === captured.vault ? previous.snapshot : null,
-      busy,
-    }));
+    setConnectorBusyVault(busy ? captured.vault : null);
   };
+  /** The old section's Refresh: the host reads its connector directory again; the live list follows. */
   async function refreshConnectors() {
     if (connectorBusy) return;
     const captured = connectorScope.current;
     setConnectorBusyScoped(captured, true);
     try {
-      const result = await connectorAction.run({ op: "list" });
-      setConnectorScoped(captured, () =>
-        result.status === "completed" ? (result.value as ConnectorSettingsSnapshot) : null,
-      );
+      await connectorAction.run({ op: "rescan" });
     } finally {
       setConnectorBusyScoped(captured, false);
     }
@@ -369,14 +340,8 @@ export function useSettingsScreen(
     setConnectorBusyScoped(captured, true);
     try {
       const result = await bridge.installPending();
-      if (result.kind === "installed" && currentConnectorScope(captured)) {
-        const listed = await connectorAction.run({ op: "list" });
-        if (currentConnectorScope(captured)) {
-          if (listed.status === "completed")
-            setConnectorScoped(captured, () => listed.value as ConnectorSettingsSnapshot);
-          setNotice(T.connectorInstalled);
-        }
-      }
+      if (result.kind === "installed" && currentConnectorScope(captured))
+        setNotice(T.connectorInstalled);
     } catch {
       if (currentConnectorScope(captured)) setNotice(T.connectorUnknown);
     } finally {
@@ -403,13 +368,7 @@ export function useSettingsScreen(
           return next;
         });
       }
-      if (result.status === "completed") {
-        const listed = await connectorAction.run({ op: "list" });
-        if (!currentConnectorScope(captured)) return;
-        if (listed.status === "completed")
-          setConnectorScoped(captured, () => listed.value as ConnectorSettingsSnapshot);
-        setNotice(connectorActionMessage(input, result));
-      } else setNotice(connectorActionMessage(input, result));
+      setNotice(connectorActionMessage(input, result));
     } finally {
       setConnectorBusyScoped(captured, false);
     }
@@ -429,23 +388,6 @@ export function useSettingsScreen(
     }
     await onConnectorAction({ op: "bind", id: connector.id, account, params, autoCommit });
   }
-  useEffect(() => {
-    const captured = connectorScope.current;
-    const timer = setTimeout(() => {
-      void connectorRunRef.current({ op: "list" }).then((result) => {
-        if (!connectorScopeMatches(connectorScope.current, captured)) return;
-        setConnectorState((previous) => ({
-          vault: captured.vault,
-          snapshot:
-            result.status === "completed" ? (result.value as ConnectorSettingsSnapshot) : null,
-          busy: previous.vault === captured.vault ? previous.busy : false,
-        }));
-      });
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [vault]);
   const [notice, setNotice] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSummary>({
     availability: "unavailable",

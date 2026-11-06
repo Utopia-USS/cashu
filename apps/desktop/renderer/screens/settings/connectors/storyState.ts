@@ -51,6 +51,7 @@ export const connectorsState = {
       {
         id: 2,
         connectorId: "synthetic-fetch",
+        binding: "8ad703ab-383d-8c73-82a5-1ee2d6742735",
         command: "fetch",
         startedAt: "2026-11-04T08:00:00.000Z",
         durationMs: 1250,
@@ -63,6 +64,7 @@ export const connectorsState = {
       {
         id: 1,
         connectorId: "synthetic-fetch",
+        binding: "8ad703ab-383d-8c73-82a5-1ee2d6742735",
         command: "fetch",
         startedAt: "2026-11-03T08:00:00.000Z",
         durationMs: 820,

@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { connectorOwnerAction } from "./connectorOwnerAction.js";
 import type { ConnectorRuntime } from "./connectorRuntime.js";
+import { connectorInventory } from "./connectorSettings.js";
 import { manifestSchema } from "./connectors/manifest.js";
 import type { HostStores } from "./stores.js";
 import type { WorkerBindings } from "./worker/contracts.js";
@@ -44,9 +45,13 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
     files: [{ path: "true", size: 1, sha256: "a".repeat(64), executable: true }],
     contentSha256: "a".repeat(64),
   };
+  let rescans = 0;
   const catalog = {
     installed: () => loaded,
     approved: () => loaded,
+    changed: () => {
+      rescans++;
+    },
     list: () => [
       {
         id: "synthetic-fetch",
@@ -136,26 +141,26 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
     autoCommit: false,
   });
   expect(bound).toMatchObject({ status: "completed", value: { binding: bindingId } });
-  expect(await action.run(stores, vaultId, { op: "list" })).toMatchObject({
+  // The live list carries the manifest facts the old drawer showed; Refresh only re-reads the catalog.
+  expect(await action.run(stores, vaultId, { op: "rescan" })).toMatchObject({
     status: "completed",
-    value: {
-      connectors: [
-        {
-          id: "synthetic-fetch",
-          approvedAt: "2026-11-01T08:00:00.000Z",
-          version: "1",
-          author: null,
-          description: null,
-          run: ["./true"],
-          timeoutS: 60,
-          hosts: ["example.test"],
-          extensions: [],
-          historyDays: 365,
-          secrets: [{ id: "token", label: "Token" }],
-        },
-      ],
-    },
   });
+  expect(rescans).toBe(1);
+  expect(connectorInventory(catalog)).toMatchObject([
+    {
+      id: "synthetic-fetch",
+      approvedAt: "2026-11-01T08:00:00.000Z",
+      version: "1",
+      author: null,
+      description: null,
+      run: ["./true"],
+      timeoutS: 60,
+      hosts: ["example.test"],
+      extensions: [],
+      historyDays: 365,
+      secrets: [{ id: "token", label: "Token" }],
+    },
+  ]);
   expect(
     await action.run(stores, vaultId, {
       op: "setSecret",

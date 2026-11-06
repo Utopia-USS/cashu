@@ -30,6 +30,7 @@ import { profile } from "@cashu/store/core";
 import { proposalDetail, proposalList } from "@cashu/store/core/desktop-proposals";
 import {
   connectorActivity,
+  connectorSettingsSnapshot,
   hostSettingsInfo,
   mcpAudit,
   saveProfile,
@@ -99,6 +100,7 @@ export function servedQueries(
     };
     readonly updateQuery?: typeof updateStatus;
     readonly settingsInfoQuery?: typeof hostSettingsInfo;
+    readonly connectorSettingsQuery?: typeof connectorSettingsSnapshot;
     readonly runningQuery?: typeof investmentsRunning;
   } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
@@ -110,6 +112,7 @@ export function servedQueries(
     env.runningQuery ?? investmentsRunning,
     mcpAudit,
     connectorActivity,
+    env.connectorSettingsQuery ?? connectorSettingsSnapshot,
     profile,
     proposalList,
     env.proposalImages ? proposalDetailWithImages(env.proposalImages) : proposalDetail,

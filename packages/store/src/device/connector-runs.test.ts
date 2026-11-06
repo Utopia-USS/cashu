@@ -58,6 +58,7 @@ it("scopes new run history by vault", () => {
     connectorId: "sample-fetch",
     legacyProfileId: null,
     bindingId: null,
+    binding: null,
     command: "fetch",
     startedAt: "2026-11-04T12:00:00Z",
     durationMs: 2,
@@ -104,6 +105,7 @@ const run: NewConnectorRun = {
   vault: VAULT_A,
   legacyProfileId: null,
   bindingId: null,
+  binding: "binding-a",
   command: "fetch",
   startedAt: "2026-11-04T12:00:00.000Z",
   durationMs: 2,
@@ -134,6 +136,22 @@ it("keeps a redacted stderr tail and prunes each connector to the newest runs li
     listConnectorRuns(driver, { kind: "vault", vault: VAULT_A, limit: 1 })[0]?.stderrTail,
   ).toBe("key [secret] rejected");
   expect(() => appendConnectorRun(driver, { ...run, stderrTail: "x".repeat(4097) })).toThrow();
+  driver.close();
+});
+
+it("adds the binding column to a run history created before runs recorded their binding", () => {
+  const driver = betterSqlite3Driver(new Database(":memory:"));
+  driver.exec(`CREATE TABLE connector_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, connector_id TEXT NOT NULL,
+    vault TEXT, legacy_profile_id INTEGER, binding_id INTEGER, command TEXT NOT NULL, started_at TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL, outcome TEXT NOT NULL, error_kind TEXT, exit_code INTEGER, records INTEGER NOT NULL,
+    bytes_in INTEGER NOT NULL, bytes_out INTEGER NOT NULL, denied_hosts_json TEXT NOT NULL, stderr_tail TEXT,
+    proposal_id INTEGER, batch_ref TEXT)`);
+  ensureConnectorRunHistory(driver);
+  ensureConnectorRunHistory(driver);
+  const id = appendConnectorRun(driver, run);
+  expect(
+    driver.prepare("SELECT binding FROM connector_runs WHERE id = ?").get<{ binding: string }>(id),
+  ).toEqual({ binding: "binding-a" });
   driver.close();
 });
 
