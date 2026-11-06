@@ -4,8 +4,11 @@ import { betterSqlite3Driver } from "../sql/better-sqlite3.js";
 import {
   appendConnectorRun,
   type ConnectorRunRecord,
+  connectorFetchState,
   ensureConnectorRunHistory,
+  KEEP_CONNECTOR_RUNS,
   listConnectorRuns,
+  type NewConnectorRun,
   restoreConnectorRuns,
 } from "./connector-runs.js";
 import { DeviceStore } from "./store.js";
@@ -48,7 +51,7 @@ it("restores every historical field and keeps global rows behind owner read", ()
   driver.close();
 });
 
-it("scopes new run history by vault and rejects raw future stderr", () => {
+it("scopes new run history by vault", () => {
   const driver = betterSqlite3Driver(new Database(":memory:"));
   const device = DeviceStore.open(driver);
   const common = {
@@ -93,5 +96,71 @@ it("scopes new run history by vault and rejects raw future stderr", () => {
   expect(listConnectorRuns(driver, { kind: "vault", vault: VAULT_A })).toEqual([]);
   expect(listConnectorRuns(driver, { kind: "vault", vault: VAULT_B })).toEqual([]);
   expect(notified).toBe(2);
+  device.close();
+});
+
+const run: NewConnectorRun = {
+  connectorId: "sample-fetch",
+  vault: VAULT_A,
+  legacyProfileId: null,
+  bindingId: null,
+  command: "fetch",
+  startedAt: "2026-11-04T12:00:00.000Z",
+  durationMs: 2,
+  outcome: "failed",
+  errorKind: "auth_failed",
+  exitCode: null,
+  records: 0,
+  bytesIn: 0,
+  bytesOut: 0,
+  deniedHostsJson: "[]",
+  stderrTail: "key [secret] rejected",
+  proposalId: null,
+  batchRef: null,
+};
+
+it("keeps a redacted stderr tail and prunes each connector to the newest runs like Python", () => {
+  const driver = betterSqlite3Driver(new Database(":memory:"));
+  ensureConnectorRunHistory(driver);
+  for (let i = 0; i < KEEP_CONNECTOR_RUNS + 2; i++) appendConnectorRun(driver, run);
+  appendConnectorRun(driver, { ...run, connectorId: "other-fetch" });
+  const count = (id: string) =>
+    driver
+      .prepare("SELECT COUNT(*) AS n, MIN(id) AS first FROM connector_runs WHERE connector_id = ?")
+      .get<{ n: number; first: number }>(id);
+  expect(count("sample-fetch")).toEqual({ n: KEEP_CONNECTOR_RUNS, first: 3 });
+  expect(count("other-fetch")?.n).toBe(1);
+  expect(
+    listConnectorRuns(driver, { kind: "vault", vault: VAULT_A, limit: 1 })[0]?.stderrTail,
+  ).toBe("key [secret] rejected");
+  expect(() => appendConnectorRun(driver, { ...run, stderrTail: "x".repeat(4097) })).toThrow();
+  driver.close();
+});
+
+it("updates a binding's fetch state field by field and notifies live readers", () => {
+  const driver = betterSqlite3Driver(new Database(":memory:"));
+  const device = DeviceStore.open(driver);
+  let notified = 0;
+  device.subscribe(["local_connector_fetch"], () => {
+    notified += 1;
+  });
+  device.updateConnectorFetch(VAULT_A, "binding-1", { lastRunAt: "2026-11-04T12:00:00.000Z" });
+  device.updateConnectorFetch(VAULT_A, "binding-1", {
+    lastStatus: "failed",
+    backoffUntil: "2026-11-06T12:00:00.000Z",
+  });
+  expect(connectorFetchState(driver, VAULT_A, "binding-1")).toEqual({
+    binding: "binding-1",
+    lastRunAt: "2026-11-04T12:00:00.000Z",
+    lastStatus: "failed",
+    lastOkAt: null,
+    backoffUntil: "2026-11-06T12:00:00.000Z",
+  });
+  expect(connectorFetchState(driver, VAULT_B, "binding-1")).toBeUndefined();
+  expect(notified).toBe(2);
+  expect(device.tablesRead("SELECT 1 FROM local_connector_fetch")).toEqual(
+    new Set(["local_connector_fetch"]),
+  );
+  expect(() => device.updateConnectorFetch("not-a-vault", "binding-1", {})).toThrow();
   device.close();
 });

@@ -12,12 +12,20 @@ import { ChangeHub, type TablesListener } from "../subscribe.js";
 import type { McpAuditFinish, McpAuditStart } from "./audit-types.js";
 import {
   appendConnectorRun,
+  type ConnectorFetchUpdate,
+  ensureConnectorFetchState,
   ensureConnectorRunHistory,
   type NewConnectorRun,
+  updateConnectorFetch,
 } from "./connector-runs.js";
 
 /** Device-local tables (a closed set: `tablesRead` is exact). */
-export const DEVICE_TABLES = ["device_settings", "mcp_calls", "connector_runs"] as const;
+export const DEVICE_TABLES = [
+  "device_settings",
+  "mcp_calls",
+  "connector_runs",
+  "local_connector_fetch",
+] as const;
 
 const DDL = `CREATE TABLE IF NOT EXISTS device_settings (
   key TEXT PRIMARY KEY,
@@ -78,6 +86,7 @@ export class DeviceStore implements QuerySource {
   static open(driver: SqlDriver): DeviceStore {
     driver.exec(DDL);
     ensureConnectorRunHistory(driver);
+    ensureConnectorFetchState(driver);
     return new DeviceStore(driver);
   }
 
@@ -91,6 +100,12 @@ export class DeviceStore implements QuerySource {
     const id = this.driver.transaction(() => appendConnectorRun(this.driver, row));
     this.#hub.notify(new Set(["connector_runs"]));
     return id;
+  }
+
+  /** Update one binding's leader-local fetch state and notify its live readers. */
+  updateConnectorFetch(vault: string, binding: string, update: ConnectorFetchUpdate): void {
+    this.driver.transaction(() => updateConnectorFetch(this.driver, vault, binding, update));
+    this.#hub.notify(new Set(["local_connector_fetch"]));
   }
 
   /** Owner-only local audit cleanup after every vault binding has been removed. */

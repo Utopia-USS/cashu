@@ -1,6 +1,6 @@
 // Fetch bindings of one connector in the current profile (ab24ab6 core/ConnectorBindings.tsx): the binding form
-// (account, parameters, auto save), a row per bound account that syncs on demand with its failure block, and the
-// edit form for the write-only secrets and unbinding. Native bindings keep their parameters once bound, so the edit
+// (account, parameters, auto save), a row per bound account (its sync line and rate-limit tag) that syncs on demand
+// with its failure block (kind line, stderr tail), and the edit form for the write-only secrets and unbinding. Native bindings keep their parameters once bound, so the edit
 // form holds the secrets only. Pure view (form drafts are view state).
 import { S as CB } from "@cashu/i18n/core/ConnectorBindings.strings";
 import { C } from "@cashu/i18n/core/common.strings";
@@ -20,7 +20,15 @@ import {
 import { useEffect, useState } from "react";
 import { T } from "../Settings.strings.js";
 import type { SettingsScreenState } from "../useSettingsScreen.js";
-import type { Binding, Connector } from "./connectorsModel.js";
+import {
+  type Binding,
+  backoffActive,
+  type Connector,
+  kindLine,
+  lastSyncText,
+  runsOf,
+  when,
+} from "./connectorsModel.js";
 
 const controls = "flex flex-wrap items-center gap-2";
 /** Old `.bindform`: the chip panel of the binding form. */
@@ -78,6 +86,9 @@ export function BindingsPanelView({
       )}
       {mine.map((binding) => {
         const failure = state.connectorRunFailure(binding.gid);
+        const fetchState = state.connectorActivity.bindings.find((b) => b.binding === binding.gid);
+        // The sync just finished: this connector's newest run in the profile is the one that failed.
+        const lastRun = runsOf(state.connectorActivity.runs, connector.id)[0];
         return form === binding.gid ? (
           <SecretsForm
             key={binding.gid}
@@ -100,8 +111,14 @@ export function BindingsPanelView({
                 ) : (
                   <Tag title={CB.waitsTitle}>{CB.toApprove}</Tag>
                 )}
+                {backoffActive(fetchState?.backoffUntil) && (
+                  <Tag tone="warning" title={CB.rateLimitedTitle}>
+                    {CB.apiLimitUntil(when(fetchState?.backoffUntil))}
+                  </Tag>
+                )}
               </>
             }
+            detail={lastSyncText(fetchState)}
             action={
               <div className={controls}>
                 <Button disabled={busy || !approved} onPress={() => void sync(binding)}>
@@ -115,9 +132,12 @@ export function BindingsPanelView({
           >
             {failure && (
               <RunError
-                title={T.connectorRunFailed}
+                title={kindLine(
+                  lastRun?.errorKind ?? failure.code ?? "internal",
+                  connector.timeoutS,
+                )}
                 source={connector.name}
-                message={failure.code}
+                details={lastRun?.stderrTail}
                 className="mt-1.5"
               />
             )}

@@ -47,14 +47,20 @@ export function bindingParamsDigest(params: Readonly<Record<string, unknown>>): 
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex");
 }
 
+/** `stderrTail`: the redacted stderr tail of the connector process (owner view only), when it ran. */
 export type BoundFetchResult =
   | {
       readonly outcome: "transported";
       readonly documentBytes: Uint8Array;
       readonly binding: TransportBinding;
       readonly newCursor: string | null;
+      readonly stderrTail?: string | null;
     }
-  | { readonly outcome: "refused" | "failed" | "timeout"; readonly errorKind: string };
+  | {
+      readonly outcome: "refused" | "failed" | "timeout";
+      readonly errorKind: string;
+      readonly stderrTail?: string | null;
+    };
 
 function validParams(
   params: Readonly<Record<string, unknown>>,
@@ -152,15 +158,16 @@ export async function runBoundFetch(input: {
     since: input.since,
   });
   if (result.outcome !== "ok") return result;
-  if (!authority.isCurrent()) return { outcome: "refused", errorKind: "bad_request" };
+  const stderr = result.stderrTail ? { stderrTail: result.stderrTail } : {};
+  if (!authority.isCurrent()) return { outcome: "refused", errorKind: "bad_request", ...stderr };
   try {
     if (
       input.catalog.approved(binding.connectorId, input.interpreter).contentSha256 !==
       loaded.contentSha256
     )
-      return { outcome: "refused", errorKind: "not_approved" };
+      return { outcome: "refused", errorKind: "not_approved", ...stderr };
   } catch {
-    return { outcome: "refused", errorKind: "not_approved" };
+    return { outcome: "refused", errorKind: "not_approved", ...stderr };
   }
   const cursor =
     result.response &&
@@ -169,11 +176,12 @@ export async function runBoundFetch(input: {
     typeof result.response.cursor === "string"
       ? result.response.cursor
       : null;
-  if (!result.documentBytes) return { outcome: "failed", errorKind: "protocol" };
+  if (!result.documentBytes) return { outcome: "failed", errorKind: "protocol", ...stderr };
   return {
     outcome: "transported",
     documentBytes: result.documentBytes,
     binding: base,
     newCursor: cursor,
+    ...stderr,
   };
 }

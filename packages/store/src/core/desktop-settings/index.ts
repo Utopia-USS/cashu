@@ -6,6 +6,13 @@ import { defineQuery } from "../../query.js";
 import type { UiAction } from "../../ui-actions.js";
 import { profileOf } from "../queries.js";
 
+export {
+  CONNECTOR_RUNS_LISTED,
+  type ConnectorActivity,
+  type ConnectorBindingSync,
+  type ConnectorRunView,
+  connectorActivity,
+} from "./connector-activity.js";
 export { type HostSettingsInfo, hostSettingsInfo } from "./host-info.js";
 
 const registry = builtinRegistry();
@@ -158,6 +165,16 @@ export interface ConnectorSettingsSnapshot {
     readonly contentSha256: string;
     readonly interpreter: string | null;
     readonly approval: "pending" | "approved" | "changed" | "disabled";
+    readonly approvedAt: string | null;
+    /** Manifest facts; absent when the installed manifest no longer loads. */
+    readonly version?: string;
+    readonly author?: string | null;
+    readonly description?: string | null;
+    readonly run?: readonly string[];
+    readonly timeoutS?: number;
+    readonly hosts?: readonly string[];
+    readonly extensions?: readonly string[];
+    readonly historyDays?: number | null;
     readonly params: readonly {
       readonly id: string;
       readonly label: string;

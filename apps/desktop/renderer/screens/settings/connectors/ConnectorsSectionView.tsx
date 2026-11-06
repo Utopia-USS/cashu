@@ -1,15 +1,22 @@
 // Ustawienia › Konektory (ab24ab6 core/ConnectorsSection.tsx): every installed connector, what waits for the
-// owner's approval first; the row's button opens the connector drawer. Native: install from a folder, the list
-// refresh, the banking panel at the end of the card. Pure view (the open drawer is view state).
+// owner's approval first; the row's line (version, author, last run, bindings) and button open the connector drawer.
+// Native: install from a folder, the list refresh, the banking panel at the end of the card. Pure view (the open
+// drawer is view state).
 import { S as CS } from "@cashu/i18n/core/ConnectorsSection.strings";
 import { C } from "@cashu/i18n/core/common.strings";
-import { CS as LINE } from "@cashu/i18n/core/connectors.strings";
 import { Button, Notice, SectionCard, SettingRow, Skeleton, Tag } from "@cashu/ui";
 import { type ReactNode, useState } from "react";
 import { T } from "../Settings.strings.js";
 import type { SettingsScreenState } from "../useSettingsScreen.js";
 import { ConnectorDrawerView, StatusTag } from "./ConnectorDrawerView.js";
-import { type Connector, kindLabel, moduleLabel, sortConnectors } from "./connectorsModel.js";
+import {
+  type Connector,
+  kindLabel,
+  moduleLabel,
+  rowLine,
+  runsOf,
+  sortConnectors,
+} from "./connectorsModel.js";
 
 const code = "font-mono text-code-ui [font-variant-ligatures:none]";
 
@@ -83,7 +90,11 @@ export function ConnectorsSectionView({
               <StatusTag status={connector.approval} />
             </>
           }
-          detail={connector.kind === "fetch" ? LINE.bindings(bindings(connector)) : undefined}
+          detail={rowLine(
+            connector,
+            runsOf(state.connectorActivity.runs, connector.id)[0],
+            bindings(connector),
+          )}
           action={
             connector.approval === "pending" ? (
               <Button variant="primary" onPress={() => setOpen(connector.id)}>

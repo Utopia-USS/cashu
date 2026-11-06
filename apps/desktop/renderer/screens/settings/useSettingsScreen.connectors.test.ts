@@ -18,6 +18,7 @@ const connector = {
   contentSha256: "a".repeat(64),
   interpreter: "/synthetic/interpreter",
   approval: "approved" as const,
+  approvedAt: null,
   params: [
     { id: "enabled", label: "Enabled", type: "boolean", required: false },
     { id: "days", label: "Days", type: "number", required: true },

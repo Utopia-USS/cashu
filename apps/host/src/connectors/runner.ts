@@ -16,6 +16,7 @@ import { z } from "zod";
 import type { ConnectorCatalog } from "./catalog.js";
 import { ConnectorFault, inside, type LoadedConnector, scanConnector } from "./manifest.js";
 import { ConnectorEgressProxy } from "./proxy.js";
+import { redactStderrTail, STDERR_KEPT } from "./stderr.js";
 
 export const MAX_INPUT = 64 * 1024 * 1024;
 const MAX_STDOUT = 64 * 1024 * 1024;
@@ -36,9 +37,20 @@ export const errorResponse = z.strictObject({
   }),
 });
 export type ConnectorCommand = "detect" | "convert" | "fetch" | "check";
+/** `stderrTail`: the process's redacted stderr tail (`redactStderrTail`), owner view only; absent when the process
+ * did not run or wrote nothing to stderr. */
 export type RunResult =
-  | { readonly outcome: "ok"; readonly response: unknown; readonly documentBytes?: Uint8Array }
-  | { readonly outcome: "refused" | "failed" | "timeout"; readonly errorKind: string };
+  | {
+      readonly outcome: "ok";
+      readonly response: unknown;
+      readonly documentBytes?: Uint8Array;
+      readonly stderrTail?: string | null;
+    }
+  | {
+      readonly outcome: "refused" | "failed" | "timeout";
+      readonly errorKind: string;
+      readonly stderrTail?: string | null;
+    };
 interface FileInput {
   readonly path: string;
   readonly name: string;
@@ -155,7 +167,14 @@ export async function confinedProcess(
   timeoutMs: number,
   deno = false,
   proxyPort?: number,
-): Promise<{ code: number | null; stdout: Buffer; overflow: boolean; timedOut: boolean }> {
+): Promise<{
+  code: number | null;
+  stdout: Buffer;
+  /** The last `STDERR_KEPT` bytes the process wrote to stderr (raw, not yet redacted). */
+  stderr: Buffer;
+  overflow: boolean;
+  timedOut: boolean;
+}> {
   return new Promise((resolveResult) => {
     const child = spawn("/usr/bin/sandbox-exec", ["-p", profile, ...args], {
       cwd,
@@ -212,8 +231,11 @@ export async function confinedProcess(
       } else stdout.push(chunk);
     });
     let stderrBytes = 0;
+    let stderr = Buffer.alloc(0);
     child.stderr.on("data", (chunk: Buffer) => {
       stderrBytes += chunk.length;
+      const joined = Buffer.concat([stderr, chunk]);
+      stderr = joined.subarray(Math.max(0, joined.length - STDERR_KEPT));
       if (stderrBytes > MAX_STDERR) kill();
     });
     child.stdin.on("error", () => {});
@@ -221,12 +243,12 @@ export async function confinedProcess(
     child.on("error", () => {
       clearTimeout(timer);
       kill();
-      resolveResult({ code: null, stdout: Buffer.alloc(0), overflow, timedOut });
+      resolveResult({ code: null, stdout: Buffer.alloc(0), stderr, overflow, timedOut });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
       kill();
-      resolveResult({ code, stdout: Buffer.concat(stdout), overflow, timedOut });
+      resolveResult({ code, stdout: Buffer.concat(stdout), stderr, overflow, timedOut });
     });
   });
 }
@@ -518,9 +540,14 @@ export async function runConnector(options: RunOptions): Promise<RunResult> {
       loaded.manifest.run[0] === "deno",
       proxyPort,
     );
-    if (processResult.timedOut) return { outcome: "timeout", errorKind: "timeout" };
-    if (processResult.overflow) return { outcome: "failed", errorKind: "protocol" };
-    return parseResponse(options.command, processResult.code, processResult.stdout);
+    const tail = redactStderrTail(processResult.stderr, options.secrets);
+    const stderr = tail === null ? {} : { stderrTail: tail };
+    if (processResult.timedOut) return { outcome: "timeout", errorKind: "timeout", ...stderr };
+    if (processResult.overflow) return { outcome: "failed", errorKind: "protocol", ...stderr };
+    return {
+      ...parseResponse(options.command, processResult.code, processResult.stdout),
+      ...stderr,
+    };
   } catch (error) {
     return {
       outcome: error instanceof ConnectorFault ? "refused" : "failed",

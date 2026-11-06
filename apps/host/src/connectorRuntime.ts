@@ -15,6 +15,7 @@ import {
 } from "@cashu/store";
 import { prepareBudgetConnectorImport } from "@cashu/store/budget/proposals";
 import { createProposal, type ExecutionSnapshot, enabledModuleIds } from "@cashu/store/core";
+import { type ConnectorFetchUpdate, connectorFetchState } from "@cashu/store/device";
 import { brokerageAccount, previewImport } from "@cashu/store/investments/queries";
 import {
   type DailyPriceLock,
@@ -29,10 +30,9 @@ import {
   connectorImportCommand,
   currentConnectorBinding,
 } from "./connectorImportCommand.js";
-import { connectorProposalSummary } from "./connectorRuntime.strings.js";
 import { type ConnectorBinding, runBoundFetch } from "./connectors/binding.js";
 import { ConnectorCatalog, resolveInterpreter } from "./connectors/catalog.js";
-import { validateConnectorDocument } from "./connectors/document.js";
+import { documentRecords, validateConnectorDocument } from "./connectors/document.js";
 import { boundConnectorSecrets } from "./connectors/secrets.js";
 import type { ProposalApprovalProvider } from "./proposalsScreen.js";
 import type { HostStores, OpenVault } from "./stores.js";
@@ -230,6 +230,26 @@ const blobRef = z.strictObject({
   ext: z.string().regex(/^[a-z0-9]{1,10}$/),
 });
 
+/** Python `RATE_LIMIT_BACKOFF`: a `rate_limited` answer holds scheduled syncs of the binding for 48 h. */
+export const RATE_LIMIT_BACKOFF_MS = 48 * 60 * 60 * 1000;
+
+/** A finished attempt's fetch state (Python `_finish`, `_backoff`, the commit's `last_ok_at`). */
+export function connectorFetchFinish(
+  outcome: string,
+  errorKind: string | null,
+  committed: boolean,
+  startedAt: string,
+  now: number,
+): ConnectorFetchUpdate {
+  return {
+    lastStatus: outcome,
+    ...(committed ? { lastOkAt: startedAt } : {}),
+    ...(errorKind === "rate_limited"
+      ? { backoffUntil: new Date(now + RATE_LIMIT_BACKOFF_MS).toISOString() }
+      : {}),
+  };
+}
+
 /** Construct only after host admission and HostLock acquisition. */
 export function createConnectorRuntime(input: {
   readonly dataDir: string;
@@ -240,7 +260,6 @@ export function createConnectorRuntime(input: {
   readonly current: (vault: OpenVault) => boolean;
   readonly holder: (vault: OpenVault) => boolean;
   readonly now: () => number;
-  readonly language: (vault: OpenVault) => "pl" | "en";
 }): ConnectorRuntime {
   const catalog = new ConnectorCatalog(input.dataDir);
   const busy = new Set<string>();
@@ -265,9 +284,17 @@ export function createConnectorRuntime(input: {
       }
       busy.add(key);
       const started = input.now();
+      const startedAt = new Date(started).toISOString();
       let outcome = "failed",
         errorKind: string | null = null,
-        bytesOut = 0;
+        bytesOut = 0,
+        records = 0,
+        stderrTail: string | null = null,
+        // A skipped binding ran nothing: no run row, no fetch state (Python records no attempt).
+        recorded = true,
+        // The connector process was about to start: the binding's fetch state follows this run.
+        attempted = false,
+        committed = false;
       try {
         guard();
         const loaded = catalog.installed(row.connector);
@@ -278,12 +305,22 @@ export function createConnectorRuntime(input: {
           !enabledModuleIds(vault.store.read.bind(vault.store)).has(module)
         ) {
           skipped++;
-          outcome = "skipped";
+          recorded = false;
           continue;
         }
         if (pending(vault.store.read.bind(vault.store), row.id)) {
           skipped++;
-          outcome = "skipped";
+          recorded = false;
+          continue;
+        }
+        // Python's scheduled sync skips a binding while a rate-limit backoff holds; an owner's sync still runs.
+        const backoff =
+          selected === undefined
+            ? connectorFetchState(input.device.driver, vault.id, row.id)?.backoffUntil
+            : null;
+        if (backoff && Date.parse(backoff) > input.now()) {
+          skipped++;
+          recorded = false;
           continue;
         }
         const params = paramsOf(row.params);
@@ -349,6 +386,8 @@ export function createConnectorRuntime(input: {
             },
           },
         });
+        attempted = true;
+        input.device.updateConnectorFetch(vault.id, row.id, { lastRunAt: startedAt });
         const fetched = await runBoundFetch({
           catalog,
           binding,
@@ -363,6 +402,7 @@ export function createConnectorRuntime(input: {
           secrets,
           interpreter,
         });
+        stderrTail = fetched.stderrTail ?? null;
         if (fetched.outcome !== "transported") {
           failed++;
           outcome = fetched.outcome;
@@ -370,6 +410,7 @@ export function createConnectorRuntime(input: {
           continue;
         }
         bytesOut = fetched.documentBytes.length;
+        records = documentRecords(module, fetched.documentBytes);
         const validated = validateConnectorDocument(module, fetched.documentBytes);
         if (!validated.ok) {
           failed++;
@@ -432,8 +473,9 @@ export function createConnectorRuntime(input: {
         const priorApproval = approvedEarlier(vault.store.read.bind(vault.store), row.id);
         const decision = connectorDecision(hasNew, priorApproval, row.autoCommit === 1);
         if (decision === "nothing") {
+          // The process ran clean with nothing new: an ok run (Python), counted as skipped by the worker.
           skipped++;
-          outcome = "nothing";
+          outcome = "ok";
           continue;
         }
         const publication = vault.native.blobPublication();
@@ -525,6 +567,7 @@ export function createConnectorRuntime(input: {
           if (auto.kind === "completed") {
             stored++;
             outcome = "ok";
+            committed = true;
             continue;
           }
           if (auto.kind !== "refused" || auto.reason !== "auto_import_not_clean") {
@@ -548,7 +591,26 @@ export function createConnectorRuntime(input: {
                 kind: module === "budget" ? "budget_import" : "import",
                 source: "connector",
                 reason: null,
-                summary: connectorProposalSummary(input.language(vault), loaded.manifest.name),
+                // Python connectors/sync.py: the English line and its values for the app's localized one.
+                ...(module === "budget"
+                  ? {
+                      summary: `Statement import into ${row.label} (connector ${loaded.manifest.name}): ${previewSummary.new} new transactions`,
+                      summaryParams: {
+                        account: row.label,
+                        connector: loaded.manifest.name,
+                        new: previewSummary.new,
+                      },
+                    }
+                  : {
+                      summary: `Import into ${row.label} (connector ${loaded.manifest.name}): ${previewSummary.new} new rows`,
+                      summaryParams: {
+                        account: row.label,
+                        importer: `connector:${row.connector}`,
+                        connector: loaded.manifest.name,
+                        new: previewSummary.new,
+                        duplicates: previewSummary.duplicates,
+                      },
+                    }),
                 payload: {
                   account: row.account,
                   blob: published.blob,
@@ -586,25 +648,32 @@ export function createConnectorRuntime(input: {
       } finally {
         busy.delete(key);
         try {
-          input.device.appendConnectorRun({
-            connectorId: row.connector,
-            vault: vault.id,
-            legacyProfileId: null,
-            bindingId: null,
-            command: "fetch",
-            startedAt: new Date(started).toISOString(),
-            durationMs: Math.max(0, input.now() - started),
-            outcome,
-            errorKind,
-            exitCode: null,
-            records: 0,
-            bytesIn: 0,
-            bytesOut,
-            deniedHostsJson: "[]",
-            stderrTail: null,
-            proposalId: null,
-            batchRef: null,
-          });
+          if (recorded)
+            input.device.appendConnectorRun({
+              connectorId: row.connector,
+              vault: vault.id,
+              legacyProfileId: null,
+              bindingId: null,
+              command: "fetch",
+              startedAt,
+              durationMs: Math.max(0, input.now() - started),
+              outcome,
+              errorKind,
+              exitCode: null,
+              records,
+              bytesIn: 0,
+              bytesOut,
+              deniedHostsJson: "[]",
+              stderrTail,
+              proposalId: null,
+              batchRef: null,
+            });
+          if (attempted)
+            input.device.updateConnectorFetch(
+              vault.id,
+              row.id,
+              connectorFetchFinish(outcome, errorKind, committed, startedAt, input.now()),
+            );
         } catch {
           /* Audit failure is reflected by the worker's failed outcome below. */ failed++;
         }

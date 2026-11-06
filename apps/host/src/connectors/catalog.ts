@@ -40,6 +40,8 @@ export interface InstalledConnectorSummary {
   readonly contentSha256: string;
   readonly interpreter: string | null;
   readonly approval: "approved" | "pending" | "changed" | "disabled";
+  /** When the owner approved it (the approval record), null while pending or unreadable. */
+  readonly approvedAt: string | null;
 }
 
 function privateDirectory(path: string, create = false): { dev: number; ino: number } {
@@ -199,10 +201,13 @@ export class ConnectorCatalog {
         if (!inventoryFault(error)) throw error;
       }
       let approval: InstalledConnectorSummary["approval"] = "pending";
+      let approvedAt: string | null = null;
       if (existsSync(this.approval(entry.name))) {
         approval = "changed";
         try {
-          if (this.readApproval(entry.name).status === "disabled") approval = "disabled";
+          const record = this.readApproval(entry.name);
+          approvedAt = record.approvedAt;
+          if (record.status === "disabled") approval = "disabled";
           else if (interpreter) {
             this.approved(entry.name, interpreter);
             approval = "approved";
@@ -220,6 +225,7 @@ export class ConnectorCatalog {
         contentSha256: loaded.contentSha256,
         interpreter,
         approval,
+        approvedAt,
       });
     }
     return result.sort((a, b) => a.id.localeCompare(b.id));

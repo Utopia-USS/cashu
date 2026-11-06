@@ -47,6 +47,18 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
   const catalog = {
     installed: () => loaded,
     approved: () => loaded,
+    list: () => [
+      {
+        id: "synthetic-fetch",
+        name: "Synthetic",
+        kind: "fetch",
+        module: "budget",
+        contentSha256: loaded.contentSha256,
+        interpreter: "/usr/bin/true",
+        approval: "approved",
+        approvedAt: "2026-11-01T08:00:00.000Z",
+      },
+    ],
   } as unknown as ConnectorRuntime["catalog"];
   const vault = {
     id: vaultId,
@@ -124,6 +136,26 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
     autoCommit: false,
   });
   expect(bound).toMatchObject({ status: "completed", value: { binding: bindingId } });
+  expect(await action.run(stores, vaultId, { op: "list" })).toMatchObject({
+    status: "completed",
+    value: {
+      connectors: [
+        {
+          id: "synthetic-fetch",
+          approvedAt: "2026-11-01T08:00:00.000Z",
+          version: "1",
+          author: null,
+          description: null,
+          run: ["./true"],
+          timeoutS: 60,
+          hosts: ["example.test"],
+          extensions: [],
+          historyDays: 365,
+          secrets: [{ id: "token", label: "Token" }],
+        },
+      ],
+    },
+  });
   expect(
     await action.run(stores, vaultId, {
       op: "setSecret",

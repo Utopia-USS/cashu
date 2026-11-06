@@ -1,6 +1,7 @@
 /** Private local queue. Enqueue after financial append has a documented crash gap (S22c partial). */
 
 import { toStorage } from "@cashu/domain";
+import { ensureConnectorFetchState } from "../../device/connector-runs.js";
 import type { SqlDriver } from "../../sql/driver.js";
 
 export interface QueuedNotification {
@@ -56,11 +57,8 @@ export class NotificationQueue {
       id INTEGER PRIMARY KEY, vault TEXT NOT NULL, signal TEXT NOT NULL,
       severity TEXT NOT NULL, created_at TEXT NOT NULL, sent_at TEXT, channel TEXT,
       UNIQUE(vault, signal, severity)
-    );
-    CREATE TABLE IF NOT EXISTS local_connector_fetch (
-      vault TEXT NOT NULL, binding TEXT NOT NULL, last_run_at TEXT, last_status TEXT,
-      last_ok_at TEXT, backoff_until TEXT, PRIMARY KEY(vault,binding)
     )`);
+    ensureConnectorFetchState(driver);
   }
   /** Exact one-shot history preserves sent and unsent dedup state per fresh vault. */
   restoreHistory(vault: string, rows: readonly ImportedNotification[]): void {

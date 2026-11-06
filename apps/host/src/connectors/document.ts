@@ -37,3 +37,18 @@ export function validateConnectorDocument(
   if (!reportOk(report)) return { ok: false, code: "invalid_document" };
   return { ok: true, module, warnings: report.warnings.length };
 }
+
+/** How many records a document holds: investments `records`, budget `transactions` (Python `document_records`). */
+export function documentRecords(module: "budget" | "investments", bytes: Uint8Array): number {
+  let document: unknown;
+  try {
+    document = JSON.parse(Buffer.from(bytes).toString("utf8"));
+  } catch {
+    return 0;
+  }
+  if (document === null || typeof document !== "object" || Array.isArray(document)) return 0;
+  const items = (document as Record<string, unknown>)[
+    module === "investments" ? "records" : "transactions"
+  ];
+  return Array.isArray(items) ? items.length : 0;
+}

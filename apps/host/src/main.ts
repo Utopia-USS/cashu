@@ -352,7 +352,6 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                   current: context.isCurrent,
                   holder: (vault) => vault.native?.canFetchPublicMarket() === true,
                   now: context.now,
-                  language: () => language(context),
                 });
               }
               let notifier: ReturnType<NonNullable<typeof notifications>["notifier"]> = null;

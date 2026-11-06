@@ -3,12 +3,18 @@
 export { finishMcpCall, startMcpCall } from "./audit.js";
 export {
   appendConnectorRun,
+  type ConnectorFetchState,
+  type ConnectorFetchUpdate,
   type ConnectorRunReadScope,
   type ConnectorRunRecord,
+  connectorFetchState,
+  ensureConnectorFetchState,
   ensureConnectorRunHistory,
+  KEEP_CONNECTOR_RUNS,
   listConnectorRuns,
   type NewConnectorRun,
   restoreConnectorRuns,
+  updateConnectorFetch,
 } from "./connector-runs.js";
 export {
   currentVault,

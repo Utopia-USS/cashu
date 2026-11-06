@@ -140,15 +140,27 @@ export function connectorOwnerAction(input: {
           const snapshot = await vault.queue.run(() => ({
             connectors: catalog.list().map((item) => {
               let params: unknown[] = [],
-                secrets: unknown[] = [];
+                secrets: unknown[] = [],
+                facts: Record<string, unknown> = {};
               try {
-                const loaded = catalog.installed(item.id);
-                params = loaded.manifest.fetch?.params ?? [];
-                secrets = loaded.manifest.fetch?.secrets ?? [];
+                const { manifest } = catalog.installed(item.id);
+                params = manifest.fetch?.params ?? [];
+                secrets = manifest.fetch?.secrets ?? [];
+                // The manifest facts the old drawer showed (ab24ab6 `detail_dict`).
+                facts = {
+                  version: manifest.version,
+                  author: manifest.author ?? null,
+                  description: manifest.description ?? null,
+                  run: manifest.run,
+                  timeoutS: manifest.timeout_s,
+                  hosts: manifest.fetch?.hosts ?? [],
+                  extensions: manifest.file?.extensions ?? [],
+                  historyDays: manifest.fetch?.history_days ?? null,
+                };
               } catch {
                 /* A changed item remains visible by catalog status. */
               }
-              return { ...item, params, secrets };
+              return { ...item, params, secrets, ...facts };
             }),
             accounts: vault.store.read<{ gid: string; name: string; type: string }>(
               "SELECT gid, name, type FROM accounts WHERE removed_at IS NULL ORDER BY name LIMIT 100",

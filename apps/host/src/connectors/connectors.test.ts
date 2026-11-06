@@ -59,6 +59,7 @@ describe("connector approval authority", () => {
         contentSha256: pending.contentSha256,
         interpreter,
         approval: "pending",
+        approvedAt: null,
       },
     ]);
     expect(() =>
@@ -79,6 +80,7 @@ describe("connector approval authority", () => {
       isCurrent: () => true,
     });
     expect(catalog.list()[0]?.approval).toBe("approved");
+    expect(catalog.list()[0]?.approvedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(catalog.approved("sample-file", interpreter).contentSha256).toBe(pending.contentSha256);
     writeFileSync(join(pending.root, "connector.py"), "print('changed')");
     expect(catalog.list()[0]?.approval).toBe("changed");
