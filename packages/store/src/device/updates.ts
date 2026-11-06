@@ -29,7 +29,7 @@ export type UpdateStatus =
 export const updateStatus = defineQuery({
   id: "device.updateStatus",
   scope: "device",
-  run(_read, _args: { readonly poll: number }): UpdateStatus {
+  run(): UpdateStatus {
     return { availability: "unavailable" };
   },
 });

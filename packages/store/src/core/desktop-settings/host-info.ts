@@ -26,7 +26,7 @@ export interface HostSettingsInfo {
 export const hostSettingsInfo = defineQuery({
   id: "device.settings.hostInfo",
   scope: "device",
-  run(_read, _args: { readonly poll: number; readonly privacy: boolean }): HostSettingsInfo {
+  run(_read, _args: { readonly privacy: boolean }): HostSettingsInfo {
     return { availability: "unavailable" };
   },
 });

@@ -18,6 +18,11 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     status: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:service-status"),
     setEnabled: (enabled: boolean): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:service-set-enabled", enabled),
+    onStatus: (handler: (status: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: unknown) => handler(status);
+      electron.ipcRenderer.on("cashu:service-status-changed", listener);
+      return () => electron.ipcRenderer.removeListener("cashu:service-status-changed", listener);
+    },
   });
   electron.contextBridge.exposeInMainWorld("cashuCreation", {
     prepare: (input: unknown): Promise<unknown> =>
@@ -88,6 +93,12 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     status: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:notifications-status"),
     requestPermission: (): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:notifications-request-permission"),
+    onPermission: (handler: (status: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: unknown) => handler(status);
+      electron.ipcRenderer.on("cashu:notifications-permission-changed", listener);
+      return () =>
+        electron.ipcRenderer.removeListener("cashu:notifications-permission-changed", listener);
+    },
     onPending: (handler: () => void) => {
       const listener = () => handler();
       electron.ipcRenderer.on("cashu:notification-pending", listener);

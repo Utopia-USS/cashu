@@ -33,11 +33,17 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { connectorsBridge } from "../../connectorsBridge.js";
 import {
   type NotificationPermissionStatus,
+  onNotificationPermission,
   readNotificationPermission,
   requestNotificationPermission,
 } from "../../notificationBridge.js";
-import { createServiceStatusCoordinator, type DesktopServiceStatus } from "../../serviceBridge.js";
+import {
+  createServiceStatusCoordinator,
+  type DesktopServiceStatus,
+  onServiceStatus,
+} from "../../serviceBridge.js";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
+import { useConnectorActivity } from "./connectors/useConnectorActivity.js";
 import { T } from "./Settings.strings.js";
 
 /** Old core/registry.ts MODULES: the navigation order of the module rows (unknown ids after, in their order). */
@@ -214,27 +220,34 @@ export function useSettingsScreen(
   const current = useQuery(profile);
   const modules = useQuery(modulesQuery);
   const preferences = useQuery(devicePreferences);
-  const [updatePoll, setUpdatePoll] = useState(0);
-  const updater = useQuery(updateStatus, { poll: updatePoll });
+  // Live device queries: main re-pushes the updater status, the host re-pushes its info when the worker
+  // status changes. Nothing on this screen polls.
+  const updater = useQuery(updateStatus);
   const update = useUiAction(updateAction);
   const [since, setSince] = useState(() => new Date(Date.now() - 7 * 86_400_000).toISOString());
   const audit = useQuery(mcpAudit, { vault, since, privacy: ownerIncognito });
-  const [hostPoll, setHostPoll] = useState(0);
-  const hostInfo = useQuery(hostSettingsInfo, { poll: hostPoll, privacy: ownerIncognito });
+  const connectorActivity = useConnectorActivity(vault, ownerIncognito);
+  const hostInfo = useQuery(hostSettingsInfo, { privacy: ownerIncognito });
   const [service, setService] = useState<DesktopServiceStatus>({ state: "unavailable" });
   const [serviceBusy, setServiceBusy] = useState(false);
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermissionStatus>("unavailable");
   const [notificationPermissionBusy, setNotificationPermissionBusy] = useState(false);
   useEffect(() => {
-    let current = true;
+    // The first read, then main's pushes (it re-checks when the window gets focus back).
+    let initial = true;
     void readNotificationPermission().then((status) => {
-      if (current) setNotificationPermission(status);
+      if (initial) setNotificationPermission(status);
+    });
+    const stop = onNotificationPermission((status) => {
+      initial = false;
+      setNotificationPermission(status);
     });
     return () => {
-      current = false;
+      initial = false;
+      stop();
     };
-  }, [hostPoll]);
+  }, []);
   async function onNotificationPermissionRequested(): Promise<void> {
     if (notificationPermissionBusy || notificationPermission !== "pending") return;
     setNotificationPermissionBusy(true);
@@ -246,9 +259,13 @@ export function useSettingsScreen(
   }
   const [serviceFlow] = useState(() => createServiceStatusCoordinator(setService));
   useEffect(() => {
-    void serviceFlow.poll();
-    return () => serviceFlow.invalidate();
-  }, [hostPoll, serviceFlow]);
+    void serviceFlow.load();
+    const stop = onServiceStatus((status) => serviceFlow.pushed(status));
+    return () => {
+      stop();
+      serviceFlow.invalidate();
+    };
+  }, [serviceFlow]);
   async function onServiceEnabled(enabled: boolean): Promise<void> {
     if (serviceFlow.busy || !["off", "enabled", "requires_approval"].includes(service.state))
       return;
@@ -283,10 +300,6 @@ export function useSettingsScreen(
           })),
         }
       : null;
-  useEffect(() => {
-    const timer = setInterval(() => setHostPoll((value) => value + 1), 60_000);
-    return () => clearInterval(timer);
-  }, []);
   const proposals = useQuery(proposalList, { status: "pending", privacy: ownerIncognito });
   const save = useCommand(saveProfile);
   const setEnabled = useCommand(setModules);
@@ -644,7 +657,6 @@ export function useSettingsScreen(
   };
   const checkUpdates = async () => {
     const result = await update.run({ action: "check" });
-    setUpdatePoll((value) => value + 1);
     if (result.status !== "completed" || result.value.kind !== "completed")
       setNotice(result.status === "outcome_unknown" ? T.workspaceUnknown : T.updatesUnavailable);
   };
@@ -702,6 +714,7 @@ export function useSettingsScreen(
     workspace,
     connectorSnapshot,
     connectorVault: vault,
+    connectorActivity,
     connectorBusy,
     connectorAccounts,
     /** The last unclean fetch run of a binding in this vault (old RunError under the binding row). */
@@ -747,7 +760,6 @@ export function useSettingsScreen(
     notificationPermissionBusy,
     onNotificationPermissionRequested,
     worker: workerDisplay,
-    onHostInfoRefreshed: () => setHostPoll((value) => value + 1),
     onDataDirCopied: copyDataDir,
     updater,
     updaterBusy: update.isPending,

@@ -43,7 +43,7 @@ export function useSetupScreen(props: SetupScreenProps) {
   const identity = useQuery(profile);
   const slug = useQuery(profileIdentity)?.slug ?? null;
   // The stable launcher the host reports (Settings > Agent AI reads the same query); hidden while incognito.
-  const host = useQuery(hostSettingsInfo, { poll: 0, privacy: incognito });
+  const host = useQuery(hostSettingsInfo, { privacy: incognito });
   const agent: SetupAgentContext = incognito
     ? { kind: "unavailable", reason: "privacy" }
     : host.availability !== "ready" || !host.launcher || !slug

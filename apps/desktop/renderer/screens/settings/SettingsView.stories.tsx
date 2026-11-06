@@ -86,6 +86,7 @@ function SyntheticSettings({
           ],
         }
       : null,
+    connectorActivity: { runs: [], bindings: [] },
     connectorBusy: false,
     connectorAccounts: () => [
       { gid: "6ad703ab-383d-8c73-82a5-1ee2d6742735", name: "Synthetic checking", type: "checking" },
@@ -195,7 +196,6 @@ function SyntheticSettings({
             },
           ],
         },
-    onHostInfoRefreshed() {},
     service: { state: unavailable ? "unavailable" : approval ? "requires_approval" : "off" },
     serviceNextWakeDay: null,
     serviceNextWakeTime: "",

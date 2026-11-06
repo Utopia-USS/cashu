@@ -23,7 +23,7 @@ export function updateScreen(provider?: UpdateProvider) {
         id: updateStatus.id,
         scope: "device",
         changes: provider.changes,
-        run(_read, _args: { readonly poll: number }): UpdateStatus {
+        run(): UpdateStatus {
           if (!provider.isCurrent()) return { availability: "unavailable" };
           return provider.status();
         },

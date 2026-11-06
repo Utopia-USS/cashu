@@ -1,12 +1,15 @@
 import { type HostSettingsInfo, hostSettingsInfo } from "@cashu/store/core/desktop-settings";
-import { defineQuery } from "@cashu/store/query";
+import { type ChangeSource, defineQuery } from "@cashu/store/query";
 import { launcherPath } from "./launcher.js";
 import type { HostStores } from "./stores.js";
 import type { WorkerStatus } from "./worker/contracts.js";
 
-/** Host-known app build/data location and the actual S40 open-host worker snapshot. */
+/** Host-known app build/data location and the actual S40 open-host worker snapshot, re-run when the
+ * worker reports a changed status (no renderer polling). */
 export function settingsInfoQuery(deps: {
   readonly version: string;
+  /** The worker's status changes (state, last tick, job runs). */
+  readonly changes: ChangeSource;
   dataDir(): string | null;
   worker(): WorkerStatus | null;
   stores(): HostStores | null;
@@ -14,7 +17,8 @@ export function settingsInfoQuery(deps: {
   return defineQuery({
     id: hostSettingsInfo.id,
     scope: "device",
-    run(_read, args: { readonly poll: number; readonly privacy: boolean }): HostSettingsInfo {
+    changes: deps.changes,
+    run(_read, args: { readonly privacy: boolean }): HostSettingsInfo {
       if (args.privacy) return { availability: "unavailable" };
       const dataDir = deps.dataDir();
       const stores = deps.stores();

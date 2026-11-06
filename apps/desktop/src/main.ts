@@ -322,6 +322,8 @@ function visibleServiceStatus(status: ServiceStatus) {
 async function serviceStatus() {
   return visibleServiceStatus(await hostService.status());
 }
+/** Bumped by every registration change, so a re-check that read before it never overwrites it. */
+let serviceRevision = 0;
 ipcMain.handle("cashu:service-status", async (event) => {
   if (!desktop.exposesBridgeTo(fromMainFrame(event))) return { state: "unavailable" };
   return serviceStatus();
@@ -334,18 +336,42 @@ ipcMain.handle("cashu:service-set-enabled", async (event, enabled: unknown) => {
   ) {
     return { state: "unavailable" };
   }
+  serviceRevision++;
   return visibleServiceStatus(await (enabled ? hostService.enable() : hostService.disable()));
 });
 
-ipcMain.handle("cashu:notifications-status", async (event) => {
-  if (!desktop.exposesBridgeTo(fromMainFrame(event))) return "unavailable";
+async function notificationPermission(): Promise<string> {
   if (process.platform === "linux") return "system";
   try {
     return (await loadNativeNotificationCenter()?.permissionStatus()) ?? "unavailable";
   } catch {
     return "unavailable";
   }
+}
+ipcMain.handle("cashu:notifications-status", async (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event))) return "unavailable";
+  return notificationPermission();
 });
+
+// The service registration and the notification permission are OS facts with no change event: the
+// owner changes them in System Settings, outside the app. Main re-checks them when the window gets
+// focus back (the moment such a change can have happened) and pushes them to the page, so the
+// settings screen stays live without a renderer timer.
+async function pushOsStatus(): Promise<void> {
+  const window = mainWindow;
+  if (window === null || window.isDestroyed()) return;
+  if (!desktop.exposesBridgeTo(window.webContents.mainFrame.url)) return;
+  const revision = serviceRevision;
+  const [service, permission] = await Promise.all([
+    serviceStatus().catch(() => ({ state: "error" })),
+    notificationPermission(),
+  ]);
+  if (mainWindow !== window || window.isDestroyed()) return;
+  if (revision === serviceRevision)
+    window.webContents.send("cashu:service-status-changed", service);
+  window.webContents.send("cashu:notifications-permission-changed", permission);
+}
+app.on("browser-window-focus", () => void pushOsStatus());
 ipcMain.handle("cashu:notifications-request-permission", async (event) => {
   if (!desktop.exposesBridgeTo(fromMainFrame(event))) return "unavailable";
   if (process.platform === "linux") return "system";

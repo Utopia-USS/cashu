@@ -92,7 +92,7 @@ const steps: Promise<StepResult>[] = [
   ]),
   run(
     "guards",
-    "raw style literals in apps, PL/EN catalog parity, story coverage, exports maps, React Compiler, TRANSITIONAL markers name live scopes",
+    "raw style literals in apps, PL/EN catalog parity, story coverage, exports maps, React Compiler, renderer live data (no polling / refetch), TRANSITIONAL markers name live scopes",
     join(ROOT_BIN, "vitest"),
     ["run", "--reporter=verbose"],
     join(REPO_ROOT, "tools/arch"),

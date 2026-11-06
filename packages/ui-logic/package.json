@@ -23,7 +23,6 @@
     "./investments/v2/homeLogic": "./src/investments/v2/homeLogic.ts",
     "./investments/v2/logic": "./src/investments/v2/logic.ts",
     "./investments/v2/logic.strings": "./src/investments/v2/logic.strings.ts",
-    "./investments/v2/priceRefreshLogic": "./src/investments/v2/priceRefreshLogic.ts",
     "./investments/v2/research/logic": "./src/investments/v2/research/logic.ts",
     "./investments/v2/research/logic.strings": "./src/investments/v2/research/logic.strings.ts",
     "./investments/v2/research/macro": "./src/investments/v2/research/macro.ts",

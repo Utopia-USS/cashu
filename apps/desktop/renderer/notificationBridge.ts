@@ -8,6 +8,8 @@ interface NotificationBridge {
   onPending(handler: () => void): () => void;
   status(): Promise<unknown>;
   requestPermission(): Promise<unknown>;
+  /** Main pushes the permission it re-checked (window focus); returns the unsubscribe function. */
+  onPermission(handler: (status: unknown) => void): () => void;
 }
 
 export type NotificationPermissionStatus =
@@ -34,6 +36,15 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   } catch {
     return "unavailable";
   }
+}
+
+/** Permission values main pushes after a re-check (no renderer timer asks again). */
+export function onNotificationPermission(
+  handler: (status: NotificationPermissionStatus) => void,
+): () => void {
+  return (
+    window.cashuNotifications?.onPermission((raw) => handler(permissionStatus(raw))) ?? (() => {})
+  );
 }
 
 declare global {

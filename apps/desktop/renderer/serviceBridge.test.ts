@@ -30,19 +30,16 @@ describe("service bridge status", () => {
     expect((await setServiceEnabled(false)).state).toBe("error");
   });
 
-  it("defers polling during a toggle and rejects an older off snapshot", async () => {
+  it("lets a toggle in flight win over an older read and a push from main", async () => {
     let resolveOld!: (status: DesktopServiceStatus) => void;
     let resolveToggle!: (status: DesktopServiceStatus) => void;
     const statuses: DesktopServiceStatus[] = [];
-    const read = vi
-      .fn()
-      .mockImplementationOnce(
-        () =>
-          new Promise<DesktopServiceStatus>((resolve) => {
-            resolveOld = resolve;
-          }),
-      )
-      .mockResolvedValue({ state: "requires_approval" });
+    const read = vi.fn(
+      () =>
+        new Promise<DesktopServiceStatus>((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
     const set = vi.fn(
       () =>
         new Promise<DesktopServiceStatus>((resolve) => {
@@ -50,21 +47,37 @@ describe("service bridge status", () => {
         }),
     );
     const flow = createServiceStatusCoordinator((status) => statuses.push(status), read, set);
-    const oldPoll = flow.poll();
+    const oldLoad = flow.load();
     const toggle = flow.toggle(true);
     expect(flow.busy).toBe(true);
-    await flow.poll();
+    flow.pushed({ state: "off" });
+    await flow.load();
     expect(await flow.toggle(true)).toBeNull();
     resolveOld({ state: "off" });
-    await oldPoll;
+    await oldLoad;
     expect(statuses).toEqual([]);
     resolveToggle({ state: "requires_approval" });
     await toggle;
-    expect(statuses.map((status) => status.state)).toEqual([
-      "requires_approval",
-      "requires_approval",
-    ]);
+    flow.pushed({ state: "enabled" });
+    expect(statuses.map((status) => status.state)).toEqual(["requires_approval", "enabled"]);
     expect(set).toHaveBeenCalledExactlyOnceWith(true);
-    expect(read).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("a push from main supersedes a first read still in flight", async () => {
+    let resolveRead!: (status: DesktopServiceStatus) => void;
+    const statuses: DesktopServiceStatus[] = [];
+    const read = vi.fn(
+      () =>
+        new Promise<DesktopServiceStatus>((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    const flow = createServiceStatusCoordinator((status) => statuses.push(status), read);
+    const load = flow.load();
+    flow.pushed({ state: "enabled" });
+    resolveRead({ state: "requires_approval" });
+    await load;
+    expect(statuses.map((status) => status.state)).toEqual(["enabled"]);
   });
 });

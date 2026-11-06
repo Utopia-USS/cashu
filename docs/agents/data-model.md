@@ -71,7 +71,11 @@ relative to those unless they start with `apps/` or `packages/`).
 14. **Live data.** Every applied event reports the views it touched to the store's change hub
     (`packages/store/src/subscribe.ts`); the host pushes a live query to the window when its encoded
     value changes (`apps/host/src/storeChannel.ts`), and the renderer reads through `useQuery`
-    (`packages/store-react`). Writes go through commands and the host's write queue. Design:
+    (`packages/store-react`). Writes go through commands and the host's write queue. A value that is
+    not in the store (worker status, updater status) is a query with a `changes` source its owner
+    fires (`ChangeSource` in `packages/store/src/query.ts`); OS facts without a change event are
+    re-checked by Electron main and pushed. The renderer never polls, refetches or re-reads on focus
+    (guard `tools/arch/src/guards/liveData.ts`). Design:
     `tools/claude-dev/skills/cashu-ts-architecture/references/data-flow.md`.
 15. **Store schema evolution: events are forever, views are rebuilt.** Stored events never change.
     An optional event field whose absence keeps the old meaning can keep its version; any other change

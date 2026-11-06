@@ -19,6 +19,8 @@ vi.mock("@cashu/store-react", () => ({
         return [];
       case "device.settings.mcpAudit":
         return { calls: [], count7d: 0, hidden: false };
+      case "device.settings.connectorActivity":
+        return { runs: [], bindings: [] };
       case "device.settings.hostInfo":
       case "device.updateStatus":
         return { availability: "unavailable" };
@@ -49,15 +51,18 @@ vi.mock("../useDurableCommand.js", () => ({
   commandFailure: () => "failed",
 }));
 vi.mock("../../notificationBridge.js", () => ({
+  onNotificationPermission: () => () => {},
   readNotificationPermission: async () => "unavailable",
   requestNotificationPermission: async () => "unavailable",
 }));
 vi.mock("../../serviceBridge.js", () => ({
   createServiceStatusCoordinator: () => ({
-    poll: async () => {},
+    load: async () => {},
+    pushed: () => {},
     invalidate: () => {},
     busy: false,
   }),
+  onServiceStatus: () => () => {},
 }));
 
 function Probe({ onState }: { onState: (value: ReturnType<typeof useSettingsScreen>) => void }) {
