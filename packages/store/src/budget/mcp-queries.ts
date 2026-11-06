@@ -51,9 +51,29 @@ export function mcpBudgetFreshness(read: Read): { newest: string | null; count: 
   );
 }
 
-export { setDesktopMerchantCategory } from "./desktop-commands.js";
+export { matchDesktopTransfers, setDesktopMerchantCategory } from "./desktop-commands.js";
 export {
   type BudgetDesktopSources,
   budgetDesktopQueries,
   type UncategorizedMerchant,
 } from "./desktop-queries.js";
+export {
+  batchCategorized,
+  budgetStatementCommit,
+  budgetStatementPreview,
+  commitStatementImport,
+  previewStatement,
+  STATEMENT_ACCOUNT_TYPES,
+  STATEMENT_MAX_BYTES,
+  type StatementCommitDone,
+  type StatementCommitOutcome,
+  type StatementCommitResult,
+  type StatementPreview,
+  type StatementPreviewInput,
+  type StatementPreviewResult,
+  type StatementPreviewRow,
+  type StatementRequest,
+  type StatementWarning,
+  statementPreviewInputSchema,
+  transferPairCount,
+} from "./statement-import.js";

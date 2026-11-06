@@ -23,11 +23,17 @@ import {
   budgetScreenCashflow,
   budgetScreenCurrencies,
   budgetScreenSpending,
+  matchDesktopTransfers,
   setDesktopMerchantCategory,
 } from "@cashu/store/budget/queries";
 import { profile } from "@cashu/store/core";
 import { proposalDetail, proposalList } from "@cashu/store/core/desktop-proposals";
-import { hostSettingsInfo, mcpAudit, saveProfile } from "@cashu/store/core/desktop-settings";
+import {
+  connectorActivity,
+  hostSettingsInfo,
+  mcpAudit,
+  saveProfile,
+} from "@cashu/store/core/desktop-settings";
 import {
   currentVault,
   type DeviceCommand,
@@ -52,6 +58,7 @@ import {
   classifyUiInstrument,
   createUiBrokerageAccount,
   investmentDesktopQueries,
+  investmentsRunning,
   uiThesisCommands,
   updateUiWatchNote,
 } from "@cashu/store/investments/screen";
@@ -92,6 +99,7 @@ export function servedQueries(
     };
     readonly updateQuery?: typeof updateStatus;
     readonly settingsInfoQuery?: typeof hostSettingsInfo;
+    readonly runningQuery?: typeof investmentsRunning;
   } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
   return [
@@ -99,7 +107,9 @@ export function servedQueries(
     devicePreferences,
     env.settingsInfoQuery ?? hostSettingsInfo,
     env.updateQuery ?? updateStatus,
+    env.runningQuery ?? investmentsRunning,
     mcpAudit,
+    connectorActivity,
     profile,
     proposalList,
     env.proposalImages ? proposalDetailWithImages(env.proposalImages) : proposalDetail,
@@ -150,6 +160,7 @@ const SERVED_COMMANDS: readonly AnyCommand[] = [
   createUiLoan,
   setUiLoanPayment,
   setDesktopMerchantCategory,
+  matchDesktopTransfers,
   setTransactionCategory,
   addCashExpense,
   deleteCashTransaction,

@@ -1,7 +1,8 @@
 // The budget first steps route body: the hook, the view, and the drawers it opens (the statement import at its
 // source step, E's categories drawer).
 import type { IsoDate } from "@cashu/domain";
-import { ToastProvider } from "@cashu/ui";
+import { S } from "@cashu/i18n/budget/Start.strings";
+import { ToastProvider, useToast } from "@cashu/ui";
 import { useBankingStatus } from "../actions/useBankingStatus.js";
 import { CategoriesDrawer } from "../expenses/CategoriesDrawer.js";
 import { StatementImportView } from "../import/StatementImportView.js";
@@ -18,8 +19,14 @@ export interface BudgetStartScreenProps {
   onAgentSettings(): void;
 }
 
-function ImportDrawer(props: { slug: string; onClose(): void; onGuide(): void }) {
+function ImportDrawer(props: {
+  slug: string;
+  onClose(): void;
+  onGuide(): void;
+  onExpenses(): void;
+}) {
   const banking = useBankingStatus();
+  const toast = useToast();
   const state = useStatementImport({
     slug: props.slug,
     initialStep: 0,
@@ -27,6 +34,8 @@ function ImportDrawer(props: { slug: string; onClose(): void; onGuide(): void })
     onClose: props.onClose,
     onInstructions: props.onGuide,
     onCopy: (text) => void navigator.clipboard.writeText(text),
+    onDone: (inserted) => toast(S.importedN(inserted), 3500),
+    onExpenses: props.onExpenses,
   });
   return <StatementImportView state={state} />;
 }
@@ -36,7 +45,12 @@ function Body(props: BudgetStartScreenProps) {
   return (
     <BudgetStartView state={state} onGuide={props.onGuide} onAgentSettings={props.onAgentSettings}>
       {state.drawer === "import" && (
-        <ImportDrawer slug={props.slug} onClose={state.closeDrawer} onGuide={props.onGuide} />
+        <ImportDrawer
+          slug={props.slug}
+          onClose={state.closeDrawer}
+          onGuide={props.onGuide}
+          onExpenses={props.onExpenses}
+        />
       )}
       {state.drawer === "categories" && (
         <CategoriesDrawer currency={state.currency} onClose={() => state.closeDrawer()} />

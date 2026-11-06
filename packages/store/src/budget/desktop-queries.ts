@@ -106,6 +106,30 @@ export function budgetDesktopQueries(sources: BudgetDesktopSources = {}) {
         };
       },
     }),
+    /** The statement import's `Konto` select (Python GET /accounts filtered to bank accounts). */
+    statementAccounts: defineQuery({
+      id: "budget.desktopStatementAccounts",
+      run(read, args: { lang: "pl" | "en" }) {
+        const institutions = (sources.registry ?? core.builtinRegistry()).institutions;
+        return read<{
+          gid: string;
+          bank: string;
+          name: string;
+          iban: string | null;
+          currency: string;
+        }>(
+          `SELECT gid, bank, name, iban, currency FROM accounts
+           WHERE removed_at IS NULL AND bank != 'manual' AND type IN ('checking', 'savings', 'credit')
+           ORDER BY id`,
+        ).map((a) => ({
+          gid: a.gid,
+          bankName: institutions.displayName(a.bank, args.lang),
+          name: a.name,
+          ibanTail: (a.iban ?? "").slice(-4) || null,
+          currency: a.currency,
+        }));
+      },
+    }),
     monthClose: defineQuery({
       id: "budget.desktopMonthClose",
       run(read, args: { today: IsoDate; month: string | null; lang: "pl" | "en" }) {

@@ -1,11 +1,16 @@
 // The statement import drawer (ab24ab6 modules/budget/ImportDrawer.tsx) on the shared ImportDrawer: the source
-// radios with the Open Banking command or notice, the file step's fields. Pure: state from useStatementImport.
+// radios with the Open Banking command or notice, the file step's fields, the preview (account, counts, rows) and
+// the done block. Pure: state from useStatementImport.
 import { S } from "@cashu/i18n/budget/ImportDrawer.strings";
 import {
   Button,
   CodeLine,
+  ImportCounts,
+  ImportDone,
   ImportDrawer,
+  ImportTable,
   importHintCls,
+  importTable,
   Notice,
   RadioList,
   Select,
@@ -19,9 +24,13 @@ const field = "mb-3 grid gap-1";
 const fieldLabel = "text-xs text-fg-muted";
 const fileInput =
   "w-full rounded-control border border-border bg-chip px-2.25 py-1.5 text-sm text-fg focus:border-accent focus:outline-none";
+const td = importTable.td();
+const num = importTable.td(true);
+const tones = { positive: "text-positive", negative: "text-negative" } as const;
 
 export function StatementImportView({ state }: { state: StatementImportState }) {
   const f = state.footer;
+  const p = state.preview;
   const footer =
     f.kind === "openBanking" ? (
       <>
@@ -36,7 +45,7 @@ export function StatementImportView({ state }: { state: StatementImportState }) 
           {f.next}
         </Button>
       </>
-    ) : (
+    ) : f.kind === "file" ? (
       <>
         <Button onPress={state.onBack}>{f.back}</Button>
         <span className="flex-1" />
@@ -44,13 +53,38 @@ export function StatementImportView({ state }: { state: StatementImportState }) 
           {f.run}
         </Button>
       </>
+    ) : f.kind === "preview" ? (
+      <>
+        <Button onPress={state.onBackToFile}>{f.back}</Button>
+        <span className="flex-1" />
+        <Button variant="primary" disabled={f.commitDisabled} onPress={state.onCommit}>
+          {f.commit}
+        </Button>
+      </>
+    ) : (
+      <>
+        <span className="flex-1" />
+        <Button onPress={state.onClose}>{f.close}</Button>
+      </>
     );
   return (
     <ImportDrawer
       title={state.title}
+      tag={state.tag}
       steps={state.steps}
       step={state.step}
-      error={state.error}
+      error={
+        state.error && (
+          <>
+            {state.error}
+            {state.errorDetail && (
+              <div className={`${importHintCls} mt-0.5 whitespace-pre-line`}>
+                {state.errorDetail}
+              </div>
+            )}
+          </>
+        )
+      }
       footer={footer}
       onClose={state.onClose}
     >
@@ -105,7 +139,7 @@ export function StatementImportView({ state }: { state: StatementImportState }) 
               accept=".csv,.json,text/csv,application/json"
               data-autofocus
               className={fileInput}
-              onChange={(e) => state.onFile(e.target.files?.[0]?.name ?? null)}
+              onChange={(e) => state.onFile(e.target.files?.[0] ?? null)}
             />
             <span className={importHintCls}>{S.fileStays}</span>
           </div>
@@ -118,7 +152,7 @@ export function StatementImportView({ state }: { state: StatementImportState }) 
               className="mb-3"
             />
           )}
-          {state.accounts.length > 0 && (
+          {state.hasAccounts && (
             <div className={field}>
               <Select
                 label={S.account}
@@ -150,6 +184,98 @@ export function StatementImportView({ state }: { state: StatementImportState }) 
             </div>
           )}
         </>
+      )}
+      {state.step === 2 && p && (
+        <>
+          <div className="mb-2.5 text-xs-plus text-fg-muted">
+            <code>{p.fileName}</code>
+            {p.meta}
+            <Button variant="link" size="md" onPress={state.onChange}>
+              {S.change}
+            </Button>
+          </div>
+          <div className="mb-2.5 text-sm">
+            {S.accountPrefix}
+            <b>{p.account}</b>{" "}
+            {p.accountTag.tone ? (
+              <Tag tone={p.accountTag.tone}>{p.accountTag.text}</Tag>
+            ) : (
+              <Tag>{p.accountTag.text}</Tag>
+            )}
+          </div>
+          {p.before && <Notice tone="warning">{p.before}</Notice>}
+          {p.warnings.length > 0 && (
+            <Notice tone="warning">
+              <ul className="m-0 pl-4.5">
+                {p.warnings.map((w, index) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: warnings have no ids.
+                  <li key={index}>{w}</li>
+                ))}
+              </ul>
+            </Notice>
+          )}
+          <ImportCounts
+            fresh={p.counts.fresh}
+            duplicates={p.counts.duplicates}
+            duplicatesTitle={p.counts.duplicatesTitle}
+            skipped={p.counts.skipped}
+            skippedTitle={S.skippedTitle}
+            filter={{ label: S.onlyNew, on: p.onlyNew, onChange: p.onOnlyNew }}
+          />
+          {p.allInDb && <Notice tone="info">{S.allInDb}</Notice>}
+          <ImportTable
+            columns={[
+              { key: "date", label: S.colDate },
+              { key: "title", label: S.colTitle },
+              { key: "counterparty", label: S.colCounterparty },
+              { key: "amount", label: S.colAmount, num: true },
+              { key: "status", label: S.colStatus },
+            ]}
+            more={
+              p.more
+                ? {
+                    text: p.more,
+                    action: (
+                      <Button variant="link" size="sm" onPress={p.onAll}>
+                        {S.showAll}
+                      </Button>
+                    ),
+                  }
+                : null
+            }
+            empty={p.empty}
+          >
+            {p.rows.map((r) => (
+              <tr key={r.key} className={r.duplicate ? "text-fg-muted" : undefined}>
+                <td className={td}>{r.date}</td>
+                <td className={td}>{r.title ?? <span className="text-fg-muted">-</span>}</td>
+                <td className={r.counterparty ? td : `${td} text-fg-muted`}>
+                  {r.counterparty ?? "-"}
+                </td>
+                <td className={`${num} ${r.tone ? tones[r.tone] : ""}`}>{r.amount}</td>
+                <td className={td}>
+                  {r.duplicate ? <Tag>{S.duplicate}</Tag> : <Tag tone="positive">{S.new}</Tag>}
+                </td>
+              </tr>
+            ))}
+          </ImportTable>
+        </>
+      )}
+      {state.step === 3 && state.done && (
+        <ImportDone
+          title={state.done.title}
+          line={state.done.line}
+          actions={
+            <>
+              <Button onPress={state.onAgain}>{S.importAnother}</Button>
+              {state.done.expenses && (
+                <Button variant="primary" onPress={state.onExpenses}>
+                  {S.expensesLink}
+                </Button>
+              )}
+            </>
+          }
+        />
       )}
     </ImportDrawer>
   );

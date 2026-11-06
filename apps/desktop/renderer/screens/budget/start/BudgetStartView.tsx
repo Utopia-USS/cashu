@@ -40,6 +40,7 @@ export function BudgetStartView({
                 <Button
                   key={action.label}
                   variant={action.primary ? "primary" : "secondary"}
+                  disabled={action.disabled}
                   onPress={action.onPress}
                 >
                   {action.label}

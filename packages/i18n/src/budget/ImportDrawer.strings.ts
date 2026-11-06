@@ -43,6 +43,8 @@ export const S = catalog({
   fileStays: { pl: "Plik zostaje na tym komputerze.", en: "The file stays on this computer." },
   connector: { pl: "Konektor", en: "Connector" },
   bank: { pl: "Bank", en: "Bank" },
+  /** The cashU format in the `Bank` select (Python `imports.format_name`). */
+  formatName: { pl: "Format cashU", en: "cashU format" },
   account: { pl: "Konto", en: "Account" },
   accountAuto: { pl: "z pliku albo nowe konto", en: "from the file or a new account" },
   accountHint: {

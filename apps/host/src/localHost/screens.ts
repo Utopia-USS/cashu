@@ -8,7 +8,9 @@ import type { NotificationQueue } from "@cashu/store/investments/local";
 import { PerformanceService } from "@cashu/store/investments/performance";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
 import type { Read } from "@cashu/store/query";
+import { budgetStatementActions } from "../budgetScreen.js";
 import { currentStrategyImages } from "../investmentScreenSources.js";
+import type { investmentsRunningQuery } from "../investmentsRunning.js";
 import { investmentImportActions } from "../investmentsScreen.js";
 import type { ProductionMarket } from "../market/production.js";
 import { nativeStrategyDocuments } from "../nativeStrategyDocuments.js";
@@ -33,6 +35,7 @@ const PRIVATE_UNLESS_PRIVACY = new Set([
   "core.desktopProposals.list",
   "device.settings.hostInfo",
   "device.settings.mcpAudit",
+  "device.settings.connectorActivity",
 ]);
 const STRATEGIES_SCREEN = "investments.strategies.screen";
 
@@ -76,6 +79,7 @@ export function createScreenSurfaces(input: {
   const updates = updateScreen(options.updates);
   const clock = signalsScreenClock(now);
   const performance = new PerformanceService();
+  const budgetStatements = budgetStatementActions({ now });
   const imports =
     options.investmentImports === undefined
       ? null
@@ -157,6 +161,7 @@ export function createScreenSurfaces(input: {
       readonly prices: market.PriceCache | null;
       readonly sources: InvestmentSources;
       readonly settingsInfo: ReturnType<typeof settingsInfoQuery>;
+      readonly running?: ReturnType<typeof investmentsRunningQuery>;
     }) {
       const { market: marketRuntime, sources } = served;
       return servedQueries({
@@ -177,6 +182,7 @@ export function createScreenSurfaces(input: {
         proposalImages: { changes: images.source.changes, image: images.image },
         updateQuery: updates.query,
         settingsInfoQuery: served.settingsInfo,
+        ...(served.running === undefined ? {} : { runningQuery: served.running }),
         signals: { strategy: sources.strategy, market: sources.market, clock },
         research: {
           ...options.research,
@@ -238,6 +244,7 @@ export function createScreenSurfaces(input: {
             ...(options.signals === undefined ? [] : signalActions),
             ...(imports?.actions ?? []),
             ...(strategyManager?.actions ?? []),
+            ...budgetStatements.actions,
           ]
         : [
             proposals,
@@ -247,11 +254,13 @@ export function createScreenSurfaces(input: {
             ...signalActions,
             ...(imports?.actions ?? []),
             ...(strategyManager?.actions ?? []),
+            ...budgetStatements.actions,
           ];
     },
     prepareQuery,
     privateQuery,
     close() {
+      budgetStatements.close();
       imports?.close();
       strategyManager?.close();
       images.close();

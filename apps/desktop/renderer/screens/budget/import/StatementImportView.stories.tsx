@@ -6,7 +6,9 @@ const state = {
   title: "Statement import",
   steps: ["Source", "File", "Preview", "Done"],
   step: 0,
+  tag: null,
   error: null,
+  errorDetail: null,
   onClose: noop,
   sources: [{ value: "csv", title: "Bank CSV file", desc: "Synthetic" }],
   source: "csv",
@@ -21,7 +23,7 @@ const state = {
   bank: "auto",
   bankOptions: [{ value: "auto", label: "Automatic" }],
   onBank: noop,
-  accounts: [],
+  hasAccounts: false,
   accountId: "",
   accountOptions: [],
   onAccount: noop,
@@ -35,6 +37,8 @@ const state = {
   onBack: noop,
   onInstructions: noop,
   onPreview: noop,
+  preview: null,
+  done: null,
 } as unknown as StatementImportState;
 
 export default {

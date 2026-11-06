@@ -35,6 +35,7 @@ function StatementImport(props: {
   onClose(): void;
   onInstructions(): void;
 }) {
+  const toast = useToast();
   const state = useStatementImport({
     slug: props.slug,
     initialStep: 1,
@@ -43,6 +44,7 @@ function StatementImport(props: {
     onClose: props.onClose,
     onInstructions: props.onInstructions,
     onCopy: (text) => void navigator.clipboard.writeText(text),
+    onDone: (inserted) => toast(S.importedN(inserted), 3500),
   });
   return <StatementImportView state={state} />;
 }
