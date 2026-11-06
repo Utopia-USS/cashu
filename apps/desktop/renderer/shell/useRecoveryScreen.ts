@@ -1,13 +1,15 @@
 // Screen hook of the start-up recovery screen: the prompt preview in the UI language, the actions
 // over the main-process bridge, and "Import my data" (progress from main, the one-time recovery
-// words). Works without the host (it never touches the store). The words live only in this state
-// while they are shown and are cleared the moment the user continues or cancels.
+// words, the instruments a finished import cannot value). Works without the host (it never touches
+// the store). The words live only in this state while they are shown and are cleared the moment the
+// user continues or cancels.
 import {
   buildRecoveryPrompt,
   MIGRATE_STAGES,
   type MigrateStage,
   type StartupFailureCode,
   type StartupFailureReport,
+  type UnpricedInstrument,
 } from "@cashu/host-protocol/startup-failure";
 import { lang } from "@cashu/i18n";
 import { useEffect, useState } from "react";
@@ -60,7 +62,8 @@ type ImportState =
       readonly stage: MigrateStage | null;
       readonly words: string;
       readonly confirmed: boolean;
-    };
+    }
+  | { readonly phase: "done"; readonly unpriced: readonly UnpricedInstrument[] };
 
 const IDLE: ImportState = { phase: "idle", notice: null };
 
@@ -87,12 +90,13 @@ export function useRecoveryScreen(
             words: event.words,
             confirmed: false,
           }));
+        else if (event.kind === "done") setImported({ phase: "done", unpriced: event.unpriced });
         else setImported({ phase: "idle", notice: "cancelled" });
       }),
     [bridge],
   );
 
-  const importing = imported.phase !== "idle";
+  const importing = imported.phase !== "idle" && imported.phase !== "done";
   const run = async (action: () => Promise<RecoveryNotice | null>) => {
     if (busy) return;
     setBusy(true);
@@ -124,6 +128,7 @@ export function useRecoveryScreen(
       words: imported.phase === "words" ? imported.words : null,
       wordsConfirmed: imported.phase === "words" && imported.confirmed,
       notice: imported.phase === "idle" ? imported.notice : null,
+      unpriced: imported.phase === "done" ? imported.unpriced : [],
     },
     onImport: () => {
       if (kind === null || importing || bridge === null) return;

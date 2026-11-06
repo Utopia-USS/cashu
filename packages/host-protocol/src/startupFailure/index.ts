@@ -32,6 +32,8 @@ export {
   MIGRATE_CANCEL,
   MIGRATE_CONFIRM,
   MIGRATE_STAGES,
+  MIGRATE_UNPRICED_LABEL_MAX,
+  MIGRATE_UNPRICED_MAX,
   type MigrateDone,
   type MigrateFailed,
   type MigrateLine,
@@ -45,6 +47,8 @@ export {
   RECOVERY_WORDS,
   type RecoveryImportEvent,
   recoveryImportEventSchema,
+  type UnpricedInstrument,
+  unpricedInstrumentSchema,
 } from "./migrateProtocol.js";
 export { buildRecoveryPrompt, MIGRATION_RUNBOOK, recoveryCommands } from "./prompt.js";
 export { PROMPT, type PromptLang } from "./prompt.strings.js";

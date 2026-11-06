@@ -47,6 +47,7 @@ const idle: ImportView = {
   words: null,
   wordsConfirmed: false,
   notice: null,
+  unpriced: [],
 };
 
 const imp = (overrides: Partial<ImportView>): ImportView => ({ ...idle, ...overrides });

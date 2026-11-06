@@ -1,12 +1,17 @@
 // Texts of the start-up recovery screen (T54): what happened in plain words, why the data is safe,
 // "Import my data" with its progress and one-time recovery words, and the other actions. The failure
 // codes and commands themselves stay as they are (the agent prompt quotes them).
-import type { MigrateStage, StartupFailureCode } from "@cashu/host-protocol/startup-failure";
+import type {
+  MigrateStage,
+  StartupFailureCode,
+  UnpricedInstrument,
+} from "@cashu/host-protocol/startup-failure";
 import { catalog } from "@cashu/i18n";
 
 /** The codes and import stages the screen explains (the View takes these, not protocol types). */
 export type RecoveryCode = StartupFailureCode;
 export type RecoveryStage = MigrateStage;
+export type RecoveryUnpriced = UnpricedInstrument;
 
 const WHAT_PL: Record<StartupFailureCode, string> = {
   python_data_present:
@@ -131,6 +136,18 @@ export const S = catalog({
     pl: "Import anulowano; niczego nie utworzono.",
     en: "The import was cancelled; nothing was created.",
   },
+  importDone: { pl: "Import zakończony.", en: "The import finished." },
+  unpricedHint: {
+    pl: "Uwaga: aplikacja nie wyceni tych instrumentów (wartość 0 zł, dopóki nie będzie notowań):",
+    en: "Warning: the app cannot value these instruments (0 until it has prices):",
+  },
+  unpricedItem: {
+    pl: (i: UnpricedInstrument) =>
+      `${i.label} (${i.currency}): ${i.reason === "no_fx" ? `brak kursu PLN/${i.currency}` : "brak notowań"}`,
+    en: (i: UnpricedInstrument) =>
+      `${i.label} (${i.currency}): ${i.reason === "no_fx" ? `no PLN/${i.currency} rate` : "no prices"}`,
+  },
+  openApp: { pl: "Otwórz cashU", en: "Open cashU" },
   stageLabel: {
     pl: (stage: MigrateStage) => STAGE_PL[stage],
     en: (stage: MigrateStage) => STAGE_EN[stage],

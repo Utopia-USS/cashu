@@ -66,7 +66,7 @@ export function unpricedInstruments(device: SqlDriver, source: SqlDriver): Unpri
           : null;
     if (reason !== null)
       found.set(instrumentId, {
-        label: row.symbol ?? row.isin ?? row.name,
+        label: row.symbol || row.isin || row.name,
         currency,
         reason,
       });

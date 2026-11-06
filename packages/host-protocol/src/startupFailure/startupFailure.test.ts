@@ -4,6 +4,8 @@ import {
   classifyStartupError,
   commandPrefix,
   failureDetail,
+  MIGRATE_UNPRICED_LABEL_MAX,
+  MIGRATE_UNPRICED_MAX,
   MIGRATION_RUNBOOK,
   parseMigrateLine,
   parseStartupFailureRecord,
@@ -427,6 +429,14 @@ describe("migrate child protocol", () => {
     expect(parseMigrateLine('{"event":"done","status":"already_migrated"}')).toMatchObject({
       status: "already_migrated",
     });
+    const unpriced = Array.from({ length: MIGRATE_UNPRICED_MAX }, (_, index) => ({
+      label: `${"X".repeat(MIGRATE_UNPRICED_LABEL_MAX - 4)}${String(index).padStart(4, "0")}`,
+      currency: "EUR",
+      reason: index % 2 === 0 ? "no_prices" : "no_fx",
+    }));
+    expect(
+      parseMigrateLine(JSON.stringify({ event: "done", status: "verified", unpriced })),
+    ).toEqual({ event: "done", status: "verified", unpriced });
     expect(
       parseMigrateLine(
         '{"event":"failed","code":"migrate_import_failed","detail":"source_changed"}',
@@ -445,9 +455,22 @@ describe("migrate child protocol", () => {
       JSON.stringify({ event: "recovery-words", words: `${words}  extra` }),
       '{"event":"done","status":"migrated","backupDir":"../elsewhere"}',
       '{"event":"done","status":"migrated","profiles":-1}',
+      '{"event":"done","status":"migrated","unpriced":[{"label":"","currency":"EUR","reason":"no_fx"}]}',
+      '{"event":"done","status":"migrated","unpriced":[{"label":"SEUR","currency":"eur","reason":"no_fx"}]}',
+      '{"event":"done","status":"migrated","unpriced":[{"label":"SEUR","currency":"EUR","reason":"late"}]}',
+      `{"event":"done","status":"migrated","unpriced":[{"label":"${"X".repeat(MIGRATE_UNPRICED_LABEL_MAX + 1)}","currency":"EUR","reason":"no_fx"}]}`,
+      JSON.stringify({
+        event: "done",
+        status: "migrated",
+        unpriced: Array.from({ length: MIGRATE_UNPRICED_MAX + 1 }, () => ({
+          label: "SEUR",
+          currency: "EUR",
+          reason: "no_fx",
+        })),
+      }),
       `{"event":"failed","code":"unknown","detail":"${SECRETS.iban}"}`,
       '{"event":"failed","code":"not_a_code"}',
-      JSON.stringify({ event: "progress", stage: "copy", pad: "x".repeat(5000) }),
+      JSON.stringify({ event: "progress", stage: "copy", pad: "x".repeat(40_000) }),
     ])
       expect(parseMigrateLine(line)).toBeNull();
   });

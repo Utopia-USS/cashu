@@ -71,6 +71,7 @@ describe("runMigration", () => {
       financialRows: 120,
       vaults: 2,
       backupDir: "python-backup-20261104T093000Z",
+      unpriced: [{ label: "SEUR", currency: "EUR", reason: "no_fx" }],
     });
     child.exit(0);
     const result = await outcome;
@@ -84,6 +85,7 @@ describe("runMigration", () => {
         financialRows: 120,
         vaults: 2,
         backupDir: "python-backup-20261104T093000Z",
+        unpriced: [{ label: "SEUR", currency: "EUR", reason: "no_fx" }],
       },
     });
     expect(stages).toEqual(["preflight", "copy", "import", "verify", "cutover"]);

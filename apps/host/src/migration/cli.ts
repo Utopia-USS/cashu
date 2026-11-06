@@ -24,6 +24,8 @@ import {
   buildRecoveryPrompt,
   classifyStartupError,
   homeRelativePath,
+  MIGRATE_UNPRICED_LABEL_MAX,
+  MIGRATE_UNPRICED_MAX,
   type MigrateLine,
   migrateLineSchema,
   type PromptLang,
@@ -32,6 +34,7 @@ import {
   StartupFailureError,
   startupFailure,
   startupFailureReport,
+  type UnpricedInstrument,
 } from "@cashu/host-protocol/startup-failure";
 import { createBackendI18n, createTranslator, type Translator } from "@cashu/i18n";
 import {
@@ -45,8 +48,8 @@ import {
 import {
   completedMigration,
   type InPlaceKeychain,
-  interruptedMigration,
   type InPlaceResult,
+  interruptedMigration,
   type MigrationMarker,
   migrateInPlace,
   readMigrationMarker,
@@ -311,41 +314,58 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
     return 0;
   }
   const backup = homeRelativePath(join(args.dataDir, marker.backupDir), home);
+  // After a finished cutover a failing check must not turn the import into a reported failure
+  // (non-strict: the verify that the hint asks for runs it strictly).
+  const unpriced = result.status === "migrated" ? unpricedOf(args.dataDir, marker.backupDir) : null;
   if (args.json) {
     emit(io, {
       event: "done",
       status: result.status,
       ...countsOf(marker),
       backupDir: marker.backupDir,
+      ...protocolUnpriced(unpriced),
     });
     return 0;
   }
   io.stdout(t.tr(M.migrated)(countsOf(marker), backup));
-  printUnpriced(io, t, args.dataDir, marker.backupDir, false);
+  printUnpriced(io, t, unpriced);
   io.stdout(t.tr(M.verifyHint));
   return 0;
 }
 
 /**
- * Names every imported instrument the app cannot price (human mode), instead of a silent 0. After a
- * finished cutover a failing check must not turn the import into a reported failure (`strict`
- * false: the verify that the hint asks for runs it strictly).
+ * Every imported instrument the app cannot price, instead of a silent 0. Strict: a failing check
+ * throws; otherwise it gives null (not checked).
  */
-function printUnpriced(
-  io: MigrateIo,
-  t: Translator,
+function unpricedOf(
   dataDir: string,
   backupDir: string,
-  strict: boolean,
-): void {
-  let unpriced: readonly UnpricedLine[];
+  strict = false,
+): readonly UnpricedLine[] | null {
   try {
-    unpriced = unpricedAfterMigration(dataDir, backupDir);
+    return unpricedAfterMigration(dataDir, backupDir);
   } catch (error) {
     if (strict) throw error;
-    return;
+    return null;
   }
-  if (unpriced.length > 0) io.stdout(t.tr(M.unpriced)(unpriced));
+}
+
+function printUnpriced(io: MigrateIo, t: Translator, unpriced: readonly UnpricedLine[] | null) {
+  if (unpriced !== null && unpriced.length > 0) io.stdout(t.tr(M.unpriced)(unpriced));
+}
+
+/** The `unpriced` field of a protocol `done` line (absent when not checked), within its limits. */
+function protocolUnpriced(unpriced: readonly UnpricedLine[] | null): {
+  unpriced?: UnpricedInstrument[];
+} {
+  if (unpriced === null) return {};
+  return {
+    unpriced: unpriced.slice(0, MIGRATE_UNPRICED_MAX).map((item) => ({
+      label: item.label.trim().slice(0, MIGRATE_UNPRICED_LABEL_MAX) || item.currency,
+      currency: item.currency,
+      reason: item.reason,
+    })),
+  };
 }
 
 function printAlreadyMigrated(
@@ -401,11 +421,18 @@ async function runVerify(io: MigrateIo, args: Args, t: Translator, home: string)
   };
   if (JSON.stringify(counts) !== JSON.stringify(countsOf(marker)))
     throw new Error("replay_mismatch");
+  const unpriced = unpricedOf(args.dataDir, marker.backupDir, true);
   if (args.json)
-    emit(io, { event: "done", status: "verified", ...counts, backupDir: marker.backupDir });
+    emit(io, {
+      event: "done",
+      status: "verified",
+      ...counts,
+      backupDir: marker.backupDir,
+      ...protocolUnpriced(unpriced),
+    });
   else {
     io.stdout(t.tr(M.verified)(counts, homeRelativePath(backup, home)));
-    printUnpriced(io, t, args.dataDir, marker.backupDir, true);
+    printUnpriced(io, t, unpriced);
   }
   return 0;
 }

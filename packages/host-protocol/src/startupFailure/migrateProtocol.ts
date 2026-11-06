@@ -4,6 +4,8 @@
 //   {"event":"recovery-words","words":"<12-24 lowercase words>"}   the child then reads one stdin
 //                                                                 line: "confirm" or "cancel"
 //   {"event":"done","status":"migrated"|"already_migrated",...}   last line, exit 0
+//     (migrated / verified also carry `unpriced`: the imported instruments the app cannot value yet,
+//     public tickers / ISINs / instrument names only; absent when that check could not run)
 // `migrate verify --data-dir <dir> --json` prints one final line: done with status "verified" (exit
 // 0) or failed (exit 1); it never asks for words.
 //   {"event":"failed","code":"<StartupFailureCode>","detail":"..."} last line, exit 1
@@ -29,6 +31,25 @@ export const RECOVERY_WORDS = /^[a-z]{1,16}(?: [a-z]{1,16}){11,23}$/;
 
 const count = z.number().int().min(0).max(1_000_000_000);
 
+/** Most unpriced instruments one `done` line names (the child sends at most this many). */
+export const MIGRATE_UNPRICED_MAX = 200;
+/** Longest instrument label on the protocol (the child shortens longer names). */
+export const MIGRATE_UNPRICED_LABEL_MAX = 64;
+/** Longest protocol line: a full unpriced list fits with room to spare. */
+const MIGRATE_LINE_MAX = 32_768;
+
+/**
+ * An imported instrument the app cannot value: its ticker, else ISIN, else name (public market
+ * identifiers), its currency, and why (`no_prices`: no readable price history; `no_fx`: prices but
+ * no PLN rate of its currency).
+ */
+export const unpricedInstrumentSchema = z.strictObject({
+  label: z.string().min(1).max(MIGRATE_UNPRICED_LABEL_MAX),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  reason: z.enum(["no_prices", "no_fx"]),
+});
+export type UnpricedInstrument = z.infer<typeof unpricedInstrumentSchema>;
+
 export const migrateProgressSchema = z.strictObject({
   event: z.literal("progress"),
   stage: z.enum(MIGRATE_STAGES),
@@ -51,6 +72,7 @@ export const migrateDoneSchema = z.strictObject({
     .string()
     .regex(/^python-backup-[A-Za-z0-9_-]{1,64}$/)
     .optional(),
+  unpriced: z.array(unpricedInstrumentSchema).max(MIGRATE_UNPRICED_MAX).optional(),
 });
 
 export const migrateFailedSchema = z.strictObject({
@@ -73,7 +95,7 @@ export type MigrateFailed = z.infer<typeof migrateFailedSchema>;
 
 /** One stdout line of the child, or null when it is not exactly one protocol object. */
 export function parseMigrateLine(line: string): MigrateLine | null {
-  if (line.length > 4096) return null;
+  if (line.length > MIGRATE_LINE_MAX) return null;
   let value: unknown;
   try {
     value = JSON.parse(line);
@@ -86,12 +108,17 @@ export function parseMigrateLine(line: string): MigrateLine | null {
 
 /**
  * What Electron main forwards to the recovery screen while the import runs: a stage, the one-time
- * recovery words (shown until confirmed, never stored), or that the user's cancel took effect. A
- * finished or failed import needs no event: main loads the app or the new recovery screen.
+ * recovery words (shown until confirmed, never stored), that the user's cancel took effect, or a
+ * finished import that left instruments the app cannot value (shown before the app opens). Any
+ * other finished or failed import needs no event: main loads the app or the new recovery screen.
  */
 export const recoveryImportEventSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("progress"), stage: z.enum(MIGRATE_STAGES) }),
   z.strictObject({ kind: z.literal("words"), words: z.string().regex(RECOVERY_WORDS) }),
   z.strictObject({ kind: z.literal("cancelled") }),
+  z.strictObject({
+    kind: z.literal("done"),
+    unpriced: z.array(unpricedInstrumentSchema).min(1).max(MIGRATE_UNPRICED_MAX),
+  }),
 ]);
 export type RecoveryImportEvent = z.infer<typeof recoveryImportEventSchema>;

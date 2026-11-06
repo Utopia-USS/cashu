@@ -128,7 +128,9 @@ describe("cashu migrate --json (the app's child protocol)", () => {
 
       const again = await cli(f, ["--data-dir", f.dataDir, "--json"]);
       expect(again.code).toBe(0);
-      expect(lines(again).at(-1)).toEqual({ ...done, status: "already_migrated" });
+      expect(done.unpriced).toEqual([]);
+      const { unpriced: _checked, ...counted } = done;
+      expect(lines(again).at(-1)).toEqual({ ...counted, status: "already_migrated" });
 
       const verified = await cli(f, ["verify", "--data-dir", f.dataDir, "--json"]);
       expect(verified.code).toBe(0);
@@ -171,6 +173,55 @@ describe("cashu migrate --json (the app's child protocol)", () => {
         code: "migrate_verify_mismatch",
         detail: "replay_mismatch",
       });
+    },
+    SLOW,
+  );
+
+  it(
+    "names the instruments the app cannot value on the done line of the import and of verify",
+    async () => {
+      const f = fixture();
+      const db = new DatabaseSync(join(f.dataDir, "cashu.db"));
+      try {
+        const at = "2026-01-02 03:04:05.000000";
+        db.prepare(
+          `INSERT INTO inv_instruments(id,name,currency,asset_class,symbol,isin,tags,
+             needs_classification,valuation_mode,status,created_at,updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        ).run(
+          1,
+          "Synthetic Euro ETF",
+          "EUR",
+          "etf",
+          "SEUR",
+          null,
+          "[]",
+          0,
+          "market",
+          "active",
+          at,
+          at,
+        );
+        db.prepare(
+          "INSERT INTO inv_profile_instruments(id,profile_id,instrument_id,created_at,updated_at) VALUES (?,?,?,?,?)",
+        ).run(1, 1, 1, at, at);
+      } finally {
+        db.close();
+      }
+      const unpriced = [{ label: "SEUR", currency: "EUR", reason: "no_prices" }];
+      const migrated = await cli(f, ["--data-dir", f.dataDir, "--json"], { answer: "confirm" });
+      expect(migrated.code).toBe(0);
+      expect(migrateDoneSchema.parse(JSON.parse(migrated.out.at(-1) ?? ""))).toMatchObject({
+        status: "migrated",
+        unpriced,
+      });
+      const verified = await cli(f, ["verify", "--data-dir", f.dataDir, "--json"]);
+      expect(verified.code).toBe(0);
+      expect(lines(verified)).toEqual([expect.objectContaining({ status: "verified", unpriced })]);
+      const human = await cli(f, ["verify", "--data-dir", f.dataDir]);
+      expect(human.out.at(-1)).toBe(
+        "Warning: the app cannot value 1 instruments (0 until it has prices):\n  SEUR (EUR): no prices",
+      );
     },
     SLOW,
   );

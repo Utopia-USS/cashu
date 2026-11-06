@@ -1,5 +1,10 @@
 import { Button, Card } from "@cashu/ui";
-import { type RecoveryCode, type RecoveryStage, S } from "./Recovery.strings.js";
+import {
+  type RecoveryCode,
+  type RecoveryStage,
+  type RecoveryUnpriced,
+  S,
+} from "./Recovery.strings.js";
 
 export type RecoveryNotice = "copied" | "copyFailed" | "openFailed";
 
@@ -7,13 +12,15 @@ export type RecoveryNotice = "copied" | "copyFailed" | "openFailed";
 export interface ImportView {
   /** `import` (Python data present), `finish` (an interrupted cutover), or null (not offered). */
   readonly kind: "import" | "finish" | null;
-  readonly phase: "idle" | "starting" | "running" | "words" | "cancelling";
+  readonly phase: "idle" | "starting" | "running" | "words" | "cancelling" | "done";
   /** Every stage in order with its state; empty until main reports the first one. */
   readonly stages: readonly ImportStageView[];
   /** The one-time recovery words while they wait for the user, else null. */
   readonly words: string | null;
   readonly wordsConfirmed: boolean;
   readonly notice: "refused" | "cancelled" | null;
+  /** After a finished import (`done`): the imported instruments the app cannot value yet. */
+  readonly unpriced: readonly RecoveryUnpriced[];
 }
 
 export interface ImportStageView {
@@ -63,17 +70,21 @@ const NOTICE: Record<RecoveryNotice, () => string> = {
 function ImportSection({
   state,
   canAct,
+  busy,
   onImport,
   onWordsConfirmed,
   onContinueImport,
   onCancelImport,
+  onOpenApp,
 }: {
   state: ImportView;
   canAct: boolean;
+  busy: boolean;
   onImport: () => void;
   onWordsConfirmed: (confirmed: boolean) => void;
   onContinueImport: () => void;
   onCancelImport: () => void;
+  onOpenApp: () => void;
 }) {
   const showStages =
     state.stages.length > 0 && (state.phase === "running" || state.phase === "words");
@@ -135,16 +146,33 @@ function ImportSection({
           </div>
         </div>
       )}
+      {state.phase === "done" && (
+        <div className="mt-4 grid gap-4">
+          <p>{S.unpricedHint}</p>
+          <ul className="grid gap-1" data-testid="recovery-unpriced">
+            {state.unpriced.map((item) => (
+              <li key={`${item.label} ${item.currency}`}>{S.unpricedItem(item)}</li>
+            ))}
+          </ul>
+          <div>
+            <Button variant="primary" onPress={onOpenApp} disabled={busy || !canAct}>
+              {S.openApp}
+            </Button>
+          </div>
+        </div>
+      )}
       <p role="status" className="mt-3 text-fg-muted">
-        {state.phase === "starting"
-          ? S.importStarting
-          : state.phase === "cancelling"
-            ? S.importCancelling
-            : state.notice === "refused"
-              ? S.importRefused
-              : state.notice === "cancelled"
-                ? S.importCancelled
-                : ""}
+        {state.phase === "done"
+          ? S.importDone
+          : state.phase === "starting"
+            ? S.importStarting
+            : state.phase === "cancelling"
+              ? S.importCancelling
+              : state.notice === "refused"
+                ? S.importRefused
+                : state.notice === "cancelled"
+                  ? S.importCancelled
+                  : ""}
       </p>
     </Card>
   );
@@ -185,10 +213,12 @@ export function RecoveryView({
           <ImportSection
             state={importState}
             canAct={canAct}
+            busy={busy}
             onImport={onImport}
             onWordsConfirmed={onWordsConfirmed}
             onContinueImport={onContinueImport}
             onCancelImport={onCancelImport}
+            onOpenApp={onRetry}
           />
         )}
         {details !== null && (

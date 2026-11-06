@@ -474,8 +474,10 @@ ipcMain.handle("cashu:recovery-import-words", (event, raw: unknown) => {
 
 /**
  * "Import my data": the host entry in migrate mode as an attached child (same binary, Node mode,
- * environment and data dir as a host start). Done loads the app; failed shows the recovery screen for
- * that code (with its report pair); cancelled returns to the python_data_present screen.
+ * environment and data dir as a host start). Done loads the app, unless the import left instruments
+ * the app cannot value: the screen lists them first and its "Open cashU" is Retry (the admission
+ * then finds no Python data and leaves recovery). Failed shows the recovery screen for that code
+ * (with its report pair); cancelled returns to the python_data_present screen.
  */
 async function importData(run: ImportRun): Promise<void> {
   log("recovery: import started");
@@ -502,6 +504,12 @@ async function importData(run: ImportRun): Promise<void> {
   }
   if (outcome.kind === "done") {
     log(`recovery: import finished (${outcome.done.status})`);
+    const unpriced = outcome.done.unpriced ?? [];
+    if (unpriced.length > 0) {
+      log(`recovery: ${unpriced.length} imported instruments cannot be valued`);
+      sendImportEvent({ kind: "done", unpriced });
+      return;
+    }
     recovery.clear();
     await desktop.restart();
   } else if (outcome.kind === "cancelled") {

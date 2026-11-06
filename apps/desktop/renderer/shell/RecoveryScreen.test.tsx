@@ -97,6 +97,33 @@ it("runs the import: progress, words shown once, cleared on continue", async () 
   );
 });
 
+it("lists the instruments a finished import cannot value, then opens the app", async () => {
+  const { bridge, emit } = fakeBridge();
+  await act(async () =>
+    root.render(
+      <RecoveryScreen report={report(startupFailure("python_data_present"))} bridge={bridge} />,
+    ),
+  );
+  await act(async () => button("Import my data")?.click());
+  await emit({ kind: "progress", stage: "cutover" });
+  await emit({
+    kind: "done",
+    unpriced: [
+      { label: "SEUR", currency: "EUR", reason: "no_fx" },
+      { label: "SPLN", currency: "PLN", reason: "no_prices" },
+    ],
+  });
+  expect(container.textContent).toContain("The import finished.");
+  expect(container.querySelector('[data-testid="recovery-import-stages"]')).toBeNull();
+  expect(
+    [...container.querySelectorAll('[data-testid="recovery-unpriced"] li')].map(
+      (item) => item.textContent,
+    ),
+  ).toEqual(["SEUR (EUR): no PLN/EUR rate", "SPLN (PLN): no prices"]);
+  await act(async () => button("Open cashU")?.click());
+  expect(bridge.retry).toHaveBeenCalledTimes(1);
+});
+
 it("cancels at the words and returns to the import button", async () => {
   const { bridge, emit } = fakeBridge();
   await act(async () =>
