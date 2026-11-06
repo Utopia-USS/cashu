@@ -3,7 +3,9 @@
 // window, sync) reaches an open screen by a host push. So the renderer never polls, refetches,
 // revalidates, reloads, re-reads on focus / visibility, re-arms a timer loop or busts a query's args
 // with a counter or a clock. Timers that are not data (toast / undo / flash timers, debounce, scroll,
-// expiry of a pending flow) stay allowed: a one-shot `setTimeout` is not a pattern here. The few
+// expiry of a pending flow) stay allowed: a one-shot `setTimeout` is not a pattern here. Nor does a screen
+// offer a manual Refresh / Check again button (owner decision 2026-11-06): a handler wired to a `refresh*`,
+// `rescan*` or `recheck*` function, or an `on*Refresh*` prop, is flagged. The few
 // listed exceptions below (a display clock, the crash retry, an owner import) carry their reason and
 // the exact line they allow.
 import { stripComments } from "../repo.ts";
@@ -40,6 +42,13 @@ const LINE_RULES: ReadonlyArray<{ kind: string; find: (line: string) => string |
     kind: "focus / visibility listener",
     find: match(
       /\baddEventListener\s*\(\s*["'`](?:focus|focusin|visibilitychange|pageshow)["'`]|\bon(?:focus|visibilitychange|pageshow)\s*=/,
+    ),
+  },
+  // A UI handler that only re-reads: `onPress={() => state.refresh()}`, `onClick={refreshX}`, `onXRefreshed: ...`.
+  {
+    kind: "refresh handler",
+    find: match(
+      /\bon[A-Z]\w*=\{[^}]*(?:\b(?:refresh|rescan|recheck)|Refresh|Rescan|Recheck)\w*|\bon\w*(?:Refresh|Rescan|Recheck)\w*\s*[=:(]/,
     ),
   },
 ];

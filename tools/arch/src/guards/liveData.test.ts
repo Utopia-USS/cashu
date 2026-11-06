@@ -39,6 +39,23 @@ describe("findLiveDataViolations (detector)", () => {
     ]);
   });
 
+  it("flags a manual refresh button handler (owner decision: views update by themselves)", () => {
+    const src = [
+      "<Button onPress={() => void state.refreshConnectors()}>{C.refresh}</Button>",
+      "<Button onPress={state.onAuditRefreshed}>{C.refresh}</Button>",
+      "<button onClick={rescan} />",
+      "onAuditRefreshed: () => setSince(now()),",
+      "<Button onPress={p.onReload}>{p.reload}</Button>",
+      "<Button onPress={() => void state.sync()}>{T.sync}</Button>",
+    ].join("\n");
+    expect(kinds(src)).toEqual([
+      "1:refresh handler",
+      "2:refresh handler",
+      "3:refresh handler",
+      "4:refresh handler",
+    ]);
+  });
+
   it("flags a setTimeout loop that re-arms itself, directly or through a helper", () => {
     const direct = [
       "useEffect(() => {",

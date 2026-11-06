@@ -159,7 +159,6 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
     attemptList,
     busy,
     notice,
-    refresh: () => refresh(),
     configure: (appId: string) =>
       perform(
         () =>
