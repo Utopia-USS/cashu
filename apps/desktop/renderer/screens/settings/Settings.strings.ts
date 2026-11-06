@@ -79,8 +79,8 @@ export const T = catalog({
     en: "Could not change connector settings.",
   },
   connectorUnknown: {
-    pl: "Wynik zmiany jest niepewny. Sprawdź stan po ponownym otwarciu Ustawień.",
-    en: "The change outcome is uncertain. Check the state after reopening Settings.",
+    pl: "Wynik zmiany jest niepewny. Lista konektorów pokazuje aktualny stan; sprawdź ją przed kolejną zmianą.",
+    en: "The change outcome is uncertain. The connector list shows the current state; check it before another change.",
   },
   connectorRunFailed: {
     pl: "Pobranie nie powiodło się. Sprawdź stan zadania w tle.",
