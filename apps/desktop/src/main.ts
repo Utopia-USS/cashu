@@ -94,6 +94,7 @@ import {
   protocol,
   screen,
   session,
+  systemPreferences,
   Tray,
 } from "electron/main";
 import { z } from "zod";
@@ -181,6 +182,13 @@ function log(line: string): void {
 // ---- Electron profile inside the data dir: the single instance lock is per data dir ------------
 
 app.setName(TITLE);
+// Overlay scrollbars that take no layout width, as the Python app's WKWebView draws them on a trackpad
+// Mac: macOS "Automatic" turns Chromium's scrollbars into 15px classic ones whenever a mouse is
+// connected. A registration default (in memory, lowest NSUserDefaults priority) applies only while the
+// owner never changed the system setting; an explicit choice in System Settings still wins.
+if (process.platform === "darwin") {
+  systemPreferences.registerDefaults({ AppleShowScrollBars: "WhenScrolling" });
+}
 app.setPath("userData", ensurePrivateDir(join(dataDir, USER_DATA_SUBDIR)));
 const hasLock = app.requestSingleInstanceLock();
 const lang = pickLang(env[ENV.lang], app.getLocale());

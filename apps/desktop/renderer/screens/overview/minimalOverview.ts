@@ -2,9 +2,7 @@
 // enabled module is investments, once that module is past its empty state, gets the portfolio hero, the
 // six-month contributions and the month's steps in a narrow frame instead of the full widget grid.
 import { D, type Decimal, Money } from "@cashu/domain";
-import { intlLocale } from "@cashu/i18n";
 import { S as I } from "@cashu/i18n/investments/v2/Overview.strings";
-import { formatDecimalValue } from "@cashu/i18n/values";
 import type { PortfolioSnapshot } from "@cashu/store/investments/screen";
 import type { InvestmentWidgets } from "@cashu/store/overview";
 import { MONTH_NOM } from "@cashu/ui-logic/core/format";
@@ -134,10 +132,8 @@ export function minimalOverviewModel(input: {
 }): MinimalOverviewModel {
   const { portfolio, today, privacy } = input;
   const currency = portfolio.overview.base_currency;
-  const whole = (amount: Decimal) =>
-    privacy
-      ? HIDDEN
-      : formatDecimalValue(amount, intlLocale(), { currency, fractionDigits: 0 }).text;
+  // Python `money0`: whole units, always grouped ("2 000 zł", the locale default leaves four digits ungrouped)
+  const whole = (amount: Decimal) => (privacy ? HIDDEN : money0(amount.toFloat(), currency));
   const kpis = portfolio.overview.kpis;
   const perf = portfolio.performance;
   const summary = perf.summary;
@@ -202,7 +198,7 @@ export function minimalOverviewModel(input: {
       : plan !== null
         ? `${I.plannedOn(dm(plan.plannedDate))}${
             planAmount === null || !plan.amount.eq(planAmount)
-              ? ` · ${privacy ? HIDDEN : formatDecimalValue(plan.amount, intlLocale(), { currency: plan.currency, fractionDigits: 0 }).text}`
+              ? ` · ${privacy ? HIDDEN : money0(plan.amount.toFloat(), plan.currency)}`
               : ""
           }`
         : (account ?? I.perPlan);
