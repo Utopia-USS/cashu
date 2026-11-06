@@ -282,7 +282,7 @@ export interface PricesResult {
   readonly errors: readonly string[];
   readonly refresh?: PriceRefreshResult;
 }
-/** Per-process/per-vault result cache. Force bypasses only the ten-minute throttle. */
+/** Per-process/per-vault result cache. Force bypasses only the five-minute throttle. */
 export class PricesService {
   private readonly lock: DailyPriceLock;
   private readonly last = new Map<string, PricesResult>();
@@ -312,7 +312,7 @@ export class PricesService {
     if (!deps.enabled) return result("disabled");
     if (!authorized(deps.vault)) return result("refused");
     const old = this.last.get(deps.vault.vault);
-    if (!deps.force && old !== undefined && ms >= old.finishedAt && ms - old.finishedAt < 600_000)
+    if (!deps.force && old !== undefined && ms >= old.finishedAt && ms - old.finishedAt < 300_000)
       return { ...old, cached: true };
     const release = this.lock.tryAcquire();
     if (release === null) return result("busy");

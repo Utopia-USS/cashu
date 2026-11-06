@@ -140,7 +140,7 @@ it("passes each grouped instrument's consumers into nested source request guards
   expect(checked).toContainEqual(["A", true]);
   expect(checked).toContainEqual(["B", false]);
 });
-it("keeps the ten-minute throttle separate from force and the shared daily lock", async () => {
+it("keeps the five-minute throttle separate from force and the shared daily lock", async () => {
   const lock = new DailyPriceLock();
   const service = new PricesService(lock);
   const prices = new market.InMemoryPriceCache();
@@ -169,13 +169,13 @@ it("keeps the ten-minute throttle separate from force and the shared daily lock"
     enabled: true,
   };
   expect((await service.run(deps)).status).toBe("ok");
-  time = parseDateTime("2025-09-30T12:09:59+00:00");
+  time = parseDateTime("2025-09-30T12:04:59+00:00");
   expect((await service.run(deps)).cached).toBe(true);
   expect(calls).toBe(1);
   const release = lock.tryAcquire();
   expect((await service.run({ ...deps, force: true })).status).toBe("busy");
   release?.();
-  time = parseDateTime("2025-09-30T12:10:00+00:00");
+  time = parseDateTime("2025-09-30T12:05:00+00:00");
   await service.run(deps);
   expect(calls).toBe(2);
 });
@@ -240,7 +240,7 @@ it("classifies all errors as failed, records completion time, and closes the sou
   expect(first.updated).toBe(0);
   expect(first.finishedAt).toBe(Date.parse("2025-09-30T12:05:00Z"));
   expect(closes).toBe(1);
-  time = parseDateTime("2025-09-30T12:14:59Z");
+  time = parseDateTime("2025-09-30T12:09:59Z");
   expect((await run()).cached).toBe(true);
   expect(closes).toBe(1);
 });

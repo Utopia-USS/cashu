@@ -1,8 +1,8 @@
 // Pure rules of the automatic price refresh (P10; the store and the hook live in priceRefresh.ts): when the app
 // asks the server for fresh quotes and whether the answer changed anything. Tested in frontend/tests/price-refresh.test.mjs.
 
-/** While the app is open and visible: every 15 minutes (the server throttles to 10 on its own). */
-export const PRICE_REFRESH_EVERY_MS = 15 * 60_000;
+/** While the app is open and visible: every 5 minutes (the server throttles to 5 on its own). */
+export const PRICE_REFRESH_EVERY_MS = 5 * 60_000;
 /** A daily check held the lock: ask again a minute later. */
 export const PRICE_REFRESH_BUSY_RETRY_MS = 60_000;
 
@@ -18,7 +18,7 @@ export function refreshDue(st: PriceRefreshClock, now: number, visible: boolean)
 }
 
 /** The next refresh after an answer: a minute after `busy`, never while the server has it turned off, else in
- * 15 minutes (also after a failure: no retry storm while offline). */
+ * 5 minutes (also after a failure: no retry storm while offline). */
 export function nextRefreshAt(status: string | null, now: number): number {
   if (status === "busy") return now + PRICE_REFRESH_BUSY_RETRY_MS;
   if (status === "disabled") return Number.POSITIVE_INFINITY;

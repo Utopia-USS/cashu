@@ -21,7 +21,7 @@ import { deliverWorkerNotifications, sendWorkerDigest } from "./notifications.js
 import { checkedSchedule, localDay, nextSlot, slotPassed, slotText } from "./schedule.js";
 
 const TICK_MS = 60_000,
-  UI_PRICES_MS = 15 * 60_000;
+  UI_PRICES_MS = 5 * 60_000;
 /** Existing Python AutoRunner CHECK_EVERY: failures do not become a 60-second fetch loop. */
 const DAILY_RETRY_MS = 60 * 60_000;
 export class WorkerTickBusy extends Error {

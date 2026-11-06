@@ -66,7 +66,7 @@ relative to those unless they start with `apps/` or `packages/`).
     jobs once a day (default 07:30, no replay of missed days): connector fetches, the investments
     daily check (prices from Yahoo/stooq, NBP rates, then the rules per vault; also
     `cashu invest run`), the budget bank sync, notifications and the weekly digest. While a window is
-    open it also refreshes quotes every 15 minutes (no rules). A network fetch never holds a store
+    open it also refreshes quotes every 5 minutes (no rules). A network fetch never holds a store
     transaction open.
 14. **Live data.** Every applied event reports the views it touched to the store's change hub
     (`packages/store/src/subscribe.ts`); the host pushes a live query to the window when its encoded

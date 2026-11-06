@@ -381,7 +381,7 @@ it("retries shared-lock busy next tick but holds failed noncommitted attempts fo
     await f.close();
   }
 });
-it("refreshes prices only with a real UI session and only every15minutes, then stops before stores close", async () => {
+it("refreshes prices only with a real UI session and only every 5 minutes, then stops before stores close", async () => {
   const f = await workerFixture();
   let fetches = 0,
     closed = 0;
@@ -415,7 +415,7 @@ it("refreshes prices only with a real UI session and only every15minutes, then s
     client = await storeClient(host.server.paths.dataDir);
     await worker.tick();
     expect(fetches).toBe(1);
-    f.advance(14 * 60_000);
+    f.advance(4 * 60_000);
     await worker.tick();
     expect(fetches).toBe(1);
     f.advance(60_000);
