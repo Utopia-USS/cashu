@@ -243,7 +243,7 @@ const alert = (title: string) => ({
   title,
 });
 
-/** Opens the investments alerts manager (Inwestycje -> Alerty -> + Nowy) for Demo Anna. */
+/** Opens the investments alerts manager (Inwestycje -> Alerty -> Wszystkie) for Demo Anna. */
 async function openAlerts(page: Page) {
   await setPrivacy(page, false);
   await pickProfile(page, "Demo Anna");
@@ -255,7 +255,7 @@ async function openAlerts(page: Page) {
   await expect(rail).toBeVisible();
   await rail
     .getByRole("region", { name: "Alerty" })
-    .getByRole("button", { name: "+ Nowy", exact: true })
+    .getByRole("button", { name: /Wszystkie/u })
     .click();
   const alerts = page.getByTestId("native-signals-alerts");
   await expect(alerts).toBeVisible();

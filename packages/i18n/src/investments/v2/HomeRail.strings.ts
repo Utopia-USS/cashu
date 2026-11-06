@@ -57,7 +57,6 @@ export const S = catalog({
   unchanged: { pl: (n: number) => `${n} bez zmian`, en: (n: number) => `${n} unchanged` },
   all: { pl: (n: number) => `Wszystkie (${n})`, en: (n: number) => `All (${n})` },
   // Alerty
-  addNew: { pl: "+ Nowy", en: "+ New" },
   noneClose: {
     pl: (n: number) =>
       `Nic blisko progu. ${n ? `Pilnujesz ${plCount(n, "alertu", "alertów", "alertów")}.` : "Brak alertów."}`,

@@ -98,9 +98,5 @@ export function useSignalsPageReads() {
     /** The generic buckets of the strategy (old `strategy.facts.buckets`, else the allocation's). */
     buckets: (overview?.allocation.buckets.map((b) => b.bucket_id) ?? []).filter(isGenericBucket),
     digestWeekday: digest?.digest_weekday ?? "sunday",
-    /** Kind -> scopes of the host's alert catalog. */
-    catalog: ready
-      ? Object.fromEntries(ready.catalog.map((k) => [k.kind, k.scopes as readonly string[]]))
-      : null,
   };
 }

@@ -1,6 +1,7 @@
 // The screen hook of the ported alerts manager (ab24ab6 v2/Alerts.tsx AlertsManager + removeAlertWithUndo +
 // TriggeredHistory): the filters, the edited alert, mute / unmute / delete with the restore undo, the table and
-// history rows and the CSV export; and alertFormProps, the props of the form from its state (useAlertForm).
+// history rows and the CSV export; and alertFormProps, the props of the edit form from its state (useAlertForm).
+// There is no new-alert form: alerts come from the agent (MCP) and the strategy (owner decision 2026-11-06).
 import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/investments/v2/Alerts.strings";
 import { useToast } from "@cashu/ui";
@@ -22,7 +23,6 @@ import {
   historySignals,
   isLive,
   type SourceFilter,
-  STATIC_KINDS,
   type StatusFilter,
 } from "./alertsModel.js";
 import { useInFlight } from "./legacy/inflight.js";
@@ -33,9 +33,7 @@ import { removeAlertWithUndo } from "./useRemoveAlert.js";
 import { useSignalsPageReads } from "./useSignalsPageReads.js";
 
 export interface AlertsManagerInput {
-  /** `?instrument=<gid>`: the new alert's instrument. */
-  initialInstrument?: string | null;
-  /** `?edit=<gid>`: the alert in the form (else the form is a new alert, old `?new=1` included). */
+  /** `?edit=<gid>`: the alert in the edit form. */
   initialEdit?: string | null;
   /** The crumb's `Inwestycje` (back to the Home). */
   onBack(): void;
@@ -48,12 +46,10 @@ export function useAlertsManager(o: AlertsManagerInput) {
   const reads = useSignalsPageReads();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [source, setSource] = useState<SourceFilter>("all");
-  const [editing, setEditingState] = useState<number | "new">(
-    () => legacyIdOf(o.initialEdit) ?? "new",
-  );
-  // A new key per opened form: after a save the "new" form starts empty again.
+  const [editing, setEditingState] = useState<number | null>(() => legacyIdOf(o.initialEdit));
+  // A new key per opened form: editing the same alert again starts from its stored values.
   const [formKey, setFormKey] = useState(0);
-  const setEditing = (v: number | "new") => {
+  const setEditing = (v: number | null) => {
     setEditingState(v);
     setFormKey((k) => k + 1);
   };
@@ -75,15 +71,14 @@ export function useAlertsManager(o: AlertsManagerInput) {
       .sort()
       .slice(-1)[0] ?? null;
   const agentLive = all.filter((a) => a.source === "agent" && isLive(a)).length;
-  const editAlert =
-    typeof editing === "number" ? (all.find((a) => a.id === editing) ?? null) : null;
+  const editAlert = editing === null ? null : (all.find((a) => a.id === editing) ?? null);
 
   // One mute / delete request at a time (F7 FE2): a double click must not send a second delete.
   const act = (a: Alert, what: "mute" | "unmute" | "delete") =>
     flight.run(async () => {
       try {
         if (what === "delete") {
-          if ((await removeAlertWithUndo(api, a, toast)) && editing === a.id) setEditing("new");
+          if ((await removeAlertWithUndo(api, a, toast)) && editing === a.id) setEditing(null);
           return;
         }
         await api.patchAlert(a.id, { status: what === "mute" ? "muted" : "active" });
@@ -188,37 +183,33 @@ export function useAlertsManager(o: AlertsManagerInput) {
       rows: historyRows(hist, all),
     },
   };
-  const presetInstrument =
-    editing === "new" && formKey === 0 ? legacyIdOf(o.initialInstrument) : null;
   return {
     view,
-    form: {
-      key: `${editing}:${formKey}`,
-      api,
-      alert: editAlert,
-      instruments: reads.instruments,
-      buckets: reads.buckets,
-      digestWeekday: reads.digestWeekday,
-      catalog: reads.catalog ?? STATIC_KINDS,
-      presetInstrument,
-      onCancel: () => setEditing("new"),
-      onSaved: (title: string, created: boolean) => {
-        toast(created ? S.created(title) : S.savedAlert, 2500);
-        setEditing("new");
-      },
-    },
+    form: editAlert
+      ? {
+          key: `${editAlert.id}:${formKey}`,
+          api,
+          alert: editAlert,
+          instruments: reads.instruments,
+          buckets: reads.buckets,
+          digestWeekday: reads.digestWeekday,
+          onCancel: () => setEditing(null),
+          onSaved: () => {
+            toast(S.savedAlert, 2500);
+            setEditing(null);
+          },
+        }
+      : null,
   };
 }
 
-/** The form's props from its state (old AlertForm render). */
+/** A fixed field's change: the kind, scope and instrument of an alert never change by PATCH. */
+const fixed = () => {};
+
+/** The edit form's props from its state (old AlertForm render with an alert). */
 export function alertFormProps(
   st: AlertFormState,
-  o: {
-    buckets: string[];
-    instruments: { id: number }[];
-    instrumentList: string[];
-    onCancel(): void;
-  },
+  o: { buckets: string[]; onCancel(): void },
 ): AlertFormProps {
   const { alert, f, kind, inst } = st;
   const seg = <T extends string>(
@@ -367,7 +358,7 @@ export function alertFormProps(
         ),
       ),
     });
-  if (f.card === "weight")
+  if (st.card === "weight")
     rows.push({
       kind: "pair",
       cells: [
@@ -379,12 +370,10 @@ export function alertFormProps(
               [S.above, "above"],
               [S.below, "below"],
             ],
-            (v) => {
-              if (!alert) st.update({ above: v === "above" });
-            },
+            fixed,
             {
-              disabled: !!alert,
-              title: alert ? S.directionNewOnly : undefined,
+              disabled: true,
+              title: S.directionNewOnly,
               ariaLabel: S.weightDirection,
             },
           ),
@@ -409,51 +398,33 @@ export function alertFormProps(
           label: S.expression,
           rows: 2,
           value: f.expression,
-          placeholder: f.scope === "portfolio" ? "cash_weight < 4%" : "weight > 10%",
+          placeholder: st.scope === "portfolio" ? "cash_weight < 4%" : "weight > 10%",
           onChange: (v) => st.update({ expression: v }),
         },
       },
     });
   const expiries = expiryChoices();
-  const scopeItems: [string, typeof f.scope][] = [
+  const scopeItems: [string, typeof st.scope][] = [
     [S.scopeInstrument, "instrument"],
     [S.portfolio, "portfolio"],
-    ...(o.buckets.length || alert?.scope === "bucket"
-      ? [[S.bucket, "bucket"] as [string, typeof f.scope]]
+    ...(o.buckets.length || alert.scope === "bucket"
+      ? [[S.bucket, "bucket"] as [string, typeof st.scope]]
       : []),
   ];
   return {
-    heading: alert ? S.editTitle : S.newTitle,
-    agent: alert?.source === "agent" ? "agent" : null,
-    close: alert ? { label: S.closeEdit, title: S.closeEsc, onPress: o.onCancel } : null,
+    heading: S.editTitle,
+    agent: alert.source === "agent" ? "agent" : null,
+    close: { label: S.closeEdit, title: S.closeEsc, onPress: o.onCancel },
     scope: {
-      ...seg(
-        S.colScope,
-        f.scope,
-        scopeItems,
-        (v) => {
-          if (!alert) st.update({ scope: v });
-        },
-        { disabled: !!alert },
-      ),
-      fieldTitle: alert ? S.scopeNewOnly : undefined,
+      ...seg(S.colScope, st.scope, scopeItems, fixed, { disabled: true }),
+      fieldTitle: S.scopeNewOnly,
     },
     instrument:
-      f.scope === "instrument"
-        ? {
-            id: "af-inst",
-            listId: "af-inst-list",
-            label: S.scopeInstrument,
-            value: f.instText,
-            onChange: st.pickInstrument,
-            disabled: !!alert,
-            placeholder: S.instPlaceholder,
-            list: o.instrumentList,
-            watchFirst: o.instruments.length ? null : S.watchFirst,
-          }
+      st.scope === "instrument"
+        ? { id: "af-inst", label: S.scopeInstrument, value: st.instText }
         : null,
     bucket:
-      f.scope === "bucket"
+      st.scope === "bucket"
         ? {
             id: "af-bucket",
             label: S.bucket,
@@ -474,13 +445,8 @@ export function alertFormProps(
         card: c.card,
         label: cardLabel(c.card),
         machine: c.machine,
-        on: f.card === c.card,
-        disabled:
-          !st.cardOk(c) ||
-          (!!alert &&
-            !c.kinds.includes(alert.kind) &&
-            !(c.card === "weight" && alert.kind.startsWith("weight"))),
-        onPress: () => st.update({ card: c.card }),
+        on: st.card === c.card,
+        disabled: c.card !== st.card,
       })),
     },
     rows,
@@ -492,7 +458,7 @@ export function alertFormProps(
         [S.risk, "negative"],
         [S.neutral, "neutral"],
       ],
-      st.setPolarity,
+      (v) => st.update({ polarity: v }),
     ),
     severity: seg(
       S.severity,
@@ -546,13 +512,9 @@ export function alertFormProps(
     },
     preview: st.preview,
     error: st.err,
-    save: {
-      label: st.busy ? S.saving : alert ? C.save : S.create,
-      onPress: st.save,
-      disabled: st.busy,
-    },
-    cancel: alert ? { label: C.cancel, onPress: o.onCancel } : null,
+    save: { label: st.busy ? S.saving : C.save, onPress: st.save, disabled: st.busy },
+    cancel: { label: C.cancel, onPress: o.onCancel },
     noForecasts: S.noForecasts,
-    onEscape: alert ? o.onCancel : null,
+    onEscape: o.onCancel,
   };
 }

@@ -11,11 +11,9 @@ export type SignalsSubPage = "alerts" | "watchlist" | "journal";
 
 interface Props {
   page: "alerts" | "journal";
-  /** `?instrument=<gid>`: the journal's instrument filter, the new alert's instrument. */
+  /** `?instrument=<gid>`: the journal's instrument filter. */
   initialInstrument?: string | null;
-  /** `?newAlert=1`: the alerts form as a new alert (the default without `edit`). */
-  initialNewAlert?: boolean;
-  /** `?edit=<gid>`: the alert in the form. */
+  /** `?edit=<gid>`: the alert in the edit form. */
   initialEdit?: string | null;
   /** Back to the investments Home (the crumb). */
   onClose?(): void;
@@ -42,7 +40,6 @@ function Page(props: Props) {
   if (props.page === "alerts")
     return (
       <AlertsManagerScreen
-        initialInstrument={props.initialInstrument}
         initialEdit={props.initialEdit}
         onBack={back}
         onExportCsv={downloadCsv}

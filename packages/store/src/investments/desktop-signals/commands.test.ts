@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { type Command, runCommand, setModules, storeWriter } from "../../index.js";
-import { applyRaw, raw, stock, vault } from "../commands/testing/fixtures.js";
+import { createAlertWithBuckets } from "../commands/alertWrites.js";
+import { vault } from "../commands/testing/fixtures.js";
 import type { CurrentStrategySource } from "../desktop/sources.js";
-import { alertByGid } from "../queries/alerts.js";
 import { signalsAlertCommands } from "./commands.js";
 
 const NOW = "2026-11-03T12:00:00.000Z";
 function setup() {
   const v = vault();
   v.value(setModules, { moduleIds: ["investments"] });
-  const instrument = stock(v, "SYN", "PL0000000SYN");
-  applyRaw(v, [raw.watchAdded(v, instrument)]);
   const run = <I, R>(command: Command<I, R>, input: unknown) =>
     runCommand(
       v.store,
@@ -24,7 +22,7 @@ function setup() {
       input,
       v.env,
     );
-  return { v, instrument, run };
+  return { run };
 }
 const bucket = {
   kind: "weight_above",
@@ -48,35 +46,9 @@ const source = (ids: readonly string[] | null): CurrentStrategySource => ({
 });
 
 describe("Signals owner alert authority", () => {
-  it("distinguishes unavailable current files from a known empty bucket set", () => {
-    const { run } = setup();
-    expect(run(signalsAlertCommands(source(null)).create, bucket)).toEqual({
-      ok: false,
-      reason: "current_files_unavailable",
-    });
-    expect(run(signalsAlertCommands(source([])).create, bucket)).toEqual({
-      ok: false,
-      reason: "unknown_bucket",
-    });
-  });
-  it("keeps nonbucket alerts available and owns provenance", () => {
-    const { run, v, instrument } = setup();
-    const result = run(signalsAlertCommands(source(null)).create, {
-      kind: "price_above",
-      instrument,
-      title: "Synthetic price",
-      params: { level: 10 },
-      source: "agent",
-      createdBy: "renderer",
-    });
-    expect(result).toMatchObject({ ok: true });
-    if (!result.ok) return;
-    const row = alertByGid(v.store.read.bind(v.store), result.value.alert, NOW);
-    expect(row).toMatchObject({ source: "user", createdBy: "app" });
-  });
   it("rechecks bucket edits against current file authority", () => {
     const { run } = setup();
-    const created = run(signalsAlertCommands(source(["core"])).create, bucket);
+    const created = run(createAlertWithBuckets(new Set(["core"])), bucket);
     expect(created.ok).toBe(true);
     if (!created.ok) return;
     const changes = {

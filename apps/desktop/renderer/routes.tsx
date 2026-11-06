@@ -369,13 +369,6 @@ function MinimalOverviewBound({ vault, slug }: { vault: string; slug: string }) 
   return (
     <MinimalOverviewScreen
       today={useCalendarDay()}
-      openNewAlert={() =>
-        void router.navigate({
-          to: "/$slug/investments.alerts",
-          params: { slug },
-          search: { vault, newAlert: "1" },
-        })
-      }
       openWatchlist={() =>
         void router.navigate({
           to: "/$slug/investments.watchlist",
@@ -808,8 +801,7 @@ const investmentPageSearch = z.object({
   vault: search.shape.vault,
   instrument: investmentEntityIdSchema.optional(),
   alert: investmentEntityIdSchema.optional(),
-  newAlert: z.literal("1").optional(),
-  /** Old `alerts?edit=<id>`: the alert in the form. */
+  /** Old `alerts?edit=<id>`: the alert in the edit form. */
   edit: investmentEntityIdSchema.optional(),
 });
 /** The investments routes' pending state: the Home skeleton, in the 1120px frame for the asset page. */
@@ -981,7 +973,6 @@ function InvestmentPageRoute() {
     <SignalsPageScreen
       page={page}
       initialInstrument={selected.instrument}
-      initialNewAlert={page === "alerts" && selected.newAlert === "1"}
       initialEdit={page === "alerts" ? (selected.edit ?? null) : null}
       onClose={() =>
         void router.navigate({
@@ -1078,7 +1069,7 @@ function PortfolioRoute() {
       onReviewOpened={() => navigate({ review: "1" })}
       onProposalOpened={proposals.open}
       onSignalsClosed={() => navigate({ signals: undefined })}
-      onSignalsPageOpened={(page, newAlert) =>
+      onSignalsPageOpened={(page) =>
         void router.navigate({
           to:
             page === "alerts"
@@ -1087,7 +1078,7 @@ function PortfolioRoute() {
                 ? "/$slug/investments.watchlist"
                 : "/$slug/investments.journal",
           params: { slug: slug ?? "" },
-          search: { vault, ...(newAlert ? { newAlert: "1" as const } : {}) },
+          search: { vault },
         })
       }
       research={research ? { tab: selected.tab, note: selected.note ?? null } : null}
@@ -1145,13 +1136,6 @@ function PortfolioRoute() {
           to: "/$slug/assets/$instrument",
           params: { slug: slug ?? "", instrument: next },
           search: { ...selected, note: undefined, page: "1", vault },
-        })
-      }
-      onAlertsOpened={(next, newAlert) =>
-        void router.navigate({
-          to: "/$slug/investments.alerts",
-          params: { slug: slug ?? "" },
-          search: { vault, instrument: next, ...(newAlert ? { newAlert: "1" as const } : {}) },
         })
       }
       onJournalOpened={(next) =>

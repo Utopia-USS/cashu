@@ -36,7 +36,6 @@ export const Alerts = {
       rows={[{ ...row, tag: "price", state: "near", aria: "price, close" }]}
       all="All (1)"
       onManage={() => {}}
-      onNew={() => {}}
     />
   ),
 };

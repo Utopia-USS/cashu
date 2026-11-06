@@ -80,7 +80,7 @@ export interface InvestmentsHomeOptions {
   onReviewClosed?(): void;
   /** The asset drawer over the Home (`assets/{gid}`), at a research note (`?note=`) when given. */
   openPage?(gid: string, note?: string): void;
-  onSignalsPageOpened?(page: SignalsSubPage, newAlert?: boolean): void;
+  onSignalsPageOpened?(page: SignalsSubPage): void;
   onSignalsClosed?(): void;
   /** The research page in place of the grid (old sub-route `research?tab=`), a note opened in Notatki. */
   onResearchOpened?(tab?: string, note?: string): void;
@@ -107,8 +107,6 @@ export interface InvestmentsHomeOptions {
   readonly watch?: boolean;
   /** The header tag's `?alloc=accounts&t=` (a new value per click): Alokacja on its Rachunki view. */
   readonly allocRequest?: number | null;
-  /** The alerts manager for one instrument (old `alerts?instrument=id`, `&new=1` for a new alert). */
-  onAlertsOpened?(instrument: string, newAlert: boolean): void;
   /** The decision journal for one instrument (old `journal?instrument=id`). */
   onJournalOpened?(instrument: string): void;
 }
@@ -434,7 +432,6 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
       near: strategy?.facts?.alerts ?? null,
       sinceAt: digest?.since_at ?? null,
       onManage: () => o.onSignalsPageOpened?.("alerts"),
-      onNew: () => o.onSignalsPageOpened?.("alerts", true),
     }),
     candidates: data.research.ran
       ? candidatesRailProps({
@@ -549,8 +546,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
           noteGid: o.noteGid ?? null,
           filter,
           actions: {
-            onNewAlert: (instrument: string) => o.onAlertsOpened?.(instrument, true),
-            onAlerts: (instrument: string) => o.onAlertsOpened?.(instrument, false),
+            onAlerts: () => o.onSignalsPageOpened?.("alerts"),
             onJournal: (instrument: string) => o.onJournalOpened?.(instrument),
             onAddTxn: (instrumentId: number) => setDrawer({ kind: "txn", instrumentId }),
             onTxns: (position: Position) => setDrawer({ kind: "txns", position }),

@@ -31,7 +31,6 @@ export interface AssetDetailUi {
   /** Header actions (old AssetDetail props). */
   onToggleWatch(): void;
   watchBusy: boolean;
-  onNewAlert(): void;
   onAddTxn(): void;
   onTxns(): void;
   onDecide(): void;
@@ -267,7 +266,6 @@ export function AssetDetailView({
             {S.watch}
           </Button>
         )}
-        <Button onPress={ui.onNewAlert}>{S.addAlert}</Button>
         {h.canTxn && <Button onPress={ui.onAddTxn}>{S.addTxn}</Button>}
         <Button
           variant="primary"
@@ -515,14 +513,9 @@ export function AssetDetailView({
       title={S.alerts}
       tight
       controls={
-        <>
-          <button type="button" className={lnk} onClick={ui.onAlerts}>
-            {S.all}
-          </button>
-          <Button size="sm" onPress={ui.onNewAlert}>
-            {S.newAlert}
-          </Button>
-        </>
+        <button type="button" className={lnk} onClick={ui.onAlerts}>
+          {S.all}
+        </button>
       }
     >
       {!m.live.length ? <div className={muted13}>{S.noAlerts}</div> : slots.alertRows}

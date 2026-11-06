@@ -62,7 +62,6 @@ export default {
       toggleLots: noop,
       onToggleWatch: noop,
       watchBusy: false,
-      onNewAlert: noop,
       onAddTxn: noop,
       onTxns: noop,
       onDecide: noop,

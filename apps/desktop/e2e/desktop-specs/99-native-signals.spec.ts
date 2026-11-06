@@ -92,20 +92,6 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
       await attachRouteDiagnostics("home");
       throw error;
     }
-    await homeRail
-      .getByRole("region", { name: "Alerty" })
-      .getByRole("button", { name: "+ Nowy", exact: true })
-      .click();
-    // The ported alerts manager (ab24ab6 v2/Alerts.tsx): crumb, filters, table, the form widget, the history.
-    const openedFromHome = page.getByTestId("native-signals-alerts");
-    try {
-      await expect(openedFromHome.getByRole("region", { name: "Nowy alert" })).toBeVisible();
-    } catch (error) {
-      await attachRouteDiagnostics("new-alert");
-      throw error;
-    }
-    await page.goBack();
-    await expect(homeRail).toBeVisible();
     const rail = homeRail;
     await expect(rail).toBeVisible();
     await expect(rail).toContainText("S55F");
@@ -154,25 +140,21 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
       alerts.getByRole("button", { name: "Wycisz alert Synthetic Signals alert" }),
     ).toBeVisible();
     await page.screenshot({ path: join(artifactDir, "native-signals-alerts.png"), fullPage: true });
-    const newAlert = alerts.getByRole("region", { name: "Nowy alert" });
-    await newAlert.getByRole("combobox", { name: "Instrument" }).fill("WATCH");
-    await newAlert.getByLabel("Poziom").fill("100");
-    await newAlert.getByRole("textbox", { name: "Tytuł" }).fill("Synthetic new alert99");
-    await newAlert.getByRole("button", { name: "Utwórz" }).click();
-    await expect(
-      alerts.getByRole("row").filter({ hasText: "Synthetic new alert99" }),
-    ).toBeVisible();
-    await alerts.getByRole("button", { name: "Edytuj alert Synthetic new alert99" }).click();
+    // No new-alert form (alerts come from the agent and the strategy): the edit form opens only from a row.
+    await expect(alerts.getByRole("region", { name: "Edycja alertu" })).toHaveCount(0);
+    await alerts.getByRole("button", { name: "Edytuj alert Synthetic Signals alert" }).click();
     const editedAlert = alerts.getByRole("region", { name: "Edycja alertu" });
     await editedAlert.getByRole("textbox", { name: "Tytuł" }).fill("Synthetic edited alert99");
     await editedAlert.getByRole("button", { name: "Zapisz" }).click();
+    await expect(editedAlert).toHaveCount(0);
+    // the alerts table row (the triggered history below lists the alert under its current title too)
     const updatedAlert = alerts.getByRole("row").filter({ hasText: "Synthetic edited alert99" });
-    await expect(updatedAlert).toBeVisible();
+    await expect(updatedAlert.first()).toBeVisible();
     await alerts.getByRole("button", { name: "Usuń alert Synthetic edited alert99" }).click();
     await expect(updatedAlert).toHaveCount(0);
     // Deleted at once; the toast's `Cofnij` restores it (old removeAlertWithUndo).
     await page.getByRole("button", { name: "Cofnij" }).first().click();
-    await expect(updatedAlert).toBeVisible();
+    await expect(updatedAlert.first()).toBeVisible();
     const csvPath = join(artifactDir, "native-signals-history.csv");
     rmSync(csvPath, { force: true });
     await app.evaluate(({ session }, savePath) => {
@@ -196,7 +178,7 @@ test("native Signals uses generated owner state across Home, dialogs and pages",
       .toBe("completed");
     const csv = readFileSync(csvPath);
     expect(csv.subarray(0, 3).toString("hex")).toBe("efbbbf");
-    expect(csv.toString("utf8")).toContain("Synthetic Signals alert");
+    expect(csv.toString("utf8")).toContain("Synthetic edited alert99");
     // Back to the Home through the crumb; the watchlist is Aktywa's Obserwowane tab with the search row.
     await alerts.getByRole("navigation").getByRole("button", { name: "Inwestycje" }).click();
     await expect(rail).toBeVisible();

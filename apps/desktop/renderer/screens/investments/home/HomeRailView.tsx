@@ -123,7 +123,6 @@ export interface AlertsBriefProps {
   rows: readonly AlertRailRow[];
   all: string;
   onManage(): void;
-  onNew(): void;
 }
 
 export function AlertsBrief(props: AlertsBriefProps) {
@@ -132,11 +131,6 @@ export function AlertsBrief(props: AlertsBriefProps) {
       title={S.alerts}
       id="inv-alerts"
       tight
-      controls={
-        <Button size="sm" onPress={props.onNew}>
-          {S.addNew}
-        </Button>
-      }
       footer={
         <>
           <span className="inline-flex gap-3 text-xs text-fg-muted">

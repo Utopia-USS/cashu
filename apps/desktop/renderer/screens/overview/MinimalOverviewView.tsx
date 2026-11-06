@@ -138,10 +138,6 @@ export function MinimalOverviewView({ state }: { state: MinimalOverviewState }) 
               tight
               footer={
                 <span>
-                  <Button variant="link" size="md" onPress={state.onAddAlert}>
-                    {I.addAlert}
-                  </Button>
-                  {" · "}
                   <Button variant="link" size="md" onPress={state.onWatchInstrument}>
                     {I.watchInstrument}
                   </Button>

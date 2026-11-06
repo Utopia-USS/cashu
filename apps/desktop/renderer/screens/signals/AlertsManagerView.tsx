@@ -1,6 +1,7 @@
 // The ported alerts manager page (ab24ab6 v2/Alerts.tsx AlertsManager + AlertForm + TriggeredHistory; index.css
 // `.crumb`, `.pagehead`, `.w table`, `.cond`, `.acts`, `.w .form`, `.frow`, `.kinds`, `.kind`, `.preview`): the
-// status and source filters, the table, the form (new or edited) and the 12-month triggered history. Pure.
+// status and source filters, the table, the edit form of one alert (while one is edited; there is no new-alert
+// form, alerts come from the agent and the strategy) and the 12-month triggered history. Pure.
 
 import { S as W } from "@cashu/i18n/core/widgets.strings";
 import {
@@ -66,9 +67,10 @@ interface Choice {
 export interface AlertFormProps {
   heading: string;
   agent: string | null;
-  close: Press | null;
+  close: Press;
+  /** The scope, instrument and kind are fixed (they never change by PATCH). */
   scope: SegField<Scope> & { fieldTitle?: string };
-  instrument: (TextInput & { list: string[]; listId: string; watchFirst: string | null }) | null;
+  instrument: { id: string; label: string; value: string } | null;
   bucket: Choice | null;
   cards: {
     label: string;
@@ -78,7 +80,6 @@ export interface AlertFormProps {
       machine: string;
       on: boolean;
       disabled: boolean;
-      onPress(): void;
     }[];
   };
   /** Rows of fields between the kind cards and the type / severity row, in the old order. */
@@ -92,9 +93,9 @@ export interface AlertFormProps {
   preview: string | null;
   error: string | null;
   save: Press;
-  cancel: Press | null;
+  cancel: Press;
   noForecasts: string;
-  onEscape: (() => void) | null;
+  onEscape(): void;
 }
 export type FieldCell =
   | { kind: "input"; field: TextInput }
@@ -130,6 +131,7 @@ export interface AlertsManagerProps {
     })[];
     foot: { count: string; word: string; limit: string; limitValue: string };
   };
+  /** The edit form, null while no alert is edited (the table then spans the row). */
   form: ReactNode;
   history: {
     title: string;
@@ -221,7 +223,7 @@ function ChoiceField({ c }: { c: Choice }) {
   );
 }
 
-/** Old AlertForm (`section.w.hl` with `.wb.tight.form`). */
+/** Old AlertForm (`section.w.hl` with `.wb.tight.form`) in its edit mode. */
 export function AlertFormView(p: AlertFormProps) {
   return (
     <Widget
@@ -230,24 +232,22 @@ export function AlertFormView(p: AlertFormProps) {
       tight
       tags={p.agent ? <AgentTag full text={p.agent} title={W.addedByAgent} /> : undefined}
       controls={
-        p.close ? (
-          <button
-            type="button"
-            aria-label={p.close.label}
-            title={p.close.title}
-            onClick={p.close.onPress}
-            className={`${iconBtn} text-base hover:text-fg`}
-          >
-            {"✕"}
-          </button>
-        ) : undefined
+        <button
+          type="button"
+          aria-label={p.close.label}
+          title={p.close.title}
+          onClick={p.close.onPress}
+          className={`${iconBtn} text-base hover:text-fg`}
+        >
+          {"✕"}
+        </button>
       }
     >
       <form
         className="grid gap-3"
         onSubmit={(e) => e.preventDefault()}
         onKeyDown={(e) => {
-          if (e.key === "Escape" && p.onEscape) {
+          if (e.key === "Escape") {
             e.stopPropagation();
             p.onEscape();
           }
@@ -262,22 +262,11 @@ export function AlertFormView(p: AlertFormProps) {
             <label htmlFor={p.instrument.id}>{p.instrument.label}</label>
             <input
               id={p.instrument.id}
-              list={p.instrument.listId}
               value={p.instrument.value}
-              onChange={(e) => p.instrument?.onChange(e.target.value)}
-              disabled={p.instrument.disabled}
-              placeholder={p.instrument.placeholder}
+              disabled
               autoComplete="off"
               className={inputCls({ field: true })}
             />
-            <datalist id={p.instrument.listId}>
-              {p.instrument.list.map((v) => (
-                <option key={v} value={v} />
-              ))}
-            </datalist>
-            {p.instrument.watchFirst && (
-              <span className="text-2xs-plus text-fg-muted">{p.instrument.watchFirst}</span>
-            )}
           </div>
         )}
         {p.bucket && <ChoiceField c={p.bucket} />}
@@ -297,7 +286,7 @@ export function AlertFormView(p: AlertFormProps) {
                   name="af-kind"
                   checked={c.on}
                   disabled={c.disabled}
-                  onChange={c.onPress}
+                  readOnly
                   className="sr-only"
                 />
                 {c.label}
@@ -366,7 +355,7 @@ export function AlertFormView(p: AlertFormProps) {
           <Button variant="primary" onPress={p.save.onPress} disabled={p.save.disabled}>
             {p.save.label}
           </Button>
-          {p.cancel && <Button onPress={p.cancel.onPress}>{p.cancel.label}</Button>}
+          <Button onPress={p.cancel.onPress}>{p.cancel.label}</Button>
           <span className="flex-1" />
           <span className="text-2xs-plus text-fg-muted">{p.noForecasts}</span>
         </div>
@@ -572,7 +561,7 @@ export function AlertsManagerView(p: AlertsManagerProps) {
         items={[
           {
             id: "list",
-            span: 2,
+            span: p.form ? 2 : 3,
             node: (
               <Widget
                 title={null}

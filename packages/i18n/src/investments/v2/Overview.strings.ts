@@ -178,7 +178,6 @@ export const S = catalog({
     en: "Contributions in the last 6 months",
   },
   thisMonth: { pl: "Na ten miesiąc", en: "This month" },
-  addAlert: { pl: "dodaj alert", en: "add an alert" },
   watchInstrument: { pl: "obserwuj instrument", en: "watch an instrument" },
   done: { pl: "zrobione", en: "done" },
   step2: { pl: "krok 2", en: "step 2" },

@@ -1,7 +1,7 @@
 /** Live owner surfaces stay readable even when valuation or current-file authority is unavailable. */
 import { parseDateTime, utcIso } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import { alerts as alertDomain, asProfileId } from "@cashu/domain/investments";
+import { asProfileId } from "@cashu/domain/investments";
 import { enabledModuleIds } from "../../core/queries.js";
 import { defineQuery, type Read } from "../../query.js";
 import {
@@ -115,7 +115,6 @@ export function signalsQueries(sources: SignalsScreenSources = {}) {
           open: readSignalRows(read, now, "open"),
           alerts: readAlertRows(read, now, args.today, sources.market?.current(read) ?? null),
           counts: alertCounts(read, now),
-          catalog: alertDomain.catalogDicts(),
           decisions: journal.map((row) => ({ ...row, signals: links.get(row.gid) ?? [] })),
           accounts: brokerageAccounts(read),
           instruments: [...instruments.values()],

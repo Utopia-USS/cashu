@@ -19,8 +19,6 @@ import { useAssetDetail, useAssetName } from "./useAssetDetail.js";
 
 /** The old AssetDetail callbacks (Home.tsx:403-411; A3's drawer contract shapes). */
 interface AssetActions {
-  /** `+ Alert` / `+ Nowy`: the alerts manager with a new alert for the instrument. */
-  onNewAlert(instrument: string): void;
   /** `+ Transakcja`: the transaction drawer preset to the instrument. */
   onAddTxn(instrumentId: number): void;
   /** `n transakcji` in the meta line. */
@@ -29,8 +27,8 @@ interface AssetActions {
   onThesis(inst: { id: number; label: string }, thesis: Thesis | null): void;
   /** `dziennik` of Sygnały i decyzje: the journal filtered to the instrument. */
   onJournal(instrument: string): void;
-  /** `wszystkie` of Alerty: the alerts manager filtered to the instrument. */
-  onAlerts(instrument: string): void;
+  /** `wszystkie` of Alerty: the alerts manager. */
+  onAlerts(): void;
   /** `notatka` of a research signal, a reason line of the recommendation (old ctx.onOpenNote). */
   onOpenNote?(instrument: string, note: string | null, segment: string | null): void;
 }
@@ -92,13 +90,12 @@ function Detail(props: CommonProps & { mode: AssetMode }) {
       mode={props.mode}
       ui={{
         ...st.ui,
-        onNewAlert: () => props.onNewAlert(props.instrument),
         onAddTxn: () => props.onAddTxn(m.id),
         onTxns: () => {
           if (m.position) props.onTxns(m.position);
         },
         onThesis: () => props.onThesis({ id: m.id, label: m.instrumentLabel }, m.thesis),
-        onAlerts: () => props.onAlerts(props.instrument),
+        onAlerts: props.onAlerts,
         onJournal: () => props.onJournal(props.instrument),
         onOpenNote: openNote,
       }}

@@ -1,6 +1,5 @@
-// The pure parts of the ported alerts manager (ab24ab6 v2/Alerts.tsx): the static kind catalog fallback, the
-// form's cards, default polarities and pauses, the manager table rows, the triggered history and its CSV, and the
-// alert row of the Home / asset page (AlertRow).
+// The pure parts of the ported alerts manager (ab24ab6 v2/Alerts.tsx): the edit form's cards and pauses, the
+// manager table rows, the triggered history and its CSV, and the alert row of the Home / asset page (AlertRow).
 import { CARD_LABEL, S } from "@cashu/i18n/investments/v2/Alerts.strings";
 import { csvLine } from "@cashu/ui-logic/core/csv";
 import { addDays, localDay, parseServerTime, todayLocal } from "@cashu/ui-logic/core/time";
@@ -49,20 +48,6 @@ export type KindCard =
   | "weight"
   | "custom";
 
-/** Static catalog (mirrors alerts/catalog.py) when the host sends none. */
-export const STATIC_KINDS: Record<string, string[]> = {
-  price_above: ["instrument"],
-  price_below: ["instrument"],
-  change_pct: ["instrument"],
-  drawdown_from_high: ["instrument"],
-  new_high: ["instrument"],
-  sma_cross: ["instrument"],
-  weight_above: ["instrument", "bucket"],
-  weight_below: ["instrument", "bucket"],
-  custom: ["instrument", "portfolio", "bucket"],
-  range_breakout: ["instrument"],
-  volume_spike: ["instrument"],
-};
 export const CARDS: { card: KindCard; machine: string; kinds: string[] }[] = [
   { card: "price_above", machine: "price_above", kinds: ["price_above"] },
   { card: "price_below", machine: "price_below", kinds: ["price_below"] },
@@ -80,22 +65,6 @@ export const CARDS: { card: KindCard; machine: string; kinds: string[] }[] = [
   { card: "custom", machine: "custom", kinds: ["custom"] },
 ];
 export const cardLabel = (c: KindCard): string => (CARD_LABEL as Record<string, string>)[c] ?? c;
-export const DEFAULT_POLARITY: Record<string, string> = {
-  price_below: "positive",
-  price_above: "neutral",
-  change_pct: "negative",
-  drawdown_from_high: "positive",
-  new_high: "neutral",
-  sma_cross: "negative",
-  weight_above: "negative",
-  weight_below: "positive",
-  custom: "neutral",
-  range_breakout: "neutral",
-  volume_spike: "neutral",
-};
-/** A breakout's polarity follows its direction until the owner picks one: up = chance, down = risk. */
-export const breakoutPolarity = (direction: string) =>
-  direction === "up" ? "positive" : direction === "down" ? "negative" : "neutral";
 export const COOLDOWNS: (number | null)[] = [null, 7, 14, 30, 90];
 export const cooldownLabel = (v: number | null) => (v == null ? S.noPause : S.days(v));
 const endOfYear = (): string => `${new Date().getFullYear()}-12-31`;

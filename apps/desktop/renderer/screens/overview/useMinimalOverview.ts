@@ -15,11 +15,7 @@ const overview = overviewQueries({ prices: null });
  * this month's open plans and the one-click plan of the month's contribution (the toast with its undo, old
  * usePlanActions). The page asks for the narrow frame (old `setNarrow(minimal)`). Navigation comes in from the
  * route. */
-export function useMinimalOverview(args: {
-  today: string;
-  openNewAlert(): void;
-  openWatchlist(): void;
-}) {
+export function useMinimalOverview(args: { today: string; openWatchlist(): void }) {
   const { privacy } = useUiEnv();
   useNarrowFrame(true);
   const portfolio = useQuery(portfolioQueries.portfolio, {
@@ -42,7 +38,6 @@ export function useMinimalOverview(args: {
       if (plan !== null)
         void actions.save(plan.amount.toFloat(), plan.currency, plan.date, plan.account);
     },
-    onAddAlert: args.openNewAlert,
     onWatchInstrument: args.openWatchlist,
   };
 }

@@ -130,7 +130,6 @@ export interface AlertsBriefInput {
   near: { near_price_pct?: number | null; near_pp?: number | null } | null | undefined;
   sinceAt: string | null;
   onManage(): void;
-  onNew(): void;
 }
 
 export function alertsBriefProps(i: AlertsBriefInput): AlertsBriefProps {
@@ -156,7 +155,6 @@ export function alertsBriefProps(i: AlertsBriefInput): AlertsBriefProps {
     })),
     all: S.all(live.length),
     onManage: i.onManage,
-    onNew: i.onNew,
   };
 }
 

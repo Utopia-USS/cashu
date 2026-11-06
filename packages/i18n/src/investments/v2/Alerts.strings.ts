@@ -36,7 +36,6 @@ export const S = catalog({
 
   // widget and row
   alerts: { pl: "Alerty", en: "Alerts" },
-  addNew: { pl: "+ Nowy", en: "+ New" },
   near: { pl: "blisko", en: "near" },
   inSignals: { pl: "w Sygnałach", en: "in Signals" },
   allCount: { pl: (n: number) => `Wszystkie (${n})`, en: (n: number) => `All (${n})` },
@@ -117,10 +116,6 @@ export const S = catalog({
     pl: (title: string) => `Edytuj alert ${title}`,
     en: (title: string) => `Edit alert ${title}`,
   },
-  created: {
-    pl: (title: string) => `Utworzono alert „${title}"`,
-    en: (title: string) => `Alert "${title}" created`,
-  },
   savedAlert: { pl: "Zapisano alert", en: "Alert saved" },
 
   // form
@@ -128,7 +123,6 @@ export const S = catalog({
   days,
   noPause: { pl: "bez pauzy", en: "no pause" },
   editTitle: { pl: "Edycja alertu", en: "Edit alert" },
-  newTitle: { pl: "Nowy alert", en: "New alert" },
   closeEdit: { pl: "Zamknij edycję", en: "Close the edit" },
   closeEsc: { pl: "Zamknij (Esc)", en: "Close (Esc)" },
   scopeNewOnly: {
@@ -136,8 +130,6 @@ export const S = catalog({
     en: "The scope changes only with a new alert.",
   },
   scopeInstrument: { pl: "Instrument", en: "Instrument" },
-  instPlaceholder: { pl: "nazwa lub symbol", en: "name or symbol" },
-  watchFirst: { pl: "najpierw dodaj do obserwowanych", en: "add it to the watchlist first" },
   noBuckets: { pl: "brak koszyków w strategii", en: "no buckets in the strategy" },
   condition: { pl: "Warunek", en: "Condition" },
   level: { pl: "Poziom", en: "Level" },
@@ -175,7 +167,6 @@ export const S = catalog({
   expires: { pl: "Wygasa", en: "Expires" },
   never: { pl: "nigdy", en: "never" },
   saving: { pl: "Zapisuję…", en: "Saving…" },
-  create: { pl: "Utwórz", en: "Create" },
   noForecasts: {
     pl: "bez prognoz: tylko warunki na danych",
     en: "no forecasts: only conditions on data",

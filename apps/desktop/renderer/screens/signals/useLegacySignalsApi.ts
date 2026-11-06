@@ -69,7 +69,6 @@ export function useLegacySignalsApi() {
   const undo = useCommand(signalsOwnerCommands.undo);
   const removeAlert = useCommand(signalsOwnerCommands.deleteAlert);
   const restore = useCommand(signalsOwnerCommands.restoreAlert);
-  const createAlert = useCommand(alertCommands.create);
   const updateAlert = useCommand(alertCommands.update);
   const snooze = useUiAction(signalsSnooze);
   const watch = useUiAction(signalsWatch);
@@ -139,17 +138,6 @@ export function useLegacySignalsApi() {
       await settled(
         durable.run(`alert-update:${alert}`, updateAlert, { alert, changes: camel(patch) }),
       );
-    },
-    /** `POST alerts`; answers the saved title (the old response's `title`, all the form reads). */
-    postAlert: async (
-      body: Record<string, unknown> & { instrument_id: number | null; title: string },
-    ) => {
-      const { instrument_id, ...rest } = body;
-      const input = { ...camel(rest), instrument: gidOf(instrument_id) } as Parameters<
-        typeof createAlert.run
-      >[0];
-      await settled(durable.run("alert-create", createAlert, input));
-      return { title: body.title };
     },
     /** `POST watchlist`: answers the old add response (`restored`, `created_instrument`, the coded warnings). */
     postWatch: async (input: WatchInput & { note?: string | null; tags?: string[] | null }) => {

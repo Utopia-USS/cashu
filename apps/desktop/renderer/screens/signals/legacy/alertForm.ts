@@ -1,4 +1,5 @@
-// ab24ab6 v2/alertForm.ts verbatim. Alert form round trip (F7 FE4 / FE12): the edit form shows the stored values
+// ab24ab6 v2/alertForm.ts verbatim, minus the new-alert kind choice (formKind; alerts are no longer created in the
+// form). Alert form round trip (F7 FE4 / FE12): the edit form shows the stored values
 // without rounding them, builds the params from the typed text, and an edit PATCHes only what the owner changed: an
 // untouched level, threshold, cooldown ("bez pauzy" included) or expiry goes back exactly as stored (or is not sent
 // at all). The kind never changes by PATCH, so the weight direction is fixed while editing. Pure (old tests in
@@ -149,7 +150,7 @@ export const expiryChoice = (expiresAt: string | null | undefined): string =>
   expiresAt ? (localDay(expiresAt) ?? "") : "";
 
 /** The expiry instant of a chosen day: 23:59 local time, sent with its UTC offset (never naive). */
-export function expiryValue(day: string): string | null {
+function expiryValue(day: string): string | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
   if (!m) return null;
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 0).toISOString();
@@ -191,12 +192,6 @@ export function alertPatch(a: AlertLike, v: AlertFormValues): Record<string, unk
   if (v.expiry !== expiryChoice(a.expires_at))
     out.expires_at = v.expiry ? expiryValue(v.expiry) : null;
   return out;
-}
-
-/** The kind of an alert form: in edit mode the stored kind (the direction of a weight alert is fixed). */
-export function formKind(card: string, above: boolean, stored: string | null): string {
-  if (stored) return stored;
-  return card === "weight" ? (above ? "weight_above" : "weight_below") : card;
 }
 
 /** Client-side checks before the server's catalog validation (messages in the UI language). */
