@@ -10,6 +10,7 @@ import {
   expect,
   launchDesktop,
   openProfileMenuItem,
+  pickLanguage,
   pickProfile,
   rewriteHash,
   stopHost,
@@ -312,30 +313,14 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     await openSettings();
     await expect(profile).toBeVisible();
     await expect(agent.getByText("Brak oczekujących propozycji.")).toBeVisible();
-    await page
-      .getByRole("group", { name: "Język", exact: true })
-      .getByRole("button", { name: "English", exact: true })
-      .click();
-    await expect(
-      page
-        .getByRole("group", { name: "Language", exact: true })
-        .getByRole("button", { name: "English", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await pickLanguage(page, "English");
     await page.reload();
     await expect(
       page
         .getByRole("group", { name: "Language", exact: true })
         .getByRole("button", { name: "English", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await page
-      .getByRole("group", { name: "Language", exact: true })
-      .getByRole("button", { name: "Polski", exact: true })
-      .click();
-    await expect(
-      page
-        .getByRole("group", { name: "Język", exact: true })
-        .getByRole("button", { name: "Polski", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await pickLanguage(page, "Polski");
     await page.reload();
     await expect(
       page

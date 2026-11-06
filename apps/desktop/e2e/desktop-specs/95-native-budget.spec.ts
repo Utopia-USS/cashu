@@ -5,6 +5,7 @@ import {
   dashboardWindow,
   expect,
   launchDesktop,
+  pickLanguage,
   pickProfile,
   profilePill,
   rewriteHash,
@@ -156,15 +157,7 @@ test("native budget tabs follow the Python app: Wydatki, Przepływy and Subskryp
     });
     // The language lives in Settings, as in the Python app.
     await rewriteHash(page, /\/budget\/[^?]*(?=\?|$)/u, "/settings");
-    await page
-      .getByRole("group", { name: "Język", exact: true })
-      .getByRole("button", { name: "English", exact: true })
-      .click();
-    await expect(
-      page
-        .getByRole("group", { name: "Language", exact: true })
-        .getByRole("button", { name: "English", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await pickLanguage(page, "English");
     await page
       .getByRole("navigation", { name: "Modules" })
       .getByRole("button", { name: "Expenses", exact: true })

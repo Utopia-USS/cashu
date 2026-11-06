@@ -11,6 +11,7 @@ import {
   expect,
   hostPid,
   launchEnv,
+  pickLanguage,
   pickProfile,
   rewriteHash,
   setPrivacy,
@@ -209,29 +210,13 @@ test("the native Overview reads isolated stores, preserves privacy, and updates 
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     // The language lives in Settings, as in the Python app.
     await rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
-    await page
-      .getByRole("group", { name: "Język", exact: true })
-      .getByRole("button", { name: "English", exact: true })
-      .click();
-    await expect(
-      page
-        .getByRole("group", { name: "Language", exact: true })
-        .getByRole("button", { name: "English", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await pickLanguage(page, "English");
     await rewriteHash(page, /\/settings(?=\?|$)/u, "/overview");
     await expect(page.getByTestId("net-worth")).toHaveText(
       rendered(expected.anna.net, expected.anna.currency, "en-US"),
     );
     await rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
-    await page
-      .getByRole("group", { name: "Language", exact: true })
-      .getByRole("button", { name: "Polski", exact: true })
-      .click();
-    await expect(
-      page
-        .getByRole("group", { name: "Język", exact: true })
-        .getByRole("button", { name: "Polski", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await pickLanguage(page, "Polski");
     await rewriteHash(page, /\/settings(?=\?|$)/u, "/overview");
     await expect(page.getByTestId("net-worth")).toHaveText(annaWorth);
     const editIndex = assets.findIndex(

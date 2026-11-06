@@ -122,6 +122,28 @@ export async function pickProfile(page: Page, name: string): Promise<void> {
   await expect(pill).toHaveAccessibleName(name);
 }
 
+/**
+ * Picks a UI language in Settings and waits for the reload the pin starts (renderer main.tsx `pin`
+ * calls `location.reload()`). The old document re-renders in the new language before it unloads, so
+ * a check on the new labels alone can pass on the dying page; a navigation started then (a reload, a
+ * hash rewrite) races the app's own reload and fails with "Not attached" / a destroyed context.
+ */
+export async function pickLanguage(page: Page, to: "Polski" | "English"): Promise<void> {
+  const from = to === "English" ? "Język" : "Language";
+  const group = to === "English" ? "Language" : "Język";
+  const reloaded = page.waitForEvent("load");
+  await page
+    .getByRole("group", { name: from, exact: true })
+    .getByRole("button", { name: to, exact: true })
+    .click();
+  await reloaded;
+  await expect(
+    page
+      .getByRole("group", { name: group, exact: true })
+      .getByRole("button", { name: to, exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+}
+
 /** Runs one action row of the profile menu ("Nowy profil…", "Ustawienia"). */
 export async function openProfileMenuItem(page: Page, name: string): Promise<void> {
   await profilePill(page).click();
@@ -177,7 +199,7 @@ export async function settleModalHistory(page: Page): Promise<void> {
 
 /** Rewrites the window's hash route like a pasted link, after any closing modal let go of it. */
 export async function rewriteHash(page: Page, from: RegExp, to: string): Promise<void> {
-  // EXPERIMENT await settleModalHistory(page);
+  await settleModalHistory(page);
   await page.evaluate(
     ([source, flags, replacement]) => {
       const next = new URL(location.href);
