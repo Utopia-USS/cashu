@@ -27,6 +27,8 @@ const fileInput =
 const td = importTable.td();
 const num = importTable.td(true);
 const tones = { positive: "text-positive", negative: "text-negative" } as const;
+/** Old global `code`: 0.92em of the surrounding text, monospace, no ligatures. */
+const code = "font-mono text-code-ui [font-variant-ligatures:none]";
 
 export function StatementImportView({ state }: { state: StatementImportState }) {
   const f = state.footer;
@@ -116,11 +118,11 @@ export function StatementImportView({ state }: { state: StatementImportState }) 
             ) : (
               <Notice tone="warning">
                 {S.ebMissing[0]}
-                <code>CASHU_EB_APP_ID</code>
+                <code className={code}>CASHU_EB_APP_ID</code>
                 {S.ebMissing[1]}
-                <code>.env</code>
+                <code className={code}>.env</code>
                 {S.ebMissing[2]}
-                <code>enablebanking_private.pem</code>
+                <code className={code}>enablebanking_private.pem</code>
                 {S.ebMissing[3]}
               </Notice>
             ))}
@@ -188,7 +190,7 @@ export function StatementImportView({ state }: { state: StatementImportState }) 
       {state.step === 2 && p && (
         <>
           <div className="mb-2.5 text-xs-plus text-fg-muted">
-            <code>{p.fileName}</code>
+            <code className={code}>{p.fileName}</code>
             {p.meta}
             <Button variant="link" size="md" onPress={state.onChange}>
               {S.change}

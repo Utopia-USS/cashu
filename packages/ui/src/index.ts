@@ -142,6 +142,7 @@ export {
   type ImportDrawerProps,
   ImportTable,
   type ImportTableProps,
+  importCheckCls,
   importHintCls,
   importTable,
 } from "./overlays/ImportDrawer.js";

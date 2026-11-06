@@ -48,6 +48,10 @@ const SP = " ";
 /** Muted helper text (old `.fhint`: 12px muted). */
 export const importHintCls = "text-xs text-fg-muted";
 
+/** The drawers' checkbox (old `.check`: 15px, accent colour). The old app kept the UA checkbox margin
+ * (3px 3px 3px 4px), which the preflight resets, so it is restored here. */
+export const importCheckCls = "my-0.75 mr-0.75 ml-1 size-3.75 accent-accent";
+
 export interface ImportCountsProps {
   /** "12 nowych" (solid positive tag). */
   fresh: string;
@@ -78,7 +82,7 @@ export function ImportCounts(props: ImportCountsProps) {
       <label className="flex items-center gap-1.5 text-xs text-fg-muted">
         <input
           type="checkbox"
-          className="size-3.75 accent-accent"
+          className={importCheckCls}
           checked={props.filter.on}
           onChange={(e) => props.filter.onChange(e.target.checked)}
         />
