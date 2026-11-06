@@ -4,7 +4,16 @@
 // stacked TextField / Select look, 12px bottom margin), `.fe` (12px negative), `.fhint`, `.foot`, the drawer table.
 import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/investments/Drawers.strings";
-import { Button, Drawer, Notice, Select, Skeleton, Tag, TextField } from "@cashu/ui";
+import {
+  Button,
+  Drawer,
+  importCheckCls,
+  Notice,
+  Select,
+  Skeleton,
+  Tag,
+  TextField,
+} from "@cashu/ui";
 import type {
   AccountDrawerState,
   ThesisDrawerState,
@@ -217,7 +226,7 @@ export function ThesisDrawerView({ state: s }: { state: ThesisDrawerState }) {
             <label className="flex items-center gap-1.5 text-xs-plus">
               <input
                 type="checkbox"
-                className="size-3.75 accent-accent"
+                className={importCheckCls}
                 checked={s.reviewed}
                 onChange={(e) => s.onReviewed(e.target.checked)}
               />{" "}

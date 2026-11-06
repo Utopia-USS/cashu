@@ -9,6 +9,7 @@ import {
   Button,
   FieldNote,
   FormRow,
+  importCheckCls,
   Kicker,
   RunError,
   Select,
@@ -214,10 +215,10 @@ function BindingForm({
         <FormRow>
           {connector.params.map((param) =>
             param.type === "boolean" ? (
-              <label key={param.id} className={`${controls} mb-3 text-sm text-fg`}>
+              <label key={param.id} className="mb-3 flex items-center gap-1.5 text-sm text-fg">
                 <input
                   type="checkbox"
-                  className="accent-accent"
+                  className={importCheckCls}
                   checked={params[param.id] === true}
                   disabled={busy}
                   onChange={(event) =>

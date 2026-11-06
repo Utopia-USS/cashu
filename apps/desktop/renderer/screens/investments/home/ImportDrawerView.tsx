@@ -8,6 +8,7 @@ import {
   ImportDone,
   ImportDrawer,
   ImportTable,
+  importCheckCls,
   importTable,
   Notice,
   RadioList,
@@ -20,6 +21,8 @@ import type { ImportDrawerState, ImportWarningText } from "./useImportDrawer.js"
 const td = importTable.td();
 const num = importTable.td(true);
 const tones = { positive: "text-positive", negative: "text-negative" } as const;
+/** Inline code (old global `code { font: 0.92em ui-monospace }`, no ligatures). */
+const code = "font-mono text-code-ui [font-variant-ligatures:none]";
 
 function Warning({ w }: { w: ImportWarningText }) {
   return (
@@ -119,7 +122,7 @@ export function ImportDrawerView({ state }: { state: ImportDrawerState }) {
       {state.step === 2 && p && (
         <>
           <div className="mb-2.5 text-xs-plus text-fg-muted">
-            <code>{p.meta.file}</code> {"·"} {p.meta.importer}
+            <code className={code}>{p.meta.file}</code> {"·"} {p.meta.importer}
             <Button variant="link" size="md" onPress={state.onChangeImporter}>
               {S.changeImporter}
             </Button>
@@ -237,7 +240,7 @@ export function ImportDrawerView({ state }: { state: ImportDrawerState }) {
                           <label className="flex items-center gap-1.5 text-xs-plus">
                             <input
                               type="checkbox"
-                              className="size-3.75 accent-accent"
+                              className={importCheckCls}
                               checked={d.correction.on}
                               onChange={(e) => d.correction?.onChange(e.target.checked)}
                             />

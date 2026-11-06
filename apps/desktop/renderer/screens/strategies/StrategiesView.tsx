@@ -19,6 +19,9 @@ const card = "rounded-widget border border-border bg-surface-raised";
 const rowButton = "flex w-full cursor-pointer border-0 text-left hover:bg-subtle";
 const rowIdle = "bg-transparent text-fg";
 const mono = "font-mono";
+/** The source's `<code>`: the old global `code { font: 0.92em ui-monospace }` shorthand also reset the
+ * line height to `normal`, so the lines sit at 11.5px / normal inside the 12.5px / 1.55 `pre`. */
+const sourceCode = "font-mono text-code-ui leading-control [font-variant-ligatures:none]";
 /** `padding-left: 22 + depth * 12` of the tree rows. */
 const indent = ["pl-5.5", "pl-8.5", "pl-11.5", "pl-14.5", "pl-17.5", "pl-20.5"] as const;
 const indentOf = (depth: number) => indent[Math.min(depth, indent.length - 1)];
@@ -148,14 +151,14 @@ function Main({ s }: { s: Ready }) {
           <MarkdownDocument text={b.text} />
         ) : (
           <pre className={`-mx-3 my-0 overflow-x-auto text-xs-plus leading-sheet ${mono}`}>
-            <code>
+            <code className={sourceCode}>
               {b.lines.map((l) => (
                 <span
                   key={l.key}
                   className={`block whitespace-pre pr-3 ${l.tone === "err" ? "bg-negative-bg" : l.tone === "warn" ? "bg-warning-bg" : ""}`}
                   title={l.title}
                 >
-                  <span className="inline-block w-10 pr-[--spacing(3.125)] text-right text-fg-muted opacity-60 select-none">
+                  <span className="inline-block w-[--spacing(9.2)] pr-[--spacing(2.875)] text-right text-fg-muted opacity-60 select-none">
                     {l.n}
                   </span>
                   {l.text}

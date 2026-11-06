@@ -23,6 +23,9 @@ import {
 import type { ReactNode } from "react";
 import type { HeadModel, HeroFact, HeroModel, StartModel } from "./homeModel.js";
 
+/** Inline code (old global `code { font: 0.92em ui-monospace }`, no ligatures). */
+const code = "font-mono text-code-ui [font-variant-ligatures:none]";
+
 /** The old `.wrap.wide` page box (max 1440px, 20px sides, 70px bottom, centred; the shell above it carries the 24px top) with the old body type (15px / 1.5); `narrow` = the old `.wrap.narrow` (1120px, the asset page). */
 export function HomePage({ children, narrow = false }: { children: ReactNode; narrow?: boolean }) {
   return (
@@ -245,9 +248,9 @@ function StartView({
                   title: step.title,
                   hint: step.strategyHint ? (
                     <>
-                      <code>strategy.yaml</code>
+                      <code className={code}>strategy.yaml</code>
                       {S.orInterview}
-                      <code>/investments-setup</code>
+                      <code className={code}>/investments-setup</code>
                     </>
                   ) : (
                     step.hint

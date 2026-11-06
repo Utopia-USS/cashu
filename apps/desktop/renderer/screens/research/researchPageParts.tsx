@@ -29,6 +29,9 @@ import type {
 
 type Tab<K extends TabModel["kind"]> = Extract<TabModel, { kind: K }>;
 
+/** Inline code (old global `code { font: 0.92em ui-monospace }`, no ligatures). */
+const code = "font-mono text-code-ui [font-variant-ligatures:none]";
+
 export function Copy({ c }: { c: CopyModel }) {
   return (
     <CopyCommand
@@ -461,7 +464,7 @@ export function EmptyResearch({
         s.hint.text
       ) : (
         <>
-          {s.hint.before} <code>{s.hint.code}</code>
+          {s.hint.before} <code className={code}>{s.hint.code}</code>
           {s.hint.after}
         </>
       ),
