@@ -3,7 +3,9 @@ import type { SetupAction } from "@cashu/domain/core";
 export type SetupNavigation =
   | { readonly kind: "module"; readonly module: string; readonly tab: string }
   | { readonly kind: "settings"; readonly section: string }
-  | { readonly kind: "overview"; readonly module: string };
+  | { readonly kind: "overview"; readonly module: string }
+  /** The module's in-app first steps at `setup/<module>`. */
+  | { readonly kind: "start"; readonly module: string };
 
 const tabs: Readonly<Record<string, readonly string[]>> = {
   budget: ["expenses", "flows", "subs"],

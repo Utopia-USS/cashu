@@ -1,5 +1,6 @@
 import { type HostSettingsInfo, hostSettingsInfo } from "@cashu/store/core/desktop-settings";
 import { defineQuery } from "@cashu/store/query";
+import { launcherPath } from "./launcher.js";
 import type { HostStores } from "./stores.js";
 import type { WorkerStatus } from "./worker/contracts.js";
 
@@ -24,6 +25,7 @@ export function settingsInfoQuery(deps: {
         availability: "ready",
         version: deps.version,
         dataDir,
+        launcher: launcherPath(dataDir),
         ...(status === null
           ? {}
           : {

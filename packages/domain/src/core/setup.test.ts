@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { SetupStep } from "./modules.js";
-import { cliPrefix, setupView, shlexJoin, shlexQuote } from "./setup.js";
+import { claudeMcpAdd, cliPrefix, setupView, shlexJoin, shlexQuote } from "./setup.js";
 
 const steps = (...specs: (readonly [boolean, boolean])[]): SetupStep[] =>
   specs.map(([done, optional], i) => ({
@@ -46,6 +46,12 @@ describe("cli prefix", () => {
     );
     expect(cliPrefix(["/Users/x/My Apps/cashU.app/cashu"], "anna-2")).toBe(
       "'/Users/x/My Apps/cashU.app/cashu' --profile anna-2",
+    );
+  });
+
+  it("claude mcp add line of the profile (runtime.claude_mcp_add)", () => {
+    expect(claudeMcpAdd(["/Users/x/Library/Application Support/cashU/bin/cashu"], "jan")).toBe(
+      "claude mcp add cashu-jan -- '/Users/x/Library/Application Support/cashU/bin/cashu' mcp --profile jan",
     );
   });
 

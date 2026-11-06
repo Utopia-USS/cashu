@@ -3,9 +3,8 @@ import { AgentWidgetView } from "./AgentWidgetView.js";
 const args = {
   agent: {
     kind: "ready" as const,
-    cliPrefix: "cashu --profile synthetic",
-    mcpAdd: "cashu mcp --profile synthetic",
-    translocated: false,
+    cliPrefix: "/synthetic/bin/cashu --profile synthetic",
+    mcpAdd: "claude mcp add cashu-synthetic -- /synthetic/bin/cashu mcp --profile synthetic",
   },
   skill: "/budget-setup",
   privacy: "strict",

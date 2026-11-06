@@ -1,7 +1,6 @@
 // The `Z pomocą Claude Code` card of a module's setup page (ab24ab6 core/SetupPage.tsx): connect the profile's MCP
 // server once, run the module's setup skill, what the agent sees at the profile's privacy level. Pure view.
 import { S as P } from "@cashu/i18n/core/SetupPage.strings";
-import { WS } from "@cashu/i18n/core/workspace.strings";
 import {
   Button,
   CodeLine,
@@ -59,9 +58,6 @@ export function AgentWidgetView({
       : [];
   return (
     <SectionCard id="setup-claude" title={P.withClaude}>
-      {agent.kind === "ready" && agent.translocated && (
-        <Notice tone="warning">{WS.translocated}</Notice>
-      )}
       {steps.length ? (
         <SetupSteps steps={steps} />
       ) : (

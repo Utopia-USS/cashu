@@ -4,6 +4,8 @@ export interface HostSettingsInfo {
   readonly availability: "ready" | "unavailable";
   readonly version?: string;
   readonly dataDir?: string;
+  /** The stable launcher `<data dir>/bin/cashu` that agent commands (`claude mcp add`, CLI lines) run. */
+  readonly launcher?: string;
   readonly worker?: {
     readonly state: "off" | "safe-mode" | "idle" | "running" | "stopped" | "error";
     readonly schedule: string;

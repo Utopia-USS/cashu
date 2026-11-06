@@ -642,7 +642,13 @@ function SetupGuideRoute() {
         params: { slug: slug ?? "" },
         search: { vault, section: section.data },
       });
-    } else if (target.kind === "overview")
+    } else if (target.kind === "start")
+      void router.navigate({
+        to: "/$slug/setup/$module",
+        params: { slug: slug ?? "", module: target.module },
+        search: { vault },
+      });
+    else if (target.kind === "overview")
       void router.navigate({
         to: "/$slug/overview",
         params: { slug: slug ?? "" },
@@ -702,7 +708,6 @@ function SetupGuideRoute() {
   return (
     <SetupScreen
       moduleId={module ?? ""}
-      agent={{ kind: "unavailable", reason: "source_unbound" }}
       onNavigate={onNavigate}
       onCopy={async (value) => navigator.clipboard.writeText(value)}
     />

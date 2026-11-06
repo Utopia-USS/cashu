@@ -1,11 +1,12 @@
-import { builtinRegistry, moduleName } from "@cashu/domain/core";
+import { builtinRegistry, claudeMcpAdd, cliPrefix, moduleName } from "@cashu/domain/core";
 import { lang } from "@cashu/i18n";
 import { S as BUDGET } from "@cashu/i18n/budget/index.strings";
 import { S as P } from "@cashu/i18n/core/SetupPage.strings";
 import { S as INVESTMENTS } from "@cashu/i18n/investments/index.strings";
 import { S as LOANS } from "@cashu/i18n/loans/index.strings";
 import { profile } from "@cashu/store/core";
-import { overviewQueries } from "@cashu/store/overview";
+import { hostSettingsInfo } from "@cashu/store/core/desktop-settings";
+import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import { useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { useEffect, useRef, useState } from "react";
@@ -14,16 +15,10 @@ import { S } from "./Setup.strings.js";
 
 export type SetupAgentContext =
   | { readonly kind: "unavailable"; readonly reason: string }
-  | {
-      readonly kind: "ready";
-      readonly cliPrefix: string;
-      readonly mcpAdd: string;
-      readonly translocated: boolean;
-    };
+  | { readonly kind: "ready"; readonly cliPrefix: string; readonly mcpAdd: string };
 
 export interface SetupScreenProps {
   readonly moduleId: string;
-  readonly agent: SetupAgentContext;
   readonly onNavigate: (target: SetupNavigation) => void;
   readonly onCopy: (text: string) => Promise<void>;
 }
@@ -38,19 +33,33 @@ const firstTabLabel = (module: string): string | null =>
       : module === "investments"
         ? INVESTMENTS.tab
         : null;
+/** Modules with in-app first steps at `setup/<module>` (old `def.Start`): the head's `Pierwsze kroki` link. */
+const START_MODULES: ReadonlySet<string> = new Set(["budget", "loans", "assets"]);
 const q = overviewQueries({ prices: null });
 
 export function useSetupScreen(props: SetupScreenProps) {
   const vault = useProfile();
   const { privacy: incognito } = useUiEnv();
   const identity = useQuery(profile);
+  const slug = useQuery(profileIdentity)?.slug ?? null;
+  // The stable launcher the host reports (Settings > Agent AI reads the same query); hidden while incognito.
+  const host = useQuery(hostSettingsInfo, { poll: 0, privacy: incognito });
+  const agent: SetupAgentContext = incognito
+    ? { kind: "unavailable", reason: "privacy" }
+    : host.availability !== "ready" || !host.launcher || !slug
+      ? { kind: "unavailable", reason: "launcher_unavailable" }
+      : {
+          kind: "ready",
+          cliPrefix: cliPrefix([host.launcher], slug),
+          mcpAdd: claudeMcpAdd([host.launcher], slug),
+        };
   const states = useQuery(q.moduleStates);
   const setup = useQuery(q.moduleSetup, {
     module: props.moduleId,
-    cli: !incognito && props.agent.kind === "ready" ? props.agent.cliPrefix : "",
+    cli: agent.kind === "ready" ? agent.cliPrefix : "",
     lang: lang(),
   });
-  const scope = `${vault}:${incognito}:${props.agent.kind}`;
+  const scope = `${vault}:${incognito}:${agent.kind}`;
   const [notice, setNotice] = useState<{
     readonly scope: string;
     readonly text: string;
@@ -59,7 +68,7 @@ export function useSetupScreen(props: SetupScreenProps) {
   const lifetime = useRef(0);
   useEffect(() => {
     lifetime.current++;
-  }, [vault, incognito, props.agent.kind]);
+  }, [vault, incognito, agent.kind]);
   const spec = registry.modules.get(props.moduleId);
   const enabled = new Set(states.filter((row) => row.enabled).map((row) => row.id));
   const valid = Boolean(spec && setup.ok);
@@ -82,12 +91,12 @@ export function useSetupScreen(props: SetupScreenProps) {
         ...action,
         intent: incognito
           ? null
-          : setupActionIntent(props.moduleId, action, enabled, props.agent.kind === "ready"),
+          : setupActionIntent(props.moduleId, action, enabled, agent.kind === "ready"),
       })),
     })),
     done,
     total: required.length,
-    agent: incognito ? { kind: "unavailable" as const, reason: "privacy" } : props.agent,
+    agent,
     mcpPrivacy: identity?.mcpPrivacy ?? "strict",
     /** A copy result for a toast; `n` changes on every copy so the same text toasts again. */
     notice: notice?.scope === scope ? { text: notice.text, n: notice.n } : null,
@@ -123,6 +132,12 @@ export function useSetupScreen(props: SetupScreenProps) {
       );
     },
     onAgentSettings: () => props.onNavigate({ kind: "settings", section: "agent" }),
+    /** The head's `Pierwsze kroki w aplikacji` link (old `def.Start`); null for a module without one. */
+    onFirstSteps: START_MODULES.has(props.moduleId)
+      ? () => {
+          if (!incognito) props.onNavigate({ kind: "start", module: props.moduleId });
+        }
+      : null,
   };
 }
 

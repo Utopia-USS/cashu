@@ -55,6 +55,24 @@ export function cliPrefix(program: readonly string[], slug: string | null): stri
   return shlexJoin(slug === null ? program : [...program, "--profile", slug]);
 }
 
+/**
+ * `claude_mcp_add`: the `claude mcp add` line that registers the profile's MCP server
+ * (`cashu-<slug>`, running `<program> mcp --profile <slug>`) in Claude Code.
+ */
+export function claudeMcpAdd(program: readonly string[], slug: string): string {
+  return shlexJoin([
+    "claude",
+    "mcp",
+    "add",
+    `cashu-${slug}`,
+    "--",
+    ...program,
+    "mcp",
+    "--profile",
+    slug,
+  ]);
+}
+
 /** One module's blank-page status as the API and the MCP tool show it. */
 export interface SetupView {
   readonly state: SetupState;

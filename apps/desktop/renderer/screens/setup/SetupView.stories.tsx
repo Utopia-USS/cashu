@@ -29,12 +29,17 @@ const state = {
   ],
   done: 0,
   total: 1,
-  agent: { kind: "unavailable", reason: "source_unbound" },
+  agent: {
+    kind: "ready",
+    cliPrefix: "/synthetic/bin/cashu --profile synthetic",
+    mcpAdd: "claude mcp add cashu-synthetic -- /synthetic/bin/cashu mcp --profile synthetic",
+  },
   mcpPrivacy: "strict",
   notice: null,
   onAction() {},
   onOpenModule() {},
   onAgentSettings() {},
+  onFirstSteps() {},
 } as unknown as SetupScreenState;
 export default { title: "Desktop/Setup/Module", component: SetupView, args: { state } };
 export const Partial = {};

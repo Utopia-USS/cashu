@@ -62,7 +62,23 @@ function SetupCards({ state }: { state: SetupScreenState }) {
   return (
     <>
       <CopyToast notice={state.notice} />
-      <SectionCard id="setup-config" title={title} tags={<StepsTag state={state} />}>
+      <SectionCard
+        id="setup-config"
+        title={title}
+        tags={
+          <>
+            <StepsTag state={state} />
+            {state.onFirstSteps && (
+              <>
+                <span className="flex-1" />
+                <Button variant="link" size="lg" onPress={state.onFirstSteps}>
+                  {P.firstSteps}
+                </Button>
+              </>
+            )}
+          </>
+        }
+      >
         {state.setupState === "ready" && (
           <Notice
             tone="positive"
@@ -108,14 +124,16 @@ function SetupCards({ state }: { state: SetupScreenState }) {
           <div className="py-2 text-sm text-fg-muted">{P.noSteps}</div>
         )}
       </SectionCard>
-      <AgentWidgetView
-        agent={state.agent}
-        skill={state.skill}
-        skillHint={state.skillHint}
-        privacy={state.mcpPrivacy}
-        onCopy={(text) => void state.onAction({ kind: "copy", text })}
-        onSettings={state.onAgentSettings}
-      />
+      {state.skill && (
+        <AgentWidgetView
+          agent={state.agent}
+          skill={state.skill}
+          skillHint={state.skillHint}
+          privacy={state.mcpPrivacy}
+          onCopy={(text) => void state.onAction({ kind: "copy", text })}
+          onSettings={state.onAgentSettings}
+        />
+      )}
     </>
   );
 }
