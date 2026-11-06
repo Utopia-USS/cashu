@@ -61,7 +61,6 @@ export const T = catalog({
     pl: "Źródło skilli jest niedostępne.",
     en: "The skill source is unavailable.",
   },
-  workspaceRefresh: { pl: "Sprawdź ponownie", en: "Check again" },
   mcpInstructions: { pl: "Połączenie MCP", en: "MCP connection" },
   mcpUnavailable: {
     pl: "Polecenie MCP jest niedostępne bez sprawdzonej lokalizacji aplikacji i profilu.",

@@ -32,6 +32,8 @@ vi.mock("@cashu/store-react", () => ({
           accounts: [],
           bindings: [],
         };
+      case "core.settings.workspaceStatus":
+        return { status: "loading" };
       case "device.settings.hostInfo":
       case "device.updateStatus":
         return { availability: "unavailable" };

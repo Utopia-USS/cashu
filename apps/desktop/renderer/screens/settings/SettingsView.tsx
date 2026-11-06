@@ -451,9 +451,6 @@ function WorkspacePanel({
             {busy ? S.creating : S.create}
           </Button>
         )}
-        {!ready && !busy && (
-          <Button onPress={() => void state.refreshWorkspace()}>{T.workspaceRefresh}</Button>
-        )}
       </div>
       {!ready && (
         <div className="text-sm text-fg-muted">{busy ? S.checking : T.workspaceUnbound}</div>

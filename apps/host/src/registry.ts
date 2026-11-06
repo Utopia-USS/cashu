@@ -36,6 +36,7 @@ import {
   hostSettingsInfo,
   mcpAudit,
   saveProfile,
+  workspaceStatus,
 } from "@cashu/store/core/desktop-settings";
 import {
   currentVault,
@@ -105,6 +106,7 @@ export function servedQueries(
     readonly connectorSettingsQuery?: typeof connectorSettingsSnapshot;
     readonly classifierSettingsQuery?: typeof classifierSettingsState;
     readonly deviceListQuery?: typeof deviceListState;
+    readonly workspaceStatusQuery?: typeof workspaceStatus;
     readonly runningQuery?: typeof investmentsRunning;
   } = { prices: null },
 ): readonly Query<QueryArgs, unknown>[] {
@@ -119,6 +121,7 @@ export function servedQueries(
     env.connectorSettingsQuery ?? connectorSettingsSnapshot,
     env.classifierSettingsQuery ?? classifierSettingsState,
     env.deviceListQuery ?? deviceListState,
+    env.workspaceStatusQuery ?? workspaceStatus,
     profile,
     proposalList,
     env.proposalImages ? proposalDetailWithImages(env.proposalImages) : proposalDetail,

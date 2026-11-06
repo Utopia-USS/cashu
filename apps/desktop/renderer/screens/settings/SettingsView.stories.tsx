@@ -124,7 +124,6 @@ function SyntheticSettings({
     setWorkspacePath() {},
     setEditingPath() {},
     setRoutinePermissions() {},
-    refreshWorkspace: async () => {},
     saveWorkspace: async () => {},
     onWorkspaceCopied: async () => {},
     audit: {

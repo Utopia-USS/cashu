@@ -44,6 +44,7 @@ import type { LanPairingService } from "./pairing/service.js";
 import { servedCommands } from "./registry.js";
 import { currentRuntime } from "./runtime.js";
 import { settingsInfoQuery } from "./settingsInfo.js";
+import { settingsWorkspaceStatus } from "./settingsScreen.js";
 import type { HostStores } from "./stores.js";
 
 export type { LocalHostOptions } from "./localHost/options.js";
@@ -307,6 +308,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             ? {}
             : { classifierSettings: classifierSettingsQuery(options.classifierSettings) }),
           ...(nativeMode ? { deviceList: deviceListQuery(deviceListSource(() => stores)) } : {}),
+          ...(options.workspace === undefined
+            ? {}
+            : {
+                workspaceStatus: settingsWorkspaceStatus({
+                  provider: options.workspace,
+                  stores: () => stores,
+                }),
+              }),
           connectorSettings: connectorSettingsServed({
             catalog: () => (nativeMode ? options.connectorCatalog?.() : undefined),
             shows: (vault) => stores.vaults.get(vault)?.mode === "native",

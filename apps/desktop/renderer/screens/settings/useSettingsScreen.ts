@@ -17,7 +17,7 @@ import {
   saveProfile,
   toggledModules,
   workspaceApply,
-  workspaceInspect,
+  workspaceStatus as workspaceStatusQuery,
 } from "@cashu/store/core/desktop-settings";
 import {
   devicePreferences,
@@ -307,7 +307,8 @@ export function useSettingsScreen(
   const setPrivacy = useCommand(setProfileSettings);
   const setPrefs = useCommand(setDevicePreferences);
   const durable = useDurableCommands();
-  const inspect = useUiAction(workspaceInspect);
+  // The workspace status is a live host query (re-inspected after a write, a profile change or an edit on disk).
+  const liveWorkspace = useQuery(workspaceStatusQuery);
   const apply = useUiAction(workspaceApply);
   const connectorAction = useUiAction(connectorSettings);
   // The installed connectors, accounts and bindings: a live vault query the host re-runs when its catalog changes
@@ -388,19 +389,28 @@ export function useSettingsScreen(
     await onConnectorAction({ op: "bind", id: connector.id, account, params, autoCommit });
   }
   const [notice, setNotice] = useState<string | null>(null);
-  const [workspace, setWorkspace] = useState<WorkspaceSummary>({
-    availability: "unavailable",
-    reason: "source_unbound",
-  });
-  const [workspaceBusy, setWorkspaceBusy] = useState(false);
-  const [workspacePath, setWorkspacePath] = useState("");
+  const workspace: WorkspaceSummary =
+    liveWorkspace.status === "ready"
+      ? workspaceStatus(liveWorkspace.workspace)
+      : { availability: "unavailable", reason: "checking" };
+  const [applying, setApplying] = useState(false);
+  const workspaceBusy =
+    applying ||
+    liveWorkspace.status === "loading" ||
+    (liveWorkspace.status === "ready" && liveWorkspace.checking);
+  // Drafts of the folder field and the routine switch, per vault; null follows the live workspace.
+  const [pathDraft, setPathDraft] = useState<{ vault: string; path: string } | null>(null);
+  const [routineDraft, setRoutineDraft] = useState<{ vault: string; on: boolean } | null>(null);
+  const workspacePath =
+    pathDraft?.vault === vault
+      ? pathDraft.path
+      : workspace.availability === "ready"
+        ? (workspace.path ?? "")
+        : "";
+  const routinePermissions =
+    routineDraft?.vault === vault ? routineDraft.on : (workspace.routinePermissions ?? false);
   const [editingPath, setEditingPath] = useState(false);
-  const [routinePermissions, setRoutinePermissions] = useState(false);
-  const workspaceRun = useRef(0);
-  const workspaceOperation = useRef<"idle" | "read" | "apply">("idle");
-  const workspaceRefreshAfterApply = useRef(false);
-  const workspacePathDirty = useRef(false);
-  const routinePermissionsDirty = useRef(false);
+  const workspaceApplying = useRef(false);
   const moduleQueue = useRef(Promise.resolve());
   const desiredModules = useRef<string[]>([]);
   const profileForm = useForm({
@@ -429,87 +439,19 @@ export function useSettingsScreen(
   useEffect(() => {
     desiredModules.current = modules.filter((m) => m.enabled).map((m) => m.id);
   }, [vault, modules]);
-  const hydrateWorkspaceDrafts = (next: WorkspaceSummary) => {
-    if (next.availability !== "ready") return;
-    if (!workspacePathDirty.current) setWorkspacePath(next.path ?? "");
-    if (!routinePermissionsDirty.current) setRoutinePermissions(next.routinePermissions ?? false);
-  };
-  const moduleSignature = modules.map((m) => `${m.id}:${m.enabled}`).join("|");
-  const inspectRun = useRef(inspect.run);
-  useEffect(() => {
-    inspectRun.current = inspect.run;
-  }, [inspect.run]);
-  useEffect(() => {
-    if (workspaceOperation.current === "apply") {
-      workspaceRefreshAfterApply.current = true;
-      return;
-    }
-    let active = true;
-    const request = ++workspaceRun.current;
-    workspaceOperation.current = "read";
-    setWorkspaceBusy(true);
-    void inspectRun
-      .current({})
-      .then((result) => {
-        if (!active || workspaceRun.current !== request) return;
-        const next =
-          result.status === "completed"
-            ? workspaceStatus(result.value)
-            : { availability: "unavailable" as const, reason: result.status };
-        setWorkspace(next);
-        hydrateWorkspaceDrafts(next);
-      })
-      .catch(() => {
-        if (active && workspaceRun.current === request)
-          setWorkspace({ availability: "unavailable", reason: "read_failed" });
-      })
-      .finally(() => {
-        if (active && workspaceRun.current === request) {
-          workspaceOperation.current = "idle";
-          setWorkspaceBusy(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [vault, current?.mcpPrivacy, current?.baseCurrency, moduleSignature]);
-  const refreshWorkspace = async () => {
-    if (workspaceOperation.current !== "idle") return;
-    const request = ++workspaceRun.current;
-    workspaceOperation.current = "read";
-    setWorkspaceBusy(true);
-    try {
-      const result = await inspect.run({});
-      if (workspaceRun.current !== request) return;
-      const next =
-        result.status === "completed"
-          ? workspaceStatus(result.value)
-          : { availability: "unavailable" as const, reason: result.status };
-      setWorkspace(next);
-      hydrateWorkspaceDrafts(next);
-    } catch {
-      if (workspaceRun.current === request)
-        setWorkspace({ availability: "unavailable", reason: "read_failed" });
-    } finally {
-      if (workspaceRun.current === request) {
-        workspaceOperation.current = "idle";
-        setWorkspaceBusy(false);
-      }
-    }
-  };
   // One click applies one change, as in the Python app's workspace panel: `path` null = keep the folder
   // (Update, Replace changed, the routine switch), a string = create there / move; omitted = the edited path
   // while the folder field is open. `force` (replace locally changed files) is off unless asked for;
   // `routinePermissions` defaults to its draft.
   const saveWorkspace = async (run: WorkspaceRun = {}) => {
-    if (workspaceOperation.current !== "idle") return;
+    if (workspaceApplying.current) return;
     const path = run.path === undefined ? (editingPath ? workspacePath : null) : run.path;
     if (path !== null && workspace.configured && !path.trim()) {
       setNotice(T.workspacePathRequired);
       return;
     }
-    workspaceOperation.current = "apply";
-    setWorkspaceBusy(true);
+    workspaceApplying.current = true;
+    setApplying(true);
     try {
       const result = await apply.run({
         ...(path !== null ? { path } : {}),
@@ -519,15 +461,11 @@ export function useSettingsScreen(
       if (result.status !== "completed") {
         setNotice(result.status === "outcome_unknown" ? T.workspaceUnknown : T.saveFailed);
       } else if (result.value && typeof result.value === "object" && "kind" in result.value) {
-        const value = result.value as { kind: string; code?: string; status?: unknown };
-        if (value.status) {
-          const next = workspaceStatus(value.status);
-          setWorkspace(next);
-          if (value.kind === "completed") {
-            workspacePathDirty.current = false;
-            routinePermissionsDirty.current = false;
-            hydrateWorkspaceDrafts(next);
-          }
+        const value = result.value as { kind: string; code?: string };
+        // The status arrives by push; a completed write drops the drafts so they follow it.
+        if (value.kind === "completed") {
+          setPathDraft(null);
+          setRoutineDraft(null);
         }
         setNotice(
           value.kind === "completed"
@@ -555,14 +493,8 @@ export function useSettingsScreen(
         if (value.kind === "completed") setEditingPath(false);
       }
     } finally {
-      workspaceOperation.current = "idle";
-      setWorkspaceBusy(false);
-      if (workspaceRefreshAfterApply.current) {
-        workspaceRefreshAfterApply.current = false;
-        queueMicrotask(() => {
-          void refreshWorkspace();
-        });
-      }
+      workspaceApplying.current = false;
+      setApplying(false);
     }
   };
   const toggleModule = (id: string) => {
@@ -667,22 +599,12 @@ export function useSettingsScreen(
     workspacePath,
     editingPath,
     routinePermissions,
-    setWorkspacePath: (value: string) => {
-      workspacePathDirty.current = true;
-      setWorkspacePath(value);
-    },
+    setWorkspacePath: (value: string) => setPathDraft({ vault, path: value }),
     setEditingPath: (value: boolean) => {
       setEditingPath(value);
-      if (!value) {
-        workspacePathDirty.current = false;
-        hydrateWorkspaceDrafts(workspace);
-      }
+      if (!value) setPathDraft(null);
     },
-    setRoutinePermissions: (value: boolean) => {
-      routinePermissionsDirty.current = true;
-      setRoutinePermissions(value);
-    },
-    refreshWorkspace,
+    setRoutinePermissions: (value: boolean) => setRoutineDraft({ vault, on: value }),
     saveWorkspace,
     onWorkspaceCopied: copyWorkspaceText,
     audit: auditDisplay,

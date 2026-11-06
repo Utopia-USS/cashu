@@ -20,7 +20,7 @@ import { nativeStrategyDocuments } from "../nativeStrategyDocuments.js";
 import { proposalScreen } from "../proposalsScreen.js";
 import { servedQueries } from "../registry.js";
 import type { settingsInfoQuery } from "../settingsInfo.js";
-import { settingsWorkspaceActions } from "../settingsScreen.js";
+import { settingsWorkspaceActions, type settingsWorkspaceStatus } from "../settingsScreen.js";
 import {
   type SignalsScreenCapability,
   signalsScreenActions,
@@ -168,6 +168,7 @@ export function createScreenSurfaces(input: {
       readonly connectorSettings?: ReturnType<typeof connectorSettingsServed>;
       readonly classifierSettings?: ReturnType<typeof classifierSettingsQuery>;
       readonly deviceList?: ReturnType<typeof deviceListQuery>;
+      readonly workspaceStatus?: ReturnType<typeof settingsWorkspaceStatus>;
     }) {
       const { market: marketRuntime, sources } = served;
       return servedQueries({
@@ -196,6 +197,9 @@ export function createScreenSurfaces(input: {
           ? {}
           : { classifierSettingsQuery: served.classifierSettings }),
         ...(served.deviceList === undefined ? {} : { deviceListQuery: served.deviceList }),
+        ...(served.workspaceStatus === undefined
+          ? {}
+          : { workspaceStatusQuery: served.workspaceStatus }),
         signals: { strategy: sources.strategy, market: sources.market, clock },
         research: {
           ...options.research,

@@ -26,6 +26,7 @@ export {
   deviceListState,
 } from "./device-list.js";
 export { type HostSettingsInfo, hostSettingsInfo } from "./host-info.js";
+export { type WorkspaceStatusState, workspaceStatus } from "./workspace-status.js";
 
 const registry = builtinRegistry();
 
@@ -155,10 +156,7 @@ export const mcpAudit = defineQuery({
   },
 });
 
-/** Checked host-owned workspace inspection and mutation. */
-export const workspaceInspect: UiAction<Record<string, never>, unknown> = {
-  id: "core.settings.workspaceInspect",
-};
+/** Checked host-owned workspace mutation; the status itself is the live `workspaceStatus` query. */
 export const workspaceApply: UiAction<
   {
     readonly path?: string;
