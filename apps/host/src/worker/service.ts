@@ -1,6 +1,7 @@
 /** S40 host-lifetime worker with native job ownership and an optional closed-app wake service. */
 import { enabledModuleIds } from "@cashu/store/core";
 import { DurableWriteUnknown, lastOkDay, type runDaily } from "@cashu/store/investments/services";
+import type { ChangeSource } from "@cashu/store/query";
 import type { OpenVault } from "../stores.js";
 import { WorkerAuthorityLost, workerGuard } from "./authority.js";
 import { syncWorkerBudget } from "./budget.js";
@@ -46,6 +47,31 @@ export class HostWorker {
   private stopping = false;
   private lastTick: string | null = null;
   private readonly priceFinished = new Map<string, number>();
+  private readonly listeners = new Set<() => void>();
+  private emitted = "";
+  /** Fires after the status snapshot changed (state, last tick, job runs, next run): the settings
+   * screen's live `hostSettingsInfo` re-runs on it instead of the renderer asking again. */
+  readonly changes: ChangeSource = {
+    subscribe: (listener) => {
+      this.listeners.add(listener);
+      return () => {
+        this.listeners.delete(listener);
+      };
+    },
+  };
+
+  /** Vaults whose quote refresh / daily rules check is in flight (Python `priceRefresh.running`,
+   * `run/status.running`); the live `investmentsRunning` query re-runs on `runningChanges`. */
+  private readonly inFlight = { prices: new Set<string>(), rules: new Set<string>() };
+  private readonly runningListeners = new Set<() => void>();
+  readonly runningChanges: ChangeSource = {
+    subscribe: (listener) => {
+      this.runningListeners.add(listener);
+      return () => {
+        this.runningListeners.delete(listener);
+      };
+    },
+  };
 
   constructor(context: WorkerHostContext, bindings?: WorkerBindings) {
     this.host = {
@@ -110,6 +136,7 @@ export class HostWorker {
     this.tickOffline = options.offline === true;
     this.tickConstrained = constrained;
     this.stateName = "running";
+    this.changed();
     this.active = this.runTick(
       force,
       this.tickOffline,
@@ -129,6 +156,7 @@ export class HostWorker {
         this.tickOffline = false;
         this.tickConstrained = false;
         this.working = false;
+        this.changed();
       });
     return this.active;
   }
@@ -147,6 +175,7 @@ export class HostWorker {
       // The caller owns the CLI failure; shutdown still completes.
     }
     this.stateName = "stopped";
+    this.changed();
   }
   runInvestmentCli(
     vaults: readonly OpenVault[],
@@ -183,15 +212,20 @@ export class HostWorker {
           const uncertain = this.state.uncertain[vault.id];
           if (uncertain) throw new DurableWriteUnknown(uncertain.key, uncertain.command);
         }
-        const outcomes = await investments.daily(
-          selected,
-          offline,
-          (value) => {
-            report = value;
-          },
-          "cli",
-          isCurrent,
+        const outcomes = await this.inFlightFor(
+          "rules",
           selected.map((vault) => vault.id),
+          () =>
+            investments.daily(
+              selected,
+              offline,
+              (value) => {
+                report = value;
+              },
+              "cli",
+              isCurrent,
+              selected.map((vault) => vault.id),
+            ),
         );
         return { report, outcomes };
       } finally {
@@ -242,6 +276,27 @@ export class HostWorker {
     );
     return current;
   }
+  /** What the worker is doing for this vault right now. */
+  running(vault: string): { readonly prices: boolean; readonly rules: boolean } {
+    return { prices: this.inFlight.prices.has(vault), rules: this.inFlight.rules.has(vault) };
+  }
+  /** Run `work` with these vaults marked in flight, telling the live query on start and end. */
+  private async inFlightFor<T>(
+    kind: "prices" | "rules",
+    vaults: readonly string[],
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const set = this.inFlight[kind];
+    const added = vaults.filter((vault) => !set.has(vault));
+    for (const vault of added) set.add(vault);
+    if (added.length !== 0) for (const listener of [...this.runningListeners]) listener();
+    try {
+      return await work();
+    } finally {
+      for (const vault of added) set.delete(vault);
+      if (added.length !== 0) for (const listener of [...this.runningListeners]) listener();
+    }
+  }
   status(): WorkerStatus {
     const jobs: WorkerStatus["jobs"][number][] = [];
     const unavailable: WorkerStatus["unavailable"][number][] = [];
@@ -275,7 +330,19 @@ export class HostWorker {
     if (this.stopping || !this.host.jobsEnabled() || this.bindings === undefined)
       throw new WorkerAuthorityLost();
     await this.bindings.state.save(this.state);
+    this.changed();
     if (this.stopping || !this.host.jobsEnabled()) throw new WorkerAuthorityLost();
+  }
+  /** Notify subscribers once per distinct status snapshot (a tick that changes nothing is silent). */
+  private changed(): void {
+    if (this.listeners.size === 0) {
+      this.emitted = "";
+      return;
+    }
+    const snapshot = JSON.stringify(this.status());
+    if (snapshot === this.emitted) return;
+    this.emitted = snapshot;
+    for (const listener of [...this.listeners]) listener();
   }
   private writeAttempts(): WorkerWriteAttempts {
     return {
@@ -430,6 +497,7 @@ export class HostWorker {
     await this.loadState();
     const time = this.host.now();
     this.lastTick = new Date(time).toISOString();
+    this.changed();
     const investors: OpenVault[] = [],
       budgeters: OpenVault[] = [];
     for (const vault of this.host.stores.vaults.values()) {
@@ -476,7 +544,12 @@ export class HostWorker {
         if (due.length !== 0) {
           let outcomes: ReadonlyMap<string, JobOutcome>;
           try {
-            outcomes = await this.investments.daily(due, offline);
+            const investments = this.investments;
+            outcomes = await this.inFlightFor(
+              "rules",
+              due.map((vault) => vault.id),
+              () => investments.daily(due, offline),
+            );
           } catch (error) {
             if (error instanceof DurableWriteUnknown) {
               const target = error.vault ?? due[0]?.id;
@@ -565,7 +638,11 @@ export class HostWorker {
         if (last !== undefined && this.host.now() - last < UI_PRICES_MS) continue;
         try {
           this.working = true;
-          if ((await this.investments.prices(vault)) === "finished")
+          const investments = this.investments;
+          if (
+            (await this.inFlightFor("prices", [vault.id], () => investments.prices(vault))) ===
+            "finished"
+          )
             this.priceFinished.set(vault.id, this.host.now());
         } catch {
           /* Authority loss or a transient source failure never makes a tick overlap. */
@@ -581,6 +658,7 @@ export class HostWorker {
     if (this.stopping || !this.host.jobsEnabled()) throw new WorkerAuthorityLost();
     this.state = state;
     this.loaded = true;
+    this.changed();
   }
 
   private async backfillPhase(

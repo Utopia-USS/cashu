@@ -4,6 +4,7 @@ import { addManualPosition } from "../assets/commands.js";
 import { setVehicle } from "../assets/vehicle.js";
 import { addCashExpense, deleteCashTransaction } from "../budget/commands.js";
 import { createProfile, openAccount, recordBalance } from "../core/commands.js";
+import { createPlannedDeposit } from "../investments/commands/planned.js";
 import { HOUSEHOLD_NOW, household } from "../investments/testing/household.js";
 import { runQuery } from "../query.js";
 import { run, testEnv } from "../testing/commands.js";
@@ -197,5 +198,53 @@ describe("native Overview accounts and cash wallet", () => {
     expect(runQuery(store, guarded.investments, { today: TODAY, lang: "en" }).value).toEqual({
       status: "unavailable",
     });
+  });
+
+  it("lists the open and the booked planned deposits, as Python GET /planned-deposits", () => {
+    // Oracle (parity/python demo copy, planned.create + planned_deposits default statuses): a plan next
+    // month stays `planned`; a plan made after its deposit (amount within 10 %) is booked at once and
+    // carries booked_at. A cancelled plan is not listed.
+    const fixture = household();
+    const store = openTestStore();
+    store.applyEnvelopes(fixture.events);
+    const env = testEnv();
+    const plan = (amount: string, plannedDate: string) => {
+      const out = run(store, env, createPlannedDeposit, { amount, plannedDate });
+      if (!out.ok) throw new Error(`synthetic plan refused: ${out.reason}`);
+    };
+    plan("2500", "2026-11-10");
+    plan("105", "2026-09-30");
+    const sources = {
+      investmentRequest: () => ({
+        vault: fixture.vault,
+        asOf: TODAY,
+        prices: fixture.prices,
+        strategy: fixture.strategy,
+        lang: "en" as const,
+        forOwner: true,
+        clock: { now: parseDateTime(HOUSEHOLD_NOW), today: TODAY, timeZone: "Europe/Warsaw" },
+        newestRateDate: null,
+      }),
+    };
+    const result = runQuery(
+      store,
+      overviewQueries({ prices: fixture.prices }, sources).investments,
+      {
+        today: TODAY,
+        lang: "en",
+      },
+    ).value;
+    if (result.status !== "available") throw new Error("synthetic investment context refused");
+    expect(
+      result.plans.map((p) => ({
+        amount: p.amount.toString(),
+        plannedDate: p.plannedDate,
+        status: p.status,
+        booked: p.bookedAt !== null,
+      })),
+    ).toEqual([
+      { amount: "2500", plannedDate: "2026-11-10", status: "planned", booked: false },
+      { amount: "105", plannedDate: "2026-09-30", status: "booked", booked: true },
+    ]);
   });
 });

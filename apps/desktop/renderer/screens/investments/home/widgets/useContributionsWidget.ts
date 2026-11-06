@@ -21,15 +21,14 @@ export function useContributionsWidget(data: InvestmentsHomeData): Contributions
       ? { amount: contributions.monthly_amount, day: contributions.day_of_month ?? null }
       : null;
   const perf = data.perf1y.data;
-  // Old fallbackPlan: this month's planned deposit, else the last deposit as the plan. The native read lists the
-  // open plans only (booked ones are not listed, O.md gap).
+  // Old fallbackPlan: this month's planned deposit (open, else booked), else the last deposit as the plan.
   const fallback = () => {
     const planned =
       widgets.status === "available"
-        ? widgets.openPlans.map((p, i) => ({
+        ? widgets.plans.map((p, i) => ({
             id: i + 1,
             planned_date: p.plannedDate,
-            status: "planned",
+            status: p.status,
             amount: p.amount.toFloat(),
           }))
         : null;

@@ -91,6 +91,8 @@ export function useStrategySettings(o: StrategySettingsOptions) {
     gid: p.gid,
     kind: p.kind,
     summary: p.summary,
+    summary_code: p.summaryCode,
+    summary_params: p.summaryParams,
   }));
   const notice = proposalNotice(proposals);
   const copyPath = (path: string, name: string) => {

@@ -2,9 +2,11 @@
 // workspaceSummary, Settings.tsx presence / job rows), on the native workspace and worker shapes.
 import { REASON, WS, SECTION as WS_SECTION } from "@cashu/i18n/core/workspace.strings";
 import type { TagTone } from "@cashu/ui";
+import { proposalSummary } from "@cashu/ui-logic/core/messages";
 import type { SettingsScreenState } from "./useSettingsScreen.js";
 
 type Workspace = SettingsScreenState["workspace"];
+type ProposalRow = SettingsScreenState["proposals"][number];
 type WorkspaceItem = NonNullable<Workspace["outdated"]>[number];
 
 const reasons: Record<string, string> = REASON;
@@ -62,3 +64,15 @@ export const tagTone = (tone: string | undefined): TagTone =>
       : tone === "warn"
         ? "warning"
         : "neutral";
+
+/** A pending proposal's line: the localized summary from its code and values, else the English summary. */
+export function proposalTitle(row: ProposalRow): string {
+  return (
+    proposalSummary({
+      kind: row.kind,
+      summary: row.summary,
+      summary_code: row.summaryCode,
+      summary_params: row.summaryParams,
+    }) ?? ""
+  );
+}

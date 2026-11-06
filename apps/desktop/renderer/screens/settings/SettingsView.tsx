@@ -37,7 +37,13 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 import { ConnectorsSectionView } from "./connectors/ConnectorsSectionView.js";
 import { T } from "./Settings.strings.js";
-import { needsForce, outdatedLabel, tagTone, workspaceSummary } from "./settingsModel.js";
+import {
+  needsForce,
+  outdatedLabel,
+  proposalTitle,
+  tagTone,
+  workspaceSummary,
+} from "./settingsModel.js";
 import type { SettingsScreenState } from "./useSettingsScreen.js";
 
 const sections = [
@@ -637,7 +643,7 @@ function ProposalsPanel({ state }: { state: SettingsScreenState }) {
                   label={T.openProposal}
                   onPress={() => state.onProposalOpened(row.gid)}
                 >
-                  {row.summary || T.openProposal}
+                  {proposalTitle(row) || T.openProposal}
                 </Button>
               }
             />

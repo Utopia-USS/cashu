@@ -14,6 +14,7 @@ export async function seedSettingsDemo(
     {
       kind: "strategy" as const,
       summary: "Synthetic Settings102 strategy",
+      summaryParams: { rules: 2, buckets: 1, inactive_rules: 0 },
       reason: "Synthetic strategy review reason",
       payload: {
         yaml: `${files.yaml ?? ""}\n# synthetic Settings102 proposal\n`,
@@ -24,6 +25,7 @@ export async function seedSettingsDemo(
     {
       kind: "custom_rule" as const,
       summary: "Synthetic Settings102 rule",
+      summaryParams: { rule_kind: "price_change", episodes: 1 },
       reason: "Synthetic rule review reason",
       payload: {
         rule: { id: "settings102", kind: "price_change", params: { threshold_pct: 5 } },
@@ -40,6 +42,12 @@ export async function seedSettingsDemo(
     {
       kind: "import" as const,
       summary: "Synthetic Settings102 investment import",
+      summaryParams: {
+        account: "Synthetic brokerage",
+        importer: "synthetic",
+        new: 2,
+        duplicates: 1,
+      },
       reason: "Synthetic investment import review reason",
       payload: {
         file_name: "synthetic-investment.csv",
@@ -51,6 +59,7 @@ export async function seedSettingsDemo(
     {
       kind: "budget_import" as const,
       summary: "Synthetic Settings102 budget import",
+      summaryParams: { account: "Synthetic checking", connector: "Synthetic connector", new: 3 },
       reason: "Synthetic statement import review reason",
       payload: {
         file_name: "synthetic-statement.csv",

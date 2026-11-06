@@ -17,6 +17,7 @@ describe("canonical desktop proposal reads", () => {
       const result = run(store, env, createProposal, {
         kind,
         summary: `${kind} synthetic`,
+        summaryParams: { account: "Synthetic account", new: 2 },
         reason: "Synthetic reason",
         source: "synthetic",
         payload: { marker: "synthetic-private" },
@@ -34,16 +35,29 @@ describe("canonical desktop proposal reads", () => {
       "strategy",
     ]);
     expect(JSON.stringify(listed)).not.toContain("synthetic-private");
+    // Python `proposal_dict`: summary_code = the kind, summary_params stored in the payload.
+    for (const row of listed)
+      expect(row).toMatchObject({
+        summaryCode: row.kind,
+        summaryParams: { account: "Synthetic account", new: 2 },
+      });
     expect(proposalList.run(read, { status: "pending", privacy: true })[0]).toMatchObject({
       summary: "",
+      summaryParams: {},
       reason: null,
       source: "",
     });
     for (const gid of gids) {
-      expect(proposalDetail.run(read, { gid, privacy: false })?.payload).toEqual({
+      const detail = proposalDetail.run(read, { gid, privacy: false });
+      expect(detail?.payload).toEqual({
         marker: "synthetic-private",
+        summary_params: { account: "Synthetic account", new: 2 },
       });
-      expect(proposalDetail.run(read, { gid, privacy: true })?.payload).toEqual({});
+      expect(detail?.summaryParams).toEqual({ account: "Synthetic account", new: 2 });
+      expect(proposalDetail.run(read, { gid, privacy: true })).toMatchObject({
+        payload: {},
+        summaryParams: {},
+      });
     }
     expect(proposalDetail.run(read, { gid: "not-a-gid", privacy: false })).toBeNull();
   });

@@ -287,11 +287,18 @@ export type InvestmentWidgets =
         readonly currency: string;
         readonly dayOfMonth: number | null;
       } | null;
-      readonly openPlans: readonly {
+      /**
+       * Python `GET /planned-deposits` items (default statuses: open and booked), in creation order:
+       * a booked plan carries when an import booked it.
+       */
+      readonly plans: readonly {
         readonly gid: string;
         readonly amount: Decimal;
         readonly currency: string;
         readonly plannedDate: string;
+        readonly status: "planned" | "booked";
+        /** When a stored deposit booked the plan (Python books only from an imported deposit). */
+        readonly bookedAt: string | null;
       }[];
     };
 
@@ -372,12 +379,20 @@ export function investmentWidgets(
             currency: plan.currency,
             dayOfMonth: plan.dayOfMonth,
           },
-    openPlans: plannedDeposits(read, ["planned"]).map((row) => ({
-      gid: row.gid,
-      amount: row.amount,
-      currency: row.currency,
-      plannedDate: row.plannedDate,
-    })),
+    plans: plannedDeposits(read, ["planned", "booked"], "created").flatMap((row) =>
+      row.status === "cancelled"
+        ? []
+        : [
+            {
+              gid: row.gid,
+              amount: row.amount,
+              currency: row.currency,
+              plannedDate: row.plannedDate,
+              status: row.status,
+              bookedAt: row.bookedAt,
+            },
+          ],
+    ),
   };
 }
 

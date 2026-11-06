@@ -15,6 +15,7 @@ import {
   investmentImportCommit,
   investmentImportPreview,
   investmentPreviewInputSchema,
+  investmentsRunning,
 } from "@cashu/store/investments/screen";
 import { signalsQueries } from "@cashu/store/investments/signals-screen";
 import {
@@ -112,6 +113,8 @@ export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
   const pChart = useQuery(portfolio.portfolio, { ...args, range: input.chartRange ?? "1y" });
   const researchRead = useQuery(research, { today, lang: language });
   const metadata = useQuery(portfolio.metadata, { lang: language });
+  // The worker's quote refresh / daily check in flight (old usePriceRefreshState / useRunState), pushed by the host.
+  const running = useQuery(investmentsRunning);
 
   // Signals first: their legacy numbers follow creation order (openSignalsOf) before any other read names one.
   const sig = errorOf(openSignalsOf(signals));
@@ -187,6 +190,7 @@ export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
     research: researchHome,
     importAvailable: metadata.importAvailable,
     brokers: metadata.brokers,
+    running,
   };
 }
 export type InvestmentsHomeData = ReturnType<typeof useInvestmentsHomeData>;

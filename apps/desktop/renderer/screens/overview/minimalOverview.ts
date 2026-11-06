@@ -125,7 +125,7 @@ export interface MinimalOverviewModel {
 const HIDDEN = "•••";
 
 /** Every figure the minimal view shows, from the portfolio over the whole history (`range: "max"`) and
- * this month's open planned deposits. Money in catalog sentences is whole units, masked in privacy. */
+ * this month's open or booked planned deposit. Money in catalog sentences is whole units, masked in privacy. */
 export function minimalOverviewModel(input: {
   readonly portfolio: ReadyPortfolio;
   readonly investment: InvestmentWidgets;
@@ -170,13 +170,16 @@ export function minimalOverviewModel(input: {
   );
   const doneThisMonth = dep.flows.some((flow) => flow.date.slice(0, 7) === curMonth);
   const lastPrev = dep.flows.findLast((flow) => flow.date.slice(0, 7) < curMonth) ?? null;
-  // Python `planForMonth` over the open plans: the newest planned date of this month.
-  const plan =
+  // Old `planForMonth` over the listed plans (creation order): this month's newest open plan, else its newest
+  // booked one.
+  const inMonth =
     input.investment.status === "available"
-      ? (input.investment.openPlans
-          .filter((row) => row.plannedDate.slice(0, 7) === curMonth)
-          .sort((a, b) => (a.plannedDate < b.plannedDate ? 1 : -1))[0] ?? null)
-      : null;
+      ? input.investment.plans.filter((row) => row.plannedDate.slice(0, 7) === curMonth)
+      : [];
+  const plan =
+    inMonth.findLast((row) => row.status === "planned") ??
+    inMonth.findLast((row) => row.status === "booked") ??
+    null;
   const polarity = kpis.polarity;
   const signals = polarity.positive + polarity.negative + polarity.neutral;
   const alertsLive = kpis.alerts.active + kpis.alerts.triggered + kpis.alerts.snoozed;
@@ -194,13 +197,15 @@ export function minimalOverviewModel(input: {
   });
   const currentDetail = doneThisMonth
     ? I.doneThisMonth
-    : plan !== null
-      ? `${I.plannedOn(dm(plan.plannedDate))}${
-          planAmount === null || !plan.amount.eq(planAmount)
-            ? ` · ${privacy ? HIDDEN : formatDecimalValue(plan.amount, intlLocale(), { currency: plan.currency, fractionDigits: 0 }).text}`
-            : ""
-        }`
-      : (account ?? I.perPlan);
+    : plan?.status === "booked"
+      ? I.bookedFromImport
+      : plan !== null
+        ? `${I.plannedOn(dm(plan.plannedDate))}${
+            planAmount === null || !plan.amount.eq(planAmount)
+              ? ` · ${privacy ? HIDDEN : formatDecimalValue(plan.amount, intlLocale(), { currency: plan.currency, fractionDigits: 0 }).text}`
+              : ""
+          }`
+        : (account ?? I.perPlan);
   const pnlNum = summary?.pnl ?? null;
   const net = summary?.net_contributions ?? null;
   return {

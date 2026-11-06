@@ -4,6 +4,7 @@ import { ruleRuns } from "@cashu/store/investments/queries";
 import type { DailySources } from "@cashu/store/investments/services";
 import { DurableWriteUnknown } from "@cashu/store/investments/services";
 import { afterEach, expect, it, vi } from "vitest";
+import { investmentsRunningQuery } from "../investmentsRunning.js";
 import { cleanup, storeClient } from "../testing/harness.js";
 import { command, seedWorkerHolding, workerFixture } from "../testing/worker.js";
 import { emptyWorkerState, type WorkerBindings } from "./contracts.js";
@@ -198,6 +199,84 @@ it("runs cached daily work offline without connector or bank network phases", as
     await f.close();
   }
 });
+it("pushes each distinct status snapshot to subscribers instead of being polled", async () => {
+  const f = await workerFixture();
+  const worker = new HostWorker(f.context, f.bindings);
+  const seen: string[] = [];
+  const stop = worker.changes.subscribe(() => seen.push(worker.status().state));
+  try {
+    await worker.tick(true, { offline: true });
+    expect(seen[0]).toBe("running");
+    expect(seen.at(-1)).toBe("idle");
+    const afterTick = seen.length;
+    expect(worker.status().jobs.some((job) => job.job === "investments.daily")).toBe(true);
+    stop();
+    await worker.tick(true, { offline: true });
+    expect(seen).toHaveLength(afterTick);
+  } finally {
+    await worker.stop();
+    await f.close();
+  }
+});
+
+it("serves the in-flight daily check and quote refresh of a vault as the live running query", async () => {
+  // Python v2/runState.ts (`run/status.running`) and v2/priceRefresh.ts (`running`): the Home's
+  // `reguły w toku` / `odświeżam ceny` tags, here pushed by the worker instead of fetched.
+  const f = await workerFixture();
+  const vault = f.vaults[0];
+  if (vault === undefined) throw new Error("synthetic vault absent");
+  const read = vault.store.read.bind(vault.store);
+  let worker: HostWorker | undefined;
+  const query = investmentsRunningQuery({
+    changes: { subscribe: (listener) => worker?.runningChanges.subscribe(listener) ?? (() => {}) },
+    running: (id) => worker?.running(id) ?? { prices: false, rules: false },
+  });
+  const duringFetch: unknown[] = [];
+  const bindings = {
+    ...online(f, () => ({
+      priceSource: {
+        id: "yahoo",
+        async fetch() {
+          duringFetch.push(query.run(read, undefined));
+          return market.priceHistory();
+        },
+      },
+      fxSource: {
+        id: "nbp",
+        async rates() {
+          return [];
+        },
+      },
+      close() {},
+    })),
+    schedule: { hour: 23, minute: 59 },
+  };
+  await watch(f);
+  worker = new HostWorker(f.context, bindings);
+  const daily = new HostWorker(f.context, f.bindings);
+  const seen: boolean[] = [];
+  const stop = daily.runningChanges.subscribe(() => seen.push(daily.running(vault.id).rules));
+  let client: Awaited<ReturnType<typeof storeClient>> | undefined;
+  try {
+    await daily.tick(true, { offline: true });
+    expect(seen).toEqual([true, false]);
+    expect(daily.running(vault.id)).toEqual({ prices: false, rules: false });
+    stop();
+    const host = f.hosts[0];
+    if (host === undefined) throw new Error("synthetic host absent");
+    client = await storeClient(host.server.paths.dataDir);
+    expect(query.run(read, undefined)).toEqual({ prices: false, rules: false });
+    await worker.tick();
+    expect(duringFetch).toEqual([{ prices: true, rules: false }]);
+    expect(query.run(read, undefined)).toEqual({ prices: false, rules: false });
+  } finally {
+    client?.close();
+    await daily.stop();
+    await worker.stop();
+    await f.close();
+  }
+});
+
 it("refuses an offline invocation while an online tick is active", async () => {
   const f = await workerFixture();
   let entered!: () => void;

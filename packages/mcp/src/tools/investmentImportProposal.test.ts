@@ -123,6 +123,14 @@ describe("native import proposal pipeline", () => {
         blob: { sha256: sha256Hex(FILE), ext: "csv" },
         file_sha256: sha256Hex(FILE),
       });
+      // Python propose_import: summary_params {account, importer, new, duplicates} (oracle: demo import proposal).
+      expect(Object.keys(snapshot.payload.summary_params as object)).toEqual([
+        "account",
+        "importer",
+        "new",
+        "duplicates",
+      ]);
+      expect(snapshot.payload.summary_params).toMatchObject({ new: 1, duplicates: 0 });
       expect(snapshot.payload).not.toHaveProperty("account_id");
       expect(snapshot.payload).not.toHaveProperty("staged");
       expect(transactions(s.f.store.read.bind(s.f.store))).toHaveLength(0);

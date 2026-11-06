@@ -8,6 +8,8 @@ const row = (kind: ProposalDetail["kind"], payload: Record<string, unknown>): Pr
   kind,
   status: "pending",
   summary: "Synthetic",
+  summaryCode: kind,
+  summaryParams: {},
   reason: "Synthetic reason",
   source: "synthetic",
   createdAt: "2026-11-03T08:00:00Z",

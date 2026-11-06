@@ -50,16 +50,20 @@ function toView(r: PlannedRow): PlannedDepositView {
   return { ...r, amount: D(r.amount), status: r.status };
 }
 
-/** Python `planned_deposits`: the vault's plans with these statuses, newest planned date first. */
+/**
+ * Python `planned_deposits`: the vault's plans with these statuses, newest planned date first
+ * (`order: "created"` = fold order, Python's row id order, which the app's `planForMonth` reads).
+ */
 export function plannedDeposits(
   read: Read,
   statuses: readonly PlannedStatus[] = DEFAULT_PLANNED_STATUSES,
+  order: "planned" | "created" = "planned",
 ): PlannedDepositView[] {
   const wanted = [...new Set(statuses)];
   if (wanted.length === 0) return [];
   return read<PlannedRow>(
     `${PLANNED_SQL} WHERE p.status IN (${marks(wanted.length)})
-     ORDER BY p.planned_date DESC, p.id DESC`,
+     ORDER BY ${order === "created" ? "p.id" : "p.planned_date DESC, p.id DESC"}`,
     ...wanted,
   ).map(toView);
 }

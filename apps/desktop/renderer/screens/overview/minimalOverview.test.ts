@@ -76,14 +76,16 @@ const portfolio = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as unknown as Extract<PortfolioSnapshot, { status: "ready" }>;
 
-const investment = (openPlans: { plannedDate: string; amount: string }[]): InvestmentWidgets =>
+const investment = (plans: { plannedDate: string; amount: string }[]): InvestmentWidgets =>
   ({
     status: "available",
-    openPlans: openPlans.map((plan, index) => ({
+    plans: plans.map((plan, index) => ({
       gid: String(index),
       amount: D(plan.amount),
       currency: "PLN",
       plannedDate: plan.plannedDate,
+      status: "planned",
+      bookedAt: null,
     })),
   }) as unknown as InvestmentWidgets;
 

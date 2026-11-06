@@ -385,6 +385,11 @@ async function strategy(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const out = await execute(ctx, createInvestmentProposal(files, base), {
     kind: "strategy",
     summary: `Strategy: ${config?.rules.length ?? 0} rules, ${config?.allocation.buckets.length ?? 0} buckets`,
+    summaryParams: {
+      rules: config?.rules.length ?? 0,
+      buckets: config?.allocation.buckets.length ?? 0,
+      inactive_rules: prepared.warnings.length,
+    },
     reason: args.reason ?? null,
     payload: {
       yaml,
@@ -449,6 +454,12 @@ async function rule(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
     kind: "custom_rule",
     reason: args.reason ?? null,
     summary: `Rule ${prepared.entry.id} (${prepared.entry.kind}): fired ${"episodes" in backtest ? backtest.episodes : 0}x in backtest`,
+    summaryParams: {
+      rule_id: prepared.entry.id,
+      rule_kind: prepared.entry.kind,
+      episodes: "episodes" in backtest ? backtest.episodes : 0,
+      evaluated: "evaluated" in backtest ? backtest.evaluated : 0,
+    },
     payload: {
       rule: prepared.entry,
       rule_yaml: renderProposalRule(prepared.entry),

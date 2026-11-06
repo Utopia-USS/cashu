@@ -98,6 +98,12 @@ export function createInvestmentImportProposal(
           source: "mcp",
           reason: args.reason,
           summary: `Import into ${accountLabel} (${summary.importer ?? request.importer ?? "auto"}): ${summary.new} new rows`,
+          summaryParams: {
+            account: accountLabel,
+            importer: summary.importer,
+            new: summary.new,
+            duplicates: summary.duplicates,
+          },
           payload: {
             account: request.account,
             account_label: accountLabel,

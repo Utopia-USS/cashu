@@ -20,6 +20,7 @@ import { handleAdmin } from "./admin.js";
 import { defaultProfileSlug } from "./cli/defaultProfile.js";
 import { serveCliSession } from "./cli/runner.js";
 import { createDeviceService } from "./devices/service.js";
+import { investmentsRunningQuery } from "./investmentsRunning.js";
 import type { WriterLease } from "./lease.js";
 import { hostedCommands } from "./localHost/commands.js";
 import { adminStatus, applySliced, syncVault } from "./localHost/handle.js";
@@ -289,9 +290,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           sources: investmentSources,
           settingsInfo: settingsInfoQuery({
             version: build,
+            changes: worker.changes,
             dataDir: () => server.paths.dataDir,
             worker: () => worker.status(),
             stores: () => stores,
+          }),
+          running: investmentsRunningQuery({
+            changes: worker.runningChanges,
+            running: (vault) => worker.running(vault),
           }),
         }),
         commands: servedCommands({ strategy: investmentSources.strategy }),

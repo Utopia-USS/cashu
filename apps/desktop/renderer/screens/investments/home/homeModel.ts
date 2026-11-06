@@ -44,6 +44,8 @@ export function headModel(input: {
   filter: number | null;
   hasData: boolean;
   today: string;
+  /** The host worker's quote refresh / daily check of this vault in flight. */
+  running: { prices: boolean; rules: boolean };
 }): HeadModel {
   const { overview, hasData, today } = input;
   const accounts = overview.accounts;
@@ -65,11 +67,12 @@ export function headModel(input: {
             value: input.filter,
           }
         : null,
-    // GAP-2: no native price refresh state; the refreshing tag never shows.
     prices: hasData
-      ? fr.prices.newest_bar
-        ? { text: S.prices(wdm(fr.prices.newest_bar)), title: S.newestQuote }
-        : { text: S.noQuotes }
+      ? input.running.prices
+        ? { text: S.refreshingPrices }
+        : fr.prices.newest_bar
+          ? { text: S.prices(wdm(fr.prices.newest_bar)), title: S.newestQuote }
+          : { text: S.noQuotes }
       : null,
     stale:
       stale > 0
@@ -82,16 +85,17 @@ export function headModel(input: {
               .join("\n"),
           }
         : null,
-    // GAP-2: the running state is not readable natively; partial / failed / never ran are.
     rules: !hasData
       ? null
-      : last?.status === "partial"
-        ? { text: S.rulesPartial, title: `${when}${why}`, warn: true }
-        : last?.status === "failed"
-          ? { text: S.rulesFailed, title: `${when}${why}${S.previousRunSignals}`, warn: true }
-          : !last
-            ? { text: S.rulesNeverRan, warn: false }
-            : null,
+      : input.running.rules
+        ? { text: S.rulesRunning, title: S.runTitle, warn: false }
+        : last?.status === "partial"
+          ? { text: S.rulesPartial, title: `${when}${why}`, warn: true }
+          : last?.status === "failed"
+            ? { text: S.rulesFailed, title: `${when}${why}${S.previousRunSignals}`, warn: true }
+            : !last
+              ? { text: S.rulesNeverRan, warn: false }
+              : null,
     addTxn: !hasData,
   };
 }

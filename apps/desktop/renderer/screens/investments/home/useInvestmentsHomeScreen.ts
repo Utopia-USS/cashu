@@ -349,7 +349,9 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   const err = data.ov.error || data.pos.error;
   const phase: "error" | "start" | "home" =
     !overview || !positions ? "error" : hasData ? "home" : "start";
-  const head = overview ? headModel({ overview, filter, hasData, today }) : null;
+  const head = overview
+    ? headModel({ overview, filter, hasData, today, running: data.running })
+    : null;
   const reviewSlot =
     hasData && digest
       ? reviewSlotModel({

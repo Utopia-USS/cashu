@@ -9,6 +9,8 @@ const detail = (kind: ProposalDetail["kind"]): ProposalDetail => ({
   kind,
   status: "pending",
   summary: "Synthetic proposal",
+  summaryCode: kind,
+  summaryParams: {},
   reason: "A synthetic reason for review",
   source: "synthetic",
   createdAt: "2026-11-03T08:00:00Z",

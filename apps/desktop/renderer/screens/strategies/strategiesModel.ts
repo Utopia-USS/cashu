@@ -3,7 +3,7 @@
 // Views render, from the old JSON shapes (ui-logic types). Behaviour verbatim from the old components.
 import { S as H } from "@cashu/i18n/investments/Header.strings";
 import { S } from "@cashu/i18n/investments/v2/Strategies.strings";
-import { describeIssue } from "@cashu/ui-logic/core/messages";
+import { describeIssue, proposalSummary } from "@cashu/ui-logic/core/messages";
 import { dmy, money0, nBuckets, nRules } from "@cashu/ui-logic/investments/labels";
 import type { StrategyDoc, StrategyIssue, StrategyStatus } from "@cashu/ui-logic/investments/types";
 import { ruleKindLabel } from "@cashu/ui-logic/investments/v2/logic";
@@ -144,6 +144,9 @@ export interface PendingProposal {
   gid: string;
   kind: string;
   summary: string | null;
+  /** The summary code (= the kind) and its values: the localized line (core/messages.ts proposalSummary). */
+  summary_code?: string | null;
+  summary_params?: Record<string, unknown> | null;
 }
 
 export interface ProposalNoticeModel {
@@ -156,9 +159,8 @@ export interface ProposalNoticeModel {
 export function proposalNotice(proposals: readonly PendingProposal[]): ProposalNoticeModel | null {
   const first = proposals[0];
   if (!first) return null;
-  // The native rows carry the summary text, not the old summary_code / params.
   const what =
-    first.summary ||
+    proposalSummary(first) ||
     (first.kind === "strategy"
       ? H.propStrategy
       : first.kind === "custom_rule" || first.kind === "rule"

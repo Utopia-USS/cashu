@@ -1,6 +1,7 @@
 import { gid as proposalGid } from "../../events/v1/primitives.js";
 import { defineQuery } from "../../query.js";
 import type { UiAction } from "../../ui-actions.js";
+import { SUMMARY_PARAMS } from "../proposal-commands.js";
 import type { ProposalKind, ProposalStatus } from "../proposal-execution.js";
 import type { ApprovalExecutionResult } from "../proposal-service.js";
 
@@ -11,7 +12,12 @@ export interface ProposalListRow {
   readonly gid: string;
   readonly kind: ProposalKind;
   readonly status: ProposalStatus;
+  /** One English line (the app shows it when no localized line is built from the code). */
   readonly summary: string;
+  /** Python `summary_code`: the kind, the catalog key (`proposal.<code>`) of the localized line. */
+  readonly summaryCode: ProposalKind;
+  /** Python `summary_params`: the localized line's values (empty in privacy mode). */
+  readonly summaryParams: Readonly<Record<string, unknown>>;
   readonly reason: string | null;
   readonly source: string;
   readonly createdAt: string;
@@ -44,7 +50,7 @@ export interface ProposalDisplay {
   readonly detailError: string | null;
 }
 
-interface StoredProposal extends ProposalListRow {
+interface StoredProposal extends Omit<ProposalListRow, "summaryCode" | "summaryParams"> {
   readonly payload: string;
   readonly result: string;
 }
@@ -58,6 +64,18 @@ const object = (raw: string): Readonly<Record<string, unknown>> => {
     ? (value as Record<string, unknown>)
     : {};
 };
+const params = (value: unknown): Readonly<Record<string, unknown>> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+/** Python `proposal_dict`: the summary code (= the kind) and the values stored in the payload. */
+function proposalSummaryOf(
+  kind: ProposalKind,
+  payload: Readonly<Record<string, unknown>>,
+  privacy: boolean,
+): Pick<ProposalListRow, "summaryCode" | "summaryParams"> {
+  return { summaryCode: kind, summaryParams: privacy ? {} : params(payload[SUMMARY_PARAMS]) };
+}
 
 /** Newest-first, bounded list. Payload is deliberately absent. */
 export const proposalList = defineQuery({
@@ -65,17 +83,22 @@ export const proposalList = defineQuery({
   run(read, args: { readonly status?: ProposalStatus | null; readonly privacy: boolean }) {
     const status = args.status;
     if (status !== undefined && status !== null && !validStatus(status)) return [];
-    const rows = read<ProposalListRow & { kind: string; status: string }>(
+    const rows = read<StoredProposal & { kind: string; status: string }>(
       `SELECT gid, kind, status, summary, reason, source,
-              created_at AS createdAt, reviewed_at AS reviewedAt
+              created_at AS createdAt, reviewed_at AS reviewedAt, payload, result
          FROM proposals WHERE (? IS NULL OR status = ?)
          ORDER BY created_at DESC, gid ASC LIMIT 100`,
       status ?? null,
       status ?? null,
     );
     return rows
-      .filter((row): row is ProposalListRow => validKind(row.kind) && validStatus(row.status))
-      .map((row) => (args.privacy ? { ...row, summary: "", reason: null, source: "" } : row));
+      .filter((row): row is StoredProposal => validKind(row.kind) && validStatus(row.status))
+      .map(({ payload, result: _result, ...row }): ProposalListRow => {
+        const summary = proposalSummaryOf(row.kind, object(payload), args.privacy);
+        return args.privacy
+          ? { ...row, ...summary, summary: "", reason: null, source: "" }
+          : { ...row, ...summary };
+      });
   },
 });
 
@@ -91,16 +114,18 @@ export const proposalDetail = defineQuery({
       args.gid,
     )[0];
     if (!row || !validKind(row.kind) || !validStatus(row.status)) return null;
+    const payload = object(row.payload);
     return {
       gid: row.gid,
       kind: row.kind,
       status: row.status,
       summary: args.privacy ? "" : row.summary,
+      ...proposalSummaryOf(row.kind, payload, args.privacy),
       reason: args.privacy ? null : row.reason,
       source: args.privacy ? "" : row.source,
       createdAt: row.createdAt,
       reviewedAt: row.reviewedAt,
-      payload: args.privacy ? {} : object(row.payload),
+      payload: args.privacy ? {} : payload,
       result: args.privacy ? {} : object(row.result),
       nextStrategyVersion:
         row.kind === "strategy" || row.kind === "custom_rule"

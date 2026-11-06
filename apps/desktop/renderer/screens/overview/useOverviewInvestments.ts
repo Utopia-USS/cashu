@@ -142,20 +142,20 @@ export function useOverviewInvestments(args: {
           },
   };
 
-  // Planned deposits (old usePlannedDeposits): the open plans of the overview read; booked plans are not listed
-  // natively (O.md GAP).
+  // Planned deposits (old usePlannedDeposits): the open and booked plans of the overview read, in creation order
+  // (`id` = position, as Python's row ids for planForMonth).
   const w = args.widgets.status === "available" ? args.widgets : null;
   const plans: PlanRow[] | null =
     w === null
       ? null
-      : w.openPlans.map((p, i) => ({
+      : w.plans.map((p, i) => ({
           id: i + 1,
           gid: p.gid,
           amount: p.amount.toFloat(),
           currency: p.currency,
           planned_date: p.plannedDate,
-          status: "planned",
-          booked_at: null,
+          status: p.status,
+          booked_at: p.bookedAt,
         }));
   const plan =
     w?.monthPlan == null

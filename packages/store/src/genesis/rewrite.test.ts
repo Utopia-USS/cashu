@@ -200,6 +200,17 @@ describe("JSON rules (6.5)", () => {
       account: null,
     });
     expect(r.json("proposals", "payload", { staged: null })).toEqual({ blob: null });
+    // Python `summary_params` (the summary code's values, a label not an id) is carried unchanged.
+    const summary_params = {
+      account: "Synthetic account",
+      importer: "cashu",
+      new: 2,
+      duplicates: 0,
+    };
+    expect(r.json("proposals", "payload", { file_name: "x.csv", summary_params })).toEqual({
+      file_name: "x.csv",
+      summary_params,
+    });
     expect(count("proposals", "dangling_payload.account_id")).toBe(1);
     expect(count("proposals", "staged_hash_mismatch")).toBe(1);
     expect(count("proposals", "staged_missing")).toBe(1);

@@ -13,10 +13,23 @@ export const strategyScreenArgsSchema = z.strictObject({
     .nullable(),
 });
 
+import { SUMMARY_PARAMS } from "../../core/proposal-commands.js";
 import { type CurrentStrategySource, combinedChanges } from "../desktop/sources.js";
 import { jsonList } from "../queries/shared.js";
 import type { StrategyDocSummary } from "../services/strategy-docs.js";
 import { nativeStrategyStatus } from "../views/strategyStatus.js";
+
+/** A proposal payload's `summary_params` (an object, else empty). */
+function jsonParams(payload: string): Readonly<Record<string, unknown>> {
+  const value: unknown = JSON.parse(payload);
+  const out =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)[SUMMARY_PARAMS]
+      : undefined;
+  return out && typeof out === "object" && !Array.isArray(out)
+    ? (out as Record<string, unknown>)
+    : {};
+}
 
 export type StrategySelection = { readonly document: string; readonly path: string };
 export type SelectedStrategyFile =
@@ -116,9 +129,14 @@ export function strategiesQueries(
             proposals: [],
             versions: [],
           };
-        const proposals = read<{ gid: string; summary: string; kind: string }>(
-          "SELECT gid, summary, kind FROM proposals WHERE status = 'pending' AND kind IN ('strategy', 'custom_rule', 'import') ORDER BY id",
-        );
+        // The summary code (= the kind) and its stored values for the localized line (Python `proposal_dict`).
+        const proposals = read<{ gid: string; summary: string; kind: string; payload: string }>(
+          "SELECT gid, summary, kind, payload FROM proposals WHERE status = 'pending' AND kind IN ('strategy', 'custom_rule', 'import') ORDER BY id",
+        ).map(({ payload, ...row }) => ({
+          ...row,
+          summaryCode: row.kind,
+          summaryParams: jsonParams(payload),
+        }));
         // Metadata only: the history list never loads every historical YAML/Markdown document.
         const history = read<{
           version: number;

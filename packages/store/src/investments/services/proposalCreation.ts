@@ -169,6 +169,7 @@ export function createInvestmentProposal(files: ProposalCreationFiles, base: Str
     input: z.object({
       kind: z.enum(["strategy", "custom_rule"]),
       summary: z.string(),
+      summaryParams: z.record(z.string(), z.unknown()),
       reason: z.string().nullable(),
       payload: z.record(z.string(), z.unknown()),
     }),

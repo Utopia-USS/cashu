@@ -1,7 +1,7 @@
 // The proposal drawer's texts (ab24ab6 core/ProposalDrawer.tsx): kind tag, summary, submitted / status line,
 // notices, the diff blocks, the backtest line and the import facts, from the native proposal detail.
 import { S } from "@cashu/i18n/core/ProposalDrawer.strings";
-import { proposalError } from "@cashu/ui-logic/core/messages";
+import { proposalError, proposalSummary } from "@cashu/ui-logic/core/messages";
 import { dm, dmy } from "@cashu/ui-logic/investments/labels";
 import { P } from "./ProposalDrawer.strings.js";
 import type { ProposalDrawerState } from "./useProposalDrawer.js";
@@ -86,9 +86,15 @@ export function proposalDrawerModel(state: ProposalDrawerState) {
     error,
     failedNotice: !error && data?.status === "failed" && failure ? failure : null,
     notFound: data ? null : P.notFound,
-    // The native rows carry the summary text, not the old summary_code / params (proposalSummary would
-    // answer the bare kind label): the text is the summary.
-    summary: data ? data.summary || S.changeProposal : "",
+    // ProposalDrawer.tsx: the localized line from the summary code and its values, else the English summary.
+    summary: data
+      ? proposalSummary({
+          kind: data.kind,
+          summary: data.summary,
+          summary_code: data.summaryCode,
+          summary_params: data.summaryParams,
+        }) || S.changeProposal
+      : "",
     meta: data
       ? `${data.createdAt ? S.submitted(dmy(data.createdAt)) : ""}${data.status !== "pending" ? ` · ${statusText[data.status] ?? data.status}` : ""}`
       : "",

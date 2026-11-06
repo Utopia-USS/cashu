@@ -8,6 +8,7 @@ import {
   investmentsServices as S,
   type v1,
 } from "@cashu/store";
+import { proposalExecution } from "@cashu/store/core";
 import * as Q from "@cashu/store/investments/queries";
 import { afterEach, describe, expect, it } from "vitest";
 import { Labelled } from "../privacy/labels.js";
@@ -365,6 +366,22 @@ describe("native MCP local investment writes", () => {
         reason: "Synthetic rule proposal",
       });
       refs.set(String(rule.proposal_id), "rule_proposal");
+      // Python proposals.create(summary_params=...): the values of the app's localized line.
+      const summaryParams = (ref: unknown) =>
+        proposalExecution(s.f.store.read.bind(s.f.store), decodeEntityRef("proposal", String(ref)))
+          ?.payload.summary_params;
+      expect(summaryParams(strategy.proposal_id)).toEqual({
+        rules: Number(strategy.rules),
+        buckets: (strategy.buckets as unknown[]).length,
+        inactive_rules: 0,
+      });
+      expect(summaryParams(rule.proposal_id)).toMatchObject({ rule_kind: "cash_level" });
+      expect(Object.keys(summaryParams(rule.proposal_id) as object)).toEqual([
+        "rule_id",
+        "rule_kind",
+        "episodes",
+        "evaluated",
+      ]);
       expect(pyDumps(normalized(responses, refs), { sortKeys: true })).toBe(vectors[privacy].wire);
       expect({
         recommendation: Q.loadInstrument(s.f.store.read.bind(s.f.store), s.instrument)?.plan,

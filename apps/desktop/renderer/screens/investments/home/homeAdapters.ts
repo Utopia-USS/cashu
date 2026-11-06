@@ -247,6 +247,8 @@ export const proposalsOf = (rows: readonly ProposalListRow[]): Proposal[] =>
       kind: p.kind,
       status: p.status,
       summary: p.summary,
+      summary_code: p.summaryCode,
+      summary_params: p.summaryParams,
       reason: p.reason,
       source: p.source,
       created_at: p.createdAt,

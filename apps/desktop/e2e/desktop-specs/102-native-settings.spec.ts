@@ -219,23 +219,28 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
         privacy: true,
       }),
     ).toEqual([]);
+    // The list and the drawer show the Polish line built from the summary code and values (Python
+    // core/messages.ts proposalSummary); privacy mode drops the values.
     const proposals = agent.getByRole("region", { name: "Propozycje agenta" });
     const drawer = page.getByRole("dialog", { name: "Propozycja agenta" });
     if (visuals)
       await page.screenshot({ path: join(visuals, "electron102-settings.png"), fullPage: true });
     const firstOpener = proposals
       .getByRole("button", { name: "Otwórz propozycję" })
-      .filter({ hasText: "Synthetic Settings102 strategy" });
+      .filter({ hasText: "Nowa strategia: 2 reguły, 1 koszyk" });
     await firstOpener.click();
     await expect(drawer).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
     await expect(firstOpener).toBeFocused();
     const detailChecks: ReadonlyArray<[string, string]> = [
-      ["Synthetic Settings102 strategy", "Zmiana w strategy.yaml"],
-      ["Synthetic Settings102 rule", "Test wsteczny"],
-      ["Synthetic Settings102 investment import", "synthetic-investment.csv"],
-      ["Synthetic Settings102 budget import", "synthetic-statement.csv"],
+      ["Nowa strategia: 2 reguły, 1 koszyk", "Zmiana w strategy.yaml"],
+      ["Nowa reguła: w teście wstecznym 1 epizod", "Test wsteczny"],
+      ["Import do Synthetic brokerage (synthetic): 2 nowe wiersze", "synthetic-investment.csv"],
+      [
+        "Import wyciągu do Synthetic checking (konektor Synthetic connector): 3 nowe transakcje",
+        "synthetic-statement.csv",
+      ],
     ];
     for (const [summary, content] of detailChecks) {
       await proposals
@@ -245,12 +250,16 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
       await expect(drawer).toBeVisible();
       await expect(drawer).toContainText(summary);
       await expect(drawer).toContainText(content);
-      if (visuals && summary === "Synthetic Settings102 strategy")
+      if (visuals && summary === "Nowa strategia: 2 reguły, 1 koszyk")
         await page.screenshot({
           path: join(visuals, "electron102-strategy-diff.png"),
           fullPage: true,
         });
-      if (visuals && summary === "Synthetic Settings102 budget import")
+      if (
+        visuals &&
+        summary ===
+          "Import wyciągu do Synthetic checking (konektor Synthetic connector): 3 nowe transakcje"
+      )
         await page.screenshot({
           path: join(visuals, "electron102-budget-import.png"),
           fullPage: true,
@@ -259,7 +268,7 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     }
     await proposals
       .getByRole("button", { name: "Otwórz propozycję" })
-      .filter({ hasText: "Synthetic Settings102 strategy" })
+      .filter({ hasText: "Nowa strategia: 2 reguły, 1 koszyk" })
       .click();
     await drawer.getByRole("button", { name: "Odrzuć" }).click();
     await expect(drawer).toHaveCount(0);
@@ -274,19 +283,19 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
     await expect(
       proposals
         .getByRole("button", { name: "Otwórz propozycję" })
-        .filter({ hasText: "Synthetic Settings102 strategy" }),
+        .filter({ hasText: "Nowa strategia: 2 reguły, 1 koszyk" }),
     ).toHaveCount(0);
 
     const incognito = page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true });
     await incognito.click();
     await expect(incognito).toBeChecked();
-    await expect(proposals).not.toContainText("Synthetic Settings102 rule");
+    await expect(proposals).not.toContainText("Nowa reguła: w teście wstecznym 1 epizod");
     await proposals.getByRole("button", { name: "Otwórz propozycję" }).first().click();
     await expect(drawer).toHaveCount(0);
     await incognito.click();
     await expect(incognito).not.toBeChecked();
     await expect(drawer).toHaveCount(0);
-    await expect(proposals).toContainText("Synthetic Settings102 rule");
+    await expect(proposals).toContainText("Nowa reguła: w teście wstecznym 1 epizod");
     await rewriteHash(page, /\/settings(?=\?|$)/u, "/investments.strategies");
     const strategies = page.getByTestId("native-strategies");
     await expect(strategies).toBeVisible();

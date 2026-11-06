@@ -9,6 +9,8 @@ import {
 const kind = z.enum(["strategy", "custom_rule", "import", "budget_import"]);
 const gid = z.string().min(1);
 const resultObject = z.record(z.string(), z.unknown());
+/** The payload key of a proposal's summary values (Python `summary_params`). */
+export const SUMMARY_PARAMS = "summary_params";
 const requiresImportHolder = (kind: ExecutionSnapshot["kind"]): boolean =>
   kind === "import" || kind === "budget_import";
 
@@ -20,11 +22,16 @@ const currentPending = (
   return proposal?.status === "pending" ? proposal : undefined;
 };
 
+/**
+ * Python `proposals.create`: `summary` is one English line; `summaryParams` its values for the app's
+ * localized line (`summary_code` = the kind), stored in the payload as `summary_params`.
+ */
 export const createProposal = defineCommand({
   id: "core.createProposal",
   input: z.object({
     kind,
     summary: z.string(),
+    summaryParams: resultObject.default({}),
     reason: z.string().nullable(),
     payload: resultObject,
     source: z.string().min(1),
@@ -33,7 +40,11 @@ export const createProposal = defineCommand({
     if ("account_id" in input.payload || "staged" in input.payload)
       return refuse("invalid_payload");
     const proposalGid = ctx.newGid();
-    ctx.emit("proposal.created", proposalGid, input);
+    const { summaryParams, ...created } = input;
+    ctx.emit("proposal.created", proposalGid, {
+      ...created,
+      payload: { ...input.payload, [SUMMARY_PARAMS]: summaryParams },
+    });
     return ok({ proposalGid });
   },
 });
