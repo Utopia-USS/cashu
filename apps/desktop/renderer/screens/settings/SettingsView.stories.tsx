@@ -94,7 +94,6 @@ function SyntheticSettings({
     bindConnector: async () => {},
     connectorRunFailure: () => null,
     onConnectorAction,
-    refreshConnectors: async () => {},
     installConnector: async () => {},
     workspace: unavailable
       ? { availability: "unavailable", reason: "source_unbound" }
@@ -145,7 +144,6 @@ function SyntheticSettings({
         },
       ],
     },
-    onAuditRefreshed() {},
     proposals: [{ gid: "019a48cf-0285-8a09-bf65-a2741b2c9a72", summary: "Synthetic proposal" }],
     onProposalOpened() {},
     preferences: { theme: "system", languagePin: "system", updatesAuto: false },

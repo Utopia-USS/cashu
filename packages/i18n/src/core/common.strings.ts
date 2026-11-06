@@ -15,7 +15,6 @@ export const C = catalog({
   next: { pl: "Dalej", en: "Next" },
   back: { pl: "Wróć", en: "Back" },
   details: { pl: "Szczegóły", en: "Details" },
-  refresh: { pl: "Odśwież", en: "Refresh" },
   retry: { pl: "Spróbuj ponownie", en: "Try again" },
   loading: { pl: "Wczytuję…", en: "Loading…" },
   noData: { pl: "Brak danych", en: "No data" },

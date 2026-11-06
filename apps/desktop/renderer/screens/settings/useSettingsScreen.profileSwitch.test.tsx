@@ -91,7 +91,7 @@ afterEach(() => {
   testState.vault = "a".repeat(32);
 });
 
-it("shows each profile's live connector list and an old vault's slow refresh never makes the new one busy", async () => {
+it("shows each profile's live connector list and an old vault's slow action never makes the new one busy", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   let finishOld!: (result: unknown) => void;
   const oldResult = new Promise((resolve) => {
@@ -111,9 +111,9 @@ it("shows each profile's live connector list and an old vault's slow refresh nev
     await act(async () => root.render(<Probe onState={onState} />));
     expect(container.textContent).toBe("Old profile connector");
     await act(async () => {
-      void screen.refreshConnectors();
+      void screen.onConnectorAction({ op: "disable", id: "old" });
     });
-    expect(testState.connectorRun).toHaveBeenCalledWith({ op: "rescan" });
+    expect(testState.connectorRun).toHaveBeenCalledWith({ op: "disable", id: "old" });
     expect(screen.connectorBusy).toBe(true);
     testState.vault = "b".repeat(32);
     await act(async () => {

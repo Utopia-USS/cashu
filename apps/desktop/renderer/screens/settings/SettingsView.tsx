@@ -662,8 +662,6 @@ function AuditLog({ state }: { state: SettingsScreenState }) {
       <div className={`${controls} mt-3.5 mb-1.5`}>
         <strong className="text-md">{S.callLog}</strong>
         <Tag>{S.last7Days(state.audit.count7d)}</Tag>
-        <span className="flex-1" />
-        <Button onPress={state.onAuditRefreshed}>{C.refresh}</Button>
       </div>
       <div className={scrollCls(true)}>
         <table className={dataTableCls}>

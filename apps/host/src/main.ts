@@ -388,6 +388,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           );
           return await host.exit;
         } finally {
+          connectors?.catalog.close();
           await banking?.close();
           market?.close();
           updateBridge?.close();

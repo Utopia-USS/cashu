@@ -90,7 +90,6 @@ export const connectorsState = {
   bindConnector: async () => {},
   connectorRunFailure: () => null,
   onConnectorAction: async () => {},
-  refreshConnectors: async () => {},
   installConnector: async () => {},
 } as unknown as SettingsScreenState;
 

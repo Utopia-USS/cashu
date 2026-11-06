@@ -28,7 +28,6 @@ import { reportSuccessfulFetch } from "./worker/leaseReport.js";
 const gid = v1.gid;
 const id = z.string().regex(/^[a-z][a-z0-9-]{1,39}$/);
 const request = z.discriminatedUnion("op", [
-  z.strictObject({ op: z.literal("rescan") }),
   z.strictObject({
     op: z.literal("approve"),
     id,
@@ -130,17 +129,10 @@ export function connectorOwnerAction(input: {
         return prior.identity === identity
           ? prior.result
           : { status: "not_started", reason: "pending_previous_attempt" };
-      const mutating = action.op !== "rescan";
-      if (mutating && mutationBusy)
-        return { status: "not_started", reason: "pending_previous_attempt" };
-      if (mutating) mutationBusy = true;
+      if (mutationBusy) return { status: "not_started", reason: "pending_previous_attempt" };
+      mutationBusy = true;
       const holder = () => current() && vault.native.canFetchPublicMarket();
       try {
-        if (action.op === "rescan") {
-          // The old section's Refresh: the live list (connectorSettings.ts) reads the directory again.
-          catalog.changed();
-          return { status: "completed", value: { ok: true } };
-        }
         if (action.op === "approve") {
           catalog.approve(action.id, action.digest, action.interpreter, {
             ownerAction: true,
@@ -339,11 +331,9 @@ export function connectorOwnerAction(input: {
         else await secrets.clear(action.secret);
         return { status: "completed", value: { ok: true } };
       } catch {
-        return action.op === "rescan"
-          ? { status: "refused", reason: "connector_unavailable", preparation: "none" }
-          : { status: "outcome_unknown", reason: "unexpected_failure" };
+        return { status: "outcome_unknown", reason: "unexpected_failure" };
       } finally {
-        if (mutating) mutationBusy = false;
+        mutationBusy = false;
       }
     },
   };

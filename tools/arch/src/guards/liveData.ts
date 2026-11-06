@@ -319,13 +319,6 @@ export const LIVE_DATA_ALLOWED: ReadonlyArray<{
     reason: "display clock: re-arms at the next local midnight to roll today's date, reads no data",
   },
   {
-    path: "apps/desktop/renderer/screens/settings/useSettingsScreen.ts",
-    kind: "cache-busting query arg",
-    line: "const audit = useQuery(mcpAudit, { vault, since, privacy: ownerIncognito });",
-    reason:
-      "the audit's Odśwież moves its 7-day window start to now (old refresh button); new entries arrive by push",
-  },
-  {
     path: "apps/desktop/renderer/routes.tsx",
     kind: "reload",
     line: "onClick={() => location.reload()}",

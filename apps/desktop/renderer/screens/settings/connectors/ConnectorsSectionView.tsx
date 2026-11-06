@@ -1,7 +1,7 @@
 // Ustawienia › Konektory (ab24ab6 core/ConnectorsSection.tsx): every installed connector, what waits for the
 // owner's approval first; the row's line (version, author, last run, bindings) and button open the connector drawer.
-// Native: install from a folder, the list refresh, the banking panel at the end of the card. Pure view (the open
-// drawer is view state).
+// Native: install from a folder, the banking panel at the end of the card; the list follows the host by itself (no
+// Odśwież, owner decision 2026-11-06). Pure view (the open drawer is view state).
 import { S as CS } from "@cashu/i18n/core/ConnectorsSection.strings";
 import { C } from "@cashu/i18n/core/common.strings";
 import { Button, Notice, SectionCard, SettingRow, Skeleton, Tag } from "@cashu/ui";
@@ -39,9 +39,6 @@ export function ConnectorsSectionView({
     <>
       <Button disabled={busy} onPress={() => void state.installConnector()}>
         {T.connectorInstall}
-      </Button>
-      <Button disabled={busy} onPress={() => void state.refreshConnectors()}>
-        {C.refresh}
       </Button>
     </>
   );

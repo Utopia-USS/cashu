@@ -43,9 +43,17 @@ import {
   type DesktopServiceStatus,
   onServiceStatus,
 } from "../../serviceBridge.js";
+import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { useConnectorActivity } from "./connectors/useConnectorActivity.js";
 import { T } from "./Settings.strings.js";
+
+/** Start of the audit log's 7-day window: local midnight six days before `day` (YYYY-MM-DD), so the count covers
+ * today and the six days before it and moves only when the calendar day does. */
+function auditWindowStart(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y ?? 1970, (m ?? 1) - 1, (d ?? 1) - 6).toISOString();
+}
 
 /** Old core/registry.ts MODULES: the navigation order of the module rows (unknown ids after, in their order). */
 const MODULE_ORDER = ["budget", "loans", "assets", "investments"];
@@ -216,7 +224,8 @@ export function useSettingsScreen(
   // status changes. Nothing on this screen polls.
   const updater = useQuery(updateStatus);
   const update = useUiAction(updateAction);
-  const [since, setSince] = useState(() => new Date(Date.now() - 7 * 86_400_000).toISOString());
+  // The call log is pushed on every MCP call; its 7-day count rolls with the calendar day (no Odśwież).
+  const since = auditWindowStart(useCalendarDay());
   const audit = useQuery(mcpAudit, { vault, since, privacy: ownerIncognito });
   const connectorActivity = useConnectorActivity(vault, ownerIncognito);
   const hostInfo = useQuery(hostSettingsInfo, { privacy: ownerIncognito });
@@ -302,7 +311,8 @@ export function useSettingsScreen(
   const apply = useUiAction(workspaceApply);
   const connectorAction = useUiAction(connectorSettings);
   // The installed connectors, accounts and bindings: a live vault query the host re-runs when its catalog changes
-  // (an install, also from MCP or the CLI, an approval, a removal) or a binding changes; nothing here re-reads it.
+  // (an install, also from MCP or the CLI, an approval, a removal, an edit in its directory) or a binding changes;
+  // nothing here re-reads it.
   const connectorSnapshot = useQuery(connectorSettingsSnapshot);
   const connectorScope = useRef({ vault, generation: 0 });
   useLayoutEffect(() => {
@@ -318,17 +328,6 @@ export function useSettingsScreen(
     if (!currentConnectorScope(captured)) return;
     setConnectorBusyVault(busy ? captured.vault : null);
   };
-  /** The old section's Refresh: the host reads its connector directory again; the live list follows. */
-  async function refreshConnectors() {
-    if (connectorBusy) return;
-    const captured = connectorScope.current;
-    setConnectorBusyScoped(captured, true);
-    try {
-      await connectorAction.run({ op: "rescan" });
-    } finally {
-      setConnectorBusyScoped(captured, false);
-    }
-  }
   async function installConnector() {
     if (connectorBusy) return;
     const captured = connectorScope.current;
@@ -662,7 +661,6 @@ export function useSettingsScreen(
     /** The last unclean fetch run of a binding in this vault (old RunError under the binding row). */
     connectorRunFailure: (binding: string) => connectorRuns[`${vault}:${binding}`] ?? null,
     bindConnector,
-    refreshConnectors,
     installConnector,
     onConnectorAction,
     workspaceBusy,
@@ -688,7 +686,6 @@ export function useSettingsScreen(
     saveWorkspace,
     onWorkspaceCopied: copyWorkspaceText,
     audit: auditDisplay,
-    onAuditRefreshed: () => setSince(new Date(Date.now() - 7 * 86_400_000).toISOString()),
     proposals,
     onProposalOpened,
     preferences,

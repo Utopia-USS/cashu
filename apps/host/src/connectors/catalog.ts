@@ -19,6 +19,7 @@ import {
 import { join, resolve } from "node:path";
 import type { ChangeSource } from "@cashu/store/query";
 import { z } from "zod";
+import { watchDirectory } from "./directoryWatch.js";
 import { ConnectorFault, type LoadedConnector, scanConnector } from "./manifest.js";
 
 const approvalSchema = z.strictObject({
@@ -82,13 +83,19 @@ export class ConnectorCatalog {
   private readonly pin: { dev: number; ino: number };
   readonly bundledDeno: string | undefined;
   private readonly listeners = new Set<() => void>();
-  /** Fires after the installed inventory changed on disk (install, approval, disable, removal and its fence) or an
-   * owner asked to read it again: the live Settings connector list re-runs on it instead of the renderer asking. */
+  private unwatch: (() => void) | undefined;
+  private closed = false;
+  /** Fires after the installed inventory changed: every mutation here, the removal fence, and any change on disk
+   * (a hand edit, a copy into the directory), which a directory watch picks up while someone listens. The live
+   * Settings connector list re-runs on it; nothing asks the host to read the directory again. */
   readonly changes: ChangeSource = {
     subscribe: (listener) => {
       this.listeners.add(listener);
+      if (this.unwatch === undefined && !this.closed)
+        this.unwatch = watchDirectory(this.root, () => this.changed());
       return () => {
         this.listeners.delete(listener);
+        if (this.listeners.size === 0) this.stopWatching();
       };
     },
   };
@@ -108,9 +115,20 @@ export class ConnectorCatalog {
   }
 
   /** Tell inventory readers to read the directory again (every mutation here calls it; the removal journal calls it
-   * when its fence moves; an owner's Refresh calls it to pick up a change made on disk by hand). */
+   * when its fence moves; the directory watch calls it for a change made on disk). */
   changed(): void {
     for (const listener of [...this.listeners]) listener();
+  }
+
+  /** Stop the directory watch for good (host stop); listeners still hear the mutations made through the catalog. */
+  close(): void {
+    this.closed = true;
+    this.stopWatching();
+  }
+
+  private stopWatching(): void {
+    this.unwatch?.();
+    this.unwatch = undefined;
   }
 
   /** Pin check for host-owned auxiliary files under this private catalog directory. */

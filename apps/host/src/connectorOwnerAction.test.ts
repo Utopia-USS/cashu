@@ -45,13 +45,9 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
     files: [{ path: "true", size: 1, sha256: "a".repeat(64), executable: true }],
     contentSha256: "a".repeat(64),
   };
-  let rescans = 0;
   const catalog = {
     installed: () => loaded,
     approved: () => loaded,
-    changed: () => {
-      rescans++;
-    },
     list: () => [
       {
         id: "synthetic-fetch",
@@ -141,11 +137,7 @@ it("uses a migrated UUID8 account and returned UUID8 binding for secrets, run an
     autoCommit: false,
   });
   expect(bound).toMatchObject({ status: "completed", value: { binding: bindingId } });
-  // The live list carries the manifest facts the old drawer showed; Refresh only re-reads the catalog.
-  expect(await action.run(stores, vaultId, { op: "rescan" })).toMatchObject({
-    status: "completed",
-  });
-  expect(rescans).toBe(1);
+  // The live list carries the manifest facts the old drawer showed.
   expect(connectorInventory(catalog)).toMatchObject([
     {
       id: "synthetic-fetch",

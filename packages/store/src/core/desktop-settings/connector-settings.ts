@@ -2,7 +2,7 @@
 // drawer reads): the installed connectors with their approval state, the profile's accounts and its bindings, as one
 // live vault query. The bindings and accounts are vault tables (a binding set or removed by any client re-runs it); the
 // installed connectors come from the host's connector catalog, a process-local input whose `changes` fire after an
-// install (owner, CLI, MCP `propose_connector`), an approval, a disable or a removal.
+// install (owner, CLI, MCP `propose_connector`), an approval, a disable, a removal or a change made in its directory.
 import { type ChangeSource, defineQuery } from "../../query.js";
 
 export interface ConnectorSettingsSnapshot {
@@ -48,7 +48,7 @@ export interface ConnectorSettingsSnapshot {
 }
 /** The host's installed-connector inventory, bound per vault. */
 export interface ConnectorCatalogSource {
-  /** Fires after the installed inventory changed (install, approval, disable, removal, a rescan). */
+  /** Fires after the installed inventory changed (install, approval, disable, removal, a change on disk). */
   readonly changes: ChangeSource;
   /** The connectors the owner of `vault` sees; null while this host has no catalog for that vault. */
   connectors(vault: string): ConnectorSettingsSnapshot["connectors"] | null;

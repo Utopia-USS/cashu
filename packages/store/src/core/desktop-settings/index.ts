@@ -162,10 +162,9 @@ export const workspaceApply: UiAction<
   unknown
 > = { id: "core.settings.workspaceApply" };
 
-/** Owner connector controls. `rescan` only makes the host read its installed-connector directory again (the old
- * section's Refresh); the list itself is the live `connectorSettingsSnapshot` query. */
+/** Owner connector controls; the list itself is the live `connectorSettingsSnapshot` query, which follows the host's
+ * connector directory by itself. */
 export type ConnectorSettingsInput =
-  | { readonly op: "rescan" }
   | {
       readonly op: "approve";
       readonly id: string;
