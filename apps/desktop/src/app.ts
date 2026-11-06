@@ -13,6 +13,8 @@ export interface WindowHandle extends LinkWindow {
   /** Called when the user closes the window; `prevent()` keeps it open. */
   onClose(handler: (prevent: () => void) => void): void;
   onClosed(handler: () => void): void;
+  /** Closes the window at once: no `close` event, no beforeunload / unload round trip to the page. */
+  destroy(): void;
 }
 
 export interface TrayHandle {
@@ -44,7 +46,7 @@ export type StartResult = "started" | "already-running" | "failed";
  *  - one instance per data dir: a second launch fronts the running window and exits,
  *  - the window opens on a loading page, then the native renderer (including a pending link), or
  *    the renderer's recovery screen when the start sequence failed (it needs no host),
- *  - closing the window quits and destroys the tray,
+ *  - closing the window quits; quitting destroys the tray and the window,
  *  - native bridges are exposed only to the app origin.
  */
 export class DesktopApp {
@@ -163,12 +165,19 @@ export class DesktopApp {
     return this.quitting;
   }
 
-  /** Destroys the tray once; awaited by Electron's before-quit handler. */
+  /**
+   * Destroys the tray and the window once; awaited by Electron's before-quit handler. The window is
+   * destroyed rather than closed: a close waits for the page's answer to beforeunload (the router's
+   * history always listens for it), and Chromium drops that answer when a same-document history
+   * navigation starts meanwhile (a modal's deferred `history.back()` right before a quit). The window
+   * then never closed and the app never quit. No page may veto or hold up a quit.
+   */
   shutdown(): Promise<void> {
     this.quitting = true;
     this.shutdownPromise ??= (async () => {
       this.tray?.destroy();
       this.tray = null;
+      this.window?.destroy();
     })();
     return this.shutdownPromise;
   }

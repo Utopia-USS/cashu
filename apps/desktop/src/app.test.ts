@@ -48,6 +48,10 @@ class FakeWindow implements WindowHandle {
   onClosed(handler: () => void) {
     this.closedHandler = handler;
   }
+  destroy() {
+    this.calls.push("destroy");
+    this.closedHandler();
+  }
   userClose(): boolean {
     let prevented = false;
     this.closeHandler?.(() => {
@@ -184,6 +188,14 @@ describe("single instance and shutdown", () => {
     expect(events).toContain("quit");
     await Promise.all([app.shutdown(), app.shutdown()]);
     expect(events.filter((event) => event === "tray destroyed")).toHaveLength(1);
+  });
+
+  it("a quit destroys the open window instead of asking the page to close", async () => {
+    const { app, window, events } = setup();
+    await app.start();
+    await Promise.all([app.shutdown(), app.shutdown()]);
+    expect(window.calls.filter((call) => call === "destroy")).toHaveLength(1);
+    expect(events.filter((event) => event === "quit")).toHaveLength(0);
   });
 
   it("close-to-tray hides until an explicit quit", async () => {

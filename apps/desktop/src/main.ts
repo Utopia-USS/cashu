@@ -215,6 +215,9 @@ function toHandle(window: BrowserWindow): WindowHandle {
     onClosed: (handler) => {
       window.on("closed", handler);
     },
+    destroy: () => {
+      if (!window.isDestroyed()) window.destroy();
+    },
   };
 }
 
