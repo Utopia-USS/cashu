@@ -13,6 +13,7 @@ import {
   type StatementPreviewInput,
   type StatementPreviewResult,
   type StatementRequest,
+  statementContentBytes,
   statementPreviewInputSchema,
   transferPairCount,
 } from "@cashu/store/budget/queries";
@@ -72,15 +73,16 @@ export function budgetStatementActions(options: { now(): number }) {
     input: statementPreviewInputSchema,
     bind,
     async run(context, input) {
-      if (input.content.length === 0)
+      const content = statementContentBytes(input.content);
+      if (content.length === 0)
         return { status: "completed", value: refusedWith("import_empty", "The file is empty") };
-      if (input.content.length > STATEMENT_MAX_BYTES)
+      if (content.length > STATEMENT_MAX_BYTES)
         return { status: "completed", value: refusedWith("file_too_large") };
       const fileName =
         input.fileName.replace(/\\/g, "/").split("/").pop()?.slice(0, 200) || "wyciag.csv";
       const request: StatementRequest = {
         fileName,
-        content: Uint8Array.from(input.content),
+        content,
         lang: input.lang,
         ...(input.importer === undefined ? {} : { importer: input.importer }),
         ...(input.accountType === undefined ? {} : { accountType: input.accountType }),

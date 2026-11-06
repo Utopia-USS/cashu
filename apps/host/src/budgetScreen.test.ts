@@ -2,6 +2,9 @@
 // picked bytes, commit writes them once (a replay answers the same result), the done step's derived
 // counts (categories, the transfer pair) are read after the append, refusals carry the drawer's codes.
 // Counts follow the Python oracle sequence pinned in packages/store/src/budget/statement-import.test.ts.
+
+import { toJson } from "@cashu/host-protocol/store";
+import { statementContentBase64 } from "@cashu/store/budget/queries";
 import { afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { budgetStatementActions } from "./budgetScreen.js";
@@ -11,7 +14,7 @@ import { nativeVaultFixture } from "./testing/nativeVaultFixture.js";
 
 afterEach(cleanup);
 
-const enc = (s: string) => new TextEncoder().encode(s);
+const enc = (s: string) => statementContentBase64(new TextEncoder().encode(s));
 const MBANK =
   "mBank S.A.;\n\n#Waluta;\nPLN;\n\n#Numer rachunku;\n99 1140 0000 0000 0000 0000 0001;\n\n" +
   "#Data księgowania;#Data operacji;#Opis operacji;#Tytuł;#Nadawca/Odbiorca;#Numer konta;#Kwota;#Saldo po operacji;\n" +
@@ -38,13 +41,16 @@ it("previews, commits once and reports the derived counts on a native vault", as
   });
   try {
     const vault = fixture.vaultId;
-    const p1 = await preview.run(host.stores, vault, {
+    const firstInput = {
       fileName: "a.csv",
       content: enc(MBANK),
       importer: "auto",
       accountType: "checking",
-      lang: "pl",
-    });
+      lang: "pl" as const,
+    };
+    // The renderer's client sends UI action input through the channel's plain JSON encoder.
+    expect(() => toJson(firstInput)).not.toThrow();
+    const p1 = await preview.run(host.stores, vault, firstInput);
     expect(p1).toMatchObject({
       status: "completed",
       value: {
@@ -103,7 +109,7 @@ it("previews, commits once and reports the derived counts on a native vault", as
     expect(
       await preview.run(host.stores, vault, {
         fileName: "x.csv",
-        content: new Uint8Array(),
+        content: "",
         lang: "pl",
       }),
     ).toMatchObject({ value: { status: "refused", code: "import_empty" } });

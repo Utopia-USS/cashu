@@ -582,9 +582,34 @@ export function transferPairCount(read: Read): number {
 
 // ------------------------------------------------------------------------------- UI actions
 
+/** Base64 text of at most `STATEMENT_MAX_BYTES` bytes (one more byte gets past the cap and is refused there). */
+const STATEMENT_MAX_BASE64 = Math.ceil((STATEMENT_MAX_BYTES + 1) / 3) * 4;
+
+/**
+ * The picked file crosses the store channel as base64 text: UI action input is plain JSON (host-protocol
+ * `toJson` refuses a Uint8Array), so the renderer encodes (`statementContentBase64`) and the host decodes (`statementContentBytes`).
+ */
+const statementContent = z
+  .string()
+  .max(STATEMENT_MAX_BASE64)
+  .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
+
+/** The bytes of a `statementPreviewInputSchema` content (already checked as base64 by the schema). */
+export function statementContentBytes(text: string): Uint8Array {
+  return Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+}
+
+/** A file's bytes as the base64 text `statementPreviewInputSchema` takes. */
+export function statementContentBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 export const statementPreviewInputSchema = z.strictObject({
   fileName: z.string().min(1).max(200),
-  content: z.instanceof(Uint8Array),
+  content: statementContent,
   importer: z.string().max(80).optional(),
   accountType: z.string().max(40).optional(),
   accountName: z.string().max(80).nullable().optional(),

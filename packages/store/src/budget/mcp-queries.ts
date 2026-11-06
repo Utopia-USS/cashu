@@ -74,6 +74,8 @@ export {
   type StatementPreviewRow,
   type StatementRequest,
   type StatementWarning,
+  statementContentBase64,
+  statementContentBytes,
   statementPreviewInputSchema,
   transferPairCount,
 } from "./statement-import.js";

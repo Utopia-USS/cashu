@@ -14,6 +14,7 @@ import {
   STATEMENT_MAX_BYTES,
   type StatementCommitDone,
   type StatementPreview,
+  statementContentBase64,
 } from "@cashu/store/budget/queries";
 import { useQuery, useUiAction } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
@@ -124,7 +125,7 @@ export function useStatementImport(input: StatementImportInput) {
     setBusy(true);
     clearErr();
     try {
-      const content = new Uint8Array(await file.arrayBuffer());
+      const content = statementContentBase64(new Uint8Array(await file.arrayBuffer()));
       const r = await previewAction.run({
         fileName: file.name,
         content,
