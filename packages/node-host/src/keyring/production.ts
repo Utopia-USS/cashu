@@ -9,6 +9,8 @@ import { hostRunPaths } from "../host/paths.js";
 import { PrivateBlobFiles } from "./files.js";
 import { nativeOsKeyring, type OsKeyringDeletePort, type OsKeyringPort } from "./native.js";
 
+export { enterTestBuildKeyringNamespace } from "./native.js";
+
 const ACCOUNT = "cashu.keystore.kek";
 const NAME = /^cashu\.(?:vault\.[0-9a-f]{32}\.keys|device\.[0-9a-f]{32}\.identity)$/;
 const TEST_SERVICE = /^cashu-next-test\.[0-9a-f]{32}$/;

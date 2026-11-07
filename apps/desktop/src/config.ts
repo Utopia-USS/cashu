@@ -108,3 +108,24 @@ export function checkDataDir(opts: {
   }
   return null;
 }
+
+/** The window title of a sealed test build: visibly not a release. */
+export const TEST_BUILD_TITLE = `${TITLE} - TEST BUILD`;
+
+/**
+ * The data dir of a sealed test build (a manifest-verified Contents/Resources/test-build.json): the
+ * one its marker names, also when the updater relaunches the app without CASHU_DATA_DIR, and never
+ * the default data dir. An explicit CASHU_DATA_DIR naming another dir is refused. A release (no
+ * marker) keeps its choice unchanged.
+ */
+export function testBuildDataDir(
+  choice: DataDirChoice,
+  markerDataDir: string | null,
+): { readonly choice: DataDirChoice } | { readonly error: string } {
+  if (markerDataDir === null) return { choice };
+  if (choice.explicit && realResolve(choice.dir) !== markerDataDir)
+    return {
+      error: `Refusing to start a TEST BUILD outside its data dir (${markerDataDir}): unset ${ENV.dataDir} or set it to that dir.`,
+    };
+  return { choice: { dir: markerDataDir, explicit: true } };
+}

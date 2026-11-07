@@ -19,6 +19,12 @@ export interface InstalledApp {
   readonly resourcesPath: string;
   readonly dataDir: string;
   readonly expectedDataDir: string;
+  /**
+   * Only from a sealed, manifest-verified test-build marker (@cashu/node-host/test-build): the
+   * local feed the sealed app-update.yml must name and the install root that replaces
+   * /Applications. Absent in every release, where the pinned policy alone decides.
+   */
+  readonly testBuild?: { readonly feedUrl: string; readonly installRoot: string };
 }
 
 const releaseFeedSchema = z.strictObject({
@@ -55,6 +61,44 @@ export function parseReleaseFeed(source: string, expectedUrl: string): boolean {
   }
 }
 
+/** The cache dir a test build's sealed app-update.yml names (never the release cache). */
+export const TEST_UPDATER_CACHE_DIR_NAME = "cashu-updater-test";
+
+/**
+ * A sealed test build's feed: the same strict YAML as parseReleaseFeed, but exactly
+ * `http://127.0.0.1:<port>/` and the test cache dir. Used only when the verified bundle carries the
+ * test-build marker; a release never reaches this parser.
+ */
+export function parseTestBuildFeed(source: string, expectedUrl: string): boolean {
+  try {
+    const doc = parseDocument(source, { strict: true, uniqueKeys: true });
+    if (doc.errors.length !== 0) return false;
+    const parsed = releaseFeedSchema.safeParse(doc.toJS({ maxAliasCount: 0 }));
+    if (
+      !parsed.success ||
+      parsed.data.url !== expectedUrl ||
+      parsed.data.updaterCacheDirName !== TEST_UPDATER_CACHE_DIR_NAME
+    )
+      return false;
+    const url = new URL(parsed.data.url);
+    if (
+      url.protocol !== "http:" ||
+      url.hostname !== "127.0.0.1" ||
+      !/^[1-9][0-9]{3,4}$/.test(url.port) ||
+      Number(url.port) > 65_535 ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    )
+      return false;
+    return url.toString() === expectedUrl;
+  } catch {
+    return false;
+  }
+}
+
 function inside(parent: string, child: string): boolean {
   const part = relative(parent, child);
   return part === "" || (part !== ".." && !part.startsWith(`..${sep}`) && !isAbsolute(part));
@@ -78,7 +122,13 @@ function installedUpdateGate(
     if (resource !== join(contents, "Resources") || !inside(bundle, resource))
       return { ok: false, reason: "bundle_resources" };
     const translocated = bundle.includes("/AppTranslocation/");
-    if (translocated || !bundle.startsWith("/Applications/"))
+    const test = app.testBuild;
+    if (
+      translocated ||
+      (test
+        ? bundle === test.installRoot || !inside(realpathSync(test.installRoot), bundle)
+        : !bundle.startsWith("/Applications/"))
+    )
       return { ok: false, reason: "install_location" };
     if (realpathSync(app.dataDir) !== realpathSync(app.expectedDataDir))
       return { ok: false, reason: "data_dir_mismatch" };
@@ -115,7 +165,12 @@ function installedUpdateGate(
     } finally {
       closeSync(fd);
     }
-    if (!parseReleaseFeed(feedText, RELEASE_FEED_URL)) return { ok: false, reason: "feed_config" };
+    if (
+      test
+        ? !parseTestBuildFeed(feedText, test.feedUrl)
+        : !parseReleaseFeed(feedText, RELEASE_FEED_URL)
+    )
+      return { ok: false, reason: "feed_config" };
     return { ok: true };
   } catch {
     return { ok: false, reason: "identity_unknown" };

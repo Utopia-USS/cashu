@@ -2,19 +2,27 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseTestBuildMarker } from "@cashu/node-host/test-build";
 import { afterEach, expect, it } from "vitest";
 import {
   developerIdRequirement as authorityRequirement,
   parseReleaseFeed,
+  parseTestBuildFeed,
 } from "../src/update/authority.ts";
 import { RELEASE_FEED_URL, RELEASE_TEAM_ID } from "../src/update/releasePolicy.ts";
 import {
   APP_ID,
   appUpdateYml,
   artifactName,
+  assertNoTestBuild,
   developerIdRequirement,
   developerIdTeam,
+  parseTestBuild,
   readReleasePolicy,
+  readTestBuild,
+  TEST_BUILD_MARKER,
+  testAppUpdateYml,
+  testBuildJson,
   UPDATER_CACHE_DIR_NAME,
 } from "./release-policy.mjs";
 
@@ -87,4 +95,55 @@ it("takes the team from an explicit Developer ID identity and names artifacts pe
   expect(artifactName("0.5.0", "x64", "dmg")).toBe("cashU-0.5.0-mac-x64.dmg");
   expect(artifactName("0.5.0", "x64", "zip")).not.toContain("arm64");
   expect(() => artifactName("0.5.0", "universal", "zip")).toThrow();
+});
+
+const testMarker = {
+  schema: 1,
+  kind: "cashu-test-build",
+  feedUrl: "http://127.0.0.1:47123/",
+  installRoot: "/tmp/w3a/install",
+  dataDir: "/tmp/w3a/data",
+  workspacesDir: "/tmp/w3a/workspaces",
+};
+
+it("seals a test build marker the app parses identically, with its local feed", () => {
+  const text = testBuildJson(testMarker);
+  expect(parseTestBuild(text)).toEqual(testMarker);
+  expect(parseTestBuildMarker(text)).toEqual(testMarker);
+  const yml = testAppUpdateYml(testMarker);
+  expect(parseTestBuildFeed(yml, testMarker.feedUrl)).toBe(true);
+  // A test feed is never the release feed, and the release yml never passes the test parser.
+  expect(parseReleaseFeed(yml, testMarker.feedUrl)).toBe(false);
+  expect(parseTestBuildFeed(appUpdateYml(readReleasePolicy(root)), RELEASE_FEED_URL)).toBe(false);
+});
+
+it("rejects the same malformed markers as the app", () => {
+  for (const bad of [
+    { ...testMarker, extra: 1 },
+    { ...testMarker, feedUrl: "http://localhost:47123/" },
+    { ...testMarker, feedUrl: RELEASE_FEED_URL },
+    { ...testMarker, installRoot: "/Applications/cashU-test" },
+    { ...testMarker, dataDir: "/Users/x/Library/Application Support/cashU" },
+    { ...testMarker, dataDir: "/Users/x/Documents/cashU" },
+    { ...testMarker, dataDir: "data" },
+  ]) {
+    const text = JSON.stringify(bad);
+    expect(() => parseTestBuild(text)).toThrow();
+    expect(() => parseTestBuildMarker(text)).toThrow();
+  }
+});
+
+it("refuses to release a bundle that carries the test-build marker", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cashu-release-policy-app-"));
+  temps.push(dir);
+  const app = join(dir, "cashU.app");
+  mkdirSync(join(app, "Contents/Resources"), { recursive: true });
+  expect(() => assertNoTestBuild(app)).not.toThrow();
+  expect(readTestBuild(app)).toBeNull();
+  writeFileSync(join(app, TEST_BUILD_MARKER), testBuildJson(testMarker));
+  expect(readTestBuild(app)).toEqual(testMarker);
+  expect(() => assertNoTestBuild(app)).toThrow(/TEST BUILD.*can never be released/);
+  // Even an invalid or empty marker is refused for a release.
+  writeFileSync(join(app, TEST_BUILD_MARKER), "");
+  expect(() => assertNoTestBuild(app)).toThrow(/TEST BUILD/);
 });

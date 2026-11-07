@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { crypto } from "@cashu/sync";
 
 export interface OsKeyringPort {
@@ -11,6 +12,34 @@ export interface OsKeyringDeletePort extends OsKeyringPort {
   delete(service: string, account: string): Promise<void>;
 }
 
+const TEST_SERVICE = /^cashu-next-test\.[0-9a-f]{32}$/;
+let testBuildNamespace = false;
+
+/**
+ * One-way switch for a sealed test build (a manifest-verified Contents/Resources/test-build.json,
+ * see ../testBuild.ts): from this call on, every OS keyring service this process addresses is
+ * mapped into the synthetic `cashu-next-test.<hex>` namespace, so a test build never reads or
+ * writes a production `cashu.*.v1.*` item. The mapping is deterministic per production service,
+ * so a test build reopens its own vaults across restarts and across an update in place.
+ */
+export function enterTestBuildKeyringNamespace(): void {
+  testBuildNamespace = true;
+}
+
+/** The test namespace service a production service maps to under a test build. */
+export function testBuildService(service: string): string {
+  const hex = createHash("sha256").update(`cashu-test-build\0${service}`, "utf8").digest("hex");
+  return `cashu-next-test.${hex.slice(0, 32)}`;
+}
+
+/** The service actually addressed: unchanged in a release, mapped and checked in a test build. */
+export function addressedService(service: string): string {
+  if (!testBuildNamespace) return service;
+  const mapped = testBuildService(service);
+  if (!TEST_SERVICE.test(mapped)) throw new crypto.CryptoError("keystore_unavailable");
+  return mapped;
+}
+
 /** Exact binary N-API Keychain/Secret Service access. Native errors never leave this boundary. */
 export function nativeOsKeyring(): OsKeyringDeletePort {
   if (process.platform !== "darwin" && process.platform !== "linux") {
@@ -20,7 +49,7 @@ export function nativeOsKeyring(): OsKeyringDeletePort {
     try {
       const { AsyncEntry } = await import("@napi-rs/keyring");
       return new AsyncEntry(
-        service,
+        addressedService(service),
         account,
         process.platform === "linux" ? { linux: { store: "secret-service" } } : undefined,
       );

@@ -1,6 +1,7 @@
 // Verifies a packaged cashU.app for one architecture.
 //
-//   node apps/desktop/scripts/verify-package.mjs <cashU.app> <arm64|x64> [--release [--notarized]]
+//   node apps/desktop/scripts/verify-package.mjs <cashU.app> <arm64|x64>
+//        [--release | --test-build] [--notarized]
 //
 // Always: layout, bundle ID, bundle-manifest.json hashes, every Mach-O built only for <arch>, the
 // sealed app-update.yml equal to the pinned policy (when pinned), codesign --verify --deep --strict.
@@ -8,8 +9,12 @@
 // and team ID (the compiled update gate agrees with the sealed feed), every Mach-O is signed by that
 // Developer ID team with the hardened runtime and a secure timestamp, entitlements are allow-jit on
 // the main and helper executables and none elsewhere, and the app meets the designated requirement
-// the update authority checks. --notarized: Gatekeeper accepts the app as a notarized Developer ID
-// app and its stapled ticket validates.
+// the update authority checks, and the app carries NO test-build marker (assertNoTestBuild: a test
+// build can never be released). --test-build: the same signing checks for a Developer ID signed
+// test build, which must carry a valid, manifest-listed Contents/Resources/test-build.json and the
+// test app-update.yml it implies (local feed, test cache dir). Without either flag a marker, when
+// present, must agree with app-update.yml. --notarized (with --release or --test-build):
+// Gatekeeper accepts the app as a notarized Developer ID app and its stapled ticket validates.
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -27,8 +32,12 @@ import { fileURLToPath } from "node:url";
 import {
   APP_ID,
   appUpdateYml,
+  assertNoTestBuild,
   developerIdRequirement,
   readReleasePolicy,
+  readTestBuild,
+  TEST_BUILD_MARKER,
+  testAppUpdateYml,
 } from "./release-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -36,16 +45,24 @@ const app = realpathSync.native(resolve(process.argv[2] ?? ""));
 const arch = process.argv[3] ?? process.arch;
 const flags = process.argv.slice(4);
 const release = flags.includes("--release");
+const testBuildMode = flags.includes("--test-build");
+const signed = release || testBuildMode;
 const notarized = flags.includes("--notarized");
 if (
   !app.endsWith(".app") ||
   !["arm64", "x64"].includes(arch) ||
-  flags.some((flag) => !["--release", "--notarized"].includes(flag)) ||
-  (notarized && !release)
+  flags.some((flag) => !["--release", "--test-build", "--notarized"].includes(flag)) ||
+  (release && testBuildMode) ||
+  (notarized && !signed)
 )
   throw new Error(
-    "usage: node verify-package.mjs <cashU.app> <arm64|x64> [--release [--notarized]]",
+    "usage: node verify-package.mjs <cashU.app> <arm64|x64> [--release | --test-build] [--notarized]",
   );
+// First, before anything else: a release never carries the test-build marker.
+if (release) assertNoTestBuild(app);
+const testBuild = readTestBuild(app);
+if (testBuildMode && !testBuild) throw new Error(`--test-build: ${TEST_BUILD_MARKER} is missing`);
+if (testBuild) process.stdout.write(`TEST BUILD: feed ${testBuild.feedUrl}\n`);
 const xarch = arch === "x64" ? "x86_64" : "arm64";
 const keyringBinding = `Contents/Resources/node_modules/@napi-rs/keyring-darwin-${arch}/keyring.darwin-${arch}.node`;
 const contents = join(app, "Contents");
@@ -151,8 +168,16 @@ for (const [name, expected] of Object.entries(manifest.files)) {
 }
 const policy = readReleasePolicy(root);
 const feedPath = join(contents, "Resources/app-update.yml");
-if (release && (!policy.teamId || !policy.feedUrl)) throw new Error("Release policy is not pinned");
-if (policy.feedUrl || release) {
+if (signed && (!policy.teamId || !policy.feedUrl)) throw new Error("Release policy is not pinned");
+if (testBuild) {
+  if (typeof manifest.files[TEST_BUILD_MARKER] !== "string")
+    throw new Error(`Manifest missing: ${TEST_BUILD_MARKER}`);
+  if (!existsSync(feedPath) || !lstatSync(feedPath).isFile()) throw new Error("No app-update.yml");
+  if (readFileSync(feedPath, "utf8") !== testAppUpdateYml(testBuild))
+    throw new Error("app-update.yml differs from the test build's local feed");
+  if (typeof manifest.files["Contents/Resources/app-update.yml"] !== "string")
+    throw new Error("Manifest missing: app-update.yml");
+} else if (policy.feedUrl || release) {
   if (!existsSync(feedPath) || !lstatSync(feedPath).isFile()) throw new Error("No app-update.yml");
   if (readFileSync(feedPath, "utf8") !== appUpdateYml(policy))
     throw new Error("app-update.yml differs from the pinned release policy");
@@ -160,7 +185,7 @@ if (policy.feedUrl || release) {
     throw new Error("Manifest missing: app-update.yml");
 }
 command("codesign", ["--verify", "--deep", "--strict", app]);
-if (release) {
+if (signed) {
   const asar = readFileSync(join(contents, "Resources/app.asar"));
   for (const literal of [`"${policy.feedUrl}"`, `"${policy.teamId}"`])
     if (!asar.includes(Buffer.from(literal)))
@@ -186,7 +211,9 @@ if (release) {
   }
   command("codesign", ["--verify", "--strict", "-R", developerIdRequirement(policy.teamId), app]);
   process.stdout.write(
-    `Release-signed: ${machOs.length} Mach-O, team ${policy.teamId}, feed ${policy.feedUrl}\n`,
+    testBuild
+      ? `TEST BUILD signed: ${machOs.length} Mach-O, team ${policy.teamId}, feed ${testBuild.feedUrl}\n`
+      : `Release-signed: ${machOs.length} Mach-O, team ${policy.teamId}, feed ${policy.feedUrl}\n`,
   );
 }
 if (notarized) {
@@ -202,4 +229,4 @@ if (notarized) {
   if (staple.status !== 0) throw new Error(`Stapled ticket invalid: ${staple.text}`);
   process.stdout.write(`${staple.text.split("\n").at(-1)}\n`);
 }
-process.stdout.write(`Verified ${app} (${arch})\n`);
+process.stdout.write(`Verified ${app} (${arch})${testBuild ? " TEST BUILD" : ""}\n`);

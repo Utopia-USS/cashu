@@ -12,6 +12,7 @@
     "./sqlite": "./src/sqlite.ts",
     "./testing": "./src/testing.ts",
     "./bundle-identity": "./src/bundleIdentity.ts",
+    "./test-build": "./src/testBuild.ts",
     "./admission": "./src/admissionGuard.ts"
   },
   "scripts": {

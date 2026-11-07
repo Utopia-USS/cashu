@@ -10,6 +10,13 @@ Status: source contract only. No signed release or in-place update has been acce
 - Produce update metadata with the zip checksum. Keep the endpoint and archive immutable after publishing. Source tests with a local generic HTTP server and synthetic archives do not prove release trust.
 - Build with `node apps/desktop/scripts/package-macos.mjs <arm64|x64> [--dmg]` (ad hoc signed) or, on the owner's Mac, add `--sign "Developer ID Application: ... (29W838VKU4)" --notarize cashu-notary --out <dir>` (signed, notarized, stapled; see [running.md](running.md) "Packaging"). There are no Sparkle release scripts for this app. Moving an installed audience of the retired Python app (Sparkle) requires a separate owner decision.
 
+## Test builds (local update proofs)
+
+- `package-macos.mjs <arch> --sign "..." --test-build '<json>' [--app-version X.Y.Z]` seals `Contents/Resources/test-build.json` (`{schema: 1, kind: "cashu-test-build", feedUrl: "http://127.0.0.1:<port>/", installRoot, dataDir, workspacesDir}`, listed in `bundle-manifest.json`) and an `app-update.yml` naming that local feed with the `cashu-updater-test` cache. `--app-version` changes only the test build's version (electron-builder extraMetadata), never `package.json`.
+- The app honors the marker only when its bytes match the verified bundle manifest (`packages/node-host/src/testBuild.ts`): main accepts the local feed (`parseTestBuildFeed`), the install root instead of `/Applications` and runs on the marker's data dir (also when ShipIt relaunches it without environment; another explicit `CASHU_DATA_DIR` is refused); the window title reads "cashU - TEST BUILD"; the host maps every OS keyring service into `cashu-next-test.<hex>` (`keyring/native.ts`), keeps workspaces in `workspacesDir` and refuses `migrate`. Without the marker every path is the release one.
+- A release never carries it: `verify-package.mjs --release` (run by the release script on every artifact) calls `assertNoTestBuild` first; `--test-build` runs the same Developer ID checks for a test build.
+- CI notarization: `--notary-key <AuthKey.p8> --notary-key-id <id> --notary-issuer <uuid>` instead of `--notarize <profile>`, and `--keychain <path>` for codesign from a temporary keychain.
+
 ## Install sequence
 
 1. Main rechecks the packaged app's canonical path, bundle ID, release signature, fixed feed config, expected data directory and install location. Translocated, unsigned, ad-hoc, moved or ambiguous apps report unavailable/refused.

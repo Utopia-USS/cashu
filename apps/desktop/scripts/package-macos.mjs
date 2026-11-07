@@ -1,7 +1,10 @@
 // Builds cashU.app for one macOS architecture (arm64 or x64; never universal) and zips it.
 //
 //   node apps/desktop/scripts/package-macos.mjs <arm64|x64> [--dmg] [--reuse-desktop] [--out <dir>]
-//        [--sign "Developer ID Application: <name> (<TEAMID>)" [--notarize <keychain-profile>]]
+//        [--sign "Developer ID Application: <name> (<TEAMID>)" [--keychain <path>]
+//          [--notarize <keychain-profile> | --notary-key <AuthKey.p8> --notary-key-id <id>
+//           --notary-issuer <uuid>]]
+//        [--test-build <json | @file> [--app-version <X.Y.Z>]]
 //
 // Default (dev, e2e, CI): ad hoc signature, artifacts in build/t46. Nothing is auto-discovered:
 // without --sign no identity is used, and CSC_* / APPLE_* / notarization env is stripped.
@@ -22,7 +25,11 @@
 // dylibs, chrome_crashpad_handler, ShipIt, the .node addons and cashu-host-agent get none. The ad
 // hoc build keeps build/entitlements.mac.plist: ad hoc code has no Team ID, so library validation
 // would refuse its own addons.
-// With --notarize: zip -> notarytool (wait) -> staple the app -> re-zip the stapled app; with --dmg
+// --keychain: every codesign signs from that keychain (CI imports the Developer ID into a temporary
+// one). Notarization credentials: --notarize names a notarytool keychain profile (the owner's Mac);
+// --notary-key/--notary-key-id/--notary-issuer pass an App Store Connect API key (CI): the key file
+// is handed to notarytool by path and never read or printed here; the key ID and issuer may print.
+// With --notarize (or the API key): zip -> notarytool (wait) -> staple the app -> re-zip the stapled app; with --dmg
 // also dmg from the stapled app -> sign -> notarize -> staple. Every notarization prints its
 // submission id and status. Final checks: verify-package.mjs --release [--notarized] and spctl /
 // stapler on the dmg. Artifacts in --out (relative to the current directory):
@@ -30,6 +37,13 @@
 // One latest-mac.yml can list both zips: electron-updater's MacUpdater picks the file whose name
 // contains "arm64" on Apple silicon and drops those files on Intel. Separate arches (not
 // universal): half the download, and native modules are built per arch.
+//
+// --test-build <marker>: a TEST BUILD for local update proofs. The marker (JSON or @file, rules in
+// release-policy.mjs parseTestBuild: a http://127.0.0.1:<port>/ feed, an install root, a data dir)
+// is sealed as Contents/Resources/test-build.json, listed in bundle-manifest.json, and app-update.yml
+// names the local feed. verify-package.mjs --release (and so the release script) refuses such a
+// bundle; the app honors the marker only from its verified bundle. --app-version overrides the
+// version of a test build only (electron-builder extraMetadata), never package.json.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -50,44 +64,29 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { notaryCredentialArgs, notaryLabel, parsePackageArgs } from "./package-args.mjs";
 import {
   appUpdateYml,
   artifactName,
   developerIdTeam,
   readReleasePolicy,
+  TEST_BUILD_MARKER,
+  testAppUpdateYml,
+  testBuildJson,
 } from "./release-policy.mjs";
 import { checkedRendererArtifact, rendererArtifactRoot } from "./renderer-artifact.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const build = join(root, "build", "t46");
-const usage =
-  "usage: node package-macos.mjs <arm64|x64> [--dmg] [--reuse-desktop] [--out <dir>] " +
-  '[--sign "Developer ID Application: <name> (<TEAMID>)" [--notarize <keychain-profile>]]';
-const args = process.argv.slice(2);
-const arch = args[0] ?? process.arch;
-let withDmg = false;
-let reuseDesktop = false;
-let out = build;
-let identity = null;
-let notaryProfile = null;
-for (let index = 1; index < args.length; index += 1) {
-  const flag = args[index];
-  if (flag === "--dmg") withDmg = true;
-  else if (flag === "--reuse-desktop") reuseDesktop = true;
-  else if (["--out", "--sign", "--notarize"].includes(flag)) {
-    const value = args[index + 1];
-    if (!value || value.startsWith("--")) throw new Error(usage);
-    index += 1;
-    if (flag === "--out") out = resolve(value);
-    else if (flag === "--sign") identity = value;
-    else notaryProfile = value;
-  } else throw new Error(usage);
-}
-if (!["arm64", "x64"].includes(arch)) throw new Error(usage);
-if (notaryProfile && !identity) throw new Error("--notarize needs --sign");
-if (notaryProfile && !/^[A-Za-z0-9._-]{1,64}$/.test(notaryProfile))
-  throw new Error("Unexpected keychain profile name");
+const options = parsePackageArgs(process.argv.slice(2));
+const { arch, withDmg, reuseDesktop, identity, keychain, notary, testBuild, appVersion } = options;
+const out = options.out ?? build;
 const policy = readReleasePolicy(root);
+if (keychain && !existsSync(keychain)) throw new Error("--keychain: no such keychain file");
+if (notary?.kind === "api-key" && !existsSync(notary.keyPath))
+  throw new Error("--notary-key: no such key file");
+if (notary) process.stdout.write(`notarization credential: ${notaryLabel(notary)}\n`);
+if (testBuild) process.stdout.write(`TEST BUILD: feed ${testBuild.feedUrl}\n`);
 if (identity) {
   if (!policy.teamId || !policy.feedUrl) throw new Error("Release policy is not pinned");
   if (developerIdTeam(identity) !== policy.teamId)
@@ -123,13 +122,19 @@ function capture(program, commandArgs) {
 // A Developer ID signature needs the private key without a keychain dialog (this script cannot
 // answer one): every codesign gets a deadline, and a scratch signature runs before the build.
 const SIGN_TIMEOUT_MS = 180_000;
+const keychainArgs = keychain ? ["--keychain", keychain] : [];
 if (identity) {
   const probe = join(build, "sign-probe");
   rmSync(probe, { force: true });
   copyFileSync("/usr/bin/true", probe);
   try {
     run("codesign", ["--remove-signature", probe]);
-    run("codesign", ["--force", "--sign", identity, "--timestamp", probe], root, 60_000);
+    run(
+      "codesign",
+      ["--force", "--sign", identity, ...keychainArgs, "--timestamp", probe],
+      root,
+      60_000,
+    );
   } finally {
     rmSync(probe, { force: true });
   }
@@ -170,6 +175,18 @@ function validateLinks(dir, rootDir) {
   }
 }
 validateLinks(resources, resources);
+/** The builder config; a test build's --app-version goes through a generated wrapper config. */
+function builderConfig() {
+  const base = join(root, "apps/desktop/build/electron-builder.config.cjs");
+  if (!appVersion) return base;
+  const wrapper = join(build, "electron-builder.test-version.cjs");
+  writeFileSync(
+    wrapper,
+    `// Generated by package-macos.mjs --test-build --app-version; never committed.\n` +
+      `module.exports = { ...require(${JSON.stringify(base)}), extraMetadata: { version: ${JSON.stringify(appVersion)} } };\n`,
+  );
+  return wrapper;
+}
 run(
   "pnpm",
   [
@@ -179,7 +196,7 @@ run(
     "dir",
     `--${arch}`,
     "--config",
-    join(root, "apps/desktop/build/electron-builder.config.cjs"),
+    builderConfig(),
     "--publish",
     "never",
   ],
@@ -190,7 +207,11 @@ const app = join(build, "electron-builder", arch === "arm64" ? "mac-arm64" : "ma
 if (!existsSync(app)) throw new Error(`Builder app missing: ${app}`);
 const contents = join(app, "Contents");
 // The sealed updater config: written before any signature and listed in bundle-manifest.json.
-if (policy.feedUrl)
+// A test build seals its marker and the local feed instead (both listed in the manifest).
+if (testBuild) {
+  writeFileSync(join(app, TEST_BUILD_MARKER), testBuildJson(testBuild));
+  writeFileSync(join(contents, "Resources", "app-update.yml"), testAppUpdateYml(testBuild));
+} else if (policy.feedUrl)
   writeFileSync(join(contents, "Resources", "app-update.yml"), appUpdateYml(policy));
 const entitlements = join(root, "apps/desktop/build/entitlements.mac.plist");
 const releaseEntitlements = join(root, "apps/desktop/build/entitlements.release.mac.plist");
@@ -245,7 +266,7 @@ function codesign(path, entitlementsFile) {
       "--force",
       "--sign",
       identity ?? "-",
-      ...(identity ? ["--timestamp"] : []),
+      ...(identity ? [...keychainArgs, "--timestamp"] : []),
       "--options",
       "runtime",
       ...(entitlementsFile ? ["--entitlements", entitlementsFile] : []),
@@ -299,9 +320,19 @@ writeFileSync(
 codesign(app, identity ? releaseEntitlements : entitlements);
 run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", app]);
 const verify = join(root, "apps/desktop/scripts/verify-package.mjs");
-run("node", [verify, app, arch, ...(identity ? ["--release"] : [])]);
+const signedMode = testBuild ? "--test-build" : "--release";
+run("node", [verify, app, arch, ...(identity ? [signedMode] : [])]);
 
-const version = JSON.parse(readFileSync(join(root, "apps/desktop/package.json"), "utf8")).version;
+const version =
+  appVersion ?? JSON.parse(readFileSync(join(root, "apps/desktop/package.json"), "utf8")).version;
+const bundleVersion = capture("plutil", [
+  "-extract",
+  "CFBundleShortVersionString",
+  "raw",
+  join(contents, "Info.plist"),
+]).text;
+if (bundleVersion !== version)
+  throw new Error(`Bundle version ${bundleVersion} differs from the expected ${version}`);
 const zip = join(out, artifactName(version, arch, "zip"));
 const dmg = join(out, artifactName(version, arch, "dmg"));
 for (const path of [zip, dmg]) rmSync(path, { force: true });
@@ -314,8 +345,7 @@ function notarize(path) {
       "notarytool",
       "submit",
       path,
-      "--keychain-profile",
-      notaryProfile,
+      ...notaryCredentialArgs(notary),
       "--wait",
       "--timeout",
       "2h",
@@ -336,8 +366,7 @@ function notarize(path) {
   notarizations.push(record);
   process.stdout.write(`notarization ${label}: id=${record.id} status=${record.status}\n`);
   if (record.status !== "Accepted") {
-    if (record.id)
-      run("xcrun", ["notarytool", "log", record.id, "--keychain-profile", notaryProfile]);
+    if (record.id) run("xcrun", ["notarytool", "log", record.id, ...notaryCredentialArgs(notary)]);
     throw new Error(`Notarization of ${label} ended ${record.status}`);
   }
 }
@@ -345,7 +374,7 @@ function zipApp(target) {
   run("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", app, target]);
   run("unzip", ["-tq", target]);
 }
-if (notaryProfile) {
+if (notary) {
   // Apple notarizes the zip; the updater zip then carries the stapled app.
   const submission = join(build, "notarize", artifactName(version, arch, "zip"));
   rmSync(dirname(submission), { recursive: true, force: true });
@@ -355,15 +384,20 @@ if (notaryProfile) {
   rmSync(dirname(submission), { recursive: true, force: true });
   run("xcrun", ["stapler", "staple", app]);
   run("xcrun", ["stapler", "validate", app]);
-  run("node", [verify, app, arch, "--release", "--notarized"]);
+  run("node", [verify, app, arch, signedMode, "--notarized"]);
 }
 zipApp(zip);
 if (withDmg) {
   run("hdiutil", ["create", "-srcfolder", app, "-format", "UDZO", "-volname", "cashU", dmg]);
   // A disk image carries no hardened runtime or entitlements: identity and timestamp only.
   if (identity)
-    run("codesign", ["--force", "--sign", identity, "--timestamp", dmg], root, SIGN_TIMEOUT_MS);
-  if (notaryProfile) {
+    run(
+      "codesign",
+      ["--force", "--sign", identity, ...keychainArgs, "--timestamp", dmg],
+      root,
+      SIGN_TIMEOUT_MS,
+    );
+  if (notary) {
     notarize(dmg);
     run("xcrun", ["stapler", "staple", dmg]);
     run("xcrun", ["stapler", "validate", dmg]);
@@ -386,8 +420,8 @@ const artifacts = [zip, ...(withDmg ? [dmg] : [])].map((path) => ({
   bytes: statSync(path).size,
   sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
 }));
-const mode = notaryProfile ? "notarized" : identity ? "signed" : "adhoc";
+const mode = `${testBuild ? "test-" : ""}${notary ? "notarized" : identity ? "signed" : "adhoc"}`;
 process.stdout.write(
-  `release-summary ${JSON.stringify({ version, arch, mode, out, artifacts, notarizations })}\n`,
+  `release-summary ${JSON.stringify({ version, arch, mode, out, artifacts, notarizations, ...(testBuild ? { testBuild: true } : {}) })}\n`,
 );
 process.stdout.write(`${app}\n`);

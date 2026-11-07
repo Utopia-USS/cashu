@@ -21,6 +21,8 @@ import {
   packagedBuildId,
   readBundleIdentity,
 } from "@cashu/node-host/bundle-identity";
+import { enterTestBuildKeyringNamespace } from "@cashu/node-host/keyring";
+import { readTestBuildMarker, type TestBuildMarker } from "@cashu/node-host/test-build";
 import { devicePreferences } from "@cashu/store/device";
 import { DailyPriceLock } from "@cashu/store/investments/services";
 import { runQuery } from "@cashu/store/query";
@@ -115,7 +117,7 @@ async function admin(dataDir: string, build: string) {
 function checkedRuntime(
   args: Pick<Args, "bundle">,
   io: MainEnv,
-): { bundle?: string; build: string; fingerprint?: string } {
+): { bundle?: string; build: string; fingerprint?: string; testBuild?: TestBuildMarker } {
   if (!requiresPackagedIdentity(currentRuntime().checkout)) {
     if (args.bundle !== undefined)
       throw new RefusalError("source host cannot claim a packaged bundle");
@@ -153,13 +155,26 @@ function checkedRuntime(
       ],
       { encoding: "utf8", timeout: 5_000 },
     ).trim();
+    // A sealed test build (manifest-verified marker) never addresses a production keychain item:
+    // every OS keyring service of this process maps into the cashu-next-test.<hex> namespace.
+    const testBuild = readTestBuildMarker(identity.canonicalPath);
+    if (testBuild) enterTestBuildKeyringNamespace();
     return {
       bundle,
       build: packagedBuildId(version, identity.contentDigest),
       fingerprint: identity.fingerprint,
+      ...(testBuild ? { testBuild } : {}),
     };
   } catch {
     throw new RefusalError("packaged host identity is unavailable");
+  }
+}
+
+function canonicalDir(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return resolve(path);
   }
 }
 
@@ -167,7 +182,9 @@ function checkedRuntime(
 async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
   let build: string;
   try {
-    build = checkedRuntime({}, io).build;
+    const runtime = checkedRuntime({}, io);
+    if (runtime.testBuild) throw new RefusalError("a test build cannot import Python data");
+    build = runtime.build;
   } catch (error) {
     io.stderr(`cashu-host: ${error instanceof RefusalError ? error.message : "failed"}`);
     return error instanceof RefusalError ? error.exitCode : FAILURE_EXIT;
@@ -195,6 +212,8 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
   }
   try {
     const runtime = checkedRuntime(args, io);
+    if (runtime.testBuild && canonicalDir(args.dataDir) !== runtime.testBuild.dataDir)
+      throw new RefusalError("a test build runs only on its own data dir");
     switch (args.command) {
       case "run": {
         const home = io.env.HOME || homedir();
@@ -224,13 +243,23 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           (!isAbsolute(workspacesOverride) || resolve(workspacesOverride) !== workspacesOverride)
         )
           throw new Error("workspace_root_invalid");
+        // A test build keeps its workspaces in the marker's dir, never ~/Documents/cashU.
+        if (
+          runtime.testBuild &&
+          workspacesOverride &&
+          workspacesOverride !== runtime.testBuild.workspacesDir
+        )
+          throw new RefusalError("a test build keeps its workspaces in its own dir");
         const workspace =
           skillSource === undefined
             ? undefined
             : createProductionWorkspaceProvider({
                 dataRoot: args.dataDir,
                 home: homeRoot,
-                workspacesRoot: workspacesOverride ?? join(homeRoot, "Documents", "cashU"),
+                workspacesRoot:
+                  runtime.testBuild?.workspacesDir ??
+                  workspacesOverride ??
+                  join(homeRoot, "Documents", "cashU"),
                 protectedRoots: [
                   sourceRuntime.dir,
                   ...(sourceRuntime.checkout === undefined ? [] : [sourceRuntime.checkout]),

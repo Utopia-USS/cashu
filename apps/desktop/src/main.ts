@@ -80,6 +80,7 @@ import {
 } from "@cashu/node-host";
 import { legacyDataAdmission, legacySourceRoots } from "@cashu/node-host/admission";
 import { packagedBuildId, readBundleIdentity } from "@cashu/node-host/bundle-identity";
+import { readTestBuildMarker, type TestBuildMarker } from "@cashu/node-host/test-build";
 import { nativeImage, shell } from "electron/common";
 import {
   app,
@@ -106,7 +107,9 @@ import {
   MIN_SIZE,
   repoRoot,
   resolveDataDir,
+  TEST_BUILD_TITLE,
   TITLE,
+  testBuildDataDir,
   USER_DATA_SUBDIR,
 } from "./config.js";
 import { shouldRegisterProtocol } from "./deeplink.js";
@@ -132,7 +135,21 @@ import { windowSize } from "./window.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = repoRoot(here);
 const env = process.env;
-const choice = resolveDataDir(env);
+// A sealed test build (package-macos.mjs --test-build) is honored only from the verified bundle; it
+// runs on its marker's data dir (also when the updater relaunches it without any environment). A
+// release has no marker and takes none of the test paths in this file.
+let testBuild: TestBuildMarker | null = null;
+let testBuildUnverified = false;
+if (app.isPackaged) {
+  try {
+    testBuild = readTestBuildMarker(dirname(dirname(dirname(process.execPath))));
+  } catch {
+    testBuildUnverified = true;
+  }
+}
+const requestedDataDir = resolveDataDir(env);
+const testBuildChoice = testBuildDataDir(requestedDataDir, testBuild?.dataDir ?? null);
+const choice = "choice" in testBuildChoice ? testBuildChoice.choice : requestedDataDir;
 const dataDir = choice.dir;
 
 // ---- guards that run before anything is created ------------------------------------------------
@@ -142,6 +159,10 @@ function fatal(message: string): never {
   app.exit(2);
   process.exit(2);
 }
+
+if (testBuildUnverified)
+  fatal("Refusing to start: the test-build marker of this app does not verify.");
+if ("error" in testBuildChoice) fatal(testBuildChoice.error);
 
 const problem = checkDataDir({
   choice,
@@ -230,7 +251,7 @@ const desktop = new DesktopApp({
   createWindow(loadingUrl) {
     const size = windowSize(screen.getAllDisplays().map((d) => d.workAreaSize));
     const window = new BrowserWindow({
-      title: TITLE,
+      title: testBuild ? TEST_BUILD_TITLE : TITLE,
       width: size.width,
       height: size.height,
       minWidth: MIN_SIZE.width,
@@ -246,6 +267,8 @@ const desktop = new DesktopApp({
       },
     });
     mainWindow = window;
+    // The page's own <title> would replace the TEST BUILD banner.
+    if (testBuild) window.on("page-title-updated", (event) => event.preventDefault());
     window.webContents.on("did-start-navigation", (details) => {
       notificationClickRouter.setUnready();
       if (details.isMainFrame && !details.isSameDocument) cancelPendingWords();
@@ -1161,7 +1184,12 @@ if (!hasLock) {
           execPath: process.execPath,
           resourcesPath: process.resourcesPath,
           dataDir,
-          expectedDataDir: defaultDataDir(process.platform, homedir(), env),
+          expectedDataDir: testBuild
+            ? testBuild.dataDir
+            : defaultDataDir(process.platform, homedir(), env),
+          ...(testBuild
+            ? { testBuild: { feedUrl: testBuild.feedUrl, installRoot: testBuild.installRoot } }
+            : {}),
         },
         drainForUpdate,
       );
@@ -1269,6 +1297,8 @@ if (!hasLock) {
     // Main's own admission: Python data shows the recovery screen; no host is started for it.
     recovery.admit(legacyDataAdmission(admissionRoots), new Date());
     const result = await desktop.start(linkFromArgv(process.argv.slice(1)));
-    log(`start: ${result}${desktop.error ? ` (${desktop.error})` : ""}`);
+    log(
+      `start: ${result}${desktop.error ? ` (${desktop.error})` : ""}${testBuild ? " TEST BUILD" : ""}`,
+    );
   });
 }

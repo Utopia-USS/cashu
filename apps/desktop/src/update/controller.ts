@@ -52,17 +52,24 @@ const updateFileSchema = z.looseObject({
     .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*\.(zip|dmg)$/)
     .refine((url) => !url.includes("..")),
 });
-/** electron-updater's info for the feed's release: one zip plus optional dmgs, all hashed. */
+/**
+ * The zips of one release: one per architecture at most. A release lists the arm64 zip (its name
+ * contains "arm64") and the x64 zip (its name does not); electron-updater's MacUpdater keeps the
+ * "arm64" file on Apple silicon and the others elsewhere. A single zip of either kind is accepted.
+ */
+function releaseZipsValid(files: readonly { readonly url: string }[]): boolean {
+  const zips = files.filter((file) => file.url.endsWith(".zip"));
+  const arm64 = zips.filter((file) => file.url.includes("arm64")).length;
+  return zips.length >= 1 && zips.length <= 2 && arm64 <= 1 && zips.length - arm64 <= 1;
+}
+
+/** electron-updater's info for the feed's release: one or two zips plus optional dmgs, all hashed. */
 const updateInfoSchema = z.looseObject({
   version: z
     .string()
     .max(64)
     .regex(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/),
-  files: z
-    .array(updateFileSchema)
-    .min(1)
-    .max(8)
-    .refine((files) => files.filter((file) => file.url.endsWith(".zip")).length === 1),
+  files: z.array(updateFileSchema).min(1).max(8).refine(releaseZipsValid),
 });
 const progressSchema = z.looseObject({ percent: z.number() });
 

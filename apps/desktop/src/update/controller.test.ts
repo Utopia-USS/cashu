@@ -172,6 +172,25 @@ describe("native updater controller", () => {
       { version: "1.2.3", files: [] },
       { version: "1.2.3", files: [{ ...zip, url: "cashU-1.2.3.dmg" }] },
       { version: "1.2.3", files: [zip, { ...zip, url: "second.zip" }] },
+      {
+        version: "1.2.3",
+        files: [
+          { ...zip, url: "cashU-1.2.3-mac-arm64.zip" },
+          { ...zip, url: "cashU-1.2.3-mac-arm64-b.zip" },
+        ],
+      },
+      {
+        version: "1.2.3",
+        files: [
+          { ...zip, url: "cashU-1.2.3-mac-arm64.zip" },
+          { ...zip, url: "cashU-1.2.3-mac-x64.zip" },
+          { ...zip, url: "cashU-1.2.3-mac-universal.zip" },
+        ],
+      },
+      {
+        version: "1.2.3",
+        files: [{ ...zip, url: "cashU-1.2.3-mac-arm64.zip" }, { url: "cashU-1.2.3-mac-x64.zip" }],
+      },
       { version: "1.2.3", files: [{ ...zip, url: "a..b.zip" }] },
       { version: "1.2.3", files: [{ ...zip, sha512: "short" }] },
       { version: "1.2.3", files: Array.from({ length: 9 }, () => zip) },
@@ -185,6 +204,34 @@ describe("native updater controller", () => {
       expect(f.controller.status()).toMatchObject({
         app: { stage: "error", error: "invalid_update_metadata" },
       });
+    }
+  });
+
+  it("accepts the release metadata with one arm64 and one x64 zip, or a single zip", async () => {
+    const sha512 = `${"A".repeat(86)}==`;
+    const arm64 = { url: "cashU-1.2.3-mac-arm64.zip", sha512, size: 10 };
+    const x64 = { url: "cashU-1.2.3-mac-x64.zip", sha512, size: 10 };
+    for (const files of [
+      [arm64, x64],
+      [x64, arm64],
+      [arm64],
+      [x64],
+      [arm64, x64, { ...arm64, url: "cashU-1.2.3.dmg" }],
+    ]) {
+      const f = fixture();
+      await f.controller.initialize();
+      const value = { version: "1.2.3", files, path: arm64.url, sha512 };
+      expect(await publish(f, value)).toEqual({ kind: "completed" });
+      expect(f.controller.status()).toMatchObject({ latest: "1.2.3", app: { stage: "available" } });
+      f.updater.downloadUpdate.mockImplementationOnce(async () => {
+        f.updater.emit("update-downloaded", value);
+      });
+      expect(await f.controller.act("install")).toEqual({
+        kind: "outcome_unknown",
+        reason: "install_dispatched",
+      });
+      expect(f.handover).toHaveBeenCalledWith("1.2.3");
+      expect(f.updater.quitAndInstall).toHaveBeenCalledWith(false, true);
     }
   });
 

@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkDataDir, defaultDataDir, realResolve, resolveDataDir } from "./config.js";
+import {
+  checkDataDir,
+  defaultDataDir,
+  realResolve,
+  resolveDataDir,
+  TEST_BUILD_TITLE,
+  testBuildDataDir,
+} from "./config.js";
 
 describe("data dir", () => {
   it("uses CASHU_DATA_DIR when set (and expands ~)", () => {
@@ -62,5 +69,30 @@ describe("data dir", () => {
     expect(checkDataDir({ choice: sibling, isPackaged: false, allowedRoot: root })).toMatch(
       /outside/,
     );
+  });
+});
+
+describe("test-build data dir", () => {
+  it("never changes a release's choice (no marker)", () => {
+    const choice = { dir: "/anything", explicit: false };
+    expect(testBuildDataDir(choice, null)).toEqual({ choice });
+  });
+
+  it("runs a test build on its marker's data dir, also without CASHU_DATA_DIR", () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "cashu-test-build-dir-")));
+    try {
+      const data = join(root, "data");
+      const marker = { choice: { dir: data, explicit: true } };
+      expect(testBuildDataDir({ dir: data, explicit: true }, data)).toEqual(marker);
+      // The updater relaunches without any environment: the default dir is replaced, never used.
+      const fallback = resolveDataDir({}, "darwin", "/Users/someone");
+      expect(fallback.dir).toBe("/Users/someone/Library/Application Support/cashU");
+      expect(testBuildDataDir(fallback, data)).toEqual(marker);
+      const other = testBuildDataDir({ dir: join(root, "other"), explicit: true }, data);
+      expect(other).toMatchObject({ error: expect.stringMatching(/TEST BUILD.*CASHU_DATA_DIR/) });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+    expect(TEST_BUILD_TITLE).toBe("cashU - TEST BUILD");
   });
 });
