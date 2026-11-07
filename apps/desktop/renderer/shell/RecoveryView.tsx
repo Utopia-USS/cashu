@@ -1,5 +1,6 @@
-import { Button, Card } from "@cashu/ui";
+import { Button, Card, CodeLine } from "@cashu/ui";
 import {
+  type RecoveryAgents,
   type RecoveryCode,
   type RecoveryStage,
   type RecoveryUnpriced,
@@ -21,6 +22,13 @@ export interface ImportView {
   readonly notice: "refused" | "cancelled" | null;
   /** After a finished import (`done`): the imported instruments the app cannot value yet. */
   readonly unpriced: readonly RecoveryUnpriced[];
+  /** After a finished import: the `claude mcp remove` / `add` lines per imported profile. */
+  readonly mcpCommands: readonly string[];
+  readonly mcpNotice: "copied" | "copyFailed" | null;
+  /** After a finished import: what became of the old app's launchd worker agents (null: unknown). */
+  readonly agents: RecoveryAgents | null;
+  /** The commands that finish a failed agent retirement by hand (empty when none failed). */
+  readonly agentCommands: readonly string[];
 }
 
 export interface ImportStageView {
@@ -55,6 +63,7 @@ export interface RecoveryViewProps {
   readonly onWordsConfirmed: (confirmed: boolean) => void;
   readonly onContinueImport: () => void;
   readonly onCancelImport: () => void;
+  readonly onCopyMcp: () => void;
   readonly onCopy: () => void;
   readonly onOpenFolder: () => void;
   readonly onRetry: () => void;
@@ -75,6 +84,7 @@ function ImportSection({
   onWordsConfirmed,
   onContinueImport,
   onCancelImport,
+  onCopyMcp,
   onOpenApp,
 }: {
   state: ImportView;
@@ -84,6 +94,7 @@ function ImportSection({
   onWordsConfirmed: (confirmed: boolean) => void;
   onContinueImport: () => void;
   onCancelImport: () => void;
+  onCopyMcp: () => void;
   onOpenApp: () => void;
 }) {
   const showStages =
@@ -148,12 +159,46 @@ function ImportSection({
       )}
       {state.phase === "done" && (
         <div className="mt-4 grid gap-4">
-          <p>{S.unpricedHint}</p>
-          <ul className="grid gap-1" data-testid="recovery-unpriced">
-            {state.unpriced.map((item) => (
-              <li key={`${item.label} ${item.currency}`}>{S.unpricedItem(item)}</li>
-            ))}
-          </ul>
+          {state.unpriced.length > 0 && (
+            <>
+              <p>{S.unpricedHint}</p>
+              <ul className="grid gap-1" data-testid="recovery-unpriced">
+                {state.unpriced.map((item) => (
+                  <li key={`${item.label} ${item.currency}`}>{S.unpricedItem(item)}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {state.mcpCommands.length > 0 && (
+            <div className="grid gap-2" data-testid="recovery-mcp">
+              <h3 className="text-body font-strong">{S.mcpTitle}</h3>
+              <p>{S.mcpHint}</p>
+              <CodeLine command={state.mcpCommands.join("\n")} onCopy={onCopyMcp} multiline />
+              <p role="status" className="text-fg-muted">
+                {state.mcpNotice === "copied"
+                  ? S.mcpCopied
+                  : state.mcpNotice === "copyFailed"
+                    ? S.mcpCopyFailed
+                    : ""}
+              </p>
+            </div>
+          )}
+          {state.agents !== null && (
+            <div className="grid gap-2">
+              <p data-testid="recovery-agents">{S.agents(state.agents)}</p>
+              {state.agentCommands.length > 0 && (
+                <>
+                  <p>{S.agentsByHand}</p>
+                  <pre
+                    data-testid="recovery-agents-by-hand"
+                    className="overflow-x-auto whitespace-pre-wrap rounded-sm border border-border bg-surface-sunken p-3 text-caption"
+                  >
+                    {state.agentCommands.join("\n")}
+                  </pre>
+                </>
+              )}
+            </div>
+          )}
           <div>
             <Button variant="primary" onPress={onOpenApp} disabled={busy || !canAct}>
               {S.openApp}
@@ -191,6 +236,7 @@ export function RecoveryView({
   onWordsConfirmed,
   onContinueImport,
   onCancelImport,
+  onCopyMcp,
   onCopy,
   onOpenFolder,
   onRetry,
@@ -218,6 +264,7 @@ export function RecoveryView({
             onWordsConfirmed={onWordsConfirmed}
             onContinueImport={onContinueImport}
             onCancelImport={onCancelImport}
+            onCopyMcp={onCopyMcp}
             onOpenApp={onRetry}
           />
         )}

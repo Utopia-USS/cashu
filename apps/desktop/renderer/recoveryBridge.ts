@@ -2,7 +2,8 @@
 // is down: main owns the report, the clipboard, the data folder, the import child and the start
 // sequence. The page never passes a path or a text to main; it sends only the prompt language and
 // the word confirmation. What main returns or pushes is parsed again here (main validated it already;
-// the page trusts neither side's types blindly).
+// the page trusts neither side's types blindly). The MCP lines of a finished import are copied by main
+// from its own copy of them.
 import {
   type PromptLang,
   parseStartupFailureReport,
@@ -14,6 +15,7 @@ import {
 interface RecoveryBridgeApi {
   report(): Promise<unknown>;
   copyPrompt(lang: PromptLang): Promise<unknown>;
+  copyMcpCommands(): Promise<unknown>;
   openDataFolder(): Promise<unknown>;
   retry(): Promise<unknown>;
   quit(): Promise<unknown>;
@@ -30,6 +32,8 @@ declare global {
 
 export interface RecoveryBridge {
   copyPrompt(lang: PromptLang): Promise<boolean>;
+  /** Copies the finished import's MCP reconnect lines (main holds them; the page passes no text). */
+  copyMcpCommands(): Promise<boolean>;
   openDataFolder(): Promise<boolean>;
   retry(): Promise<void>;
   quit(): Promise<void>;
@@ -62,6 +66,7 @@ export function recoveryBridge(): RecoveryBridge | null {
   };
   return {
     copyPrompt: (lang) => flag(() => api.copyPrompt(lang)),
+    copyMcpCommands: () => flag(() => api.copyMcpCommands()),
     openDataFolder: () => flag(() => api.openDataFolder()),
     async retry() {
       await api.retry().catch(() => {});

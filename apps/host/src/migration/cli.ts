@@ -20,9 +20,11 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { reconnectMcpCommands } from "@cashu/domain/core";
 import {
   buildRecoveryPrompt,
   classifyStartupError,
+  failedAgentCommands,
   fitUnpriced,
   homeRelativePath,
   MIGRATE_UNPRICED_LABEL_MAX,
@@ -45,6 +47,8 @@ import {
   writeStartupFailureRecord,
   writeStartupFailureReport,
 } from "@cashu/node-host";
+import { launcherPath } from "../launcher.js";
+import { type AfterImport, afterImport, protocolSlugs } from "./afterImport.js";
 import {
   completedMigration,
   type InPlaceKeychain,
@@ -57,6 +61,7 @@ import {
 import { M, type MigrateCounts, type UnpricedLine } from "./migrate.strings.js";
 import { type KeyStoreFactory, verifyPythonMigration } from "./oneShot.js";
 import { unpricedAfterMigration } from "./priceReach.js";
+import type { LaunchctlRunner } from "./pythonAgents.js";
 
 /** Exit code of a malformed command line (EX_USAGE). */
 const USAGE_EXIT = 64;
@@ -74,6 +79,13 @@ export interface MigrateIo {
   readonly keychain?: InPlaceKeychain;
   /** Tests: fault injection during the cutover. */
   readonly afterCutoverMove?: (moves: number) => void;
+  /**
+   * The real launchctl runner, passed only by the production entry (host main.ts). Without it the
+   * Python worker agents are never booted out (pythonAgents.ts has the full rule).
+   */
+  readonly launchctl?: LaunchctlRunner;
+  /** The user's uid for `gui/<uid>` (default: this process's). */
+  readonly uid?: number;
 }
 
 interface Args {
@@ -317,6 +329,19 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
   // After a finished cutover a failing check must not turn the import into a reported failure
   // (non-strict: the verify that the hint asks for runs it strictly).
   const unpriced = result.status === "migrated" ? unpricedOf(args.dataDir, marker.backupDir) : null;
+  // The one place both the terminal and the app's import reach after a cutover committed: retire
+  // the Python worker agents and read the slugs for the MCP lines (never fails the import).
+  const after =
+    result.status === "migrated"
+      ? afterImport({
+          dataDir: args.dataDir,
+          backupDir: marker.backupDir,
+          env: io.env,
+          home,
+          uid: io.uid ?? process.getuid?.() ?? -1,
+          launchctl: io.launchctl ?? null,
+        })
+      : null;
   if (args.json) {
     emit(io, {
       event: "done",
@@ -324,13 +349,29 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
       ...countsOf(marker),
       backupDir: marker.backupDir,
       ...protocolUnpriced(unpriced),
+      ...(after === null
+        ? {}
+        : {
+            agents: after.agents,
+            ...(after.slugs === null ? {} : { mcpProfiles: protocolSlugs(after.slugs) }),
+          }),
     });
     return 0;
   }
   io.stdout(t.tr(M.migrated)(countsOf(marker), backup));
   printUnpriced(io, t, unpriced);
+  if (after !== null) printAfterImport(io, t, args.dataDir, after);
   io.stdout(t.tr(M.verifyHint));
   return 0;
+}
+
+/** The agents result (with the manual commands of any failure) and the MCP reconnect lines. */
+function printAfterImport(io: MigrateIo, t: Translator, dataDir: string, after: AfterImport) {
+  io.stdout(t.tr(M.agents)(after.agents));
+  const byHand = failedAgentCommands(after.agents);
+  if (byHand.length > 0) io.stdout(t.tr(M.agentsByHand)(byHand));
+  if (after.slugs === null || after.slugs.length === 0) io.stdout(t.tr(M.mcpUnknown));
+  else io.stdout(t.tr(M.mcp)(reconnectMcpCommands([launcherPath(dataDir)], after.slugs)));
 }
 
 /**

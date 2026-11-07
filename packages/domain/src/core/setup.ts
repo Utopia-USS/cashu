@@ -73,6 +73,25 @@ export function claudeMcpAdd(program: readonly string[], slug: string): string {
   ]);
 }
 
+/**
+ * The `claude mcp remove` line of the profile's MCP server (`cashu-<slug>`): drops a registration of
+ * the same name (the retired Python app's, which points at a binary that no longer exists).
+ */
+export function claudeMcpRemove(slug: string): string {
+  return shlexJoin(["claude", "mcp", "remove", `cashu-${slug}`]);
+}
+
+/**
+ * The lines that point Claude Code at this install's MCP servers after a Python import: per profile,
+ * the old registration's `claude mcp remove`, then the setup screen's `claude mcp add`.
+ */
+export function reconnectMcpCommands(
+  program: readonly string[],
+  slugs: readonly string[],
+): string[] {
+  return slugs.flatMap((slug) => [claudeMcpRemove(slug), claudeMcpAdd(program, slug)]);
+}
+
 /** One module's blank-page status as the API and the MCP tool show it. */
 export interface SetupView {
   readonly state: SetupState;

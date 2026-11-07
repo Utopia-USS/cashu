@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { startupFailure } from "@cashu/host-protocol/startup-failure";
 import { describe, expect, it } from "vitest";
-import { type MigrateHandlers, runMigration } from "./migrateRun.js";
+import { importDoneEvent, type MigrateHandlers, runMigration } from "./migrateRun.js";
 
 const WORDS = Array.from("abcdefghijklmnopqrstuvwx", (letter) => `syn${letter}`).join(" ");
 
@@ -201,5 +201,52 @@ describe("runMigration", () => {
     child.exit(0);
     expect(await outcome).toEqual({ kind: "failed", failure: startupFailure("unknown") });
     expect(shown).toHaveLength(1);
+  });
+});
+
+describe("importDoneEvent", () => {
+  const launcher = "/Users/synthetic/Library/Application Support/cashU/bin/cashu";
+  const agents = {
+    bootout: "ran" as const,
+    agents: [
+      { label: "io.utopiasoft.cashu.worker" as const, state: "retired" as const },
+      { label: "io.github.synszakala.finanse.worker" as const, state: "absent" as const },
+    ],
+  };
+
+  it("builds the setup screen's MCP lines per imported profile, remove before add", () => {
+    expect(
+      importDoneEvent(
+        { event: "done", status: "migrated", mcpProfiles: ["anna", "dom"], agents },
+        launcher,
+      ),
+    ).toEqual({
+      kind: "done",
+      unpriced: [],
+      mcpCommands: [
+        "claude mcp remove cashu-anna",
+        `claude mcp add cashu-anna -- '${launcher}' mcp --profile anna`,
+        "claude mcp remove cashu-dom",
+        `claude mcp add cashu-dom -- '${launcher}' mcp --profile dom`,
+      ],
+      agents,
+    });
+  });
+
+  it("keeps the unpriced list, and is null when there is nothing to show", () => {
+    const unpriced = [{ label: "SEUR", currency: "EUR", reason: "no_prices" as const }];
+    expect(importDoneEvent({ event: "done", status: "migrated", unpriced }, launcher)).toEqual({
+      kind: "done",
+      unpriced,
+      mcpCommands: [],
+      agents: null,
+    });
+    expect(importDoneEvent({ event: "done", status: "already_migrated" }, launcher)).toBeNull();
+    expect(
+      importDoneEvent(
+        { event: "done", status: "migrated", unpriced: [], mcpProfiles: [] },
+        launcher,
+      ),
+    ).toBeNull();
   });
 });

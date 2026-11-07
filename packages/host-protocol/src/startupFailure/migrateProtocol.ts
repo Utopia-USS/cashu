@@ -5,7 +5,10 @@
 //                                                                 line: "confirm" or "cancel"
 //   {"event":"done","status":"migrated"|"already_migrated",...}   last line, exit 0
 //     (migrated / verified also carry `unpriced`: the imported instruments the app cannot value yet,
-//     public tickers / ISINs / instrument names only; absent when that check could not run)
+//     public tickers / ISINs / instrument names only; absent when that check could not run. A fresh
+//     `migrated` also carries `mcpProfiles`, the imported profile slugs the parent builds the
+//     `claude mcp remove` / `add` lines from, and `agents`, what became of the retired Python app's
+//     launchd worker agents)
 // `migrate verify --data-dir <dir> --json` prints one final line: done with status "verified" (exit
 // 0) or failed (exit 1); it never asks for words.
 //   {"event":"failed","code":"<StartupFailureCode>","detail":"..."} last line, exit 1
@@ -37,8 +40,63 @@ export const MIGRATE_UNPRICED_MAX = 200;
 export const MIGRATE_UNPRICED_LABEL_MAX = 64;
 /** Longest protocol line (in UTF-16 code units, as the parent reads it). */
 const MIGRATE_LINE_MAX = 32_768;
-/** Room a `done` line keeps for its fields other than `unpriced` (status, counts, backupDir). */
-const MIGRATE_DONE_FIELDS_MAX = 1_024;
+/** Most profile slugs one `done` line names (`mcpProfiles`). */
+export const MIGRATE_MCP_PROFILES_MAX = 64;
+/**
+ * Room a `done` line keeps for its fields other than `unpriced` (status, counts, backupDir, at most
+ * MIGRATE_MCP_PROFILES_MAX slugs of 64 characters, the agents result).
+ */
+const MIGRATE_DONE_FIELDS_MAX = 6_144;
+
+/**
+ * A profile slug as the MCP lines use it (`cashu-<slug>`, `--profile <slug>`): the Python app's
+ * slugify output (`[a-z0-9-]`, at most 40) and the conservative superset a configured slug may use.
+ */
+export const MIGRATE_PROFILE_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * The launchd worker agents the retired Python app installed (`io.utopiasoft.cashu.worker`, and the
+ * pre-rename `io.github.synszakala.finanse.worker`), plists at `<agents dir>/<label>.plist`. After the
+ * import they are booted out and their plists removed; nothing else (never the native host agent
+ * `io.utopiasoft.cashu.host`) is ever touched.
+ */
+export const PYTHON_AGENT_LABELS = [
+  "io.utopiasoft.cashu.worker",
+  "io.github.synszakala.finanse.worker",
+] as const;
+export type PythonAgentLabel = (typeof PYTHON_AGENT_LABELS)[number];
+
+/**
+ * What became of each Python agent: `retired` (booted out when allowed, plist removed), `absent` (no
+ * plist), `failed` (finish by hand), `skipped` (a test run without a temp agents dir: nothing touched).
+ * `bootout` is `ran` when launchctl booted out every present agent (the real agents dir, outside
+ * tests) and `skipped` when it was not used (a custom agents dir: plists removed only; or tests).
+ */
+export const pythonAgentRetirementSchema = z.strictObject({
+  bootout: z.enum(["ran", "skipped"]),
+  agents: z
+    .array(
+      z.strictObject({
+        label: z.enum(PYTHON_AGENT_LABELS),
+        state: z.enum(["retired", "absent", "failed", "skipped"]),
+      }),
+    )
+    .max(PYTHON_AGENT_LABELS.length),
+});
+export type PythonAgentRetirement = z.infer<typeof pythonAgentRetirementSchema>;
+
+/** The commands that retire one Python agent by hand (docs/migration-runbook.md step 4.2). */
+export function retirePythonAgentCommands(label: PythonAgentLabel): readonly string[] {
+  return [`launchctl bootout gui/$(id -u)/${label}`, `rm -f ~/Library/LaunchAgents/${label}.plist`];
+}
+
+/** Every manual command for the agents whose retirement failed (empty when none did). */
+export function failedAgentCommands(retirement: PythonAgentRetirement | null): string[] {
+  if (retirement === null) return [];
+  return retirement.agents
+    .filter((agent) => agent.state === "failed")
+    .flatMap((agent) => retirePythonAgentCommands(agent.label));
+}
 
 /**
  * An imported instrument the app cannot value: its ticker, else ISIN, else name (public market
@@ -93,6 +151,13 @@ export const migrateDoneSchema = z.strictObject({
     .regex(/^python-backup-[A-Za-z0-9_-]{1,64}$/)
     .optional(),
   unpriced: z.array(unpricedInstrumentSchema).max(MIGRATE_UNPRICED_MAX).optional(),
+  /** The imported profile slugs (a fresh `migrated` only), for the MCP reconnect lines. */
+  mcpProfiles: z
+    .array(z.string().regex(MIGRATE_PROFILE_SLUG))
+    .max(MIGRATE_MCP_PROFILES_MAX)
+    .optional(),
+  /** What became of the Python app's launchd worker agents (a fresh `migrated` only). */
+  agents: pythonAgentRetirementSchema.optional(),
 });
 
 export const migrateFailedSchema = z.strictObject({
@@ -126,11 +191,16 @@ export function parseMigrateLine(line: string): MigrateLine | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** Longest MCP command line main forwards (a long data dir path, shell-quoted). */
+export const RECOVERY_MCP_COMMAND_MAX = 4_096;
+
 /**
  * What Electron main forwards to the recovery screen while the import runs: a stage, the one-time
  * recovery words (shown until confirmed, never stored), that the user's cancel took effect, or a
- * finished import that left instruments the app cannot value (shown before the app opens). Any
- * other finished or failed import needs no event: main loads the app or the new recovery screen.
+ * finished import with something to say before the app opens: the instruments the app cannot value,
+ * the `claude mcp remove` / `add` lines per imported profile (built by main from the slugs with the
+ * setup screen's builder) and what became of the Python worker agents. A finished import with none
+ * of these, and a failed one, need no event: main loads the app or the new recovery screen.
  */
 export const recoveryImportEventSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("progress"), stage: z.enum(MIGRATE_STAGES) }),
@@ -138,7 +208,11 @@ export const recoveryImportEventSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("cancelled") }),
   z.strictObject({
     kind: z.literal("done"),
-    unpriced: z.array(unpricedInstrumentSchema).min(1).max(MIGRATE_UNPRICED_MAX),
+    unpriced: z.array(unpricedInstrumentSchema).max(MIGRATE_UNPRICED_MAX),
+    mcpCommands: z
+      .array(z.string().min(1).max(RECOVERY_MCP_COMMAND_MAX))
+      .max(2 * MIGRATE_MCP_PROFILES_MAX),
+    agents: pythonAgentRetirementSchema.nullable(),
   }),
 ]);
 export type RecoveryImportEvent = z.infer<typeof recoveryImportEventSchema>;

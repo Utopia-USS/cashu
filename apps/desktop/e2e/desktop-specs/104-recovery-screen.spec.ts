@@ -2,7 +2,10 @@
 // The start-up recovery screen (T54) in the real Electron window, without any host: a spawn-denying
 // bootstrap (host-spawn-guard.cjs) runs before main. Python data in the data dir shows
 // python_data_present from main's own admission; a host start that records a typed failure shows that
-// code. The copied prompt must hold codes, `~` paths and the shipped command only.
+// code. The copied prompt must hold codes, `~` paths and the shipped command only. One spec runs
+// "Import my data" for real on synthetic Python data (the guard swaps in the test-keychain migrate
+// child): the retired Python app's launchd plists in the harness's temp agents dir go, nothing else.
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -31,10 +34,17 @@ interface Harness {
   cleanup(): Promise<void>;
 }
 
-function harness(): Harness {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "cashu-recovery-e2e-")));
+/**
+ * `recovery`: D is `~/cashU-data` (the `~` paths of the report). `import`: the layout the test key
+ * store accepts (`<tmp>/t44-test-<id>/data`, HOME beside it), for a real import with no OS keychain.
+ */
+function harness(layout: "recovery" | "import" = "recovery"): Harness {
+  const root = realpathSync(
+    mkdtempSync(join(tmpdir(), layout === "import" ? "t44-test-" : "cashu-recovery-e2e-")),
+  );
   const home = join(root, "home");
-  const dataDir = join(home, "cashU-data");
+  const dataDir = layout === "import" ? join(root, "data") : join(home, "cashU-data");
+  mkdirSync(home, { recursive: true, mode: 0o700 });
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const apps: ElectronApplication[] = [];
   return {
@@ -170,6 +180,63 @@ test("a host start that records vault_key_unavailable shows that code and a reda
     assertPrivate(prompt, h);
     expect(readFileSync(join(h.dataDir, "test-spawns"), "utf8")).toMatch(/^(?:host\n)+$/);
     expect(reportPair(h.dataDir)).toHaveLength(2);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("Import my data retires the Python worker agents and shows the MCP lines to re-add", async () => {
+  test.setTimeout(180_000);
+  const h = harness("import");
+  try {
+    const repo = process.env.E2E_REPO;
+    if (repo === undefined) throw new Error("E2E_REPO missing");
+    const seed = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        join(repo, "tools", "node-ts", "resolveTs.ts"),
+        join(repo, "apps", "host", "src", "testing", "seedPythonData.ts"),
+        h.dataDir,
+      ],
+      { env: { ...process.env, CASHU_TESTING: "1" }, encoding: "utf8" },
+    );
+    expect(seed.status, seed.stderr).toBe(0);
+    // The harness's temp agents dir: both Python agents, the native host's and another app's.
+    const agents = join(h.root, "LaunchAgents");
+    mkdirSync(agents, { mode: 0o700 });
+    const python = ["io.utopiasoft.cashu.worker", "io.github.synszakala.finanse.worker"];
+    const kept = ["io.utopiasoft.cashu.host.plist", "com.example.synthetic.plist"];
+    for (const name of [...python.map((label) => `${label}.plist`), ...kept])
+      writeFileSync(join(agents, name), "<plist/>\n", { mode: 0o600 });
+
+    const app = await h.launch({ E2E_RECOVERY_MIGRATE: "1" });
+    const page = await recoveryWindow(app);
+    await expect(page.getByTestId("recovery-code")).toHaveText("python_data_present");
+    await page.getByRole("button", { name: "Zaimportuj moje dane" }).click();
+    await expect(page.getByTestId("migration-recovery-phrase")).toBeVisible({ timeout: 90_000 });
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Kontynuuj import" }).click();
+    await expect(page.getByText("Import zakończony.")).toBeVisible({ timeout: 90_000 });
+
+    expect(readdirSync(agents).sort()).toEqual([...kept].sort());
+    await expect(page.getByTestId("recovery-agents")).toHaveText(
+      "Agenci w tle starej aplikacji (launchd): io.utopiasoft.cashu.worker: usunięty; io.github.synszakala.finanse.worker: usunięty.",
+    );
+    const launcher = join(h.dataDir, "bin", "cashu");
+    const lines = [
+      "claude mcp remove cashu-synthetic",
+      `claude mcp add cashu-synthetic -- ${launcher} mcp --profile synthetic`,
+    ];
+    const mcp = page.getByTestId("recovery-mcp");
+    await expect(mcp).toContainText("Podłącz ponownie agenta AI");
+    await expect(mcp).toContainText(lines.join("\n"));
+    await mcp.getByRole("button", { name: "Kopiuj" }).click();
+    await expect(mcp.getByText("Skopiowano polecenia.")).toBeVisible();
+    const copied = await app.evaluate(() => (globalThis as { __copied?: string[] }).__copied ?? []);
+    expect(copied).toEqual([`${lines.join("\n")}\n`]);
+    expect(readFileSync(join(h.root, "test-migrate-spawns"), "utf8")).toBe("migrate\n");
+    expect(existsSync(join(h.dataDir, "migration.json"))).toBe(true);
   } finally {
     await h.cleanup();
   }

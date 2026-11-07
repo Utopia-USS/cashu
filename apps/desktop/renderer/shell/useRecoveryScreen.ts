@@ -1,12 +1,15 @@
 // Screen hook of the start-up recovery screen: the prompt preview in the UI language, the actions
 // over the main-process bridge, and "Import my data" (progress from main, the one-time recovery
-// words, the instruments a finished import cannot value). Works without the host (it never touches
+// words, then what a finished import has to say: the instruments it cannot value, the MCP reconnect
+// lines per profile, what became of the old app's launchd agents). Works without the host (it never touches
 // the store). The words live only in this state while they are shown and are cleared the moment the
 // user continues or cancels.
 import {
   buildRecoveryPrompt,
+  failedAgentCommands,
   MIGRATE_STAGES,
   type MigrateStage,
+  type PythonAgentRetirement,
   type StartupFailureCode,
   type StartupFailureReport,
   type UnpricedInstrument,
@@ -63,7 +66,12 @@ type ImportState =
       readonly words: string;
       readonly confirmed: boolean;
     }
-  | { readonly phase: "done"; readonly unpriced: readonly UnpricedInstrument[] };
+  | {
+      readonly phase: "done";
+      readonly unpriced: readonly UnpricedInstrument[];
+      readonly mcpCommands: readonly string[];
+      readonly agents: PythonAgentRetirement | null;
+    };
 
 const IDLE: ImportState = { phase: "idle", notice: null };
 
@@ -78,6 +86,7 @@ export function useRecoveryScreen(
   const [notice, setNotice] = useState<RecoveryNotice | null>(null);
   const [busy, setBusy] = useState(false);
   const [imported, setImported] = useState<ImportState>(IDLE);
+  const [mcpNotice, setMcpNotice] = useState<ImportView["mcpNotice"]>(null);
 
   useEffect(
     () =>
@@ -90,7 +99,13 @@ export function useRecoveryScreen(
             words: event.words,
             confirmed: false,
           }));
-        else if (event.kind === "done") setImported({ phase: "done", unpriced: event.unpriced });
+        else if (event.kind === "done")
+          setImported({
+            phase: "done",
+            unpriced: event.unpriced,
+            mcpCommands: event.mcpCommands,
+            agents: event.agents,
+          });
         else setImported({ phase: "idle", notice: "cancelled" });
       }),
     [bridge],
@@ -129,6 +144,10 @@ export function useRecoveryScreen(
       wordsConfirmed: imported.phase === "words" && imported.confirmed,
       notice: imported.phase === "idle" ? imported.notice : null,
       unpriced: imported.phase === "done" ? imported.unpriced : [],
+      mcpCommands: imported.phase === "done" ? imported.mcpCommands : [],
+      mcpNotice,
+      agents: imported.phase === "done" ? imported.agents : null,
+      agentCommands: failedAgentCommands(imported.phase === "done" ? imported.agents : null),
     },
     onImport: () => {
       if (kind === null || importing || bridge === null) return;
@@ -141,6 +160,10 @@ export function useRecoveryScreen(
       setImported((state) => (state.phase === "words" ? { ...state, confirmed } : state)),
     onContinueImport: () => answerWords(true),
     onCancelImport: () => answerWords(false),
+    onCopyMcp: () =>
+      void (bridge?.copyMcpCommands() ?? Promise.resolve(false)).then((copied) =>
+        setMcpNotice(copied ? "copied" : "copyFailed"),
+      ),
     onCopy: () =>
       void run(async () =>
         report !== null && (await bridge?.copyPrompt(lang())) ? "copied" : "copyFailed",

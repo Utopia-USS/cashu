@@ -82,24 +82,31 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
 1. **Quit the Python app** (Cmd+Q) and close every Claude Code session that uses a `cashu-<profile>`
    MCP server (those servers write to the database). Check:
    `pgrep -fl 'Contents/MacOS/cashu( |$)'` prints nothing.
-2. **Unload the Python worker agent** (and the pre-rename one, if present):
+2. **The Python worker agent** (and the pre-rename one) is retired by the import itself: after a
+   successful import (app or terminal) cashU runs, for exactly `io.utopiasoft.cashu.worker` and
+   `io.github.synszakala.finanse.worker` whose plist is in `~/Library/LaunchAgents`,
+   `launchctl bootout gui/<uid>/<label>` and removes the plist (nothing else, never the native
+   `io.utopiasoft.cashu.host`). The app's finished import and the terminal output say which were
+   removed, not present or failed. Only when one **failed**, finish it by hand (the screen and the
+   terminal print these lines for the failed label):
    ```sh
    launchctl bootout gui/$(id -u)/io.utopiasoft.cashu.worker
    rm -f ~/Library/LaunchAgents/io.utopiasoft.cashu.worker.plist
    launchctl bootout gui/$(id -u)/io.github.synszakala.finanse.worker 2>/dev/null
    rm -f ~/Library/LaunchAgents/io.github.synszakala.finanse.worker.plist
    ```
-   Check: `launchctl list | grep -E 'cashu|finanse'` prints nothing and
-   `ls ~/Library/LaunchAgents | grep -E 'cashu|finanse'` prints nothing. This matters: the native
-   executable `Contents/MacOS/cashU` has the same name as the Python `cashu` on a case-insensitive
-   disk, so a leftover agent would call the native app every day (it refuses any command argument
-   with exit code 64 and opens no window, but the agent would keep failing).
-3. **Remove the Python MCP registrations** for the same reason. Note the scope and slug first:
+   Check after the import: `launchctl list | grep -E 'cashu|finanse'` shows no `.worker` and
+   `ls ~/Library/LaunchAgents | grep -E 'cashu|finanse'` shows no `.worker` plist. This matters: the
+   native executable `Contents/MacOS/cashU` has the same name as the Python `cashu` on a
+   case-insensitive disk, so a leftover agent would call the native app every day (it refuses any
+   command argument with exit code 64 and opens no window, but the agent would keep failing).
+3. **Note the Python MCP registrations' scope** (the servers are re-added against the native app
+   after the import, step 6.2; the app's finished import and the terminal print the exact lines):
    ```sh
    claude mcp get cashu-<profile>      # args end in: mcp --profile <profile> ; note the scope
-   claude mcp remove cashu-<profile> -s <scope>   # repeat both lines for each profile
    ```
-   Check: `claude mcp list | grep cashu-` prints nothing.
+   Removing them now (`claude mcp remove cashu-<profile> -s <scope>`, then `claude mcp list | grep
+   cashu-` prints nothing) is still fine; the printed lines start with that remove anyway.
 4. **Make the copies of section 3** (steps 3.3 and 3.4) now, with everything quit.
 5. **Install the native app**: replace `/Applications/cashU.app` with the native bundle (Finder asks
    to replace). Check:
@@ -119,7 +126,11 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
 3. "Zapisz frazę odzyskiwania" / "Save your recovery phrase": write the 24 words on paper, check
    them twice, tick "Zapisałem lub zapisałam frazę i mogę ją odzyskać." / "I saved the phrase and can
    retrieve it.", then "Kontynuuj import" / "Continue the import". "Anuluj import" creates nothing.
-4. After "Przełączanie na nowe dane" / "Switching to the new data" the app opens normally.
+4. After "Przełączanie na nowe dane" / "Switching to the new data" the screen says "Import
+   zakończony." / "The import finished.", with "Podłącz ponownie agenta AI" / "Connect your AI agent
+   again" (the `claude mcp remove` / `add` lines per profile, "Kopiuj" / "Copy" copies them; step 6.2)
+   and one line on the old app's background agents (step 4.2). "Otwórz cashU" / "Open cashU" opens
+   the app.
 5. Quit cashU fully before step 5.1 (verification needs the data folder lock).
 
 ### 4b. In the terminal
@@ -131,8 +142,9 @@ be a real (non-symlinked) path:
 "${CASHU[@]}" migrate --recovery-file "$HOME/cashU-recovery-words.txt"
 ```
 
-It prints each stage, then the counts and the backup folder, then "Check the import with: cashu
-migrate verify". Exit code 0 means done. Run again on an imported folder (with or without
+It prints each stage, then the counts and the backup folder, the old app's background agents
+(step 4.2; with the commands by hand for a failed one), the MCP lines per profile (step 6.2), then
+"Check the import with: cashu migrate verify". Exit code 0 means done. Run again on an imported folder (with or without
 `--recovery-file`), it only says the folder was already imported and exits 0. Copy the words to paper, then delete the file
 (`rm "$HOME/cashU-recovery-words.txt"`).
 
@@ -155,11 +167,15 @@ migrate verify". Exit code 0 means done. Run again on an imported folder (with o
 
 1. **Launcher and slugs**: `CASHU=("$D/bin/cashu")`; `"${CASHU[@]}" profiles list` shows every profile
    slug (the MCP name is `cashu-<slug>`).
-2. **MCP registrations** (same scope as noted in step 4.3):
+2. **MCP registrations**: run the lines the finished import showed (app) or printed (terminal),
+   per profile the old registration's remove, then the add against the launcher (if Claude Code asks
+   for a scope, add `-s <scope>` from step 4.3 to both):
    ```sh
-   claude mcp add -s <scope> cashu-<profile> -- "$D/bin/cashu" mcp --profile <profile>   # each profile
+   claude mcp remove cashu-<profile>
+   claude mcp add cashu-<profile> -- "$D/bin/cashu" mcp --profile <profile>   # each profile
    claude mcp list | grep cashu-      # every profile connected
    ```
+   The same add line is in the app under Settings > AI agent (MCP).
 3. **Workspaces** (`~/Documents/cashU/<slug>`, same default path and file names as before):
    ```sh
    "${CASHU[@]}" --profile <profile> workspace update   # each profile
@@ -256,8 +272,8 @@ path says otherwise.
 | Agent workspaces `~/Documents/cashU/<slug>` (CLAUDE.md, AGENTS.md link, `.claude/skills`, `notes/`, `research/`, `inbox/`) | Outside the data folder, untouched; same default path, markers, folders and manifest name `.claude/cashu-workspace.json` in the native app | step 6.3 |
 | Research notes | Database rows (research_notes, research_runs): genesis | as the 35 tables |
 | Enabled modules per profile, base currency, MCP privacy | profiles, profile_modules: genesis | as the 35 tables |
-| Python worker launch agent `io.utopiasoft.cashu.worker` (legacy `io.github.synszakala.finanse.worker`) | Removed by hand; native host agent `io.utopiasoft.cashu.next.host` | step 4.2, 6.4 |
-| MCP registrations `cashu-<profile>` | Removed and added again against `$D/bin/cashu` | step 4.3, 6.2 |
+| Python worker launch agent `io.utopiasoft.cashu.worker` (legacy `io.github.synszakala.finanse.worker`) | Retired by the import after its cutover (bootout + plist removed, those two labels only); by hand only when the result says failed; native host agent `io.utopiasoft.cashu.host` untouched | step 4.2, 6.4; host `pythonAgents.test.ts`, `cli.test.ts` "cashu migrate retires the Python worker agents ...", desktop e2e 104 "Import my data retires the Python worker agents ..." |
+| MCP registrations `cashu-<profile>` | The finished import shows / prints the `claude mcp remove` and `add` lines per profile against `$D/bin/cashu`; the owner runs them | step 4.3, 6.2 |
 | Sparkle (Python bundle `io.utopiasoft.cashu`, feed `releases/latest/download/appcast-macos-<arch>.xml`) | Gone with the Python bundle; native bundle `io.utopiasoft.cashu.next` has no Sparkle | step 4.5, 6.10 |
 | `statements/` CSV drop folder | Only in a source checkout, never in the data folder: nothing to carry | - |
 | LLM caches | None on disk: categorization results are transaction and rule rows | as the 35 tables |

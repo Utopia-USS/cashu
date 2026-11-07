@@ -3,6 +3,7 @@
 // codes and commands themselves stay as they are (the agent prompt quotes them).
 import type {
   MigrateStage,
+  PythonAgentRetirement,
   StartupFailureCode,
   UnpricedInstrument,
 } from "@cashu/host-protocol/startup-failure";
@@ -12,6 +13,25 @@ import { catalog } from "@cashu/i18n";
 export type RecoveryCode = StartupFailureCode;
 export type RecoveryStage = MigrateStage;
 export type RecoveryUnpriced = UnpricedInstrument;
+export type RecoveryAgents = PythonAgentRetirement;
+
+type AgentState = PythonAgentRetirement["agents"][number]["state"];
+
+const AGENT_STATE_PL: Record<AgentState, string> = {
+  retired: "usunięty",
+  absent: "nie było",
+  failed: "nie udało się",
+  skipped: "nie sprawdzono",
+};
+const AGENT_STATE_EN: Record<AgentState, string> = {
+  retired: "removed",
+  absent: "not present",
+  failed: "failed",
+  skipped: "not checked",
+};
+
+const agentList = (r: PythonAgentRetirement, states: Record<AgentState, string>) =>
+  r.agents.map((agent) => `${agent.label}: ${states[agent.state]}`).join("; ");
 
 const WHAT_PL: Record<StartupFailureCode, string> = {
   python_data_present:
@@ -148,6 +168,26 @@ export const S = catalog({
       `${i.label} (${i.currency}): ${i.reason === "no_fx" ? `no PLN/${i.currency} rate` : "no prices"}`,
   },
   openApp: { pl: "Otwórz cashU", en: "Open cashU" },
+  mcpTitle: { pl: "Podłącz ponownie agenta AI", en: "Connect your AI agent again" },
+  mcpHint: {
+    pl: "Serwery MCP zapisane w Claude Code wskazują na usuniętą starą aplikację. Uruchom te polecenia w terminalu: dla każdego profilu najpierw usuń stary wpis, potem dodaj nowy (jeśli Claude Code zapyta o zakres, dopisz -s z zakresem starego wpisu).",
+    en: "The MCP servers saved in Claude Code point at the removed old app. Run these commands in a terminal: for each profile, remove the old entry first, then add the new one (if Claude Code asks for a scope, add -s with the old entry's scope).",
+  },
+  mcpCopied: { pl: "Skopiowano polecenia.", en: "Commands copied." },
+  mcpCopyFailed: {
+    pl: "Nie udało się skopiować poleceń.",
+    en: "The commands could not be copied.",
+  },
+  agents: {
+    pl: (r: PythonAgentRetirement) =>
+      `Agenci w tle starej aplikacji (launchd): ${agentList(r, AGENT_STATE_PL)}.`,
+    en: (r: PythonAgentRetirement) =>
+      `The old app's background agents (launchd): ${agentList(r, AGENT_STATE_EN)}.`,
+  },
+  agentsByHand: {
+    pl: "Dokończ ręcznie w terminalu:",
+    en: "Finish by hand in a terminal:",
+  },
   stageLabel: {
     pl: (stage: MigrateStage) => STAGE_PL[stage],
     en: (stage: MigrateStage) => STAGE_EN[stage],

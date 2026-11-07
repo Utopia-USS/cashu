@@ -75,6 +75,7 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     report: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-report"),
     copyPrompt: (lang: unknown): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:recovery-copy", lang),
+    copyMcpCommands: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-copy-mcp"),
     openDataFolder: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-open"),
     retry: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-retry"),
     quit: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-quit"),

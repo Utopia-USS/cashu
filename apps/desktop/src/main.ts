@@ -113,7 +113,7 @@ import { shouldRegisterProtocol } from "./deeplink.js";
 import { hostLaunch, PACKAGED_HOST_ENTRY } from "./hostLaunch.js";
 import { HostRelay, HostRelays, type RelayPort } from "./hostRelay.js";
 import { linkFromArgv } from "./links.js";
-import { type MigrateOutcome, runMigration } from "./migrateRun.js";
+import { importDoneEvent, type MigrateOutcome, runMigration } from "./migrateRun.js";
 import { createNotificationClickRouter } from "./notification/clickRouter.js";
 import { notificationIntake } from "./notification/early.js";
 import { loadNativeNotificationCenter, releaseResponseHandler } from "./notification/native.js";
@@ -403,6 +403,8 @@ interface ImportRun {
   answer: ((confirmed: boolean) => void) | null;
 }
 let importRun: ImportRun | null = null;
+/** The MCP reconnect lines of the finished import, for the screen's Copy (never from the page). */
+let importedMcp: string | null = null;
 
 function sendImportEvent(event: RecoveryImportEvent): void {
   mainWindow?.webContents.send("cashu:recovery-import-event", event);
@@ -426,6 +428,15 @@ ipcMain.handle("cashu:recovery-copy", async (event, raw: unknown) => {
   if (prompt === null) return false;
   try {
     await clipboard.writeText(prompt);
+    return true;
+  } catch {
+    return false;
+  }
+});
+ipcMain.handle("cashu:recovery-copy-mcp", async (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || importedMcp === null) return false;
+  try {
+    await clipboard.writeText(importedMcp);
     return true;
   } catch {
     return false;
@@ -506,9 +517,17 @@ async function importData(run: ImportRun): Promise<void> {
   if (outcome.kind === "done") {
     log(`recovery: import finished (${outcome.done.status})`);
     const unpriced = outcome.done.unpriced ?? [];
-    if (unpriced.length > 0) {
+    if (unpriced.length > 0)
       log(`recovery: ${unpriced.length} imported instruments cannot be valued`);
-      sendImportEvent({ kind: "done", unpriced });
+    const agents = outcome.done.agents;
+    if (agents !== undefined)
+      log(
+        `recovery: python agents ${agents.agents.map((a) => `${a.label}=${a.state}`).join(" ")} bootout=${agents.bootout}`,
+      );
+    const done = importDoneEvent(outcome.done, join(dataDir, "bin", "cashu"));
+    if (done !== null) {
+      importedMcp = done.mcpCommands.length > 0 ? `${done.mcpCommands.join("\n")}\n` : null;
+      sendImportEvent(done);
       return;
     }
     recovery.clear();

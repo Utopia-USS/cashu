@@ -34,6 +34,7 @@ import { startLocalHost } from "./host.js";
 import { recordStartupFailure } from "./localHost/startup.js";
 import { createProductionMarket, type ProductionMarket } from "./market/production.js";
 import { migrateCommand } from "./migration/cli.js";
+import { systemLaunchctl } from "./migration/pythonAgents.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
 import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
@@ -177,6 +178,10 @@ async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
     stderr: io.stderr,
     readLine: io.readLine ?? (async () => null),
     build,
+    // The only place the real launchctl is wired: it retires the Python worker agents after a
+    // successful import, and pythonAgents.ts still refuses it under CASHU_TESTING or a custom
+    // CASHU_LAUNCH_AGENTS_DIR.
+    ...(process.platform === "darwin" ? { launchctl: systemLaunchctl } : {}),
   });
 }
 

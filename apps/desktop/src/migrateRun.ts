@@ -7,6 +7,7 @@
 // to `handlers.words` and are never stored or logged here.
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
+import { reconnectMcpCommands } from "@cashu/domain/core";
 import {
   MIGRATE_CANCEL,
   MIGRATE_CONFIRM,
@@ -14,6 +15,8 @@ import {
   type MigrateFailed,
   type MigrateStage,
   parseMigrateLine,
+  type RecoveryImportEvent,
+  recoveryImportEventSchema,
   type StartupFailure,
   startupFailure,
 } from "@cashu/host-protocol/startup-failure";
@@ -124,4 +127,22 @@ export function runMigration(
       }
     });
   });
+}
+
+/**
+ * What the recovery screen shows after a finished import, or null when there is nothing to say (the
+ * app then opens at once): the instruments the app cannot value, the `claude mcp remove` / `add` lines
+ * per imported profile (the setup screen's builder over the data dir's stable launcher `launcher`),
+ * and what became of the Python worker agents. Checked against the event schema before it leaves.
+ */
+export function importDoneEvent(
+  done: MigrateDone,
+  launcher: string,
+): Extract<RecoveryImportEvent, { kind: "done" }> | null {
+  const unpriced = done.unpriced ?? [];
+  const mcpCommands = reconnectMcpCommands([launcher], done.mcpProfiles ?? []);
+  const agents = done.agents ?? null;
+  if (unpriced.length === 0 && mcpCommands.length === 0 && agents === null) return null;
+  const event = recoveryImportEventSchema.parse({ kind: "done", unpriced, mcpCommands, agents });
+  return event.kind === "done" ? event : null;
 }

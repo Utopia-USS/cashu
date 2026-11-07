@@ -1,7 +1,11 @@
 // What `cashu migrate` and `cashu migrate verify` print in human mode (PL + EN). Values are counts,
 // enum codes, an ISO time, the backup directory's name, `~`-relative paths and the public tickers of
 // instruments the app cannot price; never personal data or words.
-import type { MigrateStage, StartupFailureCode } from "@cashu/host-protocol/startup-failure";
+import type {
+  MigrateStage,
+  PythonAgentRetirement,
+  StartupFailureCode,
+} from "@cashu/host-protocol/startup-failure";
 import type { TranslationVariants } from "@cashu/i18n";
 
 type Text = TranslationVariants<string>;
@@ -13,6 +17,24 @@ export interface MigrateCounts {
   readonly financialRows: number;
   readonly vaults: number;
 }
+
+type AgentState = PythonAgentRetirement["agents"][number]["state"];
+
+const AGENT_STATE_PL: Record<AgentState, string> = {
+  retired: "usunięty",
+  absent: "nie było",
+  failed: "nie udało się",
+  skipped: "nie sprawdzono",
+};
+const AGENT_STATE_EN: Record<AgentState, string> = {
+  retired: "removed",
+  absent: "not present",
+  failed: "failed",
+  skipped: "not checked",
+};
+
+const agentList = (r: PythonAgentRetirement, states: Record<AgentState, string>) =>
+  r.agents.map((agent) => `${agent.label}: ${states[agent.state]}`).join("; ");
 
 /** An instrument the app cannot price after the import (`priceReach.ts`). */
 export interface UnpricedLine {
@@ -108,6 +130,34 @@ export const M = {
         ),
       ].join("\n"),
   } satisfies Fn<[readonly UnpricedLine[]]>,
+  agents: {
+    pl: (r: PythonAgentRetirement) =>
+      `Agenci w tle starej aplikacji (launchd): ${agentList(r, AGENT_STATE_PL)}.${r.bootout === "skipped" && r.agents.some((a) => a.state === "retired") ? " Usunięto tylko pliki plist (launchctl nie był użyty: własny folder agentów)." : ""}`,
+    en: (r: PythonAgentRetirement) =>
+      `The old app's background agents (launchd): ${agentList(r, AGENT_STATE_EN)}.${r.bootout === "skipped" && r.agents.some((a) => a.state === "retired") ? " Only the plist files were removed (launchctl not used: custom agents folder)." : ""}`,
+  } satisfies Fn<[PythonAgentRetirement]>,
+  agentsByHand: {
+    pl: (commands: readonly string[]) =>
+      ["Dokończ ręcznie:", ...commands.map((line) => `  ${line}`)].join("\n"),
+    en: (commands: readonly string[]) =>
+      ["Finish by hand:", ...commands.map((line) => `  ${line}`)].join("\n"),
+  } satisfies Fn<[readonly string[]]>,
+  mcp: {
+    pl: (commands: readonly string[]) =>
+      [
+        "Podłącz ponownie serwery MCP w Claude Code (stare wpisy wskazują na usuniętą aplikację). Dla każdego profilu:",
+        ...commands.map((line) => `  ${line}`),
+      ].join("\n"),
+    en: (commands: readonly string[]) =>
+      [
+        "Re-add your MCP servers in Claude Code (the old entries point at the removed app). For each profile:",
+        ...commands.map((line) => `  ${line}`),
+      ].join("\n"),
+  } satisfies Fn<[readonly string[]]>,
+  mcpUnknown: {
+    pl: "Podłącz ponownie serwery MCP w Claude Code: polecenia są w aplikacji, Ustawienia > Agent AI (MCP).",
+    en: "Re-add your MCP servers in Claude Code: the commands are in the app, Settings > AI agent (MCP).",
+  } satisfies Text,
   failed: {
     pl: (code: StartupFailureCode, detail: string) =>
       `Import się nie powiódł (${code}${detail === "" ? "" : `, ${detail}`}).`,

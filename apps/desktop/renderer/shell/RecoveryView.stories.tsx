@@ -48,6 +48,10 @@ const idle: ImportView = {
   wordsConfirmed: false,
   notice: null,
   unpriced: [],
+  mcpCommands: [],
+  mcpNotice: null,
+  agents: null,
+  agentCommands: [],
 };
 
 const imp = (overrides: Partial<ImportView>): ImportView => ({ ...idle, ...overrides });
@@ -62,6 +66,7 @@ const actions = {
   onWordsConfirmed: () => {},
   onContinueImport: () => {},
   onCancelImport: () => {},
+  onCopyMcp: () => {},
   onCopy: () => {},
   onOpenFolder: () => {},
   onRetry: () => {},
@@ -111,6 +116,47 @@ export const Unknown = {
     details: recoveryDetails(unknown),
     prompt: buildRecoveryPrompt(unknown, "en"),
     import: imp({ kind: null }),
+  },
+};
+const LAUNCHER = "'/Users/synthetic/Library/Application Support/cashU/bin/cashu'";
+const MCP = ["synthetic", "synthetic-2"].flatMap((slug) => [
+  `claude mcp remove cashu-${slug}`,
+  `claude mcp add cashu-${slug} -- ${LAUNCHER} mcp --profile ${slug}`,
+]);
+export const ImportDone = {
+  args: {
+    import: imp({
+      phase: "done",
+      mcpCommands: MCP,
+      agents: {
+        bootout: "ran",
+        agents: [
+          { label: "io.utopiasoft.cashu.worker", state: "retired" },
+          { label: "io.github.synszakala.finanse.worker", state: "absent" },
+        ],
+      },
+    }),
+  },
+};
+export const ImportDoneAgentFailed = {
+  args: {
+    import: imp({
+      phase: "done",
+      mcpCommands: MCP,
+      mcpNotice: "copied",
+      unpriced: [{ label: "SEUR", currency: "EUR", reason: "no_fx" }],
+      agents: {
+        bootout: "ran",
+        agents: [
+          { label: "io.utopiasoft.cashu.worker", state: "failed" },
+          { label: "io.github.synszakala.finanse.worker", state: "absent" },
+        ],
+      },
+      agentCommands: [
+        "launchctl bootout gui/$(id -u)/io.utopiasoft.cashu.worker",
+        "rm -f ~/Library/LaunchAgents/io.utopiasoft.cashu.worker.plist",
+      ],
+    }),
   },
 };
 export const Copied = { args: { notice: "copied" } };

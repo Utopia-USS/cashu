@@ -24,6 +24,8 @@ import overview, { Empty, Privacy, Ready } from "./screens/overview/OverviewView
 import bootstrap, { Failed, Waiting } from "./shell/BootstrapView.stories.js";
 import recovery, {
   ImportCancelled,
+  ImportDone,
+  ImportDoneAgentFailed,
   ImportFailed,
   Importing,
   InventoryUnavailable,
@@ -63,6 +65,10 @@ it("renders the start-up recovery CSF states without a host", () => {
   for (const story of [ImportFailed, InventoryUnavailable, UnknownRecovery])
     expect(render(story)).not.toContain("Import my data");
   expect(render(ReportUnavailable)).toContain("could not be read");
+  expect(render(ImportDone)).toContain("claude mcp remove cashu-synthetic");
+  expect(render(ImportDone)).toContain("io.utopiasoft.cashu.worker: removed");
+  expect(render(ImportDone)).not.toContain('data-testid="recovery-agents-by-hand"');
+  expect(render(ImportDoneAgentFailed)).toContain('data-testid="recovery-agents-by-hand"');
 });
 
 it("renders actual Overview CSF states with the masked privacy hero", () => {

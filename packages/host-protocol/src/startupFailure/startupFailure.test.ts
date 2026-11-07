@@ -3,17 +3,22 @@ import {
   buildRecoveryPrompt,
   classifyStartupError,
   commandPrefix,
+  failedAgentCommands,
   failureDetail,
   fitUnpriced,
+  MIGRATE_MCP_PROFILES_MAX,
   MIGRATE_UNPRICED_LABEL_MAX,
   MIGRATE_UNPRICED_MAX,
   MIGRATION_RUNBOOK,
+  PYTHON_AGENT_LABELS,
   parseMigrateLine,
   parseStartupFailureRecord,
   parseStartupFailureReport,
   type RecoveryCommand,
   recoveryCommand,
   recoveryCommands,
+  recoveryImportEventSchema,
+  retirePythonAgentCommands,
   STARTUP_FAILURE_CODES,
   STARTUP_FAILURE_DETAIL_NAMES,
   STARTUP_FAILURE_DETAILS,
@@ -502,7 +507,89 @@ describe("migrate child protocol", () => {
       vaults: 1_000_000_000,
       backupDir: `python-backup-${"x".repeat(64)}`,
       unpriced: fitted,
+      mcpProfiles: Array.from(
+        { length: MIGRATE_MCP_PROFILES_MAX },
+        (_, index) => `p${String(index).padStart(2, "0")}${"x".repeat(61)}`,
+      ),
+      agents: {
+        bootout: "skipped",
+        agents: PYTHON_AGENT_LABELS.map((label) => ({ label, state: "failed" })),
+      },
     });
     expect(parseMigrateLine(line)).toMatchObject({ event: "done", unpriced: fitted });
+  });
+
+  it("carries the imported slugs and the Python agents result, nothing else", () => {
+    const agents = {
+      bootout: "ran",
+      agents: [
+        { label: "io.utopiasoft.cashu.worker", state: "retired" },
+        { label: "io.github.synszakala.finanse.worker", state: "absent" },
+      ],
+    };
+    expect(
+      parseMigrateLine(
+        JSON.stringify({
+          event: "done",
+          status: "migrated",
+          mcpProfiles: ["anna", "dom-2"],
+          agents,
+        }),
+      ),
+    ).toEqual({ event: "done", status: "migrated", mcpProfiles: ["anna", "dom-2"], agents });
+    for (const done of [
+      { mcpProfiles: ["anna; rm -rf ~"] },
+      { mcpProfiles: ["-anna"] },
+      { mcpProfiles: Array.from({ length: MIGRATE_MCP_PROFILES_MAX + 1 }, () => "anna") },
+      {
+        agents: {
+          bootout: "ran",
+          agents: [{ label: "io.utopiasoft.cashu.host", state: "retired" }],
+        },
+      },
+      {
+        agents: {
+          bootout: "ran",
+          agents: [{ label: "io.utopiasoft.cashu.worker", state: "gone" }],
+        },
+      },
+      { agents: { bootout: "later", agents: [] } },
+      { agents: { bootout: "ran", agents: [], path: "/Users/x" } },
+    ])
+      expect(
+        parseMigrateLine(JSON.stringify({ event: "done", status: "migrated", ...done })),
+      ).toBeNull();
+  });
+
+  it("gives the runbook's manual commands for failed agents only", () => {
+    expect(retirePythonAgentCommands("io.utopiasoft.cashu.worker")).toEqual([
+      "launchctl bootout gui/$(id -u)/io.utopiasoft.cashu.worker",
+      "rm -f ~/Library/LaunchAgents/io.utopiasoft.cashu.worker.plist",
+    ]);
+    expect(failedAgentCommands(null)).toEqual([]);
+    expect(
+      failedAgentCommands({
+        bootout: "ran",
+        agents: [
+          { label: "io.utopiasoft.cashu.worker", state: "retired" },
+          { label: "io.github.synszakala.finanse.worker", state: "failed" },
+        ],
+      }),
+    ).toEqual([
+      "launchctl bootout gui/$(id -u)/io.github.synszakala.finanse.worker",
+      "rm -f ~/Library/LaunchAgents/io.github.synszakala.finanse.worker.plist",
+    ]);
+  });
+
+  it("forwards a finished import to the screen with or without unpriced instruments", () => {
+    const done = {
+      kind: "done",
+      unpriced: [],
+      mcpCommands: ["claude mcp remove cashu-anna"],
+      agents: null,
+    };
+    expect(recoveryImportEventSchema.parse(done)).toEqual(done);
+    expect(recoveryImportEventSchema.safeParse({ ...done, mcpCommands: [""] }).success).toBe(false);
+    expect(recoveryImportEventSchema.safeParse({ kind: "done", unpriced: [] }).success).toBe(false);
   });
 });

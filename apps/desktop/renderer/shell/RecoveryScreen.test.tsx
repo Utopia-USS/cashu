@@ -31,6 +31,7 @@ function fakeBridge() {
   let emit: (event: RecoveryImportEvent) => void = () => {};
   const bridge = {
     copyPrompt: vi.fn(async () => true),
+    copyMcpCommands: vi.fn(async () => true),
     openDataFolder: vi.fn(async () => true),
     retry: vi.fn(async () => {}),
     quit: vi.fn(async () => {}),
@@ -112,7 +113,11 @@ it("lists the instruments a finished import cannot value, then opens the app", a
       { label: "SEUR", currency: "EUR", reason: "no_fx" },
       { label: "SPLN", currency: "PLN", reason: "no_prices" },
     ],
+    mcpCommands: [],
+    agents: null,
   });
+  expect(container.querySelector('[data-testid="recovery-mcp"]')).toBeNull();
+  expect(container.querySelector('[data-testid="recovery-agents"]')).toBeNull();
   expect(container.textContent).toContain("The import finished.");
   expect(container.querySelector('[data-testid="recovery-import-stages"]')).toBeNull();
   expect(
@@ -120,6 +125,52 @@ it("lists the instruments a finished import cannot value, then opens the app", a
       (item) => item.textContent,
     ),
   ).toEqual(["SEUR (EUR): no PLN/EUR rate", "SPLN (PLN): no prices"]);
+  await act(async () => button("Open cashU")?.click());
+  expect(bridge.retry).toHaveBeenCalledTimes(1);
+});
+
+it("shows the MCP lines to re-add, copies them through main, and the agents result", async () => {
+  const { bridge, emit } = fakeBridge();
+  await act(async () =>
+    root.render(
+      <RecoveryScreen report={report(startupFailure("python_data_present"))} bridge={bridge} />,
+    ),
+  );
+  await act(async () => button("Import my data")?.click());
+  const mcpCommands = [
+    "claude mcp remove cashu-synthetic",
+    "claude mcp add cashu-synthetic -- /synthetic/bin/cashu mcp --profile synthetic",
+  ];
+  await emit({
+    kind: "done",
+    unpriced: [],
+    mcpCommands,
+    agents: {
+      bootout: "ran",
+      agents: [
+        { label: "io.utopiasoft.cashu.worker", state: "retired" },
+        { label: "io.github.synszakala.finanse.worker", state: "failed" },
+      ],
+    },
+  });
+  expect(container.textContent).toContain("The import finished.");
+  expect(container.querySelector('[data-testid="recovery-unpriced"]')).toBeNull();
+  const mcp = container.querySelector('[data-testid="recovery-mcp"]');
+  expect(mcp?.textContent).toContain("Connect your AI agent again");
+  expect(mcp?.textContent).toContain(mcpCommands.join("\n"));
+  expect(container.querySelector('[data-testid="recovery-agents"]')?.textContent).toBe(
+    "The old app's background agents (launchd): io.utopiasoft.cashu.worker: removed; io.github.synszakala.finanse.worker: failed.",
+  );
+  expect(container.querySelector('[data-testid="recovery-agents-by-hand"]')?.textContent).toBe(
+    [
+      "launchctl bootout gui/$(id -u)/io.github.synszakala.finanse.worker",
+      "rm -f ~/Library/LaunchAgents/io.github.synszakala.finanse.worker.plist",
+    ].join("\n"),
+  );
+  await act(async () => button("Copy")?.click());
+  expect(bridge.copyMcpCommands).toHaveBeenCalledTimes(1);
+  expect(bridge.copyPrompt).not.toHaveBeenCalled();
+  expect(mcp?.textContent).toContain("Commands copied.");
   await act(async () => button("Open cashU")?.click());
   expect(bridge.retry).toHaveBeenCalledTimes(1);
 });

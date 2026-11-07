@@ -54,10 +54,8 @@ export interface PythonFixture {
   remove(): void;
 }
 
-export function pythonFixture(): PythonFixture {
-  const base = realpathSync(mkdtempSync(join(tmpdir(), "t44-test-")));
-  const dataDir = join(base, "data");
-  mkdirSync(dataDir, { mode: 0o700 });
+/** The synthetic schema-0025 Python data (profile `synthetic`) written into an existing `dataDir`. */
+export function writeSyntheticPythonData(dataDir: string): void {
   const db = new DatabaseSync(join(dataDir, "cashu.db"));
   const timestamp = TIMESTAMP;
   const stagedBytes = new TextEncoder().encode("synthetic import bytes\n");
@@ -115,7 +113,15 @@ export function pythonFixture(): PythonFixture {
   file("desktop-electron/Local Storage/state", "synthetic");
   dir("diagnostics");
   file(".DS_Store", "synthetic");
+}
 
+/** An in-memory key store and migration KEK in a fresh `cashu-next-test.<hex>` namespace. */
+export function memoryKeychain(dataDir: string): {
+  readonly keychain: InPlaceKeychain;
+  readonly service: string;
+  readonly items: Map<string, Uint8Array>;
+  readonly makeKeyStore: typeof createProductionKeyStore;
+} {
   const items = new Map<string, Uint8Array>();
   const service = `cashu-next-test.${randomBytes(16).toString("hex")}`;
   const keyring: OsKeyringDeletePort = {
@@ -132,12 +138,22 @@ export function pythonFixture(): PythonFixture {
   const makeKeyStore: typeof createProductionKeyStore = (input) =>
     createTestKeyStore({ ...input, service, keyring });
   return {
-    base,
-    dataDir,
     service,
     items,
     makeKeyStore,
     keychain: { makeKeyStore, kek: createTestMigrationKek({ dataDir, service, keyring }) },
+  };
+}
+
+export function pythonFixture(): PythonFixture {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "t44-test-")));
+  const dataDir = join(base, "data");
+  mkdirSync(dataDir, { mode: 0o700 });
+  writeSyntheticPythonData(dataDir);
+  return {
+    base,
+    dataDir,
+    ...memoryKeychain(dataDir),
     remove: () => rmSync(base, { recursive: true, force: true }),
   };
 }
