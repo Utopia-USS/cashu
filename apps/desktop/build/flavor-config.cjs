@@ -32,6 +32,10 @@ function builderConfig(id, options = {}) {
     // workspace's dependency tree would add dead code and other-arch native binaries.
     files: ["dist/*.js", "dist/preload.cjs", "package.json", "!node_modules{,/**/*}"],
     asar: true,
+    // No `npm rebuild` of the app's production dependencies: none goes into app.asar (see `files`),
+    // the native modules are built and staged by package-macos.mjs, and no install script may run
+    // during a release build (the CI release job has its temporary keychain unlocked by then).
+    npmRebuild: false,
     extraResources: [
       ...["host.mjs", "shim.mjs", "notify-catalog-v1.json"].map((file) => ({
         from: path.join(resources, file),

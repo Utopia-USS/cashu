@@ -121,17 +121,17 @@ function testDir(value, label) {
   };
   if (typeof value !== "string" || value.length > 1024 || value.includes("\0")) fail();
   if (!isAbsolute(value) || resolve(value) !== value || value === "/") fail();
-  const parts = value.split("/");
-  if (parts[1] === "Applications") fail();
+  // macOS disks are case-insensitive: every component is compared in lower case.
+  const parts = value.toLowerCase().split("/");
+  if (parts[1] === "applications") fail();
   for (let index = 0; index + 1 < parts.length; index += 1) {
     if (
-      parts[index] === "Library" &&
-      parts[index + 1] === "Application Support" &&
-      REAL_DATA_DIRS.has(parts[index + 2]?.toLowerCase() ?? "")
+      parts[index] === "library" &&
+      parts[index + 1] === "application support" &&
+      REAL_DATA_DIRS.has(parts[index + 2] ?? "")
     )
       fail();
-    if (parts[index] === "Documents" && REAL_WORKSPACES.has(parts[index + 1]?.toLowerCase() ?? ""))
-      fail();
+    if (parts[index] === "documents" && REAL_WORKSPACES.has(parts[index + 1] ?? "")) fail();
   }
   return value;
 }
@@ -155,7 +155,7 @@ export function parseTestBuild(input) {
   const installRoot = testDir(record.installRoot, "installRoot");
   const dataDir = testDir(record.dataDir, "dataDir");
   const workspacesDir = testDir(record.workspacesDir, "workspacesDir");
-  const dirs = [installRoot, dataDir, workspacesDir];
+  const dirs = [installRoot, dataDir, workspacesDir].map((dir) => dir.toLowerCase());
   if (
     new Set(dirs).size !== dirs.length ||
     dirs.some((a) => dirs.some((b) => a !== b && b.startsWith(`${a}/`)))

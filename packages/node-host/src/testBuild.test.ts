@@ -92,6 +92,37 @@ describe("test-build marker", () => {
     expect(() => parseTestBuildMarker("{not json")).toThrow();
   });
 
+  it("refuses the real dirs of every flavor in any letter case (macOS disks are case-insensitive)", () => {
+    const real = [
+      "/applications/test",
+      "/APPLICATIONS",
+      "/Users/someone/library/application support/cashU",
+      "/Users/someone/LIBRARY/Application Support/CASHU/nested",
+      "/Users/someone/Library/application support/cashu staging",
+      "/Users/someone/library/Application Support/cashU Staging",
+      "/Users/someone/documents/cashU",
+      "/Users/someone/DOCUMENTS/CASHU STAGING",
+    ];
+    for (const dir of real) {
+      expect(() => parseTestBuildMarker(text({ ...marker, dataDir: dir }))).toThrow(
+        "test_build_marker_invalid",
+      );
+      expect(() => parseTestBuildMarker(text({ ...marker, workspacesDir: dir }))).toThrow(
+        "test_build_marker_invalid",
+      );
+    }
+    // Trees that differ only in case are one tree on such a disk.
+    expect(() =>
+      parseTestBuildMarker(text({ ...marker, workspacesDir: `${marker.dataDir.toUpperCase()}/w` })),
+    ).toThrow("test_build_marker_invalid");
+    // A synthetic dir that only resembles them stays valid.
+    expect(
+      parseTestBuildMarker(
+        text({ ...marker, dataDir: "/Users/someone/library/application support/cashU-test" }),
+      ).dataDir,
+    ).toBe("/Users/someone/library/application support/cashU-test");
+  });
+
   it("is absent from a bundle without the marker (every release)", () => {
     expect(readTestBuildMarker(bundle())).toBeNull();
   });

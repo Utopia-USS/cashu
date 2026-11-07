@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -19,9 +20,11 @@ import {
   parseStartupFailureRecord,
   parseStartupFailureReport,
 } from "@cashu/host-protocol/startup-failure";
+import { FLAVORS } from "@cashu/node-host/flavor";
 import type { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { afterEach, describe, expect, it } from "vitest";
 import { migrateCommand, migratesOnlyInto } from "./cli.js";
+import type { RetireRuntime } from "./pythonAgents.js";
 import {
   PYTHON_NAMES,
   type PythonFixture,
@@ -62,6 +65,8 @@ async function cli(
     env?: Record<string, string>;
     launchctl?: (argv: readonly string[]) => number | null;
     testBuild?: boolean;
+    runtime?: RetireRuntime;
+    accountHome?: string;
   } = {},
 ): Promise<Run> {
   const out: string[] = [];
@@ -70,6 +75,8 @@ async function cli(
     env: { CASHU_LANG: "en", HOME: f.base, ...options.env },
     ...(options.launchctl === undefined ? {} : { launchctl: options.launchctl, uid: 501 }),
     ...(options.testBuild === undefined ? {} : { testBuild: options.testBuild }),
+    ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+    ...(options.accountHome === undefined ? {} : { accountHome: options.accountHome }),
     stdout(line) {
       out.push(line);
       options.onStdout?.(line);
@@ -147,7 +154,13 @@ describe("cashu migrate --json (the app's child protocol)", () => {
       expect(again.code).toBe(0);
       expect(done.unpriced).toEqual([]);
       const { unpriced: _checked, agents: _agents, mcpProfiles: _slugs, ...counted } = done;
-      expect(lines(again).at(-1)).toEqual({ ...counted, status: "already_migrated" });
+      // An already imported folder retries the agents step (still not looked at) and names the slugs.
+      expect(lines(again).at(-1)).toEqual({
+        ...counted,
+        status: "already_migrated",
+        agents: done.agents,
+        mcpProfiles: ["synthetic"],
+      });
 
       const verified = await cli(f, ["verify", "--data-dir", f.dataDir, "--json"]);
       expect(verified.code).toBe(0);
@@ -408,9 +421,10 @@ describe("cashu migrate (human mode) failures", () => {
         "--recovery-file",
         join(f.base, "w2.txt"),
       ]);
-      expect(again.out.at(-2)).toBe(
+      expect(again.out.slice(-4, -2)).toEqual([
         `This data folder was already imported (2027-01-01T00:00:00.000Z); nothing was changed. Original files: ~/data/${BACKUP}.`,
-      );
+        "The old app's background agents (launchd): io.utopiasoft.cashu.worker (not checked), io.github.synszakala.finanse.worker (not checked).",
+      ]);
       expect(existsSync(join(f.base, "w2.txt"))).toBe(false);
       // Without --recovery-file an already migrated folder is reported, not a usage error.
       const listing = readdirSync(f.dataDir).sort();
@@ -419,6 +433,12 @@ describe("cashu migrate (human mode) failures", () => {
         code: 0,
         out: [
           `This data folder was already imported (2027-01-01T00:00:00.000Z); nothing was changed. Original files: ~/data/${BACKUP}.`,
+          "The old app's background agents (launchd): io.utopiasoft.cashu.worker (not checked), io.github.synszakala.finanse.worker (not checked).",
+          [
+            "Re-add your MCP servers in Claude Code (the old entries point at the removed app). For each profile:",
+            "  claude mcp remove cashu-synthetic",
+            `  claude mcp add cashu-synthetic -- ${join(f.dataDir, "bin", "cashu")} mcp --profile synthetic`,
+          ].join("\n"),
           "Check the import with: cashu migrate verify",
         ],
         err: [],
@@ -544,14 +564,21 @@ describe("cashu migrate retires the Python worker agents (temp agents dir, fake 
         "com.example.synthetic.plist",
         "io.utopiasoft.cashu.host.plist",
       ]);
-      // An already migrated folder is only reported: no agents step, no slugs.
+      // An already migrated folder retries the (idempotent) step: both now absent.
       const again = await cli(f, ["--data-dir", f.dataDir, "--json"], {
         env: { CASHU_TESTING: "1", CASHU_LAUNCH_AGENTS_DIR: dir },
       });
-      const repeated = lines(again).at(-1);
-      expect(repeated).toMatchObject({ status: "already_migrated" });
-      expect(repeated).not.toHaveProperty("agents");
-      expect(repeated).not.toHaveProperty("mcpProfiles");
+      expect(lines(again).at(-1)).toMatchObject({
+        status: "already_migrated",
+        mcpProfiles: ["synthetic"],
+        agents: {
+          bootout: "skipped",
+          agents: [
+            { label: WORKER, state: "absent" },
+            { label: LEGACY, state: "absent" },
+          ],
+        },
+      });
     },
     SLOW,
   );
@@ -584,6 +611,115 @@ describe("cashu migrate retires the Python worker agents (temp agents dir, fake 
         "com.example.synthetic.plist",
         "io.utopiasoft.cashu.host.plist",
       ]);
+    },
+    SLOW,
+  );
+
+  it(
+    "an already imported folder retries the retirement (a crash or failed bootout before it)",
+    async () => {
+      const f = fixture();
+      // The cutover finished but the agents step never ran (as after a crash): the plists come back.
+      const first = await cli(f, ["--data-dir", f.dataDir, "--json"], {
+        answer: "confirm",
+        env: { CASHU_TESTING: "1" },
+      });
+      expect(first.code).toBe(0);
+      const dir = agentsDir(f);
+      const env = { CASHU_TESTING: "1", CASHU_LAUNCH_AGENTS_DIR: dir };
+      // The app's Import (--json) and the plain terminal `cashu migrate` both retry it.
+      const json = await cli(f, ["--data-dir", f.dataDir, "--json"], { env });
+      expect(migrateDoneSchema.parse(JSON.parse(json.out.at(-1) ?? ""))).toMatchObject({
+        status: "already_migrated",
+        agents: {
+          bootout: "skipped",
+          agents: [
+            { label: WORKER, state: "retired" },
+            { label: LEGACY, state: "retired" },
+          ],
+        },
+      });
+      expect(readdirSync(dir).sort()).toEqual([
+        "com.example.synthetic.plist",
+        "io.utopiasoft.cashu.host.plist",
+      ]);
+      writeFileSync(join(dir, `${WORKER}.plist`), "<plist/>\n");
+      const plain = await cli(f, ["--data-dir", f.dataDir], { env });
+      expect(plain.code).toBe(0);
+      expect(plain.out[1]).toBe(
+        "The old app's background agents (launchd): io.utopiasoft.cashu.worker (removed), io.github.synszakala.finanse.worker (not found). Only the plist files were removed (launchctl not used: custom agents folder).",
+      );
+      expect(existsSync(join(dir, `${WORKER}.plist`))).toBe(false);
+    },
+    SLOW,
+  );
+
+  it(
+    "boots out on the already imported path only for a packaged prod app on the default data dir",
+    async () => {
+      const f = fixture();
+      expect(
+        (
+          await cli(f, ["--data-dir", f.dataDir, "--json"], {
+            answer: "confirm",
+            env: { CASHU_TESTING: "1" },
+          })
+        ).code,
+      ).toBe(0);
+      // A synthetic account home whose real-default agents dir is a temp dir and whose default data
+      // dir is (through a symlink) D: every real-home condition holds, with a recording runner.
+      const account = join(f.base, "account");
+      const defaultAgents = join(account, "Library", "LaunchAgents");
+      mkdirSync(defaultAgents, { recursive: true });
+      mkdirSync(join(account, "Library", "Application Support"));
+      for (const label of [WORKER, LEGACY])
+        writeFileSync(join(defaultAgents, `${label}.plist`), "x");
+      const calls: string[][] = [];
+      const launchctl = (argv: readonly string[]) => {
+        calls.push([...argv]);
+        return 0;
+      };
+      const release = { packaged: true, flavor: FLAVORS.prod };
+      const base = { env: { HOME: account }, launchctl, accountHome: account };
+      // D is not the account's default data dir yet: nothing is touched, the runner never runs.
+      const elsewhere = await cli(f, ["--data-dir", f.dataDir, "--json"], {
+        ...base,
+        runtime: release,
+      });
+      expect(lines(elsewhere).at(-1)).toMatchObject({
+        agents: { bootout: "skipped", agents: [{ state: "skipped" }, { state: "skipped" }] },
+      });
+      // A source run (no packaged runtime) on the default data dir: still nothing.
+      symlinkSync(f.dataDir, join(account, "Library", "Application Support", "cashU"));
+      for (const runtime of [undefined, { packaged: false, flavor: FLAVORS.prod }]) {
+        const source = await cli(f, ["--data-dir", f.dataDir, "--json"], {
+          ...base,
+          ...(runtime === undefined ? {} : { runtime }),
+        });
+        expect(lines(source).at(-1)).toMatchObject({ agents: { bootout: "skipped" } });
+      }
+      expect(calls).toEqual([]);
+      expect(readdirSync(defaultAgents)).toHaveLength(2);
+      // The packaged prod app on the account's default data dir retries the bootout.
+      const retried = await cli(f, ["--data-dir", f.dataDir, "--json"], {
+        ...base,
+        runtime: release,
+      });
+      expect(lines(retried).at(-1)).toMatchObject({
+        status: "already_migrated",
+        agents: {
+          bootout: "ran",
+          agents: [
+            { label: WORKER, state: "retired" },
+            { label: LEGACY, state: "retired" },
+          ],
+        },
+      });
+      expect(calls).toEqual([
+        ["/bin/launchctl", "bootout", `gui/501/${WORKER}`],
+        ["/bin/launchctl", "bootout", `gui/501/${LEGACY}`],
+      ]);
+      expect(readdirSync(defaultAgents)).toEqual([]);
     },
     SLOW,
   );

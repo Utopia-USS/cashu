@@ -37,7 +37,7 @@ import { startLocalHost } from "./host.js";
 import { recordStartupFailure } from "./localHost/startup.js";
 import { createProductionMarket, type ProductionMarket } from "./market/production.js";
 import { migrateCommand, migratesOnlyInto } from "./migration/cli.js";
-import { systemLaunchctl } from "./migration/pythonAgents.js";
+import { productionLaunchctl, type RetireRuntime } from "./migration/pythonAgents.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
 import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
@@ -183,6 +183,7 @@ function canonicalDir(path: string): string {
 async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
   let build: string;
   let testBuild = false;
+  let retireRuntime: RetireRuntime;
   try {
     const runtime = checkedRuntime({}, io);
     // A sealed test build imports only into its marker's data dir (a synthetic Python data dir for
@@ -193,26 +194,32 @@ async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
       testBuild = true;
     }
     build = runtime.build;
+    // `bundle` is set only by a verified packaged identity; a source checkout never has one.
+    retireRuntime = { packaged: runtime.bundle !== undefined, flavor: processFlavor() };
   } catch (error) {
     io.stderr(`cashu-host: ${error instanceof RefusalError ? error.message : "failed"}`);
     return error instanceof RefusalError ? error.exitCode : FAILURE_EXIT;
   }
+  // The only place the real launchctl is wired, and only for a packaged app of the flavor that
+  // replaces the Python install (prod) that is not a sealed test build: a source run (dev, tests,
+  // e2e), staging and test builds never get it. pythonAgents.ts still refuses it under
+  // CASHU_TESTING, a custom CASHU_LAUNCH_AGENTS_DIR, a HOME that is not the account's, or an import
+  // into any data dir other than the account's default one. A test build retires only the plists of
+  // an explicit CASHU_LAUNCH_AGENTS_DIR.
+  const launchctl = productionLaunchctl({
+    platform: process.platform,
+    runtime: retireRuntime,
+    testBuild,
+  });
   return migrateCommand(argv, {
     env: io.env,
     stdout: io.stdout,
     stderr: io.stderr,
     readLine: io.readLine ?? (async () => null),
     build,
-    // The only place the real launchctl is wired: it retires the Python worker agents after a
-    // successful import, and pythonAgents.ts still refuses it under CASHU_TESTING or a custom
-    // CASHU_LAUNCH_AGENTS_DIR. A flavor that does not replace the Python install (staging) never
-    // touches the Python app's launchd agents. A test build never gets the runner and retires
-    // only the plists of an explicit CASHU_LAUNCH_AGENTS_DIR.
-    ...(testBuild
-      ? { testBuild: true }
-      : process.platform === "darwin" && processFlavor().inheritsPythonInstall
-        ? { launchctl: systemLaunchctl }
-        : {}),
+    runtime: retireRuntime,
+    ...(testBuild ? { testBuild: true } : {}),
+    ...(launchctl === null ? {} : { launchctl }),
   });
 }
 

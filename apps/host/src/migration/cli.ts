@@ -62,7 +62,7 @@ import {
 import { M, type MigrateCounts, type UnpricedLine } from "./migrate.strings.js";
 import { type KeyStoreFactory, verifyPythonMigration } from "./oneShot.js";
 import { unpricedAfterMigration } from "./priceReach.js";
-import type { LaunchctlRunner } from "./pythonAgents.js";
+import type { LaunchctlRunner, RetireRuntime } from "./pythonAgents.js";
 
 /** Exit code of a malformed command line (EX_USAGE). */
 const USAGE_EXIT = 64;
@@ -92,6 +92,13 @@ export interface MigrateIo {
   readonly testBuild?: boolean;
   /** The user's uid for `gui/<uid>` (default: this process's). */
   readonly uid?: number;
+  /**
+   * The running app (packaged or not, its flavor), set by host main.ts. Without it the real
+   * ~/Library/LaunchAgents is never touched, whatever runner was passed (pythonAgents.ts).
+   */
+  readonly runtime?: RetireRuntime;
+  /** Tests: the account home the retirement compares HOME and the data dir with. */
+  readonly accountHome?: string;
 }
 
 interface Args {
@@ -345,28 +352,18 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
     throw error;
   }
   const { marker } = result;
+  // Both a fresh cutover and a folder found already imported retire the Python worker agents (same
+  // guards, idempotent): a crash between the cutover and this step, or a failed bootout, is retried
+  // by the next `cashu migrate` / Import. Never fails the import.
+  const after = retireAfterImport(io, args.dataDir, marker, home);
   if (result.status === "already_migrated" && !args.json) {
-    printAlreadyMigrated(io, args, t, home, marker);
+    printAlreadyMigrated(io, args, t, home, marker, after);
     return 0;
   }
   const backup = homeRelativePath(join(args.dataDir, marker.backupDir), home);
   // After a finished cutover a failing check must not turn the import into a reported failure
   // (non-strict: the verify that the hint asks for runs it strictly).
   const unpriced = result.status === "migrated" ? unpricedOf(args.dataDir, marker.backupDir) : null;
-  // The one place both the terminal and the app's import reach after a cutover committed: retire
-  // the Python worker agents and read the slugs for the MCP lines (never fails the import).
-  const after =
-    result.status === "migrated"
-      ? afterImport({
-          dataDir: args.dataDir,
-          backupDir: marker.backupDir,
-          env: io.env,
-          home,
-          uid: io.uid ?? process.getuid?.() ?? -1,
-          launchctl: io.launchctl ?? null,
-          ...(io.testBuild === true ? { testBuild: true } : {}),
-        })
-      : null;
   if (args.json) {
     emit(io, {
       event: "done",
@@ -374,20 +371,39 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
       ...countsOf(marker),
       backupDir: marker.backupDir,
       ...protocolUnpriced(unpriced),
-      ...(after === null
-        ? {}
-        : {
-            agents: after.agents,
-            ...(after.slugs === null ? {} : { mcpProfiles: protocolSlugs(after.slugs) }),
-          }),
+      agents: after.agents,
+      ...(after.slugs === null ? {} : { mcpProfiles: protocolSlugs(after.slugs) }),
     });
     return 0;
   }
   io.stdout(t.tr(M.migrated)(countsOf(marker), backup));
   printUnpriced(io, t, unpriced);
-  if (after !== null) printAfterImport(io, t, args.dataDir, after);
+  printAfterImport(io, t, args.dataDir, after);
   io.stdout(t.tr(M.verifyHint));
   return 0;
+}
+
+/**
+ * The one place every finished import reaches (a fresh cutover, or D found already imported by the
+ * terminal or the app): retire the Python worker agents and read the slugs for the MCP lines.
+ */
+function retireAfterImport(
+  io: MigrateIo,
+  dataDir: string,
+  marker: MigrationMarker,
+  home: string,
+): AfterImport {
+  return afterImport({
+    dataDir,
+    backupDir: marker.backupDir,
+    env: io.env,
+    home,
+    uid: io.uid ?? process.getuid?.() ?? -1,
+    launchctl: io.launchctl ?? null,
+    ...(io.testBuild === true ? { testBuild: true } : {}),
+    ...(io.runtime === undefined ? {} : { runtime: io.runtime }),
+    ...(io.accountHome === undefined ? {} : { accountHome: io.accountHome }),
+  });
 }
 
 /** The agents result (with the manual commands of any failure) and the MCP reconnect lines. */
@@ -448,9 +464,11 @@ function printAlreadyMigrated(
   t: Translator,
   home: string,
   marker: MigrationMarker,
+  after: AfterImport,
 ): void {
   const backup = homeRelativePath(join(args.dataDir, marker.backupDir), home);
   io.stdout(t.tr(M.alreadyMigrated)(new Date(marker.at).toISOString(), backup));
+  printAfterImport(io, t, args.dataDir, after);
   io.stdout(t.tr(M.verifyHint));
 }
 
@@ -535,7 +553,8 @@ export async function migrateCommand(argv: readonly string[], io: MigrateIo): Pr
       io.stderr(t.tr(M.usage));
       return USAGE_EXIT;
     }
-    printAlreadyMigrated(io, args, t, home, marker);
+    const after = retireAfterImport(io, args.dataDir, marker, home);
+    printAlreadyMigrated(io, args, t, home, marker, after);
     return 0;
   }
   try {

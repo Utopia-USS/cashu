@@ -88,7 +88,11 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
    successful import (app or terminal) cashU runs, for exactly `io.utopiasoft.cashu.worker` and
    `io.github.synszakala.finanse.worker` whose plist is in `~/Library/LaunchAgents`,
    `launchctl bootout gui/<uid>/<label>` and removes the plist (nothing else, never the native
-   `io.utopiasoft.cashu.host`). The app's finished import and the terminal output say which were
+   `io.utopiasoft.cashu.host`). It does so only from the installed (packaged) cashU.app, and only for
+   an import into the default data dir `~/Library/Application Support/cashU`; a source checkout, the
+   staging app, a test build or an import into any other folder never touches those agents. A later
+   `cashu migrate` (or Import) on the already imported folder retries the step, so a crash or a failed
+   bootout is picked up. The app's finished import and the terminal output say which were
    removed, not present or failed. Only when one **failed**, finish it by hand (the screen and the
    terminal print these lines for the failed label):
    ```sh

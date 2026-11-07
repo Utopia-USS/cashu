@@ -5,10 +5,10 @@
 //                                                                 line: "confirm" or "cancel"
 //   {"event":"done","status":"migrated"|"already_migrated",...}   last line, exit 0
 //     (migrated / verified also carry `unpriced`: the imported instruments the app cannot value yet,
-//     public tickers / ISINs / instrument names only; absent when that check could not run. A fresh
-//     `migrated` also carries `mcpProfiles`, the imported profile slugs the parent builds the
-//     `claude mcp remove` / `add` lines from, and `agents`, what became of the retired Python app's
-//     launchd worker agents)
+//     public tickers / ISINs / instrument names only; absent when that check could not run.
+//     `migrated` and `already_migrated` also carry `mcpProfiles`, the imported profile slugs the
+//     parent builds the `claude mcp remove` / `add` lines from, and `agents`, what became of the
+//     retired Python app's launchd worker agents: an already imported folder retries that step)
 // `migrate verify --data-dir <dir> --json` prints one final line: done with status "verified" (exit
 // 0) or failed (exit 1); it never asks for words.
 //   {"event":"failed","code":"<StartupFailureCode>","detail":"..."} last line, exit 1
@@ -68,9 +68,10 @@ export type PythonAgentLabel = (typeof PYTHON_AGENT_LABELS)[number];
 
 /**
  * What became of each Python agent: `retired` (booted out when allowed, plist removed), `absent` (no
- * plist), `failed` (finish by hand), `skipped` (a test run without a temp agents dir: nothing touched).
- * `bootout` is `ran` when launchctl booted out every present agent (the real agents dir, outside
- * tests) and `skipped` when it was not used (a custom agents dir: plists removed only; or tests).
+ * plist), `failed` (finish by hand), `skipped` (the real agents dir was not ours to touch: a test or
+ * source run, a test build, or an import into another data dir than the account's default one).
+ * `bootout` is `ran` when launchctl booted out every present agent (the real agents dir, a packaged
+ * app outside tests) and `skipped` when it was not used (a custom agents dir: plists removed only).
  */
 export const pythonAgentRetirementSchema = z.strictObject({
   bootout: z.enum(["ran", "skipped"]),
@@ -151,12 +152,12 @@ export const migrateDoneSchema = z.strictObject({
     .regex(/^python-backup-[A-Za-z0-9_-]{1,64}$/)
     .optional(),
   unpriced: z.array(unpricedInstrumentSchema).max(MIGRATE_UNPRICED_MAX).optional(),
-  /** The imported profile slugs (a fresh `migrated` only), for the MCP reconnect lines. */
+  /** The imported profile slugs (`migrated` / `already_migrated`), for the MCP reconnect lines. */
   mcpProfiles: z
     .array(z.string().regex(MIGRATE_PROFILE_SLUG))
     .max(MIGRATE_MCP_PROFILES_MAX)
     .optional(),
-  /** What became of the Python app's launchd worker agents (a fresh `migrated` only). */
+  /** What became of the Python app's launchd worker agents (`migrated` / `already_migrated`). */
   agents: pythonAgentRetirementSchema.optional(),
 });
 

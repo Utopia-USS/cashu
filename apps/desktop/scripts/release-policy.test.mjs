@@ -135,6 +135,29 @@ it("rejects the same malformed markers as the app", () => {
   }
 });
 
+it("refuses the real dirs of every flavor in any letter case, like the app", () => {
+  for (const dir of [
+    "/applications/cashU-test",
+    "/Users/x/library/application support/cashU",
+    "/Users/x/LIBRARY/APPLICATION SUPPORT/CASHU/nested",
+    "/Users/x/library/Application Support/cashu staging",
+    "/Users/x/documents/cashU",
+    "/Users/x/Documents/CASHU STAGING",
+  ]) {
+    for (const key of ["installRoot", "dataDir", "workspacesDir"]) {
+      const text = JSON.stringify({ ...testMarker, [key]: dir });
+      expect(() => parseTestBuild(text)).toThrow(/must be an absolute, normalized directory/);
+      expect(() => parseTestBuildMarker(text)).toThrow("test_build_marker_invalid");
+    }
+  }
+  const nested = JSON.stringify({
+    ...testMarker,
+    workspacesDir: `${testMarker.dataDir.toUpperCase()}/w`,
+  });
+  expect(() => parseTestBuild(nested)).toThrow(/separate trees/);
+  expect(() => parseTestBuildMarker(nested)).toThrow("test_build_marker_invalid");
+});
+
 it("refuses to release a bundle that carries the test-build marker", () => {
   const dir = mkdtempSync(join(tmpdir(), "cashu-release-policy-app-"));
   temps.push(dir);

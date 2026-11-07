@@ -6,12 +6,16 @@
 // gui/<uid>/<label>` (a "not loaded" answer is fine), then the plist is removed. Idempotent; never a
 // glob, never another label (the native host agent `io.utopiasoft.cashu.host` is never touched).
 //
-// Safety: launchctl runs only through the injected runner, and only when the agents dir is the real
-// default (`CASHU_LAUNCH_AGENTS_DIR` unset), `CASHU_TESTING` is not "1" and the home is the account's own. With
-// `CASHU_LAUNCH_AGENTS_DIR` set only the plists in that dir are removed (bootout skipped). Without a
-// runner, or under tests without that dir, nothing is touched at all (`skipped`). A sealed test build
-// (`testBuild`) never runs launchctl and acts only on an explicit `CASHU_LAUNCH_AGENTS_DIR`: without
-// one nothing is touched (`skipped`), whatever runner or home it was given.
+// Safety: the real default dir (`~/Library/LaunchAgents`) is touched, and launchctl run through the
+// injected runner, only when ALL of these hold: the process is a packaged app (not a source checkout)
+// of a flavor that replaces the Python install (prod), not a sealed test build, `CASHU_TESTING` is not
+// "1", `CASHU_LAUNCH_AGENTS_DIR` is unset, the home is the account's own, and the imported data dir is
+// (canonically, so case and symlinks cannot fool it) the account's default data dir of that flavor
+// (`<account home>/Library/Application Support/cashU`), the one the Python worker served. Any other
+// import (a demo or synthetic data dir, a dev run, a temp HOME) leaves it alone (`skipped`). With
+// `CASHU_LAUNCH_AGENTS_DIR` set only the plists in that dir are removed (bootout skipped), in any
+// runtime. host main.ts wires the real runner only for a packaged, prod-flavor, non-test runtime
+// (`productionLaunchctl`). Plists are never parsed.
 import { spawnSync } from "node:child_process";
 import { lstatSync, realpathSync, unlinkSync } from "node:fs";
 import { userInfo } from "node:os";
@@ -21,6 +25,7 @@ import {
   type PythonAgentLabel,
   type PythonAgentRetirement,
 } from "@cashu/host-protocol/startup-failure";
+import type { Flavor } from "@cashu/node-host/flavor";
 
 /** Python's `LAUNCH_AGENTS_ENV`: the agents dir override (tests and the e2e use a temp dir). */
 const LAUNCH_AGENTS_ENV = "CASHU_LAUNCH_AGENTS_DIR";
@@ -36,6 +41,31 @@ export const systemLaunchctl: LaunchctlRunner = (argv) => {
   return result.error === undefined ? result.status : null;
 };
 
+/** What the running app is, as far as the real bootout cares (host main.ts; tests inject it). */
+export interface RetireRuntime {
+  /** The process runs from a packaged app bundle, not from a source checkout. */
+  readonly packaged: boolean;
+  /** This process's flavor (`processFlavor()`): its table entry, never its name. */
+  readonly flavor: Pick<Flavor, "inheritsPythonInstall" | "dataDirName">;
+}
+
+/**
+ * The runner `migrate` gets: the real one only on macOS for a packaged app of a flavor that replaces
+ * the Python install and is not a sealed test build; null for a source run, staging or a test build.
+ */
+export function productionLaunchctl(facts: {
+  readonly platform: NodeJS.Platform;
+  readonly runtime: RetireRuntime;
+  readonly testBuild: boolean;
+}): LaunchctlRunner | null {
+  return facts.platform === "darwin" &&
+    facts.runtime.packaged &&
+    facts.runtime.flavor.inheritsPythonInstall &&
+    !facts.testBuild
+    ? systemLaunchctl
+    : null;
+}
+
 /**
  * launchctl's answers to a bootout of a service that is not loaded: ESRCH (3, "No such process") and
  * 113 ("Could not find specified service"); both mean there is nothing left to stop.
@@ -46,6 +76,13 @@ export interface RetireInput<L extends string = string> {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The user's home (the default agents dir is `<home>/Library/LaunchAgents`). */
   readonly home: string;
+  /**
+   * The data dir just imported (or found already imported). The real default agents dir is touched
+   * only when it is canonically the account's default data dir of `runtime.flavor`.
+   */
+  readonly dataDir: string;
+  /** The running app (host main.ts). Absent: a source or test run; the real default dir stays closed. */
+  readonly runtime?: RetireRuntime;
   /** The user's uid (`gui/<uid>`). */
   readonly uid: number;
   /** The launchctl runner; null (tests, non-macOS) never boots anything out. */
@@ -90,10 +127,36 @@ function plistState(path: string): PlistState {
   }
 }
 
-/** True when `home` is the account's home from the user database (not a HOME override). */
+/**
+ * True when `home` is the account's home from the user database (not a HOME override). The native
+ * realpath resolves symlinks and gives each component's on-disk case, so the comparison holds on a
+ * case-insensitive disk.
+ */
 function isAccountHome(home: string, accountHome: string | undefined): boolean {
   try {
-    return realpathSync(home) === realpathSync(accountHome ?? userInfo().homedir);
+    return realpathSync.native(home) === realpathSync.native(accountHome ?? userInfo().homedir);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when `dataDir` is canonically `<account home>/Library/Application Support/<flavor's dir>`, the
+ * data dir the Python app (and its worker) used. A missing dir on either side is never a match.
+ */
+function isAccountDefaultDataDir(
+  dataDir: string,
+  accountHome: string | undefined,
+  runtime: RetireRuntime,
+): boolean {
+  try {
+    const expected = join(
+      accountHome ?? userInfo().homedir,
+      "Library",
+      "Application Support",
+      runtime.flavor.dataDirName.darwin,
+    );
+    return realpathSync.native(dataDir) === realpathSync.native(expected);
   } catch {
     return false;
   }
@@ -104,14 +167,19 @@ export function retireLaunchAgents<L extends string>(input: RetireInput<L>): Ret
   const custom = input.env[LAUNCH_AGENTS_ENV]?.trim() ?? "";
   const testing = input.env.CASHU_TESTING === "1";
   const realDefault = custom === "";
-  // The real ~/Library/LaunchAgents is touched only by the production wiring outside tests, and only
-  // when `home` is the account's own home: a temp HOME must never boot out the real gui domain's agents.
+  // The real ~/Library/LaunchAgents is touched only by a packaged prod app outside tests, when `home`
+  // is the account's own home and the import was into the account's default data dir: a temp HOME, a
+  // dev checkout or a demo / synthetic data dir must never boot out the real gui domain's agents.
+  const runtime = input.runtime;
   const touchDefault =
     realDefault &&
     !testing &&
     input.testBuild !== true &&
     input.launchctl !== null &&
-    isAccountHome(input.home, input.accountHome);
+    runtime?.packaged === true &&
+    runtime.flavor.inheritsPythonInstall &&
+    isAccountHome(input.home, input.accountHome) &&
+    isAccountDefaultDataDir(input.dataDir, input.accountHome, runtime);
   const skipped = (): Retirement<L> => ({
     bootout: "skipped",
     agents: input.labels.map((label) => ({ label, state: "skipped" })),

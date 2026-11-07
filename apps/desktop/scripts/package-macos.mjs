@@ -38,7 +38,8 @@
 // --notary-key/--notary-key-id/--notary-issuer pass an App Store Connect API key (CI): the key file
 // is handed to notarytool by path and never read or printed here; the key ID and issuer may print.
 // With --notarize (or the API key): zip -> notarytool (wait) -> staple the app -> re-zip the stapled app; with --dmg
-// also dmg from the stapled app -> sign -> notarize -> staple. Every notarization prints its
+// also dmg from the stapled app -> sign -> notarize -> staple. The dmg holds the app and an
+// `Applications -> /Applications` symlink (drag the app onto it to install or replace). Every notarization prints its
 // submission id and status. Final checks: verify-package.mjs --release [--notarized] and spctl /
 // stapler on the dmg. Artifacts in --out (relative to the current directory):
 //   cashU-<version>-mac-arm64.{zip,dmg}, cashU-<version>-mac-x64.{zip,dmg}
@@ -69,6 +70,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -450,16 +452,24 @@ if (notary) {
 }
 zipApp(zip);
 if (withDmg) {
+  // The dmg's root: the (stapled) app, copied with ditto so its signature and staple ticket stay
+  // intact, beside an `Applications -> /Applications` symlink the user drags it onto.
+  const stage = join(build, "dmg-stage");
+  rmSync(stage, { recursive: true, force: true });
+  mkdirSync(stage, { recursive: true });
+  run("ditto", [app, join(stage, basename(app))]);
+  symlinkSync("/Applications", join(stage, "Applications"));
   run("hdiutil", [
     "create",
     "-srcfolder",
-    app,
+    stage,
     "-format",
     "UDZO",
     "-volname",
     flavor.productName,
     dmg,
   ]);
+  rmSync(stage, { recursive: true, force: true });
   // A disk image carries no hardened runtime or entitlements: identity and timestamp only.
   if (identity)
     run(

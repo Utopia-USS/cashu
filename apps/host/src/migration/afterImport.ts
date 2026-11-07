@@ -1,5 +1,7 @@
-// What `cashu migrate` does once a cutover has finished (status `migrated`; the terminal and the app's
-// "Import my data" both reach it through `runImport` in cli.ts): retire the Python app's launchd worker
+// What `cashu migrate` does once a cutover has finished (status `migrated`, and again on every later
+// run that finds the folder `already_migrated`, so a crash between the cutover and this step or a
+// failed bootout is retried; the terminal and the app's "Import my data" both reach it through cli.ts):
+// retire the Python app's launchd worker
 // agents (pythonAgents.ts) and read the imported profile slugs for the MCP reconnect lines (the old
 // `cashu-<slug>` registrations point at the replaced Python binary). Neither may undo or fail the
 // import: every error becomes a reported outcome.
@@ -12,7 +14,7 @@ import {
 } from "@cashu/host-protocol/startup-failure";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { databaseName } from "./oneShot.js";
-import { type LaunchctlRunner, retirePythonAgents } from "./pythonAgents.js";
+import { type LaunchctlRunner, type RetireRuntime, retirePythonAgents } from "./pythonAgents.js";
 
 export interface AfterImportInput {
   readonly dataDir: string;
@@ -25,6 +27,10 @@ export interface AfterImportInput {
   readonly launchctl: LaunchctlRunner | null;
   /** A sealed test build: never launchctl, only an explicit CASHU_LAUNCH_AGENTS_DIR (pythonAgents.ts). */
   readonly testBuild?: boolean;
+  /** The running app (host main.ts); absent, the real default agents dir is never touched. */
+  readonly runtime?: RetireRuntime;
+  /** Tests: the account home (default: the user database's). */
+  readonly accountHome?: string;
 }
 
 export interface AfterImport {

@@ -47,23 +47,26 @@ function invalid(): never {
   throw new Error("test_build_marker_invalid");
 }
 
-/** Never /Applications, a flavor's default data dir, its real workspaces or the root. */
+/**
+ * Never /Applications, a flavor's default data dir, its real workspaces or the root. macOS disks are
+ * case-insensitive (`/users/x/library/application support/CASHU` names the real data dir), so every
+ * component is compared in lower case.
+ */
 function checkedDir(value: unknown): string {
   if (typeof value !== "string" || value.length > 1024 || value.includes("\0")) invalid();
   if (!isAbsolute(value) || resolve(value) !== value || value === "/") invalid();
-  const parts = value.split("/");
-  if (parts[1] === "Applications") invalid();
+  const parts = value.toLowerCase().split("/");
+  if (parts[1] === "applications") invalid();
   for (let index = 0; index + 2 < parts.length; index += 1) {
     if (
-      parts[index] === "Library" &&
-      parts[index + 1] === "Application Support" &&
-      REAL_DATA_DIRS.has(parts[index + 2]?.toLowerCase() ?? "")
+      parts[index] === "library" &&
+      parts[index + 1] === "application support" &&
+      REAL_DATA_DIRS.has(parts[index + 2] ?? "")
     )
       invalid();
   }
   for (let index = 0; index + 1 < parts.length; index += 1) {
-    if (parts[index] === "Documents" && REAL_WORKSPACES.has(parts[index + 1]?.toLowerCase() ?? ""))
-      invalid();
+    if (parts[index] === "documents" && REAL_WORKSPACES.has(parts[index + 1] ?? "")) invalid();
   }
   return value;
 }
@@ -86,7 +89,8 @@ export function parseTestBuildMarker(text: string): TestBuildMarker {
   const installRoot = checkedDir(record.installRoot);
   const dataDir = checkedDir(record.dataDir);
   const workspacesDir = checkedDir(record.workspacesDir);
-  const dirs = [installRoot, dataDir, workspacesDir];
+  // Separate trees, also on a case-insensitive disk.
+  const dirs = [installRoot, dataDir, workspacesDir].map((dir) => dir.toLowerCase());
   if (
     new Set(dirs).size !== dirs.length ||
     dirs.some((a) => dirs.some((b) => a !== b && b.startsWith(`${a}/`)))
