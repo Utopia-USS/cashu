@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -16,12 +17,18 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   artifactNames,
+  CI_ENV,
+  ciSigning,
   compareVersions,
   expectedAssets,
   formatCommand,
   ghCreateArgs,
   highestVersion,
   IDENTITY,
+  isInside,
+  NOTES_REQUIRED_ABOVE,
+  notesProblem,
+  packageArgs,
   parseCliArgs,
   parseVersion,
   publish,
@@ -39,6 +46,8 @@ describe("argument and environment rules", () => {
   it("takes exactly one mode", () => {
     expect(parseCliArgs(["--check"])).toEqual({
       mode: "check",
+      ci: false,
+      unsigned: false,
       ref: null,
       keepSrc: false,
       notesPath: null,
@@ -70,6 +79,112 @@ describe("argument and environment rules", () => {
     expect(parseCliArgs(["--dry-run"], fake).fakePackage).toBe("/tmp/fake.mjs");
   });
 
+  it("allows --ci only inside GitHub Actions, without --ref / --keep-src, --unsigned only for a CI dry run", () => {
+    const gha = { GITHUB_ACTIONS: "true", CI: "true" };
+    expect(parseCliArgs(["--ci", "--yes"], gha)).toMatchObject({ mode: "yes", ci: true });
+    expect(parseCliArgs(["--ci", "--dry-run", "--unsigned"], gha)).toMatchObject({
+      mode: "dry-run",
+      ci: true,
+      unsigned: true,
+    });
+    expect(() => parseCliArgs(["--ci", "--yes"])).toThrow(/only in GitHub Actions/);
+    expect(() => parseCliArgs(["--ci", "--yes"], { CI: "true" })).toThrow(/only in GitHub Actions/);
+    expect(() => parseCliArgs(["--ci", "--dry-run", "--ref", "HEAD"], gha)).toThrow(/not for --ci/);
+    expect(() => parseCliArgs(["--ci", "--dry-run", "--keep-src"], gha)).toThrow(/not for --ci/);
+    expect(() => parseCliArgs(["--ci", "--yes", "--unsigned"], gha)).toThrow(
+      /only for --ci --dry-run/,
+    );
+    expect(() => parseCliArgs(["--dry-run", "--unsigned"])).toThrow(/only for --ci --dry-run/);
+  });
+
+  it("takes the CI signing inputs by name, never guessing a missing one", () => {
+    const good = {
+      [CI_ENV.keychain]: "/tmp/r/cashu-release.keychain-db",
+      [CI_ENV.notaryKey]: "/tmp/r/AuthKey.p8",
+      [CI_ENV.notaryKeyId]: "ABCDE12345",
+      [CI_ENV.notaryIssuer]: "01234567-89ab-cdef-0123-456789abcdef",
+    };
+    expect(ciSigning(good)).toEqual({
+      identity: IDENTITY,
+      keychain: "/tmp/r/cashu-release.keychain-db",
+      notaryKey: "/tmp/r/AuthKey.p8",
+      notaryKeyId: "ABCDE12345",
+      notaryIssuer: "01234567-89ab-cdef-0123-456789abcdef",
+    });
+    expect(() => ciSigning({})).toThrow(
+      "--ci needs CASHU_RELEASE_KEYCHAIN, CASHU_NOTARY_KEY_PATH, CASHU_NOTARY_KEY_ID, CASHU_NOTARY_ISSUER",
+    );
+    expect(() =>
+      ciSigning({ ...good, [CI_ENV.identity]: "Developer ID Application: X (ABCDE12345)" }),
+    ).toThrow(/must be "Developer ID Application: Utopia/);
+    expect(() => ciSigning({ ...good, [CI_ENV.keychain]: "rel.keychain-db" })).toThrow(/absolute/);
+    expect(() => ciSigning({ ...good, [CI_ENV.notaryKey]: "/tmp/key.pem" })).toThrow(/\.p8/);
+    expect(() => ciSigning({ ...good, [CI_ENV.notaryKeyId]: "abc" })).toThrow(/key id/);
+    expect(() => ciSigning({ ...good, [CI_ENV.notaryIssuer]: "nope" })).toThrow(/issuer UUID/);
+  });
+
+  it("hands package-macos the owner profile, the CI key and keychain, or nothing (ad hoc)", () => {
+    const base = { script: "/s/package-macos.mjs", arch: "x64", dir: "/out" };
+    expect(
+      packageArgs({ ...base, signing: { identity: IDENTITY, notaryProfile: "cashu-notary" } }),
+    ).toEqual([
+      "/s/package-macos.mjs",
+      "x64",
+      "--sign",
+      IDENTITY,
+      "--notarize",
+      "cashu-notary",
+      "--dmg",
+      "--out",
+      "/out",
+    ]);
+    expect(
+      packageArgs({
+        ...base,
+        signing: {
+          identity: IDENTITY,
+          keychain: "/k.keychain-db",
+          notaryKey: "/a.p8",
+          notaryKeyId: "ABCDE12345",
+          notaryIssuer: "u",
+        },
+      }),
+    ).toEqual([
+      "/s/package-macos.mjs",
+      "x64",
+      "--sign",
+      IDENTITY,
+      "--keychain",
+      "/k.keychain-db",
+      "--notary-key",
+      "/a.p8",
+      "--notary-key-id",
+      "ABCDE12345",
+      "--notary-issuer",
+      "u",
+      "--dmg",
+      "--out",
+      "/out",
+    ]);
+    expect(packageArgs({ ...base, signing: null })).toEqual([
+      "/s/package-macos.mjs",
+      "x64",
+      "--dmg",
+      "--out",
+      "/out",
+    ]);
+  });
+
+  it("asks for hand-written notes above the commit limit and knows inside from outside", () => {
+    expect(notesProblem({ commitCount: NOTES_REQUIRED_ABOVE, hasNotes: false })).toBeNull();
+    expect(notesProblem({ commitCount: 714, hasNotes: true })).toBeNull();
+    expect(notesProblem({ commitCount: 714, hasNotes: false })).toMatch(/714 commits.*--notes/);
+    expect(isInside("/a/b", "/a/b/build/x")).toBe(true);
+    expect(isInside("/a/b", "/a/b")).toBe(true);
+    expect(isInside("/a/b", "/a/bc")).toBe(false);
+    expect(isInside("/a/b", "/var/folders/T/cashu-release-v0.5.0-x")).toBe(false);
+  });
+
   it("refuses CI before anything else when run as a program", () => {
     const result = spawnSync(process.execPath, [join(here, "release-macos.mjs"), "--check"], {
       env: { PATH: process.env.PATH, CI: "1" },
@@ -94,6 +209,8 @@ describe("argument and environment rules", () => {
       SOME_API_KEY: "x",
       AWS_SECRET_ACCESS_KEY: "x",
       ELECTRON_BUILDER_PUBLISH: "x",
+      CASHU_NOTARY_KEY_PATH: "/x.p8",
+      CASHU_RELEASE_KEYCHAIN: "/x.keychain-db",
     });
     expect(env).toEqual({ PATH: "/usr/bin", HOME: "/Users/x", LANG: "en_US.UTF-8" });
   });
@@ -266,6 +383,10 @@ if (step === "package") {
   const stage = join(out, ".fake-" + arch);
   const contents = join(stage, "cashU.app", "Contents");
   mkdirSync(contents, { recursive: true });
+  if (process.env.FAKE_TEST_BUILD) {
+    mkdirSync(join(contents, "Resources"), { recursive: true });
+    writeFileSync(join(contents, "Resources", "test-build.json"), "{}");
+  }
   writeFileSync(join(contents, "Info.plist"), '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>' + version + '</string></dict></plist>');
   const zip = join(out, "cashU-" + version + "-mac-" + arch + ".zip");
   execFileSync("/usr/bin/ditto", ["-c", "-k", "--keepParent", join(stage, "cashU.app"), zip]);
@@ -293,8 +414,12 @@ function gitEnv() {
   };
 }
 
-/** A synthetic repo (origin + clone) holding a copy of the release scripts, so the script's root is the clone. */
-function fixtureRepo(name) {
+/**
+ * A synthetic repo (origin + clone) holding a copy of the release scripts, so the script's root is the clone.
+ * `committed`: the scripts are committed and pushed (a clean checkout, as CI has); `extraCommits`: that many
+ * more commits after the version bump.
+ */
+function fixtureRepo(name, { committed = false, extraCommits = 0 } = {}) {
   const dir = join(base, name);
   const origin = join(dir, "origin.git");
   const work = join(dir, "work");
@@ -320,13 +445,28 @@ function fixtureRepo(name) {
   copyFileSync(join(here, "release-macos.mjs"), join(scripts, "release-macos.mjs"));
   for (const file of ["latestMac.mjs", "appcast.mjs"])
     copyFileSync(join(here, "release", file), join(scripts, "release", file));
+  copyFileSync(join(here, "release-policy.mjs"), join(scripts, "release-policy.mjs"));
+  for (let i = 0; i < extraCommits; i++) {
+    writeFileSync(join(work, "CHANGES.txt"), `${i}\n`);
+    git(work, "add", "CHANGES.txt");
+    git(work, "commit", "-q", "-m", `Change ${i}`);
+  }
+  if (committed) {
+    writeFileSync(join(work, ".gitignore"), "build/\n");
+    git(work, "add", ".");
+    git(work, "commit", "-q", "-m", "Add the release scripts");
+  }
+  if (committed || extraCommits) git(work, "push", "-q", "origin", "main");
   const stubs = join(dir, "stubs");
   const log = join(dir, "calls.log");
   writeStubs(stubs, log);
   const fake = join(dir, "fake-package.mjs");
   writeFileSync(fake, FAKE_PACKAGE);
+  const tmp = join(dir, "tmp");
+  mkdirSync(tmp);
   return {
     work,
+    tmp,
     origin,
     stubs,
     log,
@@ -351,10 +491,13 @@ function runScript(repo, args, extraEnv = {}) {
     PATH: `${repo.stubs}${delimiter}${process.env.PATH}`,
     STUB_LOG: repo.log,
     STUB_STATE: repo.state,
-    ...extraEnv,
+    // The owner modes export the source under TMPDIR: a per-fixture dir shows what is left behind.
+    TMPDIR: repo.tmp,
   };
   delete env.CI;
   delete env.GITHUB_ACTIONS;
+  for (const name of Object.values(CI_ENV)) delete env[name];
+  Object.assign(env, extraEnv);
   return spawnSync(process.execPath, [repo.script, ...args], {
     cwd: repo.work,
     env,
@@ -453,7 +596,14 @@ describe.skipIf(process.platform !== "darwin")(
       expect(readdirSync(out).sort()).toEqual(
         [...expectedAssets("0.5.0"), "release-notes.md"].sort(),
       );
-      expect(existsSync(join(repo.work, "build", "release", "src-v0.5.0"))).toBe(false);
+      // The export lived outside the checkout (under TMPDIR) and is gone.
+      expect(result.stdout).toMatch(
+        new RegExp(
+          `Exporting [0-9a-f]{12} \\(git archive\\) to ${realpathSync(repo.tmp)}/cashu-release-v0\\.5\\.0-`,
+        ),
+      );
+      expect(readdirSync(repo.tmp)).toEqual([]);
+      expect(readdirSync(join(repo.work, "build", "release"))).toEqual(["v0.5.0"]);
       expect(readFileSync(join(out, "release-notes.md"), "utf8")).toBe(
         "- Add the native app\n\nFull list: https://github.com/Utopia-USS/cashu/compare/v0.4.6...v0.5.0\n",
       );
@@ -468,6 +618,9 @@ describe.skipIf(process.platform !== "darwin")(
           `gh release create v0\\.5\\.0 --repo Utopia-USS/cashu --draft --target ${commit} --title 'cashU 0\\.5\\.0'`,
         ),
       );
+      const printed = result.stdout.split("\n").find((line) => line.includes("gh release create"));
+      for (const name of expectedAssets("0.5.0")) expect(printed).toContain(`${out}/${name}`);
+      expect(printed).not.toContain("appcast-macos-x64.xml");
       for (const name of expectedAssets("0.5.0"))
         expect(result.stdout).toMatch(new RegExp(`[0-9a-f]{64}  ${name.replaceAll(".", "\\.")}`));
       const log = calls(repo.log);
@@ -500,6 +653,56 @@ describe.skipIf(process.platform !== "darwin")(
       expect(existsSync(join(repo.work, "build"))).toBe(false);
     });
 
+    it("refuses an artifact that carries the sealed test-build marker", () => {
+      const repo = fixtureRepo("test-build");
+      const result = runScript(repo, ["--dry-run"], {
+        CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+        FAKE_TEST_BUILD: "1",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/TEST BUILD: .* a test build can never be released/);
+      expect(result.stdout).not.toMatch(/Writing the update feeds/);
+    });
+
+    it("keeps the export outside the checkout with --keep-src", () => {
+      const repo = fixtureRepo("keep-src");
+      const result = runScript(repo, ["--dry-run", "--keep-src"], {
+        CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+      });
+      expect(result.status).toBe(0);
+      const kept = readdirSync(repo.tmp);
+      expect(kept).toHaveLength(1);
+      expect(kept[0]).toMatch(/^cashu-release-v0\.5\.0-/);
+      expect(existsSync(join(repo.tmp, kept[0], "src", "apps", "desktop", "package.json"))).toBe(
+        true,
+      );
+      expect(result.stdout).toContain(
+        `source export kept: ${join(realpathSync(repo.tmp), kept[0])}`,
+      );
+    });
+
+    it("refuses --yes without --notes above the commit limit; a dry run only warns", () => {
+      const repo = fixtureRepo("many-commits", { extraCommits: NOTES_REQUIRED_ABOVE });
+      const yes = runScript(repo, ["--yes"]);
+      expect(yes.status).toBe(1);
+      expect(yes.stderr).toMatch(/51 commits since the previous tag.*--notes <file>/);
+      expect(existsSync(join(repo.work, "build"))).toBe(false);
+      expect(readdirSync(repo.tmp)).toEqual([]);
+      const dry = runScript(repo, ["--dry-run"], { CASHU_RELEASE_FAKE_PACKAGE: repo.fake });
+      expect(dry.status).toBe(0);
+      expect(dry.stdout).toMatch(/WARNING: --yes would stop here: 51 commits/);
+      const notes = join(repo.tmp, "..", "notes.md");
+      writeFileSync(notes, "Hand-written notes\n");
+      const withNotes = runScript(repo, ["--dry-run", "--notes", notes], {
+        CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+      });
+      expect(withNotes.status).toBe(0);
+      expect(withNotes.stdout).not.toMatch(/WARNING/);
+      expect(
+        readFileSync(join(repo.work, "build", "release", "v0.5.0", "release-notes.md"), "utf8"),
+      ).toBe("Hand-written notes\n");
+    });
+
     it("dry-runs another ref when gh is not logged in, skipping the GitHub checks", () => {
       const repo = fixtureRepo("ref");
       const result = runScript(repo, ["--check", "--ref", "HEAD~1"], { STUB_GH_AUTH: "fail" });
@@ -514,3 +717,89 @@ describe.skipIf(process.platform !== "darwin")(
     });
   },
 );
+
+describe.skipIf(process.platform !== "darwin")("--ci with a fake package step", () => {
+  const gha = { GITHUB_ACTIONS: "true", CI: "true" };
+
+  it("builds a clean checkout in place, unsigned, with the 7 assets and no export", () => {
+    const repo = fixtureRepo("ci-unsigned", { committed: true });
+    const result = runScript(repo, ["--ci", "--dry-run", "--unsigned"], {
+      ...gha,
+      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+      GH_TOKEN: "synthetic-token",
+    });
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/Building the checkout in place/);
+    expect(result.stdout).toMatch(/--unsigned: no signing identity/);
+    expect(result.stdout).toMatch(/not published \(--dry-run\)\. --ci --yes would run/);
+    const out = join(repo.work, "build", "release", "v0.5.0");
+    expect(readdirSync(out).sort()).toEqual(
+      [...expectedAssets("0.5.0"), "release-notes.md"].sort(),
+    );
+    expect(readdirSync(repo.tmp)).toEqual([]);
+    const log = calls(repo.log);
+    // No admin probe in CI (the workflow token is not a user), no keychain or notary calls unsigned.
+    expect(
+      log.filter((call) => call[0] === "gh").map((call) => call.slice(1, 3).join(" ")),
+    ).toEqual(["auth status", "release view", "release list"]);
+    expect(
+      log.some((call) => call[0] === "security" || call[0] === "xcrun" || call[0] === "spctl"),
+    ).toBe(false);
+    const fake = log.filter((call) => call[0] === "fake");
+    expect(fake.filter((call) => call[1] === "package").map((call) => call[2])).toEqual([
+      "arm64",
+      "x64",
+    ]);
+    expect(fake.every((call) => call.at(-1) === "no-token")).toBe(true);
+  });
+
+  it("checks the temporary keychain and the API key before a signed CI dry run", () => {
+    const repo = fixtureRepo("ci-signed", { committed: true });
+    const keychain = join(repo.tmp, "..", "release.keychain-db");
+    const key = join(repo.tmp, "..", "AuthKey_ABCDE12345.p8");
+    writeFileSync(keychain, "");
+    writeFileSync(key, "");
+    const signingEnv = {
+      [CI_ENV.keychain]: keychain,
+      [CI_ENV.notaryKey]: key,
+      [CI_ENV.notaryKeyId]: "ABCDE12345",
+      [CI_ENV.notaryIssuer]: "01234567-89ab-cdef-0123-456789abcdef",
+    };
+    const result = runScript(repo, ["--ci", "--dry-run"], {
+      ...gha,
+      ...signingEnv,
+      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+    });
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/signing identity: .* \(temporary keychain\)/);
+    expect(result.stdout).toMatch(/notarization: App Store Connect API key ABCDE12345/);
+    expect(result.stdout).not.toContain(key);
+    const missing = runScript(repo, ["--ci", "--dry-run"], {
+      ...gha,
+      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+    });
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toMatch(/--ci needs CASHU_RELEASE_KEYCHAIN/);
+  });
+
+  it("refuses a dirty checkout and a commit that is not on origin/main", () => {
+    const repo = fixtureRepo("ci-dirty", { committed: true });
+    writeFileSync(join(repo.work, "README.md"), "changed\n");
+    const dirty = runScript(repo, ["--ci", "--dry-run", "--unsigned"], {
+      ...gha,
+      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+    });
+    expect(dirty.status).toBe(1);
+    expect(dirty.stderr).toMatch(/the checkout has changes/);
+    git(repo.work, "commit", "-q", "-am", "Local only");
+    const ahead = runScript(repo, ["--ci", "--dry-run", "--unsigned"], {
+      ...gha,
+      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+    });
+    expect(ahead.status).toBe(1);
+    expect(ahead.stderr).toMatch(/is not on origin\/main/);
+    expect(existsSync(join(repo.work, "build"))).toBe(false);
+  });
+});
