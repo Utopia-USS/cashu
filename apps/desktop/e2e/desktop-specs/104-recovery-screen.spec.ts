@@ -218,10 +218,16 @@ test("Import my data retires the Python worker agents and shows the MCP lines to
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Kontynuuj import" }).click();
     await expect(page.getByText("Import zakończony.")).toBeVisible({ timeout: 90_000 });
+    // The finished import has its own heading: the screen no longer says cashU cannot start.
+    await expect(page.getByRole("heading", { name: "Dane zaimportowane" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "cashU nie może się uruchomić" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("alert")).toHaveCount(0);
 
     expect(readdirSync(agents).sort()).toEqual([...kept].sort());
     await expect(page.getByTestId("recovery-agents")).toHaveText(
-      "Agenci w tle starej aplikacji (launchd): io.utopiasoft.cashu.worker: usunięty; io.github.synszakala.finanse.worker: usunięty.",
+      "Usługi w tle starej aplikacji (launchd): io.utopiasoft.cashu.worker (usunięto), io.github.synszakala.finanse.worker (usunięto).",
     );
     const launcher = join(h.dataDir, "bin", "cashu");
     const lines = [
@@ -237,6 +243,12 @@ test("Import my data retires the Python worker agents and shows the MCP lines to
     expect(copied).toEqual([`${lines.join("\n")}\n`]);
     expect(readFileSync(join(h.root, "test-migrate-spawns"), "utf8")).toBe("migrate\n");
     expect(existsSync(join(h.dataDir, "migration.json"))).toBe(true);
+
+    // "Open cashU" leaves recovery: the Python data is gone, so the app entry loads.
+    await Promise.all([
+      page.waitForURL(/^app:\/\/cashu\/assets\/desktop\/index\.html$/, { timeout: 30_000 }),
+      page.getByRole("button", { name: "Otwórz cashU" }).click(),
+    ]);
   } finally {
     await h.cleanup();
   }

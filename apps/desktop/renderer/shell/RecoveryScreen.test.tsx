@@ -66,6 +66,7 @@ afterEach(async () => {
 const button = (label: string) =>
   [...container.querySelectorAll("button")].find((item) => item.textContent === label);
 const phrase = () => container.querySelector('[data-testid="migration-recovery-phrase"]');
+const headings = () => [...container.querySelectorAll("h2")].map((item) => item.textContent);
 
 it("runs the import: progress, words shown once, cleared on continue", async () => {
   const { bridge, emit } = fakeBridge();
@@ -75,6 +76,7 @@ it("runs the import: progress, words shown once, cleared on continue", async () 
     ),
   );
   expect(container.textContent).toContain("data from the previous version of cashU");
+  expect(headings()).toContain("cashU cannot start");
   await act(async () => button("Import my data")?.click());
   expect(bridge.importData).toHaveBeenCalledTimes(1);
   await emit({ kind: "progress", stage: "copy" });
@@ -119,6 +121,14 @@ it("lists the instruments a finished import cannot value, then opens the app", a
   expect(container.querySelector('[data-testid="recovery-mcp"]')).toBeNull();
   expect(container.querySelector('[data-testid="recovery-agents"]')).toBeNull();
   expect(container.textContent).toContain("The import finished.");
+  expect(headings()).toContain("Your data is imported");
+  expect(headings()).not.toContain("cashU cannot start");
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain(
+    "The data from the previous version of cashU is now in this version.",
+  );
+  expect(container.textContent).not.toContain("Along the way it shows a new recovery phrase");
+  expect(container.textContent).toContain("cannot value these instruments");
   expect(container.querySelector('[data-testid="recovery-import-stages"]')).toBeNull();
   expect(
     [...container.querySelectorAll('[data-testid="recovery-unpriced"] li')].map(
@@ -159,7 +169,7 @@ it("shows the MCP lines to re-add, copies them through main, and the agents resu
   expect(mcp?.textContent).toContain("Connect your AI agent again");
   expect(mcp?.textContent).toContain(mcpCommands.join("\n"));
   expect(container.querySelector('[data-testid="recovery-agents"]')?.textContent).toBe(
-    "The old app's background agents (launchd): io.utopiasoft.cashu.worker: removed; io.github.synszakala.finanse.worker: failed.",
+    "The old app's background agents (launchd): io.utopiasoft.cashu.worker (removed), io.github.synszakala.finanse.worker (could not be removed).",
   );
   expect(container.querySelector('[data-testid="recovery-agents-by-hand"]')?.textContent).toBe(
     [
@@ -226,4 +236,47 @@ it("shows a refused import and the missing report", async () => {
   await act(async () => root.render(<RecoveryScreen report={null} bridge={null} />));
   expect(container.textContent).toContain("The start-up failure report could not be read.");
   expect(button("Quit")?.disabled).toBe(true);
+});
+
+it("words the finished import in Polish: heading, one unpriced instrument, every agent state", async () => {
+  setLanguageForTests("pl");
+  const { bridge, emit } = fakeBridge();
+  await act(async () =>
+    root.render(
+      <RecoveryScreen report={report(startupFailure("python_data_present"))} bridge={bridge} />,
+    ),
+  );
+  expect(headings()).toContain("cashU nie może się uruchomić");
+  await act(async () => button("Zaimportuj moje dane")?.click());
+  const agents = (
+    first: "retired" | "absent" | "failed" | "skipped",
+    second: "retired" | "absent" | "failed" | "skipped",
+  ) => ({
+    bootout: "ran" as const,
+    agents: [
+      { label: "io.utopiasoft.cashu.worker" as const, state: first },
+      { label: "io.github.synszakala.finanse.worker" as const, state: second },
+    ],
+  });
+  await emit({
+    kind: "done",
+    unpriced: [{ label: "SEUR", currency: "EUR", reason: "no_fx" }],
+    mcpCommands: [],
+    agents: agents("retired", "absent"),
+  });
+  expect(headings()).toContain("Dane zaimportowane");
+  expect(headings()).not.toContain("cashU nie może się uruchomić");
+  expect(container.textContent).toContain("Import zakończony.");
+  expect(container.textContent).toContain("nie wyceni tego instrumentu (wartość 0 zł");
+  const line = () => container.querySelector('[data-testid="recovery-agents"]')?.textContent;
+  expect(line()).toBe(
+    "Usługi w tle starej aplikacji (launchd): io.utopiasoft.cashu.worker (usunięto), io.github.synszakala.finanse.worker (nie znaleziono).",
+  );
+  await emit({ kind: "done", unpriced: [], mcpCommands: [], agents: agents("failed", "skipped") });
+  expect(line()).toBe(
+    "Usługi w tle starej aplikacji (launchd): io.utopiasoft.cashu.worker (nie udało się usunąć), io.github.synszakala.finanse.worker (nie sprawdzono).",
+  );
+  expect(container.textContent).toContain("Dokończ ręcznie w terminalu:");
+  await act(async () => button("Otwórz cashU")?.click());
+  expect(bridge.retry).toHaveBeenCalledTimes(1);
 });

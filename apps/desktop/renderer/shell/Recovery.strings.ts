@@ -7,7 +7,7 @@ import type {
   StartupFailureCode,
   UnpricedInstrument,
 } from "@cashu/host-protocol/startup-failure";
-import { catalog } from "@cashu/i18n";
+import { catalog, enForm, plForm } from "@cashu/i18n";
 
 /** The codes and import stages the screen explains (the View takes these, not protocol types). */
 export type RecoveryCode = StartupFailureCode;
@@ -18,20 +18,20 @@ export type RecoveryAgents = PythonAgentRetirement;
 type AgentState = PythonAgentRetirement["agents"][number]["state"];
 
 const AGENT_STATE_PL: Record<AgentState, string> = {
-  retired: "usunięty",
-  absent: "nie było",
-  failed: "nie udało się",
+  retired: "usunięto",
+  absent: "nie znaleziono",
+  failed: "nie udało się usunąć",
   skipped: "nie sprawdzono",
 };
 const AGENT_STATE_EN: Record<AgentState, string> = {
   retired: "removed",
-  absent: "not present",
-  failed: "failed",
+  absent: "not found",
+  failed: "could not be removed",
   skipped: "not checked",
 };
 
 const agentList = (r: PythonAgentRetirement, states: Record<AgentState, string>) =>
-  r.agents.map((agent) => `${agent.label}: ${states[agent.state]}`).join("; ");
+  r.agents.map((agent) => `${agent.label} (${states[agent.state]})`).join(", ");
 
 const WHAT_PL: Record<StartupFailureCode, string> = {
   python_data_present:
@@ -117,6 +117,11 @@ const STAGE_EN: Record<MigrateStage, string> = {
 
 export const S = catalog({
   title: { pl: "cashU nie może się uruchomić", en: "cashU cannot start" },
+  doneTitle: { pl: "Dane zaimportowane", en: "Your data is imported" },
+  doneLead: {
+    pl: "Dane z poprzedniej wersji cashU są już w tej wersji. Sprawdź kroki poniżej i otwórz cashU.",
+    en: "The data from the previous version of cashU is now in this version. Check the steps below, then open cashU.",
+  },
   what: {
     pl: (code: StartupFailureCode) => WHAT_PL[code],
     en: (code: StartupFailureCode) => WHAT_EN[code],
@@ -158,8 +163,10 @@ export const S = catalog({
   },
   importDone: { pl: "Import zakończony.", en: "The import finished." },
   unpricedHint: {
-    pl: "Uwaga: aplikacja nie wyceni tych instrumentów (wartość 0 zł, dopóki nie będzie notowań):",
-    en: "Warning: the app cannot value these instruments (0 until it has prices):",
+    pl: (n: number) =>
+      `Uwaga: aplikacja nie wyceni ${plForm(n, "tego instrumentu", "tych instrumentów", "tych instrumentów")} (wartość 0 zł, dopóki nie będzie notowań):`,
+    en: (n: number) =>
+      `Warning: the app cannot value ${enForm(n, "this instrument", "these instruments")} (0 until it has prices):`,
   },
   unpricedItem: {
     pl: (i: UnpricedInstrument) =>
@@ -170,8 +177,8 @@ export const S = catalog({
   openApp: { pl: "Otwórz cashU", en: "Open cashU" },
   mcpTitle: { pl: "Podłącz ponownie agenta AI", en: "Connect your AI agent again" },
   mcpHint: {
-    pl: "Serwery MCP zapisane w Claude Code wskazują na usuniętą starą aplikację. Uruchom te polecenia w terminalu: dla każdego profilu najpierw usuń stary wpis, potem dodaj nowy (jeśli Claude Code zapyta o zakres, dopisz -s z zakresem starego wpisu).",
-    en: "The MCP servers saved in Claude Code point at the removed old app. Run these commands in a terminal: for each profile, remove the old entry first, then add the new one (if Claude Code asks for a scope, add -s with the old entry's scope).",
+    pl: "Jeśli Claude Code łączył się z cashU przez MCP, jego wpisy wskazują jeszcze starą aplikację. Uruchom te polecenia w terminalu: dla każdego profilu usuwają stary wpis i dodają nowy. Gdy Claude Code zapyta o zakres, dopisz -s z zakresem starego wpisu.",
+    en: "If Claude Code connected to cashU over MCP, its entries still point at the old app. Run these commands in a terminal: for each profile they remove the old entry and add the new one. If Claude Code asks for a scope, add -s with the old entry's scope.",
   },
   mcpCopied: { pl: "Skopiowano polecenia.", en: "Commands copied." },
   mcpCopyFailed: {
@@ -180,7 +187,7 @@ export const S = catalog({
   },
   agents: {
     pl: (r: PythonAgentRetirement) =>
-      `Agenci w tle starej aplikacji (launchd): ${agentList(r, AGENT_STATE_PL)}.`,
+      `Usługi w tle starej aplikacji (launchd): ${agentList(r, AGENT_STATE_PL)}.`,
     en: (r: PythonAgentRetirement) =>
       `The old app's background agents (launchd): ${agentList(r, AGENT_STATE_EN)}.`,
   },

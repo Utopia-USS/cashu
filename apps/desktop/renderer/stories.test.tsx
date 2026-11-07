@@ -66,7 +66,10 @@ it("renders the start-up recovery CSF states without a host", () => {
     expect(render(story)).not.toContain("Import my data");
   expect(render(ReportUnavailable)).toContain("could not be read");
   expect(render(ImportDone)).toContain("claude mcp remove cashu-synthetic");
-  expect(render(ImportDone)).toContain("io.utopiasoft.cashu.worker: removed");
+  expect(render(ImportDone)).toContain("io.utopiasoft.cashu.worker (removed)");
+  expect(render(ImportDone)).toContain("Your data is imported");
+  expect(render(ImportDone)).not.toContain("cashU cannot start");
+  expect(render()).toContain("cashU cannot start");
   expect(render(ImportDone)).not.toContain('data-testid="recovery-agents-by-hand"');
   expect(render(ImportDoneAgentFailed)).toContain('data-testid="recovery-agents-by-hand"');
 });

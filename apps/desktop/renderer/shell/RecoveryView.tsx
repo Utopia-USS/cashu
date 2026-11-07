@@ -104,7 +104,7 @@ function ImportSection({
       <h2 id="recovery-import" className="text-title font-strong">
         {S.importTitle}
       </h2>
-      <p className="mt-3">{S.importHint}</p>
+      {state.phase !== "done" && <p className="mt-3">{S.importHint}</p>}
       {state.phase === "idle" && (
         <div className="mt-4">
           <Button variant="primary" onPress={onImport} disabled={!canAct}>
@@ -161,7 +161,7 @@ function ImportSection({
         <div className="mt-4 grid gap-4">
           {state.unpriced.length > 0 && (
             <>
-              <p>{S.unpricedHint}</p>
+              <p>{S.unpricedHint(state.unpriced.length)}</p>
               <ul className="grid gap-1" data-testid="recovery-unpriced">
                 {state.unpriced.map((item) => (
                   <li key={`${item.label} ${item.currency}`}>{S.unpricedItem(item)}</li>
@@ -183,7 +183,7 @@ function ImportSection({
               </p>
             </div>
           )}
-          {state.agents !== null && (
+          {state.agents !== null && state.agents.agents.length > 0 && (
             <div className="grid gap-2">
               <p data-testid="recovery-agents">{S.agents(state.agents)}</p>
               {state.agentCommands.length > 0 && (
@@ -243,17 +243,23 @@ export function RecoveryView({
   onQuit,
 }: RecoveryViewProps) {
   const offersImport = details !== null && importState.kind !== null;
+  // A finished import: the screen stays for its follow-up steps, so it no longer says cashU cannot start.
+  const imported = offersImport && importState.phase === "done";
   return (
     <main className="min-h-screen bg-surface p-6 text-body text-fg">
       <h1 className="text-headline font-strong">cashU</h1>
       <div className="mt-6 flex max-w-2xl flex-col gap-4">
         <Card as="section" padding="lg" labelledBy="recovery-title">
           <h2 id="recovery-title" className="text-title font-strong">
-            {S.title}
+            {imported ? S.doneTitle : S.title}
           </h2>
-          <p role="alert" className="mt-3">
-            {details === null ? S.unavailable : S.what(details.code)}
-          </p>
+          {imported ? (
+            <p className="mt-3">{S.doneLead}</p>
+          ) : (
+            <p role="alert" className="mt-3">
+              {details === null ? S.unavailable : S.what(details.code)}
+            </p>
+          )}
         </Card>
         {offersImport && (
           <ImportSection
