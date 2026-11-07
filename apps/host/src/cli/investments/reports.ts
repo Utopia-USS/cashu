@@ -1,11 +1,11 @@
 import { formatFloat } from "@cashu/domain";
 import { asAccountId, asProfileId, performance as perf } from "@cashu/domain/investments";
-import { readPositions } from "@cashu/store/investments/views";
 import { investmentEntityIdSchema } from "@cashu/store/investments/screen-sources";
+import { readPositions } from "@cashu/store/investments/views";
 import { richTable } from "../budget/richTable.js";
 import { printConsole } from "../core/console.js";
-import type { CommandIo } from "../tree.js";
 import { S } from "../strings.js";
+import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentContext, performanceStrategy } from "./context.js";
 import { UNHANDLED } from "./inspection.js";
 

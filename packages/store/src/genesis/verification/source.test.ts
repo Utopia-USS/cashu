@@ -131,8 +131,18 @@ describe("legacy source schema coverage", () => {
         `INSERT INTO connector_runs(id,connector_id,command,started_at,duration_ms,
           outcome,records,bytes_in,bytes_out,denied_hosts_json)
          VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      ).run(3, "synthetic-connector", "check", "2026-01-02 03:04:05.000000", 20,
-        "ok", 0, 0, 0, "[]");
+      ).run(
+        3,
+        "synthetic-connector",
+        "check",
+        "2026-01-02 03:04:05.000000",
+        20,
+        "ok",
+        0,
+        0,
+        0,
+        "[]",
+      );
       expect(() => assertSourceSchemaCoverage(db, "0029_sync_inbound")).not.toThrow();
       db.prepare("UPDATE connector_runs SET profile_id=? WHERE id=?").run(999, 3);
       expect(() => assertSourceSchemaCoverage(db, "0029_sync_inbound")).toThrowError(

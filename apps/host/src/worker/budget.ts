@@ -68,7 +68,14 @@ export async function syncWorkerBudget(deps: {
   }
   guard();
   const errors = result.errors ?? [];
-  if (errors.some((error) => error === "rate_limited" || error.includes("429") || error.toLowerCase().includes("rate limit")))
+  if (
+    errors.some(
+      (error) =>
+        error === "rate_limited" ||
+        error.includes("429") ||
+        error.toLowerCase().includes("rate limit"),
+    )
+  )
     book.throttled_until = new Date(now + BANK_BACKOFF_MS).toISOString();
   if (!result.ok) {
     book.last_status = "failed";

@@ -1,12 +1,12 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { connectHost } from "@cashu/node-host";
 import { decodeEntityRef, encodeEntityRef } from "@cashu/mcp";
+import { connectHost } from "@cashu/node-host";
 import { investmentsCommands } from "@cashu/store";
 import { afterEach, expect, it } from "vitest";
-import { startLocalHost } from "../host.js";
 import { cliCommandKey, runCliVaultCommand } from "../cli/commandOutcome.js";
+import { startLocalHost } from "../host.js";
 import { initializeMcp, mcpClient } from "../testing/mcp.js";
 import { type NativeVaultFixture, nativeVaultFixture } from "../testing/nativeVaultFixture.js";
 

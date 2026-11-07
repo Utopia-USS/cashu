@@ -131,20 +131,36 @@ it("tests a fetch fixture offline with placeholder secrets and no network", asyn
 
 it("reports real detect and convert phases with domain document counts", async () => {
   const document = {
-    format: "cashu-budget-import", format_version: 1, source: "synthetic",
+    format: "cashu-budget-import",
+    format_version: 1,
+    source: "synthetic",
     account: { iban: "PL99114000000000000000000001", name: "Synthetic", currency: "PLN" },
     balances: [{ date: "2026-10-05", amount: "100.00" }],
-    transactions: [{ booking_date: "2026-10-04", amount: "-1.00", currency: "PLN", reference: "SYNTHETIC" }],
+    transactions: [
+      { booking_date: "2026-10-04", amount: "-1.00", currency: "PLN", reference: "SYNTHETIC" },
+    ],
   };
   const script = `import json,sys\nr=json.load(sys.stdin)\nprint(json.dumps({'match':True} if r['command']=='detect' else {'document':${JSON.stringify(document)}}))\n`;
   const f = fixture(script);
-  const report = await testConnectorFileOffline({ workspaceRoot: f.workspace, connectorPath: f.source,
-    samplePath: f.sample, scratchRoot: f.scratch, isCurrent: () => true });
-  if (process.platform !== "darwin") { expect(report.errorKind).toBe("sandbox_unavailable"); return; }
+  const report = await testConnectorFileOffline({
+    workspaceRoot: f.workspace,
+    connectorPath: f.source,
+    samplePath: f.sample,
+    scratchRoot: f.scratch,
+    isCurrent: () => true,
+  });
+  if (process.platform !== "darwin") {
+    expect(report.errorKind).toBe("sandbox_unavailable");
+    return;
+  }
   expect(report.ok).toBe(true);
   expect(report.runs).toEqual([
     { command: "detect", outcome: "ok", errorKind: null, records: 0 },
     { command: "convert", outcome: "ok", errorKind: null, records: 1 },
   ]);
-  expect(report.document).toEqual({ format: "json", counts: { transactions: 1, balances: 1 }, issueKinds: [] });
+  expect(report.document).toEqual({
+    format: "json",
+    counts: { transactions: 1, balances: 1 },
+    issueKinds: [],
+  });
 });

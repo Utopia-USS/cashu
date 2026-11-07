@@ -10,8 +10,8 @@ import {
 } from "@cashu/store/investments/queries";
 import {
   createInvestmentImportProposal,
-  type ImportPublication,
   type ImportProposalPreview,
+  type ImportPublication,
   investmentImportSummary,
   publishCheckedImportBlob,
 } from "@cashu/store/investments/services";

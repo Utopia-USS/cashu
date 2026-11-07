@@ -97,7 +97,10 @@ it("rejects modified shipped skills and connector catalog", () => {
   const root = mkdtempSync(join(tmpdir(), "cashu-bundle-"));
   roots.push(root);
   const skillsBundle = app(root, "skills", "one");
-  writeFileSync(join(skillsBundle, "Contents/Resources/skills/workspace-setup/SKILL.md"), "changed");
+  writeFileSync(
+    join(skillsBundle, "Contents/Resources/skills/workspace-setup/SKILL.md"),
+    "changed",
+  );
   expect(readBundleIdentity(skillsBundle).kind).toBe("invalid");
   const connectorsBundle = app(root, "connectors", "one");
   writeFileSync(join(connectorsBundle, "Contents/Resources/connectors/README.md"), "changed");

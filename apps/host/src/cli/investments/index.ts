@@ -2,7 +2,7 @@ import type { PortedCommand } from "../tree.js";
 import { accounts } from "./accounts.js";
 import type { InvestmentCliDeps } from "./context.js";
 import { importFile } from "./import.js";
-import { alertKinds, UNHANDLED, localSearch } from "./inspection.js";
+import { alertKinds, localSearch, UNHANDLED } from "./inspection.js";
 import { macroRefresh } from "./macro.js";
 import { instrumentsMerge } from "./merge.js";
 import { performance, positions } from "./reports.js";

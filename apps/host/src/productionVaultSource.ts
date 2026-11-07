@@ -32,7 +32,8 @@ export class ProductionVaultSourceFactory {
   async open(lock: HostLock): Promise<NativeVaultSource> {
     if (!lock.held || lock.path !== hostRunPaths(this.#dataDir).lockPath)
       throw new StartupFailureError("unknown", "native_host_lock_required");
-    if (this.#preflightFingerprint === undefined) throw new StartupFailureError("native_inventory_unavailable", "native_preflight_required");
+    if (this.#preflightFingerprint === undefined)
+      throw new StartupFailureError("native_inventory_unavailable", "native_preflight_required");
     const found = readExistingNativeInventory(this.#dataDir);
     if (found.fingerprint !== this.#preflightFingerprint)
       throw new StartupFailureError("native_inventory_unavailable", "native_inventory_changed");
@@ -66,9 +67,11 @@ export class ProductionVaultSourceFactory {
         )
           throw new StartupFailureError("native_inventory_unavailable", "native_inventory_changed");
         const current = readExistingNativeInventory(dataDir);
-        if (current.fingerprint !== found.fingerprint) throw new StartupFailureError("native_inventory_unavailable", "native_inventory_changed");
+        if (current.fingerprint !== found.fingerprint)
+          throw new StartupFailureError("native_inventory_unavailable", "native_inventory_changed");
         const certs = byVault.get(entry.vaultId);
-        if (!certs) throw new StartupFailureError("native_inventory_unavailable", "native_inventory_invalid");
+        if (!certs)
+          throw new StartupFailureError("native_inventory_unavailable", "native_inventory_invalid");
         return certs.map((certificate) => certificate.slice());
       },
     } satisfies NativeVaultSource);

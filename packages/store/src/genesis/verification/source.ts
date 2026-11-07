@@ -191,20 +191,38 @@ function assertConnectorCatalogSchema(driver: SqlDriver): void {
 
 /** Run history survives deleted connectors and bindings; only a named profile must still exist. */
 function assertConnectorRunSchema(driver: SqlDriver): void {
-  const columns = driver.prepare('PRAGMA table_info("connector_runs")').all<{ name: string }>()
+  const columns = driver
+    .prepare('PRAGMA table_info("connector_runs")')
+    .all<{ name: string }>()
     .map((row) => row.name);
   const expected = new Set([
-    "id", "connector_id", "profile_id", "binding_id", "command", "started_at",
-    "duration_ms", "outcome", "error_kind", "exit_code", "records", "bytes_in",
-    "bytes_out", "denied_hosts_json", "stderr_tail", "proposal_id", "batch_ref",
+    "id",
+    "connector_id",
+    "profile_id",
+    "binding_id",
+    "command",
+    "started_at",
+    "duration_ms",
+    "outcome",
+    "error_kind",
+    "exit_code",
+    "records",
+    "bytes_in",
+    "bytes_out",
+    "denied_hosts_json",
+    "stderr_tail",
+    "proposal_id",
+    "batch_ref",
   ]);
   if (columns.length !== expected.size || columns.some((name) => !expected.has(name)))
     throw new VerificationSchemaError();
-  const orphan = driver.prepare(
-    `SELECT COUNT(*) AS n FROM connector_runs r
+  const orphan = driver
+    .prepare(
+      `SELECT COUNT(*) AS n FROM connector_runs r
      LEFT JOIN profiles p ON p.id=r.profile_id
      WHERE r.profile_id IS NOT NULL AND p.id IS NULL`,
-  ).get<{ n: number }>()?.n;
+    )
+    .get<{ n: number }>()?.n;
   if (orphan !== 0) throw new VerificationSchemaError();
 }
 

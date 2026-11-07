@@ -5,7 +5,8 @@ import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
 
 const unavailable = () =>
   new StartupFailureError("native_inventory_unavailable", "native_vault_unavailable");
-const invalid = () => new StartupFailureError("native_inventory_unavailable", "native_path_invalid");
+const invalid = () =>
+  new StartupFailureError("native_inventory_unavailable", "native_path_invalid");
 
 /** The canonical, non-symlinked path of an existing file or directory. */
 export function existing(path: string, kind: "file" | "directory"): string {

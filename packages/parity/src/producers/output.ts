@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { dumps, type OutValue } from "@cashu/store/genesis/verification";
 
-export { dumps, PyFloat, pyFloat, type OutValue } from "@cashu/store/genesis/verification";
+export { dumps, type OutValue, PyFloat, pyFloat } from "@cashu/store/genesis/verification";
 
 /** Write `<dir>/<check>.json` with the shared canonical printer. */
 export function writeCheck(dir: string, check: string, value: OutValue): string {

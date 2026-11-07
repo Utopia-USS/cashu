@@ -14,7 +14,10 @@
       "!**/test/fixtures",
       "!**/.turbo",
       "!parity",
-      "!**/spec/**/*.md"
+      "!**/spec/**/*.md",
+      "!**/test/vectors",
+      "!packages/domain/src/investments/rules/expr/EXPRESSIONS.md",
+      "!packages/domain/src/investments/importing/generic_csv_example.yaml"
     ]
   },
   "formatter": {

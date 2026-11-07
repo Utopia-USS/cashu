@@ -75,7 +75,8 @@ if (
 )
   throw new Error("Manifest schema");
 for (const name of required) {
-  if (name === "Contents/MacOS/cashU" || name.endsWith("/skills") || name.endsWith("/connectors")) continue;
+  if (name === "Contents/MacOS/cashU" || name.endsWith("/skills") || name.endsWith("/connectors"))
+    continue;
   if (typeof manifest.files[name] !== "string") throw new Error(`Manifest missing: ${name}`);
 }
 for (const [name, expected] of Object.entries(manifest.files)) {
