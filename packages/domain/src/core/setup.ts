@@ -57,14 +57,19 @@ export function cliPrefix(program: readonly string[], slug: string | null): stri
 
 /**
  * `claude_mcp_add`: the `claude mcp add` line that registers the profile's MCP server
- * (`cashu-<slug>`, running `<program> mcp --profile <slug>`) in Claude Code.
+ * (`<serverPrefix>-<slug>`, running `<program> mcp --profile <slug>`) in Claude Code. The prefix is
+ * the app flavor's (`cashu`, `cashu-staging`), so two installs on one Mac never share a server name.
  */
-export function claudeMcpAdd(program: readonly string[], slug: string): string {
+export function claudeMcpAdd(
+  program: readonly string[],
+  slug: string,
+  serverPrefix: string,
+): string {
   return shlexJoin([
     "claude",
     "mcp",
     "add",
-    `cashu-${slug}`,
+    `${serverPrefix}-${slug}`,
     "--",
     ...program,
     "mcp",
@@ -74,11 +79,12 @@ export function claudeMcpAdd(program: readonly string[], slug: string): string {
 }
 
 /**
- * The `claude mcp remove` line of the profile's MCP server (`cashu-<slug>`): drops a registration of
- * the same name (the retired Python app's, which points at a binary that no longer exists).
+ * The `claude mcp remove` line of the profile's MCP server (`<serverPrefix>-<slug>`): drops a
+ * registration of the same name (the retired Python app's, which points at a binary that no longer
+ * exists).
  */
-export function claudeMcpRemove(slug: string): string {
-  return shlexJoin(["claude", "mcp", "remove", `cashu-${slug}`]);
+export function claudeMcpRemove(slug: string, serverPrefix: string): string {
+  return shlexJoin(["claude", "mcp", "remove", `${serverPrefix}-${slug}`]);
 }
 
 /**
@@ -88,8 +94,12 @@ export function claudeMcpRemove(slug: string): string {
 export function reconnectMcpCommands(
   program: readonly string[],
   slugs: readonly string[],
+  serverPrefix: string,
 ): string[] {
-  return slugs.flatMap((slug) => [claudeMcpRemove(slug), claudeMcpAdd(program, slug)]);
+  return slugs.flatMap((slug) => [
+    claudeMcpRemove(slug, serverPrefix),
+    claudeMcpAdd(program, slug, serverPrefix),
+  ]);
 }
 
 /** One module's blank-page status as the API and the MCP tool show it. */

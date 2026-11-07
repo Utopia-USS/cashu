@@ -6,9 +6,11 @@ import Dispatch
 
 @available(macOS 13.0, *)
 @objc public final class CashUHostServiceBridge: NSObject {
-    private static let plist = "io.utopiasoft.cashu.host.plist"
-    private static let label = "io.utopiasoft.cashu.host"
-    private static let bundleID = "io.utopiasoft.cashu"
+    // The build flavor's identity (CashUFlavor, generated from packages/node-host/src/flavor.json by
+    // apps/desktop/scripts/build-native.mjs): only its own bundle and agent.
+    private static let plist = CashUFlavor.hostAgentPlist
+    private static let label = CashUFlavor.hostAgentLabel
+    private static let bundleID = CashUFlavor.bundleID
 
     private var agent: SMAppService { SMAppService.agent(plistName: Self.plist) }
 

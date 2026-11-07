@@ -35,6 +35,28 @@ describe("package-macos arguments", () => {
     });
   });
 
+  it("builds the staging flavor ad hoc only", () => {
+    expect(parse(["arm64"]).flavor).toBe("prod");
+    expect(parse(["arm64", "--flavor", "staging", "--dmg"])).toMatchObject({
+      arch: "arm64",
+      flavor: "staging",
+      withDmg: true,
+      identity: null,
+      notary: null,
+      testBuild: null,
+    });
+    expect(() => parse(["arm64", "--flavor", "beta"])).toThrow(/--flavor is one of prod, staging/);
+    for (const extra of [
+      ["--sign", identity],
+      ["--sign", identity, "--notarize", "cashu-notary"],
+      ["--test-build", JSON.stringify(marker)],
+    ])
+      expect(() => parse(["arm64", "--flavor", "staging", ...extra])).toThrow(
+        /is not for --flavor staging \(ad hoc only\)/,
+      );
+    expect(parse(["arm64", "--flavor", "prod", "--sign", identity]).identity).toBe(identity);
+  });
+
   it("accepts an App Store Connect API key and a signing keychain for CI", () => {
     const options = parse([
       "arm64",

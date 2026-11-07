@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import * as nodeFs from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { FLAVORS } from "../flavor.js";
 import type { HostService, ServiceStatus, StartOutcome } from "./types.js";
 
-export const SYSTEMD_SERVICE = "io.utopiasoft.cashu.host.service";
-export const SYSTEMD_TIMER = "io.utopiasoft.cashu.host.timer";
+// Linux has no packaged staging flavor (processFlavor() is always prod there): the units carry the
+// prod host agent label from the flavor table.
+export const SYSTEMD_SERVICE = `${FLAVORS.prod.hostAgentLabel}.service`;
+export const SYSTEMD_TIMER = `${FLAVORS.prod.hostAgentLabel}.timer`;
 /** S47 must ship and bind this exact launcher before enabling production registration. */
 export const SYSTEMD_LAUNCHER = "/usr/libexec/cashu-host";
 const OWNED = "# cashU host service v1 (managed by cashU)";

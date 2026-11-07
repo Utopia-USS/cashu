@@ -1,10 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { HostService, ServiceStatus, StartOutcome } from "@cashu/node-host";
+import { type Flavor, processFlavor } from "@cashu/node-host/flavor";
 import { realResolve } from "../config.js";
-
-/** This identity is reserved for the new app; S47 must sign and package it exactly. */
-export const MAC_APP_BUNDLE_ID = "io.utopiasoft.cashu";
 
 export type NativeAgentStatus = "notRegistered" | "enabled" | "requiresApproval" | "notFound";
 
@@ -26,6 +24,11 @@ export interface MacRuntime {
   readonly dataDir: string;
   readonly home: string;
   readonly bridge: MainProcessAgentBridge;
+  /**
+   * The flavor sealed in the running bundle: the only bundle ID and default data dir it may register
+   * its host agent for (each flavor's agent runs its own default data dir only).
+   */
+  readonly flavor: Pick<Flavor, "bundleId" | "dataDirName">;
 }
 
 export function currentMacRuntime(
@@ -41,6 +44,7 @@ export function currentMacRuntime(
     dataDir,
     home: homedir(),
     bridge,
+    flavor: processFlavor(),
   };
 }
 
@@ -48,9 +52,11 @@ async function eligible(runtime: MacRuntime): Promise<boolean> {
   if (runtime.platform !== "darwin" || runtime.osReleaseMajor < 22) return false; // macOS 13+
   if (!runtime.isPackaged) return false;
   const identity = await runtime.bridge.identity();
-  if (identity.bundleId !== MAC_APP_BUNDLE_ID || !identity.bundlePath.endsWith(".app"))
+  if (identity.bundleId !== runtime.flavor.bundleId || !identity.bundlePath.endsWith(".app"))
     return false;
-  const expected = realResolve(join(runtime.home, "Library", "Application Support", "cashU"));
+  const expected = realResolve(
+    join(runtime.home, "Library", "Application Support", runtime.flavor.dataDirName.darwin),
+  );
   return realResolve(runtime.dataDir) === expected;
 }
 
@@ -78,6 +84,10 @@ export class MacHostService implements HostService {
       isPackaged: runtime.isPackaged,
       dataDir: runtime.dataDir,
       home: runtime.home,
+      flavor: Object.freeze({
+        bundleId: runtime.flavor.bundleId,
+        dataDirName: runtime.flavor.dataDirName,
+      }),
       bridge: Object.freeze({
         identity: bridge.identity.bind(bridge),
         status: bridge.status.bind(bridge),

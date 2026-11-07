@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { NOTIFY_ACK_MAX_BYTES, parseNotifyAck, serializeNotifyFrame } from "@cashu/host-protocol";
+import { processFlavor } from "@cashu/node-host/flavor";
 import type {
   NotificationSubmission,
   NotificationTransport,
@@ -10,7 +11,6 @@ import type {
 } from "./notifications/notifier.js";
 
 const require = createRequire(import.meta.url);
-const BUNDLE_ID = "io.utopiasoft.cashu";
 const DEADLINE_MS = 10_000;
 
 interface NativeIdentity {
@@ -30,7 +30,7 @@ function bundledExecutable(): string | null {
     const identity = addon.identity();
     if (
       !identity.verified ||
-      identity.bundleIdentifier !== BUNDLE_ID ||
+      identity.bundleIdentifier !== processFlavor().bundleId ||
       !identity.bundleURL.endsWith(".app") ||
       !identity.executableURL.startsWith(`${identity.bundleURL}/Contents/MacOS/`)
     )

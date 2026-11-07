@@ -8,10 +8,16 @@
 #import <Foundation/Foundation.h>
 #import <ServiceManagement/ServiceManagement.h>
 
+// The build flavor's identity (packages/node-host/src/flavor.json), passed as string defines by
+// apps/desktop/scripts/build-native.mjs: each flavor's addon accepts only its own bundle and agent.
+#if !defined(CASHU_BUNDLE_ID) || !defined(CASHU_HOST_AGENT_LABEL) || !defined(CASHU_HOST_AGENT_PLIST)
+#error "build with apps/desktop/scripts/build-native.mjs (flavor defines missing)"
+#endif
+
 namespace {
-NSString* const kBundleId = @"io.utopiasoft.cashu";
-NSString* const kAgentLabel = @"io.utopiasoft.cashu.host";
-NSString* const kAgentPlist = @"io.utopiasoft.cashu.host.plist";
+NSString* const kBundleId = @CASHU_BUNDLE_ID;
+NSString* const kAgentLabel = @CASHU_HOST_AGENT_LABEL;
+NSString* const kAgentPlist = @CASHU_HOST_AGENT_PLIST;
 
 NSString* canonical(const char* path) {
   if (!path) return nil;

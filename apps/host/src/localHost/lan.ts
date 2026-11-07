@@ -1,11 +1,12 @@
 // The bounded LAN pairing listener, started on demand (a pairing request) or at start when a vault
-// already has a completed trusted pairing. Never in safe mode or a synthetic harness.
+// already has a completed trusted pairing. Never in safe mode or a synthetic harness. The default
+// port is the app flavor's (prod 8517), so a prod and a staging host on one Mac can both listen.
+
+import { processFlavor } from "@cashu/node-host/flavor";
 import { errorName, type HostLog } from "../log.js";
 import { type LanPairingService, localLanIp, startLanPairingService } from "../pairing/service.js";
 import type { HostStores } from "../stores.js";
 import type { LocalHostOptions } from "./options.js";
-
-const DEFAULT_LOCAL_PORT = 8517;
 
 export interface LanServing {
   /** The listener, once it was actually bound. */
@@ -51,7 +52,7 @@ export function createLanServing(input: {
         const service = await startLanPairingService({
           dataDir: input.dataDir,
           ip,
-          port: option.port ?? (option.kind === "loopback" ? 0 : DEFAULT_LOCAL_PORT),
+          port: option.port ?? (option.kind === "loopback" ? 0 : processFlavor().lanPairingPort),
           vault: (id) => stores.vaults.get(id)?.native,
           now: input.now,
         });

@@ -15,6 +15,10 @@
 // test app-update.yml it implies (local feed, test cache dir). Without either flag a marker, when
 // present, must agree with app-update.yml. --notarized (with --release or --test-build):
 // Gatekeeper accepts the app as a notarized Developer ID app and its stapled ticket validates.
+// Flavors (packages/node-host/src/flavor.json): the bundle ID names the flavor (an unknown one is
+// refused); its product name, URL scheme and host agent plist must match the table. A flavor without
+// an update feed (staging) carries no app-update.yml and no test-build marker, and --release /
+// --test-build refuse it (assertReleasableFlavor): it is never released.
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -29,10 +33,13 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { agentPlistPath } from "./flavor.mjs";
 import {
   APP_ID,
   appUpdateYml,
   assertNoTestBuild,
+  assertReleasableFlavor,
+  bundleFlavor,
   developerIdRequirement,
   readReleasePolicy,
   readTestBuild,
@@ -58,8 +65,11 @@ if (
   throw new Error(
     "usage: node verify-package.mjs <cashU.app> <arm64|x64> [--release | --test-build] [--notarized]",
   );
-// First, before anything else: a release never carries the test-build marker.
+// First, before anything else: a release never carries the test-build marker, and only the prod
+// flavor is ever released or signed as a test build.
 if (release) assertNoTestBuild(app);
+const flavor = signed ? assertReleasableFlavor(app) : bundleFlavor(app);
+process.stdout.write(`flavor ${flavor.id}: ${flavor.bundleId}\n`);
 const testBuild = readTestBuild(app);
 if (testBuildMode && !testBuild) throw new Error(`--test-build: ${TEST_BUILD_MARKER} is missing`);
 if (testBuild) process.stdout.write(`TEST BUILD: feed ${testBuild.feedUrl}\n`);
@@ -81,12 +91,27 @@ function combined(name, args) {
 function plist(key) {
   return command("plutil", ["-extract", key, "raw", info]);
 }
-if (plist("CFBundleIdentifier") !== APP_ID) throw new Error("Wrong app ID");
+if (plist("CFBundleIdentifier") !== flavor.bundleId) throw new Error("Wrong app ID");
+if (signed && flavor.bundleId !== APP_ID) throw new Error("Wrong app ID for a signed build");
 if (plist("CFBundleExecutable") !== "cashU") throw new Error("Wrong executable name");
+if (plist("CFBundleName") !== flavor.productName) throw new Error("Wrong product name");
+if (plist("CFBundleURLTypes.0.CFBundleURLSchemes.0") !== flavor.urlScheme)
+  throw new Error("Wrong URL scheme");
+const agentPlist = agentPlistPath(flavor);
+if (
+  !readFileSync(join(app, agentPlist), "utf8").includes(`<string>${flavor.hostAgentLabel}</string>`)
+)
+  throw new Error("The host agent plist does not carry the flavor's label");
+const otherPlists = existsSync(join(contents, "Library/LaunchAgents"))
+  ? readdirSync(join(contents, "Library/LaunchAgents")).filter(
+      (name) => `Contents/Library/LaunchAgents/${name}` !== agentPlist,
+    )
+  : [];
+if (otherPlists.length > 0) throw new Error(`Foreign launch agents: ${otherPlists.join(", ")}`);
 const required = [
   "Contents/MacOS/cashU",
   "Contents/MacOS/cashu-host-agent",
-  "Contents/Library/LaunchAgents/io.utopiasoft.cashu.host.plist",
+  agentPlist,
   "Contents/Resources/host.mjs",
   "Contents/Resources/app.asar",
   "Contents/Resources/shim.mjs",
@@ -169,7 +194,15 @@ for (const [name, expected] of Object.entries(manifest.files)) {
 const policy = readReleasePolicy(root);
 const feedPath = join(contents, "Resources/app-update.yml");
 if (signed && (!policy.teamId || !policy.feedUrl)) throw new Error("Release policy is not pinned");
-if (testBuild) {
+if (!flavor.updateFeed) {
+  // No feed at all: the updater reports unavailable (and the authority refuses the flavor first).
+  if (testBuild) throw new Error(`The ${flavor.id} flavor never carries ${TEST_BUILD_MARKER}`);
+  if (
+    existsSync(feedPath) ||
+    typeof manifest.files["Contents/Resources/app-update.yml"] === "string"
+  )
+    throw new Error(`The ${flavor.id} flavor must not seal an app-update.yml`);
+} else if (testBuild) {
   if (typeof manifest.files[TEST_BUILD_MARKER] !== "string")
     throw new Error(`Manifest missing: ${TEST_BUILD_MARKER}`);
   if (!existsSync(feedPath) || !lstatSync(feedPath).isFile()) throw new Error("No app-update.yml");

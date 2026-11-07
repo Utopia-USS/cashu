@@ -5,6 +5,7 @@
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
+import { FLAVORS } from "@cashu/node-host/flavor";
 import { afterEach, describe, expect, it } from "vitest";
 import { defaultDataDir, resolveDataDir } from "./dataDir.js";
 import { loadDevEnv, mainCheckout, parseDevEnv, splitLines } from "./devenv.js";
@@ -55,6 +56,7 @@ describe("resolveDataDir", () => {
     passwdHome: PASSWD_HOME,
     cwd,
     checkout: undefined,
+    flavor: FLAVORS.prod,
   });
 
   it("prefers CASHU_DATA_DIR, then FINANSE_DATA_DIR, else the platform default", () => {
@@ -64,8 +66,22 @@ describe("resolveDataDir", () => {
       resolveDataDir(ctx({ CASHU_DATA_DIR: " ", FINANSE_DATA_DIR: "/b", HOME: "/h" })).source,
     ).toBe("default");
     expect(resolveDataDir(ctx({ HOME: "/h" })).path).toBe("/h/Library/Application Support/cashU");
-    expect(defaultDataDir({ env: { HOME: "/h" }, platform: "linux", passwdHome: "/p" })).toBe(
-      "/h/.local/share/cashu",
+    expect(
+      defaultDataDir({
+        env: { HOME: "/h" },
+        platform: "linux",
+        passwdHome: "/p",
+        flavor: FLAVORS.prod,
+      }),
+    ).toBe("/h/.local/share/cashu");
+  });
+
+  it("names the default after the shim's flavor (the staging app never lands on cashU)", () => {
+    const staging = { ...ctx({ HOME: "/h" }), flavor: FLAVORS.staging };
+    expect(resolveDataDir(staging).path).toBe("/h/Library/Application Support/cashU Staging");
+    expect(defaultDataDir({ ...staging, platform: "linux" })).toBe("/h/.local/share/cashu-staging");
+    expect(resolveDataDir({ ...staging, env: { HOME: "/h", CASHU_DATA_DIR: "/x" } }).path).toBe(
+      "/x",
     );
   });
 
@@ -143,6 +159,7 @@ describe("data dir = Python's (frozen, macOS)", () => {
       passwdHome: PASSWD_HOME,
       cwd: base,
       checkout: undefined,
+      flavor: FLAVORS.prod,
     });
     expect(got.path).toBe(expected.replaceAll("<base>", base).replaceAll("<passwd>", PASSWD_HOME));
   });

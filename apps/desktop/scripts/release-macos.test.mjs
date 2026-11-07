@@ -387,7 +387,7 @@ if (step === "package") {
     mkdirSync(join(contents, "Resources"), { recursive: true });
     writeFileSync(join(contents, "Resources", "test-build.json"), "{}");
   }
-  writeFileSync(join(contents, "Info.plist"), '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>' + version + '</string></dict></plist>');
+  writeFileSync(join(contents, "Info.plist"), '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>io.utopiasoft.cashu</string><key>CFBundleShortVersionString</key><string>' + version + '</string></dict></plist>');
   const zip = join(out, "cashU-" + version + "-mac-" + arch + ".zip");
   execFileSync("/usr/bin/ditto", ["-c", "-k", "--keepParent", join(stage, "cashU.app"), zip]);
   copyFileSync(zip, zip.replace(/\\.zip$/, ".dmg"));
@@ -446,6 +446,10 @@ function fixtureRepo(name, { committed = false, extraCommits = 0 } = {}) {
   for (const file of ["latestMac.mjs", "appcast.mjs"])
     copyFileSync(join(here, "release", file), join(scripts, "release", file));
   copyFileSync(join(here, "release-policy.mjs"), join(scripts, "release-policy.mjs"));
+  copyFileSync(join(here, "flavor.mjs"), join(scripts, "flavor.mjs"));
+  const flavorTable = join(work, "packages", "node-host", "src", "flavor.json");
+  mkdirSync(dirname(flavorTable), { recursive: true });
+  copyFileSync(join(here, "../../../packages/node-host/src/flavor.json"), flavorTable);
   for (let i = 0; i < extraCommits; i++) {
     writeFileSync(join(work, "CHANGES.txt"), `${i}\n`);
     git(work, "add", "CHANGES.txt");

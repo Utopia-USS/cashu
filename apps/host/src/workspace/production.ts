@@ -1,6 +1,7 @@
 import { isAbsolute, join, resolve } from "node:path";
 import type { SkillSource } from "@cashu/domain/core";
 import { builtinRegistry } from "@cashu/domain/core";
+import { mcpServerName, processFlavor } from "@cashu/node-host/flavor";
 import { enabledModuleIds } from "@cashu/store/core";
 import { z } from "zod";
 import { TOOL_INVENTORY } from "../mcp/tools.js";
@@ -209,7 +210,7 @@ export function createProductionWorkspaceProvider(
           command: options.program.command,
           args: [...options.program.args, "mcp", "--profile", slug],
           ...(options.program.env ? { env: options.program.env } : {}),
-          server: `cashu-${slug}`,
+          server: mcpServerName(processFlavor(), slug),
         },
         cli: [options.program.command, ...options.program.args],
         tools: TOOL_INVENTORY.filter(

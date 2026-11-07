@@ -2,9 +2,8 @@
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dataDirName, FLAVORS, type Flavor, processFlavor } from "@cashu/node-host/flavor";
 
-/** The name shown in the window title and the tray (core/paths.py `APP_NAME`). */
-export const TITLE = "cashU";
 /** Mirrors desktop/shell.py: the investments workspace is laid out for 1440 px. */
 export const DEFAULT_SIZE = { width: 1480, height: 940 } as const;
 export const MIN_SIZE = { width: 1024, height: 680 } as const;
@@ -34,15 +33,21 @@ export function repoRoot(moduleDir: string): string {
   return resolve(moduleDir, "..", "..", "..");
 }
 
-/** core/paths.py `default_data_dir()`: the per-user data dir when CASHU_DATA_DIR is not set. */
+/**
+ * core/paths.py `default_data_dir()`: the per-user data dir when CASHU_DATA_DIR is not set, named
+ * after the app flavor (`cashU`, `cashU Staging`; Linux `cashu`, `cashu-staging`).
+ */
 export function defaultDataDir(
   platform: NodeJS.Platform,
   home: string,
   env: NodeJS.ProcessEnv,
+  flavor: Flavor = processFlavor(),
 ): string {
-  if (platform === "darwin") return join(home, "Library", "Application Support", "cashU");
-  if (platform === "win32") return join(env.APPDATA || join(home, "AppData", "Roaming"), "cashU");
-  return join(env.XDG_DATA_HOME || join(home, ".local", "share"), "cashu");
+  if (platform === "darwin")
+    return join(home, "Library", "Application Support", dataDirName(flavor, "darwin"));
+  if (platform === "win32")
+    return join(env.APPDATA || join(home, "AppData", "Roaming"), flavor.dataDirName.darwin);
+  return join(env.XDG_DATA_HOME || join(home, ".local", "share"), dataDirName(flavor, "linux"));
 }
 
 /**
@@ -74,13 +79,14 @@ export function resolveDataDir(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
   home: string = homedir(),
+  flavor: Flavor = processFlavor(),
 ): DataDirChoice {
   const raw = (env[ENV.dataDir] ?? "").trim();
   if (raw) {
     const expanded = raw === "~" || raw.startsWith("~/") ? join(home, raw.slice(1)) : raw;
     return { dir: realResolve(expanded), explicit: true };
   }
-  return { dir: defaultDataDir(platform, home, env), explicit: false };
+  return { dir: defaultDataDir(platform, home, env, flavor), explicit: false };
 }
 
 function inside(root: string, dir: string): boolean {
@@ -109,8 +115,8 @@ export function checkDataDir(opts: {
   return null;
 }
 
-/** The window title of a sealed test build: visibly not a release. */
-export const TEST_BUILD_TITLE = `${TITLE} - TEST BUILD`;
+/** The window title of a sealed test build (prod flavor only): visibly not a release. */
+export const TEST_BUILD_TITLE = `${FLAVORS.prod.productName} - TEST BUILD`;
 
 /**
  * The data dir of a sealed test build (a manifest-verified Contents/Resources/test-build.json): the

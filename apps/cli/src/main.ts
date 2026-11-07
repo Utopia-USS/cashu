@@ -280,6 +280,7 @@ export async function main(argv: readonly string[], proc: ShimProcess): Promise<
       passwdHome: passwdHome(),
       cwd: proc.cwd,
       checkout: proc.build.checkout === undefined ? undefined : checkoutRoot(proc.build.checkout),
+      flavor: proc.build.flavor,
     });
   } catch (error) {
     const t = createTranslator(

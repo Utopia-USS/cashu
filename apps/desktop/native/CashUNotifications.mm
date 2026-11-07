@@ -12,7 +12,12 @@
 #import <Foundation/Foundation.h>
 #import <UserNotifications/UserNotifications.h>
 
-constexpr const char* kBundleId = "io.utopiasoft.cashu";
+// The build flavor's bundle ID (packages/node-host/src/flavor.json), a string define passed by
+// apps/desktop/scripts/build-native.mjs: the addon verifies only its own flavor's bundle.
+#ifndef CASHU_BUNDLE_ID
+#error "build with apps/desktop/scripts/build-native.mjs (flavor defines missing)"
+#endif
+constexpr const char* kBundleId = CASHU_BUNDLE_ID;
 constexpr int64_t kWaitNanoseconds = 8LL * NSEC_PER_SEC;
 constexpr size_t kMaxPendingResponses = 16;
 std::mutex gHandlerMutex;

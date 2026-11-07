@@ -42,16 +42,17 @@ export function useSetupScreen(props: SetupScreenProps) {
   const { privacy: incognito } = useUiEnv();
   const identity = useQuery(profile);
   const slug = useQuery(profileIdentity)?.slug ?? null;
-  // The stable launcher the host reports (Settings > Agent AI reads the same query); hidden while incognito.
+  // The stable launcher and the flavor's MCP server prefix the host reports (Settings > Agent AI reads
+  // the same query); hidden while incognito.
   const host = useQuery(hostSettingsInfo, { privacy: incognito });
   const agent: SetupAgentContext = incognito
     ? { kind: "unavailable", reason: "privacy" }
-    : host.availability !== "ready" || !host.launcher || !slug
+    : host.availability !== "ready" || !host.launcher || !host.mcpServerPrefix || !slug
       ? { kind: "unavailable", reason: "launcher_unavailable" }
       : {
           kind: "ready",
           cliPrefix: cliPrefix([host.launcher], slug),
-          mcpAdd: claudeMcpAdd([host.launcher], slug),
+          mcpAdd: claudeMcpAdd([host.launcher], slug, host.mcpServerPrefix),
         };
   const states = useQuery(q.moduleStates);
   const setup = useQuery(q.moduleSetup, {

@@ -6,6 +6,8 @@ export interface HostSettingsInfo {
   readonly dataDir?: string;
   /** The stable launcher `<data dir>/bin/cashu` that agent commands (`claude mcp add`, CLI lines) run. */
   readonly launcher?: string;
+  /** The app flavor's MCP server name prefix (`cashu`, `cashu-staging`): servers `<prefix>-<slug>`. */
+  readonly mcpServerPrefix?: string;
   readonly worker?: {
     readonly state: "off" | "safe-mode" | "idle" | "running" | "stopped" | "error";
     readonly schedule: string;

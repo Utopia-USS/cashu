@@ -10,6 +10,7 @@ import {
   type ToolInventoryEntry,
   type ToolMetadata,
 } from "@cashu/mcp";
+import { mcpServerName, processFlavor } from "@cashu/node-host/flavor";
 import { mintUlid } from "@cashu/store";
 import type { McpBackend } from "./session.js";
 
@@ -173,7 +174,10 @@ export function nativeBackend(options: {
       return reply(message.id, {
         protocolVersion: object(message.params)?.protocolVersion ?? "2025-06-18",
         capabilities: { tools: { listChanged: true } },
-        serverInfo: { name: `cashu-${options.profile}`, version: options.version ?? "0.4.6" },
+        serverInfo: {
+          name: mcpServerName(processFlavor(), options.profile),
+          version: options.version ?? "0.4.6",
+        },
         instructions: INSTRUCTIONS,
       });
     }

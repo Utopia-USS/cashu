@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { keychainService, processFlavor } from "../flavor.js";
 import type { HostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import { nativeOsKeyring, type OsKeyringPort } from "./native.js";
@@ -108,7 +109,7 @@ export function createProductionClassifierSecrets(
   authority: ClassifierSecretAuthority,
 ): ClassifierSecretStore {
   const hash = createHash("sha256").update(privateDir(authority.dataDir)).digest("hex");
-  return make(authority, `cashu.classifier.v1.${hash}`, nativeOsKeyring());
+  return make(authority, keychainService(processFlavor(), "classifier", hash), nativeOsKeyring());
 }
 
 /** Strict synthetic keyring; cannot address production OS credentials. */

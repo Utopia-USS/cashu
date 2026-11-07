@@ -11,6 +11,7 @@ import {
   statSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { FLAVOR_IDS, FLAVORS, hostAgentPlist } from "./flavor.js";
 
 // Electron virtualizes app.asar as a directory in fs. Bundle identity hashes the actual archive
 // and must see the same regular-file inventory as a plain Node process. Calls below are sync.
@@ -144,7 +145,9 @@ function bundleEvidence(bundlePath: string): string | undefined {
         metadata(join(contents, "Info.plist")),
         metadata(join(contents, "MacOS", "cashU")),
         metadata(join(contents, "MacOS", "cashu-host-agent")),
-        metadata(join(contents, "Library", "LaunchAgents", "io.utopiasoft.cashu.host.plist")),
+        ...AGENT_PLISTS.map((path) => join(canonical, path))
+          .filter((path) => lstatOrNull(path) !== null)
+          .map(metadata),
         ...inventory(contents),
       ];
       return createHash("sha256").update(parts.join("|")).digest("hex");
@@ -166,8 +169,20 @@ const REQUIRED = [
   "Contents/Resources/renderer/index.html",
   "Contents/Resources/app.asar",
   "Contents/MacOS/cashu-host-agent",
-  "Contents/Library/LaunchAgents/io.utopiasoft.cashu.host.plist",
 ] as const;
+
+/** The host agent plist of each flavor; a bundle carries exactly one (its own flavor's). */
+const AGENT_PLISTS = FLAVOR_IDS.map(
+  (id) => `Contents/Library/LaunchAgents/${hostAgentPlist(FLAVORS[id])}`,
+);
+
+function lstatOrNull(path: string) {
+  try {
+    return lstatSync(path);
+  } catch {
+    return null;
+  }
+}
 
 function manifestStamp(bundle: string): string {
   const manifestPath = join(bundle, "Contents", "Resources", "bundle-manifest.json");
@@ -191,6 +206,8 @@ function manifestStamp(bundle: string): string {
   const files = record.files as Record<string, unknown>;
   if (Object.keys(files).length > 20_000) throw new Error("manifest_too_many_files");
   if (REQUIRED.some((path) => typeof files[path] !== "string"))
+    throw new Error("manifest_missing_resource");
+  if (AGENT_PLISTS.filter((path) => typeof files[path] === "string").length !== 1)
     throw new Error("manifest_missing_resource");
   const resourcePath = join(bundle, "Contents", "Resources");
   for (const absolute of regularFiles(resourcePath)) {

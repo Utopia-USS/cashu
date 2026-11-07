@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FLAVORS } from "@cashu/node-host/flavor";
 import { afterEach, expect, it } from "vitest";
 import { existingHost, type HostTarget, hostCommand, reachHost } from "./host.js";
 
@@ -14,6 +15,7 @@ it("passes the fixed host entry as the packaged bundle stamp", () => {
     self: "/Synthetic/cashU.app/Contents/Resources/shim.mjs",
     checkout: undefined,
     build: "desktop-1.0.0",
+    flavor: FLAVORS.prod,
   };
   const command = hostCommand(
     build,
@@ -45,7 +47,7 @@ it("refuses a stale or moved packaged shim before any host connection or spawn",
   writeFileSync(execPath, "// stale executable");
   const target: HostTarget = {
     dataDir: join(root, "data"),
-    build: { self, checkout: undefined, build: "desktop-1.0.0" },
+    build: { self, checkout: undefined, build: "desktop-1.0.0", flavor: FLAVORS.prod },
     env: { ELECTRON_RUN_AS_NODE: "1" },
     execPath,
     execArgv: [],

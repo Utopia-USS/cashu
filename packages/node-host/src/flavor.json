@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "flavors": {
+    "prod": {
+      "bundleId": "io.utopiasoft.cashu",
+      "productName": "cashU",
+      "dataDirName": { "darwin": "cashU", "linux": "cashu" },
+      "workspacesDirName": "cashU",
+      "hostAgentLabel": "io.utopiasoft.cashu.host",
+      "keychainPrefix": "cashu",
+      "urlScheme": "cashu",
+      "mcpServerPrefix": "cashu",
+      "lanPairingPort": 8517,
+      "updateFeed": true,
+      "inheritsPythonInstall": true,
+      "iconBadge": null,
+      "buildDir": "build/t46",
+      "artifactPrefix": "cashU"
+    },
+    "staging": {
+      "bundleId": "io.utopiasoft.cashu.staging",
+      "productName": "cashU Staging",
+      "dataDirName": { "darwin": "cashU Staging", "linux": "cashu-staging" },
+      "workspacesDirName": "cashU Staging",
+      "hostAgentLabel": "io.utopiasoft.cashu.staging.host",
+      "keychainPrefix": "cashu.staging",
+      "urlScheme": "cashu-staging",
+      "mcpServerPrefix": "cashu-staging",
+      "lanPairingPort": 8518,
+      "updateFeed": false,
+      "inheritsPythonInstall": false,
+      "iconBadge": "STAGING",
+      "buildDir": "build/staging",
+      "artifactPrefix": "cashU-Staging"
+    }
+  }
+}

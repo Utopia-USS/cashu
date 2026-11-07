@@ -219,6 +219,7 @@ describe("importDoneEvent", () => {
       importDoneEvent(
         { event: "done", status: "migrated", mcpProfiles: ["anna", "dom"], agents },
         launcher,
+        "cashu",
       ),
     ).toEqual({
       kind: "done",
@@ -235,17 +236,22 @@ describe("importDoneEvent", () => {
 
   it("keeps the unpriced list, and is null when there is nothing to show", () => {
     const unpriced = [{ label: "SEUR", currency: "EUR", reason: "no_prices" as const }];
-    expect(importDoneEvent({ event: "done", status: "migrated", unpriced }, launcher)).toEqual({
+    expect(
+      importDoneEvent({ event: "done", status: "migrated", unpriced }, launcher, "cashu"),
+    ).toEqual({
       kind: "done",
       unpriced,
       mcpCommands: [],
       agents: null,
     });
-    expect(importDoneEvent({ event: "done", status: "already_migrated" }, launcher)).toBeNull();
+    expect(
+      importDoneEvent({ event: "done", status: "already_migrated" }, launcher, "cashu"),
+    ).toBeNull();
     expect(
       importDoneEvent(
         { event: "done", status: "migrated", unpriced: [], mcpProfiles: [] },
         launcher,
+        "cashu",
       ),
     ).toBeNull();
   });

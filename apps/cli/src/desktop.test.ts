@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { FLAVORS } from "@cashu/node-host/flavor";
 import { afterEach, expect, it } from "vitest";
 import { desktopLaunch, runDesktopApp } from "./desktop.js";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
@@ -15,7 +16,12 @@ it("uses a built source desktop with the selected data dir and a fake launcher",
   writeFileSync(join(app, "dist", "main.js"), "synthetic");
   const dataDir = tempDir("cashu-desktop-data-");
   const target = desktopLaunch(
-    { self: join(checkout, "apps", "cli", "src", "index.ts"), checkout, build: "test" },
+    {
+      self: join(checkout, "apps", "cli", "src", "index.ts"),
+      checkout,
+      build: "test",
+      flavor: FLAVORS.prod,
+    },
     "/synthetic/node",
     checkout,
     { ELECTRON_RUN_AS_NODE: "1", CASHU_DATA_DIR: "/wrong" },
@@ -42,7 +48,12 @@ it("uses a built source desktop with the selected data dir and a fake launcher",
 
 it("refuses an unbuilt source checkout and an unverified package", () => {
   const checkout = tempDir("cashu-desktop-unbuilt-");
-  const build = { self: join(checkout, "apps", "cli", "src", "index.ts"), checkout, build: "test" };
+  const build = {
+    self: join(checkout, "apps", "cli", "src", "index.ts"),
+    checkout,
+    build: "test",
+    flavor: FLAVORS.prod,
+  };
   expect(
     desktopLaunch(build, "/synthetic/node", checkout, {}, "/synthetic/data", false),
   ).toBeNull();

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { relative, resolve, sep } from "node:path";
 import { crypto } from "@cashu/sync";
 import { MIGRATION_STAGING_PREFIX } from "../admissionGuard.js";
+import { keychainService, processFlavor } from "../flavor.js";
 import type { HostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import { PrivateBlobFiles } from "./files.js";
@@ -291,8 +292,9 @@ function namespaceDir(input: { readonly dataDir: string; readonly scopeDir?: str
   return scope;
 }
 
+/** The vault KEK service of `dir` in this process's flavor (`<keychainPrefix>.vault.v1.<hash>`). */
 const productionService = (dir: string) =>
-  `cashu.vault.v1.${createHash("sha256").update(dir, "utf8").digest("hex")}`;
+  keychainService(processFlavor(), "vault", createHash("sha256").update(dir, "utf8").digest("hex"));
 
 /** Fixed new-app namespace v1. Signature/package verification remains an S47 deployment gate. */
 export function createProductionKeyStore(input: ProductionKeyStoreInput): crypto.KeyStore {

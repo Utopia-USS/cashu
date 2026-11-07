@@ -1,8 +1,9 @@
 /** Port of desktop/notify.py `link_to_hash` and `LinkRouter`: `cashu://` links (notification
  * clicks, other programs) open a dashboard view. Links come from outside the app, so only the
- * known shapes with a slug-shaped profile and a numeric id are accepted. */
+ * known shapes with a slug-shaped profile and a numeric id are accepted. The scheme is the app
+ * flavor's (`cashu`, `cashu-staging`): each app opens only its own links. */
+import { processFlavor } from "@cashu/node-host/flavor";
 
-export const LINK_SCHEME = "cashu";
 export const MAX_LINK = 512;
 export const INVESTMENTS_VIEW = "investments.portfolio";
 
@@ -26,7 +27,7 @@ export function linkToHash(url: unknown): string | null {
   const match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)([?#].*)?$/i.exec(url);
   if (!match) return null;
   const scheme = (match[1] ?? "").toLowerCase();
-  if (scheme !== LINK_SCHEME || match[4]) return null;
+  if (scheme !== processFlavor().urlScheme || match[4]) return null;
   const kind = match[2] ?? "";
   const segs = (match[3] ?? "").split("/").filter(Boolean).map(decode);
   if (kind === "open" && segs.length === 0) return "";

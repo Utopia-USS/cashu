@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { keychainService, processFlavor } from "../flavor.js";
 import type { HostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import { nativeOsKeyring, type OsKeyringPort } from "./native.js";
@@ -137,7 +138,12 @@ export function createProductionConnectorSecretVault(
 ): ConnectorSecretVault {
   const dataDir = checkedDataDir(authority.dataDir);
   const hash = createHash("sha256").update(dataDir, "utf8").digest("hex");
-  return make(authority, identity, `cashu.connectors.v1.${hash}`, nativeOsKeyring());
+  return make(
+    authority,
+    identity,
+    keychainService(processFlavor(), "connectors", hash),
+    nativeOsKeyring(),
+  );
 }
 
 /** Owner deletion can clear known binding keys even when connector approval is disabled or changed. */

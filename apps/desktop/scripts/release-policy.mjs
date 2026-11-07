@@ -9,10 +9,16 @@
 // (listed in bundle-manifest.json) and an app-update.yml naming a local http://127.0.0.1:<port>/ feed.
 // The app honors it only from a verified bundle (packages/node-host/src/testBuild.ts, same rules as
 // parseTestBuild below). assertNoTestBuild refuses such a bundle for every release path.
+//
+// Only the prod flavor is ever released (scripts/flavor.mjs, packages/node-host/src/flavor.json):
+// assertReleasableFlavor refuses any other bundle (the staging app) on every release path.
+import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
+import { FLAVOR_IDS, flavorByBundleId, flavorById } from "./flavor.mjs";
 
-export const APP_ID = "io.utopiasoft.cashu";
+/** The released app's bundle ID: the prod flavor's, the only one with an update feed. */
+export const APP_ID = flavorById("prod").bundleId;
 /** electron-updater's download cache: ~/Library/Caches/<name>. Fixed so updates never collide. */
 export const UPDATER_CACHE_DIR_NAME = "cashu-updater";
 
@@ -60,11 +66,36 @@ export function developerIdRequirement(teamId) {
   return `=anchor apple generic and identifier "${APP_ID}" and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = "${teamId}"`;
 }
 
-/** Stable artifact names; the x64 name never contains "arm64" (MacUpdater picks by that). */
-export function artifactName(version, arch, extension) {
+/**
+ * Stable artifact names; the x64 name never contains "arm64" (MacUpdater picks by that). Prod (the
+ * default) keeps cashU-<version>-mac-<arch>; another flavor uses its own prefix (cashU-Staging-...).
+ */
+export function artifactName(version, arch, extension, flavor = flavorById("prod")) {
   if (!["arm64", "x64"].includes(arch) || !["zip", "dmg"].includes(extension))
     throw new Error("Unexpected artifact");
-  return `cashU-${version}-mac-${arch}.${extension}`;
+  return `${flavor.artifactPrefix}-${version}-mac-${arch}.${extension}`;
+}
+
+/** The flavor sealed in an app bundle (its Info.plist CFBundleIdentifier through the table). */
+export function bundleFlavor(app) {
+  const id = execFileSync(
+    "/usr/bin/plutil",
+    ["-extract", "CFBundleIdentifier", "raw", join(app, "Contents", "Info.plist")],
+    { encoding: "utf8" },
+  ).trim();
+  const flavor = flavorByBundleId(id);
+  if (!flavor) throw new Error(`${app}: bundle ID ${id} is no cashU flavor`);
+  return flavor;
+}
+
+/** Every release path refuses a bundle of a flavor without an update feed (the staging app). */
+export function assertReleasableFlavor(app) {
+  const flavor = bundleFlavor(app);
+  if (!flavor.updateFeed || flavor.bundleId !== APP_ID)
+    throw new Error(
+      `${flavor.productName.toUpperCase()}: ${app} is the ${flavor.id} flavor (${flavor.bundleId}); only ${APP_ID} is ever released`,
+    );
+  return flavor;
 }
 
 /** Bundle-relative path of the sealed test-build marker (packages/node-host/src/testBuild.ts). */
@@ -74,10 +105,18 @@ export const TEST_UPDATER_CACHE_DIR_NAME = "cashu-updater-test";
 const TEST_KEYS = ["schema", "kind", "feedUrl", "installRoot", "dataDir", "workspacesDir"];
 const TEST_FEED = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{3,4})\/$/;
 
+/** Every flavor's real default data dir and workspaces root names (lower case). */
+const REAL_DATA_DIRS = new Set(
+  FLAVOR_IDS.map((id) => flavorById(id).dataDirName.darwin.toLowerCase()),
+);
+const REAL_WORKSPACES = new Set(
+  FLAVOR_IDS.map((id) => flavorById(id).workspacesDirName.toLowerCase()),
+);
+
 function testDir(value, label) {
   const fail = () => {
     throw new Error(
-      `test build: ${label} must be an absolute, normalized directory outside /Applications, the default data dir and ~/Documents/cashU`,
+      `test build: ${label} must be an absolute, normalized directory outside /Applications, every flavor's default data dir and ~/Documents/cashU*`,
     );
   };
   if (typeof value !== "string" || value.length > 1024 || value.includes("\0")) fail();
@@ -88,10 +127,11 @@ function testDir(value, label) {
     if (
       parts[index] === "Library" &&
       parts[index + 1] === "Application Support" &&
-      parts[index + 2]?.toLowerCase() === "cashu"
+      REAL_DATA_DIRS.has(parts[index + 2]?.toLowerCase() ?? "")
     )
       fail();
-    if (parts[index] === "Documents" && parts[index + 1]?.toLowerCase() === "cashu") fail();
+    if (parts[index] === "Documents" && REAL_WORKSPACES.has(parts[index + 1]?.toLowerCase() ?? ""))
+      fail();
   }
   return value;
 }

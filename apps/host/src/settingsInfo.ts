@@ -1,3 +1,4 @@
+import { processFlavor } from "@cashu/node-host/flavor";
 import { type HostSettingsInfo, hostSettingsInfo } from "@cashu/store/core/desktop-settings";
 import { type ChangeSource, defineQuery } from "@cashu/store/query";
 import { launcherPath } from "./launcher.js";
@@ -57,6 +58,7 @@ export function settingsInfoQuery(deps: {
         version: deps.version,
         dataDir,
         launcher: launcherPath(dataDir),
+        mcpServerPrefix: processFlavor().mcpServerPrefix,
         ...(status === null
           ? {}
           : {

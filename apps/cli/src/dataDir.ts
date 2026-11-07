@@ -3,8 +3,10 @@
 // `FINANSE_DATA_DIR`, `core/env.py`), stripped, `~` expanded and resolved (`Path.resolve()`), else the
 // platform default of platformdirs (`user_data_dir("cashU", appauthor=False, roaming=True)`, not
 // resolved). The data dir names the host (one per data dir), so a dev checkout's demo data dir and the
-// owner's real one can never share a host.
+// owner's real one can never share a host. The default's name comes from the build's flavor
+// (`cashU`, or `cashU Staging` for the staging app's shim).
 import { pyStrip } from "@cashu/domain/text";
+import { dataDirName, type Flavor } from "@cashu/node-host/flavor";
 import { type DevEnv, type Env, loadDevEnv } from "./devenv.js";
 import { expandUser, purePath, pyRealpath } from "./pypath.js";
 
@@ -16,6 +18,8 @@ export interface DataDirContext {
   readonly cwd: string;
   /** The source checkout the shim runs from, undefined when packaged. */
   readonly checkout: string | undefined;
+  /** The flavor of the shim's build: its default data dir name (`cashU`, `cashU Staging`). */
+  readonly flavor: Flavor;
 }
 
 export interface ResolvedDataDir {
@@ -49,10 +53,10 @@ const userHome = (ctx: Pick<DataDirContext, "env" | "passwdHome">) =>
  * `~/.local/share` (Linux), where `~` ignores a relative HOME; then `os.path.join` and `Path()`.
  */
 export function defaultDataDir(
-  ctx: Pick<DataDirContext, "env" | "passwdHome" | "platform">,
+  ctx: Pick<DataDirContext, "env" | "passwdHome" | "platform" | "flavor">,
 ): string {
-  const name = ctx.platform === "darwin" ? "cashU" : ctx.platform === "linux" ? "cashu" : undefined;
-  if (name === undefined) throw new UnsupportedPlatformError();
+  if (ctx.platform !== "darwin" && ctx.platform !== "linux") throw new UnsupportedPlatformError();
+  const name = dataDirName(ctx.flavor, ctx.platform);
   const xdg = pyStrip(ctx.env.XDG_DATA_HOME ?? "");
   let base: string;
   if (xdg.startsWith("/")) base = xdg;

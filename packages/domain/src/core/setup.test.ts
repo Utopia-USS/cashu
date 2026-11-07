@@ -58,21 +58,32 @@ describe("cli prefix", () => {
   });
 
   it("claude mcp add line of the profile (runtime.claude_mcp_add)", () => {
-    expect(claudeMcpAdd(["/Users/x/Library/Application Support/cashU/bin/cashu"], "jan")).toBe(
+    expect(
+      claudeMcpAdd(["/Users/x/Library/Application Support/cashU/bin/cashu"], "jan", "cashu"),
+    ).toBe(
       "claude mcp add cashu-jan -- '/Users/x/Library/Application Support/cashU/bin/cashu' mcp --profile jan",
+    );
+    expect(
+      claudeMcpAdd(
+        ["/Users/x/Library/Application Support/cashU Staging/bin/cashu"],
+        "jan",
+        "cashu-staging",
+      ),
+    ).toBe(
+      "claude mcp add cashu-staging-jan -- '/Users/x/Library/Application Support/cashU Staging/bin/cashu' mcp --profile jan",
     );
   });
 
   it("reconnect lines after a Python import: remove the old name, then the setup screen's add", () => {
-    expect(claudeMcpRemove("jan")).toBe("claude mcp remove cashu-jan");
+    expect(claudeMcpRemove("jan", "cashu")).toBe("claude mcp remove cashu-jan");
     const launcher = "/Users/x/Library/Application Support/cashU/bin/cashu";
-    expect(reconnectMcpCommands([launcher], ["jan", "dom-2"])).toEqual([
+    expect(reconnectMcpCommands([launcher], ["jan", "dom-2"], "cashu")).toEqual([
       "claude mcp remove cashu-jan",
-      claudeMcpAdd([launcher], "jan"),
+      claudeMcpAdd([launcher], "jan", "cashu"),
       "claude mcp remove cashu-dom-2",
-      claudeMcpAdd([launcher], "dom-2"),
+      claudeMcpAdd([launcher], "dom-2", "cashu"),
     ]);
-    expect(reconnectMcpCommands([launcher], [])).toEqual([]);
+    expect(reconnectMcpCommands([launcher], [], "cashu")).toEqual([]);
   });
 
   it("shlex.quote", () => {

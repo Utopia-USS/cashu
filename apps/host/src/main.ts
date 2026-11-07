@@ -21,6 +21,7 @@ import {
   packagedBuildId,
   readBundleIdentity,
 } from "@cashu/node-host/bundle-identity";
+import { dataDirName, processFlavor, workspacesRoot } from "@cashu/node-host/flavor";
 import { enterTestBuildKeyringNamespace } from "@cashu/node-host/keyring";
 import { readTestBuildMarker, type TestBuildMarker } from "@cashu/node-host/test-build";
 import { devicePreferences } from "@cashu/store/device";
@@ -197,8 +198,11 @@ async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
     build,
     // The only place the real launchctl is wired: it retires the Python worker agents after a
     // successful import, and pythonAgents.ts still refuses it under CASHU_TESTING or a custom
-    // CASHU_LAUNCH_AGENTS_DIR.
-    ...(process.platform === "darwin" ? { launchctl: systemLaunchctl } : {}),
+    // CASHU_LAUNCH_AGENTS_DIR. A flavor that does not replace the Python install (staging) never
+    // touches the Python app's launchd agents.
+    ...(process.platform === "darwin" && processFlavor().inheritsPythonInstall
+      ? { launchctl: systemLaunchctl }
+      : {}),
   });
 }
 
@@ -217,15 +221,20 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
     switch (args.command) {
       case "run": {
         const home = io.env.HOME || homedir();
+        const flavor = processFlavor();
         const defaultDir =
           process.platform === "darwin"
-            ? join(home, "Library", "Application Support", "cashU")
-            : process.platform === "win32"
-              ? join(io.env.APPDATA || join(home, "AppData", "Roaming"), "cashU")
-              : join(io.env.XDG_DATA_HOME || join(home, ".local", "share"), "cashu");
+            ? join(home, "Library", "Application Support", dataDirName(flavor, "darwin"))
+            : join(
+                io.env.XDG_DATA_HOME || join(home, ".local", "share"),
+                dataDirName(flavor, "linux"),
+              );
         const sourceRuntime = currentRuntime();
         const projectRoot = sourceRuntime.checkout ?? sourceRuntime.dir;
-        const explicitDataDir = resolve(args.dataDir) !== resolve(defaultDir);
+        // Only a flavor whose default data dir is the retired Python app's looks at the Python
+        // install's other roots; any other data dir (and every staging one) is checked alone.
+        const explicitDataDir =
+          resolve(args.dataDir) !== resolve(defaultDir) || !flavor.inheritsPythonInstall;
         const legacyRoots = legacySourceRoots(
           args.dataDir,
           projectRoot,
@@ -259,7 +268,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                 workspacesRoot:
                   runtime.testBuild?.workspacesDir ??
                   workspacesOverride ??
-                  join(homeRoot, "Documents", "cashU"),
+                  workspacesRoot(flavor, homeRoot),
                 protectedRoots: [
                   sourceRuntime.dir,
                   ...(sourceRuntime.checkout === undefined ? [] : [sourceRuntime.checkout]),

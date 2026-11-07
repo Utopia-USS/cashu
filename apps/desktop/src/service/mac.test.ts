@@ -1,13 +1,14 @@
+import { FLAVORS } from "@cashu/node-host/flavor";
 import { describe, expect, it, vi } from "vitest";
 import type { MacRuntime, MainProcessAgentBridge, NativeAgentStatus } from "./mac.js";
-import { MAC_APP_BUNDLE_ID, MacHostService, mapNativeAgentStatus } from "./mac.js";
+import { MacHostService, mapNativeAgentStatus } from "./mac.js";
 
-function fixture(status: NativeAgentStatus = "notRegistered") {
+function fixture(status: NativeAgentStatus = "notRegistered", flavor = FLAVORS.prod) {
   let nativeStatus = status;
   const bridge: MainProcessAgentBridge = {
     identity: vi.fn(async () => ({
-      bundleId: MAC_APP_BUNDLE_ID,
-      bundlePath: "/Applications/cashU.app",
+      bundleId: flavor.bundleId,
+      bundlePath: `/Applications/${flavor.productName}.app`,
     })),
     status: vi.fn(async () => nativeStatus),
     register: vi.fn(async () => {
@@ -22,9 +23,10 @@ function fixture(status: NativeAgentStatus = "notRegistered") {
     platform: "darwin",
     osReleaseMajor: 22,
     isPackaged: true,
-    dataDir: "/Users/test/Library/Application Support/cashU",
+    dataDir: `/Users/test/Library/Application Support/${flavor.dataDirName.darwin}`,
     home: "/Users/test",
     bridge,
+    flavor,
   };
   return { bridge, runtime, service: new MacHostService(runtime) };
 }
@@ -45,6 +47,18 @@ describe("macOS service adapter", () => {
     expect(await f.service.enable()).toEqual({ state: "requires_approval" });
     expect(f.bridge.register).toHaveBeenCalledOnce();
     expect(f.bridge.activate).not.toHaveBeenCalled();
+  });
+
+  it("registers the staging app's own agent only on the staging default data dir", async () => {
+    const f = fixture("notRegistered", FLAVORS.staging);
+    expect(await f.service.enable()).toEqual({ state: "requires_approval" });
+    const onProd = new MacHostService({
+      ...f.runtime,
+      dataDir: "/Users/test/Library/Application Support/cashU",
+    });
+    expect((await onProd.status()).state).toBe("unavailable");
+    const asProd = new MacHostService({ ...f.runtime, flavor: FLAVORS.prod });
+    expect((await asProd.status()).state).toBe("unavailable");
   });
 
   it.each([

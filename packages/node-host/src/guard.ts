@@ -5,6 +5,9 @@
 // ignore case (macOS file systems do) so `cashu` and `CASHU` cannot slip past.
 import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
+import { appBundleName, FLAVOR_IDS, FLAVORS, workspacesRoot } from "./flavor.js";
+
+const FLAVOR_LIST = FLAVOR_IDS.map((id) => FLAVORS[id]);
 
 /** A refused invocation (exit 64). The message names flags or config keys, never data. */
 export class RefusalError extends Error {
@@ -68,11 +71,11 @@ function refuseRealLocations({ label, path }: GuardedPath, isDataDir: boolean, h
     if (below?.startsWith("cashu") && !(isDataDir && below === "cashu-demo")) {
       throw new RefusalError(`${label} points into the cashU application data`);
     }
-    if (isWithin(path, join(h, "Documents", "cashU"))) {
+    if (FLAVOR_LIST.some((flavor) => isWithin(path, workspacesRoot(flavor, h)))) {
       throw new RefusalError(`${label} points into the cashU workspaces`);
     }
   }
-  if (isWithin(path, "/Applications/cashU.app")) {
+  if (FLAVOR_LIST.some((flavor) => isWithin(path, join("/Applications", appBundleName(flavor))))) {
     throw new RefusalError(`${label} points into the installed cashU app`);
   }
 }

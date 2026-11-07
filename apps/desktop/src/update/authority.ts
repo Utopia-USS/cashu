@@ -1,12 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { FLAVORS, type Flavor } from "@cashu/node-host/flavor";
 import { parseDocument } from "yaml";
 import { z } from "zod";
 import type { UpdateAuthority } from "./controller.js";
 import { RELEASE_FEED_URL, RELEASE_TEAM_ID } from "./releasePolicy.js";
 
-const APP_ID = "io.utopiasoft.cashu";
+/** The released app's identity: only the prod flavor has an update feed and a release signature. */
+const APP_ID = FLAVORS.prod.bundleId;
 
 export function developerIdRequirement(teamId: string): string {
   if (!/^[A-Z0-9]{10}$/.test(teamId)) throw new Error("invalid_team_id");
@@ -19,6 +21,8 @@ export interface InstalledApp {
   readonly resourcesPath: string;
   readonly dataDir: string;
   readonly expectedDataDir: string;
+  /** The flavor sealed in the running bundle; one without an update feed (staging) never updates. */
+  readonly flavor: Pick<Flavor, "updateFeed">;
   /**
    * Only from a sealed, manifest-verified test-build marker (@cashu/node-host/test-build): the
    * local feed the sealed app-update.yml must name and the install root that replaces
@@ -108,6 +112,7 @@ function inside(parent: string, child: string): boolean {
 function installedUpdateGate(
   app: InstalledApp,
 ): { readonly ok: true } | { readonly ok: false; readonly reason: string } {
+  if (!app.flavor.updateFeed) return { ok: false, reason: "flavor_without_updates" };
   if (process.platform !== "darwin" || !app.isPackaged)
     return { ok: false, reason: "not_packaged_macos" };
   if (!RELEASE_TEAM_ID || !/^[A-Z0-9]{10}$/.test(RELEASE_TEAM_ID) || !RELEASE_FEED_URL)

@@ -20,6 +20,7 @@ import {
   packagedBuildId,
   readBundleIdentity,
 } from "@cashu/node-host/bundle-identity";
+import { bundleFlavor, FLAVORS, type Flavor } from "@cashu/node-host/flavor";
 
 /** A relative `--import` path made absolute (Node resolves it against the cwd of the start). */
 const absoluteSpecifier = (spec: string, cwd: string) =>
@@ -51,6 +52,8 @@ export interface ShimBuild {
   /** The source checkout (repo root) when the shim runs from source, else undefined. */
   readonly checkout: string | undefined;
   readonly build: string;
+  /** The flavor sealed in the shim's bundle (prod from source): picks the default data dir. */
+  readonly flavor: Flavor;
 }
 
 export function shimBuild(
@@ -63,18 +66,21 @@ export function shimBuild(
     real === join(sourceRoot, "apps", "cli", "src", "index.ts") &&
     existsSync(join(sourceRoot, "pnpm-workspace.yaml")) &&
     existsSync(join(sourceRoot, "packages", "node-host", "package.json"));
-  return {
-    self: real,
-    checkout: fromSource ? sourceRoot : undefined,
-    build: fromSource ? (env.CASHU_BUILD ?? "dev") : packagedShimBuild(real, process.execPath, env),
-  };
+  if (fromSource)
+    return {
+      self: real,
+      checkout: sourceRoot,
+      build: env.CASHU_BUILD ?? "dev",
+      flavor: FLAVORS.prod,
+    };
+  return { self: real, checkout: undefined, ...packagedShimBuild(real, process.execPath, env) };
 }
 
 function packagedShimBuild(
   self: string,
   execPath: string,
   env: Readonly<Record<string, string | undefined>>,
-): string {
+): { readonly build: string; readonly flavor: Flavor } {
   const bundle = bundlePathFromEntry(self);
   const identity = bundle ? readBundleIdentity(bundle) : { kind: "invalid" as const };
   if (
@@ -96,7 +102,10 @@ function packagedShimBuild(
     ],
     { encoding: "utf8", timeout: 5_000 },
   ).trim();
-  return packagedBuildId(version, identity.contentDigest);
+  return {
+    build: packagedBuildId(version, identity.contentDigest),
+    flavor: bundleFlavor(identity.canonicalPath),
+  };
 }
 
 /** What the host binary runs: serve the data dir, or the in-place migration with its arguments. */
@@ -132,7 +141,8 @@ export function hostCommand(
 
 function assertPackagedShim(target: HostTarget): void {
   if (target.build.checkout !== undefined) return;
-  if (packagedShimBuild(target.build.self, target.execPath, target.env) !== target.build.build)
+  const current = packagedShimBuild(target.build.self, target.execPath, target.env);
+  if (current.build !== target.build.build || current.flavor.id !== target.build.flavor.id)
     throw new Error("packaged_shim_build_mismatch");
 }
 

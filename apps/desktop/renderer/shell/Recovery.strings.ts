@@ -39,7 +39,7 @@ const WHAT_PL: Record<StartupFailureCode, string> = {
   native_inventory_unavailable:
     "Spis Twoich profili jest niekompletny albo nie zgadza się z plikami, więc cashU wolał nie startować.",
   vault_key_unavailable:
-    "Klucz, którym zaszyfrowany jest profil, nie jest dostępny w pęku kluczy systemu albo nie daje się odczytać.",
+    "Klucz, którym zaszyfrowany jest profil, nie jest dostępny w pęku kluczy systemu albo nie daje się odczytać. Jeśli macOS pytał o dostęp do pęku kluczy (na przykład po przebudowaniu aplikacji), wybierz „Zawsze zezwalaj” i kliknij „Spróbuj ponownie”: odmowa niczego nie usuwa.",
   migrate_verify_mismatch:
     "Sprawdzenie importu znalazło różnicę między danymi poprzedniej wersji a zaimportowanym profilem.",
   view_rebuild_failed:
@@ -56,7 +56,7 @@ const WHAT_EN: Record<StartupFailureCode, string> = {
   native_inventory_unavailable:
     "The list of your profiles is incomplete or does not match the files, so cashU chose not to start.",
   vault_key_unavailable:
-    "The key that encrypts a profile is missing from the system keychain or cannot be read.",
+    "The key that encrypts a profile is missing from the system keychain or cannot be read. If macOS asked for access to the keychain (for example after the app was rebuilt), choose Always Allow and click Try again: denying it deletes nothing.",
   migrate_verify_mismatch:
     "Checking the import found a difference between the previous version's data and the imported profile.",
   view_rebuild_failed:

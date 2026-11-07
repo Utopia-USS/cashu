@@ -80,6 +80,7 @@ import {
 } from "@cashu/node-host";
 import { legacyDataAdmission, legacySourceRoots } from "@cashu/node-host/admission";
 import { packagedBuildId, readBundleIdentity } from "@cashu/node-host/bundle-identity";
+import { processFlavor } from "@cashu/node-host/flavor";
 import { readTestBuildMarker, type TestBuildMarker } from "@cashu/node-host/test-build";
 import { nativeImage, shell } from "electron/common";
 import {
@@ -108,7 +109,6 @@ import {
   repoRoot,
   resolveDataDir,
   TEST_BUILD_TITLE,
-  TITLE,
   testBuildDataDir,
   USER_DATA_SUBDIR,
 } from "./config.js";
@@ -135,6 +135,9 @@ import { windowSize } from "./window.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = repoRoot(here);
 const env = process.env;
+// The flavor sealed in this bundle's Info.plist (prod from a checkout): the app's name, default data
+// dir, URL scheme, MCP server names and whether it has an update feed all come from its table row.
+const flavor = processFlavor();
 // A sealed test build (package-macos.mjs --test-build) is honored only from the verified bundle; it
 // runs on its marker's data dir (also when the updater relaunches it without any environment). A
 // release has no marker and takes none of the test paths in this file.
@@ -171,13 +174,14 @@ const problem = checkDataDir({
 });
 if (problem) fatal(problem);
 
+// Only the flavor that replaces the Python install looks at the Python app's other data roots.
 const admissionRoots = legacySourceRoots(
   dataDir,
   root,
   homedir(),
   env,
   process.platform,
-  choice.explicit,
+  choice.explicit || !flavor.inheritsPythonInstall,
 );
 
 // ---- log (owner-only, rotated at 1 MB, the token is never written) -----------------------------
@@ -200,7 +204,7 @@ function log(line: string): void {
 
 // ---- Electron profile inside the data dir: the single instance lock is per data dir ------------
 
-app.setName(TITLE);
+app.setName(flavor.productName);
 // Overlay scrollbars that take no layout width, as the Python app's WKWebView draws them on a trackpad
 // Mac: macOS "Automatic" turns Chromium's scrollbars into 15px classic ones whenever a mouse is
 // connected. A registration default (in memory, lowest NSUserDefaults priority) applies only while the
@@ -251,7 +255,7 @@ const desktop = new DesktopApp({
   createWindow(loadingUrl) {
     const size = windowSize(screen.getAllDisplays().map((d) => d.workAreaSize));
     const window = new BrowserWindow({
-      title: testBuild ? TEST_BUILD_TITLE : TITLE,
+      title: testBuild ? TEST_BUILD_TITLE : flavor.productName,
       width: size.width,
       height: size.height,
       minWidth: MIN_SIZE.width,
@@ -267,8 +271,9 @@ const desktop = new DesktopApp({
       },
     });
     mainWindow = window;
-    // The page's own <title> would replace the TEST BUILD banner.
-    if (testBuild) window.on("page-title-updated", (event) => event.preventDefault());
+    // The window title is the flavor's product name ("cashU", "cashU Staging") or the TEST BUILD
+    // banner; the renderer's static <title> must not replace it.
+    window.on("page-title-updated", (event) => event.preventDefault());
     window.webContents.on("did-start-navigation", (details) => {
       notificationClickRouter.setUnready();
       if (details.isMainFrame && !details.isSameDocument) cancelPendingWords();
@@ -547,7 +552,11 @@ async function importData(run: ImportRun): Promise<void> {
       log(
         `recovery: python agents ${agents.agents.map((a) => `${a.label}=${a.state}`).join(" ")} bootout=${agents.bootout}`,
       );
-    const done = importDoneEvent(outcome.done, join(dataDir, "bin", "cashu"));
+    const done = importDoneEvent(
+      outcome.done,
+      join(dataDir, "bin", "cashu"),
+      flavor.mcpServerPrefix,
+    );
     if (done !== null) {
       importedMcp = done.mcpCommands.length > 0 ? `${done.mcpCommands.join("\n")}\n` : null;
       sendImportEvent(done);
@@ -1151,7 +1160,7 @@ process.on("uncaughtException", (error) => {
 
 // Only a packaged app registers the URL scheme with the system, and only when asked to.
 if (shouldRegisterProtocol({ isPackaged: app.isPackaged, env })) {
-  app.setAsDefaultProtocolClient("cashu");
+  app.setAsDefaultProtocolClient(flavor.urlScheme);
 }
 
 function applicationMenu(): Menu {
@@ -1186,7 +1195,8 @@ if (!hasLock) {
           dataDir,
           expectedDataDir: testBuild
             ? testBuild.dataDir
-            : defaultDataDir(process.platform, homedir(), env),
+            : defaultDataDir(process.platform, homedir(), env, flavor),
+          flavor,
           ...(testBuild
             ? { testBuild: { feedUrl: testBuild.feedUrl, installRoot: testBuild.installRoot } }
             : {}),

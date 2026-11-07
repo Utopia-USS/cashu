@@ -58,7 +58,7 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve } from "node:pa
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { appcastFileName, informationalAppcast } from "./release/appcast.mjs";
 import { fileEntry, latestMacYml } from "./release/latestMac.mjs";
-import { assertNoTestBuild } from "./release-policy.mjs";
+import { assertNoTestBuild, assertReleasableFlavor } from "./release-policy.mjs";
 
 export const REPO = "Utopia-USS/cashu";
 export const TEAM_ID = "29W838VKU4";
@@ -616,8 +616,10 @@ function preflight({ root, options, signing, env }) {
 function verifyApp(app, { arch, version, verifyPackage, signed, env, label }) {
   if (!existsSync(join(app, "Contents", "Info.plist")))
     throw new Error(`${label}: no app at ${app}`);
-  // A sealed test build (package-macos.mjs --test-build) is never released, signed or not.
+  // A sealed test build (package-macos.mjs --test-build) is never released, signed or not, and
+  // neither is any flavor but prod (the owner's local "cashU Staging").
   assertNoTestBuild(app);
+  assertReleasableFlavor(app);
   run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", app], { env });
   const shortVersion = run(
     "plutil",

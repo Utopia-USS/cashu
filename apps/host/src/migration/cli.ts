@@ -47,6 +47,7 @@ import {
   writeStartupFailureRecord,
   writeStartupFailureReport,
 } from "@cashu/node-host";
+import { processFlavor } from "@cashu/node-host/flavor";
 import { launcherPath } from "../launcher.js";
 import { type AfterImport, afterImport, protocolSlugs } from "./afterImport.js";
 import {
@@ -371,7 +372,12 @@ function printAfterImport(io: MigrateIo, t: Translator, dataDir: string, after: 
   const byHand = failedAgentCommands(after.agents);
   if (byHand.length > 0) io.stdout(t.tr(M.agentsByHand)(byHand));
   if (after.slugs === null || after.slugs.length === 0) io.stdout(t.tr(M.mcpUnknown));
-  else io.stdout(t.tr(M.mcp)(reconnectMcpCommands([launcherPath(dataDir)], after.slugs)));
+  else
+    io.stdout(
+      t.tr(M.mcp)(
+        reconnectMcpCommands([launcherPath(dataDir)], after.slugs, processFlavor().mcpServerPrefix),
+      ),
+    );
 }
 
 /**

@@ -146,6 +146,79 @@ describe("isolated Node OS KeyStore", () => {
     await expect(f.make("open").get(f.name)).rejects.toMatchObject({ code: "keystore_corrupt" });
     f.lock.release();
   });
+  it("never treats a denied or failing keychain read as no key (ad hoc rebuild re-prompts)", async () => {
+    // An ad hoc rebuild changes the code identity: macOS asks again and the owner may deny, or the
+    // read fails while the prompt is open. A refused read must surface as keystore_unavailable and
+    // must never lead to a fresh KEK over an existing vault.
+    const f = fixture();
+    await f.make("provision").set(f.name, Uint8Array.of(5, 6));
+    const [item, kek] = onlyItem(f);
+    let denied = true;
+    let sets = 0;
+    const prompting: OsKeyringPort = {
+      async get(service, account) {
+        if (denied) throw new Error("errSecAuthFailed: the user denied keychain access");
+        return f.keyring.get(service, account);
+      },
+      async set(service, account, value) {
+        sets++;
+        return f.keyring.set(service, account, value);
+      },
+    };
+    const make = (purpose: "open" | "provision") =>
+      createTestKeyStore({
+        dataDir: f.dataDir,
+        service: f.service,
+        keyring: prompting,
+        sodium,
+        purpose,
+        authorizedNames: new Set([f.name, f.second]),
+        ...(purpose === "provision"
+          ? { provision: { lock: f.lock, assertPending: () => undefined } }
+          : {}),
+      });
+    await expect(make("open").get(f.name)).rejects.toMatchObject({ code: "keystore_unavailable" });
+    await expect(make("open").set(f.name, Uint8Array.of(9))).rejects.toMatchObject({
+      code: "keystore_unavailable",
+    });
+    // Provisioning a second key while the read is refused never creates (or replaces) the KEK.
+    await expect(make("provision").set(f.second, Uint8Array.of(1))).rejects.toMatchObject({
+      code: "keystore_unavailable",
+    });
+    expect(sets).toBe(0);
+    expect(f.items.get(item)).toEqual(kek);
+    expect(readdirSync(join(f.dataDir, "vault-secrets", "v1"))).toEqual([`${f.name}.bin`]);
+    // Allowed on the next prompt: the same vault opens unchanged.
+    denied = false;
+    expect(await make("open").get(f.name)).toEqual(Uint8Array.of(5, 6));
+    f.lock.release();
+  });
+  it("never creates a first KEK while the keychain read is refused", async () => {
+    const f = fixture();
+    let sets = 0;
+    const store = createTestKeyStore({
+      dataDir: f.dataDir,
+      service: f.service,
+      keyring: {
+        async get() {
+          throw new Error("errSecInteractionNotAllowed");
+        },
+        async set() {
+          sets++;
+        },
+      },
+      sodium,
+      purpose: "provision",
+      authorizedNames: new Set([f.name]),
+      provision: { lock: f.lock, assertPending: () => undefined },
+    });
+    await expect(store.set(f.name, Uint8Array.of(1))).rejects.toMatchObject({
+      code: "keystore_unavailable",
+    });
+    expect(sets).toBe(0);
+    expect(readdirSync(f.dataDir)).toEqual(["run"]);
+    f.lock.release();
+  });
   it("binds a blob to its exact test service", async () => {
     const first = fixture();
     const second = fixture();

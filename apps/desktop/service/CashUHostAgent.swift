@@ -1,5 +1,8 @@
 // S47 compiles this fixed agent executable at Contents/MacOS/cashu-host-agent.
 // It launches the bundled host once; the host's lock and idle policy own the lifecycle.
+// CashUFlavor (bundle ID, default data dir name) is generated per build flavor from
+// packages/node-host/src/flavor.json by apps/desktop/scripts/build-native.mjs, which compiles this file
+// as main.swift beside it: each flavor's agent runs only its own bundle and its own default data dir.
 import Darwin
 import Foundation
 
@@ -10,7 +13,7 @@ let bundle = Bundle(url: bundleURL)
 guard contents.lastPathComponent == "Contents",
       bundleURL.pathExtension == "app",
       executable.lastPathComponent == "cashu-host-agent",
-      bundle?.bundleIdentifier == "io.utopiasoft.cashu",
+      bundle?.bundleIdentifier == CashUFlavor.bundleID,
       bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String == "cashU",
       let version = bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
       !version.isEmpty else { exit(78) }
@@ -19,7 +22,8 @@ let electron = contents.appendingPathComponent("MacOS/cashU").path
 let host = contents.appendingPathComponent("Resources/host.mjs").path
 let home = FileManager.default.homeDirectoryForCurrentUser.path
 let dataDir = URL(fileURLWithPath: home)
-    .appendingPathComponent("Library/Application Support/cashU").resolvingSymlinksInPath().path
+    .appendingPathComponent("Library/Application Support")
+    .appendingPathComponent(CashUFlavor.dataDirName).resolvingSymlinksInPath().path
 guard FileManager.default.isExecutableFile(atPath: electron),
       FileManager.default.fileExists(atPath: host) else { exit(78) }
 

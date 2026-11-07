@@ -6,6 +6,7 @@ import {
   parseNotifyFrame,
   serializeNotifyAck,
 } from "@cashu/host-protocol";
+import { processFlavor } from "@cashu/node-host/flavor";
 import { loadNativeNotificationCenter, type NativeNotificationCenter } from "./native.js";
 
 const INPUT_DEADLINE_MS = 3_000;
@@ -42,7 +43,7 @@ export async function processNotificationFrame(
 ): Promise<NotifyAck | null> {
   const frame: NotifyFrame = parseNotifyFrame(bytes);
   const identity = center.identity();
-  if (!identity.verified || identity.bundleIdentifier !== "io.utopiasoft.cashu") return null;
+  if (!identity.verified || identity.bundleIdentifier !== processFlavor().bundleId) return null;
   let permission: Awaited<ReturnType<NativeNotificationCenter["permissionStatus"]>>;
   try {
     permission = await center.permissionStatus();

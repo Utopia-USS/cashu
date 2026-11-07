@@ -2,15 +2,17 @@
 // package-args.test.mjs). Nothing here reads a key, prints a secret or touches the keychain.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { FLAVOR_IDS, flavorById } from "./flavor.mjs";
 import { parseTestBuild } from "./release-policy.mjs";
 
 export const USAGE =
-  "usage: node package-macos.mjs <arm64|x64> [--dmg] [--reuse-desktop] [--out <dir>]\n" +
+  "usage: node package-macos.mjs <arm64|x64> [--flavor prod|staging] [--dmg] [--reuse-desktop] [--out <dir>]\n" +
   '  [--sign "Developer ID Application: <name> (<TEAMID>)" [--keychain <path>]\n' +
   "    [--notarize <keychain-profile> | --notary-key <AuthKey.p8> --notary-key-id <id> --notary-issuer <uuid>]]\n" +
   "  [--test-build <json | @file> [--app-version <X.Y.Z>]]";
 
 const VALUE_FLAGS = [
+  "--flavor",
   "--out",
   "--sign",
   "--keychain",
@@ -30,7 +32,7 @@ function usage(reason) {
 /**
  * @param {readonly string[]} argv arguments after the script path
  * @param {{ cwd?: string, readText?: (path: string) => string }} [io]
- * @returns {{ arch: "arm64" | "x64", withDmg: boolean, reuseDesktop: boolean, out: string | null,
+ * @returns {{ arch: "arm64" | "x64", flavor: string, withDmg: boolean, reuseDesktop: boolean, out: string | null,
  *   identity: string | null, keychain: string | null,
  *   notary: null | { kind: "profile", profile: string }
  *     | { kind: "api-key", keyPath: string, keyId: string, issuer: string },
@@ -57,6 +59,23 @@ export function parsePackageArgs(argv, io = {}) {
     } else throw usage(`unknown argument ${flag}`);
   }
   const value = (flag) => seen.get(flag) ?? null;
+  const flavorName = value("--flavor") ?? "prod";
+  if (!FLAVOR_IDS.includes(flavorName)) throw usage(`--flavor is one of ${FLAVOR_IDS.join(", ")}`);
+  const flavor = flavorById(flavorName);
+  // A flavor without an update feed (staging: the owner's local second app) is ad hoc only: never
+  // Developer ID signed, notarized or a test build, so it can never be released or update itself.
+  if (!flavor.updateFeed)
+    for (const flag of [
+      "--sign",
+      "--keychain",
+      "--notarize",
+      "--notary-key",
+      "--notary-key-id",
+      "--notary-issuer",
+      "--test-build",
+      "--app-version",
+    ])
+      if (seen.has(flag)) throw usage(`${flag} is not for --flavor ${flavorName} (ad hoc only)`);
   const identity = value("--sign");
   const keychain = value("--keychain");
   if (keychain && !identity) throw usage("--keychain needs --sign");
@@ -102,6 +121,7 @@ export function parsePackageArgs(argv, io = {}) {
   const out = value("--out");
   return {
     arch,
+    flavor: flavorName,
     withDmg: seen.has("--dmg"),
     reuseDesktop: seen.has("--reuse-desktop"),
     out: out === null ? null : resolve(cwd, out),

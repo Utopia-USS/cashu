@@ -132,15 +132,17 @@ export function runMigration(
 /**
  * What the recovery screen shows after a finished import, or null when there is nothing to say (the
  * app then opens at once): the instruments the app cannot value, the `claude mcp remove` / `add` lines
- * per imported profile (the setup screen's builder over the data dir's stable launcher `launcher`),
+ * per imported profile (the setup screen's builder over the data dir's stable launcher `launcher` and
+ * the app flavor's MCP server prefix),
  * and what became of the Python worker agents. Checked against the event schema before it leaves.
  */
 export function importDoneEvent(
   done: MigrateDone,
   launcher: string,
+  mcpServerPrefix: string,
 ): Extract<RecoveryImportEvent, { kind: "done" }> | null {
   const unpriced = done.unpriced ?? [];
-  const mcpCommands = reconnectMcpCommands([launcher], done.mcpProfiles ?? []);
+  const mcpCommands = reconnectMcpCommands([launcher], done.mcpProfiles ?? [], mcpServerPrefix);
   const agents = done.agents ?? null;
   if (unpriced.length === 0 && mcpCommands.length === 0 && agents === null) return null;
   const event = recoveryImportEventSchema.parse({ kind: "done", unpriced, mcpCommands, agents });

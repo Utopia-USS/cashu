@@ -10,11 +10,13 @@ import {
   parseTestBuildFeed,
 } from "../src/update/authority.ts";
 import { RELEASE_FEED_URL, RELEASE_TEAM_ID } from "../src/update/releasePolicy.ts";
+import { flavorById } from "./flavor.mjs";
 import {
   APP_ID,
   appUpdateYml,
   artifactName,
   assertNoTestBuild,
+  assertReleasableFlavor,
   developerIdRequirement,
   developerIdTeam,
   parseTestBuild,
@@ -146,4 +148,62 @@ it("refuses to release a bundle that carries the test-build marker", () => {
   // Even an invalid or empty marker is refused for a release.
   writeFileSync(join(app, TEST_BUILD_MARKER), "");
   expect(() => assertNoTestBuild(app)).toThrow(/TEST BUILD/);
+});
+
+/** A fake bundle whose Info.plist carries `bundleId` (plutil reads XML plists). */
+function fakeBundle(bundleId) {
+  const dir = mkdtempSync(join(tmpdir(), "cashu-release-flavor-"));
+  temps.push(dir);
+  const app = join(dir, "cashU.app");
+  mkdirSync(join(app, "Contents"), { recursive: true });
+  writeFileSync(
+    join(app, "Contents", "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>${bundleId}</string></dict></plist>\n`,
+  );
+  return app;
+}
+
+it.runIf(process.platform === "darwin")(
+  "releases only the prod flavor: the staging app and unknown bundles are refused",
+  () => {
+    expect(assertReleasableFlavor(fakeBundle(APP_ID)).id).toBe("prod");
+    expect(() => assertReleasableFlavor(fakeBundle(flavorById("staging").bundleId))).toThrow(
+      /CASHU STAGING: .* is the staging flavor .*only io\.utopiasoft\.cashu is ever released/,
+    );
+    expect(() => assertReleasableFlavor(fakeBundle("com.example.other"))).toThrow(
+      /is no cashU flavor/,
+    );
+  },
+);
+
+it("names staging artifacts apart from release artifacts and keeps test dirs off staging data", () => {
+  expect(artifactName("0.5.0", "arm64", "zip", flavorById("staging"))).toBe(
+    "cashU-Staging-0.5.0-mac-arm64.zip",
+  );
+  for (const dataDir of [
+    "/Users/x/Library/Application Support/cashU Staging",
+    "/Users/x/Documents/cashU Staging",
+  ])
+    expect(() =>
+      parseTestBuild({
+        schema: 1,
+        kind: "cashu-test-build",
+        feedUrl: "http://127.0.0.1:47123/",
+        installRoot: "/tmp/w4a/install",
+        dataDir,
+        workspacesDir: "/tmp/w4a/workspaces",
+      }),
+    ).toThrow(/dataDir must be/);
+  expect(() =>
+    parseTestBuildMarker(
+      JSON.stringify({
+        schema: 1,
+        kind: "cashu-test-build",
+        feedUrl: "http://127.0.0.1:47123/",
+        installRoot: "/tmp/w4a/install",
+        dataDir: "/Users/x/Library/Application Support/cashU Staging",
+        workspacesDir: "/tmp/w4a/workspaces",
+      }),
+    ),
+  ).toThrow("test_build_marker_invalid");
 });

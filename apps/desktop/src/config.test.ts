@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FLAVORS } from "@cashu/node-host/flavor";
 import { describe, expect, it } from "vitest";
 import {
   checkDataDir,
@@ -49,6 +50,18 @@ describe("data dir", () => {
       "C:/Roaming/cashU",
     );
     expect(resolveDataDir({}, "darwin", "/Users/x").explicit).toBe(false);
+  });
+
+  it("names the staging app's default data dir after its flavor", () => {
+    expect(defaultDataDir("darwin", "/Users/x", {}, FLAVORS.staging)).toBe(
+      "/Users/x/Library/Application Support/cashU Staging",
+    );
+    expect(defaultDataDir("linux", "/home/x", {}, FLAVORS.staging)).toBe(
+      "/home/x/.local/share/cashu-staging",
+    );
+    expect(resolveDataDir({}, "darwin", "/Users/x", FLAVORS.staging).dir).toBe(
+      "/Users/x/Library/Application Support/cashU Staging",
+    );
   });
 
   it("refuses a development run on the default data dir", () => {

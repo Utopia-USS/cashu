@@ -13,7 +13,8 @@
     "./testing": "./src/testing.ts",
     "./bundle-identity": "./src/bundleIdentity.ts",
     "./test-build": "./src/testBuild.ts",
-    "./admission": "./src/admissionGuard.ts"
+    "./admission": "./src/admissionGuard.ts",
+    "./flavor": "./src/flavor.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

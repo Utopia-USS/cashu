@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { keychainService, processFlavor } from "../flavor.js";
 import type { HostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import { nativeOsKeyring, type OsKeyringPort } from "./native.js";
@@ -118,7 +119,7 @@ export function createProductionBankingSecrets(
   authority: BankingSecretAuthority,
 ): BankingSecretStore {
   const hash = createHash("sha256").update(privateDir(authority.dataDir)).digest("hex");
-  return make(authority, `cashu.banking.v1.${hash}`, nativeOsKeyring());
+  return make(authority, keychainService(processFlavor(), "banking", hash), nativeOsKeyring());
 }
 
 /** Synthetic keyring, refused outside a private TMPDIR subtree. */

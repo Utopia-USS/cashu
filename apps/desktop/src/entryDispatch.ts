@@ -1,3 +1,5 @@
+import { processFlavor } from "@cashu/node-host/flavor";
+
 /** Exit code of a refused command-line invocation (EX_USAGE). */
 const COMMAND_REFUSED = 64;
 
@@ -16,9 +18,14 @@ export async function dispatchDesktopEntry(
   // case-insensitive volume, so a leftover Python launch agent or MCP registration (`cashu worker
   // ...`, `cashu mcp --profile ...`) lands here. A positional command never opens the window: the
   // native CLI is the shim (`ELECTRON_RUN_AS_NODE=1 ... shim.mjs`), not this executable. A bare
-  // `cashu://` link (a second launch) is not a command.
+  // `cashu://` link (a second launch, the flavor's own scheme) is not a command.
   const command = args[0];
-  if (command !== undefined && !command.startsWith("-") && !/^cashu:/i.test(command)) {
+  const link = `${processFlavor().urlScheme}:`;
+  if (
+    command !== undefined &&
+    !command.startsWith("-") &&
+    command.slice(0, link.length).toLowerCase() !== link
+  ) {
     actions.refuseCommand?.(command);
     return COMMAND_REFUSED;
   }

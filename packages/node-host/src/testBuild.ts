@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { readBundleIdentity } from "./bundleIdentity.js";
+import { FLAVOR_IDS, FLAVORS } from "./flavor.js";
 
 /** Bundle-relative path of the marker (same literal as apps/desktop/scripts/release-policy.mjs). */
 export const TEST_BUILD_MARKER = "Contents/Resources/test-build.json";
@@ -33,11 +34,19 @@ export interface TestBuildMarker {
   readonly workspacesDir: string;
 }
 
+/** Every flavor's real default data dir and workspaces root names (lower case): never a test dir. */
+const REAL_DATA_DIRS = new Set(
+  FLAVOR_IDS.map((id) => FLAVORS[id].dataDirName.darwin.toLowerCase()),
+);
+const REAL_WORKSPACES = new Set(
+  FLAVOR_IDS.map((id) => FLAVORS[id].workspacesDirName.toLowerCase()),
+);
+
 function invalid(): never {
   throw new Error("test_build_marker_invalid");
 }
 
-/** Never /Applications, the default data dir, the real workspaces or the root. */
+/** Never /Applications, a flavor's default data dir, its real workspaces or the root. */
 function checkedDir(value: unknown): string {
   if (typeof value !== "string" || value.length > 1024 || value.includes("\0")) invalid();
   if (!isAbsolute(value) || resolve(value) !== value || value === "/") invalid();
@@ -47,12 +56,13 @@ function checkedDir(value: unknown): string {
     if (
       parts[index] === "Library" &&
       parts[index + 1] === "Application Support" &&
-      parts[index + 2]?.toLowerCase() === "cashu"
+      REAL_DATA_DIRS.has(parts[index + 2]?.toLowerCase() ?? "")
     )
       invalid();
   }
   for (let index = 0; index + 1 < parts.length; index += 1) {
-    if (parts[index] === "Documents" && parts[index + 1]?.toLowerCase() === "cashu") invalid();
+    if (parts[index] === "Documents" && REAL_WORKSPACES.has(parts[index + 1]?.toLowerCase() ?? ""))
+      invalid();
   }
   return value;
 }

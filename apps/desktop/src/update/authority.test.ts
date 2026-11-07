@@ -1,8 +1,10 @@
+import { FLAVORS } from "@cashu/node-host/flavor";
 import { expect, it } from "vitest";
 import {
   developerIdRequirement,
   parseReleaseFeed,
   parseTestBuildFeed,
+  releaseAuthority,
   TEST_UPDATER_CACHE_DIR_NAME,
 } from "./authority.js";
 
@@ -70,4 +72,21 @@ it("accepts a test build's local feed only through the test parser", () => {
   ])
     expect(parseTestBuildFeed(yml(feed), feed)).toBe(false);
   expect(parseTestBuildFeed(`${yml(local)}url: http://127.0.0.1:1/\n`, local)).toBe(false);
+});
+
+it("never offers updates in a flavor without an update feed (the staging app)", async () => {
+  const authority = releaseAuthority(
+    {
+      isPackaged: true,
+      execPath: "/synthetic/cashU Staging.app/Contents/MacOS/cashU",
+      resourcesPath: "/synthetic/cashU Staging.app/Contents/Resources",
+      dataDir: "/synthetic/data",
+      expectedDataDir: "/synthetic/data",
+      flavor: FLAVORS.staging,
+    },
+    async () => {
+      throw new Error("no handover");
+    },
+  );
+  expect(await authority.check()).toEqual({ ok: false, reason: "flavor_without_updates" });
 });
