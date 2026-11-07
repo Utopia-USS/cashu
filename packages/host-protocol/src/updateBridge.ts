@@ -9,6 +9,7 @@ export const updateBridgeStatus = z.discriminatedUnion("availability", [
     url: z.null(),
     branchAvailable: z.boolean(),
     manualCheck: z.boolean(),
+    autoCheck: z.boolean(),
     app: z
       .strictObject({
         stage: z.enum([

@@ -139,10 +139,21 @@ describe("native updater controller", () => {
     expect(f.controller.canRetryInstallAfterAttempt()).toBe(false);
   });
 
-  it("serializes auto download and manual install and discards late events after dispose", async () => {
+  it("never downloads a found version on its own, also with the daily check on", async () => {
     const f = fixture();
     await f.controller.initialize();
     expect(await f.controller.act("auto", true)).toEqual({ kind: "completed" });
+    expect(f.prefs().auto).toBe(true);
+    await publish(f);
+    expect(f.controller.status()).toMatchObject({ autoCheck: true, app: { stage: "available" } });
+    expect(f.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(await f.controller.act("auto", false)).toEqual({ kind: "completed" });
+    expect(f.controller.status()).toMatchObject({ autoCheck: false });
+  });
+
+  it("discards late events after dispose", async () => {
+    const f = fixture();
+    await f.controller.initialize();
     let resolveDownload: (() => void) | undefined;
     f.updater.downloadUpdate.mockImplementationOnce(
       () =>
@@ -151,11 +162,13 @@ describe("native updater controller", () => {
         }),
     );
     await publish(f);
+    const install = f.controller.act("install");
+    await vi.waitFor(() => expect(f.updater.downloadUpdate).toHaveBeenCalled());
     expect(await f.controller.act("install")).toEqual({ kind: "refused", reason: "busy" });
     f.updater.emit("download-progress", { percent: Number.NaN });
     expect(f.controller.status()).toMatchObject({ app: { progress: null } });
     resolveDownload?.();
-    await Promise.resolve();
+    await install;
     f.controller.dispose();
     f.updater.emit("update-downloaded", info);
     expect(f.controller.status()).toEqual({ availability: "unavailable" });
@@ -337,6 +350,101 @@ describe("native updater controller", () => {
     expect(f.cancel).not.toHaveBeenCalled();
     expect(f.updater.quitAndInstall).not.toHaveBeenCalled();
     expect(f.controller.canRetryInstallAfterAttempt()).toBe(false);
+  });
+
+  it("never checks automatically without the release gate, with the daily check off or while busy", async () => {
+    const f = fixture();
+    // Before initialize (and so in every dev, test, e2e, unsigned or staging build) it is unavailable.
+    expect(await f.controller.checkAutomatically()).toBe(false);
+    f.check.mockResolvedValueOnce({ ok: false, reason: "not_packaged_macos" } as never);
+    await f.controller.initialize();
+    expect(await f.controller.checkAutomatically()).toBe(false);
+    expect(f.updater.checkForUpdates).not.toHaveBeenCalled();
+    const g = fixture();
+    await g.controller.initialize();
+    expect(await g.controller.checkAutomatically()).toBe(false);
+    g.store.write({ ...g.prefs(), auto: true });
+    let release: (() => void) | undefined;
+    g.updater.checkForUpdates.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => {
+          release = () => {
+            g.updater.emit("update-not-available");
+            resolve(undefined);
+          };
+        }),
+    );
+    const manual = g.controller.act("check");
+    await vi.waitFor(() => expect(g.updater.checkForUpdates).toHaveBeenCalledOnce());
+    expect(await g.controller.checkAutomatically()).toBe(false);
+    release?.();
+    await manual;
+    expect(g.updater.checkForUpdates).toHaveBeenCalledOnce();
+    // The gate is rechecked: a failing one makes the updater unavailable without a feed request.
+    g.check.mockResolvedValueOnce({ ok: false, reason: "install_location" } as never);
+    expect(await g.controller.checkAutomatically()).toBe(false);
+    expect(g.controller.status()).toEqual({ availability: "unavailable" });
+    expect(g.updater.checkForUpdates).toHaveBeenCalledOnce();
+  });
+
+  it("an automatic check shows only a found version, honours skip and dismiss, never downloads", async () => {
+    const f = fixture();
+    f.store.write({ ...f.prefs(), auto: true });
+    await f.controller.initialize();
+    const stages: unknown[] = [];
+    f.controller.onChange(() => stages.push(f.controller.status()));
+    f.updater.checkForUpdates.mockImplementationOnce(async () => {
+      f.updater.emit("update-not-available");
+    });
+    expect(await f.controller.checkAutomatically()).toBe(true);
+    expect(stages[0]).toMatchObject({ manualCheck: false, app: { stage: "checking" } });
+    expect(f.controller.status()).toMatchObject({
+      manualCheck: false,
+      app: { stage: "up_to_date" },
+    });
+    f.updater.checkForUpdates.mockImplementationOnce(async () => {
+      throw new Error("offline");
+    });
+    expect(await f.controller.checkAutomatically()).toBe(true);
+    expect(f.controller.status()).toMatchObject({ manualCheck: false, app: { stage: "error" } });
+    f.updater.checkForUpdates.mockImplementationOnce(async () => {
+      f.updater.emit("update-available", info);
+    });
+    expect(await f.controller.checkAutomatically()).toBe(true);
+    expect(f.controller.status()).toMatchObject({
+      latest: "1.2.3",
+      manualCheck: false,
+      app: { stage: "available", version: "1.2.3" },
+    });
+    // A visible found version waits for the owner: no further automatic check over it.
+    expect(await f.controller.checkAutomatically()).toBe(false);
+    expect(await f.controller.act("dismiss")).toEqual({ kind: "completed" });
+    expect(f.controller.status()).toMatchObject({ app: null });
+    // Dismissed (or skipped): the next check runs, and the same version stays hidden.
+    f.updater.checkForUpdates.mockImplementationOnce(async () => {
+      f.updater.emit("update-available", info);
+    });
+    expect(await f.controller.checkAutomatically()).toBe(true);
+    expect(f.controller.status()).toMatchObject({ latest: "1.2.3", app: null });
+    expect(f.updater.checkForUpdates).toHaveBeenCalledTimes(4);
+    expect(f.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(f.updater.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it("the owner's install of an automatically found version reports in the card", async () => {
+    const f = fixture();
+    f.store.write({ ...f.prefs(), auto: true });
+    await f.controller.initialize();
+    f.updater.checkForUpdates.mockImplementationOnce(async () => {
+      f.updater.emit("update-available", info);
+    });
+    await f.controller.checkAutomatically();
+    f.updater.downloadUpdate.mockRejectedValueOnce(new Error("offline"));
+    expect(await f.controller.act("install")).toEqual({
+      kind: "outcome_unknown",
+      reason: "download_failed",
+    });
+    expect(f.controller.status()).toMatchObject({ manualCheck: true, app: { stage: "error" } });
   });
 
   it("refuses an unknown runtime action", async () => {

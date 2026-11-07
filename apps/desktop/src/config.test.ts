@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { legacyDataAdmission, legacySourceRoots } from "@cashu/node-host/admission";
 import { FLAVORS } from "@cashu/node-host/flavor";
 import { describe, expect, it } from "vitest";
 import {
@@ -107,5 +108,31 @@ describe("test-build data dir", () => {
       rmSync(root, { recursive: true, force: true });
     }
     expect(TEST_BUILD_TITLE).toBe("cashU - TEST BUILD");
+  });
+
+  it("finds Python data in a test build's marker data dir, and only there", () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "cashu-test-build-python-")));
+    try {
+      const data = join(root, "data");
+      mkdirSync(data);
+      writeFileSync(join(data, "cashu.db"), "synthetic");
+      // A relaunch without environment: main's choice is the marker dir, explicit, so the admission
+      // roots are that dir alone (never the real default or the Python app's other roots).
+      const fallback = resolveDataDir({}, "darwin", join(root, "home"));
+      const chosen = testBuildDataDir(fallback, data);
+      if (!("choice" in chosen)) throw new Error("expected a choice");
+      const roots = legacySourceRoots(
+        chosen.choice.dir,
+        join(root, "checkout"),
+        join(root, "home"),
+        {},
+        "darwin",
+        chosen.choice.explicit,
+      );
+      expect(roots).toEqual([data]);
+      expect(legacyDataAdmission(roots)).toBe("migration_required");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

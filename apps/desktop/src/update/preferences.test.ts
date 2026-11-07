@@ -13,10 +13,11 @@ it("persists only bounded update choices across controller restarts", () => {
   const root = mkdtempSync(join(tmpdir(), "cashu-update-"));
   roots.push(root);
   const first = updatePreferences(root);
-  expect(first.read()).toEqual({ auto: false, skippedVersion: null, dismissedVersion: null });
-  first.write({ auto: true, skippedVersion: "1.2.3", dismissedVersion: null });
+  // No file yet: the automatic daily check is on (notify only).
+  expect(first.read()).toEqual({ auto: true, skippedVersion: null, dismissedVersion: null });
+  first.write({ auto: false, skippedVersion: "1.2.3", dismissedVersion: null });
   expect(updatePreferences(root).read()).toEqual({
-    auto: true,
+    auto: false,
     skippedVersion: "1.2.3",
     dismissedVersion: null,
   });

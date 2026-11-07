@@ -16,7 +16,10 @@ export type UpdateStatus =
       readonly latest: string | null;
       readonly url: string | null;
       readonly branchAvailable: boolean;
+      /** False while the current stage comes from an automatic check (no checking / result card). */
       readonly manualCheck: boolean;
+      /** "Sprawdzaj codziennie": the automatic daily check (notify only) is on. */
+      readonly autoCheck: boolean;
       readonly app: null | {
         readonly stage: AppUpdateStage;
         readonly version: string | null;

@@ -36,7 +36,7 @@ import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntim
 import { startLocalHost } from "./host.js";
 import { recordStartupFailure } from "./localHost/startup.js";
 import { createProductionMarket, type ProductionMarket } from "./market/production.js";
-import { migrateCommand } from "./migration/cli.js";
+import { migrateCommand, migratesOnlyInto } from "./migration/cli.js";
 import { systemLaunchctl } from "./migration/pythonAgents.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
@@ -182,9 +182,16 @@ function canonicalDir(path: string): string {
 /** `migrate ...`: the in-place Python import, in this process (never through a host session). */
 async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
   let build: string;
+  let testBuild = false;
   try {
     const runtime = checkedRuntime({}, io);
-    if (runtime.testBuild) throw new RefusalError("a test build cannot import Python data");
+    // A sealed test build imports only into its marker's data dir (a synthetic Python data dir for
+    // the release smoke test); its keyring is already mapped into cashu-next-test.<hex>.
+    if (runtime.testBuild) {
+      if (!migratesOnlyInto(argv, io.env, runtime.testBuild.dataDir))
+        throw new RefusalError("a test build imports only into its own data dir");
+      testBuild = true;
+    }
     build = runtime.build;
   } catch (error) {
     io.stderr(`cashu-host: ${error instanceof RefusalError ? error.message : "failed"}`);
@@ -199,10 +206,13 @@ async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
     // The only place the real launchctl is wired: it retires the Python worker agents after a
     // successful import, and pythonAgents.ts still refuses it under CASHU_TESTING or a custom
     // CASHU_LAUNCH_AGENTS_DIR. A flavor that does not replace the Python install (staging) never
-    // touches the Python app's launchd agents.
-    ...(process.platform === "darwin" && processFlavor().inheritsPythonInstall
-      ? { launchctl: systemLaunchctl }
-      : {}),
+    // touches the Python app's launchd agents. A test build never gets the runner and retires
+    // only the plists of an explicit CASHU_LAUNCH_AGENTS_DIR.
+    ...(testBuild
+      ? { testBuild: true }
+      : process.platform === "darwin" && processFlavor().inheritsPythonInstall
+        ? { launchctl: systemLaunchctl }
+        : {}),
   });
 }
 

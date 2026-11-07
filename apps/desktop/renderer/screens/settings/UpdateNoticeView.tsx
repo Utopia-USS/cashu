@@ -1,6 +1,7 @@
 // The update card in the bottom-left corner (ab24ab6 core/UpdateNotice.tsx + update.css) on the native updater
 // status: a found version waits for the owner (Aktualizuj / Pomiń / remind later), download and install stages,
-// a check on demand reports here; elsewhere a newer branch version with a link to the changes. Pure view.
+// a check on demand reports here (the automatic daily check shows only a found version); elsewhere a newer
+// branch version with a link to the changes. Pure view.
 import { S } from "@cashu/i18n/core/chrome.strings";
 import { CornerNotice } from "@cashu/ui";
 import type { UpdateNoticeState } from "./useUpdateNotice.js";
@@ -53,8 +54,9 @@ export function UpdateNoticeView({ state }: { state: UpdateNoticeState }) {
         />
       );
     case "downloading": {
+      // The controller reports electron-updater's percent (0-100).
       const pct =
-        app.progress === null ? null : Math.min(100, Math.max(0, Math.round(app.progress * 100)));
+        app.progress === null ? null : Math.min(100, Math.max(0, Math.round(app.progress)));
       return (
         <CornerNotice
           title={S.downloading(version)}
@@ -66,7 +68,8 @@ export function UpdateNoticeView({ state }: { state: UpdateNoticeState }) {
     case "installing":
       return <CornerNotice title={S.installing(version)} sub={S.relaunchSoon} />;
     case "checking":
-      return <CornerNotice title={S.checking} />;
+      // An automatic check runs silently; only its find shows (the "available" card above).
+      return status.manualCheck ? <CornerNotice title={S.checking} /> : null;
     case "up_to_date":
       return status.manualCheck ? (
         <CornerNotice title={S.upToDate} sub={status.current} onClose={act("dismiss")} />

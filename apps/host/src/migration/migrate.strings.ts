@@ -20,21 +20,22 @@ export interface MigrateCounts {
 
 type AgentState = PythonAgentRetirement["agents"][number]["state"];
 
+// The same words as the app's import screen (apps/desktop/renderer/shell/Recovery.strings.ts).
 const AGENT_STATE_PL: Record<AgentState, string> = {
-  retired: "usunięty",
-  absent: "nie było",
-  failed: "nie udało się",
+  retired: "usunięto",
+  absent: "nie znaleziono",
+  failed: "nie udało się usunąć",
   skipped: "nie sprawdzono",
 };
 const AGENT_STATE_EN: Record<AgentState, string> = {
   retired: "removed",
-  absent: "not present",
-  failed: "failed",
+  absent: "not found",
+  failed: "could not be removed",
   skipped: "not checked",
 };
 
 const agentList = (r: PythonAgentRetirement, states: Record<AgentState, string>) =>
-  r.agents.map((agent) => `${agent.label}: ${states[agent.state]}`).join("; ");
+  r.agents.map((agent) => `${agent.label} (${states[agent.state]})`).join(", ");
 
 /** An instrument the app cannot price after the import (`priceReach.ts`). */
 export interface UnpricedLine {
@@ -132,7 +133,7 @@ export const M = {
   } satisfies Fn<[readonly UnpricedLine[]]>,
   agents: {
     pl: (r: PythonAgentRetirement) =>
-      `Agenci w tle starej aplikacji (launchd): ${agentList(r, AGENT_STATE_PL)}.${r.bootout === "skipped" && r.agents.some((a) => a.state === "retired") ? " Usunięto tylko pliki plist (launchctl nie był użyty: własny folder agentów)." : ""}`,
+      `Usługi w tle starej aplikacji (launchd): ${agentList(r, AGENT_STATE_PL)}.${r.bootout === "skipped" && r.agents.some((a) => a.state === "retired") ? " Usunięto tylko pliki plist (launchctl nie był użyty: własny folder agentów)." : ""}`,
     en: (r: PythonAgentRetirement) =>
       `The old app's background agents (launchd): ${agentList(r, AGENT_STATE_EN)}.${r.bootout === "skipped" && r.agents.some((a) => a.state === "retired") ? " Only the plist files were removed (launchctl not used: custom agents folder)." : ""}`,
   } satisfies Fn<[PythonAgentRetirement]>,

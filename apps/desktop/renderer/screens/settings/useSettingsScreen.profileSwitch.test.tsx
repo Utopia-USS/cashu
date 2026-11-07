@@ -38,7 +38,7 @@ vi.mock("@cashu/store-react", () => ({
       case "device.updateStatus":
         return { availability: "unavailable" };
       case "device.preferences":
-        return { theme: null, languagePin: null, updatesAuto: null };
+        return { theme: null, languagePin: null };
       case "core.desktop.proposals":
         return [];
       default:

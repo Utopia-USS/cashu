@@ -241,8 +241,8 @@ export const S = catalog({
   updates: { pl: "Aktualizacje", en: "Updates" },
   updatesDaily: { pl: "Sprawdzaj codziennie", en: "Check daily" },
   updatesDailyTitle: {
-    pl: "Raz dziennie sprawdza, czy jest nowa wersja; pobiera ją dopiero po „Aktualizuj”",
-    en: 'Checks once a day for a new version; downloads it only after "Update"',
+    pl: "Po uruchomieniu i raz dziennie sprawdza, czy jest nowa wersja, i tylko o niej informuje; pobiera ją i instaluje dopiero po „Aktualizuj”",
+    en: 'Checks for a new version after start and once a day and only tells you about it; downloads and installs it only after "Update"',
   },
   updatesDailyHint: {
     pl: (on: boolean): string => (on ? "codziennie" : "tylko na żądanie"),

@@ -9,7 +9,9 @@
 // Safety: launchctl runs only through the injected runner, and only when the agents dir is the real
 // default (`CASHU_LAUNCH_AGENTS_DIR` unset), `CASHU_TESTING` is not "1" and the home is the account's own. With
 // `CASHU_LAUNCH_AGENTS_DIR` set only the plists in that dir are removed (bootout skipped). Without a
-// runner, or under tests without that dir, nothing is touched at all (`skipped`).
+// runner, or under tests without that dir, nothing is touched at all (`skipped`). A sealed test build
+// (`testBuild`) never runs launchctl and acts only on an explicit `CASHU_LAUNCH_AGENTS_DIR`: without
+// one nothing is touched (`skipped`), whatever runner or home it was given.
 import { spawnSync } from "node:child_process";
 import { lstatSync, realpathSync, unlinkSync } from "node:fs";
 import { userInfo } from "node:os";
@@ -58,6 +60,11 @@ export interface RetireInput<L extends string = string> {
    * is used only when `home` resolves to it. Tests inject their temp home here.
    */
   readonly accountHome?: string;
+  /**
+   * The running app is a sealed test build (@cashu/node-host/test-build): launchctl never runs and
+   * only an explicit `CASHU_LAUNCH_AGENTS_DIR` is acted on; the real default dir is never touched.
+   */
+  readonly testBuild?: boolean;
 }
 
 /** One label's outcome (the protocol narrows `label` to the two Python labels). */
@@ -102,6 +109,7 @@ export function retireLaunchAgents<L extends string>(input: RetireInput<L>): Ret
   const touchDefault =
     realDefault &&
     !testing &&
+    input.testBuild !== true &&
     input.launchctl !== null &&
     isAccountHome(input.home, input.accountHome);
   const skipped = (): Retirement<L> => ({

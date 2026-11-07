@@ -201,6 +201,48 @@ describe("retirePythonAgents", () => {
     expect(readdirSync(t.dir).sort()).toEqual([`${LEGACY}.plist`, `${WORKER}.plist`]);
   });
 
+  it("in a test build never runs launchctl and acts only on an explicit agents dir", () => {
+    // Even the input that boots out in a release (real default dir outside tests, a runner, the
+    // account's home) touches nothing in a test build.
+    const t = tempAgents([WORKER, LEGACY], "home-default");
+    const { calls, runner } = recorder();
+    const skipped = retirePythonAgents({
+      env: {},
+      home: t.home,
+      accountHome: t.home,
+      uid: UID,
+      launchctl: runner,
+      testBuild: true,
+    });
+    expect(skipped).toEqual({
+      bootout: "skipped",
+      agents: [
+        { label: WORKER, state: "skipped" },
+        { label: LEGACY, state: "skipped" },
+      ],
+    });
+    expect(readdirSync(t.dir).sort()).toEqual([`${LEGACY}.plist`, `${WORKER}.plist`]);
+    // With an explicit dir (no CASHU_TESTING): only its two Python plists go, still no launchctl.
+    const custom = tempAgents([WORKER, LEGACY, HOST]);
+    const retired = retirePythonAgents({
+      env: { CASHU_LAUNCH_AGENTS_DIR: custom.dir },
+      home: custom.home,
+      accountHome: custom.home,
+      uid: UID,
+      launchctl: runner,
+      testBuild: true,
+    });
+    expect(retired).toEqual({
+      bootout: "skipped",
+      agents: [
+        { label: WORKER, state: "retired" },
+        { label: LEGACY, state: "retired" },
+      ],
+    });
+    expect(readdirSync(custom.dir)).toEqual([`${HOST}.plist`]);
+    expect(calls).toEqual([]);
+  });
+
   it("refuses a relative custom dir and a directory under a plist name", () => {
     const t = tempAgents([]);
     mkdirSync(join(t.dir, `${WORKER}.plist`));

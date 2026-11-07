@@ -974,7 +974,7 @@ function SecretsSection() {
 function AppSection({ state }: { state: SettingsScreenState }) {
   const updater = state.updater;
   const ready = updater.availability === "ready";
-  const auto = state.preferences.updatesAuto ?? false;
+  const auto = ready && updater.autoCheck;
   return (
     <KeyValues
       rows={[

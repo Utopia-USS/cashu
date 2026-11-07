@@ -17,7 +17,8 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { PreferenceStore, UpdatePreferences } from "./controller.js";
 
-const DEFAULTS: UpdatePreferences = { auto: false, skippedVersion: null, dismissedVersion: null };
+/** No file yet: the automatic daily check is on (notify only), nothing skipped or dismissed. */
+const DEFAULTS: UpdatePreferences = { auto: true, skippedVersion: null, dismissedVersion: null };
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const MAX_BYTES = 1024;
 const preferencesSchema = z.strictObject({

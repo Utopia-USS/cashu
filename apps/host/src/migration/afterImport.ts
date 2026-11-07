@@ -23,6 +23,8 @@ export interface AfterImportInput {
   readonly uid: number;
   /** The real launchctl runner (production wiring only); null never boots anything out. */
   readonly launchctl: LaunchctlRunner | null;
+  /** A sealed test build: never launchctl, only an explicit CASHU_LAUNCH_AGENTS_DIR (pythonAgents.ts). */
+  readonly testBuild?: boolean;
 }
 
 export interface AfterImport {

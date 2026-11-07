@@ -209,7 +209,8 @@ It prints each stage, then the counts and the backup folder, the old app's backg
    "Connect bank" for every bank. You give consent again in each bank's own page.
 9. **Language**: the app follows the system language; pin it in Settings if you had pinned it.
 10. **Updates**: the native bundle has no Sparkle; it updates itself from the GitHub releases of
-    Utopia-USS/cashu (`latest-mac.yml`, Settings > Updates; see [releasing.md](releasing.md)).
+    Utopia-USS/cashu (`latest-mac.yml`): it checks about 90 s after launch and once a day ("Sprawdzaj
+    codziennie" in Settings, on by default, notify only) or on "Sprawdź" (see [releasing.md](releasing.md)).
     Replacing the bundle removed the Python updater. Each native release also publishes the Python
     feed (`appcast-macos-<arch>.xml`) with an informational item only, so a Python install elsewhere
     sees a "New version" card and installs nothing. The native app's version starts at 0.5.0, above

@@ -130,6 +130,7 @@ import { releaseAuthority } from "./update/authority.js";
 import { startMainUpdateBridge } from "./update/bridge.js";
 import { createElectronUpdateController } from "./update/electron.js";
 import { updatePreferences } from "./update/preferences.js";
+import { startUpdateSchedule } from "./update/schedule.js";
 import { windowSize } from "./window.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -666,6 +667,7 @@ async function connectUi(onStarting?: () => void) {
 }
 let updaterBridge: Awaited<ReturnType<typeof startMainUpdateBridge>> | null = null;
 let updaterController: ReturnType<typeof createElectronUpdateController> | null = null;
+let updateSchedule: ReturnType<typeof startUpdateSchedule> | null = null;
 let updateHoldLock: HostLock | null = null;
 
 async function boundedAdminCall(
@@ -1143,6 +1145,7 @@ app.on("before-quit", (event) => {
   notificationClickRouter.dispose();
   releaseResponseHandler();
   relays.closeAll();
+  updateSchedule?.stop();
   void updaterBridge?.close();
   updaterController?.dispose();
   void desktop.shutdown().finally(() => {
@@ -1310,5 +1313,9 @@ if (!hasLock) {
     log(
       `start: ${result}${desktop.error ? ` (${desktop.error})` : ""}${testBuild ? " TEST BUILD" : ""}`,
     );
+    // The automatic update check (schedule.ts): only an installed release whose update gate passed
+    // and whose bridge to the host runs; every other build never asks a feed on its own.
+    if (updaterController && updaterBridge && !shutDown)
+      updateSchedule = startUpdateSchedule(updaterController);
   });
 }

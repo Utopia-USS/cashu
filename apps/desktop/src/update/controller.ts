@@ -22,6 +22,12 @@ export interface UpdaterPort {
 }
 
 export interface UpdatePreferences {
+  /**
+   * "Sprawdzaj codziennie" (Settings > Updates): the automatic check shortly after launch and once a
+   * day (schedule.ts). It only reports a found version; nothing is downloaded or installed before the
+   * owner presses "Aktualizuj" (the retired Python app's Sparkle: automatic checks on, automatic
+   * updates off). On by default.
+   */
   readonly auto: boolean;
   readonly skippedVersion: string | null;
   readonly dismissedVersion: string | null;
@@ -86,7 +92,8 @@ export class UpdateController {
   private installRetrySafe = false;
   private available = false;
   private disposed = false;
-  private autoPending = false;
+  /** Who started the current stage's check: an automatic check shows no checking / result card. */
+  private checkOrigin: "manual" | "automatic" = "manual";
   private generation = 0;
   private lifetime = 0;
   private readonly subscriptions: { event: string; callback: EventCallback }[] = [];
@@ -143,15 +150,6 @@ export class UpdateController {
       this.downloaded = null;
       this.downloadingVersion = null;
       this.setStage("available", undefined, info.version);
-      try {
-        const prefs = this.preferences.read();
-        if (prefs.auto && prefs.skippedVersion !== info.version) {
-          this.autoPending = true;
-          this.kickAuto();
-        }
-      } catch {
-        this.setStage("error", "preference_unavailable");
-      }
     });
     listen("download-progress", (value) => {
       if (this.stage?.stage !== "downloading") return;
@@ -192,11 +190,11 @@ export class UpdateController {
   status(): UpdateStatus {
     if (!this.available || this.disposed) return { availability: "unavailable" };
     let hidden = false;
+    let autoCheck: boolean;
     try {
       const prefs = this.preferences.read();
-      hidden =
-        this.latest !== null &&
-        (prefs.skippedVersion === this.latest || prefs.dismissedVersion === this.latest);
+      hidden = this.isHidden(prefs);
+      autoCheck = prefs.auto;
     } catch {
       return { availability: "unavailable" };
     }
@@ -206,16 +204,23 @@ export class UpdateController {
       latest: this.latest,
       url: null,
       branchAvailable: false,
-      manualCheck: true,
+      manualCheck: this.checkOrigin === "manual",
+      autoCheck,
       app: hidden && this.stage?.stage === "available" ? null : this.stage,
     };
+  }
+
+  private isHidden(prefs: UpdatePreferences): boolean {
+    return (
+      this.latest !== null &&
+      (prefs.skippedVersion === this.latest || prefs.dismissedVersion === this.latest)
+    );
   }
 
   dispose(): void {
     this.disposed = true;
     this.generation++;
     this.lifetime++;
-    this.autoPending = false;
     for (const { event, callback } of this.subscriptions) this.updater.off(event, callback);
     this.subscriptions.length = 0;
     this.listeners.clear();
@@ -258,18 +263,65 @@ export class UpdateController {
     }
   }
 
-  private kickAuto(): void {
-    if (!this.autoPending || this.busy || this.installing || this.disposed) return;
-    this.autoPending = false;
+  /** One feed check (the gate already passed); `origin` decides whether its stages show a card. */
+  private async runCheck(origin: "manual" | "automatic", lifetime: number): Promise<UpdateOutcome> {
+    const generation = ++this.generation;
+    this.checkOrigin = origin;
+    this.setStage("checking");
+    try {
+      await this.updater.checkForUpdates();
+      if (!this.alive(lifetime) || generation !== this.generation)
+        return { kind: "outcome_unknown", reason: "interrupted" };
+      return this.stage?.stage === "error"
+        ? { kind: "refused", reason: this.stage.error ?? "invalid_update_metadata" }
+        : { kind: "completed" };
+    } catch {
+      if (this.alive(lifetime)) this.setStage("error", "check_failed");
+      return { kind: "outcome_unknown", reason: "check_failed" };
+    }
+  }
+
+  /**
+   * The scheduled check (schedule.ts): only with "Sprawdzaj codziennie" on, never while another
+   * action runs, never over a visible found version, a download or an install. A found version
+   * appears like a manual find (the update card) and waits for the owner; its own checking,
+   * up-to-date and error stages show no card. Resolves true when the feed was asked; never throws.
+   */
+  async checkAutomatically(): Promise<boolean> {
+    if (this.disposed || !this.available || this.busy || this.installing) return false;
+    let prefs: UpdatePreferences;
+    try {
+      prefs = this.preferences.read();
+    } catch {
+      return false;
+    }
+    const stage = this.stage?.stage;
+    if (
+      !prefs.auto ||
+      stage === "checking" ||
+      stage === "downloading" ||
+      stage === "installing" ||
+      this.downloaded !== null ||
+      (stage === "available" && !this.isHidden(prefs))
+    )
+      return false;
     this.busy = true;
-    void this.download()
-      .catch(() => {
-        if (!this.disposed) this.setStage("error", "download_failed");
-      })
-      .finally(() => {
-        this.busy = false;
-        this.kickAuto();
-      });
+    const lifetime = this.lifetime;
+    try {
+      const gate = await this.authority.check();
+      if (!this.alive(lifetime)) return false;
+      if (!gate.ok) {
+        this.available = false;
+        this.emit();
+        return false;
+      }
+      await this.runCheck("automatic", lifetime);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      this.busy = false;
+    }
   }
 
   /** Must complete before this status is exposed through the host provider. */
@@ -301,13 +353,18 @@ export class UpdateController {
       return { kind: "refused", reason: "capability_unavailable" };
     if (this.busy || this.installing) return { kind: "refused", reason: "busy" };
     this.busy = true;
-    if (action === "install") this.installRetrySafe = true;
+    if (action === "install") {
+      this.installRetrySafe = true;
+      // The owner follows this update now: its download and install stages report in the card.
+      this.checkOrigin = "manual";
+    }
     const lifetime = this.lifetime;
     try {
       if (action === "auto") {
         if (typeof enabled !== "boolean") return { kind: "refused", reason: "invalid_input" };
         const prefs = this.preferences.read();
         this.preferences.write({ ...prefs, auto: enabled });
+        this.emit();
         return { kind: "completed" };
       }
       if (action === "skip" || action === "dismiss") {
@@ -327,21 +384,7 @@ export class UpdateController {
         this.emit();
         return { kind: "refused", reason: gate.reason };
       }
-      if (action === "check") {
-        const generation = ++this.generation;
-        this.setStage("checking");
-        try {
-          await this.updater.checkForUpdates();
-          if (!this.alive(lifetime) || generation !== this.generation)
-            return { kind: "outcome_unknown", reason: "interrupted" };
-          return this.stage?.stage === "error"
-            ? { kind: "refused", reason: this.stage.error ?? "invalid_update_metadata" }
-            : { kind: "completed" };
-        } catch {
-          if (this.alive(lifetime)) this.setStage("error", "check_failed");
-          return { kind: "outcome_unknown", reason: "check_failed" };
-        }
-      }
+      if (action === "check") return await this.runCheck("manual", lifetime);
       if (this.downloaded !== this.latest || !this.downloaded) {
         const download = await this.download();
         if (!this.alive(lifetime)) return { kind: "outcome_unknown", reason: "interrupted" };
@@ -413,7 +456,6 @@ export class UpdateController {
       return { kind: "outcome_unknown", reason: "unexpected_failure" };
     } finally {
       this.busy = false;
-      this.kickAuto();
     }
   }
 }

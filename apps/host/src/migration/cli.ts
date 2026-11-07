@@ -85,6 +85,11 @@ export interface MigrateIo {
    * Python worker agents are never booted out (pythonAgents.ts has the full rule).
    */
   readonly launchctl?: LaunchctlRunner;
+  /**
+   * Set by host main.ts for a sealed test build: the Python agents are retired only in an explicit
+   * CASHU_LAUNCH_AGENTS_DIR and launchctl never runs (pythonAgents.ts).
+   */
+  readonly testBuild?: boolean;
   /** The user's uid for `gui/<uid>` (default: this process's). */
   readonly uid?: number;
 }
@@ -159,6 +164,24 @@ function parse(argv: readonly string[], env: MigrateIo["env"]): Args | null {
     json,
     ...(recoveryFile === undefined ? {} : { recoveryFile }),
   };
+}
+
+/**
+ * True when `migrate ...` (the same parse as the command) acts on exactly `dataDir` (canonical, as
+ * a test-build marker holds it). Host main.ts runs a sealed test build's migrate only then.
+ */
+export function migratesOnlyInto(
+  argv: readonly string[],
+  env: MigrateIo["env"],
+  dataDir: string,
+): boolean {
+  const target = parse(argv, env)?.dataDir;
+  if (target === undefined) return false;
+  try {
+    return realpathSync(target) === dataDir;
+  } catch {
+    return false;
+  }
 }
 
 /** Writes the words once to a new private file (O_EXCL, 0600) and fsyncs it and its directory. */
@@ -341,6 +364,7 @@ async function runImport(io: MigrateIo, args: Args, t: Translator, home: string)
           home,
           uid: io.uid ?? process.getuid?.() ?? -1,
           launchctl: io.launchctl ?? null,
+          ...(io.testBuild === true ? { testBuild: true } : {}),
         })
       : null;
   if (args.json) {

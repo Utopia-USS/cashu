@@ -16,9 +16,29 @@ the evidence boundary is at its end. This file is the contract inside the app.
 ## Test builds (local update proofs)
 
 - `package-macos.mjs <arch> --sign "..." --test-build '<json>' [--app-version X.Y.Z]` seals `Contents/Resources/test-build.json` (`{schema: 1, kind: "cashu-test-build", feedUrl: "http://127.0.0.1:<port>/", installRoot, dataDir, workspacesDir}`, listed in `bundle-manifest.json`) and an `app-update.yml` naming that local feed with the `cashu-updater-test` cache. `--app-version` changes only the test build's version (electron-builder extraMetadata), never `package.json`.
-- The app honors the marker only when its bytes match the verified bundle manifest (`packages/node-host/src/testBuild.ts`): main accepts the local feed (`parseTestBuildFeed`), the install root instead of `/Applications` and runs on the marker's data dir (also when ShipIt relaunches it without environment; another explicit `CASHU_DATA_DIR` is refused); the window title reads "cashU - TEST BUILD"; the host maps every OS keyring service into `cashu-next-test.<hex>` (`keyring/native.ts`), keeps workspaces in `workspacesDir` and refuses `migrate`. Without the marker every path is the release one.
+- The app honors the marker only when its bytes match the verified bundle manifest (`packages/node-host/src/testBuild.ts`): main accepts the local feed (`parseTestBuildFeed`), the install root instead of `/Applications` and runs on the marker's data dir (also when ShipIt relaunches it without environment; another explicit `CASHU_DATA_DIR` is refused); the window title reads "cashU - TEST BUILD"; the host maps every OS keyring service into `cashu-next-test.<hex>` (`keyring/native.ts`), keeps workspaces in `workspacesDir` and runs `migrate` only into the marker's data dir (`migratesOnlyInto`, for the synthetic Python import smoke test), where the Python agents are retired only from an explicit `CASHU_LAUNCH_AGENTS_DIR` and launchctl never runs (`pythonAgents.ts`). Without the marker every path is the release one.
 - A release never carries it: `verify-package.mjs --release` (run by the release script on every artifact) calls `assertNoTestBuild` first; `--test-build` runs the same Developer ID checks for a test build.
 - CI notarization: `--notary-key <AuthKey.p8> --notary-key-id <id> --notary-issuer <uuid>` instead of `--notarize <profile>`, and `--keychain <path>` for codesign from a temporary keychain.
+
+## Automatic check
+
+- `apps/desktop/src/update/schedule.ts`: Electron main starts it after `desktop.start` only when the
+  controller's gate passed and the update bridge to the host runs (an installed release, or a sealed
+  test build on its local feed). One check 90 s after start, then hourly ticks that check again once
+  24 h of wall-clock time passed since the last check that reached the feed (a sleeping Mac checks at
+  the next tick). Dev, tests, e2e, unsigned, ad-hoc and staging builds never start it, and
+  `controller.checkAutomatically` refuses without the gate anyway.
+- The toggle "Sprawdzaj codziennie" / "Check daily" (Settings > Aplikacja) is `auto` in
+  `update-preferences.json`, default on when the file is absent: it turns the automatic check on or off
+  and nothing else. Mirrors the retired Python app's Sparkle (`SUEnableAutomaticChecks` true,
+  `SUAllowsAutomaticUpdates` false): an automatic check never downloads or installs; there is no
+  automatic install. The switch shows `updateStatus.autoCheck` (main's file is the only source).
+- An automatic check runs only when no action is busy and no found version is visible, downloading,
+  downloaded or installing. Its checking, up-to-date and error stages show no card
+  (`updateStatus.manualCheck` false); a found version shows the same corner card as a manual find
+  (`UpdateNotice`, mounted once in the profile shell), honouring "Pomiń" (skip) and "Przypomnij
+  później" (dismiss) per version. "Aktualizuj" makes the cycle manual again, so its download and install
+  stages report in the card.
 
 ## Install sequence
 

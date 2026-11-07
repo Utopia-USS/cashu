@@ -145,7 +145,7 @@ function SyntheticSettings({
     },
     proposals: [{ gid: "019a48cf-0285-8a09-bf65-a2741b2c9a72", summary: "Synthetic proposal" }],
     onProposalOpened() {},
-    preferences: { theme: "system", languagePin: "system", updatesAuto: false },
+    preferences: { theme: "system", languagePin: "system" },
     hostInfo: unavailable
       ? { availability: "unavailable" }
       : {

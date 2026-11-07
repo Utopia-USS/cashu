@@ -21,7 +21,7 @@ import {
 } from "@cashu/host-protocol/startup-failure";
 import type { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { afterEach, describe, expect, it } from "vitest";
-import { migrateCommand } from "./cli.js";
+import { migrateCommand, migratesOnlyInto } from "./cli.js";
 import {
   PYTHON_NAMES,
   type PythonFixture,
@@ -61,6 +61,7 @@ async function cli(
     afterCutoverMove?: (moves: number) => void;
     env?: Record<string, string>;
     launchctl?: (argv: readonly string[]) => number | null;
+    testBuild?: boolean;
   } = {},
 ): Promise<Run> {
   const out: string[] = [];
@@ -68,6 +69,7 @@ async function cli(
   const code = await migrateCommand(argv, {
     env: { CASHU_LANG: "en", HOME: f.base, ...options.env },
     ...(options.launchctl === undefined ? {} : { launchctl: options.launchctl, uid: 501 }),
+    ...(options.testBuild === undefined ? {} : { testBuild: options.testBuild }),
     stdout(line) {
       out.push(line);
       options.onStdout?.(line);
@@ -387,7 +389,7 @@ describe("cashu migrate (human mode) failures", () => {
         ),
       );
       expect(run.out.at(-3)).toBe(
-        "The old app's background agents (launchd): io.utopiasoft.cashu.worker: not checked; io.github.synszakala.finanse.worker: not checked.",
+        "The old app's background agents (launchd): io.utopiasoft.cashu.worker (not checked), io.github.synszakala.finanse.worker (not checked).",
       );
       expect(run.out.at(-2)).toBe(
         [
@@ -555,6 +557,38 @@ describe("cashu migrate retires the Python worker agents (temp agents dir, fake 
   );
 
   it(
+    "a test build (no CASHU_TESTING) retires only the plists of its explicit dir, never launchctl",
+    async () => {
+      const f = fixture();
+      const dir = agentsDir(f);
+      const calls: string[][] = [];
+      const run = await cli(f, ["--data-dir", f.dataDir, "--json"], {
+        answer: "confirm",
+        env: { CASHU_LAUNCH_AGENTS_DIR: dir },
+        testBuild: true,
+        launchctl: (argv) => {
+          calls.push([...argv]);
+          return 0;
+        },
+      });
+      expect(run.code).toBe(0);
+      expect(migrateDoneSchema.parse(JSON.parse(run.out.at(-1) ?? "")).agents).toEqual({
+        bootout: "skipped",
+        agents: [
+          { label: WORKER, state: "retired" },
+          { label: LEGACY, state: "retired" },
+        ],
+      });
+      expect(calls).toEqual([]);
+      expect(readdirSync(dir).sort()).toEqual([
+        "com.example.synthetic.plist",
+        "io.utopiasoft.cashu.host.plist",
+      ]);
+    },
+    SLOW,
+  );
+
+  it(
     "a failed import touches no agent",
     async () => {
       const f = fixture();
@@ -587,7 +621,7 @@ describe("cashu migrate retires the Python worker agents (temp agents dir, fake 
       );
       expect(run.code).toBe(0);
       expect(run.out).toContain(
-        "Agenci w tle starej aplikacji (launchd): io.utopiasoft.cashu.worker: usunięty; io.github.synszakala.finanse.worker: nie udało się. Usunięto tylko pliki plist (launchctl nie był użyty: własny folder agentów).",
+        "Usługi w tle starej aplikacji (launchd): io.utopiasoft.cashu.worker (usunięto), io.github.synszakala.finanse.worker (nie udało się usunąć). Usunięto tylko pliki plist (launchctl nie był użyty: własny folder agentów).",
       );
       expect(run.out).toContain(
         [
@@ -604,4 +638,24 @@ describe("cashu migrate retires the Python worker agents (temp agents dir, fake 
     },
     SLOW,
   );
+});
+
+describe("migratesOnlyInto (a test build imports only into its marker's data dir)", () => {
+  it("accepts only a command line whose data dir is exactly that dir", () => {
+    const f = fixture();
+    const other = join(f.base, "other");
+    mkdirSync(other);
+    expect(migratesOnlyInto(["--data-dir", f.dataDir, "--json"], {}, f.dataDir)).toBe(true);
+    expect(migratesOnlyInto(["verify", "--data-dir", f.dataDir], {}, f.dataDir)).toBe(true);
+    expect(migratesOnlyInto(["--json"], { CASHU_DATA_DIR: f.dataDir }, f.dataDir)).toBe(true);
+    // Another dir, no dir at all, a relative dir or a command line migrate refuses.
+    expect(migratesOnlyInto(["--data-dir", other, "--json"], {}, f.dataDir)).toBe(false);
+    expect(migratesOnlyInto(["--json"], {}, f.dataDir)).toBe(false);
+    expect(migratesOnlyInto(["--data-dir", "data", "--json"], {}, f.dataDir)).toBe(false);
+    expect(migratesOnlyInto(["--data-dir", f.dataDir, "--bogus", "x"], {}, f.dataDir)).toBe(false);
+    // The flag wins over the environment, as in the command itself.
+    expect(migratesOnlyInto(["--data-dir", other], { CASHU_DATA_DIR: f.dataDir }, f.dataDir)).toBe(
+      false,
+    );
+  });
 });

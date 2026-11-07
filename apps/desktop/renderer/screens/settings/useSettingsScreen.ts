@@ -533,14 +533,15 @@ export function useSettingsScreen(
     if (result.status !== "completed" || result.value.kind !== "completed")
       setNotice(result.status === "outcome_unknown" ? T.workspaceUnknown : T.updatesUnavailable);
   };
+  // "Sprawdzaj codziennie" lives in Electron main's update preferences; the switch shows
+  // updateStatus.autoCheck, which main re-pushes after the change.
   const setUpdatesAuto = async (enabled: boolean) => {
     const result = await update.run({ action: "auto", enabled });
-    if (result.status !== "completed" || result.value.kind !== "completed") {
-      setNotice(T.updatesUnavailable);
-      return;
-    }
-    const saved = await durable.run("preferences", setPrefs, { updatesAuto: enabled });
-    setNotice(saved.kind === "completed" ? T.saved : commandFailure(saved, T.saveFailed));
+    setNotice(
+      result.status === "completed" && result.value.kind === "completed"
+        ? T.saved
+        : T.updatesUnavailable,
+    );
   };
   const copyDataDir = async () => {
     if (hostInfo.availability !== "ready" || !hostInfo.dataDir) return;

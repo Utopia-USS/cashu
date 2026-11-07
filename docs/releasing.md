@@ -2,7 +2,9 @@
 
 A release goes to every installed native cashU.app: the app reads its update feed from the latest GitHub
 release of `Utopia-USS/cashu` and installs a newer version in place when the user clicks "Aktualizuj" /
-"Update". The same release also tells the retired Python cashU.app that the native app exists. This page
+"Update". Installed apps check that feed on their own about 90 s after launch and then once a day
+(Settings > Aplikacja > "Sprawdzaj codziennie", on by default), show a found version in the update card
+and download nothing before "Aktualizuj". The same release also tells the retired Python cashU.app that the native app exists. This page
 is the owner's procedure; the contract inside the app (Team ID, feed, install sequence) is
 [agents/s47-update-operator.md](agents/s47-update-operator.md).
 
