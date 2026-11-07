@@ -159,11 +159,14 @@ It prints each stage, then the counts and the backup folder, the old app's backg
 
 ## 5. Verification
 
-1. **Re-check the import** before you use the app (app quit):
+1. **Re-check the import** before you use the app (app quit, and its background host stopped: "Open cashU"
+   after the import starts a host that keeps running after the window closes):
    ```sh
+   "${CASHU[@]}" host stop
    "${CASHU[@]}" migrate verify
    ```
-   Expect the same counts as the import and exit code 0. It reads only.
+   Expect the same counts as the import and exit code 0. It reads only. A `migrate_verify_mismatch` with
+   detail `native_host_lock_required` means a host was still running: stop it and run verify again.
 2. **Look at the folder**: `ls "$D"` shows `python-backup-<time>`, `migration.json`, `native`,
    `vaults`, `stores` (and `workspace` when a profile had workspace settings) and no `cashu.db`; `cat "$D/migration.json"` shows `"profiles":N,"vaults":N` (N = your number of profiles).
 3. **Open the app** and compare net worth per currency for every profile with step 3.2, in the

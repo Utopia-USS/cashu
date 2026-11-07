@@ -267,4 +267,9 @@ Not proven until it happens:
 - Retiring the real Python agent labels on a real install (only a throwaway label was booted out).
 - The Intel feed end to end on an Intel Mac (the x64 build is signed, notarized and verified; its update
   was not run).
-<!-- TODO(lead): add the notarized release app smoke result from wave 5. -->
+- Notarization of the final tree: the last full dry run with notarization ran at an earlier commit of the
+  same release work (all four Accepted); the final tree was signed and verified with the Developer ID and
+  smoke-tested (first run of the release build on a temp data dir: profile wizard, no keychain item, no
+  network request; a signed test build imported synthetic Python data end to end, retired both synthetic
+  Python agents and showed the MCP lines), but not notarized again. Run `--dry-run` once before the first
+  release.
