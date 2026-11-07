@@ -53,7 +53,9 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
    sqlite3 -readonly "$D/cashu.db" 'select version_num from alembic_version'
    ```
    Expect one of `0025_topic_view_sources` ... `0030_sync_outbox_post`. If older, update the
-   Python app once (Sparkle), open it, quit it, check again.
+   Python app to its last release (Sparkle offers it only until the first native release; after that,
+   install the Python release `v0.4.2` from github.com/Utopia-USS/cashu/releases by hand), open it,
+   quit it, check again.
 2. **Write down net worth per currency for each profile** (for step 5.3): the Python app's overview,
    or `/Applications/cashU.app/Contents/MacOS/cashu --profile <profile> stats` (each profile). Keep the
    numbers off the repo and delete them after step 5.
@@ -108,8 +110,11 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
    Removing them now (`claude mcp remove cashu-<profile> -s <scope>`, then `claude mcp list | grep
    cashu-` prints nothing) is still fine; the printed lines start with that remove anyway.
 4. **Make the copies of section 3** (steps 3.3 and 3.4) now, with everything quit.
-5. **Install the native app**: replace `/Applications/cashU.app` with the native bundle (Finder asks
-   to replace). Check:
+5. **Install the native app**: download the dmg for this Mac from the latest release on
+   github.com/Utopia-USS/cashu/releases (`cashU-<version>-mac-arm64.dmg` on Apple silicon,
+   `cashU-<version>-mac-x64.dmg` on Intel; the Python app's update card points there too, its
+   "Aktualizuj" / "Update" only closes the card). Open the dmg and drag cashU.app over
+   `/Applications/cashU.app` (Finder asks to replace). Check:
    ```sh
    defaults read /Applications/cashU.app/Contents/Info.plist CFBundleIdentifier   # io.utopiasoft.cashu
    ls /Applications/cashU.app/Contents/Frameworks | grep -i sparkle                # prints nothing
@@ -203,12 +208,12 @@ It prints each stage, then the counts and the backup folder, the old app's backg
    private key file" (the `enablebanking_private.pem` from the backup), then "Połącz bank" /
    "Connect bank" for every bank. You give consent again in each bank's own page.
 9. **Language**: the app follows the system language; pin it in Settings if you had pinned it.
-10. **Sparkle**: the native bundle has no Sparkle and its updater has no release feed configured yet,
-    so nothing updates it automatically. Replacing the bundle removed the Python updater. Do not
-    publish further Python releases (the old Sparkle release script, now only in git history); a Python install elsewhere would
-    still follow `releases/latest` of the Python feed. The native app's version starts at 0.5.0,
-    above the last Python release (0.4.6), so any later version comparison between the two orders
-    them correctly.
+10. **Updates**: the native bundle has no Sparkle; it updates itself from the GitHub releases of
+    Utopia-USS/cashu (`latest-mac.yml`, Settings > Updates; see [releasing.md](releasing.md)).
+    Replacing the bundle removed the Python updater. Each native release also publishes the Python
+    feed (`appcast-macos-<arch>.xml`) with an informational item only, so a Python install elsewhere
+    sees a "New version" card and installs nothing. The native app's version starts at 0.5.0, above
+    the last Python release (0.4.6), so any version comparison between the two orders them correctly.
 11. **Old keychain items** (service `cashu`: `anthropic`, `connector/...`; legacy service `finanse`)
     stay untouched and unused. Remove them only after you are sure you will not roll back.
 
@@ -274,6 +279,6 @@ path says otherwise.
 | Enabled modules per profile, base currency, MCP privacy | profiles, profile_modules: genesis | as the 35 tables |
 | Python worker launch agent `io.utopiasoft.cashu.worker` (legacy `io.github.synszakala.finanse.worker`) | Retired by the import after its cutover (bootout + plist removed, those two labels only); by hand only when the result says failed; native host agent `io.utopiasoft.cashu.host` untouched | step 4.2, 6.4; host `pythonAgents.test.ts`, `cli.test.ts` "cashu migrate retires the Python worker agents ...", desktop e2e 104 "Import my data retires the Python worker agents ..." |
 | MCP registrations `cashu-<profile>` | The finished import shows / prints the `claude mcp remove` and `add` lines per profile against `$D/bin/cashu`; the owner runs them | step 4.3, 6.2 |
-| Sparkle (Python bundle `io.utopiasoft.cashu`, feed `releases/latest/download/appcast-macos-<arch>.xml`) | Gone with the Python bundle; native bundle `io.utopiasoft.cashu.next` has no Sparkle | step 4.5, 6.10 |
+| Sparkle (Python bundle `io.utopiasoft.cashu`, feed `releases/latest/download/appcast-macos-<arch>.xml`) | Gone with the Python bundle; the native bundle (same ID `io.utopiasoft.cashu`) has no Sparkle and updates from `latest-mac.yml`; native releases keep publishing an informational appcast for Python installs | step 4.5, 6.10 |
 | `statements/` CSV drop folder | Only in a source checkout, never in the data folder: nothing to carry | - |
 | LLM caches | None on disk: categorization results are transaction and rule rows | as the 35 tables |

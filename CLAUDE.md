@@ -113,10 +113,10 @@ event-sourced stores, Biome, vitest, Playwright.
 | `packages/i18n/`, `ui/`, `ui-logic/`, `store-react/` | PL/EN catalogs and translators; UI system; platform-free UI logic; React query/command bindings |
 | `packages/sync/`, `market/`, `llm/`, `host-protocol/`, `node-host/`, `api/`, `parity/` | sync engine; market data sources; Ollama / Anthropic clients; host wire protocol; Node platform adapters (SQLite, keychain, guards); API scaffold; TS-vs-Python parity comparer |
 | `apps/host/` | the local host: stores, CLI tree (`src/cli/`), MCP sessions (`src/mcp/`), worker, connectors runtime, workspaces, banking, migration |
-| `apps/desktop/` | Electron main/preload, renderer screens, e2e, packaging (`scripts/package-macos.mjs`) |
+| `apps/desktop/` | Electron main/preload, renderer screens, e2e, packaging and release (`scripts/package-macos.mjs`, `scripts/release-macos.mjs`) |
 | `apps/cli/` | the `cashu` shim: routes `app`, `host`, `migrate`, `mcp` and forwards every other command to the host |
 | `.claude/skills/` | the 9 shipped product skills (inventory below) |
-| `docs/` | `import-format.md`, `budget-import-format.md`, `connectors.md`, `schemas/`, `migration-runbook.md`, `agents/` |
+| `docs/` | `import-format.md`, `budget-import-format.md`, `connectors.md`, `schemas/`, `migration-runbook.md`, `releasing.md`, `releases/` (release notes), `agents/` |
 | `tools/`, `parity/` | architecture checks and dev plugin; the frozen Python oracle |
 
 Full file-level map: [docs/agents/code-map.md](docs/agents/code-map.md).
@@ -183,7 +183,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Write tests | [conventions.md](docs/agents/conventions.md) "Tests" | `vitest.tiers.ts`, `@cashu/node-host/testing`, `packages/domain/src/testing/` |
 | Moving a user from the Python app | [docs/migration-runbook.md](docs/migration-runbook.md) | `apps/host/src/migration/` (`cashu migrate`, `cashu migrate verify`) |
 | Packaging / desktop app build | [running.md](docs/agents/running.md) "Packaging" | `apps/desktop/scripts/package-macos.mjs`, `apps/desktop/build/electron-builder.config.cjs` |
-| Updates and releases (owner only) | [s47-update-operator.md](docs/agents/s47-update-operator.md) | `apps/desktop/src/update/` |
+| Updates and releases (owner only) | [docs/releasing.md](docs/releasing.md), [s47-update-operator.md](docs/agents/s47-update-operator.md) | `apps/desktop/scripts/release-macos.mjs`, `.github/workflows/release-macos.yml`, `bump-version.yml`, `apps/desktop/src/update/` |
 | Help the end user set up | [ONBOARDING.md](ONBOARDING.md) | the module setup skills |
 
 ## Common commands
@@ -205,7 +205,9 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Connect a profile's MCP server | the profile's agent workspace registers it in `.mcp.json`; by hand: `claude mcp add cashu-<slug> -- "<data dir>/bin/cashu" mcp --profile <slug>` |
 | Profile agent workspace | Settings > AI agent (MCP) in the app, or `cashu --profile <slug> workspace init` / `workspace update` |
 | Import data from the Python app | `cashu migrate --recovery-file <file>`, then `cashu migrate verify` ([runbook](docs/migration-runbook.md)) |
-| Build cashU.app (macOS) | `node apps/desktop/scripts/package-macos.mjs arm64` (`x64`; `--dmg` for a disk image) |
+| Build cashU.app (macOS, ad hoc) | `node apps/desktop/scripts/package-macos.mjs arm64` (`x64`; `--dmg` for a disk image) |
+| Build the owner's `cashU Staging` app | `node apps/desktop/scripts/package-macos.mjs arm64 --flavor staging` ([releasing.md](docs/releasing.md) "Staging build") |
+| Release (owner only) | merge `staging` -> `main` and approve the `release` environment; fallback `node apps/desktop/scripts/release-macos.mjs --check` ([releasing.md](docs/releasing.md)) |
 | Parity against the Python oracle | `pnpm parity:produce`, `pnpm parity --dataset demo --actual <dir>` ([parity/README.md](parity/README.md)) |
 
 ## Documentation
@@ -221,7 +223,8 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 - [docs/agents/connector-runtime.md](docs/agents/connector-runtime.md) - design spike: connectors on macOS, Linux and Windows (Deno tier)
 - [docs/agents/connector-sandbox-platforms.md](docs/agents/connector-sandbox-platforms.md) - design spike: connector sandboxes per OS
 - [docs/agents/sync-and-mobile.md](docs/agents/sync-and-mobile.md) - design spike: multi-device sync, mobile app, TypeScript stack
-- [docs/agents/s47-update-operator.md](docs/agents/s47-update-operator.md) - update and release contract of the desktop app (owner)
+- [docs/releasing.md](docs/releasing.md) - releasing cashU.app: CI and local paths, one-time setup, release notes, staging build (owner)
+- [docs/agents/s47-update-operator.md](docs/agents/s47-update-operator.md) - update contract inside the desktop app (Team ID, feed, install sequence)
 - [docs/migration-runbook.md](docs/migration-runbook.md) - moving an install from the Python app to the native app
 - [ONBOARDING.md](ONBOARDING.md) - end-user setup the agent walks through
 - [README.md](README.md) - product overview

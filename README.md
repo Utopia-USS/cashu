@@ -58,8 +58,12 @@ and **won't commit your data**.
 
 ## 🖥️ The macOS app
 
-cashU is a normal Mac app, `cashU.app`. There is no published download yet: build it from this
-repository (macOS, Node.js 22, Xcode command line tools):
+cashU is a normal Mac app, `cashU.app` (macOS 13 or later). **Download** the dmg for your Mac from the
+[latest release](https://github.com/Utopia-USS/cashu/releases/latest): `cashU-<version>-mac-arm64.dmg`
+on Apple silicon, `cashU-<version>-mac-x64.dmg` on Intel. Releases are signed and notarized, and the app
+installs later versions itself (Settings > Updates).
+
+**Or build it** from this repository (macOS, Node.js 22, Xcode command line tools):
 
 ```bash
 corepack enable && pnpm install --frozen-lockfile
@@ -71,12 +75,13 @@ node apps/desktop/scripts/package-macos.mjs arm64     # x64 on an Intel Mac; --d
 wizard: name, modules, base currency, then the recovery phrase of the new encrypted profile (write it
 down; it is shown once). The wizard can also create the profile's agent workspace.
 
-**Gatekeeper:** a build from source is signed ad hoc and runs on the Mac that built it. Copied to
+**Gatekeeper:** a build from source is signed ad hoc, runs on the Mac that built it and does not
+update itself. Copied to
 another Mac, macOS blocks it as "from an unidentified developer": open it once, then confirm in System
 Settings > Privacy & Security > "Open Anyway" (only for a build you made yourself).
 
-**Coming from the Python cashU app?** Your data moves over once, in place, with `cashu migrate` (or
-the "Import my data" button on the app's recovery screen): see
+**Coming from the Python cashU app?** Install the native app over it; your data moves over once, in
+place, with the "Import my data" button on the app's first start (or `cashu migrate`): see
 [`docs/migration-runbook.md`](docs/migration-runbook.md). From finanse (the name before cashU, legacy
 name): [`docs/upgrading-from-finanse.md`](docs/upgrading-from-finanse.md).
 
@@ -220,7 +225,8 @@ tests, Biome for lint and format (one dependency and one config file for both jo
 in every package on every push). Architecture, code map, conventions, and "how to add a feature" -
 [`CLAUDE.md`](CLAUDE.md) and [`docs/agents/`](docs/agents/). The old Python app is kept only as a frozen
 verification oracle under `parity/python/` ([`parity/README.md`](parity/README.md)); it is never
-shipped.
+shipped. Releases: a merge to `main` bumps the version and builds the signed release after the owner's
+approval ([`docs/releasing.md`](docs/releasing.md)).
 
 **Contributing.** Issues and pull requests are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and
 [`CLAUDE.md`](CLAUDE.md) first, and never include real financial data: tests, fixtures and screenshots

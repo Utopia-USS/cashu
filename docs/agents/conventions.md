@@ -41,10 +41,10 @@ Every change to `packages/`, `apps/`, `tools/` or the docs.
 5. **Never bump the version in a normal change.** The app version is `version` in
    `apps/desktop/package.json` (every other package stays `0.0.0`). The `bump-version` workflow
    raises it on every merge to `main` (`apps/desktop/scripts/bump-version.mjs`: patch by default,
-   `[minor]` / `[major]` / `[skip bump]` in a commit message, a hand-set version is kept); see also
-   [s47-update-operator.md](s47-update-operator.md). Changes reach `main` through `staging`: every
+   `[minor]` / `[major]` / `[skip bump]` in a commit message, a hand-set version is kept). Changes reach `main` through `staging`: every
    push to `staging` opens or updates the `staging -> main` pull request (`staging-to-main-pr`
-   workflow). Pushing to `staging` releases nothing.
+   workflow). Pushing to `staging` releases nothing; the merge to `main` bumps the version and starts
+   the release workflow, which waits for the owner's approval ([releasing.md](../releasing.md)).
 
 ### Module boundaries and layers
 

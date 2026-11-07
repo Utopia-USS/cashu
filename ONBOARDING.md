@@ -14,11 +14,12 @@
 
 ## Step 0 - Prerequisites
 
-cashU is a native macOS app. There is no published download yet, so the user builds it once from
-this checkout. Check that the user has:
-- **macOS** with the **Xcode command line tools** (`xcode-select -p`; else `xcode-select --install`),
-- **Node.js 22** (`node --version`) and **pnpm** through corepack (`corepack enable`),
-- (optional) **Ollama** - if they want to categorize spending with a local, offline LLM.
+cashU is a native macOS app (macOS 13 or later). Check that the user has:
+- **macOS 13+** (`sw_vers -productVersion`),
+- (optional) **Ollama** - if they want to categorize spending with a local, offline LLM,
+- only to build from source instead of downloading: the **Xcode command line tools**
+  (`xcode-select -p`; else `xcode-select --install`), **Node.js 22** (`node --version`) and **pnpm**
+  through corepack (`corepack enable`).
 
 If something is missing, say how to install it (macOS: `brew install node ollama`) and wait.
 
@@ -28,7 +29,15 @@ If something is missing, say how to install it (macOS: `brew install node ollama
 
 ---
 
-## Step 1 - Build and install the app
+## Step 1 - Get and install the app
+
+**Download (recommended):** the dmg for this Mac from the latest release,
+https://github.com/Utopia-USS/cashu/releases/latest - `cashU-<version>-mac-arm64.dmg` on Apple silicon
+(`uname -m` prints `arm64`), `cashU-<version>-mac-x64.dmg` on Intel. The **user** downloads it, opens it
+and drags cashU to Applications; do not copy it there yourself. Releases are signed and notarized and
+update themselves (Settings > Updates).
+
+**Or build from source** (this checkout):
 
 ```bash
 corepack enable && pnpm install --frozen-lockfile
@@ -37,7 +46,7 @@ node apps/desktop/scripts/package-macos.mjs arm64    # x64 on an Intel Mac
 
 The first build takes a few minutes. The result is
 `build/t46/electron-builder/mac-arm64/cashU.app` (`mac/` for x64). The **user** drags it to
-`/Applications` and opens it; do not copy it there yourself. A build from source is signed ad hoc: it
+`/Applications` and opens it. A build from source is signed ad hoc and does not update itself: it
 opens on this Mac; on another Mac macOS blocks it until the user confirms it in System Settings >
 Privacy & Security > "Open Anyway".
 

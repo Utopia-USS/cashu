@@ -1,6 +1,9 @@
 # S47 Electron update operator notes
 
-Status: source contract only. No signed release or in-place update has been accepted.
+Status: the release path is built and proven up to the first publication (2026-11-07): a full signed and
+notarized dry run of both arches and an in-place update 0.5.0 -> 0.5.1 of a Developer ID signed test build.
+The signed CI path is unproven until its first run. How to release: [docs/releasing.md](../releasing.md);
+the evidence boundary is at its end. This file is the contract inside the app.
 
 ## Release inputs
 
@@ -8,7 +11,7 @@ Status: source contract only. No signed release or in-place update has been acce
 - `RELEASE_TEAM_ID` (`29W838VKU4`) and `RELEASE_FEED_URL` (`https://github.com/Utopia-USS/cashu/releases/latest/download/`, the GitHub Releases of Utopia-USS/cashu) are pinned in `apps/desktop/src/update/releasePolicy.ts`. The package step writes `app-update.yml` from that file (`apps/desktop/scripts/release-policy.mjs`), so the compiled gate and the sealed feed cannot disagree; `verify-package.mjs --release` checks both. Ad-hoc builds carry the same feed but fail the Developer ID requirement and report updates unavailable.
 - Keep one Developer ID Team ID across installed builds. Verify the app inside the downloaded zip under the release signing identity before owner-controlled publication. The macOS updater's Squirrel installation also checks matching signing identity.
 - Produce update metadata with the zip checksum. Keep the endpoint and archive immutable after publishing. Source tests with a local generic HTTP server and synthetic archives do not prove release trust.
-- Build with `node apps/desktop/scripts/package-macos.mjs <arm64|x64> [--dmg]` (ad hoc signed) or, on the owner's Mac, add `--sign "Developer ID Application: ... (29W838VKU4)" --notarize cashu-notary --out <dir>` (signed, notarized, stapled; see [running.md](running.md) "Packaging"). There are no Sparkle release scripts for this app. Moving an installed audience of the retired Python app (Sparkle) requires a separate owner decision.
+- Releases are built by `apps/desktop/scripts/release-macos.mjs` (the CI workflow `release-macos.yml` after the version bump on `main`, or the owner's local fallback), which calls `package-macos.mjs <arch> --sign ... --notarize ... --dmg` per arch, verifies every artifact with `verify-package.mjs --release --notarized` and publishes 7 assets: both zips and dmgs, `latest-mac.yml` (both zips; electron-updater picks the `arm64` one on Apple silicon, `controller.ts` accepts one or two zips) and the informational Sparkle appcasts for the retired Python app (`appcast-macos-arm64.xml`, `appcast-macos-x86_64.xml`). A plain `package-macos.mjs <arch>` build is ad hoc, for development only.
 
 ## Test builds (local update proofs)
 
@@ -28,6 +31,6 @@ Status: source contract only. No signed release or in-place update has been acce
 
 ## Evidence boundary
 
-An isolated ad-hoc fixture can prove files, app identity, host launch and mocked updater state. It cannot prove Team ID continuity, notarization, in-place release update, Keychain continuity, service registration, cold notification clicks or migration of other installs. Do not operate on `/Applications/cashU.app` or real profile data during S47 source acceptance.
+An isolated ad-hoc fixture proves files, app identity, host launch and mocked updater state only. The release evidence (what the dry run, the test-build update and the Python Sparkle proof showed, and what stays unproven: the signed CI path, retiring the real Python agent labels, the Intel update end to end) is listed in [docs/releasing.md](../releasing.md) "Evidence boundary". Never operate on `/Applications/cashU.app` or real profile data while testing updates: use a test build.
 
 References: [electron-builder v26 auto update](https://www.electron.build/v26/docs/features/auto-update/), [electron-builder macOS](https://www.electron.build/v26/docs/mac/).

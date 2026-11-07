@@ -114,8 +114,9 @@ The MCP server lives in `packages/mcp/src/` (read the module comments before edi
 
 ## Packaging
 
-`node apps/desktop/scripts/package-macos.mjs <arm64|x64>` builds cashU.app; details in
-[running.md](running.md) "Packaging", update and release rules in
+`node apps/desktop/scripts/package-macos.mjs <arm64|x64>` builds an ad hoc cashU.app for development;
+details in [running.md](running.md) "Packaging". Releases are not built by hand: see
+[releasing.md](../releasing.md); the update contract inside the app is
 [s47-update-operator.md](s47-update-operator.md).
 
 ## See also

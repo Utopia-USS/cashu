@@ -40,9 +40,10 @@ All of it lives in the data dir, never in the repository. Ids are file or folder
 
 ## Stage 1 (built): the Strategie tab
 
-- `GET /investments/strategies` lists the strategies with their files, frontmatter and, for `main`, the
-  validation state. `GET /investments/strategies/{id}/file?path=...` returns one file's text.
-  Code: `modules/investments/service/strategy_docs.py`.
+- The strategies screen lists the strategies with their files, frontmatter and, for `main`, the
+  validation state, and returns one file's text on request. Code: `apps/host/src/strategiesScreen.ts`,
+  `apps/host/src/nativeStrategyDocuments.ts` (the vault's strategy folder), the discovery in
+  `@cashu/store/investments/services`, the tab in `apps/desktop/renderer/screens/strategies/`.
 - The tab is IDE-shaped: the file tree on the left, the rendered Markdown in the middle, YAML with the
   validation issues of `main` marked on their lines. Only `main` is executed; YAML in `strategies/` is
   shown with a "not run by the app yet" note.

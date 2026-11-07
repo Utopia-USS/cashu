@@ -1,6 +1,6 @@
 # Running, demo data, e2e and packaging
 
-What this is: how to run and verify the app locally on a synthetic demo, run the checks and the desktop e2e suite, and build cashU.app.
+What this is: how to run and verify the app locally on a synthetic demo, run the checks and the desktop e2e suite, and build a development cashU.app.
 
 ## How to use this
 
@@ -90,21 +90,15 @@ verifies the package (`verify-package.mjs`). Output: `build/t46/electron-builder
 (`mac/` for x64) and `build/t46/cashU-<version>-mac-<arch>.zip` (`.dmg`). Every build seals
 `Contents/Resources/app-update.yml` from the policy pinned in `apps/desktop/src/update/releasePolicy.ts`.
 
-Release mode (owner's Mac only; the release script calls it once per arch):
-
-```bash
-node apps/desktop/scripts/package-macos.mjs arm64 --dmg --out <dir> \
-  --sign "Developer ID Application: Utopia Ultimate Software Solutions Sp. z o.o. (29W838VKU4)" \
-  --notarize cashu-notary
-```
-
-It signs every nested Mach-O and bundle inside out with the Developer ID, hardened runtime and a secure
-timestamp (entitlements: `apps/desktop/build/entitlements.release.mac.plist`, allow-jit on the app and
-its helper apps only), notarizes and staples the app (the zip holds the stapled app) and the signed dmg,
-prints each notarization submission id and status, and runs `verify-package.mjs --release --notarized`.
-Separate arm64 and x64 builds, not universal: half the download and native modules built per arch; one
-`latest-mac.yml` lists both zips and electron-updater picks the `arm64` one on Apple silicon. The
-release contract (Team ID, update feed) is [s47-update-operator.md](s47-update-operator.md).
+This is the development build (ad hoc signed): it opens on the Mac that built it and reports updates
+unavailable. Releases are never made from it by hand: the release script
+(`apps/desktop/scripts/release-macos.mjs`, run by `.github/workflows/release-macos.yml` after the version
+bump on `main`, or by the owner as a fallback) calls `package-macos.mjs <arch> --sign <Developer ID>
+--notarize <profile> --dmg` once per arch (Developer ID, hardened runtime, notarized and stapled, release
+entitlements `apps/desktop/build/entitlements.release.mac.plist`) and verifies every artifact with
+`verify-package.mjs --release --notarized`. Procedure: [releasing.md](../releasing.md); the update
+contract inside the app: [s47-update-operator.md](s47-update-operator.md). The owner's local
+`cashU Staging` app (`--flavor staging`) is described in [releasing.md](../releasing.md) "Staging build".
 
 An installed app's CLI is the bundled shim run by the app binary in Node mode, reached through the
 launcher the host writes at every start:

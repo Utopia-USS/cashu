@@ -114,8 +114,8 @@ Apps compose packages and never import another app.
 | `src/update/` | auto-update (electron-updater) authority, controller and release policy |
 | `renderer/` | React renderer: `routes.tsx`, `shell/`, `screens/<feature>/` (screen hook `use*Screen.ts` + pure `*View.tsx` + `*.strings.ts` + stories) |
 | `e2e/` | Playwright suite (`desktop-specs/`, `global-setup.ts`) |
-| `scripts/` | `dev.mjs` (dev run on a demo), `build-main.mjs`, `build-host.mjs` (bundles `host.mjs` and `shim.mjs`), `build-native.mjs`, `package-macos.mjs`, `verify-package.mjs` |
-| `build/electron-builder.config.cjs`, `build/entitlements.mac.plist` | packaging config |
+| `scripts/` | `dev.mjs` (dev run on a demo), `build-main.mjs`, `build-host.mjs` (bundles `host.mjs` and `shim.mjs`), `build-native.mjs`, `package-macos.mjs` (one arch, ad hoc or signed), `verify-package.mjs`, `release-macos.mjs` + `release/` (the release: 7 assets, `latest-mac.yml`, appcasts; [releasing.md](../releasing.md)), `release-policy.mjs`, `bump-version.mjs` |
+| `build/electron-builder.config.cjs`, `build/entitlements.mac.plist`, `build/entitlements.release.mac.plist` | packaging config (ad hoc and release entitlements) |
 | `native/`, `service/` | the macOS notification and host-service helpers, the host LaunchAgent |
 
 ## Other top-level paths
@@ -125,12 +125,14 @@ Apps compose packages and never import another app.
 | `docs/connectors.md` | connector contract for outside authors (manifest, protocol, sandbox); schemas in `docs/schemas/` (generated) |
 | `docs/import-format.md`, `docs/budget-import-format.md` | cashU investments / budget import formats |
 | `docs/migration-runbook.md` | moving an install from the Python app to the native app |
+| `docs/releasing.md`, `docs/releases/` | the release procedure (owner) and the hand-written release notes `v<X.Y.Z>.md` |
 | `connectors/` | community connector catalog (contrib status, one dir per connector with `fixtures/`; shipped with the app, see its `README.md`); `<bank>-csv/` are the Deno twins of the built-in parsers |
 | `examples/connectors/` | tested example connectors (budget CSV, investments JSON and fetch in Python; a Deno budget example) |
 | `packaging/icon/` | the app icon used by electron-builder |
 | `.claude/skills/` | the shipped product skills (see [skills.md](skills.md)) |
 | `.claude/settings.json`, `.claude-plugin/`, `tools/claude-dev/` | repo-local dev plugin `cashu-dev`: the TS development skills (`cashu-ts-architecture`, `cashu-ui`), `scripts/check-file.sh` and its PostToolUse hook; never shipped to workspaces |
 | `.github/workflows/ts.yml` | CI: install, `turbo run typecheck lint test`, exhaustive tests, `arch:check`, mobile bundle check |
+| `.github/workflows/bump-version.yml`, `release-macos.yml`, `staging-to-main-pr.yml` | version bump on `main`, the macOS release after it (behind the `release` environment), the `staging -> main` pull request |
 | `data/` | (git-ignored) local drop folder (`data/incoming/` is the default of `cashu import-dir`) |
 | `statements/` | (git-ignored) drop CSV statements here - empty in the repo |
 

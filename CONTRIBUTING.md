@@ -1,7 +1,8 @@
 # Contributing to cashU
 
 Thanks for helping. cashU handles people's real financial data, so a few rules here are strict;
-everything else follows the usual GitHub flow: open an issue or a pull request against `main`.
+everything else follows the usual GitHub flow: open an issue or a pull request against `staging`
+(changes reach `main`, and with it a release, through the `staging -> main` pull request).
 
 Before you change code, read [`CLAUDE.md`](CLAUDE.md) (the map of the repository and the
 data-safety rules) and [`docs/agents/conventions.md`](docs/agents/conventions.md) (language, tests,
@@ -103,7 +104,8 @@ an issue with the "New data source" template.
   follow the layer table (`pnpm arch:check`).
 - Stored events never change: an event change is a new version with an upcaster, a view change a
   version bump ([`docs/agents/data-model.md`](docs/agents/data-model.md) rule 15).
-- Do not bump the version (`apps/desktop/package.json`); the `bump-version` workflow does it on the merge to `main`.
+- Do not bump the version (`apps/desktop/package.json`); the `bump-version` workflow does it on the merge to `main`,
+  and the release follows after the owner's approval ([`docs/releasing.md`](docs/releasing.md)).
 
 ## Commits and pull requests
 
