@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { StoreToClient } from "@cashu/host-protocol/store";
 import { decodeValue } from "@cashu/host-protocol/store";
@@ -78,7 +79,7 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
   if (!repo || !dataDir) throw new Error("generated native demo is absent");
   await restoreNativeBaseline(dataDir);
   const visualRoot = process.env.CASHU_E2E_VISUALS;
-  const visualPrefix = "/Users/owner/cashu-lab/checkpoints/visuals/S55j";
+  const visualPrefix = join(homedir(), "cashu-lab", "checkpoints", "visuals", "S55j");
   const visuals =
     process.env.CASHU_TESTING === "1" &&
     visualRoot &&

@@ -3,7 +3,8 @@
 The native cashU.app (Electron) replaces the Python cashU.app and uses the same data folder,
 `~/Library/Application Support/cashU`. Your data comes over once, with `cashu migrate` or the
 "Import my data" button on the app's recovery screen. This page is the owner's checklist for that
-cutover on one Mac with two profiles (`profile-a`, `profile-b`). It names no amounts and no accounts.
+cutover on one Mac; `<profile>` stands for each profile slug (repeat a per-profile step for every
+profile). It names no amounts and no accounts.
 
 Shell variables used below (zsh or bash):
 
@@ -26,7 +27,7 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
   `$D/python-backup-<time>/`, moves the native data into `$D`, and writes `$D/migration.json`
   (time, backup folder name, counts). An interrupted switch leaves a journal; the next
   `cashu migrate` finishes it.
-- **One run for both profiles.** Each Python profile becomes its own encrypted vault. New 24-word
+- **One run for every profile.** Each Python profile becomes its own encrypted vault. New 24-word
   recovery words are created once for the import.
 - **Roll back by hand** (only if you decide to go back to the Python app):
   1. Quit cashU (also from the menu bar, "Zakończ" / "Quit").
@@ -54,7 +55,7 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
    Expect one of `0025_topic_view_sources` ... `0030_sync_outbox_post`. If older, update the
    Python app once (Sparkle), open it, quit it, check again.
 2. **Write down net worth per currency for each profile** (for step 5.3): the Python app's overview,
-   or `/Applications/cashU.app/Contents/MacOS/cashu --profile profile-a stats` (and `profile-b`). Keep the
+   or `/Applications/cashU.app/Contents/MacOS/cashu --profile <profile> stats` (each profile). Keep the
    numbers off the repo and delete them after step 5.
 3. **Belt and braces copy** to an external disk, with everything quit (step 4 below):
    ```sh
@@ -78,8 +79,8 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
 
 ## 4. Cutover checklist
 
-1. **Quit the Python app** (Cmd+Q) and close every Claude Code session that uses `cashu-profile-a` or
-   `cashu-profile-b` (their MCP servers write to the database). Check:
+1. **Quit the Python app** (Cmd+Q) and close every Claude Code session that uses a `cashu-<profile>`
+   MCP server (those servers write to the database). Check:
    `pgrep -fl 'Contents/MacOS/cashu( |$)'` prints nothing.
 2. **Unload the Python worker agent** (and the pre-rename one, if present):
    ```sh
@@ -95,17 +96,15 @@ CASHU=(env ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /
    with exit code 64 and opens no window, but the agent would keep failing).
 3. **Remove the Python MCP registrations** for the same reason. Note the scope and slug first:
    ```sh
-   claude mcp get cashu-profile-a      # args end in: mcp --profile profile-a ; note the scope
-   claude mcp get cashu-profile-b
-   claude mcp remove cashu-profile-a -s <scope>
-   claude mcp remove cashu-profile-b -s <scope>
+   claude mcp get cashu-<profile>      # args end in: mcp --profile <profile> ; note the scope
+   claude mcp remove cashu-<profile> -s <scope>   # repeat both lines for each profile
    ```
    Check: `claude mcp list | grep cashu-` prints nothing.
 4. **Make the copies of section 3** (steps 3.3 and 3.4) now, with everything quit.
 5. **Install the native app**: replace `/Applications/cashU.app` with the native bundle (Finder asks
    to replace). Check:
    ```sh
-   defaults read /Applications/cashU.app/Contents/Info.plist CFBundleIdentifier   # io.utopiasoft.cashu.next
+   defaults read /Applications/cashU.app/Contents/Info.plist CFBundleIdentifier   # io.utopiasoft.cashu
    ls /Applications/cashU.app/Contents/Frameworks | grep -i sparkle                # prints nothing
    ```
 6. **Run the preflight check** (step 3.6) once more. It must print nothing.
@@ -145,27 +144,25 @@ migrate verify". Exit code 0 means done. Run again on an imported folder (with o
    ```
    Expect the same counts as the import and exit code 0. It reads only.
 2. **Look at the folder**: `ls "$D"` shows `python-backup-<time>`, `migration.json`, `native`,
-   `vaults`, `stores` (and `workspace` when a profile had workspace settings) and no `cashu.db`; `cat "$D/migration.json"` shows `"profiles":2,"vaults":2`.
-3. **Open the app** and compare net worth per currency for both profiles with step 3.2, in the
-   app's overview or with `"$D/bin/cashu" --profile profile-a stats` (and `profile-b`). Never add
+   `vaults`, `stores` (and `workspace` when a profile had workspace settings) and no `cashu.db`; `cat "$D/migration.json"` shows `"profiles":N,"vaults":N` (N = your number of profiles).
+3. **Open the app** and compare net worth per currency for every profile with step 3.2, in the
+   app's overview or with `"$D/bin/cashu" --profile <profile> stats` (each profile). Never add
    currencies together. Bank and cash balances must match exactly; positions valued with market
    prices may move only by price refreshes after the import.
 4. Keep `python-backup-<time>/` until all of section 6 is done and the app has run for a while.
 
 ## 6. After the cutover
 
-1. **Launcher and slugs**: `CASHU=("$D/bin/cashu")`; `"${CASHU[@]}" profiles list` shows `profile-a` and
-   `profile-b` (the MCP name is `cashu-<slug>`).
+1. **Launcher and slugs**: `CASHU=("$D/bin/cashu")`; `"${CASHU[@]}" profiles list` shows every profile
+   slug (the MCP name is `cashu-<slug>`).
 2. **MCP registrations** (same scope as noted in step 4.3):
    ```sh
-   claude mcp add -s <scope> cashu-profile-a -- "$D/bin/cashu" mcp --profile profile-a
-   claude mcp add -s <scope> cashu-profile-b -- "$D/bin/cashu" mcp --profile profile-b
-   claude mcp list | grep cashu-      # both connected
+   claude mcp add -s <scope> cashu-<profile> -- "$D/bin/cashu" mcp --profile <profile>   # each profile
+   claude mcp list | grep cashu-      # every profile connected
    ```
 3. **Workspaces** (`~/Documents/cashU/<slug>`, same default path and file names as before):
    ```sh
-   "${CASHU[@]}" --profile profile-a workspace update
-   "${CASHU[@]}" --profile profile-b workspace update
+   "${CASHU[@]}" --profile <profile> workspace update   # each profile
    ```
    Check that `.mcp.json` now points at the native app, that the `cashu:begin` / `cashu:end`
    sections of `CLAUDE.md` changed and nothing else did
@@ -226,7 +223,7 @@ path says otherwise.
 
 | Python state | How it comes over | Evidence |
 |---|---|---|
-| 35 financial and agent tables of both profiles (profiles, profile_modules, accounts, balances, transactions, category_rules, import_batches, loans, depreciations, asset_details, inv_account_settings, inv_import_batches, inv_transactions, inv_position_snapshots, inv_instrument_renames, inv_manual_valuations, inv_instruments, inv_instrument_aliases, inv_profile_instruments, inv_strategy_versions, inv_theses, inv_topic_theses, watchlist_items, alerts, inv_planned_deposits, inv_signals, inv_rule_runs, inv_decisions, inv_decision_signals, inv_notification_log, research_runs, research_notes, reviews, proposals, connector_bindings) | Genesis events into one encrypted vault per profile | store `genesis.test.ts` "exports both profiles by ordinal, every event valid, every DET gid from its parts", "folds into fresh stores: nothing parked, view rows equal the source (spec 8.4)", "keeps the profiles apart: no gid or value of one vault in the other"; store `verification/source.test.ts` "refuses a new financial column before any mapping can omit it"; host `oneShot.test.ts` "imports an offline synthetic Python directory into fresh encrypted vaults and re-verifies" |
+| 35 financial and agent tables of every profile (profiles, profile_modules, accounts, balances, transactions, category_rules, import_batches, loans, depreciations, asset_details, inv_account_settings, inv_import_batches, inv_transactions, inv_position_snapshots, inv_instrument_renames, inv_manual_valuations, inv_instruments, inv_instrument_aliases, inv_profile_instruments, inv_strategy_versions, inv_theses, inv_topic_theses, watchlist_items, alerts, inv_planned_deposits, inv_signals, inv_rule_runs, inv_decisions, inv_decision_signals, inv_notification_log, research_runs, research_notes, reviews, proposals, connector_bindings) | Genesis events into one encrypted vault per profile | store `genesis.test.ts` "exports both profiles by ordinal, every event valid, every DET gid from its parts", "folds into fresh stores: nothing parked, view rows equal the source (spec 8.4)", "keeps the profiles apart: no gid or value of one vault in the other"; store `verification/source.test.ts` "refuses a new financial column before any mapping can omit it"; host `oneShot.test.ts` "imports an offline synthetic Python directory into fresh encrypted vaults and re-verifies" |
 | inv_decision_signals | Embedded in each decision | store `verification/source.test.ts` "covers embedded decision links and refuses cross-profile links" |
 | inv_price_bars, inv_fx_rates, inv_macro_bars | Device store cache, checked by content | store `verification/sourceCache.test.ts` "retains nullable fetch times, all FX bases and macro rows, and detects equal-count edits"; host `localState.test.ts` "hydrates, reopens and compares exact offline cache and device-local history" |
 | Global instruments and aliases without a profile | Device store catalog | store `verification/sourceGlobal.test.ts` "checks exact per-vault closure, aliases and unreferenced catalog count" |
@@ -260,7 +257,7 @@ path says otherwise.
 | Research notes | Database rows (research_notes, research_runs): genesis | as the 35 tables |
 | Enabled modules per profile, base currency, MCP privacy | profiles, profile_modules: genesis | as the 35 tables |
 | Python worker launch agent `io.utopiasoft.cashu.worker` (legacy `io.github.synszakala.finanse.worker`) | Removed by hand; native host agent `io.utopiasoft.cashu.next.host` | step 4.2, 6.4 |
-| MCP registrations `cashu-profile-a`, `cashu-profile-b` | Removed and added again against `$D/bin/cashu` | step 4.3, 6.2 |
+| MCP registrations `cashu-<profile>` | Removed and added again against `$D/bin/cashu` | step 4.3, 6.2 |
 | Sparkle (Python bundle `io.utopiasoft.cashu`, feed `releases/latest/download/appcast-macos-<arch>.xml`) | Gone with the Python bundle; native bundle `io.utopiasoft.cashu.next` has no Sparkle | step 4.5, 6.10 |
 | `statements/` CSV drop folder | Only in a source checkout, never in the data folder: nothing to carry | - |
 | LLM caches | None on disk: categorization results are transaction and rule rows | as the 35 tables |
