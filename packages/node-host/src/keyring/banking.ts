@@ -118,7 +118,7 @@ export function createProductionBankingSecrets(
   authority: BankingSecretAuthority,
 ): BankingSecretStore {
   const hash = createHash("sha256").update(privateDir(authority.dataDir)).digest("hex");
-  return make(authority, `cashu-next.banking.v1.${hash}`, nativeOsKeyring());
+  return make(authority, `cashu.banking.v1.${hash}`, nativeOsKeyring());
 }
 
 /** Synthetic keyring, refused outside a private TMPDIR subtree. */

@@ -1,4 +1,4 @@
-// S47 compiles this fixed agent executable at Contents/MacOS/cashu-next-host-agent.
+// S47 compiles this fixed agent executable at Contents/MacOS/cashu-host-agent.
 // It launches the bundled host once; the host's lock and idle policy own the lifecycle.
 import Darwin
 import Foundation
@@ -9,8 +9,8 @@ let bundleURL = contents.deletingLastPathComponent()
 let bundle = Bundle(url: bundleURL)
 guard contents.lastPathComponent == "Contents",
       bundleURL.pathExtension == "app",
-      executable.lastPathComponent == "cashu-next-host-agent",
-      bundle?.bundleIdentifier == "io.utopiasoft.cashu.next",
+      executable.lastPathComponent == "cashu-host-agent",
+      bundle?.bundleIdentifier == "io.utopiasoft.cashu",
       bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String == "cashU",
       let version = bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
       !version.isEmpty else { exit(78) }

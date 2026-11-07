@@ -143,8 +143,8 @@ function bundleEvidence(bundlePath: string): string | undefined {
         metadata(canonical),
         metadata(join(contents, "Info.plist")),
         metadata(join(contents, "MacOS", "cashU")),
-        metadata(join(contents, "MacOS", "cashu-next-host-agent")),
-        metadata(join(contents, "Library", "LaunchAgents", "io.utopiasoft.cashu.next.host.plist")),
+        metadata(join(contents, "MacOS", "cashu-host-agent")),
+        metadata(join(contents, "Library", "LaunchAgents", "io.utopiasoft.cashu.host.plist")),
         ...inventory(contents),
       ];
       return createHash("sha256").update(parts.join("|")).digest("hex");
@@ -165,8 +165,8 @@ const REQUIRED = [
   "Contents/Resources/connectors/README.md",
   "Contents/Resources/renderer/index.html",
   "Contents/Resources/app.asar",
-  "Contents/MacOS/cashu-next-host-agent",
-  "Contents/Library/LaunchAgents/io.utopiasoft.cashu.next.host.plist",
+  "Contents/MacOS/cashu-host-agent",
+  "Contents/Library/LaunchAgents/io.utopiasoft.cashu.host.plist",
 ] as const;
 
 function manifestStamp(bundle: string): string {

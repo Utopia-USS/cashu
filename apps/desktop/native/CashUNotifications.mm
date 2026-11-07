@@ -12,7 +12,7 @@
 #import <Foundation/Foundation.h>
 #import <UserNotifications/UserNotifications.h>
 
-constexpr const char* kBundleId = "io.utopiasoft.cashu.next";
+constexpr const char* kBundleId = "io.utopiasoft.cashu";
 constexpr int64_t kWaitNanoseconds = 8LL * NSEC_PER_SEC;
 constexpr size_t kMaxPendingResponses = 16;
 std::mutex gHandlerMutex;

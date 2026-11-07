@@ -58,7 +58,7 @@ execFileSync(
     "-O",
     join(root, "apps", "desktop", "service", "CashUHostAgent.swift"),
     "-o",
-    join(out, "cashu-next-host-agent"),
+    join(out, "cashu-host-agent"),
   ],
   { stdio: "inherit" },
 );

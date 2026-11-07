@@ -4,11 +4,11 @@ import * as nodeFs from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { HostService, ServiceStatus, StartOutcome } from "./types.js";
 
-export const SYSTEMD_SERVICE = "io.utopiasoft.cashu-next.host.service";
-export const SYSTEMD_TIMER = "io.utopiasoft.cashu-next.host.timer";
+export const SYSTEMD_SERVICE = "io.utopiasoft.cashu.host.service";
+export const SYSTEMD_TIMER = "io.utopiasoft.cashu.host.timer";
 /** S47 must ship and bind this exact launcher before enabling production registration. */
-export const SYSTEMD_LAUNCHER = "/usr/libexec/cashu-next-host";
-const OWNED = "# cashU next host service v1 (managed by cashU)";
+export const SYSTEMD_LAUNCHER = "/usr/libexec/cashu-host";
+const OWNED = "# cashU host service v1 (managed by cashU)";
 
 export interface SystemdRunner {
   run(args: readonly string[]): Promise<{ readonly code: number; readonly stdout: string }>;
@@ -57,8 +57,8 @@ export function quoteSystemdArg(arg: string): string {
 
 export function systemdUnitTexts(dataDir: string): { service: string; timer: string } {
   if (!cleanAbsolute(dataDir)) throw Error("unsafe data directory");
-  const service = `${OWNED}\n[Unit]\nDescription=cashU next on-demand host\n\n[Service]\nType=exec\nExecStart=${quoteSystemdArg(SYSTEMD_LAUNCHER)} "run" "--data-dir" ${quoteSystemdArg(dataDir)}\n`;
-  const timer = `${OWNED}\n[Unit]\nDescription=cashU next daily host wake\n\n[Timer]\nOnCalendar=*-*-* 07:30:00\nPersistent=true\nUnit=${SYSTEMD_SERVICE}\n\n[Install]\nWantedBy=timers.target\n`;
+  const service = `${OWNED}\n[Unit]\nDescription=cashU on-demand host\n\n[Service]\nType=exec\nExecStart=${quoteSystemdArg(SYSTEMD_LAUNCHER)} "run" "--data-dir" ${quoteSystemdArg(dataDir)}\n`;
+  const timer = `${OWNED}\n[Unit]\nDescription=cashU daily host wake\n\n[Timer]\nOnCalendar=*-*-* 07:30:00\nPersistent=true\nUnit=${SYSTEMD_SERVICE}\n\n[Install]\nWantedBy=timers.target\n`;
   return { service, timer };
 }
 

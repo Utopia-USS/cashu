@@ -9,9 +9,9 @@
 #import <ServiceManagement/ServiceManagement.h>
 
 namespace {
-NSString* const kBundleId = @"io.utopiasoft.cashu.next";
-NSString* const kAgentLabel = @"io.utopiasoft.cashu.next.host";
-NSString* const kAgentPlist = @"io.utopiasoft.cashu.next.host.plist";
+NSString* const kBundleId = @"io.utopiasoft.cashu";
+NSString* const kAgentLabel = @"io.utopiasoft.cashu.host";
+NSString* const kAgentPlist = @"io.utopiasoft.cashu.host.plist";
 
 NSString* canonical(const char* path) {
   if (!path) return nil;

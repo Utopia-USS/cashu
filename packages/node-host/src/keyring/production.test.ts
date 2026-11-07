@@ -203,7 +203,7 @@ describe("isolated Node OS KeyStore", () => {
     expect(() =>
       createTestKeyStore({
         dataDir: f.dataDir,
-        service: "cashu-next.v1.fake",
+        service: "cashu.vault.v1.fake",
         keyring: f.keyring,
         sodium,
         purpose: "open",
@@ -430,7 +430,7 @@ describe("isolated Node OS KeyStore", () => {
     expect(() =>
       createTestMigrationKek({
         dataDir: f.dataDir,
-        service: "cashu-next.v1.fake",
+        service: "cashu.vault.v1.fake",
         keyring: deletable,
       }),
     ).toThrow();

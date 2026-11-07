@@ -18,7 +18,7 @@ function center(
 ): NativeNotificationCenter {
   return {
     identity: vi.fn(() => ({
-      bundleIdentifier: "io.utopiasoft.cashu.next",
+      bundleIdentifier: "io.utopiasoft.cashu",
       bundleURL: "/fixture/cashU.app",
       executableName: "cashU",
       executableURL: "/fixture/cashU.app/Contents/MacOS/cashU",

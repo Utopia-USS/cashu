@@ -7,7 +7,7 @@ function fixture(status: NativeAgentStatus = "notRegistered") {
   const bridge: MainProcessAgentBridge = {
     identity: vi.fn(async () => ({
       bundleId: MAC_APP_BUNDLE_ID,
-      bundlePath: "/Applications/cashU Next.app",
+      bundlePath: "/Applications/cashU.app",
     })),
     status: vi.fn(async () => nativeStatus),
     register: vi.fn(async () => {
@@ -62,7 +62,7 @@ describe("macOS service adapter", () => {
   it("refuses a different native app identity", async () => {
     const f = fixture();
     f.bridge.identity = vi.fn(async () => ({
-      bundleId: "io.utopiasoft.cashu",
+      bundleId: "io.utopiasoft.cashu.next",
       bundlePath: "/Applications/cashU.app",
     }));
     expect((await new MacHostService(f.runtime).enable()).state).toBe("unavailable");

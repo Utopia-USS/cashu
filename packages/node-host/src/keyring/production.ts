@@ -290,7 +290,7 @@ function namespaceDir(input: { readonly dataDir: string; readonly scopeDir?: str
 }
 
 const productionService = (dir: string) =>
-  `cashu-next.v1.${createHash("sha256").update(dir, "utf8").digest("hex")}`;
+  `cashu.vault.v1.${createHash("sha256").update(dir, "utf8").digest("hex")}`;
 
 /** Fixed new-app namespace v1. Signature/package verification remains an S47 deployment gate. */
 export function createProductionKeyStore(input: ProductionKeyStoreInput): crypto.KeyStore {

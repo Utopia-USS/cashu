@@ -67,7 +67,7 @@ describe("systemd user service adapter", () => {
     const f = await fixture();
     expect(await f.service.enable()).toEqual({ state: "enabled" });
     expect(await readFile(join(f.unitDir, SYSTEMD_SERVICE), "utf8")).toContain(
-      'ExecStart="/usr/libexec/cashu-next-host" "run" "--data-dir"',
+      'ExecStart="/usr/libexec/cashu-host" "run" "--data-dir"',
     );
     const timer = await readFile(join(f.unitDir, SYSTEMD_TIMER), "utf8");
     expect(timer).toContain("OnCalendar=*-*-* 07:30:00");

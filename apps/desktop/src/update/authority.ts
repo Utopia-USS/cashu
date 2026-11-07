@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { UpdateAuthority } from "./controller.js";
 import { RELEASE_FEED_URL, RELEASE_TEAM_ID } from "./releasePolicy.js";
 
-const APP_ID = "io.utopiasoft.cashu.next";
+const APP_ID = "io.utopiasoft.cashu";
 
 export function developerIdRequirement(teamId: string): string {
   if (!/^[A-Z0-9]{10}$/.test(teamId)) throw new Error("invalid_team_id");

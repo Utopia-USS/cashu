@@ -147,8 +147,8 @@ for (const path of nested.sort((a, b) => b.length - a.length)) {
 }
 const manifestFiles = [
   ...paths(join(contents, "Resources")).map((path) => relative(app, path)),
-  "Contents/MacOS/cashu-next-host-agent",
-  "Contents/Library/LaunchAgents/io.utopiasoft.cashu.next.host.plist",
+  "Contents/MacOS/cashu-host-agent",
+  "Contents/Library/LaunchAgents/io.utopiasoft.cashu.host.plist",
 ]
   .filter((path) => path !== "Contents/Resources/bundle-manifest.json")
   .sort();

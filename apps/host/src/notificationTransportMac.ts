@@ -10,7 +10,7 @@ import type {
 } from "./notifications/notifier.js";
 
 const require = createRequire(import.meta.url);
-const BUNDLE_ID = "io.utopiasoft.cashu.next";
+const BUNDLE_ID = "io.utopiasoft.cashu";
 const DEADLINE_MS = 10_000;
 
 interface NativeIdentity {

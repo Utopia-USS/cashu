@@ -108,7 +108,7 @@ export function createProductionClassifierSecrets(
   authority: ClassifierSecretAuthority,
 ): ClassifierSecretStore {
   const hash = createHash("sha256").update(privateDir(authority.dataDir)).digest("hex");
-  return make(authority, `cashu-next.classifier.v1.${hash}`, nativeOsKeyring());
+  return make(authority, `cashu.classifier.v1.${hash}`, nativeOsKeyring());
 }
 
 /** Strict synthetic keyring; cannot address production OS credentials. */

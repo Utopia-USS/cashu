@@ -17,12 +17,12 @@ function command(name, args) {
 function plist(key) {
   return command("plutil", ["-extract", key, "raw", info]);
 }
-if (plist("CFBundleIdentifier") !== "io.utopiasoft.cashu.next") throw new Error("Wrong app ID");
+if (plist("CFBundleIdentifier") !== "io.utopiasoft.cashu") throw new Error("Wrong app ID");
 if (plist("CFBundleExecutable") !== "cashU") throw new Error("Wrong executable name");
 const required = [
   "Contents/MacOS/cashU",
-  "Contents/MacOS/cashu-next-host-agent",
-  "Contents/Library/LaunchAgents/io.utopiasoft.cashu.next.host.plist",
+  "Contents/MacOS/cashu-host-agent",
+  "Contents/Library/LaunchAgents/io.utopiasoft.cashu.host.plist",
   "Contents/Resources/host.mjs",
   "Contents/Resources/app.asar",
   "Contents/Resources/shim.mjs",
@@ -45,10 +45,7 @@ for (const name of required) {
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel))
     throw new Error(`Escaping ${name}`);
 }
-for (const name of [
-  "Contents/MacOS/cashU",
-  "Contents/MacOS/cashu-next-host-agent",
-]) {
+for (const name of ["Contents/MacOS/cashU", "Contents/MacOS/cashu-host-agent"]) {
   const path = join(app, name);
   if (!lstatSync(path).isFile() || (lstatSync(path).mode & 0o111) === 0)
     throw new Error(`Not executable: ${name}`);

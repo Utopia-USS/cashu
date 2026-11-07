@@ -42,9 +42,9 @@ function app(root: string, name: string, version: string) {
   writeFileSync(join(bundle, "Contents/Resources/connectors/README.md"), "catalog");
   writeFileSync(join(bundle, "Contents/Resources/renderer/index.html"), "<html></html>");
   writeFileSync(join(bundle, "Contents/Resources/app.asar"), "asar");
-  writeFileSync(join(bundle, "Contents/MacOS/cashu-next-host-agent"), "agent");
+  writeFileSync(join(bundle, "Contents/MacOS/cashu-host-agent"), "agent");
   writeFileSync(
-    join(bundle, "Contents/Library/LaunchAgents/io.utopiasoft.cashu.next.host.plist"),
+    join(bundle, "Contents/Library/LaunchAgents/io.utopiasoft.cashu.host.plist"),
     "plist",
   );
   const files: Record<string, string> = {};
@@ -58,8 +58,8 @@ function app(root: string, name: string, version: string) {
     ["Contents/Resources/connectors/README.md", "catalog"],
     ["Contents/Resources/renderer/index.html", "<html></html>"],
     ["Contents/Resources/app.asar", "asar"],
-    ["Contents/MacOS/cashu-next-host-agent", "agent"],
-    ["Contents/Library/LaunchAgents/io.utopiasoft.cashu.next.host.plist", "plist"],
+    ["Contents/MacOS/cashu-host-agent", "agent"],
+    ["Contents/Library/LaunchAgents/io.utopiasoft.cashu.host.plist", "plist"],
   ])
     files[path as string] = createHash("sha256")
       .update(content as string)

@@ -3,7 +3,7 @@ const root = path.resolve(__dirname, "../../..");
 const resources = path.join(root, "build/t46/resources");
 
 module.exports = {
-  appId: "io.utopiasoft.cashu.next",
+  appId: "io.utopiasoft.cashu",
   productName: "cashU",
   executableName: "cashU",
   directories: { output: path.join(root, "build/t46/electron-builder") },
@@ -20,9 +20,9 @@ module.exports = {
     { from: path.join(resources, "renderer"), to: "renderer" },
   ],
   extraFiles: [
-    { from: path.join(resources, "cashu-next-host-agent"), to: "MacOS/cashu-next-host-agent" },
-    { from: path.join(root, "apps/desktop/service/io.utopiasoft.cashu.next.host.plist"),
-      to: "Library/LaunchAgents/io.utopiasoft.cashu.next.host.plist" },
+    { from: path.join(resources, "cashu-host-agent"), to: "MacOS/cashu-host-agent" },
+    { from: path.join(root, "apps/desktop/service/io.utopiasoft.cashu.host.plist"),
+      to: "Library/LaunchAgents/io.utopiasoft.cashu.host.plist" },
   ],
   mac: {
     identity: null,

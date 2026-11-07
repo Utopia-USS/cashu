@@ -42,7 +42,7 @@ export async function processNotificationFrame(
 ): Promise<NotifyAck | null> {
   const frame: NotifyFrame = parseNotifyFrame(bytes);
   const identity = center.identity();
-  if (!identity.verified || identity.bundleIdentifier !== "io.utopiasoft.cashu.next") return null;
+  if (!identity.verified || identity.bundleIdentifier !== "io.utopiasoft.cashu") return null;
   let permission: Awaited<ReturnType<NativeNotificationCenter["permissionStatus"]>>;
   try {
     permission = await center.permissionStatus();

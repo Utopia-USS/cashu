@@ -6,9 +6,9 @@ import Dispatch
 
 @available(macOS 13.0, *)
 @objc public final class CashUHostServiceBridge: NSObject {
-    private static let plist = "io.utopiasoft.cashu.next.host.plist"
-    private static let label = "io.utopiasoft.cashu.next.host"
-    private static let bundleID = "io.utopiasoft.cashu.next"
+    private static let plist = "io.utopiasoft.cashu.host.plist"
+    private static let label = "io.utopiasoft.cashu.host"
+    private static let bundleID = "io.utopiasoft.cashu"
 
     private var agent: SMAppService { SMAppService.agent(plistName: Self.plist) }
 

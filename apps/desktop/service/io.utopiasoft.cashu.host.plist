@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>io.utopiasoft.cashu.next.host</string>
+  <string>io.utopiasoft.cashu.host</string>
   <key>BundleProgram</key>
-  <string>Contents/MacOS/cashu-next-host-agent</string>
+  <string>Contents/MacOS/cashu-host-agent</string>
   <key>ProcessType</key>
   <string>Background</string>
   <key>StartCalendarInterval</key>

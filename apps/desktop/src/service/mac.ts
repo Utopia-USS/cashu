@@ -4,7 +4,7 @@ import type { HostService, ServiceStatus, StartOutcome } from "@cashu/node-host"
 import { realResolve } from "../config.js";
 
 /** This identity is reserved for the new app; S47 must sign and package it exactly. */
-export const MAC_APP_BUNDLE_ID = "io.utopiasoft.cashu.next";
+export const MAC_APP_BUNDLE_ID = "io.utopiasoft.cashu";
 
 export type NativeAgentStatus = "notRegistered" | "enabled" | "requiresApproval" | "notFound";
 
