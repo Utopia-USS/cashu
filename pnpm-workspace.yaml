@@ -38,3 +38,8 @@ patchedDependencies:
   # through RCTCxxBridge, which React Native 0.88 removed; the patch installs its JSI functions through the
   # public RCTTurboModuleWithJSIBindings protocol instead. Drop it when upstream ships new-architecture support.
   react-native-libsodium@1.7.0: patches/react-native-libsodium@1.7.0.patch
+# One Mac builds both macOS release arches (apps/desktop/scripts/package-macos.mjs arm64 and x64, not
+# universal): install the optional darwin native packages (@napi-rs/keyring-darwin-*) for both CPUs.
+supportedArchitectures:
+  os: [current]
+  cpu: [current, arm64, x64]

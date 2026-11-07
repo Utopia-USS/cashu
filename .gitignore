@@ -39,6 +39,8 @@ env/
 .ruff_cache/
 .mypy_cache/
 build/
+# The desktop packaging config (electron-builder config, entitlements) is source, not output.
+!/apps/desktop/build/
 dist/
 
 # --- Agent artifacts & screenshots (local only) ------------------------------

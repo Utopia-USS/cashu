@@ -87,9 +87,24 @@ It builds the desktop app (`--reuse-desktop` skips that), bundles the host (`hos
 the connector catalog (`connectors/`) into the app's Resources, runs electron-builder
 (`apps/desktop/build/electron-builder.config.cjs`), signs ad hoc, writes the bundle manifest and
 verifies the package (`verify-package.mjs`). Output: `build/t46/electron-builder/mac-arm64/cashU.app`
-(`mac/` for x64) and `build/t46/cashU-<version>-mac-<arch>.zip` (`.dmg`). No Developer ID signing or
-notarization happens here; the release contract (Team ID, update feed) is
-[s47-update-operator.md](s47-update-operator.md).
+(`mac/` for x64) and `build/t46/cashU-<version>-mac-<arch>.zip` (`.dmg`). Every build seals
+`Contents/Resources/app-update.yml` from the policy pinned in `apps/desktop/src/update/releasePolicy.ts`.
+
+Release mode (owner's Mac only; the release script calls it once per arch):
+
+```bash
+node apps/desktop/scripts/package-macos.mjs arm64 --dmg --out <dir> \
+  --sign "Developer ID Application: Utopia Ultimate Software Solutions Sp. z o.o. (29W838VKU4)" \
+  --notarize cashu-notary
+```
+
+It signs every nested Mach-O and bundle inside out with the Developer ID, hardened runtime and a secure
+timestamp (entitlements: `apps/desktop/build/entitlements.release.mac.plist`, allow-jit on the app and
+its helper apps only), notarizes and staples the app (the zip holds the stapled app) and the signed dmg,
+prints each notarization submission id and status, and runs `verify-package.mjs --release --notarized`.
+Separate arm64 and x64 builds, not universal: half the download and native modules built per arch; one
+`latest-mac.yml` lists both zips and electron-updater picks the `arm64` one on Apple silicon. The
+release contract (Team ID, update feed) is [s47-update-operator.md](s47-update-operator.md).
 
 An installed app's CLI is the bundled shim run by the app binary in Node mode, reached through the
 launcher the host writes at every start:

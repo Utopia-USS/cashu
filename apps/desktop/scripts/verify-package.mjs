@@ -1,12 +1,51 @@
-import { execFileSync } from "node:child_process";
+// Verifies a packaged cashU.app for one architecture.
+//
+//   node apps/desktop/scripts/verify-package.mjs <cashU.app> <arm64|x64> [--release [--notarized]]
+//
+// Always: layout, bundle ID, bundle-manifest.json hashes, every Mach-O built only for <arch>, the
+// sealed app-update.yml equal to the pinned policy (when pinned), codesign --verify --deep --strict.
+// --release: the policy in src/update/releasePolicy.ts is pinned, app.asar embeds the same feed URL
+// and team ID (the compiled update gate agrees with the sealed feed), every Mach-O is signed by that
+// Developer ID team with the hardened runtime and a secure timestamp, entitlements are allow-jit on
+// the main and helper executables and none elsewhere, and the app meets the designated requirement
+// the update authority checks. --notarized: Gatekeeper accepts the app as a notarized Developer ID
+// app and its stapled ticket validates.
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+} from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  APP_ID,
+  appUpdateYml,
+  developerIdRequirement,
+  readReleasePolicy,
+} from "./release-policy.mjs";
 
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const app = realpathSync.native(resolve(process.argv[2] ?? ""));
 const arch = process.argv[3] ?? process.arch;
-if (!app.endsWith(".app") || !["arm64", "x64"].includes(arch))
-  throw new Error("Expected a macOS app and architecture");
+const flags = process.argv.slice(4);
+const release = flags.includes("--release");
+const notarized = flags.includes("--notarized");
+if (
+  !app.endsWith(".app") ||
+  !["arm64", "x64"].includes(arch) ||
+  flags.some((flag) => !["--release", "--notarized"].includes(flag)) ||
+  (notarized && !release)
+)
+  throw new Error(
+    "usage: node verify-package.mjs <cashU.app> <arm64|x64> [--release [--notarized]]",
+  );
 const xarch = arch === "x64" ? "x86_64" : "arm64";
 const keyringBinding = `Contents/Resources/node_modules/@napi-rs/keyring-darwin-${arch}/keyring.darwin-${arch}.node`;
 const contents = join(app, "Contents");
@@ -14,10 +53,18 @@ const info = join(contents, "Info.plist");
 function command(name, args) {
   return execFileSync(name, args, { encoding: "utf8" }).trim();
 }
+function combined(name, args) {
+  const result = spawnSync(name, args, { encoding: "utf8" });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    text: `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(),
+  };
+}
 function plist(key) {
   return command("plutil", ["-extract", key, "raw", info]);
 }
-if (plist("CFBundleIdentifier") !== "io.utopiasoft.cashu") throw new Error("Wrong app ID");
+if (plist("CFBundleIdentifier") !== APP_ID) throw new Error("Wrong app ID");
 if (plist("CFBundleExecutable") !== "cashU") throw new Error("Wrong executable name");
 const required = [
   "Contents/MacOS/cashU",
@@ -49,23 +96,40 @@ for (const name of ["Contents/MacOS/cashU", "Contents/MacOS/cashu-host-agent"]) 
   const path = join(app, name);
   if (!lstatSync(path).isFile() || (lstatSync(path).mode & 0o111) === 0)
     throw new Error(`Not executable: ${name}`);
-  if (!command("lipo", ["-archs", path]).split(/\s+/).includes(xarch))
-    throw new Error(`Wrong arch: ${name}`);
 }
-for (const name of ["CashUNotifications.node", "CashUHostService.node"]) {
-  if (
-    !command("lipo", ["-archs", join(contents, "Resources/native", name)])
-      .split(/\s+/)
-      .includes(xarch)
-  )
-    throw new Error(`Wrong addon arch: ${name}`);
+function machO(path) {
+  const fd = openSync(path, "r");
+  const header = Buffer.alloc(4);
+  try {
+    readSync(fd, header, 0, 4, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return [
+    "feedface",
+    "feedfacf",
+    "cefaedfe",
+    "cffaedfe",
+    "cafebabe",
+    "bebafeca",
+    "cafebabf",
+    "bfbafeca",
+  ].includes(header.toString("hex"));
 }
-if (
-  !command("lipo", ["-archs", join(app, keyringBinding)])
-    .split(/\s+/)
-    .includes(xarch)
-)
-  throw new Error("Wrong keyring arch");
+function regularFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? regularFiles(path) : entry.isFile() ? [path] : [];
+  });
+}
+// Every Mach-O is built for exactly the target architecture: no universal or foreign slices.
+const machOs = regularFiles(contents).filter(machO);
+for (const name of required.filter((path) => path.endsWith(".node") || path.includes("/MacOS/")))
+  if (!machOs.includes(join(app, name))) throw new Error(`Not a Mach-O: ${name}`);
+for (const path of machOs) {
+  const archs = command("lipo", ["-archs", path]);
+  if (archs !== xarch) throw new Error(`Wrong arch (${archs}): ${relative(app, path)}`);
+}
 const manifest = JSON.parse(readFileSync(join(contents, "Resources/bundle-manifest.json"), "utf8"));
 if (
   manifest.schema !== 1 ||
@@ -85,5 +149,57 @@ for (const [name, expected] of Object.entries(manifest.files)) {
     .digest("hex");
   if (actual !== expected) throw new Error(`Manifest mismatch: ${name}`);
 }
+const policy = readReleasePolicy(root);
+const feedPath = join(contents, "Resources/app-update.yml");
+if (release && (!policy.teamId || !policy.feedUrl)) throw new Error("Release policy is not pinned");
+if (policy.feedUrl || release) {
+  if (!existsSync(feedPath) || !lstatSync(feedPath).isFile()) throw new Error("No app-update.yml");
+  if (readFileSync(feedPath, "utf8") !== appUpdateYml(policy))
+    throw new Error("app-update.yml differs from the pinned release policy");
+  if (typeof manifest.files["Contents/Resources/app-update.yml"] !== "string")
+    throw new Error("Manifest missing: app-update.yml");
+}
 command("codesign", ["--verify", "--deep", "--strict", app]);
+if (release) {
+  const asar = readFileSync(join(contents, "Resources/app.asar"));
+  for (const literal of [`"${policy.feedUrl}"`, `"${policy.teamId}"`])
+    if (!asar.includes(Buffer.from(literal)))
+      throw new Error(`app.asar does not embed the pinned policy ${literal}`);
+  const mainExecutable = join(contents, "MacOS/cashU");
+  for (const path of machOs) {
+    const name = relative(app, path);
+    const details = combined("codesign", ["-dv", "--verbose=4", path]);
+    if (
+      details.status !== 0 ||
+      !details.text.split("\n").includes(`TeamIdentifier=${policy.teamId}`) ||
+      !/^CodeDirectory .*flags=0x10000\(runtime\)/m.test(details.text) ||
+      !/^Timestamp=/m.test(details.text) ||
+      !/^Authority=Developer ID Application: /m.test(details.text)
+    )
+      throw new Error(`Not a Developer ID ${policy.teamId} hardened, timestamped Mach-O: ${name}`);
+    const listed = combined("codesign", ["-d", "--entitlements", "-", "--xml", path]);
+    const keys = [...listed.stdout.matchAll(/<key>([^<]+)<\/key>/g)].map((match) => match[1]);
+    const jit = path === mainExecutable || /\.app\/Contents\/MacOS\/[^/]+$/.test(name);
+    const expected = jit ? ["com.apple.security.cs.allow-jit"] : [];
+    if (listed.status !== 0 || keys.join(",") !== expected.join(","))
+      throw new Error(`Unexpected entitlements (${keys.join(",") || "none"}): ${name}`);
+  }
+  command("codesign", ["--verify", "--strict", "-R", developerIdRequirement(policy.teamId), app]);
+  process.stdout.write(
+    `Release-signed: ${machOs.length} Mach-O, team ${policy.teamId}, feed ${policy.feedUrl}\n`,
+  );
+}
+if (notarized) {
+  const gate = combined("spctl", ["-a", "-vv", "-t", "execute", app]);
+  if (
+    gate.status !== 0 ||
+    !gate.text.includes(": accepted") ||
+    !gate.text.includes("source=Notarized Developer ID")
+  )
+    throw new Error(`Gatekeeper refused the app: ${gate.text}`);
+  process.stdout.write(`${gate.text}\n`);
+  const staple = combined("xcrun", ["stapler", "validate", app]);
+  if (staple.status !== 0) throw new Error(`Stapled ticket invalid: ${staple.text}`);
+  process.stdout.write(`${staple.text.split("\n").at(-1)}\n`);
+}
 process.stdout.write(`Verified ${app} (${arch})\n`);

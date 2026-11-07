@@ -4,11 +4,11 @@ Status: source contract only. No signed release or in-place update has been acce
 
 ## Release inputs
 
-- Build the macOS zip and dmg with the fixed `io.utopiasoft.cashu.next` bundle ID, `cashU` executable and sealed `Contents/Resources/app-update.yml` generic HTTPS feed. The feed belongs to the signed build. Renderer commands cannot set it.
-- Pin `RELEASE_TEAM_ID` and `RELEASE_FEED_URL` in `apps/desktop/src/update/releasePolicy.ts` as part of an owner-controlled signed release. The source and ad-hoc builds leave both unset and report updates unavailable.
+- Build the macOS zip and dmg with the fixed `io.utopiasoft.cashu` bundle ID, `cashU` executable and sealed `Contents/Resources/app-update.yml` generic HTTPS feed. The feed belongs to the signed build. Renderer commands cannot set it.
+- `RELEASE_TEAM_ID` (`29W838VKU4`) and `RELEASE_FEED_URL` (`https://github.com/Utopia-USS/cashu/releases/latest/download/`, the GitHub Releases of Utopia-USS/cashu) are pinned in `apps/desktop/src/update/releasePolicy.ts`. The package step writes `app-update.yml` from that file (`apps/desktop/scripts/release-policy.mjs`), so the compiled gate and the sealed feed cannot disagree; `verify-package.mjs --release` checks both. Ad-hoc builds carry the same feed but fail the Developer ID requirement and report updates unavailable.
 - Keep one Developer ID Team ID across installed builds. Verify the app inside the downloaded zip under the release signing identity before owner-controlled publication. The macOS updater's Squirrel installation also checks matching signing identity.
 - Produce update metadata with the zip checksum. Keep the endpoint and archive immutable after publishing. Source tests with a local generic HTTP server and synthetic archives do not prove release trust.
-- Build with `node apps/desktop/scripts/package-macos.mjs <arm64|x64> [--dmg]` (ad hoc signed; release signing is owner-controlled). There are no Sparkle release scripts for this app. Moving an installed audience of the retired Python app (Sparkle) requires a separate owner decision.
+- Build with `node apps/desktop/scripts/package-macos.mjs <arm64|x64> [--dmg]` (ad hoc signed) or, on the owner's Mac, add `--sign "Developer ID Application: ... (29W838VKU4)" --notarize cashu-notary --out <dir>` (signed, notarized, stapled; see [running.md](running.md) "Packaging"). There are no Sparkle release scripts for this app. Moving an installed audience of the retired Python app (Sparkle) requires a separate owner decision.
 
 ## Install sequence
 
