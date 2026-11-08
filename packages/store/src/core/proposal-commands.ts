@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../command.js";
+import { eventBlob } from "../events/v1/primitives.js";
 import {
   type ExecutionSnapshot,
   type PreparedEffect,
@@ -24,7 +25,9 @@ const currentPending = (
 
 /**
  * Python `proposals.create`: `summary` is one English line; `summaryParams` its values for the app's
- * localized line (`summary_code` = the kind), stored in the payload as `summary_params`.
+ * localized line (`summary_code` = the kind), stored in the payload as `summary_params`. Agent values
+ * in the payload (a rule's `max_weight: 0.5`) travel as decimal text (events.md 4.3, `eventBlob`); the
+ * proposals fold puts the numbers back.
  */
 export const createProposal = defineCommand({
   id: "core.createProposal",
@@ -43,7 +46,7 @@ export const createProposal = defineCommand({
     const { summaryParams, ...created } = input;
     ctx.emit("proposal.created", proposalGid, {
       ...created,
-      payload: { ...input.payload, [SUMMARY_PARAMS]: summaryParams },
+      ...eventBlob("payload", { ...input.payload, [SUMMARY_PARAMS]: summaryParams }),
     });
     return ok({ proposalGid });
   },

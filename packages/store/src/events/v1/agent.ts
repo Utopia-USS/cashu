@@ -1,7 +1,7 @@
 // Reviews, proposals and connector bindings payloads (events.md 8.10).
 import { z } from "zod";
 import { empty, payload } from "./helpers.js";
-import { gid, jsonObject, nonEmpty, timestamp, ulid } from "./primitives.js";
+import { floatPaths, gid, jsonObject, nonEmpty, timestamp, ulid } from "./primitives.js";
 
 export const PROPOSAL_KINDS = ["strategy", "custom_rule", "import", "budget_import"] as const;
 
@@ -24,6 +24,8 @@ export const agentEvents = {
     summary: z.string(),
     reason: z.string().nullable(),
     payload: proposalPayload,
+    /** Paths of the numbers `payload` holds as decimal text (events.md 4.3, `eventBlob`). */
+    payloadFloats: floatPaths.optional(),
     source: nonEmpty,
   }),
   "proposal.approved": payload({ result: jsonObject }),
@@ -42,6 +44,7 @@ export const agentEvents = {
     account: gid,
     connectorId: nonEmpty,
     params: jsonObject,
+    paramsFloats: floatPaths.optional(),
     autoCommit: z.boolean(),
   }),
   "connectorBinding.removed": empty,

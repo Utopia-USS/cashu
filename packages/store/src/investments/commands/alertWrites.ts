@@ -11,7 +11,7 @@ import { alerts as domain } from "@cashu/domain/investments";
 import { loadStrategy } from "@cashu/domain/investments/strategy";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
-import { gid, timestamp } from "../../events/v1/primitives.js";
+import { eventBlob, gid, timestamp } from "../../events/v1/primitives.js";
 import type { Read } from "../../query.js";
 import { type AlertMutation, alertMutation } from "../queries/alertMutation.js";
 import { alertByGid, LIVE_ALERT_STATUSES, liveAgentAlerts } from "../queries/alerts.js";
@@ -113,7 +113,8 @@ export function createAlertWithBuckets(known?: KnownBuckets) {
           instrument,
           kind: valid.kind,
           scope: valid.scope,
-          params: valid.params,
+          // A threshold 0.1 travels as "0.1" (events.md 4.3); the alerts fold puts the number back.
+          ...eventBlob("params", valid.params),
           title,
           note,
           tag,
@@ -194,7 +195,7 @@ export function updateAlertWithBuckets(known?: KnownBuckets) {
           });
           const bucketCheck = validBuckets(ctx, valid.bucketRefs, buckets);
           if (bucketCheck !== true) return refuse(bucketCheck);
-          patch.params = valid.params;
+          Object.assign(patch, eventBlob("params", valid.params));
         }
         if ("polarity" in c)
           patch.polarity = choice(c.polarity, row.polarity, ["positive", "negative", "neutral"]);

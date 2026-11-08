@@ -1,6 +1,7 @@
 // Value formats shared by every v1 event schema (spec: packages/store/spec/events.md section 4,
 // gid.md section 2). Formats are strict on purpose: a value that does not match is a writer bug,
 // and the event is parked, never half applied (events.md section 7 rule 4).
+import { Decimal, floatRepr } from "@cashu/domain";
 import { z } from "zod";
 
 /** ULID, Crockford base32, upper case, first char 0-7 (fits 48-bit time). */
@@ -59,6 +60,116 @@ export const sha256Hex = z.string().regex(SHA256_HEX_RE, "expected lower-hex sha
 export const sha1Hex = z.string().regex(SHA1_HEX_RE, "expected lower-hex sha1");
 /** A JSON object blob (params, raw, stats, payload ...). Ids inside are gids (gid.md section 6). */
 export const jsonObject = z.record(z.string(), z.unknown());
+
+/**
+ * A number as event data carries it (events.md 4.3): a safe integer stays a JSON number, any other
+ * finite number becomes Decimal text the way Python floats are rendered (`repr` digits, then
+ * `format(Decimal(repr(x)), "f")`: `0.5` -> `"0.5"`, `1e-7` -> `"0.0000001"`). Event data, its batch
+ * proof and every hash over it hold integers only, so they stay byte-identical across devices.
+ */
+export function eventNumber(value: number): number | string {
+  if (Number.isSafeInteger(value)) return value;
+  if (!Number.isFinite(value)) throw new RangeError("NaN / Infinity are not JSON (events.md 4.1)");
+  return Decimal.parse(floatRepr(value)).format("f");
+}
+
+/** The paths (key / array-index segments) of the numbers a blob holds as Decimal text (4.3). */
+export const floatPaths = z.array(z.array(z.string()).min(1)).min(1);
+export type FloatPaths = z.infer<typeof floatPaths>;
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+const defineEntry = (target: Record<string, unknown>, key: string, value: unknown) =>
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+
+/**
+ * A free JSON blob (agent parameters, signal payloads, stats, a bank's raw JSON) as event data
+ * carries it, under its field name: every number `eventNumber` rewrites becomes Decimal text, and
+ * their paths go to `<field>Floats` (absent when there are none), so the fold puts the same JSON
+ * numbers back into the view (`restoreFloats`) and no reader sees a difference. Arrays and plain
+ * objects are copied; any other value is left for the emit checks to reject.
+ */
+export function eventBlob<F extends string>(
+  field: F,
+  value: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const paths: string[][] = [];
+  const visit = (item: unknown, path: readonly string[]): unknown => {
+    if (typeof item === "number") {
+      const stored = eventNumber(item);
+      if (typeof stored === "string") paths.push([...path]);
+      return stored;
+    }
+    if (Array.isArray(item)) return item.map((entry, i) => visit(entry, [...path, String(i)]));
+    if (!isPlainRecord(item)) return item;
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(item))
+      defineEntry(out, key, visit(entry, [...path, key]));
+    return out;
+  };
+  const out: Record<string, unknown> = {};
+  defineEntry(out, field, visit(value, []));
+  if (paths.length > 0) defineEntry(out, `${field}Floats`, paths);
+  return out;
+}
+
+/**
+ * The fold side of `eventBlob`: the Decimal text at each listed path becomes its JSON number again
+ * (the same IEEE double: the text is the number's shortest round-trip digits). Anything else at a
+ * path is left as is; no paths (every event written before this rule) returns the blob unchanged.
+ */
+export function restoreFloats<T>(value: T, paths: unknown): T {
+  if (!Array.isArray(paths) || paths.length === 0) return value;
+  const copy = (item: unknown): unknown =>
+    Array.isArray(item)
+      ? item.map(copy)
+      : isPlainRecord(item)
+        ? Object.entries(item).reduce<Record<string, unknown>>(
+            (out, [key, entry]) => defineEntry(out, key, copy(entry)),
+            {},
+          )
+        : item;
+  const root = copy(value);
+  for (const path of paths) {
+    if (!Array.isArray(path) || path.length === 0) continue;
+    let parent: unknown = root;
+    for (const segment of path.slice(0, -1)) {
+      parent =
+        Array.isArray(parent) || isPlainRecord(parent)
+          ? (parent as Record<string, unknown>)[String(segment)]
+          : undefined;
+    }
+    const last = String(path[path.length - 1]);
+    if (!Array.isArray(parent) && !isPlainRecord(parent)) continue;
+    const container = parent as Record<string, unknown>;
+    const text = Object.hasOwn(container, last) ? container[last] : undefined;
+    if (typeof text === "string" && DECIMAL_RE.test(text)) container[last] = Number(text);
+  }
+  return root as T;
+}
+
+/** Path of the first number event data may not carry (a non-integer or unsafe integer), or null. */
+export function nonIntegerNumberPath(value: unknown, path = "data"): string | null {
+  if (typeof value === "number") return Number.isSafeInteger(value) ? null : path;
+  if (value === null || typeof value !== "object") return null;
+  for (const [key, item] of Object.entries(value)) {
+    const found = nonIntegerNumberPath(
+      item,
+      Array.isArray(value) ? `${path}[${key}]` : `${path}.${key}`,
+    );
+    if (found !== null) return found;
+  }
+  return null;
+}
+
 /** An encrypted content-addressed blob (D9): import archives, staged proposal files. */
 export const blobRef = z.looseObject({
   sha256: sha256Hex,

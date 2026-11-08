@@ -10,6 +10,7 @@ import type { z } from "zod";
 import { parseEvent } from "./events/v1/catalog.js";
 import { detPartsOf } from "./events/v1/det-parts.js";
 import type { Envelope } from "./events/v1/envelope.js";
+import { nonIntegerNumberPath } from "./events/v1/primitives.js";
 import { type DetGid, mintUlid } from "./gid.js";
 import type { Store } from "./materialize.js";
 import type { SqlValue } from "./sql/driver.js";
@@ -236,6 +237,14 @@ function decideCommand<I, R>(
 }
 
 function validateEvent(store: Store, cmdId: string, envelope: Envelope): Envelope {
+  // events.md 4.3: data holds integers only (decimals as text, `eventBlob`), the same rule the
+  // native batch proof enforces, so a memory store refuses what a native vault could not append.
+  const float = nonIntegerNumberPath(envelope.data);
+  if (float !== null) {
+    throw new InvalidEmitError(
+      `${cmdId}: ${envelope.type} carries a non-integer number at ${float} (write it as decimal text)`,
+    );
+  }
   const check = parseEvent(envelope);
   if (check.status !== "known") {
     throw new InvalidEmitError(`${cmdId}: ${envelope.type} would not fold (${check.status})`);

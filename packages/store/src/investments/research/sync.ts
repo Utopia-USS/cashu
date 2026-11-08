@@ -16,6 +16,7 @@
 import type { UiLang } from "@cashu/domain/core";
 import { research, type SignalSeverity, severityRank } from "@cashu/domain/investments";
 import type { CommandContext } from "../../command.js";
+import { eventBlob } from "../../events/v1/primitives.js";
 import { openSignalOfKey, type SignalView, signalByGid } from "../queries/signals.js";
 import { weekNoteRows } from "./queries.js";
 import {
@@ -110,7 +111,7 @@ export function syncResearchSignal(ctx: CommandContext, key: string, o: SyncOpti
   const fields = {
     severity: candidate.severity,
     message: candidate.message,
-    payload,
+    ...eventBlob("payload", payload),
     ruleId: candidate.ruleId,
     kind: candidate.kind,
     polarity: candidate.polarity,
@@ -132,7 +133,7 @@ export function syncResearchSignal(ctx: CommandContext, key: string, o: SyncOpti
       message: candidate.message,
       instrument: candidate.instrumentId,
       account: null,
-      payload,
+      ...eventBlob("payload", payload),
       run: null,
       stamps: { first_seen_at: seenAt, last_seen_at: seenAt },
     });

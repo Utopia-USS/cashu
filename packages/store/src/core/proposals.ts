@@ -6,6 +6,7 @@
 // a no-op unless the approval it names (`approval`) is the one that decided the row (a losing
 // approver's failure changes nothing); the engine revokes what that approval caused (events.md 6.6).
 import type { Materializer } from "../engine/types.js";
+import { restoreFloats } from "../events/v1/primitives.js";
 import type { TableDef } from "../sql/ddl.js";
 import { sqlJson } from "../sql/values.js";
 
@@ -65,7 +66,7 @@ export const proposalsMaterializer: Materializer = {
         String(d.kind),
         String(d.summary ?? ""),
         (d.reason as string | null) ?? null,
-        sqlJson(d.payload ?? {}),
+        sqlJson(restoreFloats(d.payload ?? {}, d.payloadFloats)), // events.md 4.3
         String(d.source),
         ctx.time(e, "created_at"),
       );

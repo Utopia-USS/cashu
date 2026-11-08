@@ -5,7 +5,7 @@ import { buildRuleContext } from "@cashu/domain/investments/rules";
 import { DEFAULT_NOTIFICATIONS, issueText } from "@cashu/domain/investments/strategy";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
-import { calendarDate } from "../../events/v1/primitives.js";
+import { calendarDate, eventBlob } from "../../events/v1/primitives.js";
 import type { MarketInput } from "../marketInput.js";
 import { vaultInstrumentGids } from "../queries/instruments.js";
 import { planFacts } from "../queries/planFacts.js";
@@ -288,7 +288,7 @@ export function dailyEvaluation(deps: DailyEvaluation) {
         asOf: input.asOf,
         status,
         strategyVersion: deps.strategy.version?.gid ?? null,
-        stats,
+        ...eventBlob("stats", stats), // stale_weight 0.25 travels as "0.25" (events.md 4.3)
         errors,
         report: { new: created, escalated },
         startedAt,

@@ -314,6 +314,24 @@ function sortRecord<T>(m: Map<string, T>): Record<string, T> {
   return Object.fromEntries([...m.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
+/**
+ * events.md 4.3: a blob's numbers travel as decimal text, their paths in `<field>Floats`; the view
+ * holds the JSON numbers. Written independently of the store's `restoreFloats` on purpose.
+ */
+export function refFloats(value: unknown, paths: unknown): unknown {
+  if (!Array.isArray(paths) || paths.length === 0) return value;
+  const root: unknown = JSON.parse(JSON.stringify(value ?? null));
+  for (const path of paths as string[][]) {
+    let at: unknown = root;
+    for (const k of path.slice(0, -1)) at = (at as Record<string, unknown> | null)?.[k];
+    const last = path[path.length - 1] as string;
+    if (at === null || typeof at !== "object") continue;
+    const v = (at as Record<string, unknown>)[last];
+    if (typeof v === "string" && /^-?(0|[1-9][0-9]*)(\.[0-9]+)?$/.test(v))
+      (at as Record<string, unknown>)[last] = Number(v);
+  }
+  return root;
+}
 export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   const evs = appliedEvents(ordered(input).filter((e) => gidValid(e, det)));
   const ids = resolveIdentities(evs);
@@ -711,7 +729,7 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
         bindingRowOf.set(e.gid, row);
         const b = bindings.get(row) ?? { live: false, params: null, cursor: null };
         b.live = true; // M1: a set after a removal re-creates the binding
-        b.params = d.params;
+        b.params = refFloats(d.params, d.paramsFloats);
         bindings.set(row, b);
         break;
       }

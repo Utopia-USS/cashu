@@ -15,6 +15,7 @@
 // | evaluated  | triggered := data.triggered, last_* LWW when present; an evaluation whose lastCheckedAt is
 // |            | at or after the snooze end ends the snooze (owner active); no updated_at bump |
 import type { FoldContext, Materializer } from "../engine/types.js";
+import { restoreFloats } from "../events/v1/primitives.js";
 import type { TableDef } from "../sql/ddl.js";
 import { viewTimestamp } from "../sql/values.js";
 import { instrumentId, json, nullableTime, str } from "./fold-values.js";
@@ -154,7 +155,7 @@ export const alertsMaterializer: Materializer = {
         instrumentId(ctx, d.instrument),
         String(d.scope),
         String(d.kind),
-        json(d.params ?? {}),
+        json(restoreFloats(d.params ?? {}, d.paramsFloats)), // events.md 4.3
         String(d.polarity ?? "neutral"),
         String(d.severity ?? "info"),
         String(d.title),
@@ -187,7 +188,7 @@ export const alertsMaterializer: Materializer = {
           ctx.sql.write(
             table.name,
             "UPDATE alerts SET params = ? WHERE gid = ?",
-            json(d.params),
+            json(restoreFloats(d.params, d.paramsFloats)),
             g,
           );
         }

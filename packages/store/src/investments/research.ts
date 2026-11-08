@@ -18,6 +18,7 @@
 // - `note.signalLinked` (S25-F5): `signal_id` = the signal gid as named (readers map an alias to its
 //   episode through `inv_signal_aliases`, D-S2); no `updated_at` change.
 import type { Materializer } from "../engine/types.js";
+import { restoreFloats } from "../events/v1/primitives.js";
 import type { TableDef } from "../sql/ddl.js";
 import { hasStamp, instrumentId, json, nullableTime, refId, str } from "./fold-values.js";
 import { INSTRUMENTS } from "./instruments.js";
@@ -154,7 +155,7 @@ export const researchNotesMaterializer: Materializer = {
         String(d.title),
         String(d.summary),
         json(d.sources ?? []),
-        json(d.details),
+        json(restoreFloats(d.details, d.detailsFloats)), // events.md 4.3
         str(d.candidateKey),
         refId(ctx, d.signal),
         ctx.time(e, "observed_at", str(d.observedAt)),
@@ -208,7 +209,7 @@ export const researchNotesMaterializer: Materializer = {
           notes.name,
           "UPDATE research_notes SET instrument_id = ?, details = ?, updated_at = ? WHERE gid = ?",
           instrumentId(ctx, d.instrument),
-          json(d.details),
+          json(restoreFloats(d.details, d.detailsFloats)),
           ctx.time(e, "updated_at"),
           g,
         );

@@ -12,7 +12,7 @@
 // a resolve and a removed-rule expiry write no payload keys and set `last_run_id`.
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
-import { gid, jsonObject, timestamp } from "../../events/v1/primitives.js";
+import { eventBlob, gid, jsonObject, timestamp } from "../../events/v1/primitives.js";
 import { dedupKeyV2, POLARITIES, SIGNAL_SEVERITIES } from "../../events/v1/signals.js";
 import { viewTimestamp } from "../../sql/values.js";
 import { eventTimeOf } from "../queries/shared.js";
@@ -68,11 +68,14 @@ export interface AppliedSignals {
 export const RESOLVED_REASON = "rule_cleared";
 export const RULE_REMOVED_REASON = "rule_removed";
 
-/** Python `_fill`: every candidate field the episode takes over on a refresh / escalation. */
+/**
+ * Python `_fill`: every candidate field the episode takes over on a refresh / escalation. A payload
+ * float (`weight: 0.18`) travels as decimal text (events.md 4.3); the signals fold puts it back.
+ */
 const fill = (c: Candidate) => ({
   severity: c.severity,
   message: c.message,
-  payload: c.payload,
+  ...eventBlob("payload", c.payload),
   ruleId: c.ruleId,
   kind: c.kind,
   polarity: c.polarity,
@@ -125,7 +128,7 @@ export const applySignalActions = defineCommand({
           message: c.message,
           instrument: c.instrument,
           account: c.account,
-          payload: c.payload,
+          ...eventBlob("payload", c.payload),
           run: input.run,
           stamps: { first_seen_at: a.createdAt, last_seen_at: a.createdAt },
         });

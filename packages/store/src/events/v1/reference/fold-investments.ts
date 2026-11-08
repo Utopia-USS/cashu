@@ -8,7 +8,7 @@
 // fold.ts. Test oracle only: imports nothing from the store.
 import { detPartsOf } from "../det-parts.js";
 import { claimAllowed } from "../identity.js";
-import type { RefDet, RefEvent } from "./fold.js";
+import { type RefDet, type RefEvent, refFloats } from "./fold.js";
 
 type Row = Record<string, unknown>;
 export type InvRefView = Record<(typeof INV_REF_TABLES)[number], Row[]>;
@@ -381,7 +381,7 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
             as_of: d.asOf,
             status: d.status,
             strategy_version_id: str(d.strategyVersion),
-            stats: d.stats,
+            stats: refFloats(d.stats, d.statsFloats),
             errors: d.errors,
             report: d.report,
             started_at: time(e, "started_at", d.startedAt),
@@ -397,7 +397,7 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
             instrument_id: inst(d.instrument),
             scope: d.scope,
             kind: d.kind,
-            params: d.params,
+            params: refFloats(d.params, d.paramsFloats),
             polarity: d.polarity,
             severity: d.severity,
             title: d.title,
@@ -437,7 +437,8 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
             cooldownDays: "cooldown_days",
             tag: "tag",
           };
-          for (const [f, c] of Object.entries(cols)) if (f in d) a[c] = d[f] ?? null;
+          for (const [f, c] of Object.entries(cols))
+            if (f in d) a[c] = (f === "params" ? refFloats(d[f], d.paramsFloats) : d[f]) ?? null;
           if ("expiresAt" in d) a.expires_at = maybeTime(e, "expires_at", d.expiresAt);
           a.updated_at = time(e, "updated_at");
         } else if (e.type === "alert.statusSet") {
@@ -676,7 +677,7 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
             title: d.title,
             summary: d.summary,
             sources: d.sources,
-            details: d.details ?? null,
+            details: refFloats(d.details, d.detailsFloats) ?? null,
             candidate_key: d.candidateKey ?? null,
             signal_id: str(d.signal),
             observed_at: time(e, "observed_at", d.observedAt),
@@ -716,7 +717,7 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
           n.updated_at = time(e, "updated_at");
         } else if (e.type === "note.candidateUpdated") {
           n.instrument_id = inst(d.instrument);
-          n.details = d.details ?? null;
+          n.details = refFloats(d.details, d.detailsFloats) ?? null;
           n.updated_at = time(e, "updated_at");
         } else {
           n.signal_id = str(d.signal);

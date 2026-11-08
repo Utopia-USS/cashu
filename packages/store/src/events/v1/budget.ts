@@ -7,6 +7,7 @@ import {
   calendarDate,
   currency,
   decimal,
+  floatPaths,
   gid,
   jsonObject,
   key,
@@ -37,6 +38,7 @@ export const budgetEvents = {
     dedupHash: z.union([sha1Hex, z.string().regex(/^legacy:[0-9a-f]{40}$/)]),
     occurrence: z.int().min(0),
     raw: jsonObject,
+    rawFloats: floatPaths.optional(),
   }),
   "txn.cashExpenseAdded": payload({
     account: gid,

@@ -12,6 +12,7 @@ import {
   executeDurableCommand,
   type VaultCommandQueue,
 } from "./command-durable.js";
+import { eventBlob } from "./events/v1/primitives.js";
 import { testEnv } from "./testing/commands.js";
 import { openTestStore } from "./testing/store.js";
 
@@ -448,5 +449,43 @@ describe("portable durable commands", () => {
     const row = s.attempts.rows.get("key-10");
     if (row === undefined || row.phase === "absent") throw new Error("expected recorded attempt");
     expect(row.fingerprint).toBe(fingerprint);
+  });
+  it("refuses a float in event data before any attempt or write, and appends its text form", async () => {
+    const s = setup();
+    const propose = (blob: Record<string, unknown>) =>
+      defineCommand({
+        id: "test.durableProposal",
+        input: z.object({}),
+        run(ctx) {
+          ctx.emit("proposal.created", ctx.newGid(), {
+            kind: "custom_rule",
+            summary: "Synthetic",
+            reason: null,
+            source: "agent",
+            ...blob,
+          });
+          return ok(1);
+        },
+      });
+    const payload = { rule: { params: { max_weight: 0.5 } } };
+    // events.md 4.3: the batch proof holds integers only. Nothing was appended, so the outcome is
+    // known (before: the digest threw after preparation and the write read as outcome_unknown).
+    expect(await executeDurableCommand(s.session, propose({ payload }), {}, "float")).toEqual({
+      kind: "not_started",
+      reason: "preparation_failed",
+    });
+    expect(s.writes).toBe(0);
+    expect(s.attempts.rows.size).toBe(0);
+    const stored = await executeDurableCommand(
+      s.session,
+      propose(eventBlob("payload", payload)),
+      {},
+      "text",
+    );
+    expect(stored.kind).toBe("completed");
+    expect(s.batches[0]?.[0]?.d).toMatchObject({
+      payload: { rule: { params: { max_weight: "0.5" } } },
+      payloadFloats: [["rule", "params", "max_weight"]],
+    });
   });
 });

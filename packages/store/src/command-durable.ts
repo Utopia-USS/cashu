@@ -345,13 +345,15 @@ export async function executeDurableCommand<I, R>(
         }
       }
       let events: UnstampedEvent[];
+      let digest: string | undefined;
       try {
         events = prepared.events.map(toUnstampedEvent);
+        // Nothing is appended yet: a batch the proof cannot digest was never started.
+        digest = events.length === 0 ? undefined : ownBatchDigest(events);
       } catch {
         return { kind: "not_started", reason: "preparation_failed" };
       }
       const eids = prepared.events.map((event) => event.eid);
-      const digest = events.length === 0 ? undefined : ownBatchDigest(events);
       if (beforeMayAppend) {
         try {
           await beforeMayAppend();

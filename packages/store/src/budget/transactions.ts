@@ -16,6 +16,7 @@ import { budget, D } from "@cashu/domain";
 import { merchantKey } from "@cashu/domain/budget";
 import { ACCOUNTS } from "../core/accounts.js";
 import { type FoldContext, type FoldEvent, type Materializer, ord } from "../engine/types.js";
+import { restoreFloats } from "../events/v1/primitives.js";
 import type { TableDef } from "../sql/ddl.js";
 import { sqlJson } from "../sql/values.js";
 
@@ -237,7 +238,7 @@ function applyImport(e: FoldEvent, ctx: FoldContext): void {
     String(d.source),
     String(d.dedupHash),
     Number(d.occurrence),
-    sqlJson(d.raw ?? {}),
+    sqlJson(restoreFloats(d.raw ?? {}, d.rawFloats)), // events.md 4.3
     typeof d.batch === "string" ? ctx.id(d.batch) : null,
     ctx.time(e, "created_at"),
   );

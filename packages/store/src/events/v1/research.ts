@@ -1,7 +1,7 @@
 // Watchlist, topic theses, research runs and notes payloads (events.md 8.9, watchlist in 8.1).
 import { z } from "zod";
 import { empty, patchOf, payload } from "./helpers.js";
-import { gid, jsonObject, nonEmpty, timestamp } from "./primitives.js";
+import { floatPaths, gid, jsonObject, nonEmpty, timestamp } from "./primitives.js";
 import { POLARITIES } from "./signals.js";
 
 /** Limits of investments.models (validated at emit time by the services; mirrored here). */
@@ -101,6 +101,7 @@ export const researchEvents = {
     summary: z.string().max(RESEARCH_SUMMARY_MAX),
     sources: z.array(source),
     details: jsonObject.nullable(),
+    detailsFloats: floatPaths.optional(),
     candidateKey: z.string().nullable(),
     signal: gid.nullable(),
     observedAt: timestamp,
@@ -117,6 +118,7 @@ export const researchEvents = {
   "note.candidateUpdated": payload({
     instrument: gid.nullable(),
     details: jsonObject.nullable(),
+    detailsFloats: floatPaths.optional(),
   }),
   /** The research sync re-points a lead note at the episode's signal (S25-F5). */
   "note.signalLinked": payload({ signal: gid }),

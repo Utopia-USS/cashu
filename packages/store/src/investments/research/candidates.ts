@@ -15,7 +15,7 @@
 import { research } from "@cashu/domain/investments";
 import { z } from "zod";
 import { defineCommand, ok, refuse } from "../../command.js";
-import { gid } from "../../events/v1/primitives.js";
+import { eventBlob, gid } from "../../events/v1/primitives.js";
 import { watchlist, watchRowFor } from "../queries/alerts.js";
 import { vaultInstrumentGids } from "../queries/instruments.js";
 import { theses, thesisByGid } from "../queries/journal.js";
@@ -133,7 +133,10 @@ export const acceptCandidate = defineCommand({
       created_thesis: createdThesis,
       previous_instrument_id: row.instrument,
     });
-    const cause = ctx.emit("note.candidateUpdated", row.gid, { instrument, details });
+    const cause = ctx.emit("note.candidateUpdated", row.gid, {
+      instrument,
+      ...eventBlob("details", details),
+    });
     if (addWatch !== null) {
       ctx.emit("watchlist.added", ctx.det("watchlist_items", [instrument]), addWatch, { cause });
     }
@@ -215,7 +218,7 @@ export const undoAcceptCandidate = defineCommand({
     for (const k of ACCEPT_KEYS) delete details[k];
     const cause = ctx.emit("note.candidateUpdated", row.gid, {
       instrument: typeof previous === "string" ? previous : null,
-      details: Object.keys(details).length > 0 ? details : null,
+      ...(Object.keys(details).length > 0 ? eventBlob("details", details) : { details: null }),
     });
     for (const e of side) ctx.emit(e.type, e.gid, e.data, { cause });
     return ok({ note: row.gid });

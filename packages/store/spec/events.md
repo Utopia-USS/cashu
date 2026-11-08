@@ -166,6 +166,7 @@ draft `invalidation`, market-view `sources`).
 | Currency | `^[A-Z]{3}$`; instrument / quote currencies `^[A-Z0-9]{2,10}$`. |
 | Reference | a gid ([`gid.md`](gid.md)), never a local integer id. |
 | JSON blob | JSON object; every id inside is a gid ([`gid.md`](gid.md) 6). |
+| Number in event data | A safe integer only. Event data, the native batch proof (`packages/sync/src/batchProof.ts`) and every hash over it hold integers, so they are byte-identical on every device; an emit with any other number is refused (`command.ts`). A free JSON blob (`params`, `payload`, `stats`, `details`, `raw`) that holds a float (an agent's `max_weight: 0.5`, a signal's `weight`) is written by `eventBlob`: each such number becomes Decimal text as above (`"0.5"`), and its path (key / array-index segments) is listed in the sibling field `<blob>Floats` (`payloadFloats: [["rule","params","max_weight"]]`, absent when there is none). The fold restores those numbers (`restoreFloats`), so views and readers keep the JSON numbers; events without the sibling are read as written. |
 | Informational labels | open lower-case keys, not enums, where Python treats them as free labels (rule-run `trigger`, alert `createdBy`, proposal `source`) so real data never parks (M4). Enums stay for values with behaviour. |
 
 ### 4.4 Domain timestamps

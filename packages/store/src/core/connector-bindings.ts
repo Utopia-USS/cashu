@@ -6,6 +6,7 @@
 // syncs (events.md 10) and is not part of this view.
 
 import type { FoldContext, Materializer } from "../engine/types.js";
+import { restoreFloats } from "../events/v1/primitives.js";
 import type { TableDef } from "../sql/ddl.js";
 import { sqlBool, sqlJson } from "../sql/values.js";
 import { ACCOUNTS } from "./accounts.js";
@@ -130,7 +131,7 @@ export const connectorBindingsMaterializer: Materializer = {
         account,
         connector_id: String(d.connectorId),
         live: 1,
-        params_json: sqlJson(d.params ?? {}),
+        params_json: sqlJson(restoreFloats(d.params ?? {}, d.paramsFloats)), // events.md 4.3
         auto_commit: sqlBool(d.autoCommit === true),
         cursor: prev?.cursor ?? null,
         created_at: prev?.created_at ?? ctx.time(e, "created_at"),

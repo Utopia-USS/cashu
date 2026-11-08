@@ -1,7 +1,15 @@
 // Signals, rule runs and alerts payloads (events.md 8.7).
 import { z } from "zod";
 import { empty, patchOf, payload } from "./helpers.js";
-import { calendarDate, gid, jsonObject, key, nonEmpty, timestamp } from "./primitives.js";
+import {
+  calendarDate,
+  floatPaths,
+  gid,
+  jsonObject,
+  key,
+  nonEmpty,
+  timestamp,
+} from "./primitives.js";
 
 export const SIGNAL_SEVERITIES = ["info", "action"] as const;
 export const POLARITIES = ["positive", "negative", "neutral"] as const;
@@ -96,12 +104,15 @@ export const signalsEvents = {
     instrument: gid.nullable(),
     account: gid.nullable(),
     payload: jsonObject,
+    /** Paths of the numbers `payload` holds as decimal text (events.md 4.3, `eventBlob`). */
+    payloadFloats: floatPaths.optional(),
     run: gid.nullable(),
   }),
   "signal.refreshed": payload({
     severity: z.enum(SIGNAL_SEVERITIES).optional(),
     message: z.string().optional(),
     payload: jsonObject.optional(),
+    payloadFloats: floatPaths.optional(),
     run: gid.nullable(),
     seenAt: timestamp,
   }).extend(refreshFields),
@@ -109,6 +120,7 @@ export const signalsEvents = {
     severity: z.enum(SIGNAL_SEVERITIES),
     message: z.string(),
     payload: jsonObject,
+    payloadFloats: floatPaths.optional(),
     reactivate: z.boolean(),
     run: gid.nullable(),
     seenAt: timestamp,
@@ -137,6 +149,7 @@ export const signalsEvents = {
     status: z.enum(RULE_RUN_STATUSES),
     strategyVersion: gid.nullable(),
     stats: jsonObject,
+    statsFloats: floatPaths.optional(),
     errors: z.array(z.string()),
     report: z.looseObject({ new: z.array(gid), escalated: z.array(gid) }),
     startedAt: timestamp,
@@ -148,6 +161,7 @@ export const signalsEvents = {
     scope: z.enum(ALERT_SCOPES),
     kind: z.enum(ALERT_KINDS),
     params: jsonObject,
+    paramsFloats: floatPaths.optional(),
     polarity: z.enum(POLARITIES),
     severity: z.enum(SIGNAL_SEVERITIES),
     title: nonEmpty,
@@ -164,6 +178,8 @@ export const signalsEvents = {
     title: nonEmpty,
     note: z.string().nullable(),
     params: jsonObject,
+    /** Sent with `params` when it holds decimal text for numbers (events.md 4.3). */
+    paramsFloats: floatPaths,
     polarity: z.enum(POLARITIES),
     severity: z.enum(SIGNAL_SEVERITIES),
     cooldownDays: z.int().min(0).nullable(),

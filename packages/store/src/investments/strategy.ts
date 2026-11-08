@@ -9,6 +9,7 @@
 // Rule runs: `ruleRun.finished` is APPEND (LEADER, every run kept, O6); `report.new` / `escalated`
 // stay signal gids in JSON.
 import type { Materializer } from "../engine/types.js";
+import { restoreFloats } from "../events/v1/primitives.js";
 import type { TableDef } from "../sql/ddl.js";
 import { json, nullableTime, refId, str } from "./fold-values.js";
 
@@ -100,7 +101,7 @@ export const ruleRunsMaterializer: Materializer = {
       String(d.asOf),
       String(d.status),
       refId(ctx, d.strategyVersion),
-      json(d.stats ?? {}),
+      json(restoreFloats(d.stats ?? {}, d.statsFloats)), // events.md 4.3
       json(d.errors ?? []),
       json(d.report ?? { new: [], escalated: [] }),
       ctx.time(e, "started_at", str(d.startedAt)),

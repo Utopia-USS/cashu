@@ -21,7 +21,7 @@ import type { UiLang } from "@cashu/domain/core";
 import { research } from "@cashu/domain/investments";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
-import { gid } from "../../events/v1/primitives.js";
+import { eventBlob, gid } from "../../events/v1/primitives.js";
 import { watchedInstrumentGids } from "../queries/alerts.js";
 import { loadInstrument, loadInstruments, vaultInstrumentGids } from "../queries/instruments.js";
 import { theses } from "../queries/journal.js";
@@ -618,7 +618,8 @@ export function researchNoteCommand(afterAdded?: (ctx: CommandContext, row: Rese
         title: data.title,
         summary: data.summary,
         sources,
-        details: stored,
+        // `valuation.pe: 23.5` travels as "23.5" (events.md 4.3); the research fold puts the number back.
+        ...(stored === null ? { details: null } : eventBlob("details", stored)),
         candidateKey,
         signal: null,
         observedAt: instantEvent(observed),

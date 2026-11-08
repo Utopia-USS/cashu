@@ -16,6 +16,7 @@
 // `signal_id` or a rule run's report naming an alias resolves in queries.
 import { ACCOUNTS } from "../core/accounts.js";
 import type { FoldContext, FoldEvent, Materializer } from "../engine/types.js";
+import { restoreFloats } from "../events/v1/primitives.js";
 import type { TableDef } from "../sql/ddl.js";
 import type { SqlValue } from "../sql/driver.js";
 import { sqlJson, viewTimestamp } from "../sql/values.js";
@@ -199,7 +200,7 @@ function refreshSets(e: FoldEvent, ctx: FoldContext): [string[], SqlValue[]] {
   if ("run" in d) set("last_run_id", runOrNull(ctx, d.run));
   if ("severity" in d) set("severity", String(d.severity));
   if ("message" in d) set("message", String(d.message));
-  if ("payload" in d) set("payload", sqlJson(d.payload ?? {}));
+  if ("payload" in d) set("payload", sqlJson(restoreFloats(d.payload ?? {}, d.payloadFloats)));
   return [sets, params];
 }
 
@@ -284,7 +285,7 @@ function applySignal(e: FoldEvent, ctx: FoldContext): void {
       String(d.message),
       refOrNull(ctx, INSTRUMENTS, d.instrument),
       refOrNull(ctx, ACCOUNTS, d.account),
-      sqlJson(d.payload ?? {}),
+      sqlJson(restoreFloats(d.payload ?? {}, d.payloadFloats)), // events.md 4.3
       ctx.time(e, "first_seen_at"),
       seen,
       runOrNull(ctx, d.run),

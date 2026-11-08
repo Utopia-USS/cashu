@@ -35,7 +35,7 @@ import { type CommandContext, defineCommand, ok, refuse } from "../command.js";
 import { emitBalance, ensureAccount } from "../core/commands.js";
 import { accountByGid, profileOf } from "../core/queries.js";
 import { BALANCE_SOURCES } from "../events/v1/core.js";
-import { blobRef, calendarDate, gid } from "../events/v1/primitives.js";
+import { blobRef, calendarDate, eventBlob, gid } from "../events/v1/primitives.js";
 import { vaultPaymentPatterns } from "../overview/index.js";
 import { projectedMerchantRuleChanges } from "./derive/categories.js";
 import {
@@ -168,7 +168,8 @@ export const importStatement = defineCommand({
           source: t.source,
           dedupHash: t.dedupHash,
           occurrence: t.occurrence,
-          raw: t.raw,
+          // A bank JSON float travels as decimal text (events.md 4.3); the fold puts the number back.
+          ...eventBlob("raw", t.raw),
         },
       );
     }
