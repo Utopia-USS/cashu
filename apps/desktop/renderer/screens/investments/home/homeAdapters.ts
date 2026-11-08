@@ -3,7 +3,7 @@
 // pass the legacy wire boundary (legacyWire.ts); the storage rows (signals, alerts, theses, proposals) are
 // renamed field by field. Each adapter also applies what the old API client did on top of the response
 // (`isShownSignal`, `digestShown`, `normNote`, `normAttribution`, `normMacro`, the research list defaults).
-import { investments as inv } from "@cashu/domain";
+import * as inv from "@cashu/domain/investments";
 import type { ProposalListRow } from "@cashu/store/core/desktop-proposals";
 import type { ResearchScreenSnapshot } from "@cashu/store/investments/research-screen";
 import type { ReviewScreenResult } from "@cashu/store/investments/review-screen";

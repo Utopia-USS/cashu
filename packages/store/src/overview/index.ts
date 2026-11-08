@@ -7,22 +7,29 @@
 //
 // Net worth reads the device's price cache besides the view (brokerage valuation), so the queries are
 // built once per process over that cache (`overviewQueries`); their ids stay stable. Heavy work stays
-// here (one book per run, in the store process), never in render.
+// here (one book per run, in the store process), never in render. The net-worth read models themselves
+// live in `./networth.ts` (`@cashu/store/overview/networth`, what the phone imports).
 import { budget, core, D, type Decimal, type IsoDate, loans } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
-import { performance as perf } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
 import { budgetCliCushionEnv, budgetCliSettings } from "../budget/cli-queries.js";
 import { budgetBook, budgetEngineContext } from "../budget/read-models.js";
-import { netWorthBook } from "../core/networth.js";
 import { enabledModuleIds, profileOf } from "../core/queries.js";
 import { performanceInputs } from "../investments/performance/inputs.js";
 import { plannedDeposits } from "../investments/queries/planned.js";
 import { monthPlan } from "../investments/services/planned.js";
-import { type OverviewRequest, readOverview } from "../investments/views/overview.js";
+import { readOverview } from "../investments/views/overview.js";
 import { mcpLoanRows } from "../loans/mcp-queries.js";
-import { builtinModules } from "../modules.js";
 import { type ChangeSource, defineQuery, type Query, type Read } from "../query.js";
-import type { NetWorthEnv, StoreModule } from "../registry.js";
+import {
+  modulesOf,
+  type NetWorthQueries,
+  netWorthQueries,
+  type OverviewSources,
+  registryOf,
+  vaultNetWorthBook,
+  vaultPaymentPatterns,
+} from "./networth.js";
 import {
   type OverviewAccount,
   type OverviewAsset,
@@ -30,170 +37,22 @@ import {
   overviewAssets,
 } from "./widgets.js";
 
+export {
+  HERO_CASHFLOW_MONTHS,
+  type HeroView,
+  heroView,
+  type NetWorthQueries,
+  netWorthQueries,
+  netWorthSeries,
+  type OverviewSources,
+  type SeriesArgs,
+  type ShellSummary,
+  type ShellSummarySnapshot,
+  shellSummary,
+  vaultNetWorthBook,
+  vaultPaymentPatterns,
+} from "./networth.js";
 export { type CashWalletView, cashWallet, overviewCashWallet } from "./widgets.js";
-
-/** What the read models are composed from (the built-in modules and registry by default). */
-export interface OverviewSources {
-  /** Exact imported and public market data resolved against the current vault's read. */
-  readonly marketData?: (read: Read) => market.CachedMarketData | null;
-  readonly modules?: readonly StoreModule[];
-  readonly registry?: core.CoreRegistry;
-  /** Vault-scoped, authoritative strategy plan; absent means the investment close is unavailable. */
-  readonly plannedContribution?: (read: Read) => budget.PlannedContribution | null;
-  /** Explicit current vault/strategy/market binding; no inferred file or lease authority. */
-  readonly investmentRequest?: (
-    read: Read,
-    context: {
-      readonly today: IsoDate;
-      readonly lang: core.UiLang;
-      readonly prices: market.PriceCache | null;
-    },
-  ) => OverviewRequest | null;
-}
-
-const modulesOf = (s: OverviewSources): readonly StoreModule[] => s.modules ?? builtinModules();
-const registryOf = (s: OverviewSources): core.CoreRegistry => s.registry ?? core.builtinRegistry();
-
-/** The vault's `NetWorthBook` with every module's contributor (Python `networth.valuations`). */
-export function vaultNetWorthBook(
-  read: Read,
-  env: NetWorthEnv,
-  sources: OverviewSources = {},
-): core.NetWorthBook {
-  const marketData = env.marketData ?? sources.marketData?.(read) ?? undefined;
-  const contributors: Record<string, core.NetWorthContributor> = {};
-  for (const m of modulesOf(sources)) {
-    if (m.netWorth !== undefined) contributors[m.id] = m.netWorth(read, { ...env, marketData });
-  }
-  return netWorthBook(read, contributors, env.today, registryOf(sources));
-}
-
-/** Every module's payment patterns (what the categorization of an undecided row reads). */
-export function vaultPaymentPatterns(
-  read: Read,
-  sources: OverviewSources = {},
-): core.PaymentPattern[] {
-  const reader = { all: read };
-  return modulesOf(sources).flatMap((m) => [...(m.contributions?.paymentPatterns?.(reader) ?? [])]);
-}
-
-// --------------------------------------------------------------------------- series
-
-// A type alias, not an interface: query args must satisfy the JSON `QueryArgs` index signature.
-export type SeriesArgs = {
-  readonly today: IsoDate;
-  readonly lang: core.UiLang;
-  /** Default: the profile's base currency. */
-  readonly currency?: string | null;
-  /** `daily` (default), `weekly` or `monthly` (period-end value). */
-  readonly granularity?: string | null;
-  /** `total` (default) or `liquid`. */
-  readonly scope?: string | null;
-};
-
-/** `GET /networth/series`. */
-export function netWorthSeries(
-  read: Read,
-  args: SeriesArgs,
-  env: Omit<NetWorthEnv, "today">,
-  sources: OverviewSources = {},
-): core.SeriesView {
-  const request = core.seriesRequest({
-    currency: args.currency ?? null,
-    granularity: args.granularity ?? null,
-    scope: args.scope ?? null,
-    baseCurrency: profileOf(read)?.baseCurrency,
-  });
-  const book = vaultNetWorthBook(read, { ...env, today: args.today }, sources);
-  return core.seriesView(book, request, args.lang);
-}
-
-// --------------------------------------------------------------------------- summary
-
-export interface ShellSummary {
-  /** Net worth per currency, code order (never summed across currencies). */
-  readonly networth: Readonly<Record<string, core.NetWorthSummary["networth"][string]>>;
-  /** Assets vs liabilities in the headline currency. */
-  readonly breakdown: core.NetWorthBreakdown;
-  /** The newest month of the base-currency cashflow; null without any. */
-  readonly month: budget.MonthSummary | null;
-  readonly subscriptions: budget.SubscriptionsSummary;
-}
-
-/** Live query shape: exact domain values, with the breakdown map represented as a JSON object. */
-export interface ShellSummarySnapshot extends Omit<ShellSummary, "breakdown"> {
-  readonly breakdown: Omit<core.NetWorthBreakdown, "byType"> & {
-    readonly byType: Readonly<Record<string, core.NetWorthBreakdown["net"]>>;
-  };
-}
-
-interface SummaryParts {
-  readonly netWorth: core.NetWorthBook;
-  readonly core: core.NetWorthSummary;
-  readonly book: budget.BudgetBook;
-}
-
-function summaryParts(read: Read, env: NetWorthEnv, sources: OverviewSources): SummaryParts {
-  const netWorth = vaultNetWorthBook(read, env, sources);
-  const nw = core.netWorthSummary(netWorth, profileOf(read)?.baseCurrency);
-  return { netWorth, core: nw, book: budgetBook(read) };
-}
-
-/** `GET /summary`: net worth now, the headline breakdown, the latest month, active subscriptions. */
-export function shellSummary(
-  read: Read,
-  env: NetWorthEnv,
-  sources: OverviewSources = {},
-): ShellSummary {
-  const parts = summaryParts(read, env, sources);
-  const registry = registryOf(sources);
-  const ctx = budgetEngineContext(read, vaultPaymentPatterns(read, sources), registry);
-  const candidates = budget.recurringPayments(
-    parts.book,
-    ctx,
-    budget.subscriptionExclusions(registry),
-  );
-  return {
-    networth: parts.core.networth,
-    breakdown: parts.core.breakdown,
-    month: budget.monthSummary(budget.monthlyCashflow(parts.book)),
-    subscriptions: budget.subscriptionsSummary(budget.activeRecurring(candidates, parts.book)),
-  };
-}
-
-// --------------------------------------------------------------------------- hero
-
-/** The cashflow window the hero's spending norm reads (the SPA asked for the last 7 months). */
-export const HERO_CASHFLOW_MONTHS = 7;
-
-export interface HeroView {
-  readonly facts: core.HeroFacts;
-  /** Monthly spending of complete months in the headline currency; null without data. */
-  readonly norm: budget.MonthNorm | null;
-  /** `liquid / norm.expense`; null without a norm. */
-  readonly monthsOfSpending: core.HeroFacts["liquid"] | null;
-  /** Net worth change since the previous month end (monthly total series); null below 2 points. */
-  readonly change: core.NetWorthChange | null;
-}
-
-/** The hero strip of the overview (the SPA's NetHero computed it from three responses). */
-export function heroView(read: Read, env: NetWorthEnv, sources: OverviewSources = {}): HeroView {
-  const parts = summaryParts(read, env, sources);
-  const facts = core.heroFacts(parts.core);
-  const rows = budget.monthlyCashflow(parts.book, facts.currency).slice(-HERO_CASHFLOW_MONTHS);
-  const norm = budget.closedMonthNorm(rows, env.today);
-  const monthly = core.seriesView(
-    parts.netWorth,
-    { currency: facts.currency, granularity: "monthly", scope: "total" },
-    "pl",
-  );
-  return {
-    facts,
-    norm,
-    monthsOfSpending: core.monthsOfSpending(facts.liquid, norm?.expense ?? null),
-    change: core.netWorthChange(monthly.points),
-  };
-}
 
 // --------------------------------------------------------------------------- module setup
 
@@ -246,10 +105,7 @@ export function moduleStates(read: Read, sources: OverviewSources = {}): ModuleS
 
 // --------------------------------------------------------------------------- queries
 
-export interface OverviewQueries {
-  readonly netWorthSeries: Query<SeriesArgs, core.SeriesView>;
-  readonly summary: Query<{ readonly today: IsoDate }, ShellSummarySnapshot>;
-  readonly hero: Query<{ readonly today: IsoDate }, HeroView>;
+export interface OverviewQueries extends NetWorthQueries {
   readonly moduleSetup: Query<
     { readonly module: string; readonly cli: string; readonly lang: core.UiLang },
     ModuleSetupResult
@@ -580,28 +436,7 @@ export function overviewQueries(
 ): OverviewQueries {
   const prices = env.prices;
   return {
-    netWorthSeries: defineQuery({
-      id: "core.netWorthSeries",
-      ...(env.changes === undefined ? {} : { changes: env.changes }),
-      run: (read, args: SeriesArgs) => netWorthSeries(read, args, { prices }, sources),
-    }),
-    summary: defineQuery({
-      id: "core.summary",
-      ...(env.changes === undefined ? {} : { changes: env.changes }),
-      run: (read, args: { readonly today: IsoDate }): ShellSummarySnapshot => {
-        const value = shellSummary(read, { today: args.today, prices }, sources);
-        return {
-          ...value,
-          breakdown: { ...value.breakdown, byType: Object.fromEntries(value.breakdown.byType) },
-        };
-      },
-    }),
-    hero: defineQuery({
-      id: "core.hero",
-      ...(env.changes === undefined ? {} : { changes: env.changes }),
-      run: (read, args: { readonly today: IsoDate }) =>
-        heroView(read, { today: args.today, prices }, sources),
-    }),
+    ...netWorthQueries(env, sources),
     moduleSetup: defineQuery({
       id: "core.moduleSetup",
       run: (

@@ -1,5 +1,5 @@
 /** The active watched list is independent of the account filter's held positions. */
-import { views } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import type { Read } from "../queries/shared.js";
 import {
   canonicalAccountFilter,

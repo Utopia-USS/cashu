@@ -1,10 +1,7 @@
 /** Deterministic leader alert pass over injected local market data; no fetches or scheduling. */
 import { type DateTime, toStorage, utcIso } from "@cashu/domain";
-import {
-  alerts as domain,
-  parseSignalSeverity,
-  parseSignalStatus,
-} from "@cashu/domain/investments";
+import { parseSignalSeverity, parseSignalStatus } from "@cashu/domain/investments";
+import * as domain from "@cashu/domain/investments/alerts";
 import {
   DEFAULT_DATA_QUALITY,
   decimalText,

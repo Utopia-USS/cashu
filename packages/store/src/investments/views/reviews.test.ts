@@ -1,10 +1,6 @@
 import { parseDateTime } from "@cashu/domain";
-import {
-  asProfileId,
-  type performance as perf,
-  toCurrency,
-  views,
-} from "@cashu/domain/investments";
+import { asProfileId, type performance as perf, toCurrency } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import { describe, expect, it } from "vitest";
 import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";

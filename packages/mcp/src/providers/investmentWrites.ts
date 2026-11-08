@@ -1,6 +1,8 @@
 /** Coherent native market facts and optional current-file authority, rebuilt per MCP call. */
 import { parseDateTime } from "@cashu/domain";
-import { asInstrumentId, market, plan, views } from "@cashu/domain/investments";
+import { asInstrumentId, market } from "@cashu/domain/investments";
+import * as plan from "@cashu/domain/investments/plan";
+import * as views from "@cashu/domain/investments/views";
 import { investmentsViews } from "@cashu/store";
 import { loadInstrument, vaultInstrumentGids } from "@cashu/store/investments/queries";
 import { backtestProposalRule } from "@cashu/store/investments/services";

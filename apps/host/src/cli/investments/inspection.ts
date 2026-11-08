@@ -1,4 +1,4 @@
-import { alerts } from "@cashu/domain/investments";
+import * as alerts from "@cashu/domain/investments/alerts";
 import { cleanSearchQuery, projectInstrumentSearch } from "@cashu/store/investments/services";
 import { localDate } from "../budget/context.js";
 import { richTable } from "../budget/richTable.js";

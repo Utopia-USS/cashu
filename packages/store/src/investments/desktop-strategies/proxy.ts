@@ -1,5 +1,5 @@
 /** Best-effort owner reload proxy registration using the existing instrument command and planner. */
-import { performance } from "@cashu/domain/investments";
+import * as performance from "@cashu/domain/investments/performance";
 import { loadStrategy } from "@cashu/domain/investments/strategy";
 import { z } from "zod";
 import { defineCommand, ok } from "../../command.js";

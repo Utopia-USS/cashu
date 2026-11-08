@@ -7,7 +7,7 @@ import {
   toStorage,
   utcIso,
 } from "@cashu/domain";
-import { alerts as domain } from "@cashu/domain/investments";
+import * as domain from "@cashu/domain/investments/alerts";
 import { loadStrategy } from "@cashu/domain/investments/strategy";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";

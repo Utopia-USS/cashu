@@ -1,5 +1,5 @@
 // Alerts (S25 spec 4.10, D-S1; scenarios AL1-AL3, G5). Synthetic data only.
-import { alerts as domainAlerts } from "@cashu/domain/investments";
+import * as domainAlerts from "@cashu/domain/investments/alerts";
 import { describe, expect, it } from "vitest";
 import type { Store } from "../materialize.js";
 import { openTestStore } from "../testing/store.js";

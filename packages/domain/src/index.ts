@@ -12,8 +12,8 @@ export * from "./dates.js";
 export * from "./decimal.js";
 export * from "./difflib.js";
 export * from "./iban.js";
-/** Investments module (namespaced: its names would collide with other modules', e.g. `Transaction`). */
-export * as investments from "./investments/index.js";
+// The investments module is reachable only through `@cashu/domain/investments`: Metro (the phone) does
+// not tree-shake, so a namespace here would put all of it into every bundle that needs a primitive.
 /** Loans module (namespaced like investments). */
 export * as loans from "./loans/index.js";
 export * from "./money.js";

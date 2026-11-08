@@ -15,9 +15,9 @@ import {
   fxRate,
   type Instrument,
   market,
-  performance as perf,
   priceBar,
 } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
 import { storeWriter } from "../../../command.js";
 import { createProfile } from "../../../core/commands.js";
 import { createInstrument } from "../../commands/instruments.js";

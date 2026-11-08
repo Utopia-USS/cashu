@@ -1,6 +1,6 @@
 /** Genuine worker delivery facts; device-local notification rows stay outside the synchronized view. */
 import { toStorage } from "@cashu/domain";
-import { views } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import type { NotificationState } from "../local/notificationQueue.js";
 import { decisions } from "./journal.js";
 import type { Read } from "./shared.js";

@@ -1,7 +1,9 @@
 /** A synchronous tracked snapshot; all transported values are plain DTOs. */
 import { utcIso } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import { asProfileId, performance as perf, views } from "@cashu/domain/investments";
+import { asProfileId } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
+import * as views from "@cashu/domain/investments/views";
 import { enabledModuleIds } from "../../core/queries.js";
 import { type ChangeSource, defineQuery, type Read } from "../../query.js";
 import type { InvestmentScreenClock } from "../desktop/sources.js";

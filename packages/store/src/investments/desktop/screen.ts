@@ -2,13 +2,9 @@
 
 import { parseDateTime } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import {
-  asAccountId,
-  asInstrumentId,
-  asProfileId,
-  performance as perf,
-  views,
-} from "@cashu/domain/investments";
+import { asAccountId, asInstrumentId, asProfileId } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
+import * as views from "@cashu/domain/investments/views";
 import { enabledModuleIds } from "../../core/queries.js";
 import { defineQuery, type Read } from "../../query.js";
 import { performanceInputs } from "../performance/inputs.js";

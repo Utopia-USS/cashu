@@ -1,5 +1,5 @@
 /** Click resolution checks the current host vault, never renderer selection or token possession alone. */
-import { views } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import { decisions, signalByGid } from "@cashu/store/investments/queries";
 import type { HostStores, OpenVault } from "../stores.js";
 import type { NotificationIntentLedger } from "./intentLedger.js";

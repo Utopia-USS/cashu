@@ -5,8 +5,8 @@ import {
   asInstrumentId,
   type InstrumentId,
   toCurrency,
-  views,
 } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import { loadInstrument } from "../queries/instruments.js";
 import { decisionSignalGids, decisions, theses } from "../queries/journal.js";
 import { instrumentGid, type Read, storedTime } from "../queries/shared.js";

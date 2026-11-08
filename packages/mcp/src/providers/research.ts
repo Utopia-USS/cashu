@@ -1,7 +1,7 @@
 /** Per-call native portfolio, attribution and macro composition, without Python-result inputs. */
 
-import { performance as perf } from "@cashu/domain/investments";
 import * as macro from "@cashu/domain/investments/macro";
+import * as perf from "@cashu/domain/investments/performance";
 import { DEFAULT_DATA_QUALITY } from "@cashu/domain/investments/rules";
 import { investmentsPerformance, investmentsResearch, investmentsViews } from "@cashu/store";
 import type { ToolContext } from "../registry.js";

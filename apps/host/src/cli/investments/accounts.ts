@@ -1,4 +1,4 @@
-import { views } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import { investmentsCommands } from "@cashu/store";
 import { enabledModuleIds, mcpProfile } from "@cashu/store/core";
 import { brokerageAccountFacts } from "@cashu/store/investments/views";

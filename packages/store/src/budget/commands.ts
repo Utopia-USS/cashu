@@ -36,7 +36,7 @@ import { emitBalance, ensureAccount } from "../core/commands.js";
 import { accountByGid, profileOf } from "../core/queries.js";
 import { BALANCE_SOURCES } from "../events/v1/core.js";
 import { blobRef, calendarDate, eventBlob, gid } from "../events/v1/primitives.js";
-import { vaultPaymentPatterns } from "../overview/index.js";
+import { vaultPaymentPatterns } from "../overview/networth.js";
 import { projectedMerchantRuleChanges } from "./derive/categories.js";
 import {
   reclassifyRowByGid,

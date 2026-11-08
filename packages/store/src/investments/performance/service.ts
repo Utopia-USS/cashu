@@ -9,7 +9,7 @@
 // tables by hand), the end date, the strategy values and the price cache's write counter
 // (`PriceCache.version`; prices are device-local caches, never view tables, so no materializer can
 // maintain the series itself). A hit costs a few counter reads, no SQL over the history.
-import { performance as perf } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
 import type { Store } from "../../materialize.js";
 import type { SqlValue } from "../../sql/driver.js";
 import { marketInputFingerprint } from "../marketInput.js";

@@ -1,4 +1,5 @@
-import { investments as inv, parseDateTime } from "@cashu/domain";
+import { parseDateTime } from "@cashu/domain";
+import * as inv from "@cashu/domain/investments";
 import { investmentsCommands as C, type Command, investmentsServices } from "@cashu/store";
 import { afterEach, expect, it } from "vitest";
 import type { LabelledTree } from "../privacy/labels.js";

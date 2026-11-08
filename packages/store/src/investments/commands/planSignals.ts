@@ -4,8 +4,8 @@ import {
   type InstrumentId,
   parseSignalSeverity,
   parseSignalStatus,
-  plan,
 } from "@cashu/domain/investments";
+import * as plan from "@cashu/domain/investments/plan";
 import { DEFAULT_DATA_QUALITY, NotFired, reconcileSignals } from "@cashu/domain/investments/rules";
 import { DEFAULT_NOTIFICATIONS, type StrategyConfig } from "@cashu/domain/investments/strategy";
 import { type CommandContext, ok, refuse } from "../../command.js";

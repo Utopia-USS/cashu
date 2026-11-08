@@ -12,11 +12,11 @@ import {
   type ManualValuation,
   type market,
   type PriceBar,
-  performance as perf,
   preloadRates,
   type Transaction,
   toCurrency,
 } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
 import { profileOf } from "../../core/queries.js";
 import { type MarketInput, resolveMarketInput } from "../marketInput.js";
 import { instrumentByAlias, instrumentByIsin, loadInstruments } from "../queries/instruments.js";

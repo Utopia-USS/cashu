@@ -3,7 +3,8 @@
 // summary. It carries no money, so strict and amounts send the same answer.
 
 import { D, parseDateTime } from "@cashu/domain";
-import { asProfileId, Currencies, market, performance as perf } from "@cashu/domain/investments";
+import { asProfileId, Currencies, market } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
 import {
   detGidFor,
   investmentsCommands,

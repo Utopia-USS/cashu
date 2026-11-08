@@ -2,7 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import { parseDateTime } from "@cashu/domain";
-import { performance as perf, toCurrency } from "@cashu/domain/investments";
+import { toCurrency } from "@cashu/domain/investments";
 import {
   evaluate,
   refreshMacro,
@@ -10,6 +10,7 @@ import {
   SERIES_KEYS,
   USDPLN,
 } from "@cashu/domain/investments/macro";
+import * as perf from "@cashu/domain/investments/performance";
 import {
   type Command,
   type CommandEnv,

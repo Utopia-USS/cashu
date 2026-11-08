@@ -1,12 +1,12 @@
 /** Labelled alert projections and local alert writes, independent of network services. */
 import { addDays, D, Decimal, parseDateTime } from "@cashu/domain";
 import {
-  alerts as A,
   type Instrument,
   instrumentLabel,
   market,
   parseSignalSeverity,
 } from "@cashu/domain/investments";
+import * as A from "@cashu/domain/investments/alerts";
 import { didYouMean } from "@cashu/domain/investments/rules";
 import { loadStrategy, strategyDigest } from "@cashu/domain/investments/strategy";
 import { investmentsCommands as C, defineCommand, refuse, v1 } from "@cashu/store";

@@ -19,9 +19,9 @@ import {
   instrumentLabel,
   market,
   type PriceBar,
-  performance as perf,
   toCurrency,
 } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
 import { z } from "zod";
 import {
   type CommandEnv,

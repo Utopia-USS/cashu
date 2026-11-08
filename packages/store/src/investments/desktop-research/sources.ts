@@ -1,5 +1,6 @@
-import { type market, performance as perf } from "@cashu/domain/investments";
+import type { market } from "@cashu/domain/investments";
 import type * as macro from "@cashu/domain/investments/macro";
+import * as perf from "@cashu/domain/investments/performance";
 import type { ChangeSource, Read } from "../../query.js";
 import type { StrategyState } from "../services/strategy.js";
 

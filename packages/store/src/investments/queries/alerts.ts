@@ -6,7 +6,7 @@
 // depend on the reader's clock. Every alert read here takes `now` and exposes ONLY the effective
 // status (`effectiveAlertStatus`, R-S2), so no caller can show a stale `snoozed`.
 import type { DateTime } from "@cashu/domain";
-import { alerts as domainAlerts } from "@cashu/domain/investments";
+import * as domainAlerts from "@cashu/domain/investments/alerts";
 import { gidOf, instrumentRoot, jsonObject, jsonStrings, type Read } from "./shared.js";
 
 type EffectiveAlertStatus = domainAlerts.EffectiveAlertStatus;

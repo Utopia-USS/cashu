@@ -1,5 +1,6 @@
 import { formatFloat } from "@cashu/domain";
-import { asAccountId, asProfileId, performance as perf } from "@cashu/domain/investments";
+import { asAccountId, asProfileId } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
 import { investmentEntityIdSchema } from "@cashu/store/investments/screen-sources";
 import { readPositions } from "@cashu/store/investments/views";
 import { richTable } from "../budget/richTable.js";

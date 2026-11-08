@@ -1,5 +1,5 @@
 /** Account metadata is live, vault-local, and ordered by canonical gid only for display. */
-import { views } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import type { Read } from "../queries/shared.js";
 import { type PortfolioAtRequest, portfolioAt } from "./portfolio.js";
 

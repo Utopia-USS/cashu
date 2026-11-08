@@ -1,7 +1,9 @@
 /** Native owner read projections. Canonical gids and covering links never pass through legacy DTOs. */
 import { parseDateTime, toStorage } from "@cashu/domain";
-import { alerts as alertDomain, instrumentLabel, views } from "@cashu/domain/investments";
+import { instrumentLabel } from "@cashu/domain/investments";
+import * as alertDomain from "@cashu/domain/investments/alerts";
 import { withBucketGeneric } from "@cashu/domain/investments/rules";
+import * as views from "@cashu/domain/investments/views";
 import type { Read } from "../../query.js";
 import { loadInstruments } from "../queries/instruments.js";
 import { decisionSignalGids, decisions } from "../queries/journal.js";

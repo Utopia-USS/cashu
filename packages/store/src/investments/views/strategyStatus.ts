@@ -1,8 +1,9 @@
 /** Read-only strategy service; file loading is the existing authorized port, never a view write. */
 
 import type { UiLang } from "@cashu/domain/core";
-import { type Currency, views } from "@cashu/domain/investments";
+import type { Currency } from "@cashu/domain/investments";
 import type { StrategyStatus } from "@cashu/domain/investments/strategy";
+import * as views from "@cashu/domain/investments/views";
 import type { Read } from "../queries/shared.js";
 import { strategyVersions } from "../queries/strategy.js";
 import type { StrategyState } from "../services/strategy.js";

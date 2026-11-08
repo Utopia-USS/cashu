@@ -15,11 +15,11 @@ import {
   InMemoryFxLookup,
   instrumentLabel,
   type ProfileId,
-  performance as perf,
   preloadRates,
-  views,
 } from "@cashu/domain/investments";
 import type * as macro from "@cashu/domain/investments/macro";
+import * as perf from "@cashu/domain/investments/performance";
+import * as views from "@cashu/domain/investments/views";
 import type { Read } from "../../core/queries.js";
 import type { ResearchInputs } from "../desktop-research/inputs.js";
 import { type MarketInput, resolveMarketInput } from "../marketInput.js";

@@ -1,6 +1,7 @@
 /** Source alert_dict/alert_states reads. Computing a display level never evaluates persisted state. */
 import { addDays } from "@cashu/domain";
-import { alerts as domain, parseSignalSeverity } from "@cashu/domain/investments";
+import { parseSignalSeverity } from "@cashu/domain/investments";
+import * as domain from "@cashu/domain/investments/alerts";
 import type { SignalPolarity } from "@cashu/domain/investments/rules";
 import type { Read } from "../../query.js";
 import { type MarketInput, resolveMarketInput } from "../marketInput.js";

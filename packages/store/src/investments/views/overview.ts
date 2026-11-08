@@ -1,7 +1,7 @@
 /** Production overview uses effective native facts and the same projector as copied-source parity. */
 
 import type { IsoDate } from "@cashu/domain";
-import { views } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import { resolveMarketInput } from "../marketInput.js";
 import type { Read } from "../queries/shared.js";
 import { type PortfolioViewRequest, portfolioViewInputs } from "./portfolio.js";

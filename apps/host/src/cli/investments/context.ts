@@ -1,5 +1,5 @@
 import { parseDateTime } from "@cashu/domain";
-import { performance as perf } from "@cashu/domain/investments";
+import * as perf from "@cashu/domain/investments/performance";
 import type { InvestmentSearchIo } from "@cashu/mcp";
 import { enabledModuleIds, mcpProfile } from "@cashu/store/core";
 import type { PerformanceService } from "@cashu/store/investments/performance";

@@ -1,6 +1,7 @@
 /** Canonical owner subjects. Frozen membership never supplies authority for a later write. */
 import { utcIso } from "@cashu/domain";
-import { asProfileId, buildSnapshot, views } from "@cashu/domain/investments";
+import { asProfileId, buildSnapshot } from "@cashu/domain/investments";
+import * as views from "@cashu/domain/investments/views";
 import { pendingProposals } from "../../core/proposal-execution.js";
 import type { Read } from "../../query.js";
 import type { ResearchInputs } from "../desktop-research/inputs.js";

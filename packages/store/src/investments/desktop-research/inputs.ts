@@ -1,13 +1,8 @@
 import { toStorage, toUtc } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import {
-  asProfileId,
-  market,
-  performance as perf,
-  research,
-  type views,
-} from "@cashu/domain/investments";
+import { asProfileId, market, research, type views } from "@cashu/domain/investments";
 import * as macro from "@cashu/domain/investments/macro";
+import * as perf from "@cashu/domain/investments/performance";
 import type { Read } from "../../query.js";
 import { investmentPositionDto } from "../desktop/sources.js";
 import type { MarketInput } from "../marketInput.js";

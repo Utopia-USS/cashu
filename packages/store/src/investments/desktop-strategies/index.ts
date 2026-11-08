@@ -1,6 +1,7 @@
 /** Current document data is host-owned; recorded history never substitutes for current files. */
-import { toCurrency, views } from "@cashu/domain/investments";
+import { toCurrency } from "@cashu/domain/investments";
 import type { StrategyStateName } from "@cashu/domain/investments/strategy";
+import * as views from "@cashu/domain/investments/views";
 import { z } from "zod";
 import { enabledModuleIds, profileOf } from "../../core/queries.js";
 import { type ChangeSource, defineQuery, type Read } from "../../query.js";
