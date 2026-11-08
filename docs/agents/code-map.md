@@ -37,7 +37,7 @@ Apps compose packages and never import another app.
 | `apps/mobile/` | Apps | Expo/Hermes development client, routes/screens and native store/crypto/platform adapters. |
 | `apps/relay/` | Apps | Sync relay scaffold. |
 | `tools/arch/` | Development tooling | `pnpm arch:check`: runner, dependency graph, ESLint (react-hooks), Knip, sherif and the guard tests (`src/guards/`). |
-| `tools/claude-dev/` | Development tooling | Repo-local TS architecture/UI skills and the file-check hook; not shipped to profile workspaces. |
+| `tools/claude-dev/` | Development tooling | Repo-local TS architecture / UI / dev-design skills and the file-check hook; not shipped to profile workspaces. |
 | `tools/node-ts/` | Development tooling | Resolver for running workspace TS sources with Node type stripping (`resolveTs.ts`). |
 
 ## `packages/domain/src/`
@@ -125,7 +125,8 @@ Apps compose packages and never import another app.
 | `examples/connectors/` | tested example connectors (budget CSV, investments JSON and fetch in Python; a Deno budget example) |
 | `packaging/icon/` | the app icon used by electron-builder |
 | `.claude/skills/` | the shipped product skills (see [skills.md](skills.md)) |
-| `.claude/settings.json`, `.claude-plugin/`, `tools/claude-dev/` | repo-local dev plugin `cashu-dev`: the TS development skills (`cashu-ts-architecture`, `cashu-ui`), `scripts/check-file.sh` and its PostToolUse hook; never shipped to workspaces |
+| `.claude/settings.json`, `.claude-plugin/`, `tools/claude-dev/` | repo-local dev plugin `cashu-dev`: the TS development skills (`cashu-ts-architecture`, `cashu-ui`, `cashu-dev-designs`), `scripts/check-file.sh` and its PostToolUse hook; never shipped to workspaces |
+| `design/` | dev-only HTML mockups per app / feature (`design/<app>/<feature>/`), `serve.sh` + `tool/serve.mjs` (`pnpm design`, port 8600); `design/workspace/` (briefs, scripts, shots) is git-ignored |
 | `.github/workflows/ts.yml` | CI: install, `turbo run typecheck lint`, `pnpm test`, exhaustive tests, `arch:check`, mobile bundle check |
 | `.github/workflows/bump-version.yml`, `release-macos.yml`, `staging-to-main-pr.yml` | version bump on `main`, the macOS release after it (behind the `release` environment), the `staging -> main` pull request |
 | `data/` | (git-ignored) local drop folder (`data/incoming/` is the default of `cashu import-dir`) |

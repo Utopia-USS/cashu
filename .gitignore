@@ -54,6 +54,9 @@ dist/
 /*.jpg
 *.screenshot.png
 .claude/worktrees/
+# Dev designs: the HTML mockups under /design/ are tracked; their working material (briefs, scripts,
+# screenshots, superseded rounds) mirrors the same paths under /design/workspace/ and stays local.
+/design/workspace/
 
 # --- System / IDE ------------------------------------------------------------
 .DS_Store

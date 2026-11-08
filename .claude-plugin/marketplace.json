@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "cashu-dev",
-      "description": "Development skills for the cashU TypeScript stack (architecture, UI system).",
+      "description": "Development skills for the cashU TypeScript stack (architecture, UI system, design mockups).",
       "source": "./tools/claude-dev",
       "category": "development"
     }

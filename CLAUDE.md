@@ -24,6 +24,7 @@ cashu/
 ├── packages/           # domain, store, sync, i18n, ui, ui-logic, store-react, mcp, market, llm,
 │                       #   host-protocol, node-host, api
 ├── tools/              # arch/ (`pnpm arch:check`), claude-dev/ (dev plugin), node-ts/ (TS source resolver)
+├── design/             # dev-only HTML mockups per app / feature (`pnpm design`); design/workspace/ is git-ignored
 ├── .claude/skills/     # product skills shipped to each profile's agent workspace
 ├── docs/               # import formats, connector contract + schemas, migration runbook, agents/ = dev guide
 ├── connectors/         # community connector catalog (contrib status), shipped read-only with the app
@@ -156,6 +157,7 @@ nothing else). Skills for **developing** the TypeScript stack live in the repo-l
 |---|---|
 | `cashu-ts-architecture` | TypeScript in `packages/` and `apps/`: layers, module boundaries, screen hook + pure View, `useQuery` / commands / forms, performance budgets, testing, the machine checks - NOT visuals or copy |
 | `cashu-ui` | the UI system: tokens, shared and platform components, value components, lists, charts, Storybook, copy and Polish plurals - NOT logic, data or navigation |
+| `cashu-dev-designs` | the `design/` tree of standalone HTML mockups, its git-ignored `design/workspace/` mirror and the preview server - NOT turning a design into code (`cashu-ui`, `cashu-ts-architecture`) |
 
 The plugin's PostToolUse hook runs `tools/claude-dev/scripts/check-file.sh` on every edited `.ts` /
 `.tsx` under `packages/`, `apps/` or `tools/arch/` and reports violations back; `pnpm arch:check` is the
@@ -177,6 +179,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Edit or add a shipped skill | [skills.md](docs/agents/skills.md) | `packages/domain/src/core/workspace/plan.ts`, `apps/host/src/workspace/skillReferences.ts`, `pnpm --filter @cashu/host skills:sync` |
 | Add or change any user-visible text (UI copy, backend label, notification) | [localization.md](docs/agents/localization.md) | `packages/i18n` (`@cashu/i18n`), `*.strings.ts`, `tools/arch/src/guards/` |
 | UI copy, charts, components | [conventions.md](docs/agents/conventions.md) "UI copy", `cashu-ui` skill | `packages/ui/`, `packages/ui-logic/src/core/messages.ts` |
+| Design mockups: iterate a screen in HTML, compare variants, screenshots | `cashu-dev-designs` skill, [design/README.md](design/README.md) | `design/<app>/<feature>/`, `design/workspace/` (local), `sh design/serve.sh` |
 | Research / MCP privacy (what the agent may see) | [skills.md](docs/agents/skills.md) "Rules every skill follows" | `packages/mcp/src/privacy/`, `packages/mcp/src/runtime/server.ts` |
 | Run, demo data, e2e, verify in the app | [running.md](docs/agents/running.md) | `apps/desktop/scripts/dev.mjs`, `apps/host/src/testing/devDemo.ts`, `apps/desktop/e2e/` |
 | Write tests | [conventions.md](docs/agents/conventions.md) "Tests" | `vitest.tiers.ts`, `@cashu/node-host/testing`, `packages/domain/src/testing/` |
@@ -196,6 +199,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Full handoff gate | `pnpm check:handoff` (check + exhaustive + arch) |
 | Mobile bundle budget | `pnpm bundle:check` |
 | Desktop app on a synthetic demo | `pnpm --filter @cashu/desktop dev` |
+| Preview design mockups | `pnpm design` (http://localhost:8600, index of `design/`) |
 | Desktop e2e | `pnpm --filter @cashu/desktop build && pnpm --filter @cashu/desktop e2e` |
 | `cashu` from a checkout | `pnpm cashu-next <command>` (e.g. `pnpm cashu-next --help`; `.env.dev` decides the data dir) |
 | `cashu` of an installed app | `"<data dir>/bin/cashu" <command>` (the launcher the host writes), or `ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /Applications/cashU.app/Contents/Resources/shim.mjs <command>` |

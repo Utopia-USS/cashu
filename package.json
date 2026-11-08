@@ -17,6 +17,7 @@
     "arch:check": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/arch/src/run.ts",
     "bundle:check": "pnpm --filter @cashu/mobile bundle:check",
     "format": "biome format --write .",
+    "design": "sh design/serve.sh",
     "cashu-next": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tools/node-ts/resolveTs.ts apps/cli/src/index.ts"
   },
   "devDependencies": {
