@@ -2,7 +2,7 @@
 name: market-research
 description: >
   Use when the owner wants the investments module researched: the Saturday routine, a sourced note on one instrument, topic or makro, a thesis review, a full refresh, or scheduling the routine.
-  Applicability - POSITIVE: held and watched instruments, topics, macro cards, candidates and theses researched through the cashU MCP server into sourced Polish notes, topic market views and model recommendations.
+  Applicability - POSITIVE: held and watched instruments, topics, macro cards, candidates and theses researched through the cashU MCP server into sourced Polish notes, topic market views and model assessments (position strength, optional recommendation).
   Applicability - NEGATIVE: NOT for writing or revising the strategy or an instrument thesis (/investments-setup), custom rules (/extension-builder), imports (/import-builder) or placing trades.
   Triggers: /market-research, "research", "przegląd tez", "sprawdź tezę", "sprawdź tezy", "czy teza jest aktualna", "rewizja tez", "zrób pełny research od nowa", "przejrzyj wszystko jeszcze raz", "dokończ research", "dokończ przegląd tez", "zaplanuj research".
 argument-hint: "[symbol | ISIN | segment | makro | tezy [symbol] | rutyna | od nowa]"
@@ -10,16 +10,18 @@ argument-hint: "[symbol | ISIN | segment | makro | tezy [symbol] | rutyna | od n
 
 # market-research: the Saturday routine, on-demand notes and thesis reviews
 
-Market research and model recommendations for the cashU investments module through the profile's
-cashU MCP server. You research one profile: its held positions, its watchlist, new candidates that
+Market research and model assessments (position strength, optional recommendation) for the cashU
+investments module through the profile's cashU MCP server. You research one profile: its held positions, its watchlist, new candidates that
 match the owner's strategy, and the market segments behind them (the app's fixed catalog: gold,
 bonds, crypto, sectors ...), reviewing strategy, portfolio construction and thesis health; on demand
 you also review the theses of the held positions against the owner's own invalidation conditions and
 exit plans. What you find always becomes notes with sources, written through the profile's MCP server
 (a finding that exists only in a local file is invisible in the app); the app shows them in
 Inwestycje (research strip, asset drawer, research view) and in the Sunday review. You keep one
-current market view (now and outlook) under each topic thesis, then save current buy/hold/reduce/exit
-recommendations, with complete held and watchlist coverage when the owner requests a full pass. After
+current market view (now and outlook) under each topic thesis, then assess every held and watched
+instrument: a position strength (`strong` / `neutral` / `weak` with its basis and a Polish reason),
+plus a buy/hold/reduce/exit recommendation only where you are willing to state one, with complete
+held and watchlist coverage at the end of every routine and full refresh. After
 a run you may propose a few alerts that watch for a move out of a sideways range or a volume spike.
 You never place trades or predict security prices. Notes and conversation in Polish, working files in
 English, regular hyphens only (never the em dash character).
@@ -30,7 +32,7 @@ English, regular hyphens only (never the em dash character).
 |---|---|
 | privacy level, boundaries, the MCP tool list, where files go | the research procedure per mode: routine, on-demand, full refresh, thesis review |
 | the profile's cashU server and what its tools validate or refuse | source rules, rubrics and the Polish note contract |
-| the `research/` folder of the workspace | research limits, briefs, topic market views, the recommendation coverage gate, alert proposals, scheduling |
+| the `research/` folder of the workspace | research limits, briefs, topic market views, the position-strength coverage gate, alert proposals, scheduling |
 
 ## Problem -> reference mapping
 
@@ -42,6 +44,7 @@ English, regular hyphens only (never the em dash character).
 | One instrument, one segment or `makro` | [`references/on-demand-workflow.md`](references/on-demand-workflow.md) |
 | `od nowa`, a full fresh pass | [`references/full-refresh-workflow.md`](references/full-refresh-workflow.md) |
 | `tezy [symbol]`, do the theses still hold | this file, section Thesis review / [`references/thesis-review.md`](references/thesis-review.md) |
+| Position strength, basis, optional recommendation, the coverage gate | this file, Hard boundaries / [`references/weekly-routine-workflow.md`](references/weekly-routine-workflow.md) step 8 |
 | Which tool, what `research_context` returns | [`references/mcp-tools.md`](references/mcp-tools.md) |
 | Which sources count, coverage per instrument type, institutional estimates | [`references/sources.md`](references/sources.md) |
 | Kind, polarity, thesis relation, strength, signal checklist | [`references/rubrics.md`](references/rubrics.md) |
@@ -58,7 +61,7 @@ English, regular hyphens only (never the em dash character).
 Keep these verbatim; do not soften them:
 
 - Not a licensed advisor.
-- Recommendations are model opinions for the owner to evaluate, never decisions or orders.
+- Position strengths and recommendations are model opinions for the owner to evaluate, never decisions or orders.
 - No security price predictions or price targets.
 - Facts with sources.
 - Never bypass paywalls or bot protection.
@@ -82,10 +85,24 @@ What they mean here:
   It may describe the market's expected path (`IFR szacuje ok. 575 tys. instalacji robotów rocznie w
   2028`), never the price of a security or an index, never a price target, never buy / sell wording
   (the tool refuses it).
-- After the facts are stored, form your own recommendation from the current research, the owner's
-  thesis and invalidation, portfolio construction, strategy and history. Save it through
-  `set_recommendation`. State it as a model opinion; the owner decides what to do.
-- Never imply that saving a recommendation records a decision or books a transaction.
+- After the facts are stored, assess each held and watched instrument from the current research,
+  the progress against the owner's thesis, invalidation and exit plan, and the environment (macro
+  cards, the topic market view), weighed with portfolio construction, strategy and history. Every
+  row of `set_recommendation` / `set_recommendations` carries the **position strength** (`strength`:
+  `strong` | `neutral` | `weak`), its `strength_basis` (`on_track` | `fulfilled` | `undermined` |
+  `environment_against` | `no_progress`) and a `reason`. The strength says how well the thesis
+  holds, never a trade call; it is required for every held and watched instrument and is what the
+  coverage gate counts. It is not the note `strength` 1-3 of `references/rubrics.md`.
+- The `recommendation` (`buy_asap` | `buy` | `hold` | `reduce` | `exit_asap`) is optional: add it
+  only when you are willing to state it as a model opinion, and never invent one to pass the gate.
+  A row without it clears an older recommendation of that instrument.
+- The tool refuses inconsistent rows: `fulfilled` only with `weak`, `on_track` never with `weak`,
+  `buy` / `buy_asap` never with `weak`, `reduce` / `exit_asap` never with `strong`, and a thesis
+  whose health is `invalidated` or `fulfilled` forces `weak`.
+- Without a recommendation the `reason` describes the thesis state, never `kup` / `sprzedaj` /
+  `dokup` / `redukuj` (`Teza spełniona: kontrakt podpisany w październiku, cel z planu wyjścia
+  osiągnięty.`). State the assessment as a model opinion; the owner decides what to do.
+- Never imply that saving a strength or a recommendation records a decision or books a transaction.
 - Public web pages only: no logins, no paywall or bot-protection workarounds; a blocked source is
   skipped and counted.
 - The profile's data reaches you only through its cashU MCP server, logged in Ustawienia > Agent AI.
@@ -112,8 +129,8 @@ profile's holdings with weights.
 `profile_overview`, `start_research_run`, `research_context`, `set_instrument_segment`,
 `research_notes`, `upsert_topic_thesis`, `add_research_note`, `set_topic_market_view`,
 `finish_research_run`, `theses` / `positions` / `watchlist` (only for a missing detail),
-`set_recommendation` (one instrument on demand), `set_recommendations` (the mandatory final gate of a
-routine or full refresh), `alerts`, `add_alert`, `add_to_watchlist` (on explicit request only),
+`set_recommendation` (one instrument on demand or in a thesis review: position strength, optional
+recommendation), `set_recommendations` (the mandatory final gate of a routine or full refresh), `alerts`, `add_alert`, `add_to_watchlist` (on explicit request only),
 `search_instruments`. What each returns and when: [`references/mcp-tools.md`](references/mcp-tools.md).
 
 If the research tools are missing, the cashU app is older than this skill: tell the user to update
@@ -213,8 +230,9 @@ Full procedure: [`references/weekly-routine-workflow.md`](references/weekly-rout
 6. **Segments** (topic briefs, topic theses, topic market view) and 6b. **Macro briefs:**
    [`references/segments-workflow.md`](references/segments-workflow.md).
 7. **Alert proposals (optional):** `references/alerts.md`, at most 3.
-8. **Recommend and finish:** `set_recommendations` exactly once with `scope: "all"` (never finish
-   unless it returns `missing: 0`), then `finish_research_run(run_id, counts)` and a Polish summary of
+8. **Assess and finish:** `set_recommendations` exactly once with `scope: "all"`: a position strength
+   for every held and watched instrument whose assessment changed or that has none, a recommendation
+   only where you are willing to state one (never finish unless it returns `missing: 0`), then `finish_research_run(run_id, counts)` and a Polish summary of
    at most 15 lines.
 
 ## Thesis review (on demand, held positions)
@@ -226,9 +244,10 @@ facts checked field by field (invalidation, exit plan, thesis premise; price-bas
 with the app's rules and alerts) in a window of at most 90 days, every changed field a note with
 `thesis_relation` + `thesis_field`, `details.context` starting `Przegląd tezy:` and
 `expires_in_days: 90` (at most 3 per position; no change, no note), and the long report in
-`research/<YYYY-MM-DD>-thesis-review.md`, which never replaces the notes. Then save a recommendation
-per reviewed position, optionally propose alerts, `finish_research_run`, then one line per position
-with thesis health and the model recommendation. A revision of the thesis is `/investments-setup`.
+`research/<YYYY-MM-DD>-thesis-review.md`, which never replaces the notes. Then save the position strength
+per reviewed position (`set_recommendation`; a recommendation only if you are willing to state one),
+optionally propose alerts, `finish_research_run`, then one line per position with thesis health and
+the position strength. A revision of the thesis is `/investments-setup`.
 
 ## Working files (workspace only)
 
@@ -253,7 +272,7 @@ for a clear yes, never create a schedule as a side effect.
 
 | File | Style | Impact | Description |
 |---|---|---|---|
-| [`references/weekly-routine-workflow.md`](references/weekly-routine-workflow.md) | workflow | CRITICAL | the weekly routine, steps 0-8, recommendation gate, failure handling |
+| [`references/weekly-routine-workflow.md`](references/weekly-routine-workflow.md) | workflow | CRITICAL | the weekly routine, steps 0-8, position-strength gate (optional recommendation), failure handling |
 | [`references/segments-workflow.md`](references/segments-workflow.md) | workflow | CRITICAL | steps 6 / 6b: topic briefs, topic theses, topic market view, macro briefs |
 | [`references/on-demand-workflow.md`](references/on-demand-workflow.md) | workflow | HIGH | one instrument, segment or `makro` |
 | [`references/full-refresh-workflow.md`](references/full-refresh-workflow.md) | workflow | HIGH | `od nowa`: what differs from the weekly routine |
@@ -281,19 +300,24 @@ Before telling the user it is done:
 1. Every finding went into the app through `add_research_note` (and topic views through
    `set_topic_market_view`); nothing exists only in a local file.
 2. Routine or full refresh: `set_recommendations` was called exactly once with `scope: "all"` before
-   `finish_research_run` and returned `missing: 0`; on demand, `set_recommendation` for the held or
-   watched instrument.
-3. `finish_research_run` was called (also on an abort) with your own counters only.
-4. No note or brief holds a recommendation or your own forecast; no note, brief or view holds a price
+   `finish_research_run` and returned `missing: 0`, and every row in it had `strength`,
+   `strength_basis` and `reason`; on demand or in a thesis review, `set_recommendation` with a
+   position strength for each held or watched instrument researched.
+3. Every recommendation given is one you are willing to state as a model opinion, none invented to
+   pass the gate; a row without one has a reason that describes the thesis state, with no `kup` /
+   `sprzedaj` / `dokup` / `redukuj`.
+4. `finish_research_run` was called (also on an abort) with your own counters only.
+5. No note or brief holds a recommendation or your own forecast; no note, brief or view holds a price
    target, a security or index price move, or portfolio data (except the pp sentence of a segment note);
    every institutional estimate names who, how much and horizon.
-5. The limits held; refusals and duplicates were counted in `skipped`, never rephrased to pass.
-6. Unattended: no question asked, no schedule created, no `add_to_watchlist`; interactive: alerts and
+6. The limits held; refusals and duplicates were counted in `skipped`, never rephrased to pass.
+7. Unattended: no question asked, no schedule created, no `add_to_watchlist`; interactive: alerts and
    watchlist additions only after an explicit yes.
-7. Working files only under the workspace's `research/`, with no amounts or personal data.
-8. The Polish summary names what the mode asks for (notes, signals, theses, recommendations, alerts,
+8. Working files only under the workspace's `research/`, with no amounts or personal data.
+9. The Polish summary names what the mode asks for (notes, signals, theses, position strengths and
+   recommendations changed, alerts,
    blocked sources, what to look at on Sunday).
-9. Early-stage or SPAC instruments in scope: both rankings shown, no bare "obserwuj" (first tranche
+10. Early-stage or SPAC instruments in scope: both rankings shown, no bare "obserwuj" (first tranche
    now or not, next-tranche conditions, blockers), shell vs pro forma values named, the strategy's
    size limit and catalyst rule respected, and facts checked against the owner's entry plan (or a
    proposed wording when the owner has none).

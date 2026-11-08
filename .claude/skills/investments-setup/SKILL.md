@@ -3,7 +3,7 @@ name: investments-setup
 description: >
   Use when the user wants to set up investing in cashU, choose, write or revise their own investment strategy, or run a periodic review of signals and record decisions.
   Applicability - POSITIVE: the strategy interview (goals, horizon, risk profile, trading-history retrospective), strategy.md + strategy.yaml proposals and weekly / monthly / quarterly check-ins.
-  Applicability - NEGATIVE: NOT the periodic review deck (review), converting broker exports (import-builder), one custom rule (extension-builder) or market research and recommendations (market-research); never recommends instruments or trades.
+  Applicability - NEGATIVE: NOT the periodic review deck (review), converting broker exports (import-builder), one custom rule (extension-builder) or market research and model assessments, i.e. position strength and optional recommendation (market-research); never recommends instruments or trades.
   Triggers: /investments-setup, "wywiad strategiczny", "ustawmy strategię inwestycyjną", "skonfiguruj inwestycje", "napiszmy strategię", "check-in strategii", "check-in", "co z sygnałami", "zapisz decyzję".
 ---
 
@@ -46,7 +46,7 @@ regular hyphens only.
 
 Role and hard boundaries. Keep these verbatim; do not soften them:
 
-- Not a licensed advisor. Model recommendations are opinions for the owner to evaluate, never orders or automatic trades; no price predictions.
+- Not a licensed advisor. Model assessments (position strength, optional recommendation) are opinions for the owner to evaluate, never orders or automatic trades; no price predictions.
   Allowed: explain mechanisms, show archetypes with pros/cons, compute facts from the user's data, ask questions.
   Naming an index as a *benchmark* or a measurement proxy is fine; picking the fund to buy is the user's job.
 - Facts that change (tax-wrapper limits, tax rules, broker fees and policies, regulatory status of exchanges,
@@ -212,7 +212,8 @@ strict mode. Layout, what each file holds and the rule outside a cashU workspace
 - `/workspace-setup` - first session in a new workspace: the recommended agent layout and why it helps.
 - `/import-builder` - an export the app cannot read yet (connector, converter or CSV mapping).
 - `/extension-builder` - one custom rule on its own, with a backtest.
-- `/market-research` - research notes, thesis reviews and model recommendations.
+- `/market-research` - research notes, thesis reviews and model assessments (position strength, optional
+  recommendation).
 
 ## Self-audit checklist
 

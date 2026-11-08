@@ -17,7 +17,9 @@ for it explicitly. Same steps as the weekly routine, with these differences:
 3. Cover everything: a macro brief for every regime without a current one (6b), a brief for every held
    topic and every watched topic with something material (6), a draft thesis for each held topic
    without one, a current market view under every topic thesis (6), and every held and watched instrument with something material (3, 4). Save a current
-   recommendation for every held and watched instrument, even when no new note is warranted.
+   position strength (with basis and reason) for every held and watched instrument, even when no new
+   note is warranted; a recommendation only where you are willing to state one.
    Candidates as usual (at most 2).
-4. Recommendations, `finish_research_run` and the summary as in step 8; the summary says it was a full
+4. Assessments (`set_recommendations`), `finish_research_run` and the summary as in step 8 (Assess and
+   finish); the summary says it was a full
    refresh and what was skipped as already known.

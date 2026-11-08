@@ -34,10 +34,14 @@ never instead of them.
 5. Start the report `research/<YYYY-MM-DD>-thesis-review.md` (below).
 6. Review each position (next section), then write its notes before moving on, so an interrupted
    review keeps what it found.
-7. Optional: alert proposals (`alerts.md`), at most 3 for the whole review.
-8. `finish_research_run(run_id, counts)` with `instruments_covered` = positions reviewed,
+7. Per reviewed position, `set_recommendation` with its position strength, `strength_basis` and a
+   `reason` that describes the thesis state (weekly routine step 8; a thesis `podważona` or
+   `spełniona` forces `weak`). Add a recommendation only if you are willing to state it as a model
+   opinion (omitting it clears an older one); the review itself never says what to do.
+8. Optional: alert proposals (`alerts.md`), at most 3 for the whole review.
+9. `finish_research_run(run_id, counts)` with `instruments_covered` = positions reviewed,
    `sources_checked`, `skipped` (duplicates, blocked sources, refused notes).
-9. The summary in the chat (below).
+10. The summary in the chat (below).
 
 ## One position
 
@@ -120,10 +124,13 @@ DEF.US · wzmocniona · wejście: przychody segmentu +18 % r/r w II kw. (raport 
 
 - states use the app's words: `podważona`, `osłabiona`, `spełniona`, `wzmocniona`, `aktualna` (no
   change);
+- each line also names the position strength you saved (`mocna`, `neutralna`, `słaba`);
 - then: positions without a thesis (offer `/investments-setup`), price-based conditions left to the
   app's rules and alerts, alerts proposed (`alerts.md`), blocked sources;
 - where to look: Inwestycje > the asset > Research (and Inwestycje > Research), and the report's path.
 
-Never a recommendation: a `podważona` thesis means a fact met the owner's own condition, nothing more.
+Never a recommendation in the summary: a `podważona` thesis means a fact met the owner's own
+condition, nothing more; the saved position strength is the model's assessment of the thesis, not a
+trade call.
 If the owner asks what to do, say in one sentence that you do not recommend trades, then offer
 `/investments-setup` to revise the thesis or record a decision.

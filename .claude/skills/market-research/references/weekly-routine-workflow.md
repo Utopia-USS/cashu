@@ -73,29 +73,55 @@ situation for a held or watched single stock, sector ETF or crypto, you may prop
 `references/alerts.md` (unattended: created as agent alerts the owner reviews in the app; interactive:
 only those the user accepts). None is fine; never a price level, a target or buy / sell wording.
 
-**8. Recommend and finish.** Start with the portfolio-level priority: allocation drift, missing core
+**8. Assess and finish.** Start with the portfolio-level priority: allocation drift, missing core
 exposure and segment concentration take precedence over attractive local ideas. For each covered held
 or watched instrument, compare the fresh facts with its thesis, invalidation, exit plan, position
-weight, segment concentration, strategy and history. Form a recommendation with a `reason`: one or
-two short Polish sentences (max 280 characters, no amounts) naming the facts it rests on; the app
-shows it under the thesis. Do not use price targets and do not mistake a low price for evidence. Prefer
-`hold` when evidence is incomplete, but a `hold` (czekam) on an instrument under consideration still names its entry conditions (first tranche now or not, what unlocks the next tranche, what blocks entry; `references/candidate-evaluation-pattern.md`). `buy_asap` and `exit_asap` require a clear, time-sensitive reason.
-For every routine or full refresh, call `set_recommendations` exactly once after forming the opinions
-and before `finish_research_run`, with `scope: "all"`. Its updates contain every recommendation that
-changed in this run and every row in `research_context.positions` or `research_context.watchlist`
-whose `recommendation` is null;
-unchanged existing recommendations may be omitted and are preserved. The MCP call is the completion
-invariant: it commits only with complete coverage and returns `expected`, `covered`, `missing` and
-`updated`. Never finish or call the pass complete unless it returns `missing: 0`. Note novelty limits
-do not limit recommendation coverage. Only on-demand research of one instrument uses
-`set_recommendation` directly for that instrument.
+weight, segment concentration, strategy and history, and with the environment (the macro cards, the
+topic market view of its segment).
+
+Every row is `{instrument, strength, strength_basis, recommendation?, reason}`:
+
+- **Position strength** (`strength`, required): `strong` | `neutral` | `weak`, the model's assessment
+  of how well the thesis holds given the research, the progress against the thesis and exit plan,
+  and the environment. It is not a trade call and not the note `strength` 1-3. Required for every
+  held and watched instrument; it is what the gate counts.
+- **Basis** (`strength_basis`, required): `on_track` (teza na dobrej drodze), `fulfilled` (teza
+  spełniona), `undermined` (teza podważona), `environment_against` (otoczenie przeciw),
+  `no_progress` (brak postępu).
+- **Recommendation** (`recommendation`, optional): `buy_asap` | `buy` | `hold` | `reduce` |
+  `exit_asap`. Give it only when you are willing to state it as a model opinion; never invent one to
+  pass the gate. A row without it clears an older recommendation of that instrument (a row is your
+  full current opinion). Prefer `hold` when evidence is incomplete, but a `hold` (czekam) on an
+  instrument under consideration still names its entry conditions (first tranche now or not, what
+  unlocks the next tranche, what blocks entry; `references/candidate-evaluation-pattern.md`).
+  `buy_asap` and `exit_asap` require a clear, time-sensitive reason.
+- **Reason** (`reason`, required): one or two short Polish sentences (max 280 characters, no amounts)
+  naming the facts the assessment rests on; the app shows it under the thesis. Without a
+  recommendation it describes the thesis state, never `kup` / `sprzedaj` / `dokup` / `redukuj`:
+  `Teza spełniona: kontrakt podpisany w październiku, cel z planu wyjścia osiągnięty.` /
+  `Teza na dobrej drodze, ale dwa z pięciu wskaźników makro działają przeciw.`
+
+The tool refuses inconsistent rows: `fulfilled` only with `weak`; `on_track` never with `weak`;
+`buy` / `buy_asap` never with `weak`; `reduce` / `exit_asap` never with `strong` (and only for a held
+instrument); a thesis whose health is `invalidated` or `fulfilled` forces `weak`. Do not use price
+targets and do not mistake a low price for evidence.
+
+For every routine or full refresh, call `set_recommendations` exactly once after forming the
+assessments and before `finish_research_run`, with `scope: "all"`. Its `recommendations` contain
+every instrument whose assessment changed in this run and every row in `research_context.positions`
+or `research_context.watchlist` whose `strength` is null (also those with an older recommendation but
+no strength); unchanged existing assessments may be omitted and are preserved. The MCP call is the
+completion invariant: it commits only with complete strength coverage and returns `expected`,
+`covered`, `missing` and `updated`. Never finish or call the pass complete unless it returns
+`missing: 0`. Note novelty limits do not limit this coverage. Only on-demand research of one
+instrument (and the thesis review) uses `set_recommendation` directly for that instrument.
 Then call `finish_research_run(run_id, counts)` with your own counters only (the app counts
 notes, kinds and signals itself): `{"sources_checked": n, "instruments_covered": n,
 "segments_covered": n, "candidates_screened": n, "skipped": n}`, where `segments_covered` = segments
 checked in step 6 (with or without a note) and `skipped` = duplicates, blocked sources and refused
 notes together. Then a short Polish summary in the session (at most 15 lines): notes per part
 (segments with a note by label), notes that created signals (title and relation), weakened,
-invalidated or fulfilled theses by symbol, recommendations changed by symbol, alerts proposed (symbol, kind, reason), blocked
+invalidated or fulfilled theses by symbol, position strengths and recommendations changed by symbol, alerts proposed (symbol, kind, reason), blocked
 sources, no candidate criteria in the strategy (if so), for early-stage or SPAC names the two rankings (potential / upside and risk-adjusted) and which owner entry-plan triggers or blockers were hit (or which instruments have no plan yet), what to look at on Sunday.
 
 ## When something fails

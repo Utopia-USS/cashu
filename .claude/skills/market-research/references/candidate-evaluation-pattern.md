@@ -9,8 +9,8 @@ strategy.
 - Evaluating a candidate or a watched / held instrument whose business is early, pre-revenue or
   growing very fast (hyper-growth).
 - Any SPAC, announced business combination or recently closed de-SPAC.
-- Ranking several candidates, or writing a recommendation that would otherwise end at "obserwuj" /
-  `hold` (czekam).
+- Ranking several candidates, or writing an assessment or recommendation that would otherwise end at
+  "obserwuj" / `hold` (czekam).
 
 ## Rules
 
@@ -73,10 +73,14 @@ strategy.
    - **Assessment** (the two scores, the two rankings) and **outlook** (explicit horizon, main risks)
      are labelled sections of your answer; for a topic they go to `set_topic_market_view`.
    - **Entry conditions** (rule 3): for a held or watched instrument summarise them in the
-     recommendation `reason` (`set_recommendation(s)`, at most 280 characters, no amounts). The value
-     follows the advice: a first tranche now -> `buy` (only with a dated hard catalyst and within the
-     strategy's limit); not yet -> `hold` (czekam) with the conditions in the reason; `buy_asap` only
-     for a time-sensitive reason. Example reason: "Pierwsza transza 1/3 planowanej pozycji teraz;
+     assessment `reason` (`set_recommendation(s)`, at most 280 characters, no amounts). The position
+     strength and basis are always given (e.g. `neutral` + `no_progress` while the catalyst is
+     pending). A recommendation is optional (only when you are willing to state it as a model
+     opinion) and then follows the advice: a first tranche now -> `buy` (only with a dated hard
+     catalyst, within the strategy's limit, never with `weak`); not yet -> `hold` (czekam) with the
+     conditions in the reason; `buy_asap` only for a time-sensitive reason. Without a
+     recommendation the reason states the conditions as facts about the thesis, never `kup` /
+     `dokup`. Example reason: "Pierwsza transza 1/3 planowanej pozycji teraz;
      kolejna po podpisaniu kontraktu X; wstrzymuje: odkupy powyżej progu z Twojej strategii".
      Event triggers (a contract, the vote, a report, redemptions) go into the note's `details.event`
      + `event_date`. Alerts follow `references/alerts.md` only: the dynamic kinds `range_breakout` /
@@ -106,7 +110,7 @@ strategy.
 5. Check the hard filters, naming the value used (rule 5) and the profile limits (rule 6).
 6. Write the entry conditions per instrument (rule 3): checked against the owner's plan, or
    proposed when there is none.
-7. Save facts and recommendations (rule 7), alerts only as `references/alerts.md` allows; leave
+7. Save facts and the assessment (position strength, optional recommendation; rule 7), alerts only as `references/alerts.md` allows; leave
    the entry plan to the owner.
 
 ## Anti-patterns
