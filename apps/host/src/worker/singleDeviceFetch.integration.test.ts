@@ -11,7 +11,7 @@ import type { Transport } from "@cashu/sync";
 import { FaultInjector, MemoryTransport } from "@cashu/sync/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import { fetchAuthorityIssue, refreshFetchAuthority } from "../fetchAuthority.js";
-import { startLocalHost } from "../host.js";
+import { type LocalHost, startLocalHost } from "../host.js";
 import { createProductionMarket, type ProductionMarket } from "../market/production.js";
 import { type NativeVaultFixture, nativeVaultFixture } from "../testing/nativeVaultFixture.js";
 import { createProductionWorkerBindings } from "./production.js";
@@ -59,6 +59,23 @@ function stubMarket() {
 
 const fxRequested = (urls: readonly string[]) =>
   urls.some((url) => url.includes("api.nbp.pl/api/exchangerates/"));
+
+/**
+ * Resolves once `done()` holds, re-checked on every change of the host's worker status. No deadline
+ * of its own: a slow run on a loaded runner is waited for (within the test's budget), never raced
+ * against a poll that reports whatever the status was when it gave up.
+ */
+function untilStatus(host: LocalHost, done: () => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!done()) return;
+      stop();
+      resolve();
+    };
+    const stop = host.statusChanges.subscribe(check);
+    check();
+  });
+}
 
 /**
  * `denyLease` stands in for a device the lease does not name: the worker never holds the lease.
@@ -143,7 +160,13 @@ async function singleDeviceHost(
     }
     return original();
   };
-  return { fixture, host, vault, market, stub, passes };
+  /** The outcome of the start-up daily run, once it finished (while it runs it reads `failed`). */
+  const daily = async () => {
+    const run = () => host.status().worker?.jobs.find((row) => row.job === "investments.daily");
+    await untilStatus(host, () => run()?.finishedAt != null);
+    return run()?.status;
+  };
+  return { fixture, host, vault, market, stub, passes, daily };
 }
 
 /** One `cashu` command over the host's CLI socket: its exit and everything it printed. */
@@ -174,15 +197,12 @@ async function cli(fixture: NativeVaultFixture, argv: string[], lang = "en") {
   }
 }
 
-const dailyStatus = (host: Awaited<ReturnType<typeof singleDeviceHost>>["host"]) =>
-  host.status().worker?.jobs.find((row) => row.job === "investments.daily")?.status;
-
 it("runs the worker daily on a single-device vault and stores fresh market data", async () => {
   // Only the worker's start-up tick runs (its interval is faked); nothing calls sync() by hand.
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-  const { host, vault, market, stub } = await singleDeviceHost(() => NOW);
+  const { host, vault, market, stub, daily } = await singleDeviceHost(() => NOW);
   try {
-    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    expect(await daily()).toBe("ok");
     expect(fxRequested(stub.urls)).toBe(true);
     expect(market.fxNewest()).not.toBeNull();
     expect(ruleRuns(vault.store.read.bind(vault.store))).toHaveLength(1);
@@ -203,7 +223,7 @@ it("opens the vault again after a daily run recorded its fetch report", async ()
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const first = await singleDeviceHost(() => NOW);
   try {
-    await expect.poll(() => dailyStatus(first.host)).toBe("ok");
+    expect(await first.daily()).toBe("ok");
   } finally {
     await first.host.stop();
   }
@@ -233,9 +253,10 @@ it("opens the vault again after a daily run recorded its fetch report", async ()
 it("runs `invest run` on a single-device vault whose pull evidence went stale", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   let time = NOW;
-  const { fixture, host, vault, stub } = await singleDeviceHost(() => time);
+  const { fixture, host, vault, stub, daily } = await singleDeviceHost(() => time);
   try {
-    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    expect(await daily()).toBe("ok");
+    await idle(host);
     // Two days later the start-up pull is stale and no tick runs: only the command can refresh it.
     time += 2 * DAY;
     stub.urls.splice(0);
@@ -255,7 +276,7 @@ it("prints why `invest run` skipped a profile, in English and Polish", async () 
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const { fixture, host, vault } = await singleDeviceHost(() => NOW, { denyLease: true });
   try {
-    await expect.poll(() => host.status().worker?.state).toBe("idle");
+    await idle(host);
     const argv = ["-p", fixture.profileSlug, "invest", "run"];
     const en = await cli(fixture, argv, "en");
     expect(en.result, en.out).toEqual({ kind: "exit", code: 0 });
@@ -274,13 +295,12 @@ it("prints why `invest run` skipped a profile, in English and Polish", async () 
   }
 });
 
-const idle = (host: Awaited<ReturnType<typeof singleDeviceHost>>["host"]) =>
-  expect.poll(() => host.status().worker?.state).toBe("idle");
+const idle = (host: LocalHost) => untilStatus(host, () => host.status().worker?.state === "idle");
 
 it("keeps fetch authority through a daily run longer than the lease's pull deadline", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   let time = NOW;
-  const { host, vault, stub, passes } = await singleDeviceHost(() => time);
+  const { host, vault, stub, passes, daily } = await singleDeviceHost(() => time);
   const at: number[] = [];
   // Each public request takes 20 s of the vault's clock.
   stub.hooks.onRequest = () => {
@@ -288,7 +308,7 @@ it("keeps fetch authority through a daily run longer than the lease's pull deadl
     time += 20_000;
   };
   try {
-    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    expect(await daily()).toBe("ok");
     const first = at[0] ?? NOW;
     const last = at.at(-1) ?? NOW;
     // Requests kept reaching the provider long after the start-up pull went stale: the transport
@@ -346,9 +366,9 @@ it("never runs a pass through this path on a device the lease does not name", as
 it("runs no pass on idle worker ticks", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   let time = NOW;
-  const { host, passes } = await singleDeviceHost(() => time);
+  const { host, passes, daily } = await singleDeviceHost(() => time);
   try {
-    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    expect(await daily()).toBe("ok");
     await idle(host);
     passes.count = 0;
     // Ten ticks later the pull is long stale, but nothing is due: nothing syncs.
@@ -366,9 +386,9 @@ it("runs no pass on idle worker ticks", async () => {
 it("keeps the vault readable after a refresh pass fails with a non-transport error", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   let time = NOW;
-  const { host, vault, passes } = await singleDeviceHost(() => time);
+  const { host, vault, passes, daily } = await singleDeviceHost(() => time);
   try {
-    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    expect(await daily()).toBe("ok");
     await idle(host);
     time += 70_000; // The start-up pull no longer counts.
     passes.fail = new Error("synthetic pass fault");
@@ -395,9 +415,9 @@ it("keeps the last pull and backs off while an extra remote is offline", async (
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   let time = NOW;
   const relay = new FaultInjector(new MemoryTransport());
-  const { host, vault, passes } = await singleDeviceHost(() => time, { remotes: [relay] });
+  const { host, vault, passes, daily } = await singleDeviceHost(() => time, { remotes: [relay] });
   try {
-    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    expect(await daily()).toBe("ok");
     await idle(host);
     expect(vault.native.canFetchPublicMarket()).toBe(true);
     relay.setOnline(false);
@@ -426,9 +446,9 @@ it("keeps the last pull and backs off while an extra remote is offline", async (
 it("waits for a pass already running instead of giving up", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   let time = NOW;
-  const { host, vault, passes } = await singleDeviceHost(() => time);
+  const { host, vault, passes, daily } = await singleDeviceHost(() => time);
   try {
-    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    expect(await daily()).toBe("ok");
     await idle(host);
     time += 70_000;
     let release!: () => void;

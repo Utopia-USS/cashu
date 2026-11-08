@@ -17,6 +17,7 @@ import { type HostSession, type RunningHost, startHost } from "@cashu/node-host"
 import { classifierSettingsQuery } from "@cashu/store/core/classifier-settings";
 import { deviceListQuery } from "@cashu/store/core/desktop-settings";
 import { NotificationQueue } from "@cashu/store/investments/local";
+import type { ChangeSource } from "@cashu/store/query";
 import type { SyncResult } from "@cashu/sync";
 import { handleAdmin } from "./admin.js";
 import { defaultProfileSlug } from "./cli/defaultProfile.js";
@@ -76,6 +77,8 @@ export interface LocalHost {
   /** Resolves with the exit code once the host stopped (0 clean, 75 handover). */
   readonly exit: Promise<number>;
   status(): AdminStatus;
+  /** Fires after the worker part of `status()` changed (its state, last tick, job runs). */
+  readonly statusChanges: ChangeSource;
   /** Stops: refuses new sessions, drains the write queues, closes stores, releases the lock. */
   stop(reason?: ExitReason): Promise<number>;
   /**
@@ -382,6 +385,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       capabilities,
       exit: lifecycle.exit,
       status,
+      statusChanges: worker.changes,
       stop: lifecycle.stop,
       applySliced: (vaultId, envelopes, sliceEvents) =>
         applySliced(stores, vaultId, envelopes, sliceEvents),

@@ -30,27 +30,23 @@ function once(fn: () => unknown): number {
 
 /**
  * CPU growth when the input grows four times: about 4 for a linear pass, 16 for a quadratic one. The
- * two sizes run interleaved (best of three each), so machine load hits both alike and the ratio, not
- * an absolute time, is checked.
+ * two sizes run in interleaved pairs, so machine load hits both runs of a pair alike, and the median of
+ * the pairs' ratios is checked, not an absolute time: one run slowed by the scheduler or a GC pause
+ * moves one pair, never the median.
  */
 function growth(unit: string, n: number, fn: (text: string) => unknown): number {
   const text = (size: number) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
   const small = text(n);
   const large = text(4 * n);
   fn(small); // compile the patterns outside the timing
-  let a = Number.POSITIVE_INFINITY;
-  let b = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < 3; i++) {
-    a = Math.min(
-      a,
-      once(() => fn(small)),
-    );
-    b = Math.min(
-      b,
-      once(() => fn(large)),
-    );
+  fn(large);
+  const ratios: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const a = once(() => fn(small));
+    const b = once(() => fn(large));
+    ratios.push(b / Math.max(a, 1e-4));
   }
-  return b / Math.max(a, 1e-4);
+  return ratios.sort((x, y) => x - y)[3] as number;
 }
 
 describe("a 40k-letter word scrubs in well under 100 ms", () => {

@@ -91,14 +91,22 @@ describe("NodeFolderFs", () => {
   it("reports changes below a watched directory", async () => {
     const root = await tempRoot("watch");
     const fs = new NodeFolderFs(root);
+    let reported = false;
     const changed = new Promise<void>((resolve) => {
       const stop = fs.watch("v", () => {
+        reported = true;
         stop();
         resolve();
       });
     });
     expect(await mode(join(root, "v"))).toBe(0o700);
-    await fs.write("v/d/.x.tmp", bytes(1));
+    // A recursive watch starts asynchronously (FSEvents on macOS): a change made before the stream
+    // is live is never reported. Repeat the change (a new file every 50 ms) until one is reported, so
+    // the test ends on the report itself however long the watcher takes to start.
+    for (let i = 0; !reported; i++) {
+      await fs.write(`v/d/.x${i}.tmp`, bytes(1));
+      await Promise.race([changed, new Promise((r) => setTimeout(r, 50))]);
+    }
     await changed;
   });
 });
