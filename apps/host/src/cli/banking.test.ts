@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createTranslator } from "@cashu/i18n";
 import { expect, it, vi } from "vitest";
 import type { OpenVault } from "../stores.js";
@@ -19,7 +21,7 @@ function io() {
   const stdout = vi.fn();
   const stderr = vi.fn();
   const value: CommandIo = {
-    cwd: "/private/tmp",
+    cwd: realpathSync(tmpdir()),
     env: {},
     tty: { stdin: false, stdout: false, stderr: false },
     signal: new AbortController().signal,

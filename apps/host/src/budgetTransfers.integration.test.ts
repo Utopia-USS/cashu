@@ -1,4 +1,5 @@
-// Frozen Python command results against the native host's genuine encrypted vault socket.
+// Internal-transfer matching (counterparty IBAN only, day window, reset) through the native host's
+// genuine encrypted vault and CLI socket, with a keyed retry answered from the original receipt.
 import { D } from "@cashu/domain";
 import type { CliExecParams, HostFrame } from "@cashu/host-protocol";
 import { connectHost } from "@cashu/node-host";
@@ -25,7 +26,7 @@ const cases = [
   { reset: true, maxDays: -1 },
 ] as const;
 
-// Frozen results of the retired Python `match-transfers` command over the same four rows and cases.
+// Expected pairs per case: only rows whose counterparty IBAN is the other own account pair up.
 const expected = [
   {
     cleared: 0,
@@ -110,7 +111,7 @@ async function cliMatch(dataDir: string, profile: string, maxDays: number) {
   }
 }
 
-it("matches the frozen transfer command counts and pair membership; retries keep the original native receipt", async () => {
+it("pairs transfers by counterparty IBAN within the day window; retries keep the original native receipt", async () => {
   const fixture = await nativeVaultFixture({ modules: ["budget"] });
   let host: Awaited<ReturnType<typeof startLocalHost>> | undefined;
   try {

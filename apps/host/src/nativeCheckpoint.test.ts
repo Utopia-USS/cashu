@@ -6,9 +6,11 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
@@ -148,7 +150,7 @@ it("seals a live native archive and independently opens both SQLite backups", as
         env: {
           ...process.env,
           HOME: fixture.home,
-          TMPDIR: "/private/tmp",
+          TMPDIR: realpathSync(tmpdir()),
           CASHU_SYNTHETIC_CHECKPOINT_PATH: receipt.path,
           CASHU_SYNTHETIC_CHECKPOINT_WORDS: fixture.recoveryWords,
         },

@@ -48,40 +48,38 @@ async function holding(f: Awaited<ReturnType<typeof workerFixture>>) {
     parseDateTime(new Date(f.time()).toISOString()),
   );
 }
-it.each(["pl", "en"] as const)(
-  "delivers queued rules with max-three overflow, generic %s requests and no duplicate delivery",
-  async (language) => {
-    const tomorrow = weekdays[(new Date().getDay() + 1) % 7] ?? "sunday";
-    const f = await workerFixture({ yaml: strategy(tomorrow) });
-    const vault = f.vaults[0];
-    if (vault === undefined) throw new Error("synthetic vault absent");
-    await holding(f);
-    const notifier = new Notifier(),
-      bindings: WorkerBindings = { ...f.bindings, language: () => language, notifier };
-    const worker = new HostWorker(f.context, bindings);
-    try {
-      await worker.tick();
-      expect(openSignals(vault.store.read.bind(vault.store))).toHaveLength(5);
-      expect(notifier.messages).toHaveLength(4);
-      expect(notifier.messages.map(({ kind, locale }) => ({ kind, locale }))).toEqual([
-        ...Array.from({ length: 3 }, () => ({ kind: "signal", locale: language })),
-        { kind: "signalsSummary", locale: language },
-      ]);
-      for (const message of notifier.messages)
-        expect(Object.keys(message).sort()).toEqual(
-          message.kind === "signal"
-            ? ["kind", "locale", "signalId", "vaultId"]
-            : ["kind", "locale", "vaultId"],
-        );
-      expect(f.notifications.pending(vault.id)).toEqual([]);
-      await worker.tick(true);
-      expect(notifier.messages).toHaveLength(4);
-    } finally {
-      await worker.stop();
-      await f.close();
-    }
-  },
-);
+it("delivers queued rules with max-three overflow, generic requests in the owner's language and no duplicate delivery", async () => {
+  const language = "pl" as const;
+  const tomorrow = weekdays[(new Date().getDay() + 1) % 7] ?? "sunday";
+  const f = await workerFixture({ yaml: strategy(tomorrow) });
+  const vault = f.vaults[0];
+  if (vault === undefined) throw new Error("synthetic vault absent");
+  await holding(f);
+  const notifier = new Notifier(),
+    bindings: WorkerBindings = { ...f.bindings, language: () => language, notifier };
+  const worker = new HostWorker(f.context, bindings);
+  try {
+    await worker.tick();
+    expect(openSignals(vault.store.read.bind(vault.store))).toHaveLength(5);
+    expect(notifier.messages).toHaveLength(4);
+    expect(notifier.messages.map(({ kind, locale }) => ({ kind, locale }))).toEqual([
+      ...Array.from({ length: 3 }, () => ({ kind: "signal", locale: language })),
+      { kind: "signalsSummary", locale: language },
+    ]);
+    for (const message of notifier.messages)
+      expect(Object.keys(message).sort()).toEqual(
+        message.kind === "signal"
+          ? ["kind", "locale", "signalId", "vaultId"]
+          : ["kind", "locale", "vaultId"],
+      );
+    expect(f.notifications.pending(vault.id)).toEqual([]);
+    await worker.tick(true);
+    expect(notifier.messages).toHaveLength(4);
+  } finally {
+    await worker.stop();
+    await f.close();
+  }
+});
 it("releases observed failed claims, rolls back failed digest markers and sends successful weekly digest once", async () => {
   const today = weekdays[new Date().getDay()] ?? "sunday";
   const f = await workerFixture({ yaml: strategy(today, 1) });

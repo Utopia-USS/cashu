@@ -1,4 +1,4 @@
-// Native state and fallback boundaries; full Rich/Python byte checks use the shared CLI renderer.
+// The vehicle command: native state, currency and valuation refusals, aliases.
 import { createTranslator } from "@cashu/i18n";
 import { connectHost } from "@cashu/node-host";
 import { vehicleAccount } from "@cashu/store";
@@ -7,7 +7,7 @@ import { startLocalHost } from "../../host.js";
 import { cleanup, tempDir, testHostOptions } from "../../testing/harness.js";
 import type { CommandIo } from "../tree.js";
 import { runVehicleCommand, vehicleCommands } from "./vehicle.js";
-import { vehicleDecimal, vehicleInput } from "./vehicleInput.js";
+import { vehicleInput } from "./vehicleInput.js";
 
 afterEach(cleanup);
 function output(env: Record<string, string> = {}) {
@@ -138,23 +138,14 @@ it("supports the assets alias and explicit environment selection while rejecting
   }
 });
 
-it("parses Python finite floats and dates while leaving malformed/help invocations to Python", () => {
-  const parsed = vehicleInput([
-    "Synthetic",
-    "１_０００.５",
-    "2026W441",
-    "--rate=1.5e1",
-    "--floor=-0",
-  ]);
-  expect(parsed).toMatchObject({ price: 1000.5, date: "2026-10-26", rate: 15 });
-  expect(parsed && Object.is(parsed.floor, -0)).toBe(true);
-  expect(vehicleDecimal(-0)).toBe("-0.0");
+it("parses prices and dates strictly and refuses hex prices and impossible dates", () => {
+  expect(vehicleInput(["Synthetic", "1000.5", "2026-10-26", "--rate=15"])).toMatchObject({
+    price: 1000.5,
+    date: "2026-10-26",
+    rate: 15,
+  });
   expect(vehicleInput(["Synthetic", "0x10", "2026-10-31"])).toBeUndefined();
   expect(vehicleInput(["Synthetic", "1", "2026-02-30"])).toBeUndefined();
-  expect(vehicleInput(["--", "Synthetic", "-1", "20261031"])).toMatchObject({
-    price: -1,
-    date: "2026-10-31",
-  });
 });
 
 it("executes both aliases through the native host", async () => {

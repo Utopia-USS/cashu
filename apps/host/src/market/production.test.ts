@@ -38,6 +38,7 @@ it("shares the versioned native cache and refuses network or cache effects after
     stores,
     isCurrent: (candidate) => current && candidate === vault,
     now: () => Date.UTC(2026, 9, 31, 12),
+    sleep: async () => {},
     fetch: async () => {
       requests++;
       await pending;

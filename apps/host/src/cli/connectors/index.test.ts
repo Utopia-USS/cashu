@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTranslator } from "@cashu/i18n";
 import { afterEach, expect, it, vi } from "vitest";
@@ -11,7 +12,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const root = mkdtempSync("/private/tmp/cashu-cli-connector-");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-cli-connector-"));
   roots.push(root);
   const data = join(root, "data");
   const shipped = join(root, "shipped");

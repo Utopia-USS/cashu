@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import type { ConnectorCatalog } from "../connectors/catalog.js";
 import { ConnectorProposalReceipts, connectorRequestHash } from "./connectorReceipt.js";
@@ -9,7 +11,7 @@ afterEach(() => {
 });
 
 it("reopens an intent after a lost response and reconciles only matching pending content", () => {
-  const root = mkdtempSync("/private/tmp/cashu-proposal-receipt-");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-proposal-receipt-"));
   roots.push(root);
   mkdirSync(`${root}/data`, { mode: 0o700 });
   const receipts = new ConnectorProposalReceipts(`${root}/data`);

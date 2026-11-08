@@ -106,7 +106,7 @@ it("writes through the encrypted native MCP host and reconciles the original key
   }
 });
 
-it("advertises native budget setter and checked-file tools without a Python backend", async () => {
+it("advertises native budget setter and checked-file tools", async () => {
   const fixture = await nativeVaultFixture({ modules: ["budget", "investments"] });
   fixtures.push(fixture);
   const fileRoot = mkdtempSync(join(tmpdir(), "cashu-mcp-input-"));

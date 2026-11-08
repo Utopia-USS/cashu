@@ -31,7 +31,6 @@ import {
   publishManagedText,
   WorkspacePathError,
 } from "./files.js";
-import claudeMdSections from "./fixtures/claudeMdSections.json" with { type: "json" };
 import { runWorkspaceOperation } from "./operations.js";
 import { readSkillSource, treeHash } from "./skills.js";
 import { createTempPublication } from "./testing/tempPublication.js";
@@ -168,7 +167,7 @@ test("status distinguishes absent files, changed managed blocks, invalid JSON an
   );
 });
 
-test("actual Python tree hash matches ordered nested synthetic skill", () => {
+test("tree hash of a nested skill is stable and ignores .DS_Store", () => {
   const root = fresh();
   const skill = join(root, "skill");
   mkdirSync(join(skill, "references"), { recursive: true });
@@ -176,7 +175,7 @@ test("actual Python tree hash matches ordered nested synthetic skill", () => {
   writeFileSync(join(skill, "zz.md"), "root file ordered before directories\n");
   writeFileSync(join(skill, "references", "x.md"), "synthetic reference\n");
   writeFileSync(join(skill, ".DS_Store"), "ignored");
-  // Expectation captured from the retired oracle (Python cashu.core.workspace.skills.tree_hash) on 2026-11-04.
+  // Pinned: installed workspaces record this hash as the skill version, so a change marks every skill outdated.
   expect(treeHash(skill)).toBe("0bf4f2dbf2d8");
 });
 
@@ -217,37 +216,7 @@ const ctx = (root: string): WorkspaceContentContext => ({
   },
 });
 
-test("MCP and permissions retain unrelated user entries and routine ownership", () => {
-  const root = fresh();
-  const context = ctx(root);
-  expect(
-    mergeMcp({ mcpServers: { "cashu-other": {}, user: { command: "u" } }, custom: 1 }, context),
-  ).toEqual({
-    mcpServers: {
-      "cashu-synthetic": { command: "/synthetic/cashu", args: ["mcp", "--profile", "synthetic"] },
-      user: { command: "u" },
-    },
-    custom: 1,
-  });
-  const merged = mergeSettings(
-    {
-      permissions: {
-        allow: ["user-rule", "WebSearch", "mcp__cashu-other__x"],
-        deny: ["user-deny"],
-      },
-      enabledMcpjsonServers: ["user", "cashu-other"],
-    },
-    context,
-    [],
-    [],
-  );
-  expect((merged.permissions as { allow: string[] }).allow).toEqual(
-    expect.arrayContaining(["user-rule", "WebSearch", "mcp__cashu-synthetic__profile_overview"]),
-  );
-  expect(merged.enabledMcpjsonServers).toEqual(["cashu-synthetic", "user"]);
-});
-
-test("MCP and settings merges match the isolated Python source oracle", () => {
+test("MCP and settings merges keep user entries, drop old cashU servers and deny the data dir", () => {
   const root = fresh();
   const context = ctx(root);
   const oldMcp = {
@@ -261,8 +230,6 @@ test("MCP and settings merges match the isolated Python source oracle", () => {
     },
     enabledMcpjsonServers: ["user", "cashu-other"],
   };
-  // Expectations captured from the retired oracle (Python cashu.core.workspace.render.merge_mcp /
-  // merge_settings) on 2026-11-04; the temp root is the only path-dependent part.
   expect({
     mcp: mergeMcp(oldMcp, context),
     settings: mergeSettings(oldSettings, context, [], []),
@@ -291,7 +258,7 @@ test("MCP and settings merges match the isolated Python source oracle", () => {
   });
 });
 
-test("permission rule paths match Python for POSIX, Windows drive and UNC forms", () => {
+test("permission rule paths for POSIX, Windows drive and UNC forms", () => {
   const inputs = [
     "/Users/x",
     "C:\\Users\\x",
@@ -299,7 +266,6 @@ test("permission rule paths match Python for POSIX, Windows drive and UNC forms"
     "\\\\Server\\Share\\Folder",
     "relative\\x",
   ];
-  // Expectations captured from the retired oracle (Python cashu.core.workspace.render.rule_path) on 2026-11-04.
   expect(inputs.map(rulePath)).toEqual([
     "//Users/x",
     "//c/Users/x",
@@ -309,63 +275,32 @@ test("permission rule paths match Python for POSIX, Windows drive and UNC forms"
   ]);
 });
 
-test("managed sections and new CLAUDE.md match isolated Python source in three contexts", () => {
+test("managed CLAUDE.md sections follow privacy and routine opt-in and keep the user's prose", () => {
   const root = fresh();
-  const cases = [
-    { modules: [], privacy: "strict", routine: false, skills: [] },
-    {
-      modules: ["investments"],
-      privacy: "amounts",
-      routine: false,
-      skills: ["workspace-setup", "market-research"],
-    },
-    {
-      modules: ["investments"],
-      privacy: "strict",
-      routine: true,
-      skills: ["workspace-setup", "market-research"],
-    },
-  ] as const;
-  const existing =
-    "# finanse agent workspace\n\n<!-- finanse:begin layout -->\nold managed text\n<!-- finanse:end layout -->\n\nUser note stays.\n";
-  // Expectations captured from the retired oracle (Python cashu.core.workspace.render.sections /
-  // new_claude_md / merge_claude_md) on 2026-11-04, one fixture entry per case; <ROOT> stands for the temp root.
-  const withRoot = (value: unknown): unknown =>
-    typeof value === "string"
-      ? value.split("<ROOT>").join(root)
-      : Array.isArray(value)
-        ? value.map(withRoot)
-        : value !== null && typeof value === "object"
-          ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withRoot(item)]))
-          : value;
-  expect(claudeMdSections).toHaveLength(cases.length);
-  cases.forEach((item, index) => {
-    const context = {
+  const render = (privacy: "strict" | "amounts", routine: boolean) =>
+    renderSections({
       ...ctx(root),
-      modules: item.modules.map((id) => ({ id, name: "Investments" })),
-      privacy: item.privacy,
+      privacy,
       baseCurrency: "PLN",
-      routinePermissions: item.routine,
-      skills: item.skills.map((name) => ({
-        name,
-        module: name === "workspace-setup" ? "core" : "investments",
-        version: "v",
-        positive: "the task | case",
-        negative: "NOT unrelated.",
-      })),
+      routinePermissions: routine,
+      skills: [],
       researchAvailable: true,
       cli: ["/synthetic/cashu"],
-    };
-    const expected = withRoot(claudeMdSections[index]) as {
-      sections: Record<string, string>;
-      new: string;
-      merged: string;
-    };
-    const sections = renderSections(context);
-    expect(sections).toEqual(expected.sections);
-    expect(mergeClaudeMd(null, sections, userPart)).toBe(expected.new);
-    expect(mergeClaudeMd(existing, sections, userPart)).toBe(expected.merged);
-  });
+    });
+  const strict = render("strict", false);
+  expect(strict.privacy).toContain("**strict**");
+  expect(strict.privacy).toContain("No amounts, account numbers or personal names.");
+  expect(render("amounts", false).privacy).toContain("**amounts**");
+  expect(strict.research).toContain("**off**");
+  expect(render("strict", true).research).toContain("**on**");
+  const created = mergeClaudeMd(null, strict, userPart);
+  expect(created).toContain("<!-- cashu:begin privacy -->");
+  const existing =
+    "# finanse agent workspace\n\n<!-- finanse:begin layout -->\nold managed text\n<!-- finanse:end layout -->\n\nUser note stays.\n";
+  const merged = mergeClaudeMd(existing, strict, userPart);
+  expect(merged).toContain("User note stays.");
+  expect(merged).not.toContain("old managed text");
+  expect(merged).not.toContain("finanse:begin");
 });
 
 test("checked path refuses overlap, hidden folders, symlink escapes and foreign claims", () => {

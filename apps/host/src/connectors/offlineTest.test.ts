@@ -2,11 +2,13 @@ import {
   linkSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { testConnectorFileOffline } from "./offlineTest.js";
@@ -16,7 +18,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture(script: string) {
-  const root = mkdtempSync("/private/tmp/cashu-offline-test-");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-offline-test-"));
   roots.push(root);
   const workspace = join(root, "workspace");
   const source = join(workspace, "connectors", "sample-file");

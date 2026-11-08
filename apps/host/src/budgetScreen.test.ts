@@ -1,8 +1,6 @@
 // The statement import drawer's host actions on a genuine encrypted vault: preview stages the
 // picked bytes, commit writes them once (a replay answers the same result), the done step's derived
 // counts (categories, the transfer pair) are read after the append, refusals carry the drawer's codes.
-// Counts follow the Python oracle sequence pinned in packages/store/src/budget/statement-import.test.ts.
-
 import { toJson } from "@cashu/host-protocol/store";
 import { statementContentBase64 } from "@cashu/store/budget/queries";
 import { afterEach, expect, it } from "vitest";

@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { D } from "@cashu/domain";
 import type { MonthCloseView } from "@cashu/domain/budget";
 import { createTranslator } from "@cashu/i18n";
@@ -8,7 +10,7 @@ import { monthCloseOutput } from "./monthCloseOutput.js";
 function outputFor(label: string): { ok: boolean; output: string } {
   const output: string[] = [];
   const io: CommandIo = {
-    cwd: "/private/tmp",
+    cwd: realpathSync(tmpdir()),
     env: { COLUMNS: "120" },
     tty: { stdin: false, stdout: false, stderr: false, columns: 120 },
     signal: new AbortController().signal,

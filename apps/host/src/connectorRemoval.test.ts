@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { removeConnectorOwner } from "./connectorRemoval.js";
@@ -10,7 +11,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const root = mkdtempSync("/private/tmp/cashu-remove-connector-");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-remove-connector-"));
   roots.push(root);
   const data = join(root, "data"),
     source = join(root, "source");

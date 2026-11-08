@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { D } from "@cashu/domain";
 import { createTranslator } from "@cashu/i18n";
 import { importStatement, learnMerchantCategory, renameProfile } from "@cashu/store";
@@ -64,7 +66,7 @@ it.each(["cancel", "profile-switch"])(
 it("reports an uncertain durable key in Polish", () => {
   const lines: string[] = [];
   const io: CommandIo = {
-    cwd: "/private/tmp",
+    cwd: realpathSync(tmpdir()),
     env: {},
     tty: { stdin: false, stdout: false, stderr: false },
     signal: new AbortController().signal,

@@ -28,7 +28,7 @@ it("keeps the first empty fetch inert and records later empty fetches without da
   expect(connectorDecision(true, true, true)).toBe("commit");
 });
 
-it("moves a binding's fetch state like Python: status always, last ok on a commit, 48 h backoff on rate limit", () => {
+it("moves a binding's fetch state: status always, last ok on a commit, 48 h backoff on rate limit", () => {
   const at = "2026-11-04T12:00:00.000Z";
   const now = Date.parse(at) + 1000;
   expect(connectorFetchFinish("ok", null, true, at, now)).toEqual({
@@ -43,7 +43,7 @@ it("moves a binding's fetch state like Python: status always, last ok on a commi
   expect(RATE_LIMIT_BACKOFF_MS).toBe(48 * 3_600_000);
 });
 
-it("counts a document's records like Python document_records", () => {
+it("counts a document's records", () => {
   const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
   expect(documentRecords("budget", bytes({ transactions: [{}, {}], records: [{}] }))).toBe(2);
   expect(documentRecords("investments", bytes({ records: [{}, {}, {}] }))).toBe(3);

@@ -1,7 +1,7 @@
 // The host's CLI runner over a real host socket (in-process host, temp data dir): the routing reply
 // (native exit for every command), output notes in order, prompts answered by
 // the client (hidden flag passed on), stdin on demand, Ctrl-C (cancel -> 130), one exec per session,
-// a build without Python, and refusals of malformed requests.
+// and refusals of malformed requests.
 import { CLI_INTERRUPTED_EXIT, type CliExecParams, type HostFrame } from "@cashu/host-protocol";
 import { connectHost, type HostConnection } from "@cashu/node-host";
 import { afterEach, describe, expect, it } from "vitest";
@@ -116,15 +116,6 @@ describe("cli.exec", () => {
       code: 2,
     });
     configured.close();
-    await h.stop();
-  });
-
-  it("never delegates an unknown command even when a Python program is configured", async () => {
-    const { h, conn } = await host();
-    const e = exec(conn, params(["--profile", "demo-anna", "stats", "--months", "3"]));
-    expect(await e.result).toEqual({ kind: "exit", code: 2 });
-    expect(e.notes[0]?.params).toMatchObject({ stream: "stderr" });
-    conn.close();
     await h.stop();
   });
 

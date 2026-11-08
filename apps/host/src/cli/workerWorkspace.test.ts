@@ -12,7 +12,7 @@ function io() {
   const stdout = vi.fn();
   const stderr = vi.fn();
   const value: CommandIo = {
-    cwd: "/private/tmp",
+    cwd: realpathSync(tmpdir()),
     env: { CASHU_LANG: "en" },
     tty: { stdin: false, stdout: false, stderr: false },
     signal: new AbortController().signal,

@@ -19,7 +19,7 @@ const io: CommandIo = {
 const seen: { args: readonly string[]; profile: string | undefined }[] = [];
 const ported: PortedCommand[] = [
   {
-    name: "genesis",
+    name: "sample",
     async run(args, _io, root) {
       seen.push({ args, profile: root.profile });
       return 7;
@@ -29,10 +29,10 @@ const ported: PortedCommand[] = [
 
 describe("runTree", () => {
   it.each([
-    [["genesis", "--data-dir", "/a", "--fold"], ["--data-dir", "/a", "--fold"], undefined],
-    [["--profile", "x", "genesis"], [], "x"],
-    [["-px", "genesis", "--", "a"], ["--", "a"], "x"],
-    [["-p", "x", "genesis", "--profile", "y"], ["--profile", "y"], "x"],
+    [["sample", "--data-dir", "/a", "--fold"], ["--data-dir", "/a", "--fold"], undefined],
+    [["--profile", "x", "sample"], [], "x"],
+    [["-px", "sample", "--", "a"], ["--", "a"], "x"],
+    [["-p", "x", "sample", "--profile", "y"], ["--profile", "y"], "x"],
   ])("runs ported %j with its raw args", async (argv, args, profile) => {
     seen.length = 0;
     expect(await runTree(argv, io, ported)).toEqual({ kind: "exit", code: 7 });

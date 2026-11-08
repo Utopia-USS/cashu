@@ -1,4 +1,13 @@
-import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { ConnectorCatalog } from "../connectors/catalog.js";
@@ -74,7 +83,7 @@ it("counts only bindings in the bound vault and fails closed after authority los
 });
 
 it("reports a shipped connector verified in the future as invalid until its date", async () => {
-  const root = mkdtempSync("/private/tmp/cashu-mcp-catalog-");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-mcp-catalog-"));
   try {
     const data = join(root, "data");
     const shipped = join(root, "shipped");
@@ -117,7 +126,7 @@ it("reports a shipped connector verified in the future as invalid until its date
 });
 
 it("installs only a checked workspace connector as pending", async () => {
-  const root = mkdtempSync("/private/tmp/cashu-mcp-connectors-");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-mcp-connectors-"));
   try {
     const workspace = join(root, "workspace");
     const source = join(workspace, "connectors", "sample-file");

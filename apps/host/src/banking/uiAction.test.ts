@@ -1,3 +1,6 @@
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "../host.js";
 import { cleanup, tempDir, testHostOptions } from "../testing/harness.js";
@@ -19,7 +22,7 @@ it("rejects a forged configure action before any runtime or key-file access", as
       await action.run(host.stores, vaultId, {
         type: "configure",
         appId: "synthetic-app",
-        keyFilePath: "/private/tmp/forged.pem",
+        keyFilePath: join(realpathSync(tmpdir()), "forged.pem"),
       }),
     ).toEqual({ status: "refused", reason: "invalid_input", preparation: "none" });
     expect(requested).toBe(false);

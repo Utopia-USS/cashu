@@ -1,11 +1,12 @@
-// Expected tails come from the retired Python app (`runner._tail`) on these synthetic inputs.
+// A connector's stderr tail is stored for the owner: secrets, amounts, IBANs, e-mails and account
+// numbers never survive it. Synthetic inputs only.
 import { expect, it } from "vitest";
 import { redactStderrTail, STDERR_STORED, withoutSecrets } from "./stderr.js";
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const polish = "zażółć gęślą jaźń ";
 
-it("redacts a stderr tail exactly like Python", () => {
+it("redacts secrets, amounts, IBANs, e-mails and account numbers from a stderr tail", () => {
   const vectors: [string, Record<string, string>, string | null][] = [
     [
       'Traceback (most recent call last):\n  File "main.py", line 3\nValueError: token sk-synthetic-123 rejected\n',

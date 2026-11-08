@@ -124,7 +124,7 @@ it("uses caller cwd while preserving pathlib spelling in output", async () => {
   expect(expandHome("./~/a", "/caller/home/")).toBe("/caller/home/a");
   expect(expandHome("~/a", "")).toBe("/a");
 });
-it("preserves Python dircmp ignore and common-type-clash behavior without discarding local changes", () => {
+it("treats __pycache__ and type clashes as the same tree but never hides a changed file", () => {
   const f = fixture();
   const other = join(f.dir, "other");
   cpSync(join(f.source, "alpha"), other, { recursive: true });

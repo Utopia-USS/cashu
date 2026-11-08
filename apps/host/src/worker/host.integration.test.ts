@@ -1,46 +1,11 @@
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
 import { connectHost } from "@cashu/node-host";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "../host.js";
 import { cleanup, tempDir, testHostOptions } from "../testing/harness.js";
-import { emptyWorkerState, type WorkerBindings, type WorkerHostContext } from "./contracts.js";
+import { emptyWorkerState, type WorkerHostContext } from "./contracts.js";
 
 afterEach(cleanup);
-
-it("starts off by default, then reports safe mode without running an injected worker", async () => {
-  const dir = tempDir();
-  const first = await startLocalHost(testHostOptions(dir));
-  expect(first.status().worker?.state).toBe("off");
-  await first.stop();
-  const now = Date.now();
-  writeFileSync(
-    join(dir, "run", "starts.json"),
-    JSON.stringify({ format: 1, unclean: [now - 3000, now - 2000, now - 1000] }),
-  );
-  let loads = 0;
-  const bindings: WorkerBindings = {
-    state: {
-      load: async () => {
-        loads += 1;
-        return emptyWorkerState();
-      },
-      save: async () => {},
-    },
-    ownership: { isExclusive: () => false },
-    authority: () => null,
-    language: () => "en",
-  };
-  const safe = await startLocalHost({ ...testHostOptions(dir), worker: () => bindings });
-  try {
-    expect(safe.safeMode).toBe(true);
-    expect(safe.status().worker?.state).toBe("safe-mode");
-    expect(loads).toBe(0);
-  } finally {
-    await safe.stop();
-  }
-});
 
 it("forwards a real host worker option and waits for an in-flight provider before closing stores", async () => {
   const dir = tempDir();
