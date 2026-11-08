@@ -1,8 +1,6 @@
-// Translation of tests/test_fxb_mcp_privacy.py (F6 review V3 / V6). The pure tests are translated
-// one to one; the three that drive whole tools over a seeded profile (add_alert, the daily check,
-// positions / alerts / signals) need the tool handlers (S38), so their privacy step is tested here on
-// the functions those handlers call (customCondition / customSignalMessage, the strict alias swap and
-// publicName), with the tool-level replay left to S38.
+// Strict-mode privacy of custom rule expressions and owner labels: amount literals in conditions and
+// signal messages, owner-named prices, and display-name aliases (with digits) swapped before the agent
+// sees them. Tool-level flows are covered in the tools tests.
 import { describe, expect, it } from "vitest";
 import { scrubAmountLiterals } from "./exprLiterals.js";
 import { text } from "./labels.js";
@@ -11,9 +9,7 @@ import { NameGuard } from "./names.js";
 import { pyDumps } from "./pyJson.js";
 import { Redactor } from "./redactor.js";
 import { scrubText } from "./scrub.js";
-import { exprDepsFromVectors } from "./testing/vectors.js";
 
-const deps = exprDepsFromVectors();
 const BUFFER = "cash_value > 7 and cash_weight < 99%";
 const STRICT = { strict: true };
 const AMOUNTS = { strict: false };
@@ -44,12 +40,12 @@ describe("test_amount_literals", () => {
     ["weight > 1 / 100", null],
   ];
   it.each(cases)("%s", (source, expected) => {
-    expect(scrubAmountLiterals(source, deps)).toBe(expected ?? source);
+    expect(scrubAmountLiterals(source)).toBe(expected ?? source);
   });
 });
 
 it("test_owner_named_prices_are_amounts", () => {
-  expect(scrubAmountLiterals("last_close > 120", deps, { privatePrices: true })).toBe(
+  expect(scrubAmountLiterals("last_close > 120", undefined, { privatePrices: true })).toBe(
     "last_close > [amount]",
   );
 });
@@ -57,11 +53,11 @@ it("test_owner_named_prices_are_amounts", () => {
 describe("test_strict_mode_scrubs_amount_literals_of_custom_alerts (privacy step; tool flow: S38)", () => {
   it("scrubs the alert expression and the signal condition in strict, keeps them in amounts", () => {
     const redactor = new Redactor({ privacy: "strict" });
-    const expression = redactor.apply({ expression: customCondition(STRICT, BUFFER, deps) });
+    const expression = redactor.apply({ expression: customCondition(STRICT, BUFFER) });
     expect(expression).toEqual({ expression: "cash_value > [amount] and cash_weight < 99%" });
     const message = `idle cash: Warunek spełniony: ${BUFFER} (cash_value 7 312,00 zł; cash_weight 12,3 %).`;
     const sent = redactor.apply({
-      message: customSignalMessage(STRICT, message, BUFFER, deps),
+      message: customSignalMessage(STRICT, message, BUFFER),
     }) as {
       message: string;
     };
@@ -70,12 +66,12 @@ describe("test_strict_mode_scrubs_amount_literals_of_custom_alerts (privacy step
     expect(pyDumps(sent)).not.toContain("7 312");
 
     const full = new Redactor({ privacy: "amounts" });
-    expect(full.apply({ expression: customCondition(AMOUNTS, BUFFER, deps) })).toEqual({
+    expect(full.apply({ expression: customCondition(AMOUNTS, BUFFER) })).toEqual({
       expression: BUFFER,
     });
     expect(
       (
-        full.apply({ message: customSignalMessage(AMOUNTS, message, BUFFER, deps) }) as {
+        full.apply({ message: customSignalMessage(AMOUNTS, message, BUFFER) }) as {
           message: string;
         }
       ).message,

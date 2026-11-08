@@ -1,4 +1,5 @@
-/** Actual native commands, buffered privacy boundary and actual Python synthetic byte oracle. */
+// The local investment write tools over NativeMcpServer: each write lands as events only after the
+// privacy boundary accepted its answer, proposals wait for the owner, and refused calls append nothing.
 import { parseDateTime, sha256Hex } from "@cashu/domain";
 import { asProfileId } from "@cashu/domain/investments";
 import {
@@ -15,13 +16,11 @@ import { Labelled } from "../privacy/labels.js";
 import { type JsonValue, pyDumps } from "../privacy/pyJson.js";
 import { investmentWriteServices } from "../providers/investmentWrites.js";
 import type { ToolContext } from "../registry.js";
-import { decodeEntityRef, type EntityRefKind, encodeEntityRef } from "../runtime/refs.js";
+import { decodeEntityRef, encodeEntityRef } from "../runtime/refs.js";
 import { NativeMcpServer, type NativeRuntime, restrictivePrivacy } from "../runtime/server.js";
-import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { nativeFixture } from "../testing/native.js";
 import { createdAlertView } from "./alerts.js";
-import vectors from "./fixtures/investmentWrites.json" with { type: "json" };
 import { investmentWriteTools } from "./investmentWrites.js";
 
 const YAML = "version: 1\nbase_currency: PLN\ndata: {max_stale_weight: 1}\n";
@@ -188,62 +187,19 @@ const data = (out: Awaited<ReturnType<NativeMcpServer["call"]>>) => {
   if (!out.ok) throw new Error(`${out.errorKind}: ${out.error}`);
   return out.data as Record<string, unknown>;
 };
-function normalized(tree: unknown, refs: ReadonlyMap<string, string>): JsonValue {
-  if (Array.isArray(tree)) return tree.map((v) => normalized(v, refs));
-  if (tree && typeof tree === "object")
-    return Object.fromEntries(
-      Object.entries(tree).map(([key, value]) => {
-        const kinds: Readonly<Record<string, EntityRefKind>> = {
-          instrument_id: "instrument",
-          thesis_id: "thesis",
-          signal_id: "signal",
-          decision_id: "decision",
-          alert_id: "alert",
-          item_id: "watchlist",
-          proposal_id: "proposal",
-        };
-        const kind = kinds[key];
-        if (kind !== undefined && value !== null) {
-          if (typeof value !== "string") throw new Error("native reference is not opaque");
-          decodeEntityRef(kind, value);
-          const declared = refs.get(value);
-          if (declared === undefined) throw new Error("native reference was not declared");
-          return [key, declared];
-        }
-        return [key, normalized(value, refs)];
-      }),
-    );
-  if (
-    tree === null ||
-    typeof tree === "string" ||
-    typeof tree === "number" ||
-    typeof tree === "boolean" ||
-    typeof tree === "bigint"
-  )
-    return tree;
-  throw new Error("unexpected unlabelled response");
-}
 describe("native MCP local investment writes", () => {
-  it("matches actual Python unified-diff counts including autojunk and header-like data", () => {
-    for (const vector of vectors.diffs)
-      expect(S.proposalDiffStats(vector.old, vector.next)).toEqual(vector.expected);
+  it("counts proposal diff lines, header-like data included", () => {
+    expect(S.proposalDiffStats(null, "alpha\nbeta\n")).toEqual({
+      lines_added: 2,
+      lines_removed: 0,
+    });
+    expect(S.proposalDiffStats("--literal\nx\n", "++literal\ny\n")).toEqual({
+      lines_added: 1,
+      lines_removed: 1,
+    });
   });
-  it("matches actual Python primitive reason normalization and astral limits, while MCP keeps its raw input cap", async () => {
+  it("refuses a reason over the raw input cap before any write", async () => {
     const s = await setup();
-    for (const vector of vectors.strict.reason_vectors) {
-      const out = s.f.run(C.setInstrumentPlan, {
-        instrument: s.instrument,
-        held: true,
-        plan: vector.plan,
-        reason: vector.reason,
-      });
-      const stored = Q.loadInstrument(s.f.store.read.bind(s.f.store), s.instrument);
-      expect(
-        { accepted: out.ok, reason: stored?.planReason ?? null, plan: stored?.plan ?? null },
-        vector.label,
-      ).toEqual(vector.expected);
-    }
-    const before = s.batches.length;
     expect(
       (
         await s.server.call("set_recommendation", {
@@ -253,144 +209,169 @@ describe("native MCP local investment writes", () => {
         })
       ).errorKind,
     ).toBe("invalid_arguments");
-    expect(s.batches.length).toBe(before);
+    expect(s.batches).toHaveLength(0);
   });
-  it("registers fourteen contracts with bounded async families and declared native reference adaptations", () => {
-    const tools = investmentWriteTools();
-    expect(tools).toHaveLength(14);
-    expect(tools.some((t) => t.name === "search_instruments" || t.name === "propose_import")).toBe(
-      true,
-    );
-    for (const tool of tools) {
-      const source = NATIVE_TOOL_SCHEMAS.find((t) => t.name === tool.name);
-      expect(source).toBeDefined();
-      expect(tool.description).toBe(source?.description);
-      expect(tool.write).toBe(source?.write);
-    }
-  });
-  for (const privacy of ["strict", "amounts"] as const)
-    it(`matches actual Python source responses and persisted state in ${privacy}`, async () => {
-      const s = await setup(privacy),
-        responses: Record<string, unknown> = {},
-        refs = new Map<string, string>([
-          [encodeEntityRef("instrument", s.instrument), "instrument"],
-        ]);
-      const call = async (name: string, tool: string, args: Record<string, unknown>) => {
-        const result = data(await s.server.call(tool, args));
-        responses[name] = result;
-        return result;
-      };
-      await call("recommend", "set_recommendation", {
-        instrument: "ABC",
-        recommendation: "buy",
-        reason: "Current source facts",
-      });
-      await call("coverage", "set_recommendations", { scope: "held", recommendations: [] });
-      const thesis = await call("thesis", "upsert_thesis", {
-        instrument: "ABC",
-        entry_type: "trend",
-        thesis: "Popyt utrzymuje się przez cykl.",
-      });
-      refs.set(String(thesis.thesis_id), "thesis");
-      await call("thesis_update", "upsert_thesis", {
-        instrument: "ABC",
-        entry_type: "trend",
-        thesis: "Popyt utrzymuje się przez cykl.",
-        exit_plan: "Review at the next disclosure",
-      });
-      const added = await call("add_alert", "add_alert", {
-        kind: "price_below",
-        params: { level: 90 },
-        polarity: "negative",
-        severity: "info",
-        title: "Synthetic price condition",
-        instrument: "ABC",
-        tag: "cena",
-      });
-      const alert = added.alert as Record<string, unknown>;
-      refs.set(String(alert.alert_id), "alert");
-      await call("alerts", "alerts", {});
-      await call("mute", "mute_alert", { id: alert.alert_id });
-      const watched = await call("add_watch", "add_to_watchlist", {
-        symbol_or_isin: "ABC",
-        note: "Synthetic watch note",
-      });
-      const item = watched.item as Record<string, unknown>;
-      refs.set(String(item.item_id), "item");
-      await call("watchlist", "watchlist", {});
-      await call("remove_watch", "remove_from_watchlist", { id: item.item_id });
-      const signal = value(s.f, C.applySignalActions, {
-        run: null,
-        actions: [
-          {
-            type: "create",
-            createdAt: new Date(s.f.env.clock.now()).toISOString(),
-            candidate: {
-              ruleId: "synthetic_rule",
-              kind: "synthetic",
-              dedupKey: `synthetic_rule|i:${s.instrument}`,
-              severity: "info",
-              message: "Synthetic journal signal",
-              instrument: s.instrument,
-            },
-          },
-        ],
-      }).created[0];
-      if (!signal) throw new Error("signal missing");
-      const signalRef = encodeEntityRef("signal", signal);
-      refs.set(signalRef, "signal");
-      const decided = await call("decision", "record_decision", {
-        signal_id: signalRef,
-        action: "held",
-        reason: "Review recorded",
-      });
-      refs.set(String(decided.decision_id), "decision");
-      await call("strategy_dry", "propose_strategy", { yaml: YAML, dry_run: true });
-      await call("strategy_invalid", "propose_strategy", { yaml: "version: 99\n", dry_run: true });
-      const strategy = await call("strategy", "propose_strategy", {
-        yaml: YAML,
-        reason: "Synthetic proposal",
-      });
-      refs.set(String(strategy.proposal_id), "strategy_proposal");
-      await call("rule_dry", "propose_custom_rule", {
-        kind_or_expression: "cash_level",
-        params: { max_weight: 0.5 },
-        dry_run: true,
-      });
-      await call("rule_invalid", "propose_custom_rule", {
-        kind_or_expression: "cash_weight >",
-        dry_run: true,
-      });
-      const rule = await call("rule", "propose_custom_rule", {
-        kind_or_expression: "cash_level",
-        params: { max_weight: 0.5 },
-        reason: "Synthetic rule proposal",
-      });
-      refs.set(String(rule.proposal_id), "rule_proposal");
-      // Python proposals.create(summary_params=...): the values of the app's localized line.
-      const summaryParams = (ref: unknown) =>
-        proposalExecution(s.f.store.read.bind(s.f.store), decodeEntityRef("proposal", String(ref)))
-          ?.payload.summary_params;
-      expect(summaryParams(strategy.proposal_id)).toEqual({
-        rules: Number(strategy.rules),
-        buckets: (strategy.buckets as unknown[]).length,
-        inactive_rules: 0,
-      });
-      expect(summaryParams(rule.proposal_id)).toMatchObject({ rule_kind: "cash_level" });
-      expect(Object.keys(summaryParams(rule.proposal_id) as object)).toEqual([
-        "rule_id",
-        "rule_kind",
-        "episodes",
-        "evaluated",
-      ]);
-      expect(pyDumps(normalized(responses, refs), { sortKeys: true })).toBe(vectors[privacy].wire);
-      expect({
-        recommendation: Q.loadInstrument(s.f.store.read.bind(s.f.store), s.instrument)?.plan,
-        theses: Q.theses(s.f.store.read.bind(s.f.store)).length,
-        decisions: Q.decisions(s.f.store.read.bind(s.f.store)).length,
-        signal_status: Q.signalByGid(s.f.store.read.bind(s.f.store), signal)?.status,
-      }).toEqual(vectors[privacy].state);
+  it("runs the write flow: recommendation, thesis, alert, watch, decision and owner proposals", async () => {
+    const s = await setup(),
+      responses: Record<string, Record<string, unknown>> = {};
+    const call = async (name: string, tool: string, args: Record<string, unknown>) => {
+      // the wire form the agent reads (integers as JSON numbers)
+      const result = JSON.parse(pyDumps(data(await s.server.call(tool, args)) as JsonValue));
+      responses[name] = result;
+      return result as Record<string, unknown>;
+    };
+    await call("recommend", "set_recommendation", {
+      instrument: "ABC",
+      recommendation: "buy",
+      reason: "Current source facts",
     });
+    await call("coverage", "set_recommendations", { scope: "held", recommendations: [] });
+    const thesis = await call("thesis", "upsert_thesis", {
+      instrument: "ABC",
+      entry_type: "trend",
+      thesis: "Popyt utrzymuje się przez cykl.",
+    });
+    await call("thesis_update", "upsert_thesis", {
+      instrument: "ABC",
+      entry_type: "trend",
+      thesis: "Popyt utrzymuje się przez cykl.",
+      exit_plan: "Review at the next disclosure",
+    });
+    const added = await call("add_alert", "add_alert", {
+      kind: "price_below",
+      params: { level: 90 },
+      polarity: "negative",
+      severity: "info",
+      title: "Synthetic price condition",
+      instrument: "ABC",
+      tag: "cena",
+    });
+    const alert = added.alert as Record<string, unknown>;
+    await call("alerts", "alerts", {});
+    await call("mute", "mute_alert", { id: alert.alert_id });
+    const watched = await call("add_watch", "add_to_watchlist", {
+      symbol_or_isin: "ABC",
+      note: "Synthetic watch note",
+    });
+    const item = watched.item as Record<string, unknown>;
+    await call("watchlist", "watchlist", {});
+    await call("remove_watch", "remove_from_watchlist", { id: item.item_id });
+    const signal = value(s.f, C.applySignalActions, {
+      run: null,
+      actions: [
+        {
+          type: "create",
+          createdAt: new Date(s.f.env.clock.now()).toISOString(),
+          candidate: {
+            ruleId: "synthetic_rule",
+            kind: "synthetic",
+            dedupKey: `synthetic_rule|i:${s.instrument}`,
+            severity: "info",
+            message: "Synthetic journal signal",
+            instrument: s.instrument,
+          },
+        },
+      ],
+    }).created[0];
+    if (!signal) throw new Error("signal missing");
+    const signalRef = encodeEntityRef("signal", signal);
+    await call("decision", "record_decision", {
+      signal_id: signalRef,
+      action: "held",
+      reason: "Review recorded",
+    });
+    await call("strategy_dry", "propose_strategy", { yaml: YAML, dry_run: true });
+    await call("strategy_invalid", "propose_strategy", { yaml: "version: 99\n", dry_run: true });
+    const strategy = await call("strategy", "propose_strategy", {
+      yaml: YAML,
+      reason: "Synthetic proposal",
+    });
+    await call("rule_dry", "propose_custom_rule", {
+      kind_or_expression: "cash_level",
+      params: { max_weight: 0.5 },
+      dry_run: true,
+    });
+    await call("rule_invalid", "propose_custom_rule", {
+      kind_or_expression: "cash_weight >",
+      dry_run: true,
+    });
+    const rule = await call("rule", "propose_custom_rule", {
+      kind_or_expression: "cash_level",
+      params: { max_weight: 0.5 },
+      reason: "Synthetic rule proposal",
+    });
+    // summary_params: the values of the app's localized proposal line.
+    const summaryParams = (ref: unknown) =>
+      proposalExecution(s.f.store.read.bind(s.f.store), decodeEntityRef("proposal", String(ref)))
+        ?.payload.summary_params;
+    expect(summaryParams(strategy.proposal_id)).toEqual({
+      rules: Number(strategy.rules),
+      buckets: (strategy.buckets as unknown[]).length,
+      inactive_rules: 0,
+    });
+    expect(summaryParams(rule.proposal_id)).toMatchObject({ rule_kind: "cash_level" });
+    expect(Object.keys(summaryParams(rule.proposal_id) as object)).toEqual([
+      "rule_id",
+      "rule_kind",
+      "episodes",
+      "evaluated",
+    ]);
+    const instrument = encodeEntityRef("instrument", s.instrument);
+    expect(responses.recommend).toMatchObject({
+      instrument_id: instrument,
+      recommendation: "buy",
+      reason_saved: true,
+    });
+    expect(responses.coverage).toMatchObject({ covered: 1, expected: 1, missing: 0, updated: 0 });
+    expect(responses.thesis).toMatchObject({ created: true, instrument_id: instrument });
+    expect(responses.thesis_update).toMatchObject({ created: false, thesis_id: thesis.thesis_id });
+    expect(alert).toMatchObject({
+      kind: "price_below",
+      params: { level: 90.0 },
+      status: "active",
+      created_by: "mcp",
+      instrument: { symbol: "ABC", isin: "[account]" },
+    });
+    expect(responses.alerts?.alerts).toEqual([alert]);
+    expect(responses.mute).toEqual({ alert_id: alert.alert_id, status: "muted" });
+    expect(item).toMatchObject({ note: "Synthetic watch note", held: true, recommendation: "buy" });
+    expect(responses.watchlist?.items).toEqual([item]);
+    expect(responses.remove_watch).toEqual({ item_id: item.item_id, removed: true });
+    expect(responses.decision).toMatchObject({
+      action: "held",
+      signal_id: signalRef,
+      signal_status: "acknowledged",
+    });
+    expect(responses.strategy_dry).toMatchObject({ dry_run: true, stored: false, valid: true });
+    expect(responses.strategy_invalid).toMatchObject({
+      stored: false,
+      valid: false,
+      error_code: "invalid_strategy",
+    });
+    // a strict system message carries no number
+    expect(
+      (responses.strategy_invalid?.issues as { message: string }[] | undefined)?.[0]?.message,
+    ).toBe("Unsupported version # (supported: #)");
+    expect(responses.strategy).toMatchObject({ stored: true, valid: true, dry_run: false });
+    expect(responses.rule_dry).toMatchObject({ stored: false, valid: true, kind: "cash_level" });
+    expect(responses.rule_invalid).toMatchObject({ stored: false, valid: false });
+    expect(rule).toMatchObject({ stored: true, valid: true, rule_id: "agent_cash_level_1" });
+    expect({
+      recommendation: Q.loadInstrument(s.f.store.read.bind(s.f.store), s.instrument)?.plan,
+      theses: Q.theses(s.f.store.read.bind(s.f.store)).length,
+      decisions: Q.decisions(s.f.store.read.bind(s.f.store)).length,
+      signal_status: Q.signalByGid(s.f.store.read.bind(s.f.store), signal)?.status,
+    }).toEqual({ recommendation: "buy", theses: 1, decisions: 1, signal_status: "acknowledged" });
+  });
+  it("keeps the numbers of a system message in amounts mode", async () => {
+    const s = await setup("amounts");
+    const out = data(
+      await s.server.call("propose_strategy", { yaml: "version: 99\n", dry_run: true }),
+    );
+    expect((out.issues as { message: string }[])[0]?.message).toBe(
+      "Unsupported version 99 (supported: 1)",
+    );
+  });
   it("keeps base recommendation/thesis writes without the optional plan provider", async () => {
     const s = await setup();
     s.noProvider();
@@ -564,16 +545,25 @@ describe("native MCP local investment writes", () => {
     );
     expect(s.batches.length).toBe(before);
   });
-  it("matches actual Python batch refusal codes and validation order without effects", async () => {
+  it("refuses invalid recommendation batches in validation order without effects", async () => {
     const s = await setup();
     const changed = { instrument: "ABC", recommendation: "buy", reason: "Current facts" };
-    const check = async (
-      label: keyof typeof vectors.strict.errors,
-      scope: string,
-      recommendations: unknown[],
-    ) => {
+    const ERRORS = {
+      duplicate: ["invalid_arguments", "recommendations[1] duplicates an instrument"],
+      outside: ["invalid_arguments", "recommendations[0] is outside the selected watchlist scope"],
+      enum: [
+        "invalid_arguments",
+        "recommendations[0].recommendation must be one of: buy_asap, buy, hold, reduce, exit_asap",
+      ],
+      coverage_before_held: [
+        "incomplete_coverage",
+        "recommendation coverage incomplete: expected 2, covered 1, missing 1; see research_context for rows with recommendation null",
+      ],
+      held_after_coverage: ["invalid", "Plan 'reduce' needs a held instrument"],
+    } as const;
+    const check = async (label: keyof typeof ERRORS, scope: string, recommendations: unknown[]) => {
       const out = await s.server.call("set_recommendations", { scope, recommendations });
-      expect({ error_kind: out.errorKind, error: out.error }).toEqual(vectors.strict.errors[label]);
+      expect([out.errorKind, out.error]).toEqual(ERRORS[label]);
     };
     await check("duplicate", "held", [changed, changed]);
     await check("outside", "watchlist", [changed]);

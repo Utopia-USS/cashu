@@ -1,7 +1,5 @@
-// Translation of tests/test_mcp_strict_messages.py. test_scrub_keeps_dates_percentages_indexes_and_positions
-// is one to one; the tool tests (portfolio_overview warnings, strategy_status / propose_strategy /
-// propose_custom_rule issues and the fuzz over every tool on a gap history) need the handlers (S38).
-// Their privacy step, systemText on the same gap messages, is tested here.
+// System messages (portfolio warnings, strategy issues) in strict mode: no quantity or balance
+// survives, dates, percentages, indexes and positions do; amounts mode keeps the numbers.
 import { describe, expect, it } from "vitest";
 import { scrubNumbers, systemText } from "./messages.js";
 import { pyDumps } from "./pyJson.js";
@@ -27,7 +25,7 @@ it("test_scrub_keeps_dates_percentages_indexes_and_positions", () => {
   expect(scrubNumbers("IS3N and EUNL: 12 345,67 PLN, 1,234.56")).toBe("IS3N and EUNL: # PLN, #");
 });
 
-// the gap messages the Python fixture produces (a quantity sold beyond the history, the cash
+// gap messages (a quantity sold beyond the history, the cash
 // balance that leaves): the wording of portfolio warnings and strategy issues
 const MESSAGES = [
   "History gap: selling 73 PKO on 2025-02-03 needs 73 more units than the history holds",

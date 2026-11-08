@@ -132,7 +132,7 @@ describe("native import proposal pipeline", () => {
         blob: { sha256: sha256Hex(FILE), ext: "csv" },
         file_sha256: sha256Hex(FILE),
       });
-      // Python propose_import: summary_params {account, importer, new, duplicates} (oracle: demo import proposal).
+      // summary_params of an import proposal: {account, importer, new, duplicates}.
       expect(Object.keys(snapshot.payload.summary_params as object)).toEqual([
         "account",
         "importer",

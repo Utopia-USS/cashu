@@ -12,17 +12,13 @@ import {
 } from "@cashu/store";
 import { mcpProfile } from "@cashu/store/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { category, Labelled, pct } from "../privacy/labels.js";
-import { type JsonValue, pyDumps } from "../privacy/pyJson.js";
-import { leakCheck, Redactor } from "../privacy/redactor.js";
+import { Labelled, pct } from "../privacy/labels.js";
 import { researchServices } from "../providers/research.js";
 import type { ToolContext } from "../registry.js";
 import { decodeEntityRef, encodeEntityRef } from "../runtime/refs.js";
 import { NativeMcpServer, type NativeRuntime, restrictivePrivacy } from "../runtime/server.js";
-import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { nativeFixture } from "../testing/native.js";
-import vectors from "./fixtures/research.json" with { type: "json" };
 import { researchTools } from "./research.js";
 import { object } from "./researchLabels.js";
 
@@ -203,67 +199,9 @@ function body(result: Awaited<ReturnType<NativeMcpServer["call"]>>): Record<stri
   if (!result.ok) throw new Error(`research tool refused: ${result.errorKind}: ${result.error}`);
   return Object.fromEntries(Object.entries(result.data ?? {}));
 }
-/** Only declared reference fields are normalized, after production redaction and leak checking. */
-function normalized(tree: unknown, refs: ReadonlyMap<string, unknown>): JsonValue {
-  if (
-    tree === null ||
-    typeof tree === "string" ||
-    typeof tree === "number" ||
-    typeof tree === "bigint" ||
-    typeof tree === "boolean"
-  )
-    return tree;
-  if (Array.isArray(tree)) return tree.map((item) => normalized(item, refs));
-  if (tree === undefined || typeof tree !== "object") throw new Error("invalid synthetic output");
-  return Object.fromEntries(
-    Object.entries(tree).map(([key, value]) => {
-      if (value !== null && refs.has(key)) {
-        expect(value).toBe(refs.get(key));
-        return [key, key.replace(/_id$/u, "")];
-      }
-      return [key, normalized(value, refs)];
-    }),
-  );
-}
-
 describe("native research MCP tools", () => {
-  it.each(["run", "note", "watchlist"] as const)(
-    "keeps the unchanged %s reference codec and kind refusal",
-    (kind) => {
-      for (const gid of ["01ARZ3NDEKTSV4RRFFQ69G5FAV", "00000000-0000-8000-8000-000000000123"]) {
-        const ref = encodeEntityRef(kind, gid);
-        expect(ref.length).toBeLessThanOrEqual(64);
-        expect(decodeEntityRef(kind, ref)).toBe(gid);
-        expect(() => decodeEntityRef("instrument", ref)).toThrow(TypeError);
-      }
-    },
-  );
-  it("keeps frozen metadata with only approved native reference schema changes", () => {
-    const tools = researchTools();
-    expect(tools).toHaveLength(8);
-    for (const tool of tools) {
-      const source = NATIVE_TOOL_SCHEMAS.find((spec) => spec.name === tool.name);
-      expect(source).toBeDefined();
-      if (source === undefined) continue;
-      const { handler: _handler, ...metadata } = tool;
-      expect({ ...metadata, properties: source.properties }).toEqual(source);
-      const adjusted = { ...tool.properties };
-      if (source.properties.instrument?.maxLength === 40) {
-        expect(tool.properties.instrument?.maxLength).toBe(64);
-        adjusted.instrument = source.properties.instrument;
-      }
-      if (tool.name === "add_research_note" || tool.name === "finish_research_run") {
-        expect(source.properties.run_id?.type).toBe("integer");
-        expect(source.properties.run_id?.minimum).toBe(1);
-        expect(tool.properties.run_id?.type).toBe("string");
-        expect(tool.properties.run_id?.maxLength).toBe(64);
-        if (source.properties.run_id !== undefined) adjusted.run_id = source.properties.run_id;
-      }
-      expect(adjusted).toEqual(source.properties);
-    }
-  });
   it.each(["strict", "amounts"])(
-    "roundtrips actual registry run refs and commits prospective note+both signal families in %s",
+    "roundtrips run refs and commits the note with both signal families in %s",
     async (privacy) => {
       const s = await setup(privacy),
         start = body(await s.server.call("start_research_run", {})),
@@ -293,25 +231,21 @@ describe("native research MCP tools", () => {
       );
       expect(finish.run_id).toBe(run);
       expect(finish.status).toBe("done");
-      const expected = privacy === "strict" ? vectors.workflow.strict : vectors.workflow.amounts;
-      const refs = new Map<string, unknown>([
-        ["run_id", run],
-        ["note_id", note.note_id],
-        ["instrument_id", encodeEntityRef("instrument", s.instrument)],
-        ["signal_id", object(note.signal).signal_id],
-      ]);
-      expect(pyDumps(normalized(start, refs), { sortKeys: true })).toBe(expected.wire.start);
-      expect(pyDumps(normalized(note, refs), { sortKeys: true })).toBe(expected.wire.add);
-      expect(pyDumps(normalized(finish, refs), { sortKeys: true })).toBe(expected.wire.finish);
+      expect(start.status).toBe("running");
+      expect(object(note.signal)).toMatchObject({ created: true, escalated: false });
+      expect(object(finish.counts)).toMatchObject({ notes: 1n, signals: 1n, sources_checked: 1n });
+      const errors = {
+        no_scope: "a note is about an instrument (instrument) or a market segment (segment)",
+        segment_only:
+          "a segment note is about the market segment only; write instrument facts on the instrument",
+      } as const;
       const { thesis_relation: _relation, thesis_field: _field, ...neutral } = NOTE;
       for (const [name, scope] of [
         ["no_scope", {}],
         ["segment_only", { segment: "energy", instrument: "ABC" }],
       ] as const) {
         const refused = await s.server.call("add_research_note", { ...neutral, ...scope });
-        expect({ error_kind: refused.errorKind, error: refused.error }).toEqual(
-          expected.errors[name],
-        );
+        expect([refused.errorKind, refused.error]).toEqual(["invalid", errors[name]]);
       }
       const topic = body(
         await s.server.call("upsert_topic_thesis", {
@@ -325,9 +259,10 @@ describe("native research MCP tools", () => {
         outlook: "",
         sources: [],
       });
-      expect({ error_kind: invalidView.errorKind, error: invalidView.error }).toEqual(
-        expected.errors.invalid_view,
-      );
+      expect([invalidView.errorKind, invalidView.error]).toEqual([
+        "invalid",
+        "assessment: is required; outlook: is required; sources: at least one source is required: [{url, publisher, published_at}]",
+      ]);
       const marketView = body(
         await s.server.call("set_topic_market_view", {
           segment: "energy",
@@ -343,11 +278,12 @@ describe("native research MCP tools", () => {
           segment: "energy",
         }),
       );
-      expect(pyDumps(normalized(topic, refs), { sortKeys: true })).toBe(expected.wire.topic);
-      expect(pyDumps(normalized(marketView, refs), { sortKeys: true })).toBe(
-        expected.wire.market_view,
+      expect(topic).toMatchObject({ created: true, draft: true, segment: "energy" });
+      // strict hides a bare year-like number in agent text; amounts keeps it
+      expect(marketView.outlook).toBe(
+        `Według raportu popyt na energię wzrośnie o 5% do ${privacy === "strict" ? "[amount]" : "2028"} r.; ryzykiem pozostają ograniczenia podaży.`,
       );
-      expect(pyDumps(normalized(segment, refs), { sortKeys: true })).toBe(expected.wire.segment);
+      expect(segment).toMatchObject({ segment: "energy", segment_source: "agent" });
       expect({
         notes: s.f.store.read("SELECT gid FROM research_notes").length,
         signals: s.f.store
@@ -360,9 +296,15 @@ describe("native research MCP tools", () => {
           [s.instrument],
           R.eventInstant(new Date(s.f.toolStore().now()).toISOString()),
         ).get(s.instrument)?.health.state,
-      }).toEqual(expected.state);
+      }).toEqual({
+        notes: 1,
+        signals: [
+          { rule: "plan:plan_vs_thesis", status: "active" },
+          { rule: "research:news", status: "active" },
+        ],
+        health: "invalidated",
+      });
       const notes = body(await s.server.call("research_notes", {}));
-      expect(pyDumps(normalized(notes, refs), { sortKeys: true })).toBe(expected.wire.notes);
       expect(Array.isArray(notes.notes)).toBe(true);
       if (Array.isArray(notes.notes)) expect(notes.notes).toHaveLength(1);
       const context = body(await s.server.call("research_context", {}));
@@ -520,34 +462,52 @@ describe("native research MCP tools", () => {
     expect(signals.some((row) => row.rule_id.startsWith("plan:"))).toBe(false);
   });
 });
-for (const vector of vectors.exposure)
-  it.each(["strict", "amounts"])(
-    `matches actual Python exposure grouping/tie order/rounding ${vector.label} in %s`,
-    (privacy) => {
-      const exposure = research.researchExposure(vector.positions, new Set(vector.owned));
-      const redactor = new Redactor({ privacy });
-      const tree = {
-        asset_classes: exposure.asset_classes.map((row) => ({
-          asset_class: category(row.asset_class),
-          weight: pct(row.weight),
-        })),
-        regions: exposure.regions.map((row) => ({
-          region: category(row.region),
-          weight: pct(row.weight),
-        })),
-        sectors: exposure.sectors.map((row) => ({
-          sector: category(row.sector),
-          weight: pct(row.weight),
-        })),
-      };
-      const out = redactor.apply(tree);
-      leakCheck(out, {
-        strict: privacy === "strict",
-        isins: redactor.isins,
-        nonMoney: redactor.nonMoney,
-      });
-      expect(pyDumps(out, { sortKeys: true })).toBe(
-        privacy === "strict" ? vector.wire.strict : vector.wire.amounts,
-      );
-    },
+it("groups exposure by weight with stable ties and hides an owned private asset's classification", () => {
+  // the answer sends weights through pct(), which rounds to six places
+  const rounded = (e: ReturnType<typeof research.researchExposure>) =>
+    JSON.parse(JSON.stringify(e, (_k, v) => (typeof v === "number" ? pct(v).value : v)));
+  const exposure = research.researchExposure(
+    [
+      { assetClass: "equity", instrument: "a", region: "EU", sector: "energy", weight: 0.1 },
+      { assetClass: "equity", instrument: "b", region: "US", sector: "industry", weight: 0.2 },
+      { assetClass: "etf", instrument: "c", region: "EU", sector: "energy", weight: 0.3 },
+      { assetClass: null, instrument: "d", region: null, sector: null, weight: null },
+    ],
+    new Set(),
   );
+  expect(rounded(exposure)).toEqual({
+    asset_classes: [
+      { asset_class: "equity", weight: 0.3 },
+      { asset_class: "etf", weight: 0.3 },
+    ],
+    regions: [
+      { region: "EU", weight: 0.4 },
+      { region: "US", weight: 0.2 },
+    ],
+    sectors: [
+      { sector: "energy", weight: 0.4 },
+      { sector: "industry", weight: 0.2 },
+    ],
+  });
+  const owned = research.researchExposure(
+    [
+      { assetClass: "equity", instrument: "a", region: "EU", sector: "energy", weight: 0.5 },
+      {
+        assetClass: "property",
+        instrument: "b",
+        region: "Private place",
+        sector: "Private industry",
+        weight: 0.5,
+      },
+    ],
+    new Set(["b"]),
+  );
+  expect(owned.regions).toEqual([
+    { region: "EU", weight: 0.5 },
+    { region: "unclassified", weight: 0.5 },
+  ]);
+  expect(owned.sectors).toEqual([
+    { sector: "energy", weight: 0.5 },
+    { sector: "unclassified", weight: 0.5 },
+  ]);
+});

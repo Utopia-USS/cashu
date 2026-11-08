@@ -1,7 +1,5 @@
-// Translation of tests/test_mcp_amount_rounding.py. test_label_helpers_round is one to one. The tool
-// tests (portfolio_overview / positions / networth_breakdown over an FX-awkward seeded profile) need
-// the handlers (S38); their privacy property, that rounded FX amounts pass the leak check in both
-// modes while unrounded ones would not, is tested here on the label layer.
+// Money rounding on the label layer: FX-converted amounts are rounded so they pass the leak check in
+// both modes, while an unrounded FX float would be withheld.
 import { D } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
 import * as L from "./labels.js";
@@ -19,7 +17,7 @@ it("test_label_helpers_round", () => {
 });
 
 describe("test_fx_converted_values_pass_the_leak_check (label layer; tool flow: S38)", () => {
-  // a fractional unit count bought at an FX rate with many digits (the Python fixture's AWKWARD_ROW)
+  // a fractional unit count bought at an FX rate with many digits
   const quantity = 0.3333333 + 31;
   const value = 110034.5950716749;
   const tree = {

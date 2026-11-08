@@ -1,6 +1,6 @@
-// Translation of tests/test_mcp_redaction.py, test for test: every sensitivity label in both privacy
-// modes, text scrubbing, the final leak check, fail-closed behaviour for unlabelled values and
-// data-derived keys, and the person-name guard. Every value is invented.
+// The redactor's rules, one test each: every sensitivity label in both privacy modes, text scrubbing,
+// the final leak check, fail-closed behaviour for unlabelled values and data-derived keys, and the
+// person-name guard. Every value is invented.
 import { D, parseDateTime } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
 import * as L from "./labels.js";
