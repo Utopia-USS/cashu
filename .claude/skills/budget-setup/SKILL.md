@@ -110,8 +110,8 @@ user declines.
 ### Step 2 - The app
 
 The user installs cashU.app and opens it once (nothing else to install; Ollama is optional for step
-7); data from the older Python app comes over through the app's "Import my data" or `cashu migrate`;
-then the `cashu` alias. Details:
+7); data from the older Python app is brought over by you, the agent (`/import-builder`, section
+"Old cashU (Python) data"); then the `cashu` alias. Details:
 [`references/install-workflow.md`](references/install-workflow.md).
 
 ### Step 3 - Profile

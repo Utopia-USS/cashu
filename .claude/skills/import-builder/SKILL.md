@@ -2,9 +2,9 @@
 name: import-builder
 description: >
   Use when the user has an export cashU cannot read yet (xlsx, csv, json from a broker such as XTB, DIF, Revolut, Binance, Zonda, or from a bank) or wants to pull broker, exchange or bank data from an API.
-  Applicability - POSITIVE: broker / exchange / crypto history or bank statements turned into a reusable file or fetch connector (preferred), a one-off converter or a generic CSV mapping.
+  Applicability - POSITIVE: broker / exchange / crypto history or bank statements turned into a reusable file or fetch connector (preferred), a one-off converter or a generic CSV mapping; the old (Python) cashU app's data brought over blind through the same import paths.
   Applicability - NEGATIVE: NOT bank CSV or Open Banking imports the app supports and categories (budget-setup), the strategy and check-ins (investments-setup) or custom rules (extension-builder).
-  Triggers: /import-builder, "zaimportuj historię z brokera", "napisz konwerter eksportu", "parser do pliku z XTB", "konektor do banku", "wyciąg z innego banku", "pobieraj z API giełdy".
+  Triggers: /import-builder, "zaimportuj historię z brokera", "napisz konwerter eksportu", "parser do pliku z XTB", "konektor do banku", "wyciąg z innego banku", "pobieraj z API giełdy", "przenieś dane ze starej aplikacji", "python_data_present".
 ---
 
 # import-builder: a connector (or converter) for an unsupported export
@@ -44,6 +44,7 @@ English, regular hyphens only.
 | Deno permissions, the import rule, platforms | [`references/connectors.md`](references/connectors.md), section 4 |
 | A simple CSV without code | [`references/generic_csv_example.yaml`](references/generic_csv_example.yaml) |
 | A one-off converter script | [`references/converter-workflow.md`](references/converter-workflow.md), [`references/converter_template.py`](references/converter_template.py) |
+| Data of the old (Python) cashU app (`python_data_present`) | this file, "Old cashU (Python) data" |
 
 ## Non-negotiable
 
@@ -176,6 +177,45 @@ Converter route (one-off script for investments, or a `cashu-budget-import` file
 the converter contract (standard library only, value-free errors, exact decimals, deterministic rows):
 `references/converter-workflow.md`.
 
+## Old cashU (Python) data
+
+When the app showed its old-data screen (code `python_data_present`) and the user pasted its prompt,
+or says their data is still in the old cashU app. The app has no import for it and never opens,
+moves or changes the old files; you bring the data over blind, through the import paths above.
+
+1. **Profile first.** The user chooses "Kontynuuj bez starych danych" in the app, creates the profile
+   with the modules they used and the same account names (one import file = one account), and
+   connects `cashu-<slug>` (the setup screen shows the `claude mcp add` line; drop an old entry of the
+   same name first with `claude mcp remove cashu-<slug>`).
+2. **A copy, never the original.** Ask the user to quit the old app and copy its database (`cashu.db`,
+   or `finanse.db`, with any `-wal` / `-shm` beside it) from the old data folder into the workspace,
+   e.g. `inbox/old-app/`. Never open, list or write the data folder itself.
+3. **Schema only.** Learn the structure from table and column names (`sqlite3 -readonly
+   inbox/old-app/cashu.db .schema`) and row counts (`SELECT count(*)`); ask the user what a column
+   means when its name does not say. Enum-like columns that hold no personal data (record types, currencies, asset classes) may be
+   listed with `SELECT DISTINCT`. Never select amounts, balances, account numbers, IBANs, names,
+   titles, counterparties or notes into the conversation.
+4. **Convert locally.** Write `scripts/convert_old_cashu.py` (standard library `sqlite3`, opened
+   read-only with `file:...?mode=ro`; the converter contract in
+   `references/converter-workflow.md`: value-free errors, exact decimals, deterministic rows), test it
+   on a synthetic database with the same schema, then run it on the copy. One output per account:
+   - bank accounts -> `cashu-budget-import` JSON with `transactions` and `balances`
+     (`references/budget-import-format.md`); `validate_budget_import`, fix by kind; the owner imports
+     each file in Wydatki > Import (`Format cashU`), oldest first;
+   - brokerage accounts -> the investments format with `txn`, `position`, `rename` and `delisting`
+     records (`references/import-format.md`); `validate_import`, then `propose_import(path,
+     account)`; the owner approves it in Inwestycje > Import.
+5. **The rest.** Copy `strategy.md` / `strategy.yaml` from the old profile workspace into the new one
+   (or `propose_strategy`). Merchant categories: `set_merchant_category`; segments:
+   `set_instrument_segment`; watchlist: `add_to_watchlist`; alerts and rules: `add_alert`,
+   `propose_custom_rule`. Research notes and theses (`add_research_note`, `upsert_thesis`,
+   `upsert_topic_thesis`) are the owner's own text that you would read: ask first. Manual assets and
+   loans: the owner re-enters them (`/assets-setup`, `/loans-setup`).
+6. **Say what does not come over** (no write path): decision history, signal history, earlier strategy
+   versions, review history, alert trigger history, connector run history, research notes with their
+   original dates, per-transaction category overrides, bank (Open Banking) sessions. Delete the copy
+   and the converted files after the owner committed the imports.
+
 ## Deno connector skeleton
 
 `connectors/<id>/connector.yaml` (file kind; a fetch connector has `kind: fetch` and a `fetch:` section,
@@ -263,3 +303,5 @@ Before telling the user it is done:
 5. Converter or mapping route: `validate_import` / `validate_budget_import` clean before
    `propose_import`; the converted file was deleted after the commit.
 6. After the commit: `positions` checked and unclassified instruments named for the owner.
+7. Old cashU data: only the schema and enum labels were read, never values; the copy and the converted
+   files were deleted after the commit; the owner was told what did not come over.

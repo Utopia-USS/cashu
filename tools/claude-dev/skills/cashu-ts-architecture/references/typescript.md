@@ -18,7 +18,7 @@ tags: typescript, types, decimal, errors, naming
 
 Branded string types per entity (`type AccountGid = Brand<string, "AccountGid">`), created only by
 the gid functions of the store or by zod decoding. Never pass a bare `string` where a gid is meant.
-Integer ids from the Python era exist only inside the Python-data migration (`cashu migrate`, genesis).
+Integer ids from the Python era exist only in events of the retired 0.5.0 bridge (origin `genesis`).
 
 ## Money and numbers
 

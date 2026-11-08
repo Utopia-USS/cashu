@@ -13,9 +13,11 @@ the database to its last schema. Quit it afterwards.
 
 ## 2. Python cashU to the native app
 
-Follow [migration-runbook.md](migration-runbook.md): `cashu migrate` imports the Python data dir in
-place into encrypted native vaults (one per profile) and `cashu migrate verify` checks the result. A
-database still named `finanse.db` (legacy name) in the cashU data dir is read too.
+The native app does not import the Python data dir. On its first start it shows the old-data screen
+(also for a database still named `finanse.db`, legacy name, or one left in
+`~/Library/Application Support/finanse`): its prompt sends your agent through the import-builder
+skill, section "Old cashU (Python) data", which converts the old data into the import formats for you
+to approve in the app. The old files are never opened, moved or changed by the app.
 
 ## What keeps working
 

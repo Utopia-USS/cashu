@@ -93,7 +93,7 @@ other than `apps/host` and `apps/mobile` imports no SQLite binding (`node:sqlite
 `expo-sqlite`, op-sqlite) and not node-host's driver entry (`@cashu/node-host/sqlite`); test code is
 exempt. The Python outbox bridge, carrier loop and their parity harness live in `apps/host/src/sync`;
 the SQLite driver is available only through node-host's dedicated `sqlite` entry.
-`cashu genesis` runs in the host (apps/host `cli/genesis`, S56d). Inside the host, a store file opens only under the
+Inside the host, a store file opens only under the
 `WriterLease` (apps/host `lease.ts`), which wraps the held machine lock that the exclusive open
 (`openNodeSqlite(path, { exclusive })`) requires.
 

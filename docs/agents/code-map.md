@@ -22,7 +22,7 @@ Apps compose packages and never import another app.
 | `packages/sync/` | Sync | Event log, HLC, crypto, carrier/transport interfaces and device membership; depends on domain. |
 | `packages/market/` | Market | Leader-only HTTP market/calendar sources (Yahoo, stooq, NBP) behind an injected fetch; parsing contracts live in domain. |
 | `packages/llm/` | LLM | Ollama and Anthropic clients for categorization behind ports. |
-| `packages/store/` | Store | Event schemas, materializers, queries, commands and services per module; vault and device stores; genesis import of Python data. |
+| `packages/store/` | Store | Event schemas, materializers, queries, commands and services per module; vault and device stores. |
 | `packages/store-react/` | Store bindings | React `useQuery` / command hooks and providers, plus React-free client/local/host/protocol store ports. |
 | `packages/i18n/` | i18n | PL/EN catalogs, plurals, formatting and explicit backend translators; depends on domain. |
 | `packages/ui/` | UI system | Shared tokens, display components, charts and platform controls; no store access. |
@@ -70,7 +70,6 @@ Apps compose packages and never import another app.
 | `query.ts`, `subscribe.ts`, `command.ts` | `defineQuery`, the change hub (live queries), commands and durable command attempts |
 | `core/`, `budget/`, `assets/`, `loans/`, `investments/` | each module's views, queries, commands and services (profiles, profile modules, proposals, net worth book, prices, strategy documents, ...) |
 | `device/` | the device-local store (no event log) |
-| `genesis/` | converting a Python data dir into the first events of a vault (used by `cashu migrate`) |
 | `sql/` | system tables (`SYSTEM_SCHEMA_VERSION`) |
 
 ## `packages/mcp/src/`
@@ -98,7 +97,6 @@ Apps compose packages and never import another app.
 | `banking/` | Enable Banking client, consent callback, sync into the budget |
 | `classification/` | categorization providers (Ollama, Anthropic with owner consent) |
 | `workspace/` | per-profile agent workspace (managed CLAUDE.md, `.mcp.json`, `.claude/settings.json`, skills); `skillReferences.ts` = the reference copies inside skills |
-| `migration/` | `cashu migrate` / `cashu migrate verify`: the in-place import of a Python data dir ([runbook](../migration-runbook.md)) |
 | `market/`, `notifications/`, `proposals/`, `sync/`, `pairing/`, `devices/` | market data wiring and price cache; OS notifications; proposal approval; sync carrier; device pairing |
 | `*Screen.ts` | screen data the renderer asks for (overview, investments, signals, review, research, strategies, proposals, settings) |
 | `testing/` | synthetic hosts and demos (`devDemo.ts`, `seedOverviewDemo.ts`, ...) |
@@ -122,7 +120,6 @@ Apps compose packages and never import another app.
 |---|---|
 | `docs/connectors.md` | connector contract for outside authors (manifest, protocol, sandbox); schemas in `docs/schemas/` (generated) |
 | `docs/import-format.md`, `docs/budget-import-format.md` | cashU investments / budget import formats |
-| `docs/migration-runbook.md` | moving an install from the Python app to the native app |
 | `docs/releasing.md`, `docs/releases/` | the release procedure (owner) and the hand-written release notes `v<X.Y.Z>.md` |
 | `connectors/` | community connector catalog (contrib status, one dir per connector with `fixtures/`; shipped with the app, see its `README.md`); `<bank>-csv/` are the Deno twins of the built-in parsers |
 | `examples/connectors/` | tested example connectors (budget CSV, investments JSON and fetch in Python; a Deno budget example) |

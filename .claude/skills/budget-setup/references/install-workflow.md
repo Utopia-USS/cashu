@@ -11,9 +11,9 @@ besides the app itself.
    yourself. An app built and signed only ad hoc opens on the Mac that built it; on another Mac macOS
    blocks it until the user confirms it in System Settings > Privacy & Security > "Open Anyway".
 2. **First launch.** The profile wizard opens (step 3). If the user used the older Python cashU app
-   on this Mac, the app shows a recovery screen instead: its "Import my data" button (or
-   `cashu migrate`) brings the old data over once, in place, with a backup. The user does that
-   themselves, then continues here.
+   on this Mac, the app first shows the old-data screen: it never opens or changes the old data and
+   offers a prompt for you plus "Continue without the old data", which leads to the wizard. The old
+   data comes over later through `/import-builder`, section "Old cashU (Python) data".
 3. **The `cashu` command.** Every start of the app writes a launcher into the data dir. The user adds
    an alias in their own terminal:
 

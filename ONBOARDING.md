@@ -23,9 +23,10 @@ cashU is a native macOS app (macOS 13 or later). Check that the user has:
 
 If something is missing, say how to install it (macOS: `brew install node ollama`) and wait.
 
-> 🔀 **Already using the Python cashU app?** Do not set up from scratch: the native app imports the
-> existing data in place. Walk the user through [`docs/migration-runbook.md`](docs/migration-runbook.md)
-> instead (it has its own checklist and backups), then continue at step 3 for anything new.
+> 🔀 **Already using the Python cashU app?** The native app does not import the old data. On its
+> first start it shows the old-data screen: the user copies its prompt to you, chooses "Continue
+> without the old data" and creates the profile; then follow the import-builder skill, section "Old
+> cashU (Python) data", and continue at step 3 for anything new.
 
 ---
 

@@ -85,8 +85,9 @@ relative to those unless they start with `apps/` or `packages/`).
     compares fingerprints and rebuilds only what changed from the log, in one transaction
     (`rebuild.ts`). There are no SQL migrations. Spec: `packages/store/spec/events.md` section 7; the
     catalog test (`events/v1/catalog.test.ts`) keeps the code and the spec in step; guards:
-    `upgrade.test.ts`, `view-upgrade.test.ts`. Data of the old Python app comes over once, through
-    `cashu migrate` ([migration-runbook.md](../migration-runbook.md)).
+    `upgrade.test.ts`, `view-upgrade.test.ts`. The app has no import of the old Python app's data: the
+    agent brings it over through the import paths (import-builder skill, "Old cashU (Python) data").
+    The `genesis` event origin stays in the schema (events written by the retired 0.5.0 bridge).
 
 ## How to apply
 

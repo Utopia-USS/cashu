@@ -210,16 +210,14 @@ release carries an informational item there: Sparkle never downloads it.
    link or notes (the old app ignores them), so the address is in the title.
 2. The user downloads the dmg for their Mac from the release page, quits the Python app and drags the
    native cashU.app over the old one in `/Applications`.
-3. On the first start the native app finds the Python data and shows its recovery screen: "Zaimportuj
-   moje dane" / "Import my data" imports every profile in place (new recovery words, the Python files kept
-   in a backup folder).
-4. After the import the app removes the Python background agents itself (`io.utopiasoft.cashu.worker`,
-   legacy `io.github.synszakala.finanse.worker`) and shows the result per agent.
-5. The finished import shows the MCP lines per profile (`claude mcp remove cashu-<profile>`, then
-   `claude mcp add cashu-<profile> -- "<data dir>/bin/cashu" mcp --profile <profile>`), with a Copy
-   button.
-
-The owner's full checklist with backups and verification: [migration-runbook.md](migration-runbook.md).
+3. On the first start the native app finds the Python data and shows the old-data screen: "Kopiuj
+   prompt dla agenta" / "Copy prompt for agent" gives the user's agent the steps (import-builder skill,
+   "Old cashU (Python) data"), and "Kontynuuj bez starych danych" / "Continue without the old data"
+   goes on to first-run setup. The app never opens, moves or changes the Python files.
+4. The Python background worker (`io.utopiasoft.cashu.worker`, legacy
+   `io.github.synszakala.finanse.worker`) keeps running until the user removes it; the app does not
+   touch launchd for it. An old `cashu-<profile>` MCP entry in Claude Code is replaced by the setup
+   screen's `claude mcp add` line (after `claude mcp remove cashu-<profile>`).
 
 ## Staging build (owner's local test app)
 

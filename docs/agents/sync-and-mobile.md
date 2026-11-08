@@ -71,7 +71,8 @@ Built on `ts-stack` (synthetic data in tests; parity on the demo set and a local
   the encrypted log (WAL + replay), React bindings (`@cashu/store-react`).
 - Sync: crypto and keys, carrier engine and contract suite, the own-log carrier, the folder transport,
   devices / pairing / revocation / fetch-leader phase A.
-- Bridge: genesis (an existing `cashu.db` -> per-vault event logs), the Python outbox and inbound
+- Bridge (removed 2026-11-08; the agent now brings old data over through the import paths): genesis
+  (an existing `cashu.db` -> per-vault event logs), the Python outbox and inbound
   applier behind a lab-only switch (to become a persisted per-vault flag), the shipper (Python writes
   -> encrypted log -> TS view equals the Python DB on a lab copy) in review.
 - Apps: the Electron shell over the Python sidecar with the store utility process behind a dev flag;

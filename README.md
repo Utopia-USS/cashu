@@ -80,9 +80,11 @@ update itself. Copied to
 another Mac, macOS blocks it as "from an unidentified developer": open it once, then confirm in System
 Settings > Privacy & Security > "Open Anyway" (only for a build you made yourself).
 
-**Coming from the Python cashU app?** Install the native app over it; your data moves over once, in
-place, with the "Import my data" button on the app's first start (or `cashu migrate`): see
-[`docs/migration-runbook.md`](docs/migration-runbook.md). From finanse (the name before cashU, legacy
+**Coming from the Python cashU app?** Install the native app over it. The app does not import the old
+data itself: on its first start it finds the old data, leaves it untouched and gives you a prompt to
+copy for your AI agent (for example Claude Code), which brings the data over through the app's import
+paths (the `import-builder` skill), for you to approve in the app. You can also continue without it.
+From finanse (the name before cashU, legacy
 name): [`docs/upgrading-from-finanse.md`](docs/upgrading-from-finanse.md).
 
 ### The `cashu` command

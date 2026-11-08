@@ -115,7 +115,7 @@ event-sourced stores, Biome, vitest, Playwright.
 | `apps/desktop/` | Electron main/preload, renderer screens, e2e, packaging and release (`scripts/package-macos.mjs`, `scripts/release-macos.mjs`) |
 | `apps/cli/` | the `cashu` shim: routes `app`, `host`, `migrate`, `mcp` and forwards every other command to the host |
 | `.claude/skills/` | the 9 shipped product skills (inventory below) |
-| `docs/` | `import-format.md`, `budget-import-format.md`, `connectors.md`, `schemas/`, `migration-runbook.md`, `releasing.md`, `releases/` (release notes), `agents/` |
+| `docs/` | `import-format.md`, `budget-import-format.md`, `connectors.md`, `schemas/`, `releasing.md`, `releases/` (release notes), `agents/` |
 | `tools/` | architecture checks and dev plugin |
 
 Full file-level map: [docs/agents/code-map.md](docs/agents/code-map.md).
@@ -180,7 +180,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Research / MCP privacy (what the agent may see) | [skills.md](docs/agents/skills.md) "Rules every skill follows" | `packages/mcp/src/privacy/`, `packages/mcp/src/runtime/server.ts` |
 | Run, demo data, e2e, verify in the app | [running.md](docs/agents/running.md) | `apps/desktop/scripts/dev.mjs`, `apps/host/src/testing/devDemo.ts`, `apps/desktop/e2e/` |
 | Write tests | [conventions.md](docs/agents/conventions.md) "Tests" | `vitest.tiers.ts`, `@cashu/node-host/testing`, `packages/domain/src/testing/` |
-| Moving a user from the Python app | [docs/migration-runbook.md](docs/migration-runbook.md) | `apps/host/src/migration/` (`cashu migrate`, `cashu migrate verify`) |
+| Moving a user from the Python app | `.claude/skills/import-builder/SKILL.md` "Old cashU (Python) data" | `apps/desktop/src/recovery.ts` (the `python_data_present` screen), `packages/host-protocol/src/startupFailure/prompt.ts` (its agent prompt) |
 | Packaging / desktop app build | [running.md](docs/agents/running.md) "Packaging" | `apps/desktop/scripts/package-macos.mjs`, `apps/desktop/build/electron-builder.config.cjs` |
 | Updates and releases (owner only) | [docs/releasing.md](docs/releasing.md), [s47-update-operator.md](docs/agents/s47-update-operator.md) | `apps/desktop/scripts/release-macos.mjs`, `.github/workflows/release-macos.yml`, `bump-version.yml`, `apps/desktop/src/update/` |
 | Help the end user set up | [ONBOARDING.md](ONBOARDING.md) | the module setup skills |
@@ -203,7 +203,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Refresh skill reference copies | `pnpm --filter @cashu/host skills:sync` (`--check` to verify) |
 | Connect a profile's MCP server | the profile's agent workspace registers it in `.mcp.json`; by hand: `claude mcp add cashu-<slug> -- "<data dir>/bin/cashu" mcp --profile <slug>` |
 | Profile agent workspace | Settings > AI agent (MCP) in the app, or `cashu --profile <slug> workspace init` / `workspace update` |
-| Import data from the Python app | `cashu migrate --recovery-file <file>`, then `cashu migrate verify` ([runbook](docs/migration-runbook.md)) |
+| Data from the Python app | no app import: the first start shows the old-data screen; its prompt sends the agent through the import-builder skill ("Old cashU (Python) data") |
 | Build cashU.app (macOS, ad hoc) | `node apps/desktop/scripts/package-macos.mjs arm64` (`x64`; `--dmg` for a disk image) |
 | Build the owner's `cashU Staging` app | `node apps/desktop/scripts/package-macos.mjs arm64 --flavor staging` ([releasing.md](docs/releasing.md) "Staging build") |
 | Release (owner only) | merge `staging` -> `main` and approve the `release` environment; fallback `node apps/desktop/scripts/release-macos.mjs --check` ([releasing.md](docs/releasing.md)) |
@@ -223,7 +223,6 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 - [docs/agents/sync-and-mobile.md](docs/agents/sync-and-mobile.md) - design spike: multi-device sync, mobile app, TypeScript stack
 - [docs/releasing.md](docs/releasing.md) - releasing cashU.app: CI and local paths, one-time setup, release notes, staging build (owner)
 - [docs/agents/s47-update-operator.md](docs/agents/s47-update-operator.md) - update contract inside the desktop app (Team ID, feed, install sequence)
-- [docs/migration-runbook.md](docs/migration-runbook.md) - moving an install from the Python app to the native app
 - [ONBOARDING.md](ONBOARDING.md) - end-user setup the agent walks through
 - [README.md](README.md) - product overview
 - [docs/connectors.md](docs/connectors.md), [docs/import-format.md](docs/import-format.md), [docs/budget-import-format.md](docs/budget-import-format.md) - external formats and contracts
