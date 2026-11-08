@@ -182,6 +182,38 @@ describe("HostRelay", () => {
     relay.dispose();
   });
 
+  it("backs off when the host closes each session right away, and resets after one that lasted", async () => {
+    const sleeps: number[] = [];
+    let clock = 0;
+    const port = new FakePort();
+    const host = hostOf([]);
+    const relay = new HostRelay({
+      port,
+      connect: host.connect,
+      log: () => {},
+      now: () => clock,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+      retryMs: { initial: 100, max: 300, stable: 1_000 },
+    });
+    // A host still opening its vaults closes every session at once: no tight loop.
+    for (let i = 1; i <= 4; i++) {
+      await vi.waitFor(() => expect(host.connections).toHaveLength(i));
+      host.connections[i - 1]?.close();
+    }
+    await vi.waitFor(() => expect(host.connections).toHaveLength(5));
+    expect(sleeps).toEqual([100, 200, 300, 300]);
+    // A session that lasted: the next reconnect is immediate and the backoff starts over.
+    clock += 1_000;
+    host.connections[4]?.close();
+    await vi.waitFor(() => expect(host.connections).toHaveLength(6));
+    host.connections[5]?.close();
+    await vi.waitFor(() => expect(host.connections).toHaveLength(7));
+    expect(sleeps).toEqual([100, 200, 300, 300, 100]);
+    relay.dispose();
+  });
+
   it("stops when the renderer's port closes: the session closes, nothing more is posted", async () => {
     const { port, host, relay } = relayOf();
     await vi.waitFor(() => expect(relay.connected).toBe(true));

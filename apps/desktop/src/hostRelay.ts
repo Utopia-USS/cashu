@@ -8,7 +8,8 @@
 // while it connects, `starting` when no host answered and it started one, `connected` once a session
 // is up (the host's own store `ready` follows), `unavailable` when the host could not be reached or
 // started (retried with backoff). When the host goes away (killed, crashed, replaced by an update) the
-// relay reconnects on its own; store messages posted meanwhile are dropped, and the renderer's client
+// relay reconnects on its own, at once after a session that lasted, with the same backoff after one the
+// host closed right away (a host still opening its vaults did that in a tight loop); store messages posted meanwhile are dropped, and the renderer's client
 // re-sends its live queries and unanswered commands (same idempotency keys) after the new `ready`.
 //
 // Electron's MessagePortMain and the host connection come in through small interfaces, so the
@@ -43,11 +44,16 @@ export interface HostRelayOptions {
   /** Value-free lines for the shell's log. */
   log(line: string): void;
   sleep?(ms: number): Promise<void>;
-  /** Backoff between failed connects: from `initial` doubling to `max` (default 500 ms to 10 s). */
-  readonly retryMs?: { readonly initial: number; readonly max: number };
+  /** Milliseconds of a monotonic clock (default `performance.now`). */
+  now?(): number;
+  /**
+   * Backoff between failed connects and after sessions shorter than `stable`: from `initial` doubling
+   * to `max` (default 500 ms to 10 s); a session of at least `stable` (default 5 s) resets it.
+   */
+  readonly retryMs?: { readonly initial: number; readonly max: number; readonly stable?: number };
 }
 
-const DEFAULT_RETRY = { initial: 500, max: 10_000 } as const;
+const DEFAULT_RETRY = { initial: 500, max: 10_000, stable: 5_000 } as const;
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class HostRelay {
@@ -99,6 +105,8 @@ export class HostRelay {
 
   async #run(): Promise<void> {
     const retry = this.#options.retryMs ?? DEFAULT_RETRY;
+    const stable = retry.stable ?? DEFAULT_RETRY.stable;
+    const now = this.#options.now ?? (() => performance.now());
     let backoff = retry.initial;
     let lost = false;
     while (!this.#disposed) {
@@ -123,8 +131,8 @@ export class HostRelay {
         connection.close();
         break;
       }
-      backoff = retry.initial;
       if (lost) this.#options.log("store relay: reconnected to the host");
+      const openedAt = now();
       const closed = new Promise<void>((resolve) => connection.onClose(resolve));
       this.#connection = connection;
       this.#link("connected");
@@ -139,6 +147,12 @@ export class HostRelay {
       if (this.#disposed) break;
       lost = true;
       this.#options.log("store relay: the host connection closed, reconnecting");
+      if (now() - openedAt >= stable) {
+        backoff = retry.initial;
+        continue;
+      }
+      await this.#pause(backoff);
+      backoff = Math.min(backoff * 2, retry.max);
     }
   }
 
