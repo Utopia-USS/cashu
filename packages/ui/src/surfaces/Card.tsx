@@ -27,7 +27,7 @@ export function Card({
       onSubmit={onSubmit}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
-      className={`rounded-lg border border-border bg-surface-raised ${paddings[padding]} ${className}`}
+      className={`rounded-widget border border-border bg-surface-raised ${paddings[padding]} ${className}`}
     >
       {children}
     </Tag>

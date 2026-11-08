@@ -2,8 +2,9 @@
    by @tailwindcss/vite for the desktop renderer and Storybook, and by Uniwind (Metro) for apps/mobile.
    Roles only: the default palette and scales are reset, so `bg-red-500` generates nothing. Light values
    live in @theme and again in `@variant light` (Uniwind's explicit light theme); keep the two identical
-   and every role defined in dark (no guard checks it yet). The old-name -> token table of the Python
-   app port is ~/cashu-lab/checkpoints/investments-ui-poc/tokens-map.md. */
+   and every role defined in dark (no guard checks it yet). Light keeps Python-app parity (the old-name ->
+   token table of that port is ~/cashu-lab/checkpoints/investments-ui-poc/tokens-map.md); the dark palette
+   follows the design direction in design/desktop/investments-home/lab.html (V5). */
 @import "tailwindcss";
 @import "uniwind";
 
@@ -16,7 +17,8 @@
   --radius-*: initial;
   --font-weight-*: initial;
 
-  /* Values match the Python app 1:1 (owner chose Python parity over AA contrast). */
+  /* Light values match the Python app 1:1 (owner chose Python parity over AA contrast); dark follows the
+     design direction (the dark block below). */
   --color-fg: #1a1d21;
   --color-fg-secondary: #374151;
   --color-fg-muted: #6b7280;
@@ -65,6 +67,7 @@
   --color-av-fg: #e8e8e8;
   --color-av-coin: #000000;
   --color-on-accent: #ffffff;
+  --color-paper: #ffffff;
   --color-inv-global: #2563eb;
   --color-inv-pl: #d97706;
   --color-inv-bonds: #0891b2;
@@ -108,7 +111,8 @@
   --spacing-row: 64px;
 
   /* Radii: the scale continues around the original sm / md / lg; `control` is the Python app's 8px of
-     buttons, fields, segments and skeletons, `widget` its 12px of widgets and big buttons. */
+     buttons, fields, segments and skeletons. `widget` is the card radius (Widget, SectionCard, ChartCard,
+     Kpi, Hero and their skeletons), 18px per the design direction (was the Python app's 12px). */
   --radius-5xs: 1px;
   --radius-4xs: 2px;
   --radius-3xs: 3px;
@@ -118,7 +122,9 @@
   --radius-sm-plus: 7px;
   --radius-control: 8px;
   --radius-md: 10px;
-  --radius-widget: 12px;
+  --radius-widget: 18px;
+  /* The big full-width buttons of the review deck: they kept the Python app's 12px when cards went to 18. */
+  --radius-button-lg: 12px;
   --radius-lg: 14px;
   --radius-xl: 18px;
   --radius-2xl: 20px;
@@ -212,9 +218,10 @@
   --tracking-heading: -0.02em;
   --tracking-dense: -0.03em;
 
-  /* Shadows. `card` follows the theme (none in dark) through --elevation-card, the rest are the same in
-     both themes. Tailwind inlines theme shadow values into the utility, hence the indirection; dark is a transparent
-     shadow, not `none`, so a ring on the same element still composes. */
+  /* Shadows. `card` follows the theme (none in dark: cards there have only their hairline border, per
+     the design direction) through --elevation-card, the rest are the same in both themes. Tailwind
+     inlines theme shadow values into the utility, hence the indirection; dark is a transparent shadow,
+     not `none`, so a ring on the same element still composes. */
   --shadow-card: var(--elevation-card);
   --shadow-deck: 0 1px 2px rgba(16, 18, 22, 0.04), 0 12px 32px rgba(16, 18, 22, 0.1);
   --shadow-tip: 0 6px 20px rgba(0, 0, 0, 0.14);
@@ -314,64 +321,74 @@
     --modal-panel-layer: 50;
     --modal-layer-step: 20;
     --elevation-card: 0 1px 2px rgba(16, 18, 22, 0.04);
+    /* Dark follows the design direction in design/desktop/investments-home/lab.html (V5, built on V4):
+       page #0a0a0b, card #0e0e10, surfaces #111113 / #17171a / #1e1e22, popover #161618, ink
+       #ededf0 / #a3a3ab / #6e6e77, accent #8ea4ff, chart c1..c5. No new hues: every role below takes
+       a palette value by its meaning. `border` and `chip` are opaque (the hairline rgba(255,255,255,.065)
+       and #17171a over the page) because components mix them with color-mix(). */
     @variant dark {
-      --color-fg: #e6e8eb;
-      --color-fg-secondary: #cbd5e1;
-      --color-fg-muted: #9aa4b2;
-      --color-fg-inverse: #0f1216;
-      --color-surface: #0f1216;
-      --color-surface-raised: #171b21;
-      --color-surface-sunken: #0a0c0f;
-      --color-surface-overlay: #171b21;
-      --color-border: #262c34;
-      --color-border-strong: #3a424d;
-      --color-accent: #60a5fa;
-      --color-accent-muted: #1e2a44;
-      --color-positive: #34d399;
-      --color-positive-bg: rgba(52, 211, 153, 0.14);
-      --color-negative: #f87171;
-      --color-negative-bg: rgba(248, 113, 113, 0.14);
-      --color-warning: #fbbf24;
-      --color-warning-bg: rgba(251, 191, 36, 0.14);
-      --color-info: #60a5fa;
-      --color-info-bg: rgba(96, 165, 250, 0.14);
-      --color-chart-1: #60a5fa;
-      --color-chart-2: #f472b6;
-      --color-chart-3: #34d399;
-      --color-chart-4: #fbbf24;
-      --color-chart-5: #a78bfa;
-      --color-chart-6: #22d3ee;
-      --color-chart-7: #f87171;
-      --color-chart-8: #9ca3af;
-      --color-chart-grid: #1f252d;
-      --color-chart-axis: #666666;
-      --color-chart-rule: rgba(255, 255, 255, 0.12);
-      --color-focus: #60a5fa;
-      --color-chip: #232a33;
-      --color-chip-fg: #cbd5e1;
-      --color-subtle: #141820;
-      --color-bench: #6b7684;
+      --color-fg: #ededf0;
+      --color-fg-secondary: #a3a3ab;
+      --color-fg-muted: #6e6e77;
+      --color-fg-inverse: #0a0a0b;
+      --color-surface: #0a0a0b;
+      --color-surface-raised: #0e0e10;
+      --color-surface-sunken: #070708;
+      --color-surface-overlay: #161618;
+      --color-border: #1a1a1b;
+      --color-border-strong: rgba(255, 255, 255, 0.18);
+      --color-accent: #8ea4ff;
+      --color-accent-muted: rgba(142, 164, 255, 0.13);
+      --color-positive: #4cc38a;
+      --color-positive-bg: rgba(76, 195, 138, 0.12);
+      --color-negative: #ef6f6c;
+      --color-negative-bg: rgba(239, 111, 108, 0.12);
+      --color-warning: #e5a54a;
+      --color-warning-bg: rgba(229, 165, 74, 0.12);
+      --color-info: #8ea4ff;
+      --color-info-bg: rgba(142, 164, 255, 0.13);
+      /* series 1..5 = the lab's c1..c5; 6..8 continue with the tones and the second ink */
+      --color-chart-1: #8ea4ff;
+      --color-chart-2: #5cc0d6;
+      --color-chart-3: #b39cff;
+      --color-chart-4: #e5a54a;
+      --color-chart-5: #5d5d66;
+      --color-chart-6: #4cc38a;
+      --color-chart-7: #ef6f6c;
+      --color-chart-8: #a3a3ab;
+      --color-chart-grid: rgba(255, 255, 255, 0.065);
+      --color-chart-axis: #6e6e77;
+      --color-chart-rule: rgba(255, 255, 255, 0.11);
+      --color-focus: #8ea4ff;
+      --color-chip: #17171a;
+      --color-chip-fg: #a3a3ab;
+      --color-subtle: #111113;
+      --color-bench: #6e6e77;
       --color-scrim: rgba(0, 0, 0, 0.6);
       --color-shimmer: rgba(255, 255, 255, 0.09);
-      --color-ink: #0b0d10;
-      --color-net: #a78bfa;
+      --color-ink: #0a0a0b;
+      /* violet: the net line and the fulfilled-thesis ring */
+      --color-net: #b39cff;
       --color-av-bg: #000000;
-      --color-av-fg: #e8e8e8;
-      --color-av-coin: #2b323c;
-      --color-on-accent: #ffffff;
-      --color-inv-global: #3b82f6;
-      --color-inv-pl: #d97706;
-      --color-inv-bonds: #0e9fbf;
-      --color-inv-cash: #8b5cf6;
-      --color-inv-other: #9aa4b2;
-      --color-inv-5: #34d399;
-      --color-inv-6: #f472b6;
-      --color-inv-7: #facc15;
-      --color-nw-money: #60a5fa;
-      --color-nw-property: #22d3ee;
-      --color-nw-vehicle: #34d399;
-      --color-nw-mortgage: #f87171;
-      --color-nw-loan: #fb923c;
+      --color-av-fg: #a3a3ab;
+      --color-av-coin: #1e1e22;
+      /* the accent and the tones are light here, so text on them is the page ink */
+      --color-on-accent: #0a0a0b;
+      /* the face of chart dots stays white */
+      --color-paper: #ffffff;
+      --color-inv-global: #8ea4ff;
+      --color-inv-pl: #e5a54a;
+      --color-inv-bonds: #5cc0d6;
+      --color-inv-cash: #b39cff;
+      --color-inv-other: #5d5d66;
+      --color-inv-5: #4cc38a;
+      --color-inv-6: #ef6f6c;
+      --color-inv-7: #a3a3ab;
+      --color-nw-money: #8ea4ff;
+      --color-nw-property: #5cc0d6;
+      --color-nw-vehicle: #4cc38a;
+      --color-nw-mortgage: #ef6f6c;
+      --color-nw-loan: #e5a54a;
       --elevation-card: 0 0 #0000;
     }
     @variant light {
@@ -419,6 +436,7 @@
       --color-av-fg: #e8e8e8;
       --color-av-coin: #000000;
       --color-on-accent: #ffffff;
+      --color-paper: #ffffff;
       --color-inv-global: #2563eb;
       --color-inv-pl: #d97706;
       --color-inv-bonds: #0891b2;

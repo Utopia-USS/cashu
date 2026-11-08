@@ -428,7 +428,7 @@ const stat = "rounded-md bg-subtle p-2.5";
 const line = "rounded-md bg-subtle px-2.5 py-2 text-sm";
 // `.rd-close`: the text-coloured full-width button.
 const close =
-  "cursor-pointer rounded-widget border-0 bg-fg p-3 text-base font-heavy leading-control font-control text-surface-raised disabled:cursor-default disabled:opacity-60";
+  "cursor-pointer rounded-button-lg border-0 bg-fg p-3 text-base font-heavy leading-control font-control text-surface-raised disabled:cursor-default disabled:opacity-60";
 
 /** The last card (old SummaryCard body): stats, agenda, decisions, skipped, the closing note and the close. */
 export function SummaryBody({

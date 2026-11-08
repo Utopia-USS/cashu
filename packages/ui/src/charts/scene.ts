@@ -110,7 +110,7 @@ export const ROLE_VAR: Record<ChartRole, string> = {
   surface: "--color-surface-raised",
   axis: "--color-chart-axis",
   rule: "--color-chart-rule",
-  paper: "--color-on-accent",
+  paper: "--color-paper",
   accent: "--color-accent",
   net: "--color-net",
   bench: "--color-bench",

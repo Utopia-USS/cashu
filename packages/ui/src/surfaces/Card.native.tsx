@@ -11,7 +11,7 @@ export function Card({ children, padding = "md", label, role, testID, className 
       accessibilityRole={role === "alert" ? "alert" : undefined}
       accessibilityLiveRegion={role === "status" ? "polite" : undefined}
       testID={testID}
-      className={`rounded-lg border border-border bg-surface-raised ${paddings[padding]} ${className}`}
+      className={`rounded-widget border border-border bg-surface-raised ${paddings[padding]} ${className}`}
     >
       {children}
     </View>

@@ -48,7 +48,7 @@ const back = [
 // `.rd-btns` (+ `.f`, `.k`), `.rd-keys` (+ kbd).
 const btns = `${column} grid grid-cols-2 gap-2.5`;
 const bigBtn =
-  "cursor-pointer rounded-widget border p-3 text-base font-heavy leading-control font-control";
+  "cursor-pointer rounded-button-lg border p-3 text-base font-heavy leading-control font-control";
 const keys = "text-center text-2xs text-fg-muted max-phone:hidden";
 const kbd = "rounded-2xs bg-chip px-1.25 font-[family-name:inherit]";
 // `.rd-sheet .close`, `.rd-sheet h3`, `p`, `.srcs`.
