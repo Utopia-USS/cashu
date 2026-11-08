@@ -82,14 +82,6 @@ const ready = z.strictObject({
 const notFound = z.strictObject({ kind: z.literal("not_found"), operationId: hexId });
 const none = z.strictObject({ kind: z.literal("none") });
 
-export const nativeCreationStatusSchema = z.discriminatedUnion("kind", [
-  pending,
-  outcomeUnknown,
-  ready,
-  notFound,
-  none,
-]);
-export type NativeCreationStatus = z.infer<typeof nativeCreationStatusSchema>;
 export type NativeCreationReady = z.infer<typeof ready>;
 export const nativeCreationCommitResultSchema = z.discriminatedUnion("kind", [
   ready,

@@ -1,6 +1,13 @@
 // The MCP tool schemas, hand-maintained (their source of truth). First captured from the retired
-// Python tool registry; the parity check mcp.tool_schemas compares them with its frozen goldens.
+// Python tool registry.
 import type { ToolMetadata } from "../registry.js";
+
+type Defaulted = "refused" | "refusedValues" | "nullable" | "also";
+
+/** A tool's metadata with the registry defaults (`toolSpec`): no refusals, nullable fields or extra
+ * modules unless the entry names them. */
+const tool = (init: Omit<ToolMetadata, Defaulted> & Partial<Pick<ToolMetadata, Defaulted>>) =>
+  ({ refused: {}, refusedValues: {}, nullable: [], also: [], ...init }) satisfies ToolMetadata;
 
 export const TOOL_ORDER: readonly string[] = [
   "profile_overview",
@@ -51,7 +58,7 @@ export const TOOL_ORDER: readonly string[] = [
 ];
 
 export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
-  {
+  tool({
     name: "set_recommendation",
     module: "investments",
     description:
@@ -72,12 +79,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["instrument", "recommendation", "reason"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "set_recommendations",
     module: "investments",
     description:
@@ -116,12 +119,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["recommendations"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "record_decision",
     module: "investments",
     description:
@@ -142,12 +141,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["signal_id", "action"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "upsert_thesis",
     module: "investments",
     description: "Create or update the thesis of a held instrument (id, symbol or ISIN).",
@@ -179,12 +174,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["instrument", "entry_type", "thesis"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "propose_strategy",
     module: "investments",
     description:
@@ -209,12 +200,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["yaml"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "propose_custom_rule",
     module: "investments",
     description:
@@ -238,12 +225,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["kind_or_expression"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "propose_import",
     module: "investments",
     description:
@@ -279,11 +262,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
       converter:
         "MCP calls never make the app run code: run a one-off converter yourself (python3 <script> <export> <output.csv>) and pass the cashu-format output file as path, or write a connector (propose_connector), which the app runs only after the owner approves it in Ustawienia > Konektory",
     },
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "alerts",
     module: "investments",
     description:
@@ -297,12 +277,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "add_alert",
     module: "investments",
     description:
@@ -368,12 +344,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["kind", "params", "polarity", "severity", "title"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "mute_alert",
     module: "investments",
     description:
@@ -386,12 +358,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["id"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "watchlist",
     module: "investments",
     description:
@@ -399,12 +367,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     properties: {},
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "search_instruments",
     module: "investments",
     description:
@@ -418,12 +382,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["query"],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "add_to_watchlist",
     module: "investments",
     description:
@@ -452,12 +412,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["symbol_or_isin"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "remove_from_watchlist",
     module: "investments",
     description:
@@ -470,12 +426,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["id"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "research_context",
     module: "investments",
     description:
@@ -483,12 +435,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     properties: {},
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "research_notes",
     module: "investments",
     description:
@@ -545,12 +493,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "start_research_run",
     module: "investments",
     description:
@@ -562,12 +506,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: [],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "add_research_note",
     module: "investments",
     description:
@@ -669,11 +609,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
       theme:
         "themes are gone: a market note takes segment (a catalog key from research_context.segment_catalog); company facts go on the instrument",
     },
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "set_topic_market_view",
     module: "investments",
     description:
@@ -723,7 +660,6 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["segment", "assessment", "outlook", "sources"],
     write: true,
-    refused: {},
     refusedValues: {
       segment: {
         macro_risk: "macro keys are not instrument segments",
@@ -733,10 +669,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
         macro_rates: "macro keys are not instrument segments",
       },
     },
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "upsert_topic_thesis",
     module: "investments",
     description:
@@ -777,7 +711,6 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["segment", "thesis"],
     write: true,
-    refused: {},
     refusedValues: {
       segment: {
         macro_risk: "macro keys are not instrument segments",
@@ -787,10 +720,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
         macro_rates: "macro keys are not instrument segments",
       },
     },
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "finish_research_run",
     module: "investments",
     description:
@@ -815,12 +746,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["run_id"],
     write: true,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "set_instrument_segment",
     module: "investments",
     description:
@@ -857,7 +784,6 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     },
     required: ["instrument"],
     write: true,
-    refused: {},
     refusedValues: {
       segment: {
         macro_risk: "macro keys are not instrument segments",
@@ -868,9 +794,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
       },
     },
     nullable: ["segment"],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "test_connector",
     module: "core",
     description:
@@ -898,11 +823,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
       approve: "only the owner approves a connector, in the app (Ustawienia > Konektory)",
       install: "test_connector never installs; submit the connector with propose_connector",
     },
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "propose_connector",
     module: "core",
     description:
@@ -923,11 +845,8 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
       converter: "propose_connector takes the connector directory only; nothing is run",
       approve: "only the owner approves a connector, in the app (Ustawienia > Konektory)",
     },
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "connectors",
     module: "core",
     description:
@@ -935,14 +854,10 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     properties: {},
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
+  }),
 ];
 export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
-  {
+  tool({
     name: "portfolio_overview",
     module: "investments",
     description:
@@ -950,12 +865,8 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     properties: {},
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "positions",
     module: "investments",
     description:
@@ -963,12 +874,8 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     properties: {},
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "signals",
     module: "investments",
     description:
@@ -982,12 +889,8 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     },
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "review_context",
     module: "investments",
     description:
@@ -995,12 +898,8 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     properties: {},
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "strategy_status",
     module: "investments",
     description:
@@ -1008,12 +907,8 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     properties: {},
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "history_metrics",
     module: "investments",
     description:
@@ -1021,12 +916,8 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     properties: {},
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "theses",
     module: "investments",
     description:
@@ -1039,12 +930,8 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     },
     required: [],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
-  {
+  }),
+  tool({
     name: "inspect_export",
     module: "investments",
     description:
@@ -1064,12 +951,9 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     },
     required: ["path"],
     write: false,
-    refused: {},
-    refusedValues: {},
-    nullable: [],
     also: ["budget"],
-  },
-  {
+  }),
+  tool({
     name: "validate_import",
     module: "investments",
     description:
@@ -1092,8 +976,5 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
       converter:
         "MCP calls never make the app run code: run a one-off converter yourself (python3 <script> <export> <output.csv>) and pass the cashu-format output file as path, or write a connector (propose_connector), which the app runs only after the owner approves it in Ustawienia > Konektory",
     },
-    refusedValues: {},
-    nullable: [],
-    also: [],
-  },
+  }),
 ];

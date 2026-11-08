@@ -16,17 +16,6 @@ import type { NameGuard } from "./privacy/names.js";
 import { compareCodePoints } from "./privacy/pyJson.js";
 import type { Privacy } from "./privacy/redactor.js";
 
-/** Provider order (`registry.PROVIDERS`): tools are listed in this order, then in each provider's order. */
-export const PROVIDERS = [
-  "core",
-  "budget",
-  "loans",
-  "investments",
-  "alerts",
-  "research",
-  "connectors",
-] as const;
-
 /** Strategy YAML / markdown are the longest arguments. */
 export const MAX_STRING = 200_000;
 
@@ -190,20 +179,6 @@ export function inputSchema(
     required: [...spec.required, ...spec.nullable.filter((n) => !spec.required.includes(n))],
     additionalProperties: false,
   };
-}
-
-/** Every tool by name, in provider order; a duplicate name is a bug. */
-export function allTools<Store>(
-  providers: readonly (readonly ToolSpec<Store>[])[],
-): Map<string, ToolSpec<Store>> {
-  const out = new Map<string, ToolSpec<Store>>();
-  for (const specs of providers) {
-    for (const spec of specs) {
-      if (out.has(spec.name)) throw new Error(`duplicate MCP tool ${spec.name}`);
-      out.set(spec.name, spec);
-    }
-  }
-  return out;
 }
 
 function isObject(value: unknown): boolean {

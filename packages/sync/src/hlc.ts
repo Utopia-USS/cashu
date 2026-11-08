@@ -52,10 +52,6 @@ export function isHlc(value: unknown): value is Hlc {
   return typeof value === "string" && HLC_RE.test(value);
 }
 
-export function hlcDevice(value: Hlc): string {
-  return value.slice(15);
-}
-
 /** Total order of events by HLC: plain code-unit comparison (events.md 3.2). */
 export function compareHlc(a: Hlc, b: Hlc): number {
   return a < b ? -1 : a > b ? 1 : 0;

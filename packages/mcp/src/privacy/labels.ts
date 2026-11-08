@@ -53,24 +53,6 @@ export type Sensitivity =
   | "market"
   | "authored";
 
-export const SENSITIVITIES: readonly Sensitivity[] = [
-  "identifier",
-  "amount",
-  "merchant",
-  "percent",
-  "date",
-  "category",
-  "text",
-  "symbol",
-  "count",
-  "ref",
-  "flag",
-  "account",
-  "level",
-  "market",
-  "authored",
-];
-
 /** What a labelled leaf may hold (see the module doc for the Python type each stands for). */
 export type LeafValue = null | boolean | string | number | bigint | Decimal | DateTime;
 

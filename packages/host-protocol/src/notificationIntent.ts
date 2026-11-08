@@ -12,7 +12,6 @@ export const notificationResolveParamsSchema = z
     intentToken: z.string().regex(/^[0-9a-f]{64}$/),
   })
   .strict();
-export type NotificationResolveParams = z.infer<typeof notificationResolveParamsSchema>;
 
 export const notificationResolveResultSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("unavailable") }).strict(),

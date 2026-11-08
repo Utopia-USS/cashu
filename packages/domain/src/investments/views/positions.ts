@@ -202,6 +202,4 @@ export function positionsView(input: PortfolioProjectionInput) {
     total: input.state.valued.totalBase,
   };
 }
-export type InstrumentView = ReturnType<typeof instrumentView>;
 export type PositionRow = ReturnType<typeof positionRows>[number];
-export type PositionsView = ReturnType<typeof positionsView>;

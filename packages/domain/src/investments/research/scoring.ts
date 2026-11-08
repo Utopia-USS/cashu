@@ -32,14 +32,6 @@ export const POLARITY_SIGN: ReadonlyMap<string, number> = new Map([
   ["negative", -1],
   ["neutral", 0],
 ]);
-export const RELATIONS = Object.freeze([
-  "supports",
-  "weakens",
-  "invalidates",
-  "fulfills",
-  "neutral",
-  "none",
-] as const);
 /** How much a relation says about the thesis (the strongest one wins in summaries). */
 export const RELATION_RANK: ReadonlyMap<string, number> = new Map([
   ["invalidates", 5],

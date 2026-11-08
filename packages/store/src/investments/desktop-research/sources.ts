@@ -1,4 +1,3 @@
-import type { UiLang } from "@cashu/domain/core";
 import { type market, performance as perf } from "@cashu/domain/investments";
 import type * as macro from "@cashu/domain/investments/macro";
 import type { ChangeSource, Read } from "../../query.js";
@@ -68,5 +67,3 @@ export function sourceForVault<T>(
 export function sourceStatus<T>(result: ResearchSourceResult<T>): ResearchSourceStatus {
   return result.status === "current" ? { status: "current" } : result;
 }
-
-export type ResearchLanguage = UiLang;

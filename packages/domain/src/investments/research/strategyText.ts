@@ -30,7 +30,6 @@ export const SECTION_KEYWORDS: Readonly<Record<string, readonly string[]>> = Obj
   entry_exit: Object.freeze(["wejsci", "wyjsci", "entry", "exit", "kupuj", "sprzedaj"]),
   avoid: Object.freeze(["unikam", "unikac", "wyklucz", "czego nie", "avoid", "exclude"]),
 });
-export const SECTION_KINDS: readonly string[] = Object.freeze(Object.keys(SECTION_KEYWORDS));
 
 /** `_HEADING` / `_FENCE` Python sources, verbatim. */
 export const HEADING_PATTERN = String.raw`^(#{1,6})\s+(.+?)\s*#*\s*$`;

@@ -42,7 +42,6 @@ export {
   type MonthCloseOptions,
   type MonthParse,
   monthClose,
-  monthFlows,
   parseMonth,
   shiftMonth,
 } from "./monthClose.js";

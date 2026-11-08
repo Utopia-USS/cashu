@@ -25,11 +25,6 @@ export function vaultSalt(bytes: Uint8Array): VaultSalt {
   return Object.freeze({ bytes: Uint8Array.from(bytes) });
 }
 
-/** A fresh salt for a new vault (CSPRNG via `crypto.getRandomValues`). */
-export function newVaultSalt(): VaultSalt {
-  return vaultSalt(randomBytes(VAULT_SALT_BYTES));
-}
-
 /** A DET gid function bound to one vault's salt, as the materializers and commands get it. */
 export type DetGid = (table: GidTable, parts: readonly string[]) => string;
 

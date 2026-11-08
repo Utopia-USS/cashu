@@ -9,7 +9,6 @@ export {
   type Benchmark,
   DEFAULT_NOTIFICATIONS,
   DEFAULT_REVIEW,
-  EMPTY_WATCHLIST,
   isoNumber,
   type NotificationPolicy,
   REVIEW_CARDS,

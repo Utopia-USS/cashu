@@ -87,4 +87,3 @@ export function attentionView(input: PortfolioProjectionInput & { readonly limit
     attention_snoozed: all.filter(snoozed).length,
   };
 }
-export type AttentionView = ReturnType<typeof attentionView>;

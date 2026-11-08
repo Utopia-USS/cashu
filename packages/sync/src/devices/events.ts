@@ -9,7 +9,7 @@
 // registry or the lease chain is decided by it: revocations by stream positions (registry.ts), the
 // lease by its `prev` links (lease.ts); the HLC only breaks ties between otherwise equal candidates.
 
-import type { InboundBatch, SegmentCursor, UnstampedEvent } from "../carrier.js";
+import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import {
   type DeviceIdentity,
   decodeHead,
@@ -75,18 +75,6 @@ export interface LogEvent {
   readonly type: string;
   readonly v: number;
   readonly data: Readonly<Record<string, unknown>>;
-}
-
-export function logEventsFromBatch(batch: InboundBatch): LogEvent[] {
-  return batch.events.map((e) => ({
-    eid: e.i,
-    hlc: e.h,
-    writer: batch.device,
-    position: batch.cursor,
-    type: e.t,
-    v: e.v,
-    data: e.d,
-  }));
 }
 
 export function isUlid(value: unknown): value is string {

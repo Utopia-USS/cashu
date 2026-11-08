@@ -62,7 +62,6 @@ export const SEGMENTS: readonly Segment[] = Object.freeze([
   seg("quantum", "Komputery kwantowe", "sector", "Quantum computing"),
 ]);
 export const SEGMENT_KEYS: readonly string[] = Object.freeze(SEGMENTS.map((s) => s.key));
-export const SEGMENT_GROUPS: readonly string[] = Object.freeze(["asset", "sector"]);
 /** Pseudo row of the attribution for holdings without a segment (never a catalog key). */
 export const UNASSIGNED = "unassigned";
 export const UNASSIGNED_LABEL = "Bez tematu";
@@ -83,7 +82,6 @@ export const MACRO_KEYS: readonly string[] = Object.freeze(MACRO_SEGMENTS.map((s
 /** Every key a segment note (and a research scope) may name. */
 export const NOTE_SEGMENT_KEYS: readonly string[] = Object.freeze([...SEGMENT_KEYS, ...MACRO_KEYS]);
 export const MACRO_PREFIX = "macro_";
-export const NOT_INSTRUMENT_SEGMENT = "macro keys are not instrument segments";
 
 /**
  * Keys renamed in the catalog (P7: `uranium` -> `power`); `segmentOf` still reads an old value as

@@ -138,7 +138,6 @@ export {
   type HoldingValues,
   holdingKey,
   type PortfolioSeries,
-  seriesFirstDate,
   seriesIndexOf,
   type ValuationPolicy,
 } from "./series.js";

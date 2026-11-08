@@ -11,7 +11,6 @@ import {
   type CompiledExpression,
   compileExpression,
   ExpressionError,
-  bucketReferences as expressionBuckets,
   SCOPES,
   Scope,
 } from "../expr/index.js";
@@ -27,15 +26,6 @@ export const MAX_MESSAGE_LENGTH = 200;
 export { CustomParams } from "./customParams.js";
 
 export const CUSTOM = "custom";
-
-/** `CustomParams.bucket_references`: every bucket id the rule names (`buckets` plus literals in `when`). */
-export function customBucketReferences(params: CustomParams): readonly string[] {
-  const refs = [...params.buckets];
-  if (params.expression !== null) {
-    for (const [bucket] of expressionBuckets(params.expression)) refs.push(bucket);
-  }
-  return [...new Set(refs)];
-}
 
 export const customRule: RuleKind<CustomParams> = Object.freeze({
   kind: CUSTOM,

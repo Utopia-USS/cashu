@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { nobleHmacSha256 } from "./crypto/hmac.js";
 import { ULID_RE, UUID8_RE } from "./events/v1/primitives.js";
-import { detGid, detGidFor, mintUlid, newVaultSalt, vaultSalt } from "./gid.js";
+import { detGid, detGidFor, mintUlid, vaultSalt } from "./gid.js";
 import { nodeHmacSha256 } from "./testing/node-hmac.js";
 import { rng } from "./testing/random.js";
 import { TEST_SALT } from "./testing/store.js";
@@ -53,7 +53,6 @@ describe("keyed DET gids", () => {
   it("depends on the salt: another vault gets unrelated gids", () => {
     const other = vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => 31 - i));
     expect(detGid(other, "category_rules", ["SKLEP TESTOWY"])).not.toBe(VECTORS[7]?.[2]);
-    expect(newVaultSalt().bytes).toHaveLength(32);
   });
 
   it("a vault's keyed gid function agrees with one-off gids on random part lists", () => {

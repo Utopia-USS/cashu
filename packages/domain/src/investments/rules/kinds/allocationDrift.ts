@@ -46,8 +46,6 @@ export interface RebalancePolicy {
   readonly minTradeValue: Decimal;
 }
 
-export const REBALANCE_KEYS = ["absolute_band_pp", "relative_band", "min_trade_value"] as const;
-
 export const DEFAULT_REBALANCE: RebalancePolicy = Object.freeze({
   absoluteBandPp: 5.0,
   relativeBand: 0.25,

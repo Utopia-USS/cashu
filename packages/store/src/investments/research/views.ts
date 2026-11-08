@@ -220,8 +220,6 @@ export function noteView(n: ResearchNote, ctx: NoteContext, now: Instant) {
   };
 }
 
-export type NoteViewShape = ReturnType<typeof noteView>;
-
 /** Python `_context`: what the note dicts of `rows` need. */
 export function noteContext(
   read: Read,

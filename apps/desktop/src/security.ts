@@ -51,7 +51,7 @@ export function navigationDecision(url: string, origin: string): NavigationDecis
 const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 
 /** Terminal colour codes removed before a line reaches the desktop log. */
-export function stripAnsi(text: string): string {
+function stripAnsi(text: string): string {
   return text.replace(ANSI, "");
 }
 

@@ -1,6 +1,6 @@
 /** Portfolio overview: all allocation facts stay present; owner filtering affects documented KPIs/rail. */
 import type { IsoDate } from "../../dates.js";
-import { type Decimal, ZERO } from "../../decimal.js";
+import { ZERO } from "../../decimal.js";
 import {
   allWarnings,
   instrumentLabel,

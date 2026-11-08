@@ -6,9 +6,6 @@ export {
   jsonType,
   OUTCOMES,
   type Outcome,
-  storedDuration,
-  storedOutcome,
-  storedTool,
   summarizeArgs,
 } from "./audit.js";
 export {
@@ -41,7 +38,6 @@ export {
   NO_SUMMARIES,
   pct,
   ref,
-  SENSITIVITIES,
   type Sensitivity,
   type SummaryCheck,
   share,
@@ -61,7 +57,6 @@ export {
   type CollectInput,
   collectGuard,
   fold,
-  isPayeeRef,
   looksLikePerson,
   NameGuard,
   type NameGuardInit,

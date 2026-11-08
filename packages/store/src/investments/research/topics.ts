@@ -248,5 +248,3 @@ export function topicThesisView(row: TopicThesis | undefined, lang: UiLang) {
     updated_at: iso(row.updatedAt),
   };
 }
-
-export type TopicThesisView = NonNullable<ReturnType<typeof topicThesisView>>;

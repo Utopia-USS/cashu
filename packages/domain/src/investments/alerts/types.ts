@@ -36,7 +36,6 @@ export type AlertStatus = (typeof AlertStatus)[keyof typeof AlertStatus];
 export const AlertSource = Object.freeze({ USER: "user", AGENT: "agent" } as const);
 export type AlertSource = (typeof AlertSource)[keyof typeof AlertSource];
 export const KINDS: readonly AlertKind[] = Object.freeze(Object.values(AlertKind));
-export const EVALUATED_STATUSES = [AlertStatus.ACTIVE, AlertStatus.TRIGGERED] as const;
 export const LIVE_STATUSES = [
   AlertStatus.ACTIVE,
   AlertStatus.TRIGGERED,
@@ -52,15 +51,12 @@ export const PRICE_KINDS: readonly AlertKind[] = [
   AlertKind.RANGE_BREAKOUT,
   AlertKind.VOLUME_SPIKE,
 ];
-export const WEIGHT_KINDS: readonly AlertKind[] = [AlertKind.WEIGHT_ABOVE, AlertKind.WEIGHT_BELOW];
 export const MAX_WINDOW_DAYS = 260;
 export const MAX_CHANGE_THRESHOLD = 10;
 export const MAX_TITLE_LENGTH = 120;
 export const MAX_NOTE_LENGTH = 2000;
 export const MAX_TAG_LENGTH = 24;
 export const MAX_EXPRESSION_LENGTH = 2000;
-export const MAX_COOLDOWN_DAYS = 3650;
-export const MAX_EXPIRY_DAYS = 3650;
 export const BREAKOUT_WINDOW = [10, MAX_WINDOW_DAYS, 30] as const;
 export const BREAKOUT_RANGE = [0.01, 0.3, 0.08] as const;
 export const VOLUME_WINDOW = [5, MAX_WINDOW_DAYS, 20] as const;
@@ -107,5 +103,3 @@ export interface AlertCheck {
 export const ALERT_PREFIX = "alert:";
 export const alertRuleId = (id: string): string => `${ALERT_PREFIX}${id}`;
 export const alertSignalKind = (kind: string): string => `${ALERT_PREFIX}${kind}`;
-export const isAlertKey = (value: string | null): boolean =>
-  Boolean(value?.startsWith(ALERT_PREFIX));

@@ -257,7 +257,6 @@ export const OVERVIEW_FLOAT_PATHS: readonly string[] = [
   ...ALLOCATION_FLOAT_PATHS.map((p) => `allocation.${p}`),
   ...ACCOUNT_FLOAT_PATHS.map((p) => `accounts.${p}`),
 ];
-export type PortfolioViewInput = PortfolioViewState;
 export interface ViewSignal extends SignalCandidate {
   readonly id: string;
   readonly status: SignalStatus;

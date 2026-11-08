@@ -56,17 +56,6 @@ export const DIRECTION_TONE: Record<Direction, "pos" | "neg" | ""> = {
   flat: "",
 };
 
-/** Loose field names (entry, exit, size) to the thesis record's field names. */
-export const normField = (f: string | null | undefined): string | null =>
-  !f
-    ? null
-    : ((
-        { entry: "thesis", exit: "exit_plan", size: "size_plan", type: "entry_type" } as Record<
-          string,
-          string
-        >
-      )[f] ?? f);
-
 export const RESEARCH_SKILL = "/market-research";
 /** Prompt of the Saturday routine (the skill reads `rutyna` as a scheduled run). */
 export const ROUTINE_PROMPT = "/market-research rutyna";

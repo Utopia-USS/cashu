@@ -114,8 +114,6 @@ export const adminStatusResultSchema = z.object({
 export type AdminStatus = z.infer<typeof adminStatusResultSchema>;
 
 export const adminStopParamsSchema = z.object({});
-/** The host stops accepting, finishes its current work, releases the lock and exits 0. */
-export const adminStopResultSchema = z.object({ stopping: z.literal(true) });
 
 export const adminHandoverParamsSchema = z.object({});
 /**

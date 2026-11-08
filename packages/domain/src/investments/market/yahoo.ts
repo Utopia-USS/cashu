@@ -32,7 +32,6 @@ import { pySplit, pyStrip } from "../../text.js";
 import { AssetClass } from "../domain/enums.js";
 import {
   AliasNamespace,
-  aliasOf,
   type Instrument,
   instrumentAlias,
   instrument as makeInstrument,
@@ -491,9 +490,4 @@ export function parseYahooSpark(body: string): Map<string, string> {
     }
   }
   return out;
-}
-
-/** The yahoo alias of an instrument (its symbol at Yahoo), or null. */
-export function yahooSymbolOf(instrument: Instrument): string | null {
-  return aliasOf(instrument, AliasNamespace.YAHOO);
 }

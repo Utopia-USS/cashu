@@ -5,7 +5,7 @@
 
 import { lang } from "@cashu/i18n";
 import { hostOf } from "../../../core/url.js";
-import { dateParts, dmy, pp } from "../../labels.js";
+import { dateParts, dmy } from "../../labels.js";
 import { S, SEGMENT_LABEL } from "./segments.strings.js";
 import type {
   NoteSource,
@@ -63,20 +63,6 @@ export const segmentLabel = (key: string | null | undefined): string =>
   SEGMENTS.find((s) => s.key === canonKey(key))?.label ?? key ?? "";
 
 // ---- tone and text ----------------------------------------------------------------------------------------
-
-/** One-decimal rounding of a fraction in percent, symmetric around zero (-0.0005 -> -0.1, not -0). */
-const round1 = (v: number) => (Math.sign(v) * Math.round(Math.abs(v) * 1000)) / 10;
-
-export type PpTone = "pos" | "neg" | "zero";
-/** Tone of a contribution (fraction): `zero` when it rounds to 0,0 pp. */
-export function ppTone(c: number | null | undefined): PpTone {
-  if (c == null || !Number.isFinite(c)) return "zero";
-  const r = round1(c);
-  return r >= 0.1 ? "pos" : r <= -0.1 ? "neg" : "zero";
-}
-/** Contribution (fraction) -> `+0,4 pp` / `-0,8 pp` / `0,0 pp`, rounded like `ppTone`. */
-export const ppOf = (c: number | null | undefined): string =>
-  c == null || !Number.isFinite(c) ? "-" : pp(round1(c));
 
 // ---- diverging bar ----------------------------------------------------------------------------------------
 
@@ -136,24 +122,7 @@ export const instSymbol = (
   symOf: SymOf,
 ): string => symOf(i.instrument_id) ?? i.label ?? `#${i.instrument_id}`;
 
-/** P7 (review LOW-2): one short line when the rows do not add up to the move (|residual| >= 0,1 pp): the gap comes
- * from transactions and position imports inside the window. Null otherwise. */
-export const residualLine = (d: Partial<Pick<SegmentAttribution, "residual">>): string | null =>
-  d.residual != null && ppTone(d.residual) !== "zero" ? S.residual(ppOf(d.residual)) : null;
-
 // ---- topics (P7 design 1.3) --------------------------------------------------------------------------------
-
-export type TopicKind = "held" | "new" | "watched" | "none";
-/** A member of the row is held now (BE `member_instruments`, held at the window end). */
-export const heldNow = (r: Pick<DisplayRow, "member_instruments">): boolean =>
-  !!r.member_instruments?.some((m) => m.held);
-
-/** held = exposure at the window start; new = no exposure at the start but a member held now (bought inside the window:
- * not muted, not `tylko obserwowane`, no contribution); watched = priced members, none held; none = a note-only row. */
-export const topicKind = (
-  r: Pick<DisplayRow, "weight" | "members" | "member_instruments">,
-): TopicKind =>
-  r.weight > 0 ? "held" : heldNow(r) ? "new" : (r.members ?? 0) > 0 ? "watched" : "none";
 
 /** `held`: held at the window start or now (clickable to the asset); `member`: the BE member entry, when any. */
 export interface TopicSym {

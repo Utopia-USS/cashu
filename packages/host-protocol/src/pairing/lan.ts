@@ -109,12 +109,6 @@ export const lanChallengeRequestSchema = z
     value.purpose === "resume" ? value.session !== undefined : value.session === undefined,
   );
 
-export const lanChallengeReplySchema = z.strictObject({
-  v: z.literal(LAN_VERSION),
-  nonce: hex64,
-  expiresAt: z.number().int().nonnegative(),
-});
-
 export const lanAuthSchema = z.strictObject({
   v: z.literal(LAN_VERSION),
   vault: hex32,
@@ -259,6 +253,5 @@ export function lanAuthBody(input: {
   return new TextEncoder().encode(body);
 }
 
-export type PairExchange = z.infer<typeof pairExchangeSchema>;
 export type PairExchangeReply = z.infer<typeof pairExchangeReplySchema>;
 export type LanCarrierRequest = z.infer<typeof lanCarrierRequestSchema>;

@@ -177,11 +177,6 @@ function closeOf(b: CloseBuilder, cushionTopUp: Decimal): CurrencyClose {
   };
 }
 
-/** `month_flows`: income and spending of one month per currency (no cushion top-up). */
-export function monthFlows(book: BudgetBook, year: number, month: number): CurrencyClose[] {
-  return [...flowBuilders(book, year, month).values()].map((b) => closeOf(b, ZERO_00));
-}
-
 export interface MonthCloseOptions {
   /** The month to close; both or neither (default: `defaultMonth`). */
   readonly year?: number | null;

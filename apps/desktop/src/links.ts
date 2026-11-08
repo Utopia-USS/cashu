@@ -4,8 +4,8 @@
  * flavor's (`cashu`, `cashu-staging`): each app opens only its own links. */
 import { processFlavor } from "@cashu/node-host/flavor";
 
-export const MAX_LINK = 512;
-export const INVESTMENTS_VIEW = "investments.portfolio";
+const MAX_LINK = 512;
+const INVESTMENTS_VIEW = "investments.portfolio";
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const ID = /^[0-9]{1,12}$/;

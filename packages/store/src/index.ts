@@ -92,7 +92,7 @@ export {
   type ModuleContributions,
   type ViewSql,
 } from "./engine/types.js";
-export { type Decoded, decodeEnvelope, decodeWire, type ParkReason } from "./envelope.js";
+export { type Decoded, decodeEnvelope, type ParkReason } from "./envelope.js";
 export * as v1 from "./events/v1/index.js";
 export {
   type DetGid,
@@ -100,7 +100,6 @@ export {
   detGidFor,
   type GidTable,
   mintUlid,
-  newVaultSalt,
   type VaultSalt,
   vaultSalt,
 } from "./gid.js";

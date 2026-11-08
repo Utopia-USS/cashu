@@ -11,8 +11,6 @@ import { type CoreRegistry, withDependencies } from "./modules.js";
 export const DEFAULT_SLUG = "default";
 /** Polish UI data, stored; shown localized by `profileDisplayName`. */
 export const DEFAULT_NAME = "Domyślny";
-/** What an upstream installation used: the default profile created on demand gets these. */
-export const UPSTREAM_MODULES: readonly string[] = Object.freeze(["budget", "assets", "loans"]);
 export const PRIVACY_LEVELS = ["strict", "amounts"] as const;
 export type PrivacyLevel = (typeof PRIVACY_LEVELS)[number];
 

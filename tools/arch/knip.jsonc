@@ -52,8 +52,6 @@
       "entry": [
         "src/entry.ts",
         "src/preload.cts",
-        // Loaded only by the disposable build/t46 Electron provider probe.
-        "src/update/localhostProbe.ts",
         "renderer/main.tsx",
         "renderer/**/*.stories.tsx",
         "scripts/*.mjs",

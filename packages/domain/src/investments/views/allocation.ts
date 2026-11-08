@@ -151,4 +151,3 @@ export function allocationView(input: PortfolioProjectionInput) {
     buckets_generic: buckets.length > 0 && buckets.every((b) => b.generic),
   };
 }
-export type AllocationView = ReturnType<typeof allocationView>;

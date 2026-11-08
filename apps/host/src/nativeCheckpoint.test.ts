@@ -15,17 +15,16 @@ import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
 import { backupNodeSqlite, openNodeSqlite } from "@cashu/node-host/sqlite";
 import { crypto } from "@cashu/sync";
 import { expect, it } from "vitest";
+import { createNativeCheckpoint, scrubIncompleteNativeCheckpoints } from "./nativeCheckpoint.js";
 import {
-  createNativeCheckpoint,
   inspectNativeCheckpoint,
-  scrubIncompleteNativeCheckpoints,
   withIsolatedNativeCheckpoint,
-} from "./nativeCheckpoint.js";
+} from "./testing/nativeCheckpointInspection.js";
 import { nativeVaultFixture } from "./testing/nativeVaultFixture.js";
 
 /** Inspects the archive in a fresh Node process (no state shared with this one); prints the result. */
 const FRESH_PROCESS_INSPECTION = `
-const { inspectNativeCheckpoint } = await import(${JSON.stringify(new URL("./nativeCheckpoint.ts", import.meta.url).href)});
+const { inspectNativeCheckpoint } = await import(${JSON.stringify(new URL("./testing/nativeCheckpointInspection.ts", import.meta.url).href)});
 const { crypto } = await import("@cashu/sync");
 const path = process.env.CASHU_SYNTHETIC_CHECKPOINT_PATH;
 const words = process.env.CASHU_SYNTHETIC_CHECKPOINT_WORDS;

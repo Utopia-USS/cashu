@@ -17,7 +17,6 @@ import type { NetWorthContributor } from "./valuation.js";
 
 /** Display order (wizard cards, tab groups). Module ids are also package folder names. */
 export const MODULE_IDS = ["budget", "assets", "loans", "investments"] as const;
-export type BuiltinModuleId = (typeof MODULE_IDS)[number];
 
 export interface ModuleSpec {
   readonly id: string;

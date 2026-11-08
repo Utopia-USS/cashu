@@ -111,7 +111,6 @@ export const hostHandshakeSchema = z.discriminatedUnion("t", [
   readySchema,
   refusedSchema,
 ]);
-export type HostHandshake = z.infer<typeof hostHandshakeSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Session

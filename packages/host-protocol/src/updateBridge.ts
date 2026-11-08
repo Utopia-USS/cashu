@@ -107,5 +107,4 @@ export const updateHandoverCompleteRecord = z.strictObject({
 });
 
 export type UpdateBridgeDescriptor = z.infer<typeof updateBridgeDescriptor>;
-export type UpdateBridgeClientFrame = z.infer<typeof updateBridgeClientFrame>;
 export type UpdateBridgeServerFrame = z.infer<typeof updateBridgeServerFrame>;

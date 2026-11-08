@@ -39,7 +39,6 @@ export {
   type LeaseRenewData,
   type LeaseWaiver,
   type LogEvent,
-  logEventsFromBatch,
   MAX_DEVICES,
   MAX_WAIVE,
   type PinRequest,
@@ -53,13 +52,6 @@ export {
   waiveConfirmationText,
 } from "./events.js";
 export { DeviceFrameGate, type DeviceFrameGateOptions, logEventsOf } from "./gate.js";
-export {
-  createGenesisDevice,
-  GENESIS_DEVICE_NAME,
-  type GenesisDevice,
-  genesisAnnouncement,
-  retireGenesis,
-} from "./genesis.js";
 export {
   devicesNeedingRebuild,
   type FrameAt,

@@ -75,7 +75,6 @@ export function eventNumber(value: number): number | string {
 
 /** The paths (key / array-index segments) of the numbers a blob holds as Decimal text (4.3). */
 export const floatPaths = z.array(z.array(z.string()).min(1)).min(1);
-export type FloatPaths = z.infer<typeof floatPaths>;
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;

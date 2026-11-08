@@ -23,8 +23,6 @@ import {
 } from "../importing/exchanges.js";
 import { bodySnippet, SourceBlockedException, SourceException } from "./sources.js";
 
-/** Seconds one remote search request may take (typing must stay responsive). */
-export const SEARCH_TIMEOUT = 5.0;
 export type SearchSource = "yahoo" | "openfigi";
 const ISIN = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/u;
 

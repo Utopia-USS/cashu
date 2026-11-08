@@ -41,8 +41,6 @@ export const WATCHLIST_KNOWN_KEYS = [
   "max_debt_to_equity",
 ] as const;
 
-export const EMPTY_WATCHLIST: WatchlistCriteria = Object.freeze({ values: new Map() });
-
 /** `benchmark:` - what the portfolio is compared with. */
 export interface Benchmark {
   /** Display id of the benchmark (`msci_acwi`). */

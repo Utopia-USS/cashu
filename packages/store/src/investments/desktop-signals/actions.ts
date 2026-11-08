@@ -3,7 +3,7 @@ import type { InstrumentSearchResult } from "../services/instrumentSearch.js";
 export type { InstrumentSearchResult } from "../services/instrumentSearch.js";
 
 import type { UiAction } from "../../ui-actions.js";
-import type { WatchAddOutcome, WatchWarning } from "../services/watchlist.js";
+import type { WatchAddOutcome } from "../services/watchlist.js";
 
 /** The renderer describes only an intent; resolution and source are host-owned. */
 export type SignalsWatchTarget =
@@ -50,4 +50,3 @@ export type SignalsWatchResult =
         readonly cacheStatus: "not_applicable" | "published" | "unconfirmed";
       };
     };
-export type SignalsWatchWarning = WatchWarning;

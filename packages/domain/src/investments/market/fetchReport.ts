@@ -61,22 +61,6 @@ export function instrumentFetch(init: InstrumentFetchInit): InstrumentFetch {
   });
 }
 
-/** `InstrumentFetch.to_json`. */
-export function instrumentFetchJson(item: InstrumentFetch): Record<string, unknown> {
-  return {
-    instrument_id: item.instrumentId,
-    label: item.label,
-    status: item.status,
-    from: item.start,
-    to: item.end,
-    bar_count: item.bars.length,
-    source: item.source,
-    message: item.message,
-    currency: item.currency,
-    refetched_for_split: item.refetchedForSplit,
-  };
-}
-
 /** FX refresh outcome of one quote currency (rates in PLN per 1 unit), with the rates to upsert. */
 export interface FxFetch {
   readonly currency: Currency;
@@ -100,19 +84,6 @@ export function fxFetch(init: FxFetchInit): FxFetch {
     ...init,
     rates: Object.freeze([...(init.rates ?? [])]),
   });
-}
-
-/** `FxFetch.to_json`. */
-export function fxFetchJson(item: FxFetch): Record<string, unknown> {
-  return {
-    currency: item.currency,
-    status: item.status,
-    from: item.start,
-    to: item.end,
-    rate_count: item.rates.length,
-    source: item.source,
-    message: item.message,
-  };
 }
 
 /**

@@ -267,7 +267,6 @@ export function investmentDesktopQueries(sources: InvestmentScreenSources = {}) 
 export type PortfolioSnapshot = ReturnType<
   ReturnType<typeof investmentDesktopQueries>["portfolio"]["run"]
 >;
-export type AssetSnapshot = ReturnType<ReturnType<typeof investmentDesktopQueries>["asset"]["run"]>;
 export {
   addUiManualTransaction,
   classifyUiInstrument,

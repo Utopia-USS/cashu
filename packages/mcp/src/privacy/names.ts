@@ -542,10 +542,6 @@ function lowerBound(values: readonly number[], value: number): number {
   return lo;
 }
 
-export function isPayeeRef(value: string | null): boolean {
-  return !!value && PAYEE_REF.test(value);
-}
-
 /** What one module contributes to the guard (`name_sources`, `strong_names`, `strict_aliases`). */
 export interface NameSources {
   /** Names masked word by word (owner-named instruments). */

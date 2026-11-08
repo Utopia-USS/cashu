@@ -272,4 +272,3 @@ export function reviewScreenQueries(sources: ReviewScreenSources = {}) {
   };
 }
 export type ReviewScreenResult = ReturnType<typeof assemble>;
-export type ReadyReview = Extract<ReviewScreenResult, { status: "current" }>;

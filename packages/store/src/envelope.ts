@@ -4,7 +4,7 @@
 // the registry's schemas and upcasters.
 import { canonicalJson } from "./canonical.js";
 import { isEventType, parseEvent } from "./events/v1/catalog.js";
-import { type Envelope, envelopeSchema, fromWire } from "./events/v1/envelope.js";
+import { type Envelope, envelopeSchema } from "./events/v1/envelope.js";
 import type { EventRegistry } from "./registry.js";
 import { type Payload, upcast } from "./upcast.js";
 
@@ -67,18 +67,6 @@ export function decodeEnvelope(raw: unknown, registry: EventRegistry): Decoded {
     return { status: "parked", envelope, reason: "invalid-payload" };
   }
   return { status: "known", envelope, data: parsed };
-}
-
-/**
- * Decode a wire-form event read from `<vault>/<device>` segments. `vault` is the vault gid the store
- * belongs to (the segment's routing id is the carrier's business); the HLC suffix must equal `device`.
- */
-export function decodeWire(
-  wire: Record<string, unknown>,
-  segment: { readonly vault: string; readonly device: string },
-  registry: EventRegistry,
-): Decoded {
-  return decodeEnvelope(fromWire(wire, segment), registry);
 }
 
 /** Unknown envelope fields (preserved and ignored, events.md 2), canonical JSON or null. */

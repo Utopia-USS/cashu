@@ -32,9 +32,6 @@ const ENCODING_BY_NAME: ReadonlyMap<string, ImportTextEncoding> = new Map([
   ["auto", ImportTextEncoding.AUTO],
 ]);
 
-/** Every spelling `parseEncoding` accepts. */
-export const ENCODING_NAMES: readonly string[] = Object.freeze([...ENCODING_BY_NAME.keys()]);
-
 /**
  * A mapping value (`utf-8` / `utf8`, `windows-1250` / `cp1250`, `auto`; case-insensitive), or null for
  * anything else.

@@ -49,18 +49,3 @@ export function summarizeArgs(
   if (unknown) out._unknown = unknown;
   return out;
 }
-
-/** The stored outcome: anything outside `OUTCOMES` is recorded as `error`. */
-export function storedOutcome(outcome: string): Outcome {
-  return (OUTCOMES as readonly string[]).includes(outcome) ? (outcome as Outcome) : "error";
-}
-
-/** The stored tool name (at most 80 characters, as the Python column). */
-export function storedTool(tool: string): string {
-  return Array.from(tool).slice(0, 80).join("");
-}
-
-/** The stored duration: whole milliseconds, never negative. */
-export function storedDuration(durationMs: number): number {
-  return Math.max(0, Math.trunc(durationMs));
-}

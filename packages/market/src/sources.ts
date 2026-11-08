@@ -41,20 +41,6 @@ const {
 /** The wall clock in UTC that stamps `fetchedAt` (the app root passes `systemUtcClock`). */
 export type UtcClock = () => DateTime;
 
-/** The system clock as a UTC `DateTime` (wired at the app root, never used by tests). */
-export function systemUtcClock(): DateTime {
-  const now = new Date();
-  const iso = now.toISOString(); // YYYY-MM-DDTHH:MM:SS.mmmZ
-  return {
-    date: iso.slice(0, 10),
-    hour: now.getUTCHours(),
-    minute: now.getUTCMinutes(),
-    second: now.getUTCSeconds(),
-    microsecond: now.getUTCMilliseconds() * 1000,
-    offsetSeconds: 0,
-  };
-}
-
 // --- Yahoo ----------------------------------------------------------------------------------------
 
 export interface YahooOptions {

@@ -2,7 +2,7 @@
 import { addDays, daysBetween, type IsoDate } from "../../dates.js";
 import { D, type Decimal, floatRepr, roundFloat } from "../../decimal.js";
 import { type AlertKind, evaluateAlert } from "../alerts/index.js";
-import { type Instrument, instrumentLabel, openedOn, type PriceBar } from "../domain/index.js";
+import { type Instrument, openedOn, type PriceBar } from "../domain/index.js";
 import { closes30d, instrumentView, viewTimestamp } from "./positions.js";
 import type { PortfolioProjectionInput, ViewAlert } from "./types.js";
 
@@ -155,4 +155,3 @@ export function watchlistView(input: PortfolioProjectionInput) {
     };
   });
 }
-export type WatchlistView = ReturnType<typeof watchlistView>;

@@ -112,11 +112,6 @@ export interface PortfolioSeries {
   readonly lastBarDates: ReadonlyMap<InstrumentId, CalendarDate>;
 }
 
-/** `PortfolioSeries.first_date`. */
-export function seriesFirstDate(series: PortfolioSeries): CalendarDate | null {
-  return series.dates.length > 1 ? (series.dates[1] as CalendarDate) : null;
-}
-
 /** `PortfolioSeries.index_of`: position of `day`, clamped to the series. */
 export function seriesIndexOf(series: PortfolioSeries, day: CalendarDate): number {
   const first = series.dates[0];

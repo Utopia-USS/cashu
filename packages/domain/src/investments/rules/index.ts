@@ -23,7 +23,6 @@ export {
   AllocationDriftParams,
   allocationDriftRule,
   DEFAULT_REBALANCE,
-  REBALANCE_KEYS,
   type RebalancePolicy,
   readRebalancePolicy,
   rebalanceToRaw,
@@ -40,7 +39,6 @@ export {
 export {
   CUSTOM,
   CustomParams,
-  customBucketReferences,
   customRule,
   MAX_MESSAGE_LENGTH,
 } from "./kinds/custom.js";

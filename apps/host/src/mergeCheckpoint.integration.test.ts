@@ -6,7 +6,7 @@ import { investmentsCommands } from "@cashu/store";
 import { expect, it } from "vitest";
 import { runHostVaultCommand } from "./commands.js";
 import { startLocalHost } from "./host.js";
-import { withIsolatedNativeCheckpoint } from "./nativeCheckpoint.js";
+import { withIsolatedNativeCheckpoint } from "./testing/nativeCheckpointInspection.js";
 import { nativeVaultFixture } from "./testing/nativeVaultFixture.js";
 
 it("publishes a pre-merge checkpoint, merges once, and retains the keyed result after reopen", async () => {

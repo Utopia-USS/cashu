@@ -80,11 +80,6 @@ export const MONEY_BUCKET: NetWorthBucket = netWorthBucket("money", "Pieniądze"
   labelEn: "Money",
 });
 
-/** `display_label`: the label in the given UI language. */
-export function accountTypeLabel(info: AccountTypeInfo, lang: UiLang): string {
-  return pickLabel(lang, info.label, info.labelEn);
-}
-
 /** `NetWorthBucket.display_label`; `label` stays Polish (MCP, CLI). */
 export function bucketLabel(bucket: NetWorthBucket, lang: UiLang): string {
   return pickLabel(lang, bucket.label, bucket.labelEn);

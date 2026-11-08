@@ -36,7 +36,6 @@ export const ACCOUNT_WRAPPERS: readonly AccountWrapper[] = Object.freeze(
   Object.values(AccountWrapper),
 );
 export const parseAccountWrapper = enumParser("AccountWrapper", ACCOUNT_WRAPPERS);
-export const isAccountWrapper = enumGuard(ACCOUNT_WRAPPERS);
 
 /** Asset class of an instrument (also matched by strategy buckets: `asset_class: treasury_bond`). */
 export const AssetClass = Object.freeze({
@@ -93,7 +92,6 @@ export const TxnSource = Object.freeze({
 export type TxnSource = Values<typeof TxnSource>;
 export const TXN_SOURCES: readonly TxnSource[] = Object.freeze(Object.values(TxnSource));
 export const parseTxnSource = enumParser("TxnSource", TXN_SOURCES);
-export const isTxnSource = enumGuard(TXN_SOURCES);
 
 /**
  * How holdings of an instrument are valued.
@@ -113,7 +111,6 @@ export const VALUATION_MODES: readonly ValuationMode[] = Object.freeze(
   Object.values(ValuationMode),
 );
 export const parseValuationMode = enumParser("ValuationMode", VALUATION_MODES);
-export const isValuationMode = enumGuard(VALUATION_MODES);
 
 /**
  * Lifecycle of an instrument. Delisted and frozen instruments are not fetched from market sources; a
@@ -129,7 +126,6 @@ export const INSTRUMENT_STATUSES: readonly InstrumentStatus[] = Object.freeze(
   Object.values(InstrumentStatus),
 );
 export const parseInstrumentStatus = enumParser("InstrumentStatus", INSTRUMENT_STATUSES);
-export const isInstrumentStatus = enumGuard(INSTRUMENT_STATUSES);
 
 /** Severity of a signal, declared in ascending order (compare with `severityRank`). */
 export const SignalSeverity = Object.freeze({ INFO: "info", ACTION: "action" } as const);
@@ -138,7 +134,6 @@ export const SIGNAL_SEVERITIES: readonly SignalSeverity[] = Object.freeze(
   Object.values(SignalSeverity),
 );
 export const parseSignalSeverity = enumParser("SignalSeverity", SIGNAL_SEVERITIES);
-export const isSignalSeverity = enumGuard(SIGNAL_SEVERITIES);
 
 /** Lifecycle of a signal. `ACTIVE` and `ACKNOWLEDGED` are "open". */
 export const SignalStatus = Object.freeze({
@@ -150,7 +145,6 @@ export const SignalStatus = Object.freeze({
 export type SignalStatus = Values<typeof SignalStatus>;
 export const SIGNAL_STATUSES: readonly SignalStatus[] = Object.freeze(Object.values(SignalStatus));
 export const parseSignalStatus = enumParser("SignalStatus", SIGNAL_STATUSES);
-export const isSignalStatus = enumGuard(SIGNAL_STATUSES);
 
 /** What the owner did about a signal or on their own. */
 export const DecisionAction = Object.freeze({
@@ -165,7 +159,6 @@ export const DECISION_ACTIONS: readonly DecisionAction[] = Object.freeze(
   Object.values(DecisionAction),
 );
 export const parseDecisionAction = enumParser("DecisionAction", DECISION_ACTIONS);
-export const isDecisionAction = enumGuard(DECISION_ACTIONS);
 
 /** Position of `severity` in ascending order (escalation = a higher rank). */
 export function severityRank(severity: SignalSeverity): number {

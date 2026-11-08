@@ -55,7 +55,6 @@ export const cliOutNoteSchema = z.object({
   stream: z.enum(["stdout", "stderr"]),
   data: text(4 * 1024 * 1024),
 });
-export type CliOutNote = z.infer<typeof cliOutNoteSchema>;
 
 const promptId = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
@@ -66,9 +65,6 @@ export const cliPromptNoteSchema = z.object({
   /** Read without echo (a secret). */
   hidden: z.boolean(),
 });
-export type CliPromptNote = z.infer<typeof cliPromptNoteSchema>;
-
-export const cliStdinNoteSchema = z.object({});
 
 const execId = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
@@ -78,7 +74,6 @@ export const cliAnswerParamsSchema = z.object({
   /** The line without its newline; null when the input ended or no terminal can answer. */
   value: text(64 * 1024).nullable(),
 });
-export type CliAnswerParams = z.infer<typeof cliAnswerParamsSchema>;
 
 /** Largest stdin chunk the shim sends (decoded bytes). */
 export const CLI_STDIN_CHUNK = 256 * 1024;
@@ -92,7 +87,6 @@ export const cliStdinParamsSchema = z.object({
     .regex(/^[A-Za-z0-9+/]*={0,2}$/),
   eof: z.boolean(),
 });
-export type CliStdinParams = z.infer<typeof cliStdinParamsSchema>;
 
 /** Exit code of a command stopped by Ctrl-C (128 + SIGINT), as a shell reports it. */
 export const CLI_INTERRUPTED_EXIT = 130;

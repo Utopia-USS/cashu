@@ -8,7 +8,6 @@
  */
 
 import { type DateTime, daysBetween, type IsoDate } from "../../dates.js";
-import type { Decimal } from "../../decimal.js";
 import {
   type Currency,
   DIVISION_SCALE,
@@ -105,9 +104,6 @@ export function comparePyStr(a: string, b: string): number {
 
 /** Optional fields of `T` named by `K`: the input of a factory that fills Python's defaults. */
 export type Init<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-/** Decimal or null, the shape of every optional money field. */
-export type MaybeDecimal = Decimal | null;
 
 /**
  * Python dataclass defaults: `defaults` overlaid with every field of `init` that is not undefined,

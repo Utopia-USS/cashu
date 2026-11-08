@@ -36,7 +36,6 @@ export {
   NbpFxSource,
   StooqPriceSource,
   standardCompositeSource,
-  systemUtcClock,
   type UtcClock,
   type YahooOptions,
   YahooPriceSource,

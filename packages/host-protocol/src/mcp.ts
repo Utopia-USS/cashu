@@ -28,7 +28,5 @@ export const mcpOpenParamsSchema = z.object({
 export type McpOpenParams = z.infer<typeof mcpOpenParamsSchema>;
 
 export const mcpStderrNoteSchema = z.object({ data: z.string().max(1024 * 1024) });
-export type McpStderrNote = z.infer<typeof mcpStderrNoteSchema>;
 
 export const mcpExitNoteSchema = z.object({ code: z.number().int().min(0).max(255) });
-export type McpExitNote = z.infer<typeof mcpExitNoteSchema>;

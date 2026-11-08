@@ -184,7 +184,6 @@ export {
 export { NEEDS_INSTRUMENT, NEEDS_QUANTITY, semanticIssues } from "./semantic.js";
 export {
   decodeImportText,
-  ENCODING_NAMES,
   hasUtf8Bom,
   ImportTextEncoding,
   parseEncoding,
