@@ -49,6 +49,9 @@ function importsAmbient(elements: readonly (ts.ImportSpecifier | ts.ExportSpecif
  * multiline imports and type-only references must be handled correctly. Namespace/dynamic/CommonJS
  * access and UI catalog subpaths are disallowed; use named imports of reviewed pure root helpers. */
 export function ambientTranslationLines(source: string, fileName = "backend.ts"): number[] {
+  // Every form flagged below names the module in a string or template literal, so a file without the
+  // text has nothing to flag; skipping its parse keeps the whole-repo guard fast.
+  if (!source.includes("@cashu/i18n")) return [];
   const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
   const lines = new Set<number>();
   const flag = (node: ts.Node) =>

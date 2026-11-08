@@ -76,8 +76,11 @@ export interface FoldCost {
   readonly statementChecks: number;
 }
 
-/** A cold fold, then a warm re-fold with the same caches (what a device does on every change). */
-export function foldTwice(s: Scenario): { cold: FoldCost; warm: FoldCost } {
+/**
+ * Folds of `s` that share one certificate cache and one memoized verifier: the first call is the cold
+ * fold, every later one a warm re-fold (what a device does on every change). Each returns its own work.
+ */
+export function folds(s: Scenario): () => FoldCost {
   const cache = new CountingCache();
   const memo = memoizedVerifier();
   let statements = 0;
@@ -86,7 +89,7 @@ export function foldTwice(s: Scenario): { cold: FoldCost; warm: FoldCost } {
     statements += 1;
     return memo(...args);
   };
-  const run = (): FoldCost => {
+  return () => {
     const before = { checks: cache.checks, misses: cache.misses, statements };
     const registry = foldRegistry(sodium, s.root, s.events, {
       verify: counting,
@@ -99,7 +102,12 @@ export function foldTwice(s: Scenario): { cold: FoldCost; warm: FoldCost } {
       statementChecks: statements - before.statements,
     };
   };
-  return { cold: run(), warm: run() };
+}
+
+/** A cold fold, then a warm re-fold with the same caches. */
+export function foldTwice(s: Scenario): { cold: FoldCost; warm: FoldCost } {
+  const fold = folds(s);
+  return { cold: fold(), warm: fold() };
 }
 
 const KEYS: DeviceIdentity = createDeviceIdentity(sodium);

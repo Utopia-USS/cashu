@@ -4,46 +4,63 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  foldTwice,
+  type FoldCost,
+  folds,
   puppetsRevokedOneByOne,
   type Scenario,
   twoLevelTree,
 } from "../testing/devices/registryCost.js";
 
-function expectLinear(s: Scenario, label: string) {
-  const { cold, warm } = foldTwice(s);
+function expectLinearCold(s: Scenario, cold: FoldCost, label: string) {
   console.log(
-    `${label}: certs ${s.certificates}, events ${s.events.length}; cold checks ${cold.certificateChecks}, cold cert verifications ${cold.certificateVerifications}, cold statement checks ${cold.statementChecks}; warm checks ${warm.certificateChecks}, warm cert verifications ${warm.certificateVerifications}`,
+    `${label}: certs ${s.certificates}, events ${s.events.length}; cold checks ${cold.certificateChecks}, cold cert verifications ${cold.certificateVerifications}, cold statement checks ${cold.statementChecks}`,
   );
-  expect(warm.certificateVerifications).toBe(0);
   expect(cold.certificateVerifications).toBeLessThanOrEqual(2 * s.certificates);
   expect(cold.certificateChecks).toBeLessThanOrEqual(20 * s.certificates);
   expect(cold.statementChecks).toBeLessThanOrEqual(3 * s.events.length);
-  return cold.registry;
 }
 
-// Scenarios are built in `beforeAll` (thousands of signatures) so each test is the fold itself.
+// Scenarios are built in `beforeAll` (thousands of signatures). The cold fold and the warm re-fold are
+// two tests in order on one shared cache, so each test is one fold.
 describe.each([150, 1000])(
   "A8: one trusted device certifies %i puppets and revokes them one by one",
   (n) => {
     let scenario: Scenario;
+    let fold: () => FoldCost;
     beforeAll(() => {
       scenario = puppetsRevokedOneByOne(n);
+      fold = folds(scenario);
     });
-    it("folds in linear work; a warm re-fold verifies nothing again", () => {
-      expect(expectLinear(scenario, `A8 n=${n}`).revocationCount).toBe(64); // per-signer cap
+    it("folds in linear work", () => {
+      const cold = fold();
+      expectLinearCold(scenario, cold, `A8 n=${n}`);
+      expect(cold.registry.revocationCount).toBe(64); // per-signer cap
+    });
+    it("a warm re-fold verifies nothing again", () => {
+      const warm = fold();
+      expect(warm.certificateVerifications).toBe(0);
+      expect(warm.registry.revocationCount).toBe(64);
     });
   },
 );
 
 describe("A7: 1000 trusted devices (a two-level tree) with 160 revocations", () => {
   let scenario: Scenario;
+  let fold: () => FoldCost;
   beforeAll(() => {
     scenario = twoLevelTree();
+    fold = folds(scenario);
   });
-  it("folds in linear work; a warm re-fold verifies nothing again", () => {
-    const registry = expectLinear(scenario, "tree");
-    expect(registry.trusted.size).toBe(1 + 16 + 16 * 52);
-    expect(registry.revocationCount).toBe(160);
+  it("folds in linear work", () => {
+    const cold = fold();
+    expectLinearCold(scenario, cold, "tree");
+    expect(cold.registry.trusted.size).toBe(1 + 16 + 16 * 52);
+    expect(cold.registry.revocationCount).toBe(160);
+  });
+  it("a warm re-fold verifies nothing again", () => {
+    const warm = fold();
+    expect(warm.certificateVerifications).toBe(0);
+    expect(warm.registry.trusted.size).toBe(1 + 16 + 16 * 52);
+    expect(warm.registry.revocationCount).toBe(160);
   });
 });

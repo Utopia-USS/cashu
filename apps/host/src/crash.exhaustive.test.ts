@@ -1,5 +1,5 @@
 // Crash tests against real host processes (spawned with Node type stripping, temp data dirs).
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { connectHost } from "@cashu/node-host";
@@ -15,6 +15,17 @@ async function stopHost(dataDir: string): Promise<void> {
   const closed = new Promise<void>((resolve) => admin.onClose(resolve));
   await admin.call("admin.stop");
   await closed;
+}
+
+/** `count` unclean starts within the last seconds, as earlier crashed hosts left them. */
+function seedStarts(dir: string, count: number): string {
+  const run = join(dir, "run");
+  mkdirSync(run, { recursive: true });
+  const starts = join(run, "starts.json");
+  const now = Date.now();
+  const unclean = Array.from({ length: count }, (_, i) => now - (count - i) * 1000);
+  writeFileSync(starts, JSON.stringify({ format: 1, unclean }));
+  return starts;
 }
 
 describe("host crashes", () => {
@@ -53,22 +64,21 @@ describe("host crashes", () => {
     expect(readFileSync(join(dir, "logs", "host.log"), "utf8")).toContain("store.command.replayed");
   });
 
-  it("counts a killed host as a crash and starts the next one in safe mode after three", async () => {
+  // Two halves of one crash loop, each on its own host (a host start is the slow part): a SIGKILLed
+  // host leaves its start on record, and three records put the next start in safe mode.
+  it("counts a killed host as an unclean start", async () => {
     const dir = tempDir();
-    const starts = join(dir, "run", "starts.json");
-    const boot = spawnHost(dir);
-    await boot.ready;
-    await stopHost(dir);
-    expect(await boot.exit).toBe(0);
-    // Two earlier crashes on record; a third, real one: SIGKILL right after the host is up.
-    const now = Date.now();
-    writeFileSync(starts, JSON.stringify({ format: 1, unclean: [now - 2000, now - 1000] }));
+    const starts = seedStarts(dir, 2);
     const crashing = spawnHost(dir);
     await crashing.ready;
     crashing.child.kill("SIGKILL");
     expect(await crashing.exit).toBeNull();
     expect(JSON.parse(readFileSync(starts, "utf8")).unclean).toHaveLength(3);
+  });
 
+  it("starts the next host in safe mode after three unclean starts", async () => {
+    const dir = tempDir();
+    const starts = seedStarts(dir, 3);
     const safe = spawnHost(dir);
     let out = "";
     safe.child.stdout?.on("data", (d: Buffer) => {
@@ -79,5 +89,6 @@ describe("host crashes", () => {
     expect(out).toMatch(/ready \d+ safe/);
     await stopHost(dir);
     expect(await safe.exit).toBe(0);
+    expect(JSON.parse(readFileSync(starts, "utf8")).unclean).toEqual([]);
   });
 });
