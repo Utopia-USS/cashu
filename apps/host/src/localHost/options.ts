@@ -33,7 +33,7 @@ import type { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 import type { ProposalApprovalProvider } from "../proposalsScreen.js";
 import type { servedQueries } from "../registry.js";
 import type { HostRuntime } from "../runtime.js";
-import type { SignalsScreenCapability } from "../signalsScreen.js";
+import type { SignalsMarketPorts } from "../signalsScreen.js";
 import type { StoreChannelOptions } from "../storeChannel.js";
 import type { HostStores, OpenVault } from "../stores.js";
 import type { StrategyScreenCapability } from "../strategiesScreen.js";
@@ -94,8 +94,9 @@ export interface LocalHostOptions {
   readonly investments?: InvestmentScreenSources;
   readonly marketFactory?: MarketFactory;
   readonly investmentImports?: VaultBinder<InvestmentImportCapability>;
-  /** Optional public-market provider; local Signals actions need no remote provider. */
-  readonly signals?: VaultBinder<SignalsScreenCapability>;
+  /** Optional public-market ports (online instrument search); local Signals actions need none. The
+   * binder returns the same object while a vault's ports stay current. */
+  readonly signals?: VaultBinder<SignalsMarketPorts>;
   readonly research?: ResearchScreenSources;
   readonly review?: ReviewScreenSources;
   readonly mcpInvestmentAsync?: (vault: string) => InvestmentAsyncCapabilities | undefined;

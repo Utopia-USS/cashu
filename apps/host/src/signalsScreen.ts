@@ -124,6 +124,13 @@ export interface SignalsScreenCapability {
   readonly prices?: market.PriceCache;
 }
 
+/** A vault's public-market ports for Signals (online instrument search, pick verification). */
+export interface SignalsMarketPorts {
+  isCurrent(): boolean;
+  readonly searchSources?: () => InstrumentSearchSources;
+  readonly watchMarket?: WatchlistMarket;
+}
+
 function requestOf(
   target: SignalsWatchTarget,
   today: string,

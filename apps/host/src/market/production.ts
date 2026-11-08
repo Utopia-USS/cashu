@@ -30,6 +30,7 @@ import type { ResearchScreenExtraSources } from "@cashu/store/investments/resear
 import type { InvestmentMarketSource, MarketInput } from "@cashu/store/investments/screen-sources";
 import { type DailySources, InstrumentSearch } from "@cashu/store/investments/services";
 import type { Read } from "@cashu/store/query";
+import type { SignalsMarketPorts } from "../signalsScreen.js";
 import type { OpenVault } from "../stores.js";
 import type { WorkspaceProvider } from "../workspace/index.js";
 import { cachedInstrumentMarketData } from "./cachedData.js";
@@ -61,6 +62,8 @@ export interface ProductionMarket {
   readonly sources: (vaultIds: readonly string[]) => DailySources;
   readonly fxNewest: () => string | null;
   investmentAsync(vaultId: string): InvestmentAsyncCapabilities | undefined;
+  /** The vault's Signals online search ports; the same object while that vault stays open. */
+  signals(vaultId: string): SignalsMarketPorts | null;
   readonly mcpResearch?: (context: ToolContext<NativeToolStore>) => ResearchServices;
   readonly mcpInvestmentReads?: (context: ToolContext<NativeToolStore>) => InvestmentReads;
   readonly mcpInvestmentHistory?: (context: ToolContext<NativeToolStore>) => InvestmentHistoryReads;
@@ -213,6 +216,35 @@ export function createProductionMarket(input: ProductionMarketInput): Production
       close() {},
     };
   };
+  /** One vault's public search and chart ports, live while that vault may fetch public data. */
+  const publicPorts = (vaultId: string, vault: OpenVault) => {
+    const allowed = () => current(vaultId) && vaultFor(vaultId) === vault;
+    const searchSources = () => {
+      const http = httpFor(allowed, [vaultId]);
+      return {
+        symbols: new YahooSymbolSearch(http),
+        isin: new OpenFigiIsinLookup(http),
+        close() {},
+      };
+    };
+    const watch = {
+      async chart(symbol: string, start: CalendarDate, end: CalendarDate) {
+        if (!allowed()) throw new Error("market_fetch_authority_unavailable");
+        const quote = await new YahooPriceSource(httpFor(allowed, [vaultId]), {
+          clock: utcClock,
+        }).chart(symbol, start, end);
+        if (!allowed()) throw new Error("market_fetch_authority_unavailable");
+        return quote;
+      },
+      async search(query: string) {
+        const answer = await search.remoteHits(query, searchSources);
+        if (!allowed()) throw new Error("market_fetch_authority_unavailable");
+        return answer.hits;
+      },
+    };
+    return { allowed, searchSources, watch };
+  };
+  const signalPorts = new Map<string, { vault: OpenVault; ports: SignalsMarketPorts }>();
   const marketSource: InvestmentMarketSource = {
     changes: { subscribe: (listener) => prices.subscribe(listener) },
     current(read: Read) {
@@ -238,33 +270,24 @@ export function createProductionMarket(input: ProductionMarketInput): Production
         }),
     sources,
     fxNewest: () => prices.newestFxDate(),
+    signals(vaultId) {
+      const vault = vaultFor(vaultId);
+      if (vault?.mode !== "native" || !input.isCurrent(vault) || closed) return null;
+      const cached = signalPorts.get(vaultId);
+      if (cached?.vault === vault) return cached.ports;
+      const io = publicPorts(vaultId, vault);
+      const ports: SignalsMarketPorts = {
+        isCurrent: io.allowed,
+        searchSources: io.searchSources,
+        watchMarket: io.watch,
+      };
+      signalPorts.set(vaultId, { vault, ports });
+      return ports;
+    },
     investmentAsync(vaultId) {
       const vault = vaultFor(vaultId);
       if (vault?.mode !== "native" || !input.isCurrent(vault) || closed) return undefined;
-      const allowed = () => current(vaultId) && vaultFor(vaultId) === vault;
-      const searchSources = () => {
-        const http = httpFor(allowed, [vaultId]);
-        return {
-          symbols: new YahooSymbolSearch(http),
-          isin: new OpenFigiIsinLookup(http),
-          close() {},
-        };
-      };
-      const watch = {
-        async chart(symbol: string, start: CalendarDate, end: CalendarDate) {
-          if (!allowed()) throw new Error("market_fetch_authority_unavailable");
-          const quote = await new YahooPriceSource(httpFor(allowed, [vaultId]), {
-            clock: utcClock,
-          }).chart(symbol, start, end);
-          if (!allowed()) throw new Error("market_fetch_authority_unavailable");
-          return quote;
-        },
-        async search(query: string) {
-          const answer = await search.remoteHits(query, searchSources);
-          if (!allowed()) throw new Error("market_fetch_authority_unavailable");
-          return answer.hits;
-        },
-      };
+      const { allowed, searchSources, watch } = publicPorts(vaultId, vault);
       let publication: ReturnType<NonNullable<typeof vault.native>["blobPublication"]> = null;
       try {
         publication = vault.native?.blobPublication() ?? null;
@@ -292,6 +315,7 @@ export function createProductionMarket(input: ProductionMarketInput): Production
     close() {
       closed = true;
       marketImages.clear();
+      signalPorts.clear();
       research.close();
     },
   };

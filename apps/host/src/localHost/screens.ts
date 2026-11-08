@@ -22,6 +22,7 @@ import { servedQueries } from "../registry.js";
 import type { settingsInfoQuery } from "../settingsInfo.js";
 import { settingsWorkspaceActions, type settingsWorkspaceStatus } from "../settingsScreen.js";
 import {
+  type SignalsMarketPorts,
   type SignalsScreenCapability,
   signalsScreenActions,
   signalsScreenClock,
@@ -221,29 +222,40 @@ export function createScreenSurfaces(input: {
         },
       });
     },
-    /** Signals actions; without an injected provider each open vault gets a local capability. */
+    /** Signals actions: each open vault gets a local capability (watchlist, snooze, offline add),
+     * plus the injected public-market ports (online search) while that vault has them. */
     signalActions(local: {
       readonly stores: HostStores;
       readonly queue: NotificationQueue;
       readonly prices: market.PriceCache | null;
     }) {
       const { stores, queue, prices } = local;
-      const localSignals = new Map<string, SignalsScreenCapability>();
+      const localSignals = new Map<
+        string,
+        {
+          readonly opened: OpenVault;
+          readonly ports: SignalsMarketPorts | null;
+          readonly cap: SignalsScreenCapability;
+        }
+      >();
+      let generations = 0;
       const bind = (vault: string): SignalsScreenCapability | null => {
-        if (options.signals !== undefined) return options.signals.bind(vault);
         const opened = stores.vaults.get(vault);
         if (opened === undefined) return null;
-        let cap = localSignals.get(vault);
-        if (cap === undefined) {
-          cap = {
-            vault,
-            generation: `local:${vault}`,
-            isCurrent: () => stores.vaults.get(vault) === opened,
-            notifications: queue,
-            ...(prices ? { prices } : {}),
-          };
-          localSignals.set(vault, cap);
-        }
+        const offered = options.signals?.bind(vault) ?? null;
+        const ports = offered?.isCurrent() ? offered : null;
+        const cached = localSignals.get(vault);
+        if (cached?.opened === opened && cached.ports === ports) return cached.cap;
+        const cap: SignalsScreenCapability = {
+          vault,
+          generation: `local:${vault}:${++generations}`,
+          isCurrent: () => stores.vaults.get(vault) === opened && (ports?.isCurrent() ?? true),
+          notifications: queue,
+          ...(prices ? { prices } : {}),
+          ...(ports?.searchSources ? { searchSources: ports.searchSources } : {}),
+          ...(ports?.watchMarket ? { watchMarket: ports.watchMarket } : {}),
+        };
+        localSignals.set(vault, { opened, ports, cap });
         return cap;
       };
       return signalsScreenActions({ bind, now, timeZone: () => clock.current().timeZone });
@@ -258,7 +270,7 @@ export function createScreenSurfaces(input: {
             ...(options.updates === undefined ? [] : [updates.action]),
             ...(options.workspace === undefined ? [] : workspaceActions),
             ...(options.uiActions ?? []),
-            ...(options.signals === undefined ? [] : signalActions),
+            ...signalActions,
             ...(imports?.actions ?? []),
             ...(strategyManager?.actions ?? []),
             ...budgetStatements.actions,

@@ -364,6 +364,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               });
               return market;
             },
+            signals: { bind: (vault) => market?.signals(vault) ?? null },
             connectorCatalog: () => (connectorLock?.held ? connectors?.catalog : undefined),
             banking: () => banking,
             budgetClassifiers: { local: classifier.local, cloud: classifier.cloud },

@@ -171,11 +171,20 @@ const live = {
   },
 };
 
+/** 106: one UI action on the current vault, by its wire id, as a screen's `useUiAction` sends it. */
+async function action(id: string, input: unknown): Promise<unknown> {
+  const store = await client();
+  if (store.invoke === undefined) throw new Error("the port client has no UI actions");
+  return store.invoke(await vaultTarget(store), { id }, input);
+}
+
 const page = window as unknown as {
   cashuStoreHarness: typeof run;
   cashuStoreStage: () => string;
   cashuStoreLive: typeof live;
+  cashuStoreAction: typeof action;
 };
 page.cashuStoreHarness = run;
 page.cashuStoreStage = () => runStage;
 page.cashuStoreLive = live;
+page.cashuStoreAction = action;
