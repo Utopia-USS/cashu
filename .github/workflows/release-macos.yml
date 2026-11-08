@@ -173,9 +173,11 @@ jobs:
             exit 1
           fi
 
+      # No dependency cache in a release (see the header); setup-node v5 would turn one on by itself.
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       # pnpm at the exact version of "packageManager" in package.json (Corepack ships with Node 22).
       - name: Install

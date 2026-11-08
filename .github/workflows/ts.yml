@@ -25,9 +25,12 @@ jobs:
       # Only GitHub-owned actions are allowed in this repository, each pinned to a full commit SHA.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
+      # setup-node v5 turns on the pnpm cache by itself when package.json names a packageManager, before pnpm
+      # exists, and fails; pnpm comes from Corepack in the next step.
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       # pnpm at the exact version of "packageManager" in the root package.json (Corepack ships with Node).
       - name: Install
@@ -36,8 +39,12 @@ jobs:
           pnpm --version
           pnpm install --frozen-lockfile
 
-      - name: Typecheck, lint, test
-        run: pnpm turbo run typecheck lint test
+      - name: Typecheck, lint
+        run: pnpm turbo run typecheck lint
+
+      # At most 4 packages at once, each vitest on a quarter of the cores (vitest.tiers.ts).
+      - name: Test
+        run: pnpm test
 
       # The exhaustive tier (*.exhaustive.test.ts: code point sweeps, vector replays, property searches,
       # multi-device simulations), one package at a time so each suite has the runner's cores to itself.
