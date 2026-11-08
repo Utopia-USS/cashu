@@ -1,8 +1,10 @@
 // Native-only MCP JSON-RPC transport. Tool policy, privacy and durable writes live in NativeMcpServer.
 import { randomBytes } from "node:crypto";
 import {
+  type AppLanguage,
   failure,
   INSTRUCTIONS,
+  instructionsFor,
   type NativeCallResult,
   type NativeMcpServer,
   privacyCeiling,
@@ -75,6 +77,8 @@ export function nativeBackend(options: {
    * pull evidence for the tools that act as the fetch leader (localHost/mcp.ts).
    */
   readonly beforeCall?: (name: string) => Promise<unknown> | undefined;
+  /** The app language the owner reads cashU in, named in the instructions of each session. */
+  readonly language?: () => AppLanguage;
 }): McpBackend {
   const { native } = options;
   const metadata = new Map(options.inventory.map((entry) => [entry.name, entry]));
@@ -188,7 +192,7 @@ export function nativeBackend(options: {
           name: mcpServerName(processFlavor(), options.profile),
           version: options.version ?? "0.4.6",
         },
-        instructions: INSTRUCTIONS,
+        instructions: options.language ? instructionsFor(options.language()) : INSTRUCTIONS,
       });
     }
     if (method === "notifications/initialized") {

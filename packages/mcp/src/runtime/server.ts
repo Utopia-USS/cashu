@@ -40,6 +40,21 @@ export type { NativePolicy } from "./policy.js";
 
 export const INSTRUCTIONS =
   "cashU: local personal finance data of ONE profile. Every answer passes a privacy layer: in 'strict' mode you get shares and percentages, never absolute amounts; identifiers (account numbers, IBANs, person names) are never sent in any mode. Call profile_overview first: it says which modules are enabled and the privacy level. Write tools only create records or proposals; the owner approves proposals in the app. Do not ask the user for raw exports or database files.";
+
+/** The app languages the owner can pin (`@cashu/i18n` `Lang`). */
+export type AppLanguage = "pl" | "en";
+
+const LANGUAGE_NAMES: Readonly<Record<AppLanguage, string>> = { pl: "Polish", en: "English" };
+
+/**
+ * `INSTRUCTIONS` plus the app language the owner reads cashU in: everything the agent writes for the
+ * owner follows it, so the app and the agent never mix languages. Matching data stays as the tools
+ * define it.
+ */
+export function instructionsFor(language: AppLanguage): string {
+  const name = LANGUAGE_NAMES[language];
+  return `${INSTRUCTIONS} The app language is ${name} (${language}): write everything the owner reads (conversation, summaries, research notes, theses, market views, reasons, strategy proposals) in ${name}, in plain words without tool, field or file names. Tool enum values and matching data (bank headers, category rules, the Polish macro vocabulary) stay as the tools define them.`;
+}
 export interface ToolDescriptor {
   readonly name: string;
   readonly description: string;

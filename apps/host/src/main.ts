@@ -28,9 +28,7 @@ import {
 import { processFlavor, workspacesRoot } from "@cashu/node-host/flavor";
 import { enterTestBuildKeyringNamespace } from "@cashu/node-host/keyring";
 import { readTestBuildMarker, type TestBuildMarker } from "@cashu/node-host/test-build";
-import { devicePreferences } from "@cashu/store/device";
 import { DailyPriceLock } from "@cashu/store/investments/services";
-import { runQuery } from "@cashu/store/query";
 import { BankingRuntime } from "./banking/runtime.js";
 import { bankingUiAction } from "./banking/uiAction.js";
 import { bankingWorkerPort } from "./banking/workerPort.js";
@@ -39,6 +37,7 @@ import { connectorOwnerAction } from "./connectorOwnerAction.js";
 import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntime.js";
 import { fetchAuthorityIssue, refreshFetchAuthority } from "./fetchAuthority.js";
 import { startLocalHost } from "./host.js";
+import { appLanguage, systemLanguage } from "./language.js";
 import { recordStartupFailure } from "./localHost/startup.js";
 import { createProductionMarket, type ProductionMarket } from "./market/production.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
@@ -241,12 +240,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           if (classifyNativeCreationStartup(args.dataDir) !== "ready")
             throw new Error("worker_native_admission_unavailable");
         };
-        const systemLanguage: "pl" | "en" = Intl.DateTimeFormat()
-          .resolvedOptions()
-          .locale.toLowerCase()
-          .startsWith("pl")
-          ? "pl"
-          : "en";
+        const system = systemLanguage();
         const updateBridge =
           runtime.fingerprint === undefined
             ? undefined
@@ -258,15 +252,8 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
         const classifier = new ClassifierHostPorts();
         let connectorLock: import("@cashu/node-host").HostLock | undefined;
         let workerBindings: ReturnType<typeof createProductionWorkerBindings> | undefined;
-        const languageForStores = (stores: import("./stores.js").HostStores) => {
-          try {
-            const pinned = runQuery(stores.device.store, devicePreferences, undefined).value
-              .languagePin;
-            return pinned === "pl" || pinned === "en" ? pinned : systemLanguage;
-          } catch {
-            return systemLanguage;
-          }
-        };
+        const languageForStores = (stores: import("./stores.js").HostStores) =>
+          appLanguage(stores, system);
         const language = (context: Parameters<typeof createProductionWorkerBindings>[0]) =>
           languageForStores(context.stores);
         try {

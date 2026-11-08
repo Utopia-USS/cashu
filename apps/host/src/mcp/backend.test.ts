@@ -5,7 +5,9 @@ import { nativeBackend } from "./backend.js";
 type Json = Record<string, unknown>;
 const key = "01K9B2W000000000000000000D";
 
-function fixture(options: { writeStatus?: boolean; holdAudit?: Promise<void> } = {}) {
+function fixture(
+  options: { writeStatus?: boolean; holdAudit?: Promise<void>; language?: () => "pl" | "en" } = {},
+) {
   const audits: string[] = [];
   const received = new Map<string, Json>();
   const waiters = new Map<string, (message: Json) => void>();
@@ -41,6 +43,7 @@ function fixture(options: { writeStatus?: boolean; holdAudit?: Promise<void> } =
     native,
     inventory: [{ name: "profile_overview", module: "core", also: [] }],
     profile: "synthetic",
+    ...(options.language ? { language: options.language } : {}),
   });
   backend.onLine((line) => {
     const message = JSON.parse(line) as Json;
@@ -66,6 +69,21 @@ function fixture(options: { writeStatus?: boolean; holdAudit?: Promise<void> } =
 const body = (reply: Json) => reply.result as Json;
 
 describe("native MCP JSON-RPC backend", () => {
+  it("names the app language the owner reads cashU in, read when a session starts", async () => {
+    let language: "pl" | "en" = "pl";
+    const f = fixture({ language: () => language });
+    const polish = body(await f.rpc("a", "initialize")).instructions as string;
+    expect(polish).toContain("The app language is Polish (pl)");
+    language = "en";
+    const english = body(await f.rpc("b", "initialize")).instructions as string;
+    expect(english).toContain("The app language is English (en)");
+    expect(english).not.toContain("Polish (pl)");
+    const plain = fixture();
+    expect(body(await plain.rpc("c", "initialize")).instructions).not.toMatch(/app language/u);
+    await f.backend.close();
+    await plain.backend.close();
+  });
+
   it("passes an original write key and exposes status without receipts", async () => {
     const f = fixture({ writeStatus: true });
     await f.initialize();

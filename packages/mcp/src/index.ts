@@ -60,10 +60,12 @@ export { mcpToolMetadata, type ToolMetadata } from "./runtime/metadata.js";
 export { decodeEntityRef, type EntityRefKind, encodeEntityRef } from "./runtime/refs.js";
 export {
   APP_UPDATED,
+  type AppLanguage,
   type AuditPort,
   CEILING_KEY,
   failure,
   INSTRUCTIONS,
+  instructionsFor,
   type NativeCallResult,
   type NativeExecution,
   NativeMcpServer,

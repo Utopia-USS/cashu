@@ -18,7 +18,10 @@ description: >
 
 The owner's review is a short, calm look at whether anything needs them, card by card, from the general
 to the specific. The app shows it as a deck of cards; this skill runs the same deck in chat. 5-15
-minutes. Conversation in Polish, regular hyphens only.
+minutes. Conversation in Polish, regular hyphens only, and plain Polish throughout: no tool, field or
+file names (`review_context`, `strategy.yaml`, `agenda`), no English working terms or untranslated
+enum values (`sentiment_correction` is `korekta sentymentu`); names, tickers and established terms
+(ETF, ESPI) stay as they are.
 
 ## Relationship to the workspace
 

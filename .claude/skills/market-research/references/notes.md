@@ -3,6 +3,22 @@
 Notes are written through `add_research_note` and shown to the owner in the app: the research strip,
 the asset drawer, the research view and the Sunday review. They are in Polish; this file is in English.
 
+## Plain Polish for the owner
+
+Every text the owner reads (`title`, `summary`, `headline`, `details.context`, `details.bucket`,
+criterion `text` and `threshold`, a market view, a recommendation reason) is plain Polish written for
+the owner, not a log of your work:
+
+- No tool, field or file names and no English working terms: not `research_context`, `strategy.yaml`,
+  `candidate_criteria`, `workspace`, `run`, `bucket`, `threshold`, `entry_type` values such as
+  `sentiment_correction` (write `korekta sentymentu`). Say what it means: `progi ze strategii`,
+  `koszyk Akcje PL`, `pliki profilu`.
+- No notes about your own process (which tool failed, where you took the data from as a fallback,
+  which strategy version you read). When a source or tool was unavailable, say what is unknown in
+  owner terms (`stopa dywidendy niepotwierdzona`) or tell the owner in the chat summary.
+- Proper names, tickers, ISINs and established terms with no Polish equivalent (ETF, ESPI, EBITDA)
+  stay as they are.
+
 ## Fields
 
 | field | rule |

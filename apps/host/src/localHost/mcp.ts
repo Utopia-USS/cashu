@@ -21,6 +21,7 @@ import {
 import type { HostSession, RunningHost } from "@cashu/node-host";
 import { mcpProfile } from "@cashu/store/core";
 import { mayObtainFetchAuthority, refreshFetchAuthority } from "../fetchAuthority.js";
+import { appLanguage } from "../language.js";
 import type { HostLog } from "../log.js";
 import { nativeBackend } from "../mcp/backend.js";
 import type { ConnectorProposalReceipts } from "../mcp/connectorReceipt.js";
@@ -225,6 +226,7 @@ function startMcpBackend(
     native,
     inventory,
     profile,
+    language: () => appLanguage(stores),
     // Only the tools that act as the fetch leader refresh the lease pull first: a pure read needs
     // no lease, and public reads pause while a pass runs.
     beforeCall: (name) =>
