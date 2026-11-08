@@ -1,5 +1,6 @@
 import { enabledModuleIds } from "@cashu/store/core";
 import { z } from "zod";
+import { refreshFetchAuthority } from "../fetchAuthority.js";
 import type { UiActionRegistration } from "../uiActions.js";
 import { reportSuccessfulFetch } from "../worker/leaseReport.js";
 import { runBankingOwnerAction } from "./ownerAction.js";
@@ -39,6 +40,8 @@ export function bankingUiAction(runtime: () => BankingRuntime | undefined): UiAc
       if (!current()) return { status: "refused", reason: "stale_action", preparation: "none" };
       const active = runtime();
       if (!active) return { status: "not_started", reason: "capability_unavailable" };
+      // A bank sync is a fetch-leader action: obtain fresh pull evidence before it starts.
+      if (parsed.data.type === "sync") await refreshFetchAuthority(vault);
       const endFetch = parsed.data.type === "sync" ? vault.native.beginFetch() : null;
       if (parsed.data.type === "sync" && !endFetch)
         return { status: "not_started", reason: "capability_unavailable" };

@@ -33,6 +33,13 @@ export interface ProductionWorkerInput {
   strategyDirectory(vault: OpenVault): StrategyDirectoryAuthority | null;
   /** Native session evaluates the authenticated devices lease with actual pull/publication evidence. */
   canFetchPublicMarket?(vault: OpenVault): boolean;
+  /**
+   * Obtains fresh pull evidence for a stale fetch leader before a network job (production:
+   * `refreshFetchAuthority` in ../fetchAuthority.ts). Without it the job needs another sync source.
+   */
+  refreshFetchAuthority?(vault: OpenVault): Promise<boolean>;
+  /** Status only: fetch authority now or after that refresh (`mayObtainFetchAuthority`). */
+  mayObtainFetchAuthority?(vault: OpenVault): boolean;
   /** Profile language comes from the admitted local setting/catalog authority. */
   language(vault: OpenVault): "pl" | "en";
   /** Host-owned queue and checked OS delivery, if the platform can actually submit. */
@@ -134,7 +141,12 @@ export function createProductionWorkerBindings(
         (job === "budget.sync" && input.budget !== undefined)) &&
       vault.mode === "native" &&
       input.canFetchPublicMarket !== undefined
-        ? { isHolder: () => host.isCurrent(vault) && input.canFetchPublicMarket?.(vault) === true }
+        ? {
+            isHolder: () => host.isCurrent(vault) && input.canFetchPublicMarket?.(vault) === true,
+            refresh: async () => {
+              if (host.isCurrent(vault)) await input.refreshFetchAuthority?.(vault);
+            },
+          }
         : null,
     offline: input.market === undefined,
     language: input.language,
@@ -163,6 +175,10 @@ export function createProductionWorkerBindings(
     ...(input.notifier === undefined ? {} : { notifier: input.notifier }),
     unavailable(vault, job) {
       if (vault.mode !== "native" || !host.isCurrent(vault)) return "native_admission_unavailable";
+      // A stale pull is not unavailability: the job refreshes it before its authority check.
+      const fetchable = () =>
+        input.canFetchPublicMarket?.(vault) === true ||
+        input.mayObtainFetchAuthority?.(vault) === true;
       const modules = enabledModuleIds(vault.store.read.bind(vault.store));
       if (job === "investments.daily") {
         if (!modules.has("investments")) return null;
@@ -173,7 +189,7 @@ export function createProductionWorkerBindings(
         return modules.has("investments") || modules.has("budget")
           ? input.connectors === undefined
             ? "connector_provider_unavailable"
-            : input.canFetchPublicMarket?.(vault) !== true
+            : !fetchable()
               ? "fetch_authority_unavailable"
               : ownership.isExclusive(job, vault)
                 ? null
@@ -183,7 +199,7 @@ export function createProductionWorkerBindings(
         return modules.has("budget")
           ? input.budget === undefined
             ? "bank_provider_unavailable"
-            : input.canFetchPublicMarket?.(vault) !== true
+            : !fetchable()
               ? "fetch_authority_unavailable"
               : ownership.isExclusive(job, vault)
                 ? null

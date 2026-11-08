@@ -262,10 +262,23 @@ export function createConnectorRuntime(input: {
   readonly dailyLock: DailyPriceLock;
   readonly current: (vault: OpenVault) => boolean;
   readonly holder: (vault: OpenVault) => boolean;
+  /**
+   * Refreshes the vault's stale lease pull evidence before `holder` is checked (production:
+   * ../fetchAuthority.ts). Awaited before each binding and after each connector process, which
+   * may run up to its 600 s timeout, longer than the lease's publish deadline.
+   */
+  readonly refreshHolder?: (vault: OpenVault) => Promise<unknown>;
   readonly now: () => number;
 }): ConnectorRuntime {
   const catalog = new ConnectorCatalog(input.dataDir);
   const busy = new Set<string>();
+  const freshHolder = async (vault: OpenVault) => {
+    try {
+      await input.refreshHolder?.(vault);
+    } catch {
+      /* A failed refresh grants nothing; `holder` refuses. */
+    }
+  };
   const fetch = async (
     vault: OpenVault,
     guard: () => void,
@@ -299,6 +312,7 @@ export function createConnectorRuntime(input: {
         attempted = false,
         committed = false;
       try {
+        await freshHolder(vault);
         guard();
         const loaded = catalog.installed(row.connector);
         const interpreter = resolveInterpreter(loaded);
@@ -411,6 +425,7 @@ export function createConnectorRuntime(input: {
           interpreter,
         });
         stderrTail = fetched.stderrTail ?? null;
+        await freshHolder(vault);
         if (fetched.outcome !== "transported") {
           failed++;
           outcome = fetched.outcome;

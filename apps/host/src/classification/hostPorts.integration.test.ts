@@ -2,6 +2,7 @@ import type { StoreToClient } from "@cashu/host-protocol/store";
 import type { ClassifierSecretStore } from "@cashu/node-host/classifier-secrets";
 import type { ClassifierSettingsInput } from "@cashu/store/core/classifier-settings";
 import { expect, it, vi } from "vitest";
+import { refreshClassifierAuthority } from "../cli/budget/categorizeOllama.js";
 import { startLocalHost } from "../host.js";
 import { storeClient } from "../testing/harness.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
@@ -105,7 +106,9 @@ it("binds production classifier consent through a native host owner action", asy
     });
     const vault = host.stores.vaults.get(fixture.vaultId);
     if (vault?.mode !== "native") throw new Error("synthetic native vault unavailable");
-    await vault.native.sync();
+    // No sync by hand: the provider's own refresh, as a categorize command runs it first.
+    expect(ports.cloud.consent(fixture.vaultId)?.isCurrent(fixture.vaultId)).toBe(false);
+    await refreshClassifierAuthority(ports.cloud, fixture.vaultId);
     expect(ports.cloud.consent(fixture.vaultId)?.isCurrent(fixture.vaultId)).toBe(true);
     expect(await action({ op: "revokeCloud" })).toMatchObject({
       result: { status: "completed", value: { backend: "ollama", consented: false } },

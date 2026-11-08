@@ -5,6 +5,7 @@ import { mintUlid, setModules } from "@cashu/store";
 import { ruleRuns } from "@cashu/store/investments/queries";
 import { expect, it, vi } from "vitest";
 import { runHostVaultCommand } from "../commands.js";
+import { mayObtainFetchAuthority, refreshFetchAuthority } from "../fetchAuthority.js";
 import { startLocalHost } from "../host.js";
 import { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
@@ -198,8 +199,11 @@ it("claims a budget connector without a strategy directory", async () => {
         dataDir: fixture.dataDir,
         assertAdmission() {},
         strategyDirectory: () => null,
-        // Production wiring (main.ts): the worker also takes the real native fetch lease (2b8a073).
+        // Production wiring (main.ts): the worker also takes the real native fetch lease (2b8a073)
+        // and obtains its pull evidence itself before a due network job.
         canFetchPublicMarket: (vault) => vault.native?.canFetchPublicMarket() ?? false,
+        refreshFetchAuthority,
+        mayObtainFetchAuthority,
         connectors: {
           fetch: async (_vault, guard) => {
             guard();
@@ -213,12 +217,9 @@ it("claims a budget connector without a strategy directory", async () => {
   try {
     const vault = host.stores.vaults.get(fixture.vaultId);
     if (!vault?.native) throw new Error("synthetic native vault absent");
-    expect(fetched).toBe(0);
-    // A fresh pull grants the pinned creator the fetch lease; the next tick runs the connector.
-    await vault.native.sync();
-    expect(vault.native.canFetchPublicMarket()).toBe(true);
-    await vi.advanceTimersByTimeAsync(60_000);
+    // No sync by hand: the start-up tick pulls for the pinned creator and runs the connector.
     await expect.poll(() => fetched).toBe(1);
+    expect(vault.native.canFetchPublicMarket()).toBe(true);
     const record = JSON.parse(
       readFileSync(join(fixture.dataDir, "worker", "ownership.json"), "utf8"),
     );

@@ -117,6 +117,11 @@ export interface SignalsScreenCapability {
   /** Public lookup provider, independent of MCP sessions. */
   readonly searchSources?: () => InstrumentSearchSources;
   readonly watchMarket?: WatchlistMarket;
+  /**
+   * Obtains fresh fetch-lease pull evidence before the public ports above are read (production:
+   * ./fetchAuthority.ts); they are absent while the vault may not fetch.
+   */
+  refreshFetch?(): Promise<unknown>;
   /** Genuine current plan inputs, if the holder can derive signals in the same batch. */
   planInputs?(): ResearchPlanInputs | undefined;
   readonly notifications?: NotificationQueue;
@@ -233,6 +238,7 @@ export function signalsScreenActions(options: {
       return current.ok && isDeepStrictEqual(current.value, saved.resolution);
     },
     async run(context, input) {
+      await context.capabilities.refreshFetch?.();
       const request = requestOf(input.target, today(), input.note, input.tags);
       let answers: WatchResolutionAnswers = context.capabilities.watchMarket
         ? {}
@@ -377,6 +383,7 @@ export function signalsScreenActions(options: {
         hits: Awaited<ReturnType<InstrumentSearch["remoteHits"]>>["hits"];
         status: "skipped" | "unavailable" | "ok";
       } = { hits: [], status: "unavailable" };
+      await context.capabilities.refreshFetch?.();
       if (context.capabilities.searchSources)
         answer = await search.remoteHits(input.query, context.capabilities.searchSources);
       const value = await context.readStep((read) =>

@@ -34,6 +34,7 @@ import type {
   CategorizeProvider,
   CloudCategorizeProvider,
 } from "../cli/budget/categorizeOllama.js";
+import { refreshFetchAuthority } from "../fetchAuthority.js";
 import type { HostStores, OpenVault } from "../stores.js";
 import type { UiActionRegistration } from "../uiActions.js";
 
@@ -214,6 +215,8 @@ export function createProductionClassifierBinding(options: ProductionClassifierO
       : null;
   };
   const holder = (id: string) => currentVault(id)?.native?.canFetchPublicMarket() === true;
+  // Fresh lease pull evidence before `holder` is checked (../fetchAuthority.ts).
+  const refresh = (id: string) => refreshFetchAuthority(currentVault(id) ?? undefined);
   const generation = (id: string) => generations.get(id) ?? 0;
   const invalidate = (id: string) => generations.set(id, generation(id) + 1);
   const read = (id: string): RecordState | null => {
@@ -238,10 +241,12 @@ export function createProductionClassifierBinding(options: ProductionClassifierO
   };
   const local: CategorizeProvider = {
     isHolder: holder,
+    refresh,
     fetch: (request, init) => transport(request, init),
   };
   const cloud: CloudCategorizeProvider = {
     isHolder: holder,
+    refresh,
     fetch: (request, init) => transport(request, init),
     consent(id) {
       const record = read(id);

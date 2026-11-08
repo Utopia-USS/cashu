@@ -94,10 +94,9 @@ it("registers native public search and import publication through actual host st
   try {
     const vault = host.stores.vaults.get(fixture.vaultId);
     if (vault?.mode !== "native" || !market) throw new Error("native market was not bound");
+    // Before any pull the leader holds no fetch authority. Nothing below syncs by hand: each MCP
+    // call and each public request obtains the pull evidence itself.
     expect(() => market?.sources([fixture.vaultId])).toThrow("market_fetch_authority_unavailable");
-    await vault.native.sync();
-    expect(vault.native.canFetchPublicMarket()).toBe(true);
-    expect(market.sources([fixture.vaultId]).priceSource).toBeDefined();
     connection = await connectHost({
       dataDir: fixture.dataDir,
       role: "mcp",
@@ -151,6 +150,8 @@ it("registers native public search and import publication through actual host st
     });
     expect((searched.result as { isError: boolean }).isError).toBe(false);
     expect(requests).toBe(1);
+    expect(vault.native.canFetchPublicMarket()).toBe(true);
+    expect(market.sources([fixture.vaultId]).priceSource).toBeDefined();
     const research = await client.call("tools/call", {
       name: "research_context",
       arguments: {},

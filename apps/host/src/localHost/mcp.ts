@@ -20,6 +20,7 @@ import {
 } from "@cashu/mcp";
 import type { HostSession, RunningHost } from "@cashu/node-host";
 import { mcpProfile } from "@cashu/store/core";
+import { mayObtainFetchAuthority } from "../fetchAuthority.js";
 import type { HostLog } from "../log.js";
 import { nativeBackend } from "../mcp/backend.js";
 import type { ConnectorProposalReceipts } from "../mcp/connectorReceipt.js";
@@ -271,6 +272,12 @@ function nativeToolEnabled(
 ) {
   const asyncCurrent = (capability: { vault: string; isCurrent(): boolean } | undefined) =>
     investmentAsync?.vault === vault.id && capability?.vault === vault.id && capability.isCurrent();
+  // Public search and watch need the fetch lease; a leader whose pull is only stale still lists
+  // them, and each call obtains the pull first (mcp/native.ts).
+  const fetchCurrent = (capability: { vault: string; isCurrent(): boolean } | undefined) =>
+    investmentAsync?.vault === vault.id &&
+    capability?.vault === vault.id &&
+    (capability.isCurrent() || mayObtainFetchAuthority(vault));
   return (name: string): boolean => {
     if (NATIVE_MCP_STORE_TOOLS.has(name)) return true;
     if (name === "profile_overview") return market.prices !== null && market.fxNewest !== undefined;
@@ -281,10 +288,10 @@ function nativeToolEnabled(
     if (name === "propose_import") return asyncCurrent(investmentAsync?.imports);
     if (NATIVE_MCP_INVESTMENT_WRITES.has(name)) {
       if (market.investmentWrites === undefined) return false;
-      if (name === "add_to_watchlist") return asyncCurrent(investmentAsync?.watch);
+      if (name === "add_to_watchlist") return fetchCurrent(investmentAsync?.watch);
       return true;
     }
-    if (name === "search_instruments") return asyncCurrent(investmentAsync?.search);
+    if (name === "search_instruments") return fetchCurrent(investmentAsync?.search);
     return false;
   };
 }

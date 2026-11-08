@@ -41,6 +41,23 @@ export function workerGuard(
     throw new WorkerAuthorityLost();
   };
 }
+/**
+ * Before a network job's authority check: refreshes the vault's stale pull evidence for that job's
+ * fetch authority. Never throws; the job's guard still decides.
+ */
+export async function refreshWorkerFetch(
+  host: WorkerHostContext,
+  bindings: WorkerBindings | undefined,
+  vault: OpenVault,
+  job: WorkerJob,
+): Promise<void> {
+  try {
+    if (bindings === undefined || host.networkEnabled() !== true) return;
+    await bindings.fetchAuthority?.(vault, job)?.refresh?.();
+  } catch {
+    /* A failed refresh grants nothing; the guard refuses. */
+  }
+}
 export function guardedLease(guard: () => void): { isHolder(): boolean } {
   return {
     isHolder() {

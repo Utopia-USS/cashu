@@ -72,6 +72,12 @@ export interface WorkerHostContext {
 }
 interface WorkerAuthority {
   isHolder(): boolean;
+  /**
+   * Fetch authority only: obtains fresh lease pull evidence when it is stale (nativeVault
+   * fetchAuthority.ts). Awaited before a network job is judged due and between the awaited steps of
+   * one, never inside the vault queue; `isHolder` stays the check.
+   */
+  refresh?(): Promise<unknown>;
 }
 interface ExclusiveJobOwnership {
   /** Already-exclusive local runtime ownership, supplied after a genuine drain/handover. */

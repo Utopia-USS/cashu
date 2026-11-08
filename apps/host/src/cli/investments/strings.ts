@@ -107,6 +107,7 @@ export const investmentCliText = {
   plansResolved: { pl: "rozwiązane plany", en: "resolved plans" },
   researchResolved: { pl: "rozwiązane badania", en: "resolved research" },
   profileError: { pl: "!", en: "!" },
+  reason: { pl: "powód", en: "reason" },
   mergeNativeIds: {
     pl: "Użyj pełnych natywnych identyfikatorów instrumentów.",
     en: "Use full native instrument IDs.",
@@ -138,6 +139,26 @@ export const macroStatus = {
   skipped: { pl: "pominięto", en: "skipped" },
   error: { pl: "błąd", en: "error" },
 } as const;
+
+/** Why `cashu invest run` skipped or failed a profile; any other code is printed as it is. */
+export const runReason: Readonly<Record<string, { readonly pl: string; readonly en: string }>> = {
+  fetch_authority_unavailable: {
+    pl: "to urządzenie nie ma teraz prawa pobierania danych (lider pobierania lub synchronizacja)",
+    en: "this device may not fetch right now (fetch leader or sync)",
+  },
+  authority_lost: {
+    pl: "profil lub uprawnienie zmieniło się podczas przebiegu",
+    en: "the profile or its authority changed during the run",
+  },
+  file_authority_unavailable: {
+    pl: "pliki strategii są niedostępne",
+    en: "the strategy files are unavailable",
+  },
+  busy: { pl: "trwa inny przebieg", en: "another run is in progress" },
+  preparation_failed: { pl: "przygotowanie nie powiodło się", en: "preparation failed" },
+  daily_failed: { pl: "przebieg nie powiódł się", en: "the run failed" },
+  outcome_unknown: { pl: "wynik zapisu nieznany", en: "write outcome unknown" },
+};
 
 export const runStatus = {
   ok: { pl: "ukończono", en: "ok" },

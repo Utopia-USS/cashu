@@ -1,3 +1,4 @@
+import { refreshFetchAuthority } from "../fetchAuthority.js";
 import type { OpenVault } from "../stores.js";
 import type { BudgetSyncPort } from "../worker/contracts.js";
 import { reportSuccessfulFetch } from "../worker/leaseReport.js";
@@ -15,6 +16,7 @@ export function bankingWorkerPort(runtime: BankingRuntime): BudgetSyncPort {
       return ((await serviceFor(vault)?.status())?.sessions.length ?? 0) > 0;
     },
     async sync(vault, days, guard) {
+      await refreshFetchAuthority(vault);
       guard();
       const service = serviceFor(vault);
       if (!service) return { ok: false, errors: ["unavailable"] };
@@ -26,6 +28,7 @@ export function bankingWorkerPort(runtime: BankingRuntime): BudgetSyncPort {
       } finally {
         endFetch();
       }
+      await refreshFetchAuthority(vault);
       guard();
       if (result.banks > 0 && result.attempts.length === 0)
         await reportSuccessfulFetch(vault, guard);

@@ -3,7 +3,7 @@ import { enabledModuleIds } from "@cashu/store/core";
 import { DurableWriteUnknown, lastOkDay, type runDaily } from "@cashu/store/investments/services";
 import type { ChangeSource } from "@cashu/store/query";
 import type { OpenVault } from "../stores.js";
-import { WorkerAuthorityLost, workerGuard } from "./authority.js";
+import { refreshWorkerFetch, WorkerAuthorityLost, workerGuard } from "./authority.js";
 import { syncWorkerBudget } from "./budget.js";
 import {
   emptyWorkerState,
@@ -391,12 +391,21 @@ export class HostWorker {
     const bindings = this.bindings;
     if (bindings === undefined) throw new WorkerAuthorityLost();
     return workerGuard(this.host, bindings, vault, job, {
-      network:
-        !offline &&
-        (job === "connectors.fetch" ||
-          job === "budget.sync" ||
-          (job === "investments.daily" && bindings.offline !== true)),
+      network: this.networkJob(job, offline),
     });
+  }
+  private networkJob(job: WorkerJob, offline: boolean): boolean {
+    return (
+      !offline &&
+      (job === "connectors.fetch" ||
+        job === "budget.sync" ||
+        (job === "investments.daily" && this.bindings?.offline !== true))
+    );
+  }
+  /** A network job's guard needs fresh lease pull evidence: obtain it first (never in the queue). */
+  private async freshPull(vault: OpenVault, job: WorkerJob, offline = this.tickOffline) {
+    if (this.networkJob(job, offline))
+      await refreshWorkerFetch(this.host, this.bindings, vault, job);
   }
   private async due(
     job: WorkerJob,
@@ -412,7 +421,9 @@ export class HostWorker {
           (job === "investments.daily" || job === "notifications" || job === "digest")
         )
           continue;
-        const guard = this.guard(vault, job);
+        // Due-ness is judged on local authority first: the pull a network job's fetch lease needs
+        // is obtained only for a vault that is actually due, so idle ticks never run a sync pass.
+        const guard = this.guard(vault, job, true);
         guard();
         const old = this.state.runs[runKey(job, vault.id)];
         if (
@@ -437,6 +448,8 @@ export class HostWorker {
             if (this.host.now() - attempted < DAILY_RETRY_MS) continue;
           }
         }
+        await this.freshPull(vault, job);
+        this.guard(vault, job)();
         due.push(vault);
       } catch {
         /* One unavailable vault never prevents another vault's job. */
@@ -493,6 +506,7 @@ export class HostWorker {
         started = true;
         guard();
         const outcome = await execute(vault, guard);
+        await this.freshPull(vault, job);
         guard();
         await this.recordFinish(job, vault, outcome);
       } catch (error) {
@@ -541,6 +555,7 @@ export class HostWorker {
           ...new Map([...investors, ...budgeters].map((v) => [v.id, v])).values(),
         ];
         await this.phase("connectors.fetch", candidates, force, async (vault, guard) => {
+          await this.freshPull(vault, "connectors.fetch");
           const endFetch = vault.native?.beginFetch();
           if (vault.mode === "native" && !endFetch)
             return { status: "skipped", code: "fetch_authority_unavailable" };
@@ -691,9 +706,8 @@ export class HostWorker {
       if (this.stopping) return;
       if (this.state.uncertain[vault.id] !== undefined) continue;
       if (busyDaily.has(vault.id)) continue;
-      const guard = this.guard(vault, "investments.daily");
       try {
-        guard();
+        this.guard(vault, "investments.daily", true)();
       } catch {
         continue;
       }
@@ -707,6 +721,14 @@ export class HostWorker {
           time - Date.parse(old.finishedAt ?? old.startedAt) < DAILY_RETRY_MS
         )
           continue;
+      }
+      // Only a due backfill obtains the pull its fetch lease needs (no sync pass on idle ticks).
+      await this.freshPull(vault, "investments.daily");
+      const guard = this.guard(vault, "investments.daily");
+      try {
+        guard();
+      } catch {
+        continue;
       }
       const startedAt = new Date(time).toISOString();
       this.state.backfills[vault.id] = {

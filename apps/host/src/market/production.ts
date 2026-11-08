@@ -30,6 +30,7 @@ import type { ResearchScreenExtraSources } from "@cashu/store/investments/resear
 import type { InvestmentMarketSource, MarketInput } from "@cashu/store/investments/screen-sources";
 import { type DailySources, InstrumentSearch } from "@cashu/store/investments/services";
 import type { Read } from "@cashu/store/query";
+import { refreshFetchAuthorities } from "../fetchAuthority.js";
 import type { SignalsMarketPorts } from "../signalsScreen.js";
 import type { OpenVault } from "../stores.js";
 import type { WorkspaceProvider } from "../workspace/index.js";
@@ -144,9 +145,19 @@ export function createProductionMarket(input: ProductionMarketInput): Production
       return false;
     }
   };
+  // Every public request is a leader action, so the lease needs a pull within its publish deadline
+  // before each one (lease.ts `holdsLease`). A daily over many instruments outlasts that deadline,
+  // so this transport refreshes stale pull evidence through the vault's queued sync pass right
+  // before each request and again once its body arrived, before the callers' own synchronous
+  // authority checks run. The run does NOT keep authority through `activeFetches` alone: that only
+  // holds back a non-force hand-over ACK, while a force re-pin lets the old leader act once more at
+  // most, which a whole run on one stale pull would stretch.
+  const freshPull = (vaultIds: readonly string[]) =>
+    refreshFetchAuthorities(vaultIds.map((id) => vaultFor(id)));
   const fetchFor =
     (allowed: () => boolean, vaultIds: readonly string[]): FetchLike =>
     async (url, init) => {
+      await freshPull(vaultIds);
       if (!allowed()) throw new Error("market_fetch_authority_unavailable");
       const releases: (() => void)[] = [];
       const release = () => {
@@ -169,6 +180,7 @@ export function createProductionMarket(input: ProductionMarketInput): Production
           text: async () => {
             try {
               const body = await response.text();
+              await freshPull(vaultIds);
               if (!allowed()) throw new Error("market_fetch_authority_unavailable");
               return body;
             } finally {
@@ -229,6 +241,7 @@ export function createProductionMarket(input: ProductionMarketInput): Production
     };
     const watch = {
       async chart(symbol: string, start: CalendarDate, end: CalendarDate) {
+        await freshPull([vaultId]);
         if (!allowed()) throw new Error("market_fetch_authority_unavailable");
         const quote = await new YahooPriceSource(httpFor(allowed, [vaultId]), {
           clock: utcClock,

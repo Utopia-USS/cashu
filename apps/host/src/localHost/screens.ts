@@ -13,6 +13,7 @@ import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-sc
 import type { Read } from "@cashu/store/query";
 import { budgetStatementActions } from "../budgetScreen.js";
 import type { connectorSettingsServed } from "../connectorSettings.js";
+import { refreshFetchAuthority } from "../fetchAuthority.js";
 import { currentStrategyImages } from "../investmentScreenSources.js";
 import type { investmentsRunningQuery } from "../investmentsRunning.js";
 import type { ProductionMarket } from "../market/production.js";
@@ -304,6 +305,7 @@ export function localSignalsBinder(input: {
       vault,
       generation: `local:${vault}:${++generations}`,
       isCurrent: () => stores.vaults.get(vault) === opened,
+      refreshFetch: () => refreshFetchAuthority(opened),
       notifications: queue,
       ...(prices ? { prices } : {}),
       get searchSources() {

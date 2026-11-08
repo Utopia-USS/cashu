@@ -64,6 +64,12 @@ export interface BankingAuthority {
   readonly profileId: string;
   isCurrent(): boolean;
   isHolder(): boolean;
+  /**
+   * Refreshes stale lease pull evidence before `isHolder` is checked (production:
+   * ../fetchAuthority.ts). Awaited before each holder check that follows an await (a bank request,
+   * the owner's consent in the browser), never inside the vault queue.
+   */
+  refresh?(): Promise<unknown>;
   isOwnerAction(): boolean;
 }
 interface BankingStatement {
@@ -166,6 +172,14 @@ export class EnableBankingService {
     this.capture = null;
     this.pending = null;
     if (capture) await capture.close();
+  }
+
+  private async freshHolder(): Promise<void> {
+    try {
+      await this.options.authority.refresh?.();
+    } catch {
+      /* A failed refresh grants nothing; the holder check refuses. */
+    }
   }
 
   private guard(holder = false, owner = false): void {
@@ -289,6 +303,7 @@ export class EnableBankingService {
     bank?: string | null;
     keepOthers?: boolean;
   }) {
+    await this.freshHolder();
     this.guard(true, true);
     if (this.pending || this.beginning) throw new BankingFault("authorization");
     this.beginning = true;
@@ -319,6 +334,7 @@ export class EnableBankingService {
           state,
           redirectUrl: capture.redirectUrl,
         });
+        await this.freshHolder();
         this.guard(true, true);
         if (generation !== this.beginGeneration || this.capture !== capture)
           throw new BankingFault("authorization");
@@ -356,6 +372,7 @@ export class EnableBankingService {
     errors: readonly string[];
     attempts: readonly BankingAttempt[];
   }> {
+    await this.freshHolder();
     this.guard(true, true);
     const pending = this.pending;
     const capture = this.capture;
@@ -371,6 +388,8 @@ export class EnableBankingService {
     } finally {
       await capture.close();
     }
+    // The owner may have spent minutes in the bank's browser: refresh before acting as leader.
+    await this.freshHolder();
     this.guard(true, true);
     const credential = pending.credential;
     const credentialTick = pending.credentialTick;
@@ -385,6 +404,7 @@ export class EnableBankingService {
     const result = await this.syncOne(client, id, pending.bank, pending.days, sameCredential);
     for (const attempt of result.attempts) this.unknownAttempts.set(attempt.key, attempt);
     const institution = result.institution;
+    await this.freshHolder();
     await serial(this.options.secrets.namespace, async () => {
       this.guard(true, true);
       if (!sameCredential() || (await this.credentials())?.revision !== credential.revision)
@@ -444,9 +464,11 @@ export class EnableBankingService {
     errors: readonly string[];
     attempts: readonly BankingAttempt[];
   }> {
+    await this.freshHolder();
     this.guard(true, input.reason === "manual");
     input.guard?.();
     const unresolved = await this.options.imports.unresolvedAttempts();
+    await this.freshHolder();
     this.guard(true, input.reason === "manual");
     input.guard?.();
     if (unresolved.length > 0)
@@ -482,6 +504,7 @@ export class EnableBankingService {
     let banks = 0;
     let inserted = 0;
     for (const item of saved) {
+      await this.freshHolder();
       this.guard(true, input.reason === "manual");
       if (
         item.credentialRevision !== credential.revision ||
@@ -582,10 +605,12 @@ export class EnableBankingService {
     days: number,
     stillCurrent: () => boolean = () => true,
   ) {
+    await this.freshHolder();
     this.guard(true);
     if (!stillCurrent()) throw new BankingFault("authorization");
     if (!Number.isInteger(days) || days < 1 || days > 365) throw new BankingFault("configuration");
     const session = await client.session(id);
+    await this.freshHolder();
     this.guard(true);
     if (!stillCurrent()) throw new BankingFault("authorization");
     const status = text(session.status);
@@ -619,6 +644,7 @@ export class EnableBankingService {
       throw new BankingFault("response");
     }
     for (const entry of entries) {
+      await this.freshHolder();
       this.guard(true);
       if (!stillCurrent()) throw new BankingFault("authorization");
       const embedded = typeof entry === "string" ? {} : entry;
@@ -637,6 +663,7 @@ export class EnableBankingService {
         const details = hasDetails ? embedded : await client.accountDetails(uid);
         const txns = await client.transactions(uid, from, today);
         const balances = await client.balances(uid);
+        await this.freshHolder();
         this.guard(true);
         if (!stillCurrent()) throw new BankingFault("authorization");
         const account = accountDetails(details);
@@ -648,6 +675,7 @@ export class EnableBankingService {
           uid,
           account.iban,
         );
+        await this.freshHolder();
         this.guard(true);
         const picked = pickBalance(balances, today, account.currency);
         const statement: BankingStatement = {

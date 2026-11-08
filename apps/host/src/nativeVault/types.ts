@@ -83,6 +83,14 @@ export interface NativeVaultSession extends PairingReads {
   checkpointDirectory(): string;
   strategyDirectoryAuthority(): StrategyDirectoryAuthority | null;
   canFetchPublicMarket(): boolean;
+  /**
+   * Obtains fresh pull evidence through `sync()` when this device is the named fetch leader and the
+   * evidence is missing or stale, then answers `canFetchPublicMarket()` (nativeVault/fetchAuthority).
+   * Call it before a leader action and between the steps of a long one; never inside the queue.
+   */
+  refreshFetchAuthority(): Promise<boolean>;
+  /** Fetch authority now, or after the pull `refreshFetchAuthority` would run (status reports). */
+  mayObtainFetchAuthority(): boolean;
   /** A live external fetch holds back non-force leader handover ACK until it settles. */
   beginFetch(): (() => void) | null;
   /** Separate durable lease report after a successful checked fetch. */

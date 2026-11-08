@@ -93,8 +93,7 @@ it("approves strategy and custom-rule proposals into the native strategy files",
     });
     expect(onDisk()).toBe(yaml);
 
-    // The agent's MCP call, as Claude would make it.
-    await vault.native?.sync();
+    // The agent's MCP call, as Claude would make it (it obtains its own pull evidence).
     connection = await connectHost({
       dataDir: fixture.dataDir,
       role: "mcp",

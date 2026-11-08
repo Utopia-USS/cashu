@@ -5,7 +5,7 @@ import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
 import { type InvestmentCliDeps, investmentVault } from "./context.js";
 import { UNHANDLED } from "./inspection.js";
-import { investmentCliText as M, runStatus } from "./strings.js";
+import { investmentCliText as M, runReason, runStatus } from "./strings.js";
 
 function countStatuses(items: readonly { readonly status: string }[]): string {
   const counts = new Map<string, number>();
@@ -81,7 +81,13 @@ export async function runInvestment(
       const slug = slugs.get(vault.id) ?? vault.id;
       if (!row) {
         const outcome = outcomes.get(vault.id);
-        printConsole(io, `${slug}: ${io.t.tr(runStatus[outcome?.status ?? "failed"])}`);
+        const code = outcome?.code;
+        const known = code === undefined ? undefined : runReason[code];
+        const reason =
+          code === undefined
+            ? ""
+            : ` (${io.t.tr(M.reason)}: ${code}${known ? ` - ${io.t.tr(known)}` : ""})`;
+        printConsole(io, `${slug}: ${io.t.tr(runStatus[outcome?.status ?? "failed"])}${reason}`);
         failed ||= outcome?.status === "failed" || outcome === undefined;
         continue;
       }

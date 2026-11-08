@@ -19,6 +19,38 @@ export { ClassifierAuthorityLost } from "@cashu/llm";
 export interface CategorizeProvider {
   readonly isHolder: (vault: string) => boolean;
   readonly fetch: typeof globalThis.fetch;
+  /**
+   * Refreshes the vault's stale lease pull evidence before `isHolder` is checked (production:
+   * ../../fetchAuthority.ts). Never awaited inside the vault queue.
+   */
+  readonly refresh?: (vault: string) => Promise<unknown>;
+}
+/** Fresh pull evidence before a classifier authority check. Never throws. */
+export async function refreshClassifierAuthority(
+  provider: CategorizeProvider | undefined,
+  vault: string,
+): Promise<void> {
+  try {
+    await provider?.refresh?.(vault);
+  } catch {
+    /* A failed refresh grants nothing; `isHolder` refuses. */
+  }
+}
+/**
+ * The provider's transport with the pull refreshed before each request and after its answer: a
+ * local model can take longer per batch than the lease's publish deadline, and the classifier
+ * checks `isHolder` again once the answer arrived.
+ */
+export function freshClassifierFetch(
+  provider: CategorizeProvider,
+  vault: string,
+): typeof globalThis.fetch {
+  return async (request, init) => {
+    await refreshClassifierAuthority(provider, vault);
+    const response = await provider.fetch(request, init);
+    await refreshClassifierAuthority(provider, vault);
+    return response;
+  };
 }
 export function hasClassifierAuthority(
   provider: CategorizeProvider | undefined,
@@ -91,7 +123,7 @@ export class OllamaClassifier implements budget.MerchantClassifier, budget.Trans
       {
         vault,
         isHolder: (id) => hasClassifierAuthority(provider, id),
-        fetch: (request, init) => provider.fetch(request, init),
+        fetch: freshClassifierFetch(provider, vault),
         signal: io.signal,
         // Missing currentness is unavailable, never an inferred production grant.
         isInputCurrent: (id) => isInputCurrent?.(id) === true,

@@ -5,6 +5,7 @@ import {
   type BankingSecretStore,
   createProductionBankingSecrets,
 } from "@cashu/node-host/banking-secrets";
+import { refreshFetchAuthority } from "../fetchAuthority.js";
 import type { HostStores, OpenVault } from "../stores.js";
 import { createVaultBankingImportPort } from "./hostImport.js";
 import { type BankingAuthority, EnableBankingService } from "./service.js";
@@ -60,6 +61,7 @@ export class BankingRuntime {
         vault.native.isCurrent() &&
         (this.options.isCurrentVault?.(vault) ?? true),
       isHolder: () => vault.native.canFetchPublicMarket(),
+      refresh: () => refreshFetchAuthority(vault),
       isOwnerAction: () => {
         const scoped = this.ownerScope.getStore();
         return (

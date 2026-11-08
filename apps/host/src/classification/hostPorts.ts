@@ -15,6 +15,7 @@ export class ClassifierHostPorts {
 
   readonly local: CategorizeProvider = {
     isHolder: (vault) => this.binding?.local.isHolder(vault) === true,
+    refresh: async (vault) => this.binding?.local.refresh?.(vault),
     fetch: (request, init) => {
       if (!this.binding) throw new Error("classifier_authority_unavailable");
       return this.binding.local.fetch(request, init);
@@ -23,6 +24,7 @@ export class ClassifierHostPorts {
 
   readonly cloud: CloudCategorizeProvider = {
     isHolder: (vault) => this.binding?.cloud.isHolder(vault) === true,
+    refresh: async (vault) => this.binding?.cloud.refresh?.(vault),
     fetch: (request, init) => {
       if (!this.binding) throw new Error("classifier_authority_unavailable");
       return this.binding.cloud.fetch(request, init);

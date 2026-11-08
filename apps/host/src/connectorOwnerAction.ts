@@ -20,6 +20,7 @@ import type { ConnectorRuntime } from "./connectorRuntime.js";
 import { bindingParamsDigest, type ConnectorBinding } from "./connectors/binding.js";
 import { resolveInterpreter } from "./connectors/catalog.js";
 import { boundConnectorSecrets } from "./connectors/secrets.js";
+import { refreshFetchAuthority } from "./fetchAuthority.js";
 import type { HostStores, OpenVault } from "./stores.js";
 import { type UiActionRegistration, unknownUiCommand } from "./uiActions.js";
 import type { WorkerBindings } from "./worker/contracts.js";
@@ -133,6 +134,9 @@ export function connectorOwnerAction(input: {
       mutationBusy = true;
       const holder = () => current() && vault.native.canFetchPublicMarket();
       try {
+        // Binding, running and testing are fetch-leader actions: obtain fresh pull evidence first.
+        if (action.op !== "approve" && action.op !== "disable" && action.op !== "remove")
+          await refreshFetchAuthority(vault);
         if (action.op === "approve") {
           catalog.approve(action.id, action.digest, action.interpreter, {
             ownerAction: true,

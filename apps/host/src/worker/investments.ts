@@ -29,7 +29,7 @@ import {
 } from "@cashu/store/investments/services";
 import { runHostVaultCommand } from "../commands.js";
 import type { OpenVault } from "../stores.js";
-import { guardedLease, WorkerAuthorityLost, workerGuard } from "./authority.js";
+import { guardedLease, refreshWorkerFetch, WorkerAuthorityLost, workerGuard } from "./authority.js";
 import type { JobOutcome, WorkerBindings, WorkerHostContext } from "./contracts.js";
 import { reportSuccessfulFetch } from "./leaseReport.js";
 import { localDay } from "./schedule.js";
@@ -64,6 +64,34 @@ export function nativeInvestmentJobs(
       if (bindings.investments !== ports) throw new WorkerAuthorityLost();
     };
   };
+  // An online run is a fetch-leader action from its first guard to its last write, and the lease
+  // wants a pull within its publish deadline before each check. Stale pull evidence is refreshed
+  // before the run and before every awaited write; the market transport refreshes around each
+  // request (market/production.ts), so a run longer than the deadline keeps its authority.
+  const freshPull = (vault: OpenVault, offline = false): Promise<void> =>
+    offline || bindings.offline === true
+      ? Promise.resolve()
+      : refreshWorkerFetch(host, bindings, vault, "investments.daily");
+  const writeOf =
+    (vault: OpenVault, guard: () => void, offline = false) =>
+    async <T>(work: () => T): Promise<T> => {
+      await freshPull(vault, offline);
+      return vault.queue.run(() => {
+        guard();
+        return work();
+      });
+    };
+  /** Names the missing fetch lease apart from any other lost authority (CLI and status reasons). */
+  const lostCode = (vault: OpenVault, offline: boolean) => {
+    if (offline || bindings.offline === true) return "authority_lost";
+    try {
+      return bindings.fetchAuthority?.(vault, "investments.daily")?.isHolder() === true
+        ? "authority_lost"
+        : "fetch_authority_unavailable";
+    } catch {
+      return "fetch_authority_unavailable";
+    }
+  };
   const envOf = (vault: OpenVault, guard: () => void): CommandEnv => ({
     device: vault.env.device,
     clock: vault.env.clock,
@@ -81,6 +109,7 @@ export function nativeInvestmentJobs(
     async <I, R>(command: Command<I, R>, input: unknown) => {
       if (attempts === undefined)
         return { kind: "not_started" as const, reason: "worker_attempt_bookkeeping_unavailable" };
+      await freshPull(vault, offline);
       const key = mintUlid(Date.now(), (n) => new Uint8Array(randomBytes(n)));
       try {
         await attempts.reserve(vault, job, command.id, key, offline);
@@ -125,6 +154,7 @@ export function nativeInvestmentJobs(
     };
   return {
     async macroRefresh(vault: OpenVault, cliCurrent: () => boolean) {
+      await freshPull(vault);
       const guard = guardOf(vault, false, false, cliCurrent);
       guard();
       if (bindings.offline || !ports.sources || !ports.macroStore || !ports.macroBars)
@@ -188,6 +218,7 @@ export function nativeInvestmentJobs(
         selected: DailyVault[] = [];
       for (const vault of vaults) {
         try {
+          await freshPull(vault, offlineOverride);
           const guard = guardOf(vault, false, offlineOverride, cliCurrent);
           guard();
           const files = ports.files(vault);
@@ -204,11 +235,7 @@ export function nativeInvestmentJobs(
             sync,
             enabled: enabledModuleIds(vault.store.read.bind(vault.store)).has("investments"),
             lang: bindings.language(vault),
-            runWrite: (work) =>
-              vault.queue.run(() => {
-                guard();
-                return work();
-              }),
+            runWrite: writeOf(vault, guard, offlineOverride),
             ...(vault.native === undefined
               ? {}
               : { durableWrite: durableOf(vault, guard, "investments.daily", offlineOverride) }),
@@ -216,7 +243,10 @@ export function nativeInvestmentJobs(
         } catch (error) {
           results.set(vault.id, {
             status: error instanceof WorkerAuthorityLost ? "skipped" : "failed",
-            code: error instanceof WorkerAuthorityLost ? "authority_lost" : "preparation_failed",
+            code:
+              error instanceof WorkerAuthorityLost
+                ? lostCode(vault, offlineOverride)
+                : "preparation_failed",
           });
         }
       }
@@ -273,12 +303,14 @@ export function nativeInvestmentJobs(
     backfillEnabled: () => bindings.offline !== true && ports.sources !== undefined,
     async backfill(vault: OpenVault): Promise<"finished" | "failed" | "busy" | "unavailable"> {
       if (bindings.offline || ports.sources === undefined) return "unavailable";
+      await freshPull(vault);
       const guard = guardOf(vault);
       guard();
       if (!host.networkEnabled()) throw new WorkerAuthorityLost();
       const files = ports.files(vault);
       if (files === null) return "unavailable";
       const state = await loadStrategy(vault.store, files);
+      await freshPull(vault);
       guard();
       const config = state.config,
         read = vault.store.read.bind(vault.store),
@@ -307,11 +339,7 @@ export function nativeInvestmentJobs(
             guard();
             return host.networkEnabled();
           },
-          runWrite: (work) =>
-            vault.queue.run(() => {
-              guard();
-              return work();
-            }),
+          runWrite: writeOf(vault, guard),
           ...(vault.native === undefined
             ? {}
             : { durableWrite: durableOf(vault, guard, "investments.backfill", false) }),
@@ -335,6 +363,7 @@ export function nativeInvestmentJobs(
       }
     },
     async prices(vault: OpenVault): Promise<"finished" | "busy"> {
+      await freshPull(vault);
       const guard = guardOf(vault, true);
       guard();
       if (bindings.offline || !host.networkEnabled() || ports.sources === undefined) return "busy";
@@ -354,6 +383,7 @@ export function nativeInvestmentJobs(
           strategy.config?.baseCurrency ?? toCurrency(profile.baseCurrency),
         );
       });
+      await freshPull(vault);
       guard();
       const sources = ports.sources([vault.id]);
       let closed = false;

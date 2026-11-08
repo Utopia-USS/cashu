@@ -20,6 +20,7 @@ import {
   hasClassifierAuthority,
   OllamaClassifier,
   ollamaOptions,
+  refreshClassifierAuthority,
 } from "./categorizeOllama.js";
 import { classifierInput } from "./classifierInput.js";
 import { importTextSupported } from "./importInput.js";
@@ -119,6 +120,7 @@ export async function runReclassifyCommand(
     (v) => mcpProfile(v.store.read.bind(v.store))?.slug === slug,
   );
   const vault = matches.length === 1 ? matches[0] : undefined;
+  if (vault) await refreshClassifierAuthority(provider, vault.id);
   if (!vault || (provider && !hasClassifierAuthority(provider, vault.id))) return UNHANDLED;
   const clock = new Date(deps.now());
   const today: IsoDate = `${String(clock.getFullYear()).padStart(4, "0")}-${String(clock.getMonth() + 1).padStart(2, "0")}-${String(clock.getDate()).padStart(2, "0")}`;
@@ -156,6 +158,7 @@ export async function runReclassifyCommand(
     }),
   }));
   const networkNeeded = prepared.some((band) => band.plan.groups.length > 0);
+  if (networkNeeded) await refreshClassifierAuthority(provider, vault.id);
   if (networkNeeded && !hasClassifierAuthority(provider, vault.id)) return UNHANDLED;
   if (
     prepared.some(
@@ -206,6 +209,7 @@ export async function runReclassifyCommand(
                 },
                 isHolder: (id) =>
                   deps.classifier === provider && hasClassifierAuthority(provider, id),
+                ...(provider?.refresh === undefined ? {} : { refresh: provider.refresh }),
               },
               vault.id,
               io,
@@ -265,6 +269,7 @@ export async function runReclassifyCommand(
   }
   const key = cliCommandKey();
   if (io.signal.aborted) return 130;
+  if (networkNeeded) await refreshClassifierAuthority(provider, vault.id);
   if (io.signal.aborted) return 130;
   if (
     deps.stores.vaults.get(vault.id) !== vault ||

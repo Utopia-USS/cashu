@@ -17,9 +17,11 @@ import { S } from "./categorize.strings.js";
 import {
   type CategorizeDeps,
   ClassifierAuthorityLost,
+  freshClassifierFetch,
   hasClassifierAuthority,
   OllamaClassifier,
   ollamaOptions,
+  refreshClassifierAuthority,
 } from "./categorizeOllama.js";
 import { classifierInput } from "./classifierInput.js";
 import { importTextSupported } from "./importInput.js";
@@ -47,6 +49,7 @@ export async function runMerchantClassification(
     io.signal.aborted ? null : classifierInput(vault, slug, deps.stores.vaults),
   );
   if (initial === null) return io.signal.aborted ? 130 : cloud ? refuseCloud() : UNHANDLED;
+  await refreshClassifierAuthority(cloud ? deps.cloudClassifier : deps.classifier, vault.id);
   let context: ClassifierTransportContext;
   let cloudGuard: { consent: ReviewedCloudConsent; config: CurrentCloudConfig } | undefined;
   let options: ReturnType<typeof ollamaOptions>;
@@ -94,7 +97,7 @@ export async function runMerchantClassification(
       context = {
         vault: vault.id,
         signal: io.signal,
-        fetch: (request, init) => provider.fetch(request, init),
+        fetch: freshClassifierFetch(provider, vault.id),
         isHolder: (id) => deps.cloudClassifier === provider && hasClassifierAuthority(provider, id),
         isInputCurrent: (id) => backend() === "anthropic" && initial.isCurrent(id),
       };
@@ -148,7 +151,11 @@ export async function runMerchantClassification(
         },
       };
       answers = await new OllamaClassifier(
-        { fetch: (request, init) => provider.fetch(request, init), isHolder: context.isHolder },
+        {
+          fetch: (request, init) => provider.fetch(request, init),
+          isHolder: context.isHolder,
+          ...(provider.refresh === undefined ? {} : { refresh: provider.refresh }),
+        },
         vault.id,
         io,
         options,
@@ -167,6 +174,7 @@ export async function runMerchantClassification(
   if (cloud && !answers.ok && answers.reason === "no_api_key") return refuseCloud();
   const key = cliCommandKey();
   if (io.signal.aborted) return 130;
+  await refreshClassifierAuthority(cloud ? deps.cloudClassifier : deps.classifier, vault.id);
   try {
     assertClassifierCurrent(context, cloudGuard);
   } catch {

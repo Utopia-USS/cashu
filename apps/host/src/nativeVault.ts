@@ -30,6 +30,7 @@ import { carrierEndpoint } from "./nativeVault/carrier.js";
 import { type NativeVaultContext, profileGid } from "./nativeVault/context.js";
 import { deviceReads } from "./nativeVault/deviceReads.js";
 import { warnCause } from "./nativeVault/diagnostics.js";
+import { fetchAuthorityRefresh } from "./nativeVault/fetchAuthority.js";
 import { sessionGuards } from "./nativeVault/guards.js";
 import { ensureOwnLanMirror, reconcilePendingPairings } from "./nativeVault/lanMirror.js";
 import { pairingPruner, pairingWrites } from "./nativeVault/pairing.js";
@@ -229,6 +230,7 @@ export async function openNativeVault(
     scrubIncompleteNativeCheckpoints(root);
     const bindings = sessionBindings(context, guards);
     const syncOps = syncControl(context, guards, leaseReports);
+    const fetchPull = fetchAuthorityRefresh(context, guards, syncOps);
     const deviceOps = deviceReads(context, guards);
     const revoke = revocation(context, guards);
     const pairing = pairingWrites(context, guards, prunePairing);
@@ -263,6 +265,8 @@ export async function openNativeVault(
       checkpointDirectory: bindings.checkpointDirectory,
       strategyDirectoryAuthority: bindings.strategyDirectoryAuthority,
       canFetchPublicMarket: guards.canFetchPublicMarket,
+      refreshFetchAuthority: fetchPull.refreshFetchAuthority,
+      mayObtainFetchAuthority: guards.mayObtainFetchAuthority,
       beginFetch: bindings.beginFetch,
       recordFetch: () => leaseReports.recordFetched(),
       blobPublication: bindings.blobPublication,
