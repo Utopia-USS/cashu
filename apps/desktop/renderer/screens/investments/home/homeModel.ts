@@ -101,8 +101,14 @@ export function headModel(input: {
 }
 
 export interface HeroFact {
+  /** Which fact (the value chart's KPI strip extends `ytd` and `contributions` with its range figures). */
+  key: "ytd" | "unrealized" | "drawdown" | "contributions";
   label: string;
   value: string;
+  /** Colour of the value (the unrealized return). */
+  tone?: Tone;
+  /** Progress 0..1 under the value (this year's contributions against the plan). */
+  bar?: number;
   title?: string;
   /** Plain muted detail. */
   detail?: string;
@@ -110,8 +116,19 @@ export interface HeroFact {
   bench?: { lead: string; pp: { text: string; tone: Tone } | null };
 }
 
+/** The hero figure split for the statement hero: the currency before / after it (small), the whole part and the
+ * decimals (dimmed). Null when the text has no such shape (privacy mode masks the digits). Joined, the parts are
+ * exactly `value`. */
+export interface HeroValueParts {
+  pre: string;
+  main: string;
+  fraction: string;
+  post: string;
+}
+
 export interface HeroModel {
   value: string;
+  valueParts: HeroValueParts | null;
   week: { text: string; tone: Tone } | null;
   facts: HeroFact[];
 }
@@ -149,6 +166,7 @@ export function heroModel(input: {
   });
   const facts: HeroFact[] = [];
   const ytdFact: HeroFact = {
+    key: "ytd",
     label: S.ytd,
     value: ytd?.summary?.twr != null ? pct(ytd.summary.twr, true) : "-",
   };
@@ -166,13 +184,18 @@ export function heroModel(input: {
   } else if (ytd === null) ytdFact.detail = S.noHistory;
   facts.push(ytdFact);
   facts.push({
+    key: "unrealized",
     label: S.unrealized,
     value: money0(k.unrealized.amount, base, true),
+    ...(k.unrealized.amount != null && k.unrealized.amount !== 0
+      ? { tone: k.unrealized.amount > 0 ? ("positive" as const) : ("negative" as const) }
+      : {}),
     detail: k.unrealized.pct != null ? S.vsCost(pct(k.unrealized.pct, true)) : S.costUnknown,
   });
   // The light grid keeps its Wpłaty widget: no duplicate facts there.
   if (!input.light && ddNow != null)
     facts.push({
+      key: "drawdown",
       label: S.drawdown,
       value: pct(ddNow),
       title: S.drawdownTitle,
@@ -180,16 +203,22 @@ export function heroModel(input: {
     });
   if (!input.light && input.perf1y !== undefined)
     facts.push({
+      key: "contributions",
       label: S.contributions,
       value: contrib.deposits != null ? money0(contrib.deposits, base) : "-",
       title: S.thisYear,
+      ...(contrib.deposits != null && contrib.planYtd
+        ? { bar: Math.max(0, Math.min(1, contrib.deposits / contrib.planYtd)) }
+        : {}),
       detail:
         contrib.planYtd != null
           ? `${S.plan(money0(contrib.planYtd, base))}${contrib.missed ? S.missedMonths(contrib.missed) : ""}`
           : S.noPlan,
     });
+  const value = money(k.value.total, base);
   return {
-    value: money(k.value.total, base),
+    value,
+    valueParts: heroValueParts(value),
     week: week
       ? {
           text: `${money(week.money, base, true)}${week.pct != null ? ` (${pct(week.pct, true)})` : ""}`,
@@ -198,6 +227,17 @@ export function heroModel(input: {
       : null,
     facts,
   };
+}
+
+// [currency or sign before] [whole part with group separators] [decimal separator + 2 digits] [currency after]
+const HERO_VALUE =
+  /^([^\d+\-\u2212]*)([+\-\u2212]?\d[\d\s\u00a0\u202f.,]*?)([.,]\d{2})?(\s*[^\d]*)$/u;
+
+/** Splits a formatted amount for the statement hero ("61 789,61 zł" -> "", "61 789", ",61", " zł"). */
+export function heroValueParts(value: string): HeroValueParts | null {
+  const m = HERO_VALUE.exec(value);
+  if (!m) return null;
+  return { pre: m[1] ?? "", main: m[2] ?? "", fraction: m[3] ?? "", post: m[4] ?? "" };
 }
 
 /** Minimal profile density (Home.tsx:204-205, ia-v2.md 9): at most one position, no signals, no alerts, under six

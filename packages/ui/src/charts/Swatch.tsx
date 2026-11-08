@@ -10,6 +10,10 @@ const SIZE: Record<NonNullable<SwatchProps["size"]>, string> = {
   sm: "size-2.25 rounded-4xs",
   /** `.swatch`: 12 px, radius 3 px. */
   lg: "size-3 rounded-3xs",
+  /** Design V5 allocation rows: 8 px, radius 2 px. */
+  xs: "size-2 rounded-4xs",
+  /** Design V5 status dot: a 6 px circle (the portfolio priority line). */
+  dot: "size-1.5 rounded-full",
 };
 
 /** The colour key of a donut segment or a stacked layer in a row or a legend (decorative). */

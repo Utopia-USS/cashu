@@ -17,6 +17,7 @@ export function Donut(props: DonutProps) {
       layout={props.layout}
       label={props.label}
       onActivate={props.onSegmentSelected}
+      onHover={props.onSegmentHover}
       build={() => donutScene(props)}
       center={
         center && {

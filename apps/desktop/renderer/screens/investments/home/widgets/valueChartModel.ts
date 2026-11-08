@@ -1,9 +1,10 @@
-// ValueChartWidget (ab24ab6 v2/Perf.tsx:26-107): portfolio value vs the benchmark bought with the same
-// contributions, the range segments, the legend, the chart or its table, the footer facts. Every text and number is
-// formatted here; the View only lays it out.
+// ValueChartWidget (ab24ab6 v2/Perf.tsx:26-107, laid out as design V5): portfolio value vs the benchmark bought with
+// the same contributions, the range segments and the chart | table toggle, the legend line (portfolio, benchmark with
+// its return, difference, the benchmark status), the chart or its table, then the KPI strip (the hero facts with the
+// range's TWR / XIRR and contributions). Every text and number is formatted here; the View only lays it out.
 import { intlLocale } from "@cashu/i18n";
 import { BENCH_NOTE_L, RANGE_TEXT_L, S } from "@cashu/i18n/investments/v2/Perf.strings";
-import type { LegendItem, LineChartProps } from "@cashu/ui";
+import type { LineChartProps } from "@cashu/ui";
 import { labelIndices } from "@cashu/ui/charts/geometry";
 import { GROUP, monthYearShort } from "@cashu/ui-logic/core/format";
 import { hideAmount } from "@cashu/ui-logic/core/incognito";
@@ -17,13 +18,50 @@ export interface ValueChartUi {
   onRange(range: PerfRange): void;
   table: boolean;
   onTable(table: boolean): void;
+  /** The hero facts (year to date, unrealized, drawdown, contributions) for the KPI strip; none = no strip. */
+  facts?: readonly ChartFact[];
 }
 
-/** One footer item: `lead <b>value</b>` (old FootFacts); `title` on the stale-benchmark label. */
-interface FootFact {
-  lead: string;
+type Tone = "positive" | "negative";
+
+/** One legend entry: a series mark (or none), its label and an optional bold figure. */
+interface LegendEntry {
+  key: string;
+  label: string;
+  mark: "main" | "bench" | null;
   value?: string;
+  tone?: Tone;
+}
+
+/** A sub line of a KPI cell: plain text parts, some toned. */
+export interface KpiLine {
+  key: string;
+  parts: { text: string; tone?: Tone }[];
   title?: string;
+}
+
+/** One cell of the KPI strip under the chart (the hero facts of the old strip). */
+export interface KpiCell {
+  key: string;
+  label: string;
+  value: string;
+  tone?: Tone;
+  title?: string;
+  /** Progress 0..1 under the value (contributions against the plan). */
+  bar?: number;
+  lines: KpiLine[];
+}
+
+/** A hero fact as the screen hands it over (homeModel.ts HeroFact). */
+interface ChartFact {
+  key: string;
+  label: string;
+  value: string;
+  tone?: Tone;
+  title?: string;
+  bar?: number;
+  detail?: string;
+  bench?: { lead: string; pp: { text: string; tone: Tone } | null };
 }
 
 interface ChartTableColumn {
@@ -38,17 +76,20 @@ type ValueChartBody =
 
 export interface ValueChartWidgetProps {
   title: string;
+  /** The benchmark in words next to the title (`MSCI ACWI in PLN, same contributions`); null without one. */
+  sub: string | null;
   rangeLabel: string;
   ranges: [string, PerfRange][];
   range: PerfRange;
   onRange(range: PerfRange): void;
-  legend: LegendItem[];
+  /** The chart | table toggle (null without a summary, like the old footer). */
+  toggle: { text: string; pressed: boolean; onToggle(): void } | null;
+  legend: LegendEntry[];
+  /** The benchmark's state at the legend's right end: out of date (warning, with its title) or why it is missing. */
+  status: { text: string; title?: string; warn: boolean } | null;
   body: ValueChartBody;
-  /** Null without a summary (old: no footer). */
-  footer: {
-    facts: FootFact[];
-    toggle: { text: string; pressed: boolean; onToggle(): void };
-  } | null;
+  /** The KPI strip under the chart, inside the card. */
+  kpis: KpiCell[];
 }
 
 const RANGE_TEXT: Record<PerfRange, string> = RANGE_TEXT_L;
@@ -92,10 +133,39 @@ export function valueChartProps(
   const benchName = benchmarkLabel(bench);
   const stale = benchOk ? staleBenchmark(bench) : null;
 
-  const legend: LegendItem[] = [
-    { label: S.portfolio, mark: "main", stacked: true },
-    ...(benchOk ? [{ label: S.sameContributions(benchName, c), mark: "bench" as const }] : []),
+  const toneOf = (v: number | null | undefined): Tone | undefined =>
+    v == null || v === 0 ? undefined : v > 0 ? "positive" : "negative";
+  const benchFresh = benchOk && stale == null;
+  const legend: LegendEntry[] = [
+    { key: "portfolio", label: S.thPortfolio, mark: "main" },
+    ...(benchOk
+      ? [
+          {
+            key: "bench",
+            label: benchName,
+            mark: "bench" as const,
+            ...(benchFresh && bench?.twr != null ? { value: pct(bench.twr, true) } : {}),
+          },
+        ]
+      : []),
+    ...(benchFresh && bench?.excess_twr != null
+      ? [
+          {
+            key: "difference",
+            label: S.thDifference,
+            mark: null,
+            value: pp(bench.excess_twr * 100),
+            ...(toneOf(bench.excess_twr) ? { tone: toneOf(bench.excess_twr) } : {}),
+          },
+        ]
+      : []),
   ];
+  const status: ValueChartWidgetProps["status"] =
+    stale != null
+      ? { text: stale.label, title: stale.title, warn: true }
+      : !benchOk && bench != null
+        ? { text: BENCH_NOTE[bench.status] ?? S.benchUnavailable, warn: false }
+        : null;
 
   let body: ValueChartBody;
   if (!perf || pts.length < 2) {
@@ -135,7 +205,7 @@ export function valueChartProps(
       kind: "chart",
       chart: {
         label: S.valueChartLabel(benchOk ? benchName : null, RANGE_TEXT[range]),
-        height: 230,
+        height: 250,
         padL: 56,
         padR: 150,
         yFormat: axisK,
@@ -180,45 +250,71 @@ export function valueChartProps(
     };
   }
 
-  let footer: ValueChartWidgetProps["footer"] = null;
-  if (s) {
-    const facts: (FootFact | false)[] = [
-      { lead: `${RANGE_TEXT[range]} TWR `, value: pct(s.twr, true) },
-      stale != null && { lead: stale.label, title: stale.title },
-      benchOk &&
-        stale == null &&
-        bench?.twr != null && { lead: `${S.benchmark} `, value: pct(bench.twr, true) },
-      benchOk &&
-        stale == null &&
-        bench?.excess_twr != null && {
-          lead: `${S.difference} `,
-          value: pp(bench.excess_twr * 100),
-        },
-      s.xirr != null && { lead: "XIRR ", value: pct(s.xirr) },
-      s.net_contributions != null && {
-        lead: `${S.contributionsIn(RANGE_TEXT[range])} `,
-        value: money0(s.net_contributions, c),
-      },
-      !benchOk && bench != null && { lead: BENCH_NOTE[bench.status] ?? S.benchUnavailable },
-    ];
-    footer = {
-      facts: facts.filter((f): f is FootFact => f !== false),
-      toggle: {
-        text: ui.table ? S.chart : S.table,
-        pressed: ui.table,
-        onToggle: () => ui.onTable(!ui.table),
-      },
+  // The old footer's figures: the range's TWR and XIRR under Year to date, its net contributions under
+  // Contributions; the benchmark's return, the difference and its status went to the legend line.
+  const rangeLine: KpiLine | null = s
+    ? {
+        key: "range",
+        parts: [
+          { text: `${RANGE_TEXT[range]} TWR ` },
+          { text: pct(s.twr, true), ...(toneOf(s.twr) ? { tone: toneOf(s.twr) } : {}) },
+          ...(s.xirr != null ? [{ text: ` · XIRR ${pct(s.xirr)}` }] : []),
+        ],
+      }
+    : null;
+  const contribLine: KpiLine | null =
+    s?.net_contributions != null
+      ? {
+          key: "range-contributions",
+          parts: [
+            { text: `${S.contributionsIn(RANGE_TEXT[range])} ${money0(s.net_contributions, c)}` },
+          ],
+        }
+      : null;
+  const kpis: KpiCell[] = (ui.facts ?? []).map((f) => {
+    const own: KpiLine | null = f.bench
+      ? {
+          key: "bench",
+          parts: [
+            { text: f.bench.lead },
+            ...(f.bench.pp
+              ? [{ text: " · " }, { text: f.bench.pp.text, tone: f.bench.pp.tone }]
+              : []),
+          ],
+        }
+      : f.detail
+        ? { key: "detail", parts: [{ text: f.detail }] }
+        : null;
+    const extra = f.key === "ytd" ? rangeLine : f.key === "contributions" ? contribLine : null;
+    return {
+      key: f.key,
+      label: f.label,
+      value: f.value,
+      ...(f.tone ? { tone: f.tone } : {}),
+      ...(f.title ? { title: f.title } : {}),
+      ...(f.bar != null ? { bar: f.bar } : {}),
+      // Year to date leads with the range figures (design V5: `TWR 12m +1.7 % · XIRR 2.4 %`), then its benchmark.
+      lines: (f.key === "ytd" ? [extra, own] : [own, extra]).filter((l): l is KpiLine => l != null),
     };
-  }
+  });
 
   return {
     title: S.valueVsBench,
+    sub: benchOk ? S.sameContributions(benchName, c) : null,
     rangeLabel: S.range,
     ranges: ranges(),
     range,
     onRange: ui.onRange,
+    toggle: s
+      ? {
+          text: ui.table ? S.chart : S.table,
+          pressed: ui.table,
+          onToggle: () => ui.onTable(!ui.table),
+        }
+      : null,
     legend,
+    status,
     body,
-    footer,
+    kpis,
   };
 }

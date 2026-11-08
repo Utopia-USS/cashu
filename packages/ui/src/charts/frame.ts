@@ -12,6 +12,8 @@ export interface ChartFrameProps {
   layout?: Layout;
   label: string;
   onActivate?: ((index: number) => void) | undefined;
+  /** Pointer hover over a path that carries a `hover` index (desktop only); null when it leaves. */
+  onHover?: ((index: number | null) => void) | undefined;
   build: (width: number) => Built;
   /** Tooltip for a focused index, already privacy-masked; makes a scrubbable scene interactive. */
   tooltip?: ((i: number) => ChartTip) | undefined;

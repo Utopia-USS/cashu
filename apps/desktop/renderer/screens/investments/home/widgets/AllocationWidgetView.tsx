@@ -1,32 +1,43 @@
-// AllocationWidget (ab24ab6 v2/Portfolio.tsx:267-355): `Widget#inv-alloc` with the band tag, the quiet view Seg
-// (+ the Rachunki view's `ostrzezenia (n)` link and `+ Rachunek`), the donut + `.arow` rows (`.alloc`, `.wide`,
-// `.acc`) and the portfolio priority banner.
-import { Button, Donut, Drawer, emptyCls, Seg, Swatch, Tag, Widget } from "@cashu/ui";
+// AllocationWidget (ab24ab6 v2/Portfolio.tsx:267-355, laid out as design V5): the quiet card `#inv-alloc` with the
+// band status (a dot and its words), the quiet view Seg (+ the Rachunki view's `ostrzezenia (n)` link and
+// `+ Rachunek`), the donut + hairline rows (a hovered row lights its segment and shows its share in the centre, a
+// hovered segment lights its row) and the portfolio priority as a plain line with a dot. The light grid's
+// AccountsWidget keeps the eyebrow card with the same rows.
+import { Button, Donut, type DonutProps, Drawer, emptyCls, Seg, Swatch, Widget } from "@cashu/ui";
+import { useState } from "react";
 import type { AccountsWidgetProps, AllocationWidgetProps } from "./allocationModel.js";
 
-// `.w .alloc` (112px donut column, gap 14) / `.alloc.wide` (128px, gap 20; back to 112 / 14 at <= 760).
+// Design V5: donut 128px | rows (back to 112px at <= 760px), 28px apart.
 const allocGrid = (wide: boolean) =>
   `grid items-center ${
     wide
-      ? "grid-cols-[--spacing(32)_minmax(0,1fr)] gap-5 max-narrow:grid-cols-[--spacing(28)_minmax(0,1fr)] max-narrow:gap-3.5"
-      : "grid-cols-[--spacing(28)_minmax(0,1fr)] gap-3.5"
+      ? "grid-cols-[--spacing(32)_minmax(0,1fr)] gap-x-7 gap-y-4 max-narrow:grid-cols-[--spacing(28)_minmax(0,1fr)] max-narrow:gap-x-3.5"
+      : "grid-cols-[--spacing(28)_minmax(0,1fr)] gap-x-3.5 gap-y-3"
   }`;
-// `.arow` columns: swatch | name | teraz | cel | dryf (| wartosc | do celu when wide; dropped at <= 760).
+// Rows: name | now / target | drift | value | to target (value and to-target only when wide, dropped at <= 760).
 const rowCols = (wide: boolean) =>
   wide
-    ? "grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(15)_--spacing(11)_--spacing(16)_--spacing(24)_--spacing(24)] max-narrow:grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(13)_--spacing(10)_--spacing(14.5)]"
-    : "grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(13)_--spacing(10)_--spacing(14.5)]";
-// `.alloc.acc .arow`: swatch | rachunek | teraz | wartosc | snapshot (snapshot dropped at <= 760 when wide).
+    ? "grid-cols-[minmax(0,1fr)_--spacing(23)_--spacing(16)_--spacing(25)_--spacing(19)] max-narrow:grid-cols-[minmax(0,1fr)_--spacing(23)_--spacing(16)]"
+    : "grid-cols-[minmax(0,1fr)_--spacing(23)_--spacing(16)]";
+// Classes / regions: name | now | value.
+const shareCols = (wide: boolean) =>
+  wide
+    ? "grid-cols-[minmax(0,1fr)_--spacing(23)_--spacing(25)] max-narrow:grid-cols-[minmax(0,1fr)_--spacing(23)]"
+    : "grid-cols-[minmax(0,1fr)_--spacing(23)]";
+// Accounts: account | now | value | snapshot (snapshot dropped at <= 760 when wide).
 const accCols = (wide: boolean) =>
   wide
-    ? "grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(15)_--spacing(24)_--spacing(30)] max-narrow:grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(13)_--spacing(21.5)]"
-    : "grid-cols-[--spacing(2.5)_minmax(0,1fr)_--spacing(13)_--spacing(21)_--spacing(21)]";
-const arowBase = "grid items-center gap-1.75 pt-1 tabular-nums";
-// `.arow` 12.5px rows; `.arow.head` 10.5px muted uppercase .05em with a 2px bottom padding.
-const arow = `${arowBase} pb-1 text-xs-plus`;
-const arowHead = `${arowBase} pb-0.5 text-3xs-plus uppercase tracking-label text-fg-muted`;
+    ? "grid-cols-[minmax(0,1fr)_--spacing(15)_--spacing(25)_--spacing(30)] max-narrow:grid-cols-[minmax(0,1fr)_--spacing(13)_--spacing(21.5)]"
+    : "grid-cols-[minmax(0,1fr)_--spacing(13)_--spacing(21)_--spacing(21)]";
+const rowBase = "grid items-center gap-3 tabular-nums";
+// Hairline rows about 36px, the hovered (or lit) one on the subtle fill.
+const arow = (lit: boolean) =>
+  `${rowBase} h-9 border-t border-border text-sm transition-colors duration-150 ${lit ? "bg-subtle" : ""}`;
+// The sentence-case column header (design V5): 12px muted, no uppercase.
+const arowHead = `${rowBase} h-6.5 text-xs text-fg-muted`;
 const num = "whitespace-nowrap text-right";
-const name = "overflow-hidden text-ellipsis whitespace-nowrap";
+const name = "flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap";
+const ellipsis = "min-w-0 overflow-hidden text-ellipsis";
 
 type Body = AllocationWidgetProps["body"];
 
@@ -69,24 +80,49 @@ function WarningsDrawer({ drawer }: { drawer: NonNullable<AccountsWidgetProps["d
   );
 }
 
-/** AccountsRows (Portfolio.tsx:236-265): the donut by account and `rachunek | teraz | wartosc | snapshot`. */
+/** The donut with a row lit: its segment stands out and the centre shows that row's share and name. */
+function centreOf(
+  donut: DonutProps,
+  row: { now: string; name: string } | undefined,
+): DonutProps["center"] {
+  return row ? { title: row.now, caption: row.name } : donut.center;
+}
+
+/** AccountsRows (Portfolio.tsx:236-265): the donut by account and `account | now | value | snapshot`. */
 function AccountsBody({ body, wide }: { body: Exclude<Body, { kind: "rows" }>; wide: boolean }) {
+  const [lit, setLit] = useState<number | null>(null);
   if (body.kind === "empty") return <div className={emptyCls}>{body.text}</div>;
+  const index = lit == null ? -1 : body.rows.findIndex((r) => r.key === lit);
+  const litRow = body.rows[index];
   return (
     <div className={allocGrid(wide)}>
-      <Donut size={wide ? 128 : 112} {...body.donut} />
+      <Donut
+        size={wide ? 128 : 112}
+        {...body.donut}
+        center={centreOf(body.donut, litRow && { now: litRow.share, name: litRow.name })}
+        focus={index < 0 ? null : index}
+        onSegmentHover={(i) => setLit(i == null ? null : (body.rows[i]?.key ?? null))}
+      />
       <div>
         <div className={`${arowHead} ${accCols(wide)}`}>
-          <span />
           <span>{body.head.name}</span>
           <span className={num}>{body.head.now}</span>
           <span className={num}>{body.head.value}</span>
           <span className={`${num} ${wide ? "max-narrow:hidden" : ""}`}>{body.head.snapshot}</span>
         </div>
         {body.rows.map((r) => (
-          <div key={r.key} className={`${arow} ${accCols(wide)}`} title={r.title}>
-            <Swatch color={r.color} />
-            <span className={name}>{r.name}</span>
+          // biome-ignore lint/a11y/noStaticElementInteractions: hover only lights the donut segment; no action.
+          <div
+            key={r.key}
+            className={`${arow(r.key === lit)} ${accCols(wide)}`}
+            title={r.title}
+            onMouseEnter={() => setLit(r.key)}
+            onMouseLeave={() => setLit(null)}
+          >
+            <span className={name}>
+              <Swatch color={r.color} size="xs" />
+              <span className={ellipsis}>{r.name}</span>
+            </span>
             <span className={num}>{r.share}</span>
             <span className={num}>{r.value}</span>
             <span className={`${num} text-fg-muted ${wide ? "max-narrow:hidden" : ""}`}>
@@ -125,16 +161,23 @@ export function AllocationWidgetView({
   body,
   drawer,
 }: AllocationWidgetProps) {
-  const wideOnly = wide ? "max-narrow:hidden" : "hidden";
   return (
     <Widget
+      variant="quiet"
       title={title}
       id="inv-alloc"
       tags={
         tag && (
-          <Tag tone={tag.tone} title={tag.title}>
+          <span
+            title={tag.title}
+            className="inline-flex items-center gap-1.75 text-xs-plus text-fg-secondary"
+          >
+            <i
+              aria-hidden="true"
+              className={`size-1.5 rounded-full ${tag.tone === "warning" ? "bg-warning" : "bg-positive"}`}
+            />
             {tag.text}
-          </Tag>
+          </span>
         )
       }
       controls={
@@ -148,50 +191,84 @@ export function AllocationWidgetView({
       {body.kind !== "rows" ? (
         <AccountsBody body={body} wide={wide} />
       ) : (
-        <div className={allocGrid(wide)}>
-          <Donut size={wide ? 128 : 112} {...body.donut} />
-          <div>
-            <div className={`${arowHead} ${rowCols(wide)}`}>
-              <span />
-              <span>{body.head.name}</span>
-              <span className={num}>{body.head.now}</span>
-              <span className={num} title={body.head.target.title}>
-                {body.head.target.text}
-              </span>
-              <span className={num} title={body.head.drift.title}>
-                {body.head.drift.text}
-              </span>
-              <span className={`${num} ${wideOnly}`}>{body.head.value}</span>
-              <span className={`${num} ${wideOnly}`}>{body.head.toTarget}</span>
-            </div>
-            {body.rows.map((r) => (
-              <div key={r.key} className={`${arow} ${rowCols(wide)}`}>
-                <Swatch color={r.color} />
-                <span className={name} title={r.name}>
-                  {r.name}
-                </span>
-                <span className={num}>{r.now}</span>
-                <span className={`${num} text-fg-muted`}>{r.target}</span>
-                <span className={`${num} ${r.out ? "text-warning" : ""}`}>{r.drift}</span>
-                <span className={`${num} ${wideOnly}`}>{r.value}</span>
-                <span className={`${num} ${wideOnly}`}>{r.toTarget}</span>
-              </div>
-            ))}
-          </div>
-          {body.priority && (
-            <div
-              className={`col-span-full mt-0.5 flex items-baseline gap-1.5 rounded-control border bg-chip px-2.5 py-2 text-xs leading-cozy ${
-                body.priority.warn
-                  ? "border-[color-mix(in_srgb,var(--color-warning)_45%,var(--color-border))] text-warning"
-                  : "border-border text-fg-muted"
-              }`}
-            >
-              <b className="whitespace-nowrap text-fg">{body.priority.label}</b>
-              <span>{body.priority.text}</span>
-            </div>
-          )}
-        </div>
+        <AllocRows body={body} wide={wide} />
       )}
     </Widget>
+  );
+}
+
+function AllocRows({ body, wide }: { body: Extract<Body, { kind: "rows" }>; wide: boolean }) {
+  const [lit, setLit] = useState<string | null>(null);
+  const buckets = body.head.drift.text !== "";
+  const cols = buckets ? rowCols(wide) : shareCols(wide);
+  const wideOnly = wide ? "max-narrow:hidden" : "hidden";
+  const index = lit == null ? -1 : body.rows.findIndex((r) => r.key === lit);
+  const priority = body.priority;
+  return (
+    <div className={allocGrid(wide)}>
+      <Donut
+        size={wide ? 128 : 112}
+        {...body.donut}
+        center={centreOf(body.donut, body.rows[index])}
+        focus={index < 0 ? null : index}
+        onSegmentHover={(i) => setLit(i == null ? null : (body.rows[i]?.key ?? null))}
+      />
+      <div>
+        <div className={`${arowHead} ${cols}`}>
+          <span>{body.head.name}</span>
+          <span className={num} title={body.head.target.title}>
+            {body.head.now}
+          </span>
+          {buckets && (
+            <span className={num} title={body.head.drift.title}>
+              {body.head.drift.text}
+            </span>
+          )}
+          <span className={`${num} ${wideOnly}`}>{body.head.value}</span>
+          {buckets && <span className={`${num} ${wideOnly}`}>{body.head.toTarget}</span>}
+        </div>
+        {body.rows.map((r) => (
+          // biome-ignore lint/a11y/noStaticElementInteractions: hover only lights the donut segment; no action.
+          <div
+            key={r.key}
+            className={`${arow(r.key === lit)} ${cols}`}
+            onMouseEnter={() => setLit(r.key)}
+            onMouseLeave={() => setLit(null)}
+          >
+            <span className={name} title={r.name}>
+              <Swatch color={r.color} size="xs" />
+              <span className={ellipsis}>{r.name}</span>
+            </span>
+            <span className={num}>
+              {r.now}
+              {r.target !== "" && <span className="ml-1 text-xs text-fg-muted">/ {r.target}</span>}
+            </span>
+            {buckets && (
+              <span className={`${num} ${r.out ? "text-warning" : "text-fg-muted"}`}>
+                {r.drift}
+              </span>
+            )}
+            <span className={`${num} ${wideOnly}`}>{r.value}</span>
+            {buckets && (
+              <span className={`${num} text-fg-secondary ${wideOnly}`}>{r.toTarget}</span>
+            )}
+          </div>
+        ))}
+      </div>
+      {priority && (
+        <p
+          className="col-span-full m-0 mt-0.5 flex items-baseline gap-2.5 text-xs-plus leading-normal text-fg-secondary"
+          onMouseEnter={() => setLit(priority.rowKey)}
+          onMouseLeave={() => setLit(null)}
+        >
+          <span className="relative -top-px self-center">
+            <Swatch color={priority.color} size="dot" />
+          </span>
+          <span>
+            <b className="font-medium text-fg">{priority.label}.</b> {priority.text}
+          </span>
+        </p>
+      )}
+    </div>
   );
 }

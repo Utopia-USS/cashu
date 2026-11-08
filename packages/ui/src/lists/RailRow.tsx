@@ -22,9 +22,12 @@ export interface RailRowProps {
   row: RailRowData;
   right?: ReactNode;
   first?: boolean;
+  /** Design V5 rail: no rule between rows, and the text clamped to `clamp` lines (candidates: 2). */
+  quiet?: boolean;
+  clamp?: 2;
 }
 
-export function RailRow({ row, right, first }: RailRowProps) {
+export function RailRow({ row, right, first, quiet, clamp }: RailRowProps) {
   const { onOpen } = row;
   const key = (event: KeyboardEvent<HTMLDivElement>) => {
     if (onOpen && event.target === event.currentTarget && event.key === "Enter") {
@@ -45,14 +48,16 @@ export function RailRow({ row, right, first }: RailRowProps) {
       tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen ? click : undefined}
       onKeyDown={onOpen ? key : undefined}
-      className={`flex items-start gap-2.5 py-2 ${first ? "" : "border-t border-border"} ${link}`}
+      className={`flex items-start gap-2.5 py-2 ${first || quiet ? "" : "border-t border-border"} ${quiet ? "gap-3" : ""} ${link}`}
     >
       {/* a flex box, so the tile sits without a line box around it (old `.hr-row > .il` is the tile itself) */}
       <span className="mt-px flex flex-none">
         <InstTile monogram={row.monogram} density="compact" quiet={row.portfolio} />
       </span>
-      <span className="min-w-0 flex-1 text-sm leading-cozy">
-        <b className="font-heavy">{row.title}</b>
+      <span
+        className={`min-w-0 flex-1 text-sm ${quiet ? "leading-widget text-fg-muted" : "leading-cozy"} ${clamp ? "line-clamp-2" : ""}`}
+      >
+        <b className={quiet ? "font-strong text-fg" : "font-heavy"}>{row.title}</b>
         {row.text ? (
           <>
             {SP}

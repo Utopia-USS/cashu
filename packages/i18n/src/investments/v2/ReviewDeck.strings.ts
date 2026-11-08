@@ -14,6 +14,11 @@ export const S = catalog({
   hdrDone: { pl: (d: string) => `zrobiony ${d}`, en: (d: string) => `done ${d}` },
   hdrNext: { pl: (d: string) => `następny ${d}`, en: (d: string) => `next ${d}` },
   hdrOpen: { pl: "otwórz", en: "open" },
+  // The hero button's popover (design V5): what the review holds and when it is due.
+  popDue: { pl: "Czeka na Ciebie", en: "Due now" },
+  popNext: { pl: (d: string) => `Następny ${d}`, en: (d: string) => `Next on ${d}` },
+  popLast: { pl: (d: string) => `ostatni ${d}`, en: (d: string) => `last review ${d}` },
+  popNothing: { pl: "Nic do decyzji", en: "Nothing to decide" },
   noteLoadFailed: {
     pl: (e: string) => `Nie wczytano notatki: ${e}`,
     en: (e: string) => `Couldn't load the note: ${e}`,

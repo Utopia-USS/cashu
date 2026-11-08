@@ -192,10 +192,15 @@ export interface InstCardProps {
   rows: CardRow[];
   /** Status tags (not-normal only): warn solid, except cost / manual valuation (plain). */
   status: { text: string; warn: boolean }[];
+  /** Notes under a hairline at the end (design V5: the strategy hint of an asset row): a small dot in the note's
+   * tone and its category over the line. */
+  notes?: { key: string; label: string; text: string; tone: "rule" | "review" | "info" }[];
 }
 
-/** InstCard: tile + name + `symbol · exchange`, the fact rows, the status tags. */
-export function InstCardBody({ tile, name, detail, rows, status }: InstCardProps) {
+const noteDot = { rule: "bg-warning", review: "bg-accent", info: "bg-fg-muted" } as const;
+
+/** InstCard: tile + name + `symbol · exchange`, the fact rows, the status tags, the notes. */
+export function InstCardBody({ tile, name, detail, rows, status, notes }: InstCardProps) {
   return (
     <>
       <div className="mb-2 flex items-center gap-2.5">
@@ -215,6 +220,18 @@ export function InstCardBody({ tile, name, detail, rows, status }: InstCardProps
           ))}
         </div>
       )}
+      {notes?.map((n) => (
+        <div key={n.key} className="mt-2.5 border-t border-border pt-2 leading-normal">
+          <span className="mb-0.5 flex items-center gap-1.5 text-2xs-plus text-fg-muted">
+            <i
+              aria-hidden="true"
+              className={`size-1.5 flex-none rounded-full ${noteDot[n.tone]}`}
+            />
+            {n.label}
+          </span>
+          {n.text}
+        </div>
+      ))}
     </>
   );
 }

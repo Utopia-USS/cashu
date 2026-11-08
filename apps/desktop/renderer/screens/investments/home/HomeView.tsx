@@ -1,7 +1,9 @@
-// The investments Home page (ab24ab6 v2/Home.tsx): the page head, then the grid on thirds (hero; one split cell
-// with the widgets in the main column and the rail; the research strip last), the empty portfolio's first steps,
-// the loading skeleton and the error line. Pure: models come from homeModel.ts, the widget / rail / research /
-// review nodes from the screen.
+// The investments Home page (ab24ab6 v2/Home.tsx; the full grid laid out as design V5): the full grid leads with the
+// statement hero (no page-title row: the head's filter and status tags sit on the hero's label line, Add
+// transaction and the review on its right), then one split cell with the widgets in the main column and the rail,
+// the research strip last. The light grid and the empty portfolio's first steps keep the page head. Also the loading
+// skeleton and the error line. Pure: models come from homeModel.ts, the widget / rail / research / review nodes from
+// the screen.
 import { S } from "@cashu/i18n/investments/v2/Home.strings";
 import {
   AgentWidget,
@@ -21,7 +23,7 @@ import {
   Widget,
 } from "@cashu/ui";
 import type { ReactNode } from "react";
-import type { HeadModel, HeroFact, HeroModel, StartModel } from "./homeModel.js";
+import type { HeadModel, HeroFact, HeroModel, HeroValueParts, StartModel } from "./homeModel.js";
 
 /** Inline code (old global `code { font: 0.92em ui-monospace }`, no ligatures). */
 const code = "font-mono text-code-ui [font-variant-ligatures:none]";
@@ -78,6 +80,15 @@ function HomeHead({ head, onAccount, onStale, onAddTxn }: HomeHeadProps) {
       title={S.investments}
       actions={head.addTxn && <Button onPress={onAddTxn}>{S.addTxn}</Button>}
     >
+      <HeadTags head={head} onAccount={onAccount} onStale={onStale} />
+    </PageHead>
+  );
+}
+
+/** The head's account filter and status tags (the page head's items, or the statement hero's label line). */
+function HeadTags({ head, onAccount, onStale }: Omit<HomeHeadProps, "onAddTxn">) {
+  return (
+    <>
       {head.accounts && (
         <Seg<number | null>
           quiet
@@ -98,7 +109,60 @@ function HomeHead({ head, onAccount, onStale, onAddTxn }: HomeHeadProps) {
           {head.rules.text}
         </Tag>
       )}
-    </PageHead>
+    </>
+  );
+}
+
+/** The statement figure: the currency small and muted, the decimals dimmed (the text stays the formatted value). */
+function StatementValue({ value, parts }: { value: string; parts: HeroValueParts | null }) {
+  if (!parts) return value;
+  const currency = "text-4xl font-strong tracking-heading text-fg-muted";
+  return (
+    <>
+      {parts.pre && <span className={`${currency} align-top`}>{parts.pre}</span>}
+      {parts.main}
+      {parts.fraction && <span className="text-fg-muted">{parts.fraction}</span>}
+      {parts.post && <span className={currency}>{parts.post}</span>}
+    </>
+  );
+}
+
+/** The full grid's hero (design V5): label line with the head's tags, the figure, the week; actions right. */
+function StatementCell({
+  hero,
+  reviewSlot,
+  head,
+  onAccount,
+  onStale,
+  onAddTxn,
+}: HomeHeadProps & { hero: HeroModel; reviewSlot: ReactNode }) {
+  return (
+    <Hero
+      variant="statement"
+      label={S.portfolioValue}
+      caption={S.portfolioValue}
+      value={<StatementValue value={hero.value} parts={hero.valueParts} />}
+      facts={[]}
+      meta={<HeadTags head={head} onAccount={onAccount} onStale={onStale} />}
+      delta={
+        hero.week ? (
+          <>
+            <span className={tones[hero.week.tone]}>{hero.week.text}</span>
+            {S.thisWeek}
+          </>
+        ) : undefined
+      }
+      // The secondary action (design V5's place of Import, which investments do not have: the agent imports) and
+      // the review as the page's one primary button.
+      right={
+        <>
+          <Button size="lg" className="h-10" onPress={onAddTxn}>
+            {S.addTxn}
+          </Button>
+          {reviewSlot}
+        </>
+      }
+    />
   );
 }
 
@@ -130,6 +194,7 @@ export interface HomeViewProps extends HomeHeadProps {
   content:
     | {
         kind: "home";
+        /** The statement hero (its facts go to the value chart's KPI strip, not here). */
         hero: HeroModel;
         /** The hero's review slot (review/deck ReviewSlotView), null without a digest. */
         reviewSlot: ReactNode;
@@ -156,13 +221,16 @@ export interface HomeViewProps extends HomeHeadProps {
 export function HomeView({ content, overlays, ...head }: HomeViewProps) {
   return (
     <>
-      <HomeHead {...head} />
       {content.kind === "home" ? (
-        <HomeGrid {...content} />
-      ) : content.kind === "light" ? (
-        <LightGrid {...content} />
+        <>
+          <StatementCell {...head} hero={content.hero} reviewSlot={content.reviewSlot} />
+          <HomeGrid {...content} />
+        </>
       ) : (
-        <StartView {...content} />
+        <>
+          <HomeHead {...head} />
+          {content.kind === "light" ? <LightGrid {...content} /> : <StartView {...content} />}
+        </>
       )}
       {overlays}
     </>
@@ -206,17 +274,8 @@ function LightGrid({
   return <Grid items={items} />;
 }
 
-function HomeGrid({
-  hero,
-  reviewSlot,
-  main,
-  rail,
-  research,
-}: Extract<HomeViewProps["content"], { kind: "home" }>) {
-  const items: GridItem[] = [
-    { id: "hero", span: 3, node: <HeroCell hero={hero} reviewSlot={reviewSlot} /> },
-    { id: "split", span: 3, node: <Split main={main} rail={rail} /> },
-  ];
+function HomeGrid({ main, rail, research }: Extract<HomeViewProps["content"], { kind: "home" }>) {
+  const items: GridItem[] = [{ id: "split", span: 3, node: <Split main={main} rail={rail} /> }];
   if (research != null) items.push({ id: "research", span: 3, node: research });
   return <Grid items={items} />;
 }

@@ -46,3 +46,8 @@ export const Empty: Story<DonutProps> = {
 export const Interactive: Story<DonutProps> = {
   args: { onSegmentSelected: () => {} },
 };
+
+/** One segment highlighted (a hovered allocation row): the others dim. */
+export const Focused: Story<DonutProps> = {
+  args: { focus: 1, center: { title: "24.5%", caption: "Bonds" } },
+};

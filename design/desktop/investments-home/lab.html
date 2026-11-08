@@ -4,7 +4,7 @@
   V5 "Final draft" is the current direction. Locked: colors = Neutral, UI font = the app's system font (SF Pro on macOS), mono = system mono.
   Data: synthetic.
   Controls (bottom bar): 1-5 variant, R replays the entrance, M cycles motion (normal / slow x4 / off).
-  URL: the hash keeps the variant; ?still renders final states (no motion); ?card=TICKER pins a V5 tile card open.
+  URL: the hash keeps the variant; ?still renders final states (no motion); ?card=TICKER pins a V5 tile card open; ?review pins the V5 review breakdown open.
 -->
 <html lang="en">
 <head>
@@ -352,7 +352,7 @@ tr:hover .track > i { filter: brightness(1.25); }
 .V4 .head { display: flex; align-items: flex-end; gap: 8px; margin: 32px 0 26px; }
 .V4 h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; }
 .V4 .meta { display: flex; gap: 14px; margin-top: 8px; color: var(--ink-3); font-size: 12px; }
-.V4 .card { background: var(--card); border-radius: 18px; padding: 20px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.035); transition: box-shadow calc(150ms * var(--speed)) ease; }
+.V4 .card { background: var(--card); border-radius: 28px; padding: 20px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.035); transition: box-shadow calc(150ms * var(--speed)) ease; }
 .V4 .card:hover { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
 .V4 .c-head { display: flex; align-items: center; gap: 10px; min-height: 28px; margin-bottom: 16px; }
 .V4 .c-title { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink-2); }
@@ -433,7 +433,7 @@ tr:hover .track > i { filter: brightness(1.25); }
    Assets keep the ticker tile and its marks (ring = thesis, coin = recommendation); the rest of the
    instrument's context, the strategy hint included, lives in the tile's hover card. */
 .V5 .enter { animation-delay: calc(var(--i, 0) * 50ms * var(--speed)); }
-.V5 .hero5 { display: flex; align-items: flex-start; gap: 10px; margin: 34px 0 28px; }
+.V5 .hero5 { position: relative; z-index: 5; display: flex; align-items: flex-start; gap: 10px; margin: 34px 0 28px; }
 .V5 .eyebrow { display: flex; align-items: center; gap: 14px; color: var(--ink-3); font-size: 12.5px; }
 .V5 .eyebrow b { color: var(--ink-2); font-weight: 500; }
 .V5 .big { font-size: 64px; line-height: 1; margin: 14px 0 10px; letter-spacing: -0.03em; font-weight: 700; }
@@ -445,9 +445,18 @@ tr:hover .track > i { filter: brightness(1.25); }
 .V5 .review { padding-right: 8px !important; }
 .V5 .review .ico { transition: transform calc(300ms * var(--speed)) var(--out); }
 .V5 .review:hover .ico { transform: rotate(14deg) scale(1.08); }
+/* the review's breakdown grows from its button on hover / focus, so the rail does not repeat it */
+.V5 .rv-wrap { position: relative; display: inline-flex; }
+.V5 .rv-pop { width: 230px; display: grid; gap: 6px; }
+.V5 .rv-wrap:is(:hover, :focus-within, .open) .rv-pop { opacity: 1; transform: none; transition-duration: calc(200ms * var(--speed)); transition-timing-function: var(--out); transition-delay: calc(150ms * var(--speed)); }
+.V5 .rv-pop b { margin-bottom: 2px; }
+.V5 .rv-l { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.V5 .rv-l.dim { color: var(--ink-3); }
+.V5 .rv-l i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); }
+.V5 .rv-l i.neg { background: var(--neg); } .V5 .rv-l i.pos { background: var(--pos); } .V5 .rv-l i.warn { background: var(--warn); } .V5 .rv-l i.acc { background: var(--accent); }
+.V5 .rv-due { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12px; }
 .V5 .review .count { height: 24px; min-width: 24px; border-radius: 7px; background: #0b0b0c; color: var(--ink); font-size: 11.5px; margin-left: 4px; }
 .V5 .grid { align-items: start; }
-.V5 aside.col { position: sticky; top: 16px; }
 
 /* chart card, KPIs under the chart */
 .V5 .legend { display: flex; align-items: center; gap: 18px; height: 22px; font-size: 12px; color: var(--ink-3); margin-bottom: 10px; }
@@ -495,6 +504,32 @@ tr:hover .track > i { filter: brightness(1.25); }
 .V5 .prio5 { grid-column: 1 / -1; display: flex; gap: 10px; margin: 2px 0 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
 .V5 .prio5::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c3); margin-top: 7px; flex: none; }
 .V5 .prio5 b { color: var(--ink); font-weight: 500; }
+/* rail: the app's signals, alerts and candidates as sections of one card */
+.V5 .rail .sec + .sec { margin-top: 20px; padding-top: 18px; }
+.V5 .rail .sec-h { font-size: 13px; color: var(--ink-2); font-weight: 500; gap: 8px; }
+.V5 .rail .sec-t { font-size: 13.5px; font-weight: 500; margin-bottom: 4px; }
+.V5 .rl-g { display: flex; align-items: center; gap: 7px; margin: 12px 0 2px; font-size: 11.5px; color: var(--ink-3); }
+.V5 .rl-g::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); }
+.V5 .rl-g.neg::before { background: var(--neg); } .V5 .rl-g.pos::before { background: var(--pos); }
+.V5 .rl-row { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; }
+.V5 .rl-row .tile.sm { width: 30px; height: 30px; border-radius: 8px; font-size: 8.5px; flex: none; }
+.V5 .rl-txt { flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+.V5 .rl-txt b { color: var(--ink); font-weight: 600; }
+.V5 .rl-txt.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.V5 .al-row { align-items: center; }
+.V5 .kind { flex: none; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); color: var(--ink-2); }
+.V5 .kind.warn { background: var(--warn-soft); color: var(--warn); }
+.V5 .sec-foot { display: flex; align-items: center; gap: 14px; margin-top: 8px; font-size: 12px; color: var(--ink-3); }
+.V5 .sec-foot .st-dot { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); }
+.V5 .st-dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); }
+.V5 .st-dot.warn::before { background: var(--warn); } .V5 .st-dot.pos::before { background: var(--pos); }
+/* candidate actions: hidden until the row is hovered (or watched), over a fade so the note never collides */
+.V5 .rl-acts { position: absolute; right: 0; top: 6px; display: flex; gap: 2px; padding-left: 28px; background: linear-gradient(90deg, transparent, var(--card) 24px); opacity: 0; transform: translateX(4px); transition: opacity calc(150ms * var(--speed)) var(--out), transform calc(150ms * var(--speed)) var(--out); }
+.V5 .cand:is(:hover, :focus-within) .rl-acts, .V5 .cand.watching .rl-acts { opacity: 1; transform: none; }
+.V5 .cand .watch-btn.on { color: var(--pos); }
+.V5 .cand .pop { right: -6px; }
+.V5 .cand { transition: height calc(200ms * var(--speed)) var(--out), opacity calc(160ms * var(--speed)) ease-in, padding calc(200ms * var(--speed)) var(--out); }
+.V5 .cand.gone { height: 0 !important; opacity: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
 
 /* assets */
 .V5 .assets .c-head { gap: 12px; }
@@ -1215,7 +1250,10 @@ const VARIANTS = {
         <div><div class="eyebrow"><b>Portfolio value</b></div><div class="amt">${HERO("big")}</div><div class="sub fade-late" data-sub></div></div>
         <div class="spacer"></div>
         <button class="btn lg">${I.import}Import</button>
-        <button class="btn primary lg review">${I.sparkle}<span>Weekly review</span><span class="count">5</span></button>
+        <span class="rv-wrap"><button class="btn primary lg review" aria-describedby="rv-pop">${I.sparkle}<span>Weekly review</span><span class="count">6</span></button>
+          <span class="pop rv-pop" id="rv-pop" role="tooltip"><b>6 items to decide</b>
+            <span class="rv-l"><i class="neg"></i>4 risks</span><span class="rv-l"><i class="pos"></i>1 opportunity</span><span class="rv-l"><i class="warn"></i>1 to fix</span>
+            <span class="rv-l dim"><i class="acc"></i>1 in progress, not counted</span><span class="rv-due">Due today · last review Oct 31</span></span></span>
       </section>
       <div class="grid"><div class="col">
         <section class="card enter" style="--i:1">
@@ -1251,24 +1289,30 @@ const VARIANTS = {
             <span class="legend5">Thesis<span><i class="mk" data-h="sup"></i>supported</span><span><i class="mk" data-h="ful"></i>fulfilled</span><span><i class="mk" data-h="weak"></i>weakened</span><span><i class="mk" data-h="inv"></i>invalidated</span><span><span class="coin">${coinSvg("buy")}</span>recommendation</span></span></footer>
         </section></div>
         <aside class="col">
-          <section class="card enter" style="--i:2">
+          <section class="card rail enter" style="--i:2">
             <div class="sec">
-              <div class="sec-h">Signals<div class="spacer"></div><a class="link">All 8 ${I.chev}</a></div>
-              <p class="sec-t quiet">Nothing new since the last review.</p>
+              <div class="sec-h">Signals<div class="spacer"></div><a class="link">All 26 ${I.chev}</a></div>
+              <div class="rl-g neg">New risks</div>
+              <div class="rl-row"><span class="tile sm">INTC</span><span class="rl-txt"><b>Intel Corp.</b> Research found facts against the thesis.</span></div>
+              <div class="rl-g pos">New opportunities</div>
+              <div class="rl-row"><span class="tile sm">ASML</span><span class="rl-txt"><b>ASML Holding</b> Down about 1/5 from the 52-week high, past your −20% threshold.</span></div>
             </div>
             <div class="sec">
-              <div class="sec-h">Alerts · 3 watching<div class="spacer"></div><button class="icon-btn" aria-label="New alert" style="margin:-4px -6px">${I.plus}</button></div>
-              <p class="sec-t quiet">Nothing close to its level.</p>
+              <div class="sec-h">Alerts<span class="c-sub">10</span><div class="spacer"></div><button class="icon-btn" aria-label="New alert" style="margin:-4px -6px">${I.plus}</button></div>
+              <div class="rl-row al-row"><span class="tile sm">MSFT</span><span class="rl-txt"><b>30% below the yearly high</b> 0.7 pp to go</span><span class="kind warn" title="Close to its level">price</span></div>
+              <div class="sec-foot"><span class="st-dot warn">1 close</span><span class="st-dot pos">0 fired</span><div class="spacer"></div><a class="link">All 10 ${I.chev}</a></div>
             </div>
             <div class="sec">
-              <div class="sec-h">Candidate</div>
-              <div class="row" style="margin-top:4px"><span class="ticker">DMIF</span><span class="row-body"><b>Demo Infrastructure UCITS ETF</b><span>Fits your entry criteria · outside your list</span></span></div>
-              <div class="acts">
-                <button class="btn sm watch-btn" data-watch><span class="swap">${I.plus.replace('class="ico"', 'class="ico a"')}${I.check.replace('class="ico"', 'class="ico b"')}</span><span data-watch-label>Watch</span></button>
-                <span class="pop-wrap"><button class="btn ghost sm" data-why>Why</button>
-                  <span class="pop" data-pop role="dialog"><b>Niskie koszty (TER)</b>Your entry rule asks for a TER of at most 0.3%. DMIF costs 0.20% a year and is not on your list or watchlist.</span></span>
-                <div class="spacer"></div><button class="btn ghost sm">Dismiss</button>
-              </div>
+              <div class="sec-h">Candidates<div class="spacer"></div><a class="link">All 7 ${I.chev}</a></div>
+              <p class="sec-t"><span data-cand-n>5</span> companies outside your list fit your entry criteria.</p>
+              ${[
+                ["DMIF", "Demo Infrastructure UCITS ETF", "Q3 results on Nov 3; verified by research; outside your AI chips theme.", "Low costs (TER)", "Your entry rule asks for a TER of at most 0.3%. DMIF costs 0.20% a year and is not on your list or watchlist."],
+                ["DRBT", "Demo Robotics Corp.", "Space and defence; operations improved after an acquisition, but it depends on share issues.", "Quality at a discount", "Margins rose three quarters in a row and the price sits 18% under its 200-day average, inside your entry band."],
+                ["DGRD", "Demo Grid Storage", "AI and data centres; pulled back from its May high, with a risk in funding the expansion.", "Theme fit", "It matches your AI infrastructure theme and the pullback crossed your −25% entry level."],
+              ].map(([t, n, note, why, whyText]) => `<div class="rl-row cand" data-cand><span class="tile sm">${t}</span><span class="rl-txt clamp"><b>${n}</b> ${note}</span>
+                <span class="rl-acts"><span class="pop-wrap"><button class="icon-btn" aria-label="Why" data-why>${I.q}</button><span class="pop" data-pop role="dialog"><b>${why}</b>${whyText}</span></span>
+                  <button class="icon-btn watch-btn" aria-label="Watch" data-watch><span class="swap">${I.eye.replace('class="ico"', 'class="ico a"')}${I.check.replace('class="ico"', 'class="ico b"')}</span></button>
+                  <button class="icon-btn" aria-label="Dismiss" data-dismiss>${I.x}</button></span></div>`).join("")}
             </div>
           </section>
         </aside></div></div>`;
@@ -1295,17 +1339,29 @@ const VARIANTS = {
       prio.addEventListener("mouseenter", () => focus(2));
       prio.addEventListener("mouseleave", () => focus(null));
 
-      /* ---------- rail ---------- */
-      const pop = root.querySelector("[data-pop]");
-      root.querySelector("[data-why]").addEventListener("click", (e) => { e.stopPropagation(); pop.classList.toggle("open"); });
-      document.addEventListener("click", (e) => { if (!pop.contains(e.target)) pop.classList.remove("open"); });
-      const w = root.querySelector("[data-watch]"), wl = root.querySelector("[data-watch-label]");
-      w.addEventListener("click", () => {
-        const on = w.classList.toggle("on");
-        wl.textContent = on ? "Watching" : "Watch";
-        w.classList.remove("confirm");
-        if (on) { void w.offsetWidth; w.classList.add("confirm"); }
-      });
+      /* ---------- rail: candidate actions show on hover; Why grows from its button, Watch confirms, Dismiss collapses the row ---------- */
+      const pops = [...root.querySelectorAll("[data-pop]")];
+      document.addEventListener("click", (e) => { for (const p of pops) if (!p.contains(e.target)) p.classList.remove("open"); });
+      const candN = root.querySelector("[data-cand-n]");
+      for (const row of root.querySelectorAll("[data-cand]")) {
+        const pop = row.querySelector("[data-pop]");
+        row.querySelector("[data-why]").addEventListener("click", (e) => { e.stopPropagation(); for (const p of pops) if (p !== pop) p.classList.remove("open"); pop.classList.toggle("open"); });
+        const w = row.querySelector("[data-watch]");
+        w.addEventListener("click", () => {
+          const on = w.classList.toggle("on");
+          w.setAttribute("aria-label", on ? "Watching" : "Watch");
+          row.classList.toggle("watching", on);
+          w.classList.remove("confirm");
+          if (on) { void w.offsetWidth; w.classList.add("confirm"); }
+        });
+        row.querySelector("[data-dismiss]").addEventListener("click", () => {
+          row.style.height = `${row.offsetHeight}px`;
+          void row.offsetHeight;
+          row.classList.add("gone");
+          roll(candN, String(Math.max(0, +candN.textContent - 1)));
+          setTimeout(() => row.remove(), 200 * SPEED);
+        });
+      }
 
       /* ---------- assets ---------- */
       const A = { mode: "Portfolio", period: "1D", sort: "weight", dir: -1 };
@@ -1355,6 +1411,7 @@ const VARIANTS = {
       // lab only: ?card=TICKER pins that tile's hover card open, for screenshots
       const pin = new URLSearchParams(location.search).get("card");
       if (pin) { const r = body.querySelector(`[data-t="${pin}"]`); r?.classList.add("open"); r?.querySelector(".tile-w").classList.add("open"); }
+      if (new URLSearchParams(location.search).has("review")) root.querySelector(".rv-wrap").classList.add("open");
       head.addEventListener("click", (e) => {
         const b = e.target.closest("[data-sort]");
         if (!b) return;

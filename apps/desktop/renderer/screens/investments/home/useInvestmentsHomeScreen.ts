@@ -337,6 +337,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
           name: digest.review?.name ?? null,
           due,
           count: deckData.live.cards.length,
+          decide: deckData.live.decide,
           last: doneLocal ?? digest.last_review?.done_at ?? null,
           next: digest.review?.next_on ?? null,
           onOpen: openReview,
@@ -393,17 +394,11 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
     // ---- the rail ----
     signals: signalsBriefProps({
       items: deckData.live.rail,
-      deck: deckData.live.decide,
-      rest: deckData.live.railRest,
       total: data.signals.length,
       loading: !data.sig.data || !deckData.ready,
-      reviewDue: due,
-      reviewName: digest?.review?.name ?? S.weeklyReview,
       lastReviewAt: doneLocal ?? digest?.last_review?.done_at ?? null,
-      nextOn: digest?.review?.next_on ?? null,
       insts,
       onOpenAsset: openAsset,
-      onOpenReview: openReview,
       onAll: () => setSigDialog({ filter: "all", focusId: null }),
     }),
     alerts: alertsBriefProps({

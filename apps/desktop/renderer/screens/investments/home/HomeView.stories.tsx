@@ -19,13 +19,32 @@ export const Home = {
       kind: "home",
       hero: {
         value: "1 000,00 PLN",
+        valueParts: { pre: "", main: "1 000", fraction: ",00", post: " PLN" },
         week: { text: "+10,00 PLN (+1,0 %)", tone: "positive" },
-        facts: [{ label: "YTD", value: "+1,0 %", detail: "no history" }],
+        facts: [{ key: "ytd", label: "YTD", value: "+1,0 %", detail: "no history" }],
       },
       reviewSlot: null,
       main: [],
       rail: [],
       research: null,
+    },
+  },
+};
+
+export const HomeWithTags = {
+  args: {
+    ...Home.args,
+    head: {
+      ...head,
+      accounts: {
+        items: [
+          ["All", null],
+          ["Broker A", 1],
+        ],
+        value: null,
+      },
+      stale: { text: "2 out of date", title: "ACME: last quote 12.10" },
+      rules: { text: "rules partial", title: "today 06:00", warn: true },
     },
   },
 };

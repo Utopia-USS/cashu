@@ -7,6 +7,9 @@ import { colorRole } from "./scene.js";
 import type { DonutProps } from "./types.js";
 import { percent } from "./values.js";
 
+/** A segment other than the focused one (design V5 allocation: 0.22). */
+const DIMMED = 0.22;
+
 export function donutScene(p: DonutProps): Built {
   const size = p.size ?? 112;
   const arcs = donutArcs(
@@ -24,6 +27,8 @@ export function donutScene(p: DonutProps): Built {
         d,
         fill: colorRole(seg.color),
         evenOdd: true,
+        ...(p.onSegmentHover || p.focus != null ? { hover: i } : {}),
+        ...(p.focus != null && p.focus !== i ? { opacity: DIMMED } : {}),
         ...(p.onSegmentSelected ? { activation: { index: i, label: seg.name } } : {}),
       });
   });

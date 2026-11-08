@@ -13,3 +13,6 @@ export const WithFooter: Story<WidgetProps> = {
 };
 export const Highlight: Story<WidgetProps> = { args: { highlight: true } };
 export const Ghost: Story<WidgetProps> = { args: { ghost: true } };
+export const Quiet: Story<WidgetProps> = {
+  args: { title: "Allocation", variant: "quiet", footer: "Cash 20.8 %" },
+};

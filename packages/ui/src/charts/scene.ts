@@ -165,6 +165,8 @@ interface LineNode {
 interface PathNode {
   k: "path";
   activation?: { index: number; label: string };
+  /** The data index this path reports on pointer hover (the donut's arcs); with a dimmed `opacity` it fades. */
+  hover?: number;
   d: string;
   stroke?: ChartRole;
   /** A role, or the id of one of the scene's gradients. */

@@ -1,6 +1,7 @@
 // The home rail's props (ab24ab6 v2/HomeRail.tsx SignalsBrief / AlertsBrief and research/Strip.tsx
-// CandidatesRail, the logic part): the lead sentence, grouped rows, the review box pills, the alert rows and the
-// candidate rows, formatted here so HomeRailView stays pure.
+// CandidatesRail, the logic part, laid out as design V5): the lead sentence, the rows grouped as new since the review
+// (by category) or put off in it, the alert rows with the close / fired counts and the candidate rows, formatted
+// here so HomeRailView stays pure. The review's own breakdown is the hero button's popover (reviewSlotModel.ts).
 import { S } from "@cashu/i18n/investments/v2/HomeRail.strings";
 import { S as C } from "@cashu/i18n/investments/v2/research/Strip.strings";
 import type { RailRowData } from "@cashu/ui";
@@ -15,71 +16,48 @@ import {
   watchItemId,
 } from "@cashu/ui-logic/investments/v2/research/logic";
 import type { ResearchNote } from "@cashu/ui-logic/investments/v2/research/types";
-import {
-  type DecideGroup,
-  type DecideItem,
-  type DecideRest,
-  GROUP_LABEL,
-} from "@cashu/ui-logic/investments/v2/reviewDeckLogic";
+import type { DecideGroup, DecideItem } from "@cashu/ui-logic/investments/v2/reviewDeckLogic";
 import type { Alert, WatchItem } from "@cashu/ui-logic/investments/v2/types";
 import type {
   AlertsBriefProps,
   CandidatesRailProps,
   RailGroup,
-  RailPill,
   SignalsBriefProps,
 } from "./HomeRailView.js";
 
 /** A subject without an instrument (a portfolio rule) gets the neutral Σ tile. */
 const PORTFOLIO_MONO = "Σ";
-const ROW_GROUPS: RailGroup[] = ["risk", "chance", "mixed", "plan"];
+const ROW_GROUPS: DecideGroup[] = ["risk", "chance", "mixed", "plan"];
+/** The groups of new rows say they are new (the review counts everything, the rail lists what is new). */
+const NEW_LABEL: Partial<Record<DecideGroup, () => string>> = {
+  risk: () => S.newRisk,
+  chance: () => S.newChance,
+  mixed: () => S.newMixed,
+  plan: () => S.newPlan,
+};
 const MAX_ROWS = 6;
 
 const monoOf = (inst: InstLike | null) => (inst ? instMono(inst) : PORTFOLIO_MONO);
 
 export interface SignalsBriefInput {
   items: readonly DecideItem[];
-  deck: readonly DecideItem[];
-  rest: DecideRest;
   total: number;
   loading: boolean;
-  reviewDue: boolean;
-  reviewName: string;
   lastReviewAt: string | null;
-  nextOn: string | null;
   insts: Map<number, InstLike>;
   onOpenAsset(id: number): void;
-  onOpenReview(): void;
   onAll(focusId: number | null): void;
 }
 
 export function signalsBriefProps(i: SignalsBriefInput): SignalsBriefProps {
   const { fresh, left } = railSignals([...i.items], i.lastReviewAt);
   const leftKeys = new Set(left.map((d) => d.key));
-  // At most six rows; the lead counts all of them, the rest is behind "Wszystkie".
+  // At most six rows; the rest is behind "Wszystkie".
   const shown = [...fresh, ...left].slice(0, MAX_ROWS);
-  const lead =
-    fresh.length && left.length
-      ? `${S.leadLeft(left.length)}${S.andNew(fresh.length)}`
-      : fresh.length
-        ? `${S.leadNewDue(fresh.length)}${i.reviewDue && i.deck.length ? S.decisionsWait : ""}`
-        : left.length
-          ? `${S.leadLeft(left.length)}`
-          : `${S.nothingNew}${i.reviewDue ? S.reviewWaits : i.nextOn ? S.nextReview(dm(i.nextOn)) : ""}`;
-  const count = (g: DecideGroup) =>
-    i.deck
-      .filter((d) => d.group === g && d.kind !== "proposal")
-      .reduce((n, d) => n + (g === "fix" ? (d.signalIds?.length ?? 1) : 1), 0);
-  const proposals = i.deck.filter((d) => d.kind === "proposal").length;
-  const pills: [RailPill, string, number][] = [
-    ["risk", S.pillRisk(count("risk")), count("risk")],
-    ["chance", S.pillChance(count("chance")), count("chance")],
-    ["mixed", S.pillMixed(count("mixed")), count("mixed")],
-    ["plan", S.pillPlan(count("plan")), count("plan")],
-    ["plan", S.pillProposal(proposals), proposals],
-    ["fix", S.pillFix(count("fix")), count("fix")],
-  ];
-  const decideN = i.deck.filter((d) => d.kind !== "rules").length;
+  const freshKeys = new Set(fresh.map((d) => d.key));
+  const shownFresh = shown.filter((d) => freshKeys.has(d.key) && ROW_GROUPS.includes(d.group));
+  // Put off in the review (snoozed, or seen before it and still undecided): one group of their own.
+  const shownOther = shown.filter((d) => leftKeys.has(d.key) && ROW_GROUPS.includes(d.group));
   const row = (d: DecideItem): RailRowData => {
     const inst =
       d.instrumentId != null
@@ -101,24 +79,23 @@ export function signalsBriefProps(i: SignalsBriefInput): SignalsBriefProps {
         d.instrumentId != null ? i.onOpenAsset(d.instrumentId) : i.onAll(d.signalIds?.[0] ?? null),
     };
   };
+  const groups: SignalsBriefProps["groups"] = [
+    // New since the review, by category (the old rail grouped only these four categories, too).
+    ...ROW_GROUPS.filter((g) => shownFresh.some((d) => d.group === g)).map((g) => ({
+      group: g as RailGroup,
+      label: NEW_LABEL[g]?.() ?? "",
+      rows: shownFresh.filter((d) => d.group === g).map(row),
+    })),
+    ...(shownOther.length
+      ? [{ group: "left" as RailGroup, label: S.putOff, rows: shownOther.map(row) }]
+      : []),
+  ];
+  // No lead sentence and no unchanged count (design V5): the header, then the rows; the review's own counts are the
+  // hero button's popover, every signal is behind All (n).
   return {
     loading: i.loading,
-    lead,
-    groups: ROW_GROUPS.filter((g) => shown.some((d) => d.group === g)).map((g) => ({
-      group: g,
-      label: GROUP_LABEL[g],
-      rows: shown.filter((d) => d.group === g).map(row),
-    })),
-    review:
-      i.reviewDue && i.deck.length > 0
-        ? {
-            name: i.reviewName,
-            items: decideN > 0 ? S.reviewItems(decideN) : null,
-            pills: pills.filter(([, , n]) => n > 0).map(([tone, text]) => ({ tone, text })),
-            onOpen: i.onOpenReview,
-          }
-        : null,
-    unchanged: i.rest.review > 0 ? S.unchanged(i.rest.review) : null,
+    groups,
+    empty: groups.length ? null : S.nothingNew,
     all: S.all(i.total),
     allDisabled: !i.total,
     onAll: () => i.onAll(null),
@@ -142,6 +119,10 @@ export function alertsBriefProps(i: AlertsBriefInput): AlertsBriefProps {
   );
   return {
     loading: !i.alerts,
+    counts: {
+      close: S.closeN(rows.filter((r) => r.state === "near").length),
+      fired: S.firedN(rows.filter((r) => r.state === "met").length),
+    },
     empty: rows.length ? null : S.noneClose(live.length),
     rows: rows.map((r) => ({
       key: String(r.id),

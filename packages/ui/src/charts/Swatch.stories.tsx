@@ -11,3 +11,5 @@ const meta = {
 export default meta;
 
 export const AllocationRow: Story<SwatchProps> = {};
+export const QuietRow: Story<SwatchProps> = { args: { size: "xs" } };
+export const Dot: Story<SwatchProps> = { args: { size: "dot" } };

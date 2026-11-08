@@ -215,7 +215,13 @@ export { PageHead, type PageHeadProps } from "./surfaces/PageHead.js";
 export { SectionCard, type SectionCardProps } from "./surfaces/SectionCard.js";
 export { SumStrip, type SumStripItem } from "./surfaces/SumStrip.js";
 export { Pill, type PillProps, Tag, type TagProps, type TagTone } from "./surfaces/Tag.js";
-export { tintInk, Widget, type WidgetProps } from "./surfaces/Widget.js";
+export {
+  tintInk,
+  Widget,
+  type WidgetProps,
+  WidgetSection,
+  type WidgetSectionProps,
+} from "./surfaces/Widget.js";
 export {
   codeCls,
   emptyCls,

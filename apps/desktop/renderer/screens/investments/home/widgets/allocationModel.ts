@@ -1,6 +1,7 @@
-// AllocationWidget (ab24ab6 v2/Portfolio.tsx:267-355) with AccountsRows (:236-265), DataWarnings (:210-234) and the
-// portfolio priority banner: four views `Koszyki | Klasy | Regiony | Rachunki`, the donut with its rows, drift
-// coloured only out of band. Every text is formatted here; the View lays it out.
+// AllocationWidget (ab24ab6 v2/Portfolio.tsx:267-355, laid out as design V5) with AccountsRows (:236-265),
+// DataWarnings (:210-234) and the portfolio priority line: four views `Koszyki | Klasy | Regiony | Rachunki`, the
+// donut with its rows, drift coloured only out of band, and a status that agrees with the rows. Every text is
+// formatted here; the View lays it out.
 import { S } from "@cashu/i18n/investments/v2/Portfolio.strings";
 import type { ChartColor, DonutProps } from "@cashu/ui";
 import { hideAmount } from "@cashu/ui-logic/core/incognito";
@@ -84,7 +85,13 @@ type AllocationBody =
         toTarget: string;
       };
       rows: AllocRow[];
-      priority: { label: string; text: string; warn: boolean } | null;
+      /** `rowKey`: the bucket the priority names (hovering the line lights its row and segment). */
+      priority: {
+        label: string;
+        text: string;
+        rowKey: string | null;
+        color: ChartColor;
+      } | null;
     }
   | {
       kind: "accounts";
@@ -158,7 +165,7 @@ function accountsBody(overview: Overview, today: string): AllocationBody {
       })),
       center: { title: totalK(total, c), caption: nAccountsInv(accounts.length) },
     },
-    head: { name: S.colAccount, now: S.colNow, value: S.colValueLc, snapshot: S.colSnapshot },
+    head: { name: S.hAccount, now: S.hNow, value: S.hValue, snapshot: S.hSnapshot },
     rows: rows.map(({ a, color, snap }) => ({
       key: a.id,
       title: snap.title,
@@ -258,8 +265,13 @@ export function allocationProps(
   const chosen: AllocView = ui.view ?? (alloc.has_strategy && generic ? "buckets" : "classes");
   const view: AllocView = chosen === "buckets" && !generic ? "classes" : chosen;
   const order = alloc.buckets.map((b) => b.bucket_id);
-  const out = alloc.buckets.filter((b) => b.out_of_band).length;
   const band = alloc.band?.absolute_band_pp ?? null;
+  // Out of band: the daily check's verdict; where it has none (the rule was skipped), the drift against the band,
+  // so the rows, the status and the priority never disagree.
+  const isOut = (b: (typeof alloc.buckets)[number]): boolean | null =>
+    b.out_of_band ?? (band != null ? Math.abs(b.drift_pp) > band + 1e-9 : null);
+  const outBuckets = alloc.buckets.filter((b) => isOut(b) === true);
+  const unknown = alloc.buckets.some((b) => isOut(b) == null);
   const bandTitle = band != null ? S.band(band) : undefined;
   const below = [...alloc.buckets]
     .filter((b) => b.drift_pp < 0)
@@ -288,7 +300,7 @@ export function allocationProps(
             now: pct(b.weight),
             target: pctTarget(b.target),
             drift: pp(b.drift_pp),
-            out: !!b.out_of_band,
+            out: isOut(b) === true,
             v: b.value,
             value: money0(b.value, c),
             toTarget: money0(b.to_target, c, true),
@@ -353,35 +365,48 @@ export function allocationProps(
         },
       },
       head: {
-        name: view === "buckets" ? S.colBucket : view === "classes" ? S.colClass : S.colRegion,
-        now: S.colNow,
+        name: view === "buckets" ? S.hBucket : view === "classes" ? S.hClass : S.hRegion,
+        now: view === "buckets" ? S.hNowTarget : S.hNow,
         target: {
-          text: view === "buckets" ? S.colTarget : "",
+          text: "",
           title: view === "buckets" && ui.filtered ? S.targetWholeTitle : undefined,
         },
         drift: {
-          text: view === "buckets" ? S.colDrift : "",
+          text: view === "buckets" ? S.hDrift : "",
           title: view === "buckets" ? bandTitle : undefined,
         },
-        value: S.colValueLc,
-        toTarget: view === "buckets" ? S.colToTarget : "",
+        value: S.hValue,
+        toTarget: view === "buckets" ? S.hToTarget : "",
       },
       // The raw weight / value only feed the donut; the View reads the formatted strings.
       rows: rows.map(({ w: _w, v: _v, ...r }) => r),
       priority:
         view === "buckets"
-          ? { label: S.priority, text: priorityText, warn: !!priority?.out_of_band }
+          ? {
+              label: S.priority,
+              text: priorityText,
+              rowKey: priority?.bucket_id ?? null,
+              color: priority ? colorName(bucketColor(priority.bucket_id, order)) : "inv-other",
+            }
           : null,
     };
   return {
     title: S.allocation,
     wide,
     tag:
-      view === "buckets"
-        ? out
-          ? { text: S.outOfBand(out), tone: "warning", title: bandTitle }
-          : { text: S.inBand, tone: "positive", title: bandTitle }
-        : null,
+      view !== "buckets"
+        ? null
+        : outBuckets.length === 1 && outBuckets[0]
+          ? {
+              text: S.outOfBandNamed(bucketLabel(outBuckets[0].bucket_id) ?? ""),
+              tone: "warning",
+              title: bandTitle,
+            }
+          : outBuckets.length > 1
+            ? { text: S.outOfBand(outBuckets.length), tone: "warning", title: bandTitle }
+            : unknown
+              ? null
+              : { text: S.inBand, tone: "positive", title: bandTitle },
     viewLabel: S.allocSplit,
     views,
     view,

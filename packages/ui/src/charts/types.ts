@@ -134,6 +134,10 @@ export interface DonutProps {
   /** Centre text (old `.donut .c`: 15px bold value, 10.5px muted caption); `amount` hides the value in
    * privacy mode. */
   center?: { title: string; caption?: string; amount?: boolean };
+  /** The highlighted segment (index into `segments`): the others dim to a quarter; null / omitted = none. */
+  focus?: number | null;
+  /** Hovering an arc reports its index, leaving it null (desktop pointer only; e.g. to light a legend row). */
+  onSegmentHover?: (index: number | null) => void;
   layout?: Layout;
 }
 
@@ -180,5 +184,5 @@ export interface SwatchProps {
   color: ChartColor;
   /** md: 10 px, radius 3 (old `.arow .sw`, allocation rows); sm: 9 px, radius 2 (old `.legend i.sw`); lg: 12 px,
    * radius 3 (old `.swatch`, the spending legend rows). */
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xs" | "dot";
 }

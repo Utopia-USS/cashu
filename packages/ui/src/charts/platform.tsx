@@ -136,10 +136,12 @@ function Node({
   node,
   prefix,
   onActivate,
+  onHover,
 }: {
   node: SceneNode;
   prefix: string;
   onActivate?: ((index: number) => void) | undefined;
+  onHover?: ((index: number | null) => void) | undefined;
 }) {
   switch (node.k) {
     case "line":
@@ -156,12 +158,14 @@ function Node({
       );
     case "path": {
       const gradient = typeof node.fill === "object" ? node.fill.gradient : null;
+      const hoverIndex = node.hover;
       const path = (
         <path
           d={node.d}
           className={cls(
             node.stroke && STROKE[node.stroke],
             node.fill == null ? "fill-none" : typeof node.fill === "string" && FILL[node.fill],
+            hoverIndex != null && "transition-opacity duration-150",
           )}
           fill={gradient ? `url(#${prefix}${gradient})` : undefined}
           fillRule={node.evenOdd ? "evenodd" : undefined}
@@ -170,6 +174,8 @@ function Node({
           strokeLinejoin={node.stroke ? "round" : undefined}
           strokeLinecap={node.stroke ? (node.cap ?? "round") : undefined}
           opacity={node.opacity}
+          onPointerEnter={hoverIndex != null && onHover ? () => onHover(hoverIndex) : undefined}
+          onPointerLeave={hoverIndex != null && onHover ? () => onHover(null) : undefined}
         />
       );
       if (!node.activation) return path;
@@ -243,9 +249,11 @@ function SvgScene({
   onPointerMove,
   onPointerLeave,
   onActivate,
+  onHover,
 }: {
   scene: Scene;
   onActivate?: ((index: number) => void) | undefined;
+  onHover?: ((index: number | null) => void) | undefined;
   prefix: string;
   focus: Focus | null;
   /** The image's name when the frame is a group (interactive); otherwise the frame carries it. */
@@ -290,7 +298,7 @@ function SvgScene({
       {scene.nodes.map((node, k) => (
         // A scene is rebuilt whole; the node order is fixed per input, so the index is a stable key.
         // biome-ignore lint/suspicious/noArrayIndexKey: scene nodes have no identity beyond their order
-        <Node key={k} node={node} prefix={prefix} onActivate={onActivate} />
+        <Node key={k} node={node} prefix={prefix} onActivate={onActivate} onHover={onHover} />
       ))}
       {focus && (
         <g>
@@ -350,6 +358,7 @@ export function ChartFrame({
   decorative,
   inline,
   onActivate,
+  onHover,
 }: ChartFrameProps) {
   const { ref, width } = useMeasuredWidth(fixed);
   const [hover, setHover] = useState<number | null>(null);
@@ -409,6 +418,7 @@ export function ChartFrame({
           focus={focus}
           label={scrub || onActivate ? summary : null}
           onActivate={onActivate}
+          onHover={onHover}
           onPointerMove={scrub ? onPointerMove : undefined}
           onPointerLeave={scrub ? () => setHover(null) : undefined}
         />

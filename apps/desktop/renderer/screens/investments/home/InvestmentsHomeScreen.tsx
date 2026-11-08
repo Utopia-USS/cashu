@@ -19,7 +19,7 @@ import {
   TxnDrawer,
   TxnsDrawer,
 } from "../drawers/InvestmentDrawers.js";
-import { AlertsBrief, CandidatesRail, SignalsBrief } from "./HomeRailView.js";
+import { HomeRailCard } from "./HomeRailView.js";
 import { HomeErrorView, HomeLoadingView, HomePage, HomeView } from "./HomeView.js";
 import { ResearchStripView } from "./research/ResearchStripView.js";
 import { researchStripProps } from "./research/researchStripModel.js";
@@ -185,7 +185,12 @@ function HomeBound(props: InvestmentsHomeOptions) {
             id: "value",
             node: (
               <ValueChartWidgetView
-                {...valueChartProps(s.data, { ...s.widgets, range: s.range, onRange: s.onRange })}
+                {...valueChartProps(s.data, {
+                  ...s.widgets,
+                  range: s.range,
+                  onRange: s.onRange,
+                  facts: s.hero.facts,
+                })}
               />
             ),
           },
@@ -219,11 +224,10 @@ function HomeBound(props: InvestmentsHomeOptions) {
           },
         ],
         rail: [
-          { id: "signals", node: <SignalsBrief {...s.signals} /> },
-          { id: "alerts", node: <AlertsBrief {...s.alerts} /> },
-          ...(s.candidates
-            ? [{ id: "candidates", node: <CandidatesRail {...s.candidates} /> }]
-            : []),
+          {
+            id: "rail",
+            node: <HomeRailCard signals={s.signals} alerts={s.alerts} candidates={s.candidates} />,
+          },
         ],
         research: strip ? <ResearchStripView {...strip} /> : null,
       }}

@@ -8,3 +8,4 @@ const meta = {
 } satisfies Meta<WeightBarProps>;
 export default meta;
 export const Default: Story<WeightBarProps> = {};
+export const Stacked: Story<WeightBarProps> = { args: { stacked: true } };

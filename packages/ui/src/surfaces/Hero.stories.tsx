@@ -20,3 +20,12 @@ export const Default: Story<HeroProps> = {};
 export const WithStatus: Story<HeroProps> = {
   args: { right: "Up to date", meta: "prices Fri 30.10" },
 };
+/** The investments home hero (design V5): no frame, quiet caption line with tags, the figure at statement size. */
+export const Statement: Story<HeroProps> = {
+  args: {
+    variant: "statement",
+    facts: [],
+    meta: "prices Fri 30.10",
+    right: "Weekly review",
+  },
+};

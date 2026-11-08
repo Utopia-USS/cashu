@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
-export type InstDensity = "row" | "compact" | "header";
+/** `mark`: a 10px tile without type, the ring alone (the legend of the rings, design V5). */
+export type InstDensity = "row" | "compact" | "header" | "mark";
 /** Thesis health ring: supports (accent), fulfilled (violet), weakened (warning), invalidated (dashed). */
 export type InstHealth = "sup" | "ful" | "weak" | "inv";
 
@@ -10,13 +11,15 @@ const tiles = {
   row: { box: "h-6.5 w-10 rounded-sm", type: "text-3xs-plus", dense: "text-4xs" },
   compact: { box: "h-5.5 w-9 rounded-xs", type: "text-4xs-plus", dense: "text-5xs" },
   header: { box: "h-8.5 w-13 rounded-sm-plus", type: "text-sm", dense: "text-2xs-plus" },
+  mark: { box: "size-2.5 rounded-3xs", type: "text-5xs", dense: "text-5xs" },
 } as const;
 const coins = {
   row: "-top-[5.5px] -right-[5.5px] size-3.25 p-[1.5px]",
   compact: "-top-1.5 -right-1.5 size-3 p-px",
   header: "-top-[5.5px] -right-[5.5px] size-4 p-0.5",
+  mark: "-top-1 -right-1 size-2 p-0",
 } as const;
-const gaps = { row: "gap-2.5", compact: "gap-2", header: "gap-3" } as const;
+const gaps = { row: "gap-2.5", compact: "gap-2", header: "gap-3", mark: "gap-1.5" } as const;
 // The surface the tile sits on (rim and ring gap colour): a hovered row sets `--tile-bg` on an ancestor.
 const tileBg = "var(--tile-bg, var(--color-surface-raised))";
 const ringHue = {

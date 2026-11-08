@@ -112,7 +112,7 @@
 
   /* Radii: the scale continues around the original sm / md / lg; `control` is the Python app's 8px of
      buttons, fields, segments and skeletons. `widget` is the card radius (Widget, SectionCard, ChartCard,
-     Kpi, Hero and their skeletons), 18px per the design direction (was the Python app's 12px). */
+     Kpi, Hero, Card and their skeletons), 28px per the design direction (was the Python app's 12px). */
   --radius-5xs: 1px;
   --radius-4xs: 2px;
   --radius-3xs: 3px;
@@ -122,8 +122,8 @@
   --radius-sm-plus: 7px;
   --radius-control: 8px;
   --radius-md: 10px;
-  --radius-widget: 18px;
-  /* The big full-width buttons of the review deck: they kept the Python app's 12px when cards went to 18. */
+  --radius-widget: 28px;
+  /* The big full-width buttons of the review deck: they kept the Python app's 12px when cards grew. */
   --radius-button-lg: 12px;
   --radius-lg: 14px;
   --radius-xl: 18px;
@@ -174,6 +174,8 @@
   --text-4xl-plus: 30px;
   --text-5xl: 34px;
   --text-6xl: 40px;
+  /* The investments hero figure (design/desktop/investments-home/lab.html V5, Statement size). */
+  --text-statement: 64px;
   /* The UA button size (13.333px) of the old bare buttons that set no font size (deck "Cofnij"). */
   --text-control: 13.3333px;
   /* Inline code of rendered Markdown (old `.md code { font-size: .88em }`, relative to its text). */

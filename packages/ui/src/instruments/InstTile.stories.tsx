@@ -14,3 +14,6 @@ export const RowWithPlan: Story<InstTileProps> = {
 };
 export const Dense: Story<InstTileProps> = { args: { monogram: "BRK-B" } };
 export const Quiet: Story<InstTileProps> = { args: { monogram: "Σ", quiet: true } };
+export const Mark: Story<InstTileProps> = {
+  args: { monogram: "", density: "mark", health: "weak" },
+};
