@@ -10,6 +10,7 @@ import {
   proposalExecution,
   rejectProposal,
 } from "@cashu/store/core";
+import { StrategyProposalError } from "@cashu/store/investments/services";
 import type { UiActionResult } from "@cashu/store/ui-actions";
 import { z } from "zod";
 import { runHostVaultCommand } from "./commands.js";
@@ -38,6 +39,28 @@ export function bindApprovalIntent<I, R>(
     },
     input: { proposalGid, preparationId },
   };
+}
+
+/**
+ * Strategy and custom-rule refusals the owner can act on (Python `proposals.approve` returned the
+ * code and the app showed its label): the strategy files changed, the rule already exists or is
+ * invalid, the files are missing or unreadable, or the result would not validate. Anything else
+ * (lost authority, a changed proposal, an internal failure) stays `preparation_failed`.
+ */
+const STRATEGY_REFUSALS: ReadonlySet<string> = new Set([
+  "base_changed",
+  "rule_exists",
+  "rule_invalid",
+  "strategy_missing",
+  "strategy_unreadable",
+  "invalid_strategy",
+  "rules_made_inactive",
+]);
+
+function preparationRefusal(error: unknown): string {
+  return error instanceof StrategyProposalError && STRATEGY_REFUSALS.has(error.code)
+    ? error.code
+    : "preparation_failed";
 }
 
 /** A checked per-vault S60 source. No renderer-supplied file paths, effects or holder assertions. */
@@ -128,8 +151,8 @@ export function proposalScreen(
       let prepared: Awaited<ReturnType<ProposalApprovalBinding["prepare"]>>;
       try {
         prepared = await binding.prepare(snapshot);
-      } catch {
-        return { status: "refused", reason: "preparation_failed", preparation: "none" };
+      } catch (error) {
+        return { status: "refused", reason: preparationRefusal(error), preparation: "none" };
       }
       if (prepared.effect.proposalGid !== snapshot.gid || prepared.effect.kind !== snapshot.kind)
         return { status: "refused", reason: "wrong_preparation", preparation: "retained" };

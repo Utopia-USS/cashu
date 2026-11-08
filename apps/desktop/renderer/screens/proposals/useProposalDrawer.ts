@@ -3,22 +3,7 @@ import { useQuery, useUiAction } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { proposalError } from "@cashu/ui-logic/core/messages";
 import { useEffect, useRef, useState } from "react";
-
-type Message =
-  | "refused"
-  | "busy"
-  | "baseChanged"
-  | "notPending"
-  | "authorityLost"
-  | "cleanupFailed"
-  | "unknown"
-  | "recoveryAuthority"
-  | "recoveryRestore"
-  | "recoveryEvent"
-  | "recoveryReconcile"
-  | "failed"
-  | "unavailableApproval"
-  | null;
+import { type Message, strategyRefusal } from "./proposalRefusals.js";
 
 export function useProposalDrawer(
   gid: string,
@@ -66,7 +51,7 @@ export function useProposalDrawer(
                 ? "busy"
                 : reply.reason === "authority_lost"
                   ? "authorityLost"
-                  : "refused",
+                  : strategyRefusal(reply.reason),
         );
         return;
       }

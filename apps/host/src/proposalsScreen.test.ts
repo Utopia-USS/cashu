@@ -1,5 +1,6 @@
 import { commandFingerprint, ok, runCommand } from "@cashu/store";
 import { createProposal, type PreparedEffect } from "@cashu/store/core";
+import { StrategyProposalError } from "@cashu/store/investments/services";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "./host.js";
 import {
@@ -223,4 +224,56 @@ it("returns real S60 approved, refused cleanup, failed and recovery receipts for
   } finally {
     await host.stop();
   }
+});
+
+it("surfaces the strategy refusal code of a failed preparation, not preparation_failed", async () => {
+  const host = await startLocalHost({
+    ...testHostOptions(tempDir()),
+    launcher: false,
+  });
+  const vault = [...host.stores.vaults.values()][0];
+  if (!vault) throw new Error("missing synthetic vault");
+  let thrown: Error = new Error("synthetic");
+  const provider: ProposalApprovalProvider = {
+    bind: (id) =>
+      id === vault.id
+        ? {
+            generation: "synthetic-current",
+            dailyLock: { tryAcquire: () => () => {} },
+            isCurrent: () => true,
+            isHolder: () => true,
+            async prepare() {
+              throw thrown;
+            },
+          }
+        : null,
+  };
+  const action = proposalScreen(undefined, provider);
+  const created = await vault.queue.run(() =>
+    runCommand(
+      vault.store,
+      vault.writer,
+      createProposal,
+      {
+        kind: "custom_rule",
+        summary: "Synthetic rule proposal",
+        reason: null,
+        payload: { rule: { id: "synthetic" } },
+        source: "synthetic",
+      },
+      vault.env,
+    ),
+  );
+  if (!created.ok) throw new Error(created.reason);
+  const approve = () =>
+    action.run(host.stores, vault.id, { gid: created.value.proposalGid, decision: "approve" });
+  for (const code of ["rule_exists", "base_changed", "strategy_missing", "rule_invalid"]) {
+    thrown = new StrategyProposalError(code, "synthetic refusal");
+    expect(await approve()).toEqual({ status: "refused", reason: code, preparation: "none" });
+  }
+  // Internal failures keep the generic reason.
+  thrown = new StrategyProposalError("unavailable", "synthetic refusal");
+  expect(await approve()).toMatchObject({ status: "refused", reason: "preparation_failed" });
+  thrown = new Error("synthetic crash");
+  expect(await approve()).toMatchObject({ status: "refused", reason: "preparation_failed" });
 });

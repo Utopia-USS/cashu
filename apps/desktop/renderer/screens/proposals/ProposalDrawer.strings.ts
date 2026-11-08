@@ -22,6 +22,30 @@ export const P = catalog({
     pl: "Baza propozycji zmieniła się. Poproś o nową propozycję.",
     en: "The proposal base changed. Ask for a new proposal.",
   },
+  ruleExists: {
+    pl: "Strategia ma już regułę o tym id. Poproś o nową propozycję.",
+    en: "The strategy already has a rule with this id. Ask for a new proposal.",
+  },
+  ruleInvalid: {
+    pl: "Proponowana reguła nie przechodzi walidacji.",
+    en: "The proposed rule does not pass validation.",
+  },
+  strategyMissing: {
+    pl: "Brak pliku strategii albo nie można go odczytać.",
+    en: "The strategy file is missing or cannot be read.",
+  },
+  strategyUnreadable: {
+    pl: "Nie można odczytać obecnych plików strategii.",
+    en: "The current strategy files cannot be read.",
+  },
+  invalidStrategy: {
+    pl: "Strategia po tej zmianie nie przechodzi walidacji.",
+    en: "The strategy does not pass validation after this change.",
+  },
+  rulesMadeInactive: {
+    pl: "Ta zmiana wyłączyłaby inne reguły.",
+    en: "This change would turn off other rules.",
+  },
   notPending: {
     pl: "Ta propozycja została już rozpatrzona. Sprawdź jej stan.",
     en: "This proposal has already been reviewed. Check its status.",
