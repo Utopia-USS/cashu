@@ -42,9 +42,10 @@ jobs:
       - name: Typecheck, lint
         run: pnpm turbo run typecheck lint
 
-      # At most 4 packages at once, each vitest on a quarter of the cores (vitest.tiers.ts).
+      # At most 4 packages at once, each vitest on a quarter of the cores (vitest.tiers.ts); --continue so
+      # one run reports every failing package.
       - name: Test
-        run: pnpm test
+        run: pnpm test --continue
 
       # The exhaustive tier (*.exhaustive.test.ts: code point sweeps, vector replays, property searches,
       # multi-device simulations), one package at a time so each suite has the runner's cores to itself.
