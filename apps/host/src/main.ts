@@ -42,6 +42,7 @@ import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
 import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
+import { nativeStrategyApprovals } from "./proposals/strategyApproval.js";
 import { currentRuntime, shimProgram, shippedSkillsSource } from "./runtime.js";
 import { hostUpdateBridge } from "./updateBridge.js";
 import { createProductionWorkerBindings } from "./worker/production.js";
@@ -351,7 +352,10 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               factory: new ProductionVaultSourceFactory(args.dataDir),
             },
             assertNativeSourceAdmission,
-            proposals: { bind: (vault) => connectors?.proposals.bind(vault) ?? null },
+            proposals: {
+              bind: (vault, stores) => connectors?.proposals.bind(vault, stores) ?? null,
+            },
+            strategyProposals: nativeStrategyApprovals({ dailyLock }),
             ...(workspace === undefined ? {} : { workspace }),
             marketFactory: (stores, isCurrent, now) => {
               market = createProductionMarket({

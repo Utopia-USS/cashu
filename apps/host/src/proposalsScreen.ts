@@ -54,11 +54,16 @@ interface ProposalApprovalBinding {
 }
 
 export interface ProposalApprovalProvider {
-  bind(vault: string): ProposalApprovalBinding | null;
+  bind(vault: string, stores: HostStores): ProposalApprovalBinding | null;
 }
 
-/** Serializes reject with applying approval; returns the executor's actual business outcome. */
-export function proposalScreen(provider?: ProposalApprovalProvider): UiActionRegistration {
+/** Serializes reject with applying approval; returns the executor's actual business outcome.
+ * Strategy and custom-rule proposals approve through `strategies`, every other kind through
+ * `provider` (imports). */
+export function proposalScreen(
+  provider?: ProposalApprovalProvider,
+  strategies?: ProposalApprovalProvider,
+): UiActionRegistration {
   const applyingLock = new ProposalApplyingLock();
   // A pending approval may still publish files, so another proposal cannot overlap it.
   const unresolved = new Map<string, { identity: string; result: UiActionResult<unknown> }>();
@@ -110,12 +115,14 @@ export function proposalScreen(provider?: ProposalApprovalProvider): UiActionReg
           release();
         }
       }
-      const binding = provider?.bind(target);
+      const approver =
+        snapshot.kind === "strategy" || snapshot.kind === "custom_rule" ? strategies : provider;
+      const binding = approver?.bind(target, stores);
       if (!binding?.isCurrent())
         return { status: "refused", reason: "capability_unavailable", preparation: "none" };
       const bound = () =>
         current() &&
-        provider?.bind(target)?.generation === binding.generation &&
+        approver?.bind(target, stores)?.generation === binding.generation &&
         binding.isCurrent();
       if (!bound()) return { status: "refused", reason: "authority_lost", preparation: "none" };
       let prepared: Awaited<ReturnType<ProposalApprovalBinding["prepare"]>>;

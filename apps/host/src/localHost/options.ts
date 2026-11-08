@@ -83,6 +83,8 @@ export interface LocalHostOptions {
   readonly vaultSource?: VaultSourceOption;
   /** Checked S60 preparation authority, bound to the exact open vault. Absent by default. */
   readonly proposals?: ProposalApprovalProvider;
+  /** Owner approval of strategy and custom-rule proposals (production: the native strategy files). */
+  readonly strategyProposals?: ProposalApprovalProvider;
   readonly connectorCatalog?: () => ConnectorCatalog | undefined;
   readonly banking?: () => BankingRuntime | undefined;
   /** Exact-vault checked workspace provider. Unbound means unavailable, never absent. */

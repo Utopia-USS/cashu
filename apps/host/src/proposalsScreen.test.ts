@@ -150,7 +150,7 @@ it("returns real S60 approved, refused cleanup, failed and recovery receipts for
           }
         : null,
   };
-  const action = proposalScreen(provider);
+  const action = proposalScreen(provider, provider);
   const make = async () => {
     const created = await vault.queue.run(() =>
       runCommand(

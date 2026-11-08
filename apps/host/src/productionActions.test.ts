@@ -114,6 +114,13 @@ it("registers every dispatchable UI action in the production host wiring", async
   expect(wired, "wired now: remove them from REPORTED_GAPS").toEqual([]);
 });
 
+it("approves every proposal kind the drawer offers in the production host wiring", async () => {
+  const options = await productionOptions();
+  // Imports (connector runtime) and strategy / custom-rule proposals (native strategy files).
+  expect(options.proposals).toBeDefined();
+  expect(options.strategyProposals).toBeDefined();
+});
+
 it("lists each catalog action once", () => {
   const ids = UI_ACTIONS.map((action) => action.id);
   expect(new Set(ids).size).toBe(ids.length);

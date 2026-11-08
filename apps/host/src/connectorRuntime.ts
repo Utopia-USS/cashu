@@ -710,6 +710,15 @@ export function createConnectorRuntime(input: {
         isHolder: holder,
         async prepare(snapshot: ExecutionSnapshot) {
           if (!isCurrent() || !holder()) throw new Error("connector_authority_unavailable");
+          // An agent's MCP propose_import (no connector): the file it published, checked again.
+          if (snapshot.kind === "import" && snapshot.payload.source !== "connector") {
+            const prepared = await prepareInvestmentImport(
+              { store: vault.store, blobs: publication, isHolder: holder, now: input.now },
+              snapshot,
+            );
+            if (!prepared.ok) throw new Error(prepared.reason);
+            return { effect: prepared.value };
+          }
           const parsed = proposalBinding.safeParse(snapshot.payload.connector_binding);
           if (
             !parsed.success ||
