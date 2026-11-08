@@ -6,7 +6,7 @@ import { formatDecimalValue } from "@cashu/i18n/values";
 import { addCashExpense, recordBalance, setTransactionCategory } from "@cashu/store";
 import { setCurrentVault } from "@cashu/store/device";
 import { ProfileProvider, StoreProvider } from "@cashu/store-react";
-import { UiEnvProvider } from "@cashu/ui";
+import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import { type ReactNode, useEffect } from "react";
 import { ServicesProvider } from "../services/ServicesProvider";

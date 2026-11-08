@@ -10,6 +10,8 @@
     ".": "./src/index.ts",
     "./charts/geometry": "./src/charts/geometry.ts",
     "./charts/strings": "./src/charts/charts.strings.ts",
+    "./native": "./src/native.ts",
+    "./native.css": "./src/tokens/native.css",
     "./theme.css": "./src/tokens/theme.css"
   },
   "scripts": {

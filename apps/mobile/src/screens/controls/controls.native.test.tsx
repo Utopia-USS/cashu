@@ -1,5 +1,5 @@
 import { setLanguageForTests } from "@cashu/i18n";
-import { UiEnvProvider } from "@cashu/ui";
+import { UiEnvProvider } from "@cashu/ui/native";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import { useState } from "react";
 import type { PeriodChoice } from "../money-contracts";

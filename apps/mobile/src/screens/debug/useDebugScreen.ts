@@ -3,9 +3,9 @@
 
 import { D } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
-import type { Store } from "@cashu/store";
+import type { Store } from "@cashu/store/runtime";
 import { useQuery } from "@cashu/store-react";
-import { type ChartTip, type DonutSegment, useUiEnv } from "@cashu/ui";
+import { type ChartTip, type DonutSegment, useUiEnv } from "@cashu/ui/native";
 import { useRouter } from "expo-router";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import { bootStartedAt } from "../../boot";

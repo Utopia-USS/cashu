@@ -1,5 +1,5 @@
 import { type Decimal, type IsoDate, ZERO } from "@cashu/domain";
-import type { BudgetScreenPeriod } from "@cashu/store/budget/queries";
+import type { BudgetScreenPeriod } from "@cashu/store/budget/screen";
 import type { PeriodChoice } from "./money-contracts";
 
 /** Calendar day on this device, rather than the UTC day of an ISO timestamp. */

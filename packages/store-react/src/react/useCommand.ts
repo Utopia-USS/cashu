@@ -2,7 +2,7 @@
 // via the store process on the desktop) inside a React 19 transition. Every attempt settles with a
 // durable outcome; an unclassified adapter rejection is unknown with the original attempt key.
 // No optimistic state: the local apply updates queries reading touched tables.
-import { mintUlid } from "@cashu/store";
+import { mintUlid } from "@cashu/store/gid";
 import { useRef, useTransition } from "react";
 import type { AnyCommand, CommandAttempt, CommandOutcome } from "../client/types.js";
 import { useStoreClient } from "./context.js";

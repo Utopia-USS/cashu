@@ -1,7 +1,7 @@
 // One transaction row of the benchmark list: title, date and category, amount in its tone. Token
 // classes only (packages/ui theme); value components share locale and privacy with every screen.
 import type { Money as MoneyValue } from "@cashu/domain";
-import { DateText, Money } from "@cashu/ui";
+import { DateText, Money } from "@cashu/ui/native";
 import { Text, View } from "react-native";
 
 export interface TxItem {

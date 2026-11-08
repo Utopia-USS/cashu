@@ -1,7 +1,7 @@
 import { type Decimal, Money } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
 import { useQuery } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
+import { useUiEnv } from "@cashu/ui/native";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { useServices } from "../../services/ServicesProvider";

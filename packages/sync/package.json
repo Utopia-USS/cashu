@@ -6,6 +6,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./crypto": "./src/crypto/index.ts",
     "./hlc": "./src/hlc.ts",
     "./testing": "./src/testing/index.ts",
     "./testing/folder": "./src/transports/folder/testing/index.ts"

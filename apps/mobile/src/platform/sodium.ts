@@ -1,7 +1,7 @@
 // The mobile crypto path (packages/sync/src/crypto/README.md): react-native-libsodium for box / seal /
 // BLAKE2b / randomness, @noble/ciphers for the XChaCha20-Poly1305 AEAD (react-native-libsodium 1.7
 // rejects binary additional data). Pass the module namespace: the default export lacks crypto_box_seal.
-import type { crypto } from "@cashu/sync";
+import type * as crypto from "@cashu/sync/crypto";
 import * as libsodium from "react-native-libsodium";
 
 /**

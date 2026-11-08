@@ -2,8 +2,9 @@
 // (in-process, sync SQLite) behind @cashu/store-react's synchronous client, the first-launch fixture
 // load, the read-only money queries and the crypto self-test. S41 scaffold: the vault, salt and device id are
 // synthetic; pairing, the real keyring and the sync engine's local append arrive with S29.
-import { HybridClock, type Store, storeWriter } from "@cashu/store";
+
 import { currentVault, setCurrentVault } from "@cashu/store/device";
+import { HybridClock, type Store, storeWriter } from "@cashu/store/runtime";
 import type { StoreClient } from "@cashu/store-react";
 import { createSyncClient } from "@cashu/store-react/local";
 import { DEMO_SALT, DEMO_VAULT } from "../fixture/demoLog";

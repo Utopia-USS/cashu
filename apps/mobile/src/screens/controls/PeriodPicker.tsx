@@ -1,4 +1,4 @@
-import { useUiEnv } from "@cashu/ui";
+import { useUiEnv } from "@cashu/ui/native";
 import { Button, Column, Picker, Row } from "@expo/ui";
 import { Text, View } from "react-native";
 import { ControlHost } from "./ControlHost";

@@ -1,6 +1,6 @@
 // The phone's KeyStore (S27): expo-secure-store holds one key-encryption key in the Keychain, values
 // are sealed under it and kept as files in the app's private documents directory (`keys/`).
-import { crypto } from "@cashu/sync";
+import * as crypto from "@cashu/sync/crypto";
 import { Directory, File, Paths } from "expo-file-system";
 import * as SecureStore from "expo-secure-store";
 

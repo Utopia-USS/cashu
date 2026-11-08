@@ -1,4 +1,4 @@
-import { UiEnvProvider } from "@cashu/ui";
+import { UiEnvProvider } from "@cashu/ui/native";
 import { render, screen } from "@testing-library/react-native";
 import type { ComponentType } from "react";
 import cashflowMeta, {

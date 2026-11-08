@@ -3,7 +3,7 @@
 // sealed box plus the classified wrong-key failure of the native library (sealOpen must say `auth_failed`,
 // not `unsupported_runtime`), and a KeyStore round trip through the injected secure store and files.
 // No key or plaintext is reported, only check names and pass / fail with an error code.
-import { crypto } from "@cashu/sync";
+import * as crypto from "@cashu/sync/crypto";
 
 interface CryptoCheck {
   readonly name: CryptoCheckName;

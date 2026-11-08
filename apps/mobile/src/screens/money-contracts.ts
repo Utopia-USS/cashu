@@ -1,7 +1,7 @@
 // Pure screen contracts. Hooks supply exact monetary values and chart display text; Views only
 // render them, so the same stories can exercise presentation without a store or navigation.
 import type { Money } from "@cashu/domain";
-import type { BarChartProps, DonutProps, LineChartProps } from "@cashu/ui";
+import type { BarChartProps, DonutProps, LineChartProps } from "@cashu/ui/native";
 
 export type PeriodChoice =
   | { readonly kind: "all" }

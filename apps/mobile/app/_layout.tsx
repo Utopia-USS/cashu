@@ -1,8 +1,8 @@
 // Root layout: the token stylesheet (packages/ui theme, compiled by Uniwind), the app services, the
 // navigation stack. The current vault is still the synthetic S41 demo vault.
-import "@cashu/ui/theme.css";
+import "@cashu/ui/native.css";
 import { ProfileProvider, StoreProvider } from "@cashu/store-react";
-import { UiEnvProvider } from "@cashu/ui";
+import { UiEnvProvider } from "@cashu/ui/native";
 import { Stack } from "expo-router";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { useColorScheme } from "react-native";

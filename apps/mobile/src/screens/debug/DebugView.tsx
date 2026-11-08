@@ -1,6 +1,6 @@
 // The scaffold's debug screen: store and fixture status, live table counts, sync status, crypto
 // self-test. Pure: everything arrives through props from useDebugScreen.
-import { type ChartTip, Donut, type DonutSegment, LineChart, Sparkline } from "@cashu/ui";
+import { type ChartTip, Donut, type DonutSegment, LineChart, Sparkline } from "@cashu/ui/native";
 import type { ReactNode } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { S } from "./Debug.strings";

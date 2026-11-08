@@ -1,14 +1,15 @@
 // The in-process side of the sync adapter (phone, tests) and of the test host (testing/host.ts):
 // the open stores of this device and how a target, a query or a command is run against them.
+
+import type { DeviceCommand, DeviceStore } from "@cashu/store/device";
+import type { Query, QueryArgs, QuerySource } from "@cashu/store/query";
 import {
   type CommandEnv,
   type CommandResult,
   type EventWriter,
   runCommand,
   type Store,
-} from "@cashu/store";
-import type { DeviceCommand, DeviceStore } from "@cashu/store/device";
-import type { Query, QueryArgs, QuerySource } from "@cashu/store/query";
+} from "@cashu/store/runtime";
 import type { AnyCommand, Target } from "../client/types.js";
 
 /** One vault open on this device: its store and how its commands append events. */

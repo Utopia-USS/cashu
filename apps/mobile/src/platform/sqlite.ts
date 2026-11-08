@@ -4,8 +4,10 @@
 // directory, which iOS keeps under its default data protection (complete until first user
 // authentication), the same class as the KeyStore's Keychain item (AFTER_FIRST_UNLOCK) so background
 // sync can read both while the phone is locked.
-import { builtinModules, expoSqliteDriver, Store, type VaultSalt } from "@cashu/store";
+
 import { DeviceStore } from "@cashu/store/device";
+import type { VaultSalt } from "@cashu/store/gid";
+import { builtinModules, expoSqliteDriver, Store } from "@cashu/store/runtime";
 import { openDatabaseSync } from "expo-sqlite";
 
 /** Open (or create) the store of `vault`. The store sets WAL + synchronous NORMAL itself. */

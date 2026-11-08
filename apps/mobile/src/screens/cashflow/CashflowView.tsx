@@ -1,5 +1,5 @@
 // Pure cashflow screen. The hook gives exact Money values and the chart's exact value labels.
-import { BarChart, Money as MoneyValue } from "@cashu/ui";
+import { BarChart, Money as MoneyValue } from "@cashu/ui/native";
 import { FlashList } from "@shopify/flash-list";
 import { Text, View } from "react-native";
 import { CurrencyPicker } from "../controls/CurrencyPicker";

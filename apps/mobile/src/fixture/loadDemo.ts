@@ -3,7 +3,7 @@
 // hash itself is compared across runtimes by the S41 run (device vs `PRINT_DEMO_HASH=1 jest` on Node
 // at the same commit), not pinned here, because the store's materializers still change the view.
 // Runtime-free: the caller passes the opened store and a clock.
-import { type Store, viewHash } from "@cashu/store";
+import { type Store, viewHash } from "@cashu/store/runtime";
 import { demoLog } from "./demoLog";
 
 const BATCH = 500;

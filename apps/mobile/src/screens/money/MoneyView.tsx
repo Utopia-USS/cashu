@@ -1,5 +1,5 @@
 // Pure net-worth screen: exact Money, one selected currency and a chart model supplied by the hook.
-import { LineChart, Money as MoneyValue } from "@cashu/ui";
+import { LineChart, Money as MoneyValue } from "@cashu/ui/native";
 import { Button, Row } from "@expo/ui";
 import { ScrollView, Text, View } from "react-native";
 import { ControlHost } from "../controls/ControlHost";

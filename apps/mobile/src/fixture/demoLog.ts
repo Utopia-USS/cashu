@@ -3,7 +3,8 @@
 // a few investment decisions. Deterministic (seeded PRNG, fixed clock), so the same log builds the
 // same view on every runtime: the device's view hash (expo-sqlite) is compared with the Node one
 // (better-sqlite3) at the same commit. No real names, IBANs or amounts.
-import { detGid, mintUlid, v1, vaultSalt } from "@cashu/store";
+import { detGid, mintUlid, vaultSalt } from "@cashu/store/gid";
+import { v1 } from "@cashu/store/runtime";
 
 /** The demo vault id (32 lower hex). Real vault ids are random. */
 export const DEMO_VAULT = "de000000000000000000000000000041";

@@ -1,5 +1,5 @@
 // Pure spending screen: exact Money rows and the prebuilt share chart arrive from the screen hook.
-import { Donut, Money as MoneyValue } from "@cashu/ui";
+import { Donut, Money as MoneyValue } from "@cashu/ui/native";
 import { FlashList } from "@shopify/flash-list";
 import { Text, View } from "react-native";
 import { CurrencyPicker } from "../controls/CurrencyPicker";

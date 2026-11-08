@@ -3,7 +3,7 @@
 // when the last one leaves, the entry lingers briefly (a remount or a StrictMode double effect reuses
 // it) and is then released, which stops the live query. Every pushed value is structurally shared with
 // the previous one, and an unchanged value notifies nobody.
-import { mintUlid } from "@cashu/store";
+import { mintUlid } from "@cashu/store/gid";
 import { type Query, type QueryArgs, queryKey } from "@cashu/store/query";
 import type { UiAction, UiActionResult } from "@cashu/store/ui-actions";
 import { ALWAYS_ONLINE, type ConnectionSource } from "./connection.js";

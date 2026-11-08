@@ -1,5 +1,6 @@
 // Metro for apps/mobile. Expo detects the pnpm workspace (watch folders, node_modules lookup); Uniwind
-// compiles the one token source, packages/ui's Tailwind v4 theme (S50), into React Native styles.
+// compiles the one token source, packages/ui's Tailwind v4 theme (S50), into React Native styles, from
+// the phone's entry (packages/ui/src/tokens/native.css: utilities for apps/mobile and packages/ui only).
 const { getDefaultConfig } = require("expo/metro-config");
 const { withUniwindConfig } = require("uniwind/metro");
 const { basename, dirname, join } = require("node:path");
@@ -39,6 +40,6 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 };
 
 module.exports = withUniwindConfig(config, {
-  cssEntryFile: "../../packages/ui/src/tokens/theme.css",
+  cssEntryFile: "../../packages/ui/src/tokens/native.css",
   dtsFile: "./uniwind-types.d.ts",
 });

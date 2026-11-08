@@ -1,0 +1,13 @@
+/* The phone's Tailwind entry (Uniwind, apps/mobile/metro.config.js): the tokens of ./tokens.css, with
+   utilities only for the classes of apps/mobile and of the packages/ui folders that ../native.ts (the
+   phone's import of @cashu/ui) exports from. Uniwind compiles every generated utility into the JS
+   bundle and Metro cannot drop unused ones, so the desktop's classes (./theme.css scans all of apps/ and
+   packages/ui) stay out of the phone. A folder ../native.ts starts to export from is added here. */
+@import "tailwindcss";
+@import "uniwind";
+@import "./tokens.css";
+
+@source "../../../../apps/mobile";
+@source "../charts";
+@source "../environment";
+@source "../values";
