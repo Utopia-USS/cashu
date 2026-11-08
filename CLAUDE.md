@@ -201,6 +201,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Desktop app on a synthetic demo | `pnpm --filter @cashu/desktop dev` |
 | Preview design mockups | `pnpm design` (http://localhost:8600, index of `design/`) |
 | Desktop e2e | `pnpm --filter @cashu/desktop build && pnpm --filter @cashu/desktop e2e` |
+| App language (window, backend, agent) | `cashu language [pl\|en\|system]` (the same pin as Settings > App > Language) |
 | `cashu` from a checkout | `pnpm cashu-next <command>` (e.g. `pnpm cashu-next --help`; `.env.dev` decides the data dir) |
 | `cashu` of an installed app | `"<data dir>/bin/cashu" <command>` (the launcher the host writes), or `ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /Applications/cashU.app/Contents/Resources/shim.mjs <command>` |
 | Regenerate connector schemas | `pnpm --filter @cashu/host gen:connector-schemas` (`--check` to verify) |

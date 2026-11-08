@@ -18,6 +18,7 @@ import { commandStatusCommand } from "./commandStatus.js";
 import { type ConnectorCliDeps, connectorCommands } from "./connectors/index.js";
 import { accountCommands } from "./core/accounts.js";
 import { printConsole } from "./core/console.js";
+import { languageCommand } from "./core/language.js";
 import { profileCommands } from "./core/profiles.js";
 import { skillsCommand } from "./core/skills.js";
 import { statsCommand } from "./core/stats.js";
@@ -34,6 +35,8 @@ export interface PortedDeps {
   readonly skillsSource?: string;
   /** Open native vaults selected by the host. */
   readonly nativeStores?: Pick<HostStores, "vaults">;
+  /** The device store (native hosts): `cashu language` pins the app language there. */
+  readonly deviceStores?: Pick<HostStores, "device">;
   readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyCliFiles | null;
   /** The vault's current strategy through its file authority (native hosts; reports need no UI). */
   readonly currentStrategy?: InvestmentCliDeps["currentStrategy"];
@@ -59,6 +62,7 @@ export interface PortedDeps {
 export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
   return [
     ...(deps.nativeStores === undefined ? [] : [commandStatusCommand(deps.nativeStores)]),
+    ...(deps.deviceStores === undefined ? [] : [languageCommand({ stores: deps.deviceStores })]),
     ...(deps.nativeStores === undefined
       ? []
       : budgetCommands({

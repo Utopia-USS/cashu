@@ -25,6 +25,7 @@ import { connectorSettingsServed } from "./connectorSettings.js";
 import { deviceListSource } from "./devices/listSource.js";
 import { createDeviceService } from "./devices/service.js";
 import { investmentsRunningQuery } from "./investmentsRunning.js";
+import { pinnedLanguage } from "./language.js";
 import type { WriterLease } from "./lease.js";
 import { hostedCommands } from "./localHost/commands.js";
 import { adminStatus, applySliced, syncVault } from "./localHost/handle.js";
@@ -360,6 +361,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             ported,
             defaultProfile: () => defaultProfileSlug(stores),
             log,
+            pinned: () => pinnedLanguage(stores),
           });
           return;
         case "mcp":

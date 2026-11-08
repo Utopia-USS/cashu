@@ -10,7 +10,7 @@ import {
   cliExecParamsSchema,
   cliStdinParamsSchema,
 } from "@cashu/host-protocol";
-import { createBackendI18n, createTranslator, type Translator } from "@cashu/i18n";
+import { createBackendI18n, createTranslator, type Lang, type Translator } from "@cashu/i18n";
 import { type HostSession, nodeLanguageSource } from "@cashu/node-host";
 import { errorName, type HostLog } from "../log.js";
 import { S } from "./strings.js";
@@ -23,12 +23,23 @@ export interface CliRunnerDeps {
   readonly ported: readonly PortedCommand[];
   readonly defaultProfile?: () => string | undefined;
   readonly log: HostLog;
+  /** The app language pinned on this device (`cashu language`, Settings), null for the system one. */
+  readonly pinned?: () => Lang | null;
 }
 
-/** The language of one command: its env (CASHU_LANG, locale), settings.json, the OS, English. */
-function translatorFor(params: CliExecParams, dataDir: string): Translator {
-  const source = nodeLanguageSource({ env: params.env, dataDir });
-  return createTranslator(createBackendI18n(source).appLanguage());
+/**
+ * The language of one command: its env (CASHU_LANG), the app language pinned on this device, the
+ * legacy settings.json, the OS, English.
+ */
+function translatorFor(params: CliExecParams, deps: CliRunnerDeps): Translator {
+  const source = nodeLanguageSource({ env: params.env, dataDir: deps.dataDir });
+  const stored = source.storedLanguage.bind(source);
+  return createTranslator(
+    createBackendI18n({
+      ...source,
+      storedLanguage: () => deps.pinned?.() ?? stored(),
+    }).appLanguage(),
+  );
 }
 
 /** A byte queue fed by `cli.stdin` chunks, read by the command as an async iterable. */
@@ -84,7 +95,7 @@ export function serveCliSession(session: HostSession, deps: CliRunnerDeps): void
     const stdin = new StdinQueue();
     let stdinOpened = false;
     running = { id, abort, prompts, stdin };
-    const t = translatorFor(params, deps.dataDir);
+    const t = translatorFor(params, deps);
     const io: CommandIo = {
       cwd: params.cwd,
       paths: params.paths,
@@ -124,7 +135,7 @@ export function serveCliSession(session: HostSession, deps: CliRunnerDeps): void
         const params = cliExecParamsSchema.safeParse(frame.params);
         if (!params.success) return fail(frame.id, "invalid-params", frame.method);
         if (running !== undefined) {
-          return fail(frame.id, "busy", translatorFor(params.data, deps.dataDir).tr(S.busy));
+          return fail(frame.id, "busy", translatorFor(params.data, deps).tr(S.busy));
         }
         exec(frame.id, params.data).then(
           (result) => {

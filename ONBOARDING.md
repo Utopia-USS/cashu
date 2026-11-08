@@ -77,6 +77,18 @@ cashu --help
 cashu profiles list            # the slug of each profile, for --profile <slug>
 ```
 
+> 🔀 **Polish or English?** Ask which language the user wants cashU in. It is one choice for the
+> app window, the texts from the background service and you, the agent (the cashU MCP server names it
+> at the start of each session). By default cashU follows the system language.
+
+```bash
+cashu language                 # the current app language
+cashu language pl              # or: en, system (follow macOS again)
+```
+
+The open app window switches by itself; the same choice sits in Settings > App > Language. Talk to
+the user in the chosen language from here on.
+
 ✅ **Verify:** `cashu profiles list` shows the new profile. More profiles: the wizard again (profile
 menu > New profile), or `cashu profiles add "<name>" --modules budget`.
 

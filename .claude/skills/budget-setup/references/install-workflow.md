@@ -25,6 +25,11 @@ besides the app itself.
    Before the app has run once the launcher does not exist yet; the app's own binary works then:
    `ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /Applications/cashU.app/Contents/Resources/shim.mjs --help`.
    In a profile workspace, its `CLAUDE.md` names the exact command for this install.
+   **Language.** Ask once whether the owner wants cashU in Polish or English and pin it with
+   `cashu language pl` (or `en`; `system` follows macOS again; no argument shows the current one).
+   One choice for the app window, the background texts and you: the cashU MCP server names it at the
+   start of each session, so talk and write in it from then on. Settings > App > Language is the
+   same switch.
 4. Optional for categorization: **Ollama** (`brew install ollama`), see step 7.
 
 ## Step 10 - Finish

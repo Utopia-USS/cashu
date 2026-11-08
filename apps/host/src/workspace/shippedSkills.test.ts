@@ -148,6 +148,7 @@ describe("shipped skills", () => {
     const commands = new Set([
       ...portedCommands({
         nativeStores: stub,
+        deviceStores: stub,
         investmentSources: stub,
         performance: stub,
         worker: () => null,

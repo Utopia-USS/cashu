@@ -126,6 +126,7 @@ export const HELP: Readonly<Record<string, Text>> = {
     pl: "Użycie: cashu set-vehicle NAZWA CENA DATA [--rate PROCENT] [--floor KWOTA] [--currency KOD]",
     en: "Usage: cashu set-vehicle NAME PRICE DATE [--rate PERCENT] [--floor AMOUNT] [--currency CODE]",
   },
+  language: C.languageUsage,
   profiles: C.profileUsage,
   "profiles add": C.profileAddUsage,
   "profiles inspect": C.profileInspectUsage,

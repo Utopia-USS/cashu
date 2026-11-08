@@ -46,6 +46,30 @@ export const C = {
     pl: (gid: string, value: string) => `Zapisano saldo konta ${gid}: ${value}.`,
     en: (gid: string, value: string) => `Recorded balance for account ${gid}: ${value}.`,
   },
+  languageUsage: {
+    pl: "Użycie: cashu language [pl|en|system]. Bez argumentu pokazuje bieżący język aplikacji.",
+    en: "Usage: cashu language [pl|en|system]. Without an argument it shows the current app language.",
+  },
+  languageName: {
+    pl: { pl: "polski", en: "Polish" },
+    en: { pl: "angielski", en: "English" },
+  },
+  languageCurrent: {
+    pl: (name: string, system: boolean) =>
+      `Język aplikacji: ${name}${system ? " (jak w systemie)" : " (ustawiony)"}.`,
+    en: (name: string, system: boolean) =>
+      `App language: ${name}${system ? " (follows the system)" : " (pinned)"}.`,
+  },
+  languageSet: {
+    pl: (name: string, system: boolean) =>
+      `Język aplikacji: ${name}${system ? " (jak w systemie)" : ""}. Okno aplikacji przeładuje się samo, agent dostanie ten język przy następnej sesji.`,
+    en: (name: string, system: boolean) =>
+      `App language: ${name}${system ? " (follows the system)" : ""}. The app window reloads by itself; the agent gets this language in its next session.`,
+  },
+  languageRefused: {
+    pl: "Nie udało się zapisać języka aplikacji.",
+    en: "The app language could not be saved.",
+  },
   profileUsage: {
     pl: "Użycie: cashu profiles list|add|inspect ...",
     en: "Usage: cashu profiles list|add|inspect ...",

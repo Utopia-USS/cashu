@@ -33,8 +33,11 @@ UI shows, CLI output, a notification.
 ## The language
 
 - Supported: `pl`, `en` (`LANGS` in `packages/i18n/src/lang.ts`).
-- Choice: Settings -> Aplikacja/App -> Język/Language: System, Polski, English. Stored as the device
-  preference `languagePin` (device store); changing it reloads the window.
+- Choice: Settings -> Aplikacja/App -> Język/Language: System, Polski, English, or `cashu language
+  pl|en|system` (`apps/host/src/cli/core/language.ts`; the agent asks during setup, ONBOARDING.md
+  step 2). Stored as the device preference `languagePin` (device store); a change from either side
+  reloads the window. The host (`apps/host/src/language.ts`: CLI output, backend texts, the MCP
+  instructions) reads the same pin and resolves `system` from the same OS list as the window.
 - Default ("System"): the first supported language of the OS preference list (`navigator.languages`,
   which Electron takes from the OS), else **English**.
 - Where it lives: `@cashu/i18n` (`packages/i18n`, platform free) resolves the UI language from a
@@ -98,8 +101,9 @@ only, and the `backendTranslation` guard rejects them in backend code. See
 and the `context.tr({ pl, en })` pattern.
 
 1. **Texts rendered for a user go through the context's translator**: `context.tr({ pl, en })` or a
-   catalog entry passed to it; a CLI command uses `io.t` (the command's language: `CASHU_LANG` or the
-   shell locale, else `language` in `<data dir>/settings.json`, else the OS, else English). Plurals:
+   catalog entry passed to it; a CLI command uses `io.t` (the command's language: `CASHU_LANG`, else
+   the app language pinned on this device (`cashu language`, Settings), else `language` in
+   `<data dir>/settings.json`, else the OS, else English). Plurals:
    `plCount` / `plForm`, `enCount` / `enForm`. Tests build `createTranslator("en")`.
 2. **A label table is resolved when it is read**, never at import: a function taking the translator,
    or a Polish identity field plus display variants resolved through the context

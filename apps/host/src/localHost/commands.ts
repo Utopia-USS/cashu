@@ -47,6 +47,7 @@ export function hostedCommands(input: {
     runtime,
     now,
     nativeStores: stores,
+    deviceStores: stores,
     prices: market.prices,
     marketData: market.marketData,
     creation: input.creation,

@@ -68,6 +68,17 @@ if (new URL(location.href).searchParams.get("recovery") === "1") {
             location.reload();
           },
         });
+        // A pin changed outside this window (`cashu language`, the agent during setup) reloads it
+        // into that language, so the window never shows another language than the host and agent.
+        entry.subscribe(() => {
+          const next = entry.getSnapshot();
+          if (next.status !== "value") return;
+          const pin = next.value.languagePin;
+          const wanted = pin === "pl" || pin === "en" ? pin : null;
+          if (wanted === pinned) return;
+          pinned = wanted;
+          location.reload();
+        });
         document.documentElement.lang = lang();
         document.documentElement.classList.toggle("dark", preferences.theme === "dark");
         document.documentElement.classList.toggle("light", preferences.theme === "light");
