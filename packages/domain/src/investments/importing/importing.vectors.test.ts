@@ -18,7 +18,7 @@ import { currencyOf } from "./testing/support.js";
 import { canonicalOut } from "./testing/vectorOut.js";
 import { decodeImportText, type ImportTextEncoding, parseEncoding } from "./text.js";
 
-// Differential replay of the Python importing helpers (parity/python/vectors_inv_importing.py).
+// Differential replay of the Python importing helpers (the retired Python vectors_inv_importing.py).
 const pad = (n: number) => String(n).padStart(2, "0");
 const timeText = (t: { hour: number; minute: number; second: number } | null) =>
   t === null ? null : `${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`;

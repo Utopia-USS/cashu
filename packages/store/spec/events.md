@@ -326,7 +326,7 @@ one row, in `(hlc, eid)` order, with the table's normal rule:
   (one batch): e.g. removing a merged watchlist entry emits `watchlist.removed` for each live member.
 - Field precedence on a collapsed row is the table's rule over the merged event stream (latest write
   wins per field, GUARDs re-evaluated), replacing the target-first rules of `store/instrument_merge.py`
-  for field registers (lead decision on R-2; the parity notes in `parity/README.md` must list it, S02 / S03). **Presence** combines per
+  for field registers (lead decision on R-2, an intentional difference from Python). **Presence** combines per
   member instead (N3): a watchlist row is live when any member's own SOFT register is live, so
   "remove the duplicate, then merge" keeps the target watched, as Python does.
 - Accounts: the view's `iban` is the raw IBAN text exactly as an event carried it (Python stores and

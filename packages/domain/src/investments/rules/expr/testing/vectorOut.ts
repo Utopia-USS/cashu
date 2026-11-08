@@ -1,4 +1,4 @@
-// The canonical JSON of parity/python/vectors_inv_rules_expr.py, built from the TS port: trees with
+// The canonical JSON of the retired Python vectors_inv_rules_expr.py, built from the TS port: trees with
 // the Python dataclass field names in declaration order, Decimals as `str(Decimal)`, errors as
 // [message, column, str(error)]. Test-only.
 

@@ -1,5 +1,5 @@
 /**
- * Canonical values of the `store.table.*` rows (S26 spec 8.1; `parity/python/checks/store.py`
+ * Canonical values of the `store.table.*` rows (S26 spec 8.1; the retired Python parity check `checks/store.py`
  * `_value` / `_json` / `_timestamp`): timestamps `YYYY-MM-DDTHH:MM:SS.ffffff` (UTC, six digits, no
  * `Z`), dates ISO, decimals as their plain strings, integers as `bigint`, JSON with integers as
  * `bigint` and fractions as Python floats, rows sorted by the UTF-8 bytes of their canonical JSON.

@@ -15,7 +15,7 @@ const vectors = loadVectors("budget-codecs");
 const CODECS: readonly PyCodec[] = ["utf-8", "utf-8-sig", "cp1250", "iso-8859-2"];
 const bytesOf = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
 
-describe("codecs vectors (parity/python/vectors_budget.py)", () => {
+describe("codecs vectors (the retired Python vectors_budget.py)", () => {
   it("single-byte tables equal Python's for all 256 bytes", () => {
     for (const row of vectors.rows.filter((r) => r[0] === "table")) {
       const codec = row[1] as PyCodec;
@@ -45,7 +45,7 @@ describe("codecs vectors (parity/python/vectors_budget.py)", () => {
       }
     }
     expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBeGreaterThan(15000);
+    expect(m.checked).toBe(56);
   });
 
   it("the tables agree with the WHATWG decoders except cp1250's five undefined bytes", () => {

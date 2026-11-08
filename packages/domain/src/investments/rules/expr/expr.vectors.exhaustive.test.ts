@@ -1,4 +1,4 @@
-// Every random source of parity/python/vectors_inv_rules_expr.py (inv-rules-expr-random: token soups
+// Every random source of the retired Python vectors_inv_rules_expr.py (inv-rules-expr-random: token soups
 // with non-ASCII, astral and control characters, mutations of valid expressions, random well-formed and
 // type-correct trees, nesting around MAX_DEPTH) against Python's tokenize and compile_expression in
 // every scope (exhaustive tier, see references/testing.md "Test tiers").

@@ -1,4 +1,4 @@
-// Expected tails come from the frozen Python oracle (parity/python/oracle `runner._tail`) on these synthetic inputs.
+// Expected tails come from the retired Python app (`runner._tail`) on these synthetic inputs.
 import { expect, it } from "vitest";
 import { redactStderrTail, STDERR_STORED, withoutSecrets } from "./stderr.js";
 

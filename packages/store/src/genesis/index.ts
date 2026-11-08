@@ -1,5 +1,5 @@
 // Offline one-shot import reads a private copy of the Python schema and produces native genesis
-// events. T54 migrate import and the parity oracle still use this after Python runtime retirement.
+// events. T54 migrate import still uses this after Python runtime retirement.
 //
 // Public API of genesis (S26 spec 9.2 `index.ts`): one Python data dir (a COPY of `cashu.db` behind a
 // `SqlDriver` plus its side files) -> the genesis event log of each profile (one vault per profile).

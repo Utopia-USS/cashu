@@ -5,7 +5,7 @@ description: |
 
   Applicability - POSITIVE: any TypeScript in packages/ or apps/ of the cashU monorepo: domain ports, store events / materializers / queries / commands, sync, ui-logic feature hooks, screen hooks and route files on desktop and mobile, Electron main / preload, the local host (apps/host), MCP / CLI / API code; reviewing such code; reading a `pnpm arch:check` or check-file.sh failure.
 
-  Applicability - NEGATIVE: NOT what a View looks like (tokens, components, Storybook, copy: cashu-ui), NOT Expo / React Native platform mechanics (expo-* and Callstack skills), NOT the frozen Python oracle under parity/python, or the shipped product skills in .claude/skills.
+  Applicability - NEGATIVE: NOT what a View looks like (tokens, components, Storybook, copy: cashu-ui), NOT Expo / React Native platform mechanics (expo-* and Callstack skills), NOT the shipped product skills in .claude/skills.
 ---
 
 # cashu-ts-architecture
@@ -103,5 +103,5 @@ After editing TypeScript in this skill's applicability, verify:
 5. Money stays `Money` / `Decimal`; no cross-currency sum; the vault's store is passed explicitly
    (never a profile filter).
 6. No `useMemo` / `useCallback` / `memo`, no `loading` kind in screen state, lists over 50 rows virtualized.
-7. Tests sit at the lowest layer that shows the behaviour; parity checks added for ported Python.
+7. Tests sit at the lowest layer that shows the behaviour.
 8. Temporary code carries `TRANSITIONAL(<scope>)`.

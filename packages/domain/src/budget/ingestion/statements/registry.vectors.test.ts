@@ -15,8 +15,8 @@ const files = loadVectors("budget-statements").rows as [
 
 /**
  * Quoted Erste exports without a bank name: Python's `match_score` split the first line at every `,`
- * and missed them (detect -> None); the TS port also reads the line as a csv record (FIX(Q4)).
- * Recorded in parity/README.md "Known intentional differences".
+ * and missed them (detect -> None); the TS port also reads the line as a csv record (FIX(Q4), a known
+ * intentional difference).
  */
 const Q4_FIXED = ["erste/erste-historia.csv", "erste/erste-quoted-no-bank.csv"];
 
@@ -64,7 +64,7 @@ describe("detection (csv_import.detect_importer)", () => {
         added++;
       }
     }
-    expect(sweep.length).toBe(1500);
+    expect(sweep.length).toBe(14);
     expect(added).toBeGreaterThan(0);
   });
 

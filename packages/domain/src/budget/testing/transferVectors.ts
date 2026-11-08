@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// Test helpers of the transfer port: the Python scenarios of `budget-transfers.jsonl`
-// (`parity/python/vectors_budget_transfers.py`), their TS replay, and a seeded PRNG.
+// Test helpers of the transfer port: the Python scenarios of `budget-transfers.jsonl` (recorded from
+// the retired Python app), their TS replay, and a seeded PRNG.
 
 import { D } from "../../decimal.js";
 import { ibanKey } from "../../iban.js";

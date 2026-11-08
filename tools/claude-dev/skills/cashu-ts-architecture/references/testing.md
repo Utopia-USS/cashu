@@ -1,14 +1,14 @@
 ---
 title: Testing per layer
 impact: HIGH
-tags: testing, vitest, parity, convergence, renderHook, storybook, e2e
+tags: testing, vitest, vectors, convergence, renderHook, storybook, e2e
 ---
 
 # Testing per layer
 
 | Layer | What | How |
 |---|---|---|
-| domain | behaviour of the ported Python | vitest; translate the oracle pytest file test-for-test (name the Python test in a comment); vectors for primitives; parity checks on `demo` and `lab` |
+| domain | behaviour of the rules | vitest; behaviour tests per rule; small curated vector files (`test/vectors`) for primitives, whose expected values are the spec |
 | store | events, gids, materializers, queries, commands, invalidation | schema tests (valid / invalid), gid vectors, convergence (same event set in N shuffled orders and with duplicates gives identical view hashes), command tests on the in-memory store, a test that each command's touched tables re-run the queries that read them |
 | sync | crypto, log, transports | vectors, tamper tests, multi-device simulations, a contract suite every carrier passes |
 | ui-logic + screen hooks | feature and screen hooks | `renderHook` inside the real in-memory store provider (never a mocked store); drive commands, assert the returned state |
@@ -17,8 +17,9 @@ tags: testing, vitest, parity, convergence, renderHook, storybook, e2e
 
 Rules:
 
-- Synthetic data only in tests, fixtures and stories. Real data is touched only by parity runs on a
-  copy, which report counts, hashes and pass / fail.
+- Synthetic data only in tests, fixtures and stories.
+- Vector files stay small: each row is there because it covers a branch, a boundary, an error path or
+  a category the others do not. Add a row for a new case; never bulk-generate thousands of rows.
 - A bug fix starts with a failing test at the lowest layer that can show it.
 - Time comes from an injected `Clock`; tests never depend on today's date.
 - No snapshot tests of whole screens; assert on meaning (labels, state kinds, events appended).
@@ -43,8 +44,7 @@ the machine and makes timings depend on what else is running. One package in a r
 A test file belongs in the exhaustive tier when it covers an input space instead of a behaviour, and
 all of its tests together cost more than about 300 ms CPU even after the code under test is fast:
 
-- vector sweeps over every code point, every generated text or every generated case (Python
-  differential replays of thousands of rows);
+- vector sweeps over every code point, every generated text or every generated case;
 - property searches over many seeds or iterations;
 - multi-device simulations (many replicas, permutations, paging) in `sync` and `store`.
 

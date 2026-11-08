@@ -20,8 +20,7 @@ L = a week or more. "Owner" marks a decision or an account only the maintainers 
 
 - The native desktop app (Electron shell + a TypeScript local host with encrypted per-profile vaults,
   the `cashu` CLI and the MCP server) replaced the Python app; an existing install moves over once
-  with `cashu migrate` ([docs/migration-runbook.md](docs/migration-runbook.md)). Python survives only
-  as the frozen parity oracle under `parity/python/` (never shipped).
+  with `cashu migrate` ([docs/migration-runbook.md](docs/migration-runbook.md)).
 
 ## Done (October 2026, Python app)
 

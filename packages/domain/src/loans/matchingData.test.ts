@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // The Polish installment phrases (matching data) and the loans / assets literals are byte-identical to
-// the live Python objects: `parity/python/vectors_loans_assets.py` reads INSTALLMENT_PHRASES,
+// the live Python objects: the retired Python `vectors_loans_assets.py` reads INSTALLMENT_PHRASES,
 // LOANS_CATEGORY, LOAN_TYPES, MANUAL_PREFIXES, NOTE_MAX and DAYS_PER_YEAR from the modules; this test
 // rebuilds the same object from the TS constants and compares it and its sha256.
 

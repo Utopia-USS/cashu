@@ -1,6 +1,6 @@
 /// <reference types="node" />
 /**
- * Loaded with `--import` by the Node-run TypeScript entry points (`pnpm parity:produce`, the `cashu-next`
+ * Loaded with `--import` by the Node-run TypeScript entry points (the `cashu-next`
  * CLI): lets Node's type stripping run workspace TypeScript that imports its siblings as `./x.js` (the
  * NodeNext convention `@cashu/domain` and `@cashu/store` use) by retrying such a relative specifier as
  * `./x.ts`. Nothing else is rewritten.

@@ -10,10 +10,10 @@ import {
 import { normalizeText, pyLower, pyStrip, pyUpper } from "./text.js";
 
 // The per-code-point sweeps of the text functions against Python (exhaustive tier, see
-// references/testing.md). Vectors: parity/python/vectors.py.
+// references/testing.md). Vectors: the retired Python vectors.py.
 const text = loadVectors("text");
 
-describe("text vectors over every code point (parity/python/vectors.py)", () => {
+describe("text vectors over every code point (the retired Python vectors.py)", () => {
   // One test per function and plane (16 blocks, 65,536 code points): no single test is a whole scan.
   const perCodePoint: Record<string, (s: string) => string> = {
     normalize_text: normalizeText,

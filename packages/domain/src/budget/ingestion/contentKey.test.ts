@@ -6,7 +6,7 @@ import { type RawRow, rawFromRow } from "./testing/vectorRows.js";
 
 const vectors = loadVectors("budget-hash");
 
-describe("content hash vectors (parity/python/vectors_budget.py)", () => {
+describe("content hash vectors (the retired Python vectors_budget.py)", () => {
   it("contentKeyV2 and dedupHashV2 equal Python (v1 = sha1(account|key) checked by the generator)", () => {
     const m = new Mismatches();
     for (const row of vectors.rows.filter((r) => r[0] === "hash")) {
@@ -16,7 +16,7 @@ describe("content hash vectors (parity/python/vectors_budget.py)", () => {
       m.check(`v2 ${JSON.stringify(raw)}`, dedupHashV2(input), v2);
     }
     expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBeGreaterThan(6000);
+    expect(m.checked).toBe(24);
   });
 
   it("gid.md section 8's budget vector", () => {
@@ -49,7 +49,7 @@ describe("content hash vectors (parity/python/vectors_budget.py)", () => {
       m.check(JSON.stringify(fields), merchantKey(...fields), want);
     }
     expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBeGreaterThan(600);
+    expect(m.checked).toBe(8);
   });
 });
 

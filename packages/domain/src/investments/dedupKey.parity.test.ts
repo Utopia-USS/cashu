@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // The re-import half of the investments content-hash parity gate (S26 LEAD DECISION): synthetic files
-// imported through the real Python import service (parity/python/inv_hash_parity.py, fixture
+// imported through the real Python import service (the retired Python inv_hash_parity.py, fixture
 // packages/store/src/genesis/testing/invHashParity.json). The v1 hash a TS re-import computes from the
 // parsed rows with the stored local ids must equal every stored dedup_hash; this proves the parsed
 // side of the fixture is faithful. The store half (genesis v2 from `stored` == v2 from `parsed`) is

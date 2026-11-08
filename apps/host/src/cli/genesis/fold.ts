@@ -21,8 +21,8 @@ export class FoldError extends Error {
 /**
  * View tables with no exported source row of their own (no `ids` entry): budget settings come from a
  * side file, members / decision links / signal aliases are embedded in their parent's events, and
- * account conflicts are derived. Every other view table is a Python table (packages/parity
- * `ROUNDTRIP_COLUMNS`).
+ * account conflicts are derived. Every other view table is a Python table (`ROUNDTRIP_COLUMNS`,
+ * store genesis/verification/columns.ts).
  */
 const VIEW_ONLY: ReadonlySet<string> = new Set([
   "budget_settings",
@@ -45,7 +45,7 @@ export interface FoldSummary {
 const countOf = (store: Store, sql: string): number => store.read<{ n: number }>(sql)[0]?.n ?? 0;
 
 /**
- * Spec 8.4, the rule of packages/parity `assertViewCount`: every Python view table holds exactly one
+ * Spec 8.4, the rule of the retired parity comparer's `assertViewCount`: every Python view table holds exactly one
  * row per exported source row (genesis `ids` of that table). Cash mirror legs are derived (no `ids`
  * entry, events.md 9) and left out, a manual-claim leg included (parity subtracts it again).
  */

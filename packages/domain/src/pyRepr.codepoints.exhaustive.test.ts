@@ -14,7 +14,7 @@ const hashes = (
   loadVectors("inv-importing-repr").rows.find((r) => r[0] === "blocks") as [string, string[]]
 )[1];
 
-describe("pyReprStr over every code point (parity/python/vectors_inv_importing.py)", () => {
+describe("pyReprStr over every code point (the retired Python vectors_inv_importing.py)", () => {
   it.each(PLANES)("every code point in plane %i", (plane) => {
     expect(hashes).toHaveLength(272);
     const m = new Mismatches();

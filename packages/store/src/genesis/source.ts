@@ -1,4 +1,4 @@
-// The T54 one-shot importer and parity oracle read a private copy of the Python schema here.
+// The T54 one-shot importer reads a private copy of the Python schema here.
 // This reader is retained after Python runtime retirement; it does not open the source database.
 //
 // Genesis source reader (S26 spec 2.2 schema versions, 2.3 value decoding, 2.4 profile scoping,

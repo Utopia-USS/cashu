@@ -1,5 +1,5 @@
 // The strategy loader against Python on the seeded mutations of the oracle inputs (vectors from
-// parity/python/vectors_inv_strategy.py, inv-strategy-random). Rows where Python raises outside the
+// the retired Python vectors_inv_strategy.py, inv-strategy-random). Rows where Python raises outside the
 // loader's contract (an empty `!!float` / `!!int` scalar: IndexError in PyYAML's constructor) must
 // load in TS, where the scalar stays text.
 

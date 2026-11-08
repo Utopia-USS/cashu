@@ -3,7 +3,7 @@
  * Reader, the Scanner, the Parser, the Composer and the SafeLoader's YAML 1.1 implicit resolvers -
  * with PyYAML's node graph, marks (code points) and error texts. Errors are returned, never thrown.
  * Checked against Python by `pyYaml.test.ts` and `pyYaml.vectors.exhaustive.test.ts`
- * (`yaml-*.jsonl`, written by `parity/python/vectors_yaml.py`).
+ * (`yaml-*.jsonl`, written by the retired Python `vectors_yaml.py`).
  *
  * Deliberate differences, only where Python raises a non-YAML exception that `yaml.compose` lets
  * escape: a `\U` escape above U+10FFFF (`ValueError` from `chr()`) is a scanner error here, a

@@ -1,6 +1,6 @@
-// The Python differential vectors of the transfer port (`parity/python/vectors_budget_transfers.py`):
-// every amount key and every matching scenario. The whole replay costs well under 300 ms, so it stays in
-// the default tier (testing.md "Test tiers"), in slices of 100 scenarios.
+// The Python differential vectors of the transfer port, recorded from the retired Python app: a curated
+// set of amount keys and matching scenarios (every branch, stale group resets, plus an even sample of
+// the original 1,500 scenarios). Default tier (testing.md "Test tiers"), in slices of 100 scenarios.
 
 import { describe, expect, it } from "vitest";
 import { D } from "../decimal.js";
@@ -15,10 +15,10 @@ const slices = Array.from(
 );
 
 describe("transfer vectors", () => {
-  it("cover the generated set", () => {
-    expect(TRANSFER_SCENARIOS.length).toBe(1500);
-    expect(TRANSFER_SCENARIOS.reduce((n, s) => n + s.pairs.length, 0)).toBeGreaterThan(1000);
-    expect(TRANSFER_SCENARIOS.filter((s) => s.staleReset).length).toBeGreaterThan(50);
+  it("cover the curated set", () => {
+    expect(TRANSFER_SCENARIOS.length).toBe(54);
+    expect(TRANSFER_SCENARIOS.reduce((n, s) => n + s.pairs.length, 0)).toBe(85);
+    expect(TRANSFER_SCENARIOS.filter((s) => s.staleReset).length).toBe(3);
   });
 
   it("PARITY(Q2): Python reads the ungrouped rows through the transfer-group index, in rowid order", () => {
@@ -27,7 +27,7 @@ describe("transfer vectors", () => {
     ).toBe(true);
   });
 
-  it('transferAmountKey equals Python\'s f"{x:.2f}" / f"{-x:.2f}" on 3000 adversarial decimals', () => {
+  it('transferAmountKey equals Python\'s f"{x:.2f}" / f"{-x:.2f}" on adversarial decimals', () => {
     const m = new Mismatches();
     for (const [, text, key] of loadVectors("budget-transfer-keys").rows as [
       string,

@@ -1,6 +1,6 @@
 // The in-app statement import (preview -> commit) and the first steps' `Dopasuj` against the Python
 // oracle (ab24ab6 modules/budget/imports.py + POST /budget/match-transfers). The expected values come
-// from running the frozen Python app (parity/python/oracle, CASHU_LANG=pl) through the same sequence
+// from running the retired Python app (CASHU_LANG=pl) through the same sequence
 // on the same synthetic files: preview A, commit A, preview A again, preview / commit an overlapping
 // A2, preview / commit the savings account B (one transfer between A and B), the refusals, a cashU format
 // document (overlap by the newest-day rule) and one in another currency, then match

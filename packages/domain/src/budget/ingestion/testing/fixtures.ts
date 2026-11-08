@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** `packages/domain/test/fixtures/budget-csv` (written by `parity/python/vectors_budget.py`). */
+/** `packages/domain/test/fixtures/budget-csv` (written by the retired Python `vectors_budget.py`). */
 const FIXTURE_DIR = fileURLToPath(new URL("../../../../test/fixtures/budget-csv", import.meta.url));
 
 /** The repository root (for byte-comparing fixtures with their sources). */

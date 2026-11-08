@@ -253,7 +253,7 @@ describe("strategy documents (store level)", () => {
   });
 });
 
-describe("strategy-frontmatter vectors (parity/python/vectors_yaml_safe_load.py)", () => {
+describe("strategy-frontmatter vectors (the retired Python vectors_yaml_safe_load.py)", () => {
   it("equals Python strategy_docs.frontmatter on every case", () => {
     const url = new URL("../../../test/vectors/strategy-frontmatter.jsonl", import.meta.url);
     const lines = readFileSync(url, "utf8")

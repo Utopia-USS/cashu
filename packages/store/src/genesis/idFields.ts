@@ -1,7 +1,6 @@
 // The id-field vocabulary of the genesis guard walker (S26 spec 6.5, R5): JSON object keys that hold
-// local row ids in Python data. A copy of `parity/python/canon.py` `FIELD_TABLES` (the parity
-// package has no TS copy importable from the store; spec 6.5 puts the vocabulary here, and parity
-// imports it from the store when it needs it). Keep the two lists equal when Python adds a key.
+// local row ids in Python data. A copy of the Python app's canonical `FIELD_TABLES` (spec 6.5 puts the
+// vocabulary here; idFields.test.ts pins every entry).
 
 /** Key -> the Python table whose local ids it holds (canon.py `FIELD_TABLES`). */
 const FIELD_TABLES: ReadonlyMap<string, string> = new Map([

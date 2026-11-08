@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // The investments content-hash parity gate (S26 LEAD DECISION, gid.md 4.6, 7.2): synthetic broker
-// files imported through the real Python import service (parity/python/inv_hash_parity.py, fixture
+// files imported through the real Python import service (the retired Python inv_hash_parity.py, fixture
 // testing/invHashParity.json). The `stored` tables are loaded into a synthetic Python database and run
 // through genesis; every `invTxn.imported.dedupHash` must equal the dedupHashV2 a TS re-import of the
 // same file's `parsed` rows computes with the domain `dedupKey` helpers (occurrences counted in

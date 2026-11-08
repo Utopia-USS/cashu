@@ -1,5 +1,5 @@
 // The expression compiler against Python `rules/expr` (vectors from
-// parity/python/vectors_inv_rules_expr.py, inv-rules-expr-cases: the catalog, names per scope, and
+// the retired Python vectors_inv_rules_expr.py, inv-rules-expr-cases: the catalog, names per scope, and
 // tokens + compile outcomes in every scope for every input of the two oracle test files, the security
 // tests' generated sources, hand edge cases and the catalog templates). The random corpus replays in
 // expr.vectors.exhaustive.test.ts.

@@ -68,5 +68,3 @@ CLAUDE.local.md
 # --- TypeScript monorepo (pnpm + turbo) -------------------------------------
 node_modules/
 .turbo/
-parity/out/
-**/golden-lab/

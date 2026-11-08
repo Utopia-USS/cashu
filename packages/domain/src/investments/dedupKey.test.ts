@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // The dedup key builders against Python `importing/dedup.py` (vectors from
-// parity/python/vectors_inv_dedup.py: the exact message each Python hash covers and its sha256) and
+// the retired Python vectors_inv_dedup.py: the exact message each Python hash covers and its sha256) and
 // the gid.md section 8 "inv txn" v2 vector.
 
 import { createHash } from "node:crypto";

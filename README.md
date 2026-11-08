@@ -223,9 +223,7 @@ pnpm --filter @cashu/desktop dev     # the desktop app on a synthetic demo
 A pnpm + turbo monorepo: Node 22 (`.nvmrc`), strict ESM TypeScript (`tsconfig.base.json`), vitest for
 tests, Biome for lint and format (one dependency and one config file for both jobs, fast enough to run
 in every package on every push). Architecture, code map, conventions, and "how to add a feature" -
-[`CLAUDE.md`](CLAUDE.md) and [`docs/agents/`](docs/agents/). The old Python app is kept only as a frozen
-verification oracle under `parity/python/` ([`parity/README.md`](parity/README.md)); it is never
-shipped. Releases: a merge to `main` bumps the version and builds the signed release after the owner's
+[`CLAUDE.md`](CLAUDE.md) and [`docs/agents/`](docs/agents/). Releases: a merge to `main` bumps the version and builds the signed release after the owner's
 approval ([`docs/releasing.md`](docs/releasing.md)).
 
 **Contributing.** Issues and pull requests are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and

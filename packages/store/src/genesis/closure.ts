@@ -2,7 +2,7 @@
 // global in Python, a vault gets every instrument a row of its profile references (columns, signal
 // key `i:` parts and payload ids, research note details, research run scopes). Unreferenced
 // instruments stay out of the vault (counted `instrument_orphan`). The same reference list as the
-// parity check's `_closure` (parity/python/checks/store.py), so genesis and the golden agree.
+// parity check's `_closure` (the retired Python parity check `checks/store.py`), so genesis and the golden agree.
 import { isJsonObject, KEY_PART_RE, rowIdOf } from "./idFields.js";
 import type { GenesisCounters } from "./report.js";
 import type { InvInstrumentRow } from "./rows.js";

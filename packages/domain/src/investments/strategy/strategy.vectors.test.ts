@@ -1,5 +1,5 @@
 // The strategy loader against Python `load_strategy` (vectors from
-// parity/python/vectors_inv_strategy.py, inv-strategy-cases: the shipped templates and every input
+// the retired Python vectors_inv_strategy.py, inv-strategy-cases: the shipped templates and every input
 // the oracle test files hand to the loader, with the whole load result: config, partial config,
 // inactive rules and every issue with its code, params, path, line and column). The mutated corpus
 // replays in strategy.vectors.exhaustive.test.ts.

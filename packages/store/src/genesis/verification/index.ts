@@ -1,4 +1,4 @@
-/** Portable Python-source projection primitives shared by `migrate verify` and the parity oracle. */
+/** Portable Python-source projection primitives of `migrate verify`. */
 
 export {
   bool,

@@ -1,4 +1,4 @@
-// The outcome of `composeYaml` in the shape `parity/python/vectors_yaml.py` writes (test helper).
+// The outcome of `composeYaml` in the shape the retired Python `vectors_yaml.py` writes (test helper).
 import type { YamlMark, YamlNode } from "../index.js";
 import { composeYaml } from "../index.js";
 

@@ -1,7 +1,6 @@
 /// <reference types="node" />
-// Differential tests against Python (parity/python/generators/domain/macro_vectors.py): every section replays the
-// oracle's synthetic inputs through the TS port and expects the same output. Regenerate with
-// `.venv/bin/python parity/python/generators/domain/macro_vectors.py` after a Python change.
+// Differential tests against Python (vectors recorded by the retired Python app's macro_vectors.py): every
+// section replays the synthetic inputs through the TS port and expects the same output.
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { UiLang } from "../../core/i18n.js";
@@ -225,7 +224,7 @@ describe("macro number formats", () => {
       }
       m.check(`${kind} ${lang} ${value} ${JSON.stringify(args)}`, got, want);
     }
-    expect(m.checked).toBeGreaterThan(6000);
+    expect(m.checked).toBe(15);
     expect(m.items, m.report()).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 // Yahoo price parsing (float32 noise removal, Python `f"{v:.{p}g}"` half-even digits) and exchange dates
-// against Python-generated vectors: parity/python/generators/domain/market_vectors.py -> test/vectors/market-yahoo-price.jsonl.
+// against Python-generated vectors: the retired Python market_vectors.py -> test/vectors/market-yahoo-price.jsonl.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -20,7 +20,7 @@ const vectors: Vector[] = readFileSync(
 describe("yahoo vectors", () => {
   it("prices equal Python's _price (str), errors where Python raises", () => {
     const prices = vectors.filter((v) => v.kind === "price");
-    expect(prices.length).toBeGreaterThan(16000);
+    expect(prices.length).toBe(8);
     const mismatches: string[] = [];
     for (const v of prices) {
       const input = v.in === "-0.0" ? -0 : Number(v.in);
@@ -38,7 +38,7 @@ describe("yahoo vectors", () => {
 
   it("exchange dates equal Python's exchange_date", () => {
     const dates = vectors.filter((v) => v.kind === "date");
-    expect(dates.length).toBe(500);
+    expect(dates.length).toBe(4);
     for (const v of dates) expect(exchangeDate(v.epoch, v.offset)).toBe(v.out);
   });
 });

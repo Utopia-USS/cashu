@@ -29,7 +29,7 @@ function floatOf(hex: string): number {
   return view.getFloat64(0);
 }
 
-describe("decimal vectors (parity/python/vectors.py)", () => {
+describe("decimal vectors (the retired Python vectors.py)", () => {
   it("parses like Decimal(text) and prints like str(Decimal)", () => {
     const m = new Mismatches();
     for (const [text, expected, sign, digits, exp] of loadVectors("decimal-parse").rows) {

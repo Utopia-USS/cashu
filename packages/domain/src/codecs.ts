@@ -4,7 +4,7 @@
  * Pure on purpose: Hermes ships no windows-1250 / iso-8859-2 `TextDecoder`, and the WHATWG decoders
  * differ from Python anyway (cp1250 leaves 0x81 0x83 0x88 0x90 0x98 undefined, WHATWG maps them to C1
  * controls). Error positions are Python's `UnicodeDecodeError.start`. Checked against Python by
- * `codecs.test.ts` (`budget-codecs.jsonl`, written by `parity/python/vectors_budget.py`).
+ * `codecs.test.ts` (`budget-codecs.jsonl`, written by the retired Python `vectors_budget.py`).
  */
 
 export type PyCodec = "utf-8" | "utf-8-sig" | "cp1250" | "iso-8859-2";

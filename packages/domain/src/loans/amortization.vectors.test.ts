@@ -1,5 +1,5 @@
 // Python differential: `amortization.summarize` over random and edge terms
-// (`parity/python/vectors_loans_assets.py`, loans-amortization.jsonl), the schedule compared through a
+// (the retired Python `vectors_loans_assets.py`, loans-amortization.jsonl), the schedule compared through a
 // sha256 digest of its rows plus its first and last row.
 
 import { describe, it } from "vitest";

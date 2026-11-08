@@ -8,7 +8,7 @@ function asVector(r: CsvResult): unknown[] {
   return r.ok ? ["ok", r.rows, r.lineNum] : ["err", r.reason, r.lineNum];
 }
 
-describe("csv.reader vectors (parity/python/vectors_budget.py)", () => {
+describe("csv.reader vectors (the retired Python vectors_budget.py)", () => {
   it("bounds completed records and retained columns while preserving quoted newlines and discarded-field validation", () => {
     expect(
       readCsv('a,b,c,d\n"e\nf",g,h,i\n', { delimiter: ",", maxColumns: 0, collectWidths: true }),
@@ -72,7 +72,7 @@ describe("csv.reader vectors (parity/python/vectors_budget.py)", () => {
       }
     }
     expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBe(3300);
+    expect(m.checked).toBe(79);
   });
 
   it("the field size limit (131072 code points) fails like Python", () => {

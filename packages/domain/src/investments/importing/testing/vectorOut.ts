@@ -11,7 +11,7 @@ import type {
 import type { ValidationReport } from "../validation.js";
 import { reportOk, reportSummary, validateImport } from "../validation.js";
 
-/** The shapes `parity/python/vectors_inv_importing.py` writes, produced from the TypeScript results. */
+/** The shapes the retired Python `vectors_inv_importing.py` writes, produced from the TypeScript results. */
 const dec = (value: Decimal | null): string | null => (value === null ? null : value.toString());
 
 const pad = (n: number): string => String(n).padStart(2, "0");

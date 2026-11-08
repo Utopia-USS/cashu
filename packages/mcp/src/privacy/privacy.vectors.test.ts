@@ -1,4 +1,4 @@
-// The small checks of the Python-generated vector files (parity/python/generators/mcp/privacy_vectors.py). The
+// The small checks of the Python-generated vector files (the retired Python privacy_vectors.py). The
 // differential sweeps over the same files run in the exhaustive tier
 // (privacy.vectors.exhaustive.test.ts); the shared adversarial vectors stay fast in
 // sharedVectors.test.ts.

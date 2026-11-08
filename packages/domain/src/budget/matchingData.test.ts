@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // The Polish cash literals (matching data written onto rows) are byte-identical to the live Python
-// source: `parity/python/vectors_budget_transfers.py` reads them from cash.py's AST, this test rebuilds
+// source: the retired Python `vectors_budget_transfers.py` reads them from cash.py's AST, this test rebuilds
 // the same object from the TS constants and functions and compares it and its sha256.
 
 import { createHash } from "node:crypto";

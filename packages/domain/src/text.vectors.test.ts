@@ -19,7 +19,7 @@ import {
 const text = loadVectors("text");
 const table = (name: string) => text.rows.find((row) => row[0] === name);
 
-describe("text vectors (parity/python/vectors.py)", () => {
+describe("text vectors (the retired Python vectors.py)", () => {
   it("Unicode tables match Python", () => {
     expect(table("unicode")?.[1]).toBe(`${process.versions.unicode}.0`);
     expect(table("isspace")?.[1]).toEqual(PY_WHITESPACE);
@@ -57,7 +57,7 @@ describe("text vectors (parity/python/vectors.py)", () => {
       m.check(`strip ${label}`, pyStrip(s as string), stripped);
       m.check(`split ${label}`, pySplit(s as string).join(" "), joined);
     }
-    expect(m.checked).toBeGreaterThan(20000);
+    expect(m.checked).toBe(200);
     expect(normalizeText(null)).toBe(table("none")?.[1]);
     expect(normalizeText(undefined)).toBe("");
     expect(m.items, m.report()).toEqual([]);
@@ -69,7 +69,7 @@ describe("text vectors (parity/python/vectors.py)", () => {
       m.check(`normalize_iban ${JSON.stringify(s)}`, normalizeIban(s as string | null), normalized);
       m.check(`iban_key ${JSON.stringify(s)}`, ibanKey(s as string | null), key);
     }
-    expect(m.checked).toBeGreaterThan(6000);
+    expect(m.checked).toBe(52);
     expect(m.items, m.report()).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-// `safeLoadYaml` against Python `yaml.safe_load` (vectors from parity/python/vectors_yaml_safe_load.py,
+// `safeLoadYaml` against Python `yaml.safe_load` (vectors from the retired Python vectors_yaml_safe_load.py,
 // yaml-safe-load: frontmatter-like documents, scalars of every core tag, key folding, merge keys,
 // errors) and the lenient `toPlain` the strategy loader uses. Synthetic text only.
 import { describe, expect, it } from "vitest";

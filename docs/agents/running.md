@@ -110,13 +110,6 @@ ELECTRON_RUN_AS_NODE=1 /Applications/cashU.app/Contents/MacOS/cashU /Application
 
 Never run either against the owner's installed app or real data dir from a dev session.
 
-## Parity against the Python oracle
-
-The frozen Python app under `parity/python/` exists only to produce goldens the TS port is compared
-with; it is never shipped or run by the product. `pnpm parity:produce` runs the TS producers and
-`pnpm parity --dataset demo --actual <dir>` compares; inputs, datasets and safety rules are in
-[parity/README.md](../../parity/README.md) and `packages/parity/README.md`.
-
 ## See also
 
 - [conventions.md](conventions.md) - test rules (synthetic data, temp data dirs, test key store)

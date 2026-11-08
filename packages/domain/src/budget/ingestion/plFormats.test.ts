@@ -11,7 +11,7 @@ function amountVector(value: string | null): unknown {
   return d === null ? null : [d.toString(), d.exp];
 }
 
-describe("Polish formats vectors (parity/python/vectors_budget.py)", () => {
+describe("Polish formats vectors (the retired Python vectors_budget.py)", () => {
   it("parse_pl_amount, parse_pl_date and find_account_number equal Python", () => {
     const m = new Mismatches();
     for (const [kind, input, want] of vectors.rows as [string, string | null, unknown][]) {

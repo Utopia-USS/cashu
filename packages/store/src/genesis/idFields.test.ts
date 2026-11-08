@@ -1,25 +1,54 @@
-/// <reference types="node" />
-// S26 spec 6.5: the guard's id-key vocabulary stays equal to parity/python/canon.py `FIELD_TABLES`,
-// plus the id-suffix rule and what counts as a local id inside JSON.
-import { readFileSync } from "node:fs";
+// S26 spec 6.5: the guard's id-key vocabulary (the Python app's canonical `FIELD_TABLES`, which
+// Python data dirs imported by `cashu migrate` use), plus the id-suffix rule and what counts as a
+// local id inside JSON.
 import { describe, expect, it } from "vitest";
 import { ALERT_KEY_RE, idFieldTable, isJsonObject, KEY_PART_RE, rowIdOf } from "./idFields.js";
 
-function canonFieldTables(): [string, string][] {
-  const canon = readFileSync(
-    new URL("../../../../parity/python/canon.py", import.meta.url),
-    "utf8",
-  );
-  const start = canon.indexOf("FIELD_TABLES: dict[str, str] = {");
-  const block = canon.slice(start, canon.indexOf("}", start));
-  return [...block.matchAll(/"([a-z_]+)": "([a-z_]+)"/g)].map((m) => [m[1] ?? "", m[2] ?? ""]);
-}
+/** The Python app's `FIELD_TABLES`: id field name -> table. */
+const FIELD_TABLES: readonly (readonly [string, string])[] = [
+  ["profile_id", "profiles"],
+  ["account_id", "accounts"],
+  ["account_ids", "accounts"],
+  ["instrument_id", "inv_instruments"],
+  ["instrument_ids", "inv_instruments"],
+  ["old_instrument_id", "inv_instruments"],
+  ["new_instrument_id", "inv_instruments"],
+  ["signal_id", "inv_signals"],
+  ["signal_ids", "inv_signals"],
+  ["alert_id", "alerts"],
+  ["alert_ids", "alerts"],
+  ["thesis_id", "inv_theses"],
+  ["topic_thesis_id", "inv_topic_theses"],
+  ["note_id", "research_notes"],
+  ["note_ids", "research_notes"],
+  ["decision_id", "inv_decisions"],
+  ["decision_ids", "inv_decisions"],
+  ["loan_id", "loans"],
+  ["version_id", "inv_strategy_versions"],
+  ["strategy_version_id", "inv_strategy_versions"],
+  ["proposal_id", "proposals"],
+  ["deposit_id", "inv_planned_deposits"],
+  ["review_id", "reviews"],
+  ["valuation_id", "inv_manual_valuations"],
+  ["created_run_id", "inv_rule_runs"],
+  ["last_run_id", "inv_rule_runs"],
+  ["rule_run_id", "inv_rule_runs"],
+  ["research_run_id", "research_runs"],
+  ["new_signal_ids", "inv_signals"],
+  ["open_txn_id", "inv_transactions"],
+  ["close_txn_id", "inv_transactions"],
+  ["batch_id", "inv_import_batches"],
+  ["import_batch_id", "inv_import_batches"],
+  ["item_id", "watchlist_items"],
+  ["run_id", "research_runs"],
+  ["running_run_id", "research_runs"],
+  ["watchlist_item_id", "watchlist_items"],
+  ["watch_item_id", "watchlist_items"],
+];
 
 describe("idFieldTable", () => {
-  it("knows every key of canon.py FIELD_TABLES with the same table", () => {
-    const entries = canonFieldTables();
-    expect(entries.length).toBeGreaterThan(30);
-    for (const [key, table] of entries) expect(idFieldTable(key), key).toBe(table);
+  it("knows every key of the Python FIELD_TABLES with the same table", () => {
+    for (const [key, table] of FIELD_TABLES) expect(idFieldTable(key), key).toBe(table);
   });
 
   it("reads the common id suffixes, and nothing else", () => {

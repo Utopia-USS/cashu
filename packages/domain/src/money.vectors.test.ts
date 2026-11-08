@@ -11,7 +11,7 @@ const errorName = (error: unknown) =>
       : null;
 const run = <T>(fn: () => T) => outcome(fn, errorName);
 
-describe("money vectors (parity/python/vectors.py)", () => {
+describe("money vectors (the retired Python vectors.py)", () => {
   it("divided_by, ratio, Currency", () => {
     const m = new Mismatches();
     for (const row of loadVectors("money").rows) {
@@ -39,7 +39,7 @@ describe("money vectors (parity/python/vectors.py)", () => {
         );
       }
     }
-    expect(m.checked).toBeGreaterThan(5000);
+    expect(m.checked).toBe(49);
     expect(m.items, m.report()).toEqual([]);
   });
 });

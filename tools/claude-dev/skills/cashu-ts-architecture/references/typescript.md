@@ -18,14 +18,14 @@ tags: typescript, types, decimal, errors, naming
 
 Branded string types per entity (`type AccountGid = Brand<string, "AccountGid">`), created only by
 the gid functions of the store or by zod decoding. Never pass a bare `string` where a gid is meant.
-Integer ids from the Python era exist only inside parity tooling.
+Integer ids from the Python era exist only inside the Python-data migration (`cashu migrate`, genesis).
 
 ## Money and numbers
 
 - `Money = { amount: Decimal; currency: CurrencyCode }` from `@cashu/domain`. Arithmetic through the
   money helpers, which refuse mixed currencies. Aggregations return `Map<CurrencyCode, Decimal>`.
 - `number` only for counts, indexes, durations and the float-based analytics the Python code also
-  computes in float (performance ratios), with the tolerance documented in parity.
+  computes in float (performance ratios), with the tolerance documented next to the code.
 - Decimal to string only through the canonical function (Python `str(Decimal)` compatible).
 
 ## React idioms under the React Compiler

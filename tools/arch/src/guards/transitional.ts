@@ -33,22 +33,17 @@ export function findMarkers(file: string, source: string): TransitionalMarker[] 
   return out;
 }
 
-/** The frozen copy of the retired Python app (the parity oracle): its markers name the old app's work. */
-const FROZEN_ORACLE = "parity/python/oracle/";
-
 /**
- * Every marker in the repo: the TS monorepo and its tooling, the pnpm patches, the parity scripts and
- * the docs (this file, its test and the frozen Python oracle excluded).
+ * Every marker in the repo: the TS monorepo and its tooling, the pnpm patches and the docs (this
+ * file and its test excluded).
  */
 export function transitionalMarkers(): TransitionalMarker[] {
   const files = listFiles(
-    ["packages", "apps", "tools", ".github", "patches", "parity", "docs"],
+    ["packages", "apps", "tools", ".github", "patches", "docs"],
     /\.(ts|tsx|cts|mts|js|mjs|cjs|json|jsonc|yaml|yml|sh|md|py|patch)$/,
   ).filter(
     (f) =>
-      !f.startsWith(FROZEN_ORACLE) &&
-      !f.endsWith("tools/arch/src/guards/transitional.ts") &&
-      !f.endsWith("transitional.test.ts"),
+      !f.endsWith("tools/arch/src/guards/transitional.ts") && !f.endsWith("transitional.test.ts"),
   );
   const rootFiles = [
     "package.json",

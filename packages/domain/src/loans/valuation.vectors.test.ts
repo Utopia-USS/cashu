@@ -1,5 +1,5 @@
 // Python differential: `loan_valuation` (balances recorded before / after the terms, several per day,
-// aware timestamps in other zones) probed at many dates (`parity/python/vectors_loans_assets.py`,
+// aware timestamps in other zones) probed at many dates (the retired Python `vectors_loans_assets.py`,
 // loans-valuation.jsonl).
 
 import { describe, it } from "vitest";

@@ -4,7 +4,7 @@
 // `dangling_<column>.<key>`), an id in a list -> dropped, an id inside a key -> the genesis gid of
 // the missing row (`dangling_key_id`). Table rules first, then a guard walks the whole JSON value
 // and fails the run (`unmapped_id_key`) on an id under a vocabulary key no rule rewrote (R5). The
-// rules mirror the parity check (parity/python/checks/store.py) with gids in place of natural keys.
+// rules mirror the parity check (the retired Python parity check `checks/store.py`) with gids in place of natural keys.
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { ALERT_KEY_RE, idFieldTable, isJsonObject, KEY_PART_RE, rowIdOf } from "./idFields.js";

@@ -1,8 +1,8 @@
 # Connector sandbox on Linux and Windows
 
 > **Historical note.** This spike was written against the retired Python app: file references such as
-> `core/connectors/*.py`, `process.py` or `tests/test_*.py` point at code that now survives only as the
-> frozen parity oracle under `parity/python/` (never shipped). The native connector runtime is
+> `core/connectors/*.py`, `process.py` or `tests/test_*.py` point at code of the retired Python app
+> (in the git history only). The native connector runtime is
 > `apps/host/src/connectors/` and `apps/host/src/connectorRuntime.ts`; it runs connectors on macOS
 > (`sandbox-exec`) and refuses them elsewhere (`sandbox_unavailable`) until a native layer is built.
 

@@ -378,25 +378,6 @@ importers:
         specifier: 2.1.2
         version: 2.1.2
 
-  packages/parity:
-    dependencies:
-      '@cashu/domain':
-        specifier: workspace:*
-        version: link:../domain
-      '@cashu/mcp':
-        specifier: workspace:*
-        version: link:../mcp
-      '@cashu/store':
-        specifier: workspace:*
-        version: link:../store
-    devDependencies:
-      '@types/better-sqlite3':
-        specifier: ^9.6.0
-        version: 9.6.0
-      better-sqlite3:
-        specifier: 13.0.3
-        version: 13.0.3
-
   packages/store:
     dependencies:
       '@cashu/domain':

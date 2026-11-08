@@ -1,7 +1,7 @@
 /// <reference types="node" />
 /**
  * Re-import identity (S17d, S26 review F2): synthetic broker files committed through the real Python
- * import service, then re-imported (parity/python/vectors_inv_reimport.py). Three classes duplicated
+ * import service, then re-imported (the retired Python vectors_inv_reimport.py). Three classes duplicated
  * rows when the v2 instrument key came from the row's hints: ISIN-only rows of a broker-aliased
  * instrument, batches stored under the legacy broker name, instruments with two aliases in one broker
  * namespace.

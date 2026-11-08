@@ -201,7 +201,7 @@ describe("native Overview accounts and cash wallet", () => {
   });
 
   it("lists the open and the booked planned deposits, as Python GET /planned-deposits", () => {
-    // Oracle (parity/python demo copy, planned.create + planned_deposits default statuses): a plan next
+    // Oracle (the retired Python app on its demo copy, planned.create + planned_deposits default statuses): a plan next
     // month stays `planned`; a plan made after its deposit (amount within 10 %) is booked at once and
     // carries booked_at. A cancelled plan is not listed.
     const fixture = household();

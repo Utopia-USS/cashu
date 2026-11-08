@@ -1,7 +1,6 @@
 /// <reference types="node" />
-// Differential tests against Python (parity/python/generators/domain/research_vectors.py): every section replays
-// the oracle's synthetic inputs through the TS port and expects the same output. Regenerate with
-// `.venv/bin/python parity/python/generators/domain/research_vectors.py` after a Python change.
+// Differential tests against Python (vectors recorded by the retired Python app's research_vectors.py): every
+// section replays the synthetic inputs through the TS port and expects the same output.
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { pyCasefold } from "../../casefold.js";

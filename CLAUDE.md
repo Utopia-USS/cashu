@@ -22,9 +22,8 @@ cashu/
 │   ├── cli/            # the `cashu` shim: thin client of the host (bundled into the app as shim.mjs)
 │   └── mobile/, relay/ # Expo dev client and the sync relay scaffold (in development)
 ├── packages/           # domain, store, sync, i18n, ui, ui-logic, store-react, mcp, market, llm,
-│                       #   host-protocol, node-host, api, parity
+│                       #   host-protocol, node-host, api
 ├── tools/              # arch/ (`pnpm arch:check`), claude-dev/ (dev plugin), node-ts/ (TS source resolver)
-├── parity/             # parity/python/: the frozen Python oracle (never shipped) + goldens, see parity/README.md
 ├── .claude/skills/     # product skills shipped to each profile's agent workspace
 ├── docs/               # import formats, connector contract + schemas, migration runbook, agents/ = dev guide
 ├── connectors/         # community connector catalog (contrib status), shipped read-only with the app
@@ -111,13 +110,13 @@ event-sourced stores, Biome, vitest, Playwright.
 | `packages/store/` | event log, materialized views, queries, commands per module; vault and device stores |
 | `packages/mcp/` | MCP tool registry, privacy labels and redaction, the native MCP server runtime |
 | `packages/i18n/`, `ui/`, `ui-logic/`, `store-react/` | PL/EN catalogs and translators; UI system; platform-free UI logic; React query/command bindings |
-| `packages/sync/`, `market/`, `llm/`, `host-protocol/`, `node-host/`, `api/`, `parity/` | sync engine; market data sources; Ollama / Anthropic clients; host wire protocol; Node platform adapters (SQLite, keychain, guards); API scaffold; TS-vs-Python parity comparer |
+| `packages/sync/`, `market/`, `llm/`, `host-protocol/`, `node-host/`, `api/` | sync engine; market data sources; Ollama / Anthropic clients; host wire protocol; Node platform adapters (SQLite, keychain, guards); API scaffold |
 | `apps/host/` | the local host: stores, CLI tree (`src/cli/`), MCP sessions (`src/mcp/`), worker, connectors runtime, workspaces, banking, migration |
 | `apps/desktop/` | Electron main/preload, renderer screens, e2e, packaging and release (`scripts/package-macos.mjs`, `scripts/release-macos.mjs`) |
 | `apps/cli/` | the `cashu` shim: routes `app`, `host`, `migrate`, `mcp` and forwards every other command to the host |
 | `.claude/skills/` | the 9 shipped product skills (inventory below) |
 | `docs/` | `import-format.md`, `budget-import-format.md`, `connectors.md`, `schemas/`, `migration-runbook.md`, `releasing.md`, `releases/` (release notes), `agents/` |
-| `tools/`, `parity/` | architecture checks and dev plugin; the frozen Python oracle |
+| `tools/` | architecture checks and dev plugin |
 
 Full file-level map: [docs/agents/code-map.md](docs/agents/code-map.md).
 
@@ -208,7 +207,6 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Build cashU.app (macOS, ad hoc) | `node apps/desktop/scripts/package-macos.mjs arm64` (`x64`; `--dmg` for a disk image) |
 | Build the owner's `cashU Staging` app | `node apps/desktop/scripts/package-macos.mjs arm64 --flavor staging` ([releasing.md](docs/releasing.md) "Staging build") |
 | Release (owner only) | merge `staging` -> `main` and approve the `release` environment; fallback `node apps/desktop/scripts/release-macos.mjs --check` ([releasing.md](docs/releasing.md)) |
-| Parity against the Python oracle | `pnpm parity:produce`, `pnpm parity --dataset demo --actual <dir>` ([parity/README.md](parity/README.md)) |
 
 ## Documentation
 
@@ -229,4 +227,3 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 - [ONBOARDING.md](ONBOARDING.md) - end-user setup the agent walks through
 - [README.md](README.md) - product overview
 - [docs/connectors.md](docs/connectors.md), [docs/import-format.md](docs/import-format.md), [docs/budget-import-format.md](docs/budget-import-format.md) - external formats and contracts
-- [parity/README.md](parity/README.md) - the frozen Python oracle and its goldens (verification only, never shipped)

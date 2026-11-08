@@ -1,6 +1,6 @@
-// Python differential: `depreciation.value` over random curves and ages (Python's float `**` against
-// V8's, `round(v, 2)`, `Decimal(str(...))`): `parity/python/vectors_loans_assets.py`,
-// assets-depreciation.jsonl. The 16,000-case sweep is depreciation.sweep.exhaustive.test.ts.
+// Python differential: `depreciation.value` over curves and ages (Python's float `**` against V8's,
+// `round(v, 2)`, `Decimal(str(...))`), recorded from the retired Python app in
+// assets-depreciation.jsonl (curated: every branch, floor and error kind).
 
 import { describe, it } from "vitest";
 import { expectAll, loadVectors, Mismatches } from "../testing/vectors.js";

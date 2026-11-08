@@ -4,8 +4,8 @@
  * Python and JavaScript disagree on what whitespace is (`str.isspace` / regex `\s` include U+001C-U+001F
  * and U+0085 but not U+FEFF; JS `\s` is the opposite) and JS has no `unicodedata.combining` or
  * `unicodedata.decimal`, so those come as tables generated from Python (Unicode 16.0, the version of
- * both Python 3.14 and Node's ICU). `parity/python/vectors.py` re-checks every table and every code
- * point (block hashes) on each run of the vector suite.
+ * both Python 3.14 and Node's ICU). The vector suite re-checks every table and every code point
+ * against hashes recorded from Python (text.jsonl, text.codepoints.exhaustive.test.ts).
  */
 
 /** Code points for which Python `str.isspace()` (and regex `\s` on str) is true. */

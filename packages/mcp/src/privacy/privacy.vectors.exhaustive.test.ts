@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// Differential sweeps against Python (parity/python/generators/mcp/privacy_vectors.py), exhaustive tier: every
+// Differential sweeps against Python (the retired Python privacy_vectors.py), exhaustive tier: every
 // section replays the oracle's synthetic inputs through the TS port and expects the same output, byte
 // for byte, in slices of SLICE rows (code points: one test per function and plane). The few small
 // checks of the same vector files stay in privacy.vectors.test.ts.

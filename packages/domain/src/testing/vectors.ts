@@ -9,7 +9,7 @@ export interface VectorFile {
   readonly rows: readonly unknown[][];
 }
 
-/** Loads `packages/domain/test/vectors/<name>.jsonl` (written by `parity/python/vectors.py`). */
+/** Loads `packages/domain/test/vectors/<name>.jsonl` (written by the retired Python `vectors.py`). */
 export function loadVectors(name: string): VectorFile {
   const url = new URL(`../../test/vectors/${name}.jsonl`, import.meta.url);
   const lines = readFileSync(fileURLToPath(url), "utf8")
@@ -67,7 +67,7 @@ export const PLANES: readonly number[] = Array.from({ length: 0x110000 / 0x10000
 
 /**
  * sha256 (first 16 hex digits) of fn(chr(c)) joined by NUL over one 4096-code-point block, surrogates
- * skipped (as `parity/python/vectors.py`). One digest input per block: the same bytes as feeding the
+ * skipped (as the retired Python `vectors.py`). One digest input per block: the same bytes as feeding the
  * hash per code point, without two native hash calls per code point.
  */
 export function blockHash(fn: (s: string) => string, block: number): string {

@@ -1,4 +1,4 @@
-// Generated from Python alerts/catalog.py by parity/python/vectors_inv_alerts.py.
+// Generated from Python alerts/catalog.py by the retired Python vectors_inv_alerts.py.
 export const CATALOG_DATA = [
   {
     kind: "price_above",

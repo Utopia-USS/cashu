@@ -2,7 +2,7 @@
  * CPython's `csv.reader` (excel dialect: `"` quotes, doubled quotes, `QUOTE_MINIMAL`, no escape char,
  * no initial-space skipping), a port of `Modules/_csv.c`'s state machine, with the `strict` flag, the
  * field size limit and `line_num`. Errors are returned, never thrown. Checked against Python 3.14 by
- * `pycsv.test.ts` (`budget-csv.jsonl`, written by `parity/python/vectors_budget.py`).
+ * `pycsv.test.ts` (`budget-csv.jsonl`, written by the retired Python `vectors_budget.py`).
  */
 
 export interface CsvOptions {

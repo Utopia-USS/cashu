@@ -1,7 +1,7 @@
 import { D } from "../../../decimal.js";
 import type { RawJson, RawTransaction, TxnSource } from "../types.js";
 
-/** A raw transaction as `parity/python/vectors_budget.py` writes it (`raw_json`). */
+/** A raw transaction as the retired Python `vectors_budget.py` writes it (`raw_json`). */
 export interface RawRow {
   readonly booking_date: string;
   readonly value_date: string | null;

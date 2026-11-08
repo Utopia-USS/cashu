@@ -9,7 +9,7 @@ import {
   type PassCase,
   type ReclassifyScenario,
 } from "../testing/llmCases.js";
-import { categorizeRows, LLM_FAST } from "../testing/vectors.js";
+import { categorizeRows } from "../testing/vectors.js";
 
 const llm = categorizeRows<MerchantCase | PassCase>("llm");
 const merchants = llm.filter((r): r is MerchantCase => r[0] === "merchants");
@@ -18,24 +18,24 @@ const scenarios = categorizeRows<ReclassifyScenario>("reclassify").filter(
   (r) => r[0] === "scenario",
 );
 
-describe("LLM requests and replies equal Python (MockTransport recordings, fast slice)", () => {
+describe("LLM requests and replies equal Python (MockTransport recordings)", () => {
   it("backends on raw merchant lists: bodies, json.dumps, parsing, Q12 guard", () => {
     const m = new Mismatches();
     const c = newCounts();
-    checkMerchantCases(merchants.slice(0, LLM_FAST), m, c);
+    checkMerchantCases(merchants, m, c);
     expectAll(m);
     expect(c.bodiesCompared).toBeGreaterThan(5);
   });
 
   it("categorize_all(use_llm=True): unknown merchants, bodies, cached rules", () => {
     const m = new Mismatches();
-    checkPassCases(passes.slice(0, LLM_FAST), m, newCounts());
+    checkPassCases(passes, m, newCounts());
     expectAll(m);
   });
 
   it("reclassify_all: plan, bodies, final rows", () => {
     const m = new Mismatches();
-    checkReclassifyScenarios(scenarios.slice(0, LLM_FAST), m, newCounts());
+    checkReclassifyScenarios(scenarios, m, newCounts());
     expectAll(m);
   });
 });

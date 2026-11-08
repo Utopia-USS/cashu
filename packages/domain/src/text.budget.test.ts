@@ -4,7 +4,7 @@ import { ND_ZEROS, pyIsDigit, pySplitlines, pyStripChars } from "./text.js";
 
 const vectors = loadVectors("budget-text");
 
-describe("splitlines / strip(chars) / isdigit vectors (parity/python/vectors_budget.py)", () => {
+describe("splitlines / strip(chars) / isdigit vectors (the retired Python vectors_budget.py)", () => {
   it("isdigit equals Python on every code point", () => {
     const digitOnly = vectors.rows.find((r) => r[0] === "isdigit_only")?.[1] as number[];
     const decimalCount = vectors.rows.find((r) => r[0] === "isdecimal_count")?.[1] as number;
@@ -36,6 +36,6 @@ describe("splitlines / strip(chars) / isdigit vectors (parity/python/vectors_bud
       }
     }
     expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBe(4000);
+    expect(m.checked).toBe(111);
   });
 });

@@ -1,6 +1,6 @@
-// A `StrategyLoadResult` in the golden form of parity/python/canon.py (dataclass field names, sets
+// A `StrategyLoadResult` in the golden form of the retired Python `canon.py` (dataclass field names, sets
 // sorted by their JSON text, tuples as lists, Decimals as `str()`, NaN / infinities as strings), as
-// `JSON.parse` reads the rows of parity/python/vectors_inv_strategy.py. Test-only.
+// `JSON.parse` reads the rows of the retired Python vectors_inv_strategy.py. Test-only.
 
 import type { BucketMatch } from "../../domain/buckets.js";
 import type { CompiledExpression } from "../../rules/expr/compiled.js";

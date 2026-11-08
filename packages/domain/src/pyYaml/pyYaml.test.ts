@@ -167,11 +167,11 @@ describe("composeYaml (yaml.compose with SafeLoader)", () => {
   });
 });
 
-describe("yaml-cases vectors, every third row (full replay in pyYaml.vectors.exhaustive.test.ts)", () => {
+describe("yaml-cases vectors", () => {
   it("node trees and errors equal PyYAML", () => {
     const rows = loadVectors("yaml-cases").rows as [string, unknown][];
     const m = new Mismatches();
-    for (let i = 0; i < rows.length; i += 3) {
+    for (let i = 0; i < rows.length; i++) {
       const [text, want] = rows[i] as [string, unknown];
       m.check(`#${i} ${JSON.stringify(text.slice(0, 60))}`, yamlOut(text), want);
     }

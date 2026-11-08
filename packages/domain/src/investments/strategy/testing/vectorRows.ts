@@ -1,4 +1,4 @@
-// Replays rows of parity/python/vectors_inv_strategy.py against the TS loader. Test-only.
+// Replays rows of the retired Python vectors_inv_strategy.py against the TS loader. Test-only.
 
 import { Mismatches } from "../../../testing/vectors.js";
 import { classify } from "../codes.js";

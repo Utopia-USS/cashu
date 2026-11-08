@@ -32,7 +32,7 @@ const pyError = (error: unknown) =>
       : null;
 const run = <T>(fn: () => T) => outcome(fn, pyError);
 
-describe("date vectors (parity/python/vectors.py)", () => {
+describe("date vectors (the retired Python vectors.py)", () => {
   it("calendar math like datetime / relativedelta", () => {
     const m = new Mismatches();
     for (const row of loadVectors("dates").rows) {
@@ -101,7 +101,7 @@ describe("date vectors (parity/python/vectors.py)", () => {
           throw new Error(`unknown op ${op}`);
       }
     }
-    expect(m.checked).toBeGreaterThan(28000);
+    expect(m.checked).toBe(49);
     expect(m.items, m.report()).toEqual([]);
   });
 

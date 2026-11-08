@@ -4,7 +4,7 @@ import { loadVectors, Mismatches } from "./testing/vectors.js";
 
 const rows = loadVectors("budget-difflib").rows;
 
-describe("difflib vectors (parity/python/vectors_budget.py)", () => {
+describe("difflib vectors (the retired Python vectors_budget.py)", () => {
   it("ratio and get_close_matches equal Python", () => {
     const columns = rows.find((r) => r[0] === "columns")?.[1] as string[];
     const m = new Mismatches();

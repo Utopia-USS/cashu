@@ -31,7 +31,6 @@ Apps compose packages and never import another app.
 | `packages/api/` | Services | HTTP surface scaffold. |
 | `packages/host-protocol/` | Protocol | The host wire protocol: frames, handshake, roles, CLI / MCP / store / admin / banking messages, packaged-build rules (`packaged-build.md`, `native-creation.md`). |
 | `packages/node-host/` | Node platform | Node adapters: SQLite, keyring (and the `cashu-next-test.*` test key store), folder IO, guards, language source, host service helpers. |
-| `packages/parity/` | Verification tooling | TS producers and the comparer against the Python goldens (`pnpm parity`, `pnpm parity:produce`). |
 | `apps/host/` | Apps | One local host per data dir: exclusive stores, CLI and MCP sessions, worker, connectors, workspaces, banking, sync, Python-data migration. |
 | `apps/desktop/` | Apps | Electron main/preload, React renderer, e2e suite, macOS packaging and native helpers. |
 | `apps/cli/` | Apps | The `cashu` shim: a thin client of the host; bundled into the app as `shim.mjs`. |
@@ -40,7 +39,6 @@ Apps compose packages and never import another app.
 | `tools/arch/` | Development tooling | `pnpm arch:check`: runner, dependency graph, ESLint (react-hooks), Knip, sherif and the guard tests (`src/guards/`). |
 | `tools/claude-dev/` | Development tooling | Repo-local TS architecture/UI skills and the file-check hook; not shipped to profile workspaces. |
 | `tools/node-ts/` | Development tooling | Resolver for running workspace TS sources with Node type stripping (`resolveTs.ts`). |
-| `parity/` | Verification oracle | `parity/python/`: the frozen Python app used only to produce goldens, plus synthetic committed demo outputs; never shipped. See [parity/README.md](../../parity/README.md). |
 
 ## `packages/domain/src/`
 

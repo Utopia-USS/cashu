@@ -1,7 +1,7 @@
 /**
  * The columns the `store.table.<table>` roundtrip goldens compare (S26 spec 8.1), per synced table,
- * in schema order: a verbatim copy of `ROUNDTRIP_COLUMNS` in `parity/python/checks/store.py`
- * (`columns.test.ts` keeps both equal). That file's docstring is the contract of the golden rows:
+ * in schema order: a verbatim copy of `ROUNDTRIP_COLUMNS` of the retired Python parity check
+ * (`checks/store.py`). That file's docstring was the contract of the golden rows:
  * canonical values, natural keys, the gid.md 7.6 dangling rules and the per-table value rules (cash
  * legs, derived categories, parked account keys, archive and staged blobs, `applying` proposals).
  *
