@@ -205,9 +205,17 @@ moves or changes the old files; you bring the data over blind, through the impor
    - brokerage accounts -> the investments format with `txn`, `position`, `rename` and `delisting`
      records (`references/import-format.md`); `validate_import`, then `propose_import(path,
      account)`; the owner approves it in Inwestycje > Import.
-5. **The rest.** Copy `strategy.md` / `strategy.yaml` from the old profile workspace into the new one
-   (or `propose_strategy`). Merchant categories: `set_merchant_category`; segments:
-   `set_instrument_segment`; watchlist: `add_to_watchlist`; alerts and rules: `add_alert`,
+5. **The rest.** The old app's profile workspace (`~/Documents/cashU/<slug>`) is the owner's work:
+   carry it into the new one, never adopt it in place (its `.claude/cashu-workspace.json` has no vault
+   and the app refuses it). If it sits where the new workspace belongs (the released app's default
+   path), the owner first renames it (e.g. `<slug>-old-app`), then runs `cashu workspace init`. Copy
+   without overwriting: `notes/`, `research/`, `scripts/`, `connectors/`, `inbox/` (minus the database
+   copy of step 2) and the text below "Your own instructions (not managed)" in `CLAUDE.md`, appended to
+   the same section of the new `CLAUDE.md`; never the `cashu:begin` / `cashu:end` blocks, `.claude/`
+   or `.mcp.json` (the app writes those). When macOS blocks you from `~/Documents`, give the owner the
+   copy command to run in Terminal. Leave the old folder as it is. Copy `strategy.md` /
+   `strategy.yaml` from it into the new one (or `propose_strategy`). Merchant categories:
+   `set_merchant_category`; segments: `set_instrument_segment`; watchlist: `add_to_watchlist`; alerts and rules: `add_alert`,
    `propose_custom_rule`. Research notes and theses (`add_research_note`, `upsert_thesis`,
    `upsert_topic_thesis`) are the owner's own text that you would read: ask first. Manual assets and
    loans: the owner re-enters them (`/assets-setup`, `/loans-setup`).
