@@ -20,11 +20,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { acquireHostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import type { OsKeyringPort } from "./native.js";
-import {
-  createProductionKeyStore,
-  createTestKeyStore,
-  createTestMigrationKek,
-} from "./production.js";
+import { createProductionKeyStore, createTestKeyStore } from "./production.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -435,93 +431,5 @@ describe("isolated Node OS KeyStore", () => {
     ).rejects.toMatchObject({ code: "keystore_corrupt" });
     expect(readdirSync(changed.dataDir)).toEqual(["run"]);
     changed.lock.release();
-  });
-  it("scopes a migration's staged tree to its data dir's namespace, and nothing else", async () => {
-    const f = fixture();
-    const staged = join(f.dataDir, ".migration-20270101T000000000Z", "native");
-    mkdirSync(join(staged, "run"), { recursive: true, mode: 0o700 });
-    const lock = acquireHostLock(hostRunPaths(staged).lockPath);
-    if (!lock) throw new Error("synthetic staged lock missing");
-    const names = new Set([f.name]);
-    const provision = createTestKeyStore({
-      dataDir: staged,
-      scopeDir: f.dataDir,
-      service: f.service,
-      keyring: f.keyring,
-      sodium,
-      purpose: "provision",
-      authorizedNames: names,
-      provision: { lock, assertPending() {} },
-    });
-    await provision.set(f.name, Uint8Array.of(5));
-    // The blob is the staged tree's own file; the KEK is the data dir's.
-    expect(readdirSync(join(staged, "vault-secrets", "v1"))).toEqual([`${f.name}.bin`]);
-    expect([...f.items.keys()]).toEqual([`${f.service}/cashu.keystore.kek`]);
-    lock.release();
-    const open = (dataDir: string, scopeDir?: string) =>
-      createTestKeyStore({
-        dataDir,
-        ...(scopeDir === undefined ? {} : { scopeDir }),
-        service: f.service,
-        keyring: f.keyring,
-        sodium,
-        purpose: "open",
-        authorizedNames: names,
-      });
-    for (const [dataDir, scopeDir] of [
-      [f.dataDir, f.dataDir],
-      [join(f.dataDir, "run"), f.dataDir],
-      [join(f.dataDir, ".migration-"), f.dataDir],
-      [staged, join(f.dataDir, "run")],
-      [staged, `${f.dataDir}/../data`],
-    ] as const)
-      expect(() => open(dataDir, scopeDir)).toThrow();
-    for (const [dataDir, scopeDir] of [
-      [f.dataDir, f.dataDir],
-      [staged, join(f.dataDir, "run")],
-    ] as const)
-      expect(() =>
-        createProductionKeyStore({
-          dataDir,
-          scopeDir,
-          sodium,
-          purpose: "open",
-          authorizedNames: names,
-        }),
-      ).toThrow();
-    expect(await open(staged, f.dataDir).get(f.name)).toEqual(Uint8Array.of(5));
-    f.lock.release();
-  });
-  it("manages a migration's KEK in the exact test namespace only", async () => {
-    const f = fixture();
-    const deletable = {
-      ...f.keyring,
-      async delete(service: string, account: string) {
-        f.items.delete(`${service}/${account}`);
-      },
-    };
-    expect(() =>
-      createTestMigrationKek({
-        dataDir: f.dataDir,
-        service: "cashu.vault.v1.fake",
-        keyring: deletable,
-      }),
-    ).toThrow();
-    expect(() =>
-      createTestMigrationKek({ dataDir: f.root, service: f.service, keyring: deletable }),
-    ).toThrow();
-    const kek = createTestMigrationKek({
-      dataDir: f.dataDir,
-      service: f.service,
-      keyring: deletable,
-    });
-    expect(await kek.present()).toBe(false);
-    await kek.remove();
-    await f.make("provision").set(f.name, Uint8Array.of(1));
-    expect(await kek.present()).toBe(true);
-    await kek.remove();
-    expect(await kek.present()).toBe(false);
-    expect(f.items.size).toBe(0);
-    f.lock.release();
   });
 });

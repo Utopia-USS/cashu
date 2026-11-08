@@ -109,7 +109,6 @@ export const LOG_ERROR_CLASSES = [
   "SyntaxError",
   "AbortError",
   "StartupFailureError",
-  "MigrationError",
   "HostBusyError",
   "HostConnectError",
   "HostStartError",

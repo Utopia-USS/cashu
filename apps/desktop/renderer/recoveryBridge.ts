@@ -1,27 +1,20 @@
 // The recovery screen's bridge to Electron main (preload `cashuRecovery`). It works while the host
-// is down: main owns the report, the clipboard, the data folder, the import child and the start
-// sequence. The page never passes a path or a text to main; it sends only the prompt language and
-// the word confirmation. What main returns or pushes is parsed again here (main validated it already;
-// the page trusts neither side's types blindly). The MCP lines of a finished import are copied by main
-// from its own copy of them.
+// is down: main owns the report, the clipboard, the data folder and the start sequence. The page never
+// passes a path or a text to main; it sends only the prompt language. What main returns is parsed
+// again here (main validated it already; the page trusts neither side's types blindly).
 import {
   type PromptLang,
   parseStartupFailureReport,
-  type RecoveryImportEvent,
-  recoveryImportEventSchema,
   type StartupFailureReport,
 } from "@cashu/host-protocol/startup-failure";
 
 interface RecoveryBridgeApi {
   report(): Promise<unknown>;
   copyPrompt(lang: PromptLang): Promise<unknown>;
-  copyMcpCommands(): Promise<unknown>;
   openDataFolder(): Promise<unknown>;
   retry(): Promise<unknown>;
+  continueWithoutOldData(): Promise<unknown>;
   quit(): Promise<unknown>;
-  importData(): Promise<unknown>;
-  confirmWords(confirmed: boolean): Promise<unknown>;
-  onImportEvent(handler: (event: unknown) => void): () => void;
 }
 
 declare global {
@@ -32,17 +25,11 @@ declare global {
 
 export interface RecoveryBridge {
   copyPrompt(lang: PromptLang): Promise<boolean>;
-  /** Copies the finished import's MCP reconnect lines (main holds them; the page passes no text). */
-  copyMcpCommands(): Promise<boolean>;
   openDataFolder(): Promise<boolean>;
   retry(): Promise<void>;
+  /** Old app data screen: go on to first-run setup, the old data stays untouched. */
+  continueWithoutOldData(): Promise<void>;
   quit(): Promise<void>;
-  /** Starts "Import my data"; false when main refused (one already runs, or nothing to import). */
-  importData(): Promise<boolean>;
-  /** Answers the recovery words: true = written down, false = cancel the import. */
-  confirmWords(confirmed: boolean): Promise<boolean>;
-  /** Import events from main (invalid ones are dropped); returns the unsubscribe. */
-  onImportEvent(handler: (event: RecoveryImportEvent) => void): () => void;
 }
 
 /** The validated report main holds, or null (no bridge, no failure, or an invalid value). */
@@ -66,21 +53,15 @@ export function recoveryBridge(): RecoveryBridge | null {
   };
   return {
     copyPrompt: (lang) => flag(() => api.copyPrompt(lang)),
-    copyMcpCommands: () => flag(() => api.copyMcpCommands()),
     openDataFolder: () => flag(() => api.openDataFolder()),
     async retry() {
       await api.retry().catch(() => {});
     },
+    async continueWithoutOldData() {
+      await api.continueWithoutOldData().catch(() => {});
+    },
     async quit() {
       await api.quit().catch(() => {});
-    },
-    importData: () => flag(() => api.importData()),
-    confirmWords: (confirmed) => flag(() => api.confirmWords(confirmed)),
-    onImportEvent(handler) {
-      return api.onImportEvent((raw) => {
-        const event = recoveryImportEventSchema.safeParse(raw);
-        if (event.success) handler(event.data);
-      });
     },
   };
 }

@@ -1,5 +1,4 @@
 // Native product commands the host runs for an open vault.
-import { homedir, tmpdir } from "node:os";
 import type { market } from "@cashu/domain/investments";
 import type { InvestmentSearchIo } from "@cashu/mcp";
 import type { HostService } from "@cashu/node-host";
@@ -22,7 +21,6 @@ import { printConsole } from "./core/console.js";
 import { profileCommands } from "./core/profiles.js";
 import { skillsCommand } from "./core/skills.js";
 import { statsCommand } from "./core/stats.js";
-import { genesisCommand } from "./genesis/command.js";
 import type { StrategyCliFiles } from "./investments/context.js";
 import { investmentCommands } from "./investments/index.js";
 import { loansCommands } from "./loans/index.js";
@@ -30,8 +28,6 @@ import type { PortedCommand } from "./tree.js";
 import { workerWorkspaceCommands } from "./workerWorkspace.js";
 
 export interface PortedDeps {
-  readonly home?: string;
-  readonly tmpDir?: string;
   readonly now?: () => number;
   readonly runtime?: HostRuntime;
   /** Explicit packaged resource location; source builds derive it from the checkout. */
@@ -59,7 +55,6 @@ export interface PortedDeps {
 }
 
 export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
-  let runs = 0;
   return [
     ...(deps.nativeStores === undefined ? [] : [commandStatusCommand(deps.nativeStores)]),
     ...(deps.nativeStores === undefined
@@ -120,21 +115,5 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
     ...(deps.connectors ? connectorCommands(deps.connectors) : []),
     ...(deps.banking ? bankingCommands(deps.banking) : []),
     skillsCommand(deps.skillsSource ?? shippedSkillsSource(deps.runtime ?? currentRuntime())),
-    {
-      // Lab / dev: the genesis event log of a Python data dir (S26). Synchronous work: it holds the
-      // host's event loop for its duration (a worker thread is the S39 runner's call).
-      name: "genesis",
-      async run(args, io) {
-        runs += 1;
-        return genesisCommand(args, {
-          home: deps.home ?? homedir(),
-          tmpDir: deps.tmpDir ?? tmpdir(),
-          runId: `${process.pid}-${runs}`,
-          now: deps.now ?? Date.now,
-          stdout: (line) => io.stdout(`${line}\n`),
-          stderr: (line) => io.stderr(`${line}\n`),
-        });
-      },
-    },
   ];
 }

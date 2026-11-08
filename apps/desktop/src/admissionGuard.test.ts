@@ -1,11 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  legacyDataAdmission,
-  legacySourceRoots,
-  migrationJournals,
-} from "@cashu/node-host/admission";
+import { legacySourceRoots, oldAppDataRoots } from "@cashu/node-host/admission";
 import { afterEach, expect, test } from "vitest";
 
 const roots: string[] = [];
@@ -18,53 +14,44 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-test("an empty synthetic data dir only reports no legacy sentinel", () => {
-  expect(legacyDataAdmission(fixture())).toBe("no_legacy_sentinel");
+test("an empty synthetic data dir holds no old app data", () => {
+  expect(oldAppDataRoots([fixture()])).toBe(0);
 });
 
-test.each(["cashu.db", "finanse.db"])("%s blocks native Create without opening it", (name) => {
+test.each(["cashu.db", "finanse.db", "cashu.db-wal"])(
+  "%s counts as old app data without being opened",
+  (name) => {
+    const dir = fixture();
+    writeFileSync(join(dir, name), "synthetic", { mode: 0o600 });
+    expect(oldAppDataRoots([dir])).toBe(1);
+  },
+);
+
+test("a redirected database still counts as there", () => {
   const dir = fixture();
-  writeFileSync(join(dir, name), "synthetic", { mode: 0o600 });
-  expect(legacyDataAdmission(dir)).toBe("migration_required");
+  symlinkSync(join(dir, "missing"), join(dir, "cashu.db"));
+  expect(oldAppDataRoots([dir])).toBe(1);
 });
 
-test("orphan journal and redirected database refuse rather than look empty", () => {
-  const dir = fixture();
-  writeFileSync(join(dir, "cashu.db-wal"), "synthetic", { mode: 0o600 });
-  expect(legacyDataAdmission(dir)).toBe("refused");
-  const other = fixture();
-  writeFileSync(join(other, "source"), "synthetic", { mode: 0o600 });
-  symlinkSync(join(other, "source"), join(other, "cashu.db"));
-  expect(legacyDataAdmission(other)).toBe("refused");
-});
-
-test("two Python database names are ambiguous", () => {
-  const dir = fixture();
-  writeFileSync(join(dir, "cashu.db"), "synthetic", { mode: 0o600 });
-  writeFileSync(join(dir, "finanse.db"), "synthetic", { mode: 0o600 });
-  expect(legacyDataAdmission(dir)).toBe("refused");
-});
-
-test("pre-rename platform data and old checkout data block an empty selected dir", () => {
+test("pre-rename platform data and old checkout data are found beside an empty selected dir", () => {
   const home = fixture();
   const project = fixture();
   const selected = fixture();
   const legacy = join(home, "legacy");
-  const roots = legacySourceRoots(
+  const found = legacySourceRoots(
     selected,
     project,
     home,
     { CASHU_LEGACY_DATA_DIR: legacy },
     "darwin",
   );
-  expect(legacyDataAdmission(roots)).toBe("no_legacy_sentinel");
+  expect(oldAppDataRoots(found)).toBe(0);
   mkdirSync(legacy);
   writeFileSync(join(legacy, "finanse.db"), "synthetic");
-  expect(legacyDataAdmission(roots)).toBe("migration_required");
-  rmSync(legacy, { recursive: true });
+  expect(oldAppDataRoots(found)).toBe(1);
   mkdirSync(join(project, "data"));
   writeFileSync(join(project, "data", "finanse.db"), "synthetic");
-  expect(legacyDataAdmission(roots)).toBe("migration_required");
+  expect(oldAppDataRoots(found)).toBe(2);
 });
 
 test("explicit portable data ignores automatic home and checkout roots", () => {
@@ -73,28 +60,7 @@ test("explicit portable data ignores automatic home and checkout roots", () => {
   const selected = fixture();
   mkdirSync(join(project, "data"));
   writeFileSync(join(project, "data", "finanse.db"), "synthetic");
-  const roots = legacySourceRoots(selected, project, home, {}, "darwin", true);
-  expect(roots).toEqual([selected]);
-  expect(legacyDataAdmission(roots)).toBe("no_legacy_sentinel");
-});
-
-test("an in-place migration's own entries are not Python data; its journal is migration_incomplete", () => {
-  const dir = fixture();
-  // A finished migration: backup, marker, diagnostics and a journal-less staging leftover.
-  mkdirSync(join(dir, "python-backup-20270101T000000000Z"));
-  writeFileSync(join(dir, "python-backup-20270101T000000000Z", "cashu.db"), "synthetic");
-  writeFileSync(join(dir, "python-backup-20270101T000000000Z", "cashu.db-wal"), "synthetic");
-  writeFileSync(join(dir, "migration.json"), "{}");
-  mkdirSync(join(dir, "diagnostics"));
-  mkdirSync(join(dir, ".migration-20270101T000000000Z"));
-  expect(legacyDataAdmission(dir)).toBe("no_legacy_sentinel");
-  // A journal wins over whatever the root shows mid-cutover (here a WAL without its database).
-  writeFileSync(join(dir, ".migration-20270101T000000000Z", "journal.json"), "{}");
-  writeFileSync(join(dir, "cashu.db-wal"), "synthetic", { mode: 0o600 });
-  expect(legacyDataAdmission(dir)).toBe("migration_incomplete");
-  expect(migrationJournals(dir)).toEqual([".migration-20270101T000000000Z"]);
-  const home = fixture();
-  expect(legacyDataAdmission(legacySourceRoots(dir, fixture(), home, {}, "darwin", true))).toBe(
-    "migration_incomplete",
-  );
+  const found = legacySourceRoots(selected, project, home, {}, "darwin", true);
+  expect(found).toEqual([selected]);
+  expect(oldAppDataRoots(found)).toBe(0);
 });

@@ -7,9 +7,9 @@
 // only then: Electron main reads the update feed from a local `http://127.0.0.1:<port>/` server,
 // accepts the configured install root instead of /Applications and runs on the configured data dir
 // (also when relaunched by the updater without any environment); the host keeps agent workspaces in
-// the configured workspaces dir (never ~/Documents/cashU) and maps every OS keyring service into the synthetic `cashu-next-test.<hex>` namespace
-// (keyring/native.ts); `migrate` runs only into the configured data dir and never calls launchctl
-// (apps/host/src/main.ts, migration/pythonAgents.ts). Without the marker every code path is the release one.
+// the configured workspaces dir (never ~/Documents/cashU) and maps every OS keyring service into the
+// synthetic `cashu-next-test.<hex>` namespace (keyring/native.ts). Without the marker every code path is
+// the release one.
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";

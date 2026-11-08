@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   HOST_PROTOCOL,
@@ -8,60 +8,39 @@ import {
 import { connectHost } from "@cashu/node-host";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "./host.js";
-import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { cleanup, tempDir } from "./testing/harness.js";
 
 afterEach(cleanup);
 
-it.each(["finanse.db", "cashu.db-wal"])(
-  "refuses zero-vault Create startup when selected data contains %s",
-  async (name) => {
-    const dataDir = tempDir();
-    writeFileSync(join(dataDir, name), "synthetic", { mode: 0o600 });
-    await expect(
-      startLocalHost({
-        dataDir,
-        home: tempDir(),
-        vaultSource: {
-          kind: "native-production",
-          factory: new ProductionVaultSourceFactory(dataDir),
-        },
-        launcher: false,
-      }),
-    ).rejects.toThrow("python_data_present");
-    expect(existsSync(join(dataDir, "native", "v1", "creation.json"))).toBe(false);
-  },
-);
-
-it("refuses a pre-rename source root before opening zero-vault Create", async () => {
+it("treats an old Python cashU database in the data dir as no data and leaves it untouched", async () => {
   const dataDir = tempDir();
-  const home = tempDir();
-  const projectRoot = tempDir();
-  const legacyRoot = join(home, "Library", "Application Support", "finanse");
-  mkdirSync(legacyRoot, { recursive: true, mode: 0o700 });
-  writeFileSync(join(legacyRoot, "finanse.db"), "synthetic", { mode: 0o600 });
-  const assertNativeSourceAdmission = nativeSourceAdmission({
+  writeFileSync(join(dataDir, "cashu.db"), "synthetic", { mode: 0o600 });
+  const host = await startLocalHost({
     dataDir,
-    projectRoot,
-    home,
-    env: {},
-    platform: "darwin",
-    explicitDataDir: false,
+    home: tempDir(),
+    vaultSource: { kind: "native-production", factory: new ProductionVaultSourceFactory(dataDir) },
+    launcher: false,
   });
-  await expect(
-    startLocalHost({
-      dataDir,
-      home,
-      vaultSource: {
-        kind: "native-production",
-        factory: new ProductionVaultSourceFactory(dataDir),
-      },
-      assertNativeSourceAdmission,
-      launcher: false,
-    }),
-  ).rejects.toThrow("python_data_present");
-  expect(existsSync(join(dataDir, "native", "v1", "creation.json"))).toBe(false);
+  const ui = await connectHost({ dataDir, role: "ui", build: "creation-rpc-test" });
+  try {
+    expect(host.stores.vaults.size).toBe(0);
+    expect(await ui.call("native.creation.current", {})).toEqual({ kind: "none" });
+    const prepared = nativeCreationPrepareResultSchema.parse(
+      await ui.call("native.creation.prepare", {
+        name: "Synthetic",
+        slug: "synthetic",
+        baseCurrency: "PLN",
+        modules: [],
+        mcpPrivacy: "strict",
+      }),
+    );
+    expect(prepared.kind).toBe("prepared");
+    expect(readFileSync(join(dataDir, "cashu.db"), "utf8")).toBe("synthetic");
+  } finally {
+    ui.close();
+    await host.stop();
+  }
 });
 
 it("serves clean first-run Create under the real host lock with zero vaults", async () => {

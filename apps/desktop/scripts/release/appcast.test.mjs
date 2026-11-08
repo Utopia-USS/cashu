@@ -94,20 +94,22 @@ describe("informationalAppcast", () => {
     }
     const [pl, en] = children(it, "description");
     expect(pl.getAttributeNS(SPARKLE_NS, "format")).toBe("plain-text");
-    expect(pl.textContent).toContain("Zaimportuj moje dane");
+    expect(pl.textContent).toContain("Kopiuj prompt dla agenta");
     expect(pl.textContent).toContain(dmg("arm64"));
     expect(pl.textContent).toContain("nie będzie się już sama aktualizować");
-    expect(en.textContent).toContain("Import my data");
+    expect(en.textContent).toContain("Copy prompt for agent");
     expect(en.textContent).toContain(dmg("arm64"));
     expect(en.textContent).toContain(RELEASE);
   });
 
-  it("names the import button exactly as the native app does", () => {
+  it("names the prompt button exactly as the native app does", () => {
     const strings = readFileSync(
       new URL("../../renderer/shell/Recovery.strings.ts", import.meta.url),
       "utf8",
     );
-    expect(strings).toContain('importData: { pl: "Zaimportuj moje dane", en: "Import my data" }');
+    expect(strings).toContain(
+      'copy: { pl: "Kopiuj prompt dla agenta", en: "Copy prompt for agent" }',
+    );
   });
 
   it("differs per architecture only in the download and its label", () => {

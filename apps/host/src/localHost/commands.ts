@@ -1,5 +1,5 @@
 // The command tree the `cli` role runs in the host. A native host serves the native product
-// commands (no genesis, no skills) with its strategy files, worker, workspace and the owner-action
+// commands (no skills) with its strategy files, worker, workspace and the owner-action
 // ports for connectors and banking; a synthetic harness may inject its own isolated commands.
 import type { RunningHost } from "@cashu/node-host";
 import { mcpProfile } from "@cashu/store/core";
@@ -22,9 +22,8 @@ import type { HostWorker } from "../worker/service.js";
 import type { MarketAuthorities } from "./market.js";
 import type { LocalHostOptions, VaultBinder } from "./options.js";
 
-/** Native product commands only: the lab genesis import and the skills copy stay out of the host. */
-const isNativeProductCommand = (command: PortedCommand) =>
-  command.name !== "genesis" && command.name !== "skills";
+/** Native product commands only: the skills copy stays out of the host. */
+const isNativeProductCommand = (command: PortedCommand) => command.name !== "skills";
 
 export function hostedCommands(input: {
   readonly options: LocalHostOptions;

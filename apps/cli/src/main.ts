@@ -1,8 +1,7 @@
 // The `cashu` shim: resolve the data dir (`.env.dev` included), then route the argv
-// (route.ts) to the host's admin methods, an MCP session, `cli.exec`, or the host binary's `migrate`
-// in the foreground. Exit codes of its own: 64 usage (`cashu host ...`), 69 no host could be reached
-// or started (never a fallback that would open a store in this process), 70 the host broke off or broke
-// the protocol (or the migration could not start). Everything else is the command's code.
+// (route.ts) to the host's admin methods, an MCP session or `cli.exec`. Exit codes of its own: 64 usage
+// (`cashu host ...`), 69 no host could be reached or started (never a fallback that would open a store
+// in this process), 70 the host broke off or broke the protocol. Everything else is the command's code.
 import { homedir, userInfo } from "node:os";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
 import { createBackendI18n, createTranslator, type Translator } from "@cashu/i18n";
@@ -232,33 +231,6 @@ async function runHostAdmin(ctx: Context, action: "status" | "stop" | "run"): Pr
   }
 }
 
-/**
- * `cashu migrate ...`: the host binary's in-place import for the resolved data dir, in the
- * foreground on this terminal (stdin included: `--json` reads the words answer), never through a
- * host session. Its exit code (0, 1, 64) is the command's.
- */
-async function runMigrate(ctx: Context, args: readonly string[]): Promise<MainOutcome> {
-  const { command, args: argv } = hostCommand(
-    ctx.target.build,
-    ctx.dataDir.path,
-    ctx.proc.execPath,
-    ctx.proc.execArgv,
-    ctx.proc.cwd,
-    { kind: "migrate", args },
-  );
-  const outcome = await runForeground({
-    command,
-    args: argv,
-    env: ctx.target.env,
-    cwd: ctx.proc.cwd,
-  });
-  if (outcome.kind === "failed") {
-    say(ctx.proc, "stderr", ctx.t.tr(S.migrateUnavailable));
-    return { code: FAILURE_EXIT };
-  }
-  return outcome.kind === "signal" ? { signal: outcome.signal } : { code: outcome.code };
-}
-
 /** The host's environment when the shim starts it: the shim's, `.env.dev` additions filled in. */
 function hostEnv(
   env: NodeJS.ProcessEnv,
@@ -327,8 +299,6 @@ export async function main(argv: readonly string[], proc: ShimProcess): Promise<
       return { code: USAGE_EXIT };
     case "host":
       return runHostAdmin(ctx, r.action);
-    case "migrate":
-      return runMigrate(ctx, r.args);
     case "mcp":
       return runMcp(ctx, r.profile);
     case "cli":

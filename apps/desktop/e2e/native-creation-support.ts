@@ -49,7 +49,6 @@ export function nativeCreationHarness(): NativeCreationHarness {
     CASHU_DATA_DIR: dataDir,
     CASHU_LEGACY_DATA_DIR: join(root, "legacy"),
     CASHU_WORKSPACES_DIR: join(root, "workspaces"),
-    CASHU_LAUNCH_AGENTS_DIR: join(root, "LaunchAgents"),
     TMPDIR: process.env.TMPDIR ?? tmpdir(),
   };
   const service = `cashu-next-test.${randomBytes(16).toString("hex")}`;

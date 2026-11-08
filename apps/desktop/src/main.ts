@@ -1,5 +1,4 @@
 /// <reference types="node" />
-import { spawn } from "node:child_process";
 import { appendFileSync, chmodSync, existsSync, renameSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -52,11 +51,7 @@ import {
   uiDevicesAllowed,
   uiPairingAllowed,
 } from "@cashu/host-protocol";
-import {
-  type RecoveryImportEvent,
-  recoveryCommand,
-  startupFailure,
-} from "@cashu/host-protocol/startup-failure";
+import { recoveryCommand } from "@cashu/host-protocol/startup-failure";
 import {
   acquireHostLock,
   activateHost,
@@ -78,7 +73,7 @@ import {
   spawnDetachedHost,
   waitForHostLock,
 } from "@cashu/node-host";
-import { legacyDataAdmission, legacySourceRoots } from "@cashu/node-host/admission";
+import { legacySourceRoots, oldAppDataRoots } from "@cashu/node-host/admission";
 import { packagedBuildId, readBundleIdentity } from "@cashu/node-host/bundle-identity";
 import { processFlavor } from "@cashu/node-host/flavor";
 import { readTestBuildMarker, type TestBuildMarker } from "@cashu/node-host/test-build";
@@ -116,12 +111,11 @@ import { shouldRegisterProtocol } from "./deeplink.js";
 import { hostLaunch, PACKAGED_HOST_ENTRY } from "./hostLaunch.js";
 import { HostRelay, HostRelays, type RelayPort } from "./hostRelay.js";
 import { linkFromArgv } from "./links.js";
-import { importDoneEvent, type MigrateOutcome, runMigration } from "./migrateRun.js";
 import { createNotificationClickRouter } from "./notification/clickRouter.js";
 import { notificationIntake } from "./notification/early.js";
 import { loadNativeNotificationCenter, releaseResponseHandler } from "./notification/native.js";
 import type { NotificationResponsePair } from "./notification/responses.js";
-import { StartupRecovery } from "./recovery.js";
+import { type OldAppData, StartupRecovery } from "./recovery.js";
 import { ALLOW, EXTERNAL, navigationDecision, sanitizeLogLine } from "./security.js";
 import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { ensurePrivateDir } from "./state.js";
@@ -277,7 +271,6 @@ const desktop = new DesktopApp({
     window.on("page-title-updated", (event) => event.preventDefault());
     window.webContents.on("did-start-navigation", (details) => {
       notificationClickRouter.setUnready();
-      if (details.isMainFrame && !details.isSameDocument) cancelPendingWords();
     });
     window.on("closed", () => {
       mainWindow = null;
@@ -423,28 +416,16 @@ ipcMain.handle("cashu:notifications-request-permission", async (event) => {
 // ---- the recovery screen's bridge (works while the host is down) --------------------------------
 
 const promptLangSchema = z.enum(["pl", "en"]);
-const wordsAnswerSchema = z.boolean();
-/** The failures "Import my data" fixes: it imports, or finishes an interrupted cutover. */
-const IMPORTABLE = new Set(["python_data_present", "migration_incomplete"]);
+/** The user chose "Continue without the old data" on the old-data screen (this run only). */
+let oldDataContinued = false;
 
-/** The running import: `answer` is set while the recovery words wait for the user. */
-interface ImportRun {
-  answer: ((confirmed: boolean) => void) | null;
-}
-let importRun: ImportRun | null = null;
-/** The MCP reconnect lines of the finished import, for the screen's Copy (never from the page). */
-let importedMcp: string | null = null;
-
-function sendImportEvent(event: RecoveryImportEvent): void {
-  mainWindow?.webContents.send("cashu:recovery-import-event", event);
-}
-
-/** The page that showed the words went away: the child is told to cancel (nothing is created). */
-function cancelPendingWords(): void {
-  const answer = importRun?.answer;
-  if (!importRun || !answer) return;
-  importRun.answer = null;
-  answer(false);
+/** Main's own admission: the old (Python) app's data, and whether a native profile exists yet. */
+function oldAppData(): OldAppData {
+  return {
+    roots: oldAppDataRoots(admissionRoots),
+    nativeInventory: existsSync(join(dataDir, "native", "v1", "inventory.json")),
+    continued: oldDataContinued,
+  };
 }
 
 ipcMain.handle("cashu:recovery-report", (event) =>
@@ -462,23 +443,26 @@ ipcMain.handle("cashu:recovery-copy", async (event, raw: unknown) => {
     return false;
   }
 });
-ipcMain.handle("cashu:recovery-copy-mcp", async (event) => {
-  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || importedMcp === null) return false;
-  try {
-    await clipboard.writeText(importedMcp);
-    return true;
-  } catch {
-    return false;
-  }
-});
 ipcMain.handle("cashu:recovery-open", async (event) => {
   if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !recovery.active) return false;
   return (await shell.openPath(dataDir)) === "";
 });
 ipcMain.handle("cashu:recovery-retry", async (event) => {
-  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !recovery.active || importRun !== null)
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !recovery.active) return false;
+  recovery.admit(oldAppData(), new Date());
+  await desktop.restart();
+  return true;
+});
+ipcMain.handle("cashu:recovery-continue", async (event) => {
+  if (
+    !desktop.exposesBridgeTo(fromMainFrame(event)) ||
+    recovery.failure?.code !== "python_data_present"
+  )
     return false;
-  recovery.admit(legacyDataAdmission(admissionRoots), new Date());
+  // The old data stays where it is, untouched; first-run setup creates the native profile beside it.
+  oldDataContinued = true;
+  log("recovery: continued without the old app data");
+  recovery.clear();
   await desktop.restart();
   return true;
 });
@@ -487,93 +471,6 @@ ipcMain.handle("cashu:recovery-quit", (event) => {
   desktop.requestQuit();
   return true;
 });
-ipcMain.handle("cashu:recovery-import", (event) => {
-  const failure = recovery.failure;
-  if (
-    !desktop.exposesBridgeTo(fromMainFrame(event)) ||
-    importRun !== null ||
-    failure === null ||
-    !IMPORTABLE.has(failure.code) ||
-    !hostAdmissionOpen ||
-    (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY)))
-  )
-    return false;
-  const run: ImportRun = { answer: null };
-  importRun = run;
-  void importData(run);
-  return true;
-});
-ipcMain.handle("cashu:recovery-import-words", (event, raw: unknown) => {
-  const confirmed = wordsAnswerSchema.safeParse(raw);
-  const answer = importRun?.answer;
-  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !confirmed.success || !importRun || !answer)
-    return false;
-  importRun.answer = null;
-  answer(confirmed.data);
-  return true;
-});
-
-/**
- * "Import my data": the host entry in migrate mode as an attached child (same binary, Node mode,
- * environment and data dir as a host start). Done loads the app, unless the import left instruments
- * the app cannot value: the screen lists them first and its "Open cashU" is Retry (the admission
- * then finds no Python data and leaves recovery). Failed shows the recovery screen for that code
- * (with its report pair); cancelled returns to the python_data_present screen.
- */
-async function importData(run: ImportRun): Promise<void> {
-  log("recovery: import started");
-  let outcome: MigrateOutcome;
-  try {
-    const launch = hostLaunch({ ...launchBase(), command: "migrate" });
-    const child = spawn(launch.command, launch.args, {
-      env: launch.env,
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-    outcome = await runMigration(child, {
-      progress: (stage) => sendImportEvent({ kind: "progress", stage }),
-      words: (words) =>
-        new Promise<boolean>((resolve) => {
-          run.answer = resolve;
-          sendImportEvent({ kind: "words", words });
-        }),
-    });
-  } catch {
-    outcome = { kind: "failed", failure: startupFailure("unknown") };
-  } finally {
-    run.answer = null;
-    importRun = null;
-  }
-  if (outcome.kind === "done") {
-    log(`recovery: import finished (${outcome.done.status})`);
-    const unpriced = outcome.done.unpriced ?? [];
-    if (unpriced.length > 0)
-      log(`recovery: ${unpriced.length} imported instruments cannot be valued`);
-    const agents = outcome.done.agents;
-    if (agents !== undefined)
-      log(
-        `recovery: python agents ${agents.agents.map((a) => `${a.label}=${a.state}`).join(" ")} bootout=${agents.bootout}`,
-      );
-    const done = importDoneEvent(
-      outcome.done,
-      join(dataDir, "bin", "cashu"),
-      flavor.mcpServerPrefix,
-    );
-    if (done !== null) {
-      importedMcp = done.mcpCommands.length > 0 ? `${done.mcpCommands.join("\n")}\n` : null;
-      sendImportEvent(done);
-      return;
-    }
-    recovery.clear();
-    await desktop.restart();
-  } else if (outcome.kind === "cancelled") {
-    log("recovery: import cancelled");
-    sendImportEvent({ kind: "cancelled" });
-  } else {
-    recovery.enter(outcome.failure, new Date());
-    showRecovery();
-  }
-}
-
 // ---- the renderer's store channel, relayed to the local host (S56b) -----------------------------
 
 // The data dir's host (apps/host): connected to as a `ui` client per renderer frame and started on
@@ -586,12 +483,9 @@ const HOST_BUILD = app.isPackaged
     })()
   : "desktop-dev";
 let hostAdmissionOpen = true;
-const nativeAdmissionOpen = () =>
-  hostAdmissionOpen &&
-  !recovery.active &&
-  legacyDataAdmission(admissionRoots) === "no_legacy_sentinel";
+const nativeAdmissionOpen = () => hostAdmissionOpen && !recovery.active;
 
-// ---- start-up recovery (T54): Python data present, a typed host failure, a failed import --------
+// ---- start-up recovery (T54): old app data before the first profile, a typed host failure -------
 
 const recovery = new StartupRecovery({
   dataDir,
@@ -1042,7 +936,7 @@ function startHost(): void {
   if (app.isPackaged && !existsSync(join(process.resourcesPath, PACKAGED_HOST_ENTRY))) {
     throw new Error("bundled host unavailable");
   }
-  const launch = hostLaunch({ ...launchBase(), command: "run" });
+  const launch = hostLaunch(launchBase());
   spawnDetachedHost({ ...launch, logPath: hostRunPaths(dataDir).logPath });
   log("local host started");
 }
@@ -1307,8 +1201,9 @@ if (!hasLock) {
     if (process.platform === "darwin" && existsSync(iconPath)) {
       app.dock?.setIcon(nativeImage.createFromPath(iconPath));
     }
-    // Main's own admission: Python data shows the recovery screen; no host is started for it.
-    recovery.admit(legacyDataAdmission(admissionRoots), new Date());
+    // Main's own admission: old app data before the first native profile shows the recovery screen
+    // (its prompt and Continue); no host is started until the user continues.
+    recovery.admit(oldAppData(), new Date());
     const result = await desktop.start(linkFromArgv(process.argv.slice(1)));
     log(
       `start: ${result}${desktop.error ? ` (${desktop.error})` : ""}${testBuild ? " TEST BUILD" : ""}`,

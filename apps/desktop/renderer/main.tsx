@@ -29,8 +29,8 @@ if (root === null) throw new Error("renderer root is missing");
 const renderer = createRoot(root);
 const retry = () => location.reload();
 renderer.render(<BootstrapView phase="waiting" onRetried={retry} />);
-// Electron main loads `?recovery=1` when the start sequence failed (Python data present, or the
-// host recorded a typed failure); that screen needs no host and opens no store channel.
+// Electron main loads `?recovery=1` when it found the old app's data before the first profile, or the
+// host recorded a typed failure; that screen needs no host and opens no store channel.
 if (new URL(location.href).searchParams.get("recovery") === "1") {
   renderer.render(<RecoveryScreen report={await readRecoveryReport()} bridge={recoveryBridge()} />);
 } else {

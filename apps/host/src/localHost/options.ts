@@ -114,9 +114,6 @@ export interface LocalHostOptions {
   readonly classifierSettings?: ClassifierSettingsSource;
   /** Injected only after genuine per-job ownership and per-vault authority are available. */
   readonly worker?: WorkerFactory;
-  /** Additional read-only source roots checked by the production entry. The selected data dir
-   * is always checked here, including when Create starts before any vault or worker exists. */
-  readonly assertNativeSourceAdmission?: () => void;
   /** Injected overview sources (tests, the synthetic harness). Production prices come from the
    * market runtime's persistent SqlPriceCache (`marketFactory`); without a cache, overview uses last
    * trades. */

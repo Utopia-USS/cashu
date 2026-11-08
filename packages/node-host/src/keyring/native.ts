@@ -6,12 +6,6 @@ export interface OsKeyringPort {
   set(service: string, account: string, value: Uint8Array): Promise<void>;
 }
 
-/** A port that can also remove an item (only the in-place migration's KEK cleanup needs it). */
-export interface OsKeyringDeletePort extends OsKeyringPort {
-  /** Removes the item; an absent item is not an error. */
-  delete(service: string, account: string): Promise<void>;
-}
-
 const TEST_SERVICE = /^cashu-next-test\.[0-9a-f]{32}$/;
 let testBuildNamespace = false;
 
@@ -41,7 +35,7 @@ export function addressedService(service: string): string {
 }
 
 /** Exact binary N-API Keychain/Secret Service access. Native errors never leave this boundary. */
-export function nativeOsKeyring(): OsKeyringDeletePort {
+export function nativeOsKeyring(): OsKeyringPort {
   if (process.platform !== "darwin" && process.platform !== "linux") {
     throw new crypto.CryptoError("keystore_unavailable");
   }
@@ -71,14 +65,6 @@ export function nativeOsKeyring(): OsKeyringDeletePort {
       const item = await entry(service, account);
       try {
         await item.setSecret(value);
-      } catch {
-        throw new crypto.CryptoError("keystore_unavailable");
-      }
-    },
-    async delete(service, account) {
-      const item = await entry(service, account);
-      try {
-        await item.deleteCredential();
       } catch {
         throw new crypto.CryptoError("keystore_unavailable");
       }

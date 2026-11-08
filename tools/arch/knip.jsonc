@@ -35,9 +35,7 @@
         "src/testing/nativeCreationHost.ts",
         "src/testing/devDemo.ts",
         "src/testing/seedOverviewDemo.ts",
-        "src/testing/seedPythonData.ts",
-        "src/testing/syntheticCliHost.ts",
-        "src/testing/syntheticMigrate.ts"
+        "src/testing/syntheticCliHost.ts"
       ],
       "project": ["src/**/*.ts"],
       // OS FIFO utility used by the native blob security test.

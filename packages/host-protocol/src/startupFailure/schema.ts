@@ -1,4 +1,4 @@
-// Wire forms of a start-up failure: the record the host (or the migration CLI) writes to
+// Wire forms of a start-up failure: the record the host writes to
 // `<data dir>/diagnostics/startup-failure.json`, and the report Electron main hands to the renderer
 // and writes beside it. Both are strict: an unknown field, a free string or a fractional count fails
 // the parse, and the reader then treats the failure as `unknown`.

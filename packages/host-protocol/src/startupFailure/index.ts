@@ -1,11 +1,10 @@
-// @cashu/host-protocol/startup-failure: typed start-up / migration failures, their wire schemas, the
-// allow-list redaction and the copy-paste agent prompt (T54 recovery screen). Platform free: the
-// host, the migration CLI and Electron main do the file I/O; the renderer only parses and renders.
+// @cashu/host-protocol/startup-failure: typed start-up failures, their wire schemas, the allow-list
+// redaction and the copy-paste agent prompt (T54 recovery screen). Platform free: the host and
+// Electron main do the file I/O; the renderer only parses and renders.
 export {
   classifyStartupError,
   countFacts,
   errorCode,
-  failureDetail,
   STARTUP_FACT_KEYS,
   STARTUP_FAILURE_CODES,
   STARTUP_FAILURE_DETAIL_NAMES,
@@ -28,39 +27,7 @@ export {
   recoveryCommand,
   recoveryCommandSchema,
 } from "./command.js";
-export {
-  failedAgentCommands,
-  fitUnpriced,
-  MIGRATE_CANCEL,
-  MIGRATE_CONFIRM,
-  MIGRATE_MCP_PROFILES_MAX,
-  MIGRATE_PROFILE_SLUG,
-  MIGRATE_STAGES,
-  MIGRATE_UNPRICED_LABEL_MAX,
-  MIGRATE_UNPRICED_MAX,
-  type MigrateDone,
-  type MigrateFailed,
-  type MigrateLine,
-  type MigrateStage,
-  migrateDoneSchema,
-  migrateFailedSchema,
-  migrateLineSchema,
-  migrateProgressSchema,
-  migrateWordsSchema,
-  PYTHON_AGENT_LABELS,
-  type PythonAgentLabel,
-  type PythonAgentRetirement,
-  parseMigrateLine,
-  pythonAgentRetirementSchema,
-  RECOVERY_MCP_COMMAND_MAX,
-  RECOVERY_WORDS,
-  type RecoveryImportEvent,
-  recoveryImportEventSchema,
-  retirePythonAgentCommands,
-  type UnpricedInstrument,
-  unpricedInstrumentSchema,
-} from "./migrateProtocol.js";
-export { buildRecoveryPrompt, MIGRATION_RUNBOOK, recoveryCommands } from "./prompt.js";
+export { buildRecoveryPrompt } from "./prompt.js";
 export { PROMPT, type PromptLang } from "./prompt.strings.js";
 export {
   appVersionLabel,

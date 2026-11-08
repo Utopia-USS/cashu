@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { legacyDataAdmission, legacySourceRoots } from "@cashu/node-host/admission";
+import { legacySourceRoots, oldAppDataRoots } from "@cashu/node-host/admission";
 import { FLAVORS } from "@cashu/node-host/flavor";
 import { describe, expect, it } from "vitest";
 import {
@@ -130,7 +130,7 @@ describe("test-build data dir", () => {
         chosen.choice.explicit,
       );
       expect(roots).toEqual([data]);
-      expect(legacyDataAdmission(roots)).toBe("migration_required");
+      expect(oldAppDataRoots(roots)).toBe(1);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -32,10 +32,6 @@ export const S = {
     pl: "Połączenie z usługą cashU w tle zostało przerwane w trakcie polecenia.",
     en: "The connection to the cashU background service was lost while the command ran.",
   } satisfies Text,
-  migrateUnavailable: {
-    pl: "Nie można uruchomić importu danych cashU (`cashu migrate`). W wersji deweloperskiej sprawdź instalację zależności.",
-    en: "Cannot start the cashU data import (`cashu migrate`). In a development checkout, check the installed dependencies.",
-  } satisfies Text,
   dataDirUnresolved: {
     pl: (detail: string) => `Nie można ustalić katalogu danych cashU: ${detail}.`,
     en: (detail: string) => `Cannot work out the cashU data dir: ${detail}.`,

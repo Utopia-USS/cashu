@@ -65,7 +65,6 @@ async function productionOptions(): Promise<LocalHostOptions> {
       CASHU_DATA_DIR: dataDir,
       CASHU_WORKSPACES_DIR: join(root, "workspaces"),
       CASHU_LEGACY_DATA_DIR: join(root, "legacy"),
-      CASHU_LAUNCH_AGENTS_DIR: join(root, "LaunchAgents"),
     },
     build: "production-actions-test",
     stdout: () => undefined,

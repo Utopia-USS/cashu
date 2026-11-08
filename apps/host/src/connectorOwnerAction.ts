@@ -193,7 +193,8 @@ export function connectorOwnerAction(input: {
               ctx.emit("connectorBinding.set", gid, {
                 account: action.account,
                 connectorId: action.id,
-                params: action.params,
+                // A number param 1.5 travels as "1.5" (events.md 4.3); the fold puts the number back.
+                ...v1.eventBlob("params", action.params),
                 autoCommit: action.autoCommit,
               });
               return ok({ binding: gid });

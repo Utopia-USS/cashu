@@ -51,27 +51,23 @@ function diagnostics(): string[] {
   }
 }
 
+const OLD_DATA = { roots: 1, nativeInventory: false, continued: false } as const;
+
 describe("admissionFailure", () => {
-  it("maps Python data to python_data_present and nothing else", () => {
-    expect(admissionFailure("migration_required")).toEqual(
-      startupFailure("python_data_present", "python_data_found"),
+  it("shows old app data only before the first native profile and until the user continues", () => {
+    expect(admissionFailure(OLD_DATA)).toEqual(
+      startupFailure("python_data_present", "python_data_found", { pythonSources: 1 }),
     );
-    expect(admissionFailure("refused")).toEqual(
-      startupFailure("python_data_present", "python_data_unsafe"),
-    );
-    expect(admissionFailure("no_legacy_sentinel")).toBeNull();
-  });
-  it("maps an unfinished in-place cutover to migration_incomplete", () => {
-    expect(admissionFailure("migration_incomplete")).toEqual(
-      startupFailure("migration_incomplete", "cutover_failed"),
-    );
+    expect(admissionFailure({ ...OLD_DATA, roots: 0 })).toBeNull();
+    expect(admissionFailure({ ...OLD_DATA, nativeInventory: true })).toBeNull();
+    expect(admissionFailure({ ...OLD_DATA, continued: true })).toBeNull();
   });
 });
 
 describe("StartupRecovery", () => {
-  it("enters on Python data, writes one private report pair and keeps it on a retry", () => {
+  it("enters on old app data, writes one private report pair and keeps it on a retry", () => {
     const recovery = new StartupRecovery(deps());
-    expect(recovery.admit("migration_required", AT)).toBe(true);
+    expect(recovery.admit(OLD_DATA, AT)).toBe(true);
     expect(recovery.active).toBe(true);
     const files = diagnostics();
     expect(files).toEqual([
@@ -91,12 +87,12 @@ describe("StartupRecovery", () => {
     );
     const text = readFileSync(join(dataDir, "diagnostics", files[1] ?? ""), "utf8");
     expect(text).toBe(recovery.prompt("en"));
-    expect(text).toContain('~/"Library/Application Support/cashU/bin/cashu" migrate\n');
+    expect(text).toContain('~/"Library/Application Support/cashU/bin/cashu" mcp --profile <slug>');
     expect(recovery.prompt("pl")).toContain("Kod błędu: python_data_present");
 
-    expect(recovery.admit("migration_required", new Date(AT.valueOf() + 1000))).toBe(true);
+    expect(recovery.admit(OLD_DATA, new Date(AT.valueOf() + 1000))).toBe(true);
     expect(diagnostics()).toEqual(files);
-    expect(recovery.admit("no_legacy_sentinel", AT)).toBe(false);
+    expect(recovery.admit({ ...OLD_DATA, continued: true }, AT)).toBe(false);
     expect(recovery.active).toBe(false);
     expect(recovery.prompt("en")).toBeNull();
     // Diagnostics files are never deleted.
@@ -144,9 +140,9 @@ describe("StartupRecovery", () => {
     const file = join(home, "not-a-dir");
     writeFileSync(file, "synthetic");
     const recovery = new StartupRecovery(deps({ dataDir: file }));
-    const report = recovery.enter(startupFailure("migrate_import_failed", "source_changed"), AT);
+    const report = recovery.enter(startupFailure("view_rebuild_failed"), AT);
     expect(report.reportFile).toBeNull();
-    expect(report.failure.stage).toBe("migrate_import");
+    expect(report.failure.stage).toBe("view_rebuild");
     expect(recovery.active).toBe(true);
     expect(lines[0]).toBe("recovery: the diagnostics report could not be written");
   });

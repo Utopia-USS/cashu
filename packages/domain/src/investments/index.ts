@@ -6,7 +6,6 @@
  */
 
 export * as alerts from "./alerts/index.js";
-export * from "./dedupKey.js";
 export * from "./domain/index.js";
 export * as market from "./market/index.js";
 export * from "./networth.js";

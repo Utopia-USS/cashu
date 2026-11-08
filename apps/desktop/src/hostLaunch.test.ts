@@ -8,7 +8,6 @@ const base = {
   resourcesPath: "/apps/cashU.app/Contents/Resources",
   env: { CASHU_DATA_DIR: "/lab/data", PATH: "/usr/bin" },
   build: "desktop-dev",
-  command: "run" as const,
 };
 
 describe("hostLaunch", () => {
@@ -40,28 +39,6 @@ describe("hostLaunch", () => {
       "/lab/data",
       "--bundle",
       "/apps/cashU.app/Contents/Resources/host.mjs",
-    ]);
-  });
-
-  it("runs the migration with the same entry, binary and environment", () => {
-    const dev = hostLaunch({ ...base, isPackaged: false, command: "migrate" });
-    expect(dev.args).toEqual([
-      "--disable-warning=ExperimentalWarning",
-      "--import",
-      "/repo/tools/node-ts/resolveTs.ts",
-      "/repo/apps/host/src/cli.ts",
-      "migrate",
-      "--data-dir",
-      "/lab/data",
-      "--json",
-    ]);
-    expect(dev.env).toEqual(hostLaunch({ ...base, isPackaged: false }).env);
-    expect(hostLaunch({ ...base, isPackaged: true, command: "migrate" }).args).toEqual([
-      "/apps/cashU.app/Contents/Resources/host.mjs",
-      "migrate",
-      "--data-dir",
-      "/lab/data",
-      "--json",
     ]);
   });
 

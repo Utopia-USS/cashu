@@ -1,6 +1,6 @@
 // Texts of the copy-paste agent prompt (the recovery screen's "Copy prompt for agent"), PL + EN
-// (docs/agents/localization.md). Resolved with an explicit language, because Electron main and the
-// migration CLI have no UI language source. The commands and codes inside stay as they are.
+// (docs/agents/localization.md). Resolved with an explicit language, because Electron main has no UI
+// language source. The commands, codes and tool names inside stay as they are.
 import type { StartupFailureCode } from "./codes.js";
 
 export type PromptLang = "pl" | "en";
@@ -9,6 +9,10 @@ export const PROMPT = {
   intro: {
     pl: "cashU nie uruchomił się. Pomóż mi zdiagnozować problem. Poniżej są tylko kody, etapy, liczby i ścieżki względem katalogu domowego - żadnych moich danych finansowych.",
     en: "cashU could not start. Please help me diagnose it. Below are only codes, stages, counts and paths relative to my home folder - none of my financial data.",
+  },
+  introOldData: {
+    pl: "cashU znalazł w swoim folderze danych dane starej aplikacji cashU (Python). Aplikacja ich nie importuje; pomóż mi je przenieść. Poniżej są tylko kody, etapy, liczby i ścieżki względem katalogu domowego - żadnych moich danych finansowych.",
+    en: "cashU found data of the old (Python) cashU app in its data folder. The app does not import it; please help me bring it over. Below are only codes, stages, counts and paths relative to my home folder - none of my financial data.",
   },
   app: { pl: "Aplikacja", en: "App" },
   build: { pl: "kompilacja", en: "build" },
@@ -33,24 +37,36 @@ export const PROMPT = {
     pl: (n: number) => `(pominięto wierszy bez kodu: ${n})`,
     en: (n: number) => `(lines without a code left out: ${n})`,
   },
-  commandsTitle: {
-    pl: "Polecenia do uruchomienia w Terminalu (dokładnie w tej postaci):",
-    en: "Commands to run in Terminal (exactly as shown):",
+  oldDataTitle: {
+    pl: "Jak przenieść stare dane (robisz to Ty, agent, przez ścieżki importu aplikacji):",
+    en: "How to bring the old data over (you, the agent, do it through the app's import paths):",
   },
-  migrateHint: {
-    pl: "`migrate` importuje dane starej aplikacji do tego folderu (oryginalne pliki trafiają nienaruszone do python-backup-<czas>/) albo kończy przerwany import; `migrate verify` porównuje zaimportowane dane z kopią danych Pythona i niczego nie zmienia.",
-    en: "`migrate` imports the old app's data into this folder (the original files move intact into python-backup-<time>/) or finishes an interrupted import; `migrate verify` compares the imported data with the copy of the Python data and changes nothing.",
+  oldDataSetup: {
+    pl: (mcp: string) =>
+      `Poproś mnie, żebym w aplikacji wybrał(a) "Kontynuuj bez starych danych" i założył(a) profil, potem podłącz serwer MCP profilu: \`${mcp}\`.`,
+    en: (mcp: string) =>
+      `Ask me to choose "Continue without the old data" in the app and create the profile, then connect the profile's MCP server: \`${mcp}\`.`,
   },
-  verifyHint: {
-    pl: "`migrate verify` porównuje zaimportowane dane z kopią danych Pythona i niczego nie zmienia.",
-    en: "`migrate verify` compares the imported data with the copy of the Python data and changes nothing.",
+  oldDataSkill: {
+    pl: 'Pracuj w przestrzeni agenta tego profilu według umiejętności import-builder, sekcja "Old cashU (Python) data".',
+    en: 'Work in the profile\'s agent workspace and follow the import-builder skill, section "Old cashU (Python) data".',
   },
-  runbook: { pl: "Instrukcja migracji", en: "Migration runbook" },
-  runbookWhere: { pl: "w repozytorium cashU", en: "in the cashU repository" },
+  oldDataBlind: {
+    pl: "Nigdy nie oglądaj wartości ze starej bazy (kwot, numerów kont, IBAN-ów, nazw, tytułów): schemat poznaj tylko z nazw tabel i kolumn (`.schema` na kopii) oraz z historii repozytorium cashU, a wynik sprawdzaj narzędziami bez wartości (`inspect_export`, `validate_import`, `validate_budget_import`).",
+    en: "Never look at the values in the old database (amounts, account numbers, IBANs, names, titles): learn its schema only from table and column names (`.schema` on a copy) and the cashU repository history, and check your output with value-free tools (`inspect_export`, `validate_import`, `validate_budget_import`).",
+  },
+  oldDataConvert: {
+    pl: "Na kopii cashu.db poza folderem danych uruchom lokalnie własny konwerter do formatów z docs/budget-import-format.md (wyciągi) i docs/import-format.md (historia inwestycji); historię inwestycji przekaż przez `propose_import`, a plik budżetu zaimportuję sam w Wydatki > Import.",
+    en: "On a copy of cashu.db outside the data folder, run your own converter locally into the formats of docs/budget-import-format.md (statements) and docs/import-format.md (investment history); hand the investment history over with `propose_import`, and I import the budget file myself in Wydatki > Import.",
+  },
+  oldDataRest: {
+    pl: "Strategię (strategy.md, strategy.yaml) skopiuj do przestrzeni agenta nowego profilu albo zaproponuj przez `propose_strategy`; notatki, tezy, obserwowane i alerty dodaj narzędziami MCP (`add_research_note`, `upsert_thesis`, `add_to_watchlist`, `add_alert`). Powiedz mi, czego nie da się przenieść.",
+    en: "Copy the strategy (strategy.md, strategy.yaml) into the new profile's agent workspace or propose it with `propose_strategy`; add notes, theses, watchlist entries and alerts with the MCP tools (`add_research_note`, `upsert_thesis`, `add_to_watchlist`, `add_alert`). Tell me what cannot be brought over.",
+  },
   rulesTitle: { pl: "Zasady dla agenta:", en: "Rules for the agent:" },
   ruleCopy: {
-    pl: "Niczego w folderze danych nie edytuj, nie przenoś ani nie usuwaj ręcznie; zmieniać go mogą tylko powyższe polecenia cashU. Wszystko inne próbuj na kopii.",
-    en: "Do not edit, move or delete anything in the data folder by hand; only the cashU commands above may change it. Try anything else on a copy.",
+    pl: "Niczego w folderze danych nie edytuj, nie przenoś ani nie usuwaj; zmienia go tylko aplikacja. Wszystko próbuj na kopii poza nim.",
+    en: "Do not edit, move or delete anything in the data folder; only the app changes it. Try everything on a copy outside it.",
   },
   ruleDelete: {
     pl: "Niczego nie usuwaj ani nie nadpisuj, także plików diagnostycznych i kopii zapasowych.",
@@ -61,8 +77,8 @@ export const PROMPT = {
     en: "Never send data anywhere: no uploads, and never paste file contents, amounts, account numbers, names or counterparties into the chat.",
   },
   ruleAsk: {
-    pl: "Podawaj mi polecenia do uruchomienia i wyjaśniaj kody, które zwracają; uruchomię je sam lub sama.",
-    en: "Give me the commands to run and explain the codes they print; I will run them myself.",
+    pl: "Zanim cokolwiek zmienisz lub zaproponujesz, powiedz mi, co zrobisz; importy i propozycje zatwierdzam sam lub sama w aplikacji.",
+    en: "Tell me what you will do before you change or propose anything; I approve imports and proposals myself in the app.",
   },
   codeMeaning: {
     pl: (code: StartupFailureCode) => MEANING_PL[code],
@@ -72,35 +88,23 @@ export const PROMPT = {
 
 const MEANING_PL: Record<StartupFailureCode, string> = {
   python_data_present:
-    "W folderze danych są dane starej aplikacji (Python). Nowa aplikacja ich nie otwiera; trzeba je jednorazowo zaimportować (`cashu migrate`) i zweryfikować.",
+    "W folderze danych są dane starej aplikacji cashU (Python), a nie ma jeszcze profilu nowej aplikacji. Aplikacja ich nie otwiera, nie przenosi i nie zmienia; można je przenieść przez ścieżki importu z pomocą agenta.",
   native_inventory_unavailable:
     "Spis sejfów (native/v1/inventory.json) albo dziennik tworzenia profilu jest niekompletny lub nieprawidłowy, więc usługa w tle odmówiła startu.",
   vault_key_unavailable:
     "Klucz sejfu nie jest dostępny w pęku kluczy systemu albo nie daje się odszyfrować.",
-  migrate_verify_mismatch:
-    "Weryfikacja migracji (migrate verify) znalazła różnicę między danymi Pythona a zaimportowanym sejfem.",
   view_rebuild_failed:
     "Nie udało się odbudować widoku z zaszyfrowanej historii; historia pozostaje nietknięta.",
-  migrate_import_failed:
-    "Import danych Pythona (cashu migrate) przerwał się. Import czyta tylko kopię danych i usuwa własne pliki tymczasowe, więc oryginał jest nietknięty i import można powtórzyć.",
-  migration_incomplete:
-    "Import danych Pythona został przerwany w trakcie przełączania (istnieje dziennik przełączenia). Pliki Pythona są nadal na miejscu albo już nienaruszone w python-backup-<czas>/; ponowne `cashu migrate` dokończy przełączenie.",
   unknown: "Przyczyna nie ma jeszcze własnego kodu; pomóc może log i powtórzenie startu.",
 };
 
 const MEANING_EN: Record<StartupFailureCode, string> = {
   python_data_present:
-    "The data folder holds data of the old (Python) app. The new app does not open it; it has to be imported once (`cashu migrate`) and verified.",
+    "The data folder holds data of the old (Python) cashU app and no profile of the new app yet. The app never opens, moves or changes it; an agent can bring it over through the import paths.",
   native_inventory_unavailable:
     "The vault inventory (native/v1/inventory.json) or the profile creation journal is incomplete or invalid, so the background service refused to start.",
   vault_key_unavailable: "A vault key is missing from the system key store or cannot be decrypted.",
-  migrate_verify_mismatch:
-    "Migration verification (migrate verify) found a difference between the Python data and the imported vault.",
   view_rebuild_failed:
     "The view could not be rebuilt from the encrypted history; the history itself is untouched.",
-  migrate_import_failed:
-    "The import of the Python data (cashu migrate) stopped. The import reads only a copy of the data and removes its own staging files, so the original is untouched and the import can be run again.",
-  migration_incomplete:
-    "The import of the Python data stopped during the switch-over (a cutover journal exists). The Python files are still in place or already intact in python-backup-<time>/; running `cashu migrate` again finishes the switch-over.",
   unknown: "The cause has no code of its own yet; the log and a retry may help.",
 };

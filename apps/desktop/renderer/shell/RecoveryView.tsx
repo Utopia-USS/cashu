@@ -1,40 +1,7 @@
-import { Button, Card, CodeLine } from "@cashu/ui";
-import {
-  type RecoveryAgents,
-  type RecoveryCode,
-  type RecoveryStage,
-  type RecoveryUnpriced,
-  S,
-} from "./Recovery.strings.js";
+import { Button, Card } from "@cashu/ui";
+import { type RecoveryCode, S } from "./Recovery.strings.js";
 
 export type RecoveryNotice = "copied" | "copyFailed" | "openFailed";
-
-/** "Import my data" as the view sees it. */
-export interface ImportView {
-  /** `import` (Python data present), `finish` (an interrupted cutover), or null (not offered). */
-  readonly kind: "import" | "finish" | null;
-  readonly phase: "idle" | "starting" | "running" | "words" | "cancelling" | "done";
-  /** Every stage in order with its state; empty until main reports the first one. */
-  readonly stages: readonly ImportStageView[];
-  /** The one-time recovery words while they wait for the user, else null. */
-  readonly words: string | null;
-  readonly wordsConfirmed: boolean;
-  readonly notice: "refused" | "cancelled" | null;
-  /** After a finished import (`done`): the imported instruments the app cannot value yet. */
-  readonly unpriced: readonly RecoveryUnpriced[];
-  /** After a finished import: the `claude mcp remove` / `add` lines per imported profile. */
-  readonly mcpCommands: readonly string[];
-  readonly mcpNotice: "copied" | "copyFailed" | null;
-  /** After a finished import: what became of the old app's launchd worker agents (null: unknown). */
-  readonly agents: RecoveryAgents | null;
-  /** The commands that finish a failed agent retirement by hand (empty when none failed). */
-  readonly agentCommands: readonly string[];
-}
-
-export interface ImportStageView {
-  readonly stage: RecoveryStage;
-  readonly status: "done" | "running" | null;
-}
 
 /** What the screen shows of the validated report (codes, `~` paths). */
 export interface RecoveryDetails {
@@ -56,17 +23,11 @@ export interface RecoveryViewProps {
   readonly busy: boolean;
   /** The main-process bridge is present. */
   readonly canAct: boolean;
-  /** An import runs (Retry waits for it). */
-  readonly importing: boolean;
-  readonly import: ImportView;
-  readonly onImport: () => void;
-  readonly onWordsConfirmed: (confirmed: boolean) => void;
-  readonly onContinueImport: () => void;
-  readonly onCancelImport: () => void;
-  readonly onCopyMcp: () => void;
   readonly onCopy: () => void;
   readonly onOpenFolder: () => void;
   readonly onRetry: () => void;
+  /** Old app data only: go on to first-run setup without it. */
+  readonly onContinueWithoutOldData: () => void;
   readonly onQuit: () => void;
 }
 
@@ -76,153 +37,6 @@ const NOTICE: Record<RecoveryNotice, () => string> = {
   openFailed: () => S.openFailed,
 };
 
-function ImportSection({
-  state,
-  canAct,
-  busy,
-  onImport,
-  onWordsConfirmed,
-  onContinueImport,
-  onCancelImport,
-  onCopyMcp,
-  onOpenApp,
-}: {
-  state: ImportView;
-  canAct: boolean;
-  busy: boolean;
-  onImport: () => void;
-  onWordsConfirmed: (confirmed: boolean) => void;
-  onContinueImport: () => void;
-  onCancelImport: () => void;
-  onCopyMcp: () => void;
-  onOpenApp: () => void;
-}) {
-  const showStages =
-    state.stages.length > 0 && (state.phase === "running" || state.phase === "words");
-  return (
-    <Card as="section" padding="lg" labelledBy="recovery-import">
-      <h2 id="recovery-import" className="text-title font-strong">
-        {S.importTitle}
-      </h2>
-      {state.phase !== "done" && <p className="mt-3">{S.importHint}</p>}
-      {state.phase === "idle" && (
-        <div className="mt-4">
-          <Button variant="primary" onPress={onImport} disabled={!canAct}>
-            {state.kind === "finish" ? S.finishImport : S.importData}
-          </Button>
-        </div>
-      )}
-      {showStages && (
-        <ol className="mt-4 grid gap-1" data-testid="recovery-import-stages">
-          {state.stages.map(({ stage, status }) => {
-            return (
-              <li
-                key={stage}
-                aria-current={status === "running" ? "step" : undefined}
-                className={status === null ? "text-fg-muted" : undefined}
-              >
-                {S.stageLabel(stage)}
-                {status === "done" && ` (${S.stageDone})`}
-                {status === "running" && ` (${S.stageRunning})`}
-              </li>
-            );
-          })}
-        </ol>
-      )}
-      {state.words !== null && (
-        <div className="mt-4 grid gap-4">
-          <h3 className="text-body font-strong">{S.wordsTitle}</h3>
-          <p>{S.wordsHint}</p>
-          <p
-            className="rounded-sm border border-border bg-surface p-4 font-mono leading-loose"
-            data-testid="migration-recovery-phrase"
-          >
-            {state.words}
-          </p>
-          <label className="flex gap-3">
-            <input
-              type="checkbox"
-              checked={state.wordsConfirmed}
-              onChange={(event) => onWordsConfirmed(event.target.checked)}
-            />
-            {S.wordsConfirmed}
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="primary" disabled={!state.wordsConfirmed} onPress={onContinueImport}>
-              {S.wordsContinue}
-            </Button>
-            <Button variant="ghost" onPress={onCancelImport}>
-              {S.wordsCancel}
-            </Button>
-          </div>
-        </div>
-      )}
-      {state.phase === "done" && (
-        <div className="mt-4 grid gap-4">
-          {state.unpriced.length > 0 && (
-            <>
-              <p>{S.unpricedHint(state.unpriced.length)}</p>
-              <ul className="grid gap-1" data-testid="recovery-unpriced">
-                {state.unpriced.map((item) => (
-                  <li key={`${item.label} ${item.currency}`}>{S.unpricedItem(item)}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          {state.mcpCommands.length > 0 && (
-            <div className="grid gap-2" data-testid="recovery-mcp">
-              <h3 className="text-body font-strong">{S.mcpTitle}</h3>
-              <p>{S.mcpHint}</p>
-              <CodeLine command={state.mcpCommands.join("\n")} onCopy={onCopyMcp} multiline />
-              <p role="status" className="text-fg-muted">
-                {state.mcpNotice === "copied"
-                  ? S.mcpCopied
-                  : state.mcpNotice === "copyFailed"
-                    ? S.mcpCopyFailed
-                    : ""}
-              </p>
-            </div>
-          )}
-          {state.agents !== null && state.agents.agents.length > 0 && (
-            <div className="grid gap-2">
-              <p data-testid="recovery-agents">{S.agents(state.agents)}</p>
-              {state.agentCommands.length > 0 && (
-                <>
-                  <p>{S.agentsByHand}</p>
-                  <pre
-                    data-testid="recovery-agents-by-hand"
-                    className="overflow-x-auto whitespace-pre-wrap rounded-sm border border-border bg-surface-sunken p-3 text-caption"
-                  >
-                    {state.agentCommands.join("\n")}
-                  </pre>
-                </>
-              )}
-            </div>
-          )}
-          <div>
-            <Button variant="primary" onPress={onOpenApp} disabled={busy || !canAct}>
-              {S.openApp}
-            </Button>
-          </div>
-        </div>
-      )}
-      <p role="status" className="mt-3 text-fg-muted">
-        {state.phase === "done"
-          ? S.importDone
-          : state.phase === "starting"
-            ? S.importStarting
-            : state.phase === "cancelling"
-              ? S.importCancelling
-              : state.notice === "refused"
-                ? S.importRefused
-                : state.notice === "cancelled"
-                  ? S.importCancelled
-                  : ""}
-      </p>
-    </Card>
-  );
-}
-
 /** Start-up recovery: what happened, why the data is safe, and what to do next. No host needed. */
 export function RecoveryView({
   details,
@@ -230,50 +44,26 @@ export function RecoveryView({
   notice,
   busy,
   canAct,
-  importing,
-  import: importState,
-  onImport,
-  onWordsConfirmed,
-  onContinueImport,
-  onCancelImport,
-  onCopyMcp,
   onCopy,
   onOpenFolder,
   onRetry,
+  onContinueWithoutOldData,
   onQuit,
 }: RecoveryViewProps) {
-  const offersImport = details !== null && importState.kind !== null;
-  // A finished import: the screen stays for its follow-up steps, so it no longer says cashU cannot start.
-  const imported = offersImport && importState.phase === "done";
+  // The old app's data is no failure: the app can start, the screen offers the agent prompt first.
+  const oldData = details?.code === "python_data_present";
   return (
     <main className="min-h-screen bg-surface p-6 text-body text-fg">
       <h1 className="text-headline font-strong">cashU</h1>
       <div className="mt-6 flex max-w-2xl flex-col gap-4">
         <Card as="section" padding="lg" labelledBy="recovery-title">
           <h2 id="recovery-title" className="text-title font-strong">
-            {imported ? S.doneTitle : S.title}
+            {oldData ? S.oldDataTitle : S.title}
           </h2>
-          {imported ? (
-            <p className="mt-3">{S.doneLead}</p>
-          ) : (
-            <p role="alert" className="mt-3">
-              {details === null ? S.unavailable : S.what(details.code)}
-            </p>
-          )}
+          <p role="alert" className="mt-3">
+            {details === null ? S.unavailable : S.what(details.code)}
+          </p>
         </Card>
-        {offersImport && (
-          <ImportSection
-            state={importState}
-            canAct={canAct}
-            busy={busy}
-            onImport={onImport}
-            onWordsConfirmed={onWordsConfirmed}
-            onContinueImport={onContinueImport}
-            onCancelImport={onCancelImport}
-            onCopyMcp={onCopyMcp}
-            onOpenApp={onRetry}
-          />
-        )}
         {details !== null && (
           <Card as="section" padding="lg" labelledBy="recovery-safe">
             <h2 id="recovery-safe" className="text-title font-strong">
@@ -309,18 +99,19 @@ export function RecoveryView({
           {prompt !== null && <p className="mt-3">{S.next}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
             {prompt !== null && (
-              <Button
-                variant={offersImport ? "secondary" : "primary"}
-                onPress={onCopy}
-                disabled={busy || !canAct}
-              >
+              <Button variant="primary" onPress={onCopy} disabled={busy || !canAct}>
                 {S.copy}
+              </Button>
+            )}
+            {oldData && (
+              <Button onPress={onContinueWithoutOldData} disabled={busy || !canAct}>
+                {S.continueWithoutOldData}
               </Button>
             )}
             <Button onPress={onOpenFolder} disabled={busy || !canAct}>
               {S.openFolder}
             </Button>
-            <Button onPress={onRetry} disabled={busy || importing || !canAct}>
+            <Button onPress={onRetry} disabled={busy || !canAct}>
               {S.retry}
             </Button>
             <Button variant="ghost" onPress={onQuit} disabled={busy || !canAct}>

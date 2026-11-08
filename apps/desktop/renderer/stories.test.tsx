@@ -23,14 +23,7 @@ import minimal, {
 import overview, { Empty, Privacy, Ready } from "./screens/overview/OverviewView.stories.js";
 import bootstrap, { Failed, Waiting } from "./shell/BootstrapView.stories.js";
 import recovery, {
-  ImportCancelled,
-  ImportDone,
-  ImportDoneAgentFailed,
-  ImportFailed,
-  Importing,
   InventoryUnavailable,
-  MigrationIncomplete,
-  RecoveryWords,
   ReportUnavailable,
   Unknown as UnknownRecovery,
 } from "./shell/RecoveryView.stories.js";
@@ -56,22 +49,15 @@ it("renders waiting and failed bootstrap CSF states before a store connection", 
 it("renders the start-up recovery CSF states without a host", () => {
   const render = (story: { args?: object } = {}) =>
     renderToStaticMarkup(<recovery.component {...recovery.args} {...story.args} />);
-  expect(render()).toContain("Import my data");
+  expect(render()).toContain("Data from the previous version of cashU");
+  expect(render()).toContain("Continue without the old data");
   expect(render()).toContain('data-testid="recovery-code"');
-  expect(render(Importing)).toContain('aria-current="step"');
-  expect(render(RecoveryWords)).toContain('data-testid="migration-recovery-phrase"');
-  expect(render(ImportCancelled)).toContain("nothing was created");
-  expect(render(MigrationIncomplete)).toContain("Finish the import");
-  for (const story of [ImportFailed, InventoryUnavailable, UnknownRecovery])
-    expect(render(story)).not.toContain("Import my data");
+  expect(render()).not.toContain("cashU cannot start");
+  for (const story of [InventoryUnavailable, UnknownRecovery]) {
+    expect(render(story)).toContain("cashU cannot start");
+    expect(render(story)).not.toContain("Continue without the old data");
+  }
   expect(render(ReportUnavailable)).toContain("could not be read");
-  expect(render(ImportDone)).toContain("claude mcp remove cashu-synthetic");
-  expect(render(ImportDone)).toContain("io.utopiasoft.cashu.worker (removed)");
-  expect(render(ImportDone)).toContain("Your data is imported");
-  expect(render(ImportDone)).not.toContain("cashU cannot start");
-  expect(render()).toContain("cashU cannot start");
-  expect(render(ImportDone)).not.toContain('data-testid="recovery-agents-by-hand"');
-  expect(render(ImportDoneAgentFailed)).toContain('data-testid="recovery-agents-by-hand"');
 });
 
 it("renders actual Overview CSF states with the masked privacy hero", () => {

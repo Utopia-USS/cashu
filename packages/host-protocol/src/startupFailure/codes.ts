@@ -1,32 +1,26 @@
-// Typed start-up and migration failures (T54 recovery screen). A failure is a code from a closed
-// catalog, the stage it happened in, an optional detail from a closed allow-list, a flag saying
-// whether the user's original files stayed untouched, and count-only facts. Nothing else crosses:
-// error messages, paths and log text never become part of a failure. The host writes a failure
-// record before it exits, the migration CLI writes one for `migrate verify`, Electron main reads it
-// (zod-validated, it is a file read across a trust boundary) and shows the recovery screen.
+// Typed start-up failures (T54 recovery screen). A failure is a code from a closed catalog, the stage
+// it happened in, an optional detail from a closed allow-list, a flag saying whether the user's
+// original files stayed untouched, and count-only facts. Nothing else crosses: error messages, paths
+// and log text never become part of a failure. The host writes a failure record before it exits,
+// Electron main reads it (zod-validated, it is a file read across a trust boundary) and shows the
+// recovery screen. Main also enters it by itself when it finds the old (Python) app's data.
 
 /** What went wrong, in the words the recovery screen and the agent prompt explain. */
 export const STARTUP_FAILURE_CODES = [
   "python_data_present",
   "native_inventory_unavailable",
   "vault_key_unavailable",
-  "migrate_verify_mismatch",
   "view_rebuild_failed",
-  "migrate_import_failed",
-  "migration_incomplete",
   "unknown",
 ] as const;
 export type StartupFailureCode = (typeof STARTUP_FAILURE_CODES)[number];
 
-/** Where in the start sequence (or the migration) it happened. */
+/** Where in the start sequence it happened. */
 export const STARTUP_STAGES = [
   "admission",
   "inventory",
   "vault_open",
   "view_rebuild",
-  "migrate_verify",
-  "migrate_import",
-  "migrate_cutover",
   "host_start",
 ] as const;
 export type StartupStage = (typeof STARTUP_STAGES)[number];
@@ -41,22 +35,14 @@ interface CodeSpec {
 }
 
 export const STARTUP_FAILURE_SPECS: Readonly<Record<StartupFailureCode, CodeSpec>> = {
-  // Existence checks only (lstat); the Python database is never opened.
+  // Existence checks only (lstat); the Python database is never opened, moved or changed.
   python_data_present: { stage: "admission", originalsUntouched: true },
   // Inventory and creation journal reads are read-only and refuse before any write.
   native_inventory_unavailable: { stage: "inventory", originalsUntouched: true },
   // The key ring is read, the private metadata database is probed read-only.
   vault_key_unavailable: { stage: "vault_open", originalsUntouched: true },
-  // `migrate verify` reads a sealed copy of the source and reopens the target read-only.
-  migrate_verify_mismatch: { stage: "migrate_verify", originalsUntouched: true },
   // A rebuild runs in one transaction that rolls back; the encrypted history is never rewritten.
   view_rebuild_failed: { stage: "view_rebuild", originalsUntouched: true },
-  // `cashu migrate` imports from a sealed copy of the Python data and removes its own staging when it
-  // fails; the Python files are only read.
-  migrate_import_failed: { stage: "migrate_import", originalsUntouched: true },
-  // A cutover journal exists: the Python files are still in place, or already moved intact into
-  // `<data dir>/python-backup-<time>/`. `cashu migrate` finishes it.
-  migration_incomplete: { stage: "migrate_cutover", originalsUntouched: true },
   // Nothing is known about the path, so nothing is promised.
   unknown: { stage: "host_start", originalsUntouched: false },
 };
@@ -66,10 +52,8 @@ export const STARTUP_FAILURE_SPECS: Readonly<Record<StartupFailureCode, CodeSpec
  * and the stage it stands for; a thrown message that is not listed here is never echoed.
  */
 export const STARTUP_FAILURE_DETAILS = {
-  // Python data beside or instead of native data.
-  python_data_present: ["python_data_present", "admission"],
+  // The old (Python) app's data in the data folder, and no native profile yet.
   python_data_found: ["python_data_present", "admission"],
-  python_data_unsafe: ["python_data_present", "admission"],
   // Native vault inventory and setup state.
   native_vault_provider_unavailable: ["native_inventory_unavailable", "admission"],
   native_inventory_unavailable: ["native_inventory_unavailable", "inventory"],
@@ -90,24 +74,6 @@ export const STARTUP_FAILURE_DETAILS = {
   keystore_unavailable: ["vault_key_unavailable", "vault_open"],
   // The view could not be rebuilt from the held history.
   view_rebuild_failed: ["view_rebuild_failed", "view_rebuild"],
-  // Migration refusals (apps/host/src/migration/contract.ts MigrationRefusal). They happen in the
-  // import as well as in `migrate verify`; the default is the import, and the migration names the
-  // code it ran under (`classifyStartupError(error, facts, code)`).
-  source_unsafe: ["migrate_import_failed", "migrate_import"],
-  source_changed: ["migrate_import_failed", "migrate_import"],
-  snapshot_unverified: ["migrate_import_failed", "migrate_import"],
-  unsupported_schema: ["migrate_import_failed", "migrate_import"],
-  semantic_difference: ["migrate_import_failed", "migrate_import"],
-  mapping_invalid: ["migrate_import_failed", "migrate_import"],
-  identity_invalid: ["migrate_import_failed", "migrate_import"],
-  replay_mismatch: ["migrate_import_failed", "migrate_import"],
-  // `cashu migrate` outcomes of its own.
-  already_migrated: ["migrate_import_failed", "migrate_import"],
-  python_data_absent: ["migrate_import_failed", "migrate_import"],
-  staging_failed: ["migrate_import_failed", "migrate_import"],
-  cancelled: ["migrate_import_failed", "migrate_import"],
-  cutover_failed: ["migration_incomplete", "migrate_cutover"],
-  migration_failed: ["migrate_verify_mismatch", "migrate_verify"],
   // Known refusals with no recovery story of their own.
   bundle_identity_unavailable: ["unknown", "host_start"],
   native_host_lock_required: ["unknown", "host_start"],
@@ -123,7 +89,7 @@ export const STARTUP_FACT_KEYS = ["vaults", "pythonSources", "recentCrashes"] as
 type StartupFactKey = (typeof STARTUP_FACT_KEYS)[number];
 export type StartupFacts = Partial<Record<StartupFactKey, number>>;
 
-/** One classified failure (what the host and the migration CLI record). */
+/** One classified failure (what the host records). */
 export interface StartupFailure {
   readonly code: StartupFailureCode;
   readonly stage: StartupStage;
@@ -204,7 +170,7 @@ export function errorCode(error: unknown): string {
 }
 
 /** The allow-listed detail a thrown value carries (its typed `code`, else its message), if any. */
-export function failureDetail(error: unknown): StartupFailureDetail | undefined {
+function failureDetail(error: unknown): StartupFailureDetail | undefined {
   const code = errorCode(error);
   return isDetail(code) ? code : undefined;
 }
@@ -212,23 +178,17 @@ export function failureDetail(error: unknown): StartupFailureDetail | undefined 
 /**
  * The failure a thrown value stands for. A `StartupFailureError` keeps its own; any other value is
  * mapped only through the detail allow-list (its typed `code`, else its message); everything else is
- * `unknown` with no detail. Facts come from the caller, never from the error. `as` names the code a
- * caller ran under (the migration: `migrate_import_failed`, `migrate_verify_mismatch`,
- * `migration_incomplete`): a recognized detail is then kept under that code instead of its default.
+ * `unknown` with no detail. Facts come from the caller, never from the error.
  */
-export function classifyStartupError(
-  error: unknown,
-  facts: StartupFacts = {},
-  as?: StartupFailureCode,
-): StartupFailure {
+export function classifyStartupError(error: unknown, facts: StartupFacts = {}): StartupFailure {
   if (error instanceof StartupFailureError) {
     const own = error.failure;
     return startupFailure(own.code, own.detail, { ...own.facts, ...countFacts(facts) });
   }
   const detail = failureDetail(error);
   if (detail !== undefined)
-    return startupFailure(as ?? STARTUP_FAILURE_DETAILS[detail][0], detail, facts);
+    return startupFailure(STARTUP_FAILURE_DETAILS[detail][0], detail, facts);
   const code = errorCode(error);
   if (isCode(code)) return startupFailure(code, undefined, facts);
-  return startupFailure(as ?? "unknown", undefined, facts);
+  return startupFailure("unknown", undefined, facts);
 }

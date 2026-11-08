@@ -85,14 +85,14 @@ export function informationalAppcast({
       `Dostępna jest nowa, natywna aplikacja cashU ${version} (${label}).`,
       `Pobierz ją: ${dmg}`,
       `Strona wydania: ${page}`,
-      "Przy pierwszym uruchomieniu kliknij „Zaimportuj moje dane”, a cashU przeniesie Twoje dane.",
+      "Aplikacja nie importuje danych sama: przy pierwszym uruchomieniu kliknij „Kopiuj prompt dla agenta” i wklej go swojemu agentowi AI (na przykład Claude Code), a on przeniesie Twoje dane.",
       "Ta aplikacja nie będzie się już sama aktualizować.",
     ],
     en: [
       `A new, native cashU app ${version} (${label}) is available.`,
       `Download it: ${dmg}`,
       `Release page: ${page}`,
-      'On its first start, click "Import my data" and cashU brings your data over.',
+      'The app does not import your data by itself: on its first start, click "Copy prompt for agent" and paste it to your AI agent (for example Claude Code), which brings your data over.',
       "This app will not update itself any more.",
     ],
   };

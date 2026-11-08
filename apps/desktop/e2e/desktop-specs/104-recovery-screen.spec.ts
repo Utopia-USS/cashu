@@ -1,11 +1,9 @@
 /// <reference types="node" />
 // The start-up recovery screen (T54) in the real Electron window, without any host: a spawn-denying
-// bootstrap (host-spawn-guard.cjs) runs before main. Python data in the data dir shows
-// python_data_present from main's own admission; a host start that records a typed failure shows that
-// code. The copied prompt must hold codes, `~` paths and the shipped command only. One spec runs
-// "Import my data" for real on synthetic Python data (the guard swaps in the test-keychain migrate
-// child): the retired Python app's launchd plists in the harness's temp agents dir go, nothing else.
-import { spawnSync } from "node:child_process";
+// bootstrap (host-spawn-guard.cjs) runs before main. The old (Python) app's data in the data dir shows
+// python_data_present from main's own admission, with the agent prompt and Continue (on to the host
+// start, never touching the old data); a host start that records a typed failure shows that code.
+// The copied prompt must hold codes, `~` paths and the shipped command only.
 import {
   existsSync,
   mkdirSync,
@@ -34,16 +32,11 @@ interface Harness {
   cleanup(): Promise<void>;
 }
 
-/**
- * `recovery`: D is `~/cashU-data` (the `~` paths of the report). `import`: the layout the test key
- * store accepts (`<tmp>/t44-test-<id>/data`, HOME beside it), for a real import with no OS keychain.
- */
-function harness(layout: "recovery" | "import" = "recovery"): Harness {
-  const root = realpathSync(
-    mkdtempSync(join(tmpdir(), layout === "import" ? "t44-test-" : "cashu-recovery-e2e-")),
-  );
+/** D is `~/cashU-data` (the `~` paths of the report). */
+function harness(): Harness {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "cashu-recovery-e2e-")));
   const home = join(root, "home");
-  const dataDir = layout === "import" ? join(root, "data") : join(home, "cashU-data");
+  const dataDir = join(home, "cashU-data");
   mkdirSync(home, { recursive: true, mode: 0o700 });
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const apps: ElectronApplication[] = [];
@@ -59,7 +52,6 @@ function harness(layout: "recovery" | "import" = "recovery"): Harness {
           CASHU_TESTING: "1",
           CASHU_LEGACY_DATA_DIR: join(root, "legacy"),
           CASHU_WORKSPACES_DIR: join(root, "workspaces"),
-          CASHU_LAUNCH_AGENTS_DIR: join(root, "LaunchAgents"),
           CASHU_DESKTOP_ALLOWED_DATA_ROOT: root,
           ...env,
         },
@@ -82,12 +74,15 @@ function harness(layout: "recovery" | "import" = "recovery"): Harness {
   };
 }
 
-async function recoveryWindow(app: ElectronApplication): Promise<Page> {
+async function recoveryWindow(
+  app: ElectronApplication,
+  heading = "cashU nie może się uruchomić",
+): Promise<Page> {
   const page = await app.firstWindow();
   await page.waitForURL(/^app:\/\/cashu\/assets\/desktop\/index\.html\?recovery=1$/, {
     timeout: 90_000,
   });
-  await expect(page.getByRole("heading", { name: "cashU nie może się uruchomić" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   return page;
 }
 
@@ -113,24 +108,37 @@ function reportPair(dataDir: string): string[] {
   return files.sort();
 }
 
-test("Python data shows python_data_present with Import, Copy and no host or store", async () => {
+const OLD_DATA = "Dane z poprzedniej wersji cashU";
+
+test("old app data shows python_data_present with the agent prompt, Continue and no host", async () => {
   const h = harness();
   try {
     writeFileSync(join(h.dataDir, "cashu.db"), "synthetic sentinel", { mode: 0o600 });
-    const app = await h.launch();
-    const page = await recoveryWindow(app);
+    // After Continue the guarded host start "fails" with this record, which proves the start ran.
+    const app = await h.launch({
+      E2E_RECOVERY_FAILURE: JSON.stringify({
+        code: "vault_key_unavailable",
+        stage: "vault_open",
+        detail: "keystore_unavailable",
+        originalsUntouched: true,
+        facts: { vaults: 0 },
+      }),
+    });
+    const page = await recoveryWindow(app, OLD_DATA);
     await expect(page.getByRole("alert")).toContainText("dane z poprzedniej wersji cashU");
     await expect(page.getByTestId("recovery-code")).toHaveText("python_data_present");
     await expect(page.getByTestId("recovery-data-dir")).toHaveText("~/cashU-data");
-    await expect(page.getByRole("button", { name: "Zaimportuj moje dane" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Kontynuuj bez starych danych" })).toBeVisible();
     await expect(page.getByTestId("native-creation")).toHaveCount(0);
 
     const prompt = await copiedPrompt(app, page);
     expect(prompt).toContain("Kod błędu: python_data_present");
     expect(prompt).toContain("Folder danych: ~/cashU-data");
-    expect(prompt).toContain("  pnpm cashu-next migrate\n");
-    expect(prompt).toContain("  pnpm cashu-next migrate verify\n");
-    expect(prompt).toContain("docs/migration-runbook.md");
+    expect(prompt).toContain("pythonSources=1");
+    expect(prompt).toContain("claude mcp add cashu-<slug> -- pnpm cashu-next mcp --profile <slug>");
+    expect(prompt).toContain("import-builder");
+    expect(prompt).toContain("`propose_import`");
+    expect(prompt).not.toContain("migrate");
     assertPrivate(prompt, h);
 
     const files = reportPair(h.dataDir);
@@ -140,10 +148,17 @@ test("Python data shows python_data_present with Import, Copy and no host or sto
     expect(existsSync(join(h.dataDir, "stores"))).toBe(false);
     expect(existsSync(join(h.dataDir, "test-spawns"))).toBe(false);
 
-    // Retry with the Python data still there keeps the same screen and report.
+    // Retry with the old data still there keeps the same screen and report.
     await page.getByRole("button", { name: "Spróbuj ponownie" }).click();
-    await recoveryWindow(app);
+    await recoveryWindow(app, OLD_DATA);
     expect(reportPair(h.dataDir)).toEqual(files);
+
+    // Continue starts the host; the old data stays exactly as it was.
+    await page.getByRole("button", { name: "Kontynuuj bez starych danych" }).click();
+    await recoveryWindow(app);
+    await expect(page.getByTestId("recovery-code")).toHaveText("vault_key_unavailable");
+    expect(readFileSync(join(h.dataDir, "test-spawns"), "utf8")).toMatch(/^(?:host\n)+$/);
+    expect(readFileSync(join(h.dataDir, "cashu.db"), "utf8")).toBe("synthetic sentinel");
   } finally {
     await h.cleanup();
   }
@@ -166,7 +181,7 @@ test("a host start that records vault_key_unavailable shows that code and a reda
     const page = await recoveryWindow(app);
     await expect(page.getByTestId("recovery-code")).toHaveText("vault_key_unavailable");
     await expect(page.getByRole("alert")).toContainText("Klucz, którym zaszyfrowany jest profil");
-    await expect(page.getByRole("button", { name: "Zaimportuj moje dane" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Kontynuuj bez starych danych" })).toHaveCount(0);
 
     const prompt = await copiedPrompt(app, page);
     expect(prompt).toContain("Kod błędu: vault_key_unavailable");
@@ -176,79 +191,11 @@ test("a host start that records vault_key_unavailable shows that code and a reda
     expect(prompt).toContain(
       "host.start-failure code=vault_key_unavailable detail=keystore_unavailable",
     );
-    expect(prompt).toContain("  pnpm cashu-next migrate verify\n");
+    expect(prompt).not.toContain("migrate");
+    expect(prompt).not.toContain("import-builder");
     assertPrivate(prompt, h);
     expect(readFileSync(join(h.dataDir, "test-spawns"), "utf8")).toMatch(/^(?:host\n)+$/);
     expect(reportPair(h.dataDir)).toHaveLength(2);
-  } finally {
-    await h.cleanup();
-  }
-});
-
-test("Import my data retires the Python worker agents and shows the MCP lines to re-add", async () => {
-  test.setTimeout(180_000);
-  const h = harness("import");
-  try {
-    const repo = process.env.E2E_REPO;
-    if (repo === undefined) throw new Error("E2E_REPO missing");
-    const seed = spawnSync(
-      process.execPath,
-      [
-        "--import",
-        join(repo, "tools", "node-ts", "resolveTs.ts"),
-        join(repo, "apps", "host", "src", "testing", "seedPythonData.ts"),
-        h.dataDir,
-      ],
-      { env: { ...process.env, CASHU_TESTING: "1" }, encoding: "utf8" },
-    );
-    expect(seed.status, seed.stderr).toBe(0);
-    // The harness's temp agents dir: both Python agents, the native host's and another app's.
-    const agents = join(h.root, "LaunchAgents");
-    mkdirSync(agents, { mode: 0o700 });
-    const python = ["io.utopiasoft.cashu.worker", "io.github.synszakala.finanse.worker"];
-    const kept = ["io.utopiasoft.cashu.host.plist", "com.example.synthetic.plist"];
-    for (const name of [...python.map((label) => `${label}.plist`), ...kept])
-      writeFileSync(join(agents, name), "<plist/>\n", { mode: 0o600 });
-
-    const app = await h.launch({ E2E_RECOVERY_MIGRATE: "1" });
-    const page = await recoveryWindow(app);
-    await expect(page.getByTestId("recovery-code")).toHaveText("python_data_present");
-    await page.getByRole("button", { name: "Zaimportuj moje dane" }).click();
-    await expect(page.getByTestId("migration-recovery-phrase")).toBeVisible({ timeout: 90_000 });
-    await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Kontynuuj import" }).click();
-    await expect(page.getByText("Import zakończony.")).toBeVisible({ timeout: 90_000 });
-    // The finished import has its own heading: the screen no longer says cashU cannot start.
-    await expect(page.getByRole("heading", { name: "Dane zaimportowane" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "cashU nie może się uruchomić" })).toHaveCount(
-      0,
-    );
-    await expect(page.getByRole("alert")).toHaveCount(0);
-
-    expect(readdirSync(agents).sort()).toEqual([...kept].sort());
-    await expect(page.getByTestId("recovery-agents")).toHaveText(
-      "Usługi w tle starej aplikacji (launchd): io.utopiasoft.cashu.worker (usunięto), io.github.synszakala.finanse.worker (usunięto).",
-    );
-    const launcher = join(h.dataDir, "bin", "cashu");
-    const lines = [
-      "claude mcp remove cashu-synthetic",
-      `claude mcp add cashu-synthetic -- ${launcher} mcp --profile synthetic`,
-    ];
-    const mcp = page.getByTestId("recovery-mcp");
-    await expect(mcp).toContainText("Podłącz ponownie agenta AI");
-    await expect(mcp).toContainText(lines.join("\n"));
-    await mcp.getByRole("button", { name: "Kopiuj" }).click();
-    await expect(mcp.getByText("Skopiowano polecenia.")).toBeVisible();
-    const copied = await app.evaluate(() => (globalThis as { __copied?: string[] }).__copied ?? []);
-    expect(copied).toEqual([`${lines.join("\n")}\n`]);
-    expect(readFileSync(join(h.root, "test-migrate-spawns"), "utf8")).toBe("migrate\n");
-    expect(existsSync(join(h.dataDir, "migration.json"))).toBe(true);
-
-    // "Open cashU" leaves recovery: the Python data is gone, so the app entry loads.
-    await Promise.all([
-      page.waitForURL(/^app:\/\/cashu\/assets\/desktop\/index\.html$/, { timeout: 30_000 }),
-      page.getByRole("button", { name: "Otwórz cashU" }).click(),
-    ]);
   } finally {
     await h.cleanup();
   }

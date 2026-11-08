@@ -62,7 +62,7 @@ function shellWord(path: string): string {
   return `"${path}"`;
 }
 
-/** The command prefix to put before `migrate` (plain `cashu` when no form is known). */
+/** The command prefix to put before a `cashu` subcommand (plain `cashu` when no form is known). */
 export function commandPrefix(command: RecoveryCommand | null): string {
   if (command === null) return "cashu";
   switch (command.kind) {

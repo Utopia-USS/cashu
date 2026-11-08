@@ -1,12 +1,11 @@
 import { D, parseDateTime } from "@cashu/domain";
 import { Currencies, market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
-import type { SourceCacheReceipt } from "../../genesis/verification/sourceCache.js";
 import { memoryDriver } from "../../testing/store.js";
 import { vault } from "../commands/testing/fixtures.js";
 import { PerformanceService } from "../performance/service.js";
 import { AS_OF, household, NO_STRATEGY } from "../performance/testing/household.js";
-import { SqlPriceCache } from "./priceCache.js";
+import { type SourceCacheReceipt, SqlPriceCache } from "./priceCache.js";
 
 const now = parseDateTime("2025-09-30T12:00:00+00:00");
 const bar = (close = "10"): market.CachedBar => ({
@@ -205,7 +204,6 @@ it("masks imported split-window bars while preserving exact source rows and unre
   expect(cache.bars(key).map((row) => [row.date, row.close.toString()])).toEqual([[AS_OF, "25"]]);
   expect(cache.bars(market.marketSymbol("stooq", "SPLIT"))[0]?.close.toString()).toBe("30");
   expect(cache.bars(market.marketSymbol("yahoo", "OTHER"))[0]?.close.toString()).toBe("40");
-  expect(cache.sourceCacheRows(receipt.schema).priceBars).toEqual(receipt.priceBars);
   expect(new SqlPriceCache(driver).bars(key)).toHaveLength(1);
   driver.close();
 });

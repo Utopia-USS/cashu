@@ -1,14 +1,13 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import { crypto } from "@cashu/sync";
-import { MIGRATION_STAGING_PREFIX } from "../admissionGuard.js";
 import { keychainService, processFlavor } from "../flavor.js";
 import type { HostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import { PrivateBlobFiles } from "./files.js";
-import { nativeOsKeyring, type OsKeyringDeletePort, type OsKeyringPort } from "./native.js";
+import { nativeOsKeyring, type OsKeyringPort } from "./native.js";
 
 export { enterTestBuildKeyringNamespace } from "./native.js";
 
@@ -36,13 +35,6 @@ export interface ProvisionEvidence {
 }
 export interface ProductionKeyStoreInput {
   readonly dataDir: string;
-  /**
-   * In-place migration only: the data dir whose OS key store namespace the KEK belongs to while
-   * `dataDir` is the import's staging tree inside it (`<scopeDir>/.migration-<time>/native`), so the
-   * tree opens unchanged once moved into `scopeDir`. Canonical and absolute; it names the namespace
-   * only, every file and lock check stays on `dataDir`.
-   */
-  readonly scopeDir?: string;
   readonly purpose: "open" | "provision";
   readonly authorizedNames: ReadonlySet<string>;
   readonly sodium: crypto.Sodium;
@@ -273,73 +265,15 @@ function canonicalDir(path: string): string {
   return canonical;
 }
 
-/**
- * The directory whose namespace holds the KEK: `dataDir`, or a migration's `scopeDir` when
- * `dataDir` is exactly `<scopeDir>/.migration-<time>/native`.
- */
-function namespaceDir(input: { readonly dataDir: string; readonly scopeDir?: string }): string {
-  const dataDir = canonicalDir(input.dataDir);
-  if (input.scopeDir === undefined) return dataDir;
-  const scope = canonicalDir(input.scopeDir);
-  const parts = relative(scope, dataDir).split(sep);
-  if (
-    parts.length !== 2 ||
-    !parts[0]?.startsWith(MIGRATION_STAGING_PREFIX) ||
-    parts[0].length === MIGRATION_STAGING_PREFIX.length ||
-    parts[1] !== "native"
-  )
-    throw new crypto.CryptoError("keystore_unavailable");
-  return scope;
-}
-
 /** The vault KEK service of `dir` in this process's flavor (`<keychainPrefix>.vault.v1.<hash>`). */
 const productionService = (dir: string) =>
   keychainService(processFlavor(), "vault", createHash("sha256").update(dir, "utf8").digest("hex"));
 
 /** Fixed new-app namespace v1. Signature/package verification remains an S47 deployment gate. */
 export function createProductionKeyStore(input: ProductionKeyStoreInput): crypto.KeyStore {
-  return make(input, productionService(namespaceDir(input)), nativeOsKeyring());
+  return make(input, productionService(canonicalDir(input.dataDir)), nativeOsKeyring());
 }
 
-/**
- * The KEK of one data dir's namespace, as the in-place migration manages it: an orphan left by a
- * failed attempt (KEK present, no native inventory) is removed before an import, and a KEK the
- * failed run created is removed with its staging. Nothing else ever deletes a KEK.
- */
-export interface MigrationKek {
-  /** Whether the namespace holds a KEK. */
-  present(): Promise<boolean>;
-  /** Removes the KEK; an absent one is not an error. */
-  remove(): Promise<void>;
-}
-
-function migrationKek(service: string, keyring: OsKeyringDeletePort): MigrationKek {
-  return {
-    async present() {
-      let key: Uint8Array | null;
-      try {
-        key = await keyring.get(service, ACCOUNT);
-      } catch {
-        throw new crypto.CryptoError("keystore_unavailable");
-      }
-      key?.fill(0);
-      return key !== null;
-    },
-    remove: () =>
-      serializeNamespace(service, async () => {
-        try {
-          await keyring.delete(service, ACCOUNT);
-        } catch {
-          throw new crypto.CryptoError("keystore_unavailable");
-        }
-      }),
-  };
-}
-
-/** The production KEK of `dataDir` (canonical, absolute) for the in-place migration. */
-export function productionMigrationKek(dataDir: string): MigrationKek {
-  return migrationKek(productionService(canonicalDir(dataDir)), nativeOsKeyring());
-}
 /** Synthetic-only constructor. Tests must use a fresh temp root and exact test namespace. */
 function assertTestNamespace(dir: string, service: string): void {
   const buildRoot = resolve(process.cwd(), "build");
@@ -352,19 +286,6 @@ function assertTestNamespace(dir: string, service: string): void {
 }
 
 export function createTestKeyStore(input: TestKeyStoreInput): crypto.KeyStore {
-  assertTestNamespace(
-    input.scopeDir === undefined ? input.dataDir : namespaceDir(input),
-    input.service,
-  );
+  assertTestNamespace(input.dataDir, input.service);
   return make(input, input.service, input.keyring);
-}
-
-/** Synthetic-only `MigrationKek` over an exact test namespace and in-memory keyring. */
-export function createTestMigrationKek(input: {
-  readonly dataDir: string;
-  readonly service: string;
-  readonly keyring: OsKeyringDeletePort;
-}): MigrationKek {
-  assertTestNamespace(canonicalDir(input.dataDir), input.service);
-  return migrationKek(input.service, input.keyring);
 }

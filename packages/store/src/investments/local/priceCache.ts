@@ -7,8 +7,7 @@ import {
   toCurrency,
 } from "@cashu/domain/investments";
 import { type MacroReport, reportStats } from "@cashu/domain/investments/macro";
-import type { SourceCacheReceipt } from "../../genesis/verification/sourceCache.js";
-import type { SqlDriver, SqlRow } from "../../sql/driver.js";
+import type { SqlDriver } from "../../sql/driver.js";
 
 interface BarRow {
   date: string;
@@ -50,6 +49,41 @@ export interface SourcePriceAlias {
 export interface SourceCachedBar extends market.CachedBar {
   readonly id: number;
   readonly source: string;
+}
+/** Rows of the old app's price cache in the shape `restoreSourceCache` writes. */
+export interface SourceCacheReceipt {
+  readonly format: 1;
+  readonly schema: string;
+  readonly priceBars: readonly {
+    readonly id: number;
+    readonly instrumentId: number;
+    readonly date: string;
+    readonly close: string;
+    readonly open: string | null;
+    readonly high: string | null;
+    readonly low: string | null;
+    readonly volume: number | null;
+    readonly currency: string | null;
+    readonly source: string;
+    readonly fetchedAt: string | null;
+  }[];
+  readonly fxRates: readonly {
+    readonly id: number;
+    readonly base: string;
+    readonly quote: string;
+    readonly date: string;
+    readonly rate: string;
+    readonly source: string;
+    readonly fetchedAt: string | null;
+  }[];
+  readonly macroBars: readonly {
+    readonly id: number;
+    readonly series: string;
+    readonly date: string;
+    readonly close: string;
+    readonly source: string;
+    readonly fetchedAt: string | null;
+  }[];
 }
 export interface SourceMacroBarView {
   readonly id: number;
@@ -368,67 +402,6 @@ export class SqlPriceCache implements TransactionalPriceCache {
       for (const row of receipt.macroBars)
         macro.run(row.id, row.series, row.date, row.close, row.source, row.fetchedAt);
     });
-  }
-
-  /** Exact stored source rows for independent reopen/content verification. */
-  sourceCacheRows(schema: string): SourceCacheReceipt {
-    return {
-      format: 1,
-      schema,
-      priceBars: this.driver
-        .prepare(
-          `SELECT id,instrument_id AS instrumentId,date,close,open,high,low,volume,currency,
-                  source,fetched_at AS fetchedAt FROM local_source_price_bars ORDER BY id`,
-        )
-        .all<SourceCacheReceipt["priceBars"][number]>(),
-      fxRates: this.driver
-        .prepare(
-          `SELECT id,base,quote,date,rate,provider AS source,fetched_at AS fetchedAt
-           FROM local_market_rates ORDER BY id`,
-        )
-        .all<SourceCacheReceipt["fxRates"][number]>(),
-      macroBars: this.driver
-        .prepare(
-          `SELECT id,series,date,close,source,fetched_at AS fetchedAt
-           FROM local_market_macro_bars ORDER BY id`,
-        )
-        .all<SourceCacheReceipt["macroBars"][number]>(),
-    };
-  }
-
-  sourceMappings(): {
-    readonly identities: readonly SourcePriceIdentity[];
-    readonly aliases: readonly SourcePriceAlias[];
-  } {
-    return {
-      identities: this.driver
-        .prepare(
-          `SELECT instrument_id AS instrumentId,vault,gid
-           FROM local_source_price_gids ORDER BY vault,instrument_id`,
-        )
-        .all<SourcePriceIdentity>(),
-      aliases: this.driver
-        .prepare(
-          `SELECT instrument_id AS instrumentId,provider,symbol
-           FROM local_source_price_aliases ORDER BY instrument_id,provider,symbol`,
-        )
-        .all<SourcePriceAlias>(),
-    };
-  }
-
-  /** Fresh-import verification requires no cache writes that change effective imported bars. */
-  importOverlayState(): {
-    readonly bars: readonly SqlRow[];
-    readonly masks: readonly SqlRow[];
-  } {
-    return {
-      bars: this.driver
-        .prepare("SELECT * FROM local_market_bars ORDER BY provider,symbol,date")
-        .all(),
-      masks: this.driver
-        .prepare("SELECT * FROM local_market_bar_masks ORDER BY provider,symbol,date")
-        .all(),
-    };
   }
 
   /** Cached macro closes are available offline by series and provider. */

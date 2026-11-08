@@ -157,7 +157,6 @@ describe("shipped skills", () => {
       // Routed by the `cashu` shim before the host's command tree (apps/cli/src/route.ts).
       "app",
       "host",
-      "migrate",
       "mcp",
     ]);
     const unknown: string[] = [];

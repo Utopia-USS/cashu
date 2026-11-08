@@ -3,22 +3,10 @@ import {
   buildRecoveryPrompt,
   classifyStartupError,
   commandPrefix,
-  failedAgentCommands,
-  failureDetail,
-  fitUnpriced,
-  MIGRATE_MCP_PROFILES_MAX,
-  MIGRATE_UNPRICED_LABEL_MAX,
-  MIGRATE_UNPRICED_MAX,
-  MIGRATION_RUNBOOK,
-  PYTHON_AGENT_LABELS,
-  parseMigrateLine,
   parseStartupFailureRecord,
   parseStartupFailureReport,
   type RecoveryCommand,
   recoveryCommand,
-  recoveryCommands,
-  recoveryImportEventSchema,
-  retirePythonAgentCommands,
   STARTUP_FAILURE_CODES,
   STARTUP_FAILURE_DETAIL_NAMES,
   STARTUP_FAILURE_DETAILS,
@@ -47,12 +35,12 @@ function leaks(text: string): string[] {
   return ALL.filter((value) => text.includes(value));
 }
 
-class FakeMigrationError extends Error {
+class FakeCodedError extends Error {
   readonly code: string;
   constructor(code: string) {
     super(code);
     this.code = code;
-    this.name = "MigrationError";
+    this.name = "RefusalError";
   }
 }
 
@@ -84,12 +72,11 @@ function failurePaths(): StartupFailure[] {
   for (const code of STARTUP_FAILURE_CODES) paths.push(startupFailure(code));
   for (const detail of STARTUP_FAILURE_DETAIL_NAMES) {
     paths.push(startupFailure(STARTUP_FAILURE_DETAILS[detail][0], detail, { vaults: 2 }));
-    paths.push(classifyStartupError(new FakeMigrationError(detail)));
-    paths.push(classifyStartupError(new Error(detail), {}, "migrate_verify_mismatch"));
+    paths.push(classifyStartupError(new FakeCodedError(detail)));
   }
   for (const value of ALL) {
     paths.push(classifyStartupError(new Error(value)));
-    paths.push(classifyStartupError(new FakeMigrationError(value)));
+    paths.push(classifyStartupError(new FakeCodedError(value)));
     paths.push(classifyStartupError(new Error(`native_inventory_invalid ${value}`)));
     paths.push(classifyStartupError({ code: value, message: value }));
     paths.push(classifyStartupError(value));
@@ -139,34 +126,15 @@ describe("failure catalog", () => {
     }
   });
 
-  it("has the migration codes with their stages and untouched originals", () => {
-    expect(startupFailure("migrate_import_failed")).toEqual({
-      code: "migrate_import_failed",
-      stage: "migrate_import",
+  it("has the old-data code at admission with untouched originals", () => {
+    expect(startupFailure("python_data_present", "python_data_found")).toEqual({
+      code: "python_data_present",
+      stage: "admission",
+      detail: "python_data_found",
       originalsUntouched: true,
       facts: {},
     });
-    expect(startupFailure("migration_incomplete", "cutover_failed")).toMatchObject({
-      stage: "migrate_cutover",
-      originalsUntouched: true,
-    });
     expect(startupFailure("unknown").originalsUntouched).toBe(false);
-    for (const detail of [
-      "already_migrated",
-      "python_data_absent",
-      "source_changed",
-      "staging_failed",
-      "cutover_failed",
-      "cancelled",
-      "source_unsafe",
-      "snapshot_unverified",
-      "unsupported_schema",
-      "semantic_difference",
-      "mapping_invalid",
-      "identity_invalid",
-      "replay_mismatch",
-    ])
-      expect(STARTUP_FAILURE_DETAIL_NAMES).toContain(detail);
   });
 });
 
@@ -189,28 +157,14 @@ describe("classifyStartupError", () => {
     });
   });
 
-  it("maps migration refusals to the import by default and to the code a caller ran under", () => {
-    expect(classifyStartupError(new FakeMigrationError("replay_mismatch"))).toMatchObject({
-      code: "migrate_import_failed",
-      stage: "migrate_import",
-      detail: "replay_mismatch",
+  it("maps a typed code field through the detail allow-list only", () => {
+    expect(classifyStartupError(new FakeCodedError("keystore_unavailable"))).toMatchObject({
+      code: "vault_key_unavailable",
+      detail: "keystore_unavailable",
     });
-    expect(
-      classifyStartupError(
-        new FakeMigrationError("replay_mismatch"),
-        {},
-        "migrate_verify_mismatch",
-      ),
-    ).toMatchObject({
-      code: "migrate_verify_mismatch",
-      stage: "migrate_verify",
-      detail: "replay_mismatch",
-    });
-    expect(classifyStartupError(new Error("boom"), {}, "migration_incomplete")).toEqual(
-      startupFailure("migration_incomplete"),
+    expect(classifyStartupError(new FakeCodedError(SECRETS.iban))).toEqual(
+      startupFailure("unknown"),
     );
-    expect(failureDetail(new FakeMigrationError("source_changed"))).toBe("source_changed");
-    expect(failureDetail(new Error(SECRETS.iban))).toBeUndefined();
   });
 
   it("maps known message codes and drops everything else", () => {
@@ -381,7 +335,7 @@ describe("shipped command", () => {
     expect(commandPrefix(null)).toBe("cashu");
   });
 
-  it("puts the import first for the codes the import fixes, and the runbook in the prompt", () => {
+  it("gives the agent the old-data steps only for the old-data code", () => {
     const report = (code: (typeof STARTUP_FAILURE_CODES)[number]) =>
       startupFailureReport({
         failure: startupFailure(code),
@@ -395,201 +349,17 @@ describe("shipped command", () => {
         command: COMMANDS[0] ?? null,
       });
     const cashu = '~/"Library/Application Support/cashU/bin/cashu"';
-    for (const code of [
-      "python_data_present",
-      "migrate_import_failed",
-      "migration_incomplete",
-    ] as const)
-      expect(recoveryCommands(report(code))).toEqual([
-        `${cashu} migrate`,
-        `${cashu} migrate verify`,
-      ]);
-    expect(recoveryCommands(report("vault_key_unavailable"))).toEqual([`${cashu} migrate verify`]);
     const prompt = buildRecoveryPrompt(report("python_data_present"), "en");
-    expect(prompt).toContain(`  ${cashu} migrate\n`);
-    expect(prompt).toContain(`${MIGRATION_RUNBOOK} (in the cashU repository)`);
     expect(prompt).toContain("Failure code: python_data_present");
-    expect(buildRecoveryPrompt(report("python_data_present"), "pl")).toContain(
-      "Kod błędu: python_data_present",
-    );
-  });
-});
-
-describe("migrate child protocol", () => {
-  const words = Array.from("abcdefghijklmnopqrstuvwx", (letter) => `word${letter}`).join(" ");
-
-  it("accepts exactly the protocol lines", () => {
-    expect(parseMigrateLine('{"event":"progress","stage":"copy"}')).toEqual({
-      event: "progress",
-      stage: "copy",
-    });
-    expect(parseMigrateLine(JSON.stringify({ event: "recovery-words", words }))).toEqual({
-      event: "recovery-words",
-      words,
-    });
-    expect(
-      parseMigrateLine(
-        '{"event":"done","status":"migrated","profiles":2,"financialTables":9,"financialRows":120,"vaults":2,"backupDir":"python-backup-20261104T093000Z"}',
-      ),
-    ).toMatchObject({ event: "done", status: "migrated", vaults: 2 });
-    expect(parseMigrateLine('{"event":"done","status":"already_migrated"}')).toMatchObject({
-      status: "already_migrated",
-    });
-    const unpriced = Array.from({ length: MIGRATE_UNPRICED_MAX }, (_, index) => ({
-      label: `${"X".repeat(MIGRATE_UNPRICED_LABEL_MAX - 4)}${String(index).padStart(4, "0")}`,
-      currency: "EUR",
-      reason: index % 2 === 0 ? "no_prices" : "no_fx",
-    }));
-    expect(
-      parseMigrateLine(JSON.stringify({ event: "done", status: "verified", unpriced })),
-    ).toEqual({ event: "done", status: "verified", unpriced });
-    expect(
-      parseMigrateLine(
-        '{"event":"failed","code":"migrate_import_failed","detail":"source_changed"}',
-      ),
-    ).toEqual({ event: "failed", code: "migrate_import_failed", detail: "source_changed" });
-  });
-
-  it("rejects anything else", () => {
-    for (const line of [
-      "",
-      "progress copy",
-      '{"event":"progress","stage":"copy","note":"x"}',
-      '{"event":"progress","stage":"upload"}',
-      '{"event":"recovery-words","words":"too few words here"}',
-      JSON.stringify({ event: "recovery-words", words: words.toUpperCase() }),
-      JSON.stringify({ event: "recovery-words", words: `${words}  extra` }),
-      '{"event":"done","status":"migrated","backupDir":"../elsewhere"}',
-      '{"event":"done","status":"migrated","profiles":-1}',
-      '{"event":"done","status":"migrated","unpriced":[{"label":"","currency":"EUR","reason":"no_fx"}]}',
-      '{"event":"done","status":"migrated","unpriced":[{"label":"SEUR","currency":"eur","reason":"no_fx"}]}',
-      '{"event":"done","status":"migrated","unpriced":[{"label":"SEUR","currency":"EUR","reason":"late"}]}',
-      `{"event":"done","status":"migrated","unpriced":[{"label":"${"X".repeat(MIGRATE_UNPRICED_LABEL_MAX + 1)}","currency":"EUR","reason":"no_fx"}]}`,
-      JSON.stringify({
-        event: "done",
-        status: "migrated",
-        unpriced: Array.from({ length: MIGRATE_UNPRICED_MAX + 1 }, () => ({
-          label: "SEUR",
-          currency: "EUR",
-          reason: "no_fx",
-        })),
-      }),
-      `{"event":"failed","code":"unknown","detail":"${SECRETS.iban}"}`,
-      '{"event":"failed","code":"not_a_code"}',
-      JSON.stringify({ event: "progress", stage: "copy", pad: "x".repeat(40_000) }),
-    ])
-      expect(parseMigrateLine(line)).toBeNull();
-  });
-
-  it("cuts the unpriced list by its encoded size so the done line always fits", () => {
-    const item = (label: string, index: number) => ({
-      label,
-      currency: "EUR",
-      reason: index % 2 === 0 ? ("no_prices" as const) : ("no_fx" as const),
-    });
-    const plain = Array.from({ length: MIGRATE_UNPRICED_MAX + 5 }, (_, index) =>
-      item(`${"X".repeat(MIGRATE_UNPRICED_LABEL_MAX - 4)}${String(index).padStart(4, "0")}`, index),
-    );
-    expect(fitUnpriced(plain)).toEqual(plain.slice(0, MIGRATE_UNPRICED_MAX));
-    // Worst case: every label is 64 control characters, each escaped to six on the line.
-    const escaped = Array.from({ length: MIGRATE_UNPRICED_MAX }, (_, index) =>
-      item("\u0001".repeat(MIGRATE_UNPRICED_LABEL_MAX), index),
-    );
-    const fitted = fitUnpriced(escaped);
-    expect(fitted.length).toBeGreaterThan(0);
-    expect(fitted.length).toBeLessThan(MIGRATE_UNPRICED_MAX);
-    const line = JSON.stringify({
-      event: "done",
-      status: "already_migrated",
-      profiles: 1_000_000_000,
-      financialTables: 1_000_000_000,
-      financialRows: 1_000_000_000,
-      vaults: 1_000_000_000,
-      backupDir: `python-backup-${"x".repeat(64)}`,
-      unpriced: fitted,
-      mcpProfiles: Array.from(
-        { length: MIGRATE_MCP_PROFILES_MAX },
-        (_, index) => `p${String(index).padStart(2, "0")}${"x".repeat(61)}`,
-      ),
-      agents: {
-        bootout: "skipped",
-        agents: PYTHON_AGENT_LABELS.map((label) => ({ label, state: "failed" })),
-      },
-    });
-    expect(parseMigrateLine(line)).toMatchObject({ event: "done", unpriced: fitted });
-  });
-
-  it("carries the imported slugs and the Python agents result, nothing else", () => {
-    const agents = {
-      bootout: "ran",
-      agents: [
-        { label: "io.utopiasoft.cashu.worker", state: "retired" },
-        { label: "io.github.synszakala.finanse.worker", state: "absent" },
-      ],
-    };
-    expect(
-      parseMigrateLine(
-        JSON.stringify({
-          event: "done",
-          status: "migrated",
-          mcpProfiles: ["anna", "dom-2"],
-          agents,
-        }),
-      ),
-    ).toEqual({ event: "done", status: "migrated", mcpProfiles: ["anna", "dom-2"], agents });
-    for (const done of [
-      { mcpProfiles: ["anna; rm -rf ~"] },
-      { mcpProfiles: ["-anna"] },
-      { mcpProfiles: Array.from({ length: MIGRATE_MCP_PROFILES_MAX + 1 }, () => "anna") },
-      {
-        agents: {
-          bootout: "ran",
-          agents: [{ label: "io.utopiasoft.cashu.host", state: "retired" }],
-        },
-      },
-      {
-        agents: {
-          bootout: "ran",
-          agents: [{ label: "io.utopiasoft.cashu.worker", state: "gone" }],
-        },
-      },
-      { agents: { bootout: "later", agents: [] } },
-      { agents: { bootout: "ran", agents: [], path: "/Users/x" } },
-    ])
-      expect(
-        parseMigrateLine(JSON.stringify({ event: "done", status: "migrated", ...done })),
-      ).toBeNull();
-  });
-
-  it("gives the runbook's manual commands for failed agents only", () => {
-    expect(retirePythonAgentCommands("io.utopiasoft.cashu.worker")).toEqual([
-      "launchctl bootout gui/$(id -u)/io.utopiasoft.cashu.worker",
-      "rm -f ~/Library/LaunchAgents/io.utopiasoft.cashu.worker.plist",
-    ]);
-    expect(failedAgentCommands(null)).toEqual([]);
-    expect(
-      failedAgentCommands({
-        bootout: "ran",
-        agents: [
-          { label: "io.utopiasoft.cashu.worker", state: "retired" },
-          { label: "io.github.synszakala.finanse.worker", state: "failed" },
-        ],
-      }),
-    ).toEqual([
-      "launchctl bootout gui/$(id -u)/io.github.synszakala.finanse.worker",
-      "rm -f ~/Library/LaunchAgents/io.github.synszakala.finanse.worker.plist",
-    ]);
-  });
-
-  it("forwards a finished import to the screen with or without unpriced instruments", () => {
-    const done = {
-      kind: "done",
-      unpriced: [],
-      mcpCommands: ["claude mcp remove cashu-anna"],
-      agents: null,
-    };
-    expect(recoveryImportEventSchema.parse(done)).toEqual(done);
-    expect(recoveryImportEventSchema.safeParse({ ...done, mcpCommands: [""] }).success).toBe(false);
-    expect(recoveryImportEventSchema.safeParse({ kind: "done", unpriced: [] }).success).toBe(false);
+    expect(prompt).toContain(`claude mcp add cashu-<slug> -- ${cashu} mcp --profile <slug>`);
+    expect(prompt).toContain("import-builder skill");
+    expect(prompt).toContain("`propose_import`");
+    expect(prompt).not.toContain("migrate");
+    const pl = buildRecoveryPrompt(report("python_data_present"), "pl");
+    expect(pl).toContain("Kod błędu: python_data_present");
+    expect(pl).toContain("import-builder");
+    const other = buildRecoveryPrompt(report("vault_key_unavailable"), "en");
+    expect(other).not.toContain("import-builder");
+    expect(other).not.toContain("migrate");
   });
 });

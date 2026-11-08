@@ -1,8 +1,8 @@
 /// <reference types="node" />
 // Electron main's start-up recovery state (T54). Main enters recovery when its own admission finds
-// Python data (python_data_present, no host is ever started), when the host it started recorded a
-// typed failure (`<data dir>/diagnostics/startup-failure.json`), or when "Import my data" failed. Each
-// new failure gets a report pair in `<data dir>/diagnostics/` (the validated report and the agent
+// the old (Python) app's data and no native profile yet (python_data_present: the screen offers the
+// agent prompt and a way on to first-run setup), or when the host it started recorded a typed failure
+// (`<data dir>/diagnostics/startup-failure.json`). Each new failure gets a report pair in `<data dir>/diagnostics/` (the validated report and the agent
 // prompt, 0600 in a 0700 dir, never deleted). The renderer's recovery screen reads the report over IPC;
 // main builds the prompt itself, so the page never hands main a text or a path.
 import {
@@ -20,7 +20,6 @@ import {
   startupReportPaths,
   writeStartupFailureReport,
 } from "@cashu/node-host";
-import type { LegacyDataAdmission } from "@cashu/node-host/admission";
 
 export interface StartupRecoveryDeps {
   readonly dataDir: string;
@@ -37,15 +36,20 @@ export interface StartupRecoveryDeps {
   log(line: string): void;
 }
 
-/** Main's own admission result as a failure (null: no Python data, nothing to recover from). */
-export function admissionFailure(admission: LegacyDataAdmission): StartupFailure | null {
-  // A cutover journal: `cashu migrate` ("Import my data") finishes the interrupted cutover.
-  if (admission === "migration_incomplete")
-    return startupFailure("migration_incomplete", "cutover_failed");
-  if (admission === "migration_required")
-    return startupFailure("python_data_present", "python_data_found");
-  if (admission === "refused") return startupFailure("python_data_present", "python_data_unsafe");
-  return null;
+/** What main's own admission found: roots holding old app data, and whether a native profile exists. */
+export interface OldAppData {
+  /** How many of the admission roots hold the old (Python) app's database. */
+  readonly roots: number;
+  /** The data dir already has native vaults (the old data was dealt with or set aside). */
+  readonly nativeInventory: boolean;
+  /** The user chose to continue to first-run setup without the old data (this run only). */
+  readonly continued: boolean;
+}
+
+/** Main's own admission as a failure (null: nothing to show; the start goes on as usual). */
+export function admissionFailure(found: OldAppData): StartupFailure | null {
+  if (found.roots === 0 || found.nativeInventory || found.continued) return null;
+  return startupFailure("python_data_present", "python_data_found", { pythonSources: found.roots });
 }
 
 function sameFailure(a: StartupFailure, b: StartupFailure): boolean {
@@ -124,12 +128,12 @@ export class StartupRecovery {
   }
 
   /**
-   * Re-checks main's own admission (start, and Retry on the screen): Python data keeps or enters
-   * recovery (the same failure keeps its report, no new files); none clears it. Returns whether main
-   * is recovering afterwards.
+   * Re-checks main's own admission (start, and Retry on the screen): old app data without a native
+   * profile keeps or enters recovery (the same failure keeps its report, no new files); otherwise it
+   * clears it. Returns whether main is recovering afterwards.
    */
-  admit(admission: LegacyDataAdmission, at: Date): boolean {
-    const failure = admissionFailure(admission);
+  admit(found: OldAppData, at: Date): boolean {
+    const failure = admissionFailure(found);
     if (failure === null) {
       this.#current = null;
       return false;
@@ -139,7 +143,7 @@ export class StartupRecovery {
     return true;
   }
 
-  /** Leaves recovery (the import finished, or Retry found nothing to recover from). */
+  /** Leaves recovery (Continue on the old-data screen). */
   clear(): void {
     this.#current = null;
   }

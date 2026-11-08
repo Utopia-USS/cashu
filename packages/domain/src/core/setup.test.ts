@@ -5,15 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { SetupStep } from "./modules.js";
-import {
-  claudeMcpAdd,
-  claudeMcpRemove,
-  cliPrefix,
-  reconnectMcpCommands,
-  setupView,
-  shlexJoin,
-  shlexQuote,
-} from "./setup.js";
+import { claudeMcpAdd, cliPrefix, setupView, shlexJoin, shlexQuote } from "./setup.js";
 
 const steps = (...specs: (readonly [boolean, boolean])[]): SetupStep[] =>
   specs.map(([done, optional], i) => ({
@@ -72,18 +64,6 @@ describe("cli prefix", () => {
     ).toBe(
       "claude mcp add cashu-staging-jan -- '/Users/x/Library/Application Support/cashU Staging/bin/cashu' mcp --profile jan",
     );
-  });
-
-  it("reconnect lines after a Python import: remove the old name, then the setup screen's add", () => {
-    expect(claudeMcpRemove("jan", "cashu")).toBe("claude mcp remove cashu-jan");
-    const launcher = "/Users/x/Library/Application Support/cashU/bin/cashu";
-    expect(reconnectMcpCommands([launcher], ["jan", "dom-2"], "cashu")).toEqual([
-      "claude mcp remove cashu-jan",
-      claudeMcpAdd([launcher], "jan", "cashu"),
-      "claude mcp remove cashu-dom-2",
-      claudeMcpAdd([launcher], "dom-2", "cashu"),
-    ]);
-    expect(reconnectMcpCommands([launcher], [], "cashu")).toEqual([]);
   });
 
   it("shlex.quote", () => {

@@ -1,11 +1,9 @@
 // `cashu-host <command>`: the host's own entry (the `cashu host ...` commands of the shim, S56d, call
-// the same protocol; `cashu migrate ...` runs `migrate` here in the foreground). Commands:
+// the same protocol). Commands:
 //   run     become the data dir's host (foreground; a detached spawn runs this too) until stopped,
 //           idle, or handed over. Exit 0 clean, 3 another host owns the data dir, 75 handover.
 //   status  ask the running host (role admin); exit 0 running, 3 not running. Never starts a host.
 //   stop    ask the running host to stop; exit 0 stopped or not running.
-//   migrate import the data dir's Python data in place, or `migrate verify` it (migration/cli.ts);
-//           exit 0 done, 1 failed, 64 usage. Never a host session: a host refuses Python data.
 // The data dir is `--data-dir <absolute path>` or CASHU_DATA_DIR; nothing else is guessed until the
 // shim's data dir resolution lands (S56d). Output is English for operators; the shim maps exit codes to
 // its localized texts (S56d).
@@ -15,13 +13,12 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
 import { connectHost, HostBusyError, HostConnectError, RefusalError } from "@cashu/node-host";
-import { legacySourceRoots } from "@cashu/node-host/admission";
 import {
   bundlePathFromEntry,
   packagedBuildId,
   readBundleIdentity,
 } from "@cashu/node-host/bundle-identity";
-import { dataDirName, processFlavor, workspacesRoot } from "@cashu/node-host/flavor";
+import { processFlavor, workspacesRoot } from "@cashu/node-host/flavor";
 import { enterTestBuildKeyringNamespace } from "@cashu/node-host/keyring";
 import { readTestBuildMarker, type TestBuildMarker } from "@cashu/node-host/test-build";
 import { devicePreferences } from "@cashu/store/device";
@@ -36,11 +33,8 @@ import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntim
 import { startLocalHost } from "./host.js";
 import { recordStartupFailure } from "./localHost/startup.js";
 import { createProductionMarket, type ProductionMarket } from "./market/production.js";
-import { migrateCommand, migratesOnlyInto } from "./migration/cli.js";
-import { productionLaunchctl, type RetireRuntime } from "./migration/pythonAgents.js";
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
-import { nativeSourceAdmission } from "./nativeSourceAdmission.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { nativeStrategyApprovals } from "./proposals/strategyApproval.js";
 import { currentRuntime, shimProgram, shippedSkillsSource } from "./runtime.js";
@@ -53,11 +47,9 @@ const NOT_RUNNING_EXIT = 3;
 const FAILURE_EXIT = 70;
 
 const USAGE = `usage: cashu-host <run|status|stop> [--data-dir <absolute path>] [--linger-ms <ms>] [--bundle <file>]
-       cashu-host migrate [verify] [--data-dir <absolute path>] [--recovery-file <file>] [--json]
   run     serve the data dir until stopped or idle (exit 0, 3 busy, 75 handover)
   status  show the running host (exit 0, 3 not running)
-  stop    stop the running host
-  migrate import the data dir's Python data in place (exit 0, 1 failed); verify re-checks it`;
+  stop    stop the running host`;
 
 export interface MainEnv {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -66,8 +58,6 @@ export interface MainEnv {
   /** `run` installs SIGTERM / SIGINT handlers through this (tests pass a no-op). */
   readonly onSignal: (handler: () => void) => void;
   readonly build: string;
-  /** One line of stdin without its newline, null at end of input (`migrate --json` words answer). */
-  readonly readLine?: () => Promise<string | null>;
 }
 
 interface Args {
@@ -180,53 +170,8 @@ function canonicalDir(path: string): string {
   }
 }
 
-/** `migrate ...`: the in-place Python import, in this process (never through a host session). */
-async function migrate(argv: readonly string[], io: MainEnv): Promise<number> {
-  let build: string;
-  let testBuild = false;
-  let retireRuntime: RetireRuntime;
-  try {
-    const runtime = checkedRuntime({}, io);
-    // A sealed test build imports only into its marker's data dir (a synthetic Python data dir for
-    // the release smoke test); its keyring is already mapped into cashu-next-test.<hex>.
-    if (runtime.testBuild) {
-      if (!migratesOnlyInto(argv, io.env, runtime.testBuild.dataDir))
-        throw new RefusalError("a test build imports only into its own data dir");
-      testBuild = true;
-    }
-    build = runtime.build;
-    // `bundle` is set only by a verified packaged identity; a source checkout never has one.
-    retireRuntime = { packaged: runtime.bundle !== undefined, flavor: processFlavor() };
-  } catch (error) {
-    io.stderr(`cashu-host: ${error instanceof RefusalError ? error.message : "failed"}`);
-    return error instanceof RefusalError ? error.exitCode : FAILURE_EXIT;
-  }
-  // The only place the real launchctl is wired, and only for a packaged app of the flavor that
-  // replaces the Python install (prod) that is not a sealed test build: a source run (dev, tests,
-  // e2e), staging and test builds never get it. pythonAgents.ts still refuses it under
-  // CASHU_TESTING, a custom CASHU_LAUNCH_AGENTS_DIR, a HOME that is not the account's, or an import
-  // into any data dir other than the account's default one. A test build retires only the plists of
-  // an explicit CASHU_LAUNCH_AGENTS_DIR.
-  const launchctl = productionLaunchctl({
-    platform: process.platform,
-    runtime: retireRuntime,
-    testBuild,
-  });
-  return migrateCommand(argv, {
-    env: io.env,
-    stdout: io.stdout,
-    stderr: io.stderr,
-    readLine: io.readLine ?? (async () => null),
-    build,
-    runtime: retireRuntime,
-    ...(testBuild ? { testBuild: true } : {}),
-    ...(launchctl === null ? {} : { launchctl }),
-  });
-}
-
 /** Runs one command; resolves with the exit code. */
 export async function main(argv: readonly string[], io: MainEnv): Promise<number> {
-  if (argv[0] === "migrate") return migrate(argv.slice(1), io);
   const args = parse(argv, io.env);
   if (typeof args === "string") {
     io.stderr(`cashu-host: ${args}\n${USAGE}`);
@@ -240,27 +185,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
       case "run": {
         const home = io.env.HOME || homedir();
         const flavor = processFlavor();
-        const defaultDir =
-          process.platform === "darwin"
-            ? join(home, "Library", "Application Support", dataDirName(flavor, "darwin"))
-            : join(
-                io.env.XDG_DATA_HOME || join(home, ".local", "share"),
-                dataDirName(flavor, "linux"),
-              );
         const sourceRuntime = currentRuntime();
-        const projectRoot = sourceRuntime.checkout ?? sourceRuntime.dir;
-        // Only a flavor whose default data dir is the retired Python app's looks at the Python
-        // install's other roots; any other data dir (and every staging one) is checked alone.
-        const explicitDataDir =
-          resolve(args.dataDir) !== resolve(defaultDir) || !flavor.inheritsPythonInstall;
-        const legacyRoots = legacySourceRoots(
-          args.dataDir,
-          projectRoot,
-          home,
-          io.env,
-          process.platform,
-          explicitDataDir,
-        );
         let workspaceStores: import("./stores.js").HostStores | undefined;
         const skillSource = shippedSkillsSource(sourceRuntime);
         const homeRoot = realpathSync.native(home);
@@ -290,7 +215,6 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                 protectedRoots: [
                   sourceRuntime.dir,
                   ...(sourceRuntime.checkout === undefined ? [] : [sourceRuntime.checkout]),
-                  ...legacyRoots,
                 ],
                 ...(sourceRuntime.checkout === undefined
                   ? {}
@@ -301,16 +225,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                 sessions: (vault) => workspaceStores?.vaults.get(vault)?.native ?? null,
                 inventory: () => readExistingNativeInventory(args.dataDir).entries,
               });
-        const assertNativeSourceAdmission = nativeSourceAdmission({
-          dataDir: args.dataDir,
-          projectRoot,
-          home,
-          env: io.env,
-          platform: process.platform,
-          explicitDataDir,
-        });
         const assertAdmission = () => {
-          assertNativeSourceAdmission();
           if (classifyNativeCreationStartup(args.dataDir) !== "ready")
             throw new Error("worker_native_admission_unavailable");
         };
@@ -351,7 +266,6 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               kind: "native-production",
               factory: new ProductionVaultSourceFactory(args.dataDir),
             },
-            assertNativeSourceAdmission,
             proposals: {
               bind: (vault, stores) => connectors?.proposals.bind(vault, stores) ?? null,
             },

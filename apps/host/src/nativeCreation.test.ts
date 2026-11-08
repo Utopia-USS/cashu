@@ -97,7 +97,7 @@ const input = {
   mcpPrivacy: "strict" as const,
 };
 
-async function fixture(onKeySet?: (dataDir: string) => void) {
+async function fixture() {
   const outer = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "t44-test-")));
   roots.push(outer);
   const dataDir = join(outer, "data");
@@ -112,7 +112,6 @@ async function fixture(onKeySet?: (dataDir: string) => void) {
     },
     async set(service, account, value) {
       items.set(`${service}/${account}`, value.slice());
-      onKeySet?.(dataDir);
     },
   };
   const service = `cashu-next-test.${randomBytes(16).toString("hex")}`;
@@ -166,74 +165,6 @@ it("creates one genuine encrypted profile and reconciles a completed operation r
     await restarted.primeVerifiedCompleted();
     expect(await restarted.current({})).toEqual(committed);
     expect(f.items.size).toBe(1);
-  } finally {
-    f.lock.release();
-  }
-});
-
-it("refuses Create prepare when a legacy source appears after service startup", async () => {
-  const f = await fixture();
-  try {
-    const creation = f.create();
-    const first = await creation.prepare(input);
-    if (first.kind !== "prepared") throw new Error("prepare refused in synthetic fixture");
-    writeFileSync(join(f.dataDir, "finanse.db"), "synthetic", { mode: 0o600 });
-    expect(await creation.prepare(input)).toEqual({ kind: "refused", code: "setup_unavailable" });
-    rmSync(join(f.dataDir, "finanse.db"));
-    expect(
-      await creation.commit({ operationId: first.operationId, phraseSession: first.phraseSession }),
-    ).toEqual({ kind: "refused", code: "prepare_missing" });
-    expect(readNativeCreationJournal(f.dataDir).pending).toBeNull();
-    expect(f.items.size).toBe(0);
-  } finally {
-    f.lock.release();
-  }
-});
-
-it("refuses Create commit without effects when an orphan sidefile appears after prepare", async () => {
-  const f = await fixture();
-  try {
-    const creation = f.create();
-    const prepared = await creation.prepare(input);
-    if (prepared.kind !== "prepared") throw new Error("prepare refused in synthetic fixture");
-    writeFileSync(join(f.dataDir, "cashu.db-wal"), "synthetic", { mode: 0o600 });
-    expect(
-      await creation.commit({
-        operationId: prepared.operationId,
-        phraseSession: prepared.phraseSession,
-      }),
-    ).toEqual({ kind: "refused", code: "setup_unavailable" });
-    expect(readNativeCreationJournal(f.dataDir).pending).toBeNull();
-    expect(f.items.size).toBe(0);
-  } finally {
-    f.lock.release();
-  }
-});
-
-it("keeps inventory unpublished when a legacy source appears during key provisioning", async () => {
-  let injected = false;
-  const f = await fixture((dataDir) => {
-    if (injected) return;
-    injected = true;
-    writeFileSync(join(dataDir, "finanse.db"), "synthetic", { mode: 0o600 });
-  });
-  try {
-    const creation = f.create();
-    const prepared = await creation.prepare(input);
-    if (prepared.kind !== "prepared") throw new Error("prepare refused in synthetic fixture");
-    const outcome = await creation.commit({
-      operationId: prepared.operationId,
-      phraseSession: prepared.phraseSession,
-    });
-    expect(injected).toBe(true);
-    expect(outcome.kind).toBe("outcome_unknown");
-    expect(existsSync(join(f.dataDir, "native", "v1", "inventory.json"))).toBe(false);
-    expect(existsSync(join(f.dataDir, "vaults"))).toBe(false);
-    expect(readNativeCreationJournal(f.dataDir).completed).toHaveLength(0);
-    expect(await creation.inspect({ operationId: prepared.operationId })).toMatchObject({
-      kind: "outcome_unknown",
-      operationId: prepared.operationId,
-    });
   } finally {
     f.lock.release();
   }

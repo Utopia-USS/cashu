@@ -34,8 +34,8 @@ export const S = {
     en: "`cashu init-db` was retired. Run `cashu app`; the native vault is created during profile setup.",
   },
   retiredMigrateData: {
-    pl: "`cashu migrate-data` zostało wycofane. Dane starej aplikacji importuje `cashu migrate --recovery-file <nowy plik>` (w tym samym folderze danych), a sprawdza `cashu migrate verify`.",
-    en: "`cashu migrate-data` was retired. `cashu migrate --recovery-file <new file>` imports the old app's data (in the same data folder), and `cashu migrate verify` checks it.",
+    pl: "`cashu migrate-data` zostało wycofane. Aplikacja nie importuje danych starej aplikacji; może je przenieść Twój agent.",
+    en: "`cashu migrate-data` was retired. The app does not import the old app's data; your agent can bring it over.",
   },
   retiredServe: {
     pl: "`cashu serve` zostało wycofane. Uruchom `cashu app`, aby otworzyć lokalną aplikację.",

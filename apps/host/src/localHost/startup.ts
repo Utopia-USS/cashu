@@ -1,4 +1,4 @@
-// Start-up of the local host, in order: admission before the lock (vault source, legacy data,
+// Start-up of the local host, in order: admission before the lock (vault source,
 // bundle identity or refused paths, native inventory), the advertised features, then under the lock
 // the crash record, the writer lease, the creation service and the stores (`openHostState`), and
 // the stable launcher.
@@ -20,7 +20,6 @@ import {
   refusePaths,
   writeStartupFailureRecord,
 } from "@cashu/node-host";
-import { legacyDataAdmission } from "@cashu/node-host/admission";
 import { readBundleIdentity } from "@cashu/node-host/bundle-identity";
 import { recentUncleanStarts, recordStart, type StartRecord } from "../crashLoop.js";
 import { writeLauncher } from "../launcher.js";
@@ -28,7 +27,6 @@ import { takeWriterLease, type WriterLease } from "../lease.js";
 import { errorName, fileLog, type HostLog } from "../log.js";
 import { createNativeCreationService } from "../nativeCreation.js";
 import { classifyNativeCreationStartup } from "../nativeCreationJournal.js";
-import { assertLegacyAdmission } from "../nativeSourceAdmission.js";
 import { privateNotificationIntents } from "../notifications/intentLedger.js";
 import { currentRuntime, type HostRuntime, shimProgram } from "../runtime.js";
 import {
@@ -50,8 +48,6 @@ type NativeCreation = ReturnType<typeof createNativeCreationService>;
 interface Admission {
   readonly vaultSource: VaultSource;
   readonly startup: CreationStartup;
-  /** Refuses a data dir that still holds legacy Python data (and the entry's own source roots). */
-  readonly assertNativeSourceAdmission: () => void;
 }
 
 /** Checks everything that must hold before the host takes the lock. Throws a `StartupFailureError`. */
@@ -62,12 +58,6 @@ export function admitStart(options: LocalHostOptions): Admission {
       "native_inventory_unavailable",
       "native_vault_provider_unavailable",
     );
-  const assertNativeSourceAdmission = () => {
-    // Python data is imported in place once (`cashu migrate`), never opened beside native vaults.
-    assertLegacyAdmission(legacyDataAdmission(options.dataDir));
-    options.assertNativeSourceAdmission?.();
-  };
-  if (vaultSource.kind === "native-production") assertNativeSourceAdmission();
   if (options.bundlePath !== undefined) assertBundleIdentity(options.bundlePath, vaultSource);
   else
     refusePaths(
@@ -85,7 +75,7 @@ export function admitStart(options: LocalHostOptions): Admission {
       : null;
   if (startup === "ready" && vaultSource.kind === "native-production")
     vaultSource.factory.preflight();
-  return { vaultSource, startup, assertNativeSourceAdmission };
+  return { vaultSource, startup };
 }
 
 /** A packaged host runs only from the verified bundle it was started from. */
@@ -166,7 +156,6 @@ export async function openHostState(input: {
         lock: server.lock,
         now,
         createKeyStore: vaultSource.factory.creationKeyStoreFactory(),
-        assertSourceAdmission: admission.assertNativeSourceAdmission,
       });
       // Authenticate completed anchors before native sessions take exclusive SQLite opens.
       await creation.primeVerifiedCompleted();

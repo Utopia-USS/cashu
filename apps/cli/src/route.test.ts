@@ -27,24 +27,12 @@ describe("route", () => {
     [["mcp", "--profile", "Demo-Anna"]],
     [["mcp", "mcp", "--profile", "a"]],
     [["stats"]],
+    [["migrate"]],
     [[]],
     [["--help"]],
     [["host"]],
   ])("sends %j to the host as a command", (argv) => {
     expect(route(argv).kind).toBe(argv[0] === "host" ? "host-usage" : "cli");
-  });
-
-  it("sends every `migrate` form to the host binary with its arguments untouched", () => {
-    expect(route(["migrate"])).toEqual({ kind: "migrate", args: [] });
-    expect(route(["migrate", "--recovery-file", "/x/w.txt"])).toEqual({
-      kind: "migrate",
-      args: ["--recovery-file", "/x/w.txt"],
-    });
-    expect(route(["migrate", "verify", "--json"])).toEqual({
-      kind: "migrate",
-      args: ["verify", "--json"],
-    });
-    expect(route(["--profile", "a", "migrate"])).toEqual({ kind: "cli" });
   });
 
   it("knows its own host commands only in the exact shape", () => {
