@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { keychainService, processFlavor } from "../flavor.js";
 import type { HostLock } from "../host/lock.js";
@@ -120,9 +121,7 @@ export function createTestClassifierSecrets(
 ): ClassifierSecretStore {
   if (
     !TEST_SERVICE.test(service) ||
-    !privateDir(authority.dataDir).startsWith(
-      `${realpathSync.native(process.env.TMPDIR || "/private/tmp")}/`,
-    )
+    !privateDir(authority.dataDir).startsWith(`${realpathSync.native(tmpdir())}/`)
   )
     unavailable();
   return make(authority, service, keyring);
