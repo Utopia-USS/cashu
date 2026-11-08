@@ -10,7 +10,7 @@ real data dir.
 
 ## Workspace checks
 
-Run from the repo root with Node >=22 (`.nvmrc`) and the pnpm version pinned in `package.json`
+Run from the repo root with Node >=24 (`.nvmrc`, the Node of Electron) and the pnpm version pinned in `package.json`
 (`corepack enable`). The pnpm workspace is `packages/*`, `apps/*` and `tools/arch`.
 
 | Task | Command |

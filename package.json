@@ -4,7 +4,7 @@
   "type": "module",
   "description": "cashU TypeScript monorepo: desktop and mobile apps, local host, CLI and MCP server.",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "typecheck": "turbo run typecheck",

@@ -10,7 +10,7 @@ UI copy, what not to do). If you work with an AI agent, it reads the same files.
 
 ## Development setup
 
-You need Node.js 22 (`.nvmrc`) and pnpm (`corepack enable`; the version is pinned in `package.json`).
+You need Node.js 24 (`.nvmrc`, the Node version Electron ships) and pnpm (`corepack enable`; the version is pinned in `package.json`).
 macOS is the primary platform; the CLI and the tests also run on Linux.
 
 ```bash

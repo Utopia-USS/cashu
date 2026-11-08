@@ -165,7 +165,7 @@ node apps/desktop/scripts/release-macos.mjs --yes --notes docs/releases/v<X.Y.Z>
 A full dry run takes about 20 minutes (four notarizations). One-time prerequisites: the Developer ID
 identity in the login keychain with codesign allowed ("Always Allow" on the first keychain dialog), the
 notarytool profile (`xcrun notarytool store-credentials cashu-notary --key <AuthKey.p8> --key-id <id>
---issuer <issuer id>`), `gh auth login` as an admin, Node 22 with pnpm through Corepack, Xcode command
+--issuer <issuer id>`), `gh auth login` as an admin, Node 24 with pnpm through Corepack, Xcode command
 line tools. The script reads no secret itself: codesign and notarytool read the keychain.
 
 If a CI run already left a draft of the same version, `--yes` refuses (the release exists): publish or

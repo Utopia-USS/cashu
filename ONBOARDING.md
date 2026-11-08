@@ -18,7 +18,7 @@ cashU is a native macOS app (macOS 13 or later). Check that the user has:
 - **macOS 13+** (`sw_vers -productVersion`),
 - (optional) **Ollama** - if they want to categorize spending with a local, offline LLM,
 - only to build from source instead of downloading: the **Xcode command line tools**
-  (`xcode-select -p`; else `xcode-select --install`), **Node.js 22** (`node --version`) and **pnpm**
+  (`xcode-select -p`; else `xcode-select --install`), **Node.js 24** (`node --version`) and **pnpm**
   through corepack (`corepack enable`).
 
 If something is missing, say how to install it (macOS: `brew install node ollama`) and wait.

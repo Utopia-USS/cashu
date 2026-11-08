@@ -32,7 +32,7 @@ data, alerts, theses and a watchlist, never orders, never price predictions.
 > categorization keywords and LLM prompts stay Polish - the tool targets customers of Polish banks, and
 > those strings are matched against Polish transaction text.
 
-Stack: TypeScript · Electron · React · Node 22 · event-sourced SQLite stores · pnpm + turbo monorepo.
+Stack: TypeScript · Electron · React · Node 24 · event-sourced SQLite stores · pnpm + turbo monorepo.
 
 ---
 
@@ -63,7 +63,7 @@ cashU is a normal Mac app, `cashU.app` (macOS 13 or later). **Download** the dmg
 on Apple silicon, `cashU-<version>-mac-x64.dmg` on Intel. Releases are signed and notarized, and the app
 installs later versions itself (Settings > Updates).
 
-**Or build it** from this repository (macOS, Node.js 22, Xcode command line tools):
+**Or build it** from this repository (macOS, Node.js 24, Xcode command line tools):
 
 ```bash
 corepack enable && pnpm install --frozen-lockfile
@@ -222,7 +222,7 @@ pnpm arch:check                      # layers, unused code, catalogs, the archit
 pnpm --filter @cashu/desktop dev     # the desktop app on a synthetic demo
 ```
 
-A pnpm + turbo monorepo: Node 22 (`.nvmrc`), strict ESM TypeScript (`tsconfig.base.json`), vitest for
+A pnpm + turbo monorepo: Node 24 (`.nvmrc`), strict ESM TypeScript (`tsconfig.base.json`), vitest for
 tests, Biome for lint and format (one dependency and one config file for both jobs, fast enough to run
 in every package on every push). Architecture, code map, conventions, and "how to add a feature" -
 [`CLAUDE.md`](CLAUDE.md) and [`docs/agents/`](docs/agents/). Releases: a merge to `main` bumps the version and builds the signed release after the owner's

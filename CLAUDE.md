@@ -85,7 +85,7 @@ Never the em dash; use a hyphen. Full form: [docs/agents/conventions.md](docs/ag
 ## Required setup
 
 ```bash
-corepack enable && pnpm install --frozen-lockfile    # Node >=22 (.nvmrc), pnpm pinned in package.json
+corepack enable && pnpm install --frozen-lockfile    # Node >=24 (.nvmrc, the Node of Electron), pnpm pinned in package.json
 pnpm --filter @cashu/desktop dev                     # builds the desktop app and opens it on a synthetic demo
 ```
 
@@ -101,7 +101,7 @@ computes net worth, monthly cashflow, and recurring payments. Data is kept per *
 or a household; one encrypted vault each), and features come in **modules** (budget, assets, loans,
 investments) chosen per profile. The product is the native desktop app: an Electron window over a
 local host process that owns the stores and serves the UI, the `cashu` CLI and the MCP server.
-Everything runs **locally**. Stack: TypeScript (strict ESM), Node 22, Electron, React, SQLite
+Everything runs **locally**. Stack: TypeScript (strict ESM), Node 24, Electron, React, SQLite
 event-sourced stores, Biome, vitest, Playwright.
 
 | Workspace | Purpose |

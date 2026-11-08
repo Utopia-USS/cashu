@@ -179,7 +179,7 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
-      # pnpm at the exact version of "packageManager" in package.json (Corepack ships with Node 22).
+      # pnpm at the exact version of "packageManager" in package.json (Corepack ships with Node 24).
       - name: Install
         run: |
           corepack enable pnpm
