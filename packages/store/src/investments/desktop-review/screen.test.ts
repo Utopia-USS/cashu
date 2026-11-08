@@ -245,6 +245,67 @@ describe("native Review owner and tracked projection", () => {
       v.store.close();
     }
   });
+  it("drops research signals of a closed position the owner does not watch", () => {
+    const { v, read, instrument } = fixture();
+    try {
+      const account = brokerage(v, "Broker");
+      const closed = stock(v, "GONE", "PL0000000104");
+      const watchedOnce = raw.watchAdded(v, closed);
+      applyRaw(v, [watchedOnce]);
+      v.value(addManualTransaction, {
+        account,
+        type: "deposit",
+        tradeDate: "2026-10-01",
+        cashAmount: "100",
+      });
+      v.value(addManualTransaction, {
+        account,
+        instrument: closed,
+        type: "buy",
+        tradeDate: "2026-10-01",
+        quantity: "1",
+        price: "10",
+      });
+      v.value(addManualTransaction, {
+        account,
+        instrument: closed,
+        type: "sell",
+        tradeDate: "2026-10-20",
+        quantity: "1",
+        price: "10",
+      });
+      applyRaw(v, [{ type: "watchlist.removed", gid: watchedOnce.gid, data: {} }]);
+      applyRaw(v, [
+        raw.signalOpened(rawGid(861), `research:2026-W41|i:${closed}`, {
+          instrument: closed,
+          ruleId: "research:news",
+          kind: "research:news",
+        }),
+        raw.signalOpened(rawGid(862), `research:2026-W41|i:${instrument}`, {
+          instrument,
+          ruleId: "research:news",
+          kind: "research:news",
+        }),
+        raw.signalOpened(rawGid(863), "rule-on-closed", { instrument: closed }),
+      ]);
+      const now = "2026-10-31T12:01:00Z";
+      const result = readReviewDecide(read, {
+        now,
+        since: "2026-10-24T00:00:00Z",
+        today: "2026-10-31",
+        account: null,
+        limit: Number.MAX_SAFE_INTEGER,
+        research: researchDigest(read, { now: viewInstant(toStorage(now)), since: null }),
+      });
+      // The total counts the open signals the review considers: the watched instrument's research
+      // signal and the rule signal stay, the closed position's research signal does not.
+      expect(result.total).toBe(2);
+      expect(JSON.stringify(result)).not.toContain(rawGid(861));
+      expect(result.items.flatMap((item) => item.signals)).toContain(rawGid(863));
+    } finally {
+      v.store.close();
+    }
+  });
   it("keeps all pending investment proposals beyond the six-subject limit and excludes budget proposals", () => {
     const { v, read } = fixture();
     try {

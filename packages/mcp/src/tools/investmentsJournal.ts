@@ -66,8 +66,17 @@ export function theses(ctx: Context, args: ToolArgs): L.LabelledTree {
     typeof args.instrument === "string" && args.instrument
       ? profileInstrument(ctx, args.instrument)
       : undefined;
-  const rows = Q.theses(ctx.store.read, iid),
-    held = rows.length ? Q.heldSince(ctx.store.read, ctx.today) : new Map<string, string | null>();
+  const all = Q.theses(ctx.store.read, iid),
+    held = all.length ? Q.heldSince(ctx.store.read, ctx.today) : new Map<string, string | null>(),
+    watched = new Set(all.length ? Q.watchlist(ctx.store.read).map((w) => w.instrument) : []);
+  // A closed position's thesis (neither held nor watched now) stays stored but is out of the review
+  // and research scope: listed only on request or for that one instrument, marked `closed`.
+  const position = (instrument: string) =>
+    held.has(instrument) ? "held" : watched.has(instrument) ? "watched" : "closed";
+  const rows =
+    iid !== undefined || args.include_closed === true
+      ? all
+      : all.filter((r) => position(r.instrument) !== "closed");
   return {
     theses: rows.map((r) => {
       const inst = Q.loadInstrument(ctx.store.read, r.instrument),
@@ -79,6 +88,7 @@ export function theses(ctx: Context, args: ToolArgs): L.LabelledTree {
         name: privateName
           ? L.identifier(inst?.name ?? null)
           : L.text(publicName(ctx, inst?.name ?? null)),
+        position: L.category(position(r.instrument)),
         entry_type: L.category(r.entryType),
         thesis: L.text(r.thesis),
         invalidation: L.text(r.invalidation),

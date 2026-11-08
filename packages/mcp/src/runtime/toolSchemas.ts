@@ -927,6 +927,12 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
         type: "string",
         maxLength: 40,
       },
+      include_closed: {
+        type: "boolean",
+        default: false,
+        description:
+          "also theses of closed positions (position: held | watched | closed; closed = neither held nor watched now, out of the review and research scope)",
+      },
     },
     required: [],
     write: false,

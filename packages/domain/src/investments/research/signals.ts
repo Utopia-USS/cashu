@@ -27,6 +27,8 @@ import { themeKey } from "./themes.js";
 
 export const CLOSED_DISMISSED = "note_dismissed";
 export const CLOSED_EXPIRED = "notes_expired";
+/** The instrument is neither held nor watched any more (the leader's housekeeping closes it). */
+export const CLOSED_NOT_HELD = "position_closed";
 
 /** Polish labels of note kinds, as in the dashboard (`KIND_LABEL` in v2/research/logic.ts). */
 export const KIND_LABEL: ReadonlyMap<string, string> = new Map([

@@ -8,6 +8,9 @@ import type { ToolContext } from "../registry.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import type { ResearchRequests, ResearchServices } from "./researchTypes.js";
 
+/** The language of the macro cards the MCP sends (its market vocabulary is Polish). */
+const MCP_MARKET_LANG = "pl";
+
 export function researchServices(
   ctx: ToolContext<NativeToolStore>,
   requests: ResearchRequests,
@@ -95,7 +98,10 @@ export function researchServices(
         const entry = notes.get(`macro_${regime.key}`),
           selected = macro.currentBrief(entry?.briefs ?? [], regime);
         return {
-          ...macro.regimeDict(regime, request.lang, currency),
+          // Always Polish, whatever the app language: the MCP `market` label admits only the Polish
+          // metric labels, Polish-formatted numbers and the Polish summary vocabulary, so an English
+          // card made research_context fail with an internal error.
+          ...macro.regimeDict(regime, MCP_MARKET_LANG, currency),
           brief: investmentsResearch.macroBrief(selected ?? undefined, now),
           last_note_at: investmentsResearch.iso(entry?.newest?.observedAt ?? null),
           note_this_week: macro.inSameIsoWeek(entry?.newest?.observedAt ?? null, now),

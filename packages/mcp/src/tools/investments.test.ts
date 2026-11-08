@@ -1,5 +1,5 @@
 import { investments as inv, parseDateTime } from "@cashu/domain";
-import { investmentsServices } from "@cashu/store";
+import { investmentsCommands as C, type Command, investmentsServices } from "@cashu/store";
 import { afterEach, expect, it } from "vitest";
 import type { LabelledTree } from "../privacy/labels.js";
 import { pyDumps } from "../privacy/pyJson.js";
@@ -162,4 +162,75 @@ it("refuses script paths before reading and does not borrow general file authori
     errors: 1,
     transactions: 0,
   });
+});
+function run<I, V>(f: ReturnType<typeof fixture>, command: Command<I, V>, input: unknown): V {
+  const result = f.run(command, input);
+  if (!result.ok) throw new Error(result.reason);
+  return result.value;
+}
+it("lists theses of the current portfolio and marks a closed position's thesis", async () => {
+  const f = fixture(),
+    account = run(f, C.addBrokerageAccount, { name: "Synthetic broker", broker: "dif" }).account;
+  run(f, C.addManualTransaction, {
+    account,
+    type: "deposit",
+    tradeDate: "2026-01-01",
+    cashAmount: "3000",
+    currency: "PLN",
+  });
+  const add = (symbol: string, isin: string, o: { sold?: boolean; watched?: boolean } = {}) => {
+    const added = run(f, C.addToWatchlist, {
+      target: {
+        planned: {
+          symbol,
+          isin,
+          name: `Synthetic ${symbol}`,
+          currency: "PLN",
+          assetClass: "equity",
+          mic: "XWAR",
+        },
+      },
+    });
+    run(f, C.addManualTransaction, {
+      account,
+      instrument: added.instrument,
+      type: "buy",
+      tradeDate: "2026-01-02",
+      quantity: "5",
+      price: "100",
+      cashAmount: "-500",
+      currency: "PLN",
+    });
+    if (o.sold)
+      run(f, C.addManualTransaction, {
+        account,
+        instrument: added.instrument,
+        type: "sell",
+        tradeDate: "2026-01-05",
+        quantity: "5",
+        price: "100",
+        cashAmount: "500",
+        currency: "PLN",
+      });
+    if (!o.watched) run(f, C.removeFromWatchlist, { item: added.item });
+    run(f, C.createThesis, {
+      instrument: added.instrument,
+      entryType: "trend",
+      thesis: `Teza testowa ${symbol}.`,
+    });
+  };
+  add("HLD", "PLHLD0000014");
+  add("WCH", "PLWCH0000013", { sold: true, watched: true });
+  add("CLS", "PLCLS0000017", { sold: true });
+  const ctx = await context(f),
+    current = call(ctx, "theses").theses as Record<string, unknown>[];
+  expect(current.map((row) => [row.symbol, row.position]).sort()).toEqual([
+    ["HLD", "held"],
+    ["WCH", "watched"],
+  ]);
+  const all = call(ctx, "theses", { include_closed: true }).theses as Record<string, unknown>[];
+  expect(all.find((row) => row.symbol === "CLS")).toMatchObject({ position: "closed" });
+  expect(call(ctx, "theses", { instrument: "CLS" }).theses).toMatchObject([
+    { symbol: "CLS", position: "closed" },
+  ]);
 });

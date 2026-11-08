@@ -123,9 +123,11 @@ function macro(ctx: ToolContext<NativeToolStore>): L.LabelledTree {
     since_open: F.flag(card.since_open),
     since_min: F.date(card.since_min),
     as_of: F.date(card.as_of),
+    // A value outside the market vocabulary is dropped (null), never thrown: one odd card must not
+    // fail the whole research context.
     metrics: card.metrics.map((metric) => ({
-      label: L.market(metric.label),
-      text: L.market(metric.text),
+      label: L.market(L.marketOk(metric.label) ? metric.label : null),
+      text: L.market(L.marketOk(metric.text) ? metric.text : null),
     })),
     stale: F.flag(card.stale),
     missing: F.flag(card.missing),
@@ -183,7 +185,9 @@ export function researchContext(ctx: ToolContext<NativeToolStore>): L.LabelledTr
       },
     ];
   });
-  const watched = Q.watchlist(read).flatMap((item) => {
+  const watchItems = Q.watchlist(read),
+    watchedIds = new Set(watchItems.map((item) => item.instrument));
+  const watched = watchItems.flatMap((item) => {
     const research = byId.get(item.instrument),
       inst = instruments.get(item.instrument);
     if (
@@ -259,8 +263,12 @@ export function researchContext(ctx: ToolContext<NativeToolStore>): L.LabelledTr
     .map(({ when: _when, ...row }) => row);
   const config = service.strategy.config,
     used = new Map<string, number>();
+  // Only theses of the current portfolio (held or watched): a closed position's thesis stays stored
+  // but is out of the research scope.
+  const current = new Set([...heldIds, ...watchedIds]);
   for (const [id, row] of theses)
-    if (byId.has(id) && !owned.has(id)) used.set(row.entryType, (used.get(row.entryType) ?? 0) + 1);
+    if (current.has(id) && byId.has(id) && !owned.has(id))
+      used.set(row.entryType, (used.get(row.entryType) ?? 0) + 1);
   const exposure = research.researchExposure(
     positions.map((row) => ({
       instrument: String(row.instrument.id),

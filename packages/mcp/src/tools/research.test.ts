@@ -51,7 +51,39 @@ const NOTE = {
     },
   ],
 };
-async function setup(privacy = "strict", withProvider = true) {
+/** Synthetic macro closes (weekdays up to `today`): every regime evaluates and carries metrics. */
+function macroSeries(today: string): Record<string, (readonly [string, number])[]> {
+  const days: string[] = [];
+  for (let t = Date.parse(`${today}T00:00:00Z`) - 800 * 86_400_000; ; t += 86_400_000) {
+    const day = new Date(t).toISOString().slice(0, 10);
+    if (day > today) break;
+    const wd = new Date(t).getUTCDay();
+    if (wd !== 0 && wd !== 6) days.push(day);
+  }
+  const n = days.length,
+    series = (f: (i: number) => number) =>
+      days.map((day, i) => [day, Math.round(f(i) * 10_000) / 10_000] as const);
+  return {
+    acwi: series((i) => 100 + 0.05 * i),
+    spx: series((i) => 5000 + 2 * i),
+    dxy: series(() => 100),
+    eem: series((i) => (100 + 0.05 * i) / 2),
+    dbc: series((i) => 20 + 0.01 * i),
+    us10y: series((i) => (i < n - 30 ? 4.2 : 4.7)),
+    us3m: series(() => 4),
+  };
+}
+async function setup(
+  privacy = "strict",
+  withProvider = true,
+  options: {
+    readonly lang?: "pl" | "en";
+    readonly macro?: boolean;
+    readonly patchMacro?: (
+      card: ReturnType<NonNullable<NativeToolStore["research"]>["macro"]>[number],
+    ) => ReturnType<NonNullable<NativeToolStore["research"]>["macro"]>[number];
+  } = {},
+) {
   const f = nativeFixture();
   fixtures.push(f);
   const account = value(f, C.addBrokerageAccount, {
@@ -154,11 +186,11 @@ async function setup(privacy = "strict", withProvider = true) {
             timeZone: "UTC",
           },
           strategy,
-          lang: "pl",
+          lang: options.lang ?? "pl",
           forOwner: false,
           prices: f.prices,
         },
-        macroCloses: {},
+        macroCloses: options.macro ? macroSeries(context.today) : {},
         isHolder: () => holder,
       });
       if (maliciousMacro) {
@@ -168,6 +200,11 @@ async function setup(privacy = "strict", withProvider = true) {
           macro: () =>
             original.macro().map((card) => ({ ...card, summary: "Anna Nowak ma 123456789 zł." })),
         };
+      }
+      const patch = options.patchMacro;
+      if (patch !== undefined && services !== undefined) {
+        const original = services;
+        services = { ...original, macro: () => original.macro().map(patch) };
       }
       if (!withProvider) services = undefined;
       return fn({
@@ -194,6 +231,62 @@ async function setup(privacy = "strict", withProvider = true) {
       maliciousMacro = true;
     },
   };
+}
+/** One more quoted holding bought in the setup's account (optionally sold again / left watched). */
+function holding(
+  s: Awaited<ReturnType<typeof setup>>,
+  symbol: string,
+  isin: string,
+  o: { readonly watched?: boolean; readonly thesis?: string; readonly sold?: boolean } = {},
+): string {
+  const added = value(s.f, C.addToWatchlist, {
+    target: {
+      planned: {
+        symbol,
+        isin,
+        name: `Synthetic ${symbol}`,
+        currency: "PLN",
+        assetClass: "equity",
+        mic: "XWAR",
+      },
+    },
+  });
+  value(s.f, C.addManualTransaction, {
+    account: s.account,
+    type: "deposit",
+    tradeDate: "2026-01-02",
+    cashAmount: "500",
+    currency: "PLN",
+  });
+  value(s.f, C.addManualTransaction, {
+    account: s.account,
+    instrument: added.instrument,
+    type: "buy",
+    tradeDate: "2026-01-02",
+    quantity: "5",
+    price: "100",
+    cashAmount: "-500",
+    currency: "PLN",
+  });
+  if (o.thesis !== undefined)
+    value(s.f, C.createThesis, {
+      instrument: added.instrument,
+      entryType: o.thesis,
+      thesis: `Teza testowa ${symbol}.`,
+    });
+  if (o.sold)
+    value(s.f, C.addManualTransaction, {
+      account: s.account,
+      instrument: added.instrument,
+      type: "sell",
+      tradeDate: "2026-01-05",
+      quantity: "5",
+      price: "100",
+      cashAmount: "500",
+      currency: "PLN",
+    });
+  if (!o.watched) value(s.f, C.removeFromWatchlist, { item: added.item });
+  return added.instrument;
 }
 function body(result: Awaited<ReturnType<NativeMcpServer["call"]>>): Record<string, unknown> {
   if (!result.ok) throw new Error(`research tool refused: ${result.errorKind}: ${result.error}`);
@@ -418,6 +511,71 @@ describe("native research MCP tools", () => {
     expect(out.errorKind).toBe("unlabelled");
     expect(s.f.store.read("SELECT gid FROM research_notes")).toHaveLength(0);
     expect(s.f.store.read("SELECT gid FROM inv_signals")).toHaveLength(0);
+  });
+  it.each(["pl", "en"] as const)(
+    "research_context labels the macro metrics in the MCP's Polish market vocabulary (app language %s)",
+    async (lang) => {
+      const s = await setup("strict", true, { lang, macro: true }),
+        result = await s.server.call("research_context", {});
+      expect(result.errorKind ?? null).toBeNull();
+      const cards = body(result).macro as Record<string, unknown>[];
+      const metrics = cards.flatMap((card) => card.metrics as Record<string, unknown>[]);
+      expect(metrics.length).toBeGreaterThan(0);
+      for (const metric of metrics) {
+        expect(String(metric.text)).not.toMatch(/\d\.\d/);
+        expect(String(metric.label)).toMatch(/\S/);
+      }
+    },
+  );
+  it("drops a macro metric outside the market vocabulary instead of failing research_context", async () => {
+    const s = await setup("strict", true, {
+        macro: true,
+        patchMacro: (card) => ({
+          ...card,
+          metrics: card.metrics.map((metric) => ({ ...metric, label: "1Y return", text: "+4.1%" })),
+        }),
+      }),
+      result = await s.server.call("research_context", {});
+    expect(result.errorKind ?? null).toBeNull();
+    const cards = body(result).macro as Record<string, unknown>[];
+    const metrics = cards.flatMap((card) => card.metrics as Record<string, unknown>[]);
+    expect(metrics.length).toBeGreaterThan(0);
+    expect(metrics.every((metric) => metric.label === null && metric.text === null)).toBe(true);
+  });
+  it("research_context scopes positions and theses to the current portfolio", async () => {
+    const s = await setup();
+    holding(s, "NEW", "PLNEW0000011");
+    const old = holding(s, "OLD", "PLOLD0000018", { thesis: "special_situation" });
+    body(
+      await s.server.call("add_research_note", {
+        ...NOTE,
+        instrument: "OLD",
+        thesis_relation: "supports",
+        polarity: "positive",
+      }),
+    );
+    value(s.f, C.addManualTransaction, {
+      account: s.account,
+      instrument: old,
+      type: "sell",
+      tradeDate: "2026-01-05",
+      quantity: "5",
+      price: "100",
+      cashAmount: "500",
+      currency: "PLN",
+    });
+    const context = body(await s.server.call("research_context", {})),
+      positions = context.positions as Record<string, unknown>[],
+      watchlist = context.watchlist as Record<string, unknown>[];
+    const fresh = positions.find((row) => row.symbol === "NEW");
+    expect(fresh).toMatchObject({ thesis: null });
+    expect(positions.map((row) => row.symbol)).not.toContain("OLD");
+    expect(watchlist.map((row) => row.symbol)).not.toContain("OLD");
+    const inUse = (context.strategy as Record<string, unknown>).entry_types_in_use as Record<
+      string,
+      unknown
+    >[];
+    expect(inUse.map((row) => row.entry_type)).toEqual(["trend"]);
   });
   it("keeps genuine native macro summaries and rejects owner-data summaries under the unchanged vocabulary", async () => {
     const s = await setup(),

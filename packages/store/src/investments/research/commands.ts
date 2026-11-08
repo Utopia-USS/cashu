@@ -12,8 +12,9 @@
 // - A stale run (running, no note for 4 hours) is closed `failed {reason: interrupted}` in the batch
 //   of the next start / note on any device (Python `_fail_stale_runs`), and by the leader's
 //   housekeeping; until then readers treat it as failed (`isStale`).
-// - `notes_expired` resolves (housekeeping, also after a finish) come from the lease holder only
-//   (events.md 8.7); a finish on another device leaves them to the leader's daily housekeeping.
+// - `notes_expired` and `position_closed` resolves (housekeeping, also after a finish) come from the
+//   lease holder only (events.md 8.7); a finish on another device leaves them to the leader's daily
+//   housekeeping.
 // - Candidate keys of an instrument candidate fall back to the instrument gid (Python `str(id)`).
 
 import { pyCasefold } from "@cashu/domain";
@@ -25,6 +26,7 @@ import { eventBlob, gid } from "../../events/v1/primitives.js";
 import { watchedInstrumentGids } from "../queries/alerts.js";
 import { loadInstrument, loadInstruments, vaultInstrumentGids } from "../queries/instruments.js";
 import { theses } from "../queries/journal.js";
+import { instrumentRoot } from "../queries/shared.js";
 import {
   AGENT,
   heldInstrumentGids,
@@ -819,8 +821,9 @@ export interface HousekeepingStats {
 }
 
 /**
- * Python `housekeeping`: resolve research signals none of whose notes qualify any more (expired) and
- * close runs left running for 4 hours as failed. `skip` = runs this batch already closed.
+ * Python `housekeeping`: resolve research signals none of whose notes qualify any more (expired) or
+ * whose instrument is neither held nor watched any more (`position_closed`), and close runs left
+ * running for 4 hours as failed. `skip` = runs this batch already closed.
  */
 function housekeep(
   ctx: CommandContext,
@@ -830,7 +833,29 @@ function housekeep(
 ): HousekeepingStats {
   let resolved = 0;
   let policy: ReadonlySet<string> | undefined;
+  let current: ReadonlySet<string> | undefined;
   for (const s of openResearchSignals(ctx.read)) {
+    if (s.instrument !== null) {
+      // A closed position the owner does not watch is out of the review: its research signal
+      // resolves even while its notes are still active.
+      current ??= new Set(
+        [...heldInstrumentGids(ctx.read, ctx.today()), ...watchedInstrumentGids(ctx.read)].map(
+          (g) => instrumentRoot(ctx.read, g),
+        ),
+      );
+      if (!current.has(instrumentRoot(ctx.read, s.instrument))) {
+        const reason = research.CLOSED_NOT_HELD;
+        ctx.emit("signal.closed", s.gid, {
+          status: "resolved",
+          reason,
+          run: null,
+          payloadSet: { closed_reason: reason, previous_status: s.status },
+          stamps: { closed_at: instantEvent(now) },
+        });
+        resolved += 1;
+        continue;
+      }
+    }
     const rows = weekNoteRows(ctx.read, s.dedupKey);
     const records = rows.map((n, i) => signalRecord(n, i + 1));
     const mine = records.filter((r) => research.noteKey(r) === s.dedupKey);

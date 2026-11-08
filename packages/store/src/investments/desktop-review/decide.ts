@@ -6,6 +6,7 @@ import type { Read } from "../../query.js";
 import type { ResearchInputs } from "../desktop-research/inputs.js";
 import type { SignalRow } from "../desktop-signals/reads.js";
 import { readSignalRows } from "../desktop-signals/reads.js";
+import { watchedInstrumentGids } from "../queries/alerts.js";
 import { heldSince } from "../queries/holdings.js";
 import { theses } from "../queries/journal.js";
 import { instrumentRoot } from "../queries/shared.js";
@@ -71,7 +72,18 @@ export function readReviewDecide(
           }).holdings.map((holding) => instrumentRoot(read, holding.instrumentId)),
         );
   const heldAnywhere = input.account === null ? null : heldSince(read, today);
+  // A research signal of a closed position the owner does not watch is out of the review at once
+  // (the leader's housekeeping resolves it as `position_closed`).
+  const current = new Set([
+    ...heldSince(read, today).keys(),
+    ...[...watchedInstrumentGids(read)].map((g) => instrumentRoot(read, g)),
+  ]);
+  const inScope = (row: SignalRow) =>
+    row.source !== "research" ||
+    row.instrument === null ||
+    current.has(instrumentRoot(read, row.instrument));
   const rows = readSignalRows(read, input.now, "open").filter((row) => {
+    if (!inScope(row)) return false;
     if (inView === null || row.instrument === null) return true;
     const root = instrumentRoot(read, row.instrument);
     return inView.has(root) || !heldAnywhere?.has(root);

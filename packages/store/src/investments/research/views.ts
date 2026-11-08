@@ -8,7 +8,7 @@ import { type Instrument, research } from "@cashu/domain/investments";
 import { watchedInstrumentGids } from "../queries/alerts.js";
 import { loadInstruments } from "../queries/instruments.js";
 import { type ThesisView, theses } from "../queries/journal.js";
-import type { Read } from "../queries/shared.js";
+import { instrumentRoot, type Read } from "../queries/shared.js";
 import { type SignalView, signalByGid } from "../queries/signals.js";
 import {
   coveredRecently,
@@ -568,7 +568,18 @@ export function researchDigest(read: Read, o: DigestOptions) {
       byInstrument.set(r.instrument, [...(byInstrument.get(r.instrument) ?? []), r]);
     }
   }
-  const ids = new Set([...thesesOf.keys(), ...byInstrument.keys()]);
+  // Theses of the current portfolio only (held or watched): a closed position's thesis stays stored
+  // but its health no longer reaches the review.
+  const current = new Set(
+    [...heldInstrumentGids(read, research.instantDate(now)), ...watchedInstrumentGids(read)].map(
+      (g) => instrumentRoot(read, g),
+    ),
+  );
+  const ids = new Set(
+    [...thesesOf.keys(), ...byInstrument.keys()].filter((g) =>
+      current.has(instrumentRoot(read, g)),
+    ),
+  );
   const loaded = loadInstruments(read, ids);
   const coveredNow = coveredRecently(read, now);
   const coveredThen = coveredRecently(read, start);

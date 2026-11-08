@@ -7,7 +7,7 @@ import { research } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import { createInstrument, setManualValuation } from "../commands/instruments.js";
 import { createThesis } from "../commands/journal.js";
-import { stock } from "../commands/testing/fixtures.js";
+import { applyRaw, stock } from "../commands/testing/fixtures.js";
 import { watchedItemFor } from "../queries/alerts.js";
 import { theses } from "../queries/journal.js";
 import { acceptCandidate, undoAcceptCandidate } from "./candidates.js";
@@ -26,6 +26,7 @@ import {
   DAY,
   distinctWords,
   HOUR,
+  importTxn,
   investor,
   MINUTE,
   refusal,
@@ -291,6 +292,35 @@ describe("signals", () => {
     expect(v.value(researchHousekeeping, {}).research_signals_resolved).toBe(0);
   });
 
+  it("housekeeping resolves research signals of closed positions that are not watched", () => {
+    const i = investor();
+    const { v } = i;
+    const sell = (instrument: string, quantity: string) =>
+      applyRaw(v, [
+        importTxn(v, i.account, instrument, {
+          type: "sell",
+          tradeDate: "2026-10-30",
+          quantity,
+          price: "100.00",
+          grossAmount: "1000.00",
+          cashAmount: "1000.00",
+        }),
+      ]);
+    added(v, 1, { strength: 3 }); // XMPL: sold, not watched -> closed
+    added(v, 2, { strength: 3 }, { instrument: "ABC" }); // ABC: sold but watched -> stays
+    added(v, 3, { strength: 3 }, { instrument: "WRLD" }); // WRLD: still held -> stays
+    watch(v, i.abc);
+    sell(i.xmpl, "20");
+    sell(i.abc, "100");
+    expect(v.value(researchHousekeeping, {}).research_signals_resolved).toBe(1);
+    const byInstrument = new Map(researchSignals(v).map((s) => [s.instrument, s]));
+    expect(byInstrument.get(i.xmpl)).toMatchObject({ status: "resolved" });
+    expect(byInstrument.get(i.xmpl)?.payload.closed_reason).toBe(research.CLOSED_NOT_HELD);
+    expect(byInstrument.get(i.abc)?.status).toBe("active");
+    expect(byInstrument.get(i.wrld)?.status).toBe("active");
+    expect(v.value(researchHousekeeping, {}).research_signals_resolved).toBe(0);
+  });
+
   it("refuses the housekeeping off the lease (notes_expired is a leader close)", () => {
     const i = investor();
     i.v.env.holder = false;
@@ -462,5 +492,28 @@ describe("summary and digest", () => {
     expect(empty.notes_count).toBe(0);
     expect(empty.ran_in_period).toBe(false);
     expect(empty.theses_unchanged).toBe(1);
+  });
+
+  it("research digest leaves out the theses of closed positions the owner does not watch", () => {
+    const i = investor();
+    const { v } = i;
+    thesis(v, i.xmpl);
+    thesis(v, i.abc);
+    const before = now(i);
+    v.env.advance(1000);
+    added(v, 1, { thesis_relation: "invalidates" }); // XMPL
+    added(v, 2, { thesis_relation: "invalidates" }, { instrument: "ABC" });
+    applyRaw(v, [
+      importTxn(v, i.account, i.xmpl, {
+        type: "sell",
+        tradeDate: "2026-10-30",
+        quantity: "20",
+        price: "100.00",
+        grossAmount: "2000.00",
+        cashAmount: "2000.00",
+      }),
+    ]);
+    const block = researchDigest(i.read, { now: now(i), since: before });
+    expect(block.theses_changed.map((row) => row.label)).toEqual(["ABC"]);
   });
 });

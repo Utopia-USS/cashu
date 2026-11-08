@@ -659,7 +659,8 @@ acknowledged:              DERIVED overlay from decisions (6.5)
   (Python's refresh and the research sync do, S25-F1); absent = keep. `run` (null included) sets the
   episode's `last_run_id` (Python sets it from the refreshing run, also to none, S25-F2).
 - `signal.closed` `{status: resolved|expired, reason, run@|null?, payloadSet?}`. Lease holder for rule
-  outcomes, alert housekeeping (`alert_expired`, m8) and research expiry (`notes_expired`); any device
+  outcomes, alert housekeeping (`alert_expired`, m8), research expiry (`notes_expired`) and research of a
+  closed position (`position_closed`: neither held nor watched); any device
   for `snooze|mute|delete` (alert owner actions) and `note_dismissed`. `run` present (null included)
   sets `last_run_id`, absent keeps it (S25-F2). `payloadSet` is merged shallowly into the episode
   payload: the closing writer puts there exactly the keys Python writes on that close (`closed_by` for
