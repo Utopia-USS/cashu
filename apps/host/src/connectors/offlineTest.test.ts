@@ -36,34 +36,38 @@ function fixture(script: string) {
   return { root, workspace, source, sample, scratch };
 }
 
-it("rejects hard-linked and symlinked samples before launching unapproved code", async () => {
-  const f = fixture("raise SystemExit('must not run')\n");
-  const hard = join(f.workspace, "samples", "hard.csv");
-  linkSync(f.sample, hard);
-  const input = {
-    workspaceRoot: f.workspace,
-    connectorPath: f.source,
-    scratchRoot: f.scratch,
-    isCurrent: () => true,
-  };
-  expect((await testConnectorFileOffline({ ...input, samplePath: hard })).errorKind).toBe(
-    "bad_request",
-  );
-  const outside = join(f.root, "outside.csv");
-  writeFileSync(outside, "synthetic outside\n");
-  const link = join(f.workspace, "samples", "link.csv");
-  symlinkSync(outside, link);
-  expect((await testConnectorFileOffline({ ...input, samplePath: link })).errorKind).toBe(
-    "bad_request",
-  );
-  const declared = join(f.workspace, "connectors");
-  const moved = join(f.root, "moved-connectors");
-  renameSync(declared, moved);
-  symlinkSync(moved, declared);
-  expect((await testConnectorFileOffline({ ...input, samplePath: f.sample })).errorKind).toBe(
-    "bad_request",
-  );
-});
+// Connectors run only in the macOS sandbox; elsewhere the run stops at sandbox_unavailable first.
+it.skipIf(process.platform !== "darwin")(
+  "rejects hard-linked and symlinked samples before launching unapproved code",
+  async () => {
+    const f = fixture("raise SystemExit('must not run')\n");
+    const hard = join(f.workspace, "samples", "hard.csv");
+    linkSync(f.sample, hard);
+    const input = {
+      workspaceRoot: f.workspace,
+      connectorPath: f.source,
+      scratchRoot: f.scratch,
+      isCurrent: () => true,
+    };
+    expect((await testConnectorFileOffline({ ...input, samplePath: hard })).errorKind).toBe(
+      "bad_request",
+    );
+    const outside = join(f.root, "outside.csv");
+    writeFileSync(outside, "synthetic outside\n");
+    const link = join(f.workspace, "samples", "link.csv");
+    symlinkSync(outside, link);
+    expect((await testConnectorFileOffline({ ...input, samplePath: link })).errorKind).toBe(
+      "bad_request",
+    );
+    const declared = join(f.workspace, "connectors");
+    const moved = join(f.root, "moved-connectors");
+    renameSync(declared, moved);
+    symlinkSync(moved, declared);
+    expect((await testConnectorFileOffline({ ...input, samplePath: f.sample })).errorKind).toBe(
+      "bad_request",
+    );
+  },
+);
 
 it("runs a file connector without approval and never returns its raw output", async () => {
   const f = fixture(

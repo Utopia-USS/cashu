@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -85,7 +86,9 @@ test("refuses symlinks, hardlinks, oversized reads and replaced workspace root",
   expect(() => f.io.readText(target, 1024 * 1024 + 1)).toThrowError(
     new WorkspacePathError("unsafe_read"),
   );
-  rmSync(f.workspace, { recursive: true });
+  // Move the old folder away before creating the new one, so the file system cannot hand the new
+  // folder the old one's inode (Linux reuses a freed inode at once).
+  renameSync(f.workspace, `${f.workspace}.replaced`);
   mkdirSync(f.workspace);
   expect(() => f.io.writeText(join(f.workspace, "CLAUDE.md"), "changed")).toThrowError(
     new WorkspacePathError("path_replaced"),

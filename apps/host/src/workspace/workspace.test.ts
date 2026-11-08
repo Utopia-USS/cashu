@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -349,7 +350,8 @@ test("managed publication refuses a hardlink and changed folder identity", () =>
   expect(() => publishManagedText(workspace, "link", "x", identity)).toThrowError(
     new WorkspacePathError("path_replaced"),
   );
-  rmSync(workspace, { recursive: true });
+  // Moved away first, so the new folder cannot reuse the old inode (Linux reuses a freed one at once).
+  renameSync(workspace, `${workspace}.replaced`);
   mkdirSync(workspace);
   expect(() => publishManagedText(workspace, "CLAUDE.md", "x", identity)).toThrowError(
     new WorkspacePathError("path_replaced"),

@@ -111,7 +111,10 @@ describe("connector egress proxy", () => {
         held.push(socket);
         await vi.waitFor(() => expect(proxy.activeClients).toBe(i + 1));
       }
-      await expect(request(port, "CONNECT api.example.com:443 HTTP/1.1")).rejects.toThrow();
+      // Refused either way: macOS resets the fifth socket, Linux closes it with no answer.
+      const answer = await request(port, "CONNECT api.example.com:443 HTTP/1.1").catch(() => "");
+      expect(answer).not.toMatch(/ 200 /);
+      expect(proxy.activeClients).toBe(4);
     } finally {
       for (const socket of held) socket.destroy();
       await proxy.close();

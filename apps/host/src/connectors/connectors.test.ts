@@ -1,4 +1,5 @@
 import {
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
@@ -14,6 +15,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ConnectorCatalog, resolveInterpreter } from "./catalog.js";
 import { ConnectorFault, scanConnector } from "./manifest.js";
 import { runConnector } from "./runner.js";
+
+/** Deno at one of the fixed paths resolveInterpreter searches (CI runners have none). */
+const DENO_INSTALLED = ["/opt/homebrew/bin/deno", "/usr/local/bin/deno", "/usr/bin/deno"].some(
+  (path) => existsSync(path),
+);
 
 const roots: string[] = [];
 function fixture(script = 'print("{\\"match\\":true}")'): {
@@ -304,7 +310,7 @@ describe("native connector sandbox", () => {
     ).toEqual({ outcome: "ok", response: { match: true, confidence: 1 } });
   });
 
-  it.skipIf(process.platform !== "darwin")(
+  it.skipIf(process.platform !== "darwin" || !DENO_INSTALLED)(
     "rejects Deno static import outside the approved snapshot",
     async () => {
       const f = fixture();
@@ -335,7 +341,7 @@ describe("native connector sandbox", () => {
     },
   );
 
-  it.skipIf(process.platform !== "darwin")(
+  it.skipIf(process.platform !== "darwin" || !DENO_INSTALLED)(
     "runs an approved local Deno script under both layers",
     async () => {
       const f = fixture();
