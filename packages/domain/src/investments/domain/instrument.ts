@@ -51,7 +51,8 @@ export function aliasToString(alias: InstrumentAlias): string {
 /**
  * Shared market reference data: a security, fund, bond, claim or cash-like instrument.
  *
- * The profile-view fields (`plan`, `planAt`, `planReason`, `segment`, `segmentBy`) are not part of the
+ * The profile-view fields (`plan`, `planAt`, `planReason`, `positionStrength`, `strengthBasis`,
+ * `strengthReason`, `strengthAt`, `segment`, `segmentBy`) are not part of the
  * instrument's value (Python `compare=False`): `sameInstrument` ignores them.
  */
 export interface Instrument {
@@ -81,6 +82,14 @@ export interface Instrument {
   readonly planAt: DateTime | null;
   /** The model's short reason for the recommendation (written and cleared with `plan`). */
   readonly planReason: string | null;
+  /** The model's position strength (`POSITION_STRENGTHS`) in a profile's view; null = not assessed. */
+  readonly positionStrength: string | null;
+  /** Why the strength (`STRENGTH_BASES`); written and cleared with `positionStrength`. */
+  readonly strengthBasis: string | null;
+  /** The model's short reason for the strength (written and cleared with `positionStrength`). */
+  readonly strengthReason: string | null;
+  /** When the strength was written (UTC). */
+  readonly strengthAt: DateTime | null;
   /** The market segment set in a profile's view (`research.segments` key); null = not set. */
   readonly segment: string | null;
   /** Who set `segment`: `owner` (the app) or `agent` (MCP). */
@@ -101,6 +110,10 @@ type InstrumentDefaults =
   | "plan"
   | "planAt"
   | "planReason"
+  | "positionStrength"
+  | "strengthBasis"
+  | "strengthReason"
+  | "strengthAt"
   | "segment"
   | "segmentBy";
 
@@ -125,6 +138,10 @@ export function instrument(init: InstrumentInit): Instrument {
       plan: null,
       planAt: null,
       planReason: null,
+      positionStrength: null,
+      strengthBasis: null,
+      strengthReason: null,
+      strengthAt: null,
       segment: null,
       segmentBy: null,
     },

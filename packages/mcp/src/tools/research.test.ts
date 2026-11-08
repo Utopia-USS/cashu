@@ -406,6 +406,24 @@ describe("native research MCP tools", () => {
       expect(context.last_done_run).toMatchObject({ run_id: run });
     },
   );
+  it("research_context carries the position strength of held rows", async () => {
+    const s = await setup();
+    let row = (
+      body(await s.server.call("research_context", {})).positions as Record<string, unknown>[]
+    )[0];
+    expect(row).toMatchObject({ strength: null, strength_basis: null, strength_at: null });
+    value(s.f, C.setInstrumentStrength, {
+      instrument: s.instrument,
+      strength: "neutral",
+      basis: "no_progress",
+      reason: "Teza bez postępu w tym kwartale.",
+    });
+    row = (
+      body(await s.server.call("research_context", {})).positions as Record<string, unknown>[]
+    )[0];
+    expect(row).toMatchObject({ strength: "neutral", strength_basis: "no_progress" });
+    expect(row?.strength_at).not.toBeNull();
+  });
   it("rejects wrong-kind, foreign and numeric run references before writes", async () => {
     const s = await setup(),
       start = body(await s.server.call("start_research_run", {}));

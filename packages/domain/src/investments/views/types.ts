@@ -299,6 +299,10 @@ export interface AnnotationSubject {
   readonly thesisTracked: boolean;
   readonly plan: string | null;
   readonly planAt: DateTime | null;
+  /** The model's position strength (`POSITION_STRENGTHS`); null = not assessed. */
+  readonly positionStrength?: string | null;
+  readonly strengthBasis?: string | null;
+  readonly strengthAt?: DateTime | null;
   readonly coreChangedAt: DateTime | null;
   readonly notes: readonly AnnotationNote[];
   readonly allOpenSignals: readonly ViewSignal[];

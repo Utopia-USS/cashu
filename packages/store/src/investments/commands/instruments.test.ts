@@ -16,6 +16,7 @@ import {
   setInstrumentPlan,
   setInstrumentSegment,
   setInstrumentStatus,
+  setInstrumentStrength,
   setManualValuation,
 } from "./instruments.js";
 import { type Vault, vault } from "./testing/fixtures.js";
@@ -235,6 +236,60 @@ describe("status, plan, segment, manual valuation", () => {
       plan: null,
       planReason: null,
       planAt: null,
+    });
+  });
+
+  it("setInstrumentStrength validates basis and reason, materializes and clears with null", () => {
+    const v = vault();
+    const iid = storedInstrument(v);
+    const read = v.store.read.bind(v.store);
+    expect(
+      v.run(setInstrumentStrength, {
+        instrument: iid,
+        strength: "strong",
+        basis: "fulfilled",
+        reason: "Teza spełniona",
+      }),
+    ).toEqual({ ok: false, reason: "strength_vs_basis" });
+    expect(
+      v.run(setInstrumentStrength, {
+        instrument: iid,
+        strength: "weak",
+        basis: "on_track",
+        reason: "Teza na dobrej drodze",
+      }),
+    ).toEqual({ ok: false, reason: "strength_vs_basis" });
+    expect(
+      v.run(setInstrumentStrength, { instrument: iid, strength: "weak", reason: "Brak bazy" }),
+    ).toEqual({ ok: false, reason: "invalid_input" });
+    expect(
+      v.run(setInstrumentStrength, {
+        instrument: iid,
+        strength: "weak",
+        basis: "undermined",
+        reason: "x".repeat(281),
+      }),
+    ).toEqual({ ok: false, reason: "reason_too_long" });
+    v.value(setInstrumentStrength, {
+      instrument: iid,
+      strength: "weak",
+      basis: "fulfilled",
+      reason: "  teza \n spełniona ",
+    });
+    const i = loadInstrument(read, iid);
+    expect([i?.positionStrength, i?.strengthBasis, i?.strengthReason]).toEqual([
+      "weak",
+      "fulfilled",
+      "teza spełniona",
+    ]);
+    expect(i?.strengthAt).toMatchObject({ date: "2026-10-31", hour: 12 });
+    expect(loadInstrument(read, iid, { shared: true })?.positionStrength).toBeNull();
+    v.value(setInstrumentStrength, { instrument: iid, strength: null, reason: "ignored" });
+    expect(overrides(read, [iid]).get(iid)).toMatchObject({
+      positionStrength: null,
+      strengthBasis: null,
+      strengthReason: null,
+      strengthAt: null,
     });
   });
 

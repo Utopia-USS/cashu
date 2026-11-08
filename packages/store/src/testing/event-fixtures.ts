@@ -211,6 +211,12 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
   "instrument.merged": { source: ULID_B, target: INST, reason: "owner" },
   "instrumentOverride.set": { instrument: INST, tags: ["dywidenda"], region: "" },
   "instrumentOverride.planSet": { instrument: INST, plan: "hold", reason: "teza aktualna" },
+  "instrumentOverride.strengthSet": {
+    instrument: INST,
+    strength: "neutral",
+    basis: "no_progress",
+    reason: "teza bez postępu",
+  },
   "instrumentOverride.segmentSet": { instrument: INST, segment: "gold", by: "agent" },
   "signal.opened": {
     ruleId: "drawdown_check",

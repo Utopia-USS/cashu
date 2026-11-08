@@ -1,7 +1,18 @@
 /** Native investment contracts; the async runtime owns awaited lookup and checked publication. */
 
 import { pyLen, pyStrip, tryCurrency } from "@cashu/domain";
-import { type Instrument, PLAN_VALUES } from "@cashu/domain/investments";
+import {
+  type Instrument,
+  isPositionStrength,
+  isStrengthBasis,
+  PLAN_VALUES,
+  POSITION_STRENGTHS,
+  type PositionStrength,
+  planVsStrength,
+  STRENGTH_BASES,
+  type StrengthBasis,
+  strengthAllowed,
+} from "@cashu/domain/investments";
 import { exchangeForHint } from "@cashu/domain/investments/importing";
 import { strategyDigest } from "@cashu/domain/investments/strategy";
 import { investmentsCommands as C, investmentsResearch as R } from "@cashu/store";
@@ -42,28 +53,69 @@ const services = (ctx: Context) => {
     throw new ToolError("native investment market context is unavailable", "unsupported");
   return service;
 };
+/** Rules 2-3 of a model assessment row: the basis fits the strength, the recommendation agrees. */
+function checkAssessment(
+  where: string,
+  strength: PositionStrength,
+  basis: StrengthBasis,
+  plan: string | null,
+): void {
+  if (!strengthAllowed(strength, basis))
+    throw new ToolError(
+      basis === "fulfilled"
+        ? `${where}strength_basis 'fulfilled' needs strength weak`
+        : `${where}strength_basis 'on_track' cannot go with strength weak`,
+      "invalid_arguments",
+    );
+  if (!planVsStrength(plan, strength))
+    throw new ToolError(
+      `${where}recommendation '${plan}' contradicts strength '${strength}' (buy / buy_asap never with weak, reduce / exit_asap never with strong)`,
+      "invalid_arguments",
+    );
+}
 async function recommend(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const id = instrument(ctx, args.instrument);
+  if (!isPositionStrength(args.strength) || !isStrengthBasis(args.strength_basis))
+    throw new ToolError("strength and strength_basis are required", "invalid_arguments");
+  if (typeof args.reason !== "string" || !pyStrip(args.reason))
+    throw new ToolError("reason must be a non-empty string (max 280)", "invalid_arguments");
+  const plan = typeof args.recommendation === "string" ? args.recommendation : null;
   if (
-    (args.recommendation === "reduce" || args.recommendation === "exit_asap") &&
+    (plan === "reduce" || plan === "exit_asap") &&
     !Q.heldSince(ctx.store.read, ctx.today).has(id)
   )
-    throw new ToolError(`Plan '${args.recommendation}' needs a held instrument`);
+    throw new ToolError(`Plan '${plan}' needs a held instrument`);
+  checkAssessment("", args.strength, args.strength_basis, plan);
   const result = await execute(ctx, recommendWithPlans(ctx.store.investmentWrites?.plans), {
     today: ctx.today,
     scope: null,
-    updates: [{ instrument: id, plan: args.recommendation, reason: args.reason }],
+    updates: [
+      {
+        instrument: id,
+        strength: args.strength,
+        basis: args.strength_basis,
+        ...(plan === null ? {} : { plan }),
+        reason: args.reason,
+      },
+    ],
   });
   const row = result.saved[0];
   if (!row) throw new Error("recommendation was not prepared");
   return {
     instrument_id: F.ref("instrument", id),
+    strength: L.category(row.strength),
+    strength_basis: L.category(row.basis),
     recommendation: L.category(row.plan),
     generated_at: F.date(row.generatedAt),
     reason_saved: L.flag(row.reasonSaved),
-    note: L.fixedText("model recommendation saved; no decision or transaction was recorded"),
+    note: L.fixedText(
+      row.plan === null
+        ? "model assessment saved (no recommendation; an older one was cleared); no decision or transaction was recorded"
+        : "model assessment and recommendation saved; no decision or transaction was recorded",
+    ),
   };
 }
+const ROW_KEYS = ["instrument", "strength", "strength_basis", "recommendation", "reason"];
 async function recommendations(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const updates = F.array(args.recommendations);
   if (updates.length > 250)
@@ -85,9 +137,9 @@ async function recommendations(ctx: Context, args: ToolArgs): Promise<L.Labelled
     const row = F.object(raw);
     if (raw === null || typeof raw !== "object" || Array.isArray(raw))
       throw new ToolError(`recommendations[${index}] must be an object`, "invalid_arguments");
-    if (Object.keys(row).some((k) => !["instrument", "recommendation", "reason"].includes(k)))
+    if (Object.keys(row).some((k) => !ROW_KEYS.includes(k)))
       throw new ToolError(
-        `recommendations[${index}] has unknown fields; allowed: instrument, recommendation, reason`,
+        `recommendations[${index}] has unknown fields; allowed: ${ROW_KEYS.join(", ")}`,
         "invalid_arguments",
       );
     if (
@@ -99,9 +151,20 @@ async function recommendations(ctx: Context, args: ToolArgs): Promise<L.Labelled
         `recommendations[${index}].instrument must be a non-empty string (max 40)`,
         "invalid_arguments",
       );
-    if (!(PLAN_VALUES as readonly unknown[]).includes(row.recommendation))
+    if (!isPositionStrength(row.strength))
       throw new ToolError(
-        `recommendations[${index}].recommendation must be one of: ${PLAN_VALUES.join(", ")}`,
+        `recommendations[${index}].strength is required, one of: ${POSITION_STRENGTHS.join(", ")}`,
+        "invalid_arguments",
+      );
+    if (!isStrengthBasis(row.strength_basis))
+      throw new ToolError(
+        `recommendations[${index}].strength_basis is required, one of: ${STRENGTH_BASES.join(", ")}`,
+        "invalid_arguments",
+      );
+    const plan = row.recommendation ?? null;
+    if (plan !== null && !(PLAN_VALUES as readonly unknown[]).includes(plan))
+      throw new ToolError(
+        `recommendations[${index}].recommendation must be one of: ${PLAN_VALUES.join(", ")} (or omitted)`,
         "invalid_arguments",
       );
     if (typeof row.reason !== "string" || !pyStrip(row.reason) || pyLen(row.reason) > 280)
@@ -124,25 +187,30 @@ async function recommendations(ctx: Context, args: ToolArgs): Promise<L.Labelled
     seen.add(id);
     return {
       instrument: id,
-      plan: row.recommendation,
+      strength: row.strength,
+      basis: row.strength_basis,
+      plan: plan as string | null,
       reason: row.reason,
     };
   });
+  // Coverage counts the strength: a stored recommendation without a strength is missing.
   const missing = [...expected].filter(
-    (id) => loaded.get(id)?.plan == null && !seen.has(id),
+    (id) => loaded.get(id)?.positionStrength == null && !seen.has(id),
   ).length;
   if (missing)
     throw new ToolError(
-      `recommendation coverage incomplete: expected ${expected.size}, covered ${expected.size - missing}, missing ${missing}; see research_context for rows with recommendation null`,
+      `strength coverage incomplete: expected ${expected.size}, covered ${expected.size - missing}, missing ${missing}; see research_context for rows with strength null`,
       "incomplete_coverage",
     );
-  for (const update of parsed)
+  parsed.forEach((update, index) => {
     if ((update.plan === "reduce" || update.plan === "exit_asap") && !held.has(update.instrument))
       throw new ToolError(`Plan '${update.plan}' needs a held instrument`);
+    checkAssessment(`recommendations[${index}].`, update.strength, update.basis, update.plan);
+  });
   const out = await execute(ctx, recommendWithPlans(ctx.store.investmentWrites?.plans), {
     today: ctx.today,
     scope: args.scope,
-    updates: parsed,
+    updates: parsed.map(({ plan, ...rest }) => (plan === null ? rest : { ...rest, plan })),
   });
   return {
     scope: F.category(args.scope),
@@ -151,7 +219,7 @@ async function recommendations(ctx: Context, args: ToolArgs): Promise<L.Labelled
     missing: L.count(0),
     updated: L.count(out.updated),
     note: L.fixedText(
-      "complete model recommendation coverage saved; no decision or transaction was recorded",
+      "complete model assessment coverage saved; no decision or transaction was recorded",
     ),
   };
 }
@@ -211,6 +279,8 @@ export function watchRow(
     added_at: F.date(row.added_at),
     held: L.flag(row.held),
     recommendation: L.category(row.instrument?.plan ?? null),
+    strength: L.category(row.instrument?.strength ?? null),
+    strength_basis: L.category(row.instrument?.strength_basis ?? null),
     plan_freshness:
       fresh == null
         ? null

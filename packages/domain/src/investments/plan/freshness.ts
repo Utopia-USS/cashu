@@ -1,4 +1,9 @@
-/** Recommendation freshness (P3), evaluated from stored facts at an explicit exact UTC instant. */
+/**
+ * Recommendation freshness (P3), evaluated from stored facts at an explicit exact UTC instant.
+ *
+ * The model's opinion is the recommendation (`plan`) when present, else the position strength; the
+ * reference time is `planAt ?? strengthAt` (the recommendation gate writes both together).
+ */
 import { type DateTime, toUtc } from "../../dates.js";
 import { BUY_PLANS, HELD_ONLY_PLANS } from "../domain/index.js";
 import type { ScoredNote } from "../research/index.js";
@@ -71,6 +76,9 @@ export interface PlanAlert {
 export interface FreshnessFacts {
   readonly plan: string | null;
   readonly planAt: Instant | null;
+  /** The model's position strength (`POSITION_STRENGTHS`); null = not assessed. */
+  readonly positionStrength?: string | null;
+  readonly strengthAt?: Instant | null;
   readonly health?: string;
   readonly notes?: readonly FreshnessNote[];
   readonly coreChangedAt?: Instant | null;
@@ -140,18 +148,24 @@ function after(note: FreshnessNote): boolean {
   );
 }
 export function planFreshness(f: FreshnessFacts, now: Instant): Freshness | null {
-  if (f.plan === null || f.planAt === null) return null;
-  const planAt = f.planAt,
-    notes = f.notes ?? [],
+  const strength = f.positionStrength ?? null,
+    plan = f.plan;
+  if (plan === null && strength === null) return null;
+  // the opinion's time: the plan's when present, else the strength's (both from the same gate)
+  const planAt =
+    (plan !== null ? f.planAt : null) ?? (strength !== null ? f.strengthAt : null) ?? null;
+  if (planAt === null) return null;
+  const notes = f.notes ?? [],
     reasons: FreshnessReason[] = [];
   const stored = notes.filter(
     (n) =>
       n.scored.kind !== CANDIDATE_KIND && storedAt(n.scored, now) && n.scored.createdAt > planAt,
   );
   const invalidating = stored.filter((n) => n.scored.thesisRelation === "invalidates");
-  const fulfilling = BUY_PLANS.has(f.plan)
-    ? stored.filter((n) => n.scored.thesisRelation === "fulfills")
-    : [];
+  const fulfilling =
+    (plan !== null && BUY_PLANS.has(plan)) || strength === "strong"
+      ? stored.filter((n) => n.scored.thesisRelation === "fulfills")
+      : [];
   for (const [code, group] of [
     ["note_invalidates", invalidating],
     ["fulfilled_buy", fulfilling],
@@ -159,7 +173,12 @@ export function planFreshness(f: FreshnessFacts, now: Instant): Freshness | null
     const r = noteReason(code, group);
     if (r !== null) reasons.push(r);
   }
-  if (!invalidating.length && f.health === Health.INVALIDATED && !HELD_ONLY_PLANS.has(f.plan)) {
+  if (
+    !invalidating.length &&
+    f.health === Health.INVALIDATED &&
+    !(plan !== null && HELD_ONLY_PLANS.has(plan)) &&
+    strength !== "weak"
+  ) {
     const eligible = new Set(
       windowNotes(
         notes.map((n) => n.scored),

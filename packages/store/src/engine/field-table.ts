@@ -152,6 +152,7 @@ export const FIELD_TABLE: Readonly<Record<string, readonly string[]>> = {
     "needsClassification",
     "stamps",
   ],
+  "instrumentOverride.strengthSet": ["instrument", "strength", "basis", "reason", "stamps"],
   "instrumentRename.recorded": ["date", "old", "new", "note", "batch", "stamps"],
   "invAccount.settingsSet": ["account", "wrapper", "importer", "mappingYaml", "stamps"],
   "invImport.recorded": [
@@ -425,6 +426,7 @@ export const FIELD_TABLE_LOCK: Readonly<Record<string, string>> = {
   "instrumentOverride.planSet": "4:260f9fa1",
   "instrumentOverride.segmentSet": "4:8d0d2d54",
   "instrumentOverride.set": "10:ba53d43f",
+  "instrumentOverride.strengthSet": "5:b6a325bb",
   "instrumentRename.recorded": "6:59f14fc4",
   "invAccount.settingsSet": "5:47b811b2",
   "invImport.recorded": "15:a9006632",

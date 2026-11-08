@@ -19,6 +19,8 @@ export function annotateSubjects(
       {
         plan: s.plan,
         planAt: s.planAt === null ? null : planInstant(s.planAt),
+        positionStrength: s.positionStrength ?? null,
+        strengthAt: s.strengthAt == null ? null : planInstant(s.strengthAt),
         health: s.health.state,
         notes: s.notes,
         coreChangedAt: s.coreChangedAt === null ? null : planInstant(s.coreChangedAt),
@@ -50,6 +52,8 @@ export function annotateSubjects(
           hasThesis: s.hasThesis,
           hasExitPlan: s.hasExitPlan,
           plan: s.plan,
+          positionStrength: s.positionStrength ?? null,
+          strengthBasis: s.strengthBasis ?? null,
           predatesThesis: s.health.predatesThesis,
           signals: s.allOpenSignals,
           alerts: s.hintTriggeredAlerts.map((a, order) => ({

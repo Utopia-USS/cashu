@@ -465,7 +465,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | inv_manual_valuations | `valuation.set` | DET(instrument, as_of) | LWW-F on the row key |
 | inv_instruments | `instrument.created`, `instrument.updated`, `instrument.merged` | DET(creation alias), else ULID | CREATE; LWW-F; IDENTITY (merge) |
 | inv_instrument_aliases | `instrument.aliasAdded` | DET(namespace, value) | IDENTITY (claim) |
-| inv_profile_instruments | `instrumentOverride.set`, `instrumentOverride.planSet`, `instrumentOverride.segmentSet` | DET(instrument) | LWW-F on the row key; segment GUARD |
+| inv_profile_instruments | `instrumentOverride.set`, `instrumentOverride.planSet`, `instrumentOverride.strengthSet`, `instrumentOverride.segmentSet` | DET(instrument) | LWW-F on the row key; segment GUARD |
 | inv_strategy_versions (+ files) | `strategy.versionSaved` | ULID | APPEND; no-op when its sha equals the current version's; current = highest `hlc`; numbers DERIVED; `base` kept; files follow the current version per device (8.8) |
 | inv_theses | `thesis.created`, `thesis.updated`, `thesis.deleted` | ULID | CREATE; LWW-F; TOMB; `*_changed_at` DERIVED |
 | inv_topic_theses | `topicThesis.ownerSaved`, `topicThesis.draftProposed`, `topicThesis.rejected`, `topicThesis.marketViewSet` | DET(segment) | GUARD + LWW-F; restart on a rejected row (8.9); rejected SOFT |
@@ -625,6 +625,9 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   status?, needsClassification?}` (null = shared default, `""` clears for this profile).
 - `instrumentOverride.planSet` `{instrument@, plan|null, reason|null}` (one register; `plan_at` =
   domain time).
+- `instrumentOverride.strengthSet` `{instrument@, strength: strong|neutral|weak|null, basis:
+  on_track|fulfilled|undermined|environment_against|no_progress|null, reason|null}` (one register;
+  `strength_at` = domain time; `strength: null` clears strength, basis, reason and `strength_at`).
 - `instrumentOverride.segmentSet` `{instrument@, segment|null, by: owner|agent}`; GUARD: `agent` is a
   no-op while the folded segment is non-null and set by the owner.
 
@@ -927,7 +930,7 @@ Lease state never enters the view fold (6.2 LEADER), so the convergence scenario
 | `inv_topic_theses.core_changed_at`, `view_updated_at`, restart fields | 8.9 |
 | `inv_strategy_versions.version`, "current" | order (8.8) |
 | `inv_decisions.signal_id` | first of `signals` |
-| `loans.updated_at`, `profile_modules.enabled_at`, `plan_at`, `watchlist_items.added_at` | domain time of the setting event |
+| `loans.updated_at`, `profile_modules.enabled_at`, `plan_at`, `strength_at`, `watchlist_items.added_at` | domain time of the setting event |
 | view row gids of row-keyed tables | [`gid.md`](gid.md) 4.8 |
 
 ## 10. What never syncs

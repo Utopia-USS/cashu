@@ -53,6 +53,10 @@ export interface InstrumentOverride {
   readonly plan: string | null;
   readonly planAt: string | null;
   readonly planReason: string | null;
+  readonly positionStrength: string | null;
+  readonly strengthBasis: string | null;
+  readonly strengthReason: string | null;
+  readonly strengthAt: string | null;
   readonly segment: string | null;
   readonly segmentBy: string | null;
 }
@@ -98,7 +102,7 @@ function toInstrument(row: InstrumentRow, aliases: readonly InstrumentAlias[]): 
 
 /**
  * Python `apply_override`: the vault's overrides (null = keep, "" = clear a text attribute) and the
- * model recommendation (legacy name `plan`) and segment.
+ * model recommendation (legacy name `plan`), the position strength and segment.
  */
 export function applyOverride(base: Instrument, o: InstrumentOverride): Instrument {
   return instrument({
@@ -118,6 +122,14 @@ export function applyOverride(base: Instrument, o: InstrumentOverride): Instrume
           planAt: o.planAt === null ? null : storedTime(o.planAt),
           planReason: o.planReason,
         }),
+    ...(o.positionStrength === null
+      ? {}
+      : {
+          positionStrength: o.positionStrength,
+          strengthBasis: o.strengthBasis,
+          strengthReason: o.strengthReason,
+          strengthAt: o.strengthAt === null ? null : storedTime(o.strengthAt),
+        }),
     ...(o.segment === null ? {} : { segment: o.segment, segmentBy: o.segmentBy }),
   });
 }
@@ -135,6 +147,10 @@ interface OverrideRow {
   plan: string | null;
   plan_at: string | null;
   plan_reason: string | null;
+  strength: string | null;
+  strength_basis: string | null;
+  strength_reason: string | null;
+  strength_at: string | null;
   segment: string | null;
   segment_by: string | null;
 }
@@ -152,6 +168,10 @@ const toOverride = (r: OverrideRow): InstrumentOverride => ({
   plan: r.plan,
   planAt: r.plan_at,
   planReason: r.plan_reason,
+  positionStrength: r.strength,
+  strengthBasis: r.strength_basis,
+  strengthReason: r.strength_reason,
+  strengthAt: r.strength_at,
   segment: r.segment,
   segmentBy: r.segment_by,
 });
@@ -163,7 +183,8 @@ export function overrides(read: Read, gids?: Iterable<string>): Map<string, Inst
   if (wanted !== undefined && wanted.length === 0) return new Map();
   const rows = read<OverrideRow>(
     `SELECT i.gid AS instrument, o.name, o.asset_class, o.tags, o.region, o.sector, o.valuation_mode,
-       o.status, o.needs_classification, o.plan, o.plan_at, o.plan_reason, o.segment, o.segment_by
+       o.status, o.needs_classification, o.plan, o.plan_at, o.plan_reason, o.strength, o.strength_basis,
+       o.strength_reason, o.strength_at, o.segment, o.segment_by
      FROM inv_profile_instruments o JOIN inv_instruments i ON i.id = o.instrument_id
      ${wanted === undefined ? "" : `WHERE i.gid IN (${marks(wanted.length)})`}`,
     ...(wanted ?? []),

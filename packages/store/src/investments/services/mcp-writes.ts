@@ -1,13 +1,19 @@
 /** MCP mutation composition: base effects and best-effort plan checks share one append. */
 
 import type { DateTime } from "@cashu/domain";
-import { parseDateTime, pyLen, pySplit, utcIso } from "@cashu/domain";
-import { asInstrumentId, type InstrumentId } from "@cashu/domain/investments";
+import { parseDateTime, pyLen, pySplit, toUtc, utcIso } from "@cashu/domain";
+import {
+  asInstrumentId,
+  type InstrumentId,
+  planVsStrength,
+  research,
+  strengthAllowed,
+} from "@cashu/domain/investments";
 import { z } from "zod";
 import { defineCommand, ok, refuse } from "../../command.js";
-import { PLAN_VALUES } from "../../events/v1/investments.js";
+import { PLAN_VALUES, POSITION_STRENGTHS, STRENGTH_BASES } from "../../events/v1/investments.js";
 import { calendarDate, gid } from "../../events/v1/primitives.js";
-import { setInstrumentPlan } from "../commands/instruments.js";
+import { setInstrumentPlan, setInstrumentStrength } from "../commands/instruments.js";
 import { createThesis, updateThesis } from "../commands/journal.js";
 import { addToWatchlist, removeFromWatchlist } from "../commands/watchlist.js";
 import { alerts, watchedInstrumentGids, watchlistItem } from "../queries/alerts.js";
@@ -17,6 +23,7 @@ import { theses } from "../queries/journal.js";
 import type { Read } from "../queries/shared.js";
 import { instrumentRoot } from "../queries/shared.js";
 import { researchable } from "../research/queries.js";
+import { healthSinceThesisChange } from "../research/views.js";
 import { byCreation } from "../views/stableOrder.js";
 import { captureInstrumentEffect } from "./instrument-effects.js";
 import { syncPlans } from "./plan-effects.js";
@@ -37,11 +44,23 @@ export function mcpAlertRows(read: Read, now: DateTime) {
   );
 }
 
+/**
+ * One row of the model's assessment: the position strength with its basis and reason (always) and an
+ * optional recommendation (`plan`). A row is the agent's full current opinion: without `plan` any
+ * stored recommendation of the instrument is cleared.
+ */
 const recommendation = z.strictObject({
   instrument: gid,
-  plan: z.enum(PLAN_VALUES),
+  strength: z.enum(POSITION_STRENGTHS),
+  basis: z.enum(STRENGTH_BASES),
+  plan: z.enum(PLAN_VALUES).optional(),
   reason: z.string(),
 });
+/** Thesis health states that leave a position no strength but `weak` (the floor from the thesis). */
+const WEAK_FLOOR: ReadonlySet<string> = new Set([
+  research.Health.INVALIDATED,
+  research.Health.FULFILLED,
+]);
 export function recommendWithPlans(inputs?: ResearchPlanInputs) {
   return defineCommand({
     id: "investments.mcp.recommend",
@@ -74,52 +93,105 @@ export function recommendWithPlans(inputs?: ResearchPlanInputs) {
         if (input.scope !== null && !expected.has(instrument)) return refuse("outside_scope");
         if (seen.has(instrument)) return refuse("duplicate_instrument");
         seen.add(instrument);
-        const parsed = setInstrumentPlan.input.safeParse({
-          ...update,
-          instrument,
-          held: held.has(instrument),
-        });
-        if (!parsed.success) return refuse("invalid_input");
-        updates.push(parsed.data);
+        const reason = pySplit(update.reason).join(" ");
+        if (!reason) return refuse("invalid_input");
+        updates.push({ ...update, instrument, reason, held: held.has(instrument) });
       }
+      // Coverage counts the strength: a stored plan without a strength is missing (rule 7).
       if (input.scope !== null) {
         const loaded = loadInstruments(ctx.read, expected);
-        if ([...expected].some((id) => !seen.has(id) && loaded.get(id)?.plan == null))
+        if ([...expected].some((id) => !seen.has(id) && loaded.get(id)?.positionStrength == null))
           return refuse("incomplete_coverage");
       }
       // Python proves coverage before set_plan's semantic restrictions (including needs_held).
       for (const update of updates) {
-        if (pyLen(pySplit(update.reason ?? "").join(" ")) > 280) return refuse("reason_too_long");
+        if (pyLen(update.reason) > 280) return refuse("reason_too_long");
         if (["reduce", "exit_asap"].includes(update.plan ?? "") && !update.held)
           return refuse("needs_held");
+        if (!strengthAllowed(update.strength, update.basis)) return refuse("strength_vs_basis");
+        if (!planVsStrength(update.plan ?? null, update.strength))
+          return refuse("plan_vs_strength");
       }
       const now = parseDateTime(ctx.now());
+      const nowUtc = toUtc(now);
+      // The floor counts only research since the thesis' last core change: an owner rewrite resets it.
+      const floor = healthSinceThesisChange(
+        ctx.read,
+        updates.filter((u) => u.strength !== "weak").map((u) => u.instrument),
+        research.utcInstant(
+          nowUtc.date,
+          nowUtc.hour,
+          nowUtc.minute,
+          nowUtc.second,
+          nowUtc.microsecond,
+        ),
+      );
+      for (const [, found] of floor)
+        if (WEAK_FLOOR.has(found.health.state)) return refuse("strength_vs_thesis");
       const generatedAt = utcIso(now).replace(/\+00:00$/, "Z");
+      const stored = loadInstruments(ctx.read, new Set(updates.map((u) => u.instrument)));
       const pending = new Map<
         InstrumentId,
         { instrument: InstrumentId; plan: string | null; planAt: typeof now | null }
       >();
       const saved = [];
       for (const update of updates) {
+        const id = asInstrumentId(update.instrument);
         let savedReason: string | null = null;
-        const out = setInstrumentPlan.run(
+        const strengthOut = setInstrumentStrength.run(
           {
             ...ctx,
             emit(type, target, data, options) {
-              if (type !== "instrumentOverride.planSet")
-                throw new Error("unexpected recommendation effect");
+              if (type !== "instrumentOverride.strengthSet")
+                throw new Error("unexpected strength effect");
               savedReason = typeof data.reason === "string" ? data.reason : null;
-              const id = asInstrumentId(update.instrument);
-              pending.set(id, { instrument: id, plan: data.plan as string | null, planAt: now });
-              return ctx.emit(type, target, { ...data, stamps: { plan_at: generatedAt } }, options);
+              return ctx.emit(
+                type,
+                target,
+                { ...data, stamps: { strength_at: generatedAt } },
+                options,
+              );
             },
           },
-          update,
+          {
+            instrument: update.instrument,
+            strength: update.strength,
+            basis: update.basis,
+            reason: update.reason,
+          },
         );
-        if (!out.ok) return out;
+        if (!strengthOut.ok) return strengthOut;
+        const plan = update.plan ?? null;
+        // Omitted recommendation: clear a stored one so it never contradicts the newer strength.
+        if (plan !== null || stored.get(update.instrument)?.plan != null) {
+          const planOut = setInstrumentPlan.run(
+            {
+              ...ctx,
+              emit(type, target, data, options) {
+                if (type !== "instrumentOverride.planSet")
+                  throw new Error("unexpected recommendation effect");
+                pending.set(id, {
+                  instrument: id,
+                  plan: data.plan as string | null,
+                  planAt: plan === null ? null : now,
+                });
+                return ctx.emit(
+                  type,
+                  target,
+                  plan === null ? data : { ...data, stamps: { plan_at: generatedAt } },
+                  options,
+                );
+              },
+            },
+            { instrument: update.instrument, plan, held: update.held, reason: update.reason },
+          );
+          if (!planOut.ok) return planOut;
+        }
         saved.push({
           instrument: update.instrument,
-          plan: update.plan,
+          strength: update.strength,
+          basis: update.basis,
+          plan,
           generatedAt,
           reasonSaved: savedReason !== null,
         });

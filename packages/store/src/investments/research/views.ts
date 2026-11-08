@@ -262,6 +262,7 @@ function health(
   thesis: ThesisView | undefined,
   at: Instant,
   coveredAt: Instant | null,
+  sinceThesisChange = false,
 ): research.HealthResult {
   let t = thesis;
   if (t !== undefined && viewInstant(t.createdAt) > at) t = undefined;
@@ -270,7 +271,10 @@ function health(
     const core = coreChangedAt(t);
     changed = core <= at ? core : viewInstant(t.createdAt);
   }
-  return research.thesisHealth(notes, at, {
+  // P2 keeps notes from before the thesis' last core change (tagged `predatesThesis`); a caller that
+  // must judge only the current thesis drops them.
+  const counted = sinceThesisChange ? notes.filter((n) => !research.predates(n, changed)) : notes;
+  return research.thesisHealth(counted, at, {
     hasThesis: t !== undefined,
     thesisChangedAt: changed,
     researched: coveredAt !== null,
@@ -284,6 +288,25 @@ export function healthByInstrument(
   now: Instant,
   pendingNotes?: ReadonlyMap<string, ResearchNote>,
   pendingTheses?: ReadonlyMap<string, ThesisView>,
+) {
+  return healthOf(read, ids, now, pendingNotes, pendingTheses, false);
+}
+
+/**
+ * Thesis health at `now` from only the notes stored at or after the thesis' last core change: the
+ * state the current thesis has earned (the position-strength floor; an owner rewrite resets it).
+ */
+export function healthSinceThesisChange(read: Read, ids: Iterable<string>, now: Instant) {
+  return healthOf(read, ids, now, undefined, undefined, true);
+}
+
+function healthOf(
+  read: Read,
+  ids: Iterable<string>,
+  now: Instant,
+  pendingNotes: ReadonlyMap<string, ResearchNote> | undefined,
+  pendingTheses: ReadonlyMap<string, ThesisView> | undefined,
+  sinceThesisChange: boolean,
 ): Map<
   string,
   { health: research.HealthResult; thesis: ThesisView | undefined; noteIds: string[] }
@@ -324,6 +347,7 @@ export function healthByInstrument(
       thesesOf.get(g),
       now,
       covered.get(g) ?? (window.length > 0 ? now : null),
+      sinceThesisChange,
     );
     out.set(g, {
       health: h,

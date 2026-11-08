@@ -21,6 +21,7 @@ export * from "./instrument.js";
 export * from "./marketData.js";
 export * from "./plan.js";
 export * from "./snapshot.js";
+export * from "./strength.js";
 export * from "./transaction.js";
 export * from "./values.js";
 export * from "./warnings.js";

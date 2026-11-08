@@ -103,6 +103,10 @@ export function theses(ctx: Context, args: ToolArgs): L.LabelledTree {
                 opened: held.get(r.instrument) ?? null,
               }),
         ),
+        strength: L.category(inst?.positionStrength ?? null),
+        strength_basis: L.category(
+          inst?.positionStrength == null ? null : (inst.strengthBasis ?? null),
+        ),
         reviewed_at: timestamp(r.reviewedAt),
         created_at: timestamp(r.createdAt),
         updated_at: timestamp(r.updatedAt),

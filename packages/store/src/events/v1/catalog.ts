@@ -138,6 +138,7 @@ export const META: Record<EventType, EventMeta> = {
   "instrument.merged": m("inv_instruments", "IDENTITY", "DET-or-ULID"),
   "instrumentOverride.set": m("inv_profile_instruments", "LWW-F", "DET"),
   "instrumentOverride.planSet": m("inv_profile_instruments", "LWW-F", "DET"),
+  "instrumentOverride.strengthSet": m("inv_profile_instruments", "LWW-F", "DET"),
   "instrumentOverride.segmentSet": m("inv_profile_instruments", "GUARD", "DET"),
 
   "signal.opened": m("inv_signals", "EPISODE", "ULID", "leader-or-research"),

@@ -58,6 +58,7 @@ export function detPartsOf(
       return det("inv_instrument_aliases", s(data.namespace), s(data.value));
     case "instrumentOverride.set":
     case "instrumentOverride.planSet":
+    case "instrumentOverride.strengthSet":
     case "instrumentOverride.segmentSet":
       return det("inv_profile_instruments", s(data.instrument));
     case "watchlist.added":

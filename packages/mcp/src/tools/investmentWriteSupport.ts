@@ -83,7 +83,13 @@ export async function execute<I, V>(
       needs_held: "reduce and exit_asap require a held instrument",
       reason_too_long: "reason is too long (max 280 characters)",
       incomplete_coverage:
-        "recommendation coverage incomplete; see research_context for rows with recommendation null",
+        "strength coverage incomplete; see research_context for rows with strength null",
+      strength_vs_basis:
+        "strength_basis does not fit the strength (fulfilled only with weak, on_track never with weak)",
+      plan_vs_strength:
+        "recommendation contradicts the strength (buy / buy_asap never with weak, reduce / exit_asap never with strong)",
+      strength_vs_thesis:
+        "strength must be weak while the thesis is invalidated or fulfilled by research since its last edit (see research_context thesis health)",
       outside_scope: "recommendation is outside the selected scope",
       duplicate_instrument: "recommendations duplicate an instrument",
       no_instrument: "no such instrument in this profile",

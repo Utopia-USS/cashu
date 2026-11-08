@@ -167,9 +167,13 @@ export function readFacts(read: Read, request: ReadFactsRequest): LiveReadFacts 
       ),
     });
     prepared.set(inst.id, { held, plan });
-    if (plan !== null && inst.planAt !== null) {
+    // the opinion's time: the plan's when present, else the strength's (freshness reference)
+    const opinionAt =
+      (plan !== null ? inst.planAt : null) ??
+      (inst.positionStrength !== null ? inst.strengthAt : null);
+    if (opinionAt !== null) {
       dated.push(inst.id);
-      const at = viewInstant(toStorage(inst.planAt));
+      const at = viewInstant(toStorage(opinionAt));
       if (oldestPlan === null || at < oldestPlan) oldestPlan = at;
     }
   }
@@ -215,12 +219,16 @@ export function readFacts(read: Read, request: ReadFactsRequest): LiveReadFacts 
       hintsWanted: isHeld || watchedIds.has(id),
       plan,
       planAt: plan === null ? null : instrument.planAt,
+      positionStrength: instrument.positionStrength,
+      strengthBasis: instrument.positionStrength === null ? null : instrument.strengthBasis,
+      strengthAt: instrument.positionStrength === null ? null : instrument.strengthAt,
       coreChangedAt:
         found.thesis === undefined
           ? null
           : storedTime(found.thesis.coreChangedAt ?? found.thesis.updatedAt),
       notes:
-        plan === null || instrument.planAt === null
+        (plan === null || instrument.planAt === null) &&
+        (instrument.positionStrength === null || instrument.strengthAt === null)
           ? []
           : notes
               .filter((row) => row.instrument === id)

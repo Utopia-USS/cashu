@@ -69,6 +69,45 @@ describe("held hints", () => {
     ).toEqual(["gain_review"]);
   });
 
+  it("flags a weak position after thesis_fulfilled, keeps it without a tracked thesis", () => {
+    const weak = held({
+      health: "fulfilled",
+      hasExitPlan: false,
+      positionStrength: "weak",
+      strengthBasis: "fulfilled",
+      signals: [{ kind: "loss_from_cost", payload: { unrealized_pct: -0.4, threshold: 0.3 } }],
+    });
+    expect(instrumentHints(weak).map((h) => [h.code, h.severity])).toEqual([
+      ["thesis_fulfilled", "review"],
+      ["position_weak", "review"],
+      ["loss_review", "review"],
+    ]);
+    expect(instrumentHints(weak).find((h) => h.code === "position_weak")?.params).toEqual({
+      basis: "fulfilled",
+      has_exit_plan: false,
+    });
+    // its exit-plan nudge replaces no_exit_plan
+    expect(
+      codes(held({ hasExitPlan: false, positionStrength: "weak", strengthBasis: "undermined" })),
+    ).toEqual(["position_weak"]);
+    expect(codes(held({ positionStrength: "neutral", strengthBasis: "no_progress" }))).toEqual([]);
+    // the agent's assessment, not a thesis code: kept when no thesis is tracked
+    expect(
+      codes(
+        held({
+          hasThesis: false,
+          thesisTracked: false,
+          positionStrength: "weak",
+          strengthBasis: "environment_against",
+        }),
+      ),
+    ).toEqual(["position_weak"]);
+    // never a watched hint
+    expect(
+      codes({ ...held({ positionStrength: "weak", strengthBasis: "undermined" }), held: false }),
+    ).toEqual([]);
+  });
+
   it("drops thesis hints when the owner does not track a thesis for the instrument", () => {
     expect(
       codes(held({ hasThesis: false, health: "weakened", thesisTracked: false, freshness: null })),

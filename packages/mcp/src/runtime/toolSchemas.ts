@@ -62,11 +62,19 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     name: "set_recommendation",
     module: "investments",
     description:
-      "Save the model's recommendation for one instrument after reviewing current research, the owner's thesis and invalidation, portfolio construction, strategy and history. This is an opinion for the owner to evaluate, not a decision and never a trade. `reason`: one or two short Polish sentences (max 280 characters) the app shows under the thesis; no amounts.",
+      "Save the model's assessment of one instrument after reviewing current research, the owner's thesis, invalidation and exit plan, portfolio construction, strategy and history. `strength` (strong | neutral | weak) with `strength_basis` is the model's assessment of how well the thesis holds (research, progress against the thesis and exit plan, environment), never a trade call. `recommendation` is optional: give it only if you are willing to state buy / hold / sell as a model opinion; omitting it clears an older one. Rules: basis fulfilled only with weak and on_track never with weak; buy / buy_asap never with weak and reduce / exit_asap never with strong; while the thesis is invalidated or fulfilled (research since its last edit) the strength must be weak. Opinions for the owner to evaluate, not decisions and never trades. `reason`: one or two short Polish sentences (max 280 characters) describing the thesis state, shown under the thesis; no amounts.",
     properties: {
       instrument: {
         type: "string",
         maxLength: 40,
+      },
+      strength: {
+        type: "string",
+        enum: ["strong", "neutral", "weak"],
+      },
+      strength_basis: {
+        type: "string",
+        enum: ["on_track", "fulfilled", "undermined", "environment_against", "no_progress"],
       },
       recommendation: {
         type: "string",
@@ -77,14 +85,14 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
         maxLength: 280,
       },
     },
-    required: ["instrument", "recommendation", "reason"],
+    required: ["instrument", "strength", "strength_basis", "reason"],
     write: true,
   }),
   tool({
     name: "set_recommendations",
     module: "investments",
     description:
-      "End-of-research recommendation gate. Save changed or missing model recommendations, preserve omitted existing ones, and commit only when every eligible instrument in scope (all = held + watchlist) has a recommendation. Use this once at the end of a routine or full refresh; it returns expected / covered / missing counts. Opinions only, never decisions or trades.",
+      "End-of-research assessment gate. Save changed or missing model assessments (position strength, optional recommendation), preserve omitted rows, and commit only when every eligible instrument in scope (all = held + watchlist) has a strength. Each row is the full current opinion: a row without `recommendation` clears an older one. Rules: basis fulfilled only with weak and on_track never with weak; buy / buy_asap never with weak and reduce / exit_asap never with strong; while the thesis is invalidated or fulfilled (research since its last edit) the strength must be weak. Use this once at the end of a routine or full refresh; it returns expected / covered / missing counts. Opinions only, never decisions or trades.",
     properties: {
       scope: {
         type: "string",
@@ -94,7 +102,7 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
       recommendations: {
         type: "array",
         description:
-          "Changed and missing recommendations: {instrument, recommendation, reason}. Existing omitted recommendations are preserved.",
+          "Changed and missing assessments: {instrument, strength, strength_basis, recommendation?, reason}. Omitted instruments keep their stored assessment.",
         maxItems: 250,
         items: {
           type: "object",
@@ -102,6 +110,14 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
             instrument: {
               type: "string",
               maxLength: 40,
+            },
+            strength: {
+              type: "string",
+              enum: ["strong", "neutral", "weak"],
+            },
+            strength_basis: {
+              type: "string",
+              enum: ["on_track", "fulfilled", "undermined", "environment_against", "no_progress"],
             },
             recommendation: {
               type: "string",
@@ -112,7 +128,7 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
               maxLength: 280,
             },
           },
-          required: ["instrument", "recommendation", "reason"],
+          required: ["instrument", "strength", "strength_basis", "reason"],
           additionalProperties: false,
         },
       },
@@ -363,7 +379,7 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     name: "watchlist",
     module: "investments",
     description:
-      "Watched instruments (not necessarily held): last close, 1-day / 1-month change, 52-week high and distance, alerts count, the model recommendation (buy_asap | buy | hold | null), plan_freshness (state fresh | maybe_outdated | outdated and reason codes; null without a recommendation), hints (which of the owner's own rules apply now: code, severity, params; main first).",
+      "Watched instruments (not necessarily held): last close, 1-day / 1-month change, 52-week high and distance, alerts count, the model recommendation (buy_asap | buy | hold | null), strength (strong | neutral | weak | null) and strength_basis (the model's position strength and why), plan_freshness (state fresh | maybe_outdated | outdated and reason codes; null without a recommendation or strength), hints (which of the owner's own rules apply now: code, severity, params; main first).",
     properties: {},
     required: [],
     write: false,
@@ -431,7 +447,7 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     name: "research_context",
     module: "investments",
     description:
-      "Context for a research run: held instruments (weights as fractions) and watched ones, each with its current model recommendation and recommendation date (null means the final set_recommendations gate must receive it), with its market segment (segment, segment_source owner | agent | auto | null), thesis (entry type, thesis, invalidation, exit plan) and research state (thesis health, relation counts, 8-week sentiment, last researched); segments: what moved the portfolio this week and over 4 weeks by market segment (weight, contribution, return, instruments, trend_1w / trend_4w = the equal-weighted price move of its held and watched instruments, members, last_note_at, note_this_week; briefs = up to 3 active brief notes (headline, why) the owner reads under the topic, newest first; thesis = the topic thesis {text, invalidation, draft, created_by, updated_at} or null; valuation = the newest sourced valuation {pe, forward_pe, eps_growth, pe_avg_5y, basis, observed_at} or null; watched-only topics with weight 0), currency and unassigned; topic_thesis_cooldown: topics whose thesis the owner deleted (no new draft before until); segment_catalog; macro: the five macro regime cards (state_label, summary, plain = the beginner sentence the owner sees until a brief exists, brief = the active macro brief {headline, why, supports, risks} or null, since (null + since_open + since_min when the state began before the data), metrics as text, stale, missing, last_note_at, note_this_week; public data) and macro_catalog (their note keys); the strategy's entry types and candidate criteria, open and dismissed (cooldown) candidates, known upcoming events, owner_review (the owner's last weekly review: note and agenda = the review cards the owner sent to the agent {card, title, note}; answer them in this run), the last run, limits (incl. the weekly novelty limits) and boundaries.",
+      "Context for a research run: held instruments (weights as fractions) and watched ones, each with its current model recommendation and recommendation date, strength (strong | neutral | weak | null), strength_basis and strength_at (strength null means the final set_recommendations gate must receive it), with its market segment (segment, segment_source owner | agent | auto | null), thesis (entry type, thesis, invalidation, exit plan) and research state (thesis health, relation counts, 8-week sentiment, last researched); segments: what moved the portfolio this week and over 4 weeks by market segment (weight, contribution, return, instruments, trend_1w / trend_4w = the equal-weighted price move of its held and watched instruments, members, last_note_at, note_this_week; briefs = up to 3 active brief notes (headline, why) the owner reads under the topic, newest first; thesis = the topic thesis {text, invalidation, draft, created_by, updated_at} or null; valuation = the newest sourced valuation {pe, forward_pe, eps_growth, pe_avg_5y, basis, observed_at} or null; watched-only topics with weight 0), currency and unassigned; topic_thesis_cooldown: topics whose thesis the owner deleted (no new draft before until); segment_catalog; macro: the five macro regime cards (state_label, summary, plain = the beginner sentence the owner sees until a brief exists, brief = the active macro brief {headline, why, supports, risks} or null, since (null + since_open + since_min when the state began before the data), metrics as text, stale, missing, last_note_at, note_this_week; public data) and macro_catalog (their note keys); the strategy's entry types and candidate criteria, open and dismissed (cooldown) candidates, known upcoming events, owner_review (the owner's last weekly review: note and agenda = the review cards the owner sent to the agent {card, title, note}; answer them in this run), the last run, limits (incl. the weekly novelty limits) and boundaries.",
     properties: {},
     required: [],
     write: false,
@@ -870,7 +886,7 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     name: "positions",
     module: "investments",
     description:
-      "Per instrument: symbol, name, weight, unrealized %, tags, bucket, valuation mode, holding days, open signals, thesis flag, the model recommendation (buy_asap | buy | hold | reduce | exit_asap | null), plan_freshness (state fresh | maybe_outdated | outdated and reason codes; null without a recommendation), hints (which of the owner's own rules apply now: code, severity rule|review|info, params as fractions; main first); cash weights per account.",
+      "Per instrument: symbol, name, weight, unrealized %, tags, bucket, valuation mode, holding days, open signals, thesis flag, the model recommendation (buy_asap | buy | hold | reduce | exit_asap | null), strength (strong | neutral | weak | null) and strength_basis (the model's position strength and why), plan_freshness (state fresh | maybe_outdated | outdated and reason codes; null without a recommendation or strength), hints (which of the owner's own rules apply now: code, severity rule|review|info, params as fractions; main first); cash weights per account.",
     properties: {},
     required: [],
     write: false,
@@ -921,7 +937,7 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
     name: "theses",
     module: "investments",
     description:
-      "Position theses (entry type, thesis, invalidation, exit and size plans) with the model recommendation, optionally of one instrument (id, symbol or ISIN).",
+      "Position theses (entry type, thesis, invalidation, exit and size plans) with the model recommendation, strength (strong | neutral | weak | null) and strength_basis, optionally of one instrument (id, symbol or ISIN).",
     properties: {
       instrument: {
         type: "string",

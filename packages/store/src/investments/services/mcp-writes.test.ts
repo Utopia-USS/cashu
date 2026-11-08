@@ -4,8 +4,12 @@ import { asInstrumentId, asProfileId, market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import { defineCommand, ok } from "../../command.js";
 import { createProfile } from "../../core/commands.js";
-import { createInstrument, setInstrumentPlan } from "../commands/instruments.js";
-import { createThesis } from "../commands/journal.js";
+import {
+  createInstrument,
+  setInstrumentPlan,
+  setInstrumentStrength,
+} from "../commands/instruments.js";
+import { createThesis, updateThesis } from "../commands/journal.js";
 import { addManualTransaction } from "../commands/manual.js";
 import { applyPlanChecks } from "../commands/planSignals.js";
 import { addToWatchlist } from "../commands/watchlist.js";
@@ -55,6 +59,9 @@ async function fixture() {
   };
   return { ...h, inputs };
 }
+const strong = { strength: "strong", basis: "on_track" } as const;
+const neutral = { strength: "neutral", basis: "no_progress" } as const;
+const fulfilled = { strength: "weak", basis: "fulfilled" } as const;
 describe("MCP local investment mutation composition", () => {
   it("keeps a new watched instrument and its prospective plan signal in one real batch", async () => {
     const h = await fixture();
@@ -133,7 +140,7 @@ describe("MCP local investment mutation composition", () => {
     const out = h.v.run(recommendWithPlans(), {
       today: TODAY,
       scope: "held",
-      updates: [{ instrument: h.abc, plan: "buy", reason: "Changed source facts" }],
+      updates: [{ instrument: h.abc, ...strong, plan: "buy", reason: "Changed source facts" }],
     });
     expect(out).toEqual({ ok: false, reason: "incomplete_coverage" });
     expect(allInstruments(h.read).map((i) => [i.id, i.plan])).toEqual(before);
@@ -142,8 +149,8 @@ describe("MCP local investment mutation composition", () => {
         today: TODAY,
         scope: null,
         updates: [
-          { instrument: h.abc, plan: "buy", reason: "First" },
-          { instrument: h.abc, plan: "hold", reason: "Second" },
+          { instrument: h.abc, ...strong, plan: "buy", reason: "First" },
+          { instrument: h.abc, ...strong, plan: "hold", reason: "Second" },
         ],
       }),
     ).toEqual({ ok: false, reason: "duplicate_instrument" });
@@ -155,7 +162,7 @@ describe("MCP local investment mutation composition", () => {
       h.v.run(recommendWithPlans(), {
         today: TODAY,
         scope: null,
-        updates: [{ instrument, plan, reason: "Synthetic view" }],
+        updates: [{ instrument, ...neutral, plan, reason: "Synthetic view" }],
       });
     const unreferenced = h.v.value(createInstrument, {
       name: "Unreferenced",
@@ -185,25 +192,128 @@ describe("MCP local investment mutation composition", () => {
     expect(loadInstrument(h.read, h.abc)?.plan).toBe("hold");
   });
 
-  it("covers held instruments in one append and preserves omitted existing recommendations", async () => {
+  it("coverage counts the strength: a stored plan alone is missing, a stored strength covers", async () => {
     const h = await fixture();
     h.v.value(setInstrumentPlan, { instrument: h.xmpl, plan: "hold", held: true });
-    const out = h.v.run(recommendWithPlans(), {
+    const batch = {
       today: TODAY,
-      scope: "held",
+      scope: "held" as const,
       updates: [
-        { instrument: h.abc, plan: "buy", reason: "Current view" },
-        { instrument: h.wrld, plan: "hold", reason: "Current view" },
+        { instrument: h.abc, ...strong, plan: "buy" as const, reason: "Current view" },
+        { instrument: h.wrld, ...neutral, reason: "Current view" },
       ],
+    };
+    expect(h.v.run(recommendWithPlans(), batch)).toEqual({
+      ok: false,
+      reason: "incomplete_coverage",
     });
+    h.v.value(setInstrumentStrength, {
+      instrument: h.xmpl,
+      strength: "neutral",
+      basis: "no_progress",
+      reason: "Earlier view",
+    });
+    const out = h.v.run(recommendWithPlans(), batch);
     expect(out.ok).toBe(true);
     if (!out.ok) return;
     expect(out.value).toMatchObject({ expected: 3, updated: 2 });
-    expect(out.events.map((e) => e.type)).toEqual([
-      "instrumentOverride.planSet",
-      "instrumentOverride.planSet",
+    expect(out.value.saved.map((row) => [row.strength, row.basis, row.plan])).toEqual([
+      ["strong", "on_track", "buy"],
+      ["neutral", "no_progress", null],
     ]);
+    // wrld had no plan: a strength-only row clears nothing and writes no planSet
+    expect(out.events.map((e) => e.type)).toEqual([
+      "instrumentOverride.strengthSet",
+      "instrumentOverride.planSet",
+      "instrumentOverride.strengthSet",
+    ]);
+    expect(out.events[0]?.data).toMatchObject({
+      strength: "strong",
+      basis: "on_track",
+      reason: "Current view",
+    });
+    const abc = loadInstrument(h.read, h.abc);
+    expect([abc?.positionStrength, abc?.strengthBasis, abc?.strengthReason]).toEqual([
+      "strong",
+      "on_track",
+      "Current view",
+    ]);
+    expect(abc?.strengthAt).not.toBeNull();
+    expect(abc?.planReason).toBe("Current view");
+    // omitted rows keep their stored opinion
     expect(loadInstrument(h.read, h.xmpl)?.plan).toBe("hold");
+    expect(loadInstrument(h.read, h.xmpl)?.positionStrength).toBe("neutral");
+  });
+  it("a strength-only row clears an older recommendation of the instrument", async () => {
+    const h = await fixture();
+    h.v.value(setInstrumentPlan, { instrument: h.abc, plan: "buy", held: true, reason: "Old" });
+    const out = h.v.run(recommendWithPlans(), {
+      today: TODAY,
+      scope: null,
+      updates: [{ instrument: h.abc, strength: "weak", basis: "undermined", reason: "New view" }],
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(
+      out.events.map((e) => [e.type, "plan" in e.data ? e.data.plan : e.data.strength]),
+    ).toEqual([
+      ["instrumentOverride.strengthSet", "weak"],
+      ["instrumentOverride.planSet", null],
+    ]);
+    const abc = loadInstrument(h.read, h.abc);
+    expect([abc?.plan, abc?.planReason, abc?.positionStrength]).toEqual([null, null, "weak"]);
+  });
+  it("refuses strength rows that contradict the basis, the recommendation or the thesis", async () => {
+    const h = await fixture();
+    const before = allInstruments(h.read).map((i) => [i.id, i.plan, i.positionStrength]);
+    const run = (row: Record<string, unknown>, instrument = h.abc) =>
+      h.v.run(recommendWithPlans(), {
+        today: TODAY,
+        scope: null,
+        updates: [{ instrument, reason: "Synthetic view", ...row }],
+      });
+    expect(run({ strength: "strong", basis: "fulfilled" })).toEqual({
+      ok: false,
+      reason: "strength_vs_basis",
+    });
+    expect(run({ strength: "weak", basis: "on_track" })).toEqual({
+      ok: false,
+      reason: "strength_vs_basis",
+    });
+    expect(run({ strength: "weak", basis: "undermined", plan: "buy" })).toEqual({
+      ok: false,
+      reason: "plan_vs_strength",
+    });
+    expect(run({ strength: "strong", basis: "on_track", plan: "exit_asap" })).toEqual({
+      ok: false,
+      reason: "plan_vs_strength",
+    });
+    expect(run({ basis: "on_track" })).toEqual({ ok: false, reason: "invalid_input" });
+    expect(run({ strength: "strong" })).toEqual({ ok: false, reason: "invalid_input" });
+    expect(run({ strength: "strong", basis: "on_track", reason: "  " })).toEqual({
+      ok: false,
+      reason: "invalid_input",
+    });
+    h.v.value(createThesis, { instrument: h.abc, entryType: "trend", thesis: "Proposition" });
+    h.v.env.advance(1000);
+    added(
+      h.v,
+      92,
+      { thesis_relation: "invalidates", thesis_field: "thesis", strength: 3 },
+      { instrument: "ABC" },
+    );
+    expect(run({ strength: "neutral", basis: "undermined" })).toEqual({
+      ok: false,
+      reason: "strength_vs_thesis",
+    });
+    expect(allInstruments(h.read).map((i) => [i.id, i.plan, i.positionStrength])).toEqual(before);
+    expect(run({ strength: "weak", basis: "undermined", plan: "hold" }).ok).toBe(true);
+    // the owner rewrites the thesis: research from before the edit no longer floors the strength
+    h.v.env.advance(1000);
+    const id = theses(h.read, h.abc)[0]?.gid as string;
+    h.v.value(updateThesis, { id, values: { thesis: "Rewritten proposition" } });
+    expect(run({ strength: "neutral", basis: "no_progress" }).ok).toBe(true);
+    expect(loadInstrument(h.read, h.abc)?.positionStrength).toBe("neutral");
   });
   it.each(["absent", "false", "throw", "lost", "compute"])(
     "keeps any-device base recommendation when optional derived pass is %s",
@@ -233,11 +343,14 @@ describe("MCP local investment mutation composition", () => {
       const out = h.v.run(recommendWithPlans(inputs), {
         today: TODAY,
         scope: null,
-        updates: [{ instrument: h.abc, plan: "buy", reason: "Updated facts" }],
+        updates: [{ instrument: h.abc, ...strong, plan: "buy", reason: "Updated facts" }],
       });
       expect(out.ok).toBe(true);
       if (out.ok)
-        expect(out.events.every((e) => e.type === "instrumentOverride.planSet")).toBe(true);
+        expect(out.events.map((e) => e.type)).toEqual([
+          "instrumentOverride.strengthSet",
+          "instrumentOverride.planSet",
+        ]);
       expect(loadInstrument(h.read, h.abc)?.plan).toBe("buy");
     },
   );
@@ -258,7 +371,7 @@ describe("MCP local investment mutation composition", () => {
     const first = h.v.run(recommendWithPlans(h.inputs), {
       today: TODAY,
       scope: null,
-      updates: [{ instrument: h.abc, plan: "buy", reason: "Retained view" }],
+      updates: [{ instrument: h.abc, ...fulfilled, plan: "hold", reason: "Retained view" }],
     });
     expect(first.ok).toBe(true);
     expect(
@@ -282,7 +395,7 @@ describe("MCP local investment mutation composition", () => {
     ).toHaveLength(0);
     expect(theses(h.read, h.abc)[0]?.exitPlan).toBe("Review at the next disclosure");
     expect(theses(h.read, h.abc)[0]).toEqual(out.value.row);
-    expect(loadInstrument(h.read, h.abc)?.plan).toBe("buy");
+    expect(loadInstrument(h.read, h.abc)?.plan).toBe("hold");
   });
   it("prospective watch removal resolves plan signals, local restore preserves absent note", async () => {
     const h = await fixture(),
@@ -296,7 +409,7 @@ describe("MCP local investment mutation composition", () => {
     const noThesis = h.v.run(recommendWithPlans(h.inputs), {
       today: TODAY,
       scope: null,
-      updates: [{ instrument: id, plan: "buy", reason: "Watch view" }],
+      updates: [{ instrument: id, ...strong, plan: "buy", reason: "Watch view" }],
     });
     expect(noThesis.ok).toBe(true);
     const removed = h.v.run(removeWatchWithPlans(h.inputs), { item: first.item });

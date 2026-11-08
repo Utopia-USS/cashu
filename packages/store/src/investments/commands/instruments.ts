@@ -1,6 +1,6 @@
 // Instrument commands (Python `store/instruments.py`, write side): store a planned instrument with its
-// aliases, add aliases, classify, set the status, the model recommendation (legacy name `plan`) and
-// the market segment, and record a manual valuation. Market identity (the instrument row, aliases)
+// aliases, add aliases, classify, set the status, the model recommendation (legacy name `plan`), the
+// position strength and the market segment, and record a manual valuation. Market identity (the instrument row, aliases)
 // is per vault (D3); the owner's classification goes to the vault's override row
 // (`instrumentOverride.*`), so another vault's view of the same security never changes.
 import { pyLen, pySplit } from "@cashu/domain";
@@ -9,6 +9,7 @@ import {
   defaultValuationMode,
   HELD_ONLY_PLANS,
   research,
+  strengthAllowed,
   type ValuationMode,
 } from "@cashu/domain/investments";
 import { z } from "zod";
@@ -17,7 +18,9 @@ import {
   ASSET_CLASSES,
   INSTRUMENT_STATUSES,
   PLAN_VALUES,
+  POSITION_STRENGTHS,
   SEGMENT_SETTERS,
+  STRENGTH_BASES,
   VALUATION_MODES,
 } from "../../events/v1/investments.js";
 import { assetCurrency, calendarDate, decimal, gid } from "../../events/v1/primitives.js";
@@ -301,6 +304,39 @@ export const setInstrumentPlan = defineCommand({
       instrument: root,
       plan: input.plan,
       reason: input.plan === null ? null : reason,
+    });
+    return ok({ instrument: root });
+  },
+});
+
+export const setInstrumentStrength = defineCommand({
+  id: "investments.setInstrumentStrength",
+  input: z.object({
+    instrument: gid,
+    strength: z.enum(POSITION_STRENGTHS).nullable(),
+    basis: z.enum(STRENGTH_BASES).nullable().optional(),
+    reason: z.string().nullable().optional(),
+  }),
+  /**
+   * The model's position strength (null clears it with its basis and reason; `strength_at` = the
+   * event's domain time). A strength needs a basis that may justify it (`fulfilled` only with weak,
+   * `on_track` never with weak) and a reason, whitespace-collapsed, at most PLAN_REASON_MAX
+   * characters.
+   */
+  run(ctx, input) {
+    const reason = pySplit(input.reason ?? "").join(" ") || null;
+    if (input.strength !== null) {
+      if (input.basis == null || reason === null) return refuse("invalid_input");
+      if (pyLen(reason) > PLAN_REASON_MAX) return refuse("reason_too_long");
+      if (!strengthAllowed(input.strength, input.basis)) return refuse("strength_vs_basis");
+    }
+    const root = instrumentGid(ctx.read, input.instrument);
+    if (root === undefined) return refuse("no_instrument");
+    ctx.emit("instrumentOverride.strengthSet", ctx.det("inv_profile_instruments", [root]), {
+      instrument: root,
+      strength: input.strength,
+      basis: input.strength === null ? null : (input.basis ?? null),
+      reason: input.strength === null ? null : reason,
     });
     return ok({ instrument: root });
   },

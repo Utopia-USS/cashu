@@ -204,6 +204,8 @@ describe("native MCP local investment writes", () => {
       (
         await s.server.call("set_recommendation", {
           instrument: "ABC",
+          strength: "strong",
+          strength_basis: "on_track",
           recommendation: "buy",
           reason: `A${" ".repeat(300)}B`,
         })
@@ -222,6 +224,8 @@ describe("native MCP local investment writes", () => {
     };
     await call("recommend", "set_recommendation", {
       instrument: "ABC",
+      strength: "strong",
+      strength_basis: "on_track",
       recommendation: "buy",
       reason: "Current source facts",
     });
@@ -319,6 +323,8 @@ describe("native MCP local investment writes", () => {
     const instrument = encodeEntityRef("instrument", s.instrument);
     expect(responses.recommend).toMatchObject({
       instrument_id: instrument,
+      strength: "strong",
+      strength_basis: "on_track",
       recommendation: "buy",
       reason_saved: true,
     });
@@ -334,7 +340,13 @@ describe("native MCP local investment writes", () => {
     });
     expect(responses.alerts?.alerts).toEqual([alert]);
     expect(responses.mute).toEqual({ alert_id: alert.alert_id, status: "muted" });
-    expect(item).toMatchObject({ note: "Synthetic watch note", held: true, recommendation: "buy" });
+    expect(item).toMatchObject({
+      note: "Synthetic watch note",
+      held: true,
+      recommendation: "buy",
+      strength: "strong",
+      strength_basis: "on_track",
+    });
     expect(responses.watchlist?.items).toEqual([item]);
     expect(responses.remove_watch).toEqual({ item_id: item.item_id, removed: true });
     expect(responses.decision).toMatchObject({
@@ -379,6 +391,8 @@ describe("native MCP local investment writes", () => {
       (
         await s.server.call("set_recommendation", {
           instrument: "ABC",
+          strength: "strong",
+          strength_basis: "on_track",
           recommendation: "buy",
           reason: "Updated facts",
         })
@@ -547,19 +561,41 @@ describe("native MCP local investment writes", () => {
   });
   it("refuses invalid recommendation batches in validation order without effects", async () => {
     const s = await setup();
-    const changed = { instrument: "ABC", recommendation: "buy", reason: "Current facts" };
+    const assessed = { strength: "neutral", strength_basis: "no_progress" };
+    const changed = {
+      instrument: "ABC",
+      ...assessed,
+      recommendation: "buy",
+      reason: "Current facts",
+    };
     const ERRORS = {
       duplicate: ["invalid_arguments", "recommendations[1] duplicates an instrument"],
       outside: ["invalid_arguments", "recommendations[0] is outside the selected watchlist scope"],
       enum: [
         "invalid_arguments",
-        "recommendations[0].recommendation must be one of: buy_asap, buy, hold, reduce, exit_asap",
+        "recommendations[0].recommendation must be one of: buy_asap, buy, hold, reduce, exit_asap (or omitted)",
+      ],
+      no_strength: [
+        "invalid_arguments",
+        "recommendations[0].strength is required, one of: strong, neutral, weak",
+      ],
+      no_basis: [
+        "invalid_arguments",
+        "recommendations[0].strength_basis is required, one of: on_track, fulfilled, undermined, environment_against, no_progress",
       ],
       coverage_before_held: [
         "incomplete_coverage",
-        "recommendation coverage incomplete: expected 2, covered 1, missing 1; see research_context for rows with recommendation null",
+        "strength coverage incomplete: expected 2, covered 1, missing 1; see research_context for rows with strength null",
       ],
       held_after_coverage: ["invalid", "Plan 'reduce' needs a held instrument"],
+      strength_vs_basis: [
+        "invalid_arguments",
+        "recommendations[1].strength_basis 'fulfilled' needs strength weak",
+      ],
+      plan_vs_strength: [
+        "invalid_arguments",
+        "recommendations[1].recommendation 'buy' contradicts strength 'weak' (buy / buy_asap never with weak, reduce / exit_asap never with strong)",
+      ],
     } as const;
     const check = async (label: keyof typeof ERRORS, scope: string, recommendations: unknown[]) => {
       const out = await s.server.call("set_recommendations", { scope, recommendations });
@@ -568,19 +604,99 @@ describe("native MCP local investment writes", () => {
     await check("duplicate", "held", [changed, changed]);
     await check("outside", "watchlist", [changed]);
     await check("enum", "held", [{ ...changed, recommendation: "sell" }]);
+    await check("no_strength", "held", [{ ...changed, strength: undefined }]);
+    await check("no_basis", "held", [{ ...changed, strength_basis: "unknown" }]);
     for (const symbol of ["OTHER", "THIRD"])
       value(s.f, C.addToWatchlist, {
         target: {
           planned: { symbol, name: `${symbol} public`, currency: "PLN", assetClass: "equity" },
         },
       });
-    const reducing = { instrument: "OTHER", recommendation: "reduce", reason: "Current facts" };
+    // a stored recommendation without a strength does not cover THIRD
+    const third = Q.loadInstruments(
+      s.f.store.read.bind(s.f.store),
+      Q.watchedInstrumentGids(s.f.store.read.bind(s.f.store)),
+    );
+    for (const [id, inst] of third)
+      if (inst.symbol === "THIRD")
+        value(s.f, C.setInstrumentPlan, { instrument: id, plan: "hold", held: false });
+    const reducing = {
+      instrument: "OTHER",
+      ...assessed,
+      recommendation: "reduce",
+      reason: "Current facts",
+    };
     await check("coverage_before_held", "watchlist", [reducing]);
-    await check("held_after_coverage", "watchlist", [
-      reducing,
-      { instrument: "THIRD", recommendation: "hold", reason: "Current facts" },
+    const thirdRow = { instrument: "THIRD", reason: "Current facts" };
+    await check("held_after_coverage", "watchlist", [reducing, { ...thirdRow, ...assessed }]);
+    const other = { instrument: "OTHER", ...assessed, reason: "Current facts" };
+    await check("strength_vs_basis", "watchlist", [
+      other,
+      { ...thirdRow, strength: "strong", strength_basis: "fulfilled" },
     ]);
-    expect(s.batches).toHaveLength(0);
+    await check("plan_vs_strength", "watchlist", [
+      other,
+      { ...thirdRow, strength: "weak", strength_basis: "undermined", recommendation: "buy" },
+    ]);
+    const batches = s.batches.length;
+    const single = await s.server.call("set_recommendation", {
+      instrument: "ABC",
+      strength: "strong",
+      strength_basis: "on_track",
+      recommendation: "exit_asap",
+      reason: "Current facts",
+    });
+    expect([single.errorKind, single.error]).toEqual([
+      "invalid_arguments",
+      "recommendation 'exit_asap' contradicts strength 'strong' (buy / buy_asap never with weak, reduce / exit_asap never with strong)",
+    ]);
+    expect(
+      (
+        await s.server.call("set_recommendation", {
+          instrument: "ABC",
+          strength: "weak",
+          reason: "x",
+        })
+      ).error,
+    ).toBe("missing argument: strength_basis");
+    expect(s.batches).toHaveLength(batches);
+    expect(batches).toBe(0);
+  });
+  it("a strength-only assessment clears an older recommendation and covers the gate", async () => {
+    const s = await setup();
+    value(s.f, C.setInstrumentPlan, { instrument: s.instrument, plan: "buy", held: true });
+    const out = data(
+      await s.server.call("set_recommendation", {
+        instrument: "ABC",
+        strength: "weak",
+        strength_basis: "environment_against",
+        reason: "Otoczenie rynkowe działa przeciw tezie.",
+      }),
+    );
+    expect(out).toMatchObject({
+      strength: "weak",
+      strength_basis: "environment_against",
+      recommendation: null,
+      reason_saved: true,
+    });
+    const inst = Q.loadInstrument(s.f.store.read.bind(s.f.store), s.instrument);
+    expect([inst?.plan, inst?.positionStrength, inst?.strengthReason]).toEqual([
+      null,
+      "weak",
+      "Otoczenie rynkowe działa przeciw tezie.",
+    ]);
+    expect(
+      data(await s.server.call("set_recommendations", { scope: "held", recommendations: [] })),
+    ).toMatchObject({ expected: 1n, covered: 1n, missing: 0n, updated: 0n });
+    // the watchlist row carries the strength and the held position_weak hint
+    const item = data(await s.server.call("add_to_watchlist", { symbol_or_isin: "ABC" }))
+      .item as Record<string, unknown>;
+    expect(item).toMatchObject({
+      recommendation: null,
+      strength: "weak",
+      strength_basis: "environment_against",
+    });
+    expect((item.hints as { code: string }[]).map((h) => h.code)).toContain("position_weak");
   });
   it("uses current file bucket identities in both directions, not historical stored versions", async () => {
     const s = await setup();

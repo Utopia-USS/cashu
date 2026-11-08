@@ -1,5 +1,5 @@
 // Per-profile instrument overrides (events.md 8.6): row key resolve(instrument); LWW-F over the
-// fields each event sets; `plan_at` = domain time of the plan; segment GUARD: an `agent` segment is a
+// fields each event sets; `plan_at` / `strength_at` = domain time of the plan / strength; segment GUARD: an `agent` segment is a
 // no-op while the folded segment is set by the owner.
 import type { FoldContext, Materializer } from "../engine/types.js";
 import type { TableDef } from "../sql/ddl.js";
@@ -24,6 +24,10 @@ const table: TableDef = {
     { name: "plan", type: "TEXT" },
     { name: "plan_at", type: "TEXT" },
     { name: "plan_reason", type: "TEXT" },
+    { name: "strength", type: "TEXT" },
+    { name: "strength_basis", type: "TEXT" },
+    { name: "strength_reason", type: "TEXT" },
+    { name: "strength_at", type: "TEXT" },
     { name: "segment", type: "TEXT" },
     { name: "segment_by", type: "TEXT" },
   ],
@@ -51,11 +55,12 @@ const partitionOf = (instrument: unknown, ctx: FoldContext) =>
 
 export const overridesMaterializer: Materializer = {
   id: "investments.overrides",
-  version: 1,
+  version: 2,
   tables: [table],
   handles: [
     "instrumentOverride.set",
     "instrumentOverride.planSet",
+    "instrumentOverride.strengthSet",
     "instrumentOverride.segmentSet",
   ],
   identity: [INSTRUMENTS],
@@ -99,6 +104,16 @@ export const overridesMaterializer: Materializer = {
         plan,
         (d.reason as string | null) ?? null,
         plan === null ? null : ctx.time(e, "plan_at"),
+      );
+    } else if (e.type === "instrumentOverride.strengthSet") {
+      // null strength clears the whole register (basis, reason, strength_at)
+      const strength = (d.strength as string | null) ?? null;
+      sets.push("strength = ?", "strength_basis = ?", "strength_reason = ?", "strength_at = ?");
+      params.push(
+        strength,
+        strength === null ? null : ((d.basis as string | null) ?? null),
+        strength === null ? null : ((d.reason as string | null) ?? null),
+        strength === null ? null : ctx.time(e, "strength_at"),
       );
     } else {
       const row = ctx.sql.get<{ segment: string | null; segment_by: string | null }>(

@@ -30,6 +30,10 @@ export interface HintFacts {
   readonly hasThesis: boolean;
   readonly hasExitPlan?: boolean;
   readonly plan?: string | null;
+  /** The model's position strength (`POSITION_STRENGTHS`); null = not assessed. */
+  readonly positionStrength?: string | null;
+  /** The basis of the strength (`STRENGTH_BASES`). */
+  readonly strengthBasis?: string | null;
   readonly predatesThesis?: boolean;
   readonly signals?: readonly HintSignal[];
   readonly alerts?: readonly HintAlert[];
@@ -43,6 +47,7 @@ export const HELD_HINT_ORDER = [
   "thesis_invalidated",
   "plan_vs_thesis",
   "thesis_fulfilled",
+  "position_weak",
   "gain_review",
   "loss_review",
   "drawdown_review",
@@ -152,6 +157,15 @@ function contradiction(f: HintFacts): Hint | null {
     ? hint("plan_vs_thesis", "rule", { plan: f.plan, health: f.health })
     : null;
 }
+/** The model rates a held position weak: review the exit plan (the agent's assessment, not a thesis code). */
+function weakPosition(f: HintFacts): Hint | null {
+  return f.positionStrength === "weak"
+    ? hint("position_weak", "review", {
+        basis: f.strengthBasis ?? null,
+        has_exit_plan: f.hasExitPlan ?? false,
+      })
+    : null;
+}
 function ordered(found: Hint[], order: readonly string[]): readonly Hint[] {
   return found.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code));
 }
@@ -161,6 +175,8 @@ export function heldHints(f: HintFacts): readonly Hint[] {
     vs = contradiction(f);
   if (state !== null) found.push(state);
   if (vs !== null) found.push(vs);
+  const weak = weakPosition(f);
+  if (weak !== null) found.push(weak);
   for (const kind of RULE_KIND_HINTS.keys()) {
     const s = strongest(f.signals ?? [], kind);
     if (s !== undefined) found.push(ruleHint(kind, s, f));
@@ -168,7 +184,10 @@ export function heldHints(f: HintFacts): readonly Hint[] {
   if (!f.hasThesis) found.push(hint("no_thesis", "review"));
   else if (
     !f.hasExitPlan &&
-    !found.some((h) => h.code === "thesis_fulfilled" || h.code === "gain_review")
+    !found.some(
+      (h) =>
+        h.code === "thesis_fulfilled" || h.code === "gain_review" || h.code === "position_weak",
+    )
   )
     found.push(hint("no_exit_plan", "info"));
   return ordered(found, HELD_HINT_ORDER);

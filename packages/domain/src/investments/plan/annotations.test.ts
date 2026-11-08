@@ -46,3 +46,37 @@ it("keeps freshness for held, watched and saved while saved hints remain empty i
     expect(out.get(subjects[2]!.instrument.id)?.hints).toEqual([]);
   }
 });
+
+it("threads a strength-only opinion into freshness and the held position_weak hint", () => {
+  const clock: ViewClock = {
+    now: parseDateTime("2026-11-02T12:00:00Z"),
+    today: "2026-11-02",
+    timeZone: "Europe/Warsaw",
+  };
+  const health = thesisHealth([], planInstant(clock.now), { hasThesis: true, researched: true });
+  const subject: AnnotationSubject = {
+    instrument: instrument("held"),
+    held: true,
+    hintsWanted: true,
+    weight: null,
+    health,
+    hasThesis: true,
+    hasExitPlan: true,
+    thesisTracked: true,
+    plan: null,
+    planAt: null,
+    positionStrength: "weak",
+    strengthBasis: "undermined",
+    strengthAt: parseDateTime("2026-10-30T12:00:00Z"),
+    coreChangedAt: null,
+    notes: [],
+    allOpenSignals: [],
+    hintTriggeredAlerts: [],
+    freshnessTriggeredAlerts: [],
+  };
+  const out = annotateSubjects([subject], clock, "en").get(subject.instrument.id);
+  expect(out?.freshness?.state).toBe("fresh");
+  expect(out?.hints.map((h) => [h.code, h.params])).toEqual([
+    ["position_weak", { basis: "undermined", has_exit_plan: true }],
+  ]);
+});

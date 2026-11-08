@@ -18,12 +18,13 @@ import {
   PLN,
   USD,
 } from "../portfolio/testing/fixtures.js";
+import { instrument as fixtureInstrument } from "../rules/testing/fixtures.js";
 import { accountsView } from "./accounts.js";
 import { allocationView } from "./allocation.js";
 import { overviewView } from "./overview.js";
 import { positionChartView } from "./positionChart.js";
 import { positionDetailView } from "./positionDetail.js";
-import { positionsView } from "./positions.js";
+import { instrumentView, positionsView } from "./positions.js";
 import type {
   BrokerageAccountFact,
   PortfolioProjectionInput,
@@ -291,5 +292,36 @@ describe("watchlist", () => {
     expect(row?.price).toMatchObject({ change_1d: 0.125, from_high_52w: -0.1, stale: true });
     expect(num(row?.price?.high_52w)).toBe(50);
     expect(row?.alerts.nearest).toMatchObject({ alert_id: "near", distance_pct: -0.1 });
+  });
+});
+
+describe("instrumentView strength", () => {
+  it("carries the strength fields independent of the plan; null strength hides basis and reason", () => {
+    const base = fixtureInstrument("held");
+    const strong = instrumentView(
+      {
+        ...base,
+        positionStrength: "strong",
+        strengthBasis: "on_track",
+        strengthReason: "Teza na dobrej drodze",
+        strengthAt: parseDateTime("2026-10-30T12:00:00Z"),
+      },
+      true,
+    );
+    expect(strong).toMatchObject({
+      plan: null,
+      strength: "strong",
+      strength_basis: "on_track",
+      strength_reason: "Teza na dobrej drodze",
+      strength_at: "2026-10-30T12:00:00+00:00",
+    });
+    expect(
+      instrumentView({ ...base, strengthBasis: "on_track", strengthReason: "stale" }, false),
+    ).toMatchObject({
+      strength: null,
+      strength_basis: null,
+      strength_reason: null,
+      strength_at: null,
+    });
   });
 });

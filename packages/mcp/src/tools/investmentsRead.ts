@@ -186,6 +186,8 @@ export function positions(ctx: Context): L.LabelledTree {
         open_signals: L.count(p.open_signals),
         has_thesis: L.flag(p.has_thesis),
         recommendation: L.category(inst.plan),
+        strength: L.category(inst.strength),
+        strength_basis: L.category(inst.strength_basis),
         plan_freshness:
           freshness === null
             ? null
@@ -238,7 +240,7 @@ export function hintParams(params: Readonly<Record<string, unknown>>): {
     if (["gain", "loss", "drawdown", "weight", "max_weight", "threshold"].includes(key))
       out[key] = L.pct(typeof value === "number" ? value : null);
     else if (["has_exit_plan", "predates_thesis"].includes(key)) out[key] = L.flag(Boolean(value));
-    else if (["plan", "health", "kind"].includes(key))
+    else if (["plan", "health", "kind", "basis"].includes(key))
       out[key] = L.category(typeof value === "string" ? value : null);
     else if (key === "alert_id")
       out[key] = L.ref(typeof value === "string" ? encodeEntityRef("alert", value) : null);

@@ -84,6 +84,50 @@ describe("planFreshness", () => {
     expect(codes({ plan: "reduce", health: "invalidated" })).toEqual(["fresh", []]);
   });
 
+  it("a strength-only opinion is dated by strength_at and judged like a plan", () => {
+    const only = { plan: null, planAt: null, positionStrength: "neutral", strengthAt: PLAN_AT };
+    expect(codes(only)).toEqual(["fresh", []]);
+    expect(fresh({ ...only, strengthAt: null })).toBeNull();
+    expect(codes({ ...only, notes: [note({ thesisRelation: "invalidates" })] })).toEqual([
+      "outdated",
+      ["note_invalidates"],
+    ]);
+    expect(codes(only, at("2026-11-01"))).toEqual(["maybe_outdated", ["age"]]);
+    // notes from before strength_at do not count
+    expect(
+      codes({
+        ...only,
+        notes: [note({ thesisRelation: "invalidates", createdAt: at("2026-09-30") })],
+      }),
+    ).toEqual(["fresh", []]);
+  });
+
+  it("a fulfilling note also outdates a strong strength; an invalidated thesis spares a weak one", () => {
+    const fulfills = [note({ thesisRelation: "fulfills" })];
+    const strong = { plan: null, planAt: null, positionStrength: "strong", strengthAt: PLAN_AT };
+    expect(codes({ ...strong, notes: fulfills })).toEqual(["outdated", ["fulfilled_buy"]]);
+    expect(codes({ positionStrength: "strong", strengthAt: PLAN_AT, notes: fulfills })).toEqual([
+      "outdated",
+      ["fulfilled_buy"],
+    ]);
+    expect(codes({ ...strong, health: "invalidated" })).toEqual([
+      "outdated",
+      ["thesis_invalidated"],
+    ]);
+    expect(
+      codes({
+        plan: null,
+        planAt: null,
+        positionStrength: "weak",
+        strengthAt: PLAN_AT,
+        health: "invalidated",
+      }),
+    ).toEqual(["fresh", []]);
+    expect(codes({ positionStrength: "weak", strengthAt: PLAN_AT, health: "invalidated" })).toEqual(
+      ["fresh", []],
+    );
+  });
+
   it("strong or thesis-relevant active notes make it maybe outdated, weak ones do not", () => {
     expect(codes({ notes: [note({ strength: 3 })] })).toEqual(["maybe_outdated", ["note_after"]]);
     expect(codes({ notes: [note({ thesisRelation: "supports", strength: 2 })] })).toEqual([

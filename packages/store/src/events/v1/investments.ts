@@ -48,6 +48,16 @@ export const INSTRUMENT_STATUSES = ["active", "delisted", "frozen"] as const;
 /** `domain.plan.PLAN_VALUES` (the model recommendation, legacy name "plan"). */
 export const PLAN_VALUES = ["buy_asap", "buy", "hold", "reduce", "exit_asap"] as const;
 export const SEGMENT_SETTERS = ["owner", "agent"] as const;
+/** `domain.POSITION_STRENGTHS` (the model's assessment of how well the thesis holds). */
+export const POSITION_STRENGTHS = ["strong", "neutral", "weak"] as const;
+/** `domain.STRENGTH_BASES` (why the strength). */
+export const STRENGTH_BASES = [
+  "on_track",
+  "fulfilled",
+  "undermined",
+  "environment_against",
+  "no_progress",
+] as const;
 export const MERGE_REASONS = ["owner", "alias_collision"] as const;
 
 const segmentKey = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/, "expected a segment catalog key");
@@ -210,6 +220,13 @@ export const investmentsEvents = {
   "instrumentOverride.planSet": payload({
     instrument: gid,
     plan: z.enum(PLAN_VALUES).nullable(),
+    reason: z.string().nullable(),
+  }),
+  // strength null clears strength, basis, reason and strength_at together
+  "instrumentOverride.strengthSet": payload({
+    instrument: gid,
+    strength: z.enum(POSITION_STRENGTHS).nullable(),
+    basis: z.enum(STRENGTH_BASES).nullable(),
     reason: z.string().nullable(),
   }),
   "instrumentOverride.segmentSet": payload({

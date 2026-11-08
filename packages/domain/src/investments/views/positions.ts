@@ -57,6 +57,10 @@ export function instrumentView(
     plan,
     plan_at: viewTimestamp(plan === null ? null : inst.planAt),
     plan_reason: plan === null ? null : inst.planReason,
+    strength: inst.positionStrength,
+    strength_basis: inst.positionStrength === null ? null : inst.strengthBasis,
+    strength_reason: inst.positionStrength === null ? null : inst.strengthReason,
+    strength_at: viewTimestamp(inst.positionStrength === null ? null : inst.strengthAt),
     segment,
     segment_source: source,
   };
