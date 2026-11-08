@@ -478,7 +478,7 @@ describe("native vault session", () => {
     const workspace = createProductionWorkspaceProvider({
       dataRoot: dataDir,
       home: workspaceHome,
-      workspacesRoot: join(workspaceHome, "Documents", "cashU"),
+      workspacesRoot: join(workspaceHome, "cashU"),
       skillSource,
       version: "synthetic",
       program: { command: "/synthetic/cashu", args: [] },

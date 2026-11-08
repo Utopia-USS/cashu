@@ -223,7 +223,7 @@ release carries an informational item there: Sparkle never downloads it.
 
 `cashU Staging` is a separate app for trying `staging` on the owner's Mac next to the real cashU.app:
 bundle `io.utopiasoft.cashu.staging`, data dir `~/Library/Application Support/cashU Staging`, workspaces
-`~/Documents/cashU Staging`. It shares nothing with cashU.app: it starts with an empty data dir and the
+`~/cashU Staging`. It shares nothing with cashU.app: it starts with an empty data dir and the
 profile wizard, never looks at the Python data or the Python agents, and keeps its own keychain items.
 Two things stay shared on purpose: the Enable Banking redirect `https://127.0.0.1:18888` (registered with
 Enable Banking), so do not run a bank connection in both apps at the same moment; and the MCP name prefix,

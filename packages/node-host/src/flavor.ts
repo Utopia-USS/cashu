@@ -25,7 +25,7 @@ export interface Flavor {
   readonly productName: string;
   /** The default data dir's last component per platform (`~/Library/Application Support/<name>`). */
   readonly dataDirName: { readonly darwin: string; readonly linux: string };
-  /** The default agent workspaces root: `~/Documents/<name>`. */
+  /** The default agent workspaces root: `~/<name>` (like IntelliJ's `~/IdeaProjects`). */
   readonly workspacesDirName: string;
   /** launchd label of the bundled host agent (plist `<label>.plist`), systemd units `<label>.*`. */
   readonly hostAgentLabel: string;
@@ -104,8 +104,18 @@ export function dataDirName(flavor: Flavor, platform: NodeJS.Platform): string {
   throw new Error("unsupported_platform");
 }
 
-/** The default agent workspaces root `<home>/Documents/<name>`. */
+/**
+ * The default agent workspaces root `<home>/<name>`, like IntelliJ's `~/IdeaProjects`: outside
+ * `~/Documents`, which macOS guards per app (every agent host would need its own permission).
+ */
 export const workspacesRoot = (flavor: Flavor, home: string) =>
+  join(home, flavor.workspacesDirName);
+
+/**
+ * The earlier workspaces root `<home>/Documents/<name>` (the Python app, native builds before
+ * 2026-11-08). Still the owner's files: guards refuse it like the current root.
+ */
+export const legacyWorkspacesRoot = (flavor: Flavor, home: string) =>
   join(home, "Documents", flavor.workspacesDirName);
 
 /** The bundled launchd plist file name of the host agent. */

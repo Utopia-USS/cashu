@@ -739,7 +739,7 @@ function runsTab(p: ResearchPageInput): TabModel {
         (PRIVACY_SHORT as Record<string, string>)[p.privacy] ?? p.privacy,
         p.privacy === "amounts",
       ),
-      path: p.workspace?.path ?? `~/Documents/cashU/${p.slug}`,
+      path: p.workspace?.path ?? `~/cashU/${p.slug}`,
     },
   };
 }

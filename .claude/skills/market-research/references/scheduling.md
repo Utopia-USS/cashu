@@ -1,7 +1,7 @@
 # Scheduling the Saturday routine (local, approved by the user)
 
 The routine runs on the user's Mac, inside the profile's agent workspace (default
-`~/Documents/cashU/<slug>/`; the app shows the path in Ustawienia > Agent AI, the CLI prints it with
+`~/cashU/<slug>/`; the app shows the path in Ustawienia > Agent AI, the CLI prints it with
 `cashu workspace path`). It has to be local: the cashU MCP server reads the profile's vault on
 this Mac, and the workspace's `.mcp.json` and `.claude/settings.json` (data only through MCP, reads of
 the data dir denied) apply only to runs in that folder. The cashU app only explains the schedule;
@@ -67,7 +67,7 @@ LaunchAgent in their own terminal; you show the file and the commands and do not
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>cd "$HOME/Documents/cashU/<slug>" &amp;&amp; claude -p "/market-research rutyna" &gt;&gt; research/routine.log 2&gt;&amp;1</string>
+    <string>cd "$HOME/cashU/<slug>" &amp;&amp; claude -p "/market-research rutyna" &gt;&gt; research/routine.log 2&gt;&amp;1</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>

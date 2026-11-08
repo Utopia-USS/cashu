@@ -65,9 +65,9 @@ currency. The app then shows a **24-word recovery phrase**: the user writes it d
 outside the computer. It is the only way back into the profile on a new machine. **Never ask for it,
 never let them paste it into the chat.**
 
-The wizard then offers an **agent workspace** (a folder under `~/Documents/cashU` with the profile's
-MCP server, the setup skills and permissions). Recommend it: the next steps (and the `/budget-setup`,
-`/investments-setup`, ... skills) work best from there.
+The wizard then offers an **agent workspace** (a folder under `~/cashU`, like IntelliJ's
+`~/IdeaProjects`, with the profile's MCP server, the setup skills and permissions). Recommend it: the
+next steps (and the `/budget-setup`, `/investments-setup`, ... skills) work best from there.
 
 Set up the `cashu` command for the terminal (the app writes the launcher at every start):
 

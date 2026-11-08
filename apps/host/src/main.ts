@@ -207,7 +207,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           (!isAbsolute(workspacesOverride) || resolve(workspacesOverride) !== workspacesOverride)
         )
           throw new Error("workspace_root_invalid");
-        // A test build keeps its workspaces in the marker's dir, never ~/Documents/cashU.
+        // A test build keeps its workspaces in the marker's dir, never ~/cashU.
         if (
           runtime.testBuild &&
           workspacesOverride &&

@@ -75,6 +75,12 @@ describe("path guard", () => {
 
   it("refuses the workspaces and the installed app", () => {
     const { home, ok } = layout();
+    expect(refuse({ ...ok, out: join(home, "CASHU", "x") }, home)).toBe(
+      "--out points into the cashU workspaces",
+    );
+    expect(refuse({ ...ok, out: join(home, "cashU Staging") }, home)).toBe(
+      "--out points into the cashU workspaces",
+    );
     expect(refuse({ ...ok, out: join(home, "Documents", "CASHU", "x") }, home)).toBe(
       "--out points into the cashU workspaces",
     );

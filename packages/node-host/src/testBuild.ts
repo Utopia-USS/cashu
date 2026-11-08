@@ -7,7 +7,7 @@
 // only then: Electron main reads the update feed from a local `http://127.0.0.1:<port>/` server,
 // accepts the configured install root instead of /Applications and runs on the configured data dir
 // (also when relaunched by the updater without any environment); the host keeps agent workspaces in
-// the configured workspaces dir (never ~/Documents/cashU) and maps every OS keyring service into the
+// the configured workspaces dir (never ~/cashU or ~/Documents/cashU) and maps every OS keyring service into the
 // synthetic `cashu-next-test.<hex>` namespace (keyring/native.ts). Without the marker every code path is
 // the release one.
 import { createHash } from "node:crypto";
@@ -31,7 +31,7 @@ export interface TestBuildMarker {
   readonly installRoot: string;
   /** Canonical absolute data dir the test app must run on (never the default data dir). */
   readonly dataDir: string;
-  /** Canonical absolute agent workspaces root (never ~/Documents/cashU). */
+  /** Canonical absolute agent workspaces root (never ~/cashU or ~/Documents/cashU). */
   readonly workspacesDir: string;
 }
 
@@ -68,6 +68,8 @@ function checkedDir(value: unknown): string {
   for (let index = 0; index + 1 < parts.length; index += 1) {
     if (parts[index] === "documents" && REAL_WORKSPACES.has(parts[index + 1] ?? "")) invalid();
   }
+  // The current root sits right in a home dir (/Users/<name>/cashU, /home/<name>/cashU).
+  if (["users", "home"].includes(parts[1] ?? "") && REAL_WORKSPACES.has(parts[3] ?? "")) invalid();
   return value;
 }
 

@@ -116,7 +116,7 @@ const REAL_WORKSPACES = new Set(
 function testDir(value, label) {
   const fail = () => {
     throw new Error(
-      `test build: ${label} must be an absolute, normalized directory outside /Applications, every flavor's default data dir and ~/Documents/cashU*`,
+      `test build: ${label} must be an absolute, normalized directory outside /Applications, every flavor's default data dir and its workspaces (~/cashU*, ~/Documents/cashU*)`,
     );
   };
   if (typeof value !== "string" || value.length > 1024 || value.includes("\0")) fail();
@@ -133,6 +133,8 @@ function testDir(value, label) {
       fail();
     if (parts[index] === "documents" && REAL_WORKSPACES.has(parts[index + 1] ?? "")) fail();
   }
+  // The current workspaces root sits right in a home dir (/Users/<name>/cashU, /home/<name>/cashU).
+  if (["users", "home"].includes(parts[1] ?? "") && REAL_WORKSPACES.has(parts[3] ?? "")) fail();
   return value;
 }
 

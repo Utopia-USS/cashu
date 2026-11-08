@@ -3,7 +3,7 @@ import type { ResearchPageModel } from "./researchPageModel.js";
 
 const ui = { onBack() {}, onTab() {}, onSettings() {}, onHow() {} };
 const runNow = {
-  command: "cd ~/Documents/cashU/demo && claude",
+  command: "cd ~/cashU/demo && claude",
   label: "Run now",
   primary: false,
   showCommand: false,
@@ -42,7 +42,7 @@ const story: ResearchPageModel = {
         line: "3 positions, 2 watched",
         rest: ", candidates by the strategy entry criteria, topics",
         privacy: "level strict · weights and theses, no amounts or accounts",
-        path: "~/Documents/cashU/demo",
+        path: "~/cashU/demo",
       },
     },
   },

@@ -5,7 +5,13 @@
 // ignore case (macOS file systems do) so `cashu` and `CASHU` cannot slip past.
 import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
-import { appBundleName, FLAVOR_IDS, FLAVORS, workspacesRoot } from "./flavor.js";
+import {
+  appBundleName,
+  FLAVOR_IDS,
+  FLAVORS,
+  legacyWorkspacesRoot,
+  workspacesRoot,
+} from "./flavor.js";
 
 const FLAVOR_LIST = FLAVOR_IDS.map((id) => FLAVORS[id]);
 
@@ -71,7 +77,13 @@ function refuseRealLocations({ label, path }: GuardedPath, isDataDir: boolean, h
     if (below?.startsWith("cashu") && !(isDataDir && below === "cashu-demo")) {
       throw new RefusalError(`${label} points into the cashU application data`);
     }
-    if (FLAVOR_LIST.some((flavor) => isWithin(path, workspacesRoot(flavor, h)))) {
+    if (
+      FLAVOR_LIST.some(
+        (flavor) =>
+          isWithin(path, workspacesRoot(flavor, h)) ||
+          isWithin(path, legacyWorkspacesRoot(flavor, h)),
+      )
+    ) {
       throw new RefusalError(`${label} points into the cashU workspaces`);
     }
   }

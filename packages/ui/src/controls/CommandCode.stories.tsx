@@ -9,5 +9,5 @@ const meta = {
 export default meta;
 export const Default: Story<CommandCodeProps> = {};
 export const Wrapped: Story<CommandCodeProps> = {
-  args: { children: "~/Documents/cashU/demo-anna", wrap: true, surface: "card" },
+  args: { children: "~/cashU/demo-anna", wrap: true, surface: "card" },
 };

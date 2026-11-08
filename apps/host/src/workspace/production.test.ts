@@ -28,7 +28,7 @@ afterEach(() => {
 function fixture() {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), "cashu-workspace-production-")));
   roots.push(root);
-  const workspace = join(root, "home", "Documents", "cashU", "synthetic");
+  const workspace = join(root, "home", "cashU", "synthetic");
   const config = join(root, "data", "workspace", "v1", `${"a".repeat(32)}.json`);
   const skillSource = join(root, "assets", "skills");
   mkdirSync(join(skillSource, "workspace-setup"), { recursive: true });
@@ -111,7 +111,7 @@ test("production provider binds one current native vault and refuses wrong vault
   const f = fixture();
   const vault = "a".repeat(32);
   const home = join(f.root, "home");
-  const workspacesRoot = join(home, "Documents", "cashU");
+  const workspacesRoot = join(home, "cashU");
   const dataRoot = join(f.root, "data");
   const sourceRoot = join(f.root, "legacy-source");
   let current = true;
@@ -248,7 +248,7 @@ test("production provider publishes and inspects a workspace at a chosen folder"
   const provider = createProductionWorkspaceProvider({
     dataRoot,
     home,
-    workspacesRoot: join(home, "Documents", "cashU"),
+    workspacesRoot: join(home, "cashU"),
     skillSource: f.skillSource,
     version: "synthetic",
     program: { command: "/synthetic/cashu", args: [] },

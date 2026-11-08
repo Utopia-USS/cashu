@@ -153,7 +153,7 @@ it("runs workspace init and path through the production provider for the exact v
     const provider = createProductionWorkspaceProvider({
       dataRoot,
       home,
-      workspacesRoot: join(home, "Documents", "cashU"),
+      workspacesRoot: join(home, "cashU"),
       skillSource,
       version: "synthetic",
       program: { command: "/synthetic/cashu", args: [] },
@@ -167,7 +167,7 @@ it("runs workspace init and path through the production provider for the exact v
     });
     const output = io();
     expect(await commands[1]?.run(["init", "--profile", "synthetic"], output.value, {})).toBe(0);
-    const path = join(home, "Documents", "cashU", "synthetic");
+    const path = join(home, "cashU", "synthetic");
     expect(readFileSync(join(path, "CLAUDE.md"), "utf8")).toContain("cashU agent workspace");
     expect(await commands[1]?.run(["path", "--profile", "synthetic"], output.value, {})).toBe(0);
     expect(output.stdout).toHaveBeenLastCalledWith(`${path}\n`);

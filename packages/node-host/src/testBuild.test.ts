@@ -78,6 +78,9 @@ describe("test-build marker", () => {
       { ...marker, dataDir: marker.installRoot },
       { ...marker, workspacesDir: `${marker.dataDir}/workspaces` },
       { ...marker, workspacesDir: "/Users/someone/Documents/cashU" },
+      { ...marker, workspacesDir: "/Users/someone/cashU" },
+      { ...marker, workspacesDir: "/Users/someone/CASHU STAGING/nested" },
+      { ...marker, workspacesDir: "/home/someone/cashu" },
       {
         schema: 1,
         kind: "cashu-test-build",

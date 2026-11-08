@@ -206,10 +206,9 @@ moves or changes the old files; you bring the data over blind, through the impor
      records (`references/import-format.md`); `validate_import`, then `propose_import(path,
      account)`; the owner approves it in Inwestycje > Import.
 5. **The rest.** The old app's profile workspace (`~/Documents/cashU/<slug>`) is the owner's work:
-   carry it into the new one, never adopt it in place (its `.claude/cashu-workspace.json` has no vault
-   and the app refuses it). If it sits where the new workspace belongs (the released app's default
-   path), the owner first renames it (e.g. `<slug>-old-app`), then runs `cashu workspace init`. Copy
-   without overwriting: `notes/`, `research/`, `scripts/`, `connectors/`, `inbox/` (minus the database
+   carry it into the new one (default `~/cashU/<slug>`), never adopt it in place (its
+   `.claude/cashu-workspace.json` has no vault and the app refuses it). Copy without overwriting:
+   `notes/`, `research/`, `scripts/`, `connectors/`, `inbox/` (minus the database
    copy of step 2) and the text below "Your own instructions (not managed)" in `CLAUDE.md`, appended to
    the same section of the new `CLAUDE.md`; never the `cashu:begin` / `cashu:end` blocks, `.claude/`
    or `.mcp.json` (the app writes those). When macOS blocks you from `~/Documents`, give the owner the

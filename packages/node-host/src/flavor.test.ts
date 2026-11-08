@@ -12,6 +12,7 @@ import {
   flavorForBundleId,
   hostAgentPlist,
   keychainService,
+  legacyWorkspacesRoot,
   mcpServerName,
   packagedBundleOf,
   processFlavor,
@@ -105,7 +106,8 @@ describe("build flavors", () => {
     expect(keychainService(prod, "vault", HASH)).toBe(`cashu.vault.v1.${HASH}`);
     expect(hostAgentPlist(prod)).toBe("io.utopiasoft.cashu.host.plist");
     expect(mcpServerName(prod, "jan")).toBe("cashu-jan");
-    expect(workspacesRoot(prod, "/Users/x")).toBe("/Users/x/Documents/cashU");
+    expect(workspacesRoot(prod, "/Users/x")).toBe("/Users/x/cashU");
+    expect(legacyWorkspacesRoot(prod, "/Users/x")).toBe("/Users/x/Documents/cashU");
     expect(appBundleName(prod)).toBe("cashU.app");
   });
 
@@ -113,7 +115,7 @@ describe("build flavors", () => {
     expect(staging.bundleId).toBe("io.utopiasoft.cashu.staging");
     expect(appBundleName(staging)).toBe("cashU Staging.app");
     expect(dataDirName(staging, "darwin")).toBe("cashU Staging");
-    expect(workspacesRoot(staging, "/Users/x")).toBe("/Users/x/Documents/cashU Staging");
+    expect(workspacesRoot(staging, "/Users/x")).toBe("/Users/x/cashU Staging");
     expect(hostAgentPlist(staging)).toBe("io.utopiasoft.cashu.staging.host.plist");
     expect(keychainService(staging, "vault", HASH)).toBe(`cashu.staging.vault.v1.${HASH}`);
     expect(staging.urlScheme).toBe("cashu-staging");
