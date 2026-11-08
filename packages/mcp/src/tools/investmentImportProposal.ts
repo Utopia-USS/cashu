@@ -6,6 +6,7 @@ import {
   brokerageAccounts,
   type ImportPreview,
   type ImportRequest,
+  isConnectorChoice,
   previewImport,
 } from "@cashu/store/investments/queries";
 import {
@@ -88,6 +89,9 @@ function validate(ctx: Context, args: ToolArgs) {
     mapping = typeof args.mapping === "string" ? args.mapping : undefined;
   refuseScript(path, "path");
   refuseScript(mapping, "mapping");
+  // A connector's import is proposed by its own run, never by the agent with a connector importer.
+  if (isConnectorChoice(typeof args.importer === "string" ? args.importer : null))
+    throw new ToolError("connector imports are proposed by the connector run", "unsupported");
   const selected = account(ctx, args),
     io = ioOf(ctx);
   const candidate = pyStrip(mapping ?? "");

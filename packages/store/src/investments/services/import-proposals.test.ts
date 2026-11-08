@@ -132,6 +132,15 @@ describe("ordinary investment proposal approvals", () => {
     },
   );
 
+  it("refuses a connector importer on a proposal that is not from a connector", async () => {
+    const s = setup({ importer: "connector:synthetic-broker" });
+    expect(await prepareInvestmentImport(s.deps, s.snapshot)).toEqual({
+      ok: false,
+      reason: "invalid_payload",
+    });
+    expect(s.read).not.toHaveBeenCalled();
+  });
+
   it("checks authority before and after the blob await, even with a true scaffold lease", async () => {
     const s = setup();
     s.loseAuthority();

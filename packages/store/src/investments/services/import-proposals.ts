@@ -15,7 +15,7 @@ import { blobRef, gid } from "../../events/v1/primitives.js";
 import type { Store } from "../../materialize.js";
 import type { Read } from "../../query.js";
 import { archiveExtension, type CommitResult, commitImport } from "../commands/imports.js";
-import { previewImport } from "../queries/import-preview.js";
+import { isConnectorChoice, previewImport } from "../queries/import-preview.js";
 import { brokerageAccount } from "../queries/transactions.js";
 import type { BlobRef } from "./imports.js";
 
@@ -123,6 +123,10 @@ export async function prepareInvestmentImport(
   if (payload.source === "connector" && (!connector || !deps.connector))
     return refuse("connector_binding_unsupported");
   if (payload.source !== "connector" && payload.connector_binding) return refuse("invalid_payload");
+  // Only a connector run may record `connector:<id>` as the batch's importer (an ordinary proposal
+  // carrying one, e.g. synced from another device, would be booked as that connector's import).
+  if (payload.source !== "connector" && isConnectorChoice(payload.importer))
+    return refuse("invalid_payload");
   if (
     connector &&
     (connector.profileId !== vault ||

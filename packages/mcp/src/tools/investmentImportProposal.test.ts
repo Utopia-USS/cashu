@@ -104,6 +104,15 @@ function setup(pause = false) {
   };
 }
 describe("native import proposal pipeline", () => {
+  it("refuses a connector importer before reading or publishing anything", async () => {
+    const s = setup();
+    const result = await s.server.call("propose_import", {
+      ...s.args,
+      importer: "connector:synthetic-broker",
+    });
+    expect(result.ok).toBe(false);
+    expect(s.counts()).toEqual({ fileReads: 0, puts: 0, blobReads: 0, cleanups: 0 });
+  });
   it.each(["strict", "amounts"] as const)(
     "stores actual preview/native blob ref and roundtrips T28 approval in %s",
     async (privacy) => {
