@@ -70,6 +70,11 @@ export function nativeBackend(options: {
   readonly inventory: readonly (ToolInventoryEntry & Partial<Pick<ToolMetadata, "properties">>)[];
   readonly profile: string;
   readonly version?: string;
+  /**
+   * Awaited before a tool call is dispatched, outside the vault queue: obtains fresh fetch-lease
+   * pull evidence for the tools that act as the fetch leader (localHost/mcp.ts).
+   */
+  readonly beforeCall?: (name: string) => Promise<unknown> | undefined;
 }): McpBackend {
   const { native } = options;
   const metadata = new Map(options.inventory.map((entry) => [entry.name, entry]));
@@ -161,6 +166,11 @@ export function nativeBackend(options: {
     if (supplied !== undefined && !validKey(supplied))
       return invalid("invalid idempotency key", "invalid_arguments", args);
     const key = supplied ?? mintUlid(Date.now(), (length) => new Uint8Array(randomBytes(length)));
+    try {
+      await options.beforeCall?.(name);
+    } catch {
+      /* A failed refresh grants nothing; the tool's own authority check refuses. */
+    }
     const result = await native.call(name, args, ceiling, key);
     reply(id, publicResult(result));
     if (result.errorKind === "app_updated") ending = true;

@@ -30,7 +30,7 @@ import { bankingWorkerPort } from "./banking/workerPort.js";
 import { ClassifierHostPorts } from "./classification/hostPorts.js";
 import { connectorOwnerAction } from "./connectorOwnerAction.js";
 import { type ConnectorRuntime, createConnectorRuntime } from "./connectorRuntime.js";
-import { mayObtainFetchAuthority, refreshFetchAuthority } from "./fetchAuthority.js";
+import { fetchAuthorityIssue, refreshFetchAuthority } from "./fetchAuthority.js";
 import { startLocalHost } from "./host.js";
 import { recordStartupFailure } from "./localHost/startup.js";
 import { createProductionMarket, type ProductionMarket } from "./market/production.js";
@@ -353,7 +353,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                 strategyDirectory: (vault) => vault.native?.strategyDirectoryAuthority() ?? null,
                 canFetchPublicMarket: (vault) => vault.native?.canFetchPublicMarket() ?? false,
                 refreshFetchAuthority,
-                mayObtainFetchAuthority,
+                fetchAuthorityIssue,
                 ...(market === undefined ? {} : { market }),
                 language: () => language(context),
                 dailyLock,

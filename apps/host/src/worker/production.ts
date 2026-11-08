@@ -38,8 +38,11 @@ export interface ProductionWorkerInput {
    * `refreshFetchAuthority` in ../fetchAuthority.ts). Without it the job needs another sync source.
    */
   refreshFetchAuthority?(vault: OpenVault): Promise<boolean>;
-  /** Status only: fetch authority now or after that refresh (`mayObtainFetchAuthority`). */
-  mayObtainFetchAuthority?(vault: OpenVault): boolean;
+  /**
+   * Status only: why the vault may not fetch now, null when it may or would after that refresh
+   * (production: `fetchAuthorityIssue` in ../fetchAuthority.ts).
+   */
+  fetchAuthorityIssue?(vault: OpenVault): string | null;
   /** Profile language comes from the admitted local setting/catalog authority. */
   language(vault: OpenVault): "pl" | "en";
   /** Host-owned queue and checked OS delivery, if the platform can actually submit. */
@@ -143,8 +146,11 @@ export function createProductionWorkerBindings(
       input.canFetchPublicMarket !== undefined
         ? {
             isHolder: () => host.isCurrent(vault) && input.canFetchPublicMarket?.(vault) === true,
+            // Not gated on `host.isCurrent`: that is false while a pass runs, and the session's
+            // refresh waits for such a pass and checks its own currentness.
             refresh: async () => {
-              if (host.isCurrent(vault)) await input.refreshFetchAuthority?.(vault);
+              if (host.stores.vaults.get(vault.id) === vault)
+                await input.refreshFetchAuthority?.(vault);
             },
           }
         : null,
@@ -175,35 +181,32 @@ export function createProductionWorkerBindings(
     ...(input.notifier === undefined ? {} : { notifier: input.notifier }),
     unavailable(vault, job) {
       if (vault.mode !== "native" || !host.isCurrent(vault)) return "native_admission_unavailable";
-      // A stale pull is not unavailability: the job refreshes it before its authority check.
-      const fetchable = () =>
-        input.canFetchPublicMarket?.(vault) === true ||
-        input.mayObtainFetchAuthority?.(vault) === true;
+      // The real reason a fetch job cannot run (a stale pull alone is none: the job refreshes it
+      // before its authority check, unless a back-off after a failed pull holds).
+      const fetchIssue = (): string | null =>
+        input.canFetchPublicMarket?.(vault) === true
+          ? null
+          : (input.fetchAuthorityIssue?.(vault) ?? "fetch_authority_unavailable");
       const modules = enabledModuleIds(vault.store.read.bind(vault.store));
       if (job === "investments.daily") {
         if (!modules.has("investments")) return null;
         if (fileFor(vault) === null) return "file_authority_unavailable";
-        return ownership.isExclusive(job, vault) ? null : "ownership_unavailable";
+        if (!ownership.isExclusive(job, vault)) return "ownership_unavailable";
+        return input.market !== undefined && input.canFetchPublicMarket !== undefined
+          ? fetchIssue()
+          : null;
       }
       if (job === "connectors.fetch")
         return modules.has("investments") || modules.has("budget")
           ? input.connectors === undefined
             ? "connector_provider_unavailable"
-            : !fetchable()
-              ? "fetch_authority_unavailable"
-              : ownership.isExclusive(job, vault)
-                ? null
-                : "ownership_unavailable"
+            : (fetchIssue() ?? (ownership.isExclusive(job, vault) ? null : "ownership_unavailable"))
           : null;
       if (job === "budget.sync")
         return modules.has("budget")
           ? input.budget === undefined
             ? "bank_provider_unavailable"
-            : !fetchable()
-              ? "fetch_authority_unavailable"
-              : ownership.isExclusive(job, vault)
-                ? null
-                : "ownership_unavailable"
+            : (fetchIssue() ?? (ownership.isExclusive(job, vault) ? null : "ownership_unavailable"))
           : null;
       return modules.has("investments") &&
         (input.notifier === undefined || input.notifications === undefined)

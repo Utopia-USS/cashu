@@ -876,119 +876,135 @@ class OwnLogEngine implements SyncEngine {
 
   sync(): Promise<SyncResult> {
     return this.#run(async () => {
-      this.#assertOpen();
-      this.#lastPullAt = undefined;
-      this.#rejectedWriters = [];
-      const pass = newPass();
-      // A gate with statement state sees the local log first, so every stream's key is bound by its
-      // first frame before anything new is verified.
-      if (!this.#primed && this.#gate.needsReplay()) await this.#applyLocal(pass);
-      this.#leaseTransport = { kind: "eventual" };
-      const bounded: { propagationMs: number; pullAt: number; pushAt: number }[] = [];
-      const pullStarts: number[] = [];
-      let boundedOffline = false;
-      let allDelivered = true;
-      const offlineRemoteIndices = new Set<number>();
-      for (const [index, remote] of this.#remotes.entries()) {
-        const bound = propagationBound(remote.consistency);
-        const pullAt = this.#physical.now();
+      try {
+        return await this.#syncPass();
+      } catch (e) {
+        // A pass that failed outright says nothing about what was pulled: drop the evidence.
+        this.#lastPullAt = undefined;
+        throw e;
+      }
+    });
+  }
+
+  /**
+   * One pass. The fetch-lease pull evidence (`fetchLeaseEvidence`) is replaced only by a pass that
+   * pulled every remote completely; a pass that missed one (offline, not delivered) keeps the
+   * previous evidence, which still proves that earlier pull and ages out by the lease's own
+   * deadline. A pass that rolled back or needs an upgrade drops it.
+   */
+  async #syncPass(): Promise<SyncResult> {
+    this.#assertOpen();
+    this.#rejectedWriters = [];
+    const pass = newPass();
+    // A gate with statement state sees the local log first, so every stream's key is bound by its
+    // first frame before anything new is verified.
+    if (!this.#primed && this.#gate.needsReplay()) await this.#applyLocal(pass);
+    this.#leaseTransport = { kind: "eventual" };
+    const bounded: { propagationMs: number; pullAt: number; pushAt: number }[] = [];
+    const pullStarts: number[] = [];
+    let boundedOffline = false;
+    let allDelivered = true;
+    const offlineRemoteIndices = new Set<number>();
+    for (const [index, remote] of this.#remotes.entries()) {
+      const bound = propagationBound(remote.consistency);
+      const pullAt = this.#physical.now();
+      try {
+        if (!(await this.#replicate(remote, pass, !this.#ownTailUncertain))) allDelivered = false;
+        pullStarts.push(pullAt);
+        if (bound !== undefined) {
+          bounded.push({ propagationMs: bound, pullAt, pushAt: this.#physical.now() });
+        }
+      } catch (e) {
+        if (!isTransportUnavailable(e)) throw e;
+        if (!offlineRemoteIndices.has(index)) {
+          offlineRemoteIndices.add(index);
+          pass.offlineRemotes += 1;
+        }
+        allDelivered = false;
+        if (bound !== undefined) boundedOffline = true;
+      }
+    }
+    // Frames whose writer was unknown wait; applying may register it (an inviter's frame carries
+    // the certificate), so pull again while that happens, a bounded number of times.
+    for (let round = 1; round < MAX_ROUNDS && pass.waited; round++) {
+      await this.#applyLocal(pass);
+      if (!pass.gateChanged) break;
+      pass.waited = false;
+      pass.gateChanged = false;
+      pass.rejected = pass.rejected.filter((r) => r.code !== WRITER_UNKNOWN);
+      for (const remote of this.#remotes) {
         try {
-          if (!(await this.#replicate(remote, pass, !this.#ownTailUncertain))) allDelivered = false;
-          pullStarts.push(pullAt);
-          if (bound !== undefined) {
-            bounded.push({ propagationMs: bound, pullAt, pushAt: this.#physical.now() });
-          }
+          await this.#replicate(remote, pass, false);
         } catch (e) {
           if (!isTransportUnavailable(e)) throw e;
+        }
+      }
+    }
+    this.#leaseTransport =
+      bounded.length > 0 && !boundedOffline
+        ? {
+            kind: "bounded",
+            propagationMs: Math.max(...bounded.map((b) => b.propagationMs)),
+            lastPullAt: Math.min(...bounded.map((b) => b.pullAt)),
+            lastPushAt: Math.max(...bounded.map((b) => b.pushAt)),
+          }
+        : { kind: "eventual" };
+    await this.#applyLocal(pass);
+    await this.#rebuildIfNeeded(pass);
+    await this.#resolveHistoricalLookups(pass);
+    if (!this.#ownTailUncertain && !pass.rolledBack) this.#gossipDeliveryPending = !allDelivered;
+    if (
+      !this.#ownTailUncertain &&
+      !this.#rolledBack &&
+      this.#gossipEid &&
+      this.#gate.prepareGossip
+    ) {
+      const now = this.#physical.now();
+      if (now - this.#lastGossipAt >= 60_000) {
+        const eid = this.#gossipEid();
+        if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(eid)) {
+          throw new SyncError("invalid-config", "gossip id factory returned an invalid ULID");
+        }
+        const event = this.#gate.prepareGossip(eid);
+        if (event) {
+          await this.#writeInQueue([event]);
+          this.#lastGossipAt = now;
+          pass.gossipEmitted = true;
+          this.#gossipDeliveryPending = this.#remotes.length > 0;
+        }
+      }
+    }
+    if (this.#gossipDeliveryPending && !this.#ownTailUncertain) {
+      let delivered = true;
+      for (const [index, remote] of this.#remotes.entries()) {
+        try {
+          if (!(await this.#replicate(remote, pass))) delivered = false;
+        } catch (e) {
+          if (!isTransportUnavailable(e)) throw e;
+          delivered = false;
           if (!offlineRemoteIndices.has(index)) {
             offlineRemoteIndices.add(index);
             pass.offlineRemotes += 1;
           }
-          allDelivered = false;
-          if (bound !== undefined) boundedOffline = true;
         }
       }
-      // Frames whose writer was unknown wait; applying may register it (an inviter's frame carries
-      // the certificate), so pull again while that happens, a bounded number of times.
-      for (let round = 1; round < MAX_ROUNDS && pass.waited; round++) {
-        await this.#applyLocal(pass);
-        if (!pass.gateChanged) break;
-        pass.waited = false;
-        pass.gateChanged = false;
-        pass.rejected = pass.rejected.filter((r) => r.code !== WRITER_UNKNOWN);
-        for (const remote of this.#remotes) {
-          try {
-            await this.#replicate(remote, pass, false);
-          } catch (e) {
-            if (!isTransportUnavailable(e)) throw e;
-          }
-        }
-      }
-      this.#leaseTransport =
-        bounded.length > 0 && !boundedOffline
-          ? {
-              kind: "bounded",
-              propagationMs: Math.max(...bounded.map((b) => b.propagationMs)),
-              lastPullAt: Math.min(...bounded.map((b) => b.pullAt)),
-              lastPushAt: Math.max(...bounded.map((b) => b.pushAt)),
-            }
-          : { kind: "eventual" };
       await this.#applyLocal(pass);
-      await this.#rebuildIfNeeded(pass);
-      await this.#resolveHistoricalLookups(pass);
-      if (!this.#ownTailUncertain && !pass.rolledBack) this.#gossipDeliveryPending = !allDelivered;
-      if (
-        !this.#ownTailUncertain &&
-        !this.#rolledBack &&
-        this.#gossipEid &&
-        this.#gate.prepareGossip
-      ) {
-        const now = this.#physical.now();
-        if (now - this.#lastGossipAt >= 60_000) {
-          const eid = this.#gossipEid();
-          if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(eid)) {
-            throw new SyncError("invalid-config", "gossip id factory returned an invalid ULID");
-          }
-          const event = this.#gate.prepareGossip(eid);
-          if (event) {
-            await this.#writeInQueue([event]);
-            this.#lastGossipAt = now;
-            pass.gossipEmitted = true;
-            this.#gossipDeliveryPending = this.#remotes.length > 0;
-          }
-        }
-      }
-      if (this.#gossipDeliveryPending && !this.#ownTailUncertain) {
-        let delivered = true;
-        for (const [index, remote] of this.#remotes.entries()) {
-          try {
-            if (!(await this.#replicate(remote, pass))) delivered = false;
-          } catch (e) {
-            if (!isTransportUnavailable(e)) throw e;
-            delivered = false;
-            if (!offlineRemoteIndices.has(index)) {
-              offlineRemoteIndices.add(index);
-              pass.offlineRemotes += 1;
-            }
-          }
-        }
-        await this.#applyLocal(pass);
-        this.#gossipDeliveryPending = !delivered;
-      }
-      await this.#saveGate();
-      const result = await this.#finish(pass);
-      this.#rejectedWriters = result.rejected.map((row) => row.device);
-      if (
-        this.#remotes.length > 0 &&
-        pullStarts.length === this.#remotes.length &&
-        result.offlineRemotes === 0 &&
-        !result.needsUpgrade &&
-        !result.rolledBack &&
-        allDelivered
-      )
-        this.#lastPullAt = Math.min(...pullStarts);
-      return result;
-    });
+      this.#gossipDeliveryPending = !delivered;
+    }
+    await this.#saveGate();
+    const result = await this.#finish(pass);
+    this.#rejectedWriters = result.rejected.map((row) => row.device);
+    if (
+      this.#remotes.length > 0 &&
+      pullStarts.length === this.#remotes.length &&
+      result.offlineRemotes === 0 &&
+      !result.needsUpgrade &&
+      !result.rolledBack &&
+      allDelivered
+    )
+      this.#lastPullAt = Math.min(...pullStarts);
+    else if (result.needsUpgrade || result.rolledBack) this.#lastPullAt = undefined;
+    return result;
   }
 
   rebuild(): Promise<SyncResult> {

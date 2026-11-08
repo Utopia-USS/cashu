@@ -11,19 +11,33 @@ import { REVOKE_COMMAND } from "./revokeIntent.js";
  * deadline (lease.ts `holdsLease` needs a pull within the whole deadline), so work between the
  * refresh and the next authority check keeps the other half as margin.
  */
-export const FETCH_PULL_REFRESH_MS = devices.DEFAULT_LEASE_CONFIG.publishDeadlineMs / 2;
+const FETCH_PULL_REFRESH_MS = devices.DEFAULT_LEASE_CONFIG.publishDeadlineMs / 2;
+
+/**
+ * Where this device stands with the fetch lease, apart from the authority check itself:
+ * - `unavailable`: the session is not current (closed, syncing) or its write gate is not ready;
+ * - `not_leader`: the lease names another device, or none;
+ * - `handover_pending`: a hand-over to or from this device waits for the old leader's ACK;
+ * - `clock_suspect`: this device's clock disagrees with its peers;
+ * - `pull_stale`: the named leader, but its pull evidence is missing or older than
+ *   FETCH_PULL_REFRESH_MS: a sync pass is the one thing it lacks;
+ * - `pull_fresh`: the named leader with fresh evidence (any refusal left is the lease's own, such
+ *   as the catch-up watermark).
+ * A pass cannot fix the first four, so only `pull_stale` asks for one.
+ */
+export type FetchLeaseState =
+  | "unavailable"
+  | "not_leader"
+  | "handover_pending"
+  | "clock_suspect"
+  | "pull_stale"
+  | "pull_fresh";
 
 export interface SessionGuards {
   isCurrent(): boolean;
   canRunSideEffects(): boolean;
   canFetchPublicMarket(): boolean;
-  /**
-   * The session is current and this device is the vault's named fetch leader, but its pull evidence
-   * is missing or older than FETCH_PULL_REFRESH_MS: a sync pass is what it lacks.
-   */
-  fetchPullStale(): boolean;
-  /** Holds fetch authority now, or would after the pull `fetchPullStale` asks for (status only). */
-  mayObtainFetchAuthority(): boolean;
+  fetchLeaseState(): FetchLeaseState;
   /** A pending revocation or pairing, or a write gate that is not ready, blocks a new append. */
   writesBlocked(): boolean;
 }
@@ -88,23 +102,27 @@ export function sessionGuards(context: NativeVaultContext): SessionGuards {
       return false;
     }
   };
-  const fetchPullStale = () => {
-    if (!isCurrent() || engine.writeAdmission() !== "ready") return false;
+  const fetchLeaseState = (): FetchLeaseState => {
+    if (!isCurrent() || engine.writeAdmission() !== "ready") return "unavailable";
     try {
       // Only the device the lease names may lead, so only it gains anything from a pull here. Any
       // other device learns a new pin from the pass that delivers it (carrier, pairing).
       const view = candidate.devices.lease;
       const named = view.mode === "pinned" ? view.pinned : view.holder;
-      if (view.free || named !== entry.deviceId) return false;
-      const { lastPullAt } = pullEvidence();
+      if (view.free || named !== entry.deviceId) return "not_leader";
+      // The old leader's ACK and a trustworthy clock come from peers, not from this device's pull.
+      if (view.pendingFrom !== null) return "handover_pending";
+      const { lastPullAt, clockOk } = pullEvidence();
+      if (!clockOk) return "clock_suspect";
       const at = now();
-      return lastPullAt === undefined || at < lastPullAt || at - lastPullAt > FETCH_PULL_REFRESH_MS;
+      return lastPullAt === undefined || at < lastPullAt || at - lastPullAt > FETCH_PULL_REFRESH_MS
+        ? "pull_stale"
+        : "pull_fresh";
     } catch (error) {
       warnOnce("native_vault_fetch_pull_unavailable", error);
-      return false;
+      return "unavailable";
     }
   };
-  const mayObtainFetchAuthority = () => canFetchPublicMarket() || fetchPullStale();
   const writesBlocked = () =>
     attempts.hasPending(entry.vaultId, REVOKE_COMMAND) ||
     pairingJournal.pending(entry.vaultId).length > 0 ||
@@ -113,8 +131,7 @@ export function sessionGuards(context: NativeVaultContext): SessionGuards {
     isCurrent,
     canRunSideEffects,
     canFetchPublicMarket,
-    fetchPullStale,
-    mayObtainFetchAuthority,
+    fetchLeaseState,
     writesBlocked,
   };
 }

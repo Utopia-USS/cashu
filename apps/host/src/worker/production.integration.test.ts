@@ -5,7 +5,7 @@ import { mintUlid, setModules } from "@cashu/store";
 import { ruleRuns } from "@cashu/store/investments/queries";
 import { expect, it, vi } from "vitest";
 import { runHostVaultCommand } from "../commands.js";
-import { mayObtainFetchAuthority, refreshFetchAuthority } from "../fetchAuthority.js";
+import { fetchAuthorityIssue, refreshFetchAuthority } from "../fetchAuthority.js";
 import { startLocalHost } from "../host.js";
 import { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
@@ -203,7 +203,7 @@ it("claims a budget connector without a strategy directory", async () => {
         // and obtains its pull evidence itself before a due network job.
         canFetchPublicMarket: (vault) => vault.native?.canFetchPublicMarket() ?? false,
         refreshFetchAuthority,
-        mayObtainFetchAuthority,
+        fetchAuthorityIssue,
         connectors: {
           fetch: async (_vault, guard) => {
             guard();

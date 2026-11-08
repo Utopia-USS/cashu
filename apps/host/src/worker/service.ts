@@ -506,8 +506,9 @@ export class HostWorker {
         started = true;
         guard();
         const outcome = await execute(vault, guard);
-        await this.freshPull(vault, job);
-        guard();
+        // Recording what already happened needs the vault, not the fetch lease: an import that
+        // committed is never recorded as lost because the pull went stale meanwhile.
+        this.guard(vault, job, true)();
         await this.recordFinish(job, vault, outcome);
       } catch (error) {
         if (this.stopping || !this.host.jobsEnabled()) return;

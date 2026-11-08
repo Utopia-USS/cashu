@@ -61,6 +61,19 @@ type NativeDevicePreviewResult =
         | "unavailable";
     };
 
+/**
+ * Why this device may not fetch right now, for worker and host status (nativeVault/fetchAuthority.ts);
+ * null when it may, or would after a refresh.
+ */
+export type FetchAuthorityIssue =
+  | "fetch_session_unavailable"
+  | "fetch_not_leader"
+  | "fetch_handover_pending"
+  | "fetch_clock_suspect"
+  | "fetch_pull_failed"
+  | "fetch_pull_incomplete"
+  | "fetch_authority_unavailable";
+
 export interface NativeVaultSession extends PairingReads {
   readonly id: string;
   readonly store: Store;
@@ -91,6 +104,8 @@ export interface NativeVaultSession extends PairingReads {
   refreshFetchAuthority(): Promise<boolean>;
   /** Fetch authority now, or after the pull `refreshFetchAuthority` would run (status reports). */
   mayObtainFetchAuthority(): boolean;
+  /** Why this device may not fetch now (null: it may, or would after a refresh), for status. */
+  fetchAuthorityIssue(): FetchAuthorityIssue | null;
   /** A live external fetch holds back non-force leader handover ACK until it settles. */
   beginFetch(): (() => void) | null;
   /** Separate durable lease report after a successful checked fetch. */

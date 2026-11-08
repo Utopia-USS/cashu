@@ -4,8 +4,10 @@
 import type { CliExecParams, HostFrame } from "@cashu/host-protocol";
 import { connectHost } from "@cashu/node-host";
 import { ruleRuns } from "@cashu/store/investments/queries";
+import type { Transport } from "@cashu/sync";
+import { FaultInjector, MemoryTransport } from "@cashu/sync/testing";
 import { afterEach, expect, it, vi } from "vitest";
-import { mayObtainFetchAuthority, refreshFetchAuthority } from "../fetchAuthority.js";
+import { fetchAuthorityIssue, refreshFetchAuthority } from "../fetchAuthority.js";
 import { startLocalHost } from "../host.js";
 import { createProductionMarket, type ProductionMarket } from "../market/production.js";
 import { type NativeVaultFixture, nativeVaultFixture } from "../testing/nativeVaultFixture.js";
@@ -25,8 +27,10 @@ afterEach(() => {
 /** Synthetic NBP answers (one USD rate on the last requested day); anything else is a 404. */
 function stubMarket() {
   const urls: string[] = [];
+  const hooks: { onRequest?: () => void } = {};
   const fetch = async (url: string) => {
     urls.push(url);
+    hooks.onRequest?.();
     const range =
       /\/api\/exchangerates\/(rates\/A\/usd|tables\/A)\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})\//.exec(
         url,
@@ -47,15 +51,25 @@ function stubMarket() {
       text: async () => body ?? "",
     };
   };
-  return { urls, fetch };
+  return { urls, fetch, hooks };
 }
 
 const fxRequested = (urls: readonly string[]) =>
   urls.some((url) => url.includes("api.nbp.pl/api/exchangerates/"));
 
-/** `denyLease` stands in for a device the lease does not name: the worker never holds the lease. */
-async function singleDeviceHost(clock: () => number, options: { denyLease?: boolean } = {}) {
-  const fixture = await nativeVaultFixture({ modules: ["investments"], now: clock });
+/**
+ * `denyLease` stands in for a device the lease does not name: the worker never holds the lease.
+ * `pairPeer` adds a second registered device; `remotes` adds extra sync remotes to the vault.
+ */
+async function singleDeviceHost(
+  clock: () => number,
+  options: { denyLease?: boolean; pairPeer?: boolean; remotes?: readonly Transport[] } = {},
+) {
+  const fixture = await nativeVaultFixture({
+    modules: ["investments"],
+    now: clock,
+    ...(options.pairPeer ? { pairPeer: true } : {}),
+  });
   fixtures.push(fixture);
   const stub = stubMarket();
   let market: ProductionMarket | undefined;
@@ -64,7 +78,17 @@ async function singleDeviceHost(clock: () => number, options: { denyLease?: bool
     home: fixture.home,
     build: "test",
     launcher: false,
-    vaultSource: fixture.vaultSource,
+    vaultSource:
+      options.remotes === undefined
+        ? fixture.vaultSource
+        : {
+            ...fixture.vaultSource,
+            provider: {
+              ...fixture.vaultSource.provider,
+              bootstrapCertificates: () => fixture.vaultSource.provider.bootstrapCertificates(),
+              remoteTransports: () => options.remotes ?? [],
+            },
+          },
     now: clock,
     marketFactory: (stores, isCurrent, now) => {
       market = createProductionMarket({
@@ -86,7 +110,7 @@ async function singleDeviceHost(clock: () => number, options: { denyLease?: bool
         canFetchPublicMarket: (vault) =>
           options.denyLease !== true && (vault.native?.canFetchPublicMarket() ?? false),
         refreshFetchAuthority,
-        mayObtainFetchAuthority,
+        fetchAuthorityIssue,
         market,
         language: () => "en",
       });
@@ -94,7 +118,21 @@ async function singleDeviceHost(clock: () => number, options: { denyLease?: bool
   });
   const vault = host.stores.vaults.get(fixture.vaultId);
   if (vault?.mode !== "native" || !market) throw new Error("synthetic native vault absent");
-  return { fixture, host, vault, market, stub };
+  // Every engine pass of this vault from here on, whoever starts it.
+  const passes = { count: 0, gate: null as Promise<void> | null, fail: null as Error | null };
+  const engine = vault.native.engine;
+  const original = engine.sync.bind(engine);
+  engine.sync = async () => {
+    passes.count++;
+    if (passes.gate) await passes.gate;
+    if (passes.fail) {
+      const fault = passes.fail;
+      passes.fail = null;
+      throw fault;
+    }
+    return original();
+  };
+  return { fixture, host, vault, market, stub, passes };
 }
 
 /** One `cashu` command over the host's CLI socket: its exit and everything it printed. */
@@ -187,6 +225,182 @@ it("prints why `invest run` skipped a profile, in English and Polish", async () 
       `${fixture.profileSlug}: pominięto (powód: fetch_authority_unavailable - to urządzenie`,
     );
     expect(ruleRuns(vault.store.read.bind(vault.store))).toHaveLength(0);
+  } finally {
+    await host.stop();
+  }
+});
+
+const idle = (host: Awaited<ReturnType<typeof singleDeviceHost>>["host"]) =>
+  expect.poll(() => host.status().worker?.state).toBe("idle");
+
+it("keeps fetch authority through a daily run longer than the lease's pull deadline", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let time = NOW;
+  const { host, vault, stub, passes } = await singleDeviceHost(() => time);
+  const at: number[] = [];
+  // Each public request takes 20 s of the vault's clock.
+  stub.hooks.onRequest = () => {
+    at.push(time);
+    time += 20_000;
+  };
+  try {
+    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    const first = at[0] ?? NOW;
+    const last = at.at(-1) ?? NOW;
+    // Requests kept reaching the provider long after the start-up pull went stale: the transport
+    // refreshed the pull between them (a refused request never reaches the stub).
+    expect(last - first).toBeGreaterThan(60_000);
+    expect(passes.count).toBeGreaterThanOrEqual(2);
+    expect(fxRequested(stub.urls)).toBe(true);
+    expect(ruleRuns(vault.store.read.bind(vault.store))).toHaveLength(1);
+  } finally {
+    await host.stop();
+  }
+});
+
+it("never runs a pass through this path on a device the lease does not name", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let time = NOW;
+  const { fixture, host, vault, passes } = await singleDeviceHost(() => time, { pairPeer: true });
+  try {
+    await idle(host);
+    const peer = fixture.peerDevice;
+    if (!peer) throw new Error("synthetic peer unavailable");
+    expect(await vault.native.refreshFetchAuthority()).toBe(true);
+    const prepared = await vault.native.leaderPrepare(peer, false);
+    if (prepared.kind !== "prepared") throw new Error("leader pin not prepared");
+    expect(
+      await vault.native.leaderCommit(
+        peer,
+        false,
+        prepared.confirmationText,
+        prepared.head,
+        "01K9B2W0000000000000000092",
+      ),
+    ).toBe("completed");
+    passes.count = 0;
+    time += 2 * DAY;
+    for (let tick = 0; tick < 5; tick++) {
+      time += 60_000;
+      expect(await vault.native.refreshFetchAuthority()).toBe(false);
+      await vi.advanceTimersByTimeAsync(60_000);
+    }
+    const run = await cli(fixture, ["-p", fixture.profileSlug, "invest", "run"]);
+    expect(run.out).toContain("fetch_authority_unavailable");
+    expect(passes.count).toBe(0);
+    expect(vault.native.fetchAuthorityIssue()).toBe("fetch_not_leader");
+    expect(host.status().worker?.unavailable).toContainEqual({
+      job: "investments.daily",
+      ordinal: 0,
+      code: "fetch_not_leader",
+    });
+  } finally {
+    await host.stop();
+  }
+});
+
+it("runs no pass on idle worker ticks", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let time = NOW;
+  const { host, passes } = await singleDeviceHost(() => time);
+  try {
+    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    await idle(host);
+    passes.count = 0;
+    // Ten ticks later the pull is long stale, but nothing is due: nothing syncs.
+    for (let tick = 0; tick < 10; tick++) {
+      time += 60_000;
+      await vi.advanceTimersByTimeAsync(60_000);
+    }
+    await idle(host);
+    expect(passes.count).toBe(0);
+  } finally {
+    await host.stop();
+  }
+});
+
+it("keeps the vault readable after a refresh pass fails with a non-transport error", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let time = NOW;
+  const { host, vault, passes } = await singleDeviceHost(() => time);
+  try {
+    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    await idle(host);
+    time += 70_000; // The start-up pull no longer counts.
+    passes.fail = new Error("synthetic pass fault");
+    expect(await vault.native.refreshFetchAuthority()).toBe(false);
+    // The session was verified and stays current: reads work, the reason is reported.
+    expect(vault.native.isCurrent()).toBe(true);
+    expect(vault.store.read<{ gid: string }>("SELECT gid FROM profiles")).toHaveLength(1);
+    expect(vault.native.fetchAuthorityIssue()).toBe("fetch_pull_failed");
+    expect(host.status().worker?.unavailable).toContainEqual({
+      job: "investments.daily",
+      ordinal: 0,
+      code: "fetch_pull_failed",
+    });
+    // After the back-off the next refresh pulls again and the vault may fetch.
+    time += 60_000;
+    expect(await vault.native.refreshFetchAuthority()).toBe(true);
+    expect(vault.native.fetchAuthorityIssue()).toBeNull();
+  } finally {
+    await host.stop();
+  }
+});
+
+it("keeps the last pull and backs off while an extra remote is offline", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let time = NOW;
+  const relay = new FaultInjector(new MemoryTransport());
+  const { host, vault, passes } = await singleDeviceHost(() => time, { remotes: [relay] });
+  try {
+    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    await idle(host);
+    expect(vault.native.canFetchPublicMarket()).toBe(true);
+    relay.setOnline(false);
+    passes.count = 0;
+    time += 40_000;
+    // The refresh pass misses the relay, but the 40 s old pull still proves a pull in the deadline.
+    expect(await vault.native.refreshFetchAuthority()).toBe(true);
+    expect(passes.count).toBe(1);
+    time += 30_000;
+    expect(vault.native.canFetchPublicMarket()).toBe(false);
+    expect(vault.native.fetchAuthorityIssue()).toBe("fetch_pull_incomplete");
+    // Ten minutes of per-minute attempts: a growing back-off, not one pass per attempt.
+    for (let minute = 0; minute < 10; minute++) {
+      time += 60_000;
+      await vault.native.refreshFetchAuthority();
+    }
+    expect(passes.count).toBeLessThanOrEqual(4);
+    relay.setOnline(true);
+    time += 30 * 60_000;
+    expect(await vault.native.refreshFetchAuthority()).toBe(true);
+  } finally {
+    await host.stop();
+  }
+});
+
+it("waits for a pass already running instead of giving up", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let time = NOW;
+  const { host, vault, passes } = await singleDeviceHost(() => time);
+  try {
+    await expect.poll(() => dailyStatus(host)).toBe("ok");
+    await idle(host);
+    time += 70_000;
+    let release!: () => void;
+    passes.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    passes.count = 0;
+    const concurrent = vault.native.sync(); // A carrier or UI pass.
+    await expect.poll(() => vault.native.isSyncing()).toBe(true);
+    const refreshing = vault.native.refreshFetchAuthority();
+    await new Promise((resolve) => setImmediate(resolve));
+    passes.gate = null;
+    release();
+    await concurrent;
+    expect(await refreshing).toBe(true);
+    expect(passes.count).toBe(1);
   } finally {
     await host.stop();
   }

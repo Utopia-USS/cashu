@@ -20,7 +20,7 @@ import {
 } from "@cashu/mcp";
 import type { HostSession, RunningHost } from "@cashu/node-host";
 import { mcpProfile } from "@cashu/store/core";
-import { mayObtainFetchAuthority } from "../fetchAuthority.js";
+import { mayObtainFetchAuthority, refreshFetchAuthority } from "../fetchAuthority.js";
 import type { HostLog } from "../log.js";
 import { nativeBackend } from "../mcp/backend.js";
 import type { ConnectorProposalReceipts } from "../mcp/connectorReceipt.js";
@@ -85,6 +85,15 @@ const NATIVE_MCP_INVESTMENT_WRITES = new Set([
   "add_to_watchlist",
   "propose_strategy",
   "propose_custom_rule",
+]);
+/**
+ * Native tools whose authority is the fetch lease (market/mcpProduction.ts `isHolder`, the async
+ * search and watch ports): a call refreshes stale lease pull evidence before it runs.
+ */
+const NATIVE_MCP_FETCH_LEASE = new Set([
+  ...NATIVE_MCP_RESEARCH,
+  ...NATIVE_MCP_INVESTMENT_WRITES,
+  "search_instruments",
 ]);
 
 interface McpDeps {
@@ -212,7 +221,15 @@ function startMcpBackend(
       ...(tools.some((tool) => tool.name === "propose_import") ? [investmentImportAdapter] : []),
     ],
   );
-  return nativeBackend({ native, inventory, profile });
+  return nativeBackend({
+    native,
+    inventory,
+    profile,
+    // Only the tools that act as the fetch leader refresh the lease pull first: a pure read needs
+    // no lease, and public reads pause while a pass runs.
+    beforeCall: (name) =>
+      nativeMode && NATIVE_MCP_FETCH_LEASE.has(name) ? refreshFetchAuthority(vault) : undefined,
+  });
 }
 
 /** The tools this session offers, and the vault's async investment capabilities. */

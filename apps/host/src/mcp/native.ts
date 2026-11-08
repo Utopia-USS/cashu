@@ -24,7 +24,6 @@ import { mintUlid, runCommand, type v1 } from "@cashu/store";
 import { mcpProfile } from "@cashu/store/core";
 import { finishMcpCall, startMcpCall } from "@cashu/store/device";
 import { runHostVaultCommand } from "../commands.js";
-import { refreshFetchAuthority } from "../fetchAuthority.js";
 import type { HostLog } from "../log.js";
 import type { HostStores, OpenVault } from "../stores.js";
 import type { connectorMcpPort } from "./connectors.js";
@@ -87,13 +86,8 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
     fn: (execution: NativeExecution | undefined) => T | Promise<T>,
     requestKey?: string,
     preparation = false,
-  ): Promise<T> => {
-    // Research, investment-write and public search tools act as the fetch leader
-    // (market/mcpProduction.ts `isHolder`, the async search ports): every native step obtains fresh
-    // lease pull evidence before its synchronous checks run. Never inside the queue: a native call
-    // runs outside it.
-    if (vault.native !== undefined) await refreshFetchAuthority(vault);
-    return await (vault.native === undefined
+  ): Promise<T> =>
+    await (vault.native === undefined
       ? vault.queue.run.bind(vault.queue)
       : <V>(task: () => V) => Promise.resolve().then(task))(() => {
       const complete = (value: T | Promise<T>): T | Promise<T> => {
@@ -453,7 +447,6 @@ export function nativeRuntime(options: NativeMcpOptions): NativeRuntime {
         throw error;
       }
     });
-  };
   return {
     now,
     replaced: options.replaced,

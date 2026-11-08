@@ -25,6 +25,16 @@ export async function refreshFetchAuthorities(
   await Promise.all([...vaults].map((vault) => refreshFetchAuthority(vault)));
 }
 
+/** Status only: why the vault may not fetch now (nativeVault/fetchAuthority.ts), else null. */
+export function fetchAuthorityIssue(vault: OpenVault | undefined): string | null {
+  if (vault?.mode !== "native") return "fetch_session_unavailable";
+  try {
+    return vault.native.fetchAuthorityIssue();
+  } catch {
+    return "fetch_authority_unavailable";
+  }
+}
+
 /** Status only: may fetch now, or would after the refresh above. Never throws. */
 export function mayObtainFetchAuthority(vault: OpenVault | undefined): boolean {
   if (vault?.mode !== "native") return false;

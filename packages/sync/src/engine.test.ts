@@ -140,12 +140,63 @@ describe("SyncEngine", () => {
     ).toBe(true);
     remote.setOnline(false);
     await again.sync();
+    // A pass that missed a remote produces no NEW evidence; the last complete pull stays.
     expect(
       again.fetchLeaseEvidence(
         () => true,
         () => true,
       ).lastPullAt,
-    ).toBeUndefined();
+    ).toBe(T0);
+  });
+  it("keeps the last complete pull through an incomplete pass and drops it after a failed one", async () => {
+    const clock = new ManualClock(T0);
+    const offline = new FaultInjector(new MemoryTransport());
+    const memory = new MemoryTransport();
+    let broken = false;
+    // A remote whose every call fails with a non-transport error while `broken` is set.
+    const failing = new Proxy(memory, {
+      get(target, property) {
+        const value = Reflect.get(target, property, target);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (broken) throw new Error("synthetic remote fault");
+          return value.apply(target, args);
+        };
+      },
+    }) as Transport;
+    const e = await createSyncEngine({
+      vault: VAULT,
+      device: A,
+      local: new MemoryTransport(),
+      remotes: [offline, failing],
+      codec,
+      gate,
+      sink: new MemorySink(),
+      clockStore: new MemoryClockStore(),
+      clockGuard: { load: () => ({}), save: () => {} },
+      physicalClock: clock,
+    });
+    const pullAt = () =>
+      e.fetchLeaseEvidence(
+        () => true,
+        () => true,
+      ).lastPullAt;
+    await e.write([ev("own")]);
+    await e.sync();
+    expect(pullAt()).toBe(T0);
+    clock.advance(40_000);
+    offline.setOnline(false);
+    const missed = await e.sync();
+    expect(missed.offlineRemotes).toBe(1);
+    expect(pullAt()).toBe(T0);
+    offline.setOnline(true);
+    clock.advance(10_000);
+    await e.sync();
+    expect(pullAt()).toBe(T0 + 50_000);
+    broken = true;
+    await expect(e.sync()).rejects.toThrow("synthetic remote fault");
+    expect(pullAt()).toBeUndefined();
+    await e.close();
   });
   it("refuses fetch evidence when the wall clock falls behind its own persisted HLC", async () => {
     const clock = new ManualClock(T0);
