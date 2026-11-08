@@ -244,7 +244,8 @@ export function createProductionMarket(input: ProductionMarketInput): Production
     };
     return { allowed, searchSources, watch };
   };
-  const signalPorts = new Map<string, { vault: OpenVault; ports: SignalsMarketPorts }>();
+  // Keyed by the opened vault: a closed or reopened vault's ports are dropped with it.
+  let signalPorts = new WeakMap<OpenVault, SignalsMarketPorts>();
   const marketSource: InvestmentMarketSource = {
     changes: { subscribe: (listener) => prices.subscribe(listener) },
     current(read: Read) {
@@ -273,15 +274,15 @@ export function createProductionMarket(input: ProductionMarketInput): Production
     signals(vaultId) {
       const vault = vaultFor(vaultId);
       if (vault?.mode !== "native" || !input.isCurrent(vault) || closed) return null;
-      const cached = signalPorts.get(vaultId);
-      if (cached?.vault === vault) return cached.ports;
+      const cached = signalPorts.get(vault);
+      if (cached !== undefined) return cached;
       const io = publicPorts(vaultId, vault);
       const ports: SignalsMarketPorts = {
         isCurrent: io.allowed,
         searchSources: io.searchSources,
         watchMarket: io.watch,
       };
-      signalPorts.set(vaultId, { vault, ports });
+      signalPorts.set(vault, ports);
       return ports;
     },
     investmentAsync(vaultId) {
@@ -315,7 +316,7 @@ export function createProductionMarket(input: ProductionMarketInput): Production
     close() {
       closed = true;
       marketImages.clear();
-      signalPorts.clear();
+      signalPorts = new WeakMap();
       research.close();
     },
   };

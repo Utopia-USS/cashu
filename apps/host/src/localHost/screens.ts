@@ -215,35 +215,7 @@ export function createScreenSurfaces(input: {
       readonly queue: NotificationQueue;
       readonly prices: market.PriceCache | null;
     }) {
-      const { stores, queue, prices } = local;
-      const localSignals = new Map<
-        string,
-        {
-          readonly opened: OpenVault;
-          readonly ports: SignalsMarketPorts | null;
-          readonly cap: SignalsScreenCapability;
-        }
-      >();
-      let generations = 0;
-      const bind = (vault: string): SignalsScreenCapability | null => {
-        const opened = stores.vaults.get(vault);
-        if (opened === undefined) return null;
-        const offered = options.signals?.bind(vault) ?? null;
-        const ports = offered?.isCurrent() ? offered : null;
-        const cached = localSignals.get(vault);
-        if (cached?.opened === opened && cached.ports === ports) return cached.cap;
-        const cap: SignalsScreenCapability = {
-          vault,
-          generation: `local:${vault}:${++generations}`,
-          isCurrent: () => stores.vaults.get(vault) === opened && (ports?.isCurrent() ?? true),
-          notifications: queue,
-          ...(prices ? { prices } : {}),
-          ...(ports?.searchSources ? { searchSources: ports.searchSources } : {}),
-          ...(ports?.watchMarket ? { watchMarket: ports.watchMarket } : {}),
-        };
-        localSignals.set(vault, { opened, ports, cap });
-        return cap;
-      };
+      const bind = localSignalsBinder({ ...local, signals: options.signals });
       return signalsScreenActions({ bind, now, timeZone: () => clock.current().timeZone });
     },
     /** The UI actions: a native host offers only the bound ones, a harness all of them. */
@@ -277,5 +249,49 @@ export function createScreenSurfaces(input: {
       strategyManager?.close();
       images.close();
     },
+  };
+}
+
+/**
+ * The Signals capability of each open vault. Its local actions (watchlist, snooze, offline add)
+ * depend only on the open vault, so `isCurrent` is the vault's identity and the capability stays the
+ * same object while that vault is open. The public-market ports (online search, pick verification)
+ * follow the market lease: read on each use, absent while the vault has none, and they check their
+ * own authority on every request. Capabilities are keyed by the opened vault, so a closed or
+ * reopened vault's capability is dropped with it.
+ */
+export function localSignalsBinder(input: {
+  readonly stores: HostStores;
+  readonly queue: NotificationQueue;
+  readonly prices: market.PriceCache | null;
+  readonly signals: VaultBinder<SignalsMarketPorts> | undefined;
+}): (vault: string) => SignalsScreenCapability | null {
+  const { stores, queue, prices } = input;
+  const caps = new WeakMap<OpenVault, SignalsScreenCapability>();
+  let generations = 0;
+  return (vault) => {
+    const opened = stores.vaults.get(vault);
+    if (opened === undefined) return null;
+    const cached = caps.get(opened);
+    if (cached !== undefined) return cached;
+    const ports = (): SignalsMarketPorts | null => {
+      const offered = input.signals?.bind(vault) ?? null;
+      return offered?.isCurrent() ? offered : null;
+    };
+    const cap: SignalsScreenCapability = {
+      vault,
+      generation: `local:${vault}:${++generations}`,
+      isCurrent: () => stores.vaults.get(vault) === opened,
+      notifications: queue,
+      ...(prices ? { prices } : {}),
+      get searchSources() {
+        return ports()?.searchSources;
+      },
+      get watchMarket() {
+        return ports()?.watchMarket;
+      },
+    };
+    caps.set(opened, cap);
+    return cap;
   };
 }
