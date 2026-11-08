@@ -13,10 +13,4 @@ export const S = catalog({
   },
   supports: { pl: "Co sprzyja", en: "Tailwinds" },
   risks: { pl: "Na co uważać", en: "Watch out for" },
-  nChanges: {
-    pl: (n: number) => plCount(n, "zmiana", "zmiany", "zmian"),
-    en: (n: number) => enCount(n, "change", "changes"),
-  },
-  fromTo: { pl: (from: string) => `: z ${from} na `, en: (from: string) => `: from ${from} to ` },
-  since: { pl: (d: string) => `· od ${d}`, en: (d: string) => `· since ${d}` },
 });

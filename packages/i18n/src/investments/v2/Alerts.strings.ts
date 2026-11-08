@@ -31,16 +31,10 @@ export const S = catalog({
     en: (title: string) => `Alert "${title}" deleted`,
   },
   removeWhat: { pl: "usunięcie alertu", en: "alert deletion" },
-  backAsYourNew: { pl: "wraca jako Twój nowy alert", en: "comes back as your new alert" },
-  backAsNew: { pl: "wraca jako nowy alert", en: "comes back as a new alert" },
 
   // widget and row
   alerts: { pl: "Alerty", en: "Alerts" },
-  near: { pl: "blisko", en: "near" },
-  inSignals: { pl: "w Sygnałach", en: "in Signals" },
-  allCount: { pl: (n: number) => `Wszystkie (${n})`, en: (n: number) => `All (${n})` },
   noAlerts: { pl: "Brak alertów.", en: "No alerts." },
-  noneWaiting: { pl: "Brak czekających.", en: "None waiting." },
   below: { pl: "poniżej", en: "below" },
   above: { pl: "powyżej", en: "above" },
   since: { pl: "od", en: "since" },

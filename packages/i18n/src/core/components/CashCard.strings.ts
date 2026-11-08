@@ -2,10 +2,6 @@
 import { catalog } from "../../index.js";
 
 export const S = catalog({
-  needAmountTitle: {
-    pl: "Podaj kwotę i tytuł wydatku.",
-    en: "Enter the amount and title of the expense.",
-  },
   cashHint: {
     pl: "Wpłata do puli = kategoria „Wypłata gotówki” w Wydatkach. Nie wpływa na wartość netto.",
     en: 'Money into the pool = the "Cash withdrawal" category in Expenses. It does not change net worth.',

@@ -43,7 +43,6 @@ export const S = catalog({
   },
   colResult: { pl: "Wynik", en: "Return" },
   colResultPct: { pl: "Wynik %", en: "Return %" },
-  classification: { pl: "Klasyfikacja", en: "Classification" },
   spark30d: {
     pl: (label: string) => `${label}: 30 dni`,
     en: (label: string) => `${label}: 30 days`,

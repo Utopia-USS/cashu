@@ -19,11 +19,6 @@ export const S = catalog({
     pl: (e: string) => `Nie przywrócono: ${e}`,
     en: (e: string) => `Not restored: ${e}`,
   },
-  /** The watchlist note of a candidate added without the accept endpoint (stored as written). */
-  candidateNote: {
-    pl: (title: string) => `kandydat: ${title}`,
-    en: (title: string) => `candidate: ${title}`,
-  },
   watched: {
     pl: (name: string) => `Dodano do obserwowanych: ${name}`,
     en: (name: string) => `Added to the watchlist: ${name}`,

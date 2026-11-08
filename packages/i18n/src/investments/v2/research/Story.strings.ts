@@ -41,11 +41,6 @@ export const S = catalog({
     en: (n: number) =>
       `${enCount(n, "of your companies reports", "of your companies report")} this week. A report can move the price a lot.`,
   },
-  reports: {
-    pl: (name: string) => `${name} podaje wyniki`,
-    en: (name: string) => `${name} reports`,
-  },
-  yours: { pl: "Twoja pozycja", en: "your position" },
   results: { pl: "wyniki", en: "earnings" },
   valuation: { pl: "Wycena", en: "Valuation" },
   valCheap: { pl: "tanio wobec wzrostu", en: "cheap for its growth" },
@@ -85,8 +80,6 @@ export const S = catalog({
     pl: (n: number) => plCount(n, "Twoja", "Twoje", "Twoich"),
     en: (n: number) => `${n} of yours`,
   },
-  watched: { pl: "obserwowana", en: "watched" },
-  fromResearch: { pl: "z researchu", en: "from research" },
   lostGround: {
     pl: (n: number) => `${n} ${plForm(n, "teza straciła", "tezy straciły", "tez straciło")} grunt:`,
     en: (n: number) => `${n} ${enForm(n, "thesis lost", "theses lost")} ground:`,

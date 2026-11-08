@@ -102,7 +102,6 @@ export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
   const p1m = useQuery(portfolio.portfolio, { ...args, range: "1m" });
   const pChart = useQuery(portfolio.portfolio, { ...args, range: input.chartRange ?? "1y" });
   const researchRead = useQuery(research, { today, lang: language });
-  const metadata = useQuery(portfolio.metadata, { lang: language });
   // The worker's quote refresh / daily check in flight (old usePriceRefreshState / useRunState), pushed by the host.
   const running = useQuery(investmentsRunning);
 
@@ -178,7 +177,6 @@ export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
     perf1m,
     perfChart,
     research: researchHome,
-    brokers: metadata.brokers,
     running,
   };
 }

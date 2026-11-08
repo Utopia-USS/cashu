@@ -5,7 +5,7 @@
 
 import { lang } from "@cashu/i18n";
 import { hostOf } from "../../../core/url.js";
-import { dateParts, dm, dmy, pp } from "../../labels.js";
+import { dateParts, dmy, pp } from "../../labels.js";
 import { S, SEGMENT_LABEL } from "./segments.strings.js";
 import type {
   NoteSource,
@@ -78,34 +78,7 @@ export function ppTone(c: number | null | undefined): PpTone {
 export const ppOf = (c: number | null | undefined): string =>
   c == null || !Number.isFinite(c) ? "-" : pp(round1(c));
 
-/** Tone class of a return / portfolio move, with the rounding of `pct` (labels.ts) so the colour matches the text:
- * `pos` / `neg` when `pct` shows a non-zero value, else none. */
-export function tone(v: number | null | undefined): "pos" | "neg" | "" {
-  if (v == null || !Number.isFinite(v)) return "";
-  const p = Math.round(v * 1000) / 10;
-  return p > 0.04 ? "pos" : p < -0.04 ? "neg" : "";
-}
-
 // ---- diverging bar ----------------------------------------------------------------------------------------
-
-/** Floor of the scale: 0,5 pp. A quiet week stays visually quiet (0,1 pp = one fifth of a half bar), a 0,8 pp
- * week fills its half. Bars are drawn only when the rounded value is not 0,0 pp. Returns widths as % of the
- * whole bar (max 50 = a full half). */
-export const BAR_FLOOR = 0.005;
-export function contribBars(
-  values: number[],
-  floor = BAR_FLOOR,
-): { max: number; bars: { cls: PpTone; w: number }[] } {
-  const max = Math.max(floor, ...values.map((v) => Math.abs(v)));
-  const bars = values.map((v) => {
-    const cls = ppTone(v);
-    return { cls, w: cls === "zero" ? 0 : Math.max(2, Math.round((Math.abs(v) / max) * 500) / 10) };
-  });
-  return { max, bars };
-}
-/** `wkład -0,8 pp · skala ±2,0 pp` (the scale is explained only here). */
-export const barTitle = (c: number, max: number) =>
-  S.barTitle(ppOf(c), pp(max * 100).replace(/^\+/, ""));
 
 // ---- rows -------------------------------------------------------------------------------------------------
 
@@ -154,14 +127,6 @@ export const segmentDisplay = (s: SegmentRow): DisplayRow => ({
   thesis: s.thesis ?? null,
 });
 
-/** Topics with held exposure at the window start (the `Tematy · N` count). */
-export const exposed = (d: Pick<SegmentAttribution, "segments"> | null | undefined): number =>
-  (d?.segments ?? []).filter((s) => s.weight > 0).length;
-/** Segments with a note this week. */
-export const withNewNote = (
-  rows: Pick<SegmentRow, "note_this_week">[] | null | undefined,
-): number => (rows ?? []).filter((s) => s.note_this_week).length;
-
 // ---- sub line, tooltips -----------------------------------------------------------------------------------
 
 export type SymOf = (id: number) => string | null;
@@ -170,33 +135,11 @@ export const instSymbol = (
   i: Pick<SegmentInstrument, "instrument_id" | "label">,
   symOf: SymOf,
 ): string => symOf(i.instrument_id) ?? i.label ?? `#${i.instrument_id}`;
-export const symbolsOf = (instruments: SegmentInstrument[], symOf: SymOf): string[] =>
-  instruments.map((i) => instSymbol(i, symOf));
-
-/** Symbols of a row's instruments with a stale price; a row is marked when any is stale. */
-export const staleSymbols = (
-  r: Pick<DisplayRow, "instruments">,
-  stale: number[],
-  symOf: SymOf,
-): string[] =>
-  r.instruments.filter((i) => stale.includes(i.instrument_id)).map((i) => instSymbol(i, symOf));
-export const staleTitle = (syms: string[]) =>
-  syms.length ? S.staleQuotes(syms.join(", ")) : undefined;
 
 /** P7 (review LOW-2): one short line when the rows do not add up to the move (|residual| >= 0,1 pp): the gap comes
  * from transactions and position imports inside the window. Null otherwise. */
 export const residualLine = (d: Partial<Pick<SegmentAttribution, "residual">>): string | null =>
   d.residual != null && ppTone(d.residual) !== "zero" ? S.residual(ppOf(d.residual)) : null;
-
-/** Home header tooltip: `1.10 - 8.10 · TWR portfela` (+ `· brak pełnej historii` without the portfolio move), plus the
- * residual line when it applies. */
-export const windowTitle = (
-  d: Pick<SegmentAttribution, "start" | "end" | "portfolio_return"> &
-    Partial<Pick<SegmentAttribution, "residual">>,
-) =>
-  [S.windowTitle(dm(d.start), dm(d.end), d.portfolio_return == null), residualLine(d)]
-    .filter(Boolean)
-    .join("\n");
 
 // ---- topics (P7 design 1.3) --------------------------------------------------------------------------------
 
@@ -211,61 +154,6 @@ export const topicKind = (
   r: Pick<DisplayRow, "weight" | "members" | "member_instruments">,
 ): TopicKind =>
   r.weight > 0 ? "held" : heldNow(r) ? "new" : (r.members ?? 0) > 0 ? "watched" : "none";
-const KIND_RANK: Record<TopicKind, number> = { held: 0, new: 1, watched: 2, none: 3 };
-
-/** P9 review MED-6: a topic without held / watched members is still shown when research wrote about it (an active
- * brief) or it has a thesis: a muted row after the watched-only ones (name, briefs; no tickers, no pp). */
-export const topicShown = (
-  r: Pick<DisplayRow, "weight" | "members" | "member_instruments" | "briefs" | "thesis">,
-): boolean => topicKind(r) !== "none" || !!r.briefs?.length || !!r.thesis;
-
-/** The latest owner-facing activity on a topic. A note's observed date is intentionally the date of the
- * fact it describes, so a newly created thesis can be newer than `last_note_at`. */
-const topicActivityAt = (r: Pick<DisplayRow, "last_note_at" | "thesis">): string => {
-  const note = r.last_note_at ?? "";
-  const thesis = r.thesis?.updated_at ?? "";
-  return note.localeCompare(thesis) >= 0 ? note : thesis;
-};
-
-/** Home column: latest research / thesis activity first, then held topics, new and watched-only, then
- * brief-only topics (`topicShown`). This makes a topic the owner just asked to research immediately visible
- * instead of burying it below portfolio topics, even when the sourced fact has an older observation date.
- * P9: no cap (the column is the last widget and expands). No Waluty, no unassigned. */
-export function homeTopics(d: Pick<SegmentAttribution, "segments">): DisplayRow[] {
-  return d.segments
-    .map(segmentDisplay)
-    .filter(topicShown)
-    .sort(
-      (a, b) =>
-        topicActivityAt(b).localeCompare(topicActivityAt(a)) ||
-        KIND_RANK[topicKind(a)] - KIND_RANK[topicKind(b)],
-    );
-}
-/** Review column: rows with a new note first, then the rest; held, new, watched, brief-only inside each group; max 6;
- * no fixed rows. */
-export function reviewTopics(segments: SegmentRow[], max = 6): DisplayRow[] {
-  const rows = segments.map(segmentDisplay).filter(topicShown);
-  const rank = (r: DisplayRow) => (r.note_this_week ? 0 : 3) + KIND_RANK[topicKind(r)];
-  return rows.sort((a, b) => rank(a) - rank(b)).slice(0, max);
-}
-/** P9 review: the digest rows without `briefs` / `thesis` (older digest) take them from the live topic rows. */
-export function withBriefs(
-  rows: DisplayRow[],
-  live: Pick<SegmentRow, "segment" | "briefs" | "thesis">[],
-): DisplayRow[] {
-  return rows.map((r) => {
-    const l = live.find((x) => x.segment === r.key);
-    if (!l) return r;
-    return {
-      ...r,
-      briefs: r.briefs?.length ? r.briefs : (l.briefs ?? []),
-      thesis: r.thesis ?? l.thesis ?? null,
-    };
-  });
-}
-/** Name tooltip of a row: `tylko obserwowane` (watched-only) / `nowa pozycja w tym oknie` (new). */
-export const kindTitle = (kind: TopicKind): string | undefined =>
-  kind === "watched" ? S.watchedOnly : kind === "new" ? S.newInWindow : undefined;
 
 /** `held`: held at the window start or now (clickable to the asset); `member`: the BE member entry, when any. */
 export interface TopicSym {
@@ -301,31 +189,6 @@ export function topicMembers(
     for (const s of watched.get(r.key) ?? []) add({ symbol: s, id: null, held: false });
   }
   return out;
-}
-/** The symbols of `topicMembers`. */
-export const topicSymbols = (
-  r: Pick<DisplayRow, "key" | "instruments" | "member_instruments">,
-  symOf: SymOf,
-  watched: Map<string, string[]>,
-): string[] => topicMembers(r, symOf, watched).map((m) => m.symbol);
-/** `NVDA · SMH · AMD +2`: first `n` symbols, the rest as a count (P9 subtitle: every symbol, `n` = Infinity). */
-export const symbolsText = (syms: string[], n = 3): string =>
-  syms.slice(0, n).join(" · ") + (syms.length > n ? ` +${syms.length - n}` : "");
-
-/** P9: the brief lines under a topic: up to 3, newest first; only the first carries its `why`. */
-export function briefLines(
-  r: Pick<DisplayRow, "briefs">,
-): { id: number; headline: string; why: string | null; date: string; unread: boolean }[] {
-  return [...(r.briefs ?? [])]
-    .sort((a, b) => b.observed_at.localeCompare(a.observed_at))
-    .slice(0, 3)
-    .map((b, i) => ({
-      id: b.note_id,
-      headline: b.headline,
-      why: i === 0 ? b.why : null,
-      date: b.observed_at ? dm(b.observed_at) : "",
-      unread: b.unread,
-    }));
 }
 
 /** P9 topic thesis state: `draft` = an agent draft waiting for the owner's confirmation (`do potwierdzenia`). */
@@ -388,10 +251,6 @@ export function topicSavePlan(
   const view = n(e.assessment) !== n(t?.assessment) || n(e.outlook) !== n(t?.outlook);
   return { thesis, view };
 }
-
-/** Two sub-columns from 6 rows (column-major: the first ceil(n/2) rows left); one column below. */
-export const topicColumns = (n: number): { cols: 1 | 2; rows: number } =>
-  n >= 6 ? { cols: 2, rows: Math.ceil(n / 2) } : { cols: 1, rows: n };
 
 // ---- tolerant reading of the payload ----------------------------------------------------------------------
 
@@ -610,22 +469,5 @@ export function normAttribution(v: unknown, window: SegmentWindow = "1w"): Segme
         };
       }),
     },
-  };
-}
-
-/** The digest's `research.segments` + `research.market` read tolerantly (market null when absent). */
-export function normDigestMarket(
-  segments: unknown,
-  market: unknown,
-): { segments: SegmentRow[]; market: SegmentAttribution | null } {
-  const rows = arr(segments)
-    .map(normSegmentRow)
-    .filter((x): x is SegmentRow => !!x);
-  return {
-    segments: rows,
-    market:
-      market && typeof market === "object"
-        ? normAttribution({ ...(market as object), segments: [] })
-        : null,
   };
 }

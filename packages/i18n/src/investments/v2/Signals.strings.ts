@@ -21,7 +21,6 @@ export const S = catalog({
     en: (a: number, b: number) => `${a} of ${b}`,
   },
   thisWeek: { pl: "w tym tygodniu", en: "this week" },
-  allCount: { pl: (n: number) => `Wszystkie (${n})`, en: (n: number) => `All (${n})` },
   noOpen: { pl: "Brak otwartych sygnałów.", en: "No open signals." },
   portfolio: { pl: "Portfel", en: "Portfolio" },
   watched: { pl: "Obserwowane", en: "Watchlist" },
@@ -46,29 +45,15 @@ export const S = catalog({
   },
   whatSnooze: { pl: "odłożenie", en: "snooze" },
   snoozedTo: { pl: (d: string) => `Odłożone do ${d}`, en: (d: string) => `Postponed to ${d}` },
-  snoozedReason: { pl: (d: string) => `odłożone do ${d}`, en: (d: string) => `postponed to ${d}` },
   snoozeFailed: {
     pl: (err: string) => `Nie odłożono: ${err}`,
     en: (err: string) => `Not postponed: ${err}`,
   },
-  needsSignal: {
-    pl: "Nie zapisano: starszy serwer wymaga otwartego sygnału",
-    en: "Not saved: an older server needs an open signal",
-  },
 
   // rail row menu
-  actions: { pl: "Akcje", en: "Actions" },
-  actionsAria: { pl: (name: string) => `Akcje: ${name}`, en: (name: string) => `Actions: ${name}` },
-  note: { pl: "Zanotuj", en: "Record" },
   ack: { pl: "Potwierdź", en: "Acknowledge" },
-  snooze: { pl: "Odłóż", en: "Snooze" },
   toDate: { pl: (d: string) => `do ${d}`, en: (d: string) => `to ${d}` },
   all: { pl: "Wszystkie", en: "All" },
-  plusAcked: {
-    pl: (n: number) =>
-      plCount(n, "sygnał potwierdzony", "sygnały potwierdzone", "sygnałów potwierdzonych"),
-    en: (n: number) => `${enCount(n, "signal", "signals")} acknowledged`,
-  },
 
   // dialog
   signalsCount: {
@@ -83,7 +68,6 @@ export const S = catalog({
   chancesN: { pl: (n: number) => `Szanse ${n}`, en: (n: number) => `Opportunities ${n}` },
   risksN: { pl: (n: number) => `Ryzyka ${n}`, en: (n: number) => `Risks ${n}` },
   keysHint: { pl: "j / k: następny · Enter: decyzja", en: "j / k: next · Enter: decision" },
-  closeEsc: { pl: "Zamknij (Esc)", en: "Close (Esc)" },
   undecided: { pl: "bez decyzji:", en: "undecided:" },
   expired: {
     pl: (n: number) => plCount(n, "sygnał wygasł", "sygnały wygasły", "sygnałów wygasło"),

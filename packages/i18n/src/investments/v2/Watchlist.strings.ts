@@ -44,10 +44,6 @@ export const S = catalog({
   colWeek: { pl: "tydz.", en: "wk" },
   colAlerts: { pl: "Alerty", en: "Alerts" },
   colActions: { pl: "Akcje", en: "Actions" },
-  recommendationAria: {
-    pl: (r: string) => `Rekomendacja: ${r}`,
-    en: (r: string) => `Recommendation: ${r}`,
-  },
   none: { pl: "brak", en: "none" },
   spark30d: {
     pl: (label: string) => `${label}: 30 dni`,

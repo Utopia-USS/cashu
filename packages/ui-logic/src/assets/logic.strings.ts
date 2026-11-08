@@ -3,10 +3,6 @@ import { catalog } from "@cashu/i18n";
 
 export const S = catalog({
   valuation: { pl: (date: string) => `wycena ${date}`, en: (date: string) => `valued ${date}` },
-  future: {
-    pl: "Data wyceny nie może być z przyszłości.",
-    en: "The valuation date can't be in the future.",
-  },
   price: {
     pl: "Podaj cenę zakupu (liczba większa od 0).",
     en: "Enter the purchase price (a number greater than 0).",
@@ -24,14 +20,5 @@ export const S = catalog({
   floorAbovePrice: {
     pl: "Wartość minimalna nie może przekraczać ceny zakupu.",
     en: "The minimum value can't exceed the purchase price.",
-  },
-  name: { pl: "Podaj nazwę.", en: "Enter a name." },
-  noteMax: {
-    pl: (max: number) => `Notatka: maks. ${max} znaków.`,
-    en: (max: number) => `Note: at most ${max} characters.`,
-  },
-  value: {
-    pl: "Podaj wartość (liczba, 0 lub więcej).",
-    en: "Enter the value (a number, 0 or more).",
   },
 });

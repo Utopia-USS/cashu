@@ -3,16 +3,6 @@ import { catalog, enForm, plForm } from "../index.js";
 
 export const S = catalog({
   title: { pl: "Majątek", en: "Assets" },
-  added: { pl: "Dodano", en: "Added" },
-  undone: {
-    pl: (name: string) => `Cofnięto: usunięcie ${name}`,
-    en: (name: string) => `Undone: removal of ${name}`,
-  },
-  notUndone: {
-    pl: (reason: string) => `Nie cofnięto: ${reason}`,
-    en: (reason: string) => `Not undone: ${reason}`,
-  },
-  removed: { pl: (name: string) => `Usunięto ${name}`, en: (name: string) => `Removed ${name}` },
   curve: { pl: "krzywa utraty wartości", en: "depreciation curve" },
   perYear: { pl: (rate: string) => ` · ${rate} % / rok`, en: (rate: string) => ` · ${rate}% / yr` },
   staleTitle: { pl: "wycena starsza niż rok", en: "valuation older than a year" },
@@ -31,18 +21,8 @@ export const S = catalog({
   perMonth: { pl: " / mies.", en: " / mo" },
   less: { pl: "mniej", en: "less" },
   all: { pl: (n: number) => `wszystkie (${n})`, en: (n: number) => `all (${n})` },
-  empty: { pl: "Brak pozycji.", en: "No positions." },
-  setup: { pl: "Konfiguracja", en: "Setup" },
   editOf: { pl: (name: string) => `Edytuj: ${name}`, en: (name: string) => `Edit: ${name}` },
   note: { pl: "notatka", en: "note" },
-  notSaved: {
-    pl: (reason: string) => `Nie zapisano: ${reason}`,
-    en: (reason: string) => `Not saved: ${reason}`,
-  },
-  notRemoved: {
-    pl: (reason: string) => `Nie usunięto: ${reason}`,
-    en: (reason: string) => `Not removed: ${reason}`,
-  },
   value: { pl: "Wartość", en: "Value" },
   valuationDate: { pl: "Data wyceny", en: "Valuation date" },
   purchasePrice: { pl: "Cena zakupu", en: "Purchase price" },
@@ -50,10 +30,6 @@ export const S = catalog({
   purchaseDate: { pl: "Data zakupu", en: "Purchase date" },
   yearlyDecline: { pl: "Roczny spadek (%)", en: "Yearly decline (%)" },
   floor: { pl: "Wartość minimalna (opcjonalnie)", en: "Minimum value (optional)" },
-  floorTitle: {
-    pl: "Poniżej tej kwoty wartość nie spada",
-    en: "The value never drops below this amount",
-  },
   todayApprox: {
     pl: (value: string, loss: string) => `dziś ≈ ${value} · -${loss} / mies.`,
     en: (value: string, loss: string) => `today ≈ ${value} · -${loss} / mo`,

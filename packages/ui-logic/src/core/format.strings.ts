@@ -24,11 +24,6 @@ export const S = catalog({
     pl: (n: number) => plCount(n, "moduł", "moduły", "modułów"),
     en: (n: number) => enCount(n, "module", "modules"),
   },
-  /** Short weekday names, Sunday first (Date.getDay()). */
-  weekdays: {
-    pl: ["nd", "pn", "wt", "śr", "czw", "pt", "sob"],
-    en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-  },
   /** Month names in the genitive ("od września"), January first; English has one form. */
   monthGen: {
     pl: [

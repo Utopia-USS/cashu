@@ -11,7 +11,7 @@ import type { InstrumentSearchProps } from "./InstrumentSearchView.js";
 import type { InstrumentSearchState } from "./useInstrumentSearch.js";
 
 /** "1 alert: poniżej 560,00 $" / "2 alerty" / the note / "bez alertu". */
-function watchSummary(w: WatchItem): string {
+export function watchSummary(w: WatchItem): string {
   const n = w.alerts.live;
   const near = w.alerts.nearest;
   const cur = w.price?.currency ?? w.instrument?.currency;

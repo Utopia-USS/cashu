@@ -1,12 +1,9 @@
 // @vitest-environment jsdom
 
 import type { CommandAttempt, CommandOutcome } from "@cashu/store-react";
-import { useStore } from "@tanstack/react-form";
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useCushionForm } from "./budget/useCushionForm.js";
-import { usePortfolioForms } from "./investments/usePortfolioForms.js";
 import { commandFailure, useDurableCommands } from "./useDurableCommand.js";
 
 const attempt: CommandAttempt = {
@@ -40,65 +37,27 @@ function DurableProbe({
   return null;
 }
 
-function BudgetForm({ handle }: { handle: ReturnType<typeof command> }) {
+/** A one-field draft saved through the durable helper, like the drawers' forms. */
+function DraftForm({ handle }: { handle: ReturnType<typeof command> }) {
   const durable = useDurableCommands();
   const [open, setOpen] = useState(true);
   const [notice, setNotice] = useState("");
-  const form = useCushionForm("PLN", async (input) => {
-    const result = await durable.run("cushion", handle, input);
+  const [draft, setDraft] = useState("");
+  const save = async () => {
+    const result = await durable.run("draft", handle, { value: draft });
     if (result.kind === "completed") setOpen(false);
     else setNotice(commandFailure(result));
-  });
-  const amount = useStore(form.store, (state) => state.values.targetAmount);
+  };
   return (
     <div>
-      <output data-testid="budget">{`${open}:${amount}:${notice}`}</output>
-      <button type="button" onClick={() => form.setFieldValue("targetAmount", "100")}>
+      <output data-testid="draft">{`${open}:${draft}:${notice}`}</output>
+      <button type="button" onClick={() => setDraft("100")}>
         First value
       </button>
-      <button type="button" onClick={() => form.setFieldValue("targetAmount", "200")}>
+      <button type="button" onClick={() => setDraft("200")}>
         Changed value
       </button>
-      <button type="button" onClick={() => void form.handleSubmit()}>
-        Save
-      </button>
-    </div>
-  );
-}
-
-function PortfolioForm({ handle }: { handle: ReturnType<typeof command> }) {
-  const durable = useDurableCommands();
-  const [open, setOpen] = useState(true);
-  const [notice, setNotice] = useState("");
-  const forms = usePortfolioForms(
-    "2026-11-03",
-    {
-      transaction: async () => {},
-      account: async (input) => {
-        const result = await durable.run("account", handle, input);
-        if (result.kind === "completed") setOpen(false);
-        else setNotice(commandFailure(result));
-      },
-      thesis: async () => {},
-      note: async () => {},
-      classification: async () => {},
-    },
-    [],
-  );
-  const name = useStore(forms.account.store, (state) => state.values.name);
-  return (
-    <div>
-      <output data-testid="portfolio">{`${open}:${name}:${notice}`}</output>
-      <button type="button" onClick={() => forms.account.setFieldValue("name", "Synthetic first")}>
-        First value
-      </button>
-      <button
-        type="button"
-        onClick={() => forms.account.setFieldValue("name", "Synthetic changed")}
-      >
-        Changed value
-      </button>
-      <button type="button" onClick={() => void forms.account.handleSubmit()}>
+      <button type="button" onClick={() => void save()}>
         Save
       </button>
     </div>
@@ -149,68 +108,54 @@ it("does not bind a second same-row input to the first in-flight result", async 
   }
 });
 
-it.each([
-  ["budget", BudgetForm],
-  ["portfolio", PortfolioForm],
-] as const)(
-  "%s form reconciles the original attempt and preserves a changed draft",
-  async (name, Form) => {
-    const handle = command();
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    const click = async (text: string) => {
-      const button = [...container.querySelectorAll("button")].find(
-        (item) => item.textContent === text,
-      );
-      if (!button) throw new Error(`Missing ${text}`);
-      await act(async () => button.click());
-    };
-    try {
-      await act(async () => root.render(<Form handle={handle} />));
-      await click("First value");
-      await click("Save");
-      expect(handle.run).toHaveBeenCalledTimes(1);
-      expect(container.querySelector("output")?.textContent).toContain("true:");
-      await click("Changed value");
-      await click("Save");
-      expect(handle.reconcile).toHaveBeenCalledExactlyOnceWith(attempt);
-      expect(handle.run).toHaveBeenCalledTimes(1);
-      expect(container.querySelector("output")?.textContent).toContain("true:");
-      expect(container.querySelector("output")?.textContent).toContain(
-        name === "budget" ? "200" : "Synthetic changed",
-      );
-      await click("Save");
-      expect(handle.run).toHaveBeenCalledTimes(2);
-    } finally {
-      await act(async () => root.unmount());
-      container.remove();
-    }
-  },
-);
+it("a form reconciles the original attempt and preserves a changed draft", async () => {
+  const handle = command();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const click = async (text: string) => {
+    const button = [...container.querySelectorAll("button")].find(
+      (item) => item.textContent === text,
+    );
+    if (!button) throw new Error(`Missing ${text}`);
+    await act(async () => button.click());
+  };
+  try {
+    await act(async () => root.render(<DraftForm handle={handle} />));
+    await click("First value");
+    await click("Save");
+    expect(handle.run).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("output")?.textContent).toContain("true:");
+    await click("Changed value");
+    await click("Save");
+    expect(handle.reconcile).toHaveBeenCalledExactlyOnceWith(attempt);
+    expect(handle.run).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("output")?.textContent).toContain("true:");
+    expect(container.querySelector("output")?.textContent).toContain("200");
+    await click("Save");
+    expect(handle.run).toHaveBeenCalledTimes(2);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
 
-it.each([
-  ["budget", BudgetForm, "false:100:"],
-  ["portfolio", PortfolioForm, "false:Synthetic first:"],
-] as const)(
-  "an unchanged %s draft completes after same-key reconciliation",
-  async (_name, Form, expected) => {
-    const handle = command();
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    try {
-      await act(async () => root.render(<Form handle={handle} />));
-      const buttons = [...container.querySelectorAll("button")];
-      await act(async () => buttons[0]?.click());
-      await act(async () => buttons[2]?.click());
-      await act(async () => buttons[2]?.click());
-      expect(handle.run).toHaveBeenCalledTimes(1);
-      expect(handle.reconcile).toHaveBeenCalledTimes(1);
-      expect(container.querySelector("output")?.textContent).toContain(expected);
-    } finally {
-      await act(async () => root.unmount());
-      container.remove();
-    }
-  },
-);
+it("an unchanged draft completes after same-key reconciliation", async () => {
+  const handle = command();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<DraftForm handle={handle} />));
+    const buttons = [...container.querySelectorAll("button")];
+    await act(async () => buttons[0]?.click());
+    await act(async () => buttons[2]?.click());
+    await act(async () => buttons[2]?.click());
+    expect(handle.run).toHaveBeenCalledTimes(1);
+    expect(handle.reconcile).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("output")?.textContent).toContain("false:100:");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

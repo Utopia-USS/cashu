@@ -3,10 +3,10 @@ import { market } from "@cashu/domain/investments";
 import { decodeValue, encodeValue } from "@cashu/host-protocol/store";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { investmentsCommands as C, investmentsLocal, runCommand, setModules } from "@cashu/store";
+import { reviewScreenQueries } from "@cashu/store/investments/review-screen";
 import { strategySnapshot } from "@cashu/store/investments/screen-sources";
 import { afterEach, expect, it, vi } from "vitest";
 import { startLocalHost } from "./host.js";
-import { reviewScreen } from "./reviewScreen.js";
 import { cleanup, tempDir, testHostOptions } from "./testing/harness.js";
 import { reviewDemoSources, seedReviewDemo } from "./testing/reviewDemo.js";
 
@@ -59,7 +59,7 @@ it("builds all seven cards from generated event facts and actual domain computat
           }),
         },
       };
-      return reviewScreen(sources).queries.screen.run(vault.store.read.bind(vault.store), {
+      return reviewScreenQueries(sources).screen.run(vault.store.read.bind(vault.store), {
         today: "2026-10-31",
         lang: "en",
         open: true,
@@ -149,7 +149,7 @@ it("encodes the actual tracked Review result with current files and market sourc
           }),
         },
       };
-      return reviewScreen(sources).queries.screen.run(vault.store.read.bind(vault.store), {
+      return reviewScreenQueries(sources).screen.run(vault.store.read.bind(vault.store), {
         today: "2026-10-31",
         lang: "en",
         open: true,

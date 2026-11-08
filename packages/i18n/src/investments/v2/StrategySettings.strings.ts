@@ -17,9 +17,4 @@ export const S = catalog({
     pl: (err: string) => `Nie wczytano strategii: ${err}`,
     en: (err: string) => `Strategy not loaded: ${err}`,
   },
-  approved: {
-    pl: (v: number | null | undefined) => `Zatwierdzono propozycję${v ? ` · strategia v${v}` : ""}`,
-    en: (v: number | null | undefined) => `Proposal approved${v ? ` · strategy v${v}` : ""}`,
-  },
-  rejected: { pl: "Odrzucono propozycję", en: "Proposal rejected" },
 });

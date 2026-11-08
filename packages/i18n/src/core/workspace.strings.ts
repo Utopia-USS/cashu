@@ -55,14 +55,6 @@ export const WS = catalog({
   upToDate: { pl: "aktualny", en: "up to date" },
   localChanges: { pl: "zmiany lokalne", en: "local changes" },
   toUpdate: { pl: (n: number) => `do aktualizacji · ${n}`, en: (n: number) => `to update · ${n}` },
-
-  // changesToast
-  created: { pl: "Utworzono workspace", en: "Workspace created" },
-  updated: {
-    pl: (n: number) => `Zaktualizowano workspace (${n})`,
-    en: (n: number) => `Workspace updated (${n})`,
-  },
-  alreadyUpToDate: { pl: "Workspace jest aktualny", en: "The workspace is up to date" },
 });
 
 /** Why a workspace item is outdated. */
@@ -86,46 +78,4 @@ export const SECTION = catalog({
   files: { pl: "foldery", en: "folders" },
   skills: { pl: "skille", en: "skills" },
   research: { pl: "research", en: "research" },
-});
-
-/** Workspace API error codes (`X-Cashu-Error-Code`). */
-export const ERRORS = catalog({
-  path_required: { pl: "Podaj folder.", en: "Enter a folder." },
-  path_relative: {
-    pl: "Podaj pełną ścieżkę folderu (od / albo od ~).",
-    en: "Enter the folder's full path (from / or ~).",
-  },
-  path_is_file: {
-    pl: "Pod tą ścieżką jest plik, nie folder.",
-    en: "This path is a file, not a folder.",
-  },
-  path_home: {
-    pl: "Wybierz osobny folder, nie cały katalog domowy ani dysk.",
-    en: "Choose a separate folder, not the whole home folder or disk.",
-  },
-  path_hidden: {
-    pl: "Folder nie może leżeć w ukrytym katalogu.",
-    en: "The folder cannot be inside a hidden folder.",
-  },
-  path_data_dir: {
-    pl: "Workspace musi leżeć poza katalogiem danych cashU i nie może go zawierać.",
-    en: "The workspace must be outside the cashU data folder and cannot contain it.",
-  },
-  path_checkout: {
-    pl: "Workspace nie może leżeć w katalogu z kodem cashU.",
-    en: "The workspace cannot be inside the cashU code folder.",
-  },
-  workspace_taken: {
-    pl: "Ten folder jest (albo zawiera) workspace innego profilu.",
-    en: "This folder is (or contains) another profile's workspace.",
-  },
-  translocated,
-  busy: {
-    pl: "Workspace jest właśnie aktualizowany. Spróbuj za chwilę.",
-    en: "The workspace is being updated right now. Try again in a moment.",
-  },
-  write_failed: {
-    pl: "Nie udało się zapisać plików w tym folderze (uprawnienia albo dysk).",
-    en: "Could not write files in this folder (permissions or disk).",
-  },
 });

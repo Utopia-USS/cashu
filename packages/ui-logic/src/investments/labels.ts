@@ -13,10 +13,8 @@ import {
   DECISION_ACTION as DECISION_ACTION_C,
   ENTRY_TYPE as ENTRY_TYPE_C,
   REGION as REGION_C,
-  RUN_STATUS as RUN_STATUS_C,
   S,
   TXN_TYPE as TXN_TYPE_C,
-  VALUATION as VALUATION_C,
   WEEKDAYS as WEEKDAYS_C,
   WRAPPER as WRAPPER_C,
 } from "./labels.strings.js";
@@ -167,20 +165,8 @@ export const hm = hmLocal;
 /** Local calendar date "YYYY-MM-DD" of a Date. */
 export const isoDate = localIsoDate;
 
-// ---- plurals --------------------------------------------------------------------
-/** Polish-only plural (kept for callers not yet on plCount / enCount from i18n.ts). */
-export function plural(n: number, one: string, few: string, many: string): string {
-  const n10 = n % 10,
-    n100 = n % 100;
-  const w = n === 1 ? one : n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14) ? few : many;
-  return `${n} ${w}`;
-}
-export const nTxns = (n: number) => S.nTxns(n);
-export const nTxnsAcc = (n: number) => S.nTxnsAcc(n);
 export const nInstruments = (n: number) => S.nInstruments(n);
 export const nAccountsInv = (n: number) => S.nAccountsInv(n);
-export const nChanges = (n: number) => S.nChanges(n);
-export const nSignals = (n: number) => S.nSignals(n);
 export const nBuckets = (n: number) => S.nBuckets(n);
 export const nRules = (n: number) => S.nRules(n);
 
@@ -194,7 +180,6 @@ export const assetClass = (v: string | null | undefined) => (v ? (ASSET_CLASS[v]
 export const REGION: Record<string, string> = REGION_C;
 export const region = (v: string | null | undefined) => (v ? (REGION[v.toLowerCase()] ?? v) : "-");
 
-export const VALUATION: Record<string, string> = VALUATION_C;
 export const WRAPPER: Record<string, string> = WRAPPER_C;
 
 export interface AccountLike {
@@ -279,5 +264,3 @@ export function bucketColor(id: string | null | undefined, order: string[] = [])
 export const DECISION_ACTION: Record<string, string> = DECISION_ACTION_C;
 
 export const ENTRY_TYPE: Record<string, string> = ENTRY_TYPE_C;
-
-export const RUN_STATUS: Record<string, string> = RUN_STATUS_C;

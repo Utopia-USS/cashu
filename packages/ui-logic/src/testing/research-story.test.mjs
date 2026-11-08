@@ -6,7 +6,6 @@ import {
   aheadEvents,
   dayBucket,
   firstSentence,
-  hasPlainHeadline,
   moodOf,
   noteHeadline,
   storyTopics,
@@ -37,7 +36,6 @@ test("noteHeadline: the plain headline first, then a brief's, else the title", (
     "Stopy bez zmian",
   );
   assert.equal(noteHeadline({ title: "Tylko tytuł", details: null }), "Tylko tytuł");
-  assert.equal(hasPlainHeadline({ title: "Tylko tytuł", details: null }), false);
   assert.equal(firstSentence("Pierwsze zdanie. Drugie zdanie."), "Pierwsze zdanie.");
 });
 

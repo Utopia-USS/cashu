@@ -7,5 +7,4 @@ export const S = catalog({
     pl: (done: number, n: number) => `${done} z ${n} ${n === 1 ? "kroku" : "kroków"}`,
     en: (done: number, n: number) => `${done} of ${n} ${n === 1 ? "step" : "steps"}`,
   },
-  next: { pl: (step: string) => ` · następny: ${step}`, en: (step: string) => ` · next: ${step}` },
 });

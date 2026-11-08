@@ -2,7 +2,6 @@
 
 import { parseDateTime } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import { builtinRegistry } from "@cashu/domain/core";
 import {
   asAccountId,
   asInstrumentId,
@@ -12,7 +11,6 @@ import {
 } from "@cashu/domain/investments";
 import { enabledModuleIds } from "../../core/queries.js";
 import { defineQuery, type Read } from "../../query.js";
-import { brokerIds } from "../commands/accounts.js";
 import { performanceInputs } from "../performance/inputs.js";
 import { alerts } from "../queries/alerts.js";
 import { loadInstruments, vaultInstrumentGids } from "../queries/instruments.js";
@@ -104,9 +102,7 @@ export function investmentDesktopQueries(sources: InvestmentScreenSources = {}) 
     metadata: defineQuery({
       id: "investments.desktop.metadata",
       run(read, args: { readonly lang: UiLang }) {
-        const registry = builtinRegistry().institutions;
         return {
-          brokers: brokerIds().map((id) => ({ id, name: registry.displayName(id, args.lang) })),
           instruments: enabledModuleIds(read).has("investments")
             ? [...loadInstruments(read, vaultInstrumentGids(read)).values()].map((instrument) => ({
                 id: instrument.id,

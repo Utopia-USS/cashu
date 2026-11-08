@@ -21,10 +21,6 @@ export const S = catalog({
     en: (name: string) => `${name} · setup`,
   },
   firstSteps: { pl: "Pierwsze kroki w aplikacji", en: "First steps in the app" },
-  loadFailed: {
-    pl: (err: string) => `Nie udało się pobrać stanu: ${err}`,
-    en: (err: string) => `Could not load the state: ${err}`,
-  },
   overview: { pl: "Przegląd →", en: "Overview →" },
   configured: { pl: "Skonfigurowany.", en: "Set up." },
   noSteps: { pl: "Brak kroków konfiguracji.", en: "No setup steps." },

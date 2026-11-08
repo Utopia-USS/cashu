@@ -12,24 +12,18 @@ import {
   PLAN_WATCHED,
   planFact,
   planLabel,
-  planOptions,
   ringOf,
   ruleKindLabel,
   signalFact,
   signalText,
 } from "@cashu/ui-logic/investments/v2/logic";
 import {
-  chipsFromFields,
   countsText,
-  fieldChips,
   HEALTH_CLS,
   HEALTH_LABEL,
-  HEALTH_RANK,
   healthOf,
   normHealth,
   normRelation,
-  orderTheses,
-  RELATION_CLS,
   RELATION_LABEL,
   relationCounts,
   relationIcon,
@@ -64,8 +58,6 @@ test("planLabel: held and watched forms for every value; held-only and unknown v
   assert.equal(planLabel("sell_everything", true), "");
   assert.deepEqual(Object.keys(PLAN_HELD), [...PLAN_VALUES]);
   assert.deepEqual(Object.keys(PLAN_WATCHED), ["buy_asap", "buy", "hold"]);
-  assert.deepEqual(planOptions(true), ["buy_asap", "buy", "hold", "reduce", "exit_asap"]);
-  assert.deepEqual(planOptions(false), ["buy_asap", "buy", "hold"]);
   for (const v of [...Object.values(PLAN_HELD), ...Object.values(PLAN_WATCHED)])
     assert.ok(!v.includes(String.fromCharCode(0x2014)), v); // never the em dash
 });
@@ -161,23 +153,7 @@ test("fulfills relation and fulfilled health: labels, classes, precedence and at
   assert.equal(HEALTH_LABEL.ful, "spełniona");
   assert.equal(HEALTH_CLS.ful, "ful");
   assert.equal(RELATION_LABEL.fulfills, "spełnia tezę");
-  assert.equal(RELATION_CLS.fulfills, "ful");
   assert.deepEqual(relationIcon("fulfills"), { cls: "ful", glyph: "✓", label: "spełnia tezę" });
-  // spec HEALTH_ORDER: invalidated, weakened, fulfilled, no_research, no_thesis, supported, current
-  assert.deepEqual(
-    Object.entries(HEALTH_RANK)
-      .sort((a, b) => a[1] - b[1])
-      .map(([k]) => k),
-    ["inv", "weak", "ful", "no_research", "no_thesis", "sup", "ok"],
-  );
-  assert.deepEqual(
-    orderTheses([
-      { label: "A", health: "sup" },
-      { label: "B", health: "ful" },
-      { label: "C", health: "weak" },
-    ]).map((r) => r.label),
-    ["C", "B", "A"],
-  );
   // precedence: invalidated > weakened > fulfilled > supported
   const today = "2026-10-05";
   const n = (rel) => ({
@@ -206,19 +182,6 @@ test("fulfills relation and fulfilled health: labels, classes, precedence and at
     "ful",
   );
   assert.equal(countsText("ful", c), "1 spełnia · 1 wzmacnia");
-  assert.equal(
-    fieldChips([
-      { thesis_relation: "fulfills", thesis_field: "exit_plan" },
-      { thesis_relation: "supports", thesis_field: "exit_plan" },
-    ]).get("exit_plan").text,
-    "1 notatka spełnia",
-  );
-  assert.equal(
-    chipsFromFields([
-      { field: "thesis", supports: 1, weakens: 0, invalidates: 0, fulfills: 2, neutral: 0 },
-    ]).get("thesis").text,
-    "2 notatki spełniają",
-  );
 });
 
 const planSig = (kind, payload, message = "") => ({

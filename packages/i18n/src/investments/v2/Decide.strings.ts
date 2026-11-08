@@ -9,7 +9,6 @@ export const S = catalog({
     en: (name: string) => `Decision · ${name}`,
   },
   decision: { pl: "Decyzja", en: "Decision" },
-  closeEsc: { pl: "Zamknij (Esc)", en: "Close (Esc)" },
   openSignals: { pl: "otwarte sygnały", en: "open signals" },
   noOpenSignals: { pl: "bez otwartych sygnałów", en: "no open signals" },
 });

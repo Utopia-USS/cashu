@@ -43,8 +43,6 @@ export const S = catalog({
     en: (from: string, to: string, partial: boolean) =>
       `${from} - ${to} · portfolio TWR${partial ? " · incomplete history" : ""}`,
   },
-  watchedOnly: { pl: "tylko obserwowane", en: "watchlist only" },
-  newInWindow: { pl: "nowa pozycja w tym oknie", en: "new position in this window" },
   source: { pl: "źródło", en: "source" },
   sources: {
     pl: (names: string) => `Źródła: ${names}`,

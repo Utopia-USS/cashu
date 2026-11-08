@@ -17,10 +17,6 @@ export const S = catalog({
   typeChecking: { pl: "Konta osobiste", en: "Checking accounts" },
   typeSavings: { pl: "Oszczędności", en: "Savings" },
   typeCredit: { pl: "Karty kredytowe", en: "Credit cards" },
-  lastImport: {
-    pl: (d: string) => ` · ostatni import ${d}`,
-    en: (d: string) => ` · last import ${d}`,
-  },
   doneAccount: {
     pl: (name: string, tail: string, created: boolean) =>
       `konto ${name}${tail}${created ? " (nowe)" : ""}`,

@@ -3,12 +3,6 @@ import { catalog, enForm } from "../../index.js";
 
 export const S = catalog({
   weeklyReview: { pl: "Przegląd tygodnia", en: "Weekly review" },
-  signalClosed: {
-    pl: (status: string) =>
-      `Ten sygnał jest już zamknięty (${status === "expired" ? "wygasł" : status === "resolved" ? "rozwiązany" : status})`,
-    en: (status: string) =>
-      `This signal is already closed (${status === "expired" ? "expired" : status === "resolved" ? "resolved" : status})`,
-  },
   strategyFromTemplate: {
     pl: "Strategia z szablonu · uzupełnij strategy.yaml",
     en: "Strategy from the template · fill in strategy.yaml",
@@ -17,25 +11,11 @@ export const S = catalog({
     pl: (e: string) => `Nie utworzono strategii: ${e}`,
     en: (e: string) => `Couldn't create the strategy: ${e}`,
   },
-  classificationSaved: { pl: "Zapisano klasyfikację", en: "Classification saved" },
-  saveFailed: { pl: (e: string) => `Nie zapisano: ${e}`, en: (e: string) => `Couldn't save: ${e}` },
-  aliasSaved: {
-    pl: "Zapisano alias · ceny przy następnym przebiegu reguł",
-    en: "Alias saved · prices on the next rules run",
-  },
-  aliasFailed: {
-    pl: (e: string) => `Nie zapisano aliasu: ${e}`,
-    en: (e: string) => `Couldn't save the alias: ${e}`,
-  },
   /** The undo subject of a review (undoMessage). */
   reviewNoun: { pl: "przegląd", en: "review" },
   reviewSaved: {
     pl: (next: string) => `Przegląd zapisany · następny ${next}`,
     en: (next: string) => `Review saved · next ${next}`,
-  },
-  reviewsUnsupported: {
-    pl: "Serwer nie obsługuje przeglądów: zaktualizuj aplikację.",
-    en: "The server does not support reviews: update the app.",
   },
   reviewFailed: {
     pl: (e: string) => `Nie zapisano przeglądu: ${e}`,
@@ -97,13 +77,6 @@ export const S = catalog({
     en: (name: string) => `Account ${name} added`,
   },
   thesisSaved: { pl: "Zapisano tezę", en: "Thesis saved" },
-  proposalApproved: {
-    pl: (v: number | string | null | undefined) =>
-      `Zatwierdzono propozycję${v ? ` · strategia v${v}` : ""}`,
-    en: (v: number | string | null | undefined) =>
-      `Proposal approved${v ? ` · strategy v${v}` : ""}`,
-  },
-  proposalRejected: { pl: "Odrzucono propozycję", en: "Proposal rejected" },
   // first steps
   brokerageAccount: { pl: "Rachunek maklerski", en: "Brokerage account" },
   brokerWrapper: {

@@ -1,27 +1,13 @@
 // Budget module pure helpers (src/modules/budget/logic.ts), Runs with the ui-logic Vitest suite.
 import assert from "node:assert/strict";
 import {
-  closeFor,
-  cushionDraft,
   cushionPayload,
   monthLabel,
-  pickCurrency,
   planState,
   resyncBankText,
   shiftMonth,
 } from "@cashu/ui-logic/budget/logic";
 import { test } from "vitest";
-
-const info = (base, def, codes) => ({
-  base,
-  default: def,
-  currencies: codes.map((c) => ({
-    currency: c,
-    transactions: 1,
-    first: "2026-01-01",
-    last: "2026-09-30",
-  })),
-});
 
 test("months: labels and shifting across years", () => {
   assert.equal(monthLabel("2026-09"), "wrz 2026");
@@ -29,59 +15,6 @@ test("months: labels and shifting across years", () => {
   assert.equal(shiftMonth("2026-01", -1), "2025-12");
   assert.equal(shiftMonth("2026-12", 1), "2027-01");
   assert.equal(shiftMonth("2026-09", 0), "2026-09");
-});
-
-test("currency: remembered when still present, else the server default, never PLN by assumption", () => {
-  assert.equal(pickCurrency(null, null), null);
-  assert.equal(pickCurrency(null, info("EUR", "EUR", ["EUR"])), "EUR");
-  assert.equal(pickCurrency("EUR", info("PLN", "PLN", ["PLN", "EUR"])), "EUR");
-  assert.equal(pickCurrency("NOK", info("PLN", "PLN", ["PLN", "EUR"])), "PLN"); // stale choice
-  assert.equal(pickCurrency(null, info("PLN", "EUR", ["EUR"])), "EUR"); // base has no data
-  assert.equal(pickCurrency("EUR", info("EUR", "EUR", [])), "EUR"); // empty profile: the base
-});
-
-const close = {
-  month: "2026-09",
-  complete: true,
-  base_currency: "PLN",
-  first_month: "2026-06",
-  last_month: "2026-09",
-  currencies: [
-    {
-      currency: "PLN",
-      income: 9000,
-      spending: 4275.75,
-      surplus: 4724.25,
-      cushion_top_up: 1000,
-      suggested_transfer: 3724.25,
-      transactions: 12,
-      income_by_category: [],
-      spending_by_category: [],
-    },
-    {
-      currency: "EUR",
-      income: 0,
-      spending: 9.99,
-      surplus: -9.99,
-      cushion_top_up: 0,
-      suggested_transfer: 0,
-      transactions: 1,
-      income_by_category: [],
-      spending_by_category: [],
-    },
-  ],
-  cushion: null,
-  investing: null,
-};
-
-test("month close: the chosen currency and the others (never summed)", () => {
-  const { main, others } = closeFor(close, "EUR");
-  assert.equal(main.currency, "EUR");
-  assert.deepEqual(
-    others.map((o) => o.currency),
-    ["PLN"],
-  );
-  assert.equal(closeFor(close, "USD").main, null);
 });
 
 test("plan state: off, no plan, covered, short", () => {
@@ -114,17 +47,8 @@ test("plan state: off, no plan, covered, short", () => {
   assert.equal(planState(inv("short", 1724.25, -275.75)).kind, "short");
 });
 
-test("cushion form: draft from settings and back, with Polish validation", () => {
-  const off = {
-    enabled: false,
-    currency: null,
-    target_amount: null,
-    target_months: null,
-    account_ids: [],
-    monthly_max: null,
-  };
-  const d = cushionDraft(off, "EUR");
-  assert.deepEqual(d, {
+test("cushion payload: the draft to settings, with Polish validation", () => {
+  const d = {
     enabled: false,
     mode: "amount",
     amount: "",
@@ -132,7 +56,7 @@ test("cushion form: draft from settings and back, with Polish validation", () =>
     currency: "EUR",
     accountIds: [],
     monthlyMax: "",
-  });
+  };
   // turning it on without a target is refused before the request
   assert.deepEqual(cushionPayload({ ...d, enabled: true }, "EUR"), {
     ok: false,
@@ -171,8 +95,6 @@ test("cushion form: draft from settings and back, with Polish validation", () =>
     },
   );
   assert.equal(cushionPayload({ ...d, monthlyMax: "-5" }, "EUR").ok, false);
-  // a months-based setting reopens in the months mode
-  assert.equal(cushionDraft({ ...off, enabled: true, target_months: 4 }, "PLN").mode, "months");
   // switching it off keeps a valid payload (the server needs no target then)
   assert.deepEqual(cushionPayload(d, "EUR"), {
     ok: true,
@@ -197,11 +119,10 @@ import {
   dmShort,
   importDoneLine,
   previewRows,
-  statementDone,
   statementErrorKey,
 } from "@cashu/ui-logic/budget/logic";
 
-test("first steps: bank accounts and the statement step's done line", () => {
+test("first steps: bank accounts and bank names", () => {
   const acc = [
     {
       bank: "mbank",
@@ -234,11 +155,6 @@ test("first steps: bank accounts and the statement step's done line", () => {
     b.map((a) => a.name),
     ["eKonto", "Oszczędności"],
   );
-  assert.equal(
-    statementDone(b),
-    "mBank · eKonto · …1234 · PLN · Bank Pekao · Oszczędności · EUR · ostatni import 3.10",
-  );
-  assert.equal(statementDone([]), "");
   assert.deepEqual(
     banks().map(([k]) => k),
     ["auto", "mbank", "pekao", "erste"],

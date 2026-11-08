@@ -1,12 +1,5 @@
 // Budget payload shapes the shared UI logic reads (they mirror the server JSON; transport in the app's api.ts). Types only.
 
-/** `default`: the base currency when it has data, else the most used one (the picker's start). */
-export interface BudgetCurrencies {
-  base: string;
-  default: string;
-  currencies: CurrencyUse[];
-}
-
 export interface CategoryAmount {
   category: string;
   label: string;

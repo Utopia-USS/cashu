@@ -11,10 +11,8 @@ import {
   changeSince,
   cursorOrder,
   daysSince,
-  gapText,
   groupByMonth,
   isDigestDay,
-  isImportant,
   monthlyFlows,
   nextWeekday,
   orderAlerts,
@@ -333,11 +331,8 @@ test("week change from 30-day closes: last vs the newest close at least 7 days o
   assert.equal(weekChange(null), null);
 });
 
-test("re-entry: days, gap text, events grouped by month, important filter", () => {
+test("re-entry: days and events grouped by month", () => {
   assert.equal(daysSince("2026-07-19T10:00:00Z", "2026-10-04T09:00:00Z"), 77);
-  assert.equal(gapText(77), "Wracasz po 11 tygodniach");
-  assert.equal(gapText(120), "Wracasz po 4 miesiącach");
-  assert.equal(gapText(9), "Wracasz po 9 dniach");
   const ev = [
     { type: "deposit", at: "2026-08-10T00:00:00Z", date: "2026-08-10" },
     { type: "alert_triggered", at: "2026-10-03T07:00:00Z", date: "2026-10-03" },
@@ -349,7 +344,6 @@ test("re-entry: days, gap text, events grouped by month, important filter", () =
     g.map((x) => x.label),
     ["Październik", "Wrzesień", "Sierpień", "Grudzień 2025"],
   );
-  assert.equal(ev.filter(isImportant).length, 3); // the decision is "Wszystko" only
 });
 
 test("performance: change since a date (TWR ratio, money, benchmark), monthly deposits, review weekdays", () => {
@@ -520,33 +514,6 @@ test("F7 FE8: a watchlist row without a week of closes shows the session move as
   assert.equal(watchMove(null, null), null);
 });
 
-test("F7 FE17: the re-entry baseline stays pending until Wszystko jasne; the last visit does not move meanwhile", async () => {
-  const { reentryBaseline } = await import("@cashu/ui-logic/investments/v2/logic");
-  const now = "2026-10-05T08:00:00Z";
-  // six weeks away: the old visit becomes the pending baseline, leaving must not advance it
-  assert.deepEqual(reentryBaseline(null, "2026-08-20T18:00:00Z", now), {
-    baseline: "2026-08-20T18:00:00Z",
-    store: true,
-    advance: false,
-  });
-  // the app was closed and reopened in the evening: the pending baseline is still there
-  assert.deepEqual(
-    reentryBaseline("2026-08-20T18:00:00Z", "2026-08-20T18:00:00Z", "2026-10-05T19:00:00Z"),
-    { baseline: "2026-08-20T18:00:00Z", store: false, advance: false },
-  );
-  // a recent visit: no banner, leaving records the visit
-  assert.deepEqual(reentryBaseline(null, "2026-10-01T18:00:00Z", now), {
-    baseline: null,
-    store: false,
-    advance: true,
-  });
-  assert.deepEqual(reentryBaseline(null, null, now), {
-    baseline: null,
-    store: false,
-    advance: true,
-  });
-});
-
 test("F7 FE13: performance caveats read in Polish; a stale benchmark tail is flagged", async () => {
   const { perfNotes } = await import("@cashu/ui-logic/investments/v2/logic");
   const perf = {
@@ -578,61 +545,6 @@ test("F7 FE13: performance caveats read in Polish; a stale benchmark tail is fla
 });
 
 // ---- F7 fix pass ---------------------------------------------------------------------------------------
-import { digestValueLine } from "@cashu/ui-logic/investments/v2/logic";
-
-test("F2 digest value line: market_change null with change set is a value change, not the market move", () => {
-  const base = {
-    // biome-ignore lint/suspicious/noThenProperty: Exact Python digest historical-value field, a number, never a thenable.
-    then: 100000,
-    change: 42300,
-    change_pct: 0.011,
-    contributions: 2000,
-  };
-  const unvalued = digestValueLine(
-    { ...base, market_change: null, market_change_pct: null, transfers: null },
-    0.003,
-  );
-  assert.equal(unvalued.kind, "value");
-  assert.equal(unvalued.amount, 42300);
-  assert.equal(unvalued.pct, null);
-  assert.equal(unvalued.contributions, null);
-  assert.equal(unvalued.transfersUnvalued, true);
-  const valued = digestValueLine(
-    { ...base, market_change: 300, market_change_pct: 0.003, transfers: 40000 },
-    0.004,
-  );
-  assert.deepEqual(
-    [valued.kind, valued.amount, valued.pct, valued.contributions, valued.transfersUnvalued],
-    ["market", 300, 0.003, 2000, false],
-  );
-  // older server: no market_change key at all -> `change` as the market line, as before
-  const old = digestValueLine(
-    {
-      // biome-ignore lint/suspicious/noThenProperty: Exact Python digest historical-value field, a number, never a thenable.
-      then: 1,
-      change: 500,
-      change_pct: 0.01,
-    },
-    null,
-  );
-  assert.deepEqual(
-    [old.kind, old.amount, old.pct, old.transfersUnvalued],
-    ["market", 500, 0.01, false],
-  );
-  // no starting value: nothing to show, transfers row not flagged
-  const none = digestValueLine(
-    {
-      // biome-ignore lint/suspicious/noThenProperty: Exact Python digest historical-value field, null, never a thenable.
-      then: null,
-      change: null,
-      change_pct: null,
-      market_change: null,
-      transfers: null,
-    },
-    null,
-  );
-  assert.deepEqual([none.kind, none.transfersUnvalued], ["none", false]);
-});
 
 test("F4 stale benchmark: no comparison figure on the heroes, a short label with the last priced day", async () => {
   const { heroBenchmark, staleBenchmark } = await import("@cashu/ui-logic/investments/v2/logic");

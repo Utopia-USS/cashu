@@ -1,57 +1,7 @@
 // Texts of the investments workspace logic (packages/ui-logic/src/investments/logic.ts). See docs/agents/localization.md.
-import { catalog, enCount, enForm, plCount } from "@cashu/i18n";
+import { catalog, enCount, plCount } from "@cashu/i18n";
 
 export const S = catalog({
-  // signal titles by rule kind
-  titleDrawdown: {
-    pl: (t: string) => `Spadek od szczytu ≥ ${t}`,
-    en: (t: string) => `Drop from peak ≥ ${t}`,
-  },
-  titleDrift: {
-    pl: (b: string) => `Dryf alokacji: ${b}`,
-    en: (b: string) => `Allocation drift: ${b}`,
-  },
-  titleDriftPlain: { pl: "Dryf alokacji", en: "Allocation drift" },
-  titleConcentration: {
-    pl: (i: string) => `Koncentracja: ${i}`,
-    en: (i: string) => `Concentration: ${i}`,
-  },
-  titleContributionGap: { pl: "Brak wpłaty", en: "Missed contribution" },
-  titleLoss: {
-    pl: (t: string) => `Strata od kosztu ≥ ${t}`,
-    en: (t: string) => `Loss from cost ≥ ${t}`,
-  },
-  titleGain: {
-    pl: (t: string) => `Zysk od kosztu ≥ ${t}`,
-    en: (t: string) => `Gain from cost ≥ ${t}`,
-  },
-  titleCashHigh: { pl: "Za dużo gotówki", en: "Too much cash" },
-  titleCashLow: { pl: "Za mało gotówki", en: "Too little cash" },
-  titleTagged: {
-    pl: (tags: string) => `Udział tagów: ${tags}`,
-    en: (tags: string) => `Tag weight: ${tags}`,
-  },
-  titleCustom: { pl: "Reguła własna", en: "Custom rule" },
-
-  // signal facts
-  threshold: { pl: (t: string) => `próg ${t}`, en: (t: string) => `threshold ${t}` },
-  band: { pl: (b: string) => `pasmo ±${b}`, en: (b: string) => `band ±${b}` },
-  aboveTarget: { pl: (m: string) => `≈ ${m} nad celem`, en: (m: string) => `≈ ${m} above target` },
-  belowTarget: { pl: (m: string) => `≈ ${m} pod celem`, en: (m: string) => `≈ ${m} below target` },
-  max: { pl: (v: string) => `maks ${v}`, en: (v: string) => `max ${v}` },
-  min: { pl: (v: string) => `min ${v}`, en: (v: string) => `min ${v}` },
-  lastDeposit: {
-    pl: (d: string) => `ostatnia wpłata ${d}`,
-    en: (d: string) => `last contribution ${d}`,
-  },
-  noDeposits: { pl: "brak wpłat w historii", en: "no contributions in the history" },
-  depositPlan: {
-    pl: (day: number | null, grace: number) =>
-      `plan: co miesiąc${day ? ` do ${day}.` : ""} (+${grace} dni)`,
-    en: (day: number | null, grace: number) =>
-      `plan: monthly${day ? ` by day ${day}` : ""} (+${grace} days)`,
-  },
-
   // decision tag
   decisionTag: {
     pl: (verb: string, q: string) => `decyzja: ${verb}${q}`,
@@ -80,71 +30,6 @@ export const S = catalog({
     ) =>
       `${head} · ${bucket} after the trade: ${after} (target ${target}, drift ${grows ? "grows" : "shrinks"} to ${drift})`,
   },
-
-  // change rows
-  rowValue: { pl: "Wartość", en: "Value" },
-  noStartValuation: {
-    pl: "brak wyceny z początku okresu",
-    en: "no valuation from the start of the period",
-  },
-  rowImport: { pl: "Import", en: "Import" },
-  toClassify: {
-    pl: (n: string) => `do sklasyfikowania: ${n}`,
-    en: (n: string) => `to classify: ${n}`,
-  },
-  manualCount: { pl: (n: number) => `${n} ręcznie`, en: (n: number) => `${n} manual` },
-  fromAccounts: { pl: (accs: string) => ` z ${accs}`, en: (accs: string) => ` from ${accs}` },
-  nNew: { pl: (n: number) => plCount(n, "nowy", "nowe", "nowych"), en: (n: number) => `${n} new` },
-  nEscalated: {
-    pl: (n: number) => plCount(n, "eskalował", "eskalowały", "eskalowało"),
-    en: (n: number) => `${n} escalated`,
-  },
-  nResolved: {
-    pl: (n: number) => plCount(n, "wygasł", "wygasły", "wygasło"),
-    en: (n: number) => `${n} expired`,
-  },
-  subNew: { pl: (names: string) => `nowe: ${names}`, en: (names: string) => `new: ${names}` },
-  subEscalated: {
-    pl: (names: string) => `eskalacja: ${names}`,
-    en: (names: string) => `escalated: ${names}`,
-  },
-  subResolved: {
-    pl: (names: string) => `wygasłe: ${names}`,
-    en: (names: string) => `expired: ${names}`,
-  },
-  rowSignals: { pl: "Sygnały", en: "Signals" },
-  rowDividends: { pl: "Dywidendy", en: "Dividends" },
-  dividendsSub: { pl: "leży jako gotówka na rachunku", en: "held as cash in the account" },
-  rowPrices: { pl: "Ceny", en: "Prices" },
-  noFreshQuote: {
-    pl: (n: string) => `${n} bez świeżego notowania`,
-    en: (n: string) => `${n} without a fresh quote`,
-  },
-  bigMoves: {
-    pl: (n: number) => `${n} ${n === 1 ? "duży ruch" : "duże ruchy"} cen`,
-    en: (n: number) => `${n} big price ${enForm(n, "move", "moves")}`,
-  },
-  biggestMoves: {
-    pl: (m: string) => `największe ruchy: ${m}`,
-    en: (m: string) => `biggest moves: ${m}`,
-  },
-  movesInWarnings: { pl: "szczegóły w ostrzeżeniach danych", en: "details in the data warnings" },
-  rowDecisions: { pl: "Decyzje", en: "Decisions" },
-  nDecisions: {
-    pl: (n: number) => plCount(n, "decyzja", "decyzje", "decyzji"),
-    en: (n: number) => enCount(n, "decision", "decisions"),
-  },
-  inJournal: { pl: "w dzienniku decyzji", en: "in the decision journal" },
-  rowStrategy: { pl: "Strategia", en: "Strategy" },
-  noStrategy: { pl: "brak strategii", en: "no strategy" },
-  newVersion: { pl: (v: number) => `nowa wersja v${v}`, en: (v: number) => `new version v${v}` },
-  unchanged: { pl: "bez zmian", en: "no changes" },
-  strategyPending: {
-    pl: "reguły i alokacja ruszą po zapisaniu strategy.yaml",
-    en: "rules and allocation start once strategy.yaml is saved",
-  },
-  someRulesInactive: { pl: " · część reguł nieaktywna", en: " · some rules inactive" },
-  fileErrors: { pl: " · błędy w pliku", en: " · errors in the file" },
 
   // warnings
   account: { pl: "rachunek", en: "account" },
@@ -240,11 +125,6 @@ export const S = catalog({
   errSplit: { pl: "Podaj współczynnik splitu (1:4 = 4).", en: "Enter the split ratio (1:4 = 4)." },
 
   // band / run error
-  bandOut: {
-    pl: (n: number) => `${plCount(n, "koszyk", "koszyki", "koszyków")} poza pasmem`,
-    en: (n: number) => `${enCount(n, "bucket", "buckets")} out of band`,
-  },
-  allInBand: { pl: "wszystko w paśmie", en: "all within band" },
   ruleInactive: {
     pl: "reguła nieaktywna (błąd w strategy.yaml)",
     en: "rule inactive (error in strategy.yaml)",

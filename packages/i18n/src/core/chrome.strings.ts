@@ -3,37 +3,8 @@
 import { catalog } from "../index.js";
 
 export const S = catalog({
-  // App
-  serverRestarted: { pl: "Serwer uruchomiony ponownie.", en: "The server was restarted." },
-  reloadPage: { pl: " Odśwież stronę.", en: " Reload the page." },
-  openNewUrlBefore: { pl: " Otwórz nowy adres z ", en: " Open the new address from " },
-  openNewUrlAfter: { pl: ".", en: "." },
-  error: { pl: (err: string) => `Błąd: ${err}`, en: (err: string) => `Error: ${err}` },
-
-  // Shell
-  modulesNav: { pl: "Moduły", en: "Modules" },
-  overview: { pl: "Przegląd", en: "Overview" },
-  nativeOverview: { pl: "Lokalny przegląd", en: "Local overview" },
-  notConfiguredTitle: { pl: "Nieskonfigurowany", en: "Not set up" },
-  notConfigured: { pl: "nieskonfigurowany", en: "not set up" },
-  wizardCancelled: { pl: "Przerwano tworzenie profilu", en: "Profile creation cancelled" },
-  profileToast: {
-    pl: (name: string) => `Profil: ${name}`,
-    en: (name: string) => `Profile: ${name}`,
-  },
-  continue: { pl: "Kontynuuj", en: "Continue" },
-  hide: { pl: "ukryj", en: "hide" },
-
   // ProfileMenu
-  profile: { pl: "Profil", en: "Profile" },
-  profiles: { pl: "Profile", en: "Profiles" },
-  active: { pl: "aktywny", en: "active" },
-  newProfile: { pl: "Nowy profil…", en: "New profile…" },
   settings: { pl: "Ustawienia", en: "Settings" },
-
-  // IncognitoToggle
-  showAmounts: { pl: "Pokaż kwoty", en: "Show amounts" },
-  hideAmounts: { pl: "Ukryj kwoty", en: "Hide amounts" },
 
   // UpdateNotice
   newVersion: { pl: (v: string) => `Nowa wersja ${v}`, en: (v: string) => `New version ${v}` },
@@ -59,10 +30,6 @@ export const S = catalog({
   checking: { pl: "Sprawdzam aktualizacje…", en: "Checking for updates…" },
   upToDate: { pl: "Masz najnowszą wersję", en: "You have the latest version" },
   updateFailed: { pl: "Nie udało się zaktualizować", en: "The update failed" },
-  actionFailed: {
-    pl: (err: string) => `Nie udało się: ${err}`,
-    en: (err: string) => `It did not work: ${err}`,
-  },
 
   // AgentWidget
   agent: { pl: "Agent AI", en: "AI agent" },
@@ -70,10 +37,4 @@ export const S = catalog({
   // StartPage
   firstSteps: { pl: "Pierwsze kroki", en: "First steps" },
   cliGuide: { pl: "Instrukcja Claude Code i CLI", en: "Claude Code and CLI guide" },
-
-  // token.ts
-  noToken: {
-    pl: "Brak tokenu dostępu. Otwórz aplikację cashU albo adres z #token=..., który wypisuje `cashu serve`.",
-    en: "No access token. Open the cashU app or the #token=... address that `cashu serve` prints.",
-  },
 });

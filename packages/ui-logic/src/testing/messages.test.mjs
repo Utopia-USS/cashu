@@ -214,8 +214,8 @@ test("Polish plurals and no em dash anywhere in the copy", () => {
   }
 });
 
-test("F7: performance data-quality notes and worker job codes read in Polish; unknown codes keep the English text", async () => {
-  const { describePerfNote, describeJob } = await import("@cashu/ui-logic/core/messages");
+test("F7: performance data-quality notes read in Polish; unknown codes keep the English text", async () => {
+  const { describePerfNote } = await import("@cashu/ui-logic/core/messages");
   assert.equal(
     describePerfNote({ code: "incomplete_days", params: { days: 3 }, message: "3 days" }),
     "niepełna wycena: 3 dni",
@@ -236,87 +236,6 @@ test("F7: performance data-quality notes and worker job codes read in Polish; un
   assert.equal(
     describePerfNote({ code: "something_new", message: "Something new" }),
     "Something new",
-  );
-  assert.equal(
-    describeJob({ code: "eb_not_configured", params: {}, detail: "Enable Banking not configured" }),
-    "Enable Banking nie jest skonfigurowany",
-  );
-  // the raw rule id never reaches the UI (F7 C1)
-  assert.equal(
-    describeJob({ code: "rule_inactive", params: { rule: "dca" }, detail: "x" }),
-    "reguła nieaktywna (błąd w strategy.yaml)",
-  );
-  assert.equal(
-    describeJob({ code: "prices_failed", params: {}, detail: "prices failed" }),
-    "prices failed",
-  );
-  assert.equal(describeJob({ code: null, detail: "legacy detail" }), "legacy detail");
-  assert.equal(describeJob({ code: null, detail: null }), null);
-  const prev = process.env.TZ;
-  process.env.TZ = "Europe/Warsaw";
-  try {
-    assert.equal(
-      describeJob({ code: "throttled", params: { until: "2026-10-05T10:00:00Z" } }),
-      "limit banku do 5.10 12:00",
-    );
-  } finally {
-    if (prev === undefined) delete process.env.TZ;
-    else process.env.TZ = prev;
-  }
-});
-
-test("F7 R8: relocation has a worker part and an MCP part, each its own line; the pre-R8 flat shape maps onto them", async () => {
-  const { relocationParts } = await import("@cashu/ui-logic/core/messages");
-  const none = { worker: null, mcp: null };
-  assert.deepEqual(relocationParts(null), none);
-  assert.deepEqual(relocationParts({ worker: null, mcp: null }), none);
-  const READD = "Dodaj ponownie serwer MCP w Claude Code (polecenie w Agent AI).";
-  assert.deepEqual(
-    relocationParts({
-      worker: {
-        reason: "missing",
-        program: "/gone/cashu",
-        expected_program: null,
-        actions: ["worker_reinstall"],
-      },
-      mcp: null,
-    }),
-    { worker: "Praca w tle wskazuje program, którego już nie ma", mcp: null },
-  );
-  assert.deepEqual(
-    relocationParts({
-      worker: null,
-      mcp: {
-        reason: "app_moved",
-        app_moved_from: "/Applications/Old.app",
-        moved_at: null,
-        actions: ["mcp_readd"],
-      },
-    }),
-    { worker: null, mcp: `Aplikacja została przeniesiona z /Applications/Old.app. ${READD}` },
-  );
-  assert.deepEqual(
-    relocationParts({
-      worker: { reason: "other_program", actions: [] },
-      mcp: { reason: "app_moved", app_moved_from: "/x", actions: [] },
-    }),
-    {
-      worker: "Praca w tle wskazuje inną kopię aplikacji",
-      mcp: `Aplikacja została przeniesiona z /x. ${READD}`,
-    },
-  );
-  // pre-R8 server: one flat object
-  assert.deepEqual(
-    relocationParts({ worker: "missing", app_moved_from: null, actions: ["worker_reinstall"] }),
-    { worker: "Praca w tle wskazuje program, którego już nie ma", mcp: null },
-  );
-  assert.deepEqual(
-    relocationParts({
-      worker: null,
-      app_moved_from: "/Applications/Old.app",
-      actions: ["mcp_readd"],
-    }),
-    { worker: null, mcp: `Aplikacja została przeniesiona z /Applications/Old.app. ${READD}` },
   );
 });
 
@@ -657,15 +576,9 @@ test("alert labels of the F8 kinds (F8 review FE-5)", () => {
 
 test("English UI: every helper shows the server's English text; frontend-only texts are English", async () => {
   const { setLanguageForTests } = await import("@cashu/i18n");
-  const {
-    describeError,
-    describeJob,
-    describePerfNote,
-    errorText,
-    exprDetail,
-    relocationParts,
-    yamlProblem,
-  } = await import("@cashu/ui-logic/core/messages");
+  const { describeError, describePerfNote, errorText, exprDetail, yamlProblem } = await import(
+    "@cashu/ui-logic/core/messages"
+  );
   setLanguageForTests("en");
   try {
     assert.equal(label("strategy.required", { key: "base_currency" }), null);
@@ -710,14 +623,6 @@ test("English UI: every helper shows the server's English text; frontend-only te
       }),
       "3 days with incomplete prices",
     );
-    assert.equal(
-      describeJob({
-        code: "eb_not_configured",
-        params: {},
-        detail: "Enable Banking not configured",
-      }),
-      "Enable Banking not configured",
-    );
     assert.equal(exprDetail("Expression is empty"), "Expression is empty");
     assert.equal(
       yamlProblem("mapping values are not allowed here"),
@@ -732,13 +637,6 @@ test("English UI: every helper shows the server's English text; frontend-only te
     assert.equal(label("error.loan_name_taken"), "A loan with this name already exists.");
     assert.equal(describeError(err).text, "A loan with this name already exists.");
     assert.equal(label("connector.timeout", { timeout_s: 30 }), "The connector timed out (30 s).");
-    assert.deepEqual(
-      relocationParts({ worker: { reason: "missing" }, mcp: { app_moved_from: "/x" } }),
-      {
-        worker: "Background work points to a program that no longer exists",
-        mcp: "The app was moved from /x. Add the MCP server in Claude Code again (the command is in AI agent).",
-      },
-    );
     for (const v of Object.values(
       (await import("@cashu/ui-logic/core/messages.strings")).EN_LABELS,
     )) {

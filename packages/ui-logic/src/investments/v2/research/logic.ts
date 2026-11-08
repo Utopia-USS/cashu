@@ -10,11 +10,9 @@ import {
   DIRECTION_LABEL as DIRECTION_LABEL_C,
   HEALTH_LABEL as HEALTH_LABEL_C,
   KIND_LABEL as KIND_LABEL_C,
-  NOISE_SCALE as NOISE_SCALE_C,
   POLARITY_WORD as POLARITY_WORD_C,
   RELATION_LABEL as RELATION_LABEL_C,
   S,
-  THESIS_FIELD_LABEL as THESIS_FIELD_LABEL_C,
 } from "./logic.strings.js";
 import { isMacroKey, noteKeyLabel } from "./macro.js";
 import { segmentLabel } from "./segments.js";
@@ -33,30 +31,12 @@ import type {
 // ---- copy deck (research.md 8) --------------------------------------------------------------------------
 
 export const KIND_LABEL: Record<string, string> = KIND_LABEL_C;
-/** Kind filter of the research view: [label, kind] (plural forms). */
-export const kindFilter = (): [string, string][] => S.kindFilter;
 
 export const POLARITY_WORD: Record<string, string> = POLARITY_WORD_C;
-export const POLARITY_CLS: Record<string, string> = {
-  positive: "pos",
-  negative: "neg",
-  neutral: "neu",
-};
-export const polarityCls = (p: string | null | undefined) => POLARITY_CLS[p ?? ""] ?? "neu";
 
-export const strengthTitle = (v: number) =>
-  S.strengthTitle(clampStrength(v), S.strengthWord[clampStrength(v)] ?? "");
 export const clampStrength = (v: number) => Math.max(1, Math.min(3, Math.round(Number(v) || 1)));
 
 export const RELATION_LABEL: Record<Relation, string> = RELATION_LABEL_C;
-export const RELATION_CLS: Record<Relation, string> = {
-  supports: "sup",
-  weakens: "weak",
-  invalidates: "inv",
-  fulfills: "ful",
-  neutral: "",
-  none: "none",
-};
 
 export const HEALTH_LABEL: Record<HealthKey, string> = HEALTH_LABEL_C;
 export const HEALTH_CLS: Record<HealthKey, string> = {
@@ -68,16 +48,6 @@ export const HEALTH_CLS: Record<HealthKey, string> = {
   no_thesis: "none",
   no_research: "none muted",
 };
-/** Attention order for lists (RS CONTRACT 1 + P1): invalidated, weakened, fulfilled, no_research, no_thesis, supported, current. */
-export const HEALTH_RANK: Record<HealthKey, number> = {
-  inv: 0,
-  weak: 1,
-  ful: 2,
-  no_research: 3,
-  no_thesis: 4,
-  sup: 5,
-  ok: 6,
-};
 
 export const DIRECTION_LABEL: Record<Direction, string> = DIRECTION_LABEL_C;
 export const DIRECTION_TONE: Record<Direction, "pos" | "neg" | ""> = {
@@ -86,7 +56,6 @@ export const DIRECTION_TONE: Record<Direction, "pos" | "neg" | ""> = {
   flat: "",
 };
 
-export const THESIS_FIELD_LABEL: Record<string, string> = THESIS_FIELD_LABEL_C;
 /** Loose field names (entry, exit, size) to the thesis record's field names. */
 export const normField = (f: string | null | undefined): string | null =>
   !f
@@ -189,22 +158,6 @@ export const addDays = (iso: string, n: number) => {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 };
 
-/** Observed date of a note: `dziś`, `wczoraj`, `sob 3.10` (2-4 days ago), `30.09` (older). */
-export function noteWhen(iso: string | null | undefined, today: string): string {
-  if (!iso) return "";
-  const d = daysBetween(iso, today);
-  if (d <= 0) return S.today;
-  if (d === 1) return S.yesterday;
-  if (d <= 4) return wdm(iso);
-  return dm(iso);
-}
-
-/** 7 days = fresh, 8-21 = muted date, older or expired = old (research.md 3). */
-export function freshness(observedAt: string, today: string): "fresh" | "muted" | "old" {
-  const d = daysBetween(observedAt, today);
-  return d <= 7 ? "fresh" : d <= 21 ? "muted" : "old";
-}
-
 export const isExpired = (
   n: Pick<ResearchNote, "expires_at"> & { expired?: boolean },
   today: string,
@@ -246,23 +199,8 @@ export function isRestorable(
 /** Latest note title of a summary row. */
 export const latestTitle = (s: Pick<InstrumentSummary, "latest_note">) =>
   s.latest_note?.title ?? null;
-/** Signal state word of a note that created or joined a research signal. */
-export const signalWord = (n: Pick<ResearchNote, "signal_id" | "signal">) =>
-  n.signal_id == null
-    ? null
-    : !n.signal || ["active", "acknowledged"].includes(n.signal.status)
-      ? S.signalOpen
-      : S.signalClosed;
-/** Community noise scale (`details.scale`). */
-export const NOISE_SCALE: Record<string, string> = NOISE_SCALE_C;
 export const isLive = (n: Pick<ResearchNote, "expires_at" | "dismissed_at">, today: string) =>
   !n.dismissed_at && !isExpired(n, today);
-
-/** `wygasa 2.11` / `wygasła 2.11`. */
-export function expiryText(n: Pick<ResearchNote, "expires_at">, today: string): string | null {
-  if (!n.expires_at) return null;
-  return S.expiry(isExpired(n, today), dm(n.expires_at));
-}
 
 /** Source footer text: `publisher · d.m` (falls back to the title, then the host). */
 export function sourceText(s: NoteSource): string {
@@ -366,15 +304,6 @@ export function direction(values: (number | null)[]): Direction {
   return d > 1.0 ? "up" : d < -1.0 ? "down" : "flat";
 }
 
-/** The latest non-empty week of a trend: polarity word for the drawer summary. */
-export function lastNonEmpty(values: (number | null)[]): number | null {
-  for (let i = values.length - 1; i >= 0; i--) {
-    const v = values[i];
-    if (v != null) return v;
-  }
-  return null;
-}
-
 // ---- thesis health (research.md 5; design answer 2: 30 days, reset on thesis edit) -------------------------
 
 export function relationCounts(
@@ -471,57 +400,6 @@ export function countsText(
   if (c.community) parts.push(S.noise(c.community));
   if (!parts.length && c.neutral) parts.push(S.nNeutral(c.neutral));
   return parts.join(" · ");
-}
-
-/** A thesis field's chip: `1 notatka osłabia` (most severe relation among the notes touching that field). */
-export function fieldChips(
-  notes: Pick<ResearchNote, "thesis_relation" | "thesis_field">[],
-): Map<string, { relation: Relation; text: string }> {
-  const by = new Map<string, Relation[]>();
-  for (const n of notes) {
-    const f = normField(n.thesis_field ? String(n.thesis_field) : null);
-    const r = normRelation(n.thesis_relation);
-    if (!f || r === "none" || r === "neutral") continue;
-    by.set(f, [...(by.get(f) ?? []), r]);
-  }
-  const out = new Map<string, { relation: Relation; text: string }>();
-  for (const [f, rs] of by) {
-    const worst: Relation = rs.includes("invalidates")
-      ? "invalidates"
-      : rs.includes("weakens")
-        ? "weakens"
-        : rs.includes("fulfills")
-          ? "fulfills"
-          : "supports";
-    const k = rs.filter((r) => r === worst).length;
-    out.set(f, { relation: worst, text: S.fieldChip(worst, k) });
-  }
-  return out;
-}
-
-/** Field chips from the summary's per-field counts (`fields: [{field, supports, weakens, invalidates, fulfills}]`). */
-export function chipsFromFields(
-  fields: {
-    field: string;
-    supports: number;
-    weakens: number;
-    invalidates: number;
-    fulfills?: number;
-  }[],
-): Map<string, { relation: Relation; text: string }> {
-  const notes: { thesis_relation: string; thesis_field: string }[] = [];
-  for (const f of fields) {
-    for (const [rel, k] of [
-      ["supports", f.supports],
-      ["weakens", f.weakens],
-      ["invalidates", f.invalidates],
-      ["fulfills", f.fulfills ?? 0],
-    ] as [string, number][]) {
-      for (let i = 0; i < (k || 0); i++)
-        notes.push({ thesis_relation: rel, thesis_field: f.field });
-    }
-  }
-  return fieldChips(notes);
 }
 
 // ---- candidates (research.md 6) -------------------------------------------------------------------------
@@ -724,26 +602,11 @@ export function researchCommand(path: string | null | undefined, slug: string): 
   const cd = !/\s/.test(p) ? p : p.startsWith("~/") ? `~/"${p.slice(2)}"` : `"${p}"`;
   return `cd ${cd} && claude -p "${RESEARCH_SKILL}"`;
 }
-/** One line of the local routine setup: menu path, day and time, folder, prompt. */
-export const scheduleSteps = (path: string | null | undefined, slug: string) =>
-  S.scheduleSteps(S.routineMenu, workspacePath(path, slug), ROUTINE_PROMPT);
 
 // ---- home grid (research.md 1; ia-v2 density rule) -------------------------------------------------------
 
 /** The strip appears only after the first run exists (density rule): any run, running or finished. */
 export const showStrip = (runs: ResearchRun[] | null | undefined) => !!runs && runs.length > 0;
-
-/** Rows of the `Tezy` column: held positions, most severe health first, then weight. */
-export function orderTheses<
-  T extends { health: HealthKey; weight?: number | null; label?: string | null },
->(rows: T[]): T[] {
-  return [...rows].sort(
-    (a, b) =>
-      HEALTH_RANK[a.health] - HEALTH_RANK[b.health] ||
-      (b.weight ?? 0) - (a.weight ?? 0) ||
-      (a.label ?? "").localeCompare(b.label ?? ""),
-  );
-}
 
 /** The note row's icon (asset-detail.md 6): what the note does to the thesis, not its polarity. Circled plus
  * (wzmacnia), minus (osłabia), a filled minus (podważa), tilde (nie dotyczy, also without a thesis). */

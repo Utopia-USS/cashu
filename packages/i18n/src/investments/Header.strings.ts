@@ -11,7 +11,6 @@ export const S = catalog({
     pl: (n: number) => plCount(n, "ostrzeżenie", "ostrzeżenia", "ostrzeżeń"),
     en: (n: number) => enCount(n, "warning", "warnings"),
   },
-  loading: { pl: "Wczytuję strategię…", en: "Loading the strategy…" },
   pathCopied: {
     pl: (name: string) => `Skopiowano ścieżkę ${name}`,
     en: (name: string) => `Copied the path of ${name}`,

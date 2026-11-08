@@ -1208,14 +1208,6 @@ export function alertFact(a: AlertLike): string {
 }
 
 const LIVE = (a: { status: string }) => a.status === "active" || a.status === "triggered";
-/** An instrument's alerts state: met > near > far over its live alerts; null without any. */
-export function alertStateOf(
-  alerts: AlertLike[],
-  near?: { pricePct?: number | null; pp?: number | null } | null,
-): AlertState | null {
-  const st = alerts.filter(LIVE).map((a) => alertState(a, near));
-  return st.includes("met") ? "met" : st.includes("near") ? "near" : st.length ? "far" : null;
-}
 
 /** The nearest live alert (the bell's tooltip): a met one first, else the closest to its level, else the newest. */
 export function nearestAlert<T extends AlertLike & { id: number }>(alerts: T[]): T | null {
@@ -1228,18 +1220,6 @@ export function nearestAlert<T extends AlertLike & { id: number }>(alerts: T[]):
         b.id - a.id,
     )[0] ?? null
   );
-}
-
-/** The home's Alerty widget (Q5): waiting alerts only (`active`), nearest to the level first, no distance last,
- * then the newest. */
-export function waitingAlerts<T extends AlertLike & { id: number }>(list: T[]): T[] {
-  return list
-    .filter((a) => a.status === "active")
-    .sort((a, b) => {
-      const da = alertDistance(a)?.fill,
-        db = alertDistance(b)?.fill;
-      return (da == null ? 1 : 0) - (db == null ? 1 : 0) || (db ?? 0) - (da ?? 0) || b.id - a.id;
-    });
 }
 
 // ---- table rows: flags and markers (Q4 / Q10 / Q14) ------------------------------------------------------
@@ -1296,8 +1276,6 @@ export function watchMove(
 
 // ---- re-entry and change log ---------------------------------------------------------------------------
 
-export const REENTRY_DAYS = 21;
-
 /** Whole days between two instants (local calendar days). */
 export function daysSince(fromIso: string, toIso: string): number {
   const a = serverDate(fromIso) ?? new Date(NaN),
@@ -1307,45 +1285,12 @@ export function daysSince(fromIso: string, toIso: string): number {
   return Math.round((db - da) / 86400000);
 }
 
-/** The re-entry baseline (F7 FE17): a pending baseline (kept in localStorage until "Wszystko jasne") wins;
- * else the last visit when it is at least REENTRY_DAYS old, which becomes pending (`store`). `advance` says
- * whether leaving the page may move the last-visit mark to now: never while a baseline is pending, so closing
- * the window or switching tabs before "Wszystko jasne" keeps the catch-up view for the next window. */
-export function reentryBaseline(
-  pending: string | null,
-  lastSeen: string | null,
-  now: string,
-): { baseline: string | null; store: boolean; advance: boolean } {
-  if (pending) return { baseline: pending, store: false, advance: false };
-  if (lastSeen && daysSince(lastSeen, now) >= REENTRY_DAYS)
-    return { baseline: lastSeen, store: true, advance: false };
-  return { baseline: null, store: false, advance: true };
-}
-
-/** "Wracasz po 11 tygodniach" / "po 4 miesiącach" / "po 25 dniach" (locative plural). */
-export function gapText(days: number): string {
-  if (days >= 91) return T.gapMonths(Math.round(days / 30.4));
-  if (days >= 14) return T.gapWeeks(Math.round(days / 7));
-  return days === 1 ? T.gapDay : T.gapDays(days);
-}
-
 export interface EventLike {
   type: string;
   at: string;
   date: string;
   polarity?: string;
 }
-
-const IMPORTANT = new Set([
-  "signal_created",
-  "alert_triggered",
-  "signal_escalated",
-  "import",
-  "proposal",
-  "deposit",
-  "withdrawal",
-]);
-export const isImportant = (e: EventLike) => IMPORTANT.has(e.type);
 
 /** Events newest first, grouped by calendar month ("Październik"; the year is added when it is not the
  * year of `today`). */
@@ -1403,52 +1348,6 @@ export function changeSince(
   since: string,
 ): { pct: number | null; money: number | null; bench: number | null; from: string | null } {
   return reviewDomain.reviewChangeSince(points, since);
-}
-
-/** Value line of the review digest ("Co się zmieniło"), F7 F2. `market_change` absent (older server):
- * fall back to `change` as before. `market_change: null` while `change` is set means the backend could not
- * value the transfers: the line shows the value change labelled as such (no TWR %, no "bez wpłat", which
- * would claim the deposits were taken out) and the transfers row says they are not valued. */
-export interface DigestValueLike {
-  then: number | null;
-  change: number | null;
-  change_pct: number | null;
-  contributions?: number | null;
-  market_change?: number | null;
-  market_change_pct?: number | null;
-  transfers?: number | null;
-}
-export function digestValueLine(
-  v: DigestValueLike,
-  sincePct: number | null,
-): {
-  kind: "market" | "value" | "none";
-  amount: number | null;
-  pct: number | null;
-  contributions: number | null;
-  transfersUnvalued: boolean;
-} {
-  const transfersUnvalued = "transfers" in v && v.transfers === null && v.then != null;
-  const pctOf = () => v.market_change_pct ?? sincePct ?? v.change_pct;
-  if (v.market_change != null)
-    return {
-      kind: "market",
-      amount: v.market_change,
-      pct: pctOf(),
-      contributions: v.contributions ?? null,
-      transfersUnvalued,
-    };
-  if (v.market_change === undefined && v.change != null)
-    return {
-      kind: "market",
-      amount: v.change,
-      pct: pctOf(),
-      contributions: v.contributions ?? null,
-      transfersUnvalued,
-    };
-  if (v.change != null)
-    return { kind: "value", amount: v.change, pct: null, contributions: null, transfersUnvalued };
-  return { kind: "none", amount: null, pct: null, contributions: null, transfersUnvalued };
 }
 
 // ---- surplus -> contribution (Przegląd card, F7 FE5) -------------------------------------------------------
@@ -1555,20 +1454,6 @@ export function nextWeekday(today: string, weekday: string): string {
 export function isDigestDay(today: string, weekday: string): boolean {
   const [y = Number.NaN, m = Number.NaN, d = Number.NaN] = today.split("-").map(Number);
   return new Date(y, m - 1, d).getDay() === (WEEKDAY_INDEX[weekday] ?? 0);
-}
-
-/** decisions.md 7: the review strip opens by itself on the digest weekday while the review is due, unless
- * the owner opened or closed it in this visit (`explicit` = the session flag "1" / "0") or the profile is
- * light (zero start: the review button never turns primary) or has no data yet. */
-export function reviewAutoOpen(a: {
-  due: boolean;
-  light: boolean;
-  hasData: boolean;
-  today: string;
-  weekday: string;
-  explicit: string | null;
-}): boolean {
-  return a.due && !a.light && a.hasData && a.explicit == null && isDigestDay(a.today, a.weekday);
 }
 
 /** The planned deposit of a month ("YYYY-MM") for the surplus card and the minimal view: a `planned` one
@@ -1699,29 +1584,6 @@ export function journalStats<
 }
 
 // ---- notification links (F6 NT: a click opens `#/{slug}/investments.portfolio/?signal=<id>`) --------------
-
-export type SignalLink =
-  | { kind: "open"; id: number }
-  | { kind: "asset"; id: number; instrumentId: number; status: string }
-  | { kind: "journal"; id: number; status: string };
-
-/** Where `?signal=<id>` leads: an open signal (in the Sygnały widget: scroll, highlight, decision one click
- * away), a closed one with an instrument (the asset drawer's timeline), a closed portfolio-wide one (the
- * journal). Anything else (not a positive integer, unknown, another profile's id) is null: just the home. */
-export function signalLinkTarget<
-  S extends { id: number; instrument_id: number | null; status: string },
->(param: string | null | undefined, open: S[], all: S[]): SignalLink | null {
-  if (!param || !/^\d+$/.test(param)) return null;
-  const id = Number(param);
-  if (!(id > 0)) return null;
-  if (open.some((s) => s.id === id)) return { kind: "open", id };
-  const s = all.find((x) => x.id === id);
-  if (!s) return null;
-  if (s.status === "active" || s.status === "acknowledged") return { kind: "open", id };
-  return s.instrument_id != null
-    ? { kind: "asset", id, instrumentId: s.instrument_id, status: s.status }
-    : { kind: "journal", id, status: s.status };
-}
 
 // ---- asset header (F7 FE6) -----------------------------------------------------------------------------------
 
@@ -1878,13 +1740,9 @@ export interface InstLike {
 // ---- the model recommendation and the thesis ring on the tile -------------------------------------------
 
 export const PLAN_VALUES = ["buy_asap", "buy", "hold", "reduce", "exit_asap"] as const;
-export type PlanValue = (typeof PLAN_VALUES)[number];
 /** Labels for a held instrument (spec table) and for a watched one (`reduce` / `exit_asap` are held only). */
 export const PLAN_HELD: Record<string, string> = PLAN_HELD_L;
 export const PLAN_WATCHED: Record<string, string> = PLAN_WATCHED_L;
-/** Recommendation values: all five for a held instrument, three for a watched one. */
-export const planOptions = (held: boolean): PlanValue[] =>
-  held ? [...PLAN_VALUES] : ["buy_asap", "buy", "hold"];
 /** The plan's label in the held / watched form; an unknown value (or a held-only one on a watched instrument) -> "". */
 export const planLabel = (plan: string | null | undefined, held: boolean): string =>
   plan ? ((held ? PLAN_HELD : PLAN_WATCHED)[plan] ?? "") : "";

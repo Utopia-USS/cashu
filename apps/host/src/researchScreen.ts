@@ -4,7 +4,6 @@ import type * as macro from "@cashu/domain/investments/macro";
 import type {
   ResearchImageSource,
   ResearchScreenExtraSources,
-  ResearchSourceResult,
   ResearchWorkspaceInfo,
 } from "@cashu/store/investments/research-screen";
 

@@ -7,10 +7,6 @@ export const S = catalog({
     pl: "Saldo na początek miesiąca plus przelewy netto, bez wydatków z innych kont",
     en: "Balance at the start of the month plus net transfers, without spending from other accounts",
   },
-  loadFailed: {
-    pl: (e: string) => `Nie wczytano zamknięcia miesiąca: ${e}`,
-    en: (e: string) => `Couldn't load the month close: ${e}`,
-  },
   title: { pl: "Zamknięcie miesiąca", en: "Month close" },
   prevMonth: { pl: "Poprzedni miesiąc", en: "Previous month" },
   nextMonth: { pl: "Następny miesiąc", en: "Next month" },
@@ -60,10 +56,6 @@ export const S = catalog({
   },
   short: { pl: (amount: string) => `brakuje ${amount}`, en: (amount: string) => `${amount} short` },
   noData: { pl: (c: string) => `brak danych w ${c}`, en: (c: string) => `no data in ${c}` },
-  settingsFailed: {
-    pl: (e: string) => `Nie wczytano ustawień: ${e}`,
-    en: (e: string) => `Couldn't load the settings: ${e}`,
-  },
   cushionFirst: { pl: "Poduszka przed inwestycjami", en: "Cushion before investments" },
   cushionFirstTitle: {
     pl: "Najpierw dopłać do poduszki, resztę nadwyżki przelej na inwestycje",

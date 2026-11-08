@@ -3,36 +3,21 @@
 // the old shapes, from the native signals and review queries (the same entries the Home holds).
 import { lang } from "@cashu/i18n";
 import { reviewScreenQueries } from "@cashu/store/investments/review-screen";
-import { type ReadySignals, signalsQueries } from "@cashu/store/investments/signals-screen";
+import { signalsQueries } from "@cashu/store/investments/signals-screen";
 import { useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { isGenericBucket } from "@cashu/ui-logic/investments/labels";
-import type { AccountRow, Decision } from "@cashu/ui-logic/investments/types";
+import type { AccountRow } from "@cashu/ui-logic/investments/types";
 import { instName } from "@cashu/ui-logic/investments/v2/logic";
 import type { OverviewV2, PositionsV2, WatchItem } from "@cashu/ui-logic/investments/v2/types";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
-import { alertsOf, digestOf, openSignalsOf } from "../investments/home/homeAdapters.js";
-import { legacyId, legacyIdOf, wire } from "../investments/home/legacyWire.js";
+import { alertsOf, decisionOf, digestOf, openSignalsOf } from "../investments/home/homeAdapters.js";
+import { wire } from "../investments/home/legacyWire.js";
 import type { InstrumentChoice } from "./alertsModel.js";
 import { dayReadInstant } from "./signalModels.js";
 
 const signalsQuery = signalsQueries().screen;
 const reviewQuery = reviewScreenQueries().screen;
-
-type DecisionRow = ReadySignals["decisions"][number];
-const decisionOf = (d: DecisionRow): Decision => ({
-  id: legacyId(d.gid),
-  signal_id: legacyIdOf(d.signal),
-  instrument_id: legacyIdOf(d.instrument),
-  account_id: legacyIdOf(d.account),
-  action: d.action,
-  quantity: d.quantity === null ? null : Number(d.quantity),
-  price: d.price === null ? null : Number(d.price),
-  currency: d.currency,
-  reason: d.reason,
-  created_at: d.createdAt,
-  signal_ids: d.signals.map(legacyId),
-});
 
 export function useSignalsPageReads() {
   const today = useCalendarDay();

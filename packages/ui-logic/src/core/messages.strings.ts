@@ -10,16 +10,12 @@ export const S = catalog({
 });
 
 /** English labels of the codes the UI shows without a server text of its own: frontend-only codes
- * (`import.preview_expired`, a client-side size check), the moved-app parts and connector failure
- * kinds (shown from a bare `kind`). Every other code falls back to the server's English text. */
+ * (`import.preview_expired`, a client-side size check) and connector failure kinds (shown from a
+ * bare `kind`). Every other code falls back to the server's English text. */
 export const EN_LABELS: Record<string, string | ((p: Record<string, unknown>) => string | null)> = {
   "import.preview_expired": "The preview expired: choose the file again.",
   "error.file_too_large": "The file is too large.",
   "error.loan_name_taken": "A loan with this name already exists.",
-  "relocation.missing": "Background work points to a program that no longer exists",
-  "relocation.other_program": "Background work points to another copy of the app",
-  "relocation.moved": "The app was moved from {path}",
-  "relocation.mcp_readd": "Add the MCP server in Claude Code again (the command is in AI agent).",
   "connector.bad_file": "The connector did not recognize this file.",
   "connector.unsupported_version": "The connector does not support this export version.",
   "connector.auth_failed": "The service rejected the key: check the binding's secret.",

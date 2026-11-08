@@ -63,5 +63,4 @@ export const S = catalog({
     en: "Your agent saves further strategies as .md files (and optionally .yaml) in the strategies folder.",
   },
   copyFolder: { pl: "Kopiuj ścieżkę folderu", en: "Copy the folder path" },
-  line: { pl: (n: number) => `wiersz ${n}`, en: (n: number) => `line ${n}` },
 });

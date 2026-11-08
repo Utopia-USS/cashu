@@ -69,9 +69,10 @@ export const performanceOf = (p: PortfolioSnapshot): Loaded<Performance | null> 
 // ---- signals query: open signals, alerts, theses ------------------------------------------------------------
 
 type SignalRow = ReadySignals["open"][number];
-type DecisionRow = SignalRow["decisions"][number];
+type DecisionRow = SignalRow["decisions"][number] | ReadySignals["decisions"][number];
 
-const decisionOf = (d: DecisionRow): Decision => ({
+/** A native decision row in the old `Decision` shape (signal rows and the journal list). */
+export const decisionOf = (d: DecisionRow): Decision => ({
   id: legacyId(d.gid),
   signal_id: legacyIdOf(d.signal),
   instrument_id: legacyIdOf(d.instrument),

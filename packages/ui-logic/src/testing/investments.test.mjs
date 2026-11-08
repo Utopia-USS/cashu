@@ -8,24 +8,15 @@ import {
   parseNum,
   pct,
   pctTarget,
-  plural,
   pp,
   qty,
   wdm,
 } from "@cashu/ui-logic/investments/labels";
 import {
-  allocScale,
-  bandFor,
-  changeCount,
-  changeRows,
   decisionEffect,
   decisionTag,
   nextDeposit,
-  orderSignals,
-  reviewDue,
   runError,
-  signalFacts,
-  signalTitle,
   txnCash,
   validateTxn,
   warningItems,
@@ -33,20 +24,6 @@ import {
 import { test } from "vitest";
 
 const NB = " ";
-const sig = (over) => ({
-  id: 1,
-  rule_id: "r",
-  kind: "custom",
-  severity: "info",
-  status: "active",
-  message: "m",
-  instrument_label: null,
-  payload: {},
-  first_seen_at: "2026-10-01T07:00:00Z",
-  decisions: [],
-  ...over,
-});
-
 test("numbers: one decimal with a space before %, pp, signed money, Polish input", () => {
   assert.equal(pct(0.2123), `21,2${NB}%`);
   assert.equal(pct(0.018, true), `+1,8${NB}%`);
@@ -62,8 +39,6 @@ test("numbers: one decimal with a space before %, pp, signed money, Polish input
   assert.equal(parseNum("148.60"), 148.6);
   assert.equal(parseNum("abc"), null);
   assert.equal(qty(0.5), "0,5");
-  assert.equal(plural(22, "sygnał", "sygnały", "sygnałów"), "22 sygnały");
-  assert.equal(plural(12, "sygnał", "sygnały", "sygnałów"), "12 sygnałów");
 });
 
 test("dates: day.month in prose, weekday prefix", () => {
@@ -97,107 +72,9 @@ test("labels: accounts by broker and wrapper, generic buckets readable, other bu
   for (const text of [accountLabel(a), pct(null), money(null)]) assert.ok(!text.includes("\u2014"));
 });
 
-test("signals: Polish titles and measured vs threshold per rule kind", () => {
-  const dd = sig({
-    kind: "drawdown_from_high",
-    severity: "action",
-    payload: { drawdown: 0.184, threshold: 0.15, name: "CD Projekt", symbol: "CDR" },
-  });
-  assert.equal(signalTitle(dd), `Spadek od szczytu ≥ 15${NB}%`);
-  assert.deepEqual(signalFacts(dd), { measured: `-18,4${NB}%`, limit: `próg 15${NB}%` });
-  const drift = sig({
-    kind: "allocation_drift",
-    payload: {
-      bucket_id: "stocks",
-      drift_pp: 6.2,
-      drift_value_base: "11600",
-      currency: "PLN",
-      absolute_band_pp: 5,
-    },
-  });
-  assert.equal(signalTitle(drift), "Dryf alokacji: Akcje");
-  assert.equal(
-    signalTitle(sig({ kind: "allocation_drift", payload: { bucket_id: "core", drift_pp: 6.2 } })),
-    "Dryf alokacji",
-  );
-  assert.match(signalFacts(drift).extra, /nad celem$/);
-  assert.equal(signalFacts(drift).limit, `pasmo ±5,0${NB}pp`);
-  const cashDrift = sig({
-    kind: "allocation_drift",
-    payload: {
-      bucket_id: "cash",
-      drift_pp: -2.9,
-      target: 0.1,
-      absolute_band_pp: 5,
-      relative_band: 0.25,
-    },
-  });
-  assert.equal(signalFacts(cashDrift).limit, `pasmo ±2,5${NB}pp`); // the relative band is the narrower one
-  assert.equal(
-    signalTitle(
-      sig({
-        kind: "position_concentration",
-        payload: { name: "PKN Orlen", weight: 0.111, max_weight: 0.1 },
-      }),
-    ),
-    "Koncentracja: PKN Orlen",
-  );
-  assert.equal(
-    signalTitle(sig({ kind: "cash_level", payload: { direction: "above_max" } })),
-    "Za dużo gotówki",
-  );
-  assert.equal(signalTitle(sig({ kind: "custom", message: "Cash is waiting" })), "Cash is waiting");
-  assert.equal(
-    signalFacts(
-      sig({
-        kind: "contribution_gap",
-        payload: { last_deposit: "2026-08-10", day_of_month: 10, grace_days: 10 },
-      }),
-    ).measured,
-    "ostatnia wpłata 10.08",
-  );
-});
-
-test("signals: undecided first (action before review), decided move to the bottom", () => {
-  const list = [
-    sig({ id: 1, severity: "info" }),
-    sig({
-      id: 2,
-      severity: "action",
-      decisions: [{ action: "bought", quantity: 20, created_at: null }],
-    }),
-    sig({ id: 3, severity: "action" }),
-  ];
-  assert.deepEqual(
-    orderSignals(list).map((s) => s.id),
-    [3, 1, 2],
-  );
+test("decision tags: the latest decision's short label", () => {
   assert.equal(decisionTag({ action: "bought", quantity: 20 }), "decyzja: dokupuję 20 szt.");
   assert.equal(decisionTag({ action: "held", quantity: null }), "decyzja: bez zmian");
-});
-
-test("allocation: band is the narrower of absolute pp and relative, scale covers target + band", () => {
-  const policy = { absolute_band_pp: 5, relative_band: 0.25, min_trade_value: 500 };
-  assert.deepEqual(
-    bandFor(0.6, policy).map((x) => Math.round(x * 1000) / 1000),
-    [0.55, 0.65],
-  );
-  assert.deepEqual(
-    bandFor(0.15, policy).map((x) => Math.round(x * 10000) / 10000),
-    [0.1125, 0.1875],
-  );
-  assert.equal(bandFor(0.2, null), null);
-  assert.equal(
-    allocScale(
-      [
-        { weight: 0.57, target: 0.6 },
-        { weight: 0.21, target: 0.15 },
-      ],
-      policy,
-    ),
-    0.7,
-  );
-  assert.equal(allocScale([{ weight: 0.3 }], null), 0.3);
 });
 
 test("decision effect: buying from the account's cash keeps the total, bucket share and drift move", () => {
@@ -246,59 +123,6 @@ test("decision effect: buying from the account's cash keeps the total, bucket sh
     }),
     null,
   );
-});
-
-test("weekly review: due after the digest weekday until done, change rows and count", () => {
-  assert.equal(reviewDue("2026-10-04", "sunday", "2026-09-27T11:00:00Z"), true); // Sunday, last review a week ago
-  assert.equal(reviewDue("2026-10-04", "sunday", "2026-10-04T09:00:00Z"), false); // done today
-  assert.equal(reviewDue("2026-10-06", "sunday", "2026-10-04T09:00:00Z"), false); // Tuesday after a done Sunday
-  assert.equal(reviewDue("2026-10-06", "sunday", null), true);
-  const dg = {
-    since: "2026-09-27",
-    as_of: "2026-10-04",
-    value: {
-      currency: "PLN",
-      // biome-ignore lint/suspicious/noThenProperty: Exact Python digest historical-value field, a number, never a thenable.
-      then: 183161.05,
-      now: 186401.2,
-      change: 3240.15,
-      change_pct: 0.0177,
-    },
-    signals: {
-      new: [sig({ kind: "contribution_gap" })],
-      escalated: [],
-      resolved: [sig({ kind: "gain_from_cost", payload: { threshold: 0.5 } })],
-      open: 4,
-      undecided: 3,
-    },
-    imports: [
-      {
-        inserted: 6,
-        account_id: 1,
-        created_at: "2026-10-01T19:00:00Z",
-        new_instruments: 1,
-        file_name: "x.csv",
-      },
-    ],
-    transactions: { count: 6, by_type: { buy: 2, fee: 3, dividend: 1 }, manual: 0 },
-    decisions: [],
-    dividends: { PLN: 1344 },
-    price_moves: [],
-    warnings: [],
-    stale_count: 2,
-    strategy: { version: 7, state: "valid", changed_since: false },
-  };
-  const rows = changeRows(dg, [
-    { id: 1, name: "DIF", broker: "dif", broker_name: "DIF Broker", wrapper: "regular" },
-  ]);
-  assert.deepEqual(
-    rows.map((r) => r.key),
-    ["value", "import", "signals", "dividends", "prices", "strategy"],
-  );
-  assert.match(rows[1].main, /^6 transakcji z DIF · zwykłe/);
-  assert.match(rows[2].main, /1 nowy, 1 wygasł/);
-  assert.equal(rows[5].main, "bez zmian");
-  assert.equal(changeCount(dg), 4); // 1 new + 1 resolved + 1 import + dividends
 });
 
 test("manual transaction: per-type requirements and the cash sign", () => {

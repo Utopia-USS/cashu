@@ -18,7 +18,6 @@ import {
 import { normNoteRef, segmentLabel } from "./segments.js";
 import type {
   MacroBrief,
-  MacroChange,
   MacroHistoryItem,
   MacroKey,
   MacroMetric,
@@ -251,9 +250,6 @@ export const orderRegimes = (list: MacroRegime[]): MacroRegime[] => {
   return [...list].sort((a, b) => rank(a.key) - rank(b.key));
 };
 
-/** Review line labels: the inversion flag (a modifier) never goes into a change line. */
-export const changeWord = (label: string): string => stateParts(label)[0] ?? label;
-
 // ---- tolerant reading of the payload (same helpers as segments.ts) ----------------------------------------
 
 const num = (v: unknown): number | null =>
@@ -362,18 +358,3 @@ export function normMacro(v: unknown): MacroRegimes {
     ),
   };
 }
-
-export const normMacroChanges = (v: unknown): MacroChange[] =>
-  arr(v)
-    .map((x) => {
-      const c = obj(x);
-      const key = str(c.key) ?? "";
-      return {
-        key,
-        label: str(c.label) ?? macroLabel(macroNoteKey(key)),
-        from_label: changeWord(str(c.from_label) ?? ""),
-        to_label: changeWord(str(c.to_label) ?? ""),
-        since: str(c.since) ?? "",
-      };
-    })
-    .filter((c) => c.key && c.to_label);

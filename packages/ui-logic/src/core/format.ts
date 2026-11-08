@@ -6,15 +6,6 @@ import { hideAmount } from "./incognito.js";
  * "11 240,00 zł" in one column reads badly). */
 export const GROUP = { useGrouping: "always" } as unknown as Intl.NumberFormatOptions;
 
-const pln0Fmt = new Intl.NumberFormat(intlLocale(), {
-  style: "currency",
-  currency: "PLN",
-  maximumFractionDigits: 0,
-  ...GROUP,
-});
-/** Whole PLN; masked in incognito like every amount formatter here. */
-export const pln0 = { format: (v: number): string => hideAmount(pln0Fmt.format(v)) };
-
 export const cur = (v: number | null | undefined, c = "PLN"): string =>
   v == null
     ? "-"
@@ -41,28 +32,8 @@ export const dtFmt = new Intl.DateTimeFormat(intlLocale(), {
 
 export const TYPE_LABEL: Record<string, string> = TYPE;
 
-export const pct = (part: number, total: number): number =>
-  total ? Math.round((part / total) * 100) : 0;
-
-/** Polish plural: plural(2, "konto", "konta", "kont") -> "2 konta". */
-export function plural(n: number, one: string, few: string, many: string): string {
-  const n10 = n % 10,
-    n100 = n % 100;
-  const w = n === 1 ? one : n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14) ? few : many;
-  return `${n} ${w}`;
-}
-
 export const nAccounts = (n: number) => S.nAccounts(n);
 export const nModules = (n: number) => S.nModules(n);
-
-/** "2026-10-02" -> "pt 2.10" (weekday + day.month, the date rule for prose and tags); English "Fri Oct 2". */
-export function wdmShort(iso: string | null | undefined): string {
-  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
-  if (!m) return "-";
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  if (lang() === "pl") return `${S.weekdays[d.getDay()]} ${Number(m[3])}.${m[2]}`;
-  return `${S.weekdays[d.getDay()]} ${new Intl.DateTimeFormat(intlLocale(), { month: "short", day: "numeric" }).format(d)}`;
-}
 
 const monShort = new Intl.DateTimeFormat(intlLocale(), { month: "short", year: "2-digit" });
 /** "2025-03-31" -> "mar 25" (chart x labels). */

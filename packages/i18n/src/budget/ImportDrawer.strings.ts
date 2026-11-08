@@ -2,15 +2,9 @@
 import { catalog, enCount, plCount } from "../index.js";
 
 export const S = catalog({
-  detectedConnector: {
-    pl: (name: string) => `rozpoznano: ${name} (konektor)`,
-    en: (name: string) => `detected: ${name} (connector)`,
-  },
   detected: { pl: " (rozpoznany)", en: " (detected)" },
   instructions: { pl: "Instrukcja", en: "Instructions" },
   back: { pl: "← Wstecz", en: "← Back" },
-  timeout: { pl: (s: number) => `do ${s} s`, en: (s: number) => `up to ${s} s` },
-  runningConnector: { pl: "Uruchamiam konektor…", en: "Running the connector…" },
   checking: { pl: "Sprawdzam…", en: "Checking…" },
   preview: { pl: "Podgląd", en: "Preview" },
   importing: { pl: "Importuję…", en: "Importing…" },
@@ -41,7 +35,6 @@ export const S = catalog({
   },
   bankFile: { pl: "Plik z banku", en: "File from the bank" },
   fileStays: { pl: "Plik zostaje na tym komputerze.", en: "The file stays on this computer." },
-  connector: { pl: "Konektor", en: "Connector" },
   bank: { pl: "Bank", en: "Bank" },
   /** The cashU format in the `Bank` select (Python `imports.format_name`). */
   formatName: { pl: "Format cashU", en: "cashU format" },
@@ -60,10 +53,6 @@ export const S = catalog({
   },
   change: { pl: "zmień", en: "change" },
   accountPrefix: { pl: "Konto: ", en: "Account: " },
-  syncedBy: {
-    pl: (name: string) => ` · synchronizowane konektorem ${name}`,
-    en: (name: string) => ` · synced by the ${name} connector`,
-  },
   exists: {
     pl: (n: number) => `istnieje · ${plCount(n, "transakcja", "transakcje", "transakcji")}`,
     en: (n: number) => `exists · ${enCount(n, "transaction", "transactions")}`,

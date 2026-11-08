@@ -1,39 +1,19 @@
-// Workspace logic without React: signal and warning copy, the weekly-review change list, the
-// decision effect line, allocation bands and scale, manual transaction rules. Unit-tested by the
-// frontend's `npm test` (frontend/tests).
+// Workspace logic without React: decision tags and the decision effect line, the next deposit,
+// data warnings, manual transaction rules and rule run errors. Unit-tested in src/testing.
 import {
   type AccountLike,
   accountLabel,
-  assetClass,
   bucketLabel,
   DECISION_ACTION,
   dm,
   money,
-  money0,
-  nInstruments,
-  nTxns,
   pct,
   pctTarget,
   pp,
   qty,
-  txnType,
-  WEEKDAY_INDEX,
 } from "./labels.js";
 import { S } from "./logic.strings.js";
 
-// Structural types (a subset of api.ts) keep this module free of the transport.
-export interface SignalLike {
-  id: number;
-  rule_id: string;
-  kind: string;
-  severity: string;
-  status: string;
-  message: string;
-  instrument_label: string | null;
-  payload: Record<string, unknown>;
-  first_seen_at: string | null;
-  decisions: { action: string; quantity: number | null; created_at: string | null }[];
-}
 export interface BucketLike {
   bucket_id: string;
   weight: number | null;
@@ -42,123 +22,6 @@ export interface BucketLike {
   value: number;
   to_target: number;
   out_of_band: boolean | null;
-}
-export interface BandPolicy {
-  absolute_band_pp: number;
-  relative_band: number;
-  min_trade_value: number;
-}
-
-const n = (v: unknown): number | null =>
-  typeof v === "number" && Number.isFinite(v)
-    ? v
-    : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))
-      ? Number(v)
-      : null;
-const s = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
-
-/** Severity dot / tag of a signal: action (red), review (amber), resolved (grey). */
-export function signalTone(
-  sig: Pick<SignalLike, "severity" | "status">,
-): "action" | "review" | "resolved" {
-  if (sig.status === "resolved" || sig.status === "expired") return "resolved";
-  return sig.severity === "action" ? "action" : "review";
-}
-
-/** Label of the instrument a signal is about: "CD Projekt (CDR)". */
-export function signalInstrument(sig: SignalLike): string | null {
-  const name = s(sig.payload.name) ?? sig.instrument_label;
-  const sym = s(sig.payload.symbol);
-  if (!name) return sym;
-  return sym && sym !== name ? `${name} (${sym})` : name;
-}
-
-/** Title of a signal by rule kind (copy deck "Signals"). Custom rules keep their message. */
-export function signalTitle(sig: SignalLike): string {
-  const p = sig.payload;
-  const inst = s(p.name) ?? sig.instrument_label ?? s(p.symbol) ?? "";
-  switch (sig.kind) {
-    case "drawdown_from_high":
-      return S.titleDrawdown(pctTarget(n(p.threshold)));
-    case "allocation_drift": {
-      const b = bucketLabel(s(p.bucket_id));
-      return b ? S.titleDrift(b) : S.titleDriftPlain;
-    }
-    case "position_concentration":
-      return S.titleConcentration(inst);
-    case "contribution_gap":
-      return S.titleContributionGap;
-    case "loss_from_cost":
-      return S.titleLoss(pctTarget(n(p.threshold)));
-    case "gain_from_cost":
-      return S.titleGain(pctTarget(n(p.threshold)));
-    case "cash_level":
-      return p.direction === "above_max" ? S.titleCashHigh : S.titleCashLow;
-    case "tagged_weight":
-      return S.titleTagged(Array.isArray(p.tags) ? p.tags.join(", ") : "");
-    default:
-      return sig.message || S.titleCustom; // never the strategy's rule id (FE-A A6)
-  }
-}
-
-/** Facts of a signal: "zmierzono -18,4 % · próg 15 %" plus extras (copy deck). `money` in base currency. */
-export function signalFacts(
-  sig: SignalLike,
-  base = "PLN",
-): { measured?: string; limit?: string; extra?: string } {
-  const p = sig.payload;
-  switch (sig.kind) {
-    case "drawdown_from_high":
-      return {
-        measured: pct(-(n(p.drawdown) ?? 0)),
-        limit: S.threshold(pctTarget(n(p.threshold))),
-      };
-    case "allocation_drift": {
-      const over = n(p.drift_value_base);
-      const target = n(p.target),
-        abs = n(p.absolute_band_pp) ?? 5,
-        rel = n(p.relative_band);
-      const half =
-        target != null && rel != null && rel > 0 ? Math.min(abs, rel * target * 100) : abs;
-      return {
-        measured: pp(n(p.drift_pp)),
-        limit: S.band(pp(half).replace(/^\+/, "")),
-        extra:
-          over == null
-            ? undefined
-            : (over > 0 ? S.aboveTarget : S.belowTarget)(
-                money0(Math.abs(over), s(p.currency) ?? base),
-              ),
-      };
-    }
-    case "position_concentration":
-      return { measured: pct(n(p.weight)), limit: S.max(pctTarget(n(p.max_weight))) };
-    case "loss_from_cost":
-    case "gain_from_cost":
-      return {
-        measured: pct(n(p.unrealized_pct), true),
-        limit: S.threshold(pctTarget(n(p.threshold))),
-      };
-    case "cash_level": {
-      const lim =
-        p.direction === "above_max"
-          ? S.max(pctTarget(n(p.max_weight)))
-          : S.min(pctTarget(n(p.min_weight)));
-      return { measured: pct(n(p.cash_weight)), limit: lim };
-    }
-    case "contribution_gap": {
-      const last = s(p.last_deposit);
-      const day = n(p.day_of_month);
-      return {
-        measured: last ? S.lastDeposit(dm(last)) : S.noDeposits,
-        limit: S.depositPlan(day, n(p.grace_days) ?? 10),
-      };
-    }
-    case "tagged_weight":
-      return { measured: pct(n(p.weight)), limit: S.max(pctTarget(n(p.max_weight))) };
-    default:
-      return {};
-  }
 }
 
 /** Latest decision's short label: "decyzja: dokupuję 20 szt." */
@@ -171,13 +34,6 @@ export function decisionTag(
       ? S.pieces(qty(d.quantity))
       : "";
   return S.decisionTag(DECISION_ACTION[d.action] ?? d.action, q);
-}
-
-/** Undecided first (action before review, newest first), decided at the bottom (design: a decided
- * signal moves to the bottom of the rail). */
-export function orderSignals<T extends SignalLike>(list: T[]): T[] {
-  const rank = (x: T) => (x.decisions.length ? 2 : 0) + (x.severity === "action" ? 0 : 1);
-  return [...list].sort((a, b) => rank(a) - rank(b) || b.id - a.id);
 }
 
 /** Next planned deposit date (contribution_gap "Odłóż do"): the plan's day in this or next month. */
@@ -199,29 +55,6 @@ export function nextDeposit(today: string, day: number | null): string {
 }
 
 // ---- allocation ------------------------------------------------------------------
-
-/** Rebalance band around a target: out of band when |drift| > absolute pp OR |drift| / target >
- * relative ("whichever first"), so the band's half-width is the narrower of the two. */
-export function bandFor(target: number, policy: BandPolicy | null): [number, number] | null {
-  if (!policy) return null;
-  const abs = policy.absolute_band_pp / 100;
-  const rel = policy.relative_band > 0 && target > 0 ? policy.relative_band * target : abs;
-  const half = Math.min(abs, rel);
-  return [Math.max(0, target - half), target + half];
-}
-
-/** Bar scale (design decision 9): max(target, current) + band over all rows, rounded up to 10 %. */
-export function allocScale(
-  rows: { weight: number | null; target?: number | null }[],
-  policy: BandPolicy | null,
-): number {
-  const band = policy ? policy.absolute_band_pp / 100 : 0;
-  const top = Math.max(
-    0.1,
-    ...rows.map((r) => Math.max(r.weight ?? 0, r.target ?? 0) + (r.target != null ? band : 0)),
-  );
-  return Math.min(1, Math.ceil(top * 10 - 1e-9) / 10);
-}
 
 /** Effect of a planned trade on its bucket (buying with the account's cash keeps the total). */
 export function decisionEffect(args: {
@@ -254,198 +87,6 @@ export function decisionEffect(args: {
 }
 
 // ---- weekly review ---------------------------------------------------------------
-
-/** Is the weekly review due? The newest digest weekday on/before today is later than the last
- * review (or there was none). Mirrors the backend's review_due for mock data / older servers. */
-export function reviewDue(
-  today: string,
-  digestWeekday: string,
-  lastReview: string | null,
-): boolean {
-  const [y = Number.NaN, m = Number.NaN, d = Number.NaN] = today.split("-").map(Number);
-  const t = new Date(y, m - 1, d);
-  const want = WEEKDAY_INDEX[digestWeekday] ?? 0;
-  const back = (t.getDay() - want + 7) % 7;
-  const digest = new Date(y, m - 1, d - back);
-  if (!lastReview) return true;
-  const [ly = Number.NaN, lm = Number.NaN, ld = Number.NaN] = lastReview
-    .slice(0, 10)
-    .split("-")
-    .map(Number);
-  return new Date(ly, lm - 1, ld) < digest;
-}
-
-export interface ChangeRow {
-  key: "value" | "import" | "signals" | "dividends" | "prices" | "strategy" | "decisions";
-  label: string;
-  main: string;
-  sub: string;
-  tone?: "pos" | "neg";
-}
-
-export interface DigestLike {
-  since: string;
-  as_of: string;
-  value: {
-    currency: string;
-    then: number | null;
-    now: number;
-    change: number | null;
-    change_pct: number | null;
-  };
-  signals: {
-    new: SignalLike[];
-    escalated: SignalLike[];
-    resolved: SignalLike[];
-    open: number;
-    undecided: number;
-  };
-  imports: {
-    inserted: number;
-    account_id: number;
-    account_name?: string | null;
-    created_at: string;
-    new_instruments: number;
-    file_name: string;
-  }[];
-  transactions: { count: number; by_type: Record<string, number>; manual: number };
-  decisions: { action: string }[];
-  dividends: Record<string, number>;
-  price_moves: { label: string; change_pct: number }[];
-  warnings: { kind: string }[];
-  stale_count: number;
-  strategy: { version: number | null; state: string; changed_since: boolean };
-}
-
-/** The "Co się zmieniło" rows of the review band (only rows with something to say, plus value and
- * strategy which always say where things stand). */
-export function changeRows(dg: DigestLike, accounts: AccountLike[] = []): ChangeRow[] {
-  const rows: ChangeRow[] = [];
-  const c = dg.value.currency;
-  if (dg.value.change != null && dg.value.then != null) {
-    rows.push({
-      key: "value",
-      label: S.rowValue,
-      tone: dg.value.change >= 0 ? "pos" : "neg",
-      main: `${money(dg.value.change, c, true)}${dg.value.change_pct != null ? ` (${pct(dg.value.change_pct, true)})` : ""}`,
-      sub: `${money(dg.value.then, c)} → ${money(dg.value.now, c)} · benchmark: -`,
-    });
-  } else {
-    rows.push({
-      key: "value",
-      label: S.rowValue,
-      main: money(dg.value.now, c),
-      sub: S.noStartValuation,
-    });
-  }
-  if (dg.imports.length || dg.transactions.count) {
-    const imported = dg.imports.reduce((a, b) => a + b.inserted, 0);
-    const byAcc = [
-      ...new Set(
-        dg.imports.map((b) => {
-          const acc = accounts.find((a) => a.id === b.account_id);
-          return acc ? accountLabel(acc, accounts) : (b.account_name ?? "");
-        }),
-      ),
-    ].filter(Boolean);
-    const types = Object.entries(dg.transactions.by_type)
-      .sort((a, b) => b[1] - a[1])
-      .map(([t, k]) => `${k} × ${txnType(t)}`)
-      .join(", ");
-    const newInst = dg.imports.reduce((a, b) => a + b.new_instruments, 0);
-    const parts = [
-      types,
-      newInst ? S.toClassify(nInstruments(newInst)) : "",
-      dg.transactions.manual ? S.manualCount(dg.transactions.manual) : "",
-    ].filter(Boolean);
-    rows.push({
-      key: "import",
-      label: S.rowImport,
-      main: `${nTxns(imported || dg.transactions.count)}${byAcc.length ? S.fromAccounts(byAcc.join(", ")) : ""}${dg.imports[0] ? ` (${dm(dg.imports[0].created_at)})` : ""}`,
-      sub: parts.join(" · "),
-    });
-  }
-  const sg = dg.signals;
-  if (sg.new.length || sg.escalated.length || sg.resolved.length) {
-    const main = [
-      sg.new.length ? S.nNew(sg.new.length) : "",
-      sg.escalated.length ? S.nEscalated(sg.escalated.length) : "",
-      sg.resolved.length ? S.nResolved(sg.resolved.length) : "",
-    ]
-      .filter(Boolean)
-      .join(", ");
-    const names = (l: SignalLike[]) =>
-      l
-        .map((x) => signalTitle(x).replace(/^([A-Z\u0141\u015A\u017B])/, (m0) => m0.toLowerCase()))
-        .join(", ");
-    const sub = [
-      sg.new.length ? S.subNew(names(sg.new)) : "",
-      sg.escalated.length ? S.subEscalated(names(sg.escalated)) : "",
-      sg.resolved.length ? S.subResolved(names(sg.resolved)) : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    rows.push({ key: "signals", label: S.rowSignals, main, sub });
-  }
-  const divs = Object.entries(dg.dividends).filter(([, v]) => v);
-  if (divs.length) {
-    rows.push({
-      key: "dividends",
-      label: S.rowDividends,
-      tone: "pos",
-      main: divs.map(([cc, v]) => money(v, cc, true)).join(" · "),
-      sub: S.dividendsSub,
-    });
-  }
-  if (dg.stale_count || dg.price_moves.length) {
-    const moves = dg.price_moves
-      .slice(0, 3)
-      .map((m) => `${m.label} ${pct(m.change_pct, true)}`)
-      .join(", ");
-    rows.push({
-      key: "prices",
-      label: S.rowPrices,
-      main: dg.stale_count
-        ? S.noFreshQuote(nInstruments(dg.stale_count))
-        : S.bigMoves(dg.price_moves.length),
-      sub: moves ? S.biggestMoves(moves) : S.movesInWarnings,
-    });
-  }
-  if (dg.decisions.length) {
-    rows.push({
-      key: "decisions",
-      label: S.rowDecisions,
-      main: S.nDecisions(dg.decisions.length),
-      sub: S.inJournal,
-    });
-  }
-  const st = dg.strategy;
-  rows.push({
-    key: "strategy",
-    label: S.rowStrategy,
-    main:
-      st.version == null ? S.noStrategy : st.changed_since ? S.newVersion(st.version) : S.unchanged,
-    sub:
-      st.version == null
-        ? S.strategyPending
-        : `v${st.version}${st.state === "partial" ? S.someRulesInactive : st.state === "invalid" ? S.fileErrors : ""}`,
-  });
-  return rows;
-}
-
-/** Number of changes the header button announces ("Przegląd tygodnia · 5 zmian"). */
-export function changeCount(dg: DigestLike): number {
-  return (
-    dg.signals.new.length +
-    dg.signals.escalated.length +
-    dg.signals.resolved.length +
-    dg.imports.length +
-    (dg.transactions.manual ? 1 : 0) +
-    (Object.values(dg.dividends).some(Boolean) ? 1 : 0) +
-    dg.price_moves.length +
-    (dg.strategy.changed_since ? 1 : 0)
-  );
-}
 
 // ---- warnings --------------------------------------------------------------------
 export interface WarningItem {
@@ -782,13 +423,6 @@ export function txnCash(
   const fee = v.fee ?? 0;
   return r.sign === "out" ? -(gross + fee) : gross - fee;
 }
-
-/** "{n} koszyk(i) poza pasmem" / "wszystko w paśmie". */
-export function bandTag(outOfBand: number): string {
-  return outOfBand ? S.bandOut(outOfBand) : S.allInBand;
-}
-
-export { assetClass };
 
 /** A rule run error (backend, English) -> short text for the Reguły KPI. */
 export function runError(msg: string | null | undefined): string {

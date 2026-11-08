@@ -4,11 +4,11 @@
 // The server text stays English; an unknown code, or a template whose params are missing, falls back
 // to that English text. Pure module (no React, no DOM): tested in frontend/tests/messages.test.mjs, and the
 // backend test tests/test_message_codes.py checks that every backend code has a label here. Also the
-// performance data-quality notes (`perf.<code>`) and worker job outcomes (`worker.<code>`).
+// performance data-quality notes (`perf.<code>`).
 //
 // English UI (lang() === "en", docs/agents/localization.md): `label()` returns null for every code, so
 // each helper shows the server's own English text. The few codes the UI shows without a server text
-// (frontend-only codes, the moved-app parts, connector failure kinds) take their English from
+// (frontend-only codes, connector failure kinds) take their English from
 // EN_LABELS in messages.strings.ts. The Polish tables and the formatting helpers below (Polish quotes,
 // "pl-PL" numbers, dd.mm.yyyy dates) only build Polish labels and never run in English;
 // exprDetail / yamlProblem return the English sentence unchanged.
@@ -16,7 +16,6 @@
 import { lang } from "@cashu/i18n";
 import { hideAmount } from "./incognito.js";
 import { EN_LABELS, S } from "./messages.strings.js";
-import { serverDate } from "./time.js";
 
 export type Params = Record<string, unknown>;
 /** A template ("{key}" placeholders) or a function; null from a function = fall back to English. */
@@ -62,13 +61,6 @@ const frac = (v: unknown) => {
 const dmyText = (v: unknown) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
   return m ? `${m[3]}.${m[2]}.${m[1]}` : String(v);
-};
-/** A server datetime in params -> "5.10 14:30" in local time (time.ts reads a missing offset as UTC). */
-const whenText = (v: unknown) => {
-  const t = serverDate(String(v));
-  return t
-    ? `${t.getDate()}.${String(t.getMonth() + 1).padStart(2, "0")} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`
-    : String(v);
 };
 
 /** Polish plural: plural(5, "reguła", "reguły", "reguł") -> "5 reguł". */
@@ -649,26 +641,6 @@ export const LABELS: Record<string, Label> = {
       ? `benchmark: ceny tylko do ${dmyText(p.last_date)}, bez porównania`
       : "benchmark: nieaktualne ceny, bez porównania",
 
-  // ---- worker jobs (`code` + `params` of GET /api/system worker.jobs[]; `detail` is the English fallback) ----
-  "worker.eb_not_configured": "Enable Banking nie jest skonfigurowany",
-  "worker.no_bank_sessions": "brak sesji bankowych",
-  "worker.throttled": (p) =>
-    has(p, "until") ? `limit banku do ${whenText(p.until)}` : "limit banku",
-  "worker.disabled_for_run": "wyłączone w tym przebiegu",
-  "worker.busy": "inny przebieg w toku",
-  "worker.connectors_not_due": "konektory: jeszcze nie pora",
-  "worker.notifier_none": "bez powiadomień",
-  "worker.digest_already_sent": "już wysłane dziś",
-  // params {rule} = the raw rule id (or index): never shown; the payload carries no kind for a Polish label
-  "worker.rule_inactive": "reguła nieaktywna (błąd w strategy.yaml)",
-  "worker.strategy_invalid": "strategia z błędem, reguły nie ruszyły",
-  "worker.market_failed": "notowania niedostępne",
-  "worker.prices_failed": "brak notowań {instrument}",
-  "worker.fx_failed": "brak kursu {currency}",
-
-  // ---- moved app (GET /api/system worker.relocation, F7 PK11) ----------------------------------------------
-  "relocation.missing": "Praca w tle wskazuje program, którego już nie ma",
-  "relocation.other_program": "Praca w tle wskazuje inną kopię aplikacji",
   // connectors (F10): the approval / bindings routes send `connector.<code>`, the import previews `connector_<kind>`
   "error.connector.not_found": "Nie znaleziono konektora: mógł zostać usunięty",
   "error.connector.conflict":
@@ -716,8 +688,6 @@ export const LABELS: Record<string, Label> = {
   "connector.forbidden_import":
     "Import w konektorze łamie regułę importów: tylko pliki z katalogu konektora i wbudowane node:.",
   "connector.module_parse_error": "Moduł konektora nie wczytuje się albo ma błąd składni.",
-  "relocation.moved": "Aplikacja została przeniesiona z {path}",
-  "relocation.mcp_readd": "Dodaj ponownie serwer MCP w Claude Code (polecenie w Agent AI).",
 };
 
 /** Fill "{name}" placeholders; null when a placeholder has no value (the caller falls back). */
@@ -849,42 +819,4 @@ export function describePerfNote(n: {
   message?: string | null;
 }): string {
   return label(n.code ? `perf.${n.code}` : null, n.params) ?? n.message ?? n.code ?? "";
-}
-
-/** A worker job's outcome (`code` + `params`, F7): the Polish label, else the English `detail`. */
-export function describeJob(j: {
-  code?: string | null;
-  params?: Params | null;
-  detail?: string | null;
-}): string | null {
-  return label(j.code ? `worker.${j.code}` : null, j.params) ?? j.detail ?? null;
-}
-
-/** The two parts of a moved app / stale config (F7 PK11, R8), each one line or null when fine: `worker` (the
- * launchd job, fixed by reinstalling) and `mcp` (the MCP lines, the owner re-adds them and marks it done). An
- * older server's flat object (`worker` reason + `app_moved_from`) maps onto the same parts. */
-export function relocationParts(r: unknown): { worker: string | null; mcp: string | null } {
-  if (!r || typeof r !== "object") return { worker: null, mcp: null };
-  const o = r as { worker?: unknown; mcp?: unknown; app_moved_from?: unknown };
-  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
-  const part = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : null);
-  const legacy = !("mcp" in o);
-  const workerReason = legacy ? str(o.worker) : str(part(o.worker)?.reason);
-  const mcpPart = legacy
-    ? str(o.app_moved_from)
-      ? { app_moved_from: o.app_moved_from }
-      : null
-    : part(o.mcp);
-  const movedFrom = str(mcpPart?.app_moved_from);
-  return {
-    worker: workerReason ? (label(`relocation.${workerReason}`) ?? workerReason) : null,
-    mcp: mcpPart
-      ? [
-          movedFrom ? label("relocation.moved", { path: movedFrom }) : null,
-          label("relocation.mcp_readd"),
-        ]
-          .filter(Boolean)
-          .join(". ")
-      : null,
-  };
 }

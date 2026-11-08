@@ -4,7 +4,7 @@
 // and the watch table. Every text is formatted here; the views lay it out.
 import { S as IL } from "@cashu/i18n/investments/v2/InstLabel.strings";
 import { S } from "@cashu/i18n/investments/v2/Portfolio.strings";
-import { KIND_WORD, S as W } from "@cashu/i18n/investments/v2/Watchlist.strings";
+import { S as W } from "@cashu/i18n/investments/v2/Watchlist.strings";
 import type {
   CardRow,
   HintChipProps,
@@ -41,7 +41,8 @@ import {
   weekChange,
 } from "@cashu/ui-logic/investments/v2/logic";
 import { S as L } from "@cashu/ui-logic/investments/v2/logic.strings";
-import type { PositionV2, WatchItem } from "@cashu/ui-logic/investments/v2/types";
+import type { PositionV2 } from "@cashu/ui-logic/investments/v2/types";
+import { watchSummary } from "../../../signals/watchModel.js";
 import { gidOf } from "../legacyWire.js";
 import type { InvestmentsHomeData } from "../useInvestmentsHomeData.js";
 import { type InstState, instStateOf, isHeld, tileOf } from "./instState.js";
@@ -268,22 +269,6 @@ function gainOf(
         : null,
     touchTitle: gain != null ? `${label} ${money(gain, c, true)}` : undefined,
   };
-}
-
-/** "1 alert: ponizej 560,00 $" / "2 alerty" / the note / "bez alertu". */
-function watchSummary(w: WatchItem): string {
-  const n = w.alerts.live;
-  const near = w.alerts.nearest;
-  const cur = w.price?.currency ?? w.instrument?.currency;
-  if (n && near) {
-    const what =
-      near.level != null
-        ? `${(KIND_WORD as Record<string, string | undefined>)[near.kind] ?? near.title} ${price(near.level, cur)}`
-        : near.title;
-    return `${W.alerts(n)}: ${what}`;
-  }
-  if (n) return W.alerts(n);
-  return w.note ? w.note : W.noAlert;
 }
 
 export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): AssetListProps {

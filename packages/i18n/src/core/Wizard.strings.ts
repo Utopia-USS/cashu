@@ -47,10 +47,6 @@ export const PRIVACY = catalog({
 
 export const S = catalog({
   nameRequired: { pl: "Podaj nazwę profilu.", en: "Enter a profile name." },
-  nameTaken: {
-    pl: "Profil o tej nazwie już istnieje.",
-    en: "A profile with this name already exists.",
-  },
   welcome: { pl: "Witaj w cashU", en: "Welcome to cashU" },
   newProfile: { pl: "Nowy profil", en: "New profile" },
   newProfileNamed: {
@@ -69,13 +65,9 @@ export const S = catalog({
     pl: "Dotyczy tylko narzędzi MCP (Claude Code, Claude Desktop). Analizy w aplikacji nie wychodzą z komputera.",
     en: "Applies only to MCP tools (Claude Code, Claude Desktop). Analyses in the app never leave the computer.",
   },
-  closeEsc: { pl: "Zamknij (Esc)", en: "Close (Esc)" },
   stepProfile: { pl: "Profil", en: "Profile" },
   stepModules: { pl: "Moduły", en: "Modules" },
   stepPrivacy: { pl: "Prywatność", en: "Privacy" },
-  skip: { pl: "Pomiń", en: "Skip" },
-  legacyData: { pl: "Dane z poprzedniej wersji: ", en: "Data from the previous version: " },
-  legacyDataAfter: { pl: ". Zamknij aplikację i uruchom:", en: ". Quit the app and run:" },
   profileName: { pl: "Nazwa profilu", en: "Profile name" },
   baseCurrencyTitle: {
     pl: "Waluta nagłówka wartości netto; inne waluty osobno, bez przeliczania.",
@@ -98,7 +90,6 @@ export const S = catalog({
     en: "A folder for Claude Code: CLAUDE.md, the profile's MCP server, module skills. Data only through MCP.",
   },
   workspaceFolder: { pl: "Folder workspace", en: "Workspace folder" },
-  workspacePlaceholder: { pl: "~/Documents/cashU/<profil>", en: "~/Documents/cashU/<profile>" },
   workspaceLater: {
     pl: "Do utworzenia później: Ustawienia › Agent AI.",
     en: "You can create it later: Settings › AI agent.",
@@ -113,18 +104,9 @@ export const S = catalog({
   amountsLevel: { pl: "poziom z kwotami · ", en: "level with amounts · " },
   amountsLevelHint: { pl: "kwoty bez numerów kont", en: "amounts without account numbers" },
   toChoose: { pl: "do wyboru", en: "not chosen yet" },
-  data: { pl: "Dane", en: "Data" },
   workspace: { pl: "Workspace agenta", en: "Agent workspace" },
   defaultFolder: { pl: "folder domyślny", en: "default folder" },
   skipped: { pl: "pominięty", en: "skipped" },
-  createFailed: {
-    pl: (err: string) => `Nie udało się utworzyć profilu: ${err}`,
-    en: (err: string) => `Could not create the profile: ${err}`,
-  },
-  workspaceFailed: {
-    pl: (err: string) => `Profil utworzony, workspace nie: ${err}`,
-    en: (err: string) => `Profile created, workspace not: ${err}`,
-  },
   back: { pl: "← Wstecz", en: "← Back" },
   stepOf: { pl: (n: number) => `Krok ${n} z 3`, en: (n: number) => `Step ${n} of 3` },
   picked: {
@@ -141,6 +123,4 @@ export const S = catalog({
   },
   next: { pl: "Dalej →", en: "Next →" },
   creatingWorkspace: { pl: "Tworzę workspace…", en: "Creating the workspace…" },
-  creatingProfile: { pl: "Tworzę profil…", en: "Creating the profile…" },
-  createProfile: { pl: "Utwórz profil", en: "Create profile" },
 });

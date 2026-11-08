@@ -29,10 +29,6 @@ export const S = catalog({
     en: (n: number) =>
       `${enCount(n, "merchant", "merchants")} without a category · a rule remembers the choice.`,
   },
-  categoriesHint: {
-    pl: "Najczęstsi sprzedawcy bez kategorii; reguła zapamięta wybór.",
-    en: "The most frequent merchants without a category; a rule remembers the choice.",
-  },
   review: { pl: "Przejrzyj", en: "Review" },
   expensesLink: { pl: "Wydatki →", en: "Expenses →" },
   transfersTitle: { pl: "Przelewy między kontami", en: "Transfers between accounts" },

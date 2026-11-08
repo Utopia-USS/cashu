@@ -11,18 +11,6 @@ export const CS = catalog({
     pl: "Dopiero po pierwszym zatwierdzonym imporcie i tylko czyste przebiegi (bez ostrzeżeń, same nowe rekordy). Inaczej import czeka na Twoją decyzję.",
     en: "Only after the first approved import and only clean runs (no warnings, only new records). Otherwise the import waits for your decision.",
   },
-  modified: {
-    pl: (n: number) => plCount(n, "zmieniony", "zmienione", "zmienionych"),
-    en: (n: number) => `${n} changed`,
-  },
-  added: {
-    pl: (n: number) => plCount(n, "dodany", "dodane", "dodanych"),
-    en: (n: number) => `${n} added`,
-  },
-  removed: {
-    pl: (n: number) => plCount(n, "usunięty", "usunięte", "usuniętych"),
-    en: (n: number) => `${n} removed`,
-  },
   kindFailed: {
     pl: (kind: string) => `Konektor nie zadziałał (${kind}).`,
     en: (kind: string) => `The connector failed (${kind}).`,
@@ -36,9 +24,6 @@ export const CS = catalog({
     pl: (n: number) => plCount(n, "powiązanie", "powiązania", "powiązań"),
     en: (n: number) => enCount(n, "binding", "bindings"),
   },
-  secretsNone: { pl: "brak", en: "none" },
-  secretsMissing: { pl: (n: number) => `${n} brakuje`, en: (n: number) => `${n} missing` },
-  secretsSet: { pl: "ustawione", en: "set" },
   neverSynced: { pl: "jeszcze nie synchronizowano", en: "not synced yet" },
   lastSync: {
     pl: (when: string, status: string) => `ostatnia synchronizacja ${when} · ${status}`,
@@ -48,34 +33,6 @@ export const CS = catalog({
     pl: (when: string) => ` · ostatnia udana ${when}`,
     en: (when: string) => ` · last successful ${when}`,
   },
-  newRecords: {
-    pl: (n: number) => plCount(n, "nowy rekord", "nowe rekordy", "nowych rekordów"),
-    en: (n: number) => enCount(n, "new record", "new records"),
-  },
-  previousPending: {
-    pl: (records: string) => `Poprzedni import czeka na zatwierdzenie · ${records}`,
-    en: (records: string) => `The previous import is waiting for approval · ${records}`,
-  },
-  importPending: {
-    pl: (records: string) => `Import czeka na zatwierdzenie · ${records}`,
-    en: (records: string) => `The import is waiting for approval · ${records}`,
-  },
-  saved: {
-    pl: (records: string, account: string) => `Zapisano ${records} · ${account}`,
-    en: (records: string, account: string) => `Saved ${records} · ${account}`,
-  },
-  noNewRecords: { pl: "Brak nowych rekordów", en: "No new records" },
-  skipped: {
-    pl: (name: string, why: string) => `${name}: pominięty · ${why}`,
-    en: (name: string, why: string) => `${name}: skipped · ${why}`,
-  },
-  secretsLeft: {
-    pl: (n: number, id: string) =>
-      `${plCount(n, "sekret został", "sekrety zostały", "sekretów zostało")} w pęku kluczy macOS (cashu · connector/${id}/…)`,
-    en: (n: number, id: string) =>
-      `${enCount(n, "secret was", "secrets were")} left in the macOS keychain (cashu · connector/${id}/…)`,
-  },
-  ownImporter: { pl: "Własny importer.", en: "Custom importer." },
 });
 
 /** Status vocabulary (D8): label, tone, solid. */
@@ -125,18 +82,4 @@ export const KIND_SHORT = catalog({
   denied_host: { pl: "host poza listą", en: "host not allowed" },
   forbidden_import: { pl: "niedozwolony import", en: "import not allowed" },
   module_parse_error: { pl: "błąd modułu", en: "module error" },
-});
-
-/** Why a module sync skipped a binding. */
-export const SKIPPED = catalog({
-  not_approved: { pl: "konektor niezatwierdzony", en: "connector not approved" },
-  missing_secret: { pl: "brak sekretu", en: "secret missing" },
-  backoff: { pl: "limit API serwisu", en: "service API limit" },
-  interval: { pl: "pobrany w ciągu 20 h", en: "fetched within 20 h" },
-  busy: { pl: "synchronizacja już trwa", en: "sync already running" },
-  failed: { pl: "błąd konektora", en: "connector error" },
-  pending_exists: {
-    pl: "poprzedni import czeka na zatwierdzenie",
-    en: "the previous import is waiting for approval",
-  },
 });

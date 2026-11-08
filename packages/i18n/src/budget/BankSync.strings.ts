@@ -2,12 +2,6 @@
 import { catalog, enCount, plCount } from "../index.js";
 
 export const S = catalog({
-  connector: { pl: "Konektor", en: "Connector" },
-  view: { pl: "Zobacz", en: "View" },
-  syncTitleConnectors: {
-    pl: "Pobierz nowe transakcje z banków (Enable Banking) i konektorów",
-    en: "Fetch new transactions from banks (Enable Banking) and connectors",
-  },
   syncTitleBanks: {
     pl: "Pobierz nowe transakcje z banków (Enable Banking)",
     en: "Fetch new transactions from banks (Enable Banking)",
@@ -15,8 +9,6 @@ export const S = catalog({
   syncTitleNone: { pl: "Brak kont bankowych do synchronizacji", en: "No bank accounts to sync" },
   syncing: { pl: "Synchronizuję…", en: "Syncing…" },
   sync: { pl: "↻ Synchronizuj", en: "↻ Sync" },
-  imported: { pl: "Zaimportowano", en: "Imported" },
-  rejected: { pl: "Odrzucono", en: "Rejected" },
   pendingTitle: {
     pl: "Import z konektora czeka na zatwierdzenie",
     en: "An import from a connector is waiting for approval",

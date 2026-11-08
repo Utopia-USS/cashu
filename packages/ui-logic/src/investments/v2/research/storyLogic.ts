@@ -48,10 +48,6 @@ export function noteHeadline(n: Pick<ResearchNote, "title" | "details">): string
   return h?.trim() || n.title;
 }
 
-/** True when the note has a headline in plain words (else the title with its figures stands in). */
-export const hasPlainHeadline = (n: Pick<ResearchNote, "title" | "details">) =>
-  noteHeadline(n) !== n.title;
-
 export interface StoryTopic {
   key: string;
   label: string;

@@ -3,5 +3,4 @@ import { catalog } from "@cashu/i18n";
 
 export const T = catalog({
   synced: { pl: "Dane zostały odświeżone.", en: "Data refreshed." },
-  setup: { pl: "Moduł budżetu jest wyłączony.", en: "The budget module is off." },
 });

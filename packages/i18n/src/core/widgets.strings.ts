@@ -1,18 +1,11 @@
 // Texts of the v2 widget primitives (frontend/src/widgets.tsx). See docs/agents/localization.md.
-import { catalog, enCount, plForm } from "../index.js";
+import { catalog } from "../index.js";
 
 export const S = catalog({
   addedByAgent: { pl: "Dodane przez agenta", en: "Added by the agent" },
   alertMet: { pl: "spełniony", en: "met" },
   alertNear: { pl: "blisko", en: "near" },
   alertWaiting: { pl: "czeka", en: "waiting" },
-  unreadNotes: {
-    pl: (n: number) =>
-      n === 1
-        ? "1 nowa notatka research"
-        : `${n} ${plForm(n, "nowa notatka", "nowe notatki", "nowych notatek")} research`,
-    en: (n: number) => enCount(n, "new research note", "new research notes"),
-  },
 });
 
 export const POLARITY = catalog({

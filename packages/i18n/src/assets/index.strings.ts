@@ -7,5 +7,4 @@ export const S = catalog({
     pl: "Nieruchomości, auta i inne aktywa wyceniane ręcznie",
     en: "Property, cars and other manually valued assets",
   },
-  added: { pl: "Dodano", en: "Added" },
 });

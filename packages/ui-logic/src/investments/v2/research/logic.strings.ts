@@ -42,21 +42,6 @@ export const DIRECTION_LABEL = catalog({
   flat: { pl: "stabilnie", en: "stable" },
 });
 
-export const THESIS_FIELD_LABEL = catalog({
-  entry_type: { pl: "Typ wejścia", en: "Entry type" },
-  thesis: { pl: "Wejście", en: "Entry" },
-  invalidation: { pl: "Unieważnienie", en: "Invalidation" },
-  exit_plan: { pl: "Plan wyjścia", en: "Exit plan" },
-  size_plan: { pl: "Wielkość i dokupienia", en: "Size and adding to it" },
-});
-
-/** Community noise scale (`details.scale`). */
-export const NOISE_SCALE = catalog({
-  small: { pl: "szum: skala mała", en: "noise: small scale" },
-  medium: { pl: "szum: skala średnia", en: "noise: medium scale" },
-  large: { pl: "szum: skala duża", en: "noise: large scale" },
-});
-
 type Rel = "invalidates" | "weakens" | "fulfills" | "supports";
 /** Relation verbs: [one, few] (Polish) / [one, other] (English). */
 const PL_VERB: Record<Rel, [string, string]> = {
@@ -109,14 +94,6 @@ export const S = catalog({
       `${menu}: sobota 07:00, folder ${path}, polecenie ${prompt}`,
     en: (menu: string, path: string, prompt: string) =>
       `${menu}: Saturday 07:00, folder ${path}, prompt ${prompt}`,
-  },
-  today: { pl: "dziś", en: "today" },
-  yesterday: { pl: "wczoraj", en: "yesterday" },
-  signalOpen: { pl: "sygnał otwarty", en: "signal open" },
-  signalClosed: { pl: "sygnał zamknięty", en: "signal closed" },
-  expiry: {
-    pl: (expired: boolean, d: string) => `${expired ? "wygasła" : "wygasa"} ${d}`,
-    en: (expired: boolean, d: string) => `${expired ? "expired" : "expires"} ${d}`,
   },
   source: { pl: "źródło", en: "source" },
 

@@ -1,7 +1,6 @@
 import { catalog } from "@cashu/i18n";
 
 export const T = catalog({
-  title: { pl: "Urządzenia", en: "Devices" },
   unavailable: {
     pl: "Zarządzanie urządzeniami jest niedostępne.",
     en: "Device management is unavailable.",

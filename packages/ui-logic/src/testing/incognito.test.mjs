@@ -1,7 +1,7 @@
 // Incognito: absolute amounts are masked, percentages stay.
 
 import assert from "node:assert/strict";
-import { cur, cur0, pctSigned, pln0 } from "@cashu/ui-logic/core/format";
+import { cur, cur0, pctSigned } from "@cashu/ui-logic/core/format";
 import { maskDigits, setIncognito } from "@cashu/ui-logic/core/incognito";
 import { money, money0, pct, qty } from "@cashu/ui-logic/investments/labels";
 import { test } from "vitest";
@@ -18,7 +18,6 @@ test("amount formatters mask while incognito is on, percentages do not", () => {
     for (const t of [
       cur(1234.5),
       cur0(400000, "EUR"),
-      pln0.format(8600),
       money(3240.15, "PLN", true),
       money0(11600),
       qty(120),

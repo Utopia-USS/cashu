@@ -31,10 +31,6 @@ export const S = catalog({
     pl: (err: string) => `Nie cofnięto: ${err}`,
     en: (err: string) => `Not undone: ${err}`,
   },
-  plansUnsupported: {
-    pl: "Serwer nie obsługuje planów wpłat: zaktualizuj aplikację.",
-    en: "The server does not support contribution plans: update the app.",
-  },
   planSaveFailed: {
     pl: (err: string) => `Nie zapisano planu: ${err}`,
     en: (err: string) => `Plan not saved: ${err}`,

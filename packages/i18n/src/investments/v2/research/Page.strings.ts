@@ -12,52 +12,12 @@ export const S = catalog({
   research: { pl: "Research", en: "Research" },
   runNow: { pl: "Uruchom teraz", en: "Run now" },
   scope: { pl: "Zakres", en: "Scope" },
-  everything: { pl: "Wszystko", en: "Everything" },
-  positionsN: { pl: (n: number) => `Pozycje · ${n}`, en: (n: number) => `Positions · ${n}` },
-  watchedN: { pl: (n: number) => `Obserwowane · ${n}`, en: (n: number) => `Watchlist · ${n}` },
-  candidatesN: { pl: (n: number) => `Kandydaci · ${n}`, en: (n: number) => `Candidates · ${n}` },
-  kind: { pl: "Rodzaj", en: "Kind" },
-  allKinds: { pl: "Wszystkie rodzaje", en: "All kinds" },
 
   // run strip
-  lastResearch: { pl: "Ostatni research", en: "Latest research" },
   running: { pl: "trwa", en: "running" },
   interrupted: { pl: "przerwany", en: "interrupted" },
   finished: { pl: "zakończony", en: "finished" },
-  notes: { pl: "Notatki", en: "Notes" },
-  nPositions: {
-    pl: (n: number) => plCount(n, "pozycja", "pozycje", "pozycji"),
-    en: (n: number) => enCount(n, "position", "positions"),
-  },
-  watchedCount: { pl: (n: number) => ` · ${n} obserwowane`, en: (n: number) => ` · ${n} watched` },
-  theses: { pl: "Tezy", en: "Theses" },
-  weakened: { pl: (n: number) => `${n} osłabione`, en: (n: number) => `${n} weakened` },
-  fulfilled: { pl: (n: number) => `${n} spełnione`, en: (n: number) => `${n} fulfilled` },
-  strengthened: { pl: (n: number) => `${n} wzmocnione`, en: (n: number) => `${n} strengthened` },
-  strengthenedOne: { pl: (n: number) => `${n} wzmocniona`, en: (n: number) => `${n} strengthened` },
-  noChanges: { pl: "bez zmian", en: "no changes" },
-  topics: { pl: "Tematy", en: "Topics" },
-  nNewNotes: {
-    pl: (n: number) => plCount(n, "nowa notatka", "nowe notatki", "nowych notatek"),
-    en: (n: number) => enCount(n, "new note", "new notes"),
-  },
-  noNewNotes: { pl: "bez nowych notatek", en: "no new notes" },
   candidates: { pl: "Kandydaci", en: "Candidates" },
-  nDismissed: {
-    pl: (n: number) => plCount(n, "odrzucony", "odrzuceni", "odrzuconych"),
-    en: (n: number) => `${n} dismissed`,
-  },
-  zeroDismissed: { pl: "0 odrzuconych", en: "0 dismissed" },
-  signalsTitle: {
-    pl: "Z notatek o sile 3 albo podważających tezę",
-    en: "From notes of strength 3 or invalidating the thesis",
-  },
-  signals: { pl: "Sygnały", en: "Signals" },
-  next: { pl: (d: string) => `następny: ${d} 07:00`, en: (d: string) => `next: ${d} 07:00` },
-  strategy: { pl: (v: number) => `strategia v${v}`, en: (v: number) => `strategy v${v}` },
-  level: { pl: (l: string) => `poziom ${l}`, en: (l: string) => `level ${l}` },
-  routineClaude: { pl: "rutyna Claude Code", en: "Claude Code routine" },
-  onDemand: { pl: "na żądanie · Claude Code", en: "on demand · Claude Code" },
 
   // candidates
   byStrategy: {
@@ -65,22 +25,6 @@ export const S = catalog({
     en: (v: number | null) => (v != null ? `by strategy v${v}` : "by the strategy"),
   },
   noCandidates: { pl: "Brak kandydatów.", en: "No candidates." },
-
-  // notes
-  macro: { pl: "makro", en: "macro" },
-  topic: { pl: "temat", en: "topic" },
-  since: { pl: (d: string) => ` · od ${d}`, en: (d: string) => ` · since ${d}` },
-  dismissedExpired: { pl: "odrzucone i wygasłe", en: "dismissed and expired" },
-  sortAria: { pl: "Sortowanie notatek", en: "Sort notes" },
-  sortDate: { pl: "data", en: "date" },
-  sortStrength: { pl: "siła", en: "strength" },
-  sortRelation: { pl: "relacja z tezą", en: "relation to the thesis" },
-  keysHint: {
-    pl: "j / k · x odrzuca · Enter otwiera źródło",
-    en: "j / k · x dismisses · Enter opens the source",
-  },
-  noNotes: { pl: "Brak notatek.", en: "No notes." },
-  showMore: { pl: (n: number) => `pokaż ${n} kolejnych`, en: (n: number) => `show ${n} more` },
 
   // runs
   scopePositions: { pl: "pozycje", en: "positions" },

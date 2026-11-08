@@ -8,7 +8,4 @@ export const S = catalog({
   optional: { pl: "opcjonalnie", en: "optional" },
   copied: { pl: "Skopiowano", en: "Copied" },
   copy: { pl: "Kopiuj", en: "Copy" },
-  notifications: { pl: "Powiadomienia", en: "Notifications" },
-  noData: { pl: "Brak danych.", en: "No data." },
-  closeEsc: { pl: "Zamknij (Esc)", en: "Close (Esc)" },
 });

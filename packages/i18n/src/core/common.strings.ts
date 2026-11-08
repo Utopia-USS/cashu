@@ -11,18 +11,6 @@ export const C = catalog({
   edit: { pl: "Edytuj", en: "Edit" },
   add: { pl: "Dodaj", en: "Add" },
   undo: { pl: "Cofnij", en: "Undo" },
-  done: { pl: "Gotowe", en: "Done" },
   next: { pl: "Dalej", en: "Next" },
-  back: { pl: "Wróć", en: "Back" },
   details: { pl: "Szczegóły", en: "Details" },
-  retry: { pl: "Spróbuj ponownie", en: "Try again" },
-  loading: { pl: "Wczytuję…", en: "Loading…" },
-  noData: { pl: "Brak danych", en: "No data" },
-  yes: { pl: "Tak", en: "Yes" },
-  no: { pl: "Nie", en: "No" },
-  /** "Nie udało się: <reason>" */
-  failed: {
-    pl: (reason: string) => `Nie udało się: ${reason}`,
-    en: (reason: string) => `Failed: ${reason}`,
-  },
 });

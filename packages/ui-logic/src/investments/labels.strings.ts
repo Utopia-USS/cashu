@@ -90,12 +90,6 @@ export const REGION = catalog({
   unknown: { pl: "nieznany", en: "unknown" },
 });
 
-export const VALUATION = catalog({
-  market: { pl: "rynek", en: "market" },
-  cost: { pl: "koszt", en: "cost" },
-  manual: { pl: "ręczna", en: "manual" },
-});
-
 export const WRAPPER = catalog({
   regular: { pl: "zwykłe", en: "regular" },
   ike: { pl: "IKE", en: "IKE" },
@@ -153,11 +147,4 @@ export const ENTRY_TYPE = catalog({
   sentiment_correction: { pl: "korekta sentymentu", en: "sentiment correction" },
   trend: { pl: "trend", en: "trend" },
   special_situation: { pl: "sytuacja specjalna", en: "special situation" },
-});
-
-export const RUN_STATUS = catalog({
-  ok: { pl: "ok", en: "ok" },
-  partial: { pl: "częściowy", en: "partial" },
-  failed: { pl: "błąd", en: "error" },
-  running: { pl: "w toku", en: "running" },
 });

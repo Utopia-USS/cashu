@@ -4,14 +4,7 @@
 import { normalizeNumberInput } from "@cashu/i18n";
 import type { Account } from "../core/account.js";
 import { S } from "./logic.strings.js";
-import type {
-  BudgetCurrencies,
-  CushionSettings,
-  InvestingLink,
-  MonthClose,
-  StatementCommit,
-  StatementRow,
-} from "./types.js";
+import type { CushionSettings, InvestingLink, StatementCommit, StatementRow } from "./types.js";
 
 /** Short month name of month `m` (1-12): "wrz" / "Sep". */
 export const monthShort = (m: number): string => S.monthsShort[m - 1] ?? "";
@@ -27,25 +20,6 @@ export function shiftMonth(ym: string, delta: number): string {
   const [y = Number.NaN, m = Number.NaN] = ym.split("-").map(Number);
   const i = y * 12 + (m - 1) + delta;
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
-}
-
-/** The currency to show: the remembered one when the profile still has data in it, else the server's
- * default (base currency when it has data, else the most used one), else the base currency. */
-export function pickCurrency(
-  remembered: string | null | undefined,
-  info: BudgetCurrencies | null,
-): string | null {
-  if (!info) return null;
-  const codes = info.currencies.map((c) => c.currency);
-  if (remembered && codes.includes(remembered)) return remembered;
-  return codes.length ? info.default : info.base;
-}
-
-/** The month-close figures of `currency`, plus the other currencies with data that month. */
-export function closeFor(close: MonthClose, currency: string | null) {
-  const main = close.currencies.find((c) => c.currency === currency) ?? null;
-  const others = close.currencies.filter((c) => c.currency !== currency);
-  return { main, others };
 }
 
 export type PlanState =
@@ -84,18 +58,6 @@ export interface CushionDraft {
   currency: string;
   accountIds: number[];
   monthlyMax: string;
-}
-
-export function cushionDraft(s: CushionSettings, baseCurrency: string): CushionDraft {
-  return {
-    enabled: s.enabled,
-    mode: s.target_amount == null && s.target_months != null ? "months" : "amount",
-    amount: s.target_amount == null ? "" : String(s.target_amount),
-    months: s.target_months == null ? "6" : String(s.target_months),
-    currency: s.currency ?? baseCurrency,
-    accountIds: [...s.account_ids],
-    monthlyMax: s.monthly_max == null ? "" : String(s.monthly_max),
-  };
 }
 
 const num = (v: string): number | null => {
@@ -190,34 +152,6 @@ export const bankAccounts = <T extends Pick<Account, "bank" | "type">>(
 export function dmShort(iso: string | null | undefined): string {
   const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
   return m ? `${Number(m[3])}.${m[2]}` : "-";
-}
-
-/** The done hint of the statement step: `mBank · eKonto · …1234 · PLN` per bank account joined with ` · `, then
- * ` · ostatni import 3.10` from the newest balance date. Empty without accounts. */
-export function statementDone(
-  accounts: readonly Pick<
-    Account,
-    "bank" | "bank_name" | "name" | "iban_tail" | "currency" | "as_of"
-  >[],
-  choices?: readonly { id: string; name: string }[] | null,
-): string {
-  if (!accounts.length) return "";
-  const parts = accounts.map((a) =>
-    [
-      a.bank_name ?? bankName(a.bank, choices),
-      a.name,
-      a.iban_tail ? `…${a.iban_tail}` : null,
-      a.currency,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-  );
-  const last = accounts
-    .map((a) => a.as_of)
-    .filter((d): d is string => !!d)
-    .sort()
-    .slice(-1)[0];
-  return `${parts.join(" · ")}${last ? S.lastImport(dmShort(last)) : ""}`;
 }
 
 /** The preview table's rows: only the new ones on request, the first `cap` unless `all`; `rest` = hidden rows. */

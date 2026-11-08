@@ -6,7 +6,6 @@ export const S = catalog({
   oneYear: { pl: "1R", en: "1Y" },
   years: { pl: (n: number) => `${n}L`, en: (n: number) => `${n}Y` },
   max: { pl: "Max", en: "Max" },
-  error: { pl: (e: string) => `Błąd: ${e}`, en: (e: string) => `Error: ${e}` },
   title: { pl: "Kredyty", en: "Loans" },
   none: { pl: "Brak kredytów.", en: "No loans." },
   setup: { pl: "Konfiguracja", en: "Setup" },
