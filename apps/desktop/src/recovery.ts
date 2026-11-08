@@ -32,6 +32,8 @@ export interface StartupRecoveryDeps {
   readonly hostLogPath: string;
   /** The `cashu` command form of this install, computed when a report is built. */
   command(): RecoveryCommand | null;
+  /** This flavor's MCP server name prefix (`cashu`, `cashu-staging`), as the setup screen uses it. */
+  readonly mcpServerPrefix: string;
   /** Value-free lines for the shell's log. */
   log(line: string): void;
 }
@@ -102,6 +104,7 @@ export class StartupRecovery {
       home: deps.home,
       logText: readHostLogTail(deps.hostLogPath),
       command: deps.command(),
+      mcpServerPrefix: deps.mcpServerPrefix,
     };
     let report: StartupFailureReport;
     try {

@@ -26,6 +26,7 @@ const report = (failure: StartupFailureReport["failure"]): StartupFailureReport 
   ],
   omittedLogLines: 2,
   command: { kind: "launcher", path: "~/Library/Application Support/cashU/bin/cashu" },
+  mcpServerPrefix: "cashu",
 });
 
 const python = report(

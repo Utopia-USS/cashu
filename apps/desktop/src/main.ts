@@ -504,6 +504,7 @@ const recovery = new StartupRecovery({
       shim: join(process.resourcesPath, "shim.mjs"),
     });
   },
+  mcpServerPrefix: flavor.mcpServerPrefix,
   log,
 });
 

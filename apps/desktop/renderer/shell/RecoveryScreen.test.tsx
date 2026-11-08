@@ -19,6 +19,7 @@ const report = (failure: StartupFailureReport["failure"]): StartupFailureReport 
   logTail: [],
   omittedLogLines: 0,
   command: { kind: "checkout" },
+  mcpServerPrefix: "cashu",
 });
 
 function fakeBridge() {

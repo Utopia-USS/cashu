@@ -22,6 +22,9 @@ import {
   VERSION_LABEL,
 } from "./redaction.js";
 
+/** A flavor's MCP server name prefix: lowercase words joined by hyphens. */
+const MCP_SERVER_PREFIX = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
 /** Where the host keeps its latest failure record, relative to the data dir. */
 export const STARTUP_FAILURE_RECORD = "diagnostics/startup-failure.json";
 /** The directory of every diagnostics file, relative to the data dir. */
@@ -88,6 +91,8 @@ export const startupFailureReportSchema = z.strictObject({
   omittedLogLines: count,
   /** The `cashu` command form of this install (null: plain `cashu`). */
   command: recoveryCommandSchema.nullable(),
+  /** The app flavor's MCP server name prefix (`cashu`, `cashu-staging`): `<prefix>-<slug>`. */
+  mcpServerPrefix: z.string().regex(MCP_SERVER_PREFIX),
 });
 
 export interface StartupFailureReport {
@@ -101,6 +106,7 @@ export interface StartupFailureReport {
   readonly logTail: readonly SanitizedLogLine[];
   readonly omittedLogLines: number;
   readonly command: RecoveryCommand | null;
+  readonly mcpServerPrefix: string;
 }
 
 /** Parses an untrusted report (IPC, a file); null when it does not match exactly. */

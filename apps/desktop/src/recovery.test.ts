@@ -38,6 +38,7 @@ function deps(overrides: Partial<StartupRecoveryDeps> = {}): StartupRecoveryDeps
     lang: "en",
     hostLogPath: join(dataDir, "logs", "host.log"),
     command: () => ({ kind: "launcher", path: "~/Library/Application Support/cashU/bin/cashu" }),
+    mcpServerPrefix: "cashu",
     log: (line) => lines.push(line),
     ...overrides,
   };

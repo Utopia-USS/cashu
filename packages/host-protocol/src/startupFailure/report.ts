@@ -20,6 +20,8 @@ export interface StartupFailureContext {
   readonly logText: string;
   /** The `cashu` command form to show (`recoveryCommand`); absent or null: plain `cashu`. */
   readonly command?: RecoveryCommand | null;
+  /** The app flavor's MCP server name prefix (`Flavor.mcpServerPrefix`); absent: `cashu`. */
+  readonly mcpServerPrefix?: string;
 }
 
 export function startupFailureReport(context: StartupFailureContext): StartupFailureReport {
@@ -43,6 +45,7 @@ export function startupFailureReport(context: StartupFailureContext): StartupFai
     logTail: tail.lines,
     omittedLogLines: Math.min(tail.omitted, 1_000_000),
     command: context.command ?? null,
+    mcpServerPrefix: context.mcpServerPrefix ?? "cashu",
   });
   if (report === null) throw new Error("startup_failure_report_invalid");
   return report;

@@ -362,4 +362,35 @@ describe("shipped command", () => {
     expect(other).not.toContain("import-builder");
     expect(other).not.toContain("migrate");
   });
+
+  it("names the MCP server with the flavor's prefix, as the setup screen does", () => {
+    const staging = startupFailureReport({
+      failure: startupFailure("python_data_present"),
+      at: new Date("2026-11-04T09:30:00.000Z"),
+      appVersion: "0.6.0",
+      build: "desktop-dev",
+      dataDir: `${HOME}/cashU Staging`,
+      home: HOME,
+      reportFile: null,
+      logText: "",
+      command: { kind: "checkout" },
+      mcpServerPrefix: "cashu-staging",
+    });
+    expect(buildRecoveryPrompt(staging, "en")).toContain(
+      "claude mcp add cashu-staging-<slug> -- pnpm cashu-next mcp --profile <slug>",
+    );
+    expect(() =>
+      startupFailureReport({
+        failure: startupFailure("python_data_present"),
+        at: new Date("2026-11-04T09:30:00.000Z"),
+        appVersion: "0.6.0",
+        build: "desktop-dev",
+        dataDir: `${HOME}/cashU`,
+        home: HOME,
+        reportFile: null,
+        logText: "",
+        mcpServerPrefix: "cashu staging; rm",
+      }),
+    ).toThrow("startup_failure_report_invalid");
+  });
 });

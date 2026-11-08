@@ -19,7 +19,7 @@ type TextKey = {
  */
 function oldDataSteps(report: StartupFailureReport, lang: PromptLang): string[] {
   const t = (key: TextKey): string => PROMPT[key][lang];
-  const mcp = `claude mcp add cashu-<slug> -- ${commandPrefix(report.command)} mcp --profile <slug>`;
+  const mcp = `claude mcp add ${report.mcpServerPrefix}-<slug> -- ${commandPrefix(report.command)} mcp --profile <slug>`;
   return [
     "",
     t("oldDataTitle"),
