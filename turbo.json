@@ -3,27 +3,20 @@
   "tasks": {
     "typecheck": {
       "dependsOn": ["^typecheck"],
-      "inputs": ["src/**", "tsconfig.json", "package.json", "../../tsconfig.base.json"],
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
       "outputs": []
     },
     "lint": {
-      "inputs": ["src/**", "package.json", "../../biome.json"],
+      "inputs": ["$TURBO_DEFAULT$", "../../biome.json"],
       "outputs": []
     },
     "test": {
-      "inputs": ["src/**", "spec/**", "package.json", "vitest.config.*", "../../vitest.tiers.ts"],
+      "inputs": ["$TURBO_DEFAULT$", "../../vitest.tiers.ts"],
       "env": ["CASHU_TEST_TIER"],
       "outputs": []
     },
     "test:exhaustive": {
-      "inputs": [
-        "src/**",
-        "spec/**",
-        "test/**",
-        "package.json",
-        "vitest.config.*",
-        "../../vitest.tiers.ts"
-      ],
+      "inputs": ["$TURBO_DEFAULT$", "../../vitest.tiers.ts"],
       "env": ["CASHU_TEST_TIER"],
       "outputs": []
     }
