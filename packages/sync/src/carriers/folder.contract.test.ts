@@ -1,17 +1,15 @@
 // The S28a carrier contract, unchanged, over the production carrier: the own-log carrier (manifest
-// gating + S27 codec with compression) on the folder transport, on a real disk. Two media:
+// gating + S27 codec with compression) on the folder transport, over the in-memory folder. Two media:
 // one folder every device writes into directly (a local or network directory), and per-device
 // replicas kept in step by a simulated sync service with random delays, reordering, partial
-// downloads and conflict copies (iCloud Drive / Syncthing semantics).
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+// downloads and conflict copies (iCloud Drive / Syncthing semantics). The same two media on a real
+// disk, through the production Node adapter, run in packages/node-host (folderFs.test.ts).
 import type { DeviceId, FrameGate } from "../carrier.js";
 import { createKeyring, createRecoveryKey, loadNodeSodium } from "../crypto/index.js";
 import { describeCarrierContract } from "../testing/index.js";
 import { type TestSigners, testSigners } from "../testing/signers.js";
 import { CloudSim } from "../transports/folder/testing/cloud.js";
-import { NodeFolderFs } from "../transports/folder/testing/node-fs.js";
+import { MemoryFolderFs } from "../transports/folder/testing/memory-fs.js";
 import { FolderTransport } from "../transports/folder/transport.js";
 import type { FolderFs } from "../transports/index.js";
 import { createOwnLogCarrier } from "./ownlog/carrier.js";
@@ -30,16 +28,14 @@ function carrierFor(fs: FolderFs, signers: TestSigners, device: DeviceId) {
 }
 
 describeCarrierContract({
-  name: "own log over a shared folder (Node fs)",
+  name: "own log over a shared folder (in memory)",
   async createMedium(vault) {
-    const root = await mkdtemp(join(tmpdir(), "cashu-s28b-shared-"));
-    const fs = new NodeFolderFs(root);
+    const fs = new MemoryFolderFs();
     const signers = testSigners(sodium, createKeyring(sodium, recovery, vault));
     return {
       remoteFor: (device) => carrierFor(fs, signers, device),
       codecFor: (device) => signers.codecFor(device),
       gateFor: (device) => signers.gateFor(device),
-      dispose: () => rm(root, { recursive: true, force: true }),
     };
   },
 });
@@ -47,17 +43,14 @@ describeCarrierContract({
 let seed = 1;
 
 describeCarrierContract({
-  name: "own log over an eventually synced folder (Node fs replicas, simulated sync service)",
+  name: "own log over an eventually synced folder (in-memory replicas, simulated sync service)",
   async createMedium(vault) {
-    const root = await mkdtemp(join(tmpdir(), "cashu-s28b-eventual-"));
     const sim = new CloudSim({ seed: seed++, partialRate: 0.3, conflictRate: 0.3, maxDelay: 4 });
     const signers = testSigners(sodium, createKeyring(sodium, recovery, vault));
     const replica = async (device: DeviceId): Promise<FolderFs> => {
       const known = sim.replica(device);
       if (known) return known;
-      const dir = join(root, device);
-      await mkdir(dir, { recursive: true });
-      const fs = new NodeFolderFs(dir);
+      const fs = new MemoryFolderFs();
       sim.addReplica(device, fs);
       await sim.flush(); // a new machine first downloads what the folder holds
       return fs;
@@ -70,7 +63,6 @@ describeCarrierContract({
         for (let i = 0; i < 3; i++) await sim.churn();
         await sim.flush();
       },
-      dispose: () => rm(root, { recursive: true, force: true }),
     };
   },
 });

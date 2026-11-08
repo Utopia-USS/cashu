@@ -12,7 +12,7 @@
 // cuts decide. Controls: honest attestations (B's real key; a device three certifications below the creator)
 // still raise cuts.
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { certifyDevice, createDeviceIdentity, type DeviceIdentity } from "../crypto/index.js";
 import {
@@ -65,28 +65,39 @@ const FAR: SegmentCursor = { seg: 1, offset: 5_000_000 };
 
 type Mint = "p2" | "v1" | "v2" | "chain3" | "none";
 
-interface Scenario {
-  readonly registry: Registry;
+interface Base {
   readonly a: SimDevice;
   readonly b: SimDevice;
   readonly r: SimDevice;
   readonly c: SimDevice;
 }
 
-/**
- * B revokes R at CUT; K' for B's id is minted as `mint` says; a forged "B" claim signed with K'
- * attests R up to FAR; R revokes C after its cut. Options add R's post-cut revocation of the creator
- * or, as the honest control, B's real attestation of FAR.
- */
-async function scenario(
-  mint: Mint,
-  options: { revokesCreator?: boolean; forgedRevocation?: boolean; honestClaim?: boolean } = {},
-): Promise<Scenario> {
+interface Scenario extends Base {
+  readonly registry: Registry;
+}
+
+// One paired vault (A, B, R, C) for the whole file: every scenario only reads its streams and folds
+// its own event list, so nothing is shared between tests but the pairing.
+let base: Base;
+beforeAll(async () => {
   const { creator: a } = createSimVault();
   const b = await pairDevice(a, "phone");
   const r = await pairDevice(a, "laptop");
   const c = await pairDevice(a, "tablet");
   for (let i = 0; i < 2; i++) for (const d of [a, b, r, c]) d.sync();
+  base = { a, b, r, c };
+});
+
+/**
+ * B revokes R at CUT; K' for B's id is minted as `mint` says; a forged "B" claim signed with K'
+ * attests R up to FAR; R revokes C after its cut. Options add R's post-cut revocation of the creator
+ * or, as the honest control, B's real attestation of FAR.
+ */
+function scenario(
+  mint: Mint,
+  options: { revokesCreator?: boolean; forgedRevocation?: boolean; honestClaim?: boolean } = {},
+): Scenario {
+  const { a, b, r, c } = base;
   const vaultId = a.ring.vaultId;
   const events: LogEvent[] = [...[a, b, r, c].flatMap((d) => d.stream.flatMap((s) => s.events))];
   events.push(
@@ -164,31 +175,31 @@ function expectClosed(s: Scenario): void {
 }
 
 describe("decision keys: no key certified through a revoked device backs a revocation decision", () => {
-  it("P2: a key R certifies for its revoker after its cut cannot raise R's cut", async () => {
-    expectClosed(await scenario("p2"));
+  it("P2: a key R certifies for its revoker after its cut cannot raise R's cut", () => {
+    expectClosed(scenario("p2"));
   });
 
-  it("P2: a revocation signed in its revoker's name with a key R minted never counts", async () => {
-    expectClosed(await scenario("p2", { forgedRevocation: true }));
+  it("P2: a revocation signed in its revoker's name with a key R minted never counts", () => {
+    expectClosed(scenario("p2", { forgedRevocation: true }));
   });
 
-  it("V1: a key R certified before its cut (an old frame) cannot raise R's cut either", async () => {
-    expectClosed(await scenario("v1"));
+  it("V1: a key R certified before its cut (an old frame) cannot raise R's cut either", () => {
+    expectClosed(scenario("v1"));
   });
 
-  it("V2: a key a puppet of R certifies in its own stream cannot raise R's cut", async () => {
-    expectClosed(await scenario("v2"));
+  it("V2: a key a puppet of R certifies in its own stream cannot raise R's cut", () => {
+    expectClosed(scenario("v2"));
   });
 
-  it("a key three certifications below R cannot raise R's cut", async () => {
-    expectClosed(await scenario("chain3"));
+  it("a key three certifications below R cannot raise R's cut", () => {
+    expectClosed(scenario("chain3"));
   });
 
-  it("with a post-cut revocation of the creator too, a minted key changes nothing", async () => {
+  it("with a post-cut revocation of the creator too, a minted key changes nothing", () => {
     // R revoking the creator after its own cut leaves the fixpoint undecided (fail closed); whatever
     // that decides, it is the same with and without the minted key.
-    const roles = async (mint: Mint) => {
-      const s = await scenario(mint, { revokesCreator: true });
+    const roles = (mint: Mint) => {
+      const s = scenario(mint, { revokesCreator: true });
       const role = new Map([s.a, s.b, s.r, s.c].map((d, i) => [d.id, "abrc"[i]]));
       return {
         revoked: [...s.registry.revoked.keys()].map((d) => role.get(d)).sort(),
@@ -196,22 +207,20 @@ describe("decision keys: no key certified through a revoked device backs a revoc
         rCut: s.registry.revoked.get(s.r.id)?.cut,
       };
     };
-    const without = await roles("none");
+    const without = roles("none");
     for (const mint of ["p2", "v1", "v2", "chain3"] as const) {
-      expect(await roles(mint), mint).toEqual(without);
+      expect(roles(mint), mint).toEqual(without);
     }
   });
 
-  it("control: B's own attestation (its real key) raises R's cut, and R's revocation of C then counts", async () => {
-    const s = await scenario("none", { honestClaim: true });
+  it("control: B's own attestation (its real key) raises R's cut, and R's revocation of C then counts", () => {
+    const s = scenario("none", { honestClaim: true });
     expect(s.registry.revoked.get(s.r.id)?.cut).toEqual(FAR);
     expect(s.registry.revoked.has(s.c.id)).toBe(true);
   });
 
-  it("control: a device three certifications below the creator attests and revokes with a raised cut", async () => {
-    const { creator: a } = createSimVault();
-    const r = await pairDevice(a, "laptop");
-    for (let i = 0; i < 2; i++) for (const d of [a, r]) d.sync();
+  it("control: a device three certifications below the creator attests and revokes with a raised cut", () => {
+    const { a, r } = base;
     const vaultId = a.ring.vaultId;
     const [d1, d2, d3] = [0, 1, 2].map(() => createDeviceIdentity(sodium)) as [
       DeviceIdentity,

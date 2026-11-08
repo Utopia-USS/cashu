@@ -64,28 +64,31 @@ function mint(issuer: DeviceIdentity, vaultId: string, victim: string) {
   };
 }
 
-async function household() {
+/** The creator A and the devices it paired, by name, synced. */
+async function household<const N extends readonly string[]>(...names: N) {
   const vault = createSimVault();
   const a = vault.creator;
-  const b = await pairDevice(a, "phone");
-  const c = await pairDevice(a, "tablet");
-  const d = await pairDevice(a, "watch");
-  const r = await pairDevice(a, "old laptop");
-  const r2 = await pairDevice(a, "old phone");
-  syncAll([a, b, c, d, r, r2]);
-  return { ...vault, a, b, c, d, r, r2 };
+  const paired: SimDevice[] = [];
+  for (const name of names) paired.push(await pairDevice(a, name));
+  syncAll([a, ...paired]);
+  return { ...vault, a, paired: paired as { [K in keyof N]: SimDevice } };
 }
 
 describe("H5'': consent keys avoid every retired device", () => {
-  it("a consent-retired old phone mints keys for B, C, D; a consent-retired laptop revokes them with those consents: only the two old devices are revoked", async () => {
-    const { a, b, c, d, r, r2 } = await household();
+  // A genuine consented retirement counting next to retired devices is revocation.test.ts "two
+  // concurrent revocations".
+  it("a consent-retired old phone mints keys for B and C; a consent-retired laptop revokes them with those consents: only the two old devices are revoked", async () => {
+    const {
+      a,
+      paired: [b, c, r, r2],
+    } = await household("phone", "tablet", "old laptop", "old phone");
     retire(b, r2); // the old phone, retired on its consent, then sold (not wiped)
     retire(b, r); // the old laptop, likewise
-    syncAll([a, b, c, d]);
+    syncAll([a, b, c]);
     r.pull();
     r2.pull();
     const vaultId = a.ring.vaultId;
-    const minted = [b, c, d].map((x) => mint(r2.identity, vaultId, x.id));
+    const minted = [b, c].map((x) => mint(r2.identity, vaultId, x.id));
     r2.write(minted.map((m) => m.event));
     r.write(
       minted.map((m) => {
@@ -96,24 +99,12 @@ describe("H5'': consent keys avoid every retired device", () => {
         });
       }),
     );
-    syncAll([a, b, c, d, r, r2]);
-    for (const x of [a, b, c, d]) {
+    syncAll([a, b, c, r, r2]);
+    for (const x of [a, b, c]) {
       const reg = x.devices.registry;
       expect([...reg.revoked.keys()].sort(), x.name).toEqual([r.id, r2.id].sort());
-      for (const t of [a, b, c, d]) expect(reg.isTrusted(t.id), `${x.name}: ${t.name}`).toBe(true);
+      for (const t of [a, b, c]) expect(reg.isTrusted(t.id), `${x.name}: ${t.name}`).toBe(true);
     }
-  });
-
-  it("control: after those retirements, a genuine consented retirement still counts", async () => {
-    const { a, b, c, d, r, r2 } = await household();
-    retire(b, r2);
-    retire(b, r);
-    syncAll([a, b, c, d]);
-    retire(c, d); // the owner retires the watch from the tablet, confirming on the watch
-    syncAll([a, b, c, d]);
-    const reg = a.devices.registry;
-    expect([...reg.revoked.keys()].sort()).toEqual([d.id, r.id, r2.id].sort());
-    expect(reg.revoked.get(d.id)?.signers).toEqual([c.id]);
   });
 });
 
@@ -162,7 +153,10 @@ describe("consent chain check on a certification loop", () => {
 
 describe("self-retirement (lead decision: kept, with conditions)", () => {
   it("the cut of a self-revocation is its own position: a stolen device stating START cannot erase its history", async () => {
-    const { a, b, r } = await household();
+    const {
+      a,
+      paired: [b, r],
+    } = await household("phone", "old laptop");
     r.write([note()]);
     r.write([note()]);
     syncAll([a, b, r]);
@@ -181,8 +175,10 @@ describe("self-retirement (lead decision: kept, with conditions)", () => {
   });
 
   it("a device that paired others cannot retire itself alone: the orphans are listed; the words or a sibling re-certify them", async () => {
-    const { a, b } = await household();
-    const desk = await pairDevice(a, "desktop");
+    const {
+      a,
+      paired: [b, desk],
+    } = await household("phone", "desktop");
     const phone = await pairDevice(desk, "work phone");
     syncAll([a, b, desk, phone]);
     const self = [desk.gate.ownEntry()];
@@ -231,8 +227,10 @@ describe("self-retirement (lead decision: kept, with conditions)", () => {
   });
 
   it("with the words the device retires itself, its orphans are re-certified, and it wipes its keys", async () => {
-    const { a, b } = await household();
-    const desk = await pairDevice(a, "desktop");
+    const {
+      a,
+      paired: [b, desk],
+    } = await household("phone", "desktop");
     const phone = await pairDevice(desk, "work phone");
     syncAll([a, b, desk, phone]);
     const words = a.words;

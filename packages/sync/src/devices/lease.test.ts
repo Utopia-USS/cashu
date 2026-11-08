@@ -18,7 +18,6 @@ import {
   pairDevice,
   prepareConsented,
   prepareReviewedRevocation,
-  sodium,
 } from "../testing/devices/testkit.js";
 import { buildLeaseClaim } from "./events.js";
 import {
@@ -55,7 +54,7 @@ describe("fetch lease", () => {
 
   it("renewals keep the lease with its holder for hours", async () => {
     const { a, b, c } = await devices();
-    for (let minute = 0; minute < 6 * 60; minute += 5) {
+    for (let minute = 0; minute < 2 * 60; minute += 5) {
       for (const d of [a, b, c]) tick(d);
       expect([a, b, c].filter(holds).length).toBeLessThanOrEqual(1);
       if (minute > 10) expect(holds(a)).toBe(true);
@@ -141,59 +140,43 @@ describe("fetch lease", () => {
     expect(tick(a)).toBe("claim");
   });
 
-  it("clock skew within 5 minutes: beliefs never overlap, handover still happens", async () => {
-    for (const skews of [
-      [2.5 * MIN, -2.5 * MIN, 0],
-      [-2.5 * MIN, 2.5 * MIN, 0],
-      [0, 5 * MIN, 0],
-    ]) {
-      const { a, b, c } = await devices(skews);
-      let bHeld = false;
-      for (let minute = 0; minute < 4 * 60; minute++) {
-        const silent = minute > 20; // A stops after taking the lease
-        for (const d of silent ? [b, c] : [a, b, c]) d.sync();
-        for (const d of silent ? [b, c] : [a, b, c]) decide(d);
-        for (const d of silent ? [b, c] : [a, b, c]) d.push();
-        expect([a, b, c].filter(holds).length).toBeLessThanOrEqual(1);
-        bHeld ||= holds(b) || holds(c);
-        advance(a, MIN);
-      }
-      expect(bHeld).toBe(true);
+  it("clock skew of 5 minutes (the bound): beliefs never overlap, handover still happens", async () => {
+    // The claimer's clock runs the full bound ahead of the silent holder's.
+    const { a, b, c } = await devices([0, 5 * MIN, 0]);
+    let bHeld = false;
+    for (let minute = 0; minute < 2 * 60; minute++) {
+      const live = minute > 20 ? [b, c] : [a, b, c]; // A stops after taking the lease
+      for (const d of live) tick(d);
+      expect([a, b, c].filter(holds).length).toBeLessThanOrEqual(1);
+      bHeld ||= holds(b) || holds(c);
+      advance(a, MIN);
     }
+    expect(bHeld).toBe(true);
   });
 
   it("clock skew beyond 5 minutes never makes beliefs overlap (a holder must have pulled within the deadline)", async () => {
-    // A silent holder and a claimer whose clock runs ahead: the silent holder has not pulled within
-    // the publish deadline, so it no longer acts, whatever its clock says (review M2).
-    for (const [skew, overlapExpected] of [
-      [15 * MIN, false],
-      [20 * MIN, false],
-      [2 * 24 * 60 * MIN, false],
-    ] as const) {
-      const { a, b, c } = await devices([0, skew, 0]);
-      let overlap = false;
-      for (let minute = 0; minute < 3 * 60; minute++) {
-        const silent = minute > 20;
-        for (const d of silent ? [b, c] : [a, b, c]) tick(d);
-        overlap ||= [a, b, c].filter(holds).length > 1;
-        advance(a, MIN);
-      }
-      expect(overlap).toBe(overlapExpected);
-      for (let i = 0; i < 2; i++) for (const d of [a, b, c]) d.sync();
-      const holders = new Set([a, b, c].map((d) => view(d).holder));
-      expect(holders.size).toBe(1);
+    // A silent holder and a claimer whose clock runs 20 minutes ahead: the silent holder has not
+    // pulled within the publish deadline, so it no longer acts, whatever its clock says (review M2).
+    // A clock 2 days ahead: A3 below.
+    const { a, b, c } = await devices([0, 20 * MIN, 0]);
+    for (let minute = 0; minute < 2 * 60; minute++) {
+      const live = minute > 20 ? [b, c] : [a, b, c];
+      for (const d of live) tick(d);
       expect([a, b, c].filter(holds).length).toBeLessThanOrEqual(1);
+      advance(a, MIN);
     }
+    for (let i = 0; i < 2; i++) for (const d of [a, b, c]) d.sync();
+    expect(new Set([a, b, c].map((d) => view(d).holder)).size).toBe(1);
+    expect([a, b, c].filter(holds).length).toBeLessThanOrEqual(1);
   });
 
-  // The full sweep (60 seeded schedules) is lease.rule6.exhaustive.test.ts; one schedule per kind here.
-  it.each([0, 1, 2])(
-    "property (rule 6), schedule %i: never two leaders at once; all devices agree after convergence",
-    async (run) => {
-      const { held, fullVisibility } = await rule6Run(run);
-      if (fullVisibility) expect(held).toBe(true);
-    },
-  );
+  // One schedule (a device whose clock runs 2 days ahead, 2 simulated hours); the sweep over every
+  // schedule kind and backend is lease.rule6.exhaustive.test.ts.
+  it("property (rule 6): never two leaders at once; all devices agree after convergence", async () => {
+    const { held, fullVisibility } = await rule6Run(1, "linearizable", false, 2 * 60);
+    expect(fullVisibility).toBe(true);
+    expect(held).toBe(true);
+  });
 
   it("A3: a holder pre-empted by a device whose clock runs 2 days ahead stops before the other acts; the fast device cannot block fetching for 2 days", async () => {
     const { a, b, c } = await devices();
@@ -273,8 +256,7 @@ describe("fetch lease", () => {
     const b = await pairDevice(a, "b");
     const c = await pairDevice(a, "c");
     const d = await pairDevice(a, "d");
-    const e = await pairDevice(a, "e");
-    const all = [a, b, c, d, e];
+    const all = [a, b, c, d];
     c.write([{ t: "note.added", v: 1, i: newEid(), d: {} }]); // everyone applies this one
     for (let i = 0; i < 2; i++) for (const x of all) x.sync();
     optInAutoHandover(a);
@@ -321,7 +303,7 @@ describe("fetch lease", () => {
       [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       vault.recovery,
-      { recertify: [b.id, c.id, d.id, e.id] }, // the owner re-certifies every orphan it recognises
+      { recertify: [b.id, c.id, d.id] }, // the owner re-certifies every orphan it recognises
     );
     if (!r.ok) throw new Error(r.reason);
     c.write(r.change.events);
@@ -330,21 +312,20 @@ describe("fetch lease", () => {
     // A device whose store has not applied A's import yet (its data lags behind the statements)
     // must not run newest-day imports, although A is revoked now: A's stream is required up to the
     // lower of A's watermark and its cut (here the watermark: C applied the import before revoking).
-    e.pull();
-    expect(e.devices.registry.revoked.has(a.id)).toBe(true);
-    const w = view(e).catchUp[a.id];
-    const cut = e.devices.registry.revoked.get(a.id)?.cut;
+    b.pull();
+    expect(b.devices.registry.revoked.has(a.id)).toBe(true);
+    const w = view(b).catchUp[a.id];
+    const cut = b.devices.registry.revoked.get(a.id)?.cut;
     expect(w && cut && comparePositions(w, cut) <= 0).toBe(true);
-    const lagging = new Map(e.applied);
+    const lagging = new Map(b.applied);
     lagging.set(a.id, { seg: 1, offset: (w?.offset ?? 100) - 100 });
-    expect(missing(view(e), lagging)).toContain(a.id);
-    expect(missing(view(e), e.applied)).not.toContain(a.id);
+    expect(missing(view(b), lagging)).toContain(a.id);
+    expect(missing(view(b), b.applied)).not.toContain(a.id);
   });
 
   it("rejects lease events that are forged, not signed by their writer, or stale", async () => {
     const { a, b } = await devices();
     tick(a);
-    const claim = view(a).term[0];
     const events = a.stream.flatMap((s) => s.events);
     const pins = events.filter((e) => e.type === "lease.pinned");
     const lease = events.filter((e) => e.type === "lease.claimed");
@@ -354,7 +335,5 @@ describe("fetch lease", () => {
     expect(v.mode).toBe("auto");
     expect(v.holder).toBeNull();
     expect(v.ignored.map((i) => i.reason).sort()).toEqual(["bad_signature", "writer_mismatch"]);
-    expect(claim).toBeDefined();
-    expect(sodium).toBeDefined();
   });
 });

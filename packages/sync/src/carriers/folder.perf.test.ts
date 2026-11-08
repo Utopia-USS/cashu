@@ -1,3 +1,6 @@
+// Announced benchmark, skipped in both test tiers (a 64k-event run measures the machine, not a rule):
+//   CASHU_BENCH=1 pnpm --filter @cashu/sync exec vitest run src/carriers/folder.perf.test.ts
+//
 // Performance on the spike's workload (spike-result.md "Synthetic workload": 62,000 transaction imports
 // incl. 2,000 duplicate re-imports, 1,940 merchant category edits / deletes over 400 merchants, 300
 // decisions, 100 transaction deletes = 64,340 events), through the production carrier: envelope
@@ -199,166 +202,171 @@ async function tempDir(name: string): Promise<string> {
   return dir;
 }
 
-describe("folder carrier performance (spike workload, 64,340 events)", () => {
-  it("bulk write, push, new device, rebuild, cold start, incremental", {
-    timeout: 120_000,
-  }, async () => {
-    const events = workload();
-    expect(events.length).toBe(64_340);
-    const ring = createKeyring(sodium, createRecoveryKey(sodium).publicKeys, VAULT);
-    const signers = testSigners(sodium, ring);
-    const folder = new NodeFolderFs(await tempDir("folder"));
-    const results: Record<string, number> = {};
-    const heads: HeadStats = { signs: 0, signUs: 0, verifies: 0, verifyUs: 0 };
-    for (const id of [A, B, C]) {
-      const identity = signers.identityOf(id);
-      const sign = identity.sign.bind(identity);
-      identity.sign = (context, body) => {
-        const t = cpuUs();
-        const sig = sign(context, body);
-        if (context === "cashu/head/v1") {
-          heads.signUs += cpuUs() - t;
-          heads.signs += 1;
-        }
-        return sig;
-      };
-    }
-    // The test gate's checks, memoized per head like the production gate, misses measured.
-    const checked = new Map<string, boolean>();
-    const gate: FrameGate = {
-      ...signers.gateFor(A),
-      authenticate(head) {
-        const key = `${head.device}|${head.stream}|${head.seg}|${head.offset}|${head.sig.join(",")}`;
-        let ok = checked.get(key);
-        if (ok === undefined) {
+describe.skipIf(!process.env.CASHU_BENCH)(
+  "folder carrier performance (spike workload, 64,340 events)",
+  () => {
+    it("bulk write, push, new device, rebuild, cold start, incremental", {
+      timeout: 120_000,
+    }, async () => {
+      const events = workload();
+      expect(events.length).toBe(64_340);
+      const ring = createKeyring(sodium, createRecoveryKey(sodium).publicKeys, VAULT);
+      const signers = testSigners(sodium, ring);
+      const folder = new NodeFolderFs(await tempDir("folder"));
+      const results: Record<string, number> = {};
+      const heads: HeadStats = { signs: 0, signUs: 0, verifies: 0, verifyUs: 0 };
+      for (const id of [A, B, C]) {
+        const identity = signers.identityOf(id);
+        const sign = identity.sign.bind(identity);
+        identity.sign = (context, body) => {
           const t = cpuUs();
-          ok = verifyHeadSignature(VAULT, head, signers.identityOf(head.device).signPublicKey);
-          heads.verifyUs += cpuUs() - t;
-          heads.verifies += 1;
-          checked.set(key, ok);
-        }
-        return ok ? { ok: true } : { ok: false, wait: false, code: "bad_head_signature" };
-      },
-    };
+          const sig = sign(context, body);
+          if (context === "cashu/head/v1") {
+            heads.signUs += cpuUs() - t;
+            heads.signs += 1;
+          }
+          return sig;
+        };
+      }
+      // The test gate's checks, memoized per head like the production gate, misses measured.
+      const checked = new Map<string, boolean>();
+      const gate: FrameGate = {
+        ...signers.gateFor(A),
+        authenticate(head) {
+          const key = `${head.device}|${head.stream}|${head.seg}|${head.offset}|${head.sig.join(",")}`;
+          let ok = checked.get(key);
+          if (ok === undefined) {
+            const t = cpuUs();
+            ok = verifyHeadSignature(VAULT, head, signers.identityOf(head.device).signPublicKey);
+            heads.verifyUs += cpuUs() - t;
+            heads.verifies += 1;
+            checked.set(key, ok);
+          }
+          return ok ? { ok: true } : { ok: false, wait: false, code: "bad_head_signature" };
+        },
+      };
 
-    const device = async (
-      id: DeviceId,
-      local: Transport,
-      sink: CountingSink,
-      clock = new MemoryClockStore(),
-    ) => {
-      const codec = signers.codecFor(id);
-      const remote = createOwnLogCarrier({
-        transport: new FolderTransport({ fs: folder, owner: id }),
-        codec,
-        gate,
-        device: id,
+      const device = async (
+        id: DeviceId,
+        local: Transport,
+        sink: CountingSink,
+        clock = new MemoryClockStore(),
+      ) => {
+        const codec = signers.codecFor(id);
+        const remote = createOwnLogCarrier({
+          transport: new FolderTransport({ fs: folder, owner: id }),
+          codec,
+          gate,
+          device: id,
+        });
+        return createSyncEngine({
+          vault: VAULT,
+          device: id,
+          local,
+          remotes: [remote],
+          codec,
+          gate,
+          sink,
+          clockStore: clock,
+          physicalClock: new ManualClock(T0),
+        });
+      };
+
+      // Device A: the carrier's share of a bulk import (local log in memory, as the spike's frames
+      // were sealed and appended once).
+      const sinkA = new CountingSink();
+      const a = await device(A, new MemoryTransport(), sinkA);
+      const [written, bulk, bulkCpu] = await time(() => a.write(events));
+      results.bulkWriteAndApply_ms = bulk;
+      results.bulkWriteAndApply_cpu_ms = bulkCpu;
+      results.bulkFrames = written.frames;
+      expect(sinkA.size).toBe(64_340);
+
+      const [, push] = await time(() => a.sync());
+      results.pushToFolder_ms = push;
+      const segs = (await folder.list(`${VAULT}/${A}`)) ?? [];
+      results.logBytes = segs.reduce((n, e) => n + e.size, 0);
+      results.logBytesPerEvent = Math.round(results.logBytes / 64_340);
+      results.logSegments = segs.length;
+
+      // Device B: new device, builds from the folder (pull + verify + copy + apply).
+      const sinkB = new CountingSink();
+      const b = await device(B, new MemoryTransport(), sinkB);
+      const [, build, buildCpu] = await time(() => b.sync());
+      results.newDeviceBuild_ms = build;
+      results.newDeviceBuild_cpu_ms = buildCpu;
+      expect(sinkB.size).toBe(64_340);
+
+      const [, rebuild, rebuildCpu] = await time(() => b.rebuild());
+      results.fullRebuild_ms = rebuild;
+      results.fullRebuild_cpu_ms = rebuildCpu;
+      expect(sinkB.size).toBe(64_340);
+
+      // Incremental: A writes, pushes; B pulls and applies.
+      const edits = (n: number, prefix: string): UnstampedEvent[] =>
+        Array.from({ length: n }, (_, i) => ({
+          t: "merchant.categorySet",
+          v: 1,
+          i: `${prefix}${String(i).padStart(20, "0")}`,
+          d: { merchant: `sklep-kazomi${i % 400}`, category: "groceries" },
+        }));
+      const [, inc10] = await time(async () => {
+        await a.write(edits(10, "inc10-"));
+        await a.sync();
+        await b.sync();
       });
-      return createSyncEngine({
-        vault: VAULT,
-        device: id,
-        local,
-        remotes: [remote],
-        codec,
-        gate,
-        sink,
-        clockStore: clock,
-        physicalClock: new ManualClock(T0),
+      results.incremental10_endToEnd_ms = inc10;
+      const [, inc1000] = await time(async () => {
+        await a.write(edits(1000, "inc1k-"));
+        await a.sync();
+        await b.sync();
       });
-    };
+      results.incremental1000_endToEnd_ms = inc1000;
+      expect(sinkB.size).toBe(64_340 + 1010);
 
-    // Device A: the carrier's share of a bulk import (local log in memory, as the spike's frames
-    // were sealed and appended once).
-    const sinkA = new CountingSink();
-    const a = await device(A, new MemoryTransport(), sinkA);
-    const [written, bulk, bulkCpu] = await time(() => a.write(events));
-    results.bulkWriteAndApply_ms = bulk;
-    results.bulkWriteAndApply_cpu_ms = bulkCpu;
-    results.bulkFrames = written.frames;
-    expect(sinkA.size).toBe(64_340);
+      // Device C: the same import into a durable local log (a private folder on disk). Each frame
+      // append replaces the segment file (temp + fsync + rename), so this measures that cost too.
+      const localC = new FolderTransport({ fs: new NodeFolderFs(await tempDir("local-c")) });
+      const sinkC = new CountingSink();
+      const clockC = new MemoryClockStore();
+      const c = await device(C, localC, sinkC, clockC);
+      const [, bulkDurable] = await time(() =>
+        c.write(events.map((e) => ({ ...e, i: `c-${e.i}` }))),
+      );
+      results.bulkWriteAndApply_durableLocal_ms = bulkDurable;
+      await c.sync();
+      await c.close();
+      // Cold start: reopen over the durable local log, one sync pass with nothing new.
+      const [reopened, cold, coldCpu] = await time(async () => {
+        const engine = await device(C, localC, sinkC, clockC);
+        await engine.sync();
+        return engine;
+      });
+      results.coldStart_ms = cold;
+      results.coldStart_cpu_ms = coldCpu;
+      await reopened.close();
 
-    const [, push] = await time(() => a.sync());
-    results.pushToFolder_ms = push;
-    const segs = (await folder.list(`${VAULT}/${A}`)) ?? [];
-    results.logBytes = segs.reduce((n, e) => n + e.size, 0);
-    results.logBytesPerEvent = Math.round(results.logBytes / 64_340);
-    results.logSegments = segs.length;
-
-    // Device B: new device, builds from the folder (pull + verify + copy + apply).
-    const sinkB = new CountingSink();
-    const b = await device(B, new MemoryTransport(), sinkB);
-    const [, build, buildCpu] = await time(() => b.sync());
-    results.newDeviceBuild_ms = build;
-    results.newDeviceBuild_cpu_ms = buildCpu;
-    expect(sinkB.size).toBe(64_340);
-
-    const [, rebuild, rebuildCpu] = await time(() => b.rebuild());
-    results.fullRebuild_ms = rebuild;
-    results.fullRebuild_cpu_ms = rebuildCpu;
-    expect(sinkB.size).toBe(64_340);
-
-    // Incremental: A writes, pushes; B pulls and applies.
-    const edits = (n: number, prefix: string): UnstampedEvent[] =>
-      Array.from({ length: n }, (_, i) => ({
-        t: "merchant.categorySet",
-        v: 1,
-        i: `${prefix}${String(i).padStart(20, "0")}`,
-        d: { merchant: `sklep-kazomi${i % 400}`, category: "groceries" },
-      }));
-    const [, inc10] = await time(async () => {
-      await a.write(edits(10, "inc10-"));
-      await a.sync();
-      await b.sync();
+      results.headSigns = heads.signs;
+      results.headSign_cpu_ms = Math.round(heads.signUs / 100) / 10;
+      results.headSign_us_per_frame = Math.round(heads.signUs / Math.max(1, heads.signs));
+      results.headVerifies = heads.verifies;
+      results.headVerify_cpu_ms = Math.round(heads.verifyUs / 100) / 10;
+      results.headVerify_us_per_frame = Math.round(heads.verifyUs / Math.max(1, heads.verifies));
+      console.log(`S28b perf ${JSON.stringify(results)}`);
+      // Ceilings: 5x the spike's own-log numbers (CI headroom); the target (2x) is checked on the
+      // reference machine and recorded in the checkpoint.
+      expect(bulkCpu).toBeLessThan(5 * 483);
+      expect(buildCpu).toBeLessThan(5 * 320);
+      expect(rebuildCpu).toBeLessThan(5 * 329);
+      expect(coldCpu).toBeLessThan(5 * 36);
+      expect(results.logBytes).toBeLessThan(16_035_578 / 3);
+      // Every frame written was signed once and every frame of another device checked once.
+      expect(heads.signs).toBeGreaterThanOrEqual(results.bulkFrames);
+      expect(heads.verifies).toBeGreaterThanOrEqual(results.bulkFrames);
+      // Ceilings (CI headroom; the measured numbers are in performance.md): 5 ms per sign, 10 ms
+      // per check, of this thread's CPU.
+      expect(results.headSign_us_per_frame).toBeLessThan(5_000);
+      expect(results.headVerify_us_per_frame).toBeLessThan(10_000);
     });
-    results.incremental10_endToEnd_ms = inc10;
-    const [, inc1000] = await time(async () => {
-      await a.write(edits(1000, "inc1k-"));
-      await a.sync();
-      await b.sync();
-    });
-    results.incremental1000_endToEnd_ms = inc1000;
-    expect(sinkB.size).toBe(64_340 + 1010);
-
-    // Device C: the same import into a durable local log (a private folder on disk). Each frame
-    // append replaces the segment file (temp + fsync + rename), so this measures that cost too.
-    const localC = new FolderTransport({ fs: new NodeFolderFs(await tempDir("local-c")) });
-    const sinkC = new CountingSink();
-    const clockC = new MemoryClockStore();
-    const c = await device(C, localC, sinkC, clockC);
-    const [, bulkDurable] = await time(() => c.write(events.map((e) => ({ ...e, i: `c-${e.i}` }))));
-    results.bulkWriteAndApply_durableLocal_ms = bulkDurable;
-    await c.sync();
-    await c.close();
-    // Cold start: reopen over the durable local log, one sync pass with nothing new.
-    const [reopened, cold, coldCpu] = await time(async () => {
-      const engine = await device(C, localC, sinkC, clockC);
-      await engine.sync();
-      return engine;
-    });
-    results.coldStart_ms = cold;
-    results.coldStart_cpu_ms = coldCpu;
-    await reopened.close();
-
-    results.headSigns = heads.signs;
-    results.headSign_cpu_ms = Math.round(heads.signUs / 100) / 10;
-    results.headSign_us_per_frame = Math.round(heads.signUs / Math.max(1, heads.signs));
-    results.headVerifies = heads.verifies;
-    results.headVerify_cpu_ms = Math.round(heads.verifyUs / 100) / 10;
-    results.headVerify_us_per_frame = Math.round(heads.verifyUs / Math.max(1, heads.verifies));
-    console.log(`S28b perf ${JSON.stringify(results)}`);
-    // Ceilings: 5x the spike's own-log numbers (CI headroom); the target (2x) is checked on the
-    // reference machine and recorded in the checkpoint.
-    expect(bulkCpu).toBeLessThan(5 * 483);
-    expect(buildCpu).toBeLessThan(5 * 320);
-    expect(rebuildCpu).toBeLessThan(5 * 329);
-    expect(coldCpu).toBeLessThan(5 * 36);
-    expect(results.logBytes).toBeLessThan(16_035_578 / 3);
-    // Every frame written was signed once and every frame of another device checked once.
-    expect(heads.signs).toBeGreaterThanOrEqual(results.bulkFrames);
-    expect(heads.verifies).toBeGreaterThanOrEqual(results.bulkFrames);
-    // Ceilings (CI headroom; the measured numbers are in performance.md): 5 ms per sign, 10 ms
-    // per check, of this thread's CPU.
-    expect(results.headSign_us_per_frame).toBeLessThan(5_000);
-    expect(results.headVerify_us_per_frame).toBeLessThan(10_000);
-  });
-});
+  },
+);

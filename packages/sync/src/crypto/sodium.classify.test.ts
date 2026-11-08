@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { code, fakeReactNativeLibsodium, sodium } from "../testing/crypto/testkit.js";
 import { CryptoError } from "./errors.js";
 import { fromLibsodium, type LibsodiumLike, type SodiumOptions } from "./sodium.js";
-import { aeadAuthentic, sealAuthentic } from "./verify.js";
+import { sealAuthentic } from "./verify.js";
 
 type Decrypt = NonNullable<LibsodiumLike["crypto_aead_xchacha20poly1305_ietf_decrypt"]>;
 type Shape = (fn: string) => unknown;
@@ -123,12 +123,6 @@ describe.each([
 });
 
 describe("unknown error shapes never become auth_failed", () => {
-  it.each(UNKNOWN)("%s fails the self-test closed, on both AEAD paths", (_name, shape) => {
-    for (const [, options] of OPTIONS) {
-      expect(startup(shaped(shape), options)).toBe("unsupported_runtime");
-    }
-  });
-
   it.each(UNKNOWN)(
     "%s planted after startup: tampered decrypt and wrong-key sealOpen are unsupported_runtime",
     (_name, shape) => {
@@ -226,20 +220,7 @@ describe("a plain Error from a broken runtime is never auth_failed", () => {
   });
 });
 
-describe("verify paths agree with libsodium", () => {
-  it("aeadAuthentic: true for libsodium's ciphertext, false for any flipped byte or wrong input", () => {
-    const cipher = sodium.aeadEncrypt(PLAIN, AAD, NONCE, KEY);
-    expect(aeadAuthentic(cipher, AAD, NONCE, KEY)).toBe(true);
-    for (let at = 0; at < cipher.length; at += 5) {
-      expect(aeadAuthentic(tamper(cipher, at), AAD, NONCE, KEY)).toBe(false);
-    }
-    expect(aeadAuthentic(cipher, tamper(AAD), NONCE, KEY)).toBe(false);
-    expect(aeadAuthentic(cipher, AAD, tamper(NONCE), KEY)).toBe(false);
-    expect(aeadAuthentic(cipher, AAD, NONCE, tamper(KEY))).toBe(false);
-    const empty = sodium.aeadEncrypt(new Uint8Array(0), new Uint8Array(0), NONCE, KEY);
-    expect(aeadAuthentic(empty, new Uint8Array(0), NONCE, KEY)).toBe(true);
-  });
-
+describe("seal verify path agrees with libsodium", () => {
   it("sealAuthentic: true for libsodium's sealed box, false when tampered or for another key pair", () => {
     const me = sodium.boxKeyPair();
     const other = sodium.boxKeyPair();

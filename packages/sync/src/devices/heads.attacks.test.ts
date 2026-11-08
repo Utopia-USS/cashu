@@ -1,6 +1,8 @@
 // The gaps signed heads close (S29c phase B2; S29-review.md A1b, m6, the forged self-revocation
-// residual, withholding), as permanent attack tests. One seed each here; the sweeps are
-// heads.attacks.exhaustive.test.ts.
+// residual, withholding), as permanent attack tests. One seed of A1b here; the sweeps (A1b and m6,
+// a revoked device forging an idle writer's frames) are heads.attacks.exhaustive.test.ts. m6's rule
+// (a frame whose head the stream's bound key did not sign is never copied or applied) is proven in
+// the default tier on the real engine by gate.engine.test.ts.
 
 import { describe, expect, it } from "vitest";
 import { START_CURSOR as START } from "../carrier.js";
@@ -11,7 +13,7 @@ import {
   genesisChain,
   signHead,
 } from "../crypto/index.js";
-import { forgeryRun, fourDevices, marked, rewriteRun } from "../testing/devices/headsSim.js";
+import { fourDevices, marked, rewriteRun } from "../testing/devices/headsSim.js";
 import { note, syncAll } from "../testing/devices/orderSim.js";
 import {
   chainOf,
@@ -26,10 +28,6 @@ import { buildDeviceAdded, buildDeviceRevoked, type LogEvent } from "./events.js
 import { StreamIndex } from "./heads.js";
 
 describe("signed heads close the rewrite and forgery classes", () => {
-  it("m6: a revoked device cannot forge an idle writer's frames, under any key (seed 1)", async () => {
-    await forgeryRun(1);
-  });
-
   it("A1b: a rewritten pre-cut frame is a proven fork; no device accepts its content (seed 1)", async () => {
     await rewriteRun(1);
   });

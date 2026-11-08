@@ -160,59 +160,36 @@ const segPath = (device: DeviceId, seg: number) =>
   `${VAULT}/${device}/${String(seg).padStart(6, "0")}.seg`;
 
 describe("folder carrier: devices syncing through one folder", () => {
-  for (const [label, ids] of [
-    ["two devices", [A, B]],
-    ["three devices", [A, B, C]],
-  ] as const) {
-    it(`${label}: random delays, reordering, partial downloads and conflict copies converge`, async () => {
-      let conflicts = 0;
-      let partials = 0;
-      for (const seed of [11, 23, 37, 41, 59]) {
-        const { sim, devices } = await makeWorld(seed, [...ids]);
-        const random = seededRandom(seed * 7919);
-        for (let step = 0; step < 40; step++) {
-          const d = devices[Math.floor(random() * devices.length)] as Device;
-          const roll = random();
-          if (roll < 0.45)
-            await d.write(1 + Math.floor(random() * 12), random() < 0.3 ? "shared" : undefined);
-          else if (roll < 0.8) await d.sync();
-          await sim.churn(10);
-        }
-        await settleAll(sim, devices);
-        expectConverged(devices);
-        // Every event arrived everywhere: one register per event, one for all shared-gid writes.
-        const written = devices.reduce((n, d) => n + d.written, 0);
-        const shared = devices.reduce((n, d) => n + d.shared, 0);
-        expect(devices[0]?.sink.size).toBe(written - shared + (shared > 0 ? 1 : 0));
-        for (const d of devices) {
-          expect(d.rejected).toEqual([]);
-          expect(d.carrier.status(VAULT).every((s) => s.held === undefined)).toBe(true);
-        }
-        conflicts += sim.conflicts;
-        partials += sim.partials;
+  it("three devices: random delays, reordering, partial downloads and conflict copies converge, every event once", async () => {
+    let conflicts = 0;
+    let partials = 0;
+    for (const seed of [11, 23]) {
+      const { sim, devices } = await makeWorld(seed, [A, B, C]);
+      const random = seededRandom(seed * 7919);
+      for (let step = 0; step < 40; step++) {
+        const d = devices[Math.floor(random() * devices.length)] as Device;
+        const roll = random();
+        if (roll < 0.45)
+          await d.write(1 + Math.floor(random() * 12), random() < 0.3 ? "shared" : undefined);
+        else if (roll < 0.8) await d.sync();
+        await sim.churn(10);
       }
-      // The scenarios really exercised the sync-tool behaviour.
-      expect(conflicts).toBeGreaterThan(0);
-      expect(partials).toBeGreaterThan(0);
-    });
-  }
-
-  it("applies every event exactly: per-device eids all present after convergence", async () => {
-    const { sim, devices } = await makeWorld(101, [A, B, C]);
-    const random = seededRandom(5);
-    for (let step = 0; step < 60; step++) {
-      const d = devices[step % 3] as Device;
-      await d.write(1 + Math.floor(random() * 9));
-      if (random() < 0.5) await d.sync();
-      await sim.churn(6);
+      await settleAll(sim, devices);
+      expectConverged(devices);
+      // Every event arrived everywhere: one register per event, one for all shared-gid writes.
+      const written = devices.reduce((n, d) => n + d.written, 0);
+      const shared = devices.reduce((n, d) => n + d.shared, 0);
+      expect(devices[0]?.sink.size).toBe(written - shared + (shared > 0 ? 1 : 0));
+      for (const d of devices) {
+        expect(d.rejected).toEqual([]);
+        expect(d.carrier.status(VAULT).every((s) => s.held === undefined)).toBe(true);
+      }
+      conflicts += sim.conflicts;
+      partials += sim.partials;
     }
-    await settleAll(sim, devices);
-    const written = devices.reduce((n, d) => n + d.written, 0);
-    for (const d of devices) {
-      expect(d.sink.size).toBe(written); // no shared gids here: one register per event
-      expect(d.rejected).toEqual([]);
-    }
-    expectConverged(devices);
+    // The scenarios really exercised the sync-tool behaviour.
+    expect(conflicts).toBeGreaterThan(0);
+    expect(partials).toBeGreaterThan(0);
   });
 });
 

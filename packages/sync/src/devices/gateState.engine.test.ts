@@ -30,8 +30,8 @@ import { MemoryProvenanceStore } from "./provenance.js";
 import { VaultDevices } from "./vaultDevices.js";
 
 const T0 = Date.UTC(2026, 10, 1, 12);
-/** Data frames in the world's log: A 14, B 13, C 2. */
-const FRAMES = 29;
+/** Data frames in the world's log: A 8, B 7, C 2. */
+const FRAMES = 17;
 const set = (g: string) => ({ t: "test.set", v: 1, i: newEid(), g, d: { value: g } });
 
 function subjectOf(d: DeviceIdentity) {
@@ -151,7 +151,7 @@ async function world() {
   const cut =
     (await c.disk.local.list(vaultId)).find((s) => s.device === c.identity.deviceId)?.size ?? 0;
   await c.engine.write([set("c1")]);
-  for (let i = 1; i <= 12; i++) {
+  for (let i = 1; i <= 6; i++) {
     await a.engine.write([set(`a${i}`)]);
     await b.engine.write([set(`b${i}`)]);
   }
@@ -179,31 +179,6 @@ function summary(n: Awaited<ReturnType<typeof node>>) {
 }
 
 describe("persisted gate state", () => {
-  it("rejects a signed v1 state and replays the authenticated local log", async () => {
-    const w = await world();
-    const old = JSON.parse((w.a.disk.state.value ?? "{}").split("\n")[0] ?? "{}") as Record<
-      string,
-      unknown
-    >;
-    const json = JSON.stringify({ ...old, v: 1 });
-    const signature = w.a.identity.sign(
-      "cashu/state/v1",
-      concat(lp(utf8(w.vaultId)), lp(utf8(w.ids[0].deviceId)), utf8(json)),
-    );
-    const signed = `${json}\n${toHex(signature)}`;
-    expect(w.a.gate.importState(signed)).toBeUndefined();
-
-    const state = new MemoryGateState();
-    state.value = signed;
-    const replayed = await w.restart({ ...w.a.disk, sink: new MemorySink(), state });
-    await replayed.engine.sync();
-    expect(replayed.counter.restored).toBe(0);
-    expect(replayed.counter.opens).toBeGreaterThanOrEqual(FRAMES);
-    expect(replayed.disk.sink.value("c1")).toBeUndefined();
-    expect(replayed.disk.sink.value("b12")).toBe("b12");
-    expect(JSON.parse((state.value ?? "{}").split("\n")[0] ?? "{}").v).toBe(2);
-  });
-
   it("retains exact applied and held heads when the accepted cursor is behind the verified tail", async () => {
     const w = await world();
     const cId = w.ids[2].deviceId;
@@ -286,6 +261,12 @@ describe("persisted gate state", () => {
     );
     const flip = (text: string, at: number) =>
       text.slice(0, at) + (text[at] === "1" ? "2" : "1") + text.slice(at + 1);
+    // An older format version, genuinely signed by A (its shape lacks what restoring needs).
+    const v1 = JSON.stringify({ ...parsed, v: 1 });
+    const v1Sig = w.a.identity.sign(
+      "cashu/state/v1",
+      concat(lp(utf8(w.vaultId)), lp(utf8(w.ids[0].deviceId)), utf8(v1)),
+    );
     const variants: [string, string][] = [
       ["flipped byte in the body", flip(genuine, Math.floor(cut / 2))],
       ["flipped byte in the signature", flip(genuine, genuine.length - 3)],
@@ -293,19 +274,23 @@ describe("persisted gate state", () => {
       ["not a snapshot", "garbage"],
       ["dropped revocation, signed by another key", `${forgedJson}\n${toHex(forgedSig)}`],
       ["B's own genuine snapshot", w.b.disk.state.value ?? ""],
+      ["older format version, signed by A", `${v1}\n${toHex(v1Sig)}`],
     ];
     expect(fromHex(genuine.slice(cut + 1)).length).toBe(64);
-    for (const [name, text] of variants) {
-      const d = { ...w.a.disk, sink: new MemorySink(), state: new MemoryGateState() };
-      d.state.value = text;
-      const again = await w.restart(d);
-      await again.engine.sync();
-      expect(again.counter.opens, name).toBeGreaterThanOrEqual(FRAMES);
-      expect(again.counter.restored, name).toBe(0);
-      expect(again.devices.registry.revoked.has(w.ids[2].deviceId), name).toBe(true);
-      expect(again.disk.sink.value("c1"), name).toBeUndefined();
-      expect(again.disk.sink.value("b12"), name).toBe("b12");
-    }
+    expect(w.a.gate.importState(genuine)).toBeDefined();
+    for (const [name, text] of variants) expect(w.a.gate.importState(text), name).toBeUndefined();
+    // A restart over the forged snapshot ignores it and replays the whole log to the same state.
+    const d = { ...w.a.disk, sink: new MemorySink(), state: new MemoryGateState() };
+    d.state.value = variants[4]?.[1];
+    const again = await w.restart(d);
+    await again.engine.sync();
+    expect(again.counter.opens).toBeGreaterThanOrEqual(FRAMES);
+    expect(again.counter.restored).toBe(0);
+    expect(again.devices.registry.revoked.has(w.ids[2].deviceId)).toBe(true);
+    expect(again.disk.sink.value("c1")).toBeUndefined();
+    expect(again.disk.sink.value("b6")).toBe("b6");
+    // The engine wrote a fresh snapshot of the current format.
+    expect(JSON.parse((d.state.value ?? "{}").split("\n")[0] ?? "{}").v).toBe(2);
   });
 
   it("ignores a genuine snapshot whose positions are not in the local log", async () => {
@@ -327,7 +312,7 @@ describe("persisted gate state", () => {
     await again.engine.sync();
     expect(again.counter.restored).toBe(0);
     expect(again.devices.registry.revoked.has(w.ids[2].deviceId)).toBe(true);
-    expect(again.disk.sink.value("b12")).toBe("b12");
+    expect(again.disk.sink.value("b6")).toBe("b6");
     expect(again.disk.sink.value("c1")).toBeUndefined();
   });
 

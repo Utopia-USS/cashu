@@ -163,7 +163,7 @@ export function visibilityOf(backend: Backend): SimVisibility {
 }
 
 /**
- * One seeded schedule of the mode-auto rule-6 property: 300 simulated minutes of three devices going
+ * One seeded schedule of the mode-auto rule-6 property: `minutes` simulated minutes (300 by default) of three devices going
  * on and offline, crashing before a push, pulling a lossy remote (kind 2) or running a clock 2 days
  * ahead (kind 1), over a linearizable remote, a relay keeping its declared bound, or a synced folder.
  * Asserts never two holders under full visibility and agreement after convergence; over an eventual
@@ -174,6 +174,7 @@ export async function rule6Run(
   run: number,
   backend: Backend = "linearizable",
   control = false,
+  minutes = 300,
 ): Promise<{ held: boolean; fullVisibility: boolean; overlap: boolean }> {
   const DAY = 24 * 60 * MIN;
   const rand = mulberry32(run + 1);
@@ -197,7 +198,7 @@ export async function rule6Run(
   const fullVisibility = kind !== 2;
   let held = false;
   let overlap = false;
-  for (let minute = 0; minute < 300; minute++) {
+  for (let minute = 0; minute < minutes; minute++) {
     for (const d of all) if (rand() < 0.05) online.set(d, !online.get(d));
     const live = all.filter((d) => online.get(d));
     for (const d of live) {
@@ -236,7 +237,7 @@ export async function rule6Run(
 }
 
 /**
- * One seeded schedule of the mode-pinned rule-6 property (S29c R4): 300 simulated minutes of three
+ * One seeded schedule of the mode-pinned rule-6 property (S29c R4): `minutes` simulated minutes (300) of three
  * devices going on and offline over a synced folder (eventual: delays up to 30 min, some batches
  * held back until the end) or a bounded relay, while the owner re-pins the leader at random (typed
  * on a random device, or with the recovery words), with `force` in force runs. The leader reports
@@ -248,6 +249,7 @@ export async function pinnedRun(
   run: number,
   backend: Backend,
   withForce: boolean,
+  minutes = 300,
 ): Promise<{ moves: number; leaders: number; overlaps: number }> {
   const rand = mulberry32(7919 * (run + 1));
   const { a, b, c, recovery, remote } = await devices([0, 0, 0], {
@@ -261,7 +263,7 @@ export async function pinnedRun(
   const leaders = new Set<string>();
   let moves = 0;
   let overlaps = 0;
-  for (let minute = 0; minute < 300; minute++) {
+  for (let minute = 0; minute < minutes; minute++) {
     for (const d of all) if (rand() < 0.04) online.set(d, !online.get(d));
     const live = all.filter((d) => online.get(d));
     for (const d of live) d.sync();

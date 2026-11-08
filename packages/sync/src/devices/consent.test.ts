@@ -1,7 +1,8 @@
 // S29c review H5': a revocation consent counts only with a decision key of its target that does not
 // rest on the revocation's signer (or anything it certified) or on a device the words revoked. The
-// attack: R, revoked by B, certifies fresh keys for B, C and D after its cut and signs their
-// "consent" to R's revocations of them with those keys.
+// attack: R, revoked by B, certifies fresh keys for B (its revoker) and C (a bystander) after its cut
+// and signs their "consent" to R's revocations of them with those keys. (A genuine consent counting is
+// revokeFlow.test.ts "with the target's consent".)
 
 import { describe, expect, it } from "vitest";
 import type { UnstampedEvent } from "../carrier.js";
@@ -11,7 +12,6 @@ import {
   createSimVault,
   newEid,
   pairDevice,
-  revokedWithConsent,
   revokeWithConsent,
   SimDevice,
   START_CURSOR,
@@ -23,20 +23,19 @@ function syncAll(devices: readonly SimDevice[], rounds = 2): void {
   for (let i = 0; i < rounds; i++) for (const d of devices) d.sync();
 }
 
-async function vault() {
+/** A vault of A, B, R, C (plus `extra`, paired by A); B revokes R on R's consent (B did not certify R). */
+async function vault(extra?: string) {
   const v = createSimVault();
   const a = v.creator;
   const b = await pairDevice(a, "phone");
   const r = await pairDevice(a, "laptop");
   const c = await pairDevice(a, "tablet");
-  const d = await pairDevice(a, "watch");
-  const r2 = await pairDevice(a, "old phone");
-  syncAll([a, b, r, c, d, r2]);
-  // B revokes R on R's consent (B did not certify R).
+  const more = extra === undefined ? [] : [await pairDevice(a, extra)];
+  syncAll([a, b, r, c, ...more]);
   revokeWithConsent(b, [r]);
   b.push();
   r.pull();
-  return { ...v, a, b, r, c, d, r2 };
+  return { ...v, a, b, r, c, more };
 }
 
 /** `issuer` certifies a fresh key pair for `victim`'s id (in its own stream, as a batch event). */
@@ -78,9 +77,9 @@ function expectOnlyR(devices: readonly SimDevice[], r: SimDevice, trusted: reado
 }
 
 describe("H5': consent keys never rest on the revocation's signer", () => {
-  it("R mints keys for B, C and D after its cut and forges their consent: only R is revoked", async () => {
-    const { a, b, r, c, d } = await vault();
-    const minted = [b, c, d].map((x) => mint(r.identity, r.ring.vaultId, x.id));
+  it("R mints keys for B and C after its cut and forges their consent: only R is revoked", async () => {
+    const { a, b, r, c } = await vault();
+    const minted = [b, c].map((x) => mint(r.identity, r.ring.vaultId, x.id));
     r.write(minted.map((m) => m.event));
     r.write(
       forgedRevocations(
@@ -88,19 +87,20 @@ describe("H5': consent keys never rest on the revocation's signer", () => {
         minted.map((m) => m.key),
       ),
     );
-    syncAll([a, b, c, d, r]);
-    expectOnlyR([a, b, c, d], r, [a, b, c, d]);
+    syncAll([a, b, c, r]);
+    expectOnlyR([a, b, c], r, [a, b, c]);
   });
 
   it("an accomplice revoked with the words mints the keys: still only R is revoked", async () => {
-    const { a, b, r, c, d, r2, recovery } = await vault();
+    const { a, b, r, c, more, recovery } = await vault("old phone");
+    const r2 = more[0] as SimDevice;
     a.write([
       buildDeviceRevoked(recovery, a.ring.vaultId, newEid(), [
         { device: r2.id, cut: a.cursors.get(r2.id) ?? START_CURSOR },
       ]),
     ]);
-    syncAll([a, b, c, d]);
-    const minted = [b, c, d].map((x) => mint(r2.identity, r2.ring.vaultId, x.id));
+    syncAll([a, b, c]);
+    const minted = [b, c].map((x) => mint(r2.identity, r2.ring.vaultId, x.id));
     r2.write(minted.map((m) => m.event));
     r.write(
       forgedRevocations(
@@ -108,16 +108,16 @@ describe("H5': consent keys never rest on the revocation's signer", () => {
         minted.map((m) => m.key),
       ),
     );
-    syncAll([a, b, c, d, r, r2]);
-    for (const x of [a, b, c, d]) {
+    syncAll([a, b, c, r, r2]);
+    for (const x of [a, b, c]) {
       const reg = x.devices.registry;
       expect([...reg.revoked.keys()].sort(), x.name).toEqual([r.id, r2.id].sort());
-      for (const t of [b, c, d]) expect(reg.isTrusted(t.id), x.name).toBe(true);
+      for (const t of [b, c]) expect(reg.isTrusted(t.id), x.name).toBe(true);
     }
   });
 
   it("a chain R -> puppet -> minted key does not help either", async () => {
-    const { a, b, r, c, d } = await vault();
+    const { a, b, r, c } = await vault();
     const puppet = createDeviceIdentity(sodium);
     const subject = {
       deviceId: puppet.deviceId,
@@ -134,7 +134,7 @@ describe("H5': consent keys never rest on the revocation's signer", () => {
         certifyDevice(sodium, r.identity, subject, r.ring.vaultId),
       ),
     ]);
-    const minted = [b, c, d].map((x) => mint(puppet, r.ring.vaultId, x.id));
+    const minted = [b, c].map((x) => mint(puppet, r.ring.vaultId, x.id));
     // The puppet's certificates sit in the puppet's own stream (written by the thief).
     const pDevice = new SimDevice("puppet", r.remote, 0, puppet);
     pDevice.attach(r.ring, []);
@@ -146,25 +146,7 @@ describe("H5': consent keys never rest on the revocation's signer", () => {
         minted.map((m) => m.key),
       ),
     );
-    syncAll([a, b, c, d, r]);
-    expectOnlyR([a, b, c, d], r, [a, b, c, d]);
-  });
-
-  it("control: a genuine consent from the target's legitimately certified key counts", async () => {
-    const { a, b, r, c, d } = await vault();
-    syncAll([a, b, c, d]);
-    // C (B's sibling: it did not certify B) revokes B on B's genuine consent.
-    c.write([
-      revokedWithConsent(
-        c.identity,
-        c.ring.vaultId,
-        [{ device: b.id, cut: c.cursors.get(b.id) ?? START_CURSOR }],
-        [b],
-      ),
-    ]);
-    syncAll([a, b, c, d, r]);
-    const reg = a.devices.registry;
-    expect([...reg.revoked.keys()].sort()).toEqual([b.id, r.id].sort());
-    expect(reg.revoked.get(b.id)?.signers).toEqual([c.id]);
+    syncAll([a, b, c, r]);
+    expectOnlyR([a, b, c], r, [a, b, c]);
   });
 });

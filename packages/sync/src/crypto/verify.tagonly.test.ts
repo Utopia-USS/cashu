@@ -1,7 +1,8 @@
 // The AEAD failure path computes only the tag (S29c-B3): `aeadAuthentic` must agree with a reference
 // XChaCha20-Poly1305 open on every input, and must never run the cipher over the frame body (a
 // tampered 64 MiB frame used to cost a full decrypt plus a re-encrypt and two body-sized buffers).
-// The classification semantics and fail-closed behaviour of `sodium.ts` are unchanged (its own tests).
+// Classification and fail-closed behaviour of `sodium.ts`: sodium.classify.test.ts; a tampered frame
+// is auth_failed on both backends: frame.test.ts.
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,9 +25,6 @@ vi.mock("@noble/ciphers/chacha.js", async (load) => {
 
 const { xchacha20poly1305 } = await import("@noble/ciphers/chacha.js");
 const { aeadAuthentic } = await import("./verify.js");
-const { openFrame, sealFrame } = await import("./frame.js");
-const { CryptoError } = await import("./errors.js");
-const { backends, ctx, newRing, writerOf } = await import("../testing/crypto/testkit.js");
 
 function bytes(n: number, seed: number): Uint8Array {
   let x = seed >>> 0 || 1;
@@ -76,29 +74,12 @@ describe("tag-only AEAD verify path", () => {
     const key = bytes(32, 1);
     const nonce = bytes(24, 2);
     const aad = bytes(30, 3);
-    const cipher = xchacha20poly1305(key, nonce, aad).encrypt(bytes(1024 * 1024, 4));
+    const cipher = xchacha20poly1305(key, nonce, aad).encrypt(bytes(64 * 1024, 4));
     cipher[100] = (cipher[100] ?? 0) ^ 1;
     seen.streamLengths.length = 0;
     seen.aeadCalls = 0;
     expect(aeadAuthentic(cipher, aad, nonce, key)).toBe(false);
     expect(seen.aeadCalls).toBe(0);
     expect(Math.max(0, ...seen.streamLengths)).toBeLessThanOrEqual(32);
-  });
-
-  it.each(backends)("a tampered frame still fails closed as auth_failed (%s)", (_name, sodium) => {
-    const ring = newRing(sodium);
-    const c = ctx(ring.vaultId);
-    const sealed = sealFrame(sodium, ring, bytes(256 * 1024, 5), c, writerOf(c));
-    const tampered = sealed.bytes.slice();
-    const at = Math.floor(tampered.length / 2);
-    tampered[at] = (tampered[at] ?? 0) ^ 1;
-    let error: unknown;
-    try {
-      openFrame(sodium, ring, tampered, c);
-    } catch (e) {
-      error = e;
-    }
-    expect(error).toBeInstanceOf(CryptoError);
-    expect((error as InstanceType<typeof CryptoError>).code).toBe("auth_failed");
   });
 });

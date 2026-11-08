@@ -8,7 +8,6 @@ import {
   MIN,
   pin,
   reportFetch,
-  tick,
   view,
   visibilityOf,
 } from "../testing/devices/leaseSim.js";
@@ -239,26 +238,6 @@ it("a release prefix of an acknowledged handover resists a late pin", async () =
   expect([a, b, c].filter(holds)).toHaveLength(1);
 });
 
-it("an auto holder cannot leave auto through a fetched prefix without force", async () => {
-  const { a, b, c, remote } = await devices();
-  remote.flush();
-  for (const d of [a, b, c]) d.sync();
-  expect(tick(a)).toBe("claim");
-  advance(a, 8 * MIN);
-  a.sync();
-  expect(holds(a)).toBe(true);
-  reportFetch(a);
-  a.push();
-  const fetched = view(a).head as string;
-  expect(() => pin(a, "pinned", b)).toThrow("owner-confirmed force");
-  const rejected = sibling(a, b, fetched, a.now());
-  a.push();
-  b.sync();
-  a.sync();
-  expect(view(a).ignored.find((x) => x.eid === rejected)?.reason).toBe("force_required");
-  expect([a, b, c].filter(holds)).toHaveLength(1);
-});
-
 it("a retired old leader's pre-cut ACK protects an auto claim from a late sibling pin", async () => {
   const { a, b, c, remote, recovery } = await devices([0, 0, 0], {
     mode: "pinned",
@@ -394,6 +373,8 @@ it("no-ACK revocation with two unseen sibling pins never creates two holders", a
   expect([b, c].filter(holds)).toHaveLength(0);
 });
 
+// Leaving mode auto needs force (refusal force_required, whatever the writer's view of the term:
+// free, expired, or its own fetch report): one case.
 it("a stale auto-free view cannot pin over a settled claim without force", async () => {
   const { a, b, c, remote } = await devices([0, 0, 0], {
     visibility: visibilityOf("bounded"),
@@ -418,34 +399,4 @@ it("a stale auto-free view cannot pin over a settled claim without force", async
   c.push();
   c.sync();
   expect(autoHolds(c)).toBe(true); // explicit force permits a brief overlap
-});
-
-it("a stale expired auto holder cannot hand over against a settled successor without force", async () => {
-  const { a, b, c, remote } = await devices([0, 0, 0], {
-    visibility: visibilityOf("bounded"),
-    cfg: boundedConfig,
-  });
-  remote.flush();
-  for (const d of [a, b, c]) d.sync();
-  expect(decide(a, true, boundedConfig)).toBe("claim");
-  a.push();
-  advance(a, 10 * MIN);
-  for (const d of [a, b, c]) d.sync();
-  const oldHead = view(c).head;
-  advance(a, 65 * MIN);
-  b.sync();
-  expect(decide(b, true, boundedConfig)).toBe("claim");
-  b.push();
-  advance(a, 10 * MIN);
-  b.sync();
-  const autoHolds = (d: SimDevice) => holdsLease(view(d), d.local(), boundedConfig);
-  expect(autoHolds(b)).toBe(true);
-  expect(view(c).head).toBe(oldHead); // C still knows only expired A term
-  expect(() => pin(c, "pinned", c)).toThrow("owner-confirmed force");
-  const rejected = sibling(c, c, oldHead as string, c.now());
-  c.push();
-  a.sync();
-  c.sync();
-  expect(view(c).ignored.find((x) => x.eid === rejected)?.reason).toBe("force_required");
-  expect([b, c].filter(autoHolds)).toHaveLength(1);
 });

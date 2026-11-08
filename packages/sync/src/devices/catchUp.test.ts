@@ -223,21 +223,8 @@ describe("R3a: validated catch-up watermarks", () => {
     }
   });
 
-  it("a recovery-signed waiver counts whoever writes it", async () => {
+  it("refuses a waiver without the owner's confirmation (wrong typed text, a forged recovery signature, a revoked writer); a recovery-signed one counts whoever writes it", async () => {
     const { a, b, c, r, recovery } = await vault();
-    b.write([note()]);
-    syncAll([a, b, c, r]);
-    claim(r, watermarkOf(r, { [b.id]: FAR }));
-    syncAll([a, b, c, r]);
-    expect(missing(c)).toEqual([b.id]);
-    claim(c, watermarkOf(c), { devices: [b.id], confirmation: { kind: "recovery", recovery } });
-    syncAll([a, b, c, r]);
-    expect(missing(a)).toEqual([]);
-    expect(view(a).waiversRefused).toEqual([]);
-  });
-
-  it("refuses a waiver without the owner's confirmation: wrong typed text, a forged recovery signature, a revoked writer", async () => {
-    const { a, b, c, r } = await vault();
     b.write([note()]);
     syncAll([a, b, c, r]);
     claim(r, watermarkOf(r, { [b.id]: FAR }));
@@ -269,10 +256,15 @@ describe("R3a: validated catch-up watermarks", () => {
       { eid: forged, reason: "bad_signature" },
       { eid: late, reason: "untrusted_writer" },
     ]);
+    // Signed with this vault's words: it counts, whichever device writes it.
+    claim(c, watermarkOf(c), { devices: [b.id], confirmation: { kind: "recovery", recovery } });
+    syncAll([a, b, c]);
+    expect(missing(a)).toEqual([]);
+    expect(view(a).waiversRefused).toHaveLength(3);
   });
 
-  it("waive is strict: sorted, unique, 1-64 device ids; claims and renewals carry it", async () => {
-    const { a } = await vault();
+  it("waive is strict: sorted, unique, 1-64 device ids; claims and renewals carry it", () => {
+    const a = createSimVault().creator; // decoding only: no paired devices needed
     const ids = Array.from({ length: 3 }, () => createDeviceIdentity(sodium).deviceId);
     const built = buildLeaseRenewal(a.identity, a.ring.vaultId, newEid(), {
       at: a.now(),

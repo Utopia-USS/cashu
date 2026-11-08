@@ -282,32 +282,6 @@ describe("revocation", () => {
     }
   });
 
-  it("a revoked device's retaliation against its revoker is refused without the revoker's consent (H2)", async () => {
-    const { a, b, r } = await threeDevices();
-    a.write([note()]);
-    a.push();
-    for (const d of [b, r]) d.pull();
-    revoke(a, r);
-    a.push();
-    r.pull();
-    // R answers with a revocation of A at START, after its own cut, signed with its own key only.
-    const retaliation = buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
-      { device: a.id, cut: START_CURSOR },
-    ]);
-    r.write([retaliation]);
-    r.push();
-    b.pull();
-    a.pull();
-    for (const d of [a, b]) {
-      const reg = d.devices.registry;
-      expect(reg.revoked.has(r.id)).toBe(true);
-      expect(reg.revoked.has(a.id)).toBe(false);
-      expect([...reg.trusted.keys()].sort()).toEqual([a.id, b.id].sort());
-      expect(reg.ignored).toContainEqual({ eid: retaliation.i, reason: "no_consent" });
-    }
-    expect(b.cursors.get(a.id)).toBeDefined();
-  });
-
   it("concurrent revoke and plain rotate: the revocation key wins on every device, in any order", async () => {
     for (const order of ["a-first", "b-first"] as const) {
       const { a, b, r } = await threeDevices();

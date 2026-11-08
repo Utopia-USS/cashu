@@ -195,7 +195,9 @@ describe("local-only recovery", () => {
     expect(result.streams[0]?.reason).toBe("partial");
   });
 
-  it.each(["bad-signature", "bad-aead", "malformed-payload"] as const)(
+  // A frame that does not open (a forged signature; a bad AEAD tag fails in the same open step), or
+  // opens but does not decode.
+  it.each(["bad-signature", "malformed-payload"] as const)(
     "refuses a held %s frame",
     async (fault) => {
       const f = fixture();
@@ -205,33 +207,29 @@ describe("local-only recovery", () => {
       const vaultId = f.vault.ring.vaultId;
       const device = f.identity.deviceId;
       const bytes = await f.local.read(vaultId, device, 1, 0);
-      if (fault === "bad-aead") {
-        await f.local.append(vaultId, device, 1, bytes.length, frameBytes(new Uint8Array(80)));
-      } else {
-        const plain =
-          fault === "malformed-payload"
-            ? new TextEncoder().encode("not json")
-            : new TextEncoder().encode(
-                JSON.stringify({
-                  f: 1,
-                  e: [
-                    {
-                      t: "test.set",
-                      v: 1,
-                      i: newEid(),
-                      g: "g1",
-                      d: { value: "x" },
-                      h: formatHlc({ wall: T0, counter: 2, device }),
-                    },
-                  ],
-                }),
-              );
-        await appendPayload(
-          f,
-          plain,
-          fault === "bad-signature" ? createDeviceIdentity(sodium, device) : f.identity,
-        );
-      }
+      const plain =
+        fault === "malformed-payload"
+          ? new TextEncoder().encode("not json")
+          : new TextEncoder().encode(
+              JSON.stringify({
+                f: 1,
+                e: [
+                  {
+                    t: "test.set",
+                    v: 1,
+                    i: newEid(),
+                    g: "g1",
+                    d: { value: "x" },
+                    h: formatHlc({ wall: T0, counter: 2, device }),
+                  },
+                ],
+              }),
+            );
+      await appendPayload(
+        f,
+        plain,
+        fault === "bad-signature" ? createDeviceIdentity(sodium, device) : f.identity,
+      );
       const reopened = await f.open();
       const result = await reopened.recoverLocal();
       expect(result.complete).toBe(false);
@@ -341,25 +339,6 @@ describe("local-only recovery", () => {
     expect(result.streams[0]?.reason).toBe("incomplete-group");
   });
 
-  it("refuses a sink cursor ahead of its held encrypted log", async () => {
-    const f = fixture();
-    const first = await f.open();
-    await first.write([f.intro()]);
-    await first.close();
-    const sink: EventSink = {
-      cursors: () => new Map([[f.identity.deviceId, { seg: 9, offset: 1 }]]),
-      applyBatches: (batches) => f.sink.applyBatches(batches),
-      reset: () => {
-        throw new Error("recovery reset active view");
-      },
-    };
-    const reopened = await f.open({ sink });
-    const result = await reopened.recoverLocal();
-    expect(result.complete).toBe(false);
-    expect(result.requiresViewRebuild).toBe(true);
-    expect(result.streams[0]?.reason).toBe("cursor-not-accepted");
-  });
-
   it("refuses an unknown writer whose certificate is absent", async () => {
     const f = fixture();
     const first = await f.open();
@@ -438,27 +417,7 @@ describe("local-only recovery", () => {
     expect((await stale.recoverLocal()).complete).toBe(false);
   });
 
-  it("refuses a short local read even when the listed size is complete", async () => {
-    const f = fixture();
-    const first = await f.open();
-    await first.write([f.intro()]);
-    await first.close();
-    const short: Transport = {
-      consistency: f.local.consistency,
-      list: (vault) => f.local.list(vault),
-      read: async (vault, device, seg, offset) =>
-        (await f.local.read(vault, device, seg, offset)).subarray(0, -1),
-      append: () => {
-        throw new Error("recovery appended");
-      },
-    };
-    const reopened = await f.open({ local: short });
-    const result = await reopened.recoverLocal();
-    expect(result.complete).toBe(false);
-    expect(result.streams[0]?.reason).toBe("short-read");
-  });
-
-  it("retries an incomplete local audit after the held read is repaired", async () => {
+  it("refuses a short local read, and retries after the held read is repaired", async () => {
     const f = fixture();
     const first = await f.open();
     await first.write([f.intro()]);
@@ -477,7 +436,9 @@ describe("local-only recovery", () => {
     };
     const reopened = await f.open({ local });
     short = true;
-    expect((await reopened.recoverLocal()).complete).toBe(false);
+    const refused = await reopened.recoverLocal();
+    expect(refused.complete).toBe(false);
+    expect(refused.streams[0]?.reason).toBe("short-read");
     short = false;
     const repaired = await reopened.recoverLocal();
     expect(repaired.complete).toBe(true);

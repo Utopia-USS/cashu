@@ -52,33 +52,7 @@ function revokeWithWords(
 }
 
 describe("W1: re-certification is the owner's choice", () => {
-  it("revoking a stolen laptop with the words never re-certifies the iPad it paired, nor seals the new key for it", async () => {
-    const { a, b, r, ipad, recovery } = await stolenLaptop();
-    const result = revokeWithWords(a, r, recovery);
-    if (!result.ok) throw new Error(result.reason);
-    expect(result.change.affected).toMatchObject([
-      {
-        device: ipad.id,
-        name: "iPad",
-        pairedBy: r.id,
-        suggested: false,
-        recertified: false,
-        reason: "not_selected",
-      },
-    ]);
-    expect(result.change.events.some((e) => e.t === DEVICE_ADDED)).toBe(false);
-    expect(result.change.recipients).not.toContain(ipad.id);
-    a.write(result.change.events);
-    result.change.commit();
-    syncAll([a, b, ipad]);
-    for (const x of [a, b]) {
-      expect(x.devices.registry.isTrusted(ipad.id), x.name).toBe(false);
-      expect(x.devices.registry.revoked.has(r.id), x.name).toBe(true);
-    }
-    expect(ipad.ring.get(a.ring.active.kid)).toBeUndefined(); // the new data key never reached it
-  });
-
-  it("on the words path an explicit selection re-certifies exactly the chosen orphans", async () => {
+  it("on the words path nothing is preselected: only the chosen orphan is re-certified; the unchosen one never gets the new key", async () => {
     const { a, b, r, ipad, recovery } = await stolenLaptop();
     const phone2 = await pairDevice(r, "work phone");
     syncAll([a, b, ipad, phone2]);
@@ -86,33 +60,29 @@ describe("W1: re-certification is the owner's choice", () => {
     if (!result.ok) throw new Error(result.reason);
     const byDevice = new Map(result.change.affected.map((x) => [x.device, x]));
     expect(byDevice.get(phone2.id)).toMatchObject({ recertified: true, suggested: false });
-    expect(byDevice.get(ipad.id)).toMatchObject({ recertified: false, reason: "not_selected" });
+    expect(byDevice.get(ipad.id)).toMatchObject({
+      name: "iPad",
+      pairedBy: r.id,
+      suggested: false,
+      recertified: false,
+      reason: "not_selected",
+    });
     expect(result.change.recipients).toContain(phone2.id);
     expect(result.change.recipients).not.toContain(ipad.id);
     a.write(result.change.events);
     result.change.commit();
     syncAll([a, b, ipad, phone2]);
-    expect(b.devices.registry.isTrusted(phone2.id)).toBe(true);
-    expect(b.devices.registry.isTrusted(ipad.id)).toBe(false);
+    for (const x of [a, b]) {
+      expect(x.devices.registry.isTrusted(phone2.id), x.name).toBe(true);
+      expect(x.devices.registry.isTrusted(ipad.id), x.name).toBe(false);
+      expect(x.devices.registry.revoked.has(r.id), x.name).toBe(true);
+    }
+    expect(phone2.ring.get(a.ring.active.kid)).toBeDefined();
+    expect(ipad.ring.get(a.ring.active.kid)).toBeUndefined(); // the new data key never reached it
   });
 
-  it("the consent path suggests the orphans; re-certifying them is still the owner's explicit pick", async () => {
-    const { a, b, r, ipad } = await stolenLaptop();
-    const suggested = prepareConsented(b, [r]); // R is in the owner's hands: B retires it
-    if (!suggested.ok) throw new Error(suggested.reason);
-    expect(suggested.change.affected).toMatchObject([
-      { device: ipad.id, suggested: true, recertified: false, reason: "not_selected" },
-    ]);
-    suggested.change.discard();
-    const picked = prepareConsented(b, [r], undefined, [ipad]);
-    if (!picked.ok) throw new Error(picked.reason);
-    expect(picked.change.affected).toMatchObject([{ device: ipad.id, recertified: true }]);
-    b.write(picked.change.events);
-    picked.change.commit();
-    syncAll([a, b, ipad]);
-    expect(a.devices.registry.isTrusted(ipad.id)).toBe(true);
-  });
-
+  // The consent path re-certifies nothing by default either (the batch below has no
+  // `device.added`); an explicit pick re-certifies, revokeFlow.test.ts.
   it("V2 stays closed: an unchosen pre-cut puppet of R is not revived, so its minted key cannot raise R's cut", async () => {
     const { a, b, r, ipad: puppet } = await stolenLaptop();
     const result = prepareConsented(b, [r]); // default: nothing re-certified

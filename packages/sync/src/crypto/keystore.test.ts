@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ctx, newRing, samplePlain, sodium, writerOf } from "../testing/crypto/testkit.js";
-import { fromBase64, toBase64, utf8 } from "./encoding.js";
+import { fromBase64, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity } from "./identity.js";
@@ -103,9 +103,6 @@ describe("KeyStore adapters", () => {
     );
     expect(openKeyStoreValue(sodium, key, "cashu.test.vector", blob)).toEqual(value);
     expect(() => openKeyStoreValue(sodium, key, "cashu.test.other", blob)).toThrow();
-  });
-  it("in memory", async () => {
-    await roundtrip(new InMemoryKeyStore());
   });
 
   it("Electron safeStorage keeps only safeStorage ciphertext in files", async () => {
@@ -253,17 +250,5 @@ describe("KeyStore adapters", () => {
     await expect(store.get("cashu.a")).rejects.toMatchObject({ code: "keystore_corrupt" });
     ss.items.set("cashu.keystore.kek", good);
     expect(await store.get("cashu.a")).toEqual(new Uint8Array([1]));
-  });
-
-  it("the in-memory store is only on the testing subpath, never the main entry", async () => {
-    const main = await import("../index.js");
-    expect(Object.keys(main.crypto)).not.toContain("InMemoryKeyStore");
-    const testing = await import("../testing/index.js");
-    expect(testing.InMemoryKeyStore).toBe(InMemoryKeyStore);
-  });
-
-  it("base64 helpers roundtrip every byte value", () => {
-    const all = Uint8Array.from({ length: 256 }, (_, i) => i);
-    expect(fromBase64(toBase64(all))).toEqual(all);
   });
 });

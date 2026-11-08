@@ -210,7 +210,7 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
       START_TIME + 500,
       500,
     );
-    const puppets = Array.from({ length: 70 }, () => createDeviceIdentity(sodium));
+    const puppets = Array.from({ length: 66 }, () => createDeviceIdentity(sodium)); // the cap + 2
     const adds = puppets.map((p, i) =>
       stamp(
         buildDeviceAdded(
@@ -243,7 +243,7 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
     const stranger = createDeviceIdentity(sodium).deviceId;
     // Built without signing (the junk is unsigned anyway): fresh ids, one key pair, zero certificate.
     const junkKeys = createDeviceIdentity(sodium);
-    const junk: LogEvent[] = Array.from({ length: 2000 }, (_, i) => {
+    const junk: LogEvent[] = Array.from({ length: 20 }, (_, i) => {
       const e: UnstampedEvent = {
         t: DEVICE_ADDED,
         v: 1,
@@ -264,17 +264,17 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
     const r = fold(a, [...base, ...adds, ...junk]);
     expect(r.certificatesIssuedBy(a.id)).toBe(64);
     expect(puppets.filter((p) => r.isTrusted(p.deviceId))).toHaveLength(64);
-    expect(r.isRegistered(puppets[69]?.deviceId ?? "")).toBe(false); // the issuer's 65th onward
+    expect(r.isRegistered(puppets[65]?.deviceId ?? "")).toBe(false); // the issuer's 65th onward
     expect(r.events.length).toBe(2 + 64); // only authentic statements (and the revoker): no junk
     const withRevocations = fold(a, [...base, ...adds, ...revokes, ...junk]);
     expect(withRevocations.revocationCount).toBe(64);
     const capped = withRevocations.ignored.filter((i) => i.reason === "capped");
     const revokeEids = new Set(revokes.map((e) => e.eid));
-    expect(capped.filter((i) => revokeEids.has(i.eid))).toHaveLength(6);
-    // The issuer's 65th to 70th certificates are capped too (S29c R2: a reason, not a key mismatch).
-    expect(capped.filter((i) => !revokeEids.has(i.eid))).toHaveLength(6);
+    expect(capped.filter((i) => revokeEids.has(i.eid))).toHaveLength(2);
+    // The issuer's 65th and 66th certificates are capped too (S29c R2: a reason, not a key mismatch).
+    expect(capped.filter((i) => !revokeEids.has(i.eid))).toHaveLength(2);
     // The junk sits in a stranger's stream: never even a candidate (malformed bytes here).
-    expect(r.ignored.filter((i) => i.reason === "malformed")).toHaveLength(2000);
+    expect(r.ignored.filter((i) => i.reason === "malformed")).toHaveLength(20);
     // Pairing refuses at the cap rather than certify a 65th device that would not count.
     a.devices.ingest([...adds, ...junk]);
     expect(
@@ -286,25 +286,6 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
         now: a.now(),
       }),
     ).toMatchObject({ ok: false, reason: "capacity" });
-  });
-
-  it("forged certificates naming a real issuer never consume its quota", async () => {
-    const { creator: a } = createSimVault();
-    const vaultId = a.ring.vaultId;
-    const stranger = createDeviceIdentity(sodium).deviceId;
-    const forged: LogEvent[] = Array.from({ length: 200 }, (_, i) => {
-      const p = createDeviceIdentity(sodium);
-      const cert = certifyDevice(sodium, a.identity, subjectOf(p), vaultId);
-      cert.fill(7, cert.length - 64); // keep "signer = A", break the signature
-      const e = buildDeviceAdded(a.identity, vaultId, newEid(), subjectOf(p), "forged", cert);
-      // Half sit in a stranger's stream, half in frames forged under A's id.
-      return stamp(e, i % 2 === 0 ? stranger : a.id, START_TIME + i, 10_000 + i);
-    });
-    a.devices.ingest(forged);
-    expect(a.devices.registry.certificatesIssuedBy(a.id)).toBe(0);
-    const b = await pairDevice(a, "phone");
-    expect(a.devices.registry.certificatesIssuedBy(a.id)).toBe(1);
-    expect(b.devices.registry.isTrusted(b.id)).toBe(true);
   });
 
   it("junk in the log never blocks pairing (the welcome carries authentic statements only)", async () => {

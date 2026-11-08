@@ -34,63 +34,55 @@ async function fourDevices() {
 }
 
 describe("review attacks", () => {
-  // One test per delivery order (each pairs a joiner and rebuilds: two in one test ran too long under load).
-  for (const order of ["revoker-first", "attacker-first"] as const) {
-    it(`A1 (${order}): a revoked device backdates a revocation of its revoker; it never counts (no consent, H2), in any order`, async () => {
-      const { a, b, r, c } = await fourDevices();
-      r.write([note()]);
-      syncAll([a, b, r, c]);
-      const bRevokesR = honestRevoke(b, r);
-      b.push();
-      r.pull(); // the batch is sealed under the old key: R reads it
-      // R answers in its own stream, after its cut, stamped one second BEFORE B's revocation.
-      const wall = parseHlc(bRevokesR.hlc).wall - 1000;
-      r.write(
-        [
-          buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
-            { device: b.id, cut: START_CURSOR },
-          ]),
-        ],
-        { hlc: () => hlcAt(r.id, wall) },
-      );
-      r.push();
-      if (order === "attacker-first") {
-        c.pull((batch) => batch.device === r.id);
-        // C's guard accepted R's frame while it did not know R was revoked ...
-        expect(c.acceptedData()).toContain(
-          `${r.id}@${r.stream[r.stream.length - 1]?.cursor.offset}`,
-        );
-        expect(c.devices.registry.isTrusted(r.id)).toBe(true);
-      } else {
-        c.pull((batch) => batch.device === b.id);
-      }
-      syncAll([a, b, r, c]);
-      // ... and every device converges: R stays revoked; B never consented, so it stays trusted.
-      const reference = summary(a.devices.registry);
-      expect(reference.revoked.map((x) => x[0])).toEqual([r.id]);
-      expect(reference.trusted).toEqual([a.id, b.id, c.id].sort());
-      for (const d of [b, r, c]) expect(summary(d.devices.registry)).toEqual(reference);
-      expect(a.devices.registry.revoked.get(r.id)?.contested).toBe(false);
-      for (const d of [b, r, c]) expect(d.acceptedData()).toEqual(a.acceptedData());
-      if (order === "attacker-first") {
-        expect(c.rejections.some((x) => x.device === r.id)).toBe(true);
-      }
-      // A device paired afterwards and a rebuilt device reach the same registry.
-      const j = await pairDevice(a, "new phone");
-      c.rebuild();
-      syncAll([a, b, r, c, j]);
-      const after = summary(a.devices.registry);
-      for (const d of [b, c, j]) expect(summary(d.devices.registry)).toEqual(after);
-      expect(after.revoked.map((x) => x[0])).toEqual([r.id]);
-      for (const d of [c, j]) expect(d.acceptedData()).toEqual(a.acceptedData());
-      // The next rotation wraps for neither of them.
-      const rotation = a.devices.prepareRotation(newEid());
-      if (!rotation.ok) throw new Error(rotation.reason);
-      expect(rotation.change.recipients).not.toContain(r.id);
-      expect(rotation.change.recipients).toContain(b.id);
-      rotation.change.discard();
-    });
-  }
+  // The attacker's frame reaches C first (the harder order: C accepts it before it knows R is revoked).
+  // The revoker-first order is revocation.test.ts "a revoked device's retaliation against its
+  // revoker"; order independence in general is the delivery-order property below.
+  it("A1: a revoked device backdates a revocation of its revoker; it never counts (no consent, H2), even delivered first", async () => {
+    const { a, b, r, c } = await fourDevices();
+    r.write([note()]);
+    syncAll([a, b, r, c]);
+    const bRevokesR = honestRevoke(b, r);
+    b.push();
+    r.pull(); // the batch is sealed under the old key: R reads it
+    // R answers in its own stream, after its cut, stamped one second BEFORE B's revocation.
+    const wall = parseHlc(bRevokesR.hlc).wall - 1000;
+    r.write(
+      [
+        buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
+          { device: b.id, cut: START_CURSOR },
+        ]),
+      ],
+      { hlc: () => hlcAt(r.id, wall) },
+    );
+    r.push();
+    c.pull((batch) => batch.device === r.id);
+    // C's guard accepted R's frame while it did not know R was revoked ...
+    expect(c.acceptedData()).toContain(`${r.id}@${r.stream[r.stream.length - 1]?.cursor.offset}`);
+    expect(c.devices.registry.isTrusted(r.id)).toBe(true);
+    syncAll([a, b, r, c]);
+    // ... and every device converges: R stays revoked; B never consented, so it stays trusted.
+    const reference = summary(a.devices.registry);
+    expect(reference.revoked.map((x) => x[0])).toEqual([r.id]);
+    expect(reference.trusted).toEqual([a.id, b.id, c.id].sort());
+    for (const d of [b, r, c]) expect(summary(d.devices.registry)).toEqual(reference);
+    expect(a.devices.registry.revoked.get(r.id)?.contested).toBe(false);
+    for (const d of [b, r, c]) expect(d.acceptedData()).toEqual(a.acceptedData());
+    expect(c.rejections.some((x) => x.device === r.id)).toBe(true);
+    // A device paired afterwards and a rebuilt device reach the same registry.
+    const j = await pairDevice(a, "new phone");
+    c.rebuild();
+    syncAll([a, b, r, c, j]);
+    const after = summary(a.devices.registry);
+    for (const d of [b, c, j]) expect(summary(d.devices.registry)).toEqual(after);
+    expect(after.revoked.map((x) => x[0])).toEqual([r.id]);
+    for (const d of [c, j]) expect(d.acceptedData()).toEqual(a.acceptedData());
+    // The next rotation wraps for neither of them.
+    const rotation = a.devices.prepareRotation(newEid());
+    if (!rotation.ok) throw new Error(rotation.reason);
+    expect(rotation.change.recipients).not.toContain(r.id);
+    expect(rotation.change.recipients).toContain(b.id);
+    rotation.change.discard();
+  });
 
   it("A1b: a revoked device rewrites one of its own frames before its cut; fresh joiners and rebuilds never trust it again", async () => {
     const { a, b, r, c } = await fourDevices();

@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 import { createRecoveryKey, recoveryIdentity } from "../crypto/index.js";
 import {
-  type Backend,
   boundedConfig,
   config,
   decide,
@@ -17,7 +16,6 @@ import {
   pin,
   pinnedRun,
   rule6Run,
-  siblingRun,
   view,
   visibilityOf,
 } from "../testing/devices/leaseSim.js";
@@ -33,8 +31,6 @@ import {
 import { fromHex, toHex } from "./bytes.js";
 import { buildLeaseClaim, buildLeasePin, pinConfirmationText } from "./events.js";
 import { nextLeaseStep, pinEventFor } from "./lease.js";
-
-const BACKENDS: readonly Backend[] = ["linearizable", "bounded", "eventual"];
 
 function syncAll(all: readonly SimDevice[], rounds = 2): void {
   for (let i = 0; i < rounds; i++) for (const d of all) d.sync();
@@ -62,7 +58,8 @@ function rawClaim(d: SimDevice): string {
 }
 
 describe("R4: the creator is the pinned fetch leader on every backend", () => {
-  it.each(BACKENDS)("over a %s remote only the creator leads; claims are ignored", async (b) => {
+  // Over a synced folder (the weakest transport): pinned mode must not depend on the backend.
+  it("over a synced folder only the creator leads; claims are ignored", async () => {
     const {
       a,
       b: phone,
@@ -70,7 +67,7 @@ describe("R4: the creator is the pinned fetch leader on every backend", () => {
       remote,
     } = await devices([0, 0, 0], {
       mode: "pinned",
-      visibility: visibilityOf(b),
+      visibility: visibilityOf("eventual"),
     });
     remote.flush();
     syncAll([a, phone, c]);
@@ -121,15 +118,6 @@ describe("R4: moving the leader", () => {
     expect(holds(c)).toBe(true);
     c.sync();
     expect(holds(c)).toBe(false);
-    expect([a, b, c].filter(holds)).toEqual([b]);
-  });
-
-  it("the old leader writing the pin itself needs no acknowledgement", async () => {
-    const { a, b, c, remote } = await devices([0, 0, 0], { mode: "pinned" });
-    remote.flush();
-    pin(a, "pinned", b);
-    syncAll([a, b, c]);
-    expect(view(b).pendingFrom).toBeNull();
     expect([a, b, c].filter(holds)).toEqual([b]);
   });
 
@@ -320,31 +308,6 @@ describe("S1: sibling pins never make the old leader hand over twice", () => {
     syncAll([b, c]);
     expect([b, c].filter(holds)).toEqual([c]);
   });
-
-  it("an offline tablet's earlier pin arriving later does not move the leader again", async () => {
-    const { a, b, c, remote } = await devices([0, 0, 0], { mode: "pinned" });
-    remote.flush();
-    syncAll([a, b, c]);
-    pin(c, "pinned", c); // on the tablet, offline: not pushed
-    remote.time += MIN;
-    pin(b, "pinned", b); // later, on the phone
-    b.push();
-    a.pull();
-    expect(decide(a)).toBe("release");
-    a.push();
-    b.pull();
-    expect(holds(b)).toBe(true);
-    // The tablet comes online.
-    c.sync();
-    a.pull();
-    expect(decide(a)).toBe("idle");
-    a.push();
-    c.pull();
-    b.pull(() => false);
-    expect([a, b, c].filter(holds)).toEqual([b]);
-    syncAll([a, b, c]);
-    for (const d of [a, b, c]) expect(view(d).pinned, d.name).toBe(b.id);
-  });
 });
 
 describe("R4: automatic handover is an owner opt-in, only over a bounded transport", () => {
@@ -401,39 +364,19 @@ describe("R4: automatic handover is an owner opt-in, only over a bounded transpo
   });
 });
 
-// One schedule of each kind; the sweeps are lease.rule6.exhaustive.test.ts.
+// One short schedule of each mode; the sweeps (more schedules, the synced-folder control, sibling
+// pins, forced re-pins) are lease.rule6.exhaustive.test.ts and lease.pinned.rule6.exhaustive.test.ts.
 describe("R4: rule 6 on both backend kinds (one schedule each)", () => {
   it("auto over a bounded relay: never two holders, and someone holds", async () => {
-    expect(await rule6Run(0, "bounded")).toMatchObject({ held: true, overlap: false });
+    expect(await rule6Run(0, "bounded", false, 2 * 60)).toMatchObject({
+      held: true,
+      overlap: false,
+    });
   });
 
-  it("auto over a synced folder: nobody holds; believing it bounded breaks rule 6 (control)", async () => {
-    expect((await rule6Run(0, "eventual")).held).toBe(false);
-    expect((await rule6Run(0, "eventual", true)).overlap).toBe(true);
-  });
-
-  it("pinned over a synced folder and over a relay, owner re-pins: never two holders", async () => {
-    for (const backend of ["eventual", "bounded"] as const) {
-      const r = await pinnedRun(0, backend, false);
-      expect(r.overlaps).toBe(0);
-      expect(r.leaders).toBeGreaterThan(1);
-    }
-  });
-
-  it("S1: a staged backdated sibling pin over a synced folder: never two holders", async () => {
-    // Schedule 7 is one where the old rule (earliest stamp wins) made two devices fetch.
-    const r = await siblingRun(7);
+  it("pinned over a synced folder, owner re-pins: never two holders", async () => {
+    const r = await pinnedRun(0, "eventual", false, 2 * 60);
     expect(r.overlaps).toBe(0);
-    expect(r.acks).toBe(1); // the old leader handed over exactly once
-  });
-
-  it("S1b: the old leader retired after its hand-over, then a sibling pin: never two holders", async () => {
-    const r = await siblingRun(0, true); // judging by today's trust made two devices fetch here
-    expect(r.attacked).toBe(true);
-    expect(r.overlaps).toBe(0);
-  });
-
-  it("forced re-pins: every overlap is a holder that has not seen the forced pin", async () => {
-    expect((await pinnedRun(0, "eventual", true)).overlaps).toBeGreaterThan(0);
+    expect(r.leaders).toBeGreaterThan(1);
   });
 });

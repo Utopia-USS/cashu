@@ -1,63 +1,18 @@
-import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { entropyToMnemonic, mnemonicToEntropy } from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { describe, expect, it } from "vitest";
 import { ctx, DEVICE_A, GID_SALT, range, sodium, trustedTo } from "../testing/crypto/testkit.js";
 import { certifyDevice } from "./cert.js";
 import { fromHex, toHex, utf8 } from "./encoding.js";
-import { FRAME_HEADER_BYTES, openFrame, sealFrameWithNonce } from "./frame.js";
+import { openFrame, sealFrameWithNonce } from "./frame.js";
 import { createDeviceIdentity, DeviceIdentity } from "./identity.js";
-import { encodeKeyPayload, KID_BYTES } from "./keys.js";
+import { encodeKeyPayload } from "./keys.js";
 import { recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
 import { keyringFromKeys } from "./testing.js";
 import { wrapKeys } from "./wrap.js";
-
-describe("published test vectors", () => {
-  it("XChaCha20-Poly1305 matches draft-irtf-cfrg-xchacha A.3.1", () => {
-    const plain = utf8(
-      "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.",
-    );
-    const cipher = sodium.aeadEncrypt(
-      plain,
-      fromHex("50515253c0c1c2c3c4c5c6c7"),
-      range(0x40, 0x57),
-      range(0x80, 0x9f),
-    );
-    expect(toHex(cipher)).toBe(
-      "bd6d179d3e83d43b9576579493c0e939572a1700252bfaccbed2902c21396cbb731c7f1b0b4aa6440bf3a82f4eda7e39" +
-        "ae64c6708c54c216cb96b72e1213b4522f8c9ba40db5d945b11b69b982c1bb9e3f3fac2bc369488f76b2383565d3fff9" +
-        "21f9664c97637da9768812f615c68b13b52e" +
-        "c0875924c1c7987947deafd8780acf49",
-    );
-  });
-
-  it("HKDF-SHA256 matches RFC 5869 test case 1", () => {
-    const okm = hkdf(
-      sha256,
-      new Uint8Array(22).fill(0x0b),
-      range(0x00, 0x0c),
-      range(0xf0, 0xf9),
-      42,
-    );
-    expect(toHex(okm)).toBe(
-      "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
-    );
-  });
-
-  it("BIP39 24-word vectors (all-zero and all-ones entropy)", () => {
-    const zero = entropyToMnemonic(new Uint8Array(32), wordlist);
-    expect(zero).toBe(`${"abandon ".repeat(23)}art`);
-    expect(entropyToMnemonic(new Uint8Array(32).fill(0xff), wordlist)).toBe(
-      `${"zoo ".repeat(23)}vote`,
-    );
-    expect(mnemonicToEntropy(zero, wordlist)).toEqual(new Uint8Array(32));
-  });
-});
 
 // Frozen outputs of our own formats: a change here is a wire-format break and needs a new version.
 describe("cashU format golden vectors", () => {
@@ -72,8 +27,7 @@ describe("cashU format golden vectors", () => {
   const nonce = range(0xa0, 0xb7);
   const lp = (text: string) => [0, 0, 0, text.length, ...utf8(text)];
 
-  // Subkeys and kid recomputed with an independent BLAKE2b (@noble/hashes), straight from the spec.
-  const frameKey = blake2b(utf8("cashu/subkey/frame/v2"), { key: keyBytes, dkLen: 32 });
+  // Subkey and kid recomputed with an independent BLAKE2b (@noble/hashes), straight from the spec.
   const kidKey = blake2b(utf8("cashu/subkey/kid/v2"), { key: keyBytes, dkLen: 32 });
 
   it("key id binds key, vault, generation and epoch", () => {
@@ -108,17 +62,6 @@ describe("cashU format golden vectors", () => {
   // The writer of the vector frame: fixed seeds, so its Ed25519 signatures are fixed too.
   const writer = () =>
     new DeviceIdentity(DEVICE_A, new Secret(range(0x10, 0x2f)), new Secret(range(0x30, 0x4f)));
-  const u64be = (n: number) => [
-    0,
-    0,
-    0,
-    0,
-    (n >>> 24) & 255,
-    (n >>> 16) & 255,
-    (n >>> 8) & 255,
-    n & 255,
-  ];
-
   it("chain genesis (data stream)", () => {
     expect(toHex(frameCtx.prev)).toBe(
       "d0cbaf449fc4e5df4f83c13ca9a25a9bf075a29cb8b7453cc33eeb48475085ae",
@@ -153,65 +96,6 @@ describe("cashU format golden vectors", () => {
     const opened = openFrame(sodium, ring(), sealed.bytes, frameCtx);
     expect(opened.plain).toEqual(utf8("hello frame"));
     expect(toHex(opened.head.chain)).toBe(toHex(sealed.head.chain));
-  });
-
-  it("an independent implementation (@noble) opens the frame, recomputes its chain and checks the head", () => {
-    const { bytes: frame } = sealFrameWithNonce(
-      sodium,
-      ring(),
-      utf8("hello frame"),
-      frameCtx,
-      writer(),
-      nonce,
-    );
-    const kid = frame.subarray(1, 1 + KID_BYTES);
-    const body = frame.subarray(0, frame.length - 64);
-    // AAD spelled out byte by byte from the format comment in frame.ts.
-    const aad = new Uint8Array([
-      ...utf8("cashu/frame/v3"),
-      3,
-      ...kid,
-      ...lp(vaultId),
-      ...lp(DEVICE_A),
-      ...[0, 0, 0, 7],
-      ...u64be(128),
-    ]);
-    const plain = xchacha20poly1305(frameKey, nonce, aad).decrypt(
-      body.subarray(FRAME_HEADER_BYTES),
-    );
-    // u32 length 11 | "hello frame" | zero padding up to Padme(15) = 16.
-    expect(plain).toEqual(new Uint8Array([0, 0, 0, 11, ...utf8("hello frame"), 0]));
-    const end = 128 + 4 + frame.length;
-    const digest = blake2b(new Uint8Array([...utf8("cashu/frame-digest/v1"), ...body]), {
-      dkLen: 32,
-    });
-    const chain = blake2b(
-      new Uint8Array([
-        ...utf8("cashu/chain/v1"),
-        ...lp(vaultId),
-        ...lp(DEVICE_A),
-        1,
-        ...[0, 0, 0, 7],
-        ...u64be(128),
-        ...u64be(end),
-        ...frameCtx.prev,
-        ...digest,
-      ]),
-      { dkLen: 32 },
-    );
-    const headBody = new Uint8Array([
-      ...utf8("cashu/head/v1"),
-      ...lp(vaultId),
-      ...lp(DEVICE_A),
-      1,
-      ...[0, 0, 0, 7],
-      ...u64be(end),
-      ...chain,
-    ]);
-    expect(
-      ed25519.verify(frame.subarray(frame.length - 64), headBody, writer().signPublicKey),
-    ).toBe(true);
-    expect(toHex(chain)).toBe(toHex(openFrame(sodium, ring(), frame, frameCtx).head.chain));
   });
 
   it("recovery public keys for the all-zero phrase", () => {

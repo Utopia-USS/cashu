@@ -1,20 +1,15 @@
-// The decision-key property (decisionKeysProperty.ts) on a few seeds; the sweep is
+// The decision-key property (decisionKeysProperty.ts) on two seeds that revoke and mint; the sweep is
 // decisionKeys.property.exhaustive.test.ts.
 
 import { describe, expect, it } from "vitest";
 import { decisionKeysRun } from "../testing/devices/decisionKeysProperty.js";
 
 describe("decision keys property", () => {
-  it.each([1, 2])(
+  it.each([2, 3])(
     "seed %i: keys minted through revoked devices never change a decision in their favour",
     async (seed) => {
-      await decisionKeysRun(seed);
+      // The seed really mints (a run without a revoked device would prove nothing).
+      expect((await decisionKeysRun(seed)).minters).toBeGreaterThan(0);
     },
   );
-
-  it("the seeds exercise minting (some device is revoked)", async () => {
-    expect((await decisionKeysRun(3)).minters + (await decisionKeysRun(4)).minters).toBeGreaterThan(
-      0,
-    );
-  });
 });

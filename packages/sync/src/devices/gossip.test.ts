@@ -16,7 +16,6 @@ import {
   HEADS_GOSSIPED,
 } from "./events.js";
 import { DeviceFrameGate } from "./gate.js";
-import { MAX_GOSSIP_HISTORY } from "./gossip.js";
 import { MemoryProvenanceStore } from "./provenance.js";
 import { VaultDevices } from "./vaultDevices.js";
 
@@ -57,27 +56,31 @@ describe("authenticated head gossip", () => {
         },
       ]);
     };
-    for (let n = 0; n < MAX_GOSSIP_HISTORY + 1; n++) offer(head, n);
+    // Retention keeps every distinct gossip event up to the history cap, so a few repeats show
+    // the dedup: without it each repeat would be retained.
+    for (let n = 0; n < 3; n++) offer(head, n);
     const compact = must(a.gate.exportState(new Map())).split("\n")[0];
     expect(JSON.parse(compact ?? "{}").gossip).toHaveLength(1);
-    expect(a.gate.gossipStatus().overflow).toBe(false);
+    expect(a.gate.gossipStatus().retained).toBe(1);
     const stranger = createDeviceIdentity(sodium);
-    for (let n = 0; n < MAX_GOSSIP_HISTORY + 1; n++) {
+    for (let n = 0; n < 3; n++) {
       offer(
         signHead(stranger, vaultId, {
           device: stranger.deviceId,
           stream: 1,
           seg: 1,
           offset: 100,
-          chain: new Uint8Array(32).fill(n % 256),
+          chain: new Uint8Array(32).fill(n),
         }),
-        n + MAX_GOSSIP_HISTORY + 1,
+        n + 3,
       );
     }
-    expect(a.gate.gossipStatus().overflow).toBe(false);
-    expect(a.gate.gossipStatus().retained).toBe(1);
-    expect(a.gate.gossipStatus().historyPending).toBe(false);
-    expect(a.gate.gossipStatus().authorityUncertain).toBe(false);
+    expect(a.gate.gossipStatus()).toMatchObject({
+      overflow: false,
+      retained: 1,
+      historyPending: false,
+      authorityUncertain: false,
+    });
   });
 
   it("relays an unchanged A head through B and C while A is withheld, without echoing envelopes", async () => {

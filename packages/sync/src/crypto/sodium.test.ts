@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   anyEpoch,
-  code,
   ctx,
   fakeReactNativeLibsodium,
   mobileSodium,
@@ -84,7 +83,8 @@ describe("runtimes", () => {
     }
   });
 
-  // Failure classification by kind (iOS / Android / unknown shapes): sodium.classify.test.ts.
+  // Failure classification by kind (iOS / Android / unknown shapes, a runtime broken after startup):
+  // sodium.classify.test.ts.
 
   it("a primitive that returns wrong answers fails the self-test", async () => {
     const fake = await fakeReactNativeLibsodium();
@@ -102,44 +102,4 @@ describe("runtimes", () => {
       ).toBe("unsupported_runtime");
     }
   });
-
-  it("narrow catches: a TypeError or 'not implemented' after startup is unsupported_runtime, never auth_failed", async () => {
-    const fake = await fakeReactNativeLibsodium();
-    let broken = false;
-    const lib: LibsodiumLike = {
-      ...fake.namespace,
-      crypto_aead_xchacha20poly1305_ietf_encrypt: (m, _ad, sn, pn, k) =>
-        (
-          sodiumLib.crypto_aead_xchacha20poly1305_ietf_encrypt as NonNullable<
-            LibsodiumLike["crypto_aead_xchacha20poly1305_ietf_encrypt"]
-          >
-        )(m, _ad, sn, pn, k),
-      crypto_aead_xchacha20poly1305_ietf_decrypt: (sn, c, ad, pn, k) => {
-        if (broken) throw new TypeError("Cannot read properties of undefined");
-        return (
-          sodiumLib.crypto_aead_xchacha20poly1305_ietf_decrypt as NonNullable<
-            LibsodiumLike["crypto_aead_xchacha20poly1305_ietf_decrypt"]
-          >
-        )(sn, c, ad, pn, k);
-      },
-      crypto_box_seal_open: (c, pk, sk) => {
-        if (broken) throw new Error("not yet implemented");
-        return fake.namespace.crypto_box_seal_open(c, pk, sk);
-      },
-    };
-    const s = fromLibsodium(lib);
-    const ring = newRing();
-    const c = ctx(ring.vaultId);
-    const frame = sealFrame(s, ring, samplePlain(), c, writerOf(c)).bytes;
-    broken = true;
-    expect(code(() => openFrame(s, ring, frame, c).plain)).toBe("unsupported_runtime");
-    const box = s.seal(samplePlain(), createDeviceIdentity(s).box.publicKey);
-    expect(code(() => s.sealOpen(box, new Uint8Array(32), new Uint8Array(32)))).toBe(
-      "unsupported_runtime",
-    );
-  });
 });
-
-const { default: sodiumLib } = (await import("libsodium-wrappers")) as unknown as {
-  default: LibsodiumLike;
-};

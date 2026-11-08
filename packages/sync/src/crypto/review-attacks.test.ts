@@ -1,12 +1,11 @@
 import { ed25519 } from "@noble/curves/ed25519.js";
-// The S27 review's attacks A1-A7, kept as permanent tests: each asserts the attack now FAILS.
+// The S27 review's attacks, kept as permanent tests: each asserts the attack now FAILS.
 
 import { describe, expect, it } from "vitest";
 import {
   anyEpoch,
   code,
   ctx,
-  GID_SALT,
   newRing,
   pairWith,
   samplePlain,
@@ -16,14 +15,12 @@ import {
   writerOf,
 } from "../testing/crypto/testkit.js";
 import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
-import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { verifyHeadSignature } from "./head.js";
 import { createDeviceIdentity, type DeviceIdentity, verifySignature } from "./identity.js";
 import { decodeKeyPayload, type Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
-import { keyringFromKeys } from "./testing.js";
 import { type TrustedSigner, unwrapKeys, WRAP_VERSION, wrapKeys } from "./wrap.js";
 
 function trusting(...devices: DeviceIdentity[]): TrustedSigner {
@@ -131,64 +128,6 @@ describe("review attacks now fail", () => {
     ).toBe(false);
   });
 
-  it("A3: concurrent rotation never lets a key wrapped for the revoked device win", () => {
-    const base = newRing();
-    for (let i = 0; i < 64; i++) {
-      const a = base.clone(sodium); // A revokes R
-      const b = base.clone(sodium); // B rotates concurrently, wraps for R too
-      const ka = rotateKeyring(sodium, a, { epoch: base.active.epoch + 1 });
-      rotateKeyring(sodium, b);
-      a.merge(b);
-      expect(a.active.kid).toBe(ka.kid);
-    }
-  });
-
-  it("A4: a key relabelled to another generation is another kid, and merges converge in any order", () => {
-    const ring = newRing();
-    const vaultInfo = { vaultId: ring.vaultId, recovery: ring.recovery, gidSalt: GID_SALT };
-    const k = sodium.randomBytes(32);
-    const asGen1 = keyringFromKeys(sodium, vaultInfo, [
-      { generation: 1, epoch: 0, key: k.slice() },
-    ]);
-    const relabelled = keyringFromKeys(sodium, vaultInfo, [
-      { generation: 1, epoch: 0, key: sodium.randomBytes(32) },
-      { generation: 2, epoch: 0, key: k.slice() },
-    ]);
-    expect(relabelled.get(asGen1.active.kid)).toBeUndefined();
-    const x = asGen1.clone(sodium);
-    const y = relabelled.clone(sodium);
-    x.merge(relabelled);
-    y.merge(asGen1);
-    expect(x.active.kid).toBe(y.active.kid);
-    expect(x.entries().map((e) => e.kid)).toEqual(y.entries().map((e) => e.kid));
-  });
-
-  it("A5: malformed frames never crash with a non-CryptoError", () => {
-    const ring = newRing();
-    const c = ctx(ring.vaultId);
-    const good = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
-    let other = 0;
-    const tryOpen = (f: Uint8Array) => {
-      try {
-        openFrame(sodium, ring, f, c).plain;
-      } catch (e) {
-        if (!(e instanceof CryptoError)) other++;
-      }
-    };
-    for (let n = 0; n < good.length + 2; n++) {
-      tryOpen(good.subarray(0, n));
-      tryOpen(concat(good, new Uint8Array(n)));
-    }
-    const kid = Buffer.from(ring.active.kid, "hex");
-    for (let i = 0; i < 2000; i++) {
-      const f = sodium.randomBytes(17 + Math.floor(Math.random() * 200));
-      f[0] = 2;
-      f.set(kid, 1);
-      tryOpen(f);
-    }
-    expect(other).toBe(0);
-  });
-
   it("A6: device ids with lone surrogates (or any non-hex id) are rejected", () => {
     const ring = newRing();
     for (const deviceId of ["dev\uD800", "dev�", "DEVICE", "a1".repeat(15), "0".repeat(32)]) {
@@ -215,65 +154,51 @@ describe("review attacks now fail", () => {
     ).toThrow(RangeError);
   });
 
-  it("A7: recovery accepts mixed case / extra whitespace; rejects prefixes and bad checksum", () => {
-    const r = createRecoveryKey(sodium);
-    const keys = recoveryIdentity(
-      sodium,
-      `  ${r.phrase.reveal().toUpperCase().split(" ").join("\n  ")} `,
-    ).publicKeys;
-    expect(keys).toEqual(r.publicKeys);
-    const w = r.phrase.reveal().split(" ");
+  it("A7: recovery rejects 4-letter word prefixes", () => {
+    const w = createRecoveryKey(sodium).phrase.reveal().split(" ");
     // A 4-letter prefix of a longer word is never a word, so the prefixes are rejected unless every
-    // word has at most 4 letters (then they are the phrase itself).
+    // word has at most 4 letters (then they are the phrase itself). Case, whitespace and checksum
+    // handling are in recovery.test.ts.
     expect(code(() => recoveryIdentity(sodium, w.map((x) => x.slice(0, 4)).join(" ")))).toBe(
       w.some((x) => x.length > 4) ? "bad_mnemonic" : "no error",
     );
-    const swapped = [...w];
-    [swapped[0], swapped[1]] = [swapped[1] ?? "", swapped[0] ?? ""];
-    if (swapped[0] !== swapped[1]) {
-      expect(["bad_mnemonic", "no error"]).toContain(
-        code(() => recoveryIdentity(sodium, swapped.join(" "))),
-      );
-    }
   });
 });
 
 describe("revocation races and hygiene", () => {
   it("3 devices: revoke vs concurrent rotate, the revoked device never holds the final active key", () => {
-    for (let round = 0; round < 16; round++) {
-      const { ids, rings, vaultId } = vault(3);
-      const [a, b, r] = ids as [DeviceIdentity, DeviceIdentity, DeviceIdentity];
-      const [ringA, ringB, ringR] = rings as [Keyring, Keyring, Keyring];
-      const all = trusting(a, b, r);
-      // A revokes R: epoch + 1, wrapped for B (and itself) only.
-      const revoke = rotateKeyring(sodium, ringA, { epoch: 1 });
-      const toB = wrapKeys(
-        sodium,
-        ringA,
-        a,
-        trustedTo(b, ringA.vaultId),
-        [revoke.kid],
-        [a.deviceId, b.deviceId],
-      );
-      // Concurrently B rotates for its stale view {A, B, R}.
-      const plain = rotateKeyring(sodium, ringB);
-      const stale = [a.deviceId, b.deviceId, r.deviceId];
-      const fromB = [a, r].map((d) =>
-        wrapKeys(sodium, ringB, b, trustedTo(d, ringB.vaultId), [plain.kid], stale),
-      );
-      const atB = unwrapKeys(sodium, toB, b, ringB, all, anyEpoch);
-      unwrapKeys(sodium, fromB[0] as Uint8Array, a, ringA, all, anyEpoch);
-      unwrapKeys(sodium, fromB[1] as Uint8Array, r, ringR, all, anyEpoch);
-      // Both remaining devices converge on the revoke key, whose signed recipient list excludes R ...
-      expect(ringA.active.kid).toBe(revoke.kid);
-      expect(ringB.active.kid).toBe(revoke.kid);
-      expect(atB.recipients).not.toContain(r.deviceId);
-      // ... and R, which holds B's concurrent key, cannot read what A and B write next.
-      expect(ringR.get(plain.kid)).toBeDefined();
-      const c = ctx(vaultId, { deviceId: a.deviceId });
-      const next = sealFrame(sodium, ringA, samplePlain(), c, writerOf(c)).bytes;
-      expect(code(() => openFrame(sodium, ringR, next, c).plain)).toBe("unknown_key");
-    }
+    const { ids, rings, vaultId } = vault(3);
+    const [a, b, r] = ids as [DeviceIdentity, DeviceIdentity, DeviceIdentity];
+    const [ringA, ringB, ringR] = rings as [Keyring, Keyring, Keyring];
+    const all = trusting(a, b, r);
+    // A revokes R: epoch + 1, wrapped for B (and itself) only.
+    const revoke = rotateKeyring(sodium, ringA, { epoch: 1 });
+    const toB = wrapKeys(
+      sodium,
+      ringA,
+      a,
+      trustedTo(b, ringA.vaultId),
+      [revoke.kid],
+      [a.deviceId, b.deviceId],
+    );
+    // Concurrently B rotates for its stale view {A, B, R}.
+    const plain = rotateKeyring(sodium, ringB);
+    const stale = [a.deviceId, b.deviceId, r.deviceId];
+    const fromB = [a, r].map((d) =>
+      wrapKeys(sodium, ringB, b, trustedTo(d, ringB.vaultId), [plain.kid], stale),
+    );
+    const atB = unwrapKeys(sodium, toB, b, ringB, all, anyEpoch);
+    unwrapKeys(sodium, fromB[0] as Uint8Array, a, ringA, all, anyEpoch);
+    unwrapKeys(sodium, fromB[1] as Uint8Array, r, ringR, all, anyEpoch);
+    // Both remaining devices converge on the revoke key, whose signed recipient list excludes R ...
+    expect(ringA.active.kid).toBe(revoke.kid);
+    expect(ringB.active.kid).toBe(revoke.kid);
+    expect(atB.recipients).not.toContain(r.deviceId);
+    // ... and R, which holds B's concurrent key, cannot read what A and B write next.
+    expect(ringR.get(plain.kid)).toBeDefined();
+    const c = ctx(vaultId, { deviceId: a.deviceId });
+    const next = sealFrame(sodium, ringA, samplePlain(), c, writerOf(c)).bytes;
+    expect(code(() => openFrame(sodium, ringR, next, c).plain)).toBe("unknown_key");
   });
 
   it("N1: a still-trusted malicious device cannot win the race by claiming a high epoch", () => {

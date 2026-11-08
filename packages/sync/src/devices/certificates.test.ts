@@ -1,15 +1,16 @@
 // S29c R2 (S29-review.md "S29b re-check"): junk certificates must never erase trust. Certificates are
 // windowed per WRITER stream, signatures are checked before a certificate can use a window's quota,
 // certificates outside their issuer's stream are ignored (D2) and the certificates a revoked writer
-// logged after its cut are dropped. Permanent tests of the review's attack and its variants.
+// logged after its cut are dropped. One fold per rule over a shared four-device vault.
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { UnstampedEvent } from "../carrier.js";
 import {
   CertificateCache,
   certifyDevice,
   createDeviceIdentity,
   createRecoveryKey,
+  type DeviceIdentity,
   RECOVERY_SIGNER_ID,
   recoveryIdentity,
 } from "../crypto/index.js";
@@ -18,18 +19,19 @@ import {
   hlcAt,
   newEid,
   pairDevice,
-  prepareConsented,
   type SimDevice,
   START_TIME,
   sodium,
 } from "../testing/devices/testkit.js";
 import { concat, fromHex, toHex } from "./bytes.js";
 import { buildDeviceAdded, buildDeviceRevoked, DEVICE_ADDED, type LogEvent } from "./events.js";
-import { foldRegistry, type Registry } from "./registry.js";
-import { CERT_CHECK_BUDGET } from "./registryTypes.js";
+import { foldRegistry, type Registry, type RegistryOptions } from "./registry.js";
+import { CERT_CHECK_BUDGET, MAX_CERTS_PER_ISSUER } from "./registryTypes.js";
 import { type StatementVerifier, verifyStatement } from "./statements.js";
 
 const KEYS = createDeviceIdentity(sodium); // one key pair for every junk subject (only ids differ)
+/** Junk past an issuer's quota: enough to evict a genuine certificate if junk could take a slot. */
+const OVER_QUOTA = MAX_CERTS_PER_ISSUER + 1;
 
 /** A device id starting with `00` (sorts before every real id by hex). */
 function lowId(i: number): string {
@@ -66,6 +68,21 @@ function junkAdded(issuer: string, signer: string, subject = lowId(0)): Unstampe
   };
 }
 
+function subjectOf(d: DeviceIdentity) {
+  return { deviceId: d.deviceId, signPublicKey: d.signPublicKey, boxPublicKey: d.box.publicKey };
+}
+
+/** A genuine `device.added`: `issuer` certifies a fresh device and signs the statement. */
+function genuineAdd(
+  issuer: DeviceIdentity,
+  vaultId: string,
+  subject = createDeviceIdentity(sodium),
+) {
+  const cert = certifyDevice(sodium, issuer, subjectOf(subject), vaultId);
+  const event = buildDeviceAdded(issuer, vaultId, newEid(), subjectOf(subject), "added", cert);
+  return { id: subject.deviceId, event };
+}
+
 function stamp(e: UnstampedEvent, writer: string, offset: number): LogEvent {
   return {
     eid: e.i,
@@ -78,12 +95,9 @@ function stamp(e: UnstampedEvent, writer: string, offset: number): LogEvent {
   };
 }
 
-function subjectOf(d: SimDevice) {
-  return {
-    deviceId: d.id,
-    signPublicKey: d.identity.signPublicKey,
-    boxPublicKey: d.identity.box.publicKey,
-  };
+/** `events` in `writer`'s stream from `offset` on, in order (after every genuine event of the vault). */
+function inStream(writer: string, offset: number, events: readonly UnstampedEvent[]): LogEvent[] {
+  return events.map((e, i) => stamp(e, writer, offset + i));
 }
 
 function summary(reg: Registry) {
@@ -94,23 +108,8 @@ function summary(reg: Registry) {
   };
 }
 
-function syncAll(devices: readonly SimDevice[], rounds = 2): void {
-  for (let i = 0; i < rounds; i++) for (const d of devices) d.sync();
-}
-
-async function fourDevices() {
-  const vault = createSimVault();
-  const a = vault.creator;
-  const b = await pairDevice(a, "phone");
-  const r = await pairDevice(a, "laptop");
-  const c = await pairDevice(a, "tablet");
-  syncAll([a, b, r, c]);
-  return { ...vault, a, b, r, c };
-}
-
-function allEvents(...devices: SimDevice[]): LogEvent[] {
-  return devices.flatMap((d) => d.stream.flatMap((s) => s.events));
-}
+const reasons = (reg: Registry, reason: string) =>
+  reg.ignored.filter((x) => x.reason === reason).length;
 
 class CountingCache extends CertificateCache {
   misses = 0;
@@ -123,243 +122,153 @@ class CountingCache extends CertificateCache {
 }
 
 describe("R2 junk certificates", () => {
-  it("R2 exact: 300 forged recovery-issued certificates in a trusted writer's stream change no device's trust", async () => {
-    const { a, b, r, c } = await fourDevices();
-    const before = summary(a.devices.registry);
-    // R signs 300 statements carrying forged recovery-issued certificates of `00...` subjects.
-    r.write(
-      Array.from({ length: 300 }, (_, i) => {
-        const subject = { ...subjectOf(r), deviceId: lowId(i) };
-        return buildDeviceAdded(
-          r.identity,
-          r.ring.vaultId,
-          newEid(),
-          subject,
-          "junk",
-          junkCertificate(RECOVERY_SIGNER_ID, subject.deviceId),
-        );
-      }),
-    );
-    syncAll([a, b, r, c]);
-    const j = await pairDevice(a, "new phone");
-    c.rebuild();
-    syncAll([a, b, r, c, j]);
-    const expected = { ...before, trusted: [...before.trusted, j.id].sort() };
-    for (const d of [a, b, c, j]) {
-      const reg = d.devices.registry;
-      expect(summary(reg), d.name).toEqual(expected);
-      expect(reg.ignored.filter((x) => x.reason === "foreign_certificate")).toHaveLength(300);
-    }
+  let a: SimDevice;
+  let b: SimDevice;
+  let r: SimDevice;
+  let c: SimDevice;
+  let recovery: DeviceIdentity;
+  let vaultId: string;
+  let honest: LogEvent[];
+  let before: ReturnType<typeof summary>;
+  const START = 1_000_000; // stream offset after every genuine event of the vault
+
+  const fold = (extra: readonly LogEvent[], options: RegistryOptions = {}) =>
+    foldRegistry(sodium, { vaultId, recovery: a.ring.recovery }, [...honest, ...extra], options);
+
+  beforeAll(async () => {
+    const vault = createSimVault();
+    a = vault.creator;
+    recovery = vault.recovery;
+    b = await pairDevice(a, "phone");
+    r = await pairDevice(a, "laptop");
+    c = await pairDevice(a, "tablet");
+    for (let i = 0; i < 2; i++) for (const d of [a, b, r, c]) d.sync();
+    vaultId = a.ring.vaultId;
+    honest = [a, b, r, c].flatMap((d) => d.stream.flatMap((s) => s.events));
+    before = summary(fold([]));
   });
 
-  it("recovery-claiming junk statements in one stream use only that stream's check budget", async () => {
-    const { a, r } = await fourDevices();
-    const before = summary(a.devices.registry);
-    const junk = Array.from({ length: 300 }, (_, i) =>
+  it("certificates outside their issuer's stream never count and never crowd that issuer (R2 exact)", () => {
+    // R signs statements carrying forged recovery-issued certificates of `00...` subjects (the
+    // review's attack), and unsigned junk claiming B as issuer, each past the issuer's quota.
+    const forgedRecovery = Array.from({ length: OVER_QUOTA }, (_, i) => {
+      const subject = { ...subjectOf(r.identity), deviceId: lowId(i) };
+      const cert = junkCertificate(RECOVERY_SIGNER_ID, subject.deviceId);
+      return buildDeviceAdded(r.identity, vaultId, newEid(), subject, "junk", cert);
+    });
+    const claimingB = Array.from({ length: OVER_QUOTA }, (_, i) => junkAdded(b.id, r.id, lowId(i)));
+    // Afterwards the words re-certify a device (from B's stream) and B certifies one.
+    const restored = genuineAdd(recovery, vaultId);
+    const byB = genuineAdd(b.identity, vaultId);
+    const reg = fold([
+      ...inStream(r.id, START, [...forgedRecovery, ...claimingB]),
+      ...inStream(b.id, START, [restored.event, byB.event]),
+    ]);
+    expect(summary(reg)).toEqual({
+      ...before,
+      trusted: [...before.trusted, restored.id, byB.id].sort(),
+    });
+    expect(reg.certificatesIssuedBy(b.id)).toBe(1);
+    expect(reasons(reg, "foreign_certificate")).toBe(2 * OVER_QUOTA);
+  });
+
+  it("junk statements in one stream use only that stream's check budget, and never a statement check", () => {
+    const junk = Array.from({ length: CERT_CHECK_BUDGET + 44 }, (_, i) =>
       junkAdded(RECOVERY_SIGNER_ID, RECOVERY_SIGNER_ID, lowId(i)),
     );
-    const events = [...allEvents(a, r), ...junk.map((e, i) => stamp(e, r.id, 100_000 + i))];
-    const cache = new CountingCache();
-    const reg = foldRegistry(
-      sodium,
-      { vaultId: a.ring.vaultId, recovery: a.ring.recovery },
-      events,
-      {
-        certificateCache: cache,
-      },
-    );
-    expect(summary(reg)).toEqual(before);
-    const reasons = reg.ignored.map((x) => x.reason);
-    expect(reasons.filter((x) => x === "bad_signature")).toHaveLength(CERT_CHECK_BUDGET);
-    expect(reasons.filter((x) => x === "capped")).toHaveLength(300 - CERT_CHECK_BUDGET);
-    // Every junk certificate failed its recovery signature; the genuine ones were checked too.
-    expect(cache.misses).toBeLessThanOrEqual(CERT_CHECK_BUDGET + 2 * 16);
-  });
-
-  it("junk spread over fresh writer ids: trust unchanged, work bounded by writers x budget", async () => {
-    const { a, b, r, c } = await fourDevices();
-    const before = summary(a.devices.registry);
-    const writers = Array.from({ length: 3 }, () => createDeviceIdentity(sodium).deviceId);
-    const junk: LogEvent[] = [];
-    for (const [w, writer] of writers.entries()) {
-      for (let i = 0; i < 300; i++) {
-        // Half claim the recovery signer, half are self announcements under the writer's id.
-        const e =
-          i % 2 === 0
-            ? junkAdded(RECOVERY_SIGNER_ID, RECOVERY_SIGNER_ID, lowId(w * 1000 + i))
-            : junkAdded(RECOVERY_SIGNER_ID, writer, writer);
-        junk.push(stamp(e, writer, 1000 + i));
-      }
-    }
     let statementChecks = 0;
-    const counting: StatementVerifier = (...args) => {
+    const verify: StatementVerifier = (...args) => {
       statementChecks += 1;
       return verifyStatement(...args);
     };
     const cache = new CountingCache();
-    const honest = allEvents(a, b, r, c);
-    const reg = foldRegistry(
-      sodium,
-      { vaultId: a.ring.vaultId, recovery: a.ring.recovery },
-      [...junk, ...honest],
-      { verify: counting, certificateCache: cache },
-    );
+    const reg = fold(inStream(r.id, START, junk), { verify, certificateCache: cache });
     expect(summary(reg)).toEqual(before);
+    expect(reasons(reg, "bad_signature")).toBe(CERT_CHECK_BUDGET);
+    expect(reasons(reg, "capped")).toBe(44);
+    // Every junk certificate failed its recovery signature; the genuine ones were checked too.
+    expect(cache.misses).toBeLessThanOrEqual(CERT_CHECK_BUDGET + 2 * 16);
+    // The junk fails at its certificate, so no junk statement signature is ever checked.
     const honestStatements = honest.filter((e) => e.type === DEVICE_ADDED).length;
-    // Per junk writer at most CERT_CHECK_BUDGET certificate checks; the junk fails there, so no
-    // junk statement signature is ever checked (the honest ones are checked for names).
-    expect(cache.misses).toBeLessThanOrEqual(writers.length * CERT_CHECK_BUDGET + 2 * 16);
     expect(statementChecks).toBeLessThanOrEqual(2 * honestStatements);
   });
 
-  it("junk claiming another issuer in a writer's stream never crowds that issuer (foreign certificates)", async () => {
-    const { a, b, r, c } = await fourDevices();
-    r.write(Array.from({ length: 300 }, (_, i) => junkAdded(b.id, r.id, lowId(i))));
-    syncAll([a, b, r, c]);
-    const x = await pairDevice(b, "watch"); // certified by B after the junk
-    syncAll([a, b, r, c, x]);
-    for (const d of [a, c, x]) {
-      expect(d.devices.registry.isTrusted(x.id), d.name).toBe(true);
-      expect(d.devices.registry.certificatesIssuedBy(b.id)).toBe(1);
-    }
+  it("junk claiming a writer as issuer in its own stream never takes its quota; past the budget it hurts only that writer", () => {
+    // Over the quota but within the check budget: junk costs checks, never quota.
+    const x = genuineAdd(r.identity, vaultId);
+    const selfJunk = (n: number, from: number) =>
+      Array.from({ length: n }, (_, i) => junkAdded(r.id, r.id, lowId(from + i)));
+    const withinBudget = [...selfJunk(OVER_QUOTA, 0), x.event];
+    const first = fold(inStream(r.id, START, withinBudget));
+    expect(first.isTrusted(x.id)).toBe(true);
+    expect(first.certificatesIssuedBy(r.id)).toBe(1);
+    // Past the budget R's later certificates stop counting; X and another writer's stay trusted.
+    const w = genuineAdd(r.identity, vaultId);
+    const y = genuineAdd(b.identity, vaultId);
+    const reg = fold([
+      ...inStream(r.id, START, [...withinBudget, ...selfJunk(CERT_CHECK_BUDGET, 1000), w.event]),
+      ...inStream(b.id, START, [y.event]),
+    ]);
+    expect(reg.isTrusted(x.id)).toBe(true);
+    expect(reg.isTrusted(w.id)).toBe(false);
+    expect(reg.isTrusted(y.id)).toBe(true);
   });
 
-  it("junk claiming a writer as issuer in its own stream never consumes its quota (and only its own window)", async () => {
-    const { a, b, r, c } = await fourDevices();
-    // Below the check budget: junk costs checks, never quota.
-    r.write(Array.from({ length: 200 }, (_, i) => junkAdded(r.id, r.id, lowId(i))));
-    syncAll([a, b, r, c]);
-    const x = await pairDevice(r, "watch");
-    syncAll([a, b, r, c, x]);
-    for (const d of [a, b, c, x]) {
-      expect(d.devices.registry.isTrusted(x.id), d.name).toBe(true);
-      expect(d.devices.registry.certificatesIssuedBy(r.id)).toBe(1);
-    }
-    // Past the budget the writer only hurts its own later certificates, never another writer's.
-    r.write(Array.from({ length: CERT_CHECK_BUDGET }, (_, i) => junkAdded(r.id, r.id, lowId(i))));
-    syncAll([a, b, r, c, x]);
-    const y = await pairDevice(b, "ring");
-    syncAll([a, b, r, c, x, y]);
-    for (const d of [a, c, y]) {
-      expect(d.devices.registry.isTrusted(y.id), d.name).toBe(true);
-      expect(d.devices.registry.isTrusted(x.id), d.name).toBe(true);
-    }
+  it("a revoked writer's certificates after its cut never register a device", () => {
+    const cut = { seg: 1, offset: START };
+    const revokeR = buildDeviceRevoked(recovery, vaultId, newEid(), [{ device: r.id, cut }]);
+    // After its cut R certifies puppets with valid signatures, then logs junk.
+    const puppets = [genuineAdd(r.identity, vaultId), genuineAdd(r.identity, vaultId)];
+    const junk = [junkAdded(r.id, r.id, lowId(0)), junkAdded(r.id, r.id, lowId(1))];
+    const reg = fold([
+      ...inStream(a.id, START, [revokeR]),
+      ...inStream(r.id, START + 1, [...puppets.map((p) => p.event), ...junk]),
+    ]);
+    expect(summary(reg)).toEqual({
+      ...before,
+      trusted: before.trusted.filter((id) => id !== r.id),
+      revoked: [r.id],
+    });
+    for (const p of puppets) expect(reg.isRegistered(p.id)).toBe(false);
+    expect(reasons(reg, "after_revocation")).toBe(4);
   });
 
-  it("a revoked writer's certificates after its cut never register a device (second pass)", async () => {
-    const { a, b, r, c } = await fourDevices();
-    const result = prepareConsented(a, [r]);
-    if (!result.ok) throw new Error(result.reason);
-    a.write(result.change.events);
-    result.change.commit();
-    syncAll([a, b, c]);
-    r.pull();
-    const before = summary(a.devices.registry);
-    // After its cut R certifies 64 puppets (valid signatures), then 300 junk certificates.
-    const puppets = Array.from({ length: 64 }, () => createDeviceIdentity(sodium));
-    r.write(
-      puppets.map((p) => {
-        const subject = {
-          deviceId: p.deviceId,
-          signPublicKey: p.signPublicKey,
-          boxPublicKey: p.box.publicKey,
-        };
-        const cert = certifyDevice(sodium, r.identity, subject, r.ring.vaultId);
-        return buildDeviceAdded(r.identity, r.ring.vaultId, newEid(), subject, "puppet", cert);
-      }),
-    );
-    r.write(Array.from({ length: 300 }, (_, i) => junkAdded(r.id, r.id, lowId(i))));
-    r.push();
-    const j = await pairDevice(a, "new phone");
-    syncAll([a, b, c, j]);
-    const expected = { ...before, trusted: [...before.trusted, j.id].sort() };
-    for (const d of [a, b, c, j]) {
-      const reg = d.devices.registry;
-      expect(summary(reg), d.name).toEqual(expected);
-      for (const p of puppets) expect(reg.isRegistered(p.deviceId)).toBe(false);
-      expect(reg.ignored.filter((x) => x.reason === "after_revocation").length).toBeGreaterThan(
-        300,
-      );
-    }
-  });
-
-  it("a recovery-signed re-certification in any stream counts; a copy with a broken statement signature does not", async () => {
-    const { a, b, recovery } = await fourDevices();
-    const z = createDeviceIdentity(sodium);
-    const z2 = createDeviceIdentity(sodium);
-    const add = (d: typeof z) => {
-      const subject = {
-        deviceId: d.deviceId,
-        signPublicKey: d.signPublicKey,
-        boxPublicKey: d.box.publicKey,
-      };
-      const cert = certifyDevice(sodium, recovery, subject, a.ring.vaultId);
-      return buildDeviceAdded(recovery, a.ring.vaultId, newEid(), subject, "restored", cert);
-    };
-    const broken = add(z2);
-    b.write([add(z), { ...broken, d: { ...broken.d, sig: "22".repeat(64) } }]);
-    syncAll([a, b]);
-    const reg = a.devices.registry;
-    expect(reg.isTrusted(z.deviceId)).toBe(true);
-    expect(reg.isTrusted(z2.deviceId)).toBe(false);
+  it("a recovery-signed re-certification in any stream counts; a copy with a broken statement signature does not", () => {
+    const z = genuineAdd(recovery, vaultId);
+    const z2 = genuineAdd(recovery, vaultId);
+    const broken = { ...z2.event, d: { ...z2.event.d, sig: "22".repeat(64) } };
+    const reg = fold(inStream(b.id, START, [z.event, broken]));
+    expect(reg.isTrusted(z.id)).toBe(true);
+    expect(reg.isTrusted(z2.id)).toBe(false);
     expect(reg.ignored).toContainEqual({ eid: broken.i, reason: "bad_signature" });
   });
 
-  it("a recovery-issued certificate under words that are not the vault's never counts", async () => {
-    const { a, b } = await fourDevices();
+  it("a recovery-issued certificate under words that are not the vault's never counts", () => {
     const other = recoveryIdentity(sodium, createRecoveryKey(sodium).phrase);
-    const z = createDeviceIdentity(sodium);
-    const subject = {
-      deviceId: z.deviceId,
-      signPublicKey: z.signPublicKey,
-      boxPublicKey: z.box.publicKey,
-    };
-    const cert = certifyDevice(sodium, other, subject, a.ring.vaultId);
-    b.write([buildDeviceAdded(other, a.ring.vaultId, newEid(), subject, "forged", cert)]);
-    syncAll([a, b]);
-    expect(a.devices.registry.isTrusted(z.deviceId)).toBe(false);
+    const forged = genuineAdd(other, vaultId);
+    expect(fold(inStream(b.id, START, [forged.event])).isTrusted(forged.id)).toBe(false);
   });
 
-  it("cost: one cold fold of the 300-junk log stays within a CPU budget", async () => {
-    const { a, r } = await fourDevices();
-    const events = [
-      ...allEvents(a, r),
-      ...Array.from({ length: 300 }, (_, i) =>
-        stamp(junkAdded(RECOVERY_SIGNER_ID, RECOVERY_SIGNER_ID, lowId(i)), r.id, 100_000 + i),
-      ),
-      ...Array.from({ length: 300 }, (_, i) =>
-        stamp(junkAdded(RECOVERY_SIGNER_ID, r.id, lowId(i)), r.id, 200_000 + i),
-      ),
-    ];
-    const start = process.cpuUsage();
-    foldRegistry(sodium, { vaultId: a.ring.vaultId, recovery: a.ring.recovery }, events);
-    const used = process.cpuUsage(start);
-    const ms = (used.user + used.system) / 1000;
-    expect(ms).toBeLessThan(1500);
-  });
-
-  it("property: the registry is a function of the event set, junk writers and revocations included", async () => {
-    const { a, b, r, c, recovery } = await fourDevices();
-    const vaultId = a.ring.vaultId;
+  it("property: the registry is a function of the event set, junk writers and revocations included", () => {
     const revokeR = stamp(
       buildDeviceRevoked(recovery, vaultId, newEid(), [
-        { device: r.id, cut: { seg: 1, offset: 100 } },
+        { device: r.id, cut: { seg: 1, offset: START } },
       ]),
       a.id,
-      50_000,
+      START,
     );
     const fresh = createDeviceIdentity(sodium).deviceId;
     const events = [
-      ...allEvents(a, b, r, c),
+      ...honest,
       revokeR,
       ...Array.from({ length: 40 }, (_, i) =>
-        stamp(junkAdded(r.id, r.id, lowId(i)), r.id, 60_000 + i),
+        stamp(junkAdded(r.id, r.id, lowId(i)), r.id, START + 1 + i),
       ),
       ...Array.from({ length: 40 }, (_, i) =>
         stamp(junkAdded(RECOVERY_SIGNER_ID, RECOVERY_SIGNER_ID, lowId(i)), fresh, 1 + i),
       ),
       ...Array.from({ length: 40 }, (_, i) =>
-        stamp(junkAdded(b.id, c.id, lowId(i)), c.id, 70_000 + i),
+        stamp(junkAdded(b.id, c.id, lowId(i)), c.id, START + i),
       ),
     ];
     const root = { vaultId, recovery: a.ring.recovery };

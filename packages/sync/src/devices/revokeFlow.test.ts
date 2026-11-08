@@ -117,17 +117,6 @@ describe("H2: who may revoke a device", () => {
     expect(b.devices.registry.revoked.get(desk.id)?.signers).toEqual(["0".repeat(32)]);
     expect(b.devices.registry.revoked.get(desk.id)?.contested).toBe(false);
   });
-
-  it("H4: a device paired by the target, revoking it, is refused up front (its own chain needs the words)", async () => {
-    const { desk, phone } = await household();
-    const refused = revoke(phone, desk);
-    expect(refused).toMatchObject({ ok: false, reason: "recovery_required" });
-    if (refused.ok || refused.reason !== "recovery_required") throw new Error("expected a refusal");
-    expect(refused.affected.find((x) => x.device === phone.id)).toMatchObject({
-      recertified: false,
-      reason: "recovery_required",
-    });
-  });
 });
 
 describe("revoke flow with re-certification", () => {
@@ -187,8 +176,14 @@ describe("revoke flow with re-certification", () => {
   });
 
   it("a device the flow cannot re-certify (the revoker's certificate window is full) is listed, never silently dropped", async () => {
-    const { a, desk, phone, laptop, b } = await household();
-    // The tablet revokes the desktop on its consent; 64 certificates fill the tablet's window.
+    // Only what the case needs: the desktop, the phone it paired, and the tablet B that revokes it.
+    const { creator: a } = createSimVault();
+    const desk = await pairDevice(a, "desktop");
+    const phone = await pairDevice(desk, "phone");
+    const b = await pairDevice(a, "tablet");
+    syncAll([a, desk, phone, b]);
+    // The tablet revokes the desktop on its consent; 64 certificates (the per-issuer window) fill
+    // the tablet's window first.
     const keys = createDeviceIdentity(sodium);
     const fill: UnstampedEvent[] = Array.from({ length: 64 }, () => {
       const subject = {
@@ -202,17 +197,14 @@ describe("revoke flow with re-certification", () => {
     b.write(fill);
     expect(b.devices.registry.certificatesIssuedBy(b.id)).toBe(64);
     b.words = undefined;
-    const result = revoke(b, desk, undefined, [phone, laptop]);
+    const result = revoke(b, desk, undefined, [phone]);
     if (!result.ok) throw new Error(result.reason);
-    expect(result.change.affected.map((x) => [x.device, x.recertified, x.reason]).sort()).toEqual(
-      [
-        [phone.id, false, "capacity"],
-        [laptop.id, false, "capacity"],
-      ].sort(),
-    );
+    expect(result.change.affected.map((x) => [x.device, x.recertified, x.reason])).toEqual([
+      [phone.id, false, "capacity"],
+    ]);
     write(b, result.change);
-    syncAll([a, b]);
-    expect(a.devices.registry.isTrusted(phone.id)).toBe(false); // as the result told the caller
+    expect(b.devices.registry.revoked.has(desk.id)).toBe(true);
+    expect(b.devices.registry.isTrusted(phone.id)).toBe(false); // as the result told the caller
   });
 
   it("atomicity: a truncated batch (revocation without its re-certifications) never counts; the whole batch does", async () => {

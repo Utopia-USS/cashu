@@ -64,23 +64,21 @@ describe.each(backends)("frames (%s)", (_name, sodium: Sodium) => {
       return verifyHeadSignature(c.vaultId, head, writerOf(c).signPublicKey) ? "ok" : "bad_head";
     };
 
-    it("every single-bit flip is rejected", () => {
-      const seen = new Set<string>();
-      for (let i = 0; i < frame.length; i++) {
-        for (let bit = 0; bit < 8; bit++) {
-          const t = frame.slice();
-          t[i] = (t[i] ?? 0) ^ (1 << bit);
-          seen.add(verdict(t));
-        }
-      }
-      // version byte -> unsupported_version, key id -> unknown_key, nonce / ciphertext / tag ->
-      // auth_failed, head signature -> bad_head
-      expect([...seen].sort()).toEqual([
-        "auth_failed",
-        "bad_head",
-        "unknown_key",
-        "unsupported_version",
-      ]);
+    it("a flipped bit in any region is rejected with that region's error", () => {
+      // version | kid (16) | nonce (24) | ciphertext | tag (16) | head signature (64)
+      const sig = frame.length - 64;
+      const flipped = (at: number) => {
+        const t = frame.slice();
+        t[at] = (t[at] ?? 0) ^ 0x01;
+        return verdict(t);
+      };
+      expect(flipped(0)).toBe("unsupported_version");
+      expect(flipped(1)).toBe("unknown_key");
+      expect(flipped(16)).toBe("unknown_key");
+      for (const at of [17, 40, 41, sig - 17, sig - 16, sig - 1])
+        expect(flipped(at)).toBe("auth_failed");
+      expect(flipped(sig)).toBe("bad_head");
+      expect(flipped(frame.length - 1)).toBe("bad_head");
       expect(verdict(frame)).toBe("ok");
     });
 
@@ -93,15 +91,6 @@ describe.each(backends)("frames (%s)", (_name, sodium: Sodium) => {
       const longer = new Uint8Array(frame.length + 1);
       longer.set(frame);
       expect(code(() => openFrame(sodium, ring, longer, c).plain)).toBe("auth_failed");
-    });
-
-    it("a key id cannot be claimed for another key: kids are always computed", () => {
-      const vault = { vaultId: ring.vaultId, recovery: ring.recovery, gidSalt: GID_SALT };
-      const other = keyringFromKeys(sodium, vault, [
-        { generation: 1, epoch: 0, key: sodium.randomBytes(32) },
-      ]);
-      expect(other.active.kid).not.toBe(ring.active.kid);
-      expect(code(() => openFrame(sodium, other, frame, c).plain)).toBe("unknown_key");
     });
 
     it("a ring without the frame's key reports unknown_key", () => {

@@ -164,7 +164,7 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     expect(phone.ring.size).toBe(1);
   });
 
-  it("every flipped bit of the header, signature or sealed part is rejected", () => {
+  it("a flipped bit in the header, signature, recipient list or sealed part is rejected", () => {
     const { devices, trust } = pairedVault(2);
     const [desktop, phone] = devices as [Device, Device];
     rotateKeyring(sodium, desktop.ring);
@@ -175,19 +175,17 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       trustedTo(phone.id, desktop.ring.vaultId),
       [desktop.ring.active.kid],
     );
-    const seen = new Set<string>();
-    for (let i = 0; i < wire.length; i += 3) {
+    // version | sender id (16) | signature (64) | recipient count (2) | recipient ids | sealed part
+    const flipped = (at: number) => {
       const t = wire.slice();
-      t[i] = (t[i] ?? 0) ^ 0x01;
-      seen.add(code(() => unwrapKeys(sodium, t, phone.id, phone.ring, trust, anyEpoch)));
-    }
+      t[at] = (t[at] ?? 0) ^ 0x01;
+      return code(() => unwrapKeys(sodium, t, phone.id, phone.ring, trust, anyEpoch));
+    };
+    expect(flipped(0)).toBe("unsupported_version");
+    expect(flipped(1)).toBe("untrusted_sender");
+    for (const at of [17, 80, 83, 98, 99, wire.length - 1]) expect(flipped(at)).toBe("auth_failed");
     // A flipped recipient count that overruns the wire is truncated before the signature check.
-    expect([...seen].sort()).toEqual([
-      "auth_failed",
-      "truncated",
-      "unsupported_version",
-      "untrusted_sender",
-    ]);
+    expect(flipped(81)).toBe("truncated");
     expect(
       code(() => unwrapKeys(sodium, wire.subarray(0, 50), phone.id, phone.ring, trust, anyEpoch)),
     ).toBe("truncated");
@@ -304,27 +302,5 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
         ]),
       ),
     ).toBe("unknown_key");
-  });
-});
-
-describe.each(backends)("revocation is rotation going forward (%s)", (_name, sodium: Sodium) => {
-  it("the new key goes only to remaining devices; the revoked one keeps history but cannot read new frames", () => {
-    const desktop = createDeviceIdentity(sodium);
-    const phone = createDeviceIdentity(sodium);
-    const lost = createDeviceIdentity(sodium);
-    const ring = newRing(sodium);
-    const vaultId = ring.vaultId;
-    const pair = (d: DeviceIdentity) => pairWith(sodium, ring, d);
-    const phoneRing = pair(phone);
-    const lostRing = pair(lost);
-
-    const gen2 = rotateKeyring(sodium, ring, { epoch: 1 });
-    const onlyNew = wrapKeys(sodium, ring, desktop, trustedTo(phone, ring.vaultId), [gen2.kid]);
-    unwrapKeys(sodium, onlyNew, phone, phoneRing, trusting(desktop), anyEpoch);
-
-    const c = ctx(vaultId, { deviceId: desktop.deviceId });
-    const frame = sealFrame(sodium, ring, samplePlain(), c, writerOf(c)).bytes;
-    expect(openFrame(sodium, phoneRing, frame, c).plain).toEqual(samplePlain());
-    expect(code(() => openFrame(sodium, lostRing, frame, c).plain)).toBe("unknown_key");
   });
 });

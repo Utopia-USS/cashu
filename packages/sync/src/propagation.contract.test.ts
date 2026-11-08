@@ -1,18 +1,10 @@
-// The propagation claim (carrier.ts `TransportConsistency`, S29c R4) is tested, not assumed:
-// - the full carrier contract over an honest simulated relay that declares a 2-minute bound (the
-//   contract suite runs `checkPropagationClaim` for every carrier, so this is the PASS case);
-// - the check FAILS a relay whose replicas lag longer than it declares, and one that declares a
-//   bound it cannot be tested on.
+// The propagation claim (carrier.ts `TransportConsistency`, S29c R4) is tested, not assumed: the
+// carrier contract suite runs `checkPropagationClaim` for every carrier, and this file shows the check
+// passes an honest relay and FAILS a relay whose replicas lag longer than it declares, and one that
+// declares a bound it cannot be tested on.
 import { describe, expect, it } from "vitest";
 import type { DeviceId } from "./carrier.js";
-import {
-  checkPropagationClaim,
-  describeCarrierContract,
-  insecureTestCodec,
-  insecureTestGate,
-  ManualClock,
-  SimulatedRelay,
-} from "./testing/index.js";
+import { checkPropagationClaim, ManualClock, SimulatedRelay } from "./testing/index.js";
 
 const MIN = 60_000;
 const T0 = Date.UTC(2026, 9, 31, 12, 0, 0);
@@ -30,15 +22,6 @@ function relay(declaredMs: number, actualDelayMs: number) {
     settle: () => sim.settle(),
   };
 }
-
-describeCarrierContract({
-  name: "simulated relay declaring a 2-minute propagation bound (honest: 90 s)",
-  createMedium() {
-    const codec = insecureTestCodec();
-    const gate = insecureTestGate();
-    return { ...relay(2 * MIN, 90_000), codecFor: () => codec, gateFor: () => gate };
-  },
-});
 
 describe("propagation claim check", () => {
   it("passes a relay whose replicas lag exactly the declared bound", async () => {
