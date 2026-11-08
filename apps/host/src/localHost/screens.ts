@@ -1,7 +1,7 @@
-// What the UI role's screens read and do: proposal, settings, update, Signals, import and strategy
-// actions; the investment screen sources (strategy images, market, clock); the served queries; and
-// the store channel's query preparation and privacy policy. Built before the host starts serving;
-// the stores are attached once open.
+// What the UI role's screens read and do: proposal, settings, update, Signals, statement import and
+// strategy actions; the investment screen sources (strategy images, market, clock); the served
+// queries; and the store channel's query preparation and privacy policy. Built before the host
+// starts serving; the stores are attached once open.
 import { parseDateTime } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
 import type { classifierSettingsQuery } from "@cashu/store/core/classifier-settings";
@@ -14,7 +14,6 @@ import { budgetStatementActions } from "../budgetScreen.js";
 import type { connectorSettingsServed } from "../connectorSettings.js";
 import { currentStrategyImages } from "../investmentScreenSources.js";
 import type { investmentsRunningQuery } from "../investmentsRunning.js";
-import { investmentImportActions } from "../investmentsScreen.js";
 import type { ProductionMarket } from "../market/production.js";
 import { nativeStrategyDocuments } from "../nativeStrategyDocuments.js";
 import { proposalScreen } from "../proposalsScreen.js";
@@ -84,10 +83,6 @@ export function createScreenSurfaces(input: {
   const clock = signalsScreenClock(now);
   const performance = new PerformanceService();
   const budgetStatements = budgetStatementActions({ now });
-  const imports =
-    options.investmentImports === undefined
-      ? null
-      : investmentImportActions({ ...options.investmentImports, now });
   const nativeStrategies =
     options.strategies === undefined && nativeMode ? nativeStrategyBinder() : undefined;
   const strategies: VaultBinder<StrategyScreenCapability> | undefined =
@@ -116,15 +111,6 @@ export function createScreenSurfaces(input: {
     (strategies !== undefined || options.strategyImages !== undefined)
       ? { strategy: images.source }
       : {}),
-    ...(options.investmentImports === undefined
-      ? {}
-      : {
-          importAvailable: (read: Read) => {
-            const vault = vaultOf(read);
-            const capability = vault === undefined ? null : options.investmentImports?.bind(vault);
-            return capability != null && capability.vault === vault && capability.isCurrent();
-          },
-        }),
   });
   type InvestmentSources = ReturnType<typeof investmentSources>;
 
@@ -271,7 +257,6 @@ export function createScreenSurfaces(input: {
             ...(options.workspace === undefined ? [] : workspaceActions),
             ...(options.uiActions ?? []),
             ...signalActions,
-            ...(imports?.actions ?? []),
             ...(strategyManager?.actions ?? []),
             ...budgetStatements.actions,
           ]
@@ -281,7 +266,6 @@ export function createScreenSurfaces(input: {
             ...workspaceActions,
             ...(options.uiActions ?? []),
             ...signalActions,
-            ...(imports?.actions ?? []),
             ...(strategyManager?.actions ?? []),
             ...budgetStatements.actions,
           ];
@@ -290,7 +274,6 @@ export function createScreenSurfaces(input: {
     privateQuery,
     close() {
       budgetStatements.close();
-      imports?.close();
       strategyManager?.close();
       images.close();
     },

@@ -90,13 +90,7 @@ function AccountsBody({ body, wide }: { body: Exclude<Body, { kind: "rows" }>; w
             <span className={num}>{r.share}</span>
             <span className={num}>{r.value}</span>
             <span className={`${num} text-fg-muted ${wide ? "max-narrow:hidden" : ""}`}>
-              {r.onReconcile ? (
-                <Button variant="link" size="md" className="text-warning!" onPress={r.onReconcile}>
-                  {r.snapshot}
-                </Button>
-              ) : (
-                r.snapshot
-              )}
+              {r.stale ? <span className="text-warning">{r.snapshot}</span> : r.snapshot}
             </span>
           </div>
         ))}

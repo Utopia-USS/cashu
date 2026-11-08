@@ -9,7 +9,6 @@ import { classifierSettings } from "./core/classifier-settings.js";
 import { proposalReview } from "./core/desktop-proposals/index.js";
 import { connectorSettings, workspaceApply } from "./core/desktop-settings/index.js";
 import { updateAction } from "./device/updates.js";
-import { investmentImportCommit, investmentImportPreview } from "./investments/desktop/import.js";
 import {
   signalsRemoveWatch,
   signalsSearch,
@@ -30,8 +29,6 @@ export const UI_ACTIONS: readonly UiAction<unknown, unknown>[] = [
   budgetStatementPreview,
   classifierSettings,
   connectorSettings,
-  investmentImportCommit,
-  investmentImportPreview,
   proposalReview,
   signalsRemoveWatch,
   signalsSearch,

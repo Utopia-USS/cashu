@@ -1,5 +1,5 @@
 // The data of the ported investments Home (ab24ab6 v2/Home.tsx InvestmentsV2 + its widgets): every request of
-// Home.tsx:127-141, useResearchHome and the Import drawer, read from the native store queries and handed over in
+// Home.tsx:127-141 and useResearchHome, read from the native store queries and handed over in
 // the old JSON shapes (homeAdapters.ts). Store queries suspend until the first read, so `loading` is never true;
 // a source the host cannot serve shows as `data: undefined` with `error` (the old views' `ov.error` checks).
 import { lang } from "@cashu/i18n";
@@ -9,14 +9,7 @@ import {
   researchScreenQueries,
 } from "@cashu/store/investments/research-screen";
 import { reviewScreenQueries } from "@cashu/store/investments/review-screen";
-import {
-  type ImportPreviewDto,
-  investmentDesktopQueries,
-  investmentImportCommit,
-  investmentImportPreview,
-  investmentPreviewInputSchema,
-  investmentsRunning,
-} from "@cashu/store/investments/screen";
+import { investmentDesktopQueries, investmentsRunning } from "@cashu/store/investments/screen";
 import { signalsQueries } from "@cashu/store/investments/signals-screen";
 import {
   strategiesQueries,
@@ -26,7 +19,6 @@ import {
 import { useCommand, useQuery, useUiAction } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui";
 import { label } from "@cashu/ui-logic/core/messages";
-import type { CommitResult, ImportPreview } from "@cashu/ui-logic/investments/types";
 import { showStrip } from "@cashu/ui-logic/investments/v2/research/logic";
 import type { ResearchNote } from "@cashu/ui-logic/investments/v2/research/types";
 import type { PerfRange, SignalV2 } from "@cashu/ui-logic/investments/v2/types";
@@ -38,9 +30,7 @@ import {
   alertsOf,
   allNotesOf,
   calendarOf,
-  commitResultOf,
   digestOf,
-  importPreviewOf,
   type Loaded,
   loaded,
   macroOf,
@@ -188,7 +178,6 @@ export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
     perf1m,
     perfChart,
     research: researchHome,
-    importAvailable: metadata.importAvailable,
     brokers: metadata.brokers,
     running,
   };
@@ -241,20 +230,17 @@ export function useResearchNoteActions() {
   };
 }
 
-/** The Home's writes: the empty state's strategy init, research candidate actions and the Import drawer. Every
+/** The Home's writes: the empty state's strategy init and research candidate actions. Every
  * write answers null when it went through, else the old toast's message; the readback is the live queries. */
 export function useInvestmentsHomeCommands(data: InvestmentsHomeData) {
   const research = useResearchNoteActions();
   const init = useUiAction(strategyInit);
   const reload = useUiAction(strategyReload);
-  const preview = useUiAction(investmentImportPreview);
-  const commit = useUiAction(investmentImportCommit);
   const strategyRead = useQuery(strategies, {
     lang: lang(),
     privacy: data.privacy,
     selection: null,
   });
-  const [stage, setStage] = useState<string | null>(null);
 
   /** Start's "Z szablonu": postStrategyInit + postStrategyReload (Home.tsx initStrategy). */
   const initStrategy = async (): Promise<WriteOutcome> => {
@@ -268,54 +254,9 @@ export function useInvestmentsHomeCommands(data: InvestmentsHomeData) {
     return null;
   };
 
-  /** ImportDrawer preview (`POST /imports/preview`): the host asks for the file itself. */
-  const previewImport = async (req: {
-    account_id: number;
-    importer: string;
-    mapping: string | null;
-  }): Promise<{ preview: ImportPreview } | { error: string } | { cancelled: true }> => {
-    const gid = gidOf(req.account_id);
-    const parsed = investmentPreviewInputSchema.safeParse({
-      account: gid,
-      importer: req.importer,
-      mappingYaml: req.mapping || null,
-    });
-    if (!parsed.success) return { error: label("error.invalid") ?? "invalid" };
-    const r = await preview.run(parsed.data);
-    if (r.status !== "completed") return { error: label(`error.${r.reason}`) ?? r.reason };
-    if (r.value.status === "cancelled") return { cancelled: true };
-    const dto: ImportPreviewDto = r.value.preview;
-    setStage(r.value.status === "previewed" ? r.value.stage : null);
-    const row = data.ov.data?.accounts.find((a) => a.id === req.account_id) ?? null;
-    return {
-      preview: importPreviewOf(
-        dto,
-        r.value.status === "previewed" ? r.value.stage : null,
-        req.importer,
-        row,
-      ),
-    };
-  };
-  /** ImportDrawer commit (`POST /imports/commit`) of the last preview, with the chosen corrections. */
-  const commitImport = async (
-    corrections: readonly string[] = [],
-  ): Promise<{ result: CommitResult } | { error: string }> => {
-    if (stage === null) return { error: label("error.not_found") ?? "not_found" };
-    const r = await commit.run({ stage, corrections });
-    if (r.status !== "completed") return { error: label(`error.${r.reason}`) ?? r.reason };
-    const result = commitResultOf(r.value);
-    if (result === null) return { error: "reason" in r.value ? r.value.reason : r.value.status };
-    setStage(null);
-    return { result };
-  };
-
   return {
     research,
     initStrategy,
     initBusy: init.isPending || reload.isPending,
-    previewImport,
-    commitImport,
-    importBusy: preview.isPending || commit.isPending,
   };
 }
-export type InvestmentsHomeCommands = ReturnType<typeof useInvestmentsHomeCommands>;

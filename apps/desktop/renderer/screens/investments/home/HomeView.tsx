@@ -69,20 +69,14 @@ interface HomeHeadProps {
   head: HeadModel;
   onAccount(id: number | null): void;
   onStale(): void;
-  onImport(): void;
   onAddTxn(): void;
 }
 
-function HomeHead({ head, onAccount, onStale, onImport, onAddTxn }: HomeHeadProps) {
+function HomeHead({ head, onAccount, onStale, onAddTxn }: HomeHeadProps) {
   return (
     <PageHead
       title={S.investments}
-      actions={
-        <>
-          <Button onPress={onImport}>{S.import}</Button>
-          {head.addTxn && <Button onPress={onAddTxn}>{S.addTxn}</Button>}
-        </>
-      }
+      actions={head.addTxn && <Button onPress={onAddTxn}>{S.addTxn}</Button>}
     >
       {head.accounts && (
         <Seg<number | null>

@@ -18,7 +18,6 @@ import {
   bandFor,
   changeCount,
   changeRows,
-  commitLabel,
   decisionEffect,
   decisionTag,
   nextDeposit,
@@ -328,9 +327,7 @@ test("manual transaction: per-type requirements and the cash sign", () => {
   assert.equal(txnCash({ ...base, type: "transfer_in" }), 0);
 });
 
-test("import + data warnings copy", () => {
-  assert.equal(commitLabel(14, 1), "Zaimportuj 14 transakcji i 1 korektę");
-  assert.equal(commitLabel(2, 0), "Zaimportuj 2 transakcje");
+test("deposit + data warnings copy", () => {
   assert.equal(nextDeposit("2026-10-04", 10), "2026-10-10");
   assert.equal(nextDeposit("2026-10-12", 10), "2026-11-10");
   const items = warningItems({

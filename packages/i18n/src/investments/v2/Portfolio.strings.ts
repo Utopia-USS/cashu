@@ -78,7 +78,6 @@ export const S = catalog({
   colNow: { pl: "teraz", en: "now" },
   colValueLc: { pl: "wartość", en: "value" },
   colSnapshot: { pl: "snapshot", en: "snapshot" },
-  reconcile: { pl: "uzgodnij", en: "reconcile" },
   band: { pl: (pp: number) => `pasmo ±${pp} pp`, en: (pp: number) => `band ±${pp} pp` },
   priorityGrow: {
     pl: (bucket: string, pp: string) =>

@@ -24,7 +24,6 @@ import type {
 import type { PortedCommand } from "../cli/tree.js";
 import type { ConnectorCatalog } from "../connectors/catalog.js";
 import type { currentStrategyImages } from "../investmentScreenSources.js";
-import type { InvestmentImportCapability } from "../investmentsScreen.js";
 import type { HostLog } from "../log.js";
 import type { ProductionMarket } from "../market/production.js";
 import type { NativeVaultSource } from "../nativeVault.js";
@@ -95,7 +94,6 @@ export interface LocalHostOptions {
   readonly strategyImages?: ReturnType<typeof currentStrategyImages>;
   readonly investments?: InvestmentScreenSources;
   readonly marketFactory?: MarketFactory;
-  readonly investmentImports?: VaultBinder<InvestmentImportCapability>;
   /** Optional public-market ports (online instrument search); local Signals actions need none. The
    * binder returns the same object while a vault's ports stay current. */
   readonly signals?: VaultBinder<SignalsMarketPorts>;

@@ -52,7 +52,6 @@ export type AssetArgs = PortfolioArgs & {
 export interface InvestmentScreenSources {
   readonly strategy?: CurrentStrategySource;
   readonly market?: InvestmentMarketSource;
-  readonly importAvailable?: (read: Read) => boolean;
   readonly clock?: InvestmentScreenClock;
 }
 
@@ -108,8 +107,6 @@ export function investmentDesktopQueries(sources: InvestmentScreenSources = {}) 
         const registry = builtinRegistry().institutions;
         return {
           brokers: brokerIds().map((id) => ({ id, name: registry.displayName(id, args.lang) })),
-          importAvailable:
-            enabledModuleIds(read).has("investments") && (sources.importAvailable?.(read) ?? false),
           instruments: enabledModuleIds(read).has("investments")
             ? [...loadInstruments(read, vaultInstrumentGids(read)).values()].map((instrument) => ({
                 id: instrument.id,
@@ -282,5 +279,4 @@ export {
   uiThesisCommands,
   updateUiWatchNote,
 } from "./commands.js";
-export * from "./import.js";
 export * from "./running.js";

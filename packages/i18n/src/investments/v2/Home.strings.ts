@@ -68,7 +68,6 @@ export const S = catalog({
   },
   rulesFailed: { pl: "reguły nieudane", en: "rules failed" },
   rulesNeverRan: { pl: "reguły jeszcze nie działały", en: "rules have not run yet" },
-  import: { pl: "Import", en: "Import" },
   addTxn: { pl: "Dodaj transakcję", en: "Add transaction" },
   portfolioValue: { pl: "Wartość portfela", en: "Portfolio value" },
   thisWeek: { pl: " w tym tygodniu", en: " this week" },
@@ -88,12 +87,6 @@ export const S = catalog({
     en: (n: number) => ` · ${n} ${enForm(n, "month", "months")} without a contribution`,
   },
   noPlan: { pl: "bez planu w strategii", en: "no plan in the strategy" },
-  imported: {
-    pl: (n: number, booked: number) =>
-      `Zaimportowano ${n} transakcji${booked ? ` · ${plCount(booked, "plan wpłaty zaksięgowany", "plany wpłat zaksięgowane", "planów wpłat zaksięgowanych")}` : ""}`,
-    en: (n: number, booked: number) =>
-      `Imported ${enCount(n, "transaction", "transactions")}${booked ? ` · ${enCount(booked, "planned contribution", "planned contributions")} booked` : ""}`,
-  },
   txnSavedWarn: {
     pl: (w: string) => `Zapisano transakcję · uwaga: ${w}`,
     en: (w: string) => `Transaction saved · note: ${w}`,

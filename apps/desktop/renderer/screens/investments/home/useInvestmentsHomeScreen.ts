@@ -8,7 +8,7 @@ import { S as U } from "@cashu/i18n/investments/undo.strings";
 import { S } from "@cashu/i18n/investments/v2/Home.strings";
 import { useToast } from "@cashu/ui";
 import { dm } from "@cashu/ui-logic/investments/labels";
-import type { AccountRow, CommitResult, Position, Thesis } from "@cashu/ui-logic/investments/types";
+import type { AccountRow, Position, Thesis } from "@cashu/ui-logic/investments/types";
 import {
   type InstLike,
   instName,
@@ -46,7 +46,6 @@ import {
   signalsBriefProps,
   watchedOf,
 } from "./railModel.js";
-import type { ImportDrawerInput } from "./useImportDrawer.js";
 import { useInvestmentsHomeCommands, useInvestmentsHomeData } from "./useInvestmentsHomeData.js";
 import type { AllocView } from "./widgets/allocationModel.js";
 import type { AssetsTab } from "./widgets/assetListModel.js";
@@ -54,7 +53,6 @@ import { useHomeWidgetsState } from "./widgets/useHomeWidgetsState.js";
 
 /** The one drawer over the Home (old Home.tsx DrawerState; the proposal drawer is the route's). */
 type DrawerState =
-  | { kind: "import"; account?: number | null }
   | { kind: "txn"; instrumentId?: number | string | null; type?: string }
   | { kind: "account" }
   | { kind: "thesis"; instrumentId: number | string; label: string; thesis: Thesis | null }
@@ -275,23 +273,6 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   // ---- drawers (Home.tsx renderDrawer) ----------------------------------------------------------------------
   const close = () => setDrawer(null);
   const list = positions?.positions ?? [];
-  const importDrawer: ImportDrawerInput | null =
-    drawer?.kind === "import"
-      ? {
-          accounts,
-          initialAccount: drawer.account ?? null,
-          commands,
-          onClose: close,
-          onDone: (r: CommitResult) =>
-            toast(S.imported(r.inserted, r.planned_booked?.length ?? 0), 3500),
-          onAddAccount: () => setDrawer({ kind: "account" }),
-          onManual: () => setDrawer({ kind: "txn" }),
-          onClassify: () => {
-            close();
-            setTimeout(() => scrollTo("inv-assets"), 50);
-          },
-        }
-      : null;
   const txnDrawer: TxnDrawerInput | null =
     drawer?.kind === "txn"
       ? {
@@ -374,7 +355,6 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
       setAllocView("accounts");
       setTimeout(() => scrollTo(light ? "inv-accounts" : "inv-alloc"), 30);
     },
-    onImport: () => setDrawer({ kind: "import", account: filter }),
     onAddTxn: () => setDrawer({ kind: "txn" }),
     onAddAccount: () => setDrawer({ kind: "account" }),
     hero:
@@ -404,7 +384,6 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
             onInitStrategy: () => void initStrategy(),
             onGuide: () => o.onSetupOpened?.(),
             onAddTxn: () => setDrawer({ kind: "txn" }),
-            onImport: () => setDrawer({ kind: "import", account: filter }),
           })
         : null,
     onCopy: (command: string) => {
@@ -479,7 +458,6 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
     assetTab,
     setAssetTab,
     filtered: filter != null,
-    onReconcile: (account: number | null) => setDrawer({ kind: "import", account }),
     openAsset: (id: number | string) => openAsset(id),
     openPage: (gid: string) => o.openPage?.(gid),
     research: {
@@ -533,7 +511,6 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
             },
           }
         : null,
-    importDrawer,
     txnDrawer,
     accountDrawer,
     thesisDrawer,

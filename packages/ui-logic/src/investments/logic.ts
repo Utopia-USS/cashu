@@ -783,11 +783,6 @@ export function txnCash(
   return r.sign === "out" ? -(gross + fee) : gross - fee;
 }
 
-/** Import preview counts -> what the commit button says: "Zaimportuj 14 transakcji i 1 korektę". */
-export function commitLabel(newRows: number, corrections: number): string {
-  return S.commit(newRows, corrections);
-}
-
 /** "{n} koszyk(i) poza pasmem" / "wszystko w paśmie". */
 export function bandTag(outOfBand: number): string {
   return outOfBand ? S.bandOut(outOfBand) : S.allInBand;

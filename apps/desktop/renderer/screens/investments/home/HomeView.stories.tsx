@@ -1,6 +1,6 @@
 import { HomeLoadingView, HomeView } from "./HomeView.js";
 
-const handlers = { onAccount() {}, onStale() {}, onImport() {}, onAddTxn() {} };
+const handlers = { onAccount() {}, onStale() {}, onAddTxn() {} };
 const head = {
   accounts: null,
   prices: { text: "prices Fri 30.10" },

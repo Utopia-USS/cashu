@@ -31,14 +31,13 @@ import {
   renames,
   transactions,
 } from "../queries/transactions.js";
+import type { BlobRef, ImportArchive } from "./imports.js";
 import {
-  type BlobRef,
   type CommitRequest,
   commitStaged,
-  type ImportArchive,
   type ImportStaging,
   previewAndStage,
-} from "./imports.js";
+} from "./testing/importService.js";
 
 const HEADER =
   "format_version,record,date,time,type,external_ref,symbol,isin,name,exchange,quantity,price," +

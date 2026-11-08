@@ -21,10 +21,8 @@ import {
 } from "../drawers/InvestmentDrawers.js";
 import { AlertsBrief, CandidatesRail, SignalsBrief } from "./HomeRailView.js";
 import { HomeErrorView, HomeLoadingView, HomePage, HomeView } from "./HomeView.js";
-import { ImportDrawerView } from "./ImportDrawerView.js";
 import { ResearchStripView } from "./research/ResearchStripView.js";
 import { researchStripProps } from "./research/researchStripModel.js";
-import { type ImportDrawerInput, useImportDrawer } from "./useImportDrawer.js";
 import {
   type InvestmentsHomeOptions,
   useInvestmentsHomeScreen,
@@ -62,10 +60,6 @@ export function InvestmentsHomeLoading({ narrow }: { narrow: boolean }) {
   );
 }
 
-function ImportDrawer({ input }: { input: ImportDrawerInput }) {
-  return <ImportDrawerView state={useImportDrawer(input)} />;
-}
-
 /** The light grid's Wpłaty (its plan fallback reads only while the light grid shows). */
 function Contributions({ data }: { data: InvestmentsHomeScreenState["data"] }) {
   return <ContributionsWidgetView {...useContributionsWidget(data)} />;
@@ -92,7 +86,6 @@ function HomeBound(props: InvestmentsHomeOptions) {
       )}
       {s.topicDrawer && <TopicDrawerScreen data={s.data} {...s.topicDrawer} />}
       {s.phase === "home" && s.signalsDialog && <SignalsDialogScreen {...s.signalsDialog} />}
-      {s.importDrawer && <ImportDrawer input={s.importDrawer} />}
       {s.txnDrawer && <TxnDrawer {...s.txnDrawer} />}
       {s.accountDrawer && <AccountDrawer {...s.accountDrawer} />}
       {s.thesisDrawer && <ThesisDrawer {...s.thesisDrawer} />}
@@ -126,7 +119,6 @@ function HomeBound(props: InvestmentsHomeOptions) {
     head: s.head,
     onAccount: s.onAccount,
     onStale: s.onStale,
-    onImport: s.onImport,
     onAddTxn: s.onAddTxn,
   };
   if (s.phase === "start" || !s.hero) {
@@ -151,7 +143,6 @@ function HomeBound(props: InvestmentsHomeOptions) {
     onView: s.setAllocView,
     filtered: s.filtered,
     onAddAccount: s.onAddAccount,
-    onReconcile: s.onReconcile,
     onSettings: s.onSettings,
   };
   const deck = s.deck && <ReviewDeckScreen {...s.deck} />;

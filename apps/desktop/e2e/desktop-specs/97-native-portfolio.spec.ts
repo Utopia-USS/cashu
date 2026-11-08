@@ -14,7 +14,7 @@ import {
 } from "../electron-test.ts";
 import { restoreNativeBaseline } from "../native-baseline.ts";
 
-test("investments Home shows generated-source valuations, its filters, the Import drawer and the asset page transaction flow", async () => {
+test("investments Home shows generated-source valuations, its filters, no manual Import and the asset page transaction flow", async () => {
   const repo = process.env.E2E_REPO;
   const dataDir = process.env.E2E_NATIVE_DATA_DIR;
   if (!repo || !dataDir) throw new Error("native generated demo is absent");
@@ -97,13 +97,8 @@ test("investments Home shows generated-source valuations, its filters, the Impor
       .click();
     await expect(page).toHaveURL(/period=3m/u);
 
-    // The Import drawer opens from the head and closes again.
-    await portfolio.getByRole("button", { name: "Import", exact: true }).click();
-    const importer = page.getByRole("dialog", { name: "Import transakcji", exact: true });
-    await expect(importer).toBeVisible();
-    await page.screenshot({ path: join(dataDir, "native-import.png"), fullPage: true });
-    await importer.getByRole("button", { name: "Zamknij", exact: true }).click();
-    await expect(importer).toHaveCount(0);
+    // Investment imports come from the agent (propose_import, approved by the owner): no manual Import.
+    await expect(portfolio.getByRole("button", { name: "Import", exact: true })).toHaveCount(0);
 
     // An asset row opens the asset drawer over the Home (ab24ab6 `assets/{id}`); its transactions drawer and
     // the manual transaction drawer (old Drawers.tsx TxnsDrawer / TxnDrawer) write an owner transaction.

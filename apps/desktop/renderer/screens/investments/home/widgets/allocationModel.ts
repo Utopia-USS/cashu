@@ -35,8 +35,6 @@ export interface AllocationUi {
   /** At 2/3 of the grid (default): donut 128 px + value and to-target columns. */
   wide?: boolean;
   onAddAccount(): void;
-  /** Legacy account id (null = no account), old: the Import drawer for it. */
-  onReconcile(accountId: number | null): void;
   onSettings(): void;
   warningsOpen: boolean;
   onWarnings(open: boolean): void;
@@ -63,8 +61,8 @@ interface AccountAllocRow {
   share: string;
   value: string;
   snapshot: string;
-  /** Stale snapshot of an imported account: the cell is a `uzgodnij` link. */
-  onReconcile: (() => void) | null;
+  /** Stale snapshot of an imported account: the cell shows in the warning tone. */
+  stale: boolean;
 }
 
 interface HeadCell {
@@ -137,7 +135,7 @@ const colorName = (cssVar: string): ChartColor =>
 const totalK = (total: number, currency: string) =>
   total >= 1000 ? hideAmount(S.thousands(Math.round(total / 1000))) : money0(total, currency);
 
-function accountsBody(overview: Overview, today: string, ui: AllocationUi): AllocationBody {
+function accountsBody(overview: Overview, today: string): AllocationBody {
   const accounts = overview.accounts;
   const c = overview.base_currency;
   if (!accounts.length) return { kind: "empty", text: S.noAccounts };
@@ -168,8 +166,8 @@ function accountsBody(overview: Overview, today: string, ui: AllocationUi): Allo
       name: accountLabel(a, accounts),
       share: a.share != null ? pct(a.share) : "",
       value: a.value != null ? money0(a.value, c) : "-",
-      snapshot: snap.warn ? `${snap.cell} · ${S.reconcile}` : snap.cell,
-      onReconcile: snap.warn ? () => ui.onReconcile(a.id) : null,
+      snapshot: snap.cell,
+      stale: snap.warn,
     })),
   };
 }
@@ -244,7 +242,7 @@ export function accountsWidgetProps(
   return {
     title: S.viewAccounts,
     accounts: { warnings: warnings.link, add: { text: S.addAccount, onPress: ui.onAddAccount } },
-    body: accountsBody(data.ov.data as Overview, data.today, ui),
+    body: accountsBody(data.ov.data as Overview, data.today),
     drawer: warnings.drawer,
   };
 }
@@ -341,7 +339,7 @@ export function allocationProps(
   ];
   const warnings = view === "accounts" ? dataWarnings(data, ui) : { link: null, drawer: null };
   let body: AllocationBody;
-  if (view === "accounts") body = accountsBody(overview, data.today, ui);
+  if (view === "accounts") body = accountsBody(overview, data.today);
   else if (!rows.length) body = { kind: "empty", text: S.noPositionsShort };
   else
     body = {

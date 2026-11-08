@@ -1,27 +1,16 @@
 // Native query snapshots -> the ab24ab6 JSON payloads (frontend/src/modules/investments/api.ts, v2/api.ts,
 // v2/research/api.ts, core/proposalsApi.ts). The native projections are the parity views, so most payloads only
-// pass the legacy wire boundary (legacyWire.ts); the storage rows (signals, alerts, theses, proposals, import) are
+// pass the legacy wire boundary (legacyWire.ts); the storage rows (signals, alerts, theses, proposals) are
 // renamed field by field. Each adapter also applies what the old API client did on top of the response
 // (`isShownSignal`, `digestShown`, `normNote`, `normAttribution`, `normMacro`, the research list defaults).
 import { investments as inv } from "@cashu/domain";
 import type { ProposalListRow } from "@cashu/store/core/desktop-proposals";
 import type { ResearchScreenSnapshot } from "@cashu/store/investments/research-screen";
 import type { ReviewScreenResult } from "@cashu/store/investments/review-screen";
-import type {
-  ImportPreviewDto,
-  InvestmentCommitResult,
-  PortfolioSnapshot,
-} from "@cashu/store/investments/screen";
+import type { PortfolioSnapshot } from "@cashu/store/investments/screen";
 import type { ReadySignals } from "@cashu/store/investments/signals-screen";
 import type { StrategiesSnapshot } from "@cashu/store/investments/strategies-screen";
-import type {
-  CommitResult,
-  Decision,
-  ImportPreview,
-  ImportWarning,
-  StrategyStatus,
-  Thesis,
-} from "@cashu/ui-logic/investments/types";
+import type { Decision, StrategyStatus, Thesis } from "@cashu/ui-logic/investments/types";
 import { digestShown, isShownSignal } from "@cashu/ui-logic/investments/v2/logic";
 import { normMacro } from "@cashu/ui-logic/investments/v2/research/macro";
 import { normAttribution, normTopicThesis } from "@cashu/ui-logic/investments/v2/research/segments";
@@ -378,127 +367,5 @@ export function workspaceOf(r: ResearchSnapshot): Workspace | null {
     routine_command: w.value.routine,
     skill_installed: w.value.exists ? w.value.skillInstalled : false,
     skill_installed_at: null,
-  };
-}
-
-// ---- import drawer ---------------------------------------------------------------------------------------
-
-const warningOf = (w: ImportPreviewDto["warnings"][number]): ImportWarning => ({
-  message: w.message,
-  row: w.row,
-  kind: w.kind,
-  blocking: w.blocking,
-  ...("code" in w && typeof w.code === "string" ? { code: w.code } : {}),
-});
-
-/** The native preview as `POST /imports/preview` answered it (api.ts ImportPreview). */
-export function importPreviewOf(
-  p: ImportPreviewDto,
-  stage: string | null,
-  requested: string,
-  broker: { broker: string; broker_name: string } | null,
-): ImportPreview {
-  const counts = p.counts;
-  const r = p.reconciliation;
-  return {
-    file_id: stage ?? "",
-    file_name: p.fileName,
-    size: p.size,
-    account: {
-      id: legacyId(p.account.gid),
-      name: p.account.name,
-      broker: broker?.broker ?? "",
-      broker_name: broker?.broker_name ?? "",
-    },
-    importer: {
-      id: p.importer.id,
-      name: p.importer.name,
-      detected: [...p.importer.detected],
-      requested,
-    },
-    can_commit: p.canCommit,
-    warnings: p.warnings.map(warningOf),
-    errors: p.errors.map(warningOf),
-    previous_imports: p.previousBatches.map((b) => ({
-      batch_id: legacyId(b.gid),
-      at: b.createdAt,
-      file_name: p.fileName,
-    })),
-    account_hint: p.accountHint,
-    counts:
-      counts === null
-        ? null
-        : {
-            rows: counts.rows,
-            new: counts.new,
-            duplicates: counts.duplicates,
-            positions: counts.positions,
-            renames: counts.renames,
-            status_changes: counts.statusChanges,
-            new_instruments: counts.newInstruments,
-            warnings: p.warnings.length,
-            errors: p.errors.length,
-          },
-    rows: p.rows.map((row) => ({
-      row: row.index,
-      date: row.tradeDate,
-      type: row.type,
-      instrument:
-        row.instrument === null
-          ? null
-          : {
-              id: legacyId(row.instrument.id),
-              label: row.instrument.label,
-              new: p.newInstruments.some((n) => n.id === row.instrument?.id),
-            },
-      quantity: row.quantity === null ? null : Number(row.quantity),
-      price: row.price === null ? null : Number(row.price),
-      currency: row.currency,
-      amount: Number(row.cashAmount),
-      cash_currency: row.cashCurrency,
-      status: row.duplicate ? "duplicate" : "new",
-    })),
-    new_instruments: [],
-    renames: [...p.renames],
-    status_changes: [...p.statusChanges],
-    reconciliation:
-      r === null
-        ? null
-        : {
-            account_id: legacyId(r.accountId),
-            as_of: r.asOf,
-            diffs: r.diffs.map((d) => ({
-              instrument_id: legacyId(d.instrumentId),
-              label:
-                p.rows.find((row) => row.instrument?.id === d.instrumentId)?.instrument?.label ??
-                d.instrumentId,
-              broker_quantity: Number(d.brokerQuantity),
-              computed_quantity: Number(d.computedQuantity),
-              delta: Number(d.brokerQuantity) - Number(d.computedQuantity),
-              kind: d.kind,
-              currency: d.currency,
-              correction: null,
-            })),
-            mismatches: r.diffs.filter((d) => d.kind !== "match").length,
-            warnings: [...r.warnings],
-          },
-  };
-}
-
-/** `POST /imports/commit` (api.ts CommitResult); null when the native commit did not commit. */
-export function commitResultOf(r: InvestmentCommitResult): CommitResult | null {
-  if (r.status !== "committed") return null;
-  const c = r.result;
-  return {
-    batch_id: legacyId(c.batch),
-    inserted: c.inserted,
-    duplicates: c.duplicates,
-    new_instrument_ids: c.newInstruments.map(legacyId),
-    positions: c.positions,
-    renames: c.renames,
-    status_changes: c.statusChanges,
-    corrections: c.corrections,
-    archive_path: c.archive,
-    planned_booked: c.plannedBooked.map(legacyId),
   };
 }

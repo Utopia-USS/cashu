@@ -32,18 +32,6 @@ const PACKAGED_ONLY: Readonly<Record<string, keyof LocalHostOptions>> = {
   "device.updateAction": "updates",
 };
 
-/**
- * Known gaps, reported for an owner decision: each must still be missing (an entry fails once the
- * action is wired, so the list only shrinks).
- */
-const REPORTED_GAPS: Readonly<Record<string, string>> = {
-  // The manual Import drawer asks the host to pick the file, but no production file-pick channel
-  // exists. Owner rule: an agent-doable flow needs no manual code; investment imports go through
-  // MCP propose_import and the owner's approval (core.desktopProposals.review), which is wired.
-  "investments.import.preview": "manual import flow: agent path is propose_import",
-  "investments.import.commit": "manual import flow: agent path is propose_import",
-};
-
 const roots: string[] = [];
 afterEach(() => {
   captured.length = 0;
@@ -105,12 +93,9 @@ it("registers every dispatchable UI action in the production host wiring", async
     expect(options[option], `${id} is packaged-only because ${option} is unset`).toBeUndefined();
   }
   const missing = UI_ACTIONS.map((action) => action.id).filter(
-    (id) =>
-      !registered.has(id) && PACKAGED_ONLY[id] === undefined && REPORTED_GAPS[id] === undefined,
+    (id) => !registered.has(id) && PACKAGED_ONLY[id] === undefined,
   );
   expect(missing, "UI actions the shipped host refuses as unknown_action").toEqual([]);
-  const wired = Object.keys(REPORTED_GAPS).filter((id) => registered.has(id));
-  expect(wired, "wired now: remove them from REPORTED_GAPS").toEqual([]);
 });
 
 it("approves every proposal kind the drawer offers in the production host wiring", async () => {

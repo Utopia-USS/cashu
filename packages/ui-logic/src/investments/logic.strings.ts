@@ -239,21 +239,7 @@ export const S = catalog({
   errFee: { pl: "Prowizja nie może być ujemna.", en: "Fee can't be negative." },
   errSplit: { pl: "Podaj współczynnik splitu (1:4 = 4).", en: "Enter the split ratio (1:4 = 4)." },
 
-  // import / band / run error
-  commit: {
-    pl: (rows: number, corrections: number) => {
-      const t = plCount(rows, "transakcję", "transakcje", "transakcji");
-      return corrections
-        ? `Zaimportuj ${t} i ${plCount(corrections, "korektę", "korekty", "korekt")}`
-        : `Zaimportuj ${t}`;
-    },
-    en: (rows: number, corrections: number) => {
-      const t = enCount(rows, "transaction", "transactions");
-      return corrections
-        ? `Import ${t} and ${enCount(corrections, "adjustment", "adjustments")}`
-        : `Import ${t}`;
-    },
-  },
+  // band / run error
   bandOut: {
     pl: (n: number) => `${plCount(n, "koszyk", "koszyki", "koszyków")} poza pasmem`,
     en: (n: number) => `${enCount(n, "bucket", "buckets")} out of band`,

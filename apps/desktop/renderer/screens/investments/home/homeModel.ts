@@ -258,7 +258,6 @@ export function startModel(input: {
   onInitStrategy(): void;
   onGuide(): void;
   onAddTxn(): void;
-  onImport(): void;
 }): StartModel {
   const { accounts, strategy } = input;
   const hasAccount = accounts.length > 0;
@@ -307,12 +306,7 @@ export function startModel(input: {
         status: input.hasTxn ? "done" : hasStrategy ? "on" : "todo",
         title: S.firstTxn,
         hint: S.firstTxnHint,
-        actions: hasAccount
-          ? [
-              { label: S.addTxn, primary: false, onPress: input.onAddTxn },
-              { label: S.import, primary: false, onPress: input.onImport },
-            ]
-          : [],
+        actions: hasAccount ? [{ label: S.addTxn, primary: false, onPress: input.onAddTxn }] : [],
       },
       { key: "review", status: "todo", title: S.firstReview, hint: S.weekly(day), actions: [] },
     ],

@@ -5,34 +5,13 @@ export const S = catalog({
   row: { pl: (n: number) => `wiersz ${n}: `, en: (n: number) => `row ${n}: ` },
 
   // import
-  impAuto: { pl: "rozpoznaj automatycznie", en: "detect automatically" },
-  impCashu: { pl: "format cashU", en: "cashU format" },
-  impGeneric: { pl: "CSV z mapowaniem kolumn", en: "CSV with a column mapping" },
-  mappingHint: {
-    pl: `# Mapowanie kolumn CSV (przykład)\ndelimiter: ";"\ncolumns:\n  date: Data\n  type: Typ\n  symbol: Instrument\n  quantity: Ilość\n  price: Cena\n  cash_amount: Kwota\n  currency: Waluta`,
-    en: `# CSV column mapping (example)\ndelimiter: ","\ncolumns:\n  date: Date\n  type: Type\n  symbol: Instrument\n  quantity: Quantity\n  price: Price\n  cash_amount: Amount\n  currency: Currency`,
-  },
   back: { pl: "← Wstecz", en: "← Back" },
   importing: { pl: "Importuję…", en: "Importing…" },
-  addManually: { pl: "dodaj ręcznie", en: "add manually" },
   runningConnector: { pl: "Uruchamiam konektor…", en: "Running the connector…" },
   checking: { pl: "Sprawdzam…", en: "Checking…" },
   preview: { pl: "Podgląd", en: "Preview" },
   importTitle: { pl: "Import transakcji", en: "Import transactions" },
-  stepAccount: { pl: "Rachunek", en: "Account" },
-  stepFile: { pl: "Plik", en: "File" },
-  stepPreview: { pl: "Podgląd", en: "Preview" },
   stepDone: { pl: "Gotowe", en: "Done" },
-  accountDesc: {
-    pl: (name: string, currency: string, importer: string | null, connector: string | null) =>
-      `${name} · ${currency}${importer ? ` · importer: ${importer}` : ""}${connector ? ` · synchronizowane konektorem ${connector}` : ""}`,
-    en: (name: string, currency: string, importer: string | null, connector: string | null) =>
-      `${name} · ${currency}${importer ? ` · importer: ${importer}` : ""}${connector ? ` · synced by the connector ${connector}` : ""}`,
-  },
-  addAccountFirst: {
-    pl: "Najpierw dodaj rachunek maklerski.",
-    en: "Add a brokerage account first.",
-  },
   addAccount: { pl: "Dodaj rachunek", en: "Add an account" },
   brokerFile: { pl: "Plik od brokera", en: "File from the broker" },
   importer: { pl: "Importer", en: "Importer" },
@@ -42,20 +21,14 @@ export const S = catalog({
     en: (name: string) => `remembered: ${name}`,
   },
   notApproved: { pl: " (niezatwierdzony)", en: " (not approved)" },
-  withMapping: { pl: " (z mapowaniem)", en: " (with a mapping)" },
-  mappingLabel: { pl: "Mapowanie (YAML)", en: "Mapping (YAML)" },
-  emptyRemembered: { pl: " · puste = zapamiętane", en: " · empty = remembered" },
-  importerIs: { pl: "importer:", en: "importer:" },
   detected: {
     pl: (name: string) => ` · rozpoznano: ${name}`,
     en: (name: string) => ` · detected: ${name}`,
   },
-  autoDetected: { pl: " (rozpoznany automatycznie)", en: " (detected automatically)" },
   nRows: {
     pl: (n: number) => plCount(n, "wiersz", "wiersze", "wierszy"),
     en: (n: number) => enCount(n, "row", "rows"),
   },
-  changeImporter: { pl: "zmień importer", en: "change the importer" },
   fileErrors: {
     pl: "Plik ma błędy: popraw je przed importem.",
     en: "The file has errors: fix them before importing.",
@@ -73,7 +46,6 @@ export const S = catalog({
     pl: (n: number) => plCount(n, "pominięty", "pominięte", "pominiętych"),
     en: (n: number) => `${n} skipped`,
   },
-  onlyProblems: { pl: "pokaż tylko problemy", en: "show problems only" },
   colDate: { pl: "Data", en: "Date" },
   colType: { pl: "Typ", en: "Type" },
   colInstrument: { pl: "Instrument", en: "Instrument" },
@@ -89,46 +61,19 @@ export const S = catalog({
     en: (n: number) => `… ${n} more rows · `,
   },
   showAll: { pl: "pokaż wszystkie", en: "show all" },
-  noProblems: { pl: "Brak problemów.", en: "No problems." },
-  noTxnsInFile: { pl: "Plik nie zawiera transakcji.", en: "The file has no transactions." },
   reconciliation: { pl: "Uzgodnienie", en: "Reconciliation" },
-  snapshotFrom: {
-    pl: (broker: string, d: string) => `snapshot ${broker} z ${d}`,
-    en: (broker: string, d: string) => `${broker} snapshot from ${d}`,
-  },
-  nDiffs: {
-    pl: (n: number) => plCount(n, "różnica", "różnice", "różnic"),
-    en: (n: number) => enCount(n, "difference", "differences"),
-  },
   matching: { pl: "zgodne", en: "matching" },
-  colAtBroker: { pl: "U brokera", en: "At the broker" },
-  colAfterImport: { pl: "Po imporcie", en: "After import" },
-  colDiff: { pl: "Różnica", en: "Difference" },
-  correctionTitle: {
-    pl: "Transakcja „korekta stanu” z zerowym kosztem; uzupełnisz ją później.",
-    en: 'A "holdings adjustment" transaction at zero cost; you can complete it later.',
-  },
-  colCorrection: { pl: "Korekta", en: "Adjustment" },
   correction: {
     pl: (add: boolean, q: string, d: string | null) =>
       `${add ? "dodaj" : "odejmij"} ${q} szt.${d ? ` (korekta stanu na ${d})` : ""}`,
     en: (add: boolean, q: string, d: string | null) =>
       `${add ? "add" : "subtract"} ${q} units${d ? ` (holdings adjustment on ${d})` : ""}`,
   },
-  toClassifyAfter: {
-    pl: (list: string) => `Do sklasyfikowania po imporcie: ${list}.`,
-    en: (list: string) => `To classify after the import: ${list}.`,
-  },
   imported: {
     pl: (txns: string, corrections: number) =>
       `Zaimportowano ${txns}${corrections ? ` i ${plCount(corrections, "korektę", "korekty", "korekt")}` : ""}.`,
     en: (txns: string, corrections: number) =>
       `Imported ${txns}${corrections ? ` and ${enCount(corrections, "adjustment", "adjustments")}` : ""}.`,
-  },
-  dupSkipped: {
-    pl: (n: number) =>
-      plCount(n, "duplikat pominięty", "duplikaty pominięte", "duplikatów pominiętych"),
-    en: (n: number) => `${enCount(n, "duplicate", "duplicates")} skipped`,
   },
   classify: {
     pl: (n: number) => `Sklasyfikuj ${plCount(n, "instrument", "instrumenty", "instrumentów")}`,
