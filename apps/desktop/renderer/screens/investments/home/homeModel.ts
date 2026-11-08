@@ -11,7 +11,6 @@ import {
   pct,
   pp,
   WEEKDAYS,
-  wdm,
 } from "@cashu/ui-logic/investments/labels";
 import { runError } from "@cashu/ui-logic/investments/logic";
 import type { StrategyStatus } from "@cashu/ui-logic/investments/types";
@@ -30,6 +29,7 @@ type Tone = "positive" | "negative";
 export interface HeadModel {
   /** The account Seg (only with more than one account). */
   accounts: { items: [string, number | null][]; value: number | null } | null;
+  /** Only while prices refresh or when there are none: a normal quote date is not shown. */
   prices: { text: string; title?: string } | null;
   /** The stale-prices tag (a button to the Rachunki view). */
   stale: { text: string; title: string } | null;
@@ -71,7 +71,7 @@ export function headModel(input: {
       ? input.running.prices
         ? { text: S.refreshingPrices }
         : fr.prices.newest_bar
-          ? { text: S.prices(wdm(fr.prices.newest_bar)), title: S.newestQuote }
+          ? null // fresh prices need no tag (owner: the date is noise); stale ones get the stale tag
           : { text: S.noQuotes }
       : null,
     stale:

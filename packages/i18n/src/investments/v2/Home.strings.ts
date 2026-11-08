@@ -31,8 +31,6 @@ export const S = catalog({
   account: { pl: "Rachunek", en: "Account" },
   all: { pl: "Wszystkie", en: "All" },
   refreshingPrices: { pl: "odświeżam ceny", en: "refreshing prices" },
-  newestQuote: { pl: "Najnowsze notowanie w bazie", en: "Newest quote in the database" },
-  prices: { pl: (d: string) => `ceny ${d}`, en: (d: string) => `prices ${d}` },
   noQuotes: { pl: "brak notowań", en: "no quotes" },
   lastQuote: { pl: (d: string) => `ostatnie notowanie ${d}`, en: (d: string) => `last quote ${d}` },
   staleCount: {
