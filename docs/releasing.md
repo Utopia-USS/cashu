@@ -232,16 +232,22 @@ is per app (8517 prod, 8518 staging), so the two can later pair as two devices.
 
 
 ```bash
-node apps/desktop/scripts/package-macos.mjs arm64 --flavor staging
+node apps/desktop/scripts/package-macos.mjs arm64 --flavor staging \
+  --sign "Developer ID Application: <name> (<TEAMID>)"
 ```
 
-- Signed ad hoc, no update feed: the updater reports updates unavailable; a newer staging build is built
-  and installed again by hand.
+- Signed with the Developer ID from the login keychain (the same identity as a local release; the team
+  must equal RELEASE_TEAM_ID), so every rebuild keeps one code identity and the Keychain's "Always Allow"
+  for the vault keys survives reinstalls: after the first launch of a signed build, no password prompt.
+  Without `--sign` the build is ad hoc: every rebuild is a new identity and macOS asks for the Keychain
+  password again after each reinstall. `--notarize` and `--test-build` are refused for this flavor.
+- No update feed: the updater reports updates unavailable; a newer staging build is built and installed
+  again by hand.
 - Output: `build/staging/electron-builder/mac-arm64/cashU Staging.app` and
-  `build/staging/cashU-Staging-<version>-mac-arm64.zip`. The owner installs it once to
-  `/Applications/cashU Staging.app` (an agent never copies it there without the owner's go).
-- Known ad hoc side effect: every rebuild has a new code signature, so macOS may ask again for Keychain
-  or Documents access after each rebuild. Allow it for `cashU Staging`.
+  `build/staging/cashU-Staging-<version>-mac-arm64.zip`. The owner installs it to
+  `/Applications/cashU Staging.app` (an agent never copies it there without the owner's go). The app's
+  host keeps running after its window quits: stop it (SIGTERM to the `host.mjs run --data-dir
+  ~/Library/Application Support/cashU Staging` process) before replacing the bundle.
 - Never released: the release script and CI build the production flavor only.
 
 ## Evidence boundary

@@ -35,7 +35,7 @@ describe("package-macos arguments", () => {
     });
   });
 
-  it("builds the staging flavor ad hoc only", () => {
+  it("builds the staging flavor ad hoc or locally signed, never released", () => {
     expect(parse(["arm64"]).flavor).toBe("prod");
     expect(parse(["arm64", "--flavor", "staging", "--dmg"])).toMatchObject({
       arch: "arm64",
@@ -46,13 +46,18 @@ describe("package-macos arguments", () => {
       testBuild: null,
     });
     expect(() => parse(["arm64", "--flavor", "beta"])).toThrow(/--flavor is one of prod, staging/);
+    expect(parse(["arm64", "--flavor", "staging", "--sign", identity])).toMatchObject({
+      flavor: "staging",
+      identity,
+      notary: null,
+      testBuild: null,
+    });
     for (const extra of [
-      ["--sign", identity],
       ["--sign", identity, "--notarize", "cashu-notary"],
       ["--test-build", JSON.stringify(marker)],
     ])
       expect(() => parse(["arm64", "--flavor", "staging", ...extra])).toThrow(
-        /is not for --flavor staging \(ad hoc only\)/,
+        /is not for --flavor staging \(never released\)/,
       );
     expect(parse(["arm64", "--flavor", "prod", "--sign", identity]).identity).toBe(identity);
   });

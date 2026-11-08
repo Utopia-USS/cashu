@@ -62,12 +62,12 @@ export function parsePackageArgs(argv, io = {}) {
   const flavorName = value("--flavor") ?? "prod";
   if (!FLAVOR_IDS.includes(flavorName)) throw usage(`--flavor is one of ${FLAVOR_IDS.join(", ")}`);
   const flavor = flavorById(flavorName);
-  // A flavor without an update feed (staging: the owner's local second app) is ad hoc only: never
-  // Developer ID signed, notarized or a test build, so it can never be released or update itself.
+  // A flavor without an update feed (staging: the owner's local second app) is never notarized or a
+  // test build, so it can never be released or update itself. It may be Developer ID signed (--sign):
+  // a stable signature keeps the Keychain's "Always Allow" for its vault keys across rebuilds, which
+  // an ad hoc signature (a new identity every build) cannot.
   if (!flavor.updateFeed)
     for (const flag of [
-      "--sign",
-      "--keychain",
       "--notarize",
       "--notary-key",
       "--notary-key-id",
@@ -75,7 +75,7 @@ export function parsePackageArgs(argv, io = {}) {
       "--test-build",
       "--app-version",
     ])
-      if (seen.has(flag)) throw usage(`${flag} is not for --flavor ${flavorName} (ad hoc only)`);
+      if (seen.has(flag)) throw usage(`${flag} is not for --flavor ${flavorName} (never released)`);
   const identity = value("--sign");
   const keychain = value("--keychain");
   if (keychain && !identity) throw usage("--keychain needs --sign");
