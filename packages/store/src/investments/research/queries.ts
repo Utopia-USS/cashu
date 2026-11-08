@@ -11,8 +11,8 @@ import {
   type CalendarDate,
   type Instrument,
   instrumentLabel,
-  research,
 } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { loadStrategy, type NotificationPolicy } from "@cashu/domain/investments/strategy";
 import { loadInstruments, vaultInstrumentGids } from "../queries/instruments.js";
 import { instrumentRoot, marks, type Read } from "../queries/shared.js";

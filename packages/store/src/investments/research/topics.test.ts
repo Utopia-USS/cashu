@@ -2,7 +2,8 @@
 // sourced quantitative outlook, the owner's edits and clears, the view surviving thesis edits and
 // leaving notes alone), a snapshot-only crypto holding held at the start, watched-only topic rows and
 // the review digest keeping this week's topics. Synthetic data only.
-import { market, research } from "@cashu/domain/investments";
+import { market } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { describe, expect, it } from "vitest";
 import { setInstrumentSegment } from "../commands/instruments.js";
 import {

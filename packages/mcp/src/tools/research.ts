@@ -1,6 +1,6 @@
 /** Native research adapters. All writes use the host's single redact-before-commit buffer. */
 import { addDays } from "@cashu/domain";
-import { research } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import {
   investmentsCommands as C,
   type Command,

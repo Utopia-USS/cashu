@@ -19,7 +19,7 @@
 
 import { pyCasefold } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import { research } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
 import { eventBlob, gid } from "../../events/v1/primitives.js";

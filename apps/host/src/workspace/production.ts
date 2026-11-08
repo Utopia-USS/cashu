@@ -1,6 +1,6 @@
 import { isAbsolute, join, resolve } from "node:path";
-import type { SkillSource } from "@cashu/domain/core";
 import { builtinRegistry } from "@cashu/domain/core";
+import type { SkillSource } from "@cashu/domain/core/workspace";
 import { mcpServerName, processFlavor } from "@cashu/node-host/flavor";
 import { enabledModuleIds } from "@cashu/store/core";
 import { z } from "zod";

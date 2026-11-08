@@ -2,7 +2,8 @@
 // FX, a cost holding, cash and a mid-window buy), segment note rules, signal key and payload, the
 // weekly novelty limits, on-demand scopes and the review digest's segments. Synthetic data only.
 import { addDays } from "@cashu/domain";
-import { market, research } from "@cashu/domain/investments";
+import { market } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { describe, expect, it } from "vitest";
 import { setInstrumentSegment } from "../commands/instruments.js";
 import { applyRaw, stock, type Vault } from "../commands/testing/fixtures.js";

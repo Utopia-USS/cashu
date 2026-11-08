@@ -8,10 +8,10 @@ import {
   instrumentLabel,
   openedOn,
   type plan,
-  research,
   type ValuedHolding,
   type ValuedPortfolio,
 } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import type { ResearchNote } from "../research/rows.js";
 import { healthByInstrument } from "../research/views.js";
 import { watchlist } from "./alerts.js";

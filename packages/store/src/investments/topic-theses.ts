@@ -12,7 +12,7 @@
 // - `marketViewSet`: a no-op on a missing or rejected row and when nothing changes; `sources` absent =
 //   keep, a view cleared of both texts keeps no sources; `view_updated_at` = domain time when a text
 //   is set, else null; `updated_at` = domain time.
-import { research } from "@cashu/domain/investments";
+import { TOPIC_DRAFT_COOLDOWN_DAYS } from "@cashu/domain/investments/research/contract";
 import { canonicalJson } from "../canonical.js";
 import type { FoldContext, FoldEvent, Materializer } from "../engine/types.js";
 import type { TableDef } from "../sql/ddl.js";
@@ -95,10 +95,7 @@ function write(e: FoldEvent, ctx: FoldContext, row: Row | undefined): Row | unde
   const now = ctx.time(e, "updated_at");
   const text = String(d.thesis);
   if (row !== undefined && row.rejected_at !== null) {
-    if (
-      agent &&
-      epochMs(now) < epochMs(row.rejected_at) + research.TOPIC_DRAFT_COOLDOWN_DAYS * DAY_MS
-    ) {
+    if (agent && epochMs(now) < epochMs(row.rejected_at) + TOPIC_DRAFT_COOLDOWN_DAYS * DAY_MS) {
       return undefined; // GUARD: rejected too recently for a new draft
     }
     // A rejected row starts over (the owner's own thesis, or a new draft after the cooldown).

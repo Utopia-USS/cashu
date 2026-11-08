@@ -22,7 +22,7 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 | Tap / click to visual response | <= 100 ms |
 | Scrolling the 60k list | no dropped frames > 1% in a 10 s fling at 60 Hz (120 Hz on ProMotion) |
 | Mobile memory, steady state with 60k transactions | <= 250 MB |
-| Bundles | mobile JS (Hermes bytecode) <= 6.73 MB ceiling, target 6.0 MB (see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
+| Bundles | mobile JS (Hermes bytecode) <= 6.60 MB ceiling, target 6.0 MB (see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
 | Render regressions on key screens (Reassure) | <= 10% more renders or render time than the baseline |
 
 Mobile bundle note (lead, 2026-11-01, from S41b measurements): the first 4 MB budget was a guess. React Native +
@@ -34,6 +34,14 @@ lowered (each reduction lowers it in the same commit); raising it needs the lead
 S41d ratchet (2026-11-01): retaining only Zod's original English locale in the mobile Metro graph,
 with the S41c diagnostics fixes, measures 6,722,209 B on iOS and 6,706,184 B on Android. The ceiling
 is lowered to 6.73 MB (the larger measurement rounded up to 0.01 MB); the 6.0 MB target stays.
+
+Ratchet (2026-11-08): the phone had grown past the ceiling (6,854,983 B iOS) through three imports
+Metro cannot tree-shake: native.css scanned whole packages/ui folders, so Uniwind compiled the desktop
+chart renderer's and desktop-only components' classes (114 KB of JS, now 31 KB); the investments index
+carried the research layer as a value namespace (now `@cashu/domain/investments/research`, the store's
+fold reads only `.../research/contract`); the core index carried the agent workspace templates (now
+`@cashu/domain/core/workspace`). Measured 6,590,065 B on iOS and 6,566,198 B on Android; the ceiling
+is lowered to 6.60 MB. The tools/arch guard nativeStyles.test.ts keeps native.css to the phone's files.
 
 ## Rules that keep the budgets
 

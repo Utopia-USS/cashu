@@ -18,7 +18,7 @@ import {
   type WorkspaceRenderContext,
   type WorkspaceSnapshot,
   wantedSkills,
-} from "@cashu/domain/core";
+} from "@cashu/domain/core/workspace";
 import { type CheckedPathPolicy, checkWorkspacePath, WorkspacePathError } from "./files.js";
 import type {
   WorkspaceApplyInput,

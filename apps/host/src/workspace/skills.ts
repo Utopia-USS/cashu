@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import type { SkillSource } from "@cashu/domain/core";
+import type { SkillSource } from "@cashu/domain/core/workspace";
 
 const IGNORED = new Set(["__pycache__", ".DS_Store"]);
 const ignored = (name: string): boolean =>

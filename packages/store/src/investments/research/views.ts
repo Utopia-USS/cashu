@@ -4,7 +4,8 @@
 // (gid.md 6) and every timestamp Python's `utc_iso`. Clock-free: `now` is a parameter.
 import { pyCasefold } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import { type Instrument, research } from "@cashu/domain/investments";
+import type { Instrument } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { watchedInstrumentGids } from "../queries/alerts.js";
 import { loadInstruments } from "../queries/instruments.js";
 import { type ThesisView, theses } from "../queries/journal.js";

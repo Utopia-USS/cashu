@@ -57,7 +57,7 @@ jobs:
       - name: Architecture checks
         run: pnpm arch:check
 
-      # The mobile JS budget (performance.md "Bundles": Hermes bytecode <= 4 MB), iOS and Android
+      # The mobile JS budget (performance.md "Bundles": the Hermes bytecode ratchet ceiling), iOS and Android
       # production bundles from `expo export` (no native toolchain needed). Once per run is enough.
       - name: Mobile bundle budget
         if: matrix.os == 'ubuntu-latest'

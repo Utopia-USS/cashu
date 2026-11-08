@@ -12,7 +12,7 @@
 // with remote search or chart verification) is network IO that happens before the first write, so
 // the caller resolves or creates the instrument first (the watchlist resolver, S22b) and passes its
 // gid as `instrument`; a candidate whose note already names a vault instrument needs nothing.
-import { research } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { z } from "zod";
 import { defineCommand, ok, refuse } from "../../command.js";
 import { eventBlob, gid } from "../../events/v1/primitives.js";

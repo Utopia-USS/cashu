@@ -1,6 +1,7 @@
 import { toStorage } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import { research, type views } from "@cashu/domain/investments";
+import type { views } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { enabledModuleIds } from "../../core/queries.js";
 import { type ChangeSource, defineQuery, type Read } from "../../query.js";
 import {

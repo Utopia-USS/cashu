@@ -4,7 +4,7 @@
 // Python checked before writing and emit `topicThesis.*`; the fold (topic-theses.ts) applies the same
 // rules again in any order, so a concurrent write converges.
 import type { UiLang } from "@cashu/domain/core";
-import { research } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { z } from "zod";
 import { canonicalJson } from "../../canonical.js";
 import { defineCommand, ok, refuse } from "../../command.js";

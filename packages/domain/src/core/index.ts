@@ -1,4 +1,5 @@
-/** Public entry point of the core module of `@cashu/domain` (registries, net worth, profile rules). */
+/** Public entry point of the core module of `@cashu/domain` (registries, net worth, profile rules). The
+ * agent workspace plan has its own subpath, `@cashu/domain/core/workspace`. */
 
 export * from "./accounts.js";
 export * from "./accountTypes.js";
@@ -14,6 +15,4 @@ export * from "./profiles.js";
 export * from "./setup.js";
 export * from "./setup.strings.js";
 export * from "./valuation.js";
-export * from "./workspace/plan.js";
-export * from "./workspace/render.js";
 export * from "./zero.js";

@@ -23,7 +23,7 @@ import {
   userPart,
   type WorkspaceContentContext,
   wantedSkills,
-} from "@cashu/domain/core";
+} from "@cashu/domain/core/workspace";
 import { afterEach, expect, test } from "vitest";
 import { createInjectedWorkspaceProvider, type WorkspaceVaultAuthority } from "./adapter.js";
 import {

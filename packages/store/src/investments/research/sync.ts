@@ -14,7 +14,8 @@
 // The batch's own changes are not in the view yet, so the caller passes them as `overlay` (notes it
 // adds or changes) and `open` (the episode a reopen of the same batch brings back).
 import type { UiLang } from "@cashu/domain/core";
-import { research, type SignalSeverity, severityRank } from "@cashu/domain/investments";
+import { type SignalSeverity, severityRank } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import type { CommandContext } from "../../command.js";
 import { eventBlob } from "../../events/v1/primitives.js";
 import { openSignalOfKey, type SignalView, signalByGid } from "../queries/signals.js";

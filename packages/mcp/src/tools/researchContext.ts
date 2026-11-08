@@ -1,6 +1,7 @@
 /** Research context assembled from real native portfolio/research/attribution/macro services. */
-import { research } from "@cashu/domain/investments";
+
 import { summaryOk } from "@cashu/domain/investments/macro";
+import * as research from "@cashu/domain/investments/research";
 import { investmentsResearch as R } from "@cashu/store";
 import * as Q from "@cashu/store/investments/queries";
 import * as L from "../privacy/labels.js";

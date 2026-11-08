@@ -1,4 +1,4 @@
-import { research } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { expect, it } from "vitest";
 import { assertOrderedDelivery } from "../testing/delivery.js";
 import { household } from "../testing/household.js";

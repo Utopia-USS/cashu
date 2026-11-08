@@ -7,14 +7,14 @@
 
 import { addDays } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
-import {
-  type Instrument,
-  type InstrumentId,
-  type market,
-  type PriceBar,
-  type performance as perf,
-  research,
+import type {
+  Instrument,
+  InstrumentId,
+  market,
+  PriceBar,
+  performance as perf,
 } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { type MarketInput, resolveMarketInput } from "../marketInput.js";
 import { watchedInstrumentGids } from "../queries/alerts.js";
 import { loadInstruments } from "../queries/instruments.js";

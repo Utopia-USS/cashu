@@ -6,9 +6,9 @@ import {
   asInstrumentId,
   type InstrumentId,
   planVsStrength,
-  research,
   strengthAllowed,
 } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { z } from "zod";
 import { defineCommand, ok, refuse } from "../../command.js";
 import { PLAN_VALUES, POSITION_STRENGTHS, STRENGTH_BASES } from "../../events/v1/investments.js";

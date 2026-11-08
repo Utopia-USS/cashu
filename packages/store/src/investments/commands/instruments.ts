@@ -8,10 +8,10 @@ import {
   AliasNamespace,
   defaultValuationMode,
   HELD_ONLY_PLANS,
-  research,
   strengthAllowed,
   type ValuationMode,
 } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
 import {

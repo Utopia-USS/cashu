@@ -1,5 +1,6 @@
 import { parseDateTime } from "@cashu/domain";
-import { asInstrumentId, research } from "@cashu/domain/investments";
+import { asInstrumentId } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { describe, expect, it } from "vitest";
 import { openTestStore } from "../../testing/store.js";
 import { assertOrderedDelivery } from "../testing/delivery.js";

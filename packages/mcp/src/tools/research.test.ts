@@ -1,6 +1,7 @@
 import { parseDateTime } from "@cashu/domain";
-import { asProfileId, research } from "@cashu/domain/investments";
+import { asProfileId } from "@cashu/domain/investments";
 import { summaryOk } from "@cashu/domain/investments/macro";
+import * as research from "@cashu/domain/investments/research";
 import {
   investmentsCommands as C,
   type Command,

@@ -11,12 +11,12 @@ import {
   parseAccountWrapper,
   parseSignalSeverity,
   parseSignalStatus,
-  research,
   toCurrency,
   type ValuedHolding,
   type views,
 } from "@cashu/domain/investments";
 import { canonicalImporterId } from "@cashu/domain/investments/importing";
+import * as research from "@cashu/domain/investments/research";
 import type { SignalPolarity } from "@cashu/domain/investments/rules";
 import { alerts, watchlist } from "../queries/alerts.js";
 import { importBatches } from "../queries/import-preview.js";

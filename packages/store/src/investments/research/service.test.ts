@@ -3,7 +3,7 @@
 // instrument and week, escalation, polarity), dismiss / restore, housekeeping on expiry, candidates
 // (new instruments only, cooldown, accept -> watchlist + draft thesis, undo), the review-digest block
 // and the summary. Synthetic data only.
-import { research } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { describe, expect, it } from "vitest";
 import { createInstrument, setManualValuation } from "../commands/instruments.js";
 import { createThesis } from "../commands/journal.js";

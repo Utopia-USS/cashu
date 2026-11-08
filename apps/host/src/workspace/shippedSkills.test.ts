@@ -4,7 +4,8 @@
 // checkout can run. Ported from the retired Python suite (tests/test_workspace.py).
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { MODULE_IDS, MODULE_SKILLS, type SkillSource, wantedSkills } from "@cashu/domain/core";
+import { MODULE_IDS } from "@cashu/domain/core";
+import { MODULE_SKILLS, type SkillSource, wantedSkills } from "@cashu/domain/core/workspace";
 import { describe, expect, test } from "vitest";
 import { parse } from "yaml";
 import { portedCommands } from "../cli/ported.js";

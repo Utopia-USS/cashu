@@ -5,7 +5,7 @@
 // Note -> signal: `research_notes.signal_id` holds the signal gid as named (S25-F5); the decoded
 // `signal` is its episode (`inv_signal_aliases`), else the named gid while the open is not held.
 import type { IsoDate } from "@cashu/domain";
-import { research } from "@cashu/domain/investments";
+import * as research from "@cashu/domain/investments/research";
 import { gidOf, jsonList, jsonObject, type Read } from "../queries/shared.js";
 import { compareReadRank, creationRanks } from "../views/stableOrder.js";
 
