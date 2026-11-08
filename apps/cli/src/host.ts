@@ -1,8 +1,9 @@
 // How the shim reaches the data dir's host: connect, or start one detached and wait (connect-or-start,
 // @cashu/node-host). The host runs from the same build as the shim: from source in a dev checkout
 // (`node <transform-types flags> apps/host/src/cli.ts`), else the bundle's `host.mjs` next to the shim's
-// bundle with the same runtime (the app's binary in Node mode, S47). Never a fallback: when no host can
-// be started the caller reports it and stops (exit 69).
+// bundle with the same runtime (the app's binary in Node mode, S47). A host that is still opening its
+// stores answers `starting`: the shim waits for it (bounded, connectOrStart) instead of starting
+// another. Never a fallback: when no host can be started the caller reports it and stops (exit 69).
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -13,6 +14,7 @@ import {
   HostConnectError,
   type HostConnection,
   hostRunPaths,
+  readDiscovery,
   spawnDetachedHost,
 } from "@cashu/node-host";
 import {
@@ -150,11 +152,18 @@ export interface HostTarget {
 /** The host's log, named in the shim's error text. */
 export const hostLogPath = (dataDir: string) => hostRunPaths(dataDir).logPath;
 
-/** Connects with `role`, starting a host when none answers. Throws HostStartError / HostConnectError. */
+/** Reports the wait for a host that is still starting (time since its first `starting` answer). */
+export type OnStarting = (elapsedMs: number) => void;
+
+/**
+ * Connects with `role`, starting a host when none answers and waiting for one that is starting.
+ * Throws HostStartError / HostConnectError.
+ */
 export async function reachHost(
   target: HostTarget,
   role: Role,
   profile?: string,
+  onStarting?: OnStarting,
 ): Promise<HostConnection> {
   assertPackagedShim(target);
   const { command, args } = hostCommand(
@@ -173,20 +182,41 @@ export async function reachHost(
     start: () => {
       spawnDetachedHost({ command, args, logPath: paths.logPath, env: target.env });
     },
+    ...(onStarting === undefined ? {} : { onStarting }),
   });
   return connection;
 }
 
-/** Connects to a running host only (status / stop never start one); undefined when none answers. */
+/** The data dir's host as `host status` / `host stop` see it (they never start one). */
+export type ExistingHost =
+  | { readonly kind: "running"; readonly connection: HostConnection }
+  | { readonly kind: "starting"; readonly pid: number | undefined }
+  | { readonly kind: "absent" };
+
+/**
+ * Connects to a running host only. A starting host is reported as such, or waited for (bounded,
+ * throws HostStartError) when `onStarting` is given.
+ */
 export async function existingHost(
   target: HostTarget,
   role: Role,
-): Promise<HostConnection | undefined> {
+  onStarting?: OnStarting,
+): Promise<ExistingHost> {
   assertPackagedShim(target);
+  const options = { dataDir: target.dataDir, role, build: target.build.build };
   try {
-    return await connectHost({ dataDir: target.dataDir, role, build: target.build.build });
+    const connection =
+      onStarting === undefined
+        ? await connectHost(options)
+        : (await connectOrStart({ ...options, onStarting })).connection;
+    return { kind: "running", connection };
   } catch (error) {
-    if (error instanceof HostConnectError && error.retryable) return undefined;
-    throw error;
+    if (!(error instanceof HostConnectError) || !error.retryable) throw error;
+    if (error.kind === "starting")
+      return {
+        kind: "starting",
+        pid: readDiscovery(hostRunPaths(target.dataDir).discoveryPath)?.pid,
+      };
+    return { kind: "absent" };
   }
 }

@@ -1,9 +1,11 @@
 // The `cashu` shim end to end as a process, with its host started on demand in a temp data dir and a
 // synthetic host: native CLI output and exit codes travel over the host socket; host status / stop
-// never start a host; no host means exit 69 and nothing run; an unknown MCP profile is refused. A host
-// command run through the shim is skills.test.ts.
+// never start a host; no host means exit 69 and nothing run; a host still opening its stores is waited
+// for, past the no-host bound, and not raced; a failure the shim has no text for is named; an unknown
+// MCP profile is refused. A host command run through the shim is skills.test.ts.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { startHost } from "@cashu/node-host";
 import { afterEach, describe, expect, it } from "vitest";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
 import { cleanEnv } from "./testing/env.js";
@@ -76,7 +78,7 @@ describe("cashu shim: host admin and failures", () => {
   );
 
   it(
-    "says the background service is unavailable (exit 69) and runs nothing when no host can start",
+    "says why no host could be reached (exit 69) and runs nothing",
     async () => {
       const blocker = join(tempDir(), "file");
       writeFileSync(blocker, "");
@@ -84,10 +86,59 @@ describe("cashu shim: host admin and failures", () => {
       const run = await runShim(["stats"], e, { cwd: tempDir() });
       expect(run.code).toBe(69);
       expect(run.stdout).toBe("");
-      expect(run.stderr).toMatch(/^cashU could not start its background service\./);
+      // The text names what failed: the data dir cannot hold the host's run dir.
+      expect(run.stderr).toMatch(
+        /^cashU could not reach its background service \(Error: ENOTDIR: not a directory, .*host\.token'\)\./,
+      );
     },
     SLOW,
   );
+
+  it("waits for a host that is still starting, then runs the command on it; names an unknown failure", async () => {
+    const e = env();
+    const cwd = tempDir();
+    // A protocol-level host in this process: starting until `ready()`, then it serves `cli.exec`
+    // with fixed output and closes every admin session before answering.
+    const host = await startHost({
+      dataDir: e.CASHU_DATA_DIR as string,
+      build: "dev",
+      features: ["cli.exec"],
+      starting: true,
+      onSession: (session) => {
+        if (session.role !== "cli") return session.close();
+        session.onFrame((frame) => {
+          if (frame.t !== "req" || frame.method !== "cli.exec") return;
+          const note = { stream: "stdout", data: "served\n" };
+          session.send({ t: "note", id: frame.id, method: "cli.out", params: note });
+          const exit = { kind: "exit", code: 0 };
+          session.send({ t: "res", id: frame.id, outcome: { ok: true, result: exit } });
+        });
+      },
+    });
+    try {
+      const status = await runShim(["host", "status"], e, { cwd });
+      expect([status.code, status.stdout]).toEqual([
+        0,
+        `The cashU background service is starting (pid ${process.pid}, opening the vaults); commands wait until it is ready.\n`,
+      ]);
+      // Ready only after the 10 s a client gives a host that does not answer at all.
+      const run = runShim(["stats"], e, { cwd });
+      await new Promise((r) => setTimeout(r, 14_000));
+      host.ready();
+      const served = await run;
+      expect([served.code, served.stdout, served.stderr]).toEqual([0, "served\n", ""]);
+      // Nobody started a second host meanwhile.
+      expect(hostPid(e.CASHU_DATA_DIR as string)).toBe(process.pid);
+
+      const lost = await runShim(["host", "status"], e, { cwd });
+      expect(lost.code).toBe(69);
+      expect(lost.stderr).toMatch(
+        /^cashU could not reach its background service \(Error: the host connection closed\)\./,
+      );
+    } finally {
+      await host.close();
+    }
+  }, 45_000);
 
   it("refuses the synthetic host fixture outside a fresh temporary HOME", async () => {
     const e = env({ HOME: "/" });
@@ -105,7 +156,9 @@ describe("cashu shim: MCP", () => {
     async () => {
       const run = await runShim(["mcp", "--profile", "missing"], env(), { cwd: tempDir() });
       expect(run.code).toBe(69);
-      expect(run.stderr).toContain("cashU could not start its background service");
+      expect(run.stderr).toContain(
+        "cashU could not reach its background service (HostCallError: no MCP server in this build)",
+      );
     },
     SLOW,
   );

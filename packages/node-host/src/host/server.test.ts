@@ -30,7 +30,7 @@ afterEach(async () => {
 /** A host whose sessions echo `admin.*` / `cli.*` requests and record what they saw. */
 async function host(
   dataDir: string,
-  over: { helloDeadlineMs?: number; maxFrameBytes?: number } = {},
+  over: { helloDeadlineMs?: number; maxFrameBytes?: number; starting?: boolean } = {},
 ) {
   const sessions: HostSession[] = [];
   const h = await startHost({
@@ -326,6 +326,24 @@ describe("handshake refusals", () => {
       kind: "stopping",
       reason: "stopping",
     });
+  });
+
+  it("a starting host asks clients to wait for it, then serves them once ready", async () => {
+    const dir = trackDir(tempDir());
+    const { h, sessions } = await host(dir, { starting: true });
+    expect(h.starting).toBe(true);
+    // The host is findable (host.json) while it refuses every role, admin included.
+    expect(readDiscovery(h.paths.discoveryPath)?.pid).toBe(process.pid);
+    for (const role of ["cli", "admin"] as const) {
+      const error = await connectError(connectHost({ dataDir: dir, role, build: "c" }));
+      expect(error).toEqual({ kind: "starting", reason: "starting" });
+    }
+    expect(sessions).toHaveLength(0);
+    h.ready();
+    expect(h.starting).toBe(false);
+    const c = await connectHost({ dataDir: dir, role: "cli", build: "c" });
+    expect(await c.call("cli.exec")).toEqual({ echo: "cli.exec" });
+    c.close();
   });
 
   it("no token or no socket reads as unavailable", async () => {

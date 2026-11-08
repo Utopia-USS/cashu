@@ -3,6 +3,7 @@
 // role. Failures come back as `HostConnectError` with a kind that says what to do next:
 //   unavailable  no host answers (no token, no socket, refused connect, closed early): start one
 //   stopping     the host is shutting down: start a new one and retry
+//   starting     a host is still opening its stores: wait for it (do not start another) and retry
 //   unverified   the peer cannot prove it holds the token (a stale token file or a squatter): retry
 //   timeout      no answer within the handshake deadline: retry
 //   refused      another major, another data dir, a bad role or failed auth: fatal, do not retry
@@ -31,6 +32,7 @@ import { type HostPathEnv, hostRunPaths } from "./paths.js";
 export type HostConnectErrorKind =
   | "unavailable"
   | "stopping"
+  | "starting"
   | "unverified"
   | "timeout"
   | "refused";
@@ -178,6 +180,8 @@ export function connectHost(options: ConnectHostOptions): Promise<HostConnection
 function refusedError(reason: RefusalReason): HostConnectError {
   if (reason === "stopping")
     return new HostConnectError("stopping", "the host is stopping", reason);
+  if (reason === "starting")
+    return new HostConnectError("starting", "the host is still opening its stores", reason);
   return new HostConnectError("refused", `the host refused the connection (${reason})`, reason);
 }
 

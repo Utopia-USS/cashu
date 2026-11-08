@@ -98,6 +98,11 @@ export interface HostIdentity {
   readonly features: readonly string[];
   /** True while the host shuts down: new clients are told to retry (and start a new host). */
   readonly stopping: boolean;
+  /**
+   * True while the host opens its stores (a host that opts into a starting phase): clients are told
+   * to wait for this host, not to start another one. Absent means ready.
+   */
+  readonly starting?: boolean;
 }
 
 /** What the host remembers between its challenge and the client's auth. */
@@ -127,6 +132,7 @@ export function answerHello(raw: unknown, host: HostIdentity, ns: string): Hello
   if (packagedBuildMismatch(hello.role, hello.build, host.build))
     return { ok: false, reply: refusal("build") };
   if (host.stopping) return { ok: false, reply: refusal("stopping") };
+  if (host.starting === true) return { ok: false, reply: refusal("starting") };
   return {
     ok: true,
     pending: { hello, ns },

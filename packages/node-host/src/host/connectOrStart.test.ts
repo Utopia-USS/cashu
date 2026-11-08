@@ -16,7 +16,7 @@ import { HostConnectError } from "./client.js";
 import { connectOrStart, HostStartError } from "./connectOrStart.js";
 import { readDiscovery } from "./files.js";
 import { hostRunPaths } from "./paths.js";
-import { HOST_BUSY_EXIT } from "./server.js";
+import { HOST_BUSY_EXIT, startHost } from "./server.js";
 
 afterEach(cleanup);
 
@@ -139,4 +139,83 @@ describe("connect-or-start", () => {
     },
     SLOW,
   );
+
+  it("waits for a starting host without starting another, bounded from its first answer", async () => {
+    const dir = trackDir(tempDir());
+    const h = await startHost({
+      dataDir: dir,
+      build: "test-host",
+      starting: true,
+      onSession: (session) =>
+        session.onFrame((frame) => {
+          if (frame.t === "req")
+            session.send({ t: "res", id: frame.id, outcome: { ok: true, result: "served" } });
+        }),
+    });
+    try {
+      let t = 0;
+      let starts = 0;
+      const waited: number[] = [];
+      const options = {
+        dataDir: dir,
+        role: "cli" as const,
+        build: "c",
+        start: () => {
+          starts += 1;
+        },
+        deadlineMs: 1_000,
+        startingDeadlineMs: 5_000,
+        now: () => t,
+        onStarting: (elapsed: number) => waited.push(elapsed),
+      };
+      // Ready after 3 s of (fake) waiting: past the 1 s no-host deadline, inside the starting bound.
+      const reached = await connectOrStart({
+        ...options,
+        sleep: async (ms) => {
+          t += ms;
+          if (t >= 3_000) h.ready();
+        },
+      });
+      expect(starts).toBe(0);
+      expect(reached.started).toBe(false);
+      expect(waited).toEqual([0, 1_000, 2_000]);
+      expect(await reached.connection.call("cli.exec")).toBe("served");
+      reached.connection.close();
+
+      // A host that never finishes starting: a fixed error naming the starting phase, no start.
+      const stuck = await startHost({
+        dataDir: trackDir(tempDir()),
+        build: "test-host",
+        starting: true,
+        onSession: (session) => session.close(),
+      });
+      try {
+        t = 0;
+        const error = await connectOrStart({
+          ...options,
+          dataDir: stuck.paths.dataDir,
+          sleep: async (ms) => {
+            t += ms;
+          },
+        }).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(HostStartError);
+        expect((error as HostStartError).starting).toBe(true);
+        expect(t).toBe(5_000);
+        expect(starts).toBe(0);
+      } finally {
+        await stuck.close();
+      }
+
+      // Without `start`, an absent host is reported at once (the retryable connect error).
+      const absent = await connectOrStart({
+        dataDir: trackDir(tempDir()),
+        role: "admin",
+        build: "c",
+      }).catch((e: unknown) => e);
+      expect(absent).toBeInstanceOf(HostConnectError);
+      expect((absent as HostConnectError).kind).toBe("unavailable");
+    } finally {
+      await h.close();
+    }
+  });
 });

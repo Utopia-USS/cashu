@@ -72,6 +72,12 @@ export interface StartHostOptions {
   readonly maxFrameBytes?: number;
   readonly onSession: (session: HostSession) => void;
   readonly now?: () => Date;
+  /**
+   * Start in the starting phase: the socket is bound (clients find this host and do not start
+   * another), but every hello is refused as `starting` until `ready()`. A host that opens its stores
+   * after taking the lock uses it, so a client waits instead of getting a session nothing serves.
+   */
+  readonly starting?: boolean;
 }
 
 export interface RunningHost {
@@ -81,6 +87,10 @@ export interface RunningHost {
   /** Open sessions per role. */
   sessionCounts(): Record<Role, number>;
   readonly stopping: boolean;
+  /** True from a `starting` start until `ready()`. */
+  readonly starting: boolean;
+  /** Ends the starting phase: hellos are answered from now on (idempotent). */
+  ready(): void;
   /** New hellos are refused as `stopping` (clients retry and start a new host); sessions stay. */
   beginStop(): void;
   /** Stops accepting, closes every connection, removes socket / token / host.json, then releases
@@ -116,6 +126,7 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
   const sockets = new Set<Socket>();
   const sessions = new Set<HostSession>();
   let stopping = false;
+  let starting = options.starting === true;
   let nextSession = 1;
 
   const identity = () => ({
@@ -125,6 +136,7 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
     build: options.build,
     features: options.features ?? [],
     stopping,
+    starting,
   });
 
   const accept = (socket: Socket) => {
@@ -189,6 +201,12 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
     startedAt,
     get stopping() {
       return stopping;
+    },
+    get starting() {
+      return starting;
+    },
+    ready() {
+      starting = false;
     },
     sessionCounts() {
       const counts: Record<Role, number> = { ui: 0, mcp: 0, cli: 0, admin: 0 };

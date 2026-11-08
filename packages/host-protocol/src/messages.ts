@@ -80,6 +80,7 @@ export const REFUSAL_REASONS = [
   "role",
   "auth",
   "stopping",
+  "starting",
   "invalid",
 ] as const;
 export type RefusalReason = (typeof REFUSAL_REASONS)[number];
@@ -95,6 +96,7 @@ export const REFUSAL_MESSAGES: Readonly<Record<RefusalReason, string>> = {
   role: "the hello does not fit its role",
   auth: "authentication failed",
   stopping: "the host is stopping",
+  starting: "the host is still opening its stores",
   invalid: "invalid handshake message",
 };
 

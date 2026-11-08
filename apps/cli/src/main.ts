@@ -2,7 +2,10 @@
 // (route.ts) to the host's admin methods, an MCP session or `cli.exec`. Exit codes of its own: 64 usage
 // (`cashu host ...`), 69 no host could be reached or started (never a fallback that would open a store
 // in this process), 70 the host broke off or broke the protocol. Everything else is the command's code.
+// A host that is still opening its stores is waited for (bounded; a line of progress on a terminal's
+// stderr), and past the bound the text says it is still starting, not that it failed.
 import { homedir, userInfo } from "node:os";
+import { isatty } from "node:tty";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
 import { createBackendI18n, createTranslator, type Translator } from "@cashu/i18n";
 import {
@@ -22,6 +25,7 @@ import {
   type HostTarget,
   hostCommand,
   hostLogPath,
+  type OnStarting,
   reachHost,
   type ShimBuild,
 } from "./host.js";
@@ -45,6 +49,8 @@ export interface ShimProcess {
   readonly execArgv: readonly string[];
   readonly build: ShimBuild;
   readonly terminal: Terminal;
+  /** Whether stderr is a terminal (progress lines are written only there). */
+  readonly stderrIsTTY: boolean;
   /** Installs a Ctrl-C handler; returns its removal. */
   onInterrupt(handler: () => void): () => void;
   /** Ends the process after stdout is flushed (MCP relay). */
@@ -71,10 +77,43 @@ interface Context {
 const say = (proc: ShimProcess, stream: "stdout" | "stderr", text: string) =>
   proc.terminal.write(stream, `${text}\n`);
 
+/**
+ * Progress while a starting host opens its stores: one stderr line rewritten in place, on a terminal
+ * only (an agent's MCP pipe or a script gets nothing); `done` clears it.
+ */
+function startingProgress(ctx: Context): { readonly onStarting: OnStarting; done(): void } {
+  let shown = false;
+  return {
+    onStarting: (elapsedMs) => {
+      if (!ctx.proc.stderrIsTTY) return;
+      shown = true;
+      const line = ctx.t.tr(S.hostWaiting)(Math.round(elapsedMs / 1000));
+      ctx.proc.terminal.write("stderr", `\r\x1b[2K${line}`);
+    },
+    done: () => {
+      if (shown) ctx.proc.terminal.write("stderr", "\r\x1b[2K");
+      shown = false;
+    },
+  };
+}
+
+/** What a caught error was, for the generic fallback text (its class and message, never data). */
+const describeError = (error: unknown): string =>
+  error instanceof Error
+    ? error.message === ""
+      ? error.name
+      : `${error.name}: ${error.message}`
+    : typeof error;
+
 /** Exit 69 / 70 with the fixed text for a failure to reach the host. */
 function unreachable(ctx: Context, error: unknown): MainOutcome {
   if (error instanceof HostStartError) {
-    say(ctx.proc, "stderr", ctx.t.tr(S.hostUnavailable)(hostLogPath(ctx.dataDir.path)));
+    const log = hostLogPath(ctx.dataDir.path);
+    say(
+      ctx.proc,
+      "stderr",
+      error.starting ? ctx.t.tr(S.hostStillStarting)(log) : ctx.t.tr(S.hostUnavailable)(log),
+    );
     return { code: HOST_UNAVAILABLE_EXIT };
   }
   if (error instanceof HostConnectError) {
@@ -89,8 +128,13 @@ function unreachable(ctx: Context, error: unknown): MainOutcome {
     say(ctx.proc, "stderr", ctx.t.tr(S.hostOutdated));
     return { code: FAILURE_EXIT };
   }
-  // Anything else on the way to a host (e.g. its log or run dir cannot be created): no host.
-  say(ctx.proc, "stderr", ctx.t.tr(S.hostUnavailable)(hostLogPath(ctx.dataDir.path)));
+  // Anything else on the way to a host (its log or run dir cannot be created, a session that closed
+  // before its first answer, ...): no host, and the text names what went wrong.
+  say(
+    ctx.proc,
+    "stderr",
+    ctx.t.tr(S.hostFailed)(describeError(error), hostLogPath(ctx.dataDir.path)),
+  );
   return { code: HOST_UNAVAILABLE_EXIT };
 }
 
@@ -103,11 +147,14 @@ function requireFeature(ctx: Context, conn: HostConnection, feature: string): bo
 
 async function runCli(ctx: Context, argv: readonly string[]): Promise<MainOutcome> {
   let conn: HostConnection;
+  const progress = startingProgress(ctx);
   try {
-    conn = await reachHost(ctx.target, "cli");
+    conn = await reachHost(ctx.target, "cli", undefined, progress.onStarting);
   } catch (error) {
+    progress.done();
     return unreachable(ctx, error);
   }
+  progress.done();
   if (!requireFeature(ctx, conn, "cli.exec")) return { code: HOST_UNAVAILABLE_EXIT };
   let result: Awaited<ReturnType<typeof runExec>>;
   try {
@@ -149,7 +196,11 @@ async function runMcp(ctx: Context, profile: string): Promise<MainOutcome> {
       writeLine: (line) => ctx.proc.terminal.write("stdout", `${line}\n`),
       writeErr: (text) => ctx.proc.terminal.write("stderr", text),
       exit: (code) => resolve({ code }),
-      texts: { lost: bilingual(S.mcpLost), unavailable: bilingual(S.mcpUnavailable) },
+      texts: {
+        lost: bilingual(S.mcpLost),
+        unavailable: bilingual(S.mcpUnavailable),
+        starting: bilingual(S.mcpStillStarting),
+      },
     });
     relay.start(first);
     const stdin = ctx.proc.terminal.stdin;
@@ -180,16 +231,29 @@ async function runHostAdmin(ctx: Context, action: "status" | "stop" | "run"): Pr
     if (outcome.kind === "failed") return { code: FAILURE_EXIT };
     return outcome.kind === "signal" ? { signal: outcome.signal } : { code: outcome.code };
   }
-  let conn: HostConnection | undefined;
+  // Status reports a starting host at once; stop waits for it (bounded) and then stops it.
+  let found: Awaited<ReturnType<typeof existingHost>>;
+  const progress = startingProgress(ctx);
   try {
-    conn = await existingHost(ctx.target, "admin");
+    found = await existingHost(
+      ctx.target,
+      "admin",
+      action === "stop" ? progress.onStarting : undefined,
+    );
   } catch (error) {
+    progress.done();
     return unreachable(ctx, error);
   }
-  if (conn === undefined) {
+  progress.done();
+  if (found.kind === "absent") {
     say(ctx.proc, "stdout", ctx.t.tr(S.hostNotRunning));
     return { code: action === "status" ? NOT_RUNNING_EXIT : 0 };
   }
+  if (found.kind === "starting") {
+    say(ctx.proc, "stdout", ctx.t.tr(S.hostStartingStatus)(String(found.pid ?? "?")));
+    return { code: 0 };
+  }
+  const conn = found.connection;
   try {
     if (action === "stop") {
       const closed = new Promise<void>((resolve) => conn.onClose(resolve));
@@ -315,6 +379,7 @@ export function processShim(build: ShimBuild): ShimProcess {
     execArgv: process.execArgv,
     build,
     terminal: processTerminal(),
+    stderrIsTTY: isatty(2),
     onInterrupt(handler) {
       process.on("SIGINT", handler);
       return () => process.off("SIGINT", handler);

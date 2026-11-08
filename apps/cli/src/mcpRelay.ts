@@ -8,11 +8,12 @@
 //   - requests in flight when the session dropped are answered with an error (a tool call as a tool
 //     error), never replayed: a write may or may not have run, and only the agent can check;
 //   - while no host can be reached, requests are answered with an error and the next request tries
-//     again. Lines that arrive during a reconnect wait for it.
+//     again. Lines that arrive during a reconnect wait for it (also while a host is still starting,
+//     up to connect-or-start's bound; past it the error says the host is still starting).
 // The session ends when the server exits (`mcp.exit`, also after stdin ended and `mcp.eof` closed its
 // input): the shim exits with the server's code and does not reconnect.
 import { type HostFrame, mcpExitNoteSchema, mcpStderrNoteSchema } from "@cashu/host-protocol";
-import type { HostConnection } from "@cashu/node-host";
+import { type HostConnection, HostStartError } from "@cashu/node-host";
 
 export interface McpRelayDeps {
   /** Connects (or starts a host) and opens the session; rejects when no host can be reached. */
@@ -22,7 +23,11 @@ export interface McpRelayDeps {
   /** The relay is done (stdin ended, or the server exited): exit with `code`. */
   exit(code: number): void;
   /** Tool error texts (already in the agent's languages). */
-  readonly texts: { readonly lost: string; readonly unavailable: string };
+  readonly texts: {
+    readonly lost: string;
+    readonly unavailable: string;
+    readonly starting: string;
+  };
   /** How long a replayed `initialize` may take (default 30 s). */
   readonly replayTimeoutMs?: number;
 }
@@ -162,7 +167,7 @@ export class McpRelay {
       if (this.initialize !== undefined && !(await this.replayInitialize(conn))) {
         throw new Error("the replayed initialize failed");
       }
-    } catch {
+    } catch (error) {
       if (conn !== undefined && this.conn === conn) {
         this.conn = undefined;
         conn.close();
@@ -175,7 +180,9 @@ export class McpRelay {
       for (const m of requests) this.inflight.delete(idKey(m.id));
       this.answerAll(
         requests.map((m) => ({ id: m.id, method: m.method as string })),
-        this.deps.texts.unavailable,
+        error instanceof HostStartError && error.starting
+          ? this.deps.texts.starting
+          : this.deps.texts.unavailable,
       );
       return;
     }

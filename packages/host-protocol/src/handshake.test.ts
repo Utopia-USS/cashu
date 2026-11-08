@@ -50,7 +50,7 @@ describe("handshake", () => {
   it("matches verified packaged content builds for writers while retaining cross-build admin", () => {
     const first = `desktop-1.2.3-${"a".repeat(64)}`;
     const second = `desktop-1.2.3-${"b".repeat(64)}`;
-    expect(HOST_PROTOCOL.minor).toBe(7);
+    expect(HOST_PROTOCOL.minor).toBe(8);
     for (const role of ["ui", "cli", "mcp"] as const) {
       const h = hello({ role, ...(role === "mcp" ? { profile: "demo-anna" } : {}), build: first });
       const accepted = answerHello(h, host({ build: first }), nonce());
@@ -115,7 +115,7 @@ describe("handshake", () => {
     });
   });
 
-  it("refuses another data dir, another major, a stopping host and a role without its profile", () => {
+  it("refuses another data dir, another major, a stopping or starting host and a role without its profile", () => {
     const refusedFor = (raw: unknown, over: Partial<HostIdentity> = {}) => {
       const o = answerHello(raw, host(over), nonce());
       return o.ok ? "accepted" : o.reply.reason;
@@ -128,6 +128,8 @@ describe("handshake", () => {
     expect(refusedFor({ ...hello(), protocol: { major: 0, minor: 9 } })).toBe("protocol");
     expect(refusedFor({ ...hello(), protocol: { major: 1, minor: 7 } })).toBe("accepted");
     expect(refusedFor(hello(), { stopping: true })).toBe("stopping");
+    expect(refusedFor(hello(), { starting: true })).toBe("starting");
+    expect(refusedFor(hello(), { starting: true, stopping: true })).toBe("stopping");
     expect(refusedFor({ ...hello(), role: "mcp" })).toBe("role");
     expect(refusedFor({ ...hello(), profile: "demo-anna" })).toBe("role");
     expect(refusedFor({ t: "auth" })).toBe("invalid");

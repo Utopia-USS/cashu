@@ -20,6 +20,25 @@ export const S = {
     en: (log: string) =>
       `cashU could not start its background service. Check \`cashu host status\` and the log ${log}.`,
   } satisfies Fn<[string]>,
+  hostStillStarting: {
+    pl: (log: string) =>
+      `Usługa cashU w tle wciąż się uruchamia (otwiera sejfy). Spróbuj ponownie za chwilę; \`cashu host status\` pokaże, kiedy będzie gotowa, a log jest w ${log}.`,
+    en: (log: string) =>
+      `cashU's background service is still starting (opening the vaults). Try again in a moment; \`cashu host status\` shows when it is ready, and the log is ${log}.`,
+  } satisfies Fn<[string]>,
+  hostFailed: {
+    pl: (detail: string, log: string) =>
+      `cashU nie może połączyć się z usługą w tle (${detail}). Sprawdź \`cashu host status\` i log ${log}.`,
+    en: (detail: string, log: string) =>
+      `cashU could not reach its background service (${detail}). Check \`cashu host status\` and the log ${log}.`,
+  } satisfies Fn<[string, string]>,
+  // Progress while a starting host opens its stores (a terminal only, rewritten in place).
+  hostWaiting: {
+    pl: (seconds: number) =>
+      `Usługa cashU w tle uruchamia się (otwiera sejfy), czekam... ${seconds} s`,
+    en: (seconds: number) =>
+      `cashU's background service is starting (opening the vaults), waiting... ${seconds} s`,
+  } satisfies Fn<[number]>,
   hostOutdated: {
     pl: "Usługa cashU w tle pochodzi z innej wersji cashU. Uruchom `cashu host stop` i powtórz polecenie.",
     en: "The cashU background service is from another cashU version. Run `cashu host stop` and repeat the command.",
@@ -38,13 +57,19 @@ export const S = {
   } satisfies Fn<[string]>,
   // `cashu host ...`
   hostUsage: {
-    pl: "użycie: cashu host <status|stop|run>\n  status  stan usługi w tle (kod 0 działa, 3 nie działa)\n  stop    zatrzymaj usługę w tle\n  run     uruchom usługę w tle na pierwszym planie",
-    en: "usage: cashu host <status|stop|run>\n  status  show the background service (exit 0 running, 3 not running)\n  stop    stop the background service\n  run     run the background service in the foreground",
+    pl: "użycie: cashu host <status|stop|run>\n  status  stan usługi w tle (kod 0 działa lub się uruchamia, 3 nie działa)\n  stop    zatrzymaj usługę w tle\n  run     uruchom usługę w tle na pierwszym planie",
+    en: "usage: cashu host <status|stop|run>\n  status  show the background service (exit 0 running or starting, 3 not running)\n  stop    stop the background service\n  run     run the background service in the foreground",
   } satisfies Text,
   hostNotRunning: {
     pl: "Usługa cashU w tle nie działa.",
     en: "The cashU background service is not running.",
   } satisfies Text,
+  hostStartingStatus: {
+    pl: (pid: string) =>
+      `Usługa cashU w tle uruchamia się (pid ${pid}, otwiera sejfy); polecenia poczekają, aż będzie gotowa.`,
+    en: (pid: string) =>
+      `The cashU background service is starting (pid ${pid}, opening the vaults); commands wait until it is ready.`,
+  } satisfies Fn<[string]>,
   hostStopped: {
     pl: "Usługa cashU w tle została zatrzymana.",
     en: "The cashU background service stopped.",
@@ -119,6 +144,10 @@ export const S = {
   mcpLost: {
     pl: "Połączenie z usługą cashU w tle zostało przerwane, więc nie wiadomo, czy to wywołanie się wykonało. Sprawdź stan i dopiero wtedy je powtórz.",
     en: "The connection to the cashU background service was lost, so this call may or may not have run. Check the state before repeating it.",
+  } satisfies Text,
+  mcpStillStarting: {
+    pl: "Usługa cashU w tle wciąż się uruchamia (otwiera sejfy); nic nie zostało wykonane. Powtórz za chwilę.",
+    en: "cashU's background service is still starting (opening the vaults); nothing was run. Try again in a moment.",
   } satisfies Text,
   mcpUnavailable: {
     pl: "cashU nie może uruchomić usługi w tle; nic nie zostało wykonane. Sprawdź `cashu host status`.",

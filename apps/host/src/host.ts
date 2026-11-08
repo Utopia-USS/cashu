@@ -96,11 +96,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const build = options.build ?? "dev";
   const screens = createScreenSurfaces({ options, nativeMode, now });
 
-  // The lock and the socket. Sessions are closed until the host is wired (`dispatch` below).
+  // The lock and the socket, in the starting phase: hellos are refused as `starting` (clients wait
+  // for this host) until the host is wired (`server.ready()` below). `dispatch` closes a session
+  // only if one got through before that.
   let dispatch: (session: HostSession) => void = (session) => session.close();
   const server = await startHost({
     dataDir: options.dataDir,
     build,
+    starting: true,
     features: hostFeatures({ options, vaultSource, nativeMode }),
     ...(options.pathEnv === undefined ? {} : { pathEnv: options.pathEnv }),
     onSession: (session) => dispatch(session),
@@ -364,6 +367,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
           return;
       }
     };
+    server.ready();
     lifecycle.armIdle();
     return {
       server,

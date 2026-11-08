@@ -3,7 +3,7 @@
 // swallowed, list_changed is sent, lines that arrived meanwhile follow; no host -> errors, the next
 // request tries again; mcp.exit ends the relay with the server's code.
 import type { ClientFrame, HostFrame } from "@cashu/host-protocol";
-import type { HostConnection } from "@cashu/node-host";
+import { HostConnectError, type HostConnection, HostStartError } from "@cashu/node-host";
 import { describe, expect, it } from "vitest";
 import { McpRelay } from "./mcpRelay.js";
 
@@ -74,7 +74,7 @@ function setup(connects: (() => Promise<FakeConn>)[]) {
     exit: (code) => {
       exit = code;
     },
-    texts: { lost: "LOST", unavailable: "DOWN" },
+    texts: { lost: "LOST", unavailable: "DOWN", starting: "STARTING" },
   });
   return { relay, out, err, exit: () => exit };
 }
@@ -159,6 +159,23 @@ describe("McpRelay", () => {
     s.relay.clientLine(line({ jsonrpc: "2.0", id: 6, method: "tools/list" }));
     await tick();
     expect(s.out).toEqual([{ jsonrpc: "2.0", id: 6, error: { code: -32603, message: "DOWN" } }]);
+  });
+
+  it("says the host is still starting when the retry gave up on a starting host", async () => {
+    const first = new FakeConn();
+    const starting = async (): Promise<FakeConn> => {
+      throw new HostStartError(new HostConnectError("starting", "still opening", "starting"));
+    };
+    // The drop's reconnect and the next request's retry both give up on the starting host.
+    const s = setup([starting, starting]);
+    s.relay.start(first.asConnection());
+    first.drop();
+    await tick();
+    s.relay.clientLine(line({ jsonrpc: "2.0", id: 7, method: "tools/list" }));
+    await tick();
+    expect(s.out).toEqual([
+      { jsonrpc: "2.0", id: 7, error: { code: -32603, message: "STARTING" } },
+    ]);
   });
 
   it("exits with the server's code after mcp.exit, and with 0 when stdin ends", async () => {

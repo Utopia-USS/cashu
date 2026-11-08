@@ -20,8 +20,11 @@ export interface ProtocolVersion {
  * 1.7 also admits the additive `native.connectors.v1` picker capability: prepareInstall returns a
  * session-bound one-use token, commitInstall consumes it with a main-process selected directory.
  * No arbitrary path is exposed in the renderer. Unknown connector methods close the UI session.
+ * 1.8: the `starting` refusal: a host still opening its stores refuses hellos with it, and clients
+ * wait for that host (bounded) instead of starting another one. An older client reads it as an
+ * invalid reply and retries, which is also safe.
  */
-export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 7 };
+export const HOST_PROTOCOL: ProtocolVersion = { major: 1, minor: 8 };
 
 export const protocolVersionSchema = z.object({
   major: z.number().int().min(0).max(65_535),

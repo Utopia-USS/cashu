@@ -12,7 +12,14 @@ import { lstatSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { adminStatusResultSchema } from "@cashu/host-protocol";
-import { connectHost, HostBusyError, HostConnectError, RefusalError } from "@cashu/node-host";
+import {
+  connectHost,
+  connectOrStart,
+  HostBusyError,
+  HostConnectError,
+  HostStartError,
+  RefusalError,
+} from "@cashu/node-host";
 import {
   bundlePathFromEntry,
   packagedBuildId,
@@ -98,10 +105,14 @@ function parse(argv: readonly string[], env: MainEnv["env"]): Args | string {
   };
 }
 
-async function admin(dataDir: string, build: string) {
+/** An admin session on the running host; "starting" while it opens its stores, undefined when none. */
+async function admin(dataDir: string, build: string, waitStarting = false) {
   try {
-    return await connectHost({ dataDir, role: "admin", build });
+    if (!waitStarting) return await connectHost({ dataDir, role: "admin", build });
+    return (await connectOrStart({ dataDir, role: "admin", build })).connection;
   } catch (error) {
+    if (error instanceof HostStartError && error.starting) return "starting" as const;
+    if (error instanceof HostConnectError && error.kind === "starting") return "starting" as const;
     if (error instanceof HostConnectError && error.kind !== "refused") return undefined;
     throw error;
   }
@@ -385,6 +396,10 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           io.stdout("cashu-host: not running");
           return NOT_RUNNING_EXIT;
         }
+        if (conn === "starting") {
+          io.stdout("cashu-host: starting (opening the stores)");
+          return 0;
+        }
         try {
           const s = adminStatusResultSchema.parse(await conn.call("admin.status"));
           const sessions = Object.entries(s.sessions)
@@ -415,10 +430,15 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
         }
       }
       case "stop": {
-        const conn = await admin(args.dataDir, runtime.build);
+        // A starting host is waited for (bounded, connectOrStart), then stopped.
+        const conn = await admin(args.dataDir, runtime.build, true);
         if (conn === undefined) {
           io.stdout("cashu-host: not running");
           return 0;
+        }
+        if (conn === "starting") {
+          io.stderr("cashu-host: the host is still starting; try again in a moment");
+          return FAILURE_EXIT;
         }
         const closed = new Promise<void>((resolve) => conn.onClose(resolve));
         await conn.call("admin.stop");

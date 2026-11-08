@@ -318,7 +318,7 @@ describe("local host", () => {
     const host = await startLocalHost(testHostOptions(dir));
     expect(await main(["status", "--data-dir", dir], io)).toBe(0);
     const status = out.pop();
-    expect(status).toMatch(/running \(pid \d+, build test, protocol 1\.7\)[\s\S]*vaults {4}1/);
+    expect(status).toMatch(/running \(pid \d+, build test, protocol 1\.8\)[\s\S]*vaults {4}1/);
     expect(await main(["stop", "--data-dir", dir], io)).toBe(0);
     expect(await host.exit).toBe(0);
     expect(await main(["status", "--data-dir", dir], io)).toBe(3);
