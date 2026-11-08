@@ -221,3 +221,51 @@ test("production provider binds one current native vault and refuses wrong vault
   current = false;
   expect(await binding?.apply(input)).toMatchObject({ kind: "refused", code: "stale_capability" });
 });
+
+test("production provider publishes and inspects a workspace at a chosen folder", async () => {
+  const f = fixture();
+  const vault = "a".repeat(32);
+  const home = join(f.root, "home");
+  const dataRoot = join(f.root, "data");
+  const chosen = join(home, "Projects", "synthetic-workspace");
+  const native = {
+    id: vault,
+    workspaceAuthority: () => ({ vault, generation: "session-one", isCurrent: () => true }),
+    store: {
+      read: (sql: string) =>
+        sql.includes("FROM profiles")
+          ? [{ slug: "synthetic", baseCurrency: "PLN", privacy: "strict" }]
+          : [],
+    },
+  } as unknown as NativeVaultSession;
+  const entry = {
+    vaultId: vault,
+    deviceId: "b".repeat(32),
+    vaultRoot: join(dataRoot, "native", vault),
+    state: "ready",
+    enrollment: "creator",
+  } as const satisfies NativeVaultInventoryEntry;
+  const provider = createProductionWorkspaceProvider({
+    dataRoot,
+    home,
+    workspacesRoot: join(home, "Documents", "cashU"),
+    skillSource: f.skillSource,
+    version: "synthetic",
+    program: { command: "/synthetic/cashu", args: [] },
+    sessions: (id) => (id === vault ? native : null),
+    inventory: () => [entry],
+    now: () => new Date("2026-11-04T00:00:00Z"),
+  });
+  const input = { slug: "synthetic", privacy: "strict" as const, baseCurrency: "PLN", modules: [] };
+  expect(await provider.bind(vault)?.apply({ ...input, path: chosen })).toMatchObject({
+    kind: "completed",
+    status: { availability: "ready", path: chosen, custom: true, exists: true, folderExists: true },
+  });
+  expect(await provider.bind(vault)?.inspect(input)).toMatchObject({
+    availability: "ready",
+    path: chosen,
+    configured: true,
+    exists: true,
+  });
+  expect(readFileSync(join(chosen, "CLAUDE.md"), "utf8")).toContain("cashU agent workspace");
+});

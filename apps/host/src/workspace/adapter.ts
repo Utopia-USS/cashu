@@ -274,12 +274,13 @@ function inspectReady(
   input: WorkspaceInspectInput,
 ): WorkspaceStatus {
   requireAuthority(authority, input);
-  const io = authority.publication;
   const cfg = configured(authority);
   const raw = input.path?.trim() || cfg.path || authority.defaultPath;
   const path = checkWorkspacePath(raw, authority.vault, authority.policy);
   if (authority.publicationFor)
     authority = { ...authority, publication: authority.publicationFor(path) };
+  // The publication of the chosen path: the default one is scoped to the default path only.
+  const io = authority.publication;
   const manifest = manifestAt(authority, path);
   const owner = manifest.value?.vaultId;
   const conflict =
