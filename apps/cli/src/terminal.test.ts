@@ -1,7 +1,6 @@
 // Real POSIX terminal descriptors: a pseudo-terminal from `script`, sized with stty, with stdout
-// redirected to a file. No cashU data or app code is loaded. The expected width is the one Rich (the
-// retired Python CLI) read in the same setup. macOS `script` syntax; elsewhere the fake terminals of the
-// shim tests cover the size logic.
+// redirected to a file. No cashU data or app code is loaded. macOS `script` syntax; elsewhere the fake
+// terminals of the shim tests cover the size logic.
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

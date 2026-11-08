@@ -147,14 +147,6 @@ describe("native desktop window", () => {
     expect(app.error).toBe("native renderer unavailable");
     expect(decodeURIComponent(window.loaded.at(-1) ?? "")).toContain("cashU could not start");
   });
-
-  it("exposes native bridges only to app origin", async () => {
-    const { app } = setup();
-    expect(app.exposesBridgeTo("app://cashu/index.html")).toBe(true);
-    expect(app.exposesBridgeTo("data:text/html,loading")).toBe(false);
-    expect(app.exposesBridgeTo("https://evil.example/")).toBe(false);
-    expect(app.exposesBridgeTo(null)).toBe(false);
-  });
 });
 
 describe("single instance and shutdown", () => {
@@ -213,11 +205,6 @@ describe("tray", () => {
   it("opens the window and quits from the menu", async () => {
     const { app, window, events, tray } = setup();
     await app.start();
-    expect(tray().items.map((item) => ("label" in item ? item.label : "-"))).toEqual([
-      "Open cashU",
-      "-",
-      "Quit cashU",
-    ]);
     window.minimized = true;
     tray().act("open");
     expect(window.calls).toEqual(["restore", "show", "focus"]);

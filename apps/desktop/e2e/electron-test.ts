@@ -216,9 +216,7 @@ export async function storeHarnessWindow(app: ElectronApplication): Promise<Page
   await page.goto("app://cashu/assets/desktop/e2e-store.html");
   await page.getByRole("heading", { name: "Native store test" }).waitFor();
   await page.waitForFunction(
-    () =>
-      typeof (window as unknown as { cashuStoreHarness?: unknown }).cashuStoreHarness ===
-      "function",
+    () => typeof (window as unknown as { cashuStoreLive?: unknown }).cashuStoreLive === "object",
   );
   return page;
 }

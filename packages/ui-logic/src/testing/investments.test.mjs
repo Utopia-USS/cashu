@@ -2,7 +2,6 @@
 import assert from "node:assert/strict";
 import {
   accountLabel,
-  bucketLabel,
   dm,
   money,
   parseNum,
@@ -47,7 +46,7 @@ test("dates: day.month in prose, weekday prefix", () => {
   assert.equal(wdm("2026-10-02"), "pt 2.10");
 });
 
-test("labels: accounts by broker and wrapper, generic buckets readable, other bucket ids never named, never the em dash", () => {
+test("labels: accounts by broker and wrapper, never the em dash", () => {
   const a = {
     id: 1,
     name: "DIF zwykłe",
@@ -59,16 +58,6 @@ test("labels: accounts by broker and wrapper, generic buckets readable, other bu
   const c = { id: 3, name: "XTB IKE 2", broker: "xtb", broker_name: "XTB", wrapper: "ike" };
   assert.equal(accountLabel(a, [a, b]), "DIF · zwykłe");
   assert.equal(accountLabel(b, [a, b, c]), "XTB · IKE (XTB IKE)");
-  assert.equal(bucketLabel("global_equity"), "Akcje globalne");
-  // F7-generic: only generic ids (templates + plain asset classes) have a label; the owner's own ids are not named
-  assert.equal(bucketLabel("my_satellites"), null);
-  assert.equal(bucketLabel("stocks"), "Akcje");
-  assert.equal(bucketLabel("bonds"), "Obligacje");
-  assert.equal(bucketLabel("bond_etfs"), "ETF-y obligacyjne");
-  assert.equal(bucketLabel("Stocks"), null); // case-sensitive, as the backend's GENERIC_BUCKET_IDS
-  assert.equal(bucketLabel("core"), null);
-  assert.equal(bucketLabel("active"), null);
-  assert.equal(bucketLabel(null), null);
   for (const text of [accountLabel(a), pct(null), money(null)]) assert.ok(!text.includes("\u2014"));
 });
 

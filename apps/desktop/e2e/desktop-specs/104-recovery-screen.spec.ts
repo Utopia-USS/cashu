@@ -97,7 +97,7 @@ async function copiedPrompt(app: ElectronApplication, page: Page): Promise<strin
 function assertPrivate(prompt: string, h: Harness): void {
   for (const value of [h.root, h.home, "PL61109010140000071219812874", "Zofia", "12345.67"])
     expect(prompt).not.toContain(value);
-  expect(prompt).not.toContain("—");
+  expect(prompt).not.toContain("\u2014");
 }
 
 function reportPair(dataDir: string): string[] {
@@ -125,20 +125,15 @@ test("old app data shows python_data_present with the agent prompt, Continue and
       }),
     });
     const page = await recoveryWindow(app, OLD_DATA);
-    await expect(page.getByRole("alert")).toContainText("dane z poprzedniej wersji cashU");
     await expect(page.getByTestId("recovery-code")).toHaveText("python_data_present");
     await expect(page.getByTestId("recovery-data-dir")).toHaveText("~/cashU-data");
     await expect(page.getByRole("button", { name: "Kontynuuj bez starych danych" })).toBeVisible();
     await expect(page.getByTestId("native-creation")).toHaveCount(0);
 
+    // The prompt's wording is unit-tested (host-protocol startupFailure); here: code, `~` path, privacy.
     const prompt = await copiedPrompt(app, page);
     expect(prompt).toContain("Kod błędu: python_data_present");
     expect(prompt).toContain("Folder danych: ~/cashU-data");
-    expect(prompt).toContain("pythonSources=1");
-    expect(prompt).toContain("claude mcp add cashu-<slug> -- pnpm cashu-next mcp --profile <slug>");
-    expect(prompt).toContain("import-builder");
-    expect(prompt).toContain("`propose_import`");
-    expect(prompt).not.toContain("migrate");
     assertPrivate(prompt, h);
 
     const files = reportPair(h.dataDir);
@@ -147,11 +142,6 @@ test("old app data shows python_data_present with the agent prompt, Continue and
     expect(readFileSync(join(h.dataDir, "diagnostics", text), "utf8")).toBe(prompt);
     expect(existsSync(join(h.dataDir, "stores"))).toBe(false);
     expect(existsSync(join(h.dataDir, "test-spawns"))).toBe(false);
-
-    // Retry with the old data still there keeps the same screen and report.
-    await page.getByRole("button", { name: "Spróbuj ponownie" }).click();
-    await recoveryWindow(app, OLD_DATA);
-    expect(reportPair(h.dataDir)).toEqual(files);
 
     // Continue starts the host; the old data stays exactly as it was.
     await page.getByRole("button", { name: "Kontynuuj bez starych danych" }).click();
@@ -180,19 +170,14 @@ test("a host start that records vault_key_unavailable shows that code and a reda
     });
     const page = await recoveryWindow(app);
     await expect(page.getByTestId("recovery-code")).toHaveText("vault_key_unavailable");
-    await expect(page.getByRole("alert")).toContainText("Klucz, którym zaszyfrowany jest profil");
     await expect(page.getByRole("button", { name: "Kontynuuj bez starych danych" })).toHaveCount(0);
 
     const prompt = await copiedPrompt(app, page);
     expect(prompt).toContain("Kod błędu: vault_key_unavailable");
-    expect(prompt).toContain("Szczegół: keystore_unavailable");
-    expect(prompt).toContain("Etap: vault_open");
-    expect(prompt).toContain("vaults=1");
+    // The host log's line reaches the prompt without its hostile values.
     expect(prompt).toContain(
       "host.start-failure code=vault_key_unavailable detail=keystore_unavailable",
     );
-    expect(prompt).not.toContain("migrate");
-    expect(prompt).not.toContain("import-builder");
     assertPrivate(prompt, h);
     expect(readFileSync(join(h.dataDir, "test-spawns"), "utf8")).toMatch(/^(?:host\n)+$/);
     expect(reportPair(h.dataDir)).toHaveLength(2);

@@ -6,7 +6,7 @@ import { nodeLanguageSource } from "./language.js";
 
 const dir = () => mkdtempSync(join(realpathSync(tmpdir()), "cashu-lang-"));
 
-describe("nodeLanguageSource (core/i18n.py order)", () => {
+describe("nodeLanguageSource", () => {
   it("reads CASHU_LANG, the stored choice and the OS separately", () => {
     const d = dir();
     writeFileSync(join(d, "settings.json"), JSON.stringify({ language: "pl", other: 1 }));
@@ -46,7 +46,7 @@ describe("nodeLanguageSource (core/i18n.py order)", () => {
     expect(calls).toBe(1);
   });
 
-  it("returns the first set locale variable as is, like Python", () => {
+  it("returns the first set locale variable as is", () => {
     const s = nodeLanguageSource({
       env: { LC_ALL: "", LC_MESSAGES: "de_DE", LANG: "pl_PL" },
       dataDir: undefined,

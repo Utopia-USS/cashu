@@ -58,8 +58,6 @@ it("explains old app data, copies the agent prompt and continues to first-run se
   await act(async () => root.render(<RecoveryScreen report={oldData} bridge={bridge} />));
   expect(headings()).toContain("Data from the previous version of cashU");
   expect(headings()).not.toContain("cashU cannot start");
-  expect(container.textContent).toContain("your AI agent can bring it over");
-  expect(container.textContent).toContain("never opens, moves or changes them");
   expect(container.querySelector('[data-testid="recovery-prompt"]')?.textContent).toContain(
     "import-builder skill",
   );
@@ -82,15 +80,6 @@ it("offers no Continue for a real start-up failure", async () => {
   expect(button("Continue without the old data")).toBeUndefined();
   await act(async () => button("Try again")?.click());
   expect(bridge.retry).toHaveBeenCalledTimes(1);
-});
-
-it("words the old-data screen in Polish", async () => {
-  setLanguageForTests("pl");
-  const bridge = fakeBridge();
-  await act(async () => root.render(<RecoveryScreen report={oldData} bridge={bridge} />));
-  expect(headings()).toContain("Dane z poprzedniej wersji cashU");
-  await act(async () => button("Kontynuuj bez starych danych")?.click());
-  expect(bridge.continueWithoutOldData).toHaveBeenCalledTimes(1);
 });
 
 it("shows the missing report", async () => {

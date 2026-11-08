@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from "vitest";
 import { readNotificationPermission, requestNotificationPermission } from "./notificationBridge.js";
-import { T } from "./screens/settings/Settings.strings.js";
 
 afterEach(() => {
   Reflect.deleteProperty(window, "cashuNotifications");
@@ -21,6 +20,5 @@ it("preserves the Linux system-managed status without claiming delivery or promp
   });
   expect(await readNotificationPermission()).toBe("system");
   expect(requests).toBe(0);
-  expect(T.notificationPermissionSystem).toContain("system");
   expect(await requestNotificationPermission()).toBe("system");
 });

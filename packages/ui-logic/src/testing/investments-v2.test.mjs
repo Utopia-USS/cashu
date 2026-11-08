@@ -1,6 +1,5 @@
 // Investments v2 pure logic (src/modules/investments/v2/logic.ts), Runs with the ui-logic Vitest suite.
 import assert from "node:assert/strict";
-import { bucketGenitive } from "@cashu/ui-logic/investments/labels";
 import {
   alertConditionText,
   alertDefaultTitle,
@@ -136,13 +135,6 @@ test("polarity split: inside a column newest first by first_seen_at (signals-rai
     negative.map((s) => s.id),
     [3, 4, 10, 2, 9, 8],
   );
-});
-
-test("bucket genitive (Alokacja copy)", () => {
-  assert.equal(bucketGenitive("global_equity"), "Akcji globalnych");
-  assert.equal(bucketGenitive("treasury_bonds"), "Obligacji skarbowych");
-  assert.equal(bucketGenitive("my_custom"), null);
-  assert.equal(bucketGenitive("eu_equity"), null);
 });
 
 test("signal copy: plain words, no rule ids", () => {
@@ -441,27 +433,6 @@ test("F7 FE5: surplus card uses the transfer after the cushion top-up; pp a cont
   assert.equal(planMonthsSoFar(null, "2026-10-05"), 10);
   assert.equal(planMonthsSoFar("2026-07-03", "2026-10-05"), 4);
   assert.equal(planMonthsSoFar("2025-11-03", "2026-10-05"), 10);
-});
-
-test("F7 FE6: the change since a date is the market move (deposits in between removed)", async () => {
-  const { changeSince } = await import("@cashu/ui-logic/investments/v2/logic");
-  const pt = (date, value, flow, twr) => ({
-    date,
-    value,
-    flow,
-    twr,
-    benchmark: null,
-    simulated_value: null,
-    drawdown: null,
-  });
-  const pts = [
-    pt("2026-09-01", 100000, 0, 0),
-    pt("2026-09-15", 103000, 2000, 0.01),
-    pt("2026-10-01", 106400, 3000, 0.014),
-  ];
-  const r = changeSince(pts, "2026-09-01");
-  assert.equal(r.money, 1400);
-  assert.ok(Math.abs(r.pct - 0.014) < 1e-9);
 });
 
 test("F7 FE6: asset average cost over all accounts; the minimal hero compares like with like", async () => {

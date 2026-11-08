@@ -1,5 +1,5 @@
-// The calendar feeds over a fake fetch and their cache (tests/investments/persistence/test_calendar.py:
-// the cache and "no network without a fetcher" parts, plus fetch_feeds' error codes).
+// The calendar feeds over a fake fetch and their cache: stale cache on failure, no network without a
+// fetcher, and the fetcher's error codes.
 
 import { addDays, type DateTime } from "@cashu/domain";
 import type { market as m } from "@cashu/domain/investments";

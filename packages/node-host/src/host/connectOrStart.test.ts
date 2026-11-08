@@ -1,5 +1,5 @@
-// Ported from the S56 prototype (s56-spike/run-test.mjs): real host processes (the fixture host,
-// spawned detached like a client would), racing for one data dir, killed with SIGKILL, restarted.
+// Real host processes (the fixture host, spawned detached like a client would), racing for one data
+// dir, killed with SIGKILL, restarted.
 // Synthetic temp dirs only.
 import { readFileSync } from "node:fs";
 import type { AdminStatus } from "@cashu/host-protocol";

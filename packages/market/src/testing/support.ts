@@ -1,5 +1,5 @@
 /**
- * Shared helpers for the market tests (`tests/investments/market/inv_market_support.py`). No live HTTP:
+ * Shared helpers for the market tests. No live HTTP:
  * every source runs on a recording fake `fetch`; fixtures are the recorded responses in
  * `packages/domain/test/fixtures/market`.
  */

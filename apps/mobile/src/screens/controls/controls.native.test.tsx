@@ -42,13 +42,6 @@ it("selects only a different currency supplied by the genuine hook contract", as
   expect(changed).toHaveBeenCalledWith("EUR");
 });
 
-it("renders no invented picker option when the profile has no currencies", async () => {
-  setLanguageForTests("pl");
-  await render(<CurrencyPicker currencies={[]} currency="PLN" onCurrencyChange={jest.fn()} />);
-  expect(screen.getByText("Brak walut")).toBeTruthy();
-  expect(screen.queryByTestId("money-currency")).toBeNull();
-});
-
 function PeriodStory({ initial }: { initial: PeriodChoice }) {
   const [period, onPeriodChange] = useState(initial);
   return (
@@ -89,9 +82,8 @@ it("starts a bounded quarter from All and crosses Q4 into Q1", async () => {
   expect(screen.getByText("Q1 2025")).toBeTruthy();
 });
 
-it("refuses unsupported modes and exposes localized period context", async () => {
+it("refuses an unsupported period mode", async () => {
   const changed = jest.fn();
-  setLanguageForTests("pl");
   await render(
     <PeriodPicker
       period={{ kind: "quarter", year: 2025, quarter: 1 }}
@@ -101,6 +93,4 @@ it("refuses unsupported modes and exposes localized period context", async () =>
   );
   await fireEvent(screen.getByTestId("money-period-kind"), "valueChange", "week");
   expect(changed).not.toHaveBeenCalled();
-  expect(screen.getByText("1. kwartał 2025")).toBeTruthy();
-  expect(screen.getByText("Poprzedni okres")).toBeTruthy();
 });

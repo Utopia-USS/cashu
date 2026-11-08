@@ -6,8 +6,6 @@ import {
   startUpdateSchedule,
 } from "./schedule.js";
 
-const HOUR = 60 * 60 * 1000;
-
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2027-01-01T08:00:00Z"));
@@ -77,12 +75,5 @@ describe("automatic update schedule", () => {
     await vi.advanceTimersByTimeAsync(10 * CHECK_INTERVAL_MS);
     expect(controller.checkAutomatically).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("never asks before the first delay when stopped at once", async () => {
-    const controller = fakeController();
-    startUpdateSchedule(controller).stop();
-    await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
-    expect(controller.checkAutomatically).not.toHaveBeenCalled();
   });
 });

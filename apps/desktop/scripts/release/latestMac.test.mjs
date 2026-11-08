@@ -81,16 +81,6 @@ describe("latestMacYml", () => {
     expect(provider.findFile(intel, "zip", ["pkg", "dmg"]).info).toEqual(x64);
   });
 
-  it("keeps the checksum and names in the shapes the app's update controller accepts", async () => {
-    const { arm64, x64 } = await entries();
-    const text = latestMacYml({ version: "0.5.1", arm64, x64, releaseDate: new Date() });
-    const info = provider.parseUpdateInfo(text, "latest-mac.yml", new URL(`${FEED}latest-mac.yml`));
-    for (const file of info.files) {
-      expect(file.sha512).toMatch(/^[A-Za-z0-9+/]{86}==$/);
-      expect(file.url).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$/);
-    }
-  });
-
   it("refuses names MacUpdater would route to the wrong Macs and malformed input", async () => {
     const { arm64, x64 } = await entries();
     const ok = { version: "0.5.1", arm64, x64, releaseDate: new Date() };

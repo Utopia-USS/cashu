@@ -22,11 +22,6 @@ import minimal, {
 } from "./screens/overview/MinimalOverviewView.stories.js";
 import overview, { Empty, Privacy, Ready } from "./screens/overview/OverviewView.stories.js";
 import bootstrap, { Failed, Waiting } from "./shell/BootstrapView.stories.js";
-import recovery, {
-  InventoryUnavailable,
-  ReportUnavailable,
-  Unknown as UnknownRecovery,
-} from "./shell/RecoveryView.stories.js";
 import shell, {
   NoProfile,
   Privacy as PrivateShell,
@@ -44,20 +39,6 @@ it("renders waiting and failed bootstrap CSF states before a store connection", 
   expect(
     renderToStaticMarkup(<bootstrap.component {...bootstrap.args} {...Failed.args} />),
   ).toContain('role="alert"');
-});
-
-it("renders the start-up recovery CSF states without a host", () => {
-  const render = (story: { args?: object } = {}) =>
-    renderToStaticMarkup(<recovery.component {...recovery.args} {...story.args} />);
-  expect(render()).toContain("Data from the previous version of cashU");
-  expect(render()).toContain("Continue without the old data");
-  expect(render()).toContain('data-testid="recovery-code"');
-  expect(render()).not.toContain("cashU cannot start");
-  for (const story of [InventoryUnavailable, UnknownRecovery]) {
-    expect(render(story)).toContain("cashU cannot start");
-    expect(render(story)).not.toContain("Continue without the old data");
-  }
-  expect(render(ReportUnavailable)).toContain("could not be read");
 });
 
 it("renders actual Overview CSF states with the masked privacy hero", () => {

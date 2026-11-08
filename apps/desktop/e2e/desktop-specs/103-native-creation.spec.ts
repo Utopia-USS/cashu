@@ -2,8 +2,7 @@
 // Real Electron renderer -> own-origin preload -> authenticated host RPC -> encrypted native vault.
 // The host is supervised with a persisted fake OS KeyStore. The Electron bootstrap denies ordinary
 // detached host spawning throughout both handovers and the later renderer restart.
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
 import {
   currentVault,
@@ -19,19 +18,16 @@ import { nativeCreationHarness, type TestHost } from "../native-creation-support
 
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
-async function createThroughWizard(page: Page, visualRoot?: string): Promise<void> {
+async function createThroughWizard(page: Page): Promise<void> {
   const wizard = page.locator('[data-testid="native-creation"]');
   await expect(wizard).toBeVisible();
   await wizard.getByRole("textbox", { name: "Nazwa profilu" }).fill("Synthetic Create");
   await wizard.getByRole("combobox", { name: "Waluta bazowa" }).selectOption("EUR");
   await wizard.getByRole("textbox", { name: "Nazwa tego urządzenia" }).fill("Test computer");
-  if (visualRoot) await page.screenshot({ path: join(visualRoot, "01-profile.png") });
   await wizard.getByRole("button", { name: /Dalej/ }).click();
   await expect(wizard.getByText(/Krok 2 z 3/)).toBeVisible();
-  if (visualRoot) await page.screenshot({ path: join(visualRoot, "02-modules.png") });
   await wizard.getByRole("button", { name: /Dalej/ }).click();
   await wizard.getByRole("radio", { name: /Ścisły/ }).check();
-  if (visualRoot) await page.screenshot({ path: join(visualRoot, "03-privacy.png") });
   await wizard.getByRole("button", { name: /Dalej/ }).click();
   await page.waitForFunction(
     () => document.querySelector('[data-testid="recovery-phrase"]') !== null,
@@ -70,20 +66,31 @@ async function restartHostAfterHandover(
   return start();
 }
 
+/** The creation bridge's state, with no recovery phrase left in the page. */
+async function creationState(page: Page): Promise<string> {
+  expect(
+    await page.evaluate(() => document.querySelector('[data-testid="recovery-phrase"]') === null),
+  ).toBe(true);
+  const state = await page.evaluate(() =>
+    (
+      window as unknown as { cashuCreation: { current(): Promise<{ kind: string }> } }
+    ).cashuCreation.current(),
+  );
+  return state.kind;
+}
+
 function denialCount(path: string): number {
   return existsSync(path) ? readFileSync(path, "utf8").split("blocked\n").length - 1 : 0;
 }
 
 test("first native Create, explicit Add, authenticated handover, and read-only restart", async () => {
-  const visualRoot = test.info().outputPath("native-create");
-  mkdirSync(visualRoot, { recursive: true, mode: 0o700 });
   const harness = nativeCreationHarness();
   try {
     let host = await harness.startHost();
     const app = await harness.launchDesktop();
     let page = (await dashboardWindow(app)).page;
     const deniedMarker = `${harness.dataDir}/test-spawn-denied`;
-    await createThroughWizard(page, visualRoot);
+    await createThroughWizard(page);
     host = await restartHostAfterHandover(host, deniedMarker, 0, () => harness.startHost());
     await skipUnavailableWorkspace(page);
     await expect(profilePill(page)).toBeVisible();
@@ -92,18 +99,9 @@ test("first native Create, explicit Add, authenticated handover, and read-only r
     expect(firstVault).toMatch(/^[0-9a-f]{32}$/u);
     await expect(page).toHaveURL(/\/overview/u);
     expect(page.url()).toContain(firstVault);
-    expect(
-      await page.evaluate(() => document.querySelector('[data-testid="recovery-phrase"]') === null),
-    ).toBe(true);
-    await page.screenshot({ path: join(visualRoot, "04-first-ready.png") });
     const firstDenials = denialCount(deniedMarker);
     expect(firstDenials).toBeGreaterThan(0);
-    const firstStatus = await page.evaluate(() =>
-      (
-        window as unknown as { cashuCreation: { current(): Promise<{ kind: string }> } }
-      ).cashuCreation.current(),
-    );
-    expect(firstStatus.kind).toBe("ready");
+    expect(await creationState(page)).toBe("ready");
 
     // A completed anchor may coexist with a fresh explicit Add, even with the same name and slug.
     await openProfileMenuItem(page, "Nowy profil…");
@@ -118,30 +116,13 @@ test("first native Create, explicit Add, authenticated handover, and read-only r
     expect(secondVault).not.toBe(firstVault);
     await expect(page).toHaveURL(/\/overview/u);
     expect(page.url()).toContain(secondVault);
-    expect(
-      await page.evaluate(() => document.querySelector('[data-testid="recovery-phrase"]') === null),
-    ).toBe(true);
-    await page.screenshot({ path: join(visualRoot, "05-second-ready.png") });
-    const secondStatus = await page.evaluate(() =>
-      (
-        window as unknown as { cashuCreation: { current(): Promise<{ kind: string }> } }
-      ).cashuCreation.current(),
-    );
-    expect(secondStatus.kind).toBe("ready");
+    expect(await creationState(page)).toBe("ready");
 
     await app.close();
     const restarted = await harness.launchDesktop();
     page = (await dashboardWindow(restarted)).page;
     await expect.poll(() => profileCount(page)).toBe(2);
-    expect(
-      await page.evaluate(() => document.querySelector('[data-testid="recovery-phrase"]') === null),
-    ).toBe(true);
-    const restartStatus = await page.evaluate(() =>
-      (
-        window as unknown as { cashuCreation: { current(): Promise<{ kind: string }> } }
-      ).cashuCreation.current(),
-    );
-    expect(restartStatus.kind).toBe("ready");
+    expect(await creationState(page)).toBe("ready");
     await host.stop();
   } finally {
     await harness.cleanup();

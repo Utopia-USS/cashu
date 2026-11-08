@@ -1,5 +1,4 @@
-// Yahoo chart source incl. R3 quote currency and R6 splits
-// (tests/investments/market/test_inv_yahoo_source.py).
+// Yahoo chart source incl. R3 quote currency and R6 splits.
 
 import {
   AssetClass,
@@ -84,7 +83,7 @@ async function failure(yahoo: Yahoo): Promise<m.SourceException> {
 
 const closes = (bars: readonly { close: { toString(): string } }[]) =>
   bars.map((b) => b.close.toString());
-/** Closes compared by value (Python `Decimal.__eq__`: `95.30 == 95.3`). */
+/** Closes compared by value (`95.30 == 95.3`). */
 const sameValues = (
   values: readonly ({ eq(o: ReturnType<typeof d>): boolean } | null | undefined)[],
   expected: string[],
@@ -370,7 +369,7 @@ describe("split events (R6)", () => {
   });
 });
 
-// --- chart of a pick (tests/investments/market/test_f12_search_sources.py; the search parts: search.test.ts) --
+// --- chart of a pick (the search parts: search.test.ts) ----------------------------------------
 
 const searchFixture = (name: string) => fixture(`search/${name}`);
 

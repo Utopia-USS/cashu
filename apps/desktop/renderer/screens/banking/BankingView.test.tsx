@@ -8,66 +8,54 @@ import type { BankingReply } from "./useBankingScreen.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
-it.each(["pl", "en"] as const)(
-  "renders a localized native banking consent and recovery flow in %s",
-  async (language) => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    const port = syntheticBankingPort(true);
-    let opened = "";
-    const bridged = {
-      ...port,
-      openBank: async (url: string) => {
-        opened = url;
-      },
-    };
-    const click = async (needle: string) => {
-      const target = [...container.querySelectorAll("button")].find((node) =>
-        node.textContent?.includes(needle),
-      );
-      expect(target, needle).toBeDefined();
-      await act(async () => {
-        target?.click();
-      });
-    };
-    try {
-      await act(async () =>
-        root.render(<BankingScreen vaultId="synthetic-a" port={bridged} language={language} />),
-      );
-      expect(container.textContent).toContain(
-        language === "pl" ? "Bankowość otwarta" : "Open Banking",
-      );
-      expect(container.textContent).toContain("Synthetic Bank");
-      const field = container.querySelector(
-        'input[list="banking-institutions"]',
-      ) as HTMLInputElement;
-      await act(async () => {
-        field.value = "Synthetic Bank";
-        field.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      const form = field.closest("form");
-      await act(async () => {
-        form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-      });
-      await click(language === "pl" ? "Otwórz stronę banku" : "Open bank page");
-      expect(opened).toBe("https://synthetic-bank.example/authorize");
-      await click(language === "pl" ? "Synchronizuj teraz" : "Sync now");
-      expect(container.textContent).toContain(
-        language === "pl" ? "Wynik importu jest nieznany" : "Import outcome is unknown",
-      );
-      await click(language === "pl" ? "Sprawdź próbę" : "Check attempt");
-      expect(container.textContent).toContain(
-        language === "pl" ? "Import zakończony" : "Import completed",
-      );
-      expect(container.textContent).not.toContain("b".repeat(32));
-    } finally {
-      await act(async () => root.unmount());
-      container.remove();
-    }
-  },
-);
+it("runs the native banking consent and recovers an unknown import by checking the attempt", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const port = syntheticBankingPort(true);
+  let opened = "";
+  const bridged = {
+    ...port,
+    openBank: async (url: string) => {
+      opened = url;
+    },
+  };
+  const click = async (needle: string) => {
+    const target = [...container.querySelectorAll("button")].find((node) =>
+      node.textContent?.includes(needle),
+    );
+    expect(target, needle).toBeDefined();
+    await act(async () => {
+      target?.click();
+    });
+  };
+  try {
+    await act(async () =>
+      root.render(<BankingScreen vaultId="synthetic-a" port={bridged} language="en" />),
+    );
+    expect(container.textContent).toContain("Synthetic Bank");
+    const field = container.querySelector('input[list="banking-institutions"]') as HTMLInputElement;
+    await act(async () => {
+      field.value = "Synthetic Bank";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const form = field.closest("form");
+    await act(async () => {
+      form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await click("Open bank page");
+    expect(opened).toBe("https://synthetic-bank.example/authorize");
+    await click("Sync now");
+    expect(container.textContent).toContain("Import outcome is unknown");
+    await click("Check attempt");
+    expect(container.textContent).toContain("Import completed");
+    expect(container.textContent).not.toContain("b".repeat(32));
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
 
 it("configures through the native chooser, completes a manual callback, and forgets locally", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

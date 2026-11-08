@@ -20,7 +20,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { acquireHostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import type { OsKeyringPort } from "./native.js";
-import { createProductionKeyStore, createTestKeyStore } from "./production.js";
+import { createTestKeyStore } from "./production.js";
 
 const roots: string[] = [];
 afterEach(() => {

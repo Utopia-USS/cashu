@@ -18,6 +18,29 @@ beforeEach(() => {
   setLanguageForTests("en");
 });
 
+async function typeInto(input: HTMLInputElement, text: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+const buttonIn = (container: HTMLElement, label: string) =>
+  [...container.querySelectorAll("button")].find((item) => item.textContent?.includes(label));
+/** Name, modules and MCP privacy: the steps before the recovery phrase is prepared. */
+async function walkToPhrase(container: HTMLElement, beforePrivacy: () => void = () => {}) {
+  await typeInto(
+    container.querySelector('input[name="profileName"]') as HTMLInputElement,
+    "Synthetic Home",
+  );
+  await act(async () => buttonIn(container, "Next")?.click());
+  await act(async () => buttonIn(container, "Next")?.click());
+  beforePrivacy();
+  await act(async () =>
+    (container.querySelector('input[name="mcpPrivacy"]') as HTMLInputElement)?.click(),
+  );
+  await act(async () => buttonIn(container, "Next")?.click());
+}
+
 it("discards a delayed phrase from a replaced bridge lifetime", async () => {
   let finishPrepare: (value: NativeCreationPrepareResult) => void = () => {};
   const oldBridge: CreationBridge = {
@@ -40,25 +63,9 @@ it("discards a delayed phrase from a replaced bridge lifetime", async () => {
   const view = (bridge: CreationBridge) => (
     <CreationScreen mode="first" bridge={bridge} onReady={async () => false} />
   );
-  const button = (label: string) =>
-    [...container.querySelectorAll("button")].find((item) => item.textContent?.includes(label));
   try {
     await act(async () => root.render(view(oldBridge)));
-    const name = container.querySelector('input[name="profileName"]') as HTMLInputElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        name,
-        "Synthetic Home",
-      );
-      name.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => button("Next")?.click());
-    await act(async () => button("Next")?.click());
-    const radios = [
-      ...container.querySelectorAll('input[name="mcpPrivacy"]'),
-    ] as HTMLInputElement[];
-    await act(async () => radios[0]?.click());
-    await act(async () => button("Next")?.click());
+    await walkToPhrase(container);
     await act(async () => root.render(view(newBridge)));
     await act(async () =>
       finishPrepare({
@@ -102,30 +109,16 @@ it("prepares once, clears the phrase before commit, and reconciles unknown witho
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  const button = (label: string) =>
-    [...container.querySelectorAll("button")].find((item) => item.textContent?.includes(label));
+  const button = (label: string) => buttonIn(container, label);
   try {
     await act(async () =>
       root.render(<CreationScreen mode="first" bridge={bridge} onReady={async () => false} />),
     );
-    const name = container.querySelector('input[name="profileName"]') as HTMLInputElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        name,
-        "Synthetic Home",
-      );
-      name.dispatchEvent(new Event("input", { bubbles: true }));
+    await walkToPhrase(container, () => {
+      // Radio inputs are controlled by the selected option, not by a persisted default.
+      const strict = container.querySelector('input[value="strict"]') as HTMLInputElement | null;
+      expect(strict?.checked ?? false).toBe(false);
     });
-    await act(async () => button("Next")?.click());
-    await act(async () => button("Next")?.click());
-    const strict = container.querySelector('input[value="strict"]') as HTMLInputElement | null;
-    // Radio inputs are controlled by the selected option, not by a persisted default.
-    expect(strict?.checked ?? false).toBe(false);
-    const radios = [
-      ...container.querySelectorAll('input[name="mcpPrivacy"]'),
-    ] as HTMLInputElement[];
-    await act(async () => radios[0]?.click());
-    await act(async () => button("Next")?.click());
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain(words);
     const backup = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
@@ -182,8 +175,7 @@ it("retains the verified profile through uncertain workspace publication and ret
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  const button = (label: string) =>
-    [...container.querySelectorAll("button")].find((item) => item.textContent?.includes(label));
+  const button = (label: string) => buttonIn(container, label);
   try {
     await act(async () =>
       root.render(
@@ -196,34 +188,17 @@ it("retains the verified profile through uncertain workspace publication and ret
         />,
       ),
     );
-    const name = container.querySelector('input[name="profileName"]') as HTMLInputElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        name,
-        "Synthetic Home",
-      );
-      name.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => button("Next")?.click());
-    await act(async () => button("Next")?.click());
-    await act(async () =>
-      (container.querySelector('input[name="mcpPrivacy"]') as HTMLInputElement)?.click(),
-    );
-    await act(async () => button("Next")?.click());
+    await walkToPhrase(container);
     await act(async () =>
       (container.querySelector('input[type="checkbox"]') as HTMLInputElement)?.click(),
     );
     await act(async () => button("Create secure profile")?.click());
     expect(onReady).toHaveBeenCalledWith(ready);
     expect(container.textContent).toContain("Create workspace");
-    const path = container.querySelector('[data-testid="workspace-path"]') as HTMLInputElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        path,
-        "/tmp/new-workspace",
-      );
-      path.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    await typeInto(
+      container.querySelector('[data-testid="workspace-path"]') as HTMLInputElement,
+      "/tmp/new-workspace",
+    );
     await act(async () => button("Create workspace")?.click());
     expect(apply).toHaveBeenCalledWith(ready, {
       path: "/tmp/new-workspace",

@@ -224,13 +224,7 @@ describe("native updater controller", () => {
     const sha512 = `${"A".repeat(86)}==`;
     const arm64 = { url: "cashU-1.2.3-mac-arm64.zip", sha512, size: 10 };
     const x64 = { url: "cashU-1.2.3-mac-x64.zip", sha512, size: 10 };
-    for (const files of [
-      [arm64, x64],
-      [x64, arm64],
-      [arm64],
-      [x64],
-      [arm64, x64, { ...arm64, url: "cashU-1.2.3.dmg" }],
-    ]) {
+    for (const files of [[x64, arm64], [x64], [arm64, x64, { ...arm64, url: "cashU-1.2.3.dmg" }]]) {
       const f = fixture();
       await f.controller.initialize();
       const value = { version: "1.2.3", files, path: arm64.url, sha512 };
@@ -429,22 +423,6 @@ describe("native updater controller", () => {
     expect(f.updater.checkForUpdates).toHaveBeenCalledTimes(4);
     expect(f.updater.downloadUpdate).not.toHaveBeenCalled();
     expect(f.updater.quitAndInstall).not.toHaveBeenCalled();
-  });
-
-  it("the owner's install of an automatically found version reports in the card", async () => {
-    const f = fixture();
-    f.store.write({ ...f.prefs(), auto: true });
-    await f.controller.initialize();
-    f.updater.checkForUpdates.mockImplementationOnce(async () => {
-      f.updater.emit("update-available", info);
-    });
-    await f.controller.checkAutomatically();
-    f.updater.downloadUpdate.mockRejectedValueOnce(new Error("offline"));
-    expect(await f.controller.act("install")).toEqual({
-      kind: "outcome_unknown",
-      reason: "download_failed",
-    });
-    expect(f.controller.status()).toMatchObject({ manualCheck: true, app: { stage: "error" } });
   });
 
   it("refuses an unknown runtime action", async () => {

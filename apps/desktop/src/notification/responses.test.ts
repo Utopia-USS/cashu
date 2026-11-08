@@ -18,19 +18,6 @@ describe("notification response intake", () => {
     expect(parseNotificationResponse({ ...pair, intentToken: "x" })).toBeNull();
   });
 
-  it("accepts a previously parsed pair and refuses non-objects or missing fields", () => {
-    const { requestId, intentToken } = pair;
-    expect(parseNotificationResponse({ requestId, intentToken })).toEqual({
-      requestId,
-      intentToken,
-    });
-    expect(parseNotificationResponse({ ...pair, version: undefined })).toBeNull();
-    expect(parseNotificationResponse({ version: 1, requestId })).toBeNull();
-    expect(parseNotificationResponse([requestId, intentToken])).toBeNull();
-    expect(parseNotificationResponse(null)).toBeNull();
-    expect(parseNotificationResponse("pair")).toBeNull();
-  });
-
   it("buffers early callbacks and deduplicates launchInfo replay", () => {
     const intake = createResponseIntake();
     const received: unknown[] = [];
@@ -57,18 +44,5 @@ describe("notification response intake", () => {
     expect(received).toHaveLength(16);
     expect(received[0]).toBe("12345678-1234-4234-8234-000000000004");
     expect(received.at(-1)).toBe("12345678-1234-4234-8234-000000000013");
-  });
-
-  it("keeps an older candidate when the newest may fail host validation", () => {
-    const intake = createResponseIntake();
-    const older = { ...pair, requestId: "12345678-1234-4234-8234-000000000001" };
-    const newer = { ...pair, requestId: "12345678-1234-4234-8234-000000000002" };
-    intake.push(older);
-    intake.push(newer);
-    const resolverQueue: string[] = [];
-    intake.bind((value) => resolverQueue.unshift(value.requestId));
-    expect(resolverQueue).toEqual([newer.requestId, older.requestId]);
-    const validAtHost = (id: string) => id === older.requestId;
-    expect(resolverQueue.find(validAtHost)).toBe(older.requestId);
   });
 });

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { appDir, dashboardWindow, expect, test } from "../electron-test.ts";
 import { nativeCreationHarness } from "../native-creation-support.ts";
 
-test("native startup exposes only its own-origin bridges and pins navigation", async () => {
+test("the shell exposes only its own-origin bridges, pins navigation and quits without a token file", async () => {
   const harness = nativeCreationHarness();
   try {
     const host = await harness.startHost();
@@ -57,6 +57,12 @@ test("native startup exposes only its own-origin bridges and pins navigation", a
     expect(page.url().startsWith("app://cashu/")).toBe(true);
     expect(await page.evaluate(() => window.open("javascript:void(0)") === null)).toBe(true);
     expect(app.windows()).toHaveLength(1);
+    // Quitting leaves no API token file and the supervised host running.
+    const child = app.process();
+    await app.evaluate(({ app: electronApp }) => electronApp.quit());
+    await expect.poll(() => child.exitCode, { timeout: 30_000 }).not.toBeNull();
+    expect(existsSync(join(harness.dataDir, "api-token"))).toBe(false);
+    expect(host.child.exitCode).toBeNull();
     await host.stop();
   } finally {
     await harness.cleanup();

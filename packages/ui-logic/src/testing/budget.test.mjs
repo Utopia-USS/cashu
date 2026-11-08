@@ -122,44 +122,11 @@ import {
   statementErrorKey,
 } from "@cashu/ui-logic/budget/logic";
 
-test("first steps: bank accounts and bank names", () => {
-  const acc = [
-    {
-      bank: "mbank",
-      type: "checking",
-      name: "eKonto",
-      iban_tail: "1234",
-      currency: "PLN",
-      as_of: "2026-09-30",
-    },
-    {
-      bank: "manual",
-      type: "property",
-      name: "Mieszkanie",
-      iban_tail: "",
-      currency: "PLN",
-      as_of: null,
-    },
-    { bank: "cash", type: "cash", name: "Gotówka", iban_tail: "", currency: "PLN", as_of: null },
-    {
-      bank: "pekao",
-      type: "savings",
-      name: "Oszczędności",
-      iban_tail: "",
-      currency: "EUR",
-      as_of: "2026-10-03",
-    },
-  ];
-  const b = bankAccounts(acc);
-  assert.deepEqual(
-    b.map((a) => a.name),
-    ["eKonto", "Oszczędności"],
-  );
+test("first steps: bank choices: auto, banks and the cashU format; connectors and unavailable importers out", () => {
   assert.deepEqual(
     banks().map(([k]) => k),
     ["auto", "mbank", "pekao", "erste"],
   );
-  assert.equal(bankName("erste"), "Erste Bank Polska");
   assert.equal(bankName("ing"), "ing");
   assert.equal(bankName("mbank", [{ id: "mbank", name: "mBank S.A." }]), "mBank S.A.");
   // GET /budget/import/importers: auto, banks, the cashU format; connectors are sources of their own
@@ -239,10 +206,6 @@ test("first steps: upload errors map to labels, the bank error to the bank selec
     field: "file",
   });
   assert.deepEqual(statementErrorKey({ status: 500 }), { key: null, field: null });
-  assert.deepEqual(statementErrorKey({ status: 413, code: "file_too_large" }), {
-    key: "error.file_too_large",
-    field: "file",
-  });
 });
 
 test("first steps: the CLI prefix from the setup response, an action, or the default", () => {

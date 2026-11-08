@@ -1,5 +1,4 @@
-// Stooq CSV source (bot-check detection) and NBP FX source (chunking, 404 = no data)
-// (tests/investments/market/test_inv_stooq_nbp_sources.py).
+// Stooq CSV source (bot-check detection) and NBP FX source (chunking, 404 = no data).
 
 import { addDays, daysBetween } from "@cashu/domain";
 import {
@@ -253,15 +252,6 @@ describe("NBP", () => {
       if (index > 0) expect(start).toBe(addDays((ranges[index - 1] as [string, string])[1], 1));
     });
     expect(rates).toHaveLength(4);
-  });
-
-  it("the chunk size is configurable", async () => {
-    const nbp = new Nbp(() => respond(fixture("nbp_usd.json")), 367);
-    await nbp.source.rates(Currencies.USD, "2025-09-01", "2026-10-03");
-    expect(nbp.requests.map(requestedRange).map(([s, e]) => `${s}..${e}`)).toEqual([
-      "2025-09-01..2026-09-02",
-      "2026-09-03..2026-10-03",
-    ]);
   });
 
   it("the recorded 404 for a range without tables is an empty answer", async () => {

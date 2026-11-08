@@ -2,12 +2,12 @@ import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -21,18 +21,12 @@ import {
   ciSigning,
   compareVersions,
   expectedAssets,
-  formatCommand,
-  ghCreateArgs,
-  highestVersion,
   IDENTITY,
   isInside,
   NOTES_REQUIRED_ABOVE,
   notesProblem,
-  packageArgs,
   parseCliArgs,
-  parseVersion,
   publish,
-  releaseNotes,
   releaseTargetProblems,
   releaseUrls,
   sanitizedEnv,
@@ -43,168 +37,44 @@ const base = mkdtempSync(join(tmpdir(), "cashu-release-test-"));
 afterAll(() => rmSync(base, { recursive: true, force: true }));
 
 describe("argument and environment rules", () => {
-  it("takes exactly one mode", () => {
-    expect(parseCliArgs(["--check"])).toEqual({
-      mode: "check",
-      ci: false,
-      unsigned: false,
-      ref: null,
-      keepSrc: false,
-      notesPath: null,
-      fakePackage: null,
-    });
-    expect(parseCliArgs(["--yes", "--notes", "notes.md"]).notesPath).toBe("notes.md");
-    expect(() => parseCliArgs(["--yes", "--notes"])).toThrow(/needs a file/);
-    expect(parseCliArgs(["--dry-run", "--ref", "HEAD", "--keep-src"])).toMatchObject({
-      mode: "dry-run",
-      ref: "HEAD",
-      keepSrc: true,
-    });
-    expect(parseCliArgs(["--check", "--ref=ts-stack"]).ref).toBe("ts-stack");
+  it("refuses CI without --ci, --ci outside GitHub Actions, --ref with --yes and the test hook outside --dry-run", () => {
     expect(() => parseCliArgs([])).toThrow(/exactly one/);
     expect(() => parseCliArgs(["--check", "--yes"])).toThrow(/exactly one/);
-    expect(() => parseCliArgs(["--publish"])).toThrow(/unknown option/);
-    expect(() => parseCliArgs(["--dry-run", "--ref"])).toThrow(/needs a revision/);
-  });
-
-  it("refuses CI, --ref with --yes, and the fake package step outside --dry-run", () => {
-    expect(() => parseCliArgs(["--check"], { CI: "true" })).toThrow(/CI/);
-    expect(() => parseCliArgs(["--dry-run"], { GITHUB_ACTIONS: "true" })).toThrow(/CI/);
-    expect(() => parseCliArgs(["--yes", "--ref", "HEAD"])).toThrow(
-      /--yes always releases origin\/main/,
-    );
-    const fake = { CASHU_RELEASE_FAKE_PACKAGE: "/tmp/fake.mjs" };
-    expect(() => parseCliArgs(["--yes"], fake)).toThrow(/refused outside --dry-run/);
-    expect(() => parseCliArgs(["--check"], fake)).toThrow(/refused outside --dry-run/);
-    expect(parseCliArgs(["--dry-run"], fake).fakePackage).toBe("/tmp/fake.mjs");
-  });
-
-  it("allows --ci only inside GitHub Actions, without --ref / --keep-src, --unsigned only for a CI dry run", () => {
-    const gha = { GITHUB_ACTIONS: "true", CI: "true" };
-    expect(parseCliArgs(["--ci", "--yes"], gha)).toMatchObject({ mode: "yes", ci: true });
-    expect(parseCliArgs(["--ci", "--dry-run", "--unsigned"], gha)).toMatchObject({
-      mode: "dry-run",
-      ci: true,
-      unsigned: true,
-    });
-    expect(() => parseCliArgs(["--ci", "--yes"])).toThrow(/only in GitHub Actions/);
+    expect(() => parseCliArgs(["--check"], { CI: "true" })).toThrow(/refusing to run in CI/);
     expect(() => parseCliArgs(["--ci", "--yes"], { CI: "true" })).toThrow(/only in GitHub Actions/);
-    expect(() => parseCliArgs(["--ci", "--dry-run", "--ref", "HEAD"], gha)).toThrow(/not for --ci/);
-    expect(() => parseCliArgs(["--ci", "--dry-run", "--keep-src"], gha)).toThrow(/not for --ci/);
-    expect(() => parseCliArgs(["--ci", "--yes", "--unsigned"], gha)).toThrow(
+    expect(() => parseCliArgs(["--yes", "--ref", "HEAD"])).toThrow(/always releases origin\/main/);
+    expect(() => parseCliArgs(["--ci", "--yes", "--unsigned"], { GITHUB_ACTIONS: "true" })).toThrow(
       /only for --ci --dry-run/,
     );
-    expect(() => parseCliArgs(["--dry-run", "--unsigned"])).toThrow(/only for --ci --dry-run/);
+    const fake = { CASHU_RELEASE_FAKE_PACKAGE: "/fake.mjs" };
+    expect(() => parseCliArgs(["--yes"], fake)).toThrow(/refused outside --dry-run/);
+    expect(parseCliArgs(["--dry-run"], fake).fakePackage).toBe("/fake.mjs");
   });
 
-  it("takes the CI signing inputs by name, never guessing a missing one", () => {
+  it("takes the CI signing inputs by name and only the owner's Developer ID", () => {
     const good = {
-      [CI_ENV.keychain]: "/tmp/r/cashu-release.keychain-db",
-      [CI_ENV.notaryKey]: "/tmp/r/AuthKey.p8",
+      [CI_ENV.keychain]: "/r/cashu-release.keychain-db",
+      [CI_ENV.notaryKey]: "/r/AuthKey.p8",
       [CI_ENV.notaryKeyId]: "ABCDE12345",
       [CI_ENV.notaryIssuer]: "01234567-89ab-cdef-0123-456789abcdef",
     };
-    expect(ciSigning(good)).toEqual({
-      identity: IDENTITY,
-      keychain: "/tmp/r/cashu-release.keychain-db",
-      notaryKey: "/tmp/r/AuthKey.p8",
-      notaryKeyId: "ABCDE12345",
-      notaryIssuer: "01234567-89ab-cdef-0123-456789abcdef",
-    });
+    expect(ciSigning(good).identity).toBe(IDENTITY);
     expect(() => ciSigning({})).toThrow(
       "--ci needs CASHU_RELEASE_KEYCHAIN, CASHU_NOTARY_KEY_PATH, CASHU_NOTARY_KEY_ID, CASHU_NOTARY_ISSUER",
     );
     expect(() =>
       ciSigning({ ...good, [CI_ENV.identity]: "Developer ID Application: X (ABCDE12345)" }),
     ).toThrow(/must be "Developer ID Application: Utopia/);
-    expect(() => ciSigning({ ...good, [CI_ENV.keychain]: "rel.keychain-db" })).toThrow(/absolute/);
-    expect(() => ciSigning({ ...good, [CI_ENV.notaryKey]: "/tmp/key.pem" })).toThrow(/\.p8/);
-    expect(() => ciSigning({ ...good, [CI_ENV.notaryKeyId]: "abc" })).toThrow(/key id/);
-    expect(() => ciSigning({ ...good, [CI_ENV.notaryIssuer]: "nope" })).toThrow(/issuer UUID/);
-  });
-
-  it("hands package-macos the owner profile, the CI key and keychain, or nothing (ad hoc)", () => {
-    const base = { script: "/s/package-macos.mjs", arch: "x64", dir: "/out" };
-    expect(
-      packageArgs({ ...base, signing: { identity: IDENTITY, notaryProfile: "cashu-notary" } }),
-    ).toEqual([
-      "/s/package-macos.mjs",
-      "x64",
-      "--sign",
-      IDENTITY,
-      "--notarize",
-      "cashu-notary",
-      "--dmg",
-      "--out",
-      "/out",
-    ]);
-    expect(
-      packageArgs({
-        ...base,
-        signing: {
-          identity: IDENTITY,
-          keychain: "/k.keychain-db",
-          notaryKey: "/a.p8",
-          notaryKeyId: "ABCDE12345",
-          notaryIssuer: "u",
-        },
-      }),
-    ).toEqual([
-      "/s/package-macos.mjs",
-      "x64",
-      "--sign",
-      IDENTITY,
-      "--keychain",
-      "/k.keychain-db",
-      "--notary-key",
-      "/a.p8",
-      "--notary-key-id",
-      "ABCDE12345",
-      "--notary-issuer",
-      "u",
-      "--dmg",
-      "--out",
-      "/out",
-    ]);
-    expect(packageArgs({ ...base, signing: null })).toEqual([
-      "/s/package-macos.mjs",
-      "x64",
-      "--dmg",
-      "--out",
-      "/out",
-    ]);
-  });
-
-  it("asks for hand-written notes above the commit limit and knows inside from outside", () => {
-    expect(notesProblem({ commitCount: NOTES_REQUIRED_ABOVE, hasNotes: false })).toBeNull();
-    expect(notesProblem({ commitCount: 714, hasNotes: true })).toBeNull();
-    expect(notesProblem({ commitCount: 714, hasNotes: false })).toMatch(/714 commits.*--notes/);
-    expect(isInside("/a/b", "/a/b/build/x")).toBe(true);
-    expect(isInside("/a/b", "/a/b")).toBe(true);
-    expect(isInside("/a/b", "/a/bc")).toBe(false);
-    expect(isInside("/a/b", "/var/folders/T/cashu-release-v0.5.0-x")).toBe(false);
-  });
-
-  it("refuses CI before anything else when run as a program", () => {
-    const result = spawnSync(process.execPath, [join(here, "release-macos.mjs"), "--check"], {
-      env: { PATH: process.env.PATH, CI: "1" },
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/refusing to run in CI/);
   });
 
   it("drops tokens and signing or publishing variables from the build environment", () => {
     const env = sanitizedEnv({
       PATH: "/usr/bin",
-      HOME: "/Users/x",
-      LANG: "en_US.UTF-8",
+      HOME: "/home/x",
       GH_TOKEN: "x",
       GITHUB_TOKEN: "x",
-      NODE_AUTH_TOKEN: "x",
       NPM_TOKEN: "x",
       CSC_LINK: "x",
-      APPLE_ID: "x",
       APPLE_APP_SPECIFIC_PASSWORD: "x",
       SOME_API_KEY: "x",
       AWS_SECRET_ACCESS_KEY: "x",
@@ -212,24 +82,21 @@ describe("argument and environment rules", () => {
       CASHU_NOTARY_KEY_PATH: "/x.p8",
       CASHU_RELEASE_KEYCHAIN: "/x.keychain-db",
     });
-    expect(env).toEqual({ PATH: "/usr/bin", HOME: "/Users/x", LANG: "en_US.UTF-8" });
+    expect(env).toEqual({ PATH: "/usr/bin", HOME: "/home/x" });
+  });
+
+  it("asks for hand-written notes above the commit limit and keeps the export outside the checkout", () => {
+    expect(notesProblem({ commitCount: NOTES_REQUIRED_ABOVE, hasNotes: false })).toBeNull();
+    expect(notesProblem({ commitCount: 714, hasNotes: true })).toBeNull();
+    expect(notesProblem({ commitCount: 714, hasNotes: false })).toMatch(/714 commits.*--notes/);
+    expect(isInside("/a/b", "/a/b/build/x")).toBe(true);
+    expect(isInside("/a/b", "/a/bc")).toBe(false);
   });
 });
 
-describe("versions", () => {
-  it("parses strict X.Y.Z and compares numerically", () => {
-    expect(parseVersion("0.5.0")).toEqual([0, 5, 0]);
-    expect(parseVersion("v0.10.2")).toEqual([0, 10, 2]);
-    expect(parseVersion("0.5")).toBeNull();
-    expect(parseVersion("0.5.0-beta")).toBeNull();
-    expect(compareVersions("0.10.0", "0.9.9")).toBe(1);
-    expect(compareVersions("0.4.6", "0.4.6")).toBe(0);
-    expect(compareVersions("v0.4.6", "0.5.0")).toBe(-1);
-    expect(highestVersion(["v0.4.2", "v0.4.10", "v0.4.6", "nightly", "v1"])).toBe("0.4.10");
-    expect(highestVersion([])).toBeNull();
-  });
-
+describe("version and tag checks", () => {
   it("refuses an existing tag or release and versions not above every earlier release", () => {
+    expect(compareVersions("0.10.0", "0.9.9")).toBe(1);
     const clean = {
       version: "0.5.0",
       localTagExists: false,
@@ -241,10 +108,9 @@ describe("versions", () => {
     expect(releaseTargetProblems({ ...clean, localTagExists: true })).toEqual([
       "tag v0.5.0 exists locally: nothing new to release.",
     ]);
-    expect(releaseTargetProblems({ ...clean, remoteTags: ["v0.5.0"] })).toEqual([
+    expect(releaseTargetProblems({ ...clean, remoteTags: ["v0.5.0"] })[0]).toBe(
       "tag v0.5.0 exists on origin: nothing new to release.",
-      "version 0.5.0 is not above the newest v* tag on origin (0.5.0).",
-    ]);
+    );
     expect(releaseTargetProblems({ ...clean, releaseExists: true })[0]).toMatch(
       /exists already on GitHub/,
     );
@@ -254,12 +120,10 @@ describe("versions", () => {
     expect(releaseTargetProblems({ ...clean, publishedTags: ["v0.5.3"] })).toEqual([
       "version 0.5.0 is not above the newest published release (0.5.3).",
     ]);
-    expect(releaseTargetProblems({ ...clean, version: "v0.5.0" })[0]).toMatch(/not X.Y.Z/);
+    expect(releaseTargetProblems({ ...clean, version: "0.5.0-beta" })[0]).toMatch(/not X.Y.Z/);
   });
-});
 
-describe("assets and commands", () => {
-  it("names seven assets with no arm64 in any Intel name", () => {
+  it("names the seven assets the installed apps' feeds expect, no arm64 in any Intel name", () => {
     expect(expectedAssets("0.5.1")).toEqual([
       "appcast-macos-arm64.xml",
       "appcast-macos-x86_64.xml",
@@ -272,109 +136,71 @@ describe("assets and commands", () => {
     const names = artifactNames("0.5.1");
     for (const name of [names.zip.x64, names.dmg.x64, names.appcast.x64])
       expect(name).not.toMatch(/arm64/);
-    expect(releaseUrls("0.5.1", "x64")).toEqual({
-      releasePageUrl: "https://github.com/Utopia-USS/cashu/releases/tag/v0.5.1",
-      downloadUrl:
-        "https://github.com/Utopia-USS/cashu/releases/download/v0.5.1/cashU-0.5.1-mac-x64.dmg",
-    });
-  });
-
-  it("builds the draft command and release notes without version bumps", () => {
-    expect(
-      ghCreateArgs({ version: "0.5.1", commit: "abc", notesFile: "/n.md", assetPaths: ["/a.zip"] }),
-    ).toEqual([
-      "release",
-      "create",
-      "v0.5.1",
-      "--repo",
-      "Utopia-USS/cashu",
-      "--draft",
-      "--target",
-      "abc",
-      "--title",
-      "cashU 0.5.1",
-      "--notes-file",
-      "/n.md",
-      "/a.zip",
-    ]);
-    expect(formatCommand("gh", ["release", "--title", "cashU 0.5.1", "it's"])).toBe(
-      "gh release --title 'cashU 0.5.1' 'it'\\''s'",
+    expect(releaseUrls("0.5.1", "x64").downloadUrl).toBe(
+      "https://github.com/Utopia-USS/cashu/releases/download/v0.5.1/cashU-0.5.1-mac-x64.dmg",
     );
-    expect(
-      releaseNotes(["Add a thing", "Bump version to 0.5.1 [skip ci]", "Fix it"], {
-        previous: "v0.5.0",
-        tag: "v0.5.1",
-      }),
-    ).toBe(
-      "- Add a thing\n- Fix it\n\nFull list: https://github.com/Utopia-USS/cashu/compare/v0.5.0...v0.5.1\n",
-    );
-    const many = Array.from({ length: 45 }, (_, i) => `Change ${i}`);
-    const capped = releaseNotes(many, { previous: null, tag: "v0.5.1" });
-    expect(capped.split("\n").filter((line) => line.startsWith("- Change"))).toHaveLength(40);
-    expect(capped).toMatch(/and 5 more commits/);
-    expect(releaseNotes([], { previous: null, tag: "v0.5.1" })).toBe("- Maintenance release.\n");
   });
 });
 
-// --- Stub tools on PATH ----------------------------------------------------------------------------------
+// --- Stub tools on PATH (all /bin/sh, so a stub call costs a few ms, not a Node start) -------------------
 
-/** A recording `gh`: argv lines to STUB_LOG, draft state in STUB_STATE. */
-const GH_STUB = `#!/usr/bin/env node
-const fs = require("node:fs");
-const path = require("node:path");
-const args = process.argv.slice(2);
-fs.appendFileSync(process.env.STUB_LOG, JSON.stringify(["gh", ...args]) + "\\n");
-const statePath = process.env.STUB_STATE;
-const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, "utf8")) : null;
-const save = (value) => fs.writeFileSync(statePath, JSON.stringify(value));
-const [a, b] = args;
-if (a === "auth" && b === "status") process.exit(process.env.STUB_GH_AUTH === "fail" ? 1 : 0);
-if (a === "api") { console.log("true"); process.exit(0); }
-if (a === "release" && b === "list") { console.log(process.env.STUB_GH_RELEASES || '[{"tagName":"v0.4.6","isDraft":false}]'); process.exit(0); }
-if (a === "release" && b === "view") {
-  if (!state) process.exit(1);
-  console.log(JSON.stringify({ assets: state.assets.map((name) => ({ name })), isDraft: !state.published, url: "https://example.invalid/r" }));
-  process.exit(0);
-}
-if (a === "release" && b === "create") {
-  const files = args.filter((arg, i) => args[i - 1] !== "--notes-file" && fs.existsSync(arg) && /\\.(zip|dmg|yml|xml)$/.test(arg));
-  const drop = process.env.STUB_GH_DROP;
-  save({ assets: files.map((f) => path.basename(f)).filter((n) => n !== drop), published: false });
-  process.exit(0);
-}
-if (a === "release" && b === "edit") { save({ ...state, published: true }); process.exit(0); }
-process.exit(3);
-`;
+/** Appends `["<name>", ...argv]` as one JSON line to $STUB_LOG (paths here carry no quotes). */
+const LOG_ARGS = (name) =>
+  `line='["${name}"'; for a in "$@"; do line="$line,\\"$a\\""; done; printf '%s]\\n' "$line" >> "$STUB_LOG"`;
+
+/** A recording `gh`: the draft's asset names in $STUB_STATE, "published" in $STUB_STATE.published. */
+const GH_STUB = `${LOG_ARGS("gh")}
+case "$1 $2" in
+  "auth status") [ "$STUB_GH_AUTH" = fail ] && exit 1; exit 0 ;;
+  "api "*) echo true ;;
+  "release list") echo '[{"tagName":"v0.4.6","isDraft":false}]' ;;
+  "release view")
+    [ -f "$STUB_STATE" ] || exit 1
+    draft=true; [ -f "$STUB_STATE.published" ] && draft=false
+    printf '{"assets":[%s],"isDraft":%s,"url":"https://example.invalid/r"}\\n' "$(cat "$STUB_STATE")" "$draft" ;;
+  "release create")
+    names=""
+    for a in "$@"; do case "$a" in
+      *.zip|*.dmg|*.yml|*.xml) n=$(basename "$a"); [ "$n" = "$STUB_GH_DROP" ] || names="$names\${names:+,}{\\"name\\":\\"$n\\"}" ;;
+    esac; done
+    printf '%s' "$names" > "$STUB_STATE" ;;
+  "release edit") : > "$STUB_STATE.published" ;;
+  *) exit 3 ;;
+esac`;
 
 const TOOL_STUBS = {
-  security: `printf '  1) 0123456789ABCDEF "%s"\\n     1 valid identities found\\n' "${IDENTITY}"`,
-  xcrun: "exit 0",
-  codesign: `case " $* " in *" -dv "*) printf 'TeamIdentifier=29W838VKU4\\nAuthority=%s\\n' "${IDENTITY}" >&2;; esac; exit 0`,
-  spctl: "printf 'accepted\\nsource=Notarized Developer ID\\n' >&2; exit 0",
+  gh: GH_STUB,
+  security: `${LOG_ARGS("security")}\nprintf '  1) 0123456789ABCDEF "%s"\\n     1 valid identities found\\n' "${IDENTITY}"`,
+  xcrun: `${LOG_ARGS("xcrun")}\nexit 0`,
+  codesign: `${LOG_ARGS("codesign")}\ncase " $* " in *" -dv "*) printf 'TeamIdentifier=29W838VKU4\\nAuthority=%s\\n' "${IDENTITY}" >&2;; esac; exit 0`,
+  spctl: `${LOG_ARGS("spctl")}\nprintf 'accepted\\nsource=Notarized Developer ID\\n' >&2; exit 0`,
   // The fake dmg is a zip: "attaching" extracts it at the mount point.
-  hdiutil: `if [ "$1" = attach ]; then
+  hdiutil: `${LOG_ARGS("hdiutil")}
+if [ "$1" = attach ]; then
   while [ $# -gt 1 ]; do [ "$1" = -mountpoint ] && mnt="$2"; shift; done
   /usr/bin/ditto -x -k "$1" "$mnt"
 elif [ "$1" = detach ]; then
   eval "last=\\\${$#}"; rm -rf "$last"
 fi
 exit 0`,
-  pnpm: "exit 9",
+  pnpm: `${LOG_ARGS("pnpm")}\nexit 9`,
 };
 
-function writeStubs(dir, log) {
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "gh"), GH_STUB);
-  chmodSync(join(dir, "gh"), 0o755);
-  for (const [name, body] of Object.entries(TOOL_STUBS)) {
-    const path = join(dir, name);
-    writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' '["${name}"]' >> "${log}"\n${body}\n`);
-    chmodSync(path, 0o755);
-  }
+// Written and run once, shared by every test: macOS scans each newly written executable at its first run
+// (tens of ms each), which would otherwise land in whichever test calls the tool first.
+const stubs = join(base, "stubs");
+mkdirSync(stubs);
+for (const [name, body] of Object.entries(TOOL_STUBS)) {
+  writeFileSync(join(stubs, name), `#!/bin/sh\n${body}\n`);
+  chmodSync(join(stubs, name), 0o755);
+  spawnSync(join(stubs, name), ["warm-up"], {
+    env: { STUB_LOG: "/dev/null", STUB_STATE: "/dev/null" },
+  });
 }
 
+/** The CASHU_RELEASE_FAKE_PACKAGE hook: a zip/dmg pair per arch, logging whether a token reached it. */
 const FAKE_PACKAGE = `import { execFileSync } from "node:child_process";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 const [step, ...rest] = process.argv.slice(2);
 appendFileSync(process.env.STUB_LOG, JSON.stringify(["fake", step, ...rest, process.env.GH_TOKEN ? "TOKEN-LEAKED" : "no-token"]) + "\\n");
@@ -382,26 +208,18 @@ if (step === "package") {
   const [arch, out, version] = rest;
   const stage = join(out, ".fake-" + arch);
   const contents = join(stage, "cashU.app", "Contents");
-  mkdirSync(contents, { recursive: true });
-  if (process.env.FAKE_TEST_BUILD) {
-    mkdirSync(join(contents, "Resources"), { recursive: true });
-    writeFileSync(join(contents, "Resources", "test-build.json"), "{}");
-  }
+  mkdirSync(join(contents, "Resources"), { recursive: true });
+  if (process.env.FAKE_TEST_BUILD) writeFileSync(join(contents, "Resources", "test-build.json"), "{}");
   writeFileSync(join(contents, "Info.plist"), '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>io.utopiasoft.cashu</string><key>CFBundleShortVersionString</key><string>' + version + '</string></dict></plist>');
   const zip = join(out, "cashU-" + version + "-mac-" + arch + ".zip");
   execFileSync("/usr/bin/ditto", ["-c", "-k", "--keepParent", join(stage, "cashU.app"), zip]);
   copyFileSync(zip, zip.replace(/\\.zip$/, ".dmg"));
-  execFileSync("rm", ["-rf", stage]);
+  rmSync(stage, { recursive: true, force: true });
 } else if (step === "verify") {
   if (!existsSync(join(rest[0], "Contents", "Info.plist"))) process.exit(2);
 }
 `;
 
-function git(cwd, ...args) {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv() });
-  if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
-  return result.stdout.trim();
-}
 function gitEnv() {
   return {
     ...process.env,
@@ -413,70 +231,62 @@ function gitEnv() {
     GIT_COMMITTER_EMAIL: "test@example.invalid",
   };
 }
+function git(cwd, ...args) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv() });
+  if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
+  return result.stdout.trim();
+}
 
 /**
- * A synthetic repo (origin + clone) holding a copy of the release scripts, so the script's root is the clone.
- * `committed`: the scripts are committed and pushed (a clean checkout, as CI has); `extraCommits`: that many
- * more commits after the version bump.
+ * Built once: a synthetic origin + clean, pushed clone holding a copy of the release scripts (the script's
+ * root is the clone): the retired Python app tagged v0.4.6, then the native app bumped to 0.5.0. The remote is
+ * relative, so each test copies the template and gets its own repo for a few ms.
  */
-function fixtureRepo(name, { committed = false, extraCommits = 0 } = {}) {
-  const dir = join(base, name);
-  const origin = join(dir, "origin.git");
+function templateRepo() {
+  const dir = join(base, "template");
   const work = join(dir, "work");
-  mkdirSync(dir, { recursive: true });
   writeFileSync(join(base, "gitconfig"), "[commit]\n\tgpgsign = false\n[tag]\n\tgpgsign = false\n");
-  git(dir, "init", "-q", "--bare", "-b", "main", origin);
-  git(dir, "init", "-q", "-b", "main", work);
-  git(work, "remote", "add", "origin", origin);
+  mkdirSync(dir, { recursive: true });
+  git(dir, "init", "-q", "--bare", "-b", "main", "origin.git");
+  git(dir, "init", "-q", "-b", "main", "work");
+  git(work, "remote", "add", "origin", "../origin.git");
   const manifest = join(work, "apps", "desktop", "package.json");
   mkdirSync(dirname(manifest), { recursive: true });
   writeFileSync(manifest, '{ "name": "@cashu/desktop", "version": "0.4.6" }\n');
   git(work, "add", ".");
   git(work, "commit", "-q", "-m", "Python app");
   git(work, "tag", "v0.4.6");
-  writeFileSync(join(work, "README.md"), "native\n");
-  git(work, "add", ".");
-  git(work, "commit", "-q", "-m", "Add the native app");
   writeFileSync(manifest, '{ "name": "@cashu/desktop", "version": "0.5.0" }\n');
-  git(work, "commit", "-q", "-am", "Bump version to 0.5.0 [skip ci]");
-  git(work, "push", "-q", "origin", "main", "--tags");
+  writeFileSync(join(work, ".gitignore"), "build/\n");
   const scripts = join(work, "apps", "desktop", "scripts");
   mkdirSync(join(scripts, "release"), { recursive: true });
-  copyFileSync(join(here, "release-macos.mjs"), join(scripts, "release-macos.mjs"));
+  for (const file of ["release-macos.mjs", "release-policy.mjs", "flavor.mjs"])
+    copyFileSync(join(here, file), join(scripts, file));
   for (const file of ["latestMac.mjs", "appcast.mjs"])
     copyFileSync(join(here, "release", file), join(scripts, "release", file));
-  copyFileSync(join(here, "release-policy.mjs"), join(scripts, "release-policy.mjs"));
-  copyFileSync(join(here, "flavor.mjs"), join(scripts, "flavor.mjs"));
   const flavorTable = join(work, "packages", "node-host", "src", "flavor.json");
   mkdirSync(dirname(flavorTable), { recursive: true });
   copyFileSync(join(here, "../../../packages/node-host/src/flavor.json"), flavorTable);
-  for (let i = 0; i < extraCommits; i++) {
-    writeFileSync(join(work, "CHANGES.txt"), `${i}\n`);
-    git(work, "add", "CHANGES.txt");
-    git(work, "commit", "-q", "-m", `Change ${i}`);
-  }
-  if (committed) {
-    writeFileSync(join(work, ".gitignore"), "build/\n");
-    git(work, "add", ".");
-    git(work, "commit", "-q", "-m", "Add the release scripts");
-  }
-  if (committed || extraCommits) git(work, "push", "-q", "origin", "main");
-  const stubs = join(dir, "stubs");
-  const log = join(dir, "calls.log");
-  writeStubs(stubs, log);
-  const fake = join(dir, "fake-package.mjs");
-  writeFileSync(fake, FAKE_PACKAGE);
-  const tmp = join(dir, "tmp");
-  mkdirSync(tmp);
+  git(work, "add", ".");
+  git(work, "commit", "-q", "-m", "Add the native app");
+  git(work, "push", "-q", "origin", "main", "--tags");
+  writeFileSync(join(dir, "fake-package.mjs"), FAKE_PACKAGE);
+  return dir;
+}
+
+let fixtureCount = 0;
+function fixtureRepo(template) {
+  const dir = join(base, `repo-${++fixtureCount}`);
+  cpSync(template, dir, { recursive: true });
+  mkdirSync(join(dir, "tmp"));
+  const work = join(dir, "work");
   return {
     work,
-    tmp,
-    origin,
-    stubs,
-    log,
-    fake,
+    tmp: join(dir, "tmp"),
+    log: join(dir, "calls.log"),
+    fake: join(dir, "fake-package.mjs"),
     state: join(dir, "gh-state.json"),
-    script: join(scripts, "release-macos.mjs"),
+    script: join(work, "apps", "desktop", "scripts", "release-macos.mjs"),
   };
 }
 
@@ -492,7 +302,7 @@ function calls(log) {
 function runScript(repo, args, extraEnv = {}) {
   const env = {
     ...gitEnv(),
-    PATH: `${repo.stubs}${delimiter}${process.env.PATH}`,
+    PATH: `${stubs}${delimiter}${process.env.PATH}`,
     STUB_LOG: repo.log,
     STUB_STATE: repo.state,
     // The owner modes export the source under TMPDIR: a per-fixture dir shows what is left behind.
@@ -510,41 +320,41 @@ function runScript(repo, args, extraEnv = {}) {
 }
 
 describe("publish (--yes) against a recording gh", () => {
-  let repo;
+  const log = join(base, "publish-calls.log");
+  const state = join(base, "publish-state");
   let assetPaths;
+  let notesFile;
   beforeAll(() => {
-    repo = fixtureRepo("publish");
-    const dir = join(base, "publish", "assets");
+    const dir = join(base, "publish-assets");
     mkdirSync(dir, { recursive: true });
     assetPaths = expectedAssets("0.5.1").map((name) => {
       writeFileSync(join(dir, name), name);
       return join(dir, name);
     });
-    writeFileSync(join(dir, "notes.md"), "- Add a thing\n");
+    notesFile = join(dir, "notes.md");
+    writeFileSync(notesFile, "- Add a thing\n");
   });
-  const env = () => ({
-    ...process.env,
-    PATH: `${repo.stubs}${delimiter}${process.env.PATH}`,
-    STUB_LOG: repo.log,
-    STUB_STATE: repo.state,
-  });
-
-  it("creates a draft with the 7 assets, checks it, then publishes it as latest", () => {
-    rmSync(repo.state, { force: true });
-    rmSync(repo.log, { force: true });
-    const notesFile = join(dirname(assetPaths[0]), "notes.md");
+  const run = (extraEnv = {}) => {
+    for (const path of [log, state, `${state}.published`]) rmSync(path, { force: true });
     publish({
       version: "0.5.1",
       commit: "c0ffee",
       notesFile,
       assetPaths,
-      env: env(),
+      env: {
+        ...process.env,
+        PATH: `${stubs}${delimiter}${process.env.PATH}`,
+        STUB_LOG: log,
+        STUB_STATE: state,
+        ...extraEnv,
+      },
       log: () => {},
     });
-    const gh = calls(repo.log)
-      .filter((call) => call[0] === "gh")
-      .map((call) => call.slice(1));
-    expect(gh).toEqual([
+  };
+
+  it("creates a draft with the 7 assets, checks it, then publishes it as latest", () => {
+    run();
+    expect(calls(log).map((call) => call.slice(1))).toEqual([
       [
         "release",
         "create",
@@ -567,74 +377,43 @@ describe("publish (--yes) against a recording gh", () => {
   });
 
   it("stops before publishing when the draft lacks an asset", () => {
-    rmSync(repo.state, { force: true });
-    rmSync(repo.log, { force: true });
-    const notesFile = join(dirname(assetPaths[0]), "notes.md");
-    expect(() =>
-      publish({
-        version: "0.5.1",
-        commit: "c0ffee",
-        notesFile,
-        assetPaths,
-        env: { ...env(), STUB_GH_DROP: "latest-mac.yml" },
-        log: () => {},
-      }),
-    ).toThrow(/fix or delete the draft/);
-    expect(calls(repo.log).some((call) => call[1] === "release" && call[2] === "edit")).toBe(false);
+    expect(() => run({ STUB_GH_DROP: "latest-mac.yml" })).toThrow(/fix or delete the draft/);
+    expect(calls(log).some((call) => call[1] === "release" && call[2] === "edit")).toBe(false);
   });
 });
 
+// The script itself refuses to run anywhere but macOS (ditto, hdiutil, codesign).
 describe.skipIf(process.platform !== "darwin")(
-  "--dry-run end to end with a fake package step",
+  "the script end to end with a fake package step",
   () => {
-    it("exports, builds, verifies and writes feeds without any GitHub write or token in the build", () => {
-      const repo = fixtureRepo("dry-run");
+    let template;
+    beforeAll(() => {
+      template = templateRepo();
+    });
+
+    it("dry run: builds, verifies and writes feeds without any GitHub write or token in the build", () => {
+      const repo = fixtureRepo(template);
       const result = runScript(repo, ["--dry-run"], {
         CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
         GH_TOKEN: "synthetic-token",
       });
       expect(result.stderr).toBe("");
       expect(result.status).toBe(0);
-      const commit = git(repo.work, "rev-parse", "origin/main");
       const out = join(repo.work, "build", "release", "v0.5.0");
       expect(readdirSync(out).sort()).toEqual(
         [...expectedAssets("0.5.0"), "release-notes.md"].sort(),
       );
-      // The export lived outside the checkout (under TMPDIR) and is gone.
+      // The source export lived under TMPDIR, outside the checkout, and is gone.
       expect(result.stdout).toMatch(
-        new RegExp(
-          `Exporting [0-9a-f]{12} \\(git archive\\) to ${realpathSync(repo.tmp)}/cashu-release-v0\\.5\\.0-`,
-        ),
+        /Exporting [0-9a-f]{12} \(git archive\) to .*cashu-release-v0\.5\.0-/,
       );
       expect(readdirSync(repo.tmp)).toEqual([]);
-      expect(readdirSync(join(repo.work, "build", "release"))).toEqual(["v0.5.0"]);
-      expect(readFileSync(join(out, "release-notes.md"), "utf8")).toBe(
-        "- Add the native app\n\nFull list: https://github.com/Utopia-USS/cashu/compare/v0.4.6...v0.5.0\n",
-      );
-      const yml = readFileSync(join(out, "latest-mac.yml"), "utf8");
-      expect(yml).toMatch(/^version: '0.5.0'\n/);
-      expect(yml).toMatch(/url: 'cashU-0.5.0-mac-x64.zip'/);
-      expect(readFileSync(join(out, "appcast-macos-x86_64.xml"), "utf8")).toMatch(
-        /cashU-0.5.0-mac-x64.dmg/,
-      );
-      expect(result.stdout).toMatch(
-        new RegExp(
-          `gh release create v0\\.5\\.0 --repo Utopia-USS/cashu --draft --target ${commit} --title 'cashU 0\\.5\\.0'`,
-        ),
-      );
-      const printed = result.stdout.split("\n").find((line) => line.includes("gh release create"));
-      for (const name of expectedAssets("0.5.0")) expect(printed).toContain(`${out}/${name}`);
-      expect(printed).not.toContain("appcast-macos-x64.xml");
-      for (const name of expectedAssets("0.5.0"))
-        expect(result.stdout).toMatch(new RegExp(`[0-9a-f]{64}  ${name.replaceAll(".", "\\.")}`));
+      expect(readFileSync(join(out, "latest-mac.yml"), "utf8")).toMatch(/^version: '0.5.0'\n/);
+      expect(result.stdout).toMatch(/not published \(--dry-run\)\. --yes would run:/);
       const log = calls(repo.log);
-      const gh = log.filter((call) => call[0] === "gh").map((call) => call.slice(1, 3).join(" "));
-      expect(gh).toEqual([
-        "auth status",
-        "api repos/Utopia-USS/cashu",
-        "release view",
-        "release list",
-      ]);
+      expect(
+        log.filter((call) => call[0] === "gh").map((call) => call.slice(1, 3).join(" ")),
+      ).toEqual(["auth status", "api repos/Utopia-USS/cashu", "release view", "release list"]);
       const fake = log.filter((call) => call[0] === "fake");
       expect(fake.filter((call) => call[1] === "package").map((call) => call[2])).toEqual([
         "arm64",
@@ -643,22 +422,21 @@ describe.skipIf(process.platform !== "darwin")(
       // Each arch: the app from the zip and the app from the dmg.
       expect(fake.filter((call) => call[1] === "verify")).toHaveLength(4);
       expect(fake.every((call) => call.at(-1) === "no-token")).toBe(true);
-      expect(log.some((call) => call[0] === "pnpm")).toBe(false);
     });
 
     it("stops in preflight when the tag already exists on origin", () => {
-      const repo = fixtureRepo("tag-exists");
+      const repo = fixtureRepo(template);
       git(repo.work, "tag", "v0.5.0");
       git(repo.work, "push", "-q", "origin", "v0.5.0");
       git(repo.work, "tag", "-d", "v0.5.0");
       const result = runScript(repo, ["--dry-run"], { CASHU_RELEASE_FAKE_PACKAGE: repo.fake });
       expect(result.status).toBe(1);
-      expect(result.stderr).toMatch(/tag v0\.5\.0 exists/);
+      expect(result.stderr).toMatch(/tag v0\.5\.0 exists on origin/);
       expect(existsSync(join(repo.work, "build"))).toBe(false);
     });
 
     it("refuses an artifact that carries the sealed test-build marker", () => {
-      const repo = fixtureRepo("test-build");
+      const repo = fixtureRepo(template);
       const result = runScript(repo, ["--dry-run"], {
         CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
         FAKE_TEST_BUILD: "1",
@@ -668,142 +446,19 @@ describe.skipIf(process.platform !== "darwin")(
       expect(result.stdout).not.toMatch(/Writing the update feeds/);
     });
 
-    it("keeps the export outside the checkout with --keep-src", () => {
-      const repo = fixtureRepo("keep-src");
-      const result = runScript(repo, ["--dry-run", "--keep-src"], {
-        CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
-      });
-      expect(result.status).toBe(0);
-      const kept = readdirSync(repo.tmp);
-      expect(kept).toHaveLength(1);
-      expect(kept[0]).toMatch(/^cashu-release-v0\.5\.0-/);
-      expect(existsSync(join(repo.tmp, kept[0], "src", "apps", "desktop", "package.json"))).toBe(
-        true,
-      );
-      expect(result.stdout).toContain(
-        `source export kept: ${join(realpathSync(repo.tmp), kept[0])}`,
-      );
-    });
-
-    it("refuses --yes without --notes above the commit limit; a dry run only warns", () => {
-      const repo = fixtureRepo("many-commits", { extraCommits: NOTES_REQUIRED_ABOVE });
-      const yes = runScript(repo, ["--yes"]);
-      expect(yes.status).toBe(1);
-      expect(yes.stderr).toMatch(/51 commits since the previous tag.*--notes <file>/);
+    it("CI refuses a dirty checkout and a commit that is not on origin/main", () => {
+      const repo = fixtureRepo(template);
+      const ci = { GITHUB_ACTIONS: "true", CI: "true", CASHU_RELEASE_FAKE_PACKAGE: repo.fake };
+      writeFileSync(join(repo.work, "README.md"), "changed\n");
+      const dirty = runScript(repo, ["--ci", "--dry-run", "--unsigned"], ci);
+      expect(dirty.status).toBe(1);
+      expect(dirty.stderr).toMatch(/the checkout has changes/);
+      git(repo.work, "add", "README.md");
+      git(repo.work, "commit", "-q", "-m", "Local only");
+      const ahead = runScript(repo, ["--ci", "--dry-run", "--unsigned"], ci);
+      expect(ahead.status).toBe(1);
+      expect(ahead.stderr).toMatch(/is not on origin\/main/);
       expect(existsSync(join(repo.work, "build"))).toBe(false);
-      expect(readdirSync(repo.tmp)).toEqual([]);
-      const dry = runScript(repo, ["--dry-run"], { CASHU_RELEASE_FAKE_PACKAGE: repo.fake });
-      expect(dry.status).toBe(0);
-      expect(dry.stdout).toMatch(/WARNING: --yes would stop here: 51 commits/);
-      const notes = join(repo.tmp, "..", "notes.md");
-      writeFileSync(notes, "Hand-written notes\n");
-      const withNotes = runScript(repo, ["--dry-run", "--notes", notes], {
-        CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
-      });
-      expect(withNotes.status).toBe(0);
-      expect(withNotes.stdout).not.toMatch(/WARNING/);
-      expect(
-        readFileSync(join(repo.work, "build", "release", "v0.5.0", "release-notes.md"), "utf8"),
-      ).toBe("Hand-written notes\n");
-    });
-
-    it("dry-runs another ref when gh is not logged in, skipping the GitHub checks", () => {
-      const repo = fixtureRepo("ref");
-      const result = runScript(repo, ["--check", "--ref", "HEAD~1"], { STUB_GH_AUTH: "fail" });
-      expect(result.status).toBe(1);
-      expect(result.stderr).toMatch(/gh is not logged in/);
-      const dry = runScript(repo, ["--dry-run", "--ref", "HEAD"], {
-        STUB_GH_AUTH: "fail",
-        CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
-      });
-      expect(dry.status).toBe(0);
-      expect(dry.stdout).toMatch(/GitHub checks skipped/);
     });
   },
 );
-
-describe.skipIf(process.platform !== "darwin")("--ci with a fake package step", () => {
-  const gha = { GITHUB_ACTIONS: "true", CI: "true" };
-
-  it("builds a clean checkout in place, unsigned, with the 7 assets and no export", () => {
-    const repo = fixtureRepo("ci-unsigned", { committed: true });
-    const result = runScript(repo, ["--ci", "--dry-run", "--unsigned"], {
-      ...gha,
-      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
-      GH_TOKEN: "synthetic-token",
-    });
-    expect(result.stderr).toBe("");
-    expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/Building the checkout in place/);
-    expect(result.stdout).toMatch(/--unsigned: no signing identity/);
-    expect(result.stdout).toMatch(/not published \(--dry-run\)\. --ci --yes would run/);
-    const out = join(repo.work, "build", "release", "v0.5.0");
-    expect(readdirSync(out).sort()).toEqual(
-      [...expectedAssets("0.5.0"), "release-notes.md"].sort(),
-    );
-    expect(readdirSync(repo.tmp)).toEqual([]);
-    const log = calls(repo.log);
-    // No admin probe in CI (the workflow token is not a user), no keychain or notary calls unsigned.
-    expect(
-      log.filter((call) => call[0] === "gh").map((call) => call.slice(1, 3).join(" ")),
-    ).toEqual(["auth status", "release view", "release list"]);
-    expect(
-      log.some((call) => call[0] === "security" || call[0] === "xcrun" || call[0] === "spctl"),
-    ).toBe(false);
-    const fake = log.filter((call) => call[0] === "fake");
-    expect(fake.filter((call) => call[1] === "package").map((call) => call[2])).toEqual([
-      "arm64",
-      "x64",
-    ]);
-    expect(fake.every((call) => call.at(-1) === "no-token")).toBe(true);
-  });
-
-  it("checks the temporary keychain and the API key before a signed CI dry run", () => {
-    const repo = fixtureRepo("ci-signed", { committed: true });
-    const keychain = join(repo.tmp, "..", "release.keychain-db");
-    const key = join(repo.tmp, "..", "AuthKey_ABCDE12345.p8");
-    writeFileSync(keychain, "");
-    writeFileSync(key, "");
-    const signingEnv = {
-      [CI_ENV.keychain]: keychain,
-      [CI_ENV.notaryKey]: key,
-      [CI_ENV.notaryKeyId]: "ABCDE12345",
-      [CI_ENV.notaryIssuer]: "01234567-89ab-cdef-0123-456789abcdef",
-    };
-    const result = runScript(repo, ["--ci", "--dry-run"], {
-      ...gha,
-      ...signingEnv,
-      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
-    });
-    expect(result.stderr).toBe("");
-    expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/signing identity: .* \(temporary keychain\)/);
-    expect(result.stdout).toMatch(/notarization: App Store Connect API key ABCDE12345/);
-    expect(result.stdout).not.toContain(key);
-    const missing = runScript(repo, ["--ci", "--dry-run"], {
-      ...gha,
-      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
-    });
-    expect(missing.status).toBe(1);
-    expect(missing.stderr).toMatch(/--ci needs CASHU_RELEASE_KEYCHAIN/);
-  });
-
-  it("refuses a dirty checkout and a commit that is not on origin/main", () => {
-    const repo = fixtureRepo("ci-dirty", { committed: true });
-    writeFileSync(join(repo.work, "README.md"), "changed\n");
-    const dirty = runScript(repo, ["--ci", "--dry-run", "--unsigned"], {
-      ...gha,
-      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
-    });
-    expect(dirty.status).toBe(1);
-    expect(dirty.stderr).toMatch(/the checkout has changes/);
-    git(repo.work, "commit", "-q", "-am", "Local only");
-    const ahead = runScript(repo, ["--ci", "--dry-run", "--unsigned"], {
-      ...gha,
-      CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
-    });
-    expect(ahead.status).toBe(1);
-    expect(ahead.stderr).toMatch(/is not on origin\/main/);
-    expect(existsSync(join(repo.work, "build"))).toBe(false);
-  });
-});

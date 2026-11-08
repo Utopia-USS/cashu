@@ -1,7 +1,7 @@
 // The `cashu` shim end to end as a process, with its host started on demand in a temp data dir and a
-// synthetic host: native CLI output and exit codes travel over the host socket; host status / stop never start a host; no host means
-// exit 69 and nothing run; a host command (skills) prints through the host; MCP sessions relay, end
-// with the server, and survive a host killed mid-session.
+// synthetic host: native CLI output and exit codes travel over the host socket; host status / stop
+// never start a host; no host means exit 69 and nothing run; an unknown MCP profile is refused. A host
+// command run through the shim is skills.test.ts.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -47,17 +47,6 @@ describe("cashu shim: native CLI", () => {
       expect(unknown.code).toBe(2);
       expect(unknown.stderr).toContain("Unknown or unsupported command");
       expect(hostPid(e.CASHU_DATA_DIR as string)).toBe(pid);
-    },
-    SLOW,
-  );
-
-  it(
-    "runs a host command in the host (skills usage, exit 2)",
-    async () => {
-      const run = await runShim(["skills"], env(), { cwd: tempDir() });
-      expect(run.code).toBe(2);
-      expect(run.stderr).toMatch(/^(?:Usage|Użycie): cashu skills path/);
-      expect(run.stdout).toBe("");
     },
     SLOW,
   );
@@ -112,7 +101,7 @@ describe("cashu shim: host admin and failures", () => {
 
 describe("cashu shim: MCP", () => {
   it(
-    "refuses an unknown native profile without starting a Python backend",
+    "refuses an unknown native profile",
     async () => {
       const run = await runShim(["mcp", "--profile", "missing"], env(), { cwd: tempDir() });
       expect(run.code).toBe(69);

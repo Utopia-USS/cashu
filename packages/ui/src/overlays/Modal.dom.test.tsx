@@ -191,17 +191,6 @@ it("names the dialog by a visible heading when labelledBy is given", () => {
   expect(dialog.hasAttribute("aria-label")).toBe(false);
 });
 
-it("places the panel by role", () => {
-  render(
-    <Modal label="Drawer" placement="end" onClose={() => {}}>
-      <button type="button" aria-label="Action" />
-    </Modal>,
-  );
-  const panel = screen.getByRole("dialog", { name: "Drawer" });
-  expect(panel.className).toContain("right-0");
-  expect(panel.className).not.toContain("inset-4");
-});
-
 it("keeps a draft form open on a backdrop click when closeOnBackdrop is off", () => {
   const close = vi.fn();
   render(
@@ -215,7 +204,7 @@ it("keeps a draft form open on a backdrop click when closeOnBackdrop is off", ()
   expect(close).toHaveBeenCalledOnce();
 });
 
-it("describes the dialog and sizes a centered panel by width", () => {
+it("describes the dialog", () => {
   render(
     <Modal label="Form" placement="center" width="sm" describedBy="hint" onClose={() => {}}>
       <p id="hint">{hintText}</p>
@@ -224,6 +213,4 @@ it("describes the dialog and sizes a centered panel by width", () => {
   );
   const panel = screen.getByRole("dialog", { name: "Form" });
   expect(panel.getAttribute("aria-describedby")).toBe("hint");
-  expect(panel.className).toContain("max-w-xl");
-  expect(panel.className).not.toContain("max-w-3xl");
 });

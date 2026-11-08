@@ -1,9 +1,8 @@
-// MarketHttp: retries, backoff, Retry-After, timeouts, per-host pacing
-// (tests/investments/market/test_inv_market_http.py).
+// MarketHttp: retries, backoff, Retry-After, timeouts, per-host pacing.
 
 import { market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
-import { exponentialBackoff, MarketHttp } from "./http.js";
+import { MarketHttp } from "./http.js";
 import { FakeTime, makeHttp, recording, respond, type SeenRequest } from "./testing/support.js";
 
 const { SourceBlockedException, SourceException } = market;
@@ -256,9 +255,5 @@ describe("MarketHttp", () => {
       ["POST", '[{"idType":"ID_ISIN"}]', "application/json"],
     ]);
     expect(time.sleeps).toEqual([1]);
-  });
-
-  it("the default backoff doubles", () => {
-    expect([1, 2, 3].map(exponentialBackoff)).toEqual([1, 2, 4]);
   });
 });

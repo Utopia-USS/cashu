@@ -1,11 +1,11 @@
-// Page-side harness of the store specs (92-store-port, 93-host-restart): bundled as a test-only
+// Page-side harness of the store specs (93-host-restart, 106-native-watchlist): bundled as a test-only
 // app-protocol script, it asks the preload for a store port (which main relays to the local
 // host), connects the real port client and reads queries / runs commands through it. It also shows the
 // connection status the way a TS screen will (the catalog texts, the stale-data note) and records every
 // status and text, so the specs can check what the user saw. The production renderer owns its
 // separate client only on its own page, never in this test page.
 import { S } from "@cashu/i18n/core/hostConnection.strings";
-import { createProfile, renameProfile } from "@cashu/store";
+import { renameProfile } from "@cashu/store";
 import { profile } from "@cashu/store/core";
 import { currentVault } from "@cashu/store/device";
 import type { Query } from "@cashu/store/query";
@@ -86,31 +86,6 @@ async function vaultTarget(store: QueryCache): Promise<Target> {
   return { kind: "vault", vault };
 }
 
-/** 92: one read, a rename and a refusal through the port. */
-let runStage = "idle";
-async function run() {
-  runStage = "port";
-  const store = await client();
-  runStage = "current-vault";
-  const target = await vaultTarget(store);
-  runStage = "profile";
-  const before = await settledValue(store, target, profile);
-  runStage = "rename";
-  const renamed = await store.run(target, renameProfile, { name: "Demo E2E" });
-  runStage = "renamed-profile";
-  const after = await settledValue(store, target, profile, (p) => p?.name === "Demo E2E");
-  runStage = "refusal";
-  const refused = await store.run(target, createProfile, { slug: "again", name: "Again" });
-  runStage = "complete";
-  return {
-    vaults: store.vaults.length,
-    before: before?.name ?? null,
-    renamed,
-    after: after?.name ?? null,
-    refused,
-  };
-}
-
 /** 93: a live profile reader that stays subscribed, and commands whose answers arrive later. */
 let target: Target | null = null;
 let readName: () => string | null | undefined = () => undefined;
@@ -179,12 +154,8 @@ async function action(id: string, input: unknown): Promise<unknown> {
 }
 
 const page = window as unknown as {
-  cashuStoreHarness: typeof run;
-  cashuStoreStage: () => string;
   cashuStoreLive: typeof live;
   cashuStoreAction: typeof action;
 };
-page.cashuStoreHarness = run;
-page.cashuStoreStage = () => runStage;
 page.cashuStoreLive = live;
 page.cashuStoreAction = action;

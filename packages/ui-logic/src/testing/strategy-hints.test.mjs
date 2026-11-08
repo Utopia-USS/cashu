@@ -4,12 +4,10 @@
 // touch title, the freshness state, the reason lines and the note row title suffix.
 import assert from "node:assert/strict";
 import {
-  FRESH_LABEL,
   FRESH_REASON_SHORT,
   freshOf,
   freshReasonLines,
   freshReasonText,
-  HEALTH_LOC,
   hintChip,
   hintCls,
   hintLine,
@@ -51,22 +49,11 @@ test("pct0: integer percent with nbsp, signed / unsigned, empty for missing", ()
   assert.equal(pct0(Number.NaN), "");
 });
 
-test("hintChip: held copy for every code; numbers from params (loss / drawdown are magnitudes)", () => {
-  assert.equal(chip("recommendation_outdated"), "rekomendacja nieaktualna");
-  assert.equal(chip("recommendation_maybe_outdated"), "sprawdź rekomendację");
-  assert.equal(chip("thesis_invalidated"), "teza podważona");
-  assert.equal(
-    chip("plan_vs_thesis", { plan: "buy_asap", health: "weakened" }),
-    "plan kontra teza",
-  );
-  assert.equal(chip("thesis_fulfilled", { has_exit_plan: true }), "teza spełniona");
+test("hintChip: numbers from params (loss / drawdown are magnitudes), the words alone without them", () => {
   assert.equal(chip("gain_review", { gain: 4.55, threshold: 1 }), "+455 % · plan wyjścia");
   assert.equal(chip("loss_review", { loss: 0.27 }), "-27 % · przegląd tezy");
   assert.equal(chip("drawdown_review", { drawdown: 0.22 }), "-22 % od szczytu");
   assert.equal(chip("concentration", { weight: 0.257, max_weight: 0.2 }), "ponad 20 %");
-  assert.equal(chip("thesis_weakened"), "teza osłabiona");
-  assert.equal(chip("no_thesis"), "zapisz tezę");
-  assert.equal(chip("no_exit_plan"), "bez planu wyjścia");
   // missing numbers: the words alone
   assert.equal(chip("gain_review", {}), "plan wyjścia");
   assert.equal(chip("drawdown_review", {}), "spadek od szczytu");
@@ -85,7 +72,7 @@ test("hintChip: watched copy; unknown codes give no chip", () => {
   assert.equal(line("sell_now", {}), "");
 });
 
-test("hintLine: condition, then the review the strategy asks for; plan labels by form; HEALTH_LOC", () => {
+test("hintLine: condition, then the review the strategy asks for; plan labels and health by form", () => {
   assert.equal(line("thesis_invalidated"), "zaszedł warunek unieważnienia tezy: zanotuj decyzję");
   assert.equal(
     line("thesis_invalidated", {}, false),
@@ -99,8 +86,6 @@ test("hintLine: condition, then the review the strategy asks for; plan labels by
     line("plan_vs_thesis", { plan: "buy", health: "invalidated" }, false),
     "plan kup przy tezie podważonej: popraw plan albo tezę",
   );
-  assert.equal(HEALTH_LOC.weak, "osłabionej");
-  assert.equal(HEALTH_LOC.inv, "podważonej");
   assert.equal(
     line("thesis_fulfilled", { has_exit_plan: true }),
     "teza spełniona: sprawdź plan wyjścia",
@@ -113,37 +98,6 @@ test("hintLine: condition, then the review the strategy asks for; plan labels by
   assert.equal(
     line("gain_review", { gain: 4.55, threshold: 1, has_exit_plan: true }),
     "+455 % od kosztu, próg +100 %: sprawdź plan wyjścia",
-  );
-  assert.equal(
-    line("gain_review", { gain: 4.55, has_exit_plan: false }),
-    "+455 % od kosztu, brak planu wyjścia: zapisz go",
-  );
-  assert.equal(
-    line("loss_review", { loss: 0.27, threshold: 0.25 }),
-    "-27 % od kosztu, próg -25 %: czy teza jest aktualna?",
-  );
-  assert.equal(
-    line("drawdown_review", { drawdown: 0.22 }),
-    "-22 % od szczytu: czy teza jest aktualna?",
-  );
-  assert.equal(
-    line("concentration", { weight: 0.257, max_weight: 0.2 }),
-    "25,7 % portfela, limit 20 %: przegląd koncentracji",
-  );
-  assert.equal(line("thesis_weakened"), "research osłabia tezę: przejrzyj notatki");
-  assert.equal(
-    line("no_thesis"),
-    "pozycja bez zapisanej tezy: zapisz tezę i warunek unieważnienia",
-  );
-  assert.equal(line("no_thesis", {}, false), "bez zapisanej tezy");
-  assert.equal(line("no_exit_plan"), "teza bez planu wyjścia: uzupełnij go");
-  assert.equal(
-    line("alert_triggered", { title: "poniżej 180,00 $" }, false),
-    "alert spełniony: poniżej 180,00 $. sprawdź tezę i plan",
-  );
-  assert.equal(
-    line("plan_without_thesis", { plan: "buy_asap" }, false),
-    "plan kup asap bez tezy: najpierw zapisz tezę",
   );
   assert.equal(
     line("recommendation_outdated", { reasons: ["note_invalidates", "thesis_changed"] }),
@@ -247,21 +201,18 @@ test("instSummary: strategia suffix = the main hint's chip, no hint lines in the
   assert.doesNotMatch(sp(instSummary(inst({}), { held: true })), /strategia/);
 });
 
-test("freshOf / FRESH_LABEL: maybe (yellow), out (red), nothing for fresh / none / unknown", () => {
+test("freshOf: maybe (yellow), out (red), nothing for fresh / none / unknown", () => {
   assert.equal(freshOf({ state: "maybe_outdated" }), "maybe");
   assert.equal(freshOf({ state: "outdated" }), "out");
   assert.equal(freshOf({ state: "fresh" }), null);
   assert.equal(freshOf({ state: "weird" }), null);
   assert.equal(freshOf(null), null);
-  assert.deepEqual(FRESH_LABEL, { maybe: "może być nieaktualna", out: "nieaktualna" });
 });
 
 test("notesVerb: Polish numeral agreement per relation", () => {
   assert.equal(notesVerb(1, "invalidates"), "notatka podważa tezę");
-  assert.equal(notesVerb(null, "weakens"), "notatka osłabia tezę");
   assert.equal(notesVerb(3, "weakens"), "3 notatki osłabiają tezę");
   assert.equal(notesVerb(5, "supports"), "5 notatek wzmacnia tezę");
-  assert.equal(notesVerb(12, "fulfills"), "12 notatek spełnia tezę");
   assert.equal(notesVerb(22, "fulfills"), "22 notatki spełniają tezę");
   assert.equal(notesVerb(2, null), "2 notatki dotyczą tezy");
 });

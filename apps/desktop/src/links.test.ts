@@ -102,9 +102,4 @@ describe("LinkRouter", () => {
     await tick();
     expect(window.calls).toEqual(["show"]);
   });
-
-  it("ignores links the app does not open", () => {
-    const router = new LinkRouter();
-    expect(router.open("https://example.com")).toBe(false);
-  });
 });

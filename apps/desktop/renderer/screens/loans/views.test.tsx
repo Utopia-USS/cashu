@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-// The loan drawers are portaled Modals, so they render into a DOM document.
+// The loan drawers are portaled Modals, so they render into a DOM document. Every loan story is
+// rendered through its form composition in stories.test.tsx; this file pins privacy mode.
 import { setLanguageForTests } from "@cashu/i18n";
 import { UiEnvProvider } from "@cashu/ui";
 import { setIncognito } from "@cashu/ui-logic/core/incognito";
@@ -9,7 +10,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it } from "vitest";
 import { InstallmentDrawerView } from "./InstallmentDrawerView.js";
 import { LoanDrawerView } from "./LoanDrawerView.js";
-import { LoansStartView } from "./LoansStartView.js";
 import { LoansView } from "./LoansView.js";
 import { loansStoryState, StoryFixture, storyState } from "./testing/storyState.js";
 
@@ -29,26 +29,6 @@ async function mount(node: ReactNode) {
   return document.body;
 }
 
-it.each(["pl", "en"] as const)("renders loan forms and exact values in %s", async (language) => {
-  setLanguageForTests(language);
-  expect(renderToStaticMarkup(<StoryFixture component={LoansView} state={storyState} />)).toContain(
-    "Synthetic mortgage",
-  );
-  const loan = await mount(
-    <StoryFixture component={LoanDrawerView} state={{ ...storyState, drawer: { kind: "loan" } }} />,
-  );
-  expect(loan.querySelector('[role="dialog"] input[type="date"]')).not.toBeNull();
-  const payment = await mount(
-    <StoryFixture
-      component={InstallmentDrawerView}
-      state={{ ...storyState, drawer: { kind: "payment" } }}
-    />,
-  );
-  expect(payment.querySelector('[role="dialog"] input[autocomplete="off"]')).not.toBeNull();
-  expect(
-    renderToStaticMarkup(<StoryFixture component={LoansStartView} state={storyState} />),
-  ).toContain("Synthetic mortgage");
-});
 it("suppresses identities, amounts and forms in privacy mode", async () => {
   setLanguageForTests("en");
   setIncognito(true);
@@ -78,11 +58,4 @@ it("suppresses identities, amounts and forms in privacy mode", async () => {
     );
     expect(hidden.querySelector('[role="dialog"]')).toBeNull();
   }
-});
-
-it("marks the selected loan row and its name button", () => {
-  const state = { ...storyState, selected: 0, range: 365 };
-  const markup = renderToStaticMarkup(<StoryFixture component={LoansView} state={state} />);
-  expect(markup).toContain('aria-pressed="true"');
-  expect(markup).toMatch(/<tr[^>]*bg-chip/);
 });

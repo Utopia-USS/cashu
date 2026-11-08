@@ -1,5 +1,5 @@
-// Chart geometry: the legacy cases of frontend/tests/v2.test.mjs (chart part) and chart-fade.test.mjs, moved
-// with the geometry from @cashu/ui-logic. Same inputs, same expected numbers and paths.
+// Chart geometry: scales, paths, stacking (liabilities down), donut arcs, bar layout and the area fade that every
+// chart scene builds on.
 import { describe, expect, it } from "vitest";
 import {
   areaFade,

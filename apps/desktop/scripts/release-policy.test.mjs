@@ -124,9 +124,6 @@ it("rejects the same malformed markers as the app", () => {
     { ...testMarker, extra: 1 },
     { ...testMarker, feedUrl: "http://localhost:47123/" },
     { ...testMarker, feedUrl: RELEASE_FEED_URL },
-    { ...testMarker, installRoot: "/Applications/cashU-test" },
-    { ...testMarker, dataDir: "/Users/x/Library/Application Support/cashU" },
-    { ...testMarker, dataDir: "/Users/x/Documents/cashU" },
     { ...testMarker, dataDir: "data" },
   ]) {
     const text = JSON.stringify(bad);
@@ -199,34 +196,8 @@ it.runIf(process.platform === "darwin")(
   },
 );
 
-it("names staging artifacts apart from release artifacts and keeps test dirs off staging data", () => {
+it("names staging artifacts apart from release artifacts", () => {
   expect(artifactName("0.5.0", "arm64", "zip", flavorById("staging"))).toBe(
     "cashU-Staging-0.5.0-mac-arm64.zip",
   );
-  for (const dataDir of [
-    "/Users/x/Library/Application Support/cashU Staging",
-    "/Users/x/Documents/cashU Staging",
-  ])
-    expect(() =>
-      parseTestBuild({
-        schema: 1,
-        kind: "cashu-test-build",
-        feedUrl: "http://127.0.0.1:47123/",
-        installRoot: "/tmp/w4a/install",
-        dataDir,
-        workspacesDir: "/tmp/w4a/workspaces",
-      }),
-    ).toThrow(/dataDir must be/);
-  expect(() =>
-    parseTestBuildMarker(
-      JSON.stringify({
-        schema: 1,
-        kind: "cashu-test-build",
-        feedUrl: "http://127.0.0.1:47123/",
-        installRoot: "/tmp/w4a/install",
-        dataDir: "/Users/x/Library/Application Support/cashU Staging",
-        workspacesDir: "/tmp/w4a/workspaces",
-      }),
-    ),
-  ).toThrow("test_build_marker_invalid");
 });

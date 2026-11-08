@@ -1,19 +1,19 @@
-// Refusals on resolved paths with a fake home (moved from apps/cli genesis: same cases, same
-// messages, with the genesis flags as labels), plus the labels of a host with several outputs.
+// Refusals on resolved paths with a fake home (a data dir plus two labelled outputs), plus the
+// labels of a host with several outputs.
 import { mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type GuardedPaths, RefusalError, refusePaths, resolveReal } from "./guard.js";
 
-interface Genesis {
+interface Layout {
   readonly dataDir: string;
   readonly out: string;
   readonly keys: string;
 }
 
-/** The genesis command's three paths under their flags. */
-const genesisPaths = (p: Genesis): GuardedPaths => ({
+/** A data dir and two outputs, labelled like command flags. */
+const flagPaths = (p: Layout): GuardedPaths => ({
   dataDir: { label: "--data-dir", path: p.dataDir },
   outputs: [
     { label: "--out", path: p.out },
@@ -41,7 +41,7 @@ const refusal = (fn: () => void) => {
   return undefined;
 };
 
-const refuse = (p: Genesis, home: string) => refusal(() => refusePaths(genesisPaths(p), home));
+const refuse = (p: Layout, home: string) => refusal(() => refusePaths(flagPaths(p), home));
 
 describe("path guard", () => {
   it("resolves a path whose tail does not exist yet through the real prefix", () => {

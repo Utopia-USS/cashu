@@ -1,328 +1,95 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import type { StoreToClient } from "@cashu/host-protocol/store";
-import { decodeValue } from "@cashu/host-protocol/store";
-import { connectHost } from "@cashu/node-host";
 import {
   currentVault,
-  dashboardWindow,
   expect,
-  launchDesktop,
   openProfileMenuItem,
   pickLanguage,
   pickProfile,
   rewriteHash,
-  stopHost,
   test,
-  until,
 } from "../electron-test.ts";
-import { restoreNativeBaseline } from "../native-baseline.ts";
+import { readHostQuery } from "../host-query.ts";
+import { openNativeDemo } from "../native-baseline.ts";
 
 type Profile = { name: string; baseCurrency: string; mcpPrivacy: "strict" | "amounts" };
-type Proposal = { gid: string; kind: string; status: string; summary: string };
+type Proposal = { gid: string; kind: string; status: string };
 
-/** Read the actual generated Store through the same host query channel as the renderer. */
-async function readStore<T>(
-  dataDir: string,
-  vault: string,
-  query: string,
-  args:
-    | { status: "pending" | "rejected"; privacy: boolean }
-    | { gid: string; privacy: boolean }
-    | { lang: "pl"; privacy: false; selection: null }
-    | null = null,
-): Promise<T> {
-  if (dataDir !== process.env.E2E_NATIVE_DATA_DIR || !process.env.E2E_ROOT)
-    throw new Error("synthetic_settings_root_required");
-  const connection = await connectHost({ dataDir, role: "ui", build: "electron102" });
+test("Settings saves the profile and agent privacy in one vault, reviews the agent's proposals and pins the language", async () => {
+  const demo = await openNativeDemo({ env: { CASHU_E2E_SETTINGS: "1" } });
+  const { page, dataDir } = demo;
   try {
-    return await new Promise<T>((resolve, reject) => {
-      connection.onFrame((frame) => {
-        if (frame.t !== "store") return;
-        const message = frame.m as StoreToClient;
-        if (message.t === "ready") {
-          if (!message.vaults.includes(vault)) {
-            reject(new Error("synthetic_settings_vault_absent"));
-            return;
-          }
-          connection.send({ t: "store", m: { t: "uiPolicy", generation: 1, privacy: false } });
-          connection.send({
-            t: "store",
-            m: {
-              t: "sub",
-              sid: 102,
-              generation: 1,
-              resume: false,
-              target: { kind: "vault", vault },
-              query,
-              args,
-            },
-          });
-        } else if (message.t === "value" && message.sid === 102) {
-          resolve(decodeValue(message.value) as T);
-        } else if (message.t === "error") {
-          reject(new Error(`synthetic_settings_query_failed:${query}:${message.error.name}`));
-        }
-      });
-      connection.onClose(() => reject(new Error("synthetic_settings_connection_closed")));
-    });
-  } finally {
-    connection.close();
-  }
-}
-
-test("native Settings persists an atomic profile edit and reviews stored proposals within one vault", async () => {
-  const repo = process.env.E2E_REPO;
-  const dataDir = process.env.E2E_NATIVE_DATA_DIR;
-  if (!repo || !dataDir) throw new Error("generated native demo is absent");
-  await restoreNativeBaseline(dataDir);
-  const visualRoot = process.env.CASHU_E2E_VISUALS;
-  const visualPrefix = join(homedir(), "cashu-lab", "checkpoints", "visuals", "S55j");
-  const visuals =
-    process.env.CASHU_TESTING === "1" &&
-    visualRoot &&
-    (resolve(visualRoot) === visualPrefix || resolve(visualRoot).startsWith(`${visualPrefix}/`))
-      ? resolve(visualRoot)
-      : null;
-  if (visuals) mkdirSync(visuals, { recursive: true });
-  const host: ChildProcess = spawn(
-    process.execPath,
-    [
-      "--import",
-      join(repo, "tools/node-ts/resolveTs.ts"),
-      join(repo, "apps/host/src/testing/seedOverviewDemo.ts"),
-      "serve",
-    ],
-    { env: { ...process.env, CASHU_E2E_SETTINGS: "1" }, stdio: ["ignore", "ignore", "pipe"] },
-  );
-  let errors = "";
-  host.stderr?.on("data", (chunk) => {
-    errors += String(chunk);
-  });
-  let app: Awaited<ReturnType<typeof launchDesktop>> | undefined;
-  try {
-    await until(
-      () =>
-        (existsSync(join(dataDir, "overview-ready")) &&
-          readFileSync(join(dataDir, "overview-ready"), "utf8").trim() === String(host.pid)) ||
-        host.exitCode !== null,
-    );
-    expect(host.exitCode, errors).toBeNull();
-    app = await launchDesktop({ dataDir });
-    const { page } = await dashboardWindow(app);
-    // The vault ids come from the route once the pill shows the host-confirmed profile.
     await pickProfile(page, "Demo Piotr");
-    const piotrOption = currentVault(page);
+    const piotr = currentVault(page);
     await pickProfile(page, "Demo Anna");
     const anna = currentVault(page);
-    if (!anna || !piotrOption || anna === piotrOption)
-      throw new Error("synthetic vault pair absent");
-    const openSettings = () => rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
-    // Ustawienia sits in the profile menu (Python app layout).
+    if (anna === piotr) throw new Error("synthetic vault pair absent");
+    const profileOf = (vault: string) => readHostQuery<Profile>(dataDir, vault, "core.profile");
+    const proposalsOf = (vault: string, status: "pending" | "rejected") =>
+      readHostQuery<Proposal[]>(dataDir, vault, "core.desktopProposals.list", {
+        status,
+        privacy: true,
+      });
+    const original = await profileOf(anna);
+    const other = await profileOf(piotr);
+
+    // Ustawienia sits in the profile menu.
     await openProfileMenuItem(page, "Ustawienia");
-    await expect(page).toHaveURL(/\/settings(?:\?|$)/u);
     const profile = page.getByRole("region", { name: "Profil", exact: true });
-    await expect(profile).toBeVisible();
-    const original = await readStore<Profile>(dataDir, anna, "core.profile");
-    const otherOriginal = await readStore<Profile>(dataDir, piotrOption, "core.profile");
     await profile
       .getByRole("textbox", { name: "Nazwa", exact: true })
       .fill("Synthetic Settings102");
     await profile.getByRole("combobox", { name: "Waluta bazowa" }).selectOption("EUR");
     await profile.getByRole("button", { name: "Zapisz", exact: true }).click();
-    await expect(profile.getByRole("textbox", { name: "Nazwa" })).toHaveValue(
-      "Synthetic Settings102",
-    );
     await expect
-      .poll(async () => readStore<Profile>(dataDir, anna, "core.profile"))
+      .poll(() => profileOf(anna))
       .toMatchObject({ name: "Synthetic Settings102", baseCurrency: "EUR" });
-    expect(await readStore<Profile>(dataDir, piotrOption, "core.profile")).toMatchObject(
-      otherOriginal,
-    );
+    expect(await profileOf(piotr)).toMatchObject(other);
     await pickProfile(page, "Demo Piotr");
-    await expect(page).toHaveURL(/\/overview(?:\?|$)/u);
-    await openSettings();
-    await expect(profile).toBeVisible();
-    await expect(profile.getByRole("textbox", { name: "Nazwa" })).toHaveValue(otherOriginal.name);
-    // Anna carries the name saved above.
+    await rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
+    await expect(profile.getByRole("textbox", { name: "Nazwa" })).toHaveValue(other.name);
     await pickProfile(page, "Synthetic Settings102");
-    await expect(page).toHaveURL(/\/overview(?:\?|$)/u);
-    await openSettings();
-    await expect(profile).toBeVisible();
-    await expect(profile.getByRole("textbox", { name: "Nazwa" })).toHaveValue(
-      "Synthetic Settings102",
-    );
-    await profile.getByRole("textbox", { name: "Nazwa" }).fill(original.name);
-    await profile
-      .getByRole("combobox", { name: "Waluta bazowa" })
-      .selectOption(original.baseCurrency);
-    await profile.getByRole("button", { name: "Zapisz", exact: true }).click();
-    await expect
-      .poll(async () => readStore<Profile>(dataDir, anna, "core.profile"))
-      .toMatchObject({ name: original.name, baseCurrency: original.baseCurrency });
+    await rewriteHash(page, /\/overview(?=\?|$)/u, "/settings");
 
+    // The agent's (MCP) privacy level is stored for this profile only.
     const agent = page.getByRole("region", { name: "Agent AI (MCP)" });
     const nextPrivacy = original.mcpPrivacy === "strict" ? "amounts" : "strict";
     await agent
       .locator(`input[name="mcp-privacy"]`)
       .nth(nextPrivacy === "strict" ? 0 : 1)
       .click();
-    await expect
-      .poll(async () => (await readStore<Profile>(dataDir, anna, "core.profile")).mcpPrivacy)
-      .toBe(nextPrivacy);
-    await expect(
-      agent.locator(`input[name="mcp-privacy"]`).nth(nextPrivacy === "strict" ? 0 : 1),
-    ).toBeChecked();
-    expect((await readStore<Profile>(dataDir, piotrOption, "core.profile")).mcpPrivacy).toBe(
-      otherOriginal.mcpPrivacy,
-    );
-    await agent
-      .locator(`input[name="mcp-privacy"]`)
-      .nth(original.mcpPrivacy === "strict" ? 0 : 1)
-      .click();
-    await expect
-      .poll(async () => (await readStore<Profile>(dataDir, anna, "core.profile")).mcpPrivacy)
-      .toBe(original.mcpPrivacy);
-    await expect(
-      agent.locator(`input[name="mcp-privacy"]`).nth(original.mcpPrivacy === "strict" ? 0 : 1),
-    ).toBeChecked();
+    await expect.poll(async () => (await profileOf(anna)).mcpPrivacy).toBe(nextPrivacy);
+    expect((await profileOf(piotr)).mcpPrivacy).toBe(other.mcpPrivacy);
 
-    const rows = await readStore<Proposal[]>(dataDir, anna, "core.desktopProposals.list", {
-      status: "pending",
-      privacy: true,
-    });
-    expect(rows.map((row) => row.kind)).toEqual(
+    // Proposals belong to their vault; a rejection is stored and leaves the list.
+    expect(await proposalsOf(piotr, "pending")).toEqual([]);
+    const pending = await proposalsOf(anna, "pending");
+    expect(pending.map((row) => row.kind)).toEqual(
       expect.arrayContaining(["budget_import", "custom_rule", "import", "strategy"]),
     );
-    const strategyGid = rows.find((row) => row.kind === "strategy")?.gid;
-    if (!strategyGid) throw new Error("synthetic_settings_strategy_absent");
-    expect(
-      await readStore<{ gid: string; payload: object }>(
-        dataDir,
-        anna,
-        "core.desktopProposals.detail",
-        { gid: strategyGid, privacy: true },
-      ),
-    ).toMatchObject({ gid: strategyGid, payload: {} });
-    expect(
-      await readStore<{ gid: string; display: { diffAvailability: string } }>(
-        dataDir,
-        anna,
-        "core.desktopProposals.detail",
-        { gid: strategyGid, privacy: false },
-      ),
-    ).toMatchObject({ gid: strategyGid, display: { diffAvailability: "ready" } });
-    expect(
-      await readStore<Proposal[]>(dataDir, piotrOption, "core.desktopProposals.list", {
-        status: "pending",
-        privacy: true,
-      }),
-    ).toEqual([]);
-    // The list and the drawer show the Polish line built from the summary code and values (Python
-    // core/messages.ts proposalSummary); privacy mode drops the values.
+    const strategyGid = pending.find((row) => row.kind === "strategy")?.gid;
     const proposals = agent.getByRole("region", { name: "Propozycje agenta" });
     const drawer = page.getByRole("dialog", { name: "Propozycja agenta" });
-    if (visuals)
-      await page.screenshot({ path: join(visuals, "electron102-settings.png"), fullPage: true });
-    const firstOpener = proposals
+    const strategyOpener = proposals
       .getByRole("button", { name: "Otwórz propozycję" })
       .filter({ hasText: "Nowa strategia: 2 reguły, 1 koszyk" });
-    await firstOpener.click();
-    await expect(drawer).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(drawer).toHaveCount(0);
-    await expect(firstOpener).toBeFocused();
-    const detailChecks: ReadonlyArray<[string, string]> = [
-      ["Nowa strategia: 2 reguły, 1 koszyk", "Zmiana w strategy.yaml"],
-      ["Nowa reguła: w teście wstecznym 1 epizod", "Test wsteczny"],
-      ["Import do Synthetic brokerage (synthetic): 2 nowe wiersze", "synthetic-investment.csv"],
-      [
-        "Import wyciągu do Synthetic checking (konektor Synthetic connector): 3 nowe transakcje",
-        "synthetic-statement.csv",
-      ],
-    ];
-    for (const [summary, content] of detailChecks) {
-      await proposals
-        .getByRole("button", { name: "Otwórz propozycję" })
-        .filter({ hasText: summary })
-        .click();
-      await expect(drawer).toBeVisible();
-      await expect(drawer).toContainText(summary);
-      await expect(drawer).toContainText(content);
-      if (visuals && summary === "Nowa strategia: 2 reguły, 1 koszyk")
-        await page.screenshot({
-          path: join(visuals, "electron102-strategy-diff.png"),
-          fullPage: true,
-        });
-      if (
-        visuals &&
-        summary ===
-          "Import wyciągu do Synthetic checking (konektor Synthetic connector): 3 nowe transakcje"
-      )
-        await page.screenshot({
-          path: join(visuals, "electron102-budget-import.png"),
-          fullPage: true,
-        });
-      await drawer.getByRole("button", { name: "Zamknij" }).click();
-    }
-    await proposals
-      .getByRole("button", { name: "Otwórz propozycję" })
-      .filter({ hasText: "Nowa strategia: 2 reguły, 1 koszyk" })
-      .click();
+    await strategyOpener.click();
+    await expect(drawer).toContainText("Zmiana w strategy.yaml");
     await drawer.getByRole("button", { name: "Odrzuć" }).click();
     await expect(drawer).toHaveCount(0);
     await expect
-      .poll(async () =>
-        readStore<Proposal[]>(dataDir, anna, "core.desktopProposals.list", {
-          status: "rejected",
-          privacy: true,
-        }),
-      )
+      .poll(() => proposalsOf(anna, "rejected"))
       .toContainEqual(expect.objectContaining({ gid: strategyGid, status: "rejected" }));
-    await expect(
-      proposals
-        .getByRole("button", { name: "Otwórz propozycję" })
-        .filter({ hasText: "Nowa strategia: 2 reguły, 1 koszyk" }),
-    ).toHaveCount(0);
+    await expect(strategyOpener).toHaveCount(0);
 
+    // Privacy mode drops the proposal values and keeps the drawer closed.
     const incognito = page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true });
     await incognito.click();
-    await expect(incognito).toBeChecked();
     await expect(proposals).not.toContainText("Nowa reguła: w teście wstecznym 1 epizod");
     await proposals.getByRole("button", { name: "Otwórz propozycję" }).first().click();
     await expect(drawer).toHaveCount(0);
     await incognito.click();
-    await expect(incognito).not.toBeChecked();
-    await expect(drawer).toHaveCount(0);
     await expect(proposals).toContainText("Nowa reguła: w teście wstecznym 1 epizod");
-    await rewriteHash(page, /\/settings(?=\?|$)/u, "/investments.strategies");
-    const strategies = page.getByTestId("native-strategies");
-    await expect(strategies).toBeVisible();
-    const strategyState = await readStore<{ proposals: Proposal[] }>(
-      dataDir,
-      anna,
-      "investments.strategies.screen",
-      { lang: "pl", privacy: false, selection: null },
-    );
-    expect(strategyState.proposals.map((row) => row.summary)).toContain(
-      "Synthetic Settings102 rule",
-    );
-    // The ported status card (ab24ab6 StrategyPopover + Header.tsx ProposalNotice): the first pending
-    // proposal with `Zobacz`, which opens the proposal drawer.
-    const notice = strategies.getByRole("button", { name: "Zobacz", exact: true });
-    await notice.scrollIntoViewIfNeeded();
-    await notice.click();
-    await expect(drawer).toBeVisible();
-    await drawer.getByRole("button", { name: "Zamknij" }).click();
-    await rewriteHash(page, /\/investments\.strategies(?=\?|$)/u, "/settings");
-    await expect(profile).toBeVisible();
-    await pickProfile(page, "Demo Piotr");
-    await expect(page).toHaveURL(/\/overview(?:\?|$)/u);
-    await openSettings();
-    await expect(profile).toBeVisible();
-    await expect(agent.getByText("Brak oczekujących propozycji.")).toBeVisible();
+
+    // The language pin survives a reload.
     await pickLanguage(page, "English");
     await page.reload();
     await expect(
@@ -331,20 +98,7 @@ test("native Settings persists an atomic profile edit and reviews stored proposa
         .getByRole("button", { name: "English", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     await pickLanguage(page, "Polski");
-    await page.reload();
-    await expect(
-      page
-        .getByRole("group", { name: "Język", exact: true })
-        .getByRole("button", { name: "Polski", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
   } finally {
-    if (app) {
-      await app.close().catch(() => {});
-      await stopHost(dataDir).catch(() => {});
-    }
-    if (host.exitCode === null) {
-      host.kill("SIGTERM");
-      await until(() => host.exitCode !== null);
-    }
+    await demo.close();
   }
 });

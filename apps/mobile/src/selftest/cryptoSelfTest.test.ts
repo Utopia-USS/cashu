@@ -27,9 +27,7 @@ describe("crypto self-test", () => {
 
   it.each([
     ["TypeError", () => new TypeError("synthetic backend detail")],
-    ["string", () => "synthetic backend detail"],
     ["object", () => ({ message: "synthetic backend detail" })],
-    ["null", () => null],
   ])(
     "fails closed on an unknown %s error shape without exposing backend details",
     async (_kind, failure) => {

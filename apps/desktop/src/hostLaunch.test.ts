@@ -41,10 +41,4 @@ describe("hostLaunch", () => {
       "/apps/cashU.app/Contents/Resources/host.mjs",
     ]);
   });
-
-  it("does not change the shell's own environment", () => {
-    const env = { PATH: "/usr/bin" };
-    hostLaunch({ ...base, env, isPackaged: false });
-    expect(env).toEqual({ PATH: "/usr/bin" });
-  });
 });

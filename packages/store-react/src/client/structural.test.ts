@@ -27,7 +27,7 @@ describe("replaceEqual", () => {
     expect(shared[2]).toBe(next[2]);
   });
 
-  it("compares decimals by value and exponent, like Python", () => {
+  it("compares decimals by value and exponent (1.50 and 1.5 differ, so a re-scaled value re-renders)", () => {
     expect(deepEqual(D("1.50"), Decimal.parse("1.50"))).toBe(true);
     expect(deepEqual(D("1.50"), D("1.5"))).toBe(false);
     expect(deepEqual(new Money(D("1"), "PLN"), new Money(D("1"), "EUR"))).toBe(false);

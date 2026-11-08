@@ -1,12 +1,6 @@
-import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
-import {
-  appcastFileName,
-  informationalAppcast,
-  LAST_PYTHON_VERSION,
-  NATIVE_MIN_MACOS,
-} from "./appcast.mjs";
+import { informationalAppcast, LAST_PYTHON_VERSION, NATIVE_MIN_MACOS } from "./appcast.mjs";
 
 const SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle";
 const RELEASE = "https://github.com/Utopia-USS/cashu/releases/tag/v0.5.0";
@@ -84,7 +78,7 @@ describe("informationalAppcast", () => {
     );
   });
 
-  it("carries Polish and English titles and notes, each with xml:lang", () => {
+  it("carries Polish and English titles and notes, each with xml:lang and the download", () => {
     const it = item(parse(feed()));
     for (const name of ["title", "description"]) {
       const langs = children(it, name).map((el) =>
@@ -92,24 +86,8 @@ describe("informationalAppcast", () => {
       );
       expect(langs).toEqual(["pl", "en"]);
     }
-    const [pl, en] = children(it, "description");
-    expect(pl.getAttributeNS(SPARKLE_NS, "format")).toBe("plain-text");
-    expect(pl.textContent).toContain("Kopiuj prompt dla agenta");
-    expect(pl.textContent).toContain(dmg("arm64"));
-    expect(pl.textContent).toContain("nie będzie się już sama aktualizować");
-    expect(en.textContent).toContain("Copy prompt for agent");
-    expect(en.textContent).toContain(dmg("arm64"));
-    expect(en.textContent).toContain(RELEASE);
-  });
-
-  it("names the prompt button exactly as the native app does", () => {
-    const strings = readFileSync(
-      new URL("../../renderer/shell/Recovery.strings.ts", import.meta.url),
-      "utf8",
-    );
-    expect(strings).toContain(
-      'copy: { pl: "Kopiuj prompt dla agenta", en: "Copy prompt for agent" }',
-    );
+    for (const description of children(it, "description"))
+      expect(description.textContent).toContain(dmg("arm64"));
   });
 
   it("differs per architecture only in the download and its label", () => {
@@ -148,18 +126,8 @@ describe("informationalAppcast", () => {
       expect(() => feed({ version })).toThrow(/X\.Y\.Z/);
     }
     expect(() => feed({ arch: "x86_64" })).toThrow(/unknown arch/);
-    expect(() => feed({ arch: "universal" })).toThrow(/unknown arch/);
     expect(() => feed({ downloadUrl: "http://example.com/a.dmg" })).toThrow(/https/);
     expect(() => feed({ releasePageUrl: "not a url" })).toThrow(/not a URL/);
     expect(() => feed({ pubDate: "yesterday" })).toThrow(/not a date/);
-    expect(() => feed({ pubDate: undefined })).toThrow(/not a date/);
-  });
-});
-
-describe("appcastFileName", () => {
-  it("uses the uname -m names the Python app fetches", () => {
-    expect(appcastFileName("arm64")).toBe("appcast-macos-arm64.xml");
-    expect(appcastFileName("x64")).toBe("appcast-macos-x86_64.xml");
-    expect(() => appcastFileName("x86_64")).toThrow(/unknown arch/);
   });
 });

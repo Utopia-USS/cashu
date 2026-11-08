@@ -1,6 +1,5 @@
 // The refresher and the composite over Yahoo / stooq / NBP responses through MarketHttp, R3 (GBp listing,
-// valuation) and R6 (split re-fetch, valuation), the bounded worker pool
-// (tests/investments/market/test_inv_refresh.py, test_inv_composite_source.py: the recorded-response parts).
+// valuation) and R6 (split re-fetch, valuation), the bounded worker pool.
 
 import type { DateTime } from "@cashu/domain";
 import {

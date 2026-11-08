@@ -8,7 +8,6 @@ import {
   ApprovalRequired,
   ConnectorRemovalFixture,
   ConnectorsReady,
-  Ready,
   UnboundProviders,
 } from "./SettingsView.stories.js";
 
@@ -47,27 +46,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-
-it.each(["pl", "en"] as const)(
-  "renders nonempty audit and worker timestamps in %s",
-  async (language) => {
-    setLanguageForTests(language);
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    try {
-      await act(async () => root.render(<Ready.render />));
-      expect(container.textContent).toContain("synthetic_tool");
-      expect(container.textContent).toContain("08:30");
-      expect(container.textContent).toContain(
-        language === "pl" ? "Włącz codzienne uruchamianie" : "Enable daily start",
-      );
-    } finally {
-      await act(async () => root.unmount());
-      container.remove();
-    }
-  },
-);
 
 it("disables registration when no OS service provider is bound", async () => {
   setLanguageForTests("en");

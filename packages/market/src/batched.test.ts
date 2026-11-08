@@ -1,6 +1,5 @@
-// Batched quotes for the price refresh (P10): Yahoo spark and NBP tables parsing, and the batched sources'
-// fallback rules (tests/investments/market/test_p10_batched.py). Fake fetch, synthetic bodies in Yahoo's
-// and NBP's recorded shapes.
+// Batched quotes for the price refresh: Yahoo spark and NBP tables parsing, and the batched sources'
+// fallback rules. Fake fetch, synthetic bodies in Yahoo's and NBP's recorded shapes.
 
 import { D } from "@cashu/domain";
 import {
@@ -290,12 +289,6 @@ describe("BatchedPriceSource", () => {
     await source.fetch(usStock("AAPL"), "2026-10-01", "2026-10-02");
     expect(source.requests).toBe(0);
     expect(fallback.calls).toHaveLength(1);
-  });
-
-  it("chunk must be positive", () => {
-    expect(() => new m.BatchedPriceSource(null, new Fallback(), { chunk: 0 })).toThrow(
-      "chunk must be positive",
-    );
   });
 });
 

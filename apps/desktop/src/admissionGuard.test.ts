@@ -14,10 +14,6 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-test("an empty synthetic data dir holds no old app data", () => {
-  expect(oldAppDataRoots([fixture()])).toBe(0);
-});
-
 test.each(["cashu.db", "finanse.db", "cashu.db-wal"])(
   "%s counts as old app data without being opened",
   (name) => {

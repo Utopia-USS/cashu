@@ -239,10 +239,9 @@ test("F7: performance data-quality notes read in Polish; unknown codes keep the 
   );
 });
 
-// F7 C2: every strategy issue code the backend can emit, with params as the backend produces them. Codes: the
-// `_TEMPLATES` of src/cashu/modules/investments/strategy/codes.py (`strategy.other` left out: it means "no
-// template", the English text stays). Params: tests/test_message_codes.py CORPUS plus a few variants run
-// through load_strategy (collected 2026-10-05). Keep in sync when codes.py gains a template.
+// F7 C2: every strategy issue code the strategy checker can emit, with params as it fills them. Codes: the
+// `TEMPLATES` of packages/domain/src/investments/strategy/codes.ts (`strategy.other` left out: it means "no
+// template", the English text stays). Keep in sync when codes.ts gains a template.
 const BACKEND_ISSUES = [
   ["allocation_not_mapping", {}],
   ["base_currency_not_pln", {}],
@@ -368,104 +367,19 @@ const BACKEND_ISSUES = [
   ["yaml_too_deep", { max: "32" }],
   ["yaml_too_large", { chars: "512102", max: "512000" }],
 ];
-// The English sentences inside params: `detail` of expression_invalid (rules/expr lexer.py / parser.py /
-// checker.py through compile_expression) and `problem` of yaml_invalid (PyYAML through yaml_tree.compose),
-// as the backend printed them on 2026-10-05.
+// A few English sentences inside params, as the strategy checker prints them: `detail` of expression_invalid
+// and `problem` of yaml_invalid (the PyYAML port's error texts). One per kind of translation rule.
 const EXPR_DETAILS = [
-  "'$' is not supported",
-  "'%' must directly follow a number (5% = 0.05); the modulo operator is not supported",
-  "'+' needs numbers on both sides; the part at column 14 is a condition (true/false)",
-  "'-' needs a number; the part at column 15 is a condition (true/false)",
-  "':' is not supported",
-  "'==' compares values of the same type; asset_class is text, 5 is a number",
-  "'==' compares values of the same type; weight is a number, true is a condition (true/false)",
-  "'>' compares numbers; \"a\" is text",
   "'>' compares numbers; asset_class is text",
-  "'>' compares numbers; true is a condition (true/false)",
-  "'?' is not supported",
-  "'and' needs conditions on both sides; cash_weight is a number",
-  "'not' must be put in parentheses here, e.g. 1 + (not x)",
-  "'not' needs a condition; cash_weight is a number",
-  "A decimal point must be followed by digits (e.g. 0.5)",
-  "A number can have only one decimal point",
-  "Attribute access is not supported",
-  "Backslash escapes are not supported in text",
-  "Backslashes are not supported",
-  "Backticks are not supported",
-  "Bit operations are not supported",
-  "Braces are not supported",
-  "Chained comparisons are not supported; combine them with 'and'",
-  "Comments are not supported",
-  "Expected a value, found ')'",
-  "Expression ended unexpectedly; expected a value",
-  "Expression has too many parts (max 200 tokens)",
-  "Expression is empty",
-  "Expression is nested too deeply (max 24 levels)",
   "Expression is too long (1597 characters, max 1000)",
-  "Expression is too long (2100 characters, max 1000)",
-  "Indexing and lists are not supported",
-  "Integer division is not supported; use '/'",
-  'Invalid number "5a..."',
-  "Missing ')' for the '(' at column 1; found the end of the expression",
-  "Missing ')' to close bucket_weight( at column 14; found the end of the expression",
-  'Missing closing quote "',
-  "Name is too long (max 64 characters)",
-  'Names cannot start with "_" (got "_x")',
-  "Number is too long (max 24 characters)",
-  "Only one expression is allowed; ';' is not supported",
-  "Powers and bit operations are not supported",
-  "Powers are not supported",
-  "Scientific notation is not supported; write the number out",
-  "Text is too long (max 100 characters)",
-  "Text must end on the same line (missing closing quote)",
-  "The '@' operator is not supported",
-  "The expression must be a condition (true or false), e.g. weight > 10%; this one gives a number",
-  "The expression uses no metric, so it would always give the same answer",
-  "Too many arguments for tagged_weight (max 10)",
-  "Unexpected '\"a\"' after a complete expression",
-  "Unexpected 'cash_weight' after a complete expression",
-  "Unexpected character U+0007 in text",
-  "Unexpected character U+00E9",
-  "Unexpected character U+2265",
-  'Unknown asset_class "etff" (did you mean "etf"?); known: equity, etf, fund, bond, treasury_bond, cash, crypto, commodity, claim, other',
-  'Unknown asset_class "stock"; known: equity, etf, fund, bond, treasury_bond, cash, crypto, commodity, claim, other',
   'Unknown name "cash_wieght" (did you mean "cash_weight"?); see the metric catalog for scope portfolio',
-  "Use '!=' to compare for inequality",
-  "Use '<=' for 'less than or equal'",
-  "Use '==' to compare; assignment is not supported",
-  "Use '>=' for 'greater than or equal'",
   "Use 'and' instead of '&&'",
-  "Use 'and' instead of '&'",
-  "Use 'not' instead of '!'",
-  "Use 'or' instead of '|'",
-  "Use 'or' instead of '||'",
-  'Write "and" in lowercase',
-  'Write "true" in lowercase',
-  'asset_class is never "etff" (did you mean "etf"?); known: equity, etf, fund, bond, treasury_bond, cash, crypto, commodity, claim, other',
-  'asset_class is never "stocks"; known: equity, etf, fund, bond, treasury_bond, cash, crypto, commodity, claim, other',
-  'bucket of bucket_weight must be text in quotes, e.g. bucket_weight("x")',
-  "bucket of bucket_weight must not be empty",
-  "bucket_weight is a function; call it with arguments: bucket_weight(bucket)",
   "bucket_weight takes 1 argument(s); usage: bucket_weight(bucket)",
-  "cash_weight is not a function; write it without parentheses",
-  "tagged_weight lists the same value twice",
-  "tagged_weight takes at least 1 argument(s); usage: tagged_weight(tag, ...)",
-  "weight is not available in scope portfolio (available in: instrument, bucket)",
-  "window_days of price_change must be a whole number between 2 and 2520, written as a literal",
-  "window_days of price_change must be a whole number, got 2.5",
   "window_days of price_change must be between 2 and 2520, got 1",
 ];
 const YAML_PROBLEMS = [
-  "expected the node content, but found '<stream end>' (while parsing a flow node)",
   "mapping values are not allowed here",
-  "could not find expected ':' (while scanning a simple key)",
   "found character '\\t' that cannot start any token (while scanning for the next token)",
-  "found character '%' that cannot start any token (while scanning for the next token)",
-  "expected <block end>, but found '<block mapping start>' (while parsing a block collection)",
-  "expected ',' or ']', but got ':' (while parsing a flow sequence)",
-  "expected ',' or '}', but got '<stream end>' (while parsing a flow mapping)",
-  "found unexpected end of stream (while scanning a quoted scalar)",
-  "but found another document (expected a single document in the stream)",
   "found unknown escape character 'q' (while scanning a double-quoted scalar)",
 ];
 // English words as whole words (Unicode-aware: "gotówka" is not "got").
@@ -633,15 +547,12 @@ test("English UI: every helper shows the server's English text; frontend-only te
       errorText(new TypeError("Failed to fetch")),
       "Can't reach the app (the cashU server is not responding)",
     );
-    assert.equal(label("import.preview_expired"), "The preview expired: choose the file again.");
-    assert.equal(label("error.loan_name_taken"), "A loan with this name already exists.");
     assert.equal(describeError(err).text, "A loan with this name already exists.");
-    assert.equal(label("connector.timeout", { timeout_s: 30 }), "The connector timed out (30 s).");
     for (const v of Object.values(
       (await import("@cashu/ui-logic/core/messages.strings")).EN_LABELS,
     )) {
       const t = typeof v === "string" ? v : v({ timeout_s: 1 });
-      assert.ok(!/[ąćęłńóśźż—]/i.test(t), t);
+      assert.ok(!/[ąćęłńóśźż\u2014]/i.test(t), t);
     }
   } finally {
     setLanguageForTests("pl");

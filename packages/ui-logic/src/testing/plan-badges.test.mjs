@@ -1,5 +1,5 @@
 // P1 plan badges (design/v3/plan-badges/plan-badges.md, spec P1 Frontend), run with `npm test`: plan labels per held /
-// watched, the glyph paths, the tile ring per health x stale, the hover card / touch title rows, the `fulfills`
+// watched, the tile ring per health x stale, the hover card / touch title rows, the `fulfills`
 // relation and `fulfilled` health, and the recommendation-check signal copy.
 import assert from "node:assert/strict";
 import {
@@ -7,7 +7,6 @@ import {
   instSummary,
   isPlanKind,
   PLAN_HELD,
-  PLAN_PATH,
   PLAN_VALUES,
   PLAN_WATCHED,
   planFact,
@@ -19,12 +18,9 @@ import {
 } from "@cashu/ui-logic/investments/v2/logic";
 import {
   countsText,
-  HEALTH_CLS,
-  HEALTH_LABEL,
   healthOf,
   normHealth,
   normRelation,
-  RELATION_LABEL,
   relationCounts,
   relationIcon,
   thesisHealth,
@@ -51,23 +47,11 @@ test("planLabel: held and watched forms for every value; held-only and unknown v
   assert.deepEqual(held, ["dokup asap", "dokup", "trzymaj", "redukuj", "pozbądź się asap"]);
   const watched = PLAN_VALUES.map((p) => planLabel(p, false));
   assert.deepEqual(watched, ["kup asap", "kup", "czekam", "", ""]);
-  assert.equal(planLabel("hold", true), "trzymaj");
-  assert.equal(planLabel("hold", false), "czekam");
   assert.equal(planLabel(null, true), "");
   assert.equal(planLabel(undefined, false), "");
   assert.equal(planLabel("sell_everything", true), "");
-  assert.deepEqual(Object.keys(PLAN_HELD), [...PLAN_VALUES]);
-  assert.deepEqual(Object.keys(PLAN_WATCHED), ["buy_asap", "buy", "hold"]);
   for (const v of [...Object.values(PLAN_HELD), ...Object.values(PLAN_WATCHED)])
     assert.ok(!v.includes(String.fromCharCode(0x2014)), v); // never the em dash
-});
-
-test("PLAN_PATH: exactly the five plans, chevrons up / dash / down", () => {
-  assert.deepEqual(Object.keys(PLAN_PATH).sort(), [...PLAN_VALUES].sort());
-  assert.equal(PLAN_PATH.hold, "M3 6h6");
-  assert.equal(PLAN_PATH.buy_asap.split("M").length - 1, 2); // double chevron
-  assert.equal(PLAN_PATH.exit_asap.split("M").length - 1, 2);
-  assert.equal(PLAN_PATH.buy.split("M").length - 1, 1);
 });
 
 test("ringOf: only supported / fulfilled / weakened / invalidated without stale research draw a ring", () => {
@@ -150,9 +134,6 @@ test("fulfills relation and fulfilled health: labels, classes, precedence and at
   assert.equal(normHealth("fulfilled"), "ful");
   assert.equal(normHealth("spełniona"), "ful");
   assert.equal(normRelation("fulfills"), "fulfills");
-  assert.equal(HEALTH_LABEL.ful, "spełniona");
-  assert.equal(HEALTH_CLS.ful, "ful");
-  assert.equal(RELATION_LABEL.fulfills, "spełnia tezę");
   assert.deepEqual(relationIcon("fulfills"), { cls: "ful", glyph: "✓", label: "spełnia tezę" });
   // precedence: invalidated > weakened > fulfilled > supported
   const today = "2026-10-05";

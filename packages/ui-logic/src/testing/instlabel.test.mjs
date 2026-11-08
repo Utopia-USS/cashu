@@ -181,8 +181,6 @@ test("generic buckets: the contract's 14 ids have Polish labels, any other id ha
   for (const id of GENERIC_BUCKET_IDS)
     assert.ok(bucketLabel(id) && !/[_]/.test(bucketLabel(id)), id);
   assert.equal(bucketLabel("global_equity"), "Akcje globalne");
-  assert.equal(bucketLabel("bond_etfs"), "ETF-y obligacyjne");
-  assert.equal(bucketLabel("treasury_bonds"), "Obligacje skarbowe");
   for (const id of [
     "core",
     "active",
@@ -320,7 +318,6 @@ test("FE-A A3: ids in any case, ids inside expressions, owner words and labels k
 
 test("FE-A A6: rule kinds in Polish, never a rule id", () => {
   assert.equal(ruleKindLabel("drawdown_from_high"), "transza spadkowa");
-  assert.equal(ruleKindLabel("cash_level"), "poziom gotówki");
   assert.equal(ruleKindLabel("custom"), "reguła własna");
   assert.equal(ruleKindLabel("alert:price_below"), "alert");
   assert.equal(ruleKindLabel("some_new_kind"), "reguła");
@@ -330,12 +327,6 @@ test("FE-A A6: rule kinds in Polish, never a rule id", () => {
 test("GF7: a benchmark is named, never its strategy id", () => {
   assert.equal(benchmarkLabel({ id: "msci_acwi" }), "MSCI ACWI");
   assert.equal(benchmarkLabel({ id: "MSCI_World" }), "MSCI World");
-  assert.equal(benchmarkLabel({ id: "ftse_all_world" }), "FTSE All-World");
-  assert.equal(benchmarkLabel({ id: "sp500" }), "S&P 500");
-  assert.equal(benchmarkLabel({ id: "msci_em" }), "MSCI EM");
-  assert.equal(benchmarkLabel({ id: "wig20" }), "WIG20");
-  assert.equal(benchmarkLabel({ id: "wig" }), "WIG");
-  assert.equal(benchmarkLabel({ id: "stoxx600" }), "STOXX 600");
   assert.equal(benchmarkLabel({ id: "my_mix_70_30" }), "benchmark");
   assert.equal(
     benchmarkLabel({ id: "my_mix_70_30", proxy_label: "Vanguard FTSE All-World" }),

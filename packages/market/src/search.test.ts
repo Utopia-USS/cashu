@@ -1,7 +1,5 @@
-// The search HTTP adapters (tests/investments/market/test_f12_search_sources.py: the search and
-// OpenFIGI parts of test_http_adapters_send_the_right_requests_and_report_failures, and
-// test_network_errors_are_source_exceptions). The chart part of the adapters test and the parsers are
-// in yahoo.test.ts and @cashu/domain's market/search.test.ts.
+// The search HTTP adapters (search and OpenFIGI requests, failures, network errors). The chart part and
+// the parsers are in yahoo.test.ts and @cashu/domain's market/search.test.ts.
 
 import { market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";

@@ -1,5 +1,4 @@
-// The batched price refresh (P10), the logic parts of tests/investments/persistence/test_p10_price_refresh.py:
-// one spark request for every yahoo symbol, stooq-first listings per instrument, the 400-day backfill
+// The batched price refresh: one spark request for every yahoo symbol, stooq-first listings per instrument, the 400-day backfill
 // per instrument, FX from one table request, a close-only bar keeping the stored open / high. The run
 // plans against the device's price cache (provider + market symbol) and writes the report back to it.
 // Throttling, the daily lock, the env switch, the endpoint and the store reads are the service (S22c).
