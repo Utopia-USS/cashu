@@ -1,12 +1,7 @@
-// The category commands (S24c, S24 5) on the in-memory store, with the effective categories
-// derived in the view. Translates Python tests/test_cash.py (marking, cash expense, unmarking; the
-// net-worth and spending parts are S10 / S11 read models), tests/test_ingestion.py
-// test_transaction_category_override_survives_recategorize, tests/test_reclassify.py
-// test_merchant_pin_leaves_rows_with_their_own_decision and tests/test_loans.py
-// test_a_manual_merchant_rule_still_wins_over_the_loans_payment_account; plus the batch shapes,
-// value-free refusals, idempotence and the cloud gate of the classifier query (PRIVACY(D-09.5)).
-// Synthetic data only.
-import { readFileSync } from "node:fs";
+// The category commands on the in-memory store, with the effective categories derived in the view:
+// cash withdrawals and the cash pool, per-row overrides, merchant rules (learn vs pin), loan
+// payments, the LLM result commands, value-free refusals, idempotence and the cloud gate of the
+// classifier query (PRIVACY(D-09.5)). Synthetic data only.
 import { D } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
 import { describe, expect, it } from "vitest";
@@ -90,8 +85,8 @@ const poolRows = (store: Store) =>
 
 const WYPLATA = { ref: "WYPLATA W BANKOMACIE" };
 
-describe("setTransactionCategory (test_cash.py, test_ingestion.py)", () => {
-  it("test_marking_withdrawal_feeds_pool: the pool opens in the batch once; the leg cancels the withdrawal", () => {
+describe("setTransactionCategory", () => {
+  it("marking a withdrawal feeds the pool: the pool opens in the batch once; the leg cancels the withdrawal", () => {
     const { store, env } = vault();
     ingest(store, env, [raw("-200.00", WYPLATA), raw("-100.00", WYPLATA)]);
     const w = gidOf(store, "-200.00");
@@ -112,7 +107,7 @@ describe("setTransactionCategory (test_cash.py, test_ingestion.py)", () => {
     expect(second.ok && second.events.map((e) => e.type)).toEqual(["txn.categorySet"]);
   });
 
-  it("test_unmark_removes_mirror_and_reverts_source: the source falls back to its keyword", () => {
+  it("deleting the cash leg unmarks the withdrawal: the source falls back to its keyword", () => {
     const { store, env } = vault();
     ingest(store, env, [raw("-200.00", WYPLATA)]);
     const w = gidOf(store, "-200.00");
@@ -125,7 +120,7 @@ describe("setTransactionCategory (test_cash.py, test_ingestion.py)", () => {
     expect(catOf(store, w)).toEqual({ category: "cash", category_source: "keyword" });
   });
 
-  it("test_transaction_category_override_survives_recategorize", () => {
+  it("a per-row override survives a re-derive", () => {
     const { store, env } = vault();
     ingest(store, env, [raw("-24.47", { ref: "CARREFOUR EXPRESS", d: "2026-05-02" })]);
     const t = gidOf(store, "-24.47");
@@ -150,8 +145,8 @@ describe("setTransactionCategory (test_cash.py, test_ingestion.py)", () => {
   });
 });
 
-describe("addCashExpense (test_cash.py)", () => {
-  it("test_cash_expense_draws_pool_and_counts_as_spend", () => {
+describe("addCashExpense", () => {
+  it("a cash expense draws the pool and counts as spend", () => {
     const { store, env } = vault();
     ingest(store, env, [raw("-200.00", WYPLATA)]);
     run(store, env, setTransactionCategory, {
@@ -170,7 +165,7 @@ describe("addCashExpense (test_cash.py)", () => {
           account: store.read<{ gid: string }>("SELECT gid FROM accounts WHERE type = 'cash'")[0]
             ?.gid,
           bookingDate: "2026-10-31",
-          amount: "-50.0", // Python Decimal(str(float(50)))
+          amount: "-50.0", // a number input is stored as its decimal string
           currency: "PLN",
           title: "Obiad",
           category: "dining",
@@ -215,35 +210,7 @@ describe("addCashExpense (test_cash.py)", () => {
   });
 });
 
-describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
-  it("matches the corrected Python setter action oracle", () => {
-    const actions = JSON.parse(
-      readFileSync(new URL("../../test/vectors/d24-setter.json", import.meta.url), "utf8"),
-    ) as { action: "learn" | "pin"; category: string; updated: number; pairs: string[][] }[];
-    const { store, env } = vault();
-    ingest(store, env, [
-      raw("-11.00", { cp: "ZXQ RULE TEST" }),
-      { ...raw("-12.00", { cp: "ZXQ RULE TEST" }), currency: "EUR" },
-      raw("-13.00", { cp: "ZXQ RULE TEST" }),
-      raw("-14.00", { cp: "ZXQ OTHER TEST" }),
-    ]);
-    run(store, env, setTransactionCategory, { txn: gidOf(store, "-13.00"), category: "gifts" });
-    const gids = ["-11.00", "-12.00", "-13.00", "-14.00"].map((amount) => gidOf(store, amount));
-    for (const action of actions) {
-      const command = action.action === "learn" ? learnMerchantCategory : setMerchantCategory;
-      const result = run(store, env, command, {
-        merchantKey: "ZXQ RULE TEST",
-        category: action.category,
-      });
-      expect(result.ok && result.value.updated).toBe(action.updated);
-      expect(
-        gids.map((gid) => {
-          const pair = catOf(store, gid);
-          return [pair?.category, pair?.category_source];
-        }),
-      ).toEqual(action.pairs);
-    }
-  });
+describe("setMerchantCategory", () => {
   it("counts effective pair changes for unlocked rules across currencies and preserves owner pins", () => {
     const { store, env } = vault();
     ingest(store, env, [
@@ -256,6 +223,10 @@ describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
     });
     expect(first.ok && first.value).toMatchObject({ changed: true, updated: 2, kept: false });
     expect(first.ok && first.events).toHaveLength(1);
+    const rows = ["-11.00", "-12.00"].map((amount) => gidOf(store, amount));
+    expect(rows.map((gid) => catOf(store, gid))).toEqual(
+      rows.map(() => ({ category: "dining", category_source: "llm" })),
+    );
     const repeat = run(store, env, learnMerchantCategory, {
       merchantKey: "ZXQ RULE TEST",
       category: "dining",
@@ -267,6 +238,9 @@ describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
       category: "dining",
     });
     expect(pin.ok && pin.value).toMatchObject({ changed: true, updated: 2 });
+    expect(rows.map((gid) => catOf(store, gid))).toEqual(
+      rows.map(() => ({ category: "dining", category_source: "manual" })),
+    );
     const kept = run(store, env, learnMerchantCategory, {
       merchantKey: "ZXQ RULE TEST",
       category: "shopping",
@@ -279,7 +253,7 @@ describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
     });
     expect(kept.ok && kept.events).toHaveLength(0);
   });
-  it("test_merchant_pin_leaves_rows_with_their_own_decision", () => {
+  it("a merchant pin leaves rows with their own decision and own-IBAN transfers alone", () => {
     const { store, env } = vault();
     ingest(store, env, [], OWN);
     ingest(store, env, [
@@ -322,7 +296,7 @@ describe("setMerchantCategory (test_reclassify.py, test_loans.py)", () => {
     );
   });
 
-  it("test_a_manual_merchant_rule_still_wins_over_the_loans_payment_account", () => {
+  it("a manual merchant rule wins over the loan payment account, a learned one does not", () => {
     const { store, env } = vault();
     // a loan whose installments go to the lender's account (loan.* events: budget never imports loans)
     const opened = run(store, env, openAccount, {
@@ -433,7 +407,7 @@ describe("LLM result commands (D-09.5)", () => {
     });
   });
 
-  it("setLlmCategories: no claim on structural, owner-decided or configured rows (Python planReclassify)", () => {
+  it("setLlmCategories: no claim on structural, owner-decided or configured rows ", () => {
     const { store, env } = vault();
     ingest(store, env, [], OWN);
     ingest(store, env, [

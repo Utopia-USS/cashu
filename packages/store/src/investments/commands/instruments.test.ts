@@ -20,7 +20,7 @@ import {
 } from "./instruments.js";
 import { type Vault, vault } from "./testing/fixtures.js";
 
-/** Python `stored_instrument`: a USD stock with a guessed yahoo alias and a broker alias. */
+/** A USD stock with a guessed yahoo alias and a broker alias. */
 function storedInstrument(v: Vault, symbol = "XMPL", isin = "US0000000001", yahoo = "XMPL") {
   return v.value(createInstrument, {
     name: `${symbol} Corp`,
@@ -82,8 +82,8 @@ describe("createInstrument", () => {
   });
 });
 
-describe("instrument lookup (test_db_instrument_lookup)", () => {
-  it("answers by ISIN, alias, symbol and confirmed aliases like DbInstrumentLookup", () => {
+describe("instrument lookup", () => {
+  it("answers by ISIN, alias, symbol and confirmed aliases", () => {
     const v = vault();
     const iid = storedInstrument(v);
     const read = v.store.read.bind(v.store);
@@ -98,7 +98,7 @@ describe("instrument lookup (test_db_instrument_lookup)", () => {
   });
 });
 
-describe("classifyInstrument (test_classify_and_aliases)", () => {
+describe("classifyInstrument", () => {
   it("classifies in the vault's override row; aliases are market identity", () => {
     const v = vault();
     const iid = storedInstrument(v);

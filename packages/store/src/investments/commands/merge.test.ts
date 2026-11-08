@@ -1,9 +1,7 @@
-// Merging two instruments on the in-memory store. Translates Python
-// tests/investments/persistence/test_instrument_merge.py at the store level: every reference follows
-// the target, the source row is gone, renames between the pair are dropped, signal keys follow the
-// target; different ISINs or currencies and the same / a missing instrument are refused; the
-// preview (dry run) writes nothing. The CLI backup test is HTTP / CLI bound (S39). Where the fold's
-// LWW precedence differs from Python's target-first rules (lead R-2, S25 R-S5) the test says so.
+// Merging two instruments: every reference follows the target, the source row is gone, renames
+// between the pair are dropped, signal keys follow the target; different ISINs or currencies and the
+// same / a missing instrument are refused; the preview (dry run) writes nothing. Field precedence is
+// the fold's LWW (R-S5).
 import { describe, expect, it } from "vitest";
 import { watchlist } from "../queries/alerts.js";
 import { loadInstrument, vaultInstrumentGids } from "../queries/instruments.js";
@@ -21,7 +19,7 @@ function instrument(v: Vault, name: string, opts: Record<string, unknown>) {
   return v.value(createInstrument, { name, currency: "USD", assetClass: "equity", ...opts }).gid;
 }
 
-/** Python fixture `pair`: an ISIN-only stub (source) and a ticker instrument (target). */
+/** An ISIN-only stub (source) and a ticker instrument (target). */
 function pair() {
   const v = vault();
   const source = instrument(v, "Przyklad Corp", { isin: ISIN, assetClass: "other" });
@@ -85,11 +83,11 @@ describe("mergeInstruments", () => {
     expect(items[0]?.instrument).toBe(target);
     expect(items[0]?.note).toBe("powod z ISIN"); // the target's add carried no note
     expect(items[0]?.removedAt).toBeNull(); // the target's entry was live and stays so (N3)
-    // Python joins the tags (["b", "a"]); the fold is LWW: the target's later add wins (R-S5).
+    // LWW: the target's later add wins (R-S5).
     expect(items[0]?.tags).toEqual(["b"]);
     const seen = loadInstrument(read, target);
     expect(seen?.segment).toBe("software");
-    // Python keeps the target's classification; the fold keeps the latest write per field (R-S5).
+    // the latest write per field wins (R-S5)
     expect(seen?.assetClass).toBe("other");
     expect(vaultInstrumentGids(read)).toEqual(new Set([target]));
   });
@@ -137,7 +135,7 @@ describe("mergeInstruments", () => {
     });
   });
 
-  it("drops renames between the pair and collapses duplicates (test_renames_between_...)", () => {
+  it("drops renames between the pair and collapses duplicates", () => {
     const v = vault();
     const source = instrument(v, "A", { isin: ISIN });
     const target = instrument(v, "A", { symbol: "A", aliases: [{ namespace: "x", value: "A" }] });
@@ -184,7 +182,7 @@ describe("mergeInstruments", () => {
       `rule|i:${target}`,
     ]);
     expect(open.every((s) => s.instrument === target)).toBe(true);
-    // Python resolves the source's duplicate; the fold keeps one open episode and maps both gids to it
+    // one open episode remains and both gids map to it
     expect(signalByGid(read, s3)?.gid).toBe(signalByGid(read, s2)?.gid);
   });
 });

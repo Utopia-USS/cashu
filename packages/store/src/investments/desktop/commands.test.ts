@@ -5,7 +5,7 @@ import { setInstrumentPlan } from "../commands/instruments.js";
 import { stock, vault } from "../commands/testing/fixtures.js";
 import { addToWatchlist } from "../commands/watchlist.js";
 import { loadInstrument } from "../queries/instruments.js";
-import { theses, thesisByGid } from "../queries/journal.js";
+import { theses } from "../queries/journal.js";
 import { openSignals } from "../queries/signals.js";
 import { added, investor, TODAY } from "../research/testing/fixtures.js";
 import { loadStrategy } from "../services/strategy.js";
@@ -116,39 +116,6 @@ it("preserves classification key presence and atomically refuses after a valid s
     expect(result.ok).toBe(false);
     expect(loadInstrument(v.store.read.bind(v.store), instrument)).toEqual(before);
     expect(v.run(classifyUiInstrument, { instrument, patch: {} }).ok).toBe(true);
-  } finally {
-    v.store.close();
-  }
-});
-
-it("creates separate theses, updates the selected older thesis, clears exit plan and preserves no-op stamps", () => {
-  const v = fixture();
-  try {
-    const instrument = stock(v, "AAA", "PL0000000AAA");
-    v.value(addToWatchlist, { target: { stored: instrument } });
-    const commands = uiThesisCommands();
-    const first = v.value(commands.create, {
-      instrument,
-      entryType: "trend",
-      thesis: "First",
-      exitPlan: "Exit",
-    });
-    v.env.advance(1000);
-    v.value(commands.create, { instrument, entryType: "trend", thesis: "Second" });
-    v.env.advance(1000);
-    const update = v.value(commands.update, {
-      id: first.thesis,
-      values: { exitPlan: "" },
-      reviewed: true,
-    });
-    expect(update.row.exitPlan).toBeNull();
-    expect(update.row.exitPlanChangedAt).toBeNull();
-    expect(thesisByGid(v.store.read.bind(v.store), first.thesis)).toEqual(update.row);
-    expect(theses(v.store.read.bind(v.store), instrument)).toHaveLength(2);
-    v.env.advance(1000);
-    const noOp = v.run(commands.update, { id: first.thesis, values: {}, reviewed: false });
-    expect(noOp.ok && noOp.events).toEqual([]);
-    expect(thesisByGid(v.store.read.bind(v.store), first.thesis)).toEqual(update.row);
   } finally {
     v.store.close();
   }

@@ -42,7 +42,6 @@ const legacyFile = (format: string) => ({
   content: enc(JSON.stringify({ format, format_version: 1, records: [RECORD] })),
 });
 
-// test_a_document_with_the_legacy_format_id_parses
 it("a document with the legacy format id parses", () => {
   const importer = new CanonicalImporter();
   const old = legacyFile(LEGACY_FORMAT);
@@ -53,7 +52,6 @@ it("a document with the legacy format id parses", () => {
   expect(result.txns[0]?.grossAmount.eq(Decimal.parse("100"))).toBe(true);
 });
 
-// test_legacy_source_and_importer_ids_read_as_the_new_ones
 it("legacy source and importer ids read as the new ones", () => {
   const importer = new CanonicalImporter();
   expect([importer.brokerId, CANONICAL_BROKER_ID]).toEqual(["cashu", "cashu"]);
@@ -76,7 +74,6 @@ it("the legacy namespace is the same namespace as the current one", () => {
   expect(equivalentNamespaces("xtb")).toEqual(["xtb"]);
 });
 
-// test_aliases_stored_under_the_legacy_namespace_still_resolve
 it("aliases stored under the legacy namespace still resolve", () => {
   const old = instrumentOf("old", {
     name: "Old alias",
@@ -95,7 +92,6 @@ it("aliases stored under the legacy namespace still resolve", () => {
   expect(resolver.newAliases).toEqual(new Map()); // not learned a second time under the new name
 });
 
-// test_dedup_hashes_of_the_canonical_namespace_do_not_change
 it("dedup hashes of the canonical namespace do not change", () => {
   const row = dedupInput({
     tradeDate: day("2026-10-01"),

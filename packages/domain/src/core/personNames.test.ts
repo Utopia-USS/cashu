@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadVectors, Mismatches } from "../testing/vectors.js";
+import { loadVectors } from "../testing/vectors.js";
 import {
   ADDRESS_WORDS,
   AMBIGUOUS_MARKERS,
@@ -13,8 +13,9 @@ import {
 
 const rows = loadVectors("budget-person").rows;
 
-describe("person names vectors (core/mcp/names.py via vectors_budget.py)", () => {
-  it("the word lists are Python's", () => {
+// Person detection gates what may reach a cloud LLM or the MCP agent (privacy).
+describe("person names", () => {
+  it("the Polish word lists are pinned (matching data)", () => {
     const [, business, ambiguous, address, extra] = rows[0] as [
       string,
       string[],
@@ -28,23 +29,20 @@ describe("person names vectors (core/mcp/names.py via vectors_budget.py)", () =>
     expect(FOLD_EXTRA).toEqual(extra);
   });
 
-  it("fold, normalize, person_part and looks_like_person equal Python", () => {
-    const m = new Mismatches();
-    for (const row of rows.filter((r) => r[0] === "name")) {
-      const [, text, fold, norm, part, person] = row as [
-        string,
-        string | null,
-        string,
-        string,
-        string[],
-        boolean,
-      ];
-      m.check(`fold ${text}`, foldName(text ?? ""), fold);
-      m.check(`normalize ${text}`, normalizeMerchantName(text), norm);
-      m.check(`person_part ${text}`, personPart(text), part);
-      m.check(`looks_like_person ${text}`, looksLikePerson(text), person);
-    }
-    expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBe(4 * (rows.length - 1));
+  it("looksLikePerson spots people and leaves businesses and institutions alone", () => {
+    expect(looksLikePerson("JAN TESTOWY")).toBe(true);
+    expect(looksLikePerson("MARIA-ANNA x\u0301 00-001 TESTOWA")).toBe(true);
+    expect(looksLikePerson("Zoë DOM BAR 1234 A1 SP. Z O.O.")).toBe(false);
+    expect(looksLikePerson("- WARSZAWA ZUS APTEKA")).toBe(false);
+    expect(looksLikePerson("STUDIO Łucja józef ANNA A1 Ørjan")).toBe(false);
+    expect(looksLikePerson(null)).toBe(false);
+  });
+
+  it("fold strips diacritics (ł, ß, Ø too); personPart stops at digits and address words", () => {
+    expect(foldName("TESTOWA ANNA Straße ĐURIC Łucja")).toBe("TESTOWA ANNA STRASSE DURIC LUCJA");
+    expect(normalizeMerchantName("Zoë SP. Z O.O.")).toBe("ZOE SP Z OO");
+    expect(personPart("MARIA-ANNA x\u0301 00-001 TESTOWA")).toEqual(["MARIA", "ANNA", "X"]);
+    expect(personPart("A. A. AL. TESTOWA 12")).toEqual(["A", "A"]);
+    expect(personPart("1234 Łucja STUDIO")).toEqual([]);
   });
 });

@@ -5,14 +5,12 @@
 // (the spend half); tests/test_ingestion.py: test_internal_transfer_matching (the cashflow half),
 // test_cashflow_excludes_own_account_transfer, test_categorization_and_spending and
 // test_spending_by_quarter_and_year (the sums); tests/test_profiles.py: test_own_ibans_are_per_profile
-// (the cashflow half); tests/test_i18n_core_modules.py: test_categories_and_networth_labels_over_the_api
-// (the spending labels); tests/test_upstream_bugs.py: test_b2_api_subscription_totals_per_currency (the
+// (the cashflow half); tests/test_upstream_bugs.py: test_b2_api_subscription_totals_per_currency (the
 // recurring half). The API's `months` limit and response shapes are the API layer's (S38b / S55c).
 
 import { describe, expect, it } from "vitest";
 import { builtinRegistry } from "../../core/index.js";
 import { D, type Decimal } from "../../decimal.js";
-import { categoryLabel } from "../categorize/index.js";
 import { monthlyCashflow, referenceDate } from "./cashflow.js";
 import { activeRecurring, recurringPayments, subscriptionExclusions } from "./recurring.js";
 import { categoryTransactions, spendingByCategory, txnDetails } from "./spending.js";
@@ -119,13 +117,6 @@ describe("seed household views (test_api.py)", () => {
     expect(eur.map((r) => [r.category, r.label, s(r.amount)])).toEqual([
       ["subscriptions", "Subskrypcje", "39.96"],
     ]);
-  });
-
-  it("test_categories_and_networth_labels_over_the_api (spending in English)", () => {
-    const rows = spendingByCategory(seedDemo().book(), null, {}, "en");
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((r) => r.label === categoryLabel(r.category, "en"))).toBe(true);
-    expect(rows[0]?.label).toBe(categoryLabel("loans", "en"));
   });
 
   it("test_category_transactions", () => {

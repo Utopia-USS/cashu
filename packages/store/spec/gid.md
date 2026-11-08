@@ -386,7 +386,7 @@ Nothing is dropped silently: every case is a named counter in the genesis report
 ## 8. Test vectors
 
 Fixed TEST salt = bytes `00 01 02 ... 1f` (real salts are random). Produced with Python
-`hmac.new(salt, msg, hashlib.sha256)`; also asserted in `namespaces.test.ts`.
+`hmac.new(salt, msg, hashlib.sha256)`; asserted in `gid.test.ts` (runtime HMAC) and `det-parts.test.ts`.
 
 | Case | Domain and parts | gid |
 |---|---|---|

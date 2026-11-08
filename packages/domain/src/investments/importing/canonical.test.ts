@@ -81,7 +81,6 @@ const normalizedPositions = (result: ImportParseResult) =>
 // --- the spec ---------------------------------------------------------------------------------
 
 describe("the spec (docs/import-format.md)", () => {
-  // test_every_csv_example_in_the_spec_validates
   it("every CSV example in the spec validates", () => {
     const blocks = specBlocks("csv").filter((b) => b.startsWith("format_version"));
     expect(blocks.length).toBeGreaterThanOrEqual(2);
@@ -89,14 +88,12 @@ describe("the spec (docs/import-format.md)", () => {
       expect(parseCanonicalCsv(enc(block)).warnings, block.slice(0, 80)).toEqual([]);
   });
 
-  // test_every_json_example_in_the_spec_validates
   it("every JSON example in the spec validates", () => {
     const blocks = specBlocks("json").filter((b) => b.includes('"records": [\n'));
     expect(blocks.length).toBeGreaterThan(0);
     for (const block of blocks) expect(parseCanonicalJson(enc(block)).warnings).toEqual([]);
   });
 
-  // test_spec_csv_and_json_examples_carry_the_same_data
   it("spec CSV and JSON examples carry the same data", () => {
     const csv = parseCanonicalCsv(enc(csvExample()));
     const json = parseCanonicalJson(enc(jsonExample()));
@@ -108,7 +105,6 @@ describe("the spec (docs/import-format.md)", () => {
     expect([csv.txns.length, csv.positions.length]).toEqual([11, 3]);
   });
 
-  // test_spec_documents_every_column
   it("spec documents every column", () => {
     const text = specText();
     for (const column of CSV_COLUMNS) expect(text, column).toContain(`\`${column}\``);
@@ -116,7 +112,6 @@ describe("the spec (docs/import-format.md)", () => {
     expect(text, "the em dash character is not used").not.toContain(String.fromCodePoint(0x2014));
   });
 
-  // test_spec_example_values
   it("spec example values", () => {
     const result = parseCanonicalCsv(enc(csvExample()));
     const derived = result.txns.find((t) => t.externalRef === "T-1004") as ParsedTxn;
@@ -146,7 +141,6 @@ describe("the spec (docs/import-format.md)", () => {
 describe("detection", () => {
   const file = (name: string, text: string) => ({ name, content: enc(text) });
 
-  // test_can_parse
   it("can parse", () => {
     const importer = new CanonicalImporter();
     expect(importer.canParse(file("x.csv", `${HEADER}\n`))).toBe(true);
@@ -160,7 +154,6 @@ describe("detection", () => {
     expect([importer.brokerId, importer.version]).toEqual(["cashu", 1]);
   });
 
-  // test_parse_dispatches_by_extension
   it("parse dispatches by extension", () => {
     const importer = new CanonicalImporter();
     expect(importer.parse(file("x.csv", `${HEADER}\n`)).warnings).toEqual([]);
@@ -175,7 +168,6 @@ describe("detection", () => {
 // --- CSV structure ------------------------------------------------------------------------------
 
 describe("CSV structure", () => {
-  // test_header_problems_are_blocking_file_errors
   it("header problems are blocking file errors", () => {
     const result = csvRows([], "format_version,record,date,qty,date");
     const messages = new Map(result.warnings.map((w) => [w.message, w]));
@@ -191,7 +183,6 @@ describe("CSV structure", () => {
     expect(typo.warnings[0]?.message).toContain('did you mean "quantity"');
   });
 
-  // test_empty_invalid_utf8_and_broken_quotes
   it("empty, invalid UTF-8 and broken quotes", () => {
     expect(parseCanonicalCsv(new Uint8Array()).warnings[0]?.message).toMatch(/^File is empty/);
     const bad = parseCanonicalCsv(
@@ -203,7 +194,6 @@ describe("CSV structure", () => {
     expect(quotes.warnings[0]?.message).toContain("not valid CSV");
   });
 
-  // test_bom_and_crlf_are_accepted
   it("BOM and CRLF are accepted", () => {
     const text = [
       HEADER,
@@ -214,7 +204,6 @@ describe("CSV structure", () => {
     expect(sameDecimal(result.txns[0]?.cashAmount, "5")).toBe(true);
   });
 
-  // test_format_version_and_cell_count_per_row
   it("format_version and cell count per row", () => {
     const good = txnRow({ date: "2026-01-05", type: "deposit", currency: "PLN", cash_amount: "5" });
     const result = csvRows([good.replace("1,", "2,"), `${good},extra`, "", good]);
@@ -229,7 +218,6 @@ describe("CSV structure", () => {
 // --- record validation -----------------------------------------------------------------------
 
 describe("record validation", () => {
-  // test_minimal_rows_of_every_type
   it("minimal rows of every type", () => {
     const result = csvRows([
       txnRow({ date: "2026-01-02", type: "deposit", currency: "PLN", cash_amount: "1000" }),
@@ -313,7 +301,6 @@ describe("record validation", () => {
     expect(sameDecimal(result.txns[12]?.grossAmount, "9")).toBe(true);
   });
 
-  // test_value_formats_are_strict
   it("value formats are strict", () => {
     const buy = { type: "buy", symbol: "A", quantity: "1", price: "1", currency: "PLN" };
     const result = csvRows([
@@ -360,7 +347,6 @@ describe("record validation", () => {
     expect(rows.get(0)?.kind).toBe(ImportWarningKind.INVALID_VALUE);
   });
 
-  // test_required_values_and_type_rules
   it("required values and type rules", () => {
     const result = csvRows([
       txnRow({ type: "deposit", currency: "PLN", cash_amount: "5" }),
@@ -428,7 +414,6 @@ describe("record validation", () => {
     expect(result.txns).toEqual([]);
   });
 
-  // test_all_problems_of_a_row_are_reported
   it("all problems of a row are reported", () => {
     const result = csvRows([txnRow({ date: "bad", type: "buy", quantity: "x", currency: "usd" })]);
     const messages = result.warnings.map((w) => w.message);
@@ -438,7 +423,6 @@ describe("record validation", () => {
     expect(new Set(result.warnings.map((w) => w.row))).toEqual(new Set([0]));
   });
 
-  // test_cash_sign_rules
   it("cash sign rules", () => {
     const trade = { symbol: "A", quantity: "1", price: "1", currency: "PLN" };
     const result = csvRows([
@@ -481,7 +465,6 @@ describe("record validation", () => {
     ).toBe(true);
   });
 
-  // test_cross_currency_without_fx_rate_is_blocking_r5
   it("cross currency without fx_rate is blocking (R5)", () => {
     const usdBuy = {
       date: "2026-01-05",
@@ -518,7 +501,6 @@ describe("record validation", () => {
     expect([txn.cashCurrency, txn.fxRate?.toString()]).toEqual([Currencies.PLN, "4.0"]);
   });
 
-  // test_inconsistent_amounts_are_a_warning
   it("inconsistent amounts are a warning", () => {
     const base = {
       date: "2026-01-05",
@@ -542,7 +524,6 @@ describe("record validation", () => {
     expect(result.txns).toHaveLength(2);
   });
 
-  // test_fields_must_belong_to_the_record_kind
   it("fields must belong to the record kind", () => {
     const header = CSV_COLUMNS.join(",");
     const result = csvRows(
@@ -585,7 +566,6 @@ describe("record validation", () => {
     expect([result.txns, result.positions, result.corporateActions]).toEqual([[], [], []]);
   });
 
-  // test_positions_and_corporate_actions
   it("positions and corporate actions", () => {
     const header = CSV_COLUMNS.join(",");
     const result = csvRows(
@@ -645,7 +625,6 @@ describe("record validation", () => {
     expect([frozen.frozen, plain.frozen]).toEqual([true, false]);
   });
 
-  // test_duplicate_positions_warn
   it("duplicate positions warn", () => {
     const header = CSV_COLUMNS.join(",");
     const line = fullRow({
@@ -661,7 +640,6 @@ describe("record validation", () => {
     ]);
   });
 
-  // test_source_and_account_hint
   it("source and account hint", () => {
     const header = `${HEADER},source,account_hint`;
     const base = txnRow({ date: "2026-01-05", type: "deposit", currency: "PLN", cash_amount: "5" });
@@ -684,7 +662,6 @@ type ParsedWarningLike = ImportParseResult["warnings"][number];
 // --- JSON ----------------------------------------------------------------------------------------
 
 describe("JSON", () => {
-  // test_json_numbers_are_exact_and_strings_work_too
   it("numbers are exact and strings work too", () => {
     const result = jsonDoc([
       '{"record": "txn", "date": "2026-01-05", "type": "buy", "symbol": "A", "quantity": 0.1, "price": "0.2", "currency": "PLN", "fee": 0}',
@@ -698,7 +675,6 @@ describe("JSON", () => {
     expect((result.corporateActions[0] as ParsedDelisting).frozen).toBe(true);
   });
 
-  // test_json_document_structure_errors
   it("document structure errors", () => {
     expect(parseCanonicalJson(enc("[]")).warnings[0]?.message).toBe(
       "The JSON document must be an object",
@@ -728,7 +704,6 @@ describe("JSON", () => {
     expect(boolean.warnings[0]?.message).toBe("format_version: must be the number 1");
   });
 
-  // test_json_record_errors
   it("record errors", () => {
     const result = jsonDoc([
       '"not an object"',
@@ -751,7 +726,6 @@ describe("JSON", () => {
     expect(result.txns).toEqual([]);
   });
 
-  // test_json_top_level_source_and_account_hint
   it("top level source and account hint", () => {
     const result = jsonDoc([], '"source": "examplebroker", "account_hint": " A-1 "');
     expect([result.source, result.accountHint]).toEqual(["examplebroker", "A-1"]);
@@ -759,7 +733,6 @@ describe("JSON", () => {
   });
 });
 
-// test_record_fields_cover_every_parsed_txn_field
 it("record fields cover every parsed txn field", () => {
   // Python walks dataclasses.fields(ParsedTxn); TS has no field reflection, so the list is spelled out
   // (a new ParsedTxn field fails the type check of `parsedTxn` and this list at once).
@@ -795,7 +768,6 @@ it("record fields cover every parsed txn field", () => {
     expect(RECORD_FIELDS.has(mapping[field] ?? snake(field)), field).toBe(true);
 });
 
-// test_raw_row_is_kept[csv] / [json]
 describe("raw row", () => {
   it("is kept for CSV", () => {
     const result = csvRows([

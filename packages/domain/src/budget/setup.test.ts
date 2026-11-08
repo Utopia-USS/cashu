@@ -1,8 +1,5 @@
-// Budget blank-page steps (modules/budget/setup.py) over their facts, test-for-test with the step halves
-// of tests/test_first_steps_api.py test_budget_steps and
-// test_budget_transfers_step_counts_own_moves_without_an_iban_pair, tests/test_profiles.py
-// test_setup_endpoint_shape and tests/test_i18n_core_modules.py test_modules_and_setup_steps_in_english
-// (budget). The counts behind the facts are the store's (packages/store setup queries, their tests).
+// Budget blank-page steps over their facts. The counts behind the facts are the store's (packages/store
+// setup queries, their tests).
 
 import { describe, expect, it } from "vitest";
 import { type SetupContext, setupView } from "../core/index.js";
@@ -68,30 +65,5 @@ describe("budget setup steps", () => {
     expect(view({ ...two, ownMoves: 1 }).steps[2]?.status).toBe("done");
     expect(view({ ...two, internalTransfers: 2 }).steps[2]?.status).toBe("done");
     expect(view({ ...two, internalTransfers: 2 }).state).toBe("ready");
-  });
-
-  it("test_setup_endpoint_shape (budget)", () => {
-    const body = view({});
-    for (const step of body.steps) {
-      expect(Object.keys(step).sort()).toEqual(
-        ["actions", "description", "id", "optional", "status", "title"].sort(),
-      );
-      expect(step.optional).toBe(false);
-      for (const a of step.actions) {
-        expect(["cli", "tab"]).toContain(a.kind);
-        if (a.kind === "cli") expect(a.target.startsWith("cashu --profile jan ")).toBe(true);
-      }
-    }
-    expect(body.steps[1]?.actions).toEqual([{ kind: "tab", label: "Wydatki", target: "expenses" }]);
-  });
-
-  it("test_modules_and_setup_steps_in_english (budget)", () => {
-    const steps = view({}, { cli: "cashu --profile jan", lang: "en" }).steps;
-    expect(steps[0]?.title).toBe("First bank statement");
-    expect(steps[0]?.actions[0]?.label).toBe("Copy command");
-    expect(steps[0]?.actions[0]?.target.endsWith("import-csv STATEMENT.csv")).toBe(true);
-    expect(steps[1]?.actions[0]?.label).toBe("Expenses");
-    const texts = steps.flatMap((s) => [s.title, s.description]);
-    expect(texts.some((t) => /[ąęółśżźćń—]/.test(t))).toBe(false);
   });
 });

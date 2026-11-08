@@ -1,9 +1,6 @@
 // The Strategies tab's documents: main first (listed even when missing), one-file and folder
 // strategies from `strategies/`, frontmatter / heading titles, reads limited to the listed files of
-// one strategy, symlinks never followed. Translates tests/investments/persistence/test_invp_strategies.py
-// (the HTTP routes become the service functions, 404 the refusal; the `brief` field is the surface's,
-// S36, checked here with `loadStrategy`). The directory port is an in-memory fake. Synthetic text only.
-import { readFileSync } from "node:fs";
+// one strategy, symlinks never followed. The directory port is an in-memory fake. Synthetic text only.
 import { describe, expect, it } from "vitest";
 import { vault } from "../commands/testing/fixtures.js";
 import { loadStrategy, type StrategyFileName, type StrategyFilesPort } from "./strategy.js";
@@ -104,7 +101,7 @@ async function listed(dir: MemoryDir): Promise<Map<string, StrategyDocSummary>> 
   return out;
 }
 
-/** The strategy `id`, undefined when there is none (Python `find`). */
+/** The strategy `id`, undefined when there is none. */
 async function findStrategy(dir: MemoryDir, id: string) {
   return (await discoverStrategies(dir)).find((d) => d.id === id);
 }
@@ -115,8 +112,8 @@ async function readFile(dir: MemoryDir, id: string, path: string) {
   return readStrategyFile(dir, doc, path);
 }
 
-describe("test_invp_strategies", () => {
-  it("test_main_is_listed_even_without_files", async () => {
+describe("strategy documents", () => {
+  it("main is listed even without files", async () => {
     const dir = new MemoryDir();
     const items = await listed(dir);
     expect([...items.keys()]).toEqual([MAIN_ID]);
@@ -125,7 +122,7 @@ describe("test_invp_strategies", () => {
     expect((await loadStrategy(vault().store, mainFiles(dir))).state).toBe("missing");
   });
 
-  it("test_main_and_folder_strategies", async () => {
+  it("main and folder strategies", async () => {
     const dir = new MemoryDir()
       .file("strategy.yaml", STRATEGY_YAML)
       .file("strategy.md", "# Rdzeń ETF\n\nKupuję co miesiąc.\n")
@@ -179,7 +176,7 @@ describe("test_invp_strategies", () => {
     [MAIN_ID, "swing.md"],
     ["swing", ".hidden.md"],
     ["nope", "README.md"],
-  ])("test_reads_are_limited_to_listed_files %s %s", async (id, path) => {
+  ])("reads are limited to listed files %s %s", async (id, path) => {
     const dir = new MemoryDir()
       .file("strategies/swing/README.md", "# Swing\n")
       .file("strategies/swing/.hidden.md", "x")
@@ -187,7 +184,7 @@ describe("test_invp_strategies", () => {
     expect((await readFile(dir, id, path)).ok).toBe(false);
   });
 
-  it("test_symlinks_are_not_followed", async () => {
+  it("symlinks are not followed", async () => {
     const dir = new MemoryDir().dir("strategies/swing").symlink("strategies/swing/link.md");
     dir.symlink("strategies/linked");
     const items = await listed(dir);
@@ -195,7 +192,7 @@ describe("test_invp_strategies", () => {
     expect(items.get("swing")?.files).toEqual([]);
   });
 
-  it("test_frontmatter_ignores_broken_blocks", () => {
+  it("frontmatter ignores broken blocks", () => {
     expect(frontmatter("---\ntitle: [\n---\n# A\n")).toEqual({
       fields: {},
       body: "---\ntitle: [\n---\n# A\n",
@@ -207,8 +204,8 @@ describe("test_invp_strategies", () => {
   });
 });
 
-describe("strategy documents (store level)", () => {
-  it("frontmatter keeps text, numbers and booleans like Python str()", () => {
+describe("strategy documents: details", () => {
+  it("frontmatter keeps text, numbers and booleans as text", () => {
     const { fields } = frontmatter(
       "---\ntitle: '  T  '\nversion: 2\nratio: 0.5\ndraft: true\nempty: ''\nwhen: 2026-10-31\n---\n",
     );
@@ -257,16 +254,20 @@ describe("strategy documents (store level)", () => {
   });
 });
 
-describe("strategy-frontmatter vectors (the retired Python vectors_yaml_safe_load.py)", () => {
-  it("equals Python strategy_docs.frontmatter on every case", () => {
-    const url = new URL("../../../test/vectors/strategy-frontmatter.jsonl", import.meta.url);
-    const lines = readFileSync(url, "utf8")
-      .split("\n")
-      .filter((line) => line !== "");
-    const rows = lines.slice(1).map((line) => JSON.parse(line) as [string, object, string]);
-    expect(rows.length).toBeGreaterThan(0);
-    for (const [text, fields, body] of rows) {
-      expect(frontmatter(text), JSON.stringify(text)).toEqual({ fields, body });
-    }
+describe("strategy frontmatter", () => {
+  it.each([
+    ["# Bez frontmatter\n\nTekst.\n", {}, "# Bez frontmatter\n\nTekst.\n"],
+    [
+      "---\ntitle: Plan IKE\nstatus: draft\ndescription: Krótki opis\n---\n# Nagłówek\n",
+      { title: "Plan IKE", status: "draft", description: "Krótki opis" },
+      "# Nagłówek\n",
+    ],
+    ["---\r\ntitle: CRLF\r\n---\r\nbody\r\n", { title: "CRLF" }, "body\r\n"],
+    ["---\ntitle: brak końca\n# Nagłówek\n", {}, "---\ntitle: brak końca\n# Nagłówek\n"],
+    ["---\n- lista\n- nie mapa\n---\nbody\n", {}, "---\n- lista\n- nie mapa\n---\nbody\n"],
+    ["---\ntitle: !foo x\n---\nbody\n", {}, "---\ntitle: !foo x\n---\nbody\n"],
+    ["  ---\ntitle: x\n---\nbody\n", {}, "  ---\ntitle: x\n---\nbody\n"],
+  ])("reads %j", (text, fields, body) => {
+    expect(frontmatter(text)).toEqual({ fields, body });
   });
 });

@@ -1,7 +1,6 @@
-// Signal commands and queries (Python `store/signals.py`): applying a run's lifecycle actions on the
-// lease holder (open / refresh / escalate / resolve / expire with the close payload keys of
-// signals.py:59-72 and 200-205, R-S8), cooldown inputs, snooze and wake, rule runs and
-// `is_current`. Synthetic data only.
+// Signal commands and queries: applying a run's lifecycle actions on the lease holder (open / refresh /
+// escalate / resolve / expire with the close payload keys, R-S8), cooldown inputs, snooze and wake,
+// rule runs and `is_current`. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import {
   closedSignals,
@@ -106,7 +105,7 @@ describe("applySignalActions", () => {
       lastSeenAt: "2026-10-31 07:00:00.000000",
       lastRun: run2,
     });
-    // Python `_fill` rewrites polarity too: the refresh carried the candidate's default
+    // a refresh rewrites polarity too: the refresh carried the candidate's default
     expect(signalByGid(read, b)).toMatchObject({
       message: "Nowe",
       polarity: "neutral",

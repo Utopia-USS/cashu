@@ -60,7 +60,7 @@ describe("local daily state", () => {
       ),
     ).toBe("discard");
   });
-  it("tracks newest local add/update with the Python thirty minute boundary", () => {
+  it("tracks newest local add/update with the thirty minute boundary", () => {
     const driver = memoryDriver();
     const status = new LocalRunStatus(driver);
     status.started("a", "2026-10-31 12:00:00.000000");

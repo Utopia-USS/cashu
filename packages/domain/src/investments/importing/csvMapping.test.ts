@@ -45,7 +45,6 @@ function issues(text: string): readonly CsvMappingIssue[] {
   return parsed.issues;
 }
 
-// test_parses_every_key_of_the_fixture_mapping
 it("parses every key of the fixture mapping", () => {
   const mapping = plMapping();
   expect(mapping.brokerId).toBe("generic_csv");
@@ -65,7 +64,6 @@ it("parses every key of the fixture mapping", () => {
   expect(plMapping("windows-1250").encoding).toBe(ImportTextEncoding.WINDOWS_1250);
 });
 
-// test_defaults_of_a_minimal_mapping
 it("defaults of a minimal mapping", () => {
   const mapping = parse(MINIMAL);
   expect(mapping.brokerId).toBe("generic_csv");
@@ -82,7 +80,6 @@ it("defaults of a minimal mapping", () => {
   expect(mapping.types.size).toBe(0);
 });
 
-// test_tab_delimiter_keywords_and_scalar_text
 it("tab delimiter, keywords and scalar text", () => {
   const mapping = parse(`version: 1
 broker_id: mbank
@@ -116,7 +113,6 @@ types:
   expect([...mapping.types]).toEqual([["NO", TxnType.BUY]]);
 });
 
-// test_the_shipped_example_documents_a_valid_mapping_with_every_key_and_field
 it("the shipped example documents a valid mapping with every key and field", () => {
   const text = exampleMappingYaml();
   const mapping = parse(text);
@@ -134,7 +130,6 @@ it("the shipped example documents a valid mapping with every key and field", () 
   expect(text.includes(String.fromCodePoint(0x2014))).toBe(false);
 });
 
-// test_unknown_keys_fields_and_types_have_suggestions_and_positions
 it("unknown keys, fields and types have suggestions and positions", () => {
   const found = issues(`version: 1
 decimal_seperator: ","
@@ -161,7 +156,6 @@ types:
   expect(csvMappingIssueText(typo)).toContain("line 2:1: decimal_seperator: Unknown key");
 });
 
-// test_validates_required_content_and_value_domains
 it("validates required content and value domains", () => {
   const found = issues(`version: 2
 broker_id: My Broker
@@ -204,7 +198,6 @@ columns:
   }
 });
 
-// test_duplicates_and_value_shapes_are_errors
 it("duplicates and value shapes are errors", () => {
   const found = issues(`version: 1
 version: 1
@@ -232,7 +225,6 @@ types:
   }
 });
 
-// test_yaml_syntax_errors_and_non_map_documents
 it("YAML syntax errors and non-map documents", () => {
   const syntax = issues("version: 1\ncolumns: [unclosed");
   expect(syntax).toHaveLength(1);
@@ -243,7 +235,6 @@ it("YAML syntax errors and non-map documents", () => {
   expect(csvMappingErrorText(issues("version: 1"))).toMatch(/columns/u);
 });
 
-// test_oversized_mapping_is_rejected
 it("oversized mapping is rejected", () => {
   expect(issues("#".repeat(300_000))[0]?.message).toContain("too large");
 });

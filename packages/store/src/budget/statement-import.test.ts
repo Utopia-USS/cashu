@@ -1,10 +1,8 @@
-// The in-app statement import (preview -> commit) and the first steps' `Dopasuj` against the Python
-// oracle (ab24ab6 modules/budget/imports.py + POST /budget/match-transfers). The expected values come
-// from running the retired Python app (CASHU_LANG=pl) through the same sequence
-// on the same synthetic files: preview A, commit A, preview A again, preview / commit an overlapping
-// A2, preview / commit the savings account B (one transfer between A and B), the refusals, a cashU format
-// document (overlap by the newest-day rule) and one in another currency, then match
-// transfers (nothing left) and match after a reset (the one pair). Synthetic data only.
+// The in-app statement import (preview -> commit) and `Dopasuj` on real mBank / Pekao CSV formats,
+// one sequence: preview A, commit A, preview A again, preview / commit an overlapping A2, preview /
+// commit the savings account B (one transfer between A and B), the refusals, a cashU format document
+// (overlap by the newest-day rule) and one in another currency, then match transfers (nothing left)
+// and match after a reset (the one pair). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { run, testEnv } from "../testing/commands.js";
 import { openTestStore } from "../testing/store.js";
@@ -112,8 +110,8 @@ function setup() {
 
 const statuses = (p: StatementPreview) => p.rows.map((r) => r.status);
 
-describe("statement import (Python oracle sequence)", () => {
-  it("previews, commits, dedups, pairs the transfer and refuses like Python", () => {
+describe("statement import", () => {
+  it("previews, commits, dedups, pairs the transfer across banks and refuses", () => {
     const t = setup();
     // s1: a new mBank account, the row without an amount skipped
     const s1 = t.shown("mbank-a.csv", { importer: "auto", accountType: "checking" });
@@ -267,7 +265,7 @@ describe("statement import (Python oracle sequence)", () => {
       ["Bank Pekao", "Oszczędności", "0002", "PLN"],
     ]);
 
-    // Dopasuj: nothing left to pair (Python 0), after a reset the one pair (Python 1)
+    // Dopasuj: nothing left to pair, after a reset the one pair
     const m1 = run(t.store, t.env, matchDesktopTransfers, {});
     expect(m1.ok && m1.value).toEqual({ pairs: 0 });
     const reset = run(t.store, t.env, matchTransfersCommand, { reset: true });

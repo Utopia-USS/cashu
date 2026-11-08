@@ -1,7 +1,5 @@
-// Planned deposit reads: the status filter (Python `parse_statuses`) and vault isolation of the
-// planned deposits, manual transactions and brokerage accounts (store-level meaning of
-// test_invp_isolation.py: another profile never sees the rows, and its commands refuse this vault's
-// gids). Synthetic data only.
+// Vault isolation of the planned deposits, manual transactions and brokerage accounts: another profile
+// never sees the rows, and its commands refuse this vault's gids. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { addBrokerageAccount } from "../commands/accounts.js";
 import { addManualTransaction } from "../commands/manual.js";

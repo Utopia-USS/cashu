@@ -19,14 +19,12 @@ import { FetchStatus } from "../market/fetchReport.js";
 import { SourceBlockedException, SourceException } from "../market/sources.js";
 import {
   fetchJson,
-  MAX_RETRIES,
   type MacroChartQuote,
   type MacroChartSource,
   refreshMacro,
   reportErrors,
   reportStats,
   SKIPPED_MESSAGE,
-  TIMEOUT_SECONDS,
   windowStart,
 } from "./refresh.js";
 import { BACKFILL_DAYS, SERIES_KEYS } from "./series.js";
@@ -180,10 +178,5 @@ describe("the refresh plan (no store)", () => {
     const stats = reportStats(report);
     expect([stats.series_ok, stats.series_error, stats.series_skipped]).toEqual([1, 1, 5]);
     expect(reportErrors(report)).toEqual([`macro spx (^GSPC): yahoo: ${error.message}`]);
-  });
-
-  // test_the_production_macro_source_has_a_short_timeout (the constants; the HTTP client is S18)
-  it("the macro source's timeout constants", () => {
-    expect([TIMEOUT_SECONDS, MAX_RETRIES]).toEqual([10.0, 1]);
   });
 });

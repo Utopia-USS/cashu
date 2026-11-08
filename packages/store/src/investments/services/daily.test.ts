@@ -23,7 +23,6 @@ import { openSignals, ruleRuns, signalByGid } from "../queries/signals.js";
 import { MemoryStrategyDir } from "../testing/strategyFiles.js";
 import { type DailyVault, runDaily } from "./daily.js";
 import type { DurableWriteUnknown } from "./durable.js";
-import oracle from "./fixtures/daily.json" with { type: "json" };
 import { DailyPriceLock } from "./prices.js";
 import { loadStrategy } from "./strategy.js";
 
@@ -343,65 +342,34 @@ describe("daily native composition", () => {
     expect(applied).toBe(1);
     expect(fxStarts.some((d) => d <= "2010-01-01")).toBe(true);
   });
-  it("matches actual Python daily counters and plan failure shape on synthetic input", async () => {
-    for (const label of ["valid", "missing", "invalid", "plan_failed"] as const) {
+  it("still values the portfolio without a usable strategy, and an invalid one is a partial run", async () => {
+    const expected = {
+      missing: { status: "ok", errors: 0, strategy: "missing" },
+      invalid: { status: "partial", errors: 1, strategy: "invalid" },
+    } as const;
+    for (const label of ["missing", "invalid"] as const) {
       const s = setup();
       cache(s);
-      const source = dir(label === "missing" ? null : label === "invalid" ? "version: [" : YAML);
+      const source = dir(label === "missing" ? null : "version: [");
       const strategy = await loadStrategy(s.v.store, source.files, {
         record: true,
         writer: storeWriter(s.v.store),
         env: s.v.env,
         sync: source.sync,
       });
-      const command = dailyEvaluation({
-        strategy,
-        market: { prices: s.prices },
-        lang: "en",
-        ...(label === "plan_failed"
-          ? {
-              planPass() {
-                throw new Error("synthetic");
-              },
-            }
-          : {}),
-      });
-      const assertOracle = (key: keyof typeof oracle) => {
-        const out = s.v.run(command, input);
-        if (!out.ok) throw new Error(out.reason);
-        const expected = oracle[key];
-        expect(D(String(out.value.stats.total_base)).eq(D(expected.stats.total_base))).toBe(true);
-        const {
-          alerts_expired: unsupportedExpiryCounter,
-          total_base: _total,
-          ...expectedStats
-        } = expected.stats;
-        expect(unsupportedExpiryCounter).toBe(0);
-        const { total_base: _nativeTotal, ...actualStats } = out.value.stats;
-        expect(actualStats).toEqual(expectedStats);
-        expect({
-          status: out.value.status,
-          errors: out.value.errors.length,
-          new: out.value.created.length,
-          escalated: out.value.escalated.length,
-        }).toEqual({
-          status: expected.status,
-          errors: expected.errors,
-          new: expected.new,
-          escalated: expected.escalated,
-        });
-      };
-      assertOracle(label);
-      if (label === "valid") {
-        assertOracle("second");
-        const signal = openSignals(s.v.store.read.bind(s.v.store))[0];
-        if (!signal) throw new Error("missing signal");
-        applyRaw(s.v, [
-          { type: "signal.acknowledged", gid: signal.gid, data: {} },
-          { type: "signal.snoozed", gid: signal.gid, data: { until: "2026-10-31T11:00:00Z" } },
-        ]);
-        assertOracle("wake");
-      }
+      const out = s.v.run(
+        dailyEvaluation({ strategy, market: { prices: s.prices }, lang: "en" }),
+        input,
+      );
+      if (!out.ok) throw new Error(out.reason);
+      expect({
+        status: out.value.status,
+        errors: out.value.errors.length,
+        strategy: out.value.stats.strategy,
+      }).toEqual(expected[label]);
+      expect(out.value.stats.rules).toBe(0);
+      expect(out.value.created).toHaveLength(0);
+      expect(D(String(out.value.stats.total_base)).eq(D("120"))).toBe(true);
     }
   });
   it("runs actual rules and alerts in one evaluation append, idempotently", async () => {

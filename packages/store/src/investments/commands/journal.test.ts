@@ -1,6 +1,5 @@
-// Decision journal and theses commands with their queries (Python `store/journal.py` semantics:
-// record_decision, undo_decision with its 15-minute window, decision_signal_ids, theses create /
-// update / delete with the derived change stamps). Synthetic data only.
+// Decision journal and theses commands with their queries: recordDecision, undoDecision with its
+// 15-minute window, theses create / update with the derived change stamps. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import {
   decisionByGid,

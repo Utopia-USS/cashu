@@ -1,14 +1,10 @@
-// Cash pool rules (cash.py). Unit tests of the pure parts and the Python differential vectors of
-// `budget-cash.jsonl` (legs, cash expenses, pool names); the net-worth half of tests/test_cash.py is
-// in networth.test.ts. Synthetic data only.
+// Cash pool rules (cash.ts): legs, cash expenses, pool names; the net-worth half is in networth.test.ts.
+// Synthetic data only.
 
 import { describe, expect, it } from "vitest";
-import { MANUAL_INSTITUTION } from "../core/index.js";
-import { D, DecimalError } from "../decimal.js";
-import { expectAll, loadVectors, Mismatches } from "../testing/vectors.js";
+import { D } from "../decimal.js";
 import {
   CASH_ACCOUNT_TYPE,
-  CASH_LEG_PREFIX,
   CASH_LEG_TEXT,
   type CategoryClaim,
   cashExpenseAmount,
@@ -107,131 +103,5 @@ describe("cashExpenseAmount and pool identity", () => {
     expect(cashPoolName("PLN", "PLN")).toBe("Gotówka");
     expect(cashPoolName("EUR", "PLN")).toBe("Gotówka (EUR)");
     expect(cashPoolExternalId("EUR")).toBe("cash:EUR");
-  });
-});
-
-// ------------------------------------------------------------------ Python vectors
-
-const ROWS = loadVectors("budget-cash").rows;
-const kind = (k: string) => ROWS.filter((r) => r[0] === k);
-
-/** Python `Decimal(str(x))`: InvalidOperation for text that is not a decimal. */
-function parseOutcome(text: string): ReturnType<typeof D> | { error: string } {
-  try {
-    return D(text);
-  } catch (error) {
-    if (error instanceof DecimalError) return { error: error.signal };
-    throw error;
-  }
-}
-
-describe("cash vectors (Python cash.py on an in-memory DB)", () => {
-  it("sync_cash_leg: the leg's columns and its pool", () => {
-    const m = new Mismatches();
-    for (const [, base, bankId, src, leg] of kind("leg") as [
-      string,
-      string,
-      number,
-      Record<string, string | null>,
-      Record<string, unknown>,
-    ][]) {
-      const s = {
-        bookingDate: src.booking_date as string,
-        valueDate: src.value_date ?? null,
-        amount: D(src.amount as string),
-        currency: src.currency as string,
-        description: src.description ?? null,
-        reference: src.reference ?? null,
-      };
-      const f = cashLegFields(s, null);
-      m.check(
-        `leg ${bankId}`,
-        {
-          pool: [
-            MANUAL_INSTITUTION,
-            cashPoolName(s.currency, base || "PLN"),
-            cashPoolExternalId(s.currency),
-            CASH_ACCOUNT_TYPE,
-            s.currency,
-          ],
-          booking_date: f.bookingDate,
-          value_date: f.valueDate,
-          amount: f.amount.toString(),
-          currency: f.currency,
-          counterparty_name: f.counterpartyName,
-          description: f.description,
-          reference: f.reference,
-          dedup_hash: `${CASH_LEG_PREFIX}${bankId}`,
-          category: f.category,
-          category_source: f.categorySource,
-        },
-        {
-          pool: leg.pool,
-          booking_date: leg.booking_date,
-          value_date: leg.value_date,
-          amount: leg.amount,
-          currency: leg.currency,
-          counterparty_name: leg.counterparty_name,
-          description: leg.description,
-          reference: leg.reference,
-          dedup_hash: leg.dedup_hash,
-          category: leg.category,
-          category_source: leg.category_source,
-        },
-      );
-    }
-    expectAll(m);
-  });
-
-  it("add_cash_expense: the stored amount or the error; FIX(Q14) non-finite inputs are refused", () => {
-    const m = new Mismatches();
-    let nonFinite = 0;
-    for (const [, , text, want] of kind("expense") as [
-      string,
-      string,
-      string,
-      string | { error: string },
-    ][]) {
-      const parsed = parseOutcome(text);
-      if ("error" in parsed && parsed.error === "NonFinite") {
-        // Python stores NaN / -Infinity here (sNaN raises); the domain refuses at the parse.
-        nonFinite++;
-        m.check(text, typeof want !== "string" || /^-?(NaN|Infinity)$/.test(want), true);
-        continue;
-      }
-      if ("error" in parsed) {
-        m.check(text, parsed, want);
-        continue;
-      }
-      const r = cashExpenseAmount(parsed);
-      m.check(text, r.ok ? r.amount.toString() : { error: "ValueError" }, want);
-    }
-    expectAll(m);
-    expect(nonFinite).toBe(6);
-  });
-
-  it("get_cash_account: bank, name, external id, type and currency per (currency, base)", () => {
-    const m = new Mismatches();
-    for (const [, currency, base, want] of kind("pool") as [
-      string,
-      string | null,
-      string,
-      string[],
-    ][]) {
-      const effectiveBase = base || "PLN"; // analytics.base_currency
-      const cur = currency || effectiveBase; // `currency or base`: the command's default
-      m.check(
-        `${currency}/${base}`,
-        [
-          MANUAL_INSTITUTION,
-          cashPoolName(cur, effectiveBase),
-          cashPoolExternalId(cur),
-          CASH_ACCOUNT_TYPE,
-          cur,
-        ],
-        want,
-      );
-    }
-    expectAll(m);
   });
 });

@@ -1,5 +1,4 @@
 /// <reference types="node" />
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
@@ -60,21 +59,5 @@ export function outcome<T>(
   }
 }
 
-export const BLOCK_SIZE = 4096;
-export const BLOCKS_PER_PLANE = 0x10000 / BLOCK_SIZE;
 /** The 17 Unicode planes: the unit of the code point sweeps (one test each). */
 export const PLANES: readonly number[] = Array.from({ length: 0x110000 / 0x10000 }, (_, i) => i);
-
-/**
- * sha256 (first 16 hex digits) of fn(chr(c)) joined by NUL over one 4096-code-point block, surrogates
- * skipped (as the retired Python `vectors.py`). One digest input per block: the same bytes as feeding the
- * hash per code point, without two native hash calls per code point.
- */
-export function blockHash(fn: (s: string) => string, block: number): string {
-  let joined = "";
-  for (let c = block * BLOCK_SIZE; c < (block + 1) * BLOCK_SIZE; c++) {
-    if (c >= 0xd800 && c <= 0xdfff) continue;
-    joined += `${fn(String.fromCodePoint(c))}\0`;
-  }
-  return createHash("sha256").update(joined, "utf8").digest("hex").slice(0, 16);
-}

@@ -85,6 +85,8 @@ describe("research validation (test_rs_validation.py)", () => {
     "ftp://example.com/a",
     "https://localhost/a",
     "http://127.0.0.1/a",
+    "https://[fe80::1%25eth0]/x",
+    "https://example.com:65536/x",
     "https://user:pw@example.com/a",
     "https://intranet/a",
     "https://archive.ph/abc",

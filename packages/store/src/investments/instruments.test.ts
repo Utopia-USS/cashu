@@ -169,19 +169,4 @@ describe("inv_instruments + inv_instrument_aliases", () => {
       expect(guessed(store)).toEqual([1]);
     });
   });
-
-  it("declares the Python indexes", () => {
-    const store = openTestStore();
-    const idx = store.read<{ name: string }>(
-      "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('inv_instruments', 'inv_instrument_aliases')",
-    );
-    expect(idx.map((i) => i.name).sort()).toEqual(
-      expect.arrayContaining([
-        "inv_instrument_aliases_instrument_id_ix",
-        "inv_instrument_aliases_namespace_value_uq",
-        "inv_instruments_isin_ix",
-        "inv_instruments_symbol_ix",
-      ]),
-    );
-  });
 });

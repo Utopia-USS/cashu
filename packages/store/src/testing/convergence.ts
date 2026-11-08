@@ -1,16 +1,15 @@
-// The convergence driver of the shared scenarios (reference/testing/scenarios.ts): the production
-// store agrees with the executable reference fold and converges itself on every delivery order.
-// Used by convergence.test.ts (a few orders, fast tier) and convergence.exhaustive.test.ts (every
-// order). Synthetic names stand for gids; `toEnvelopes` maps them to valid gids and `project` maps
-// the store's view back to the reference's shape.
+// The convergence driver of the shared conflict-rule scenarios (testing/scenarios.ts): the store
+// folds each scenario to one view on every delivery order. Used by convergence.test.ts (a few
+// orders, fast tier) and convergence.exhaustive.test.ts (every order). Synthetic names stand for
+// gids; `toEnvelopes` maps them to valid gids and `project` maps the store's view back to the
+// scenarios' readable shape.
 import { expect } from "vitest";
-import { delivery } from "../events/v1/reference/testing/scenarios.js";
 import type { Store } from "../materialize.js";
 import { viewHash } from "../snapshot.js";
 import { expectCategoriesRecomputed } from "./categories-oracle.js";
 import { chunked } from "./random.js";
-import { materialize, type RefDet, type RefEvent } from "./reference/fold.js";
-import { Names, normalize, project, toEnvelopes } from "./reference-bridge.js";
+import { Names, project, type RefDet, type RefEvent, toEnvelopes } from "./scenario-bridge.js";
+import { delivery } from "./scenarios.js";
 import { openTestStore } from "./store.js";
 
 function openInvariant(store: Store): void {
@@ -22,15 +21,14 @@ function openInvariant(store: Store): void {
 
 /**
  * Deliver the scenario in each of `orders` (delivery k: single events for even k, random batches
- * for odd k, plus re-delivered duplicates); after every batch check the invariant and the derived
- * oracle (re-deriving everything changes nothing, S24 6); every order must project to the reference
- * view with one view hash, the effective categories must equal the domain recompute (D-24.1), and a
- * rebuild must keep that hash. Returns the projected view.
+ * for odd k, plus re-delivered duplicates); after every batch check the open-episode invariant and
+ * the derived oracle (re-deriving everything changes nothing); every order must project to one view
+ * with one view hash, the effective categories must equal the domain recompute, and a rebuild must
+ * keep that hash. Returns the projected view for the scenario's checks.
  */
 export function converge(events: readonly RefEvent[], det: RefDet, orders: readonly number[]) {
-  const expected = normalize(materialize(events, det));
   let hash: string | undefined;
-  let view = expected;
+  let view: ReturnType<typeof project> | undefined;
   for (const k of orders) {
     const names = new Names();
     const withDupes = delivery(toEnvelopes(events, names, det), k);
@@ -42,14 +40,15 @@ export function converge(events: readonly RefEvent[], det: RefDet, orders: reado
       expect(store.rederive().touchedTables).toEqual(new Set());
     }
     const projected = project(store, names);
-    expect(projected).toEqual(expected);
+    if (view === undefined) view = projected;
+    else expect(projected).toEqual(view);
     expectCategoriesRecomputed(store);
     const h = viewHash(store).hash;
-    if (hash === undefined) hash = h;
+    hash ??= h;
     expect(h).toBe(hash);
     store.rebuild();
     expect(viewHash(store).hash).toBe(hash);
-    view = projected;
   }
+  if (view === undefined) throw new Error("converge needs at least one order");
   return view;
 }

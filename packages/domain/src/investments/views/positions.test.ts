@@ -1,294 +1,295 @@
-/** Pure Python view oracles over the shared invented household; store loading has separate acceptance. */
-import { readFileSync } from "node:fs";
-import { expect, it } from "vitest";
+/** Portfolio read projections over a small hand-computable household (store loading has its own tests). */
+import { describe, expect, it } from "vitest";
 import { parseDateTime } from "../../dates.js";
-import { D, Decimal } from "../../decimal.js";
+import { AccountWrapper, AssetClass, TxnType } from "../domain/index.js";
+import { asProfileId, type Currency } from "../domain/values.js";
 import { annotateSubjects } from "../plan/annotations.js";
-import { Freshness, planInstant } from "../plan/freshness.js";
-import { formatInstant } from "../research/index.js";
-import { strategyStatus, usableConfig } from "../strategy/index.js";
+import { buildSnapshot, InMemoryFxLookup, valuePortfolio } from "../portfolio/index.js";
+import {
+  acc,
+  bar,
+  buildTxn,
+  buy,
+  cashTxn,
+  EUR,
+  fxRate,
+  instrument,
+  marketView,
+  PLN,
+  USD,
+} from "../portfolio/testing/fixtures.js";
 import { accountsView } from "./accounts.js";
 import { allocationView } from "./allocation.js";
 import { overviewView } from "./overview.js";
 import { positionChartView } from "./positionChart.js";
 import { positionDetailView } from "./positionDetail.js";
 import { positionsView } from "./positions.js";
-import {
-  ACCOUNT_FLOAT_PATHS,
-  ALLOCATION_FLOAT_PATHS,
-  OVERVIEW_FLOAT_PATHS,
-  POSITION_CHART_FLOAT_PATHS,
-  POSITION_DETAIL_FLOAT_PATHS,
-  POSITIONS_FLOAT_PATHS,
-  type PortfolioProjectionInput,
-  type PortfolioViewState,
-  type PositionHistory,
-  type ViewFacts,
-  type ViewOptions,
-  WATCHLIST_FLOAT_PATHS,
+import type {
+  BrokerageAccountFact,
+  PortfolioProjectionInput,
+  PortfolioViewState,
+  ViewFacts,
 } from "./types.js";
 import { watchlistView } from "./watchlist.js";
 
-interface Vector {
-  label: string;
-  view: string;
-  input: number;
-  expected: unknown;
-}
-const vectors = JSON.parse(
-  readFileSync(new URL("./fixtures/portfolio-views.json", import.meta.url), "utf8"),
-) as {
-  cases: Vector[];
-  inputs: Record<string, unknown>[];
-  pools: Record<InputSection | "priceBars" | "barSeries", unknown[]>;
-};
-type InputSection =
-  | "state"
-  | "facts"
-  | "strategyFiles"
-  | "options"
-  | "chartBars"
-  | "detailBars"
-  | "historyWire";
-interface StoredState {
-  data: Record<string, unknown>;
-  marketBarSeries: [string, number][];
-  historyBarSeries: [string, number][];
-}
-function pooled<T>(name: InputSection | "priceBars" | "barSeries", index: number): T {
-  const value = vectors.pools[name][index];
-  if (value === undefined) throw new Error("absent synthetic input pool entry");
-  return structuredClone(value) as T;
-}
-function expandedSeries(index: number): unknown[] {
-  return pooled<number[]>("barSeries", index).map((bar) => pooled("priceBars", bar));
-}
-/** Only the declared fixture fields are pooled; authored payload objects are never interpreted. */
-function expandedInput(index: number): Record<string, unknown> {
-  const value = structuredClone(vectors.inputs[index]);
-  if (value === undefined) throw new Error("absent synthetic input record");
-  const stored = pooled<StoredState>("state", value.state as number);
-  const state = stored.data,
-    market = state.market as Record<string, unknown>;
-  market.bars = { $map: stored.marketBarSeries.map(([id, ref]) => [id, expandedSeries(ref)]) };
-  state.historyBars = {
-    $map: stored.historyBarSeries.map(([id, ref]) => [id, expandedSeries(ref)]),
-  };
-  value.state = state;
-  for (const name of ["facts", "strategyFiles", "options", "historyWire"] as const) {
-    if (Object.hasOwn(value, name)) value[name] = pooled(name, value[name] as number);
-  }
-  for (const name of ["chartBars", "detailBars"] as const) {
-    if (Object.hasOwn(value, name))
-      value[name] = expandedSeries(pooled<number>(name, value[name] as number));
-  }
-  return value;
-}
-/** Tagged fixture values, not a production payload heuristic. */
-function decode(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(decode);
-  if (value !== null && typeof value === "object") {
-    const r = value as Record<string, unknown>;
-    if (typeof r.$decimal === "string") return D(r.$decimal);
-    if (typeof r.$datetime === "string") return parseDateTime(r.$datetime);
-    if (typeof r.$instant === "string") return planInstant(parseDateTime(r.$instant));
-    if (Array.isArray(r.$map))
-      return new Map(
-        r.$map.map((entry) => {
-          const [k, v] = entry as [unknown, unknown];
-          return [decode(k), decode(v)];
-        }),
-      );
-    if (Array.isArray(r.$set)) return new Set(r.$set.map(decode));
-    if (typeof r.$float === "string")
-      return r.$float === "inf" ? Infinity : r.$float === "-inf" ? -Infinity : NaN;
-    return Object.fromEntries(Object.entries(r).map(([k, v]) => [k, decode(v)]));
-  }
-  return value;
-}
-function selected(paths: readonly string[], actual: readonly string[]): boolean {
-  return paths.some((p) => {
-    const parts = p.split(".");
-    return (
-      parts.length === actual.length &&
-      parts.every((part, index) => part === "*" || part === actual[index])
-    );
+const AS_OF = "2026-03-31";
+const AAA = instrument("aaa", { name: "Alpha", symbol: "AAA", currency: PLN });
+const USX = instrument("usx", { name: "Usonia", symbol: "USX", currency: USD });
+const EUX = instrument("eux", { name: "Euria", symbol: "EUX", currency: EUR });
+const BND = instrument("bnd", {
+  name: "Bond",
+  symbol: "BND",
+  currency: PLN,
+  assetClass: AssetClass.BOND,
+});
+const account = (id: string, name: string): BrokerageAccountFact => ({
+  id: acc(id),
+  name,
+  broker: "xtb",
+  brokerName: "XTB",
+  wrapper: AccountWrapper.REGULAR,
+  currency: PLN,
+  importer: null,
+  hasMapping: false,
+  active: true,
+  snapshotDate: null,
+  lastImport: null,
+});
+const dividend = (accountId: string, amount: string, currency: Currency) =>
+  buildTxn(accountId, "aaa", {
+    type: TxnType.DIVIDEND,
+    tradeDate: "2026-03-10",
+    quantity: null,
+    price: null,
+    currency,
+    grossAmount: amount,
+    cashAmount: amount,
   });
-}
-function wire(value: unknown, paths: readonly string[], at: readonly string[] = []): unknown {
-  if (value instanceof Decimal) return selected(paths, at) ? value.toFloat() : value.toString();
-  if (value instanceof Freshness)
-    return {
-      state: value.state,
-      reasons: value.reasons.map((r) => ({
-        code: r.code,
-        at: r.at === null ? null : formatInstant(r.at),
-        ...(r.noteId === undefined ? {} : { note_id: r.noteId }),
-        ...(r.signalId === undefined ? {} : { signal_id: r.signalId }),
-        ...(r.alertId === undefined ? {} : { alert_id: r.alertId }),
-        ...(r.kind === undefined ? {} : { kind: r.kind }),
-        ...(r.relation === undefined ? {} : { relation: r.relation }),
-        ...(r.count === undefined ? {} : { count: r.count }),
-      })),
-    };
-  if (typeof value === "number" && !Number.isFinite(value))
-    return { $float: Number.isNaN(value) ? "nan" : value < 0 ? "-inf" : "inf" };
-  if (value instanceof Map)
-    return Object.fromEntries(
-      [...value].map(([k, v]) => [String(k), wire(v, paths, [...at, String(k)])]),
-    );
-  if (Array.isArray(value)) return value.map((v, index) => wire(v, paths, [...at, String(index)]));
-  if (value !== null && typeof value === "object")
-    return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, wire(v, paths, [...at, k])]),
-    );
-  return value;
-}
-function history(value: unknown): PositionHistory {
-  const h = value as {
-    theses: Record<string, unknown>[];
-    decisions: Record<string, unknown>[];
-    manual: Record<string, unknown>[];
-  };
-  const time = (v: unknown) => (v === null ? null : parseDateTime(String(v)));
-  const amount = (v: unknown) => (v === null ? null : D(String(v)));
+const TXNS = [
+  cashTxn("A", "2026-01-02", "5000"),
+  cashTxn("B", "2026-01-02", "1000"),
+  buy("A", "aaa", "2026-01-05", "10", "100"),
+  buy("B", "aaa", "2026-01-06", "5", "120"),
+  buy("A", "usx", "2026-01-05", "2", "50", { currency: USD }),
+  buy("A", "eux", "2026-01-05", "1", "10", { currency: EUR }),
+  buy("B", "bnd", "2026-01-07", "4", "100"),
+  dividend("A", "20", PLN),
+  dividend("B", "3", USD),
+];
+const BARS = [
+  bar("aaa", "2026-03-30", "140"),
+  bar("aaa", AS_OF, "150"),
+  bar("usx", AS_OF, "60"),
+  bar("eux", AS_OF, "12"),
+  bar("bnd", AS_OF, "100"),
+];
+const RATES = [fxRate(USD, "2026-01-05", "4"), fxRate(USD, AS_OF, "4")];
+const WWW = instrument("www", { name: "Watched", symbol: "WWW", currency: PLN });
+const WATCHED_BARS = [
+  bar("www", "2026-03-20", "50"),
+  bar("www", "2026-03-24", "40"),
+  bar("www", "2026-03-25", "45"),
+];
+const CLOCK = { now: parseDateTime(`${AS_OF}T12:00:00Z`), today: AS_OF, timeZone: "Europe/Warsaw" };
+
+function state(accountIds: readonly string[] | null = null): PortfolioViewState {
+  const vault = asProfileId("0b7e2c4d9a1f43e8b6c5d7e8f9a0b1c2");
+  const instruments = [AAA, USX, EUX, BND, WWW];
+  const snapshot = buildSnapshot(vault, TXNS, AS_OF);
+  const market = marketView(AS_OF, { instruments, bars: BARS });
+  const filter = accountIds === null ? null : accountIds.map(acc);
+  const valued = valuePortfolio(snapshot, market, new InMemoryFxLookup(RATES), PLN, 5, {
+    accountIds: filter === null ? null : new Set(filter),
+  });
   return {
-    theses: h.theses.map((t) => ({
-      id: t.id,
-      instrumentId: t.instrument_id,
-      entryType: t.entry_type,
-      thesis: t.thesis,
-      invalidation: t.invalidation,
-      exitPlan: t.exit_plan,
-      sizePlan: t.size_plan,
-      reviewedAt: time(t.reviewed_at),
-      createdAt: time(t.created_at),
-      updatedAt: time(t.updated_at),
-      coreChangedAt: time(t.core_changed_at),
-      exitPlanChangedAt: time(t.exit_plan_changed_at),
-    })) as PositionHistory["theses"],
-    decisions: h.decisions.map((d) => ({
-      id: d.id,
-      signalId: d.signal_id,
-      signalIds: d.signal_ids,
-      instrumentId: d.instrument_id,
-      accountId: d.account_id,
-      action: d.action,
-      quantity: amount(d.quantity),
-      price: amount(d.price),
-      currency: d.currency,
-      reason: d.reason,
-      createdAt: time(d.created_at),
-    })) as PositionHistory["decisions"],
-    manualValuations: h.manual.map((v) => ({
-      id: v.id,
-      instrumentId: v.instrument_id,
-      asOf: v.as_of,
-      unitValue: amount(v.unit_value),
-      currency: v.currency,
-      note: v.note,
-    })) as PositionHistory["manualValuations"],
+    vault,
+    asOf: AS_OF,
+    base: PLN,
+    accounts: [account("A", "Main"), account("B", "Spare")],
+    accountFilter: filter,
+    txns: TXNS,
+    snapshot,
+    market,
+    historyBars: new Map([...market.bars, [WWW.id, WATCHED_BARS]]),
+    instruments: new Map(instruments.map((i) => [i.id, i])),
+    valued,
+    allocation: null,
+    config: null,
   };
 }
-function input(v: Vector) {
-  const raw = decode(expandedInput(v.input)) as Record<string, unknown>,
-    status = strategyStatus(
-      raw.strategyFiles as Parameters<typeof strategyStatus>[0],
-      raw.strategyLatest as Parameters<typeof strategyStatus>[1],
-    );
-  const state = { ...(raw.state as PortfolioViewState), config: usableConfig(status) },
-    facts = raw.facts as ViewFacts,
-    options = raw.options as ViewOptions;
-  const base: PortfolioProjectionInput = {
-    state,
+const FACTS: ViewFacts = {
+  clock: CLOCK,
+  subjects: [],
+  signals: [],
+  alerts: [],
+  watched: [],
+  unread: new Map(),
+  lastRun: null,
+  lastGoodRunId: null,
+};
+function input(
+  s: PortfolioViewState = state(),
+  facts: ViewFacts = FACTS,
+): PortfolioProjectionInput {
+  return {
+    state: s,
     facts,
-    options,
-    annotations: annotateSubjects(facts.subjects, facts.clock, options.lang),
+    options: { lang: "en", forOwner: true, accounts: null },
+    annotations: annotateSubjects(facts.subjects, facts.clock, "en"),
   };
-  return { raw, status, base };
 }
-function project(v: Vector) {
-  const { raw, status, base } = input(v);
-  switch (v.view) {
-    case "positions":
-      return wire(positionsView(base), POSITIONS_FLOAT_PATHS);
-    case "allocation_view":
-      return wire(allocationView(base), ALLOCATION_FLOAT_PATHS);
-    case "accounts_view":
-      return wire(
-        accountsView(base.state.accounts, raw.withoutState ? null : base.state),
-        ACCOUNT_FLOAT_PATHS,
-      );
-    case "overview":
-      return wire(
-        overviewView({
-          ...base,
-          strategyStatus: status,
-          newestRateDate: raw.newestRateDate as string | null,
-          newestBarDate: raw.newestBarDate as string | null,
-        }),
-        OVERVIEW_FLOAT_PATHS,
-      );
-    case "watchlist_view":
-      return wire(watchlistView(base), WATCHLIST_FLOAT_PATHS);
-    case "position_detail":
-      return wire(
-        positionDetailView({
-          ...base,
-          instrument: raw.instrument as Parameters<typeof positionDetailView>[0]["instrument"],
-          detailBars: raw.detailBars as Parameters<typeof positionDetailView>[0]["detailBars"],
-          chartBars: raw.chartBars as Parameters<typeof positionDetailView>[0]["chartBars"],
-          history: history(raw.historyWire),
-        }),
-        POSITION_DETAIL_FLOAT_PATHS,
-      );
-    case "position_chart":
-      return wire(
-        positionChartView({
-          ...base,
-          instrument: raw.instrument as Parameters<typeof positionChartView>[0]["instrument"],
-          bars: raw.chartBars as Parameters<typeof positionChartView>[0]["bars"],
-        }),
-        POSITION_CHART_FLOAT_PATHS,
-      );
-    default:
-      throw new Error("unknown synthetic projection");
-  }
-}
-it.each(vectors.cases)("matches actual Python $label $view", (v) =>
-  expect(project(v)).toEqual(v.expected),
-);
-it("retains first input order when distinct Decimal values have equal Python float presentation keys", () => {
-  const v = vectors.cases.find((v) => v.label === "wire_float_tie" && v.view === "positions");
-  expect(v).toBeDefined();
-  const result = project(v!) as { positions: { instrument: { id: string }; value: number }[] };
-  expect(result.positions.map((p) => p.instrument.id)).toEqual(["1", "2"]);
-  expect(result.positions[0]?.value).toBe(result.positions[1]?.value);
+/** Exact decimals of the view as plain numbers (every amount here is hand-computable). */
+const num = (value: { toString(): string } | null | undefined) =>
+  value === null || value === undefined ? null : Number(value.toString());
+
+describe("positions", () => {
+  it("groups accounts per instrument, sorts by value and never sums dividend currencies", () => {
+    const view = positionsView(input());
+    expect(view.positions.map((p) => [p.instrument.id, num(p.value)])).toEqual([
+      ["aaa", 2250],
+      ["usx", 480],
+      ["bnd", 400],
+      ["eux", null],
+    ]);
+    const [aaa, usx] = view.positions;
+    expect([aaa?.quantity, aaa?.cost, aaa?.unrealized].map(num)).toEqual([15, 1600, 650]);
+    expect(aaa?.unrealized_pct).toBe(0.40625);
+    expect(aaa?.accounts.map((a) => [a.account_id, num(a.value), a.unrealized_pct])).toEqual([
+      ["A", 1500, 0.5],
+      ["B", 750, 0.25],
+    ]);
+    expect([...(aaa?.dividends ?? [])].map(([c, v]) => [c, num(v)])).toEqual([
+      ["PLN", 20],
+      ["USD", 3],
+    ]);
+    // A lot's result is in its own currency (USD), not converted.
+    expect(usx?.lots.map((l) => [l.currency, num(l.result)])).toEqual([["USD", 20]]);
+    expect(num(view.total)).toBe(7162);
+  });
+
+  it("leaves a holding without an FX rate unvalued instead of counting it as zero", () => {
+    const eux = positionsView(input()).positions.find((p) => p.instrument.id === "eux");
+    expect(eux).toMatchObject({ missing_fx_currency: "EUR", value: null, weight: null });
+    expect(eux?.unrealized).toBeNull();
+    expect(eux?.unrealized_pct).toBeNull();
+  });
+
+  it("an account filter scopes holdings and dividends", () => {
+    const aaa = positionsView(input(state(["A"]))).positions[0];
+    expect(aaa?.accounts.map((a) => a.account_id)).toEqual(["A"]);
+    expect([...(aaa?.dividends ?? [])].map(([c, v]) => [c, num(v)])).toEqual([["PLN", 20]]);
+  });
 });
-it("keeps detail empty730day high distinct from full-history chart high and last", () => {
-  const detail = vectors.cases.find(
-      (v) => v.label === "sparse_chart_history" && v.view === "position_detail",
-    ),
-    chart = vectors.cases.find(
-      (v) => v.label === "sparse_chart_history" && v.view === "position_chart",
+
+describe("allocation and accounts", () => {
+  it("shares by asset class include cash and stay without buckets when there is no strategy", () => {
+    const view = allocationView(input());
+    expect(view.by_asset_class.map((r) => [r.key, num(r.value), r.weight])).toEqual([
+      ["cash", 4032, 0.562971],
+      ["equity", 2730, 0.381178],
+      ["bond", 400, 0.05585],
+    ]);
+    expect(view).toMatchObject({
+      has_strategy: false,
+      buckets: [],
+      unclassified: null,
+      band: null,
+    });
+  });
+
+  it("values accounts with their cash and hides out-of-scope accounts", () => {
+    const all = accountsView(state().accounts, state());
+    expect(all.map((a) => [a.id, num(a.value), a.share])).toEqual([
+      ["A", 6000, 0.837755],
+      ["B", 1162, 0.162245],
+    ]);
+    const scoped = accountsView(state().accounts, state(["A"]));
+    expect(scoped.map((a) => [a.id, num(a.value)])).toEqual([
+      ["A", 6000],
+      ["B", null],
+    ]);
+    expect(accountsView(state().accounts, null).map((a) => a.value)).toEqual([null, null]);
+  });
+});
+
+describe("overview", () => {
+  it("computes unrealized only over holdings with both value and cost, and lists missing FX", () => {
+    const view = overviewView({
+      ...input(),
+      strategyStatus: {
+        config: null,
+        errors: [],
+        warnings: [],
+      } as unknown as Parameters<typeof overviewView>[0]["strategyStatus"],
+      newestRateDate: AS_OF,
+      newestBarDate: AS_OF,
+    });
+    expect([view.kpis.unrealized.amount, view.kpis.unrealized.cost].map(num)).toEqual([730, 2400]);
+    expect(view.kpis.cash.weight).toBe(0.562971);
+    expect(view.freshness.fx.missing).toEqual(["EUR"]);
+  });
+});
+
+describe("chart and detail", () => {
+  const sparse = [bar("aaa", "2023-01-02", "9"), bar("aaa", "2023-06-01", "7")];
+  it("the chart keeps the 52-week high and last close from full history beyond the drawn window", () => {
+    const chart = positionChartView({ ...input(), instrument: AAA, bars: sparse });
+    expect(chart.series).toEqual([]);
+    expect(num(chart.high_52w)).toBe(9);
+    expect(chart.last).toMatchObject({ date: "2023-06-01" });
+    expect(num(chart.cost?.average)).toBeCloseTo(1600 / 15, 9);
+  });
+
+  it("the detail high comes only from its own clipped series", () => {
+    const detail = positionDetailView({
+      ...input(),
+      instrument: AAA,
+      detailBars: [],
+      chartBars: sparse,
+      history: { theses: [], decisions: [], manualValuations: [] },
+    });
+    expect(detail.high_52w).toBeNull();
+    expect(detail.entry.state).toBe("held");
+    expect(detail.transactions.map((t) => t.type)).toEqual(["buy", "buy", "dividend", "dividend"]);
+  });
+});
+
+describe("watchlist", () => {
+  const watch = {
+    id: "w1",
+    instrumentId: WWW.id,
+    note: null,
+    tags: [],
+    source: "owner",
+    addedAt: CLOCK.now,
+  };
+  const alert = (id: string, kind: string, level: number) => ({
+    id,
+    instrumentId: WWW.id,
+    kind,
+    params: { level },
+    title: id,
+    source: "owner",
+    status: "active" as const,
+    severity: "info" as const,
+    polarity: "neutral" as const,
+    lastTriggeredAt: null,
+    expiresAt: null,
+    snoozedUntil: null,
+    createdAt: CLOCK.now,
+    updatedAt: CLOCK.now,
+  });
+  it("shows day change, distance from the 52-week high, staleness and the nearest live alert", () => {
+    const [row] = watchlistView(
+      input(state(), {
+        ...FACTS,
+        watched: [watch],
+        alerts: [alert("far", "price_above", 54), alert("near", "price_below", 40.5)],
+      }),
     );
-  expect(detail).toBeDefined();
-  expect(chart).toBeDefined();
-  expect((project(detail!) as { high_52w: unknown }).high_52w).toBeNull();
-  const result = project(chart!) as { high_52w: unknown; last: unknown; series: unknown[] };
-  expect(result.high_52w).toBe(9);
-  expect(result.last).not.toBeNull();
-  expect(result.series).toEqual([]);
-});
-it("serializes declared nonnull plan_at explicitly without guessing DateTime-shaped payloads", () => {
-  const v = vectors.cases.find(
-    (v) =>
-      v.view === "positions" &&
-      (v.expected as { positions?: { instrument: { plan_at: unknown } }[] }).positions?.some(
-        (p) => p.instrument.plan_at !== null,
-      ),
-  );
-  expect(v).toBeDefined();
-  const result = project(v!) as { positions: { instrument: { plan_at: unknown } }[] };
-  expect(result.positions.some((p) => typeof p.instrument.plan_at === "string")).toBe(true);
+    expect(row?.held).toBe(false);
+    expect(row?.price).toMatchObject({ change_1d: 0.125, from_high_52w: -0.1, stale: true });
+    expect(num(row?.price?.high_52w)).toBe(50);
+    expect(row?.alerts.nearest).toMatchObject({ alert_id: "near", distance_pct: -0.1 });
+  });
 });

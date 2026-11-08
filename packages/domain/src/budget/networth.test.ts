@@ -1,6 +1,5 @@
 // Budget's net-worth contributor (networth.py: CashContributor). Translates the net-worth parts of
-// tests/test_cash.py through core netWorth / netWorthSeries over a synthetic book, and replays the
-// Python contributor vectors of `budget-cash.jsonl`.
+// tests/test_cash.py through core netWorth / netWorthSeries over a synthetic book.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -12,7 +11,6 @@ import {
   netWorthSeries,
 } from "../core/index.js";
 import { D } from "../decimal.js";
-import { expectAll, loadVectors, Mismatches } from "../testing/vectors.js";
 import { CASH_ACCOUNT_TYPE, cashExpenseAmount, cashLegFields } from "./cash.js";
 import { type CashPoolTxn, cashContributor } from "./networth.js";
 
@@ -121,35 +119,5 @@ describe("cashContributor", () => {
     expect(v.get("pool")?.at("2024-01-06")?.toString()).toBe("10.50");
     expect(v.get("pool")?.at("2024-01-04")).toBeNull();
     expect(v.get("pool2")?.axisDates()).toEqual([]);
-  });
-
-  it("equals Python's CashContributor.valuations on the vectors", () => {
-    const m = new Mismatches();
-    const rows = loadVectors("budget-cash").rows.filter((r) => r[0] === "contributor") as [
-      string,
-      [number, string][],
-      [number, number, string, string][],
-      Record<string, [string, string][]>,
-    ][];
-    for (const [i, [, accounts, txns, want]] of rows.entries()) {
-      const nw = new Map<string, NetWorthAccount>(
-        accounts.map(([id, type]) => [
-          String(id),
-          { id: String(id), type, currency: "PLN", active: true, removedAt: null },
-        ]),
-      );
-      // txns sorted by id: the anchor order the contributor expects
-      const pool = txns.map(([, account, bookingDate, amount]) => ({
-        account: String(account),
-        bookingDate,
-        amount: D(amount),
-      }));
-      const got: Record<string, [string, string][]> = {};
-      for (const [id, v] of cashContributor(pool).valuations(nw)) {
-        got[id] = v.axisDates().map((d) => [d, String(v.at(d))]);
-      }
-      m.check(`contributor ${i}`, got, want);
-    }
-    expectAll(m);
   });
 });

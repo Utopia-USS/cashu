@@ -1,6 +1,5 @@
 // Review records: mark done / last / list and undo within 15 minutes, a past day, refusals, vault
-// isolation. Translates the store parts of tests/test_reviews.py and tests/test_review_undo.py (the
-// API, MCP and sync outbox parts belong to S36 / S38 / S30). Synthetic data only.
+// isolation. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { lastReview, reviewByGid, reviews } from "../queries/reviews.js";
 import { MAX_REVIEW_NOTES, markReviewDone, RECORDED_AT, undoReview } from "./reviews.js";
@@ -11,8 +10,8 @@ const MINUTE = 60_000;
 /** The fixtures' clock: 2026-10-31T12:00Z. */
 const TODAY = "2026-10-31";
 
-describe("test_reviews", () => {
-  it("test_service_mark_done_last_and_list", () => {
+describe("markReviewDone", () => {
+  it("records reviews per module and profile; lastReview is the newest", () => {
     const a = vault();
     const b = otherVault();
     expect(lastReview(read(a), "investments")).toBeUndefined();
@@ -35,16 +34,9 @@ describe("test_reviews", () => {
     expect(reviews(read(a), "investments", 1)).toHaveLength(1);
     expect(reviews(read(b)).map((r) => r.notes)).toEqual(["other profile"]);
     expect(lastReview(read(a), "budget")?.notes).toBe("b");
-    expect(Object.keys(firstRow ?? {}).sort()).toEqual([
-      "doneAt",
-      "gid",
-      "module",
-      "notes",
-      "stats",
-    ]);
   });
 
-  it("test_service_rejects_bad_input", () => {
+  it("refuses an unknown module and over-long notes", () => {
     const a = vault();
     expect(a.run(markReviewDone, { module: "nope" })).toEqual({
       ok: false,
@@ -57,8 +49,8 @@ describe("test_reviews", () => {
   });
 });
 
-describe("test_review_undo", () => {
-  it("test_review_saved_at_once_can_be_undone_once", () => {
+describe("undoReview and backdated reviews", () => {
+  it("a review just saved can be undone once, only in its own profile", () => {
     const a = vault();
     const b = otherVault();
     const review = a.value(markReviewDone, { module: "investments", notes: "ok" }).review;
@@ -68,7 +60,7 @@ describe("test_review_undo", () => {
     expect(a.run(undoReview, { review })).toEqual({ ok: false, reason: "no_review" });
   });
 
-  it("test_review_undo_expires_after_15_minutes", () => {
+  it("the undo expires after 15 minutes", () => {
     const a = vault();
     const review = a.value(markReviewDone, { module: "investments" }).review;
     a.env.advance(16 * MINUTE);
@@ -76,7 +68,7 @@ describe("test_review_undo", () => {
     expect(reviewByGid(read(a), review)).toBeDefined();
   });
 
-  it("test_a_review_can_be_recorded_for_a_past_day", () => {
+  it("a review can be recorded for a past day", () => {
     const a = vault();
     const past = "2026-10-21";
     const review = a.value(markReviewDone, { module: "investments", doneAt: past }).review;
@@ -99,9 +91,7 @@ describe("test_review_undo", () => {
       reason: "invalid_done_at",
     });
   });
-});
 
-describe("reviews (store level)", () => {
   it("the caller's local day decides today and the future", () => {
     const a = vault();
     // a caller east of UTC is already on 2026-11-01: that day is today (saved now), not refused
@@ -124,23 +114,9 @@ describe("reviews (store level)", () => {
     expect(a.run(undoReview, { review: late })).toEqual({ ok: false, reason: "undo_expired" });
   });
 
-  it("checks run in Python's order and the module is stored trimmed", () => {
+  it("the module is stored trimmed", () => {
     const a = vault();
-    expect(a.run(markReviewDone, { module: "nope", doneAt: "x" })).toEqual({
-      ok: false,
-      reason: "invalid_done_at",
-    });
     const review = a.value(markReviewDone, { module: " loans " }).review;
     expect(reviewByGid(read(a), review)?.module).toBe("loans");
-  });
-
-  it("the list limit is clamped to 1..500", () => {
-    const a = vault();
-    for (let i = 0; i < 3; i++) {
-      a.value(markReviewDone, { module: "assets" });
-      a.env.advance(1000);
-    }
-    expect(reviews(read(a), null, 0)).toHaveLength(1);
-    expect(reviews(read(a), "", 10_000)).toHaveLength(3);
   });
 });

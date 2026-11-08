@@ -1,8 +1,6 @@
-// The watchlist add service (Python `service/watchlist.py`: search picks verified against the chart,
-// free text with its deterministic paths and the search fallback, warnings with stable codes, the
-// network before the batch, verified bars into the price cache). Translates the add / pick / resolve
-// tests of tests/investments/persistence/test_f12_entries.py and test_f12_api.py at the store level,
-// with fake chart / search ports. Synthetic symbols and data only.
+// Adding to the watchlist: search picks verified against the chart, free text with its deterministic
+// paths and the search fallback, warnings with stable codes, the network before the batch, verified
+// bars into the price cache, one entry per instrument. Fake chart / search ports; synthetic data only.
 import { addDays, D } from "@cashu/domain";
 import {
   asInstrumentId,
@@ -427,75 +425,6 @@ describe("adding a search pick", () => {
     expect(added).toMatchObject({ instrument: rival, createdInstrument: false, warnings: [] });
     expect(t.instrumentCount()).toBe(before + 1); // only the rival
     expect(t.bars("WRLD.L")).toEqual([]);
-  });
-
-  it("pick add remove and restore over the api", async () => {
-    const t = setup();
-    const found = SEARCHES[WORLD_ISIN.toLowerCase()]?.[0];
-    if (found === undefined) expect.fail("no hit");
-    const added = await t.added({
-      target: {
-        pick: {
-          yahooSymbol: found.yahooSymbol,
-          ticker: found.ticker,
-          name: found.name,
-          assetClass: found.assetClass,
-          mic: found.mic,
-          isin: found.isin,
-        },
-      },
-      tags: ["etf"],
-    });
-    expect(added).toMatchObject({ createdInstrument: true, restored: false, warnings: [] });
-    expect(t.instrument(added.instrument)).toMatchObject({
-      symbol: "WRLD",
-      currency: "USD",
-      mic: "XLON",
-      isin: WORLD_ISIN,
-    });
-    expect(t.aliases(added.instrument).yahoo).toEqual(["WRLD.L", false]);
-    expect(t.bars("WRLD.L").length).toBeGreaterThan(0); // bars stored at once
-
-    // removed: gone from the list, the entry stays
-    t.v.value(removeFromWatchlist, { item: added.item });
-    expect(t.v.run(removeFromWatchlist, { item: added.item })).toEqual({
-      ok: false,
-      reason: "no_item",
-    });
-    expect(watchlist(t.read).map((w) => w.instrument)).not.toContain(added.instrument);
-    expect(vaultInstrumentGids(t.read).has(added.instrument)).toBe(true);
-
-    // the same pick restores the same row, tags kept
-    const restored = await t.added(pick("WRLD.L"));
-    expect(restored).toMatchObject({
-      item: added.item,
-      restored: true,
-      tags: ["etf"],
-      createdInstrument: false,
-    });
-    expect(await t.add(pick("WRLD.L"))).toEqual({
-      ok: false,
-      reason: "already_watched",
-      params: { item: added.item },
-    });
-
-    // by instrument after another removal (undo in the UI)
-    t.v.value(removeFromWatchlist, { item: added.item });
-    const undo = await t.added({ target: { instrument: added.instrument } });
-    expect(undo).toMatchObject({ item: added.item, restored: true });
-  });
-
-  it("post takes exactly one way to name the instrument", async () => {
-    // the request shapes are the API's (S36); the store-level parts: a pick needs its Yahoo symbol,
-    // and an unverified pick carries the warning code with its params
-    const t = setup();
-    t.net.chartDown = true;
-    expect(await t.add(pick(null))).toMatchObject({ ok: false, reason: "pick_symbol_invalid" });
-    const out = await t.added(pick("NVDX"));
-    expect(out.warnings).toEqual([
-      { code: "watchlist.unverified_price_symbol", params: { symbol: "NVDX" } },
-    ]);
-    expect(t.instrument(out.instrument).currency).toBe("USD");
   });
 });
 

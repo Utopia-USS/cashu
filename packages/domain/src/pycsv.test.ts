@@ -1,14 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { CSV_FIELD_LIMIT, type CsvResult, readCsv, readCsvLines } from "./pycsv.js";
-import { loadVectors, Mismatches } from "./testing/vectors.js";
+// Python csv.reader semantics: every bank CSV parser (budget/ingestion/statements/*) reads through it.
+import { CSV_FIELD_LIMIT, readCsv, readCsvLines } from "./pycsv.js";
 
-const vectors = loadVectors("budget-csv");
-
-function asVector(r: CsvResult): unknown[] {
-  return r.ok ? ["ok", r.rows, r.lineNum] : ["err", r.reason, r.lineNum];
-}
-
-describe("csv.reader vectors (the retired Python vectors_budget.py)", () => {
+describe("readCsv", () => {
   it("bounds completed records and retained columns while preserving quoted newlines and discarded-field validation", () => {
     expect(
       readCsv('a,b,c,d\n"e\nf",g,h,i\n', { delimiter: ",", maxColumns: 0, collectWidths: true }),
@@ -39,60 +33,53 @@ describe("csv.reader vectors (the retired Python vectors_budget.py)", () => {
       lineNum: 3,
     });
   });
-  it("random texts, every delimiter, strict on / off, both line modes", () => {
-    const m = new Mismatches();
-    for (const row of vectors.rows) {
-      if (row[0] === "text") {
-        const [, text, delimiter, strict, lines, want] = row as [
-          string,
-          string,
-          string,
-          boolean,
-          "lf" | "universal",
-          unknown,
-        ];
-        m.check(
-          JSON.stringify(row.slice(1, 5)),
-          asVector(readCsv(text, { delimiter, strict, lines })),
-          want,
-        );
-      } else if (row[0] === "lines") {
-        const [, lines, delimiter, strict, want] = row as [
-          string,
-          string[],
-          string,
-          boolean,
-          unknown,
-        ];
-        m.check(
-          JSON.stringify(row.slice(1, 4)),
-          asVector(readCsvLines(lines, { delimiter, strict })),
-          want,
-        );
-      }
-    }
-    expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBe(79);
+
+  it("quotes, doubled quotes and the delimiter inside quotes, like csv.reader", () => {
+    expect(readCsv('a;"b;c";"d""e"\n;\n', { delimiter: ";" })).toEqual({
+      ok: true,
+      rows: [
+        ["a", "b;c", 'd"e'],
+        ["", ""],
+      ],
+      lineNum: 2,
+    });
+    expect(readCsvLines(['x,"y\n', 'z",w\n'], { delimiter: "," })).toEqual({
+      ok: true,
+      rows: [["x", "y\nz", "w"]],
+      lineNum: 2,
+    });
   });
 
-  it("the field size limit (131072 code points) fails like Python", () => {
-    expect(CSV_FIELD_LIMIT).toBe(131072);
-    for (const row of vectors.rows.filter((r) => r[0] === "limit")) {
-      const [, n, quoted, want] = row as [string, number, boolean, unknown[]];
-      const long = "x".repeat(n);
-      const r = readCsv(`${quoted ? `"${long}"` : long}\na,b\n`, { delimiter: "," });
-      const got = r.ok
-        ? [
-            "ok",
-            r.rows.map((cells) =>
-              cells.length === 1 && (cells[0] as string).length > 2
-                ? [(cells[0] as string).length]
-                : cells,
-            ),
-            r.lineNum,
-          ]
-        : ["err", r.reason, r.lineNum];
-      expect(got).toEqual(want);
-    }
+  it("strict refuses a stray character after a quote and an unterminated quote", () => {
+    expect(readCsv('a,"b"x\n', { delimiter: ",", strict: true })).toMatchObject({
+      ok: false,
+      reason: "quote_expected",
+    });
+    expect(readCsv('a,"b"x\n', { delimiter: ",", strict: false })).toMatchObject({
+      ok: true,
+      rows: [["a", "bx"]],
+    });
+    expect(readCsv('"abc', { delimiter: ",", strict: true })).toMatchObject({
+      ok: false,
+      reason: "unexpected_eof",
+    });
+  });
+
+  it("a bare \\r splits lines only in universal mode", () => {
+    expect(readCsv("a\rb\n", { delimiter: ",", lines: "lf" })).toMatchObject({
+      ok: false,
+      reason: "newline_in_unquoted",
+    });
+    expect(readCsv("a\rb\n", { delimiter: ",", lines: "universal" })).toMatchObject({
+      ok: true,
+      rows: [["a"], ["b"]],
+    });
+  });
+
+  it("the field size limit is 131072 code points", () => {
+    const at = readCsv(`${"x".repeat(CSV_FIELD_LIMIT)}\na,b\n`, { delimiter: "," });
+    expect(at.ok).toBe(true);
+    const over = readCsv(`"${"x".repeat(CSV_FIELD_LIMIT + 1)}"\na,b\n`, { delimiter: "," });
+    expect(over).toEqual({ ok: false, reason: "field_limit", lineNum: 1 });
   });
 });

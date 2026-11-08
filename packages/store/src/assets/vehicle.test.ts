@@ -1,4 +1,4 @@
-// Python assets.service.set_vehicle: one transaction, name-key reuse and valuation before commit.
+// The vehicle command: one append, name-key reuse and valuation before commit.
 import { describe, expect, it } from "vitest";
 import { runCommand, storeWriter } from "../command.js";
 import { createProfile, removeAccount, renameAccount } from "../core/commands.js";
@@ -132,16 +132,11 @@ describe("atomic vehicle command", () => {
     }
   });
 
-  it("keeps an empty name's Python fallback and values a future purchase at zero", () => {
+  it("values a future purchase at zero", () => {
     const { store, env } = setup();
     try {
-      const result = run(store, env, setVehicle, {
-        ...input,
-        name: "",
-        purchaseDate: "2026-11-01",
-      });
-      expect(result).toMatchObject({ ok: true, value: { name: "manual", value: "0.00" } });
-      expect(vehicleAccount(store.read.bind(store), "")?.externalId).toBe("vehicle:");
+      const result = run(store, env, setVehicle, { ...input, purchaseDate: "2026-11-01" });
+      expect(result).toMatchObject({ ok: true, value: { value: "0.00" } });
     } finally {
       store.detach();
     }

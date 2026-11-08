@@ -1,6 +1,8 @@
 // Performance smoke on the spike's workload shape (spike-result.md: 60k unique transactions + 2k
 // duplicate re-imports, 1,900 merchant rule edits over 400 merchants, 300 decisions; 3 accounts).
-// Synthetic data. Budgets are generous ceilings for CI machines; measured numbers (wall and CPU, same
+// Synthetic data. An announced benchmark (about 20 s): CASHU_PERF=1 runs it, the default tier skips
+// it (the rules it exercises, rebuild == incremental and partial re-folds on upgrade, have their own
+// fast tests). Budgets are generous ceilings for CI machines; measured numbers (wall and CPU, same
 // run as the spike's own benchmark) are in the cashu-ts-architecture performance reference. With
 // CASHU_PERF_DB=<path> the store runs on a database file with the spike's pragmas (WAL, synchronous
 // NORMAL); otherwise in memory. One `S23B_PERF {...}` line reports every phase.
@@ -226,154 +228,156 @@ function perfStore() {
   return { store: openTestStore({ driver: betterSqlite3Driver(db) }), mode: "file" };
 }
 
-describe("perf smoke: 64k events", () => {
-  it("bulk apply, rebuild, incremental, late re-fold, identity re-fold", {
-    timeout: 300_000,
-  }, () => {
-    const { events, f, next } = workload();
-    const perf = perfStore();
-    const mode = perf.mode;
-    let store = perf.store;
-    let t0 = now();
-    for (let i = 0; i < events.length; i += 1000) store.applyEnvelopes(events.slice(i, i + 1000));
-    const bulk = since(t0);
-    // 60k imports + 300 cash expenses + the legs of the 133 manual cash_withdrawal claims on the
-    // two PLN accounts (the EUR account has no cash pool)
-    expect(store.read("SELECT COUNT(*) AS n FROM transactions")).toEqual([{ n: 60_433 }]);
-    expect(store.read("SELECT COUNT(*) AS n FROM category_rules")).toEqual([{ n: 400 }]);
-    const hash = viewHash(store).hash;
+describe("perf: 64k events (announced benchmark)", () => {
+  it.skipIf(process.env.CASHU_PERF !== "1")(
+    "bulk apply, rebuild, incremental, late re-fold, identity re-fold",
+    { timeout: 300_000 },
+    () => {
+      const { events, f, next } = workload();
+      const perf = perfStore();
+      const mode = perf.mode;
+      let store = perf.store;
+      let t0 = now();
+      for (let i = 0; i < events.length; i += 1000) store.applyEnvelopes(events.slice(i, i + 1000));
+      const bulk = since(t0);
+      // 60k imports + 300 cash expenses + the legs of the 133 manual cash_withdrawal claims on the
+      // two PLN accounts (the EUR account has no cash pool)
+      expect(store.read("SELECT COUNT(*) AS n FROM transactions")).toEqual([{ n: 60_433 }]);
+      expect(store.read("SELECT COUNT(*) AS n FROM category_rules")).toEqual([{ n: 400 }]);
+      const hash = viewHash(store).hash;
 
-    t0 = now();
-    store.rebuild();
-    const rebuild = since(t0);
-    expect(viewHash(store).hash).toBe(hash);
+      t0 = now();
+      store.rebuild();
+      const rebuild = since(t0);
+      expect(viewHash(store).hash).toBe(hash);
 
-    // Opens after an app update (events.md 7.9, S23d), same run. "Before" = what every definitions
-    // change cost until S23d: the whole view with refs re-indexed, inside the open.
-    const reopen = (modules: readonly StoreModule[]) => {
-      store.detach();
-      const t = now();
-      store = Store.open({ driver: store.driver, vault: TEST_VAULT, salt: TEST_SALT, modules });
-      return since(t);
-    };
-    const opens = Array.from({ length: 5 }, () => reopen(builtinModules()).cpu).sort(
-      (a, b) => a - b,
-    );
-    expect(store.lastRebuild).toBeNull();
-    t0 = now();
-    store.rebuild({ reindex: true });
-    const upgradeBefore = since(t0);
-    const rulesBumped = bumpVersion(builtinModules(), "budget.category_rules");
-    const upgradeRules = reopen(rulesBumped);
-    expect(store.lastRebuild?.scope).toBe("partial");
-    expect(viewHash(store).hash).toBe(hash);
-    const upgradeTxns = reopen(bumpVersion(rulesBumped, "budget.transactions"));
-    expect(store.lastRebuild?.scope).toBe("full");
-    expect(viewHash(store).hash).toBe(hash);
-
-    t0 = now();
-    store.applyEnvelopes(
-      Array.from({ length: 10 }, (_, k) =>
-        f.make(
-          "txn.categorySet",
-          (events[3 + k] as TestEnvelope).gid,
-          { category: "fuel", source: "manual_txn" },
-          { wall: next() },
-        ),
-      ),
-    );
-    const edits10 = since(t0);
-
-    // a day's events (performance.md budget: <= 100 ms): 200 imports and a few claims
-    const day = Array.from({ length: 200 }, (_, n) => {
-      const a = ACCOUNTS[n % 3] as (typeof ACCOUNTS)[number];
-      const hash = bytesToHex(sha1(utf8ToBytes(`perf-day-${n}`)));
-      return f.make(
-        "txn.imported",
-        detGid(TEST_SALT, "transactions", [a.gid, hash, "0"]),
-        {
-          account: a.gid,
-          batch: null,
-          bookingDate: "2025-01-02",
-          valueDate: null,
-          amount: "-10.00",
-          currency: a.currency,
-          counterpartyName: `SKLEP ${n % 400}`,
-          counterpartyIban: null,
-          description: "zakup",
-          reference: null,
-          bankTransactionId: null,
-          source: "csv",
-          dedupHash: hash,
-          occurrence: 0,
-          raw: {},
-        },
-        { wall: next() },
+      // Opens after an app update (events.md 7.9, S23d), same run. "Before" = what every definitions
+      // change cost until S23d: the whole view with refs re-indexed, inside the open.
+      const reopen = (modules: readonly StoreModule[]) => {
+        store.detach();
+        const t = now();
+        store = Store.open({ driver: store.driver, vault: TEST_VAULT, salt: TEST_SALT, modules });
+        return since(t);
+      };
+      const opens = Array.from({ length: 5 }, () => reopen(builtinModules()).cpu).sort(
+        (a, b) => a - b,
       );
-    });
-    const claims = day
-      .slice(0, 5)
-      .map((t) =>
-        f.make(
-          "txn.categorySet",
-          t.gid,
-          { category: "cash_withdrawal", source: "manual_txn" },
-          { wall: next() },
+      expect(store.lastRebuild).toBeNull();
+      t0 = now();
+      store.rebuild({ reindex: true });
+      const upgradeBefore = since(t0);
+      const rulesBumped = bumpVersion(builtinModules(), "budget.category_rules");
+      const upgradeRules = reopen(rulesBumped);
+      expect(store.lastRebuild?.scope).toBe("partial");
+      expect(viewHash(store).hash).toBe(hash);
+      const upgradeTxns = reopen(bumpVersion(rulesBumped, "budget.transactions"));
+      expect(store.lastRebuild?.scope).toBe("full");
+      expect(viewHash(store).hash).toBe(hash);
+
+      t0 = now();
+      store.applyEnvelopes(
+        Array.from({ length: 10 }, (_, k) =>
+          f.make(
+            "txn.categorySet",
+            (events[3 + k] as TestEnvelope).gid,
+            { category: "fuel", source: "manual_txn" },
+            { wall: next() },
+          ),
         ),
       );
-    t0 = now();
-    store.applyEnvelopes([...day, ...claims]);
-    const dayBatch = since(t0);
-    expect(store.rederive().touchedTables).toEqual(new Set());
+      const edits10 = since(t0);
 
-    // a late claim from another device that sorts before thousands of applied events
-    const late = new EventFactory("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "01JH");
-    t0 = now();
-    store.applyEnvelopes([
-      late.make(
-        "txn.categorySet",
-        (events[5000] as TestEnvelope).gid,
-        { category: "home", source: "manual_txn" },
-        { wall: 5001 },
-      ),
-    ]);
-    const lateRefold = since(t0);
+      // a day's events (performance.md budget: <= 100 ms): 200 imports and a few claims
+      const day = Array.from({ length: 200 }, (_, n) => {
+        const a = ACCOUNTS[n % 3] as (typeof ACCOUNTS)[number];
+        const hash = bytesToHex(sha1(utf8ToBytes(`perf-day-${n}`)));
+        return f.make(
+          "txn.imported",
+          detGid(TEST_SALT, "transactions", [a.gid, hash, "0"]),
+          {
+            account: a.gid,
+            batch: null,
+            bookingDate: "2025-01-02",
+            valueDate: null,
+            amount: "-10.00",
+            currency: a.currency,
+            counterpartyName: `SKLEP ${n % 400}`,
+            counterpartyIban: null,
+            description: "zakup",
+            reference: null,
+            bankTransactionId: null,
+            source: "csv",
+            dedupHash: hash,
+            occurrence: 0,
+            raw: {},
+          },
+          { wall: next() },
+        );
+      });
+      const claims = day
+        .slice(0, 5)
+        .map((t) =>
+          f.make(
+            "txn.categorySet",
+            t.gid,
+            { category: "cash_withdrawal", source: "manual_txn" },
+            { wall: next() },
+          ),
+        );
+      t0 = now();
+      store.applyEnvelopes([...day, ...claims]);
+      const dayBatch = since(t0);
+      expect(store.rederive().touchedTables).toEqual(new Set());
 
-    // an account learns an external key held by another: identity change -> full transactions re-fold
-    t0 = now();
-    store.applyEnvelopes([
-      f.make(
-        "account.identified",
-        (ACCOUNTS[1] as (typeof ACCOUNTS)[number]).gid,
-        { keys: ["ext:mbank:perf-1"] },
-        { wall: next() },
-      ),
-    ]);
-    const identityRefold = since(t0);
-    store.close();
+      // a late claim from another device that sorts before thousands of applied events
+      const late = new EventFactory("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "01JH");
+      t0 = now();
+      store.applyEnvelopes([
+        late.make(
+          "txn.categorySet",
+          (events[5000] as TestEnvelope).gid,
+          { category: "home", source: "manual_txn" },
+          { wall: 5001 },
+        ),
+      ]);
+      const lateRefold = since(t0);
 
-    const report = {
-      events: events.length,
-      mode,
-      bulkWall: bulk.wall,
-      bulkCpu: bulk.cpu,
-      rebuildWall: rebuild.wall,
-      rebuildCpu: rebuild.cpu,
-      openUnchangedCpuMedian: opens[2],
-      upgradeBeforeCpu: upgradeBefore.cpu,
-      upgradeRulesCpu: upgradeRules.cpu,
-      upgradeTxnsCpu: upgradeTxns.cpu,
-      edits10Wall: edits10.wall,
-      dayBatchWall: dayBatch.wall,
-      dayBatchCpu: dayBatch.cpu,
-      lateRefoldWall: lateRefold.wall,
-      identityRefoldWall: identityRefold.wall,
-    };
-    console.log(`S23B_PERF ${JSON.stringify(report)}`);
-    // Ceilings, not targets (CI machines, a loaded dev Mac), on CPU time: measured numbers are in
-    // the performance reference.
-    expect(bulk.cpu).toBeLessThan(30_000);
-    expect(rebuild.cpu).toBeLessThan(10_000);
-    expect(lateRefold.cpu).toBeLessThan(1_000);
-  });
+      // an account learns an external key held by another: identity change -> full transactions re-fold
+      t0 = now();
+      store.applyEnvelopes([
+        f.make(
+          "account.identified",
+          (ACCOUNTS[1] as (typeof ACCOUNTS)[number]).gid,
+          { keys: ["ext:mbank:perf-1"] },
+          { wall: next() },
+        ),
+      ]);
+      const identityRefold = since(t0);
+      store.close();
+
+      const report = {
+        events: events.length,
+        mode,
+        bulkWall: bulk.wall,
+        bulkCpu: bulk.cpu,
+        rebuildWall: rebuild.wall,
+        rebuildCpu: rebuild.cpu,
+        openUnchangedCpuMedian: opens[2],
+        upgradeBeforeCpu: upgradeBefore.cpu,
+        upgradeRulesCpu: upgradeRules.cpu,
+        upgradeTxnsCpu: upgradeTxns.cpu,
+        edits10Wall: edits10.wall,
+        dayBatchWall: dayBatch.wall,
+        dayBatchCpu: dayBatch.cpu,
+        lateRefoldWall: lateRefold.wall,
+        identityRefoldWall: identityRefold.wall,
+      };
+      console.log(`S23B_PERF ${JSON.stringify(report)}`);
+      // Ceilings, not targets (CI machines, a loaded dev Mac), on CPU time: measured numbers are in
+      // the performance reference.
+      expect(bulk.cpu).toBeLessThan(30_000);
+      expect(rebuild.cpu).toBeLessThan(10_000);
+      expect(lateRefold.cpu).toBeLessThan(1_000);
+    },
+  );
 });

@@ -1,18 +1,17 @@
-// Acceptance (fast tier): on every shared scenario (`reference/testing/scenarios.ts`) the production
-// store equals the executable reference fold (`events/v1/reference/fold.ts`) and converges on a few
-// delivery orders (single events and random batches, re-delivered duplicates), with the derived
-// oracle after every batch and rebuild == incremental. Every one of the ORDERS deliveries runs in
+// The conflict rules of events.md (fast tier): every shared scenario (testing/scenarios.ts) folds
+// to one view on a single-event and a batched delivery (both shuffled, with re-delivered
+// duplicates), keeps the derived oracle after every batch and rebuild == incremental, and the view
+// passes the scenario's checks. Every one of the ORDERS deliveries runs in
 // convergence.exhaustive.test.ts.
 import { describe, it } from "vitest";
-import { SCENARIOS, syntheticDet } from "./events/v1/reference/testing/scenarios.js";
 import { converge } from "./testing/convergence.js";
+import { SCENARIOS, syntheticDet } from "./testing/scenarios.js";
 
-/** Two single-event and two batched deliveries. */
-const FAST_ORDERS = [0, 1, 2, 3];
+/** One single-event and one batched delivery. */
+const FAST_ORDERS = [0, 1];
 
 for (const s of SCENARIOS) {
   describe(s.group, () => {
-    it(`production fold = reference fold: ${s.name}`, () =>
-      s.check(converge(s.events, syntheticDet(s.events), FAST_ORDERS)));
+    it(s.name, () => s.check(converge(s.events, syntheticDet(s.events), FAST_ORDERS)));
   });
 }

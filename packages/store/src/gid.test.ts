@@ -1,4 +1,5 @@
-// gid.md section 8 vectors (produced with Python hmac / hashlib) against the runtime HMAC.
+// gid.md section 8 vectors against the runtime HMAC: DET gids must stay byte-identical on every device
+// and across versions, or two devices would fork the same row.
 import { describe, expect, it } from "vitest";
 import { nobleHmacSha256 } from "./crypto/hmac.js";
 import { ULID_RE, UUID8_RE } from "./events/v1/primitives.js";
@@ -37,7 +38,6 @@ const VECTORS: [Parameters<typeof detGid>[1], string[], string][] = [
   ],
   ["watchlist_items", [INST], "d0a95ad2-2211-8a30-b04b-809c6be84b30"],
   ["inv_topic_theses", ["gold"], "21465e71-86fc-8535-ab21-87bbe3ca85ba"],
-  ["genesis", ["inv_theses", "7"], "c1e52d4d-d9a5-84e6-8d7a-c21b36691202"],
 ];
 
 describe("keyed DET gids", () => {

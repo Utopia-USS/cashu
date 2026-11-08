@@ -20,7 +20,6 @@ import {
   type InstrumentId,
   instrument,
   type TxnType,
-  toCurrency,
 } from "../../domain/index.js";
 import { type ImportFile, type ParsedTxn, parsedTxn, type TimeOfDay } from "../contract.js";
 import { CsvField, type CsvMapping, csvMapping, csvMappingFromYaml } from "../csvMapping.js";
@@ -121,9 +120,6 @@ export function encodeCp1250(text: string): Uint8Array {
 
 /** The same rows as Windows-1250 with LF line endings. */
 export const plExportCp1250 = (): Uint8Array => encodeCp1250(`${PL_EXPORT_LINES.join("\n")}\n`);
-
-/** A currency code from a vector (already upper-case ISO). */
-export const currencyOf = (code: string): Currency => toCurrency(code);
 
 const PL_MAPPING_YAML = `# Synthetic Polish broker export mapping used by the import tests (no real data).
 version: 1

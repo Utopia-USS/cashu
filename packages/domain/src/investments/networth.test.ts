@@ -1,7 +1,4 @@
-// The brokerage net-worth contributor (port of modules/investments/networth.py) on synthetic rows.
-// test_invp_networth.py exercises it through the database, the importer and the daily check; the
-// pure equivalents of its scenarios are below (own hand-computed numbers), test_month_ends 1:1.
-// test_api_networth_includes_brokerage is HTTP-bound (app layer).
+// The brokerage net-worth contributor on synthetic rows (hand-computed numbers).
 
 import { describe, expect, it } from "vitest";
 import {
@@ -69,7 +66,6 @@ function valuationOf(id: string, currency = "PLN") {
 }
 
 describe("brokerage net-worth contributor", () => {
-  // test_brokerage_account_value_in_net_worth
   it("values holdings and broker cash in the account currency", () => {
     // ABC 100 x 60 + XMPL 20 x 100 USD x 4.0 + cash 20000 - 5000 - 8000
     const entry = valuationOf("a1").latest(null, TODAY);
@@ -90,14 +86,12 @@ describe("brokerage net-worth contributor", () => {
     ).toEqual({ PLN: "21000.00" }); // core totals start from 0.00
   });
 
-  // test_value_as_of_a_past_date
   it("values a past date from the transactions up to it; nothing before the first one", () => {
     const v = valuationOf("a1");
     expect(v.latest("2026-01-06", TODAY)?.[1].toString()).toBe("20000"); // only the deposit
     expect(v.latest("2026-01-01", TODAY)).toBeNull();
   });
 
-  // test_series_on_month_ends
   it("puts the history on month ends and today, held flat in between", () => {
     const v = valuationOf("a1");
     expect(v.axisDates()).toEqual(["2026-01-31", "2026-02-28", TODAY]);
@@ -107,13 +101,11 @@ describe("brokerage net-worth contributor", () => {
     expect(v.at(TODAY)?.toString()).toBe("21000.0");
   });
 
-  // test_account_in_another_currency_is_valued_in_it
   it("values an account in another currency in that currency", () => {
     // PLN per USD 4.0 inverted to 0.2500000000: 6000 PLN + 7000 PLN cash, plus 2000 USD
     expect(valuationOf("a2", "USD").latest(null, TODAY)?.[1].toString()).toBe("5250.0000000000");
   });
 
-  // test_without_transactions_core_balances_apply
   it("leaves accounts without investments transactions (and other types) to the core", () => {
     const contributor = new BrokerageContributor(history("a1"), TODAY);
     const found = contributor.valuations(
@@ -131,7 +123,6 @@ describe("brokerage net-worth contributor", () => {
     ).toBe(0);
   });
 
-  // test_month_ends
   it("month ends from the start's month, before the end", () => {
     expect(monthEnds("2025-11-15", "2026-02-03")).toEqual([
       "2025-11-30",

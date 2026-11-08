@@ -1,9 +1,7 @@
 /**
- * Test-for-test translation of `tests/investments/performance/test_perf_series.py`: daily value /
- * flow series with hand-computed values (deposits and FX, a split, a sale, a split the history never
- * booked, units moved in and out, implied funding, incomplete days) and the incremental snapshots
- * against `buildSnapshot` / `valuePortfolio`. Synthetic data only. Each `it` names its Python test in
- * a comment.
+ * Daily value / flow series, hand-computed (deposits and FX, splits, a sale, an unbooked split, units
+ * moved in and out, implied funding, incomplete days), and the incremental snapshots against
+ * `buildSnapshot` / `valuePortfolio`.
  */
 import { describe, expect, it } from "vitest";
 import { D, type Decimal, decimalKey, floatRepr, ZERO } from "../../decimal.js";
@@ -33,51 +31,20 @@ import {
   twrIndex,
   type ValuationPolicy,
 } from "./index.js";
-import { bars, day, days, EUR, instrument, PLN, rates, txn, USD } from "./testing/support.js";
-
-// --------------------------------------------------------------------------- //
-// pytest.approx (rel 1e-6, abs 1e-12; abs alone when only abs is given)
-// --------------------------------------------------------------------------- //
-
-interface Tolerance {
-  readonly rel?: number;
-  readonly abs?: number;
-}
-
-function approxEq(actual: number | null | undefined, expected: number, tol: Tolerance): boolean {
-  if (actual == null) return false;
-  if (actual === expected) return true;
-  const limit =
-    tol.abs !== undefined && tol.rel === undefined
-      ? tol.abs
-      : Math.max((tol.rel ?? 1e-6) * Math.abs(expected), tol.abs ?? 1e-12);
-  return Math.abs(actual - expected) <= limit;
-}
-
-function expectApprox(
-  actual: number | null | undefined,
-  expected: number,
-  tol: Tolerance = {},
-): void {
-  expect(approxEq(actual, expected, tol), `${actual} ~ ${expected}`).toBe(true);
-}
-
-function expectApproxList(
-  actual: readonly (number | null)[],
-  expected: readonly (number | null)[],
-  tol: Tolerance = {},
-): void {
-  expect(actual.length).toBe(expected.length);
-  actual.forEach((a, i) => {
-    const e = expected[i] as number | null;
-    if (e === null) expect(a).toBeNull();
-    else expectApprox(a, e, tol);
-  });
-}
-
-// --------------------------------------------------------------------------- //
-// helpers of the Python module
-// --------------------------------------------------------------------------- //
+import {
+  approxEq,
+  bars,
+  day,
+  days,
+  EUR,
+  expectApprox,
+  expectApproxList,
+  instrument,
+  PLN,
+  rates,
+  txn,
+  USD,
+} from "./testing/support.js";
 
 const instrumentMap = (insts: readonly Instrument[]): Map<InstrumentId, Instrument> =>
   new Map(insts.map((i) => [i.id, i]));
@@ -116,8 +83,7 @@ function twr(series: PortfolioSeries): number | null {
 const decimalMap = (m: ReadonlyMap<string, Decimal>): Record<string, string> =>
   Object.fromEntries([...m].map(([k, v]) => [k, decimalKey(v)]));
 
-describe("test_perf_series", () => {
-  // test_deposit_and_a_usd_holding_valued_at_daily_fx
+describe("daily series", () => {
   it("deposit and a USD holding valued at daily FX", () => {
     // 10 000 PLN in; 10 X bought at 100 USD for 4 000 PLN (rate 4.0). Next day X = 110 USD at 4.2:
     // 6 000 cash + 10 * 110 * 4.2 = 10 620.
@@ -144,7 +110,6 @@ describe("test_perf_series", () => {
     expectApprox(twr(s), 0.062);
   });
 
-  // test_split_keeps_the_series_continuous
   it("split keeps the series continuous", () => {
     // The source serves split-adjusted closes (a 4:1 split on 01-04: 100 before = 25 adjusted).
     // 10 units before the split are valued at 25 * 4; 40 after it at the plain close.
@@ -165,7 +130,6 @@ describe("test_perf_series", () => {
     expect(s.priceScales).toEqual([]); // the trade price matched the split-adjusted close x 4
   });
 
-  // test_sale_and_cash_afterwards
   it("sale and cash afterwards", () => {
     const txns = [
       txn("deposit", "2025-01-02", "1000"),
@@ -186,7 +150,6 @@ describe("test_perf_series", () => {
     expectApprox(metrics.summary.netContributions, 1000);
   });
 
-  // test_split_the_history_never_booked_is_inferred_from_trades
   it("split the history never booked is inferred from trades", () => {
     // Held 01-02..01-03, sold; a 2:1 split later (not in the history) halved every stored close.
     // Trade prices are exactly twice the closes: the closes up to the sale are scaled by 2.
@@ -206,7 +169,6 @@ describe("test_perf_series", () => {
     ]);
   });
 
-  // test_off_scale_trade_without_a_clean_multiple_is_reported
   it("off-scale trade without a clean multiple is reported", () => {
     const txns = [
       txn("deposit", "2025-01-02", "1000"),
@@ -223,7 +185,6 @@ describe("test_perf_series", () => {
     expect(s.priceMismatches.length === 1 && s.priceMismatches[0]?.instrumentId === "C").toBe(true);
   });
 
-  // test_units_moved_in_and_out_are_flows_at_that_days_value
   it("units moved in and out are flows at that day's value", () => {
     // Flows come at the end of their day: units in at that day's close (100, they earn nothing that
     // day), units out at that day's close (120, the day's move from 110 is still ours).
@@ -245,7 +206,6 @@ describe("test_perf_series", () => {
     expect(decimalMap(s.txnValues)).toEqual({ in: "1000", out: "1200" });
   });
 
-  // test_adjustment_adds_units_at_the_days_value
   it("adjustment adds units at the day's value", () => {
     const txns = [
       txn("adjustment", "2025-01-02", "0", {
@@ -266,7 +226,6 @@ describe("test_perf_series", () => {
     expect(decimalMap(s.txnValues)).toEqual({ adj: "1000" });
   });
 
-  // test_buy_without_its_deposit_is_implied_funding
   it("buy without its deposit is implied funding", () => {
     // Cash goes to -1000 (counted as 0): the bought units are money from outside the history. The
     // deposit that later fills the hole is not new money (implied -1000, deposit +1000).
@@ -288,7 +247,6 @@ describe("test_perf_series", () => {
     expectApprox(twr(s), 0.1);
   });
 
-  // test_negative_cash_then_deposit_covering_it
   it("negative cash then deposit covering it", () => {
     const txns = [
       txn("buy", "2025-01-02", "-1000", { instrument: "A", quantity: "10", price: "100" }),
@@ -308,7 +266,6 @@ describe("test_perf_series", () => {
     expectApprox(twr(s), 0.1);
   });
 
-  // test_missing_fx_makes_days_incomplete_and_returns_link_over_them
   it("missing FX makes days incomplete and returns link over them", () => {
     const txns = [
       txn("deposit", "2025-01-02", "1000"),
@@ -339,7 +296,6 @@ describe("test_perf_series", () => {
     expectApprox(twr(s), 0.1);
   });
 
-  // test_stale_fx_beyond_the_limit_is_incomplete
   it("stale FX beyond the limit is incomplete", () => {
     const txns = [txn("deposit", "2025-01-02", "100", { currency: EUR })];
     const s = seriesOf(txns, [], {}, rates(EUR, { "2025-01-01": "4.3" }), "2025-01-20", {
@@ -351,7 +307,6 @@ describe("test_perf_series", () => {
     expect(c.complete[10] && !c.complete[11]).toBe(true);
   });
 
-  // test_cost_mode_holding_keeps_its_lots_and_is_valued_at_cost
   it("cost-mode holding keeps its lots and is valued at cost", () => {
     const bond = instrument("BOND", PLN, AssetClass.TREASURY_BOND);
     expect(bond.valuationMode).toBe(ValuationMode.COST);
@@ -466,7 +421,6 @@ describe("test_perf_series", () => {
     return { txns, renames, insts, barMap, fx };
   }
 
-  // test_snapshot_stream_equals_build_snapshot_on_every_day
   it("snapshot stream equals buildSnapshot on every day", () => {
     const { txns, renames } = mixedHistory();
     const sorted = [...txns].sort((x, y) =>
@@ -507,7 +461,6 @@ describe("test_perf_series", () => {
     }
   });
 
-  // test_series_value_equals_the_public_pipeline_every_day
   it("series value equals the public pipeline every day", () => {
     const { txns, renames, insts, barMap, fx: fxRates } = mixedHistory();
     const fx = new InMemoryFxLookup(fxRates);
@@ -550,7 +503,6 @@ describe("test_perf_series", () => {
     expectApprox(flow?.toFloat(), -4 * closeA);
   });
 
-  // test_captures_hold_per_holding_values
   it("captures hold per-holding values", () => {
     const { txns, renames, insts, barMap, fx: fxRates } = mixedHistory();
     const end = day("2025-01-31");
@@ -573,7 +525,6 @@ describe("test_perf_series", () => {
     expect(at9?.eq(D("42").mul(closeA8))).toBe(true);
   });
 
-  // test_empty_history
   it("empty history", () => {
     const s = seriesOf([], [], {}, [], "2025-01-05");
     expect(s.dates).toEqual(["2025-01-05"]);

@@ -1,5 +1,5 @@
 // Loans store module: the row appears with terms (m7), and the payment patterns it contributes to
-// the budget's categorization (Python `loans/patterns.py`). Synthetic data only.
+// the budget's categorization (Polish text normalized for matching). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import type { ViewSql } from "../engine/types.js";
 import type { Store } from "../materialize.js";

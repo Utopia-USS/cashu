@@ -4,12 +4,12 @@
 // transfers.property(.exhaustive).test.ts. Data-safety rule 5: only a counterparty IBAN pairs rows.
 import { describe, expect, it } from "vitest";
 import { formatHlc } from "../../events/v1/hlc-format.js";
-import { complete, syntheticDet } from "../../events/v1/reference/testing/scenarios.js";
 import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";
 import { expectCategoriesRecomputed } from "../../testing/categories-oracle.js";
-import type { RefEvent } from "../../testing/reference/fold.js";
-import { Names, toEnvelopes } from "../../testing/reference-bridge.js";
+import type { RefEvent } from "../../testing/scenario-bridge.js";
+import { Names, toEnvelopes } from "../../testing/scenario-bridge.js";
+import { complete, syntheticDet } from "../../testing/scenarios.js";
 import { EventFactory, openTestStore } from "../../testing/store.js";
 import { expectTransfersRecomputed } from "../../testing/transfers-oracle.js";
 
@@ -189,6 +189,17 @@ describe("budget.transfers deriver", () => {
     store.applyEnvelopes([header]);
     expect(flags(store, names, "claim-out")[0]).toBe(0);
     store.applyEnvelopes([claim]);
+    expect(flags(store, names, "claim-out")).toEqual([1, names.gid("T-claim-out")]);
+    // a newer reset run whose claims have not all arrived (a sync frame boundary) keeps the
+    // previous complete run active
+    store.applyEnvelopes([
+      f.make(
+        "transferRun.started",
+        "01JC0000000000000000000005",
+        { reset: true, maxDays: 3, pairCount: 2 },
+        { wall: 302 },
+      ),
+    ]);
     expect(flags(store, names, "claim-out")).toEqual([1, names.gid("T-claim-out")]);
     const later = f.make(
       "transferRun.started",

@@ -1,15 +1,14 @@
 // Random synthetic event scripts over a small universe (so ids collide, rows merge, guards and FWW
 // fire) for the store's property tests (property.test.ts: the fast tier; property.exhaustive.test.ts:
-// the long search), and the two properties they check. Synthetic data only.
+// the long search), and the convergence property they check. Synthetic data only.
 import fc from "fast-check";
 import { expect } from "vitest";
 import { formatHlc } from "../events/v1/hlc-format.js";
-import { complete, syntheticDet } from "../events/v1/reference/testing/scenarios.js";
 import { viewHash } from "../snapshot.js";
 import { expectCategoriesRecomputed } from "./categories-oracle.js";
 import { chunked, shuffled } from "./random.js";
-import { materialize, type RefEvent } from "./reference/fold.js";
-import { Names, normalize, project, toEnvelopes } from "./reference-bridge.js";
+import { Names, type RefEvent, toEnvelopes } from "./scenario-bridge.js";
+import { complete, syntheticDet } from "./scenarios.js";
 import { openTestStore } from "./store.js";
 
 const DEVICES = [
@@ -347,7 +346,7 @@ function deliver(events: RefEvent[], seed: number) {
   const withDupes = [...order, ...shuffled(order, seed + 99).slice(0, 2)];
   const store = openTestStore();
   for (const b of chunked(withDupes, seed + 7, seed % 3 === 0 ? 1 : 5)) store.applyEnvelopes(b);
-  return { store, names };
+  return store;
 }
 
 /**
@@ -358,23 +357,13 @@ export const convergesProperty = fc.property(
   script,
   fc.integer({ min: 1, max: 1_000_000 }),
   (events, seed) => {
-    const a = deliver(events, seed).store;
-    const b = deliver(events, seed + 1).store;
+    const a = deliver(events, seed);
+    const b = deliver(events, seed + 1);
     const h = viewHash(a).hash;
     expect(viewHash(b).hash).toBe(h);
     expect(a.rederive().touchedTables).toEqual(new Set());
     expectCategoriesRecomputed(a);
     a.rebuild();
     expect(viewHash(a).hash).toBe(h);
-  },
-);
-
-/** The store's view equals the reference fold's view. */
-export const referenceProperty = fc.property(
-  script,
-  fc.integer({ min: 1, max: 1_000_000 }),
-  (events, seed) => {
-    const { store, names } = deliver(events, seed);
-    expect(project(store, names)).toEqual(normalize(materialize(events, syntheticDet(events))));
   },
 );

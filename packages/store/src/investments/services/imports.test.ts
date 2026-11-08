@@ -1,10 +1,8 @@
-// The import service: preview notes, the staged upload, the archive before the one-batch commit,
-// re-resolution, duplicates, corporate actions, reconciliation corrections, generic CSV mappings.
-// Translates tests/investments/persistence/test_invp_imports.py test-for-test (store level: the
-// archive and the holding area are in-memory fakes of the ports; "atomic" = one appended batch).
-// Plus the S22b additions: a manual entry imported later is a duplicate (Python stores manual rows
-// under the import hash), the merged-away instrument gids reach the dedup, leader-only commits.
-// Synthetic data only.
+// Broker history imports (previewImport / commitImport): preview notes, the one-batch commit,
+// re-resolution, duplicates (also against manual entries and other importers), corporate actions,
+// reconciliation corrections, remembered generic CSV mappings, planned deposits booked. Driven through
+// the test-only staged service (testing/importService.ts) with in-memory archive and holding area;
+// the shipped approval path is import-proposals.test.ts. Synthetic data only.
 import { D, sha256Hex } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
 import { type EventWriter, storeWriter } from "../../command.js";
@@ -145,7 +143,7 @@ function preview(s: Setup, content: Uint8Array, name = "history.csv", extra: obj
   return out.preview;
 }
 
-/** Python `import_file`: preview (staging the upload), then commit the staged file. */
+/** Preview (staging the upload), then commit the staged file. */
 async function importFile(
   s: Setup,
   content: Uint8Array,
@@ -178,8 +176,8 @@ const counts = (v: Vault) => ({
   batches: importBatches(read(v)).length,
 });
 
-describe("import service (test_invp_imports.py)", () => {
-  it("test_preview_is_read_only_and_reports_the_plan", async () => {
+describe("broker history import", () => {
+  it("preview is read only and reports the plan", async () => {
     const s = setup();
     const staged = await previewAndStage(
       { store: s.v.store, staging: s.p.staging, env: s.v.env },
@@ -201,7 +199,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect([...s.p.staged.keys()]).toEqual([`${staged.fileId}.csv`]);
   });
 
-  it("test_commit_archives_then_writes_everything", async () => {
+  it("commit archives then writes everything", async () => {
     const s = setup();
     const result = await importFile(s, canonicalCsv());
     expect([result.inserted, result.duplicates, result.positions]).toEqual([5, 0, 3]);
@@ -236,7 +234,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect(accountSettings(read(s.v), s.account).importer).toBe("cashu");
   });
 
-  it("test_reimport_is_all_duplicates_and_says_so", async () => {
+  it("reimport is all duplicates and says so", async () => {
     const s = setup();
     await importFile(s, canonicalCsv());
     const p = preview(s, canonicalCsv());
@@ -247,7 +245,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect(counts(s.v)).toMatchObject({ txns: 5, instruments: 3 });
   });
 
-  it("test_commit_is_atomic", async () => {
+  it("commit is atomic", async () => {
     const s = setup();
     const staged = await previewAndStage(
       { store: s.v.store, staging: s.p.staging, env: s.v.env },
@@ -275,7 +273,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect(s.p.staged.size).toBe(1); // kept for a retry (pruned after a day)
   });
 
-  it("test_commit_reuses_an_instrument_created_after_the_preview", async () => {
+  it("commit reuses an instrument created after the preview", async () => {
     const s = setup();
     const staged = await previewAndStage(
       { store: s.v.store, staging: s.p.staging, env: s.v.env },
@@ -312,7 +310,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect(preview(s, canonicalCsv()).plan?.rows.filter((r) => r.isDuplicate)).toHaveLength(5);
   });
 
-  it("test_rename_and_frozen_delisting", async () => {
+  it("rename and frozen delisting", async () => {
     const s = setup();
     const header = `${HEADER},new_symbol,new_isin,new_name,frozen`;
     const content = text([
@@ -341,7 +339,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect((await importFile(s, content)).renames).toBe(0);
   });
 
-  it("test_reconciliation_corrections_apply_once", async () => {
+  it("reconciliation corrections apply once", async () => {
     const s = setup();
     const p = preview(s, canonicalCsv({ xmpl: 25 }));
     const mismatches = p.reconciliation?.diffs.filter((d) => d.kind !== "match") ?? [];
@@ -356,7 +354,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect(fixes.map((f) => [f.type, f.quantity?.toString()])).toEqual([["adjustment", "5"]]);
   });
 
-  it("test_generic_csv_mapping_is_remembered", async () => {
+  it("generic csv mapping is remembered", async () => {
     const s = setup();
     const extra = { importer: "generic_csv", mappingYaml: GENERIC };
     const p = preview(s, GENERIC_FILE, "gen.csv", extra);
@@ -371,7 +369,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect(again.plan?.rows.filter((r) => r.isDuplicate)).toHaveLength(2);
   });
 
-  it("test_a_positions_only_file_keeps_the_remembered_importer", async () => {
+  it("a positions only file keeps the remembered importer", async () => {
     const s = setup();
     await importFile(s, GENERIC_FILE, "gen.csv", { importer: "generic_csv", mappingYaml: GENERIC });
     const snapshot = text([HEADER, ...positionRows().slice(0, 1)]);
@@ -386,7 +384,7 @@ describe("import service (test_invp_imports.py)", () => {
     expect(accountSettings(read(s.v), s.account).importer).toBe("cashu");
   });
 
-  it("test_errors_are_reported_not_raised", async () => {
+  it("errors are reported not raised", async () => {
     const s = setup();
     const bad = new TextEncoder().encode("not,an,export\n1,2,3\n");
     const p = preview(s, bad, "x.csv");
@@ -424,7 +422,7 @@ describe("import service (test_invp_imports.py)", () => {
     }); // another vault's account
   });
 
-  it("test_an_identical_overlapping_reimport_leaves_the_snapshots_alone", async () => {
+  it("an identical overlapping reimport leaves the snapshots alone", async () => {
     const s = setup();
     await importFile(s, canonicalCsv());
     const before = latestPositionSnapshot(read(s.v), s.account).rows;
@@ -434,8 +432,8 @@ describe("import service (test_invp_imports.py)", () => {
     expect(snapshotEvents(s.batches[1])).toEqual([]); // the same figures: nothing written or synced
     expect(latestPositionSnapshot(read(s.v), s.account).rows).toEqual(before);
     await importFile(s, canonicalCsv({ xmpl: 25 }), "history-3.csv");
-    // A changed figure of a held row is `position.snapshotUpdated` (the shipper emits the same for
-    // Python's update, S31c) and the later import's figures stand in the view (Python updates them).
+    // A changed figure of a held row is `position.snapshotUpdated` and the later import's figures
+    // stand in the view.
     const updates = (s.batches[2] ?? []).filter((e) => e.type === "position.snapshotUpdated");
     expect(updates.map((e) => e.data.quantity)).toEqual(["25"]);
     expect(snapshotEvents(s.batches[2])).toEqual([]);
@@ -445,7 +443,7 @@ describe("import service (test_invp_imports.py)", () => {
     ).toEqual([expect.objectContaining({ quantity: "25" })]);
   });
 
-  it("test_a_reimport_with_the_same_importer_leaves_the_account_settings_alone", async () => {
+  it("a reimport with the same importer leaves the account settings alone", async () => {
     const s = setup();
     await importFile(s, canonicalCsv());
     await importFile(s, canonicalCsv(), "history-2.csv");
@@ -453,7 +451,7 @@ describe("import service (test_invp_imports.py)", () => {
   });
 });
 
-describe("import service (S22b)", () => {
+describe("broker history import: duplicates and bookings", () => {
   it("a manual entry imported later is a duplicate, a second identical file row still imports", async () => {
     const s = setup();
     s.v.value(addManualTransaction, {
@@ -499,30 +497,6 @@ describe("import service (S22b)", () => {
     expect(s.p.archived.size).toBe(1);
   });
 
-  it("an import refused at commit archives nothing", async () => {
-    const s = setup();
-    const bad = new TextEncoder().encode("not,an,export\n1,2,3\n");
-    const staged = await previewAndStage(
-      { store: s.v.store, staging: s.p.staging, env: s.v.env },
-      { file: { name: "x.csv", content: bad }, account: s.account },
-    );
-    if (!staged.ok) throw new Error(staged.reason);
-    const deps = {
-      store: s.v.store,
-      staging: s.p.staging,
-      archive: s.p.archive,
-      writer: s.writer,
-      env: s.v.env,
-    };
-    expect(
-      await commitStaged(deps, { fileId: staged.fileId, fileName: "x.csv", account: s.account }),
-    ).toEqual({
-      ok: false,
-      reason: "cannot_commit",
-    });
-    expect(s.p.archived.size).toBe(0);
-  });
-
   it("the merge record supplies the merged-away instrument gids to the dedup", async () => {
     const s = setup();
     const a = s.v.value(createInstrument, {
@@ -555,86 +529,5 @@ describe("import service (S22b)", () => {
     expect(result.plannedBooked).toEqual([plan.plan]);
     expect(plannedDeposits(read(s.v), ["booked"]).map((p) => p.gid)).toEqual([plan.plan]);
     expect(s.batches[0]?.some((e) => e.type === "plannedDeposit.booked")).toBe(true);
-  });
-
-  it("a device that does not hold the fetch lease refuses the commit", async () => {
-    const s = setup();
-    const staged = await previewAndStage(
-      { store: s.v.store, staging: s.p.staging, env: s.v.env },
-      { file: { name: "history.csv", content: canonicalCsv() }, account: s.account },
-    );
-    if (!staged.ok) throw new Error(staged.reason);
-    s.v.env.holder = false;
-    const out = await commitStaged(
-      {
-        store: s.v.store,
-        staging: s.p.staging,
-        archive: s.p.archive,
-        writer: s.writer,
-        env: s.v.env,
-      },
-      { fileId: staged.fileId, fileName: "history.csv", account: s.account },
-    );
-    expect(out).toEqual({ ok: false, reason: "not_leader" });
-    expect(s.p.archived.size).toBe(0);
-  });
-
-  it.each(["staging", "archive"] as const)(
-    "rechecks authority after %s await without financial effects",
-    async (lostAt) => {
-      const s = setup();
-      const staged = await previewAndStage(
-        { store: s.v.store, staging: s.p.staging, env: s.v.env },
-        { file: { name: "history.csv", content: canonicalCsv() }, account: s.account },
-      );
-      if (!staged.ok) throw new Error(staged.reason);
-      const out = await commitStaged(
-        {
-          store: s.v.store,
-          writer: s.writer,
-          env: s.v.env,
-          staging: {
-            ...s.p.staging,
-            async get(sha, ext) {
-              const value = await s.p.staging.get(sha, ext);
-              if (lostAt === "staging") s.v.env.holder = false;
-              return value;
-            },
-          },
-          archive: {
-            async put(content, ext) {
-              const value = await s.p.archive.put(content, ext);
-              if (lostAt === "archive") s.v.env.holder = false;
-              return value;
-            },
-          },
-        },
-        { fileId: staged.fileId, fileName: "history.csv", account: s.account },
-      );
-      expect(out).toEqual({ ok: false, reason: "not_leader" });
-      expect(s.batches).toHaveLength(0);
-      expect(s.p.archived.size).toBe(lostAt === "archive" ? 1 : 0);
-      expect(s.p.staged.size).toBe(1);
-    },
-  );
-
-  it("a commit names a staged file by its sha256 only", async () => {
-    const s = setup();
-    const deps = {
-      store: s.v.store,
-      staging: s.p.staging,
-      archive: s.p.archive,
-      writer: s.writer,
-      env: s.v.env,
-    };
-    expect(
-      await commitStaged(deps, { fileId: "../x", fileName: "a.csv", account: s.account }),
-    ).toEqual({
-      ok: false,
-      reason: "invalid_file_id",
-    });
-    expect(
-      await commitStaged(deps, { fileId: "a".repeat(64), fileName: "a.csv", account: s.account }),
-    ).toEqual({ ok: false, reason: "no_staged_file" });
   });
 });

@@ -1,21 +1,19 @@
-// Touched-table invalidation (testing.md: "a test that each command's touched tables re-run the
-// queries that read them"): every S24 command's batch reports the public tables it changed, derived
-// writes included, and a subscriber to the tables a screen query reads is notified. Synthetic data.
+// Touched-table invalidation through derived writes (testing.md: "a test that each command's touched
+// tables re-run the queries that read them"): a command whose batch only writes an input table still
+// reports and notifies the derived tables its derivers rewrote (categories, cash legs). Plain writes
+// are recorded by the engine itself (store.test.ts "touched tables and subscriptions"). Synthetic data.
 import { D } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
-import { addManualPosition } from "./assets/commands.js";
 import {
   addCashExpense,
   cacheLlmRules,
   importStatement,
-  setCushion,
   setLlmCategories,
   setMerchantCategory,
   setTransactionCategory,
 } from "./budget/commands.js";
 import { type Command, type CommandEnv, runCommand } from "./command.js";
-import { createProfile, openAccount, recordBalance, setModules } from "./core/commands.js";
-import { addLoan } from "./loans/commands.js";
+import { openAccount } from "./core/commands.js";
 import type { Store } from "./materialize.js";
 import { run, testEnv } from "./testing/commands.js";
 import { EventFactory, openTestStore } from "./testing/store.js";
@@ -50,93 +48,6 @@ function touched<I, R>(
 }
 
 describe("command batches invalidate the queries that read their tables", () => {
-  it("profile, modules, accounts, balances", () => {
-    const store = openTestStore();
-    const env = testEnv();
-    expect(
-      touched(
-        store,
-        env,
-        createProfile,
-        { slug: "d", name: "D", modules: ["budget"] },
-        "SELECT * FROM profiles",
-      ),
-    ).toEqual({
-      tables: ["profile_modules", "profiles"],
-      notified: 1,
-    });
-    expect(
-      touched(
-        store,
-        env,
-        setModules,
-        { moduleIds: ["loans"] },
-        "SELECT module_id FROM profile_modules WHERE enabled = 1",
-      ).notified,
-    ).toBe(1);
-    const open = touched(
-      store,
-      env,
-      openAccount,
-      { bank: "manual", name: "S", type: "savings", currency: "PLN", externalId: "manual:S" },
-      "SELECT * FROM accounts",
-    );
-    expect(open).toEqual({ tables: ["accounts"], notified: 1 });
-    const account = store.read<{ gid: string }>("SELECT gid FROM accounts")[0]?.gid;
-    expect(
-      touched(
-        store,
-        env,
-        recordBalance,
-        { account, date: "2026-10-01", amount: "1" },
-        "SELECT SUM(amount) FROM balances",
-      ),
-    ).toEqual({
-      tables: ["balances"],
-      notified: 1,
-    });
-  });
-
-  it("an import touches accounts, batches, transactions and balances", () => {
-    const store = openTestStore();
-    const env = testEnv();
-    const t = touched(
-      store,
-      env,
-      importStatement,
-      {
-        statement: {
-          bank: "mbank",
-          accountNumber: "61109010140000071219812874",
-          accountName: null,
-          currency: "PLN",
-          transactions: [
-            {
-              bookingDate: "2026-10-01",
-              valueDate: null,
-              amount: D("-5.00"),
-              currency: "PLN",
-              counterpartyName: "Sklep",
-              counterpartyIban: null,
-              description: null,
-              reference: null,
-              bankTransactionId: null,
-              source: "csv",
-              raw: {},
-            },
-          ],
-          balances: [{ date: "2026-10-01", amount: D("95.00") }],
-          closingBalances: [],
-        },
-      },
-      "SELECT t.amount FROM transactions t JOIN accounts a ON a.id = t.account_id",
-    );
-    expect(t).toEqual({
-      tables: ["accounts", "balances", "import_batches", "transactions"],
-      notified: 1,
-    });
-  });
-
   it("derived writes count: a claim re-derives the category, a pool open makes the leg", () => {
     const store = openTestStore();
     const env = testEnv();
@@ -288,37 +199,5 @@ describe("command batches invalidate the queries that read their tables", () => 
         spending,
       ),
     ).toEqual({ tables: ["transactions"], notified: 1 });
-  });
-
-  it("cushion, loans, manual positions", () => {
-    const store = openTestStore();
-    const env = testEnv();
-    expect(
-      touched(store, env, setCushion, { enabled: false }, "SELECT * FROM budget_settings").tables,
-    ).toEqual(["budget_settings"]);
-    expect(
-      touched(
-        store,
-        env,
-        addLoan,
-        {
-          name: "Kredyt",
-          principal: "1000",
-          annualRate: "5",
-          termMonths: 12,
-          startDate: "2026-11-01",
-        },
-        "SELECT * FROM loans",
-      ).tables,
-    ).toEqual(["accounts", "loans"]);
-    expect(
-      touched(
-        store,
-        env,
-        addManualPosition,
-        { name: "Dom", type: "property", value: "1", note: "n" },
-        "SELECT * FROM asset_details",
-      ).tables,
-    ).toEqual(["accounts", "asset_details", "balances"]);
   });
 });

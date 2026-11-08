@@ -62,7 +62,7 @@ describe("alerts", () => {
     });
   });
 
-  it("tag (S31c): set on create, LWW in the patch, null clears, absent keeps; same in every order", () => {
+  it("tag: set on create, LWW in the patch, null clears, absent keeps; same in every order", () => {
     const ev = new Events();
     const created = ev.make("alert.created", AL, { tag: "cena" }, { wall: 10 });
     const retag = ev.make("alert.updated", AL, { tag: "rsi" }, { wall: 20 });
@@ -218,50 +218,6 @@ describe("alerts", () => {
     converge(events, (store) => {
       expect(row(store, "alerts", AL)).toMatchObject({ status: "triggered", deleted_at: null });
       expect(row(store, "inv_signals", S)?.status).toBe("active");
-    });
-  });
-
-  it("G5: genesis-shaped snoozed, triggered and expired alerts fold to the Python row shape", () => {
-    const ev = new Events();
-    const stamps = {
-      created_at: "2026-01-01T00:00:00.000000Z",
-      updated_at: "2026-02-01T00:00:00.000000Z",
-    };
-    const snoozed = ulid(11);
-    const triggered = ulid(12);
-    const expired = ulid(13);
-    const events = [
-      ev.make("alert.created", snoozed, { stamps }, { wall: 1 }),
-      ev.make(
-        "alert.statusSet",
-        snoozed,
-        { status: "snoozed", snoozedUntil: T1, stamps: { updated_at: stamps.updated_at } },
-        { wall: 2 },
-      ),
-      ev.make("alert.evaluated", snoozed, { triggered: false, lastCheckedAt: T0 }, { wall: 3 }),
-      ev.make("alert.created", triggered, { stamps }, { wall: 4 }),
-      ev.make(
-        "alert.evaluated",
-        triggered,
-        { triggered: true, lastCheckedAt: T0, lastValue: "9.5", lastTriggeredAt: T0 },
-        { wall: 5 },
-      ),
-      ev.make("alert.created", expired, { stamps, expiresAt: T0 }, { wall: 6 }),
-    ];
-    converge(events, (store) => {
-      expect(row(store, "alerts", snoozed)).toMatchObject({
-        status: "snoozed",
-        snoozed_until: "2026-11-08 12:00:00.000000",
-        updated_at: "2026-02-01 00:00:00.000000",
-      });
-      expect(row(store, "alerts", triggered)).toMatchObject({
-        status: "triggered",
-        created_at: "2026-01-01 00:00:00.000000",
-        updated_at: "2026-02-01 00:00:00.000000",
-      });
-      const exp = row(store, "alerts", expired) as unknown as domainAlerts.AlertStatusRow;
-      expect(exp.status).toBe("active");
-      expect(domainAlerts.effectiveAlertStatus(exp, T0).status).toBe("expired");
     });
   });
 });

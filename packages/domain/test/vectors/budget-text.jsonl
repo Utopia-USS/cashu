@@ -1,100 +1,0 @@
-{"meta": {"name": "budget-text", "count": 99, "layout": "['isdigit_only', [cp]] | ['isdecimal_count', n] | ['splitlines', s, parts] | ['strip', s, chars, strip, lstrip, rstrip]", "seed": 20261030, "generator": "parity/python/vectors_budget.py", "python": "3.14.6", "unicode": "16.0.0"}}
-["isdigit_only",[178,179,185,4969,4970,4971,4972,4973,4974,4975,4976,4977,6618,8304,8308,8309,8310,8311,8312,8313,8320,8321,8322,8323,8324,8325,8326,8327,8328,8329,9312,9313,9314,9315,9316,9317,9318,9319,9320,9332,9333,9334,9335,9336,9337,9338,9339,9340,9352,9353,9354,9355,9356,9357,9358,9359,9360,9450,9461,9462,9463,9464,9465,9466,9467,9468,9469,9471,10102,10103,10104,10105,10106,10107,10108,10109,10110,10112,10113,10114,10115,10116,10117,10118,10119,10120,10122,10123,10124,10125,10126,10127,10128,10129,10130,68160,68161,68162,68163,69216,69217,69218,69219,69220,69221,69222,69223,69224,69714,69715,69716,69717,69718,69719,69720,69721,69722,127232,127233,127234,127235,127236,127237,127238,127239,127240,127241,127242]]
-["isdecimal_count",760]
-["splitlines","\r\r\u001f\u001eb\u001ebaa ",["","","\u001f","b","baa"]]
-["splitlines","",[]]
-["splitlines","\ra",["","a"]]
-["splitlines","   \u001f\t\f\u001f\u001fa\n\u001d",["","","","\u001f\t","\u001f\u001fa",""]]
-["splitlines"," \t\f\t\u001f\u001f\n\n\t",[" \t","\t\u001f\u001f","","","\t"]]
-["splitlines","\t  \u000b\u001c  ",["\t","","","","  "]]
-["splitlines","\u000b\u001c\t \t \t",["","","\t","\t \t"]]
-["splitlines","\u001cb\u001f a\u001c\u000b    ",["","","b\u001f a","","","","",""]]
-["splitlines","\r\r\f\u001f\n\tba \n",["","","","","\u001f","\tba "]]
-["splitlines","\u000b\u001fbb\u001f",["","\u001f","bb\u001f"]]
-["splitlines"," \u001cb\t\u001d\u001e\u001fa",["","","","","b\t","","\u001fa"]]
-["splitlines","\r \t \u000b\u001f\t\u001d\u001c  b",[""," \t ","\u001f\t","",""," b"]]
-["splitlines","  \t\t \u001c\u001fb  ",["","","\t\t"," ","\u001fb"," "]]
-["splitlines","a  a\u001e\n \u001da \u001c",["a  a","","","","a","",""]]
-["splitlines","\u001e   b\r",["","","","  b"]]
-["splitlines","\u001fab",["","\u001fab"]]
-["splitlines"," a \u000b\n\f\u001eba\rb\u001f",["","a ","","","","ba","b\u001f"]]
-["splitlines","\t\u001fb\r",["\t\u001fb"]]
-["splitlines"," b\u001c\f\u001c\u001c\u001fa\u001f",["","b","","","","\u001fa\u001f"]]
-["splitlines","\u001f \r\n\u001f\u000b\u001f\u001d\u001e\r",["\u001f ","\u001f","\u001f","","",""]]
-["splitlines","\t  \n\u001fba \u001f\u001f",["\t ","","","\u001fba","\u001f\u001f"]]
-["splitlines","aabb \t",["aabb","\t"]]
-["splitlines"," b a\u001f ",[" b a\u001f "]]
-["splitlines","\ta\t  \f",["\ta\t"," "]]
-["splitlines","a\t\u000b\u001eb\u001e\u001c\u001e\ta",["a\t","","b","","","\ta"]]
-["splitlines","\t\r \taa  ",["\t"," \taa"," "]]
-["splitlines","\u001d\u001f \u001f\t",["","\u001f \u001f\t"]]
-["splitlines","b a\u001c\u001c\u001e",["b a","",""]]
-["splitlines"," a\u000b\u001e\u001f\u001d \ta\u000b \f",["","a","","\u001f"," \ta"," "]]
-["splitlines","\tb\t \u001e\f\u001c",["\tb\t","","",""]]
-["splitlines","\tb \u001f\n\u001ca\t \u001c",["\tb","\u001f","","a\t "]]
-["splitlines","b\u001f \u001e \n\f a",["b\u001f ","","","","",""," a"]]
-["splitlines","\r\u001f\u001f\u001f\t\u001e ",["","\u001f\u001f\u001f\t",""]]
-["splitlines","\tab\u001e\r\u001d\u001d\t\u001d\f a",["\tab","","","","\t",""," a"]]
-["splitlines","b\tb\f",["b\tb"]]
-["splitlines","\u001c\n\t \u001f \n",["","","\t \u001f "]]
-["splitlines","\u001d\u000b\n\t  \t\t\u000b\u001e",["","","","","\t  \t\t",""]]
-["splitlines"," \t \u001f",["","","\t \u001f"]]
-["splitlines","\u001d\r\t  \r a\u001e\n",["","","\t  "," ","a",""]]
-["splitlines","\u001e   \u001eb\u001fa",["","","","","","b\u001fa"]]
-["splitlines","  a\ra\r\u001ca\u001f\t",["","","a","a","","a\u001f\t"]]
-["splitlines","b  ",["b  "]]
-["splitlines","a\u001f\r \u001f\t\u001e\u000b\t",["a\u001f"," \u001f\t","","\t"]]
-["splitlines","a\u001f ",["","a\u001f "]]
-["splitlines","\u000bba aa\u001c\nb\u000b ",["","ba ","aa","","b",""]]
-["splitlines","b b",["b b"]]
-["splitlines"," \u000b\u000b a\u001f\u001f\r",["","",""," a\u001f\u001f",""]]
-["splitlines","   \u001d\t\ta\u001e\u001f\t ",[""," ","","\t\ta","\u001f\t",""]]
-["splitlines","\u001d\r\u000b\u001e  b\t\t\u001d",["","","","",""," ","","b\t\t"]]
-["splitlines","a\u001d\fb\u000b\t\u001e\u000b\t\nb ",["a","","b","\t","","\t","b "]]
-["splitlines","\u001fbb\t",["\u001fbb\t"]]
-["splitlines"," a\u001fba",["","a\u001fba"]]
-["splitlines","\n \f\tb\u001f ",["","","","\tb\u001f"]]
-["splitlines","\u001f\f\u000b\u001f\t\u001f\n\t \u001e\u001f",["\u001f","","\u001f\t\u001f","\t ","\u001f"]]
-["splitlines","\u001f\u001e b\u001f\u001c \u000b\u001d \f",["\u001f"," b\u001f","","",""," "]]
-["splitlines"," \u001c\u001fb a\f",[" ","\u001fb a",""]]
-["splitlines"," \u001d\u001f a\u000baa\u000b\u001d",["","","","\u001f a","aa",""]]
-["splitlines","a\tbb b\u001c",["a\tb","b","b"]]
-["splitlines","\n\t\t\t",["","\t\t\t"]]
-["splitlines","\n\u001e\tb\t ",["","","\tb\t "]]
-["splitlines","\f \u001da\t\u001f\u001f\u001e\t \tb",["","","","a\t\u001f\u001f","\t","\tb"]]
-["splitlines","\u000b\u000b  bb\u001f  ",["","",""," "," bb\u001f "]]
-["splitlines","a\r\r\u000b \u001f\t ",["a","",""," \u001f\t "]]
-["splitlines"," \t\u001f b\u001f\t\f\u001c ",["","","\t\u001f","b\u001f\t",""," "]]
-["splitlines","aa\u001fba\u001d\u001e\u001f\u001e ",["aa\u001fba","","\u001f",""]]
-["splitlines","   ba\tb\t",["",""," ","b","","a\tb\t"]]
-["splitlines"," \u001f  \u001e\u001d\u001ea\u001f ",["","\u001f  ","","","","a\u001f"]]
-["splitlines","\fa\u001e\r\u001fa\f a\u001f\r",["","a","","\u001fa"," a\u001f"]]
-["splitlines","\n  \t  \u000b \n\u001e",["","  \t"," ","","",""]]
-["splitlines","\nb\u001e\u001ca \u001f \r",["","b","","","a \u001f","",""]]
-["splitlines","\n\t\u001fb\t ",["","\t\u001f","b\t "]]
-["splitlines"," \u001d a\t \t\u001f ",["",""," a\t","\t\u001f"]]
-["splitlines","\t bb\u001f\u001f \u001c \u001c\r\f",["\t","bb\u001f\u001f ","","","",""]]
-["splitlines"," a \t\u001f\t \u001d   ",["","a \t\u001f\t","",""," ",""]]
-["splitlines","\f\fb\u001e\t \u001f\u001fb\t",["","","b","\t","\u001f\u001fb\t"]]
-["splitlines","bb\u001d\t\t \u001d  \u001c \u001e",["bb","\t\t ","","","","",""]]
-["splitlines","\taba\u001d",["\taba"]]
-["splitlines","\u001e \u001c\u001d\u001faa",["","","","","","\u001faa"]]
-["splitlines","\f  \tb\nb\u001c",["",""," \tb","b"]]
-["splitlines","\u001f\taa\u001d\t ",["\u001f\taa","\t"]]
-["splitlines","\u001f\u000b\u001fa\t a\t\t\t",["","\u001f","\u001fa\t a\t\t\t"]]
-["splitlines","\u001cbb  \n\u001c\n \u001d\t\u001d",["","bb  ","","","","","\t"]]
-["splitlines","ba\u001f\u000b \n\t\t \f\u001c",["ba\u001f"," ","\t\t ",""]]
-["splitlines","\u001f\f\f\u001d\tb\u001f\u001f  ",["\u001f","","","\tb\u001f\u001f",""]]
-["splitlines","\u001f\u000b\u001c\u001f\tbb \n",["\u001f","","","\u001f\tbb","",""]]
-["splitlines"," \u001f\n\u001cab\u000b b",[" \u001f","","ab"," b"]]
-["splitlines","\u001e\rabb",["","","abb"]]
-["splitlines"," b\rb  \tba",[" b","b","","\tba"]]
-["splitlines"," \f \t\fa\t\t a",["","","","\t","a\t\t a"]]
-["splitlines","\f\u001e \n\u001d\u001f \t\u001fb\u001f",["","","","","","\u001f","\t\u001fb\u001f"]]
-["strip","","'","","",""]
-["strip","﻿﻿a b  ","ab","﻿﻿a b  ","﻿﻿a b  ","﻿﻿a b  "]
-["strip",";﻿","ab",";﻿",";﻿",";﻿"]
-["strip","a﻿bb ﻿bb",";","a﻿bb ﻿bb","a﻿bb ﻿bb","a﻿bb ﻿bb"]
-["strip"," ","; ","","",""]
-["strip","  ﻿ a﻿;","'","  ﻿ a﻿;","  ﻿ a﻿;","  ﻿ a﻿;"]
-["strip",";bb b'﻿ ","﻿",";bb b'﻿ ",";bb b'﻿ ",";bb b'﻿ "]

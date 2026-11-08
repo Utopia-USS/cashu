@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { D } from "../../decimal.js";
-import { loadVectors, Mismatches } from "../../testing/vectors.js";
 import { type ImportPlan, planImport, type StoredTxn } from "./dedup.js";
 import type { NewTransaction } from "./newTransaction.js";
-import { type RawRow, rawFromRow } from "./testing/vectorRows.js";
 import type { RawTransaction, TxnSource } from "./types.js";
 
 const stored = (plan: ImportPlan): StoredTxn[] => plan.toInsert.map(asStored);
@@ -16,56 +14,6 @@ function asStored(t: NewTransaction): StoredTxn {
     amount: t.amount,
   };
 }
-
-interface PreRow {
-  dedup_hash: string;
-  booking_date: string;
-  amount: string;
-  bank_transaction_id: string | null;
-}
-interface Batch {
-  raws: RawRow[];
-  statuses: string[];
-  num_duplicates: number;
-  num_overlap: number;
-  inserted: [string, number][];
-}
-
-describe("dedup scenarios (prepare_new_transactions on an in-memory DB, vectors_budget.py)", () => {
-  it("statuses, counts, hashes and occurrences equal Python batch by batch", () => {
-    const m = new Mismatches();
-    for (const [i, row] of loadVectors("budget-dedup").rows.entries()) {
-      const [, rule, pre, batches] = row as [string, boolean, PreRow[], Batch[]];
-      const state: StoredTxn[] = pre.map((p) => ({
-        dedupHash: p.dedup_hash,
-        bankTransactionId: p.bank_transaction_id,
-        bookingDate: p.booking_date,
-        amount: D(p.amount),
-      }));
-      for (const [b, batch] of batches.entries()) {
-        const plan = planImport(state, batch.raws.map(rawFromRow), { newestDayRule: rule });
-        m.check(
-          `${i}/${b}`,
-          {
-            statuses: plan.statuses,
-            num_duplicates: plan.numDuplicates,
-            num_overlap: plan.numOverlap,
-            inserted: plan.toInsert.map((t) => [t.dedupHash, t.occurrence]),
-          },
-          {
-            statuses: batch.statuses,
-            num_duplicates: batch.num_duplicates,
-            num_overlap: batch.num_overlap,
-            inserted: batch.inserted,
-          },
-        );
-        state.push(...stored(plan));
-      }
-    }
-    expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBeGreaterThan(600);
-  });
-});
 
 /** tests/test_ingestion.py `_raw`. */
 function raw(

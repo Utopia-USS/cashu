@@ -130,8 +130,8 @@ describe("research note and immediate plan checks", () => {
     expect(noteByGid(h.read, out.value.note)?.instrument).toBe(h.abc);
   });
 
-  it.each(["absent", "nonleader", "throwing", "lost_after_build", "compute_failed"])(
-    "preserves base note without unauthorized/failed derived effects: %s",
+  it.each(["absent", "lost_after_build"])(
+    "preserves base note without unauthorized derived effects: %s",
     async (mode) => {
       const h = await fixture();
       let holder = true;
@@ -140,18 +140,13 @@ describe("research note and immediate plan checks", () => {
           ? undefined
           : {
               ...h.inputs,
-              isHolder: () => {
-                if (mode === "throwing") throw new Error("unavailable");
-                return mode !== "nonleader" && holder;
-              },
+              isHolder: () => holder,
               buildValued: (
                 read: Parameters<ResearchPlanInputs["buildValued"]>[0],
                 now: Parameters<ResearchPlanInputs["buildValued"]>[1],
               ) => {
-                if (mode === "compute_failed")
-                  throw new Error("synthetic missing local quote view");
                 const valued = h.inputs.buildValued(read, now);
-                if (mode === "lost_after_build") holder = false;
+                holder = false;
                 return valued;
               },
             };

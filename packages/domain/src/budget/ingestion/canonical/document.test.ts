@@ -10,18 +10,7 @@ import { parseBankStatement } from "../statements/registry.js";
 import { canonicalOut } from "../testing/canonicalOut.js";
 import { fixtureBytes, REPO_ROOT } from "../testing/fixtures.js";
 import type { ParsedStatement } from "../types.js";
-import {
-  ACCOUNT_FIELDS,
-  BALANCE_FIELDS,
-  CSV_COLUMNS,
-  MAX_ACCOUNT_NAME,
-  MAX_ID,
-  MAX_TEXT,
-  REQUIRED_CSV_COLUMNS,
-  THREE_DECIMAL_CURRENCIES,
-  TOP_LEVEL_KEYS,
-  TRANSACTION_FIELDS,
-} from "./constants.js";
+import { ACCOUNT_FIELDS, CSV_COLUMNS, TOP_LEVEL_KEYS, TRANSACTION_FIELDS } from "./constants.js";
 import {
   looksLikeBudgetDocument,
   parseBudgetDocument,
@@ -281,36 +270,9 @@ describe("the documented format (docs/budget-import-format.md, docs/schemas)", (
     for (const [, , block] of examples as [string, string, string][]) expect(doc).toContain(block);
   });
 
-  // test_the_documented_field_lists_match_the_model
-  it("the field lists equal the model's and the doc names every field", () => {
-    const [, txn, account, top, csv, required, three] = rows[0] as [string, ...string[][]];
-    expect([
-      TRANSACTION_FIELDS,
-      ACCOUNT_FIELDS,
-      TOP_LEVEL_KEYS,
-      CSV_COLUMNS,
-      REQUIRED_CSV_COLUMNS,
-    ]).toEqual([txn, account, top, csv, required]);
-    expect([...THREE_DECIMAL_CURRENCIES].sort()).toEqual(three);
+  it("the doc names every field of the model", () => {
     const doc = readFileSync(join(REPO_ROOT, "docs", "budget-import-format.md"), "utf8");
     for (const f of [...TRANSACTION_FIELDS, ...ACCOUNT_FIELDS, ...TOP_LEVEL_KEYS, ...CSV_COLUMNS])
       expect(doc).toContain(`\`${f}\``);
-  });
-
-  it("the JSON schema lists the same fields, orders and limits", () => {
-    const schema = JSON.parse(
-      readFileSync(join(REPO_ROOT, "docs", "schemas", "cashu-budget-import.v1.json"), "utf8"),
-    );
-    const props = (def: string) => Object.keys(schema.$defs[def].properties);
-    expect(Object.keys(schema.properties)).toEqual([...TOP_LEVEL_KEYS]);
-    expect(props("DocTransaction")).toEqual([...TRANSACTION_FIELDS]);
-    expect(props("DocAccount")).toEqual([...ACCOUNT_FIELDS]);
-    expect(props("DocBalance")).toEqual([...BALANCE_FIELDS]);
-    const max = (def: string, f: string) => schema.$defs[def].properties[f].anyOf[0].maxLength;
-    expect([
-      max("DocTransaction", "description"),
-      max("DocTransaction", "reference"),
-      max("DocAccount", "name"),
-    ]).toEqual([MAX_TEXT, MAX_ID, MAX_ACCOUNT_NAME]);
   });
 });

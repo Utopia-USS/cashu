@@ -1,41 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { loadVectors, Mismatches } from "./testing/vectors.js";
-import { ND_ZEROS, pyIsDigit, pySplitlines, pyStripChars } from "./text.js";
+import { pyIsDigit, pySplitlines, pyStripChars } from "./text.js";
 
-const vectors = loadVectors("budget-text");
-
-describe("splitlines / strip(chars) / isdigit vectors (the retired Python vectors_budget.py)", () => {
-  it("isdigit equals Python on every code point", () => {
-    const digitOnly = vectors.rows.find((r) => r[0] === "isdigit_only")?.[1] as number[];
-    const decimalCount = vectors.rows.find((r) => r[0] === "isdecimal_count")?.[1] as number;
-    expect(ND_ZEROS.length * 10).toBe(decimalCount);
-    const want = new Set(digitOnly);
-    for (const zero of ND_ZEROS) for (let i = 0; i < 10; i++) want.add(zero + i);
-    const got: number[] = [];
-    for (let c = 0; c < 0x110000; c++) if (pyIsDigit(c)) got.push(c);
-    expect(got).toEqual([...want].sort((a, b) => a - b));
+// Python str semantics the bank parsers (statements/mbank.ts, erste.ts, pekao.ts, delimited.ts), the
+// canonical budget import (canonical/csvVariant.ts) and the MCP redactor (mcp privacy/redactor.ts) rely on.
+describe("Python text helpers", () => {
+  it("isdigit is true for every decimal digit and the superscript / circled digits", () => {
+    for (const ch of ["0", "9", "٣", "۷", "５", "²", "①", "⁴"])
+      expect(pyIsDigit(ch.codePointAt(0) as number), ch).toBe(true);
+    for (const ch of ["a", " ", "-", ".", "½", "Ⅻ"])
+      expect(pyIsDigit(ch.codePointAt(0) as number), ch).toBe(false);
   });
 
-  it("splitlines and strip(chars) equal Python", () => {
-    const m = new Mismatches();
-    for (const row of vectors.rows) {
-      if (row[0] === "splitlines")
-        m.check(`splitlines ${row[1]}`, pySplitlines(row[1] as string), row[2]);
-      if (row[0] === "strip") {
-        const [, s, chars, both, left, right] = row as [
-          string,
-          string,
-          string,
-          string,
-          string,
-          string,
-        ];
-        m.check(`strip ${s} ${chars}`, pyStripChars(s, chars), both);
-        m.check(`lstrip ${s} ${chars}`, pyStripChars(s, chars, "left"), left);
-        m.check(`rstrip ${s} ${chars}`, pyStripChars(s, chars, "right"), right);
-      }
-    }
-    expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBe(111);
+  it("splitlines splits on every Python line break, CRLF once, no trailing empty line", () => {
+    expect(pySplitlines("")).toEqual([]);
+    expect(pySplitlines("a\r\nb\rc\nd\n")).toEqual(["a", "b", "c", "d"]);
+    expect(pySplitlines("a\n\nb")).toEqual(["a", "", "b"]);
+    expect(pySplitlines("a\u000bb\u000cc\u001cd\u0085e f")).toEqual(["a", "b", "c", "d", "e", "f"]);
+    expect(pySplitlines("\ra")).toEqual(["", "a"]);
+  });
+
+  it("strip(chars) removes any of the given code points from the chosen side", () => {
+    expect(pyStripChars('"";"x";""', '";')).toBe("x");
+    expect(pyStripChars("'- 1 -'", "'-", "left")).toBe(" 1 -'");
+    expect(pyStripChars("'- 1 -'", "'-", "right")).toBe("'- 1 ");
+    expect(pyStripChars("😀a😀", "😀")).toBe("a");
+    expect(pyStripChars("abc", "")).toBe("abc");
   });
 });

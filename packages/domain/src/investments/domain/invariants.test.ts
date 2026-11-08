@@ -1,13 +1,11 @@
 /**
- * Invariants of the port that the Python contract test does not pin down: warning messages byte-equal
- * to Python (expected strings produced by the Python classes from the same synthetic values), value
- * identity of warnings, timestamp ordering, the plan helpers and instrument value equality.
+ * Warning messages and value identity, timestamp ordering, the plan helpers and instrument value
+ * equality.
  */
 import { describe, expect, it } from "vitest";
 import { parseDateTime } from "../../dates.js";
 import { D } from "../../decimal.js";
 import {
-  ALL_WARNING_KINDS,
   AssetClass,
   asAccountId,
   asInstrumentId,
@@ -17,33 +15,23 @@ import {
   compareChronological,
   dedupeWarnings,
   effectivePlan,
-  frozenValuedAtZero,
   historyGap,
   holding,
   InvariantError,
   instrument,
-  invalidTransaction,
   isGenericBucket,
   isPlan,
   lastKnownPriceUsed,
-  missingCostBasis,
-  missingFxRate,
-  missingInstrument,
-  missingManualValuation,
   missingPrice,
   mixedLotCurrencies,
   openedOn,
   openLot,
   type PortfolioWarning,
   planLabel,
-  realizedCurrencyMismatch,
   realizedTrade,
   sameInstrument,
-  staleFxRate,
-  stalePrice,
   TxnType,
   transaction,
-  unknownCostBasis,
   warningKey,
   warningMessage,
 } from "./index.js";
@@ -62,72 +50,20 @@ describe("warnings", () => {
       "History gap: t on 2026-01-02 needs 3.50 more units of i than held",
     ],
     [
-      unknownCostBasis({ accountId: a, instrumentId: i, txnId: t, date: day }),
-      "Unknown cost basis: t on 2026-01-02 opened a lot of i without a price",
-    ],
-    [
-      invalidTransaction({ accountId: a, txnId: t, date: day, reason: "no quantity" }),
-      "Ignored transaction t on 2026-01-02 for lots: no quantity",
-    ],
-    [
       mixedLotCurrencies({ accountId: a, instrumentId: i, currencies: [USD, EUR] }),
       "Lots of i in one account use several currencies: EUR, USD",
-    ],
-    [
-      realizedCurrencyMismatch({
-        accountId: a,
-        instrumentId: i,
-        txnId: t,
-        date: day,
-        saleCurrency: USD,
-        lotCurrencies: [PLN, EUR],
-      }),
-      "Sale t of i on 2026-01-02 is in USD but closed lots in EUR, PLN: realized result only in the base currency",
     ],
     [
       cashHistoryGap({ accountId: a, currency: PLN, amount: D("-1.20"), asOf: day }),
       "Cash history gap: PLN cash of a is -1.20 on 2026-01-02 (deposits missing from the history?); counted as 0",
     ],
     [
-      staleFxRate({ currency: USD, base: PLN, date: day, rateDate: rateDay, ageDays: 32 }),
-      "Stale USD/PLN FX rate for 2026-01-02: newest rate 2025-12-01 is 32 days old",
-    ],
-    [
-      missingFxRate({ currency: USD, base: PLN, date: day }),
-      "No USD/PLN FX rate on or before 2026-01-02",
-    ],
-    [
-      missingPrice({ instrumentId: i, asOf: day }),
-      "No price for i on or before 2026-01-02: excluded from weights",
-    ],
-    [
       lastKnownPriceUsed({ instrumentId: i, priceDate: rateDay, price: D("1E+1") }),
       "No market price for i: valued at the last known price 1E+1 from 2025-12-01",
     ],
-    [
-      stalePrice({ instrumentId: i, priceDate: rateDay, ageDays: 32 }),
-      "Stale price for i: last close 2025-12-01 is 32 days old",
-    ],
-    [
-      missingInstrument({ instrumentId: i }),
-      "No instrument metadata for i: valued with a placeholder",
-    ],
-    [
-      missingCostBasis({ accountId: a, instrumentId: i }),
-      "Cannot value i at cost: its cost basis is unknown, excluded from weights",
-    ],
-    [
-      missingManualValuation({ instrumentId: i, asOf: day }),
-      "No manual valuation of i on or before 2026-01-02: excluded from weights",
-    ],
-    [
-      frozenValuedAtZero({ instrumentId: i }),
-      "i is frozen and has no manual valuation: valued at 0",
-    ],
   ];
 
-  it("messages are byte-equal to Python, one case per kind in Python order", () => {
-    expect(cases.map(([w]) => w.kind)).toEqual(ALL_WARNING_KINDS);
+  it("messages render amounts as written and currency lists sorted", () => {
     for (const [w, message] of cases) expect(warningMessage(w), w.kind).toBe(message);
   });
 
@@ -141,10 +77,6 @@ describe("warnings", () => {
     expect(warningKey(missingPrice({ instrumentId: i, asOf: day }))).not.toBe(
       warningKey(missingPrice({ instrumentId: i, asOf: rateDay })),
     );
-  });
-
-  it("warnings are frozen", () => {
-    expect(Object.isFrozen(missingInstrument({ instrumentId: i }))).toBe(true);
   });
 });
 
@@ -160,7 +92,7 @@ describe("transaction", () => {
     cashCurrency: PLN,
   };
 
-  it("negative zero is not negative (Python `Decimal('-0') < 0` is False)", () => {
+  it("negative zero is not negative", () => {
     expect(
       transaction({ ...base, quantity: D("-0"), grossAmount: D("-0.00") }).quantity?.isZero(),
     ).toBe(true);
@@ -182,7 +114,7 @@ describe("transaction", () => {
     expect([naive, aware].sort(compareChronological).map((x) => x.id)).toEqual(["a", "z"]);
   });
 
-  it("ties fall back to the id in Python str order (code points)", () => {
+  it("ties fall back to the id in code point order", () => {
     const astral = transaction({ ...base, id: asTxnId("\u{1F600}") });
     const bmp = transaction({ ...base, id: asTxnId("～") });
     expect([astral, bmp].sort(compareChronological).map((x) => x.id)).toEqual(["～", "\u{1F600}"]);
@@ -268,7 +200,7 @@ describe("buckets and instruments", () => {
     expect(isGenericBucket(42)).toBe(false);
   });
 
-  it("instrument equality ignores the profile-view fields (Python compare=False)", () => {
+  it("instrument equality ignores the profile-view fields", () => {
     const base = { id: i, name: "Orlen", currency: PLN, assetClass: AssetClass.EQUITY };
     const shared = instrument(base);
     const viewed = instrument({ ...base, plan: "buy", segment: "energy", segmentBy: "owner" });

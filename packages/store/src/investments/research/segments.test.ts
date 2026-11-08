@@ -1,13 +1,6 @@
-// Test-for-test translation of `tests/investments/persistence/test_p5_segments_service.py`: the
-// segments view (shape, windows, residual, a note without exposure, the attribution with moving
-// prices, FX, a cost holding, cash and a mid-window buy), segment notes (rules, signal key and
-// payload), the weekly novelty limits, on-demand scopes, one segment note per week of storing and the
-// review digest's segments. HTTP status codes become refusal codes. Synthetic data only. Each `it`
-// names its Python test.
-//
-// Not translated: `test_patch_segment_auto_and_clear` (the instrument PATCH: the segment override
-// command is S22d's `setInstrumentSegment`, the endpoint S36; `segment_of` / auto segments are
-// covered by the domain's research/segments.test.ts).
+// The segments view (windows, residual, a note without exposure, attribution with moving prices,
+// FX, a cost holding, cash and a mid-window buy), segment note rules, signal key and payload, the
+// weekly novelty limits, on-demand scopes and the review digest's segments. Synthetic data only.
 import { addDays } from "@cashu/domain";
 import { market, research } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
@@ -65,7 +58,7 @@ function viewValue(v: Vault, cache: market.PriceCache, window = "1w") {
   return out.value;
 }
 
-/** Python `segment_note`: a market segment note (kind macro by default). */
+/** A market segment note (kind macro by default). */
 function segmentNote(
   v: Vault,
   n: number,
@@ -100,29 +93,12 @@ function flatPrices(): market.InMemoryPriceCache {
   return cache;
 }
 
-describe("GET /research/segments", () => {
-  it("test_segments_endpoint_shape_windows_and_residual", () => {
+describe("segments view", () => {
+  it("segments view windows and residual", () => {
     const i = investor();
     const { v } = i;
     v.value(setInstrumentSegment, { instrument: i.abc, segment: "equity_pl", by: "owner" });
     const empty = viewValue(v, new market.InMemoryPriceCache());
-    expect(new Set(Object.keys(empty))).toEqual(
-      new Set([
-        "as_of",
-        "start",
-        "end",
-        "window",
-        "base_currency",
-        "portfolio_return",
-        "explained",
-        "residual",
-        "new_positions",
-        "stale",
-        "segments",
-        "unassigned",
-        "currency",
-      ]),
-    );
     // no prices at all: stale everywhere, the series is incomplete -> no residual
     expect(empty.portfolio_return).toBeNull();
     expect(empty.residual).toBeNull();
@@ -162,7 +138,7 @@ describe("GET /research/segments", () => {
     expect(flat.explained).toBe(0.0);
   });
 
-  it("test_segment_with_a_note_and_no_exposure_appears_and_reads", () => {
+  it("segment with a note and no exposure appears and reads", () => {
     const i = investor();
     const { v } = i;
     const cache = new market.InMemoryPriceCache();
@@ -196,7 +172,7 @@ describe("GET /research/segments", () => {
 });
 
 describe("segment notes", () => {
-  it("test_segment_note_rules", () => {
+  it("segment note rules", () => {
     const i = investor();
     const { v } = i;
     expect(refusal(addNote(v, 1, { segment: "gold", kind: "macro" }))).toBe("segment_only");
@@ -216,7 +192,7 @@ describe("segment notes", () => {
     expect(rows.map((r) => r.title)).toEqual([six]);
   });
 
-  it("test_segment_note_signal_key_and_payload", () => {
+  it("segment note signal key and payload", () => {
     const i = investor();
     const note = segmentNoted(i.v, 1, "power", { strength: 3 });
     const sigs = researchSignals(i.v);
@@ -246,7 +222,7 @@ function watchFour(v: Vault): string[] {
 }
 
 describe("novelty limits of the weekly run", () => {
-  it("test_weekly_novelty_limits", () => {
+  it("weekly novelty limits", () => {
     const i = investor();
     const { v } = i;
     const [, , , w4] = watchFour(v);
@@ -280,7 +256,7 @@ describe("novelty limits of the weekly run", () => {
     segmentNoted(v, 43, "healthcare", {}, onDemand);
   });
 
-  it("test_novelty_counts_per_week_over_weekly_runs_and_notes_without_a_run", () => {
+  it("novelty counts per week over weekly runs and notes without a run", () => {
     const i = investor();
     const { v } = i;
     watchFour(v);
@@ -310,7 +286,7 @@ describe("novelty limits of the weekly run", () => {
     added(v, 21, {}, { instrument: "ABC", createdBy: "user" });
   });
 
-  it("test_scope_with_only_instruments_or_segments_is_on_demand", () => {
+  it("scope with only instruments or segments is on demand", () => {
     const i = investor();
     const { v } = i;
     for (const raw of [{ instruments: ["ABC"] }, { segments: ["gold"] }]) {
@@ -325,7 +301,7 @@ describe("novelty limits of the weekly run", () => {
     for (const n of [1, 2, 3]) added(v, n, {}, { instrument: "ABC", run }); // exempt
   });
 
-  it("test_one_segment_note_per_week_of_storing_too", () => {
+  it("one segment note per week of storing too", () => {
     const i = investor();
     const { v } = i;
     segmentNoted(v, 1, "gold");
@@ -336,7 +312,7 @@ describe("novelty limits of the weekly run", () => {
 });
 
 describe("review digest", () => {
-  it("test_review_digest_carries_the_week_segments", () => {
+  it("review digest carries the week segments", () => {
     const i = investor();
     const { v } = i;
     const keys = ["gold", "crypto", "bonds", "energy", "metals", "power", "quantum"];
@@ -368,7 +344,7 @@ describe("review digest", () => {
 // ------------------------------------------------------------------ attribution
 
 describe("attribution through the service", () => {
-  it("test_attribution_with_moving_prices_fx_cost_holding_cash_and_a_mid_window_buy", () => {
+  it("attribution with moving prices fx cost holding cash and a mid window buy", () => {
     const { v, cache } = movingPortfolio();
     const out = viewValue(v, cache);
     const rows = new Map(out.segments.map((r) => [r.segment, r]));
@@ -394,7 +370,7 @@ describe("attribution through the service", () => {
     expect(out.stale).toEqual([]);
   });
 
-  it("test_a_start_rate_too_old_still_values_the_holding_and_flags_it", () => {
+  it("a start rate too old still values the holding and flags it", () => {
     const { v, cache, wrld } = movingPortfolio({ eurGap: 15 }); // the newest EUR rate is 16 days old
     const out = viewValue(v, cache);
     const rows = new Map(out.segments.map((r) => [r.segment, r]));
@@ -405,7 +381,7 @@ describe("attribution through the service", () => {
     expect(out.stale).toContain(wrld);
   });
 
-  it("test_a_holding_without_any_start_rate_is_left_out_and_flagged", () => {
+  it("a holding without any start rate is left out and flagged", () => {
     const { v, cache, wrld } = movingPortfolio({ eurFrom: addDays(START, 1) });
     const out = viewValue(v, cache);
     const rows = new Map(out.segments.map((r) => [r.segment, r]));
@@ -418,7 +394,7 @@ describe("attribution through the service", () => {
     expect(out.stale).toContain(wrld);
   });
 
-  it("test_rounding_never_gives_negative_zero", () => {
+  it("rounding never gives negative zero", () => {
     expect(Object.is(research.roundShare(-1e-9), 0)).toBe(true);
     expect(research.roundShare(null)).toBeNull();
     expect(research.roundShare(-0.0123456789)).toBe(-0.012346);

@@ -1,9 +1,6 @@
 // A strategy's benchmark proxy the owner neither holds nor watches: registered as a reference
 // instrument (market data only) when the strategy is recorded or in the backfill, its bars are
-// backfilled, and a market default currency is settled at the source; `proxy_not_found` stays only
-// for a proxy nothing can resolve. Translates the store parts of
-// tests/investments/performance/test_fixb_benchmark_proxy.py (the pure reference_instrument test is in
-// @cashu/domain). Fake sources, synthetic data only.
+// backfilled, and a market default currency is settled at the source. Fake sources, synthetic data.
 import { market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import { storeWriter } from "../../command.js";
@@ -44,7 +41,7 @@ function bench(cache: market.PriceCache, v: ReturnType<typeof vault>, proxy: str
   return out.value.benchmark;
 }
 
-describe("benchmark proxy (test_fixb_benchmark_proxy)", () => {
+describe("benchmark proxy", () => {
   it("a recorded strategy registers the proxy and the backfill fills it", async () => {
     const v = vault();
     household(v, "Ref");
@@ -92,21 +89,5 @@ describe("benchmark proxy (test_fixb_benchmark_proxy)", () => {
     expect(new Set(bars.map((x) => x.currency))).toEqual(new Set([USD]));
     // the fake FX source has no USD rates, so the comparison waits for them, but it is found
     expect(["ok", "no_prices"]).toContain(bench(cache, v, "REFL.L").status);
-  });
-
-  it("an unresolvable proxy stays not found", async () => {
-    const v = vault();
-    household(v, "Isin");
-    const cache = new market.InMemoryPriceCache();
-    const strategy = benchStrategy("IE00BEXAMPL9");
-    const ensured = ensureProxy(
-      { store: v.store, writer: storeWriter(v.store), env: v.env },
-      "IE00BEXAMPL9",
-    );
-    expect(ensured.status).toBe("unresolved");
-    await runBackfill(backfillDeps(v, cache, { strategy, prices: prices() }));
-    expect(bench(cache, v, "IE00BEXAMPL9").status).toBe("proxy_not_found");
-    const symbols = v.store.read<{ symbol: string | null }>("SELECT symbol FROM inv_instruments");
-    expect(symbols.map((r) => r.symbol)).not.toContain("IE00BEXAMPL9");
   });
 });

@@ -6,7 +6,7 @@ import { account, converge, DEV_B, det, Events, rows } from "./testing/kit.js";
 const ACC = "01JE0000000000000000000A01";
 
 describe("inv_account_settings", () => {
-  it("creates the row with the Python default wrapper and patches present fields", () => {
+  it("creates the row with the default wrapper and patches present fields", () => {
     const store = openTestStore();
     const ev = new Events();
     const g = det("inv_account_settings", ACC);

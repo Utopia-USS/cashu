@@ -1,14 +1,7 @@
-// Test-for-test translations of `tests/investments/persistence/test_p11_topic_view.py` (the market
-// view under a topic thesis: wording checks, the agent's sourced quantitative outlook, the owner's
-// edits and clears, the view surviving thesis edits and leaving notes alone) and of
-// `test_p7_topics_service.py` (a snapshot-only crypto holding held at the start, watched-only topic
-// rows, the review digest keeping this week's topics). MCP / HTTP calls become the commands and views
-// they serve; refusals are codes. Synthetic data only. Each `it` names its Python test.
-//
-// Not translated: the MCP privacy scrub of the outlook and the `research_context` tree (S38e);
-// the HTTP-only refusal of an unknown body key (S36); `test_migration_0024_*` / `test_migration_0025_*`
-// (Python migrations; the store has no migrations of its view); p7's
-// `test_the_dollar_card_folds_in_the_weekly_currency_effect` (the macro cards, S22a over S20).
+// The market view under a topic thesis (wording checks against price calls and advice, the agent's
+// sourced quantitative outlook, the owner's edits and clears, the view surviving thesis edits and
+// leaving notes alone), a snapshot-only crypto holding held at the start, watched-only topic rows and
+// the review digest keeping this week's topics. Synthetic data only.
 import { market, research } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import { setInstrumentSegment } from "../commands/instruments.js";
@@ -63,7 +56,7 @@ const SOURCES = [
   },
 ];
 
-describe("market view wording (test_p11_topic_view)", () => {
+describe("market view wording", () => {
   it.each([
     "Kup teraz, kurs wzrośnie do 100.",
     "Kurs NVDA wzrośnie w ciągu roku, bo popyt rośnie.",
@@ -78,7 +71,7 @@ describe("market view wording (test_p11_topic_view)", () => {
     "Cena złota wzrośnie do 3000 USD w 2027.",
     "Fed prognozuje, że indeks Nasdaq zyska 20 % w 2027.",
     "The S&P 500 will reach 7000 by 2027.",
-  ])("test_price_calls_and_advice_are_refused: %s", (wording) => {
+  ])("price calls and advice are refused: %s", (wording) => {
     expect(research.marketViewProblem(wording)).toBe(true);
   });
 
@@ -91,7 +84,7 @@ describe("market view wording (test_p11_topic_view)", () => {
     "IFR szacuje, że instalacje robotów wzrosną do 575 tys. rocznie w 2028.",
     "MFW prognozuje wzrost PKB USA o 2,1 % w 2027, co wspiera wydatki na automatyzację.",
     "Installations will reach 575,000 units a year by 2028 (IFR).",
-  ])("test_market_and_adoption_wording_passes: %s", (wording) => {
+  ])("market and adoption wording passes: %s", (wording) => {
     expect(research.marketViewProblem(wording)).toBe(false);
   });
 
@@ -102,12 +95,9 @@ describe("market view wording (test_p11_topic_view)", () => {
     ["W horyzoncie 2-4 lat oczekuję dalszego wzrostu wdrożeń do 2030 roku.", false],
     ["Popyt w Q3 pozostanie silny przez 12 mies.", false],
     ["Popyt na roboty rośnie, ryzykiem jest cykl.", false],
-  ] as const)(
-    "test_the_outlook_estimate_check_ignores_years_and_horizons: %s",
-    (text, expected) => {
-      expect(research.hasQuantitativeEstimate(text)).toBe(expected);
-    },
-  );
+  ] as const)("the outlook estimate check ignores years and horizons: %s", (text, expected) => {
+    expect(research.hasQuantitativeEstimate(text)).toBe(expected);
+  });
 });
 
 /** The validation message of a refused view input (what the MCP layer shows). */
@@ -124,8 +114,8 @@ function problem(fn: () => unknown): string {
 const view = (v: Vault, segment = "robotics") =>
   topicThesisView(topicThesis(v.store.read.bind(v.store), segment), "pl");
 
-describe("the market view under a topic thesis (test_p11_topic_view)", () => {
-  it("test_agent_writes_the_view_under_a_thesis_and_the_context_reads_it", () => {
+describe("the market view under a topic thesis", () => {
+  it("agent writes the view under a thesis and the context reads it", () => {
     const { v } = investor();
     const input = {
       segment: "robotics",
@@ -159,7 +149,7 @@ describe("the market view under a topic thesis (test_p11_topic_view)", () => {
     expect(row?.draft).toBe(true);
   });
 
-  it("test_the_agent_view_needs_a_sourced_quantitative_outlook", () => {
+  it("the agent view needs a sourced quantitative outlook", () => {
     const { v } = investor();
     const now = nowOf(v);
     v.value(proposeTopicDraft, { segment: "robotics", thesis: "Robotyka to kolejna fala." });
@@ -201,7 +191,7 @@ describe("the market view under a topic thesis (test_p11_topic_view)", () => {
     });
   });
 
-  it("test_the_view_survives_thesis_edits_and_leaves_notes_alone", () => {
+  it("the view survives thesis edits and leaves notes alone", () => {
     const { v, read } = investor();
     const note = added(
       v,
@@ -245,7 +235,7 @@ describe("the market view under a topic thesis (test_p11_topic_view)", () => {
     expect(listed.map((n) => n.id)).toContain(note);
   });
 
-  it("test_owner_edits_and_clears_the_view_over_http", () => {
+  it("owner edits and clears the view", () => {
     const { v } = investor();
     const owner = { segment: "robotics", by: "owner" };
     expect(refusal(v.run(setTopicMarketView, { ...owner, assessment: ASSESSMENT }))).toBe(
@@ -331,7 +321,7 @@ function segmentsOf(v: Vault, cache: market.PriceCache) {
   return out.value;
 }
 
-/** Python p7 `_bars`: 41 daily closes, `before` up to the window start, `after` from then on. */
+/** 41 daily closes, `before` up to the window start, `after` from then on. */
 function bars(
   cache: market.PriceCache,
   symbol: string,
@@ -342,7 +332,7 @@ function bars(
   putBars(cache, symbol, TODAY, 40, (day) => (day <= START ? before : after), currency);
 }
 
-/** A watched US instrument (Python `watch(pid, "<SYM>.US")`). */
+/** A watched US instrument (`<SYM>.US`). */
 function watchUs(v: Vault, symbol: string, isin: string): string {
   const g = stock(v, symbol, isin, {
     currency: "USD",
@@ -353,8 +343,8 @@ function watchUs(v: Vault, symbol: string, isin: string): string {
   return g;
 }
 
-describe("topics (test_p7_topics_service)", () => {
-  it("test_a_snapshot_only_crypto_holding_is_held_at_the_start", () => {
+describe("topics", () => {
+  it("a snapshot only crypto holding is held at the start", () => {
     const { v, cache } = movingPortfolio();
     // A crypto account whose only record is the corrected broker snapshot of 2 days ago (BTC 0.5).
     const crypto = brokerage(v, "Krypto");
@@ -392,7 +382,7 @@ describe("topics (test_p7_topics_service)", () => {
     expect(out.stale).not.toContain(btc);
   });
 
-  it("test_watched_only_topics_are_rows_after_the_exposed_ones", () => {
+  it("watched only topics are rows after the exposed ones", () => {
     const { v, cache } = movingPortfolio();
     const ionq = watchUs(v, "IONQ", "US0000000IQ1");
     const rgti = watchUs(v, "RGTI", "US0000000RG1");
@@ -423,7 +413,7 @@ describe("topics (test_p7_topics_service)", () => {
     expect(out.segments[2]?.trend_1w).toBeNull(); // a treasury bond at cost has no bars
   });
 
-  it("test_the_review_digest_keeps_topics_with_a_note_this_week", () => {
+  it("the review digest keeps topics with a note this week", () => {
     const { v, cache } = movingPortfolio();
     const picks: [string, string, string][] = [
       ["IONQ", "US0000000IQ1", "quantum"],

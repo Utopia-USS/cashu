@@ -1,8 +1,4 @@
-/**
- * Test-for-test translation of `tests/investments/portfolio/test_inv_valuation.py` (valuation incl.
- * R2/R4/R12/R14/R15, plus manual and frozen valuation). Synthetic data only. Each `it` names its
- * Python test in a comment.
- */
+/** Valuation incl. review fixes R2/R4/R12/R14/R15, plus manual and frozen valuation. Synthetic data. */
 import { describe, expect, it } from "vitest";
 import { type Decimal, decimalKey } from "../../decimal.js";
 import { AssetClass, InstrumentStatus, ValuationMode } from "../domain/enums.js";
@@ -130,7 +126,6 @@ const MARKET = marketView(AS_OF, {
 });
 
 describe("valuation", () => {
-  // test_market_value_cost_basis_cash_weights_and_stale_weight
   it("market value, cost basis, cash, weights and stale weight", () => {
     const valued = valuePortfolio(snapshotOf(TXNS), MARKET, FX, PLN, 5);
 
@@ -171,7 +166,6 @@ describe("valuation", () => {
     ]);
   });
 
-  // test_cost_basis_uses_the_rate_on_or_before_each_lot_date
   it("cost basis uses the rate on or before each lot date", () => {
     const valued = valuePortfolio(
       snapshotOf([
@@ -188,7 +182,6 @@ describe("valuation", () => {
     expect(k(holding.marketValueBase)).toBe(k(d("924"))); // 2 x 110 x 4.20
   });
 
-  // test_a_price_is_stale_only_when_older_than_max_price_age_days
   it("a price is stale only when older than max price age days", () => {
     const snapshot = snapshotOf([buy(ACC, PL_STOCK.id, "2026-01-05", "1", "100")]);
 
@@ -206,7 +199,6 @@ describe("valuation", () => {
     expect(k(valueWithBarOn("2026-03-04").marketValueBase)).toBe(k(d("100")));
   });
 
-  // test_bars_after_the_snapshot_date_are_ignored
   it("bars after the snapshot date are ignored", () => {
     const valued = valuePortfolio(
       snapshotOf([buy(ACC, PL_STOCK.id, "2026-01-05", "1", "100")]),
@@ -221,7 +213,6 @@ describe("valuation", () => {
     expect(k((valued.valued[0] as ValuedHolding).price)).toBe(k(d("120")));
   });
 
-  // test_a_missing_price_excludes_the_holding_from_totals_and_weights
   it("a missing price excludes the holding from totals and weights", () => {
     const allBars = [...MARKET.bars.values()].flat();
     const valued = valuePortfolio(
@@ -249,7 +240,6 @@ describe("valuation", () => {
     );
   });
 
-  // test_without_bars_the_last_known_price_is_used_and_flagged_stale
   it("without bars the last known price is used and flagged stale", () => {
     const fundTxns = [
       cashTxn(ACC, "2026-01-02", "550"),
@@ -287,7 +277,6 @@ describe("valuation", () => {
     expect(ws(none.warnings)).toEqual(ws([missingPrice({ instrumentId: FUND.id, asOf: AS_OF })]));
   });
 
-  // test_instruments_valued_at_cost_use_the_cost_basis_and_are_never_stale
   it("instruments valued at cost use the cost basis and are never stale", () => {
     const bond = instrument(null, {
       name: "EDO0536",
@@ -355,7 +344,6 @@ describe("valuation", () => {
     expect((valued.warnings[0] as PortfolioWarning).accountId).toBe(ACC);
   });
 
-  // test_missing_fx_rates_leave_the_amounts_out_with_warnings_r4
   it("missing fx rates leave the amounts out with warnings (R4)", () => {
     const noUsd = new InMemoryFxLookup([]);
     const valued = valuePortfolio(
@@ -396,7 +384,6 @@ describe("valuation", () => {
     expect(valued.missingFxCurrencies).toEqual(new Set([USD]));
   });
 
-  // test_an_fx_rate_older_than_max_fx_age_days_counts_as_missing_r14
   it("an fx rate older than max fx age days counts as missing (R14)", () => {
     // The newest USD rate is from 2026-02-20, 18 days before as_of; cost basis rates are fresh.
     const oldUsd = new InMemoryFxLookup([
@@ -437,7 +424,6 @@ describe("valuation", () => {
     expect(k((loose.valued[0] as ValuedHolding).marketValueBase)).toBe(k(d("2255"))); // 5 x 110 x 4.10
   });
 
-  // test_price_currency_names_the_currency_of_the_price_r15
   it("price currency names the currency of the price (R15)", () => {
     const eurListed = instrument(null, {
       name: "EUR ETF",
@@ -486,7 +472,6 @@ describe("valuation", () => {
     ]);
   });
 
-  // test_realized_trades_keep_currencies_apart_and_get_a_base_result_r12
   it("realized trades keep currencies apart and get a base result (R12)", () => {
     const eurEtf = instrument(null, {
       name: "EUR ETF",
@@ -546,7 +531,6 @@ describe("valuation", () => {
     expect(k(portfolioRealizedPnlBase(valued))).toBe(k(d("-540"))); // -600 + 60
   });
 
-  // test_an_unknown_cost_basis_keeps_the_market_value_but_no_cost_numbers
   it("an unknown cost basis keeps the market value but no cost numbers", () => {
     const valued = valuePortfolio(
       snapshotOf([transferIn(ACC, PL_STOCK.id, "2026-01-05", "10")]),
@@ -563,7 +547,6 @@ describe("valuation", () => {
     expect(holding.weight).toBe(1.0);
   });
 
-  // test_an_instrument_missing_from_the_market_view_gets_a_placeholder
   it("an instrument missing from the market view gets a placeholder", () => {
     const valued = valuePortfolio(
       snapshotOf([buy(ACC, PL_STOCK.id, "2026-01-05", "1", "100")]),
@@ -581,7 +564,6 @@ describe("valuation", () => {
     expect(ws(valued.warnings)).toEqual(ws([missingInstrument({ instrumentId: PL_STOCK.id })]));
   });
 
-  // test_a_non_pln_base_currency_converts_through_pln_cross_rates
   it("a non-PLN base currency converts through PLN cross rates", () => {
     const valued = valuePortfolio(
       snapshotOf([
@@ -604,7 +586,6 @@ describe("valuation", () => {
     expect(k(valued.totalBase)).toBe(k(d("877.5")));
   });
 
-  // test_the_account_filter_values_only_the_given_accounts
   it("the account filter values only the given accounts", () => {
     const snapshot = snapshotOf([
       cashTxn(ACC, "2026-01-02", "1000"),
@@ -631,7 +612,6 @@ describe("valuation", () => {
     ).toEqual([]);
   });
 
-  // test_an_empty_portfolio_has_a_zero_total_and_no_stale_weight
   it("an empty portfolio has a zero total and no stale weight", () => {
     const valued = valuePortfolio(snapshotOf([]), MARKET, FX, PLN, 5);
     expect(k(valued.totalBase)).toBe(k(d("0")));
@@ -643,7 +623,6 @@ describe("valuation", () => {
 // --- Stage 2: manual valuation and frozen instruments ------------------------------------------
 
 describe("manual valuation and frozen instruments", () => {
-  // test_manual_mode_uses_the_newest_valuation_on_or_before_the_date_and_is_never_stale
   it("manual mode uses the newest valuation on or before the date and is never stale", () => {
     const claim = instrument(null, {
       name: "Exchange claim",
@@ -685,7 +664,6 @@ describe("manual valuation and frozen instruments", () => {
     expect(valued.warnings).toEqual([]);
   });
 
-  // test_manual_mode_without_a_valuation_excludes_the_holding
   it("manual mode without a valuation excludes the holding", () => {
     const privateFund = instrument(null, {
       name: "Private fund",
@@ -713,7 +691,6 @@ describe("manual valuation and frozen instruments", () => {
     );
   });
 
-  // test_a_frozen_instrument_defaults_to_manual_zero_until_a_valuation_is_set
   it("a frozen instrument defaults to manual zero until a valuation is set", () => {
     const frozenAdr = instrument(null, {
       name: "Frozen ADR",
@@ -776,7 +753,6 @@ describe("manual valuation and frozen instruments", () => {
     expect(valuedLater.warnings).toEqual([]);
   });
 
-  // test_a_delisted_instrument_keeps_its_valuation_mode
   it("a delisted instrument keeps its valuation mode", () => {
     const delisted = instrument(null, {
       name: "Gone",

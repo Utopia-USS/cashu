@@ -1,73 +1,117 @@
-/** Actual Python synthetic hint table calls, including rounded threshold ties and malformed values. */
-import { readFileSync } from "node:fs";
-import { expect, it } from "vitest";
-import { D, Decimal } from "../../decimal.js";
-import { Freshness, type FreshnessReason, type FreshnessState } from "./freshness.js";
-import { type HintFacts, instrumentHints } from "./hints.js";
+/** Owner-rule hint tables: which hints a held or watched instrument gets, in which order. */
+import { describe, expect, it } from "vitest";
+import { D } from "../../decimal.js";
+import { Freshness } from "./freshness.js";
+import { type HintFacts, hintNumber, instrumentHints } from "./hints.js";
 
-interface Input {
-  held: boolean;
-  health: string;
-  has_thesis: boolean;
-  has_exit_plan: boolean;
-  plan: string | null;
-  predates_thesis: boolean;
-  signals: { kind: string; payload: Record<string, unknown>; severity: string | null }[];
-  alerts: { alert_id: string; kind: string; title: string | null; order: number }[];
-  weight: number | null;
-  thesis_tracked: boolean;
-  freshness: { state: FreshnessState; reasons: { code: string }[] } | null;
-}
-const cases = JSON.parse(
-  readFileSync(new URL("./fixtures/hints.json", import.meta.url), "utf8"),
-) as { cases: readonly [Input, unknown][] };
-function decode(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(decode);
-  if (value !== null && typeof value === "object") {
-    const r = value as Record<string, unknown>;
-    if (typeof r.decimal === "string") return D(r.decimal);
-    if (typeof r.float === "string")
-      return r.float === "inf" ? Infinity : r.float === "-inf" ? -Infinity : NaN;
-    return Object.fromEntries(Object.entries(r).map(([k, v]) => [k, decode(v)]));
-  }
-  return value;
-}
-function encode(value: unknown): unknown {
-  if (typeof value === "number" && !Number.isFinite(value))
-    return { float: Number.isNaN(value) ? "nan" : value < 0 ? "-inf" : "inf" };
-  if (value instanceof Decimal) return { decimal: value.toString() };
-  if (Array.isArray(value)) return value.map(encode);
-  if (value !== null && typeof value === "object")
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, encode(v)]));
-  return value;
-}
-it.each(cases.cases)("matches actual Python hint table %#", (raw, expected) => {
-  const r = decode(raw) as Input;
-  const facts: HintFacts = {
-    held: r.held,
-    health: r.health,
-    hasThesis: r.has_thesis,
-    hasExitPlan: r.has_exit_plan,
-    plan: r.plan,
-    predatesThesis: r.predates_thesis,
-    signals: r.signals,
-    alerts: r.alerts.map((a) => ({
-      alertId: a.alert_id,
-      kind: a.kind,
-      title: a.title,
-      order: a.order,
-    })),
-    weight: r.weight,
-    thesisTracked: r.thesis_tracked,
-    freshness:
-      r.freshness === null
-        ? null
-        : new Freshness(
-            r.freshness.state,
-            r.freshness.reasons.map(
-              (reason) => ({ code: reason.code, at: null }) as FreshnessReason,
-            ),
-          ),
-  };
-  expect(encode(instrumentHints(facts))).toEqual(expected);
+const held = (over: Partial<HintFacts> = {}): HintFacts => ({
+  held: true,
+  health: "current",
+  hasThesis: true,
+  hasExitPlan: true,
+  plan: null,
+  ...over,
+});
+const codes = (f: HintFacts) => instrumentHints(f).map((h) => h.code);
+const stale = (state: "outdated" | "maybe_outdated") =>
+  new Freshness(state, [{ code: state === "outdated" ? "note_invalidates" : "age", at: null }]);
+
+describe("held hints", () => {
+  it("orders freshness, thesis, contradiction and rule hints by the held table", () => {
+    const f = held({
+      health: "invalidated",
+      plan: "buy",
+      freshness: stale("outdated"),
+      signals: [
+        { kind: "position_concentration", payload: { weight: 0.31, max_weight: 0.25 } },
+        { kind: "loss_from_cost", payload: { unrealized_pct: -0.4, threshold: 0.3 } },
+      ],
+    });
+    expect(instrumentHints(f).map((h) => [h.code, h.severity])).toEqual([
+      ["recommendation_outdated", "rule"],
+      ["thesis_invalidated", "rule"],
+      ["plan_vs_thesis", "rule"],
+      ["loss_review", "review"],
+      ["concentration", "review"],
+    ]);
+    const loss = instrumentHints(f).find((h) => h.code === "loss_review");
+    expect(loss?.params).toEqual({ loss: 0.4, threshold: 0.3 });
+  });
+
+  it("keeps the strongest signal of a kind by threshold", () => {
+    const [gain] = instrumentHints(
+      held({
+        signals: [
+          { kind: "gain_from_cost", payload: { unrealized_pct: 1.2, threshold: 0.5 } },
+          { kind: "gain_from_cost", payload: { unrealized_pct: 1.2, threshold: "1.0" } },
+          { kind: "gain_from_cost", payload: { unrealized_pct: 1.2, threshold: "junk" } },
+        ],
+      }),
+    );
+    expect(gain).toEqual({
+      code: "gain_review",
+      severity: "review",
+      params: { gain: 1.2, threshold: 1, has_exit_plan: true },
+    });
+  });
+
+  it("asks for a thesis first, then for an exit plan unless fulfilled or a gain review covers it", () => {
+    expect(codes(held({ hasThesis: false, hasExitPlan: false }))).toEqual(["no_thesis"]);
+    expect(codes(held({ hasExitPlan: false }))).toEqual(["no_exit_plan"]);
+    expect(codes(held({ hasExitPlan: false, health: "fulfilled" }))).toEqual(["thesis_fulfilled"]);
+    expect(
+      codes(
+        held({
+          hasExitPlan: false,
+          signals: [{ kind: "gain_from_cost", payload: { unrealized_pct: 2, threshold: 1 } }],
+        }),
+      ),
+    ).toEqual(["gain_review"]);
+  });
+
+  it("drops thesis hints when the owner does not track a thesis for the instrument", () => {
+    expect(
+      codes(held({ hasThesis: false, health: "weakened", thesisTracked: false, freshness: null })),
+    ).toEqual([]);
+    expect(codes(held({ health: "weakened", thesisTracked: false }))).toEqual(["thesis_weakened"]);
+  });
+});
+
+describe("watched hints", () => {
+  it("lists triggered alerts in creation order, then freshness and the buy-without-thesis rule", () => {
+    const hints = instrumentHints({
+      held: false,
+      health: "no_thesis",
+      hasThesis: false,
+      plan: "buy",
+      freshness: stale("maybe_outdated"),
+      alerts: [
+        { alertId: "a2", kind: "price_below", title: null, order: 2 },
+        { alertId: "a1", kind: "price_above", title: "Breakout", order: 1 },
+      ],
+    });
+    expect(hints.map((h) => [h.code, h.severity])).toEqual([
+      ["recommendation_maybe_outdated", "review"],
+      ["alert_triggered", "review"],
+      ["alert_triggered", "review"],
+      ["plan_without_thesis", "rule"],
+      ["no_thesis", "info"],
+    ]);
+    expect(hints[0]?.params).toEqual({ reasons: ["age"] });
+    expect(hints.slice(1, 3).map((h) => h.params.alert_id)).toEqual(["a1", "a2"]);
+  });
+
+  it("never asks a watched instrument for an exit plan", () => {
+    expect(codes({ held: false, health: "current", hasThesis: true, hasExitPlan: false })).toEqual(
+      [],
+    );
+  });
+});
+
+it("reads numeric payloads like Python float() and rounds to 4 places, null when malformed", () => {
+  expect(hintNumber(D("0.123456"))).toBe(0.1235);
+  expect(hintNumber(" 0.5 ")).toBe(0.5);
+  expect(hintNumber(true)).toBeNull();
+  expect(hintNumber(null)).toBeNull();
+  expect(hintNumber("abc")).toBeNull();
 });

@@ -34,7 +34,7 @@ describe("inv_position_snapshots", () => {
     ]);
   });
 
-  it("S31c F2: newest import wins by HLC on the row key, create or update, in every order", () => {
+  it("newest import wins by HLC on the row key, create or update, in every order", () => {
     const a = new Events();
     const b = new Events(DEV_B, "01JB");
     const i = instrument(a, ["xtb", "AAA"], {}, { wall: 1 });
@@ -63,48 +63,7 @@ describe("inv_position_snapshots", () => {
     });
   });
 
-  it("S31c F2: a genesis-exported snapshot loses to any later import of the same day", () => {
-    const a = new Events();
-    const b = new Events(DEV_B, "01JB");
-    const i = instrument(a, ["xtb", "AAA"], {}, { wall: 1 });
-    const g = det("inv_position_snapshots", ACC, i.gid, "2026-03-31");
-    const base = { account: ACC, instrument: i.gid, asOf: "2026-03-31" };
-    const setup = [account(a, ACC, [], { wall: 0 }), ...i.events];
-    // genesis: the stored figures with their stored time as a stamp, at the genesis clock
-    const genesis = a.make(
-      "position.snapshotImported",
-      g,
-      { ...base, quantity: "9", stamps: { created_at: "2026-03-31T18:00:00.000000Z" } },
-      { wall: 2 },
-    );
-    const aUpdate = a.make(
-      "position.snapshotUpdated",
-      g,
-      { ...base, quantity: "12" },
-      { wall: 20 },
-    );
-    const bCreate = b.make(
-      "position.snapshotImported",
-      g,
-      { ...base, quantity: "15" },
-      { wall: 30 },
-    );
-    converge([...setup, genesis], (store) => {
-      expect(rows(store, "inv_position_snapshots").map((r) => [r.quantity, r.created_at])).toEqual([
-        ["9", "2026-03-31 18:00:00.000000"],
-      ]);
-    });
-    converge([...setup, genesis, aUpdate], (store) => {
-      expect(rows(store, "inv_position_snapshots").map((r) => r.quantity)).toEqual(["12"]);
-    });
-    converge([...setup, genesis, aUpdate, bCreate], (store) => {
-      expect(rows(store, "inv_position_snapshots").map((r) => [r.gid, r.quantity])).toEqual([
-        [g, "15"],
-      ]);
-    });
-  });
-
-  it("S31c: an update held before its create creates the row; the create then changes nothing", () => {
+  it("an update held before its create creates the row; the create then changes nothing", () => {
     const ev = new Events();
     const i = instrument(ev, ["xtb", "AAA"], {}, { wall: 1 });
     const g = det("inv_position_snapshots", ACC, i.gid, "2026-03-31");

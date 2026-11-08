@@ -6,11 +6,10 @@ S24/S25 materializers, S26 genesis, S28a carrier contract, S29 devices / lease,
 S31a/b bridge.
 
 Companion documents: [`gid.md`](gid.md) (global ids, keyed DET construction, id-coupled strings).
-Machine schemas: `packages/store/src/events/v1/*.ts` (zod). Executable reference semantics for the
-convergence-critical rules: `packages/store/src/events/v1/reference/fold.ts`, with shuffled-delivery
-tests in `reference/convergence.test.ts`; S23/S25 MUST give the same results on those scenarios. The
-investments tables S25 folds have their own reference, `reference/fold-investments.ts`, compared row by
-row with the store in every investments convergence test and property search.
+Machine schemas: `packages/store/src/events/v1/*.ts` (zod). The convergence-critical rules are
+executable as scenarios with explicit expected views (`packages/store/src/testing/scenarios.ts`), run
+against the store under shuffled delivery in `src/convergence.test.ts` (a few orders) and
+`src/convergence.exhaustive.test.ts` (40 orders, duplicates, every prefix).
 The zod schemas are normative for field names and types, this document for semantics. Where they
 disagree it is a bug in one of them: fix both in the same change.
 
@@ -405,8 +404,8 @@ one row, in `(hlc, eid)` order, with the table's normal rule:
 4. Causality keeps the guards meaningful: a device that emits an event has applied everything it saw,
    and its HLC is above all of it (3.3), so an event never sorts before the state its writer checked.
 
-`reference/convergence.test.ts` exercises 1-3 on every blocker scenario: 40 shuffled deliveries plus
-re-delivered duplicates, invariants checked on every prefix, all final views equal.
+`src/convergence.exhaustive.test.ts` exercises 1-3 on every blocker scenario: 40 shuffled deliveries
+plus re-delivered duplicates, invariants checked on every prefix, all final views equal.
 
 ## 7. Forward compatibility and upcasting
 
@@ -911,7 +910,7 @@ The fetch leader (S29c R4; rule 6 must not rest on an unstated linearizable remo
 - The leader reports each completed fetch with `lease.fetched`; every device warns the owner when the
   pinned leader has been silent for more than 36 hours (`leaderLiveness`).
 
-Lease state never enters the view fold (6.2 LEADER), so the reference fold does not model it.
+Lease state never enters the view fold (6.2 LEADER), so the convergence scenarios do not model it.
 
 ## 9. Derived columns (never in a payload except as genesis stamps)
 
@@ -960,8 +959,7 @@ Lease state never enters the view fold (6.2 LEADER), so the reference fold does 
   signal followed by a newer closed one alias the newer `signal.opened` to the open episode, whose
   `signal.closed` would then close the reopened one (8.7).
 - Genesis clock, device, eids, collisions and dangling references: [`gid.md`](gid.md) 7.1-7.6.
-- Genesis gids follow [`gid.md`](gid.md) 7. A conformance test validates real lab rows through the zod
-  schemas (counts only): `lab-conformance.test.ts`, enabled by `CASHU_LAB_DB`.
+- Genesis gids follow [`gid.md`](gid.md) 7.
 
 ## 12. Open items
 

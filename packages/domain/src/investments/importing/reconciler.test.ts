@@ -87,7 +87,6 @@ const correctionAt = <T>(items: readonly T[], index: number): T => {
   return item;
 };
 
-// test_diff_per_instrument_and_proposed_corrections
 it("diff per instrument and proposed corrections", () => {
   const report = reconcile(
     ACCOUNT,
@@ -148,7 +147,6 @@ it("diff per instrument and proposed corrections", () => {
   ]);
 });
 
-// test_same_proposal_gets_the_same_dedup_hash
 it("same proposal gets the same dedup hash", () => {
   const run = (prefix: string) =>
     reconcile(
@@ -162,7 +160,6 @@ it("same proposal gets the same dedup hash", () => {
   );
 });
 
-// test_fully_matching_account_is_clean_and_tolerance_absorbs_rounding
 it("fully matching account is clean and tolerance absorbs rounding", () => {
   const positions = [position("a", "10.00004"), position("b", "5"), position("c", "3")];
   expect(
@@ -173,7 +170,6 @@ it("fully matching account is clean and tolerance absorbs rounding", () => {
   expect(correctionAt(exact.corrections, 0).txn.quantity).toEqual(d("0.00004"));
 });
 
-// test_several_rows_of_one_instrument_are_summed_with_a_weighted_average_price
 it("several rows of one instrument are summed with a weighted average price", () => {
   const report = reconcile(
     ACCOUNT,
@@ -193,7 +189,6 @@ it("several rows of one instrument are summed with a weighted average price", ()
   expect(correction.txn.price).toEqual(d("15"));
 });
 
-// test_warns_about_date_and_currency_mismatches
 it("warns about date and currency mismatches", () => {
   const report = reconcile(
     ACCOUNT,
@@ -213,7 +208,6 @@ it("warns about date and currency mismatches", () => {
   ]);
 });
 
-// test_no_positions_every_holding_is_missing_at_the_broker
 it("no positions: every holding is missing at the broker", () => {
   const report = reconcile(ACCOUNT, [], snapshot(), ids());
   expect(report.asOf).toBe(day("2026-01-31"));
@@ -227,7 +221,6 @@ it("no positions: every holding is missing at the broker", () => {
   expect(report.diffs).toHaveLength(3);
 });
 
-// test_broker_position_from_parsed
 it("broker position from parsed", () => {
   const parsed = parsedPosition({
     quantity: d("2"),

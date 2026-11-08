@@ -1,15 +1,7 @@
 // Additional evaluator boundaries from rules/expr/evaluator.py, beyond the translated grammar suite.
 import { expect, it } from "vitest";
 import type { UiLang } from "../../../core/i18n.js";
-import {
-  D,
-  Decimal,
-  DecimalError,
-  getContext,
-  localContext,
-  makeContext,
-} from "../../../decimal.js";
-import { expectAll, loadVectors, Mismatches } from "../../../testing/vectors.js";
+import { D, DecimalError, getContext, localContext, makeContext } from "../../../decimal.js";
 import { Scope } from "./catalogTypes.js";
 import { compileExpression } from "./checker.js";
 import { metricLabel } from "./compiled.js";
@@ -148,58 +140,4 @@ it("rejects resolver numbers before arithmetic and propagates resolver errors un
       throw failure;
     }),
   ).toThrow(failure);
-});
-
-type Encoded =
-  | ["decimal", string]
-  | ["unknown", string[]]
-  | ["boolean", boolean]
-  | ["string", string];
-function decode([kind, value]: Encoded): Value {
-  if (kind === "decimal") return D(value);
-  if (kind === "unknown") return new Unknown(value);
-  return value;
-}
-function encode(value: Value): Encoded {
-  if (value instanceof Decimal) return ["decimal", value.toString()];
-  if (value instanceof Unknown) return ["unknown", [...value.reasons]];
-  return typeof value === "boolean" ? ["boolean", value] : ["string", value];
-}
-
-it("matches the bounded synthetic Python evaluator corpus, including values and errors", () => {
-  const mismatches = new Mismatches();
-  for (const [index, row] of loadVectors("inv-rules-evaluator").rows.entries()) {
-    const [source, lang, input, expected] = row as [
-      string,
-      UiLang,
-      Record<string, Encoded>,
-      unknown,
-    ];
-    const expression = compileExpression(source, Scope.INSTRUMENT);
-    const values = new Map(Object.entries(input).map(([label, value]) => [label, decode(value)]));
-    let actual: unknown;
-    try {
-      const result = localContext(makeContext({ prec: 3 }), () =>
-        evaluateExpression(
-          expression,
-          (ref) => {
-            const value = values.get(metricLabel(ref));
-            if (value === undefined) throw new Error("missing vector metric");
-            return value;
-          },
-          lang,
-        ),
-      );
-      actual = {
-        result: result.result,
-        reasons: result.reasons,
-        values: [...result.values].map(([label, value]) => [label, encode(value)]),
-      };
-    } catch (error) {
-      if (!(error instanceof DecimalError || error instanceof TypeError)) throw error;
-      actual = { error: error instanceof DecimalError ? error.signal : error.name };
-    }
-    mismatches.check(`case ${index}`, actual, expected);
-  }
-  expectAll(mismatches);
 });

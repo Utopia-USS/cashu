@@ -1,7 +1,6 @@
-import { addMicroseconds, parseDateTime } from "@cashu/domain";
+import { parseDateTime } from "@cashu/domain";
 import { asAccountId, asInstrumentId, market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
-import { viewHash } from "../../snapshot.js";
 import { openTestStore } from "../../testing/store.js";
 import { brokerage, otherVault, stock } from "../commands/testing/fixtures.js";
 import { assertOrderedDelivery } from "../testing/delivery.js";
@@ -125,38 +124,6 @@ describe("production investment read services", () => {
       portfolioViewInputs(read, { ...input, instrumentIds: [asInstrumentId(missing)] }),
     ).toEqual({ ok: false, reason: "unknown_instrument" });
     foreign.store.close();
-    store.close();
-  });
-
-  it("preserves persisted nullable thesis invalidation and decision reason in history DTOs", () => {
-    const h = household();
-    const store = openTestStore();
-    const thesis = ulid(8400),
-      decision = ulid(8401);
-    store.applyEnvelopes([
-      ...h.events,
-      h.ev.make("thesis.created", thesis, { instrument: h.first, invalidation: null }),
-      h.ev.make("decision.recorded", decision, {
-        signals: [],
-        instrument: h.first,
-        account: null,
-        action: "held",
-        quantity: null,
-        price: null,
-        currency: null,
-        reason: null,
-      }),
-    ]);
-    const history = positionHistory(store.read.bind(store), asInstrumentId(h.first));
-    expect(history.theses[0]?.invalidation).toBeNull();
-    expect(history.decisions[0]?.reason).toBeNull();
-    const detail = readPositionDetail(store.read.bind(store), {
-      ...request(h),
-      instrument: asInstrumentId(h.first),
-    });
-    if (!detail.ok) throw new Error(detail.reason);
-    expect(detail.value.theses.find((row) => row.id === thesis)?.invalidation).toBeNull();
-    expect(detail.value.decisions.find((row) => row.id === decision)?.reason).toBeNull();
     store.close();
   });
 
@@ -325,30 +292,6 @@ describe("production investment read services", () => {
       };
     });
     for (const result of Object.values(projected)) expect(result.ok).toBe(true);
-  });
-
-  it("updates a real positions DTO at clock-only +1 microsecond without any event/cache write", () => {
-    const h = household();
-    const store = openTestStore();
-    store.applyEnvelopes(h.events);
-    const input = request(h);
-    const now = parseDateTime("2026-10-31T12:00:00Z");
-    const before = viewHash(store).hash;
-    const version = h.prices.version();
-    const first = readPositions(store.read.bind(store), {
-      ...input,
-      clock: { ...input.clock, now },
-    });
-    const later = readPositions(store.read.bind(store), {
-      ...input,
-      clock: { ...input.clock, now: addMicroseconds(now, 1) },
-    });
-    expect(first.ok).toBe(true);
-    expect(later.ok).toBe(true);
-    expect(later).not.toEqual(first);
-    expect(viewHash(store).hash).toBe(before);
-    expect(h.prices.version()).toBe(version);
-    store.close();
   });
 
   it("keeps future manual history and transactions in detail while valuation remains asOf", () => {

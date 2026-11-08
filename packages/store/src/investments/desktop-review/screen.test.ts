@@ -346,7 +346,7 @@ describe("native Review owner and tracked projection", () => {
           status: "current",
           calendar: { status: "current", value: { events: [], stale: false } },
         });
-        // Feeds that were never fetched are bound but stale, as Python's offline `feeds()` reports.
+        // Feeds that were never fetched are bound but stale.
         expect(withFeeds(market.emptyFeeds("2026-10-31", 14, []))).toMatchObject({
           status: "current",
           calendar: { status: "current", value: { events: [], stale: true } },

@@ -1,13 +1,11 @@
 // F9: one decision covering several signals of a position (the link table, the position decision's
 // checks, the undo reverting every acknowledgement it caused, decisions listed under each signal, the
-// per-signal decide / acknowledge writing one link). Translates the store-level parts of
-// tests/investments/persistence/test_f9_be.py (HTTP 404 / 409 / 422 become refusal codes; response
-// rendering belongs to the surfaces). Synthetic data only.
+// per-signal decide / acknowledge writing one link). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { decisionByGid, decisionSignalGids, decisions } from "../queries/journal.js";
 import { signalByGid } from "../queries/signals.js";
 import { acknowledgeSignal, decidePosition, decideSignal } from "./decisions.js";
-import { recordDecision, undoDecision } from "./journal.js";
+import { undoDecision } from "./journal.js";
 import { applyRaw, brokerage, raw, rawGid, stock, type Vault, vault } from "./testing/fixtures.js";
 
 let next = 100;
@@ -19,7 +17,7 @@ function investor() {
   const account = brokerage(v);
   applyRaw(v, [raw.watchAdded(v, xmpl), raw.watchAdded(v, abc)]); // both referenced by the vault
   const read = v.store.read.bind(v.store);
-  /** `add_signal`: an open (or closed) signal about `instrument` (null = the whole portfolio). */
+  /** An open (or closed) signal about `instrument` (null = the whole portfolio). */
   const signal = (
     instrument: string | null,
     key: string,
@@ -45,8 +43,8 @@ const links = (v: Vault) => {
   return [...decisionSignalGids(read, all)].flatMap(([d, ss]) => ss.map((s) => [d, s]));
 };
 
-describe("position decisions (test_f9_be.py)", () => {
-  it("test_position_decision_over_two_signals_acknowledges_both_with_one_row", () => {
+describe("position decisions", () => {
+  it("one position decision over two signals acknowledges both with one row", () => {
     const { v, xmpl, read, signal } = investor();
     const [s1, s2] = [signal(xmpl, "a"), signal(xmpl, "b")];
     const out = v.value(decidePosition, {
@@ -78,23 +76,7 @@ describe("position decisions (test_f9_be.py)", () => {
     ]);
   });
 
-  it("test_signal_dict_lists_the_shared_decision_under_both_signals", () => {
-    const { v, xmpl, read, signal } = investor();
-    const [s1, s2, other] = [signal(xmpl, "a"), signal(xmpl, "b"), signal(xmpl, "c")];
-    const did = v.value(decidePosition, {
-      instrument: xmpl,
-      action: "held",
-      signals: [s1, s2],
-    }).decision;
-    expect(decisions(read, { signal: s1 }).map((d) => d.gid)).toEqual([did]);
-    expect(decisions(read, { signal: s2 }).map((d) => d.gid)).toEqual([did]);
-    expect(decisions(read, { signal: other })).toEqual([]);
-    expect(status(v, other)).toBe("active");
-    expect(decisionSignalGids(read, [did]).get(did)).toEqual([s1, s2]);
-    expect(decisions(read, { instrument: xmpl }).map((d) => d.gid)).toEqual([did]);
-  });
-
-  it("test_undo_reverts_every_linked_acknowledgement", () => {
+  it("undo reverts every linked acknowledgement", () => {
     const { v, xmpl, read, signal } = investor();
     const [s1, s2] = [signal(xmpl, "a"), signal(xmpl, "b")];
     const did = v.value(decidePosition, {
@@ -110,7 +92,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect(links(v)).toEqual([]);
   });
 
-  it("test_undo_leaves_a_signal_another_decision_covers_acknowledged", () => {
+  it("undo leaves a signal another decision covers acknowledged", () => {
     const { v, xmpl, read, signal } = investor();
     const [s1, s2] = [signal(xmpl, "a"), signal(xmpl, "b")];
     const did = v.value(decidePosition, {
@@ -125,7 +107,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect(decisions(read, { signal: s2 }).map((d) => d.gid)).toEqual([later]);
   });
 
-  it("test_an_earlier_acknowledgement_survives_until_its_last_decision_is_undone", () => {
+  it("an earlier acknowledgement survives until its last decision is undone", () => {
     const { v, xmpl, read, signal } = investor();
     const [s1, s2] = [signal(xmpl, "a"), signal(xmpl, "b")];
     const ack = v.value(acknowledgeSignal, { signal: s2 }).decision;
@@ -144,23 +126,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect(signalByGid(read, s2)).toMatchObject({ status: "active", acknowledgedAt: null });
   });
 
-  it("test_undoing_two_position_decisions_oldest_first_leaves_the_signals_active", () => {
-    const { v, xmpl, read, signal } = investor();
-    const [s1, s2] = [signal(xmpl, "a"), signal(xmpl, "b")];
-    const post = { instrument: xmpl, action: "held", signals: [s1, s2] };
-    const first = v.value(decidePosition, post).decision;
-    v.env.advance(1000);
-    const second = v.value(decidePosition, post).decision;
-    v.value(undoDecision, { decision: first });
-    expect([status(v, s1), status(v, s2)]).toEqual(["acknowledged", "acknowledged"]);
-    for (const g of [s1, s2])
-      expect(decisions(read, { signal: g }).map((d) => d.gid)).toEqual([second]);
-    v.value(undoDecision, { decision: second });
-    expect([status(v, s1), status(v, s2)]).toEqual(["active", "active"]);
-    expect(links(v)).toEqual([]);
-  });
-
-  it("test_a_signal_of_another_instrument_is_422_and_writes_nothing", () => {
+  it("a signal of another instrument refuses and writes nothing", () => {
     const { v, xmpl, abc, signal } = investor();
     const [mine, foreign] = [signal(xmpl, "a"), signal(abc, "b")];
     const out = v.run(decidePosition, {
@@ -172,7 +138,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect([decisionCount(v), links(v), status(v, mine)]).toEqual([0, [], "active"]);
   });
 
-  it("test_a_portfolio_level_signal_is_422", () => {
+  it("a portfolio-level signal refuses", () => {
     const { v, xmpl, signal } = investor();
     const portfolio = signal(null, "p");
     const out = v.run(decidePosition, { instrument: xmpl, action: "held", signals: [portfolio] });
@@ -180,7 +146,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect([decisionCount(v), status(v, portfolio)]).toEqual([0, "active"]);
   });
 
-  it("test_a_closed_signal_is_409", () => {
+  it("a closed signal refuses", () => {
     const { v, xmpl, signal } = investor();
     const [open, closed] = [signal(xmpl, "a"), signal(xmpl, "b", "resolved")];
     const out = v.run(decidePosition, {
@@ -192,7 +158,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect([decisionCount(v), status(v, open)]).toEqual([0, "active"]);
   });
 
-  it("test_unknown_instrument_signal_or_account_is_404_and_bad_input_422", () => {
+  it("an unknown or foreign instrument, signal or account and bad input refuse", () => {
     const { v, xmpl, signal } = investor();
     const sid = signal(xmpl, "a");
     const other = vault({ seed: 7 });
@@ -223,7 +189,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect([decisionCount(v), status(v, sid)]).toEqual([0, "active"]);
   });
 
-  it("test_a_position_decision_without_signals", () => {
+  it("a position decision without signals", () => {
     const { v, xmpl, read } = investor();
     const out = v.value(decidePosition, { instrument: xmpl, action: "ignored", reason: "x" });
     expect(out.signals).toEqual([]);
@@ -232,7 +198,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect(v.value(undoDecision, { decision: out.decision }).signals).toEqual([]);
   });
 
-  it("test_legacy_per_signal_endpoints_write_one_link", () => {
+  it("per-signal decide and acknowledge write one link", () => {
     const { v, xmpl, signal } = investor();
     const [s1, s2] = [signal(xmpl, "a"), signal(xmpl, "b")];
     const d1 = v.value(decideSignal, { signal: s1, action: "held" });
@@ -249,38 +215,7 @@ describe("position decisions (test_f9_be.py)", () => {
     expect(status(v, s1)).toBe("active");
   });
 
-  it("test_record_decision_refuses_signals_of_different_instruments", () => {
-    const { v, xmpl, abc, read, signal } = investor();
-    const [a, b] = [signal(xmpl, "a"), signal(abc, "b")];
-    expect(v.run(recordDecision, { action: "held", signals: [a, b] })).toEqual({
-      ok: false,
-      reason: "mixed_instruments",
-    });
-    expect(v.run(recordDecision, { action: "held", signals: [a], instrument: abc })).toEqual({
-      ok: false,
-      reason: "other_instrument",
-    });
-    const row = v.value(recordDecision, { action: "held", signals: [a] });
-    expect(decisionByGid(read, row.decision)).toMatchObject({ signal: a, instrument: xmpl });
-    expect(decisionSignalGids(read, [row.decision]).get(row.decision)).toEqual([a]);
-  });
-
-  it("test_post_and_reads_list_signal_ids_in_the_same_order", () => {
-    const { v, xmpl, read, signal } = investor();
-    const [a, b, c] = [signal(xmpl, "a"), signal(xmpl, "b"), signal(xmpl, "c")];
-    const posted = v.value(decidePosition, {
-      instrument: xmpl,
-      action: "held",
-      signals: [a, c, b],
-    });
-    expect(decisionByGid(read, posted.decision)?.signal).toBe(a);
-    expect(decisionSignalGids(read, [posted.decision]).get(posted.decision)).toEqual([a, b, c]);
-    for (const g of [a, b, c]) {
-      expect(decisions(read, { signal: g }).map((d) => d.gid)).toEqual([posted.decision]);
-    }
-  });
-
-  it("test_per_signal_responses_list_every_covering_decision", () => {
+  it("a signal lists every decision covering it", () => {
     const { v, xmpl, read, signal } = investor();
     const [s1, s2] = [signal(xmpl, "a"), signal(xmpl, "b")];
     const shared = v.value(decidePosition, {

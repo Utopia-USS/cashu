@@ -6,46 +6,22 @@ import {
   decodeStrict,
   encodeUtf8,
   LoneSurrogateError,
-  type PyCodec,
   translateNewlines,
 } from "./codecs.js";
-import { loadVectors, Mismatches } from "./testing/vectors.js";
 
-const vectors = loadVectors("budget-codecs");
-const CODECS: readonly PyCodec[] = ["utf-8", "utf-8-sig", "cp1250", "iso-8859-2"];
-const bytesOf = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
-
-describe("codecs vectors (the retired Python vectors_budget.py)", () => {
-  it("single-byte tables equal Python's for all 256 bytes", () => {
-    for (const row of vectors.rows.filter((r) => r[0] === "table")) {
-      const codec = row[1] as PyCodec;
-      const table = row[2] as (number | null)[];
-      const got = table.map((_, b) => {
-        const r = decodeStrict(Uint8Array.of(b), codec);
-        return r.ok ? (r.text.codePointAt(0) as number) : null;
-      });
-      expect(got).toEqual(table);
-    }
+// Polish bank CSV exports come in UTF-8 (with or without BOM), cp1250 or ISO-8859-2.
+describe("codecs", () => {
+  it("refuses cp1250's five undefined bytes and replaces invalid bytes with U+FFFD", () => {
+    for (const b of [0x81, 0x83, 0x88, 0x90, 0x98])
+      expect(decodeStrict(Uint8Array.of(0x61, b), "cp1250")).toEqual({ ok: false, start: 1 });
+    expect(decodeReplace(Uint8Array.of(0x61, 0xff, 0x62), "utf-8")).toBe("a\ufffdb");
+    expect(decodeReplace(Uint8Array.of(0x61, 0x81), "cp1250")).toBe("a\ufffd");
   });
 
-  it("strict and replace decoding equal Python on random and malformed bytes", () => {
-    const m = new Mismatches();
-    for (const row of vectors.rows.filter((r) => r[0] === "bytes")) {
-      const bytes = bytesOf(row[1] as string);
-      const strict = row[2] as Record<string, ["ok", string] | ["err", number]>;
-      const replace = row[3] as Record<string, string>;
-      for (const codec of CODECS) {
-        const r = decodeStrict(bytes, codec);
-        m.check(
-          `${row[1]} ${codec} strict`,
-          r.ok ? ["ok", r.text] : ["err", r.start],
-          strict[codec],
-        );
-        m.check(`${row[1]} ${codec} replace`, decodeReplace(bytes, codec), replace[codec]);
-      }
-    }
-    expect(m.items, m.report()).toEqual([]);
-    expect(m.checked).toBe(56);
+  it("utf-8-sig drops the BOM, utf-8 keeps it", () => {
+    const bytes = Uint8Array.of(0xef, 0xbb, 0xbf, 0xc5, 0xbc);
+    expect(decodeStrict(bytes, "utf-8-sig")).toEqual({ ok: true, text: "ż" });
+    expect(decodeStrict(bytes, "utf-8")).toEqual({ ok: true, text: "\ufeffż" });
   });
 
   it("the tables agree with the WHATWG decoders except cp1250's five undefined bytes", () => {

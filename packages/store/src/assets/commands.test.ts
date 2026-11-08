@@ -1,12 +1,10 @@
-// Assets commands (S24 5): manual positions (name key reuse, a removed one starts fresh, D-24.7),
-// notes (clean_note, no row for a null note, D-24.9), revaluation, depreciation (Python
-// assets/service.py). Synthetic data only.
+// Assets commands: manual positions (name key reuse, a removed one starts fresh, D-24.7), notes
+// (cleanNote, no row for a null note, D-24.9), revaluation. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { createProfile, removeAccount } from "../core/commands.js";
 import { run, testEnv } from "../testing/commands.js";
 import { openTestStore } from "../testing/store.js";
 import { addManualPosition, cleanNote, updateAssetDetails } from "./commands.js";
-import { setDepreciation } from "./testing/depreciation.js";
 
 function setup() {
   const store = openTestStore();
@@ -88,17 +86,13 @@ describe("assets commands", () => {
     ]);
   });
 
-  it("notes: a null note without a row emits nothing; too long is refused", () => {
+  it("notes: a blank note without a row emits nothing; null clears a note", () => {
     const { store, env } = setup();
     const a = run(store, env, addManualPosition, { name: "Auto", type: "vehicle", value: "1" });
     const account = a.ok ? a.value.account : "";
     expect(run(store, env, updateAssetDetails, { account, note: "   " })).toMatchObject({
       ok: true,
       events: [],
-    });
-    expect(run(store, env, updateAssetDetails, { account, note: "x".repeat(501) })).toEqual({
-      ok: false,
-      reason: "note_too_long",
     });
     run(store, env, updateAssetDetails, { account, note: "garaż" });
     const cleared = run(store, env, updateAssetDetails, { account, note: null });
@@ -107,27 +101,10 @@ describe("assets commands", () => {
     expect(cleanNote("a\t b\n\nc")).toBe("a b c");
   });
 
-  it("revaluation and depreciation on visible accounts only", () => {
+  it("a removed asset cannot be revalued", () => {
     const { store, env } = setup();
-    const a = run(store, env, addManualPosition, { name: "Auto", type: "vehicle", value: "50000" });
-    const account = a.ok ? a.value.account : "";
     const flat = run(store, env, addManualPosition, { name: "Dom", type: "property", value: "5" });
     const property = flat.ok ? flat.value.account : "";
-    run(store, env, setDepreciation, {
-      account,
-      purchasePrice: "80000",
-      purchaseDate: "2024-03-01",
-      annualRate: 15,
-    });
-    run(store, env, updateAssetDetails, {
-      account: property,
-      value: "48000",
-      onDate: "2026-11-01",
-    });
-    expect(store.read("SELECT purchase_price, annual_rate, floor FROM depreciations")).toEqual([
-      { purchase_price: "80000", annual_rate: "15", floor: null },
-    ]);
-    expect(store.read("SELECT COUNT(*) AS n FROM balances")).toEqual([{ n: 3 }]);
     run(store, env, removeAccount, { account: property });
     expect(run(store, env, updateAssetDetails, { account: property, value: "1" })).toEqual({
       ok: false,

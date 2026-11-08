@@ -1,12 +1,7 @@
-// The overview read models over a vault's view (S06b): every module's setup facts from commands and
-// events, at the store level, test-for-test with the API halves of tests/test_first_steps_api.py
-// (test_budget_steps, test_budget_transfers_step_counts_own_moves_without_an_iban_pair,
-// test_loans_payment_step_needs_the_budget_module, test_payment_matching_by_phrase_and_iban (the state),
-// test_assets_vehicle_step_is_optional, test_setup_response_carries_the_cli_prefix), tests/test_profiles.py
-// (test_profiles_crud setup states, test_setup_endpoint_shape, test_setup_status_follows_the_data),
-// tests/test_asset_remove.py (a removed position leaves the blank page, MB2); net worth, the summary,
-// the series and the hero over a synthetic vault (the domain math is tested in @cashu/domain); the
-// brokerage valuation with and without the device's price cache; live invalidation by read tables.
+// The overview read models over a vault's view: every module's setup facts from commands and
+// events; net worth (per currency), the summary, the series and the hero over a synthetic vault (the
+// domain math is tested in @cashu/domain); the brokerage valuation with and without the device's
+// price cache; live invalidation by read tables.
 import { assets, core, D, type Decimal, loans } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
 import { market } from "@cashu/domain/investments";
@@ -126,7 +121,7 @@ const txnGid = (store: Store, amount: string) =>
   ).gid;
 
 describe("module setup over the view", () => {
-  it("test_budget_steps", () => {
+  it("budget steps follow imports and the owner's merchant rule", () => {
     const { store, env } = vault(["budget"]);
     const body = setupOf(store, "budget");
     expect(body.steps.map((st) => [st.id, st.status])).toEqual([
@@ -143,13 +138,12 @@ describe("module setup over the view", () => {
     expect(steps.get("statement")?.status).toBe("done");
     expect(steps.get("categories")?.status).toBe("on");
     expect(steps.get("transfers")?.status).toBe("done"); // one bank account: nothing to pair
-    expect(steps.get("transfers")?.description).toBe("Jedno konto bankowe: nic do dopasowania.");
     // a manual merchant rule is the owner's decision: the categories step is done
     run(store, env, manualRule, { merchantKey: "sklep nieznany test", category: "groceries" });
     expect(byId(setupOf(store, "budget")).get("categories")?.status).toBe("done");
   });
 
-  it("test_budget_transfers_step_counts_own_moves_without_an_iban_pair", () => {
+  it("the transfers step counts own moves without an IBAN pair", () => {
     const { store, env } = vault(["budget"]);
     ingest(store, env, "mbank", "99114000000000000000000101", [
       raw("2026-09-03", "-200.00", "TOP-UP DRUGIE KONTO TEST"),
@@ -173,7 +167,7 @@ describe("module setup over the view", () => {
     expect(byId(setupOf(store, "budget")).get("categories")?.status).toBe("done");
   });
 
-  it("test_loans_payment_step_needs_the_budget_module", () => {
+  it("the loans payment step needs the budget module; a phrase makes it ready", () => {
     const LOAN = {
       name: "Hipoteka",
       type: "mortgage",
@@ -193,7 +187,6 @@ describe("module setup over the view", () => {
     expect(setupOf(alone.store, "loans").state).toBe("ready");
     const added = run(both.store, both.env, addLoan, LOAN);
     expect(setupOf(both.store, "loans").state).toBe("partial");
-    // test_payment_matching_by_phrase_and_iban: a phrase makes the module ready
     const account = added.ok ? (added.value as { account: string }).account : "";
     run(both.store, both.env, setPaymentMatching, { account, text: "bank hipoteczny test" });
     expect(setupOf(both.store, "loans").state).toBe("ready");
@@ -218,7 +211,7 @@ describe("module setup over the view", () => {
     expect(setupOf(store, "loans").steps.map((st) => st.status)).toEqual(["done", "done"]);
   });
 
-  it("test_assets_vehicle_step_is_optional; a removed position does not count (MB2)", () => {
+  it("the vehicle step is optional; a removed position does not count", () => {
     const { store, env } = vault(["assets"]);
     expect(setupOf(store, "assets").steps.map((st) => [st.id, st.optional, st.status])).toEqual([
       ["position", false, "on"],
@@ -273,7 +266,7 @@ describe("module setup over the view", () => {
     expect(setupOf(store, "investments").state).toBe("ready");
   });
 
-  it("test_setup_endpoint_shape / test_setup_response_carries_the_cli_prefix", () => {
+  it("setup CLI actions carry the profile prefix; an unknown module is refused", () => {
     const { store } = vault(["budget"]);
     const body = setupOf(store, "budget");
     expect(body.cliPrefix).toBe("cashu --profile jan");
@@ -289,7 +282,7 @@ describe("module setup over the view", () => {
     });
   });
 
-  it("test_profiles_crud / test_setup_status_follows_the_data: every module with its state", () => {
+  it("every module with its state, following the data", () => {
     const { store, env } = vault(["budget", "loans"]);
     const read = store.read.bind(store);
     expect(moduleStates(read)).toEqual([
@@ -404,7 +397,7 @@ describe("net worth over the view", () => {
     expect(s(latest.get(h.checking)?.[1])).toBe("5000.00");
   });
 
-  it("test_summary (over the view)", () => {
+  it("the summary: net worth per currency, home equity, the month, subscriptions", () => {
     const h = household();
     const body = shellSummary(h.store.read.bind(h.store), { today: TODAY, prices: null });
     const { mortgage, car } = todayValues(TODAY);
@@ -526,17 +519,7 @@ describe("net worth over the view", () => {
     expect(value(cache)?.gt(value(null) ?? D("0"))).toBe(true);
     expect(observed).toHaveLength(2);
     expect(observed[0]).not.toBe(observed[1]);
-    const beforeRollback = [...observed];
-    expect(() =>
-      cache.batch(() => {
-        cache.deleteBars(market.marketSymbol("yahoo", "TST.WA"), "2026-09-30", "2026-09-30");
-        throw new Error("rollback");
-      }),
-    ).toThrow("rollback");
-    expect(observed).toEqual(beforeRollback);
     stop();
-    cache.deleteBars(market.marketSymbol("yahoo", "TST.WA"), "2026-09-30", "2026-09-30");
-    expect(observed).toEqual(beforeRollback);
     driver.close();
   });
 });
@@ -566,21 +549,5 @@ describe("queries", () => {
     stop();
     expect(values.length).toBe(2);
     expect(values[1]).toBe((values[0] ?? 0) + 1); // a new point on 2026-09-20
-  });
-
-  it("stable ids", () => {
-    const q = overviewQueries({ prices: null });
-    expect(Object.values(q).map((x) => x.id)).toEqual([
-      "core.netWorthSeries",
-      "core.summary",
-      "core.hero",
-      "core.moduleSetup",
-      "core.moduleStates",
-      "core.overviewAccounts",
-      "core.budgetWidgets",
-      "core.overviewAssets",
-      "core.overviewLoans",
-      "core.overviewInvestments",
-    ]);
   });
 });

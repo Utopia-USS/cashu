@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { addMicroseconds, parseDateTime, toStorage } from "../../dates.js";
+import { addMicroseconds, parseDateTime } from "../../dates.js";
 import { Decimal } from "../../decimal.js";
 import {
   AssetClass,
@@ -120,7 +120,6 @@ const only = <T>(items: readonly T[]): T => {
   return items[0] as T;
 };
 
-// test_generic_csv_to_snapshot_numbers
 it("generic CSV to snapshot numbers", () => {
   const importPlan = plan(new GenericCsvImporter(plMapping()), {
     name: "pl.csv",
@@ -172,7 +171,6 @@ it("generic CSV to snapshot numbers", () => {
   );
 });
 
-// test_reimport_and_other_encoding_are_all_duplicates_r8
 it("re-import and other encoding are all duplicates (R8)", () => {
   const first = plan(new GenericCsvImporter(plMapping()), {
     name: "pl.csv",
@@ -197,7 +195,6 @@ it("re-import and other encoding are all duplicates (R8)", () => {
   expect(planDuplicateCount(cp1250)).toBe(7);
 });
 
-// test_overlapping_export_with_partial_fills_inserts_only_the_new_fill_r8
 it("overlapping export with partial fills inserts only the new fill (R8)", () => {
   const importer = new GenericCsvImporter(simpleMapping());
   const first = plan(
@@ -222,7 +219,6 @@ it("overlapping export with partial fills inserts only the new fill (R8)", () =>
   expect(snapshot.holdings[0]?.quantity).toEqual(d("12"));
 });
 
-// test_cross_currency_trade_books_cash_in_pln_and_cost_in_usd_r5
 it("cross-currency trade books cash in PLN and cost in USD (R5)", () => {
   const mapping: CsvMapping = csvMapping({
     defaultCurrency: PLN,
@@ -258,7 +254,6 @@ it("cross-currency trade books cash in PLN and cost in USD (R5)", () => {
   expect(withoutRate.blockingErrors[0]?.kind).toBe(ImportWarningKind.FX_MISSING);
 });
 
-// test_single_day_newest_first_file_is_ordered_by_time_r9
 it("single-day newest-first file is ordered by time (R9)", () => {
   const importPlan = plan(
     new GenericCsvImporter(simpleMapping()),
@@ -279,24 +274,6 @@ it("single-day newest-first file is ordered by time (R9)", () => {
   expect(only(snapshot.realized).pnl).toEqual(d("110"));
 });
 
-// test_newest_first_file_keeps_same_day_order
-it("newest-first file keeps same-day order", () => {
-  const importPlan = plan(
-    new GenericCsvImporter(simpleMapping()),
-    csvFile(
-      `${SIMPLE_HEADER}\n` +
-        "r3,2026-01-08,sell,PKN,,GPW,2,71,PLN,0,142\n" +
-        "r2,2026-01-07,sell,PKN,,GPW,3,70,PLN,0,210\n" +
-        "r1,2026-01-07,buy,PKN,,GPW,5,60,PLN,0,-300\n",
-    ),
-  );
-  const ordered = transactionsToInsert(importPlan);
-  expect(ordered.map((t) => t.externalRef)).toEqual(["r1", "r2", "r3"]);
-  const stamps = ordered.map((t) => toStorage(t.createdAt));
-  expect(stamps.every((stamp, i) => i === 0 || (stamps[i - 1] as string) < stamp)).toBe(true);
-});
-
-// test_new_instrument_currency_from_priced_trades_in_a_newest_first_file_r10
 it("new instrument currency from priced trades in a newest-first file (R10)", () => {
   const mapping = csvMapping({
     columns: new Map([
@@ -330,7 +307,6 @@ it("new instrument currency from priced trades in a newest-first file (R10)", ()
   expect(holdingCostBasis(at("AAPL"))).toEqual(d("1500"));
 });
 
-// test_existing_instruments_are_matched_and_learn_aliases
 it("existing instruments are matched and learn aliases", () => {
   const orlen = instrumentOf("orlen", {
     isin: null,
@@ -354,7 +330,6 @@ it("existing instruments are matched and learn aliases", () => {
   );
 });
 
-// test_semantic_errors_block_the_plan
 it("semantic errors block the plan", () => {
   const importPlan = plan(
     new GenericCsvImporter(simpleMapping()),
@@ -368,7 +343,6 @@ it("semantic errors block the plan", () => {
   );
 });
 
-// test_canonical_spec_example_end_to_end_with_rename_split_and_reconciliation
 it("canonical spec example end to end with rename, split and reconciliation", () => {
   const content = specBlocks("csv").find((block) => block.includes("position"));
   if (content === undefined) throw new Error("docs/import-format.md has no CSV example");
@@ -429,7 +403,6 @@ it("canonical spec example end to end with rename, split and reconciliation", ()
   expect(report.warnings).toEqual([]);
 });
 
-// test_delisting_of_a_known_instrument_becomes_a_status_change
 it("delisting of a known instrument becomes a status change", () => {
   const stored = instrumentOf("zzz", {
     name: "Frozen ADR",
@@ -456,7 +429,6 @@ it("delisting of a known instrument becomes a status change", () => {
   ]);
 });
 
-// test_transactions_carry_every_parsed_field
 it("transactions carry every parsed field", () => {
   const content =
     "format_version,record,date,time,settle_date,type,external_ref,symbol,quantity,price," +

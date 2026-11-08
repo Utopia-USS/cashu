@@ -51,6 +51,17 @@ describe("test_reclassify.py", () => {
     ).toBe(txnSignature(rrow("-19.99", { ref: "PŁATNOŚĆ KARTĄ 19.99 PLN LIDL KOBIERZYNSKA" })));
   });
 
+  it("signatures drop the card mask, amounts, long numbers and the date suffix", () => {
+    const t = rrow("-12.5", {
+      cp: "Żabka Z1",
+      ref: "ZAKUP 425125******1234 12,50 PLN nr 12345678",
+      desc: "Opłata DATA TRANSAKCJI: 2026-01-02",
+    });
+    expect(txnSignature(t)).toBe("ZABKA Z1 | ZAKUP NR | OPŁATA");
+    // nothing left after masking: the raw text, upper-cased
+    expect(txnSignature(rrow("-1", { ref: "  1 234,56 EUR  " }))).toBe("| 1 234,56 EUR |");
+  });
+
   // test_structural_transactions_excluded
   it("structural transactions are excluded", () => {
     const own = new Set([ibanKey("PL11 1400 0000 0000 0000 1234")]);

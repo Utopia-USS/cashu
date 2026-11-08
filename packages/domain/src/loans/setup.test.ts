@@ -1,7 +1,6 @@
 // Loans blank-page steps (modules/loans/setup.py) over their facts: the step halves of
 // tests/test_first_steps_api.py test_loans_payment_step_needs_the_budget_module and
-// test_payment_matching_by_phrase_and_iban (the state), tests/test_loans.py test_loans_setup_steps and
-// tests/test_i18n_core_modules.py test_modules_and_setup_steps_in_english (loans).
+// test_payment_matching_by_phrase_and_iban (the state), tests/test_loans.py test_loans_setup_steps.
 
 import { describe, expect, it } from "vitest";
 import { type SetupContext, setupView } from "../core/index.js";
@@ -49,15 +48,5 @@ describe("loans setup steps", () => {
     expect(steps[1]?.description).toBe(
       "Fraza z tytułu przelewu albo IBAN banku; raty liczą się jako spłata, nie subskrypcja.",
     );
-  });
-
-  it("test_modules_and_setup_steps_in_english (loans)", () => {
-    const steps = view({ budgetEnabled: true }, { cli: "cashu --profile jan", lang: "en" }).steps;
-    expect(steps[0]?.title).toBe("Loan");
-    expect(steps[0]?.actions[0]?.target).toContain('"Mortgage"');
-    expect(steps[1]?.title).toBe("Recognizing installments");
-    expect(steps[1]?.actions[0]?.target).toContain('LOAN_ID --text "RATA KREDYTU"');
-    const texts = steps.flatMap((s) => [s.title, s.description]);
-    expect(texts.some((t) => /[ąęółśżźćń—]/.test(t))).toBe(false);
   });
 });

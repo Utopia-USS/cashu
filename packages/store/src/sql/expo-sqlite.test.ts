@@ -6,9 +6,9 @@
 // real module.
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { delivery, SCENARIOS, syntheticDet } from "../events/v1/reference/testing/scenarios.js";
 import { viewHash } from "../snapshot.js";
-import { Names, toEnvelopes } from "../testing/reference-bridge.js";
+import { Names, toEnvelopes } from "../testing/scenario-bridge.js";
+import { delivery, SCENARIOS, syntheticDet } from "../testing/scenarios.js";
 import { openTestStore } from "../testing/store.js";
 import { type ExpoSqliteDatabase, expoSqliteDriver } from "./expo-sqlite.js";
 
@@ -154,19 +154,27 @@ describe("expoSqliteDriver", () => {
   });
 
   describe("the store on it builds the same view as on better-sqlite3", () => {
-    it.each(SCENARIOS.map((s) => [`${s.group}: ${s.name}`, s] as const))("%s", (_name, s) => {
-      const det = syntheticDet(s.events);
-      const envelopes = delivery(toEnvelopes(s.events, new Names(), det), 1);
-      const expo = openTestStore({ driver: expoSqliteDriver(expoLike(new Database(":memory:"))) });
-      const node = openTestStore();
-      expo.applyEnvelopes(envelopes);
-      node.applyEnvelopes(envelopes);
-      const hash = viewHash(node).hash;
-      expect(viewHash(expo).hash).toBe(hash);
-      expo.rebuild({ redecode: true, reindex: true });
-      expect(viewHash(expo).hash).toBe(hash);
-      expo.close();
-      node.close();
-    });
+    // The first scenario of three groups (accounts and transactions, signals, ...): the adapter is
+    // the subject, not the rules, so a few full folds show it.
+    const sample = SCENARIOS.filter((s, i, all) => all.findIndex((x) => x.group === s.group) === i);
+    it.each(sample.slice(0, 3).map((s) => [`${s.group}: ${s.name}`, s] as const))(
+      "%s",
+      (_name, s) => {
+        const det = syntheticDet(s.events);
+        const envelopes = delivery(toEnvelopes(s.events, new Names(), det), 1);
+        const expo = openTestStore({
+          driver: expoSqliteDriver(expoLike(new Database(":memory:"))),
+        });
+        const node = openTestStore();
+        expo.applyEnvelopes(envelopes);
+        node.applyEnvelopes(envelopes);
+        const hash = viewHash(node).hash;
+        expect(viewHash(expo).hash).toBe(hash);
+        expo.rebuild({ redecode: true, reindex: true });
+        expect(viewHash(expo).hash).toBe(hash);
+        expo.close();
+        node.close();
+      },
+    );
   });
 });

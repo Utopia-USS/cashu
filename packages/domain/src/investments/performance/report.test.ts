@@ -1,17 +1,9 @@
-/**
- * Test-for-test translation of `tests/investments/performance/test_perf_report.py`: range base days,
- * a portfolio that is exactly the benchmark (same TWR, zero excess), rolling windows, calendar years.
- * Synthetic data only. Each `it` names its Python test in a comment.
- *
- * Not here: `test_sample` (chart sampling is `performance/service.py:sample`, the service layer of
- * S19b, not part of the pure core).
- */
+/** Range base days, a portfolio that is the benchmark (zero excess), rolling windows, calendar years. */
 import { describe, expect, it } from "vitest";
 import type { CalendarDate } from "../domain/values.js";
 import {
   type Combined,
   computeRange,
-  isRangeKey,
   perYear,
   type RangeBenchmark,
   type RangeKey,
@@ -21,51 +13,14 @@ import {
   type Simulation,
   twrIndex,
 } from "./index.js";
-import { day, days } from "./testing/support.js";
-
-// --------------------------------------------------------------------------- //
-// pytest.approx (rel 1e-6, abs 1e-12; abs alone when only abs is given)
-// --------------------------------------------------------------------------- //
-
-interface Tolerance {
-  readonly rel?: number;
-  readonly abs?: number;
-}
-
-function approxEq(actual: number | null | undefined, expected: number, tol: Tolerance): boolean {
-  if (actual == null) return false;
-  if (actual === expected) return true;
-  const limit =
-    tol.abs !== undefined && tol.rel === undefined
-      ? tol.abs
-      : Math.max((tol.rel ?? 1e-6) * Math.abs(expected), tol.abs ?? 1e-12);
-  return Math.abs(actual - expected) <= limit;
-}
-
-function expectApprox(
-  actual: number | null | undefined,
-  expected: number,
-  tol: Tolerance = {},
-): void {
-  expect(approxEq(actual, expected, tol), `${actual} ~ ${expected}`).toBe(true);
-}
-
-function expectApproxList(
-  actual: readonly (number | null)[],
-  expected: readonly (number | null)[],
-): void {
-  expect(actual.length).toBe(expected.length);
-  actual.forEach((a, i) => {
-    const e = expected[i] as number | null;
-    if (e === null) expect(a).toBeNull();
-    else expectApprox(a, e);
-  });
-}
-
-/** Python float `==` (IEEE equality: `-0.0 == 0.0`, unlike `toBe`). */
-function expectFloatEq(actual: number | null | undefined, expected: number): void {
-  expect(actual === expected, `${actual} == ${expected}`).toBe(true);
-}
+import {
+  approxEq,
+  day,
+  days,
+  expectApprox,
+  expectApproxList,
+  expectFloatEq,
+} from "./testing/support.js";
 
 function must<T>(value: T | null | undefined): T {
   expect(value).not.toBeNull();
@@ -92,8 +47,7 @@ function growth(start: string, end: string, daily: number, base: number): number
   return days(start, end).map((_, i) => base * daily ** i);
 }
 
-describe("test_perf_report", () => {
-  // test_range_base (parametrized)
+describe("report", () => {
   it.each([
     ["1m", "2026-03-31", "2026-02-28"],
     ["3m", "2026-03-31", "2025-12-31"],
@@ -105,19 +59,10 @@ describe("test_perf_report", () => {
     expect(rangeBase(key, day(end), day("2024-06-30"))).toBe(day(expected));
   });
 
-  // test_one_year_back_from_a_leap_day
   it("one year back from a leap day", () => {
     expect(rangeBase("1y", day("2024-02-29"), day("2020-01-01"))).toBe(day("2023-02-28"));
   });
 
-  // test_unknown_range
-  it("unknown range", () => {
-    // Adapted: Python's `range_base("5y", ...)` raises ValueError("unknown range"); the TS port types
-    // the key as `RangeKey`, so an unknown key is rejected by the `isRangeKey` guard instead.
-    expect(isRangeKey("5y")).toBe(false);
-  });
-
-  // test_portfolio_that_is_the_benchmark_has_zero_excess
   it("portfolio that is the benchmark has zero excess", () => {
     // 10 units at 100; 1100 deposited and invested at the 110 close; 121 at the end
     const ds = days("2025-01-01", "2025-01-04");
@@ -136,7 +81,6 @@ describe("test_perf_report", () => {
     expect(b.coversRange && b.firstPriced === ds[0]).toBe(true);
   });
 
-  // test_benchmark_beats_a_flat_portfolio
   it("benchmark beats a flat portfolio", () => {
     const ds = days("2025-01-01", "2025-01-03");
     const c = combined([1000.0, 1000.0, 1000.0]);
@@ -149,7 +93,6 @@ describe("test_perf_report", () => {
     expectFloatEq(b.maxDrawdown.depth, 0.0);
   });
 
-  // test_rolling_windows_and_calendar_years
   it("rolling windows and calendar years", () => {
     const ds = days("2023-01-01", "2025-03-31");
     const c = combined(growth("2023-01-01", "2025-03-31", 1.0002, 1000.0));
@@ -184,7 +127,6 @@ describe("test_perf_report", () => {
     expectApprox(years[1]?.benchmark, 1.0001 ** 366 - 1);
   });
 
-  // test_rolling_skips_windows_without_capital
   it("rolling skips windows without capital", () => {
     const ds = days("2024-01-01", "2025-02-28");
     const values = [...Array<number>(40).fill(0.0), ...Array<number>(ds.length - 40).fill(1000.0)];

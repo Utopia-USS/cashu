@@ -1,4 +1,4 @@
-// Brokerage reads (Python `store/transactions.py` + `convert.py`): accounts, settings defaults,
+// Brokerage reads: accounts, settings defaults,
 // transactions as domain values in chronological order, existing hashes, renames, the newest broker
 // snapshot. Synthetic data only.
 import { describe, expect, it } from "vitest";

@@ -66,7 +66,7 @@ Built on `ts-stack` (synthetic data in tests; parity on the demo set and a local
   byte-identical) and the LLM port, investments domain, lots / valuation / allocation, performance,
   macro, market sources (leader-only `@cashu/market`), importing (contract, CSV, plan), research pure
   logic, the MCP privacy layer (stricter than Python, thousands of adversarial vectors).
-- Store: event catalog v1 with a reference fold and convergence property tests, materializers for
+- Store: event catalog v1 with convergence scenarios and property tests, materializers for
   every synced table, commands for core / budget / loans / assets / investments, crash recovery from
   the encrypted log (WAL + replay), React bindings (`@cashu/store-react`).
 - Sync: crypto and keys, carrier engine and contract suite, the own-log carrier, the folder transport,

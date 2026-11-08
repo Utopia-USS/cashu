@@ -1,6 +1,5 @@
-// Strategy files of a profile: states, versions, templates, and the loader's partial config.
-// Translates tests/investments/persistence/test_invp_strategy.py (the files port is an in-memory
-// fake; the 0600 mode is the adapter's). Synthetic data only.
+// Strategy files of a profile: states, versions, the loader's partial config, path-safe profile dirs,
+// the benchmark proxy registered on record. The files port is an in-memory fake. Synthetic data only.
 import { loadStrategy as loadStrategyText } from "@cashu/domain/investments/strategy";
 import { describe, expect, it } from "vitest";
 import { storeWriter } from "../../command.js";
@@ -10,7 +9,6 @@ import { latestStrategyVersion, strategyVersions } from "../queries/strategy.js"
 import { MemoryStrategyDir } from "../testing/strategyFiles.js";
 import { checkedProfileSlug, loadStrategy, STRATEGY_MD, STRATEGY_YAML } from "./strategy.js";
 
-/** tests/investments/persistence/invp_support.py `STRATEGY_YAML`. */
 const STRATEGY = `version: 1
 base_currency: PLN
 data:
@@ -38,8 +36,8 @@ const recording = (v: Vault, files: MemoryStrategyDir) =>
   ({ record: true, writer: storeWriter(v.store), env: v.env, sync: files.sync }) as const;
 const read = (v: Vault) => v.store.read.bind(v.store);
 
-describe("test_invp_strategy", () => {
-  it("test_partial_config_when_only_rules_have_errors", () => {
+describe("strategy files", () => {
+  it("partial config when only rules have errors", () => {
     const broken = STRATEGY.replace("max_weight: 0.30", "max_weight: 2").replace(
       "kind: cash_level",
       "kind: cash_levle",
@@ -63,7 +61,7 @@ describe("test_invp_strategy", () => {
     });
   });
 
-  it("test_no_partial_config_for_errors_outside_rules", () => {
+  it("no partial config for errors outside rules", () => {
     const result = loadStrategyText(STRATEGY.replace("stocks: 0.9", "stocks: 0.5")); // targets sum
     expect([result.config, result.partial, result.inactiveRules]).toEqual([null, null, []]);
     const valid = loadStrategyText(STRATEGY);
@@ -71,7 +69,7 @@ describe("test_invp_strategy", () => {
     expect([valid.partial, valid.inactiveRules]).toEqual([null, []]);
   });
 
-  it("test_states_and_versions", async () => {
+  it("states and versions", async () => {
     const v = vault();
     const files = new MemoryStrategyDir(v.store.vault);
     expect((await loadStrategy(v.store, files, recording(v, files))).state).toBe("missing");
@@ -99,7 +97,7 @@ describe("test_invp_strategy", () => {
     expect(rows[1]?.mdText).toBe("Cel: emerytura.");
   });
 
-  it("test_profile_dirs_reject_path_tricks", () => {
+  it("profile dirs reject path tricks", () => {
     for (const bad of ["../x", "a/b", "", ".hidden", "ok\n"]) {
       expect(checkedProfileSlug(bad), JSON.stringify(bad)).toBeNull();
     }
@@ -107,7 +105,7 @@ describe("test_invp_strategy", () => {
   });
 });
 
-describe("strategy service (store level)", () => {
+describe("strategy files: recording", () => {
   it("a read error is invalid and records nothing", async () => {
     const v = vault();
     const files = new MemoryStrategyDir(v.store.vault);
@@ -134,7 +132,7 @@ describe("strategy service (store level)", () => {
     expect(latestStrategyVersion(read(v))?.state).toBe("partial");
   });
 
-  it("recording a strategy with a benchmark registers its proxy (S19b follow-up 3)", async () => {
+  it("recording a strategy with a benchmark registers its proxy", async () => {
     const v = vault();
     const files = new MemoryStrategyDir(v.store.vault);
     files.texts.set(STRATEGY_YAML, `${STRATEGY}benchmark: { id: msci_acwi, proxy: REFX.DE }\n`);

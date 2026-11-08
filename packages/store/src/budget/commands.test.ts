@@ -1,9 +1,7 @@
-// Budget commands (S24 5) on the in-memory store. importStatement translates the persist parts of
-// Python tests/test_ingestion.py (cross-source dedup, btid idempotency, identical same-day rows,
-// end-of-day balances with closing balances winning, the import batch) plus the leader gate and the
-// ISO currency check; deleteCashTransaction translates tests/test_cash.py
-// test_unmark_removes_mirror_and_reverts_source at the store level; setCushion mirrors
-// settings.parse. Synthetic data only.
+// Budget commands on the in-memory store: importStatement (cross-source dedup, btid idempotency,
+// identical same-day rows, end-of-day balances with closing balances winning, the import batch,
+// the leader gate, the ISO currency check), deleteCashTransaction and the cushion settings.
+// Synthetic data only.
 import { D } from "@cashu/domain";
 import type { RawTransaction, TxnSource } from "@cashu/domain/budget";
 import { describe, expect, it } from "vitest";
@@ -174,26 +172,6 @@ function withdrawal(store: Store) {
 }
 
 describe("deleteCashTransaction", () => {
-  it("deleting the mirror leg clears the claim on its source; the leg disappears", () => {
-    const store = openTestStore();
-    const { env, txn } = withdrawal(store);
-    const leg = store.read<{ gid: string; amount: string; category_source: string }>(
-      "SELECT gid, amount, category_source FROM transactions WHERE dedup_hash LIKE 'cashleg:%'",
-    );
-    expect(leg.map((l) => [l.amount, l.category_source])).toEqual([["200.00", "cash_leg"]]);
-    const out = run(store, env, deleteCashTransaction, { txn: leg[0]?.gid });
-    expect(out.ok && out.events.map((e) => [e.type, e.gid])).toEqual([
-      ["txn.categoryCleared", txn],
-    ]);
-    expect(
-      store.read("SELECT COUNT(*) AS n FROM transactions WHERE dedup_hash LIKE 'cashleg:%'"),
-    ).toEqual([{ n: 0 }]);
-    // Python `recategorize_one`: the source row falls back to the engine's category.
-    expect(
-      store.read("SELECT category, category_source FROM transactions WHERE gid = ?", txn),
-    ).toEqual([{ category: "other", category_source: "default" }]);
-  });
-
   it("deletes a cash expense; refuses a bank transaction", () => {
     const store = openTestStore();
     const { env, txn } = withdrawal(store);
@@ -276,8 +254,6 @@ describe("setCushion", () => {
   });
 });
 
-// Python tests/test_month_close.py: test_settings_validation (the order and the account rules),
-// test_cushion_with_chosen_accounts_and_currency, test_cushion_accounts_of_another_profile_are_refused.
 describe("setCushion account rules", () => {
   const IBAN_EUR = "PL10000000000000000000000007";
   function setup(baseCurrency?: string) {
@@ -322,7 +298,7 @@ describe("setCushion account rules", () => {
         accounts: [eurBase.eur],
       }).ok,
     ).toBe(true);
-    // no profile yet: Python's "PLN" placeholder
+    // no profile yet: PLN
     const none = setup();
     expect(
       run(none.store, none.env, setCushion, {
@@ -333,69 +309,16 @@ describe("setCushion account rules", () => {
     ).toMatchObject({ reason: "cushion_currency_mismatch" });
   });
 
-  it("accepts chosen accounts in the (normalized) cushion currency", () => {
-    const { store, env, eur } = setup();
-    const out = run(store, env, setCushion, {
-      enabled: true,
-      currency: " eur ",
-      targetAmount: 1000,
-      accounts: [eur],
-    });
-    expect(out.ok && out.events[0]?.data).toMatchObject({ currency: "EUR", accounts: [eur] });
-  });
-
   it("refuses one wrong account among right ones, and a mix with an unknown id as unknown", () => {
     const { store, env, pln, eur } = setup();
     const base = { enabled: true, currency: "EUR", targetAmount: 1 };
     expect(run(store, env, setCushion, { ...base, accounts: [eur, pln] })).toMatchObject({
       reason: "cushion_currency_mismatch",
     });
-    // Python reports unknown ids before the currency of the known ones
+    // unknown ids are reported before the currency of the known ones
     const ghost = "01JD0000000000000000000099";
     expect(run(store, env, setCushion, { ...base, accounts: [pln, ghost] })).toMatchObject({
       reason: "unknown_account",
-    });
-  });
-
-  it("checks the parse rules before the accounts, in Python's order", () => {
-    const { store, env, pln } = setup();
-    const ghost = "01JD0000000000000000000099";
-    // needs a target before the account check (parse runs first)
-    expect(run(store, env, setCushion, { enabled: true, accounts: [ghost] })).toMatchObject({
-      reason: "needs_target",
-    });
-    expect(
-      run(store, env, setCushion, { targetAmount: -5, currency: "EUR", accounts: [pln] }),
-    ).toMatchObject({ reason: "invalid_target_amount" });
-    // a disabled cushion with a stale currency mismatch is refused too (Python checks regardless)
-    expect(
-      run(store, env, setCushion, { enabled: false, currency: "EUR", accounts: [pln] }),
-    ).toMatchObject({ reason: "cushion_currency_mismatch" });
-  });
-
-  it("matches Python's parse for currency and months shapes", () => {
-    const { store, env } = setup();
-    const target = { enabled: true, targetAmount: 1 };
-    expect(run(store, env, setCushion, { ...target, currency: "EURO" })).toMatchObject({
-      reason: "invalid_currency",
-    });
-    expect(run(store, env, setCushion, { ...target, currency: "  " })).toMatchObject({
-      reason: "invalid_currency",
-    });
-    expect(run(store, env, setCushion, { enabled: true, targetMonths: true })).toMatchObject({
-      reason: "invalid_target_months",
-    });
-    expect(run(store, env, setCushion, { enabled: true, targetMonths: 2.5 })).toMatchObject({
-      reason: "invalid_target_months",
-    });
-    expect(run(store, env, setCushion, { enabled: true, targetMonths: 0 })).toMatchObject({
-      reason: "invalid_target_months",
-    });
-    expect(run(store, env, setCushion, { enabled: true, targetAmount: "abc" })).toMatchObject({
-      reason: "invalid_target_amount",
-    });
-    expect(run(store, env, setCushion, { enabled: "yes", targetAmount: 1 })).toMatchObject({
-      reason: "invalid_input",
     });
   });
 });

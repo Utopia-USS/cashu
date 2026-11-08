@@ -1,11 +1,4 @@
-/**
- * Test-for-test translation of `tests/investments/portfolio/test_inv_snapshot_builder.py` (snapshot
- * builder, restrictSnapshot and last trade prices; port of snapshot_builder_test.dart). Synthetic data
- * only. Each `it` names its Python test in a comment.
- *
- * Adapted: `isinstance(snapshot, PortfolioSnapshot)` has no runtime class in TS (interfaces); the last
- * test checks the snapshot has exactly the `PortfolioSnapshot` fields instead.
- */
+/** Snapshot builder, restrictSnapshot and last trade prices (R11, R13). Synthetic data only. */
 import { describe, expect, it } from "vitest";
 import type { DateTime } from "../../dates.js";
 import { Decimal } from "../../decimal.js";
@@ -62,7 +55,6 @@ const MARCH_1_UTC: DateTime = {
 };
 
 describe("buildSnapshot", () => {
-  // test_holdings_cash_deposits_and_realized_trades_as_of_a_date
   it("holdings, cash, deposits and realized trades as of a date", () => {
     const txns = [
       cashTxn(IKE, "2026-01-02", "5000"),
@@ -106,7 +98,6 @@ describe("buildSnapshot", () => {
     expect(snapshot.warnings).toEqual([]);
   });
 
-  // test_account_filter_and_foreign_accounts_restrict_the_transactions
   it("account filter and foreign accounts restrict the transactions", () => {
     const txns = [
       buy(IKE, X, "2026-01-05", "10", "100"),
@@ -131,7 +122,6 @@ describe("buildSnapshot", () => {
     expect(buildSnapshot(PROFILE, txns, "2026-03-31").holdings).toHaveLength(4);
   });
 
-  // test_lot_engine_warnings_are_kept_and_mixed_lot_currencies_flagged
   it("lot engine warnings are kept and mixed lot currencies flagged", () => {
     const txns = [
       buy(IKE, X, "2026-01-05", "1", "100"),
@@ -162,7 +152,6 @@ describe("buildSnapshot", () => {
     expect(holdingAverageCost(holding)).toBeNull();
   });
 
-  // test_restrict_snapshot_drops_other_accounts_and_keeps_global_warnings
   it("restrictSnapshot drops other accounts and keeps global warnings", () => {
     const txns = [
       cashTxn(IKE, "2026-01-02", "100"),
@@ -194,7 +183,6 @@ describe("buildSnapshot", () => {
     expect(missingInstrument({ instrumentId: Y }).accountId).toBeNull();
   });
 
-  // test_snapshot_with_a_rename_carries_lots_and_the_last_trade_price
   it("snapshot with a rename carries lots and the last trade price", () => {
     const z = ins(newId());
     const txns = [buy(IKE, X, "2026-01-05", "10", "100"), sell(IKE, z, "2026-03-02", "2", "130")];
@@ -227,7 +215,6 @@ describe("buildSnapshot", () => {
 // --- last trade prices --------------------------------------------------------------------------
 
 describe("lastTradePrices", () => {
-  // test_newest_positive_trade_price_split_adjusted_once_up_to_as_of
   it("newest positive trade price, split-adjusted once, up to asOf", () => {
     const txns = [
       buy(IKE, X, "2026-01-05", "10", "100"),
@@ -248,7 +235,6 @@ describe("lastTradePrices", () => {
     expect(lastTradePrices(txns, { accountIds: new Set([IKE]) }).get(X)?.price).toEqual(d("50")); // 100 / 2
   });
 
-  // test_only_buy_and_sell_prices_count_r13
   it("only buy and sell prices count (R13)", () => {
     const txns = [
       buy(IKE, X, "2026-01-05", "10", "100"),
@@ -278,7 +264,6 @@ describe("lastTradePrices", () => {
     );
   });
 
-  // test_split_booked_on_different_days_in_two_accounts_is_applied_once_r11
   it("split booked on different days in two accounts is applied once (R11)", () => {
     const txns = [
       buy(IKE, X, "2026-01-10", "10", "100"),
@@ -300,7 +285,6 @@ describe("lastTradePrices", () => {
     expect(lastTradePrices(twoSplits).get(X)?.price).toEqual(d("8.3333333334"));
   });
 
-  // test_snapshot_has_the_last_trade_prices_of_its_transactions
   it("snapshot has the last trade prices of its transactions", () => {
     const snapshot = buildSnapshot(
       PROFILE,
@@ -309,19 +293,6 @@ describe("lastTradePrices", () => {
     );
     expect(snapshot.lastTradePrices).toEqual(
       new Map([[X, datedPrice({ date: "2026-01-05", price: d("100"), currency: PLN })]]),
-    );
-    // Python `isinstance(snapshot, PortfolioSnapshot)`: TS has no runtime class, so check the shape.
-    expect(Object.keys(snapshot).sort()).toEqual(
-      [
-        "asOf",
-        "cash",
-        "deposits",
-        "holdings",
-        "lastTradePrices",
-        "profileId",
-        "realized",
-        "warnings",
-      ].sort(),
     );
   });
 });

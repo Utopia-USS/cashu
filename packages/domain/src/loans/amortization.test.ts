@@ -1,6 +1,6 @@
 // Amortization math (`modules/loans/amortization.py`). No pytest file targets it directly (test_loans.py
 // uses it as its oracle); these pin the formulas on hand-checked values, the edges of `outstanding`
-// and `summarize`. The full Python differential runs in amortization.vectors.test.ts.
+// and `summarize`.
 
 import { describe, expect, it } from "vitest";
 import { D } from "../decimal.js";

@@ -1,8 +1,8 @@
-// saveStrategyVersion: records only a changed text, refuses an oversized file, issues in the
-// `issue_dict` shape, and the fold's m9 rule for two devices recording one edit. Synthetic data only.
+// saveStrategyVersion: records only a changed text, refuses an oversized file or a stale base, and the
+// fold's m9 rule for two devices recording one edit. Synthetic data only.
 import { strategyDigest } from "@cashu/domain/investments/strategy";
 import { describe, expect, it } from "vitest";
-import { latestStrategyVersion, strategyVersions } from "../queries/strategy.js";
+import { strategyVersions } from "../queries/strategy.js";
 import { MAX_STRATEGY_FILE_BYTES, saveStrategyVersion, utf8Bytes } from "./strategy.js";
 import { type Vault, vault } from "./testing/fixtures.js";
 
@@ -22,7 +22,7 @@ describe("saveStrategyVersion", () => {
     expect(same.ok && same.value).toEqual({ ...first, recorded: false });
     expect(same.ok && same.events).toEqual([]);
     v.value(saveStrategyVersion, { yamlText: MINIMAL, mdText: "" });
-    // md "" and no md digest alike (Python `md_text or ""`): still one version
+    // md "" and no md digest alike: still one version
     expect(strategyVersions(read(v))).toHaveLength(1);
     v.value(saveStrategyVersion, { yamlText: "version: [" });
     v.value(saveStrategyVersion, { yamlText: MINIMAL }); // a revert is a new version
@@ -31,16 +31,6 @@ describe("saveStrategyVersion", () => {
       [2, "invalid"],
       [1, "valid"],
     ]);
-  });
-
-  it("stores issues in the issue_dict shape", () => {
-    const v = vault();
-    v.value(saveStrategyVersion, { yamlText: "version: [" });
-    const issue = latestStrategyVersion(read(v))?.issues[0];
-    expect(Object.keys(issue ?? {}).sort()).toEqual(
-      ["code", "column", "line", "message", "params", "path", "severity"].sort(),
-    );
-    expect([issue?.severity, issue?.line]).toEqual(["error", 1]);
   });
 
   it("refuses a file over the read cap", () => {

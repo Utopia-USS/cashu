@@ -110,7 +110,7 @@ describe("native portfolio loader and live annotations", () => {
     foreign.store.close();
   });
 
-  it("keeps old chart bars while default valuation uses the Python 800-day window", () => {
+  it("keeps old chart bars while default valuation uses the 800-day window", () => {
     const h = household();
     const store = openTestStore();
     store.applyEnvelopes(h.events);

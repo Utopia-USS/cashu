@@ -1,6 +1,6 @@
 // Loans commands (S24 5): terms only on visible mortgage / loan accounts, add by name (a new manual
 // account, re-run updates it, ambiguous and taken names refused), payment matching changing only
-// the given fields (Python loans/service.py). Synthetic data only.
+// the given fields. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { createProfile, openAccount, removeAccount } from "../core/commands.js";
 import { run, testEnv } from "../testing/commands.js";

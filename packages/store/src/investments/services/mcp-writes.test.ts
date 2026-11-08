@@ -6,6 +6,7 @@ import { defineCommand, ok } from "../../command.js";
 import { createProfile } from "../../core/commands.js";
 import { createInstrument, setInstrumentPlan } from "../commands/instruments.js";
 import { createThesis } from "../commands/journal.js";
+import { addManualTransaction } from "../commands/manual.js";
 import { applyPlanChecks } from "../commands/planSignals.js";
 import { addToWatchlist } from "../commands/watchlist.js";
 import { allInstruments, loadInstrument } from "../queries/instruments.js";
@@ -148,6 +149,42 @@ describe("MCP local investment mutation composition", () => {
     ).toEqual({ ok: false, reason: "duplicate_instrument" });
     expect(allInstruments(h.read).map((i) => [i.id, i.plan])).toEqual(before);
   });
+  it("refuses held-only plans off a held position and instruments the vault does not reference", async () => {
+    const h = await fixture();
+    const run = (instrument: string, plan: string) =>
+      h.v.run(recommendWithPlans(), {
+        today: TODAY,
+        scope: null,
+        updates: [{ instrument, plan, reason: "Synthetic view" }],
+      });
+    const unreferenced = h.v.value(createInstrument, {
+      name: "Unreferenced",
+      currency: "USD",
+      assetClass: "equity",
+    }).gid;
+    expect(run(unreferenced, "hold")).toEqual({ ok: false, reason: "no_instrument" });
+    const watched = h.v.value(createInstrument, {
+      name: "Watched",
+      currency: "EUR",
+      assetClass: "etf",
+    }).gid;
+    h.v.value(addToWatchlist, { target: { stored: watched } });
+    for (const plan of ["reduce", "exit_asap"])
+      expect(run(watched, plan)).toEqual({ ok: false, reason: "needs_held" });
+    expect(run(watched, "buy").ok).toBe(true);
+    h.v.value(addManualTransaction, {
+      account: h.account,
+      instrument: h.abc,
+      type: "sell",
+      tradeDate: "2026-02-20",
+      quantity: "100",
+      price: "60",
+    });
+    expect(run(h.abc, "reduce")).toEqual({ ok: false, reason: "needs_held" });
+    expect(run(h.abc, "hold").ok).toBe(true);
+    expect(loadInstrument(h.read, h.abc)?.plan).toBe("hold");
+  });
+
   it("covers held instruments in one append and preserves omitted existing recommendations", async () => {
     const h = await fixture();
     h.v.value(setInstrumentPlan, { instrument: h.xmpl, plan: "hold", held: true });

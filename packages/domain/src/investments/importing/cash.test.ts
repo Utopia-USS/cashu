@@ -24,7 +24,6 @@ const failure = (outcome: AmountOutcome<unknown>) => (outcome.ok ? null : outcom
 const same = (actual: { eq(other: ReturnType<typeof d>): boolean }, expected: string) =>
   actual.eq(d(expected));
 
-// test_derive_cash_across_currencies_uses_fx_rate_r5
 it("derive cash across currencies uses fx_rate (R5)", () => {
   const amounts = value(
     deriveAmounts({
@@ -66,7 +65,6 @@ it("derive cash across currencies uses fx_rate (R5)", () => {
   ).toMatch(/gross_amount is empty/);
 });
 
-// test_derive_amount_rules
 it("derive amount rules", () => {
   const feeOnly = value(
     deriveAmounts({ txnType: TxnType.FEE, currency: pln, cashCurrency: pln, fee: d("2") }),
@@ -96,7 +94,6 @@ it("derive amount rules", () => {
   expect(value(toTradeCurrency(d("10"), usd, pln, d("3"))).toString()).toBe("3.3333333333");
 });
 
-// test_signed_cash
 it("signed cash", () => {
   expect(same(value(signedCash(TxnType.BUY, d("5"), true)), "-5")).toBe(true);
   expect(same(value(signedCash(TxnType.SELL, d("-5"), true)), "5")).toBe(true);

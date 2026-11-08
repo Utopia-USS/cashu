@@ -1,13 +1,8 @@
-// Test-for-test translation of `tests/investments/persistence/test_rs_service.py`: runs (conflict,
-// stale -> failed, counts), note rules (scope, thesis relation, owner-named refusal, duplicates,
-// theme spelling), research signals (action / info, notification policy, one signal per instrument
-// and week, escalation, polarity), dismiss / restore, housekeeping on expiry, candidates (new
-// instruments only, cooldown, accept -> watchlist + draft thesis, undo), the review-digest block and
-// the summary. Python errors map to refusal codes (`RESEARCH_REFUSALS`), notifications to the
-// command's `notified`. Synthetic data only. Each `it` names its Python test.
-//
-// Not translated: `test_the_daily_check_keeps_research_signals_open` (the daily check is S22c and
-// the rule reconciliation S15b: their reconcile must leave `research:` keys alone).
+// Research runs (conflict, stale -> failed, counts), note rules (scope, thesis relation, owner-named
+// refusal, duplicates), research signals (action / info, notification policy, one signal per
+// instrument and week, escalation, polarity), dismiss / restore, housekeeping on expiry, candidates
+// (new instruments only, cooldown, accept -> watchlist + draft thesis, undo), the review-digest block
+// and the summary. Synthetic data only.
 import { research } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import { createInstrument, setManualValuation } from "../commands/instruments.js";
@@ -44,7 +39,7 @@ const now = (i: ReturnType<typeof investor>) =>
   eventInstant(new Date(i.v.env.clock.now()).toISOString());
 
 describe("runs", () => {
-  it("test_run_lifecycle", () => {
+  it("run lifecycle", () => {
     const i = investor();
     const { v } = i;
     const run = v.value(startResearchRun, { scope: { themes: ["Banki"], scheduled: true } }).run;
@@ -69,7 +64,7 @@ describe("runs", () => {
     expect(refusal(addNote(v, 2, {}, { run }))).toBe("run_not_running"); // the run is done
   });
 
-  it("test_stale_run_is_marked_failed", () => {
+  it("stale run is marked failed", () => {
     const i = investor();
     const { v } = i;
     const run = v.value(startResearchRun, {}).run;
@@ -84,7 +79,7 @@ describe("runs", () => {
     expect(refusal(v.run(finishResearchRun, { run }))).toBe("run_not_running");
   });
 
-  it("test_finish_failed_with_reason_and_bad_counts", () => {
+  it("finish failed with reason and bad counts", () => {
     const i = investor();
     const { v } = i;
     const run = v.value(startResearchRun, {}).run;
@@ -98,7 +93,7 @@ describe("runs", () => {
 });
 
 describe("note rules", () => {
-  it("test_note_scope_and_thesis_rules", () => {
+  it("note scope and thesis rules", () => {
     const i = investor();
     const { v } = i;
     expect(refusal(addNote(v, 1, {}, { instrument: null }))).toBe("no_scope");
@@ -120,7 +115,7 @@ describe("note rules", () => {
     expect(noteByGid(i.read, first)?.expiresAt).toBeTypeOf("bigint");
   });
 
-  it("test_duplicates_are_refused", () => {
+  it("duplicates are refused", () => {
     const i = investor();
     const { v } = i;
     added(v, 1);
@@ -143,7 +138,7 @@ describe("note rules", () => {
     ).toBe("duplicate_dismissed");
   });
 
-  it("test_owner_named_instruments_are_never_researched", () => {
+  it("owner named instruments are never researched", () => {
     const i = investor();
     const { v } = i;
     const claim = v.value(createInstrument, {
@@ -164,7 +159,7 @@ describe("note rules", () => {
 });
 
 describe("signals", () => {
-  it("test_signal_carries_the_notes_plain_headline", () => {
+  it("signal carries the notes plain headline", () => {
     const i = investor();
     thesis(i.v, i.xmpl);
     added(i.v, 1, {
@@ -176,7 +171,7 @@ describe("signals", () => {
     expect(sig?.payload.headline).toBe("Firma płaci za przejęcie nowymi akcjami");
   });
 
-  it("test_signal_without_a_headline_keeps_the_title_only", () => {
+  it("signal without a headline keeps the title only", () => {
     const i = investor();
     thesis(i.v, i.xmpl);
     added(i.v, 1, { polarity: "negative", thesis_relation: "invalidates" });
@@ -185,7 +180,7 @@ describe("signals", () => {
     expect(sig?.payload.title).toBeTruthy();
   });
 
-  it("test_invalidating_note_is_an_action_signal_with_a_notification", () => {
+  it("invalidating note is an action signal with a notification", () => {
     const i = investor();
     thesis(i.v, i.xmpl);
     const out = added(i.v, 1, { polarity: "negative", thesis_relation: "invalidates" });
@@ -205,7 +200,7 @@ describe("signals", () => {
     expect(noteByGid(i.read, out.note)?.signal).toBe(sig?.gid);
   });
 
-  it("test_strength_three_is_info_and_later_notes_join_the_weekly_signal", () => {
+  it("strength three is info and later notes join the weekly signal", () => {
     const i = investor();
     const { v } = i;
     thesis(v, i.xmpl);
@@ -245,7 +240,7 @@ describe("signals", () => {
     expect(researchSignals(v)).toHaveLength(2); // candidates never become signals
   });
 
-  it("test_dismiss_resolves_and_restore_reopens_the_signal", () => {
+  it("dismiss resolves and restore reopens the signal", () => {
     const i = investor();
     const { v } = i;
     thesis(v, i.xmpl);
@@ -270,7 +265,7 @@ describe("signals", () => {
     expect(noteByGid(i.read, note)?.dismissedAt).not.toBeNull();
   });
 
-  it("test_dismissing_one_of_two_notes_keeps_the_signal_open", () => {
+  it("dismissing one of two notes keeps the signal open", () => {
     const i = investor();
     const { v } = i;
     thesis(v, i.xmpl);
@@ -283,7 +278,7 @@ describe("signals", () => {
     expect(sig?.polarity).toBe("positive");
   });
 
-  it("test_housekeeping_resolves_signals_of_expired_notes", () => {
+  it("housekeeping resolves signals of expired notes", () => {
     const i = investor();
     const { v } = i;
     added(v, 1, { strength: 3, expires_in_days: 1 });
@@ -314,7 +309,7 @@ const CANDIDATE = {
 };
 
 describe("candidates", () => {
-  it("test_candidate_rules_and_cooldown", () => {
+  it("candidate rules and cooldown", () => {
     const i = investor();
     const { v } = i;
     const { candidate: _c, ...withoutCandidate } = CANDIDATE;
@@ -342,11 +337,11 @@ describe("candidates", () => {
     expect(noteByGid(i.read, note)?.cooldownUntil).toBeNull();
   });
 
-  it("test_accept_candidate_and_undo", () => {
+  it("accept candidate and undo", () => {
     const i = investor();
     const { v } = i;
     const note = added(v, 1, CANDIDATE, { instrument: null }).note;
-    // The caller resolves the candidate's symbol first (network before write, S22b's resolver).
+    // The caller resolves the candidate's symbol first (network before write).
     const newco = stock(v, "NEWCO", "PLNEWCO00019", { name: "Newco SA" });
     expect(refusal(v.run(acceptCandidate, { note }))).toBe("unresolved_instrument");
     const result = v.value(acceptCandidate, { note, instrument: newco });
@@ -377,7 +372,7 @@ describe("candidates", () => {
     expect(refusal(v.run(acceptCandidate, { note: news }))).toBe("not_candidate");
   });
 
-  it("test_accept_keeps_an_existing_watch_and_thesis", () => {
+  it("accept keeps an existing watch and thesis", () => {
     const i = investor();
     const { v } = i;
     const note = added(v, 1, CANDIDATE, { instrument: null }).note;
@@ -400,7 +395,7 @@ describe("candidates", () => {
 });
 
 describe("summary and digest", () => {
-  it("test_summary_health_and_sentiment_without_themes", () => {
+  it("summary health and sentiment without themes", () => {
     const i = investor();
     const { v } = i;
     thesis(v, i.xmpl);
@@ -429,7 +424,7 @@ describe("summary and digest", () => {
     expect(result.weeks).toHaveLength(8);
   });
 
-  it("test_research_digest_since_the_last_review", () => {
+  it("research digest since the last review", () => {
     const i = investor();
     const { v } = i;
     thesis(v, i.xmpl);

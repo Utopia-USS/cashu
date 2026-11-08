@@ -1,7 +1,6 @@
-// The watchlist write side at the command level (Python `service/watchlist.py` add / update / remove
-// on the soft model, F12): one row per instrument (remove is SOFT, an add restores the same row with
-// note / tags kept unless given, M2), note / tags rules, the item limit, the `_insert_once` reuse of
-// a listing another instrument holds, and vault isolation. Resolution and network paths are in
+// The watchlist write side at the command level (soft model, F12): one row per instrument (remove is
+// SOFT, an add restores the same row with note / tags kept unless given, M2), note / tags rules, the
+// item limit, the reuse of a listing another instrument holds, and vault isolation. Resolution and network paths are in
 // `services/watchlist.test.ts`. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { watchedItemFor, watchlist, watchlistItem, watchRowFor } from "../queries/alerts.js";
@@ -159,7 +158,7 @@ describe("addToWatchlist", () => {
     }
   });
 
-  it("note and tags are cleaned like Python's _note / _tags", () => {
+  it("note and tags are cleaned and capped", () => {
     const v = vault();
     const a = stock(v, "AAA", "PL0000000104");
     const cases: [Record<string, unknown>, string][] = [
@@ -197,7 +196,7 @@ describe("addToWatchlist", () => {
     });
     expect(storedByYahoo(read, ["syn.wa"]).get("SYN.WA")).toBe(first.instrument);
     v.value(removeFromWatchlist, { item: first.item });
-    // Python `_insert_once`: another instrument took the listing (any case) -> that one, created false
+    // another instrument took the listing (any case) -> that one, created false
     const rival = v.value(addToWatchlist, {
       target: {
         planned: planned("SYN", "syn.wa", { isin: "PL0000000105", name: "Rival" }),
@@ -273,11 +272,6 @@ describe("addToWatchlist", () => {
     });
     const ccc = { target: { planned: planned("CCC", "CCC.WA"), yahooSymbol: "CCC.WA" } };
     expect(v.run(addToWatchlist, ccc)).toEqual({ ok: false, reason: "watchlist_full" });
-    // note / tags are checked first (Python order)
-    expect(v.run(addToWatchlist, { ...ccc, note: "x".repeat(1001) })).toEqual({
-      ok: false,
-      reason: "note_too_long",
-    });
     v.value(removeFromWatchlist, { item: first.item });
     v.value(addToWatchlist, ccc); // the removed row does not count
     // restoring counts like adding

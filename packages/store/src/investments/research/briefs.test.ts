@@ -1,15 +1,6 @@
-// Test-for-test translation of `tests/investments/persistence/test_p9_briefs_service.py`: topic rows'
-// briefs, topic theses (save, drafts, delete as a rejection with a cooldown, per vault), the thesis
-// relation of topic notes, near duplicates, full refresh runs and the weekly rule of brief notes.
-// HTTP calls become the commands / views they serve; status codes become refusal codes. Python
-// `ago` (a note stored days back) runs with the vault clock moved back. Synthetic data only. Each
-// `it` names its Python test.
-//
-// Not translated (the macro card view is S22a over S20's macro port; `macroBrief` here is the
-// note-side helper it uses): `test_macro_cards_carry_plain_and_the_latest_brief`,
-// `test_a_macro_brief_older_than_the_current_state_is_not_shown`, and the card assertion of
-// `test_a_brief_with_changed_drivers_replaces_the_shown_one` (its note-side part is below). The
-// HTTP-only refusal of an unknown body key (`target`) is the API's (S36).
+// Topic rows' briefs, topic theses (save, drafts, delete as a rejection with a cooldown, per vault),
+// the thesis relation of topic notes, near duplicates, full refresh runs and the weekly rule of brief
+// notes. A note stored days back runs with the vault clock moved back. Synthetic data only.
 import { market } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import { otherVault, type Vault } from "../commands/testing/fixtures.js";
@@ -56,7 +47,7 @@ interface P9Options {
   readonly ago?: number;
 }
 
-/** Python p9 `add`: an agent note (kind trend, positive), stored `ago` days back. */
+/** An agent note (kind trend, positive), stored `ago` days back. */
 function p9(v: Vault, n: number, changes: Record<string, unknown> = {}, o: P9Options = {}) {
   const ago = o.ago ?? 0;
   const body: Record<string, unknown> = {
@@ -84,7 +75,7 @@ function p9ok(v: Vault, n: number, changes: Record<string, unknown> = {}, o: P9O
   return out.value.note;
 }
 
-/** Python `brief_note`. */
+/** A topic note carrying a brief. */
 function briefNote(
   v: Vault,
   n: number,
@@ -123,7 +114,7 @@ const thesisOf = (v: Vault, segment: string) =>
   topicThesisView(topicThesis(v.store.read.bind(v.store), segment), "pl");
 
 describe("topic briefs and theses", () => {
-  it("test_topic_rows_carry_up_to_three_active_briefs_newest_first", () => {
+  it("topic rows carry up to three active briefs newest first", () => {
     const { v } = investor();
     const headlines = [
       "Rośnie popyt na chipy",
@@ -166,7 +157,7 @@ describe("topic briefs and theses", () => {
     expect(rows.get("games_media")?.briefs ?? []).toEqual([]); // expired
   });
 
-  it("test_topic_thesis_http_crud", () => {
+  it("topic thesis save, read and delete", () => {
     const { v } = investor();
     expect(thesisOf(v, "games_media")).toBeNull();
     v.value(saveTopicThesis, {
@@ -227,7 +218,7 @@ describe("topic briefs and theses", () => {
     expect(thesisOf(v, "games_media")).toBeNull();
   });
 
-  it("test_owner_save_confirms_an_agent_draft", () => {
+  it("owner save confirms an agent draft", () => {
     const { v, read } = investor();
     const first = v.value(proposeTopicDraft, {
       segment: "semis_ai",
@@ -260,7 +251,7 @@ describe("topic briefs and theses", () => {
     ).toBe("owner_thesis");
   });
 
-  it("test_topic_theses_are_per_profile", () => {
+  it("topic theses are per profile", () => {
     const { v } = investor();
     const other = otherVault();
     other.value(saveTopicThesis, { segment: "crypto", thesis: "Teza innego profilu." });
@@ -271,7 +262,7 @@ describe("topic briefs and theses", () => {
     ).toBe(1);
   });
 
-  it("test_deleting_a_draft_is_a_rejection_with_a_cooldown", () => {
+  it("deleting a draft is a rejection with a cooldown", () => {
     const { v, read } = investor();
     v.value(proposeTopicDraft, { segment: "crypto", thesis: "Szkic tezy o krypto." });
     expect(v.value(deleteTopicThesis, { segment: "crypto" })).toEqual({ deleted: true });
@@ -306,7 +297,7 @@ describe("topic briefs and theses", () => {
     ).toBe("rejected_draft");
   });
 
-  it("test_deleting_a_confirmed_draft_starts_the_cooldown", () => {
+  it("deleting a confirmed draft starts the cooldown", () => {
     const { v, read } = investor();
     v.value(proposeTopicDraft, { segment: "gold", thesis: "Szkic o złocie." });
     v.value(saveTopicThesis, { segment: "gold", thesis: "Szkic o złocie." });
@@ -320,7 +311,7 @@ describe("topic briefs and theses", () => {
 });
 
 describe("thesis relation on topic notes", () => {
-  it("test_a_topic_note_bears_on_the_topic_thesis_only_when_it_exists", () => {
+  it("a topic note bears on the topic thesis only when it exists", () => {
     const { v, read } = investor();
     expect(refusal(p9(v, 1, { segment: "healthcare", thesis_relation: "weakens" }))).toBe(
       "topic_without_thesis",
@@ -346,7 +337,7 @@ describe("thesis relation on topic notes", () => {
     ]);
   });
 
-  it("test_no_thesis_relation_against_a_draft", () => {
+  it("no thesis relation against a draft", () => {
     const { v } = investor();
     v.value(proposeTopicDraft, {
       segment: "healthcare",
@@ -359,7 +350,7 @@ describe("thesis relation on topic notes", () => {
     p9ok(v, 2, { segment: "healthcare", thesis_relation: "weakens" });
   });
 
-  it("test_a_topic_invalidates_note_passes_the_weekly_segment_cap", () => {
+  it("a topic invalidates note passes the weekly segment cap", () => {
     const { v } = investor();
     v.value(saveTopicThesis, {
       segment: "healthcare",
@@ -375,7 +366,7 @@ describe("thesis relation on topic notes", () => {
 });
 
 describe("near duplicates", () => {
-  it("test_near_duplicates_are_refused_within_the_same_scope", () => {
+  it("near duplicates are refused within the same scope", () => {
     const { v } = investor();
     p9ok(
       v,
@@ -409,7 +400,7 @@ describe("near duplicates", () => {
     );
   });
 
-  it("test_dismissed_and_old_notes_are_not_compared", () => {
+  it("dismissed and old notes are not compared", () => {
     const { v } = investor();
     p9ok(
       v,
@@ -430,7 +421,7 @@ describe("near duplicates", () => {
 });
 
 describe("full refresh and the brief weekly rule", () => {
-  it("test_a_full_refresh_run_skips_the_novelty_caps_only", () => {
+  it("a full refresh run skips the novelty caps only", () => {
     const { v, read } = investor();
     const run = v.value(startResearchRun, { scope: { full_refresh: true } }).run;
     const row = runByGid(read, run);
@@ -455,7 +446,7 @@ describe("full refresh and the brief weekly rule", () => {
     expect(runView(read, runByGid(read, weekly), nowOf(v))?.full_refresh).toBe(false);
   });
 
-  it("test_brief_notes_have_their_own_weekly_rule", () => {
+  it("brief notes have their own weekly rule", () => {
     const { v } = investor();
     const plain = p9ok(v, 1, { segment: "semis_ai" });
     briefOk(v, 2, "semis_ai", TOPIC_BRIEF);
@@ -473,7 +464,7 @@ describe("full refresh and the brief weekly rule", () => {
     expect(refusal(p9(v, 5, { segment: "semis_ai" }))).toBe("segment_week");
   });
 
-  it("test_a_full_refresh_lifts_the_weekly_rule_for_brief_notes_only", () => {
+  it("a full refresh lifts the weekly rule for brief notes only", () => {
     const { v } = investor();
     briefOk(v, 1, "macro_risk", MACRO_BRIEF, { kind: "macro" });
     p9ok(v, 2, { segment: "macro_risk", kind: "macro" });
@@ -489,7 +480,7 @@ describe("full refresh and the brief weekly rule", () => {
     );
   });
 
-  it("test_a_brief_with_changed_drivers_replaces_the_shown_one (notes part)", () => {
+  it("a brief with changed drivers replaces the shown one (notes part)", () => {
     const { v, read } = investor();
     const old = briefOk(v, 1, "macro_risk", MACRO_BRIEF, { kind: "macro" }, { ago: 10 });
     const fresh = briefOk(
@@ -505,6 +496,6 @@ describe("full refresh and the brief weekly rule", () => {
     );
     const rows = notes(read, nowOf(v), { segment: "macro_risk" });
     expect(new Set(rows.map((r) => r.gid))).toEqual(new Set([old, fresh]));
-    expect(rows[0]?.gid).toBe(fresh); // newest observation first: the card's brief (S22a)
+    expect(rows[0]?.gid).toBe(fresh); // newest observation first: the card's brief
   });
 });

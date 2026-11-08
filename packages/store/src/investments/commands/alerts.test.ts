@@ -1,6 +1,5 @@
-// Alert reads with the effective status (R-S2) and the alert signal close / reopen building blocks
-// (Python `store/alerts.py`: close_open_signal, reopen_signal_closed_at, alert_counts,
-// live_agent_alerts, the watchlist reads). Synthetic data only.
+// Alert reads with the effective status (R-S2), the alert signal close / reopen building blocks and
+// the watchlist reads. Synthetic data only.
 
 import { describe, expect, it } from "vitest";
 import { z } from "zod";

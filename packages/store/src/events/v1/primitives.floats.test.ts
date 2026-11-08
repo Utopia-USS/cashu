@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { eventBlob, eventNumber, nonIntegerNumberPath, restoreFloats } from "./primitives.js";
 
 describe("event numbers", () => {
-  it("keeps safe integers and writes any other number as Python's float text", () => {
+  it("keeps safe integers and writes any other number as fixed decimal text", () => {
     expect(eventNumber(3)).toBe(3);
     expect(eventNumber(-12)).toBe(-12);
     expect(eventNumber(0.5)).toBe("0.5");

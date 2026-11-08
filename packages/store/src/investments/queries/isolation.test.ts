@@ -1,10 +1,8 @@
-// Vault (profile) isolation of the investments queries and commands. Translates the store-level
-// meaning of Python tests/investments/persistence/test_invp_isolation.py (two profiles with the same
-// history see the same thing, an empty one sees nothing, writes through one never reach the other)
-// and test_al_profile_instruments.py (one profile's classification of a security never changes
-// another's). One view database per vault makes a cross-vault read structurally impossible; these
-// tests check that every query sees only its vault and that every command refuses another vault's
-// gids. The HTTP route list check of the oracle is S36's. Synthetic data only.
+// Vault (profile) isolation of the investments queries and commands: two profiles with the same history
+// see the same thing, an empty one sees nothing, writes through one never reach the other, and one
+// profile's classification of a security never changes another's. One view database per vault makes
+// a cross-vault read structurally impossible; these tests check that every query sees only its vault
+// and that every command refuses another vault's gids. Synthetic data only.
 import { Decimal } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
 import {

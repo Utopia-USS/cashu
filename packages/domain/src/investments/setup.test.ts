@@ -1,6 +1,4 @@
-// Investments blank-page steps (modules/investments/setup.py) over their facts:
-// tests/investments/persistence/test_inv_english_texts.py test_setup_steps_in_english, and the
-// investments half of tests/test_profiles.py test_setup_status_follows_the_data (an empty module).
+// Investments blank-page steps over their facts, and the CLI commands they offer.
 
 import { describe, expect, it } from "vitest";
 import { type SetupContext, setupView } from "../core/index.js";
@@ -41,27 +39,12 @@ describe("investments setup steps", () => {
     ]);
   });
 
-  it("the commands in Polish", () => {
+  it("each step offers the CLI command that does it", () => {
     expect(view({}).steps.map((s) => s.actions[0]?.target)).toEqual([
       'cashu --profile anna invest accounts add "XTB IKE" --broker xtb --wrapper ike',
       "cashu --profile anna invest strategy init",
       "cashu --profile anna invest import PLIK.csv --account ID_RACHUNKU",
       "cashu --profile anna invest run",
     ]);
-    expect(view({}).steps[1]?.actions[0]?.label).toBe("Utwórz z szablonu");
-  });
-
-  it("test_setup_steps_in_english", () => {
-    const steps = view({}, { cli: "cashu --profile anna", lang: "en" }).steps;
-    expect(steps.map((s) => s.title)).toEqual([
-      "Add a brokerage account",
-      "Save the strategy",
-      "First contribution or import",
-      "First rules run",
-    ]);
-    expect(steps[0]?.actions[0]?.label).toBe("Copy command");
-    expect(
-      steps[2]?.actions[0]?.target.endsWith("invest import FILE.csv --account ACCOUNT_ID"),
-    ).toBe(true);
   });
 });

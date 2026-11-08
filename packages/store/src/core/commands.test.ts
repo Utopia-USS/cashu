@@ -1,7 +1,6 @@
 // Core commands (S24 5) on the in-memory store: batch shapes, validation, value-free refusals,
-// idempotent re-runs, account identity across IBAN formats (Python tests/test_ingestion.py
-// test_account_merges_across_iban_formats), name keys and vault isolation (tests/test_profiles.py
-// isolation idea). Synthetic data only.
+// idempotent re-runs, account identity across IBAN formats, name keys and vault isolation.
+// Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { vaultSalt } from "../gid.js";
 import { Store } from "../materialize.js";

@@ -10,23 +10,7 @@ const hits = market.parseYahooSearch(
   }),
 );
 describe("instrument search", () => {
-  it("orders saved name labels by Python code points rather than UTF-16 units", async () => {
-    const v = vault();
-    const astral = stock(v, "A", "PL0000000001", { symbol: null, name: "\u{10000}needle" });
-    const bmp = stock(v, "B", "PL0000000002", { symbol: null, name: "\ue000needle" });
-    applyRaw(v, [raw.watchAdded(v, astral), raw.watchAdded(v, bmp)]);
-    const result = await new InstrumentSearch(() => 0).search(
-      {
-        read: v.store.read.bind(v.store),
-        asOf: "2026-10-31",
-        sources: () => ({ symbols: null, close() {} }),
-      },
-      "needle",
-      { remote: false },
-    );
-    expect(result.local.map((h) => h.instrument_id)).toEqual([bmp, astral]);
-  });
-  it("validates Unicode length, whitespace and full Python-style folding", () => {
+  it("validates length and whitespace and folds Polish and German letters", () => {
     expect(cleanSearchQuery("  AAA\u0085WA  ")).toBe("AAA WA");
     expect(searchFold("Łódź Straße")).toBe("lodz strasse");
     expect(() => cleanSearchQuery(" ")).toThrow();

@@ -1,6 +1,6 @@
-// The month's contribution-plan progress (Python `month_plan`): base currency, FX from the device's
-// price cache (trade-date rate for deposits, planned date or today for plans), a missing rate, no
-// strategy, the month bounds and the Python dict rendering. Synthetic data only; clock 2026-10-31.
+// The month's contribution-plan progress: base currency, FX from the device's price cache (trade-date
+// rate for deposits, planned date or today for plans), a missing rate, no strategy and the month
+// bounds. Synthetic data only; clock 2026-10-31.
 import { D, parseDateTime } from "@cashu/domain";
 import { market, toCurrency } from "@cashu/domain/investments";
 import { loadStrategy } from "@cashu/domain/investments/strategy";
@@ -9,7 +9,6 @@ import { addManualTransaction } from "../commands/manual.js";
 import { createPlannedDeposit } from "../commands/planned.js";
 import { brokerage, type Vault, vault } from "../commands/testing/fixtures.js";
 import { type MonthPlanRequest, monthPlan } from "./planned.js";
-import { monthPlanRecord } from "./testing/planned.js";
 
 const yaml = (extra: string) => `version: 1
 base_currency: PLN
@@ -74,7 +73,7 @@ describe("monthPlan", () => {
     expect(october.currency).toBe("PLN");
     expect(october.deposited?.toString()).toBe("850.00"); // 100 * 4.20 + 430
     expect(october.planned?.toString()).toBe("43.00"); // 10 * 4.30 at the planned date
-    expect(monthPlanRecord(october)).toMatchObject({ remaining: "607.00", covered: false });
+    expect([october.remaining?.toString(), october.covered]).toEqual(["607.00", false]);
     const november = planOf(v, { prices });
     expect(november.planned?.toString()).toBe("88.00"); // 20 * 4.40: the newest known by today
     expect(november.plannedCount).toBe(1);
@@ -95,7 +94,6 @@ describe("monthPlan", () => {
     deposit(v, account, "2026-11-02", "1600");
     const out = planOf(v);
     expect([out.remaining?.toString(), out.covered]).toEqual(["0", true]);
-    expect(monthPlanRecord(out).remaining).toBe("0.00");
   });
 
   it("has no monthly amount without a strategy and uses the profile's base currency", () => {
@@ -128,12 +126,5 @@ describe("monthPlan", () => {
     }
     const loose = planOf(v, { month: " 2026-2 " });
     expect(loose.month).toBe("2026-02");
-  });
-
-  it("renders amounts rounded half even to 2 places", () => {
-    const v = vault();
-    const account = brokerage(v);
-    deposit(v, account, "2026-11-02", "0.125");
-    expect(monthPlanRecord(planOf(v)).deposited).toBe("0.12");
   });
 });

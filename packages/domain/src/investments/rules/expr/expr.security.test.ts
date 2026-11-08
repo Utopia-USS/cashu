@@ -44,6 +44,11 @@ const MALICIOUS: readonly string[] = [
   "holding_has_tag('a\\'b')",
   'holding_has_tag("\\x41")',
   "holding_has_tag('line\nbreak')",
+  // garbage: line / paragraph separators, a lone surrogate, control characters, operator soup
+  "\u2028\n",
+  "\udfff\ttagged_weight",
+  "value * target >\nmic  ** ( AND",
+  '=  ! {\t" "\t\\ cash_value',
 ];
 
 function compileError(source: string, scope: Scope = Scope.INSTRUMENT): ExpressionError {

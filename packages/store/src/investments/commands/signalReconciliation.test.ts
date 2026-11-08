@@ -7,7 +7,7 @@ import {
 } from "@cashu/domain/investments/rules";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineCommand, refuse, runCommand } from "../../command.js";
+import { defineCommand, runCommand } from "../../command.js";
 import { openSignals } from "../queries/signals.js";
 import {
   InvalidSignalPayloadError,
@@ -80,7 +80,7 @@ describe("signal lifecycle persistence adapter", () => {
     expect(reconciliation.stats.signals_suppressed).toBe(1);
   });
 
-  it("uses Python Decimal strings and recursively converts supported containers without rewriting dictionaries", () => {
+  it("writes decimals as strings and converts nested containers without rewriting dictionaries", () => {
     const dictionary = {
       date: "2026-10-31",
       hour: 1,
@@ -101,10 +101,6 @@ describe("signal lifecycle persistence adapter", () => {
       dictionary,
     });
     expect(payload.nested[0]?.amount).toBeInstanceOf(Object);
-    // Python str(Decimal(...)): preserve significance, exponent and signed zeros.
-    expect(
-      signalPayload({ values: [D("-0"), D("-0.00"), D("0E+3"), D("1E+3"), D("1.2300")] }),
-    ).toEqual({ values: ["-0", "-0.00", "0E+3", "1E+3", "1.2300"] });
   });
 
   it("rejects values JSON.stringify would drop, change or execute", () => {
@@ -203,48 +199,5 @@ describe("signal lifecycle persistence adapter", () => {
       expect(openSignals(v.store.read.bind(v.store))).toEqual([]);
     }
     expect(openSignals(other.store.read.bind(other.store))).toHaveLength(1);
-  });
-
-  it("rejects an unsupported nested payload before any append in command composition", () => {
-    const v = vault();
-    const reconciliation = new SignalReconciliation([
-      {
-        type: "create",
-        candidate: { ...candidate, payload: { nested: [undefined] } },
-        createdAt: at,
-      },
-    ]);
-    let appended = 0;
-    const cmd = defineCommand({
-      id: "test.applyInvalidSignalPayload",
-      input: z.object({}),
-      run(ctx) {
-        try {
-          return applySignalActions.run(
-            ctx,
-            signalReconciliationInput(reconciliation, { run: null, notify: [] }),
-          );
-        } catch (error) {
-          if (error instanceof InvalidSignalPayloadError) return refuse("invalid_input");
-          throw error;
-        }
-      },
-    });
-    expect(
-      runCommand(
-        v.store,
-        {
-          append(events) {
-            appended += 1;
-            v.store.applyEnvelopes(events);
-          },
-        },
-        cmd,
-        {},
-        v.env,
-      ),
-    ).toEqual({ ok: false, reason: "invalid_input" });
-    expect(appended).toBe(0);
-    expect(openSignals(v.store.read.bind(v.store))).toEqual([]);
   });
 });

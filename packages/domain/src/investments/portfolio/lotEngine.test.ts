@@ -1,8 +1,6 @@
 /**
- * Test-for-test translation of `tests/investments/portfolio/test_inv_lot_engine.py` (FIFO lot engine,
- * port of the Kompas lot_engine_test.dart, plus renames). Synthetic data only. Each `it` names its
- * Python test in a comment. Python compares decimals by value (`==`): `norm` turns every Decimal into
- * its value key so `toEqual` does the same.
+ * FIFO lot engine, plus splits, transfers, history gaps, cash and renames. Synthetic data only.
+ * `norm` turns every Decimal into its value key so `toEqual` compares by value.
  */
 import { describe, expect, it } from "vitest";
 import { Decimal, decimalKey, localContext, makeContext, sum } from "../../decimal.js";
@@ -64,7 +62,6 @@ const acc = asAccountId;
 const ins = asInstrumentId;
 
 describe("FIFO", () => {
-  // test_partial_sell_consumes_oldest_lot_first_and_splits_the_next
   it("partial sell consumes oldest lot first and splits the next", () => {
     const buy1 = buy(ACC, X, "2026-01-05", "10", "100", { fee: "5" }); // cost 1005, unit 100.5
     const buy2 = buy(ACC, X, "2026-02-02", "10", "120", { fee: "5" }); // cost 1205, unit 120.5
@@ -115,7 +112,6 @@ describe("FIFO", () => {
     ]);
   });
 
-  // test_rounded_partial_costs_never_lose_money
   it("rounded partial costs never lose money", () => {
     const lot = buy(ACC, X, "2026-01-05", "3", "100", { fee: "1" }); // cost 301
     const first = sell(ACC, X, "2026-02-02", "1", "110");
@@ -137,7 +133,6 @@ describe("FIFO", () => {
     expect(sum(result.realized.map((t) => t.pnl as Decimal)).eq(d("29"))).toBe(true);
   });
 
-  // test_fees_and_taxes_go_into_cost_on_buys_and_reduce_proceeds_on_sells
   it("fees and taxes go into cost on buys and reduce proceeds on sells", () => {
     const result = runLots([
       buy(ACC, X, "2026-01-05", "10", "50", { fee: "2", tax: "3" }), // cost 505
@@ -151,7 +146,6 @@ describe("FIFO", () => {
     expectSame(result.cash, [cashBalance({ accountId: acc(ACC), currency: PLN, amount: d("89") })]);
   });
 
-  // test_same_day_transactions_keep_their_created_at_order
   it("same day transactions keep their created at order", () => {
     const morningBuy = buy(ACC, X, "2026-01-05", "10", "100");
     const eveningSell = sell(ACC, X, "2026-01-05", "10", "110");
@@ -174,7 +168,6 @@ describe("FIFO", () => {
     expect(warnings[0]?.kind).toBe("history_gap");
   });
 
-  // test_naive_and_aware_created_at_can_be_mixed
   it("naive and aware created at can be mixed", () => {
     const morningBuy = {
       ...buy(ACC, X, "2026-01-05", "10", "100"),
@@ -201,7 +194,6 @@ describe("FIFO", () => {
     expect(runLots([eveningSell, morningBuy]).warnings).toEqual([]);
   });
 
-  // test_instruments_are_matched_separately
   it("instruments are matched separately", () => {
     const result = runLots([
       buy(ACC, X, "2026-01-05", "10", "100"),
@@ -218,7 +210,6 @@ describe("FIFO", () => {
 });
 
 describe("multiple accounts", () => {
-  // test_lots_cash_and_gaps_are_kept_per_account
   it("lots cash and gaps are kept per account", () => {
     const result = runLots([
       cashTxn(ACC, "2026-01-02", "2000"),
@@ -247,7 +238,6 @@ describe("multiple accounts", () => {
     ]);
   });
 
-  // test_the_account_filter_keeps_only_the_given_accounts
   it("the account filter keeps only the given accounts", () => {
     const result = runLots(
       [buy(ACC, X, "2026-01-05", "10", "100"), buy(OTHER, X, "2026-01-05", "5", "200")],
@@ -259,7 +249,6 @@ describe("multiple accounts", () => {
 });
 
 describe("splits", () => {
-  // test_split_multiplies_open_quantities_and_divides_unit_cost
   it("split multiplies open quantities and divides unit cost", () => {
     const result = runLots([
       buy(ACC, X, "2026-01-05", "10", "400"), // cost 4000
@@ -277,7 +266,6 @@ describe("splits", () => {
     expect(lot?.openDate).toBe("2026-01-05");
   });
 
-  // test_reverse_split_touches_only_its_account
   it("reverse split touches only its account", () => {
     const result = runLots([
       buy(ACC, X, "2026-01-05", "10", "10"),
@@ -293,7 +281,6 @@ describe("splits", () => {
     );
   });
 
-  // test_split_without_a_ratio_is_ignored_with_a_warning
   it("split without a ratio is ignored with a warning", () => {
     const bad = { ...split(ACC, X, "2026-02-02", "4"), splitRatio: d("0") };
     const result = runLots([buy(ACC, X, "2026-01-05", "10", "10"), bad]);
@@ -307,7 +294,6 @@ describe("splits", () => {
 });
 
 describe("transfers", () => {
-  // test_transfer_in_without_price_opens_a_lot_with_unknown_cost
   it("transfer in without price opens a lot with unknown cost", () => {
     const incoming = transferIn(ACC, X, "2026-01-05", "10");
     const sale = sell(ACC, X, "2026-02-02", "4", "50");
@@ -334,7 +320,6 @@ describe("transfers", () => {
     expect(trade?.closeUnitPrice.eq(d("50"))).toBe(true);
   });
 
-  // test_transfer_in_with_price_uses_it_as_cost_and_zero_counts_as_unknown
   it("transfer in with price uses it as cost and zero counts as unknown", () => {
     const priced = runLots([transferIn(ACC, X, "2026-01-05", "10", { price: "80" })]);
     expect(priced.warnings).toEqual([]);
@@ -346,7 +331,6 @@ describe("transfers", () => {
     expect(zero.openLots[0]?.unitCost).toBeNull();
   });
 
-  // test_transfer_out_consumes_fifo_without_realizing
   it("transfer out consumes fifo without realizing", () => {
     const result = runLots([
       buy(ACC, X, "2026-01-05", "10", "100"),
@@ -360,7 +344,6 @@ describe("transfers", () => {
     expect(lot?.unitCost?.eq(d("200"))).toBe(true);
   });
 
-  // test_adjustment_adds_units_like_a_transfer_in
   it("adjustment adds units like a transfer in", () => {
     const adjustment = {
       ...transferIn(ACC, X, "2026-01-05", "3"),
@@ -375,7 +358,6 @@ describe("transfers", () => {
 });
 
 describe("incomplete history", () => {
-  // test_selling_more_than_held_records_history_gap_and_never_raises
   it("selling more than held records history gap and never raises", () => {
     const lot = buy(ACC, X, "2026-01-05", "5", "8"); // cost 40
     const sale = sell(ACC, X, "2026-02-02", "8", "10"); // proceeds 80, 50 for the 5 matched units
@@ -400,7 +382,6 @@ describe("incomplete history", () => {
     expect(result.cash[0]?.amount.eq(d("40"))).toBe(true);
   });
 
-  // test_selling_with_nothing_held_and_transferring_out_too_much_are_gaps
   it("selling with nothing held and transferring out too much are gaps", () => {
     const result = runLots([
       sell(ACC, X, "2026-01-05", "8", "10"),
@@ -415,7 +396,6 @@ describe("incomplete history", () => {
     );
   });
 
-  // test_rows_missing_instrument_or_quantity_skip_lots_but_count_for_cash
   it("rows missing instrument or quantity skip lots but count for cash", () => {
     const noQuantity = buildTxn(ACC, X, {
       type: TxnType.SELL,
@@ -448,7 +428,6 @@ describe("incomplete history", () => {
 });
 
 describe("cash and deposits", () => {
-  // test_cash_per_currency_deposits_oldest_first_zero_balances_dropped
   it("cash per currency deposits oldest first zero balances dropped", () => {
     const result = runLots([
       cashTxn(ACC, "2026-02-01", "500"),
@@ -468,7 +447,6 @@ describe("cash and deposits", () => {
     ]);
   });
 
-  // test_foreign_buy_settled_in_pln_moves_pln_cash_and_keeps_the_lot_in_usd
   it("foreign buy settled in pln moves pln cash and keeps the lot in usd", () => {
     const usdBuy = {
       ...buy(ACC, X, "2026-01-05", "2", "100", { currency: USD }),
@@ -486,7 +464,6 @@ describe("cash and deposits", () => {
     ]);
   });
 
-  // test_large_amounts_stay_exact
   it("large amounts stay exact", () => {
     // 18 significant digits per factor: the default 28-digit decimal context would round products.
     const [quantity, buyPrice, sellPrice] = [
@@ -526,7 +503,6 @@ describe("cash and deposits", () => {
 });
 
 describe("renames", () => {
-  // test_rename_carries_lots_with_cost_and_open_date_to_the_new_instrument
   it("rename carries lots with cost and open date to the new instrument", () => {
     const oldBuy = buy(ACC, X, "2026-01-05", "10", "100", { fee: "5" }); // cost 1005
     const otherBuy = buy(OTHER, X, "2026-01-06", "4", "50"); // cost 200
@@ -556,7 +532,6 @@ describe("renames", () => {
     expect(trade?.pnl?.eq(d("78"))).toBe(true); // 480 - 4 * 100.5
   });
 
-  // test_rows_naming_the_old_instrument_after_a_rename_count_for_the_new_one
   it("rows naming the old instrument after a rename count for the new one", () => {
     const rename = instrumentRename({
       date: "2026-03-01",
@@ -578,7 +553,6 @@ describe("renames", () => {
     expect(result.realized[0]?.instrumentId).toBe(Y);
   });
 
-  // test_rename_merges_with_lots_already_held_in_the_new_instrument_fifo_by_open_date
   it("rename merges with lots already held in the new instrument fifo by open date", () => {
     const early = buy(ACC, X, "2026-01-05", "1", "10");
     const middle = buy(ACC, Y, "2026-01-10", "1", "20");
@@ -595,7 +569,6 @@ describe("renames", () => {
     expect(new Set(result.openLots.map((lot) => lot.instrumentId))).toEqual(new Set([Y]));
   });
 
-  // test_chained_renames_and_a_rename_before_any_lot
   it("chained renames and a rename before any lot", () => {
     const z = newId();
     const result = runLots(

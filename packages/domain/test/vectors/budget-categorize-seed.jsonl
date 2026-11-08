@@ -1,26 +1,0 @@
-{"meta": {"rowFields": ["id", "account", "onCashAccount", "bookingDate", "amount", "currency", "counterpartyName", "counterpartyIban", "reference", "description", "isInternalTransfer", "category", "source"], "sharedBodies": "matching data .sharedBodies", "name": "budget-categorize-seed", "count": 25, "layout": "[raw, merchant_key(raw), apply_seed_rules(mk), normalize_text(raw), apply_text_rules(text)]", "generator": "parity/python/vectors_budget_categorize.py", "seed": 20261102, "unidata": "16.0.0"}}
-["UBER EATS","UBER EATS","dining","UBER EATS",null]
-["UBER  \tEATS","UBER","transport","UBER EATS",null]
-["(CANAL+)","(CANAL+)","subscriptions","(CANAL+)",null]
-["BIEDRONKA","BIEDRONKA","groceries","BIEDRONKA",null]
-["APTEKA","APTEKA","health","APTEKA",null]
-["_MY FITNESS_","_MY FITNESS_","personal_care","_MY FITNESS_",null]
-["CINEMA CITY","CINEMA CITY","entertainment","CINEMA CITY",null]
-["URZAD SKARBOWY","URZAD SKARBOWY","taxes","URZAD SKARBOWY",null]
-["OPLATA  \tSKARBOWA","OPLATA","fees","OPLATA SKARBOWA",null]
-["BANKOMAT","BANKOMAT","cash","BANKOMAT",null]
-["ZWROT","ZWROT","income_refund","ZWROT",null]
-["jan test12345internetpatronite DATA TRANSAKCJI: 2026","JAN TEST 12345 INTERNET PATRONITE","gifts","JAN TEST 12345 INTERNET PATRONITE DATA TRANSAKCJI: 2026",null]
-[" KARTA\nONLINE\nAIRBNB ","KARTA ONLINE AIRBNB","travel","KARTA ONLINE AIRBNB",null]
-["ǅ\tgęślą\tPENSJA","DZ GESLA PENSJA","income_salary","DZ GESLA PENSJA",null]
-["/　ZWROT　SPLATA KREDYTU　LINK4","/ ZWROT SPLATA KREDYTU LINK4","other","/ ZWROT SPLATA KREDYTU LINK4","loans"]
-["MECHANIK STOMATOLOG ","MECHANIK STOMATOLOG","car","MECHANIK STOMATOLOG",null]
-["KURS PENSJA P24 ǅ","KURS PENSJA P24 DZ","education","KURS PENSJA P24 DZ",null]
-["AMIC H&M","AMIC H&M","fuel","AMIC H&M",null]
-["  KRAKOW  NOTION  CZYNSZ\t","",null,"KRAKOW NOTION CZYNSZ","housing"]
-["12345 CZYNSZ RATA KREDYTU","12345 CZYNSZ RATA KREDYTU","housing","12345 CZYNSZ RATA KREDYTU","loans"]
-["Łukasz Żółć\nǅ\n12345\nBLIK DATA TRANſAKCJI: x","LUKASZ ZOLC DZ 12345 BLIK",null,"LUKASZ ZOLC DZ 12345 BLIK DATA TRANSAKCJI: X",null]
-["\nvectra ﬁ piotr przykład　","VECTRA FI PIOTR PRZYKLAD","utilities","VECTRA FI PIOTR PRZYKLAD",null]
-["-　NATIONALE-NEDERLANDEN　CZYNSZ　-","- NATIONALE-NEDERLANDEN CZYNSZ -","housing","- NATIONALE-NEDERLANDEN CZYNSZ -","housing"]
-["*X-KOMPLS.A.","* X-KOM PL S.A.","shopping","* X-KOM PL S.A.",null]
-["pec　łódź　canal+","PEC LODZ CANAL+","subscriptions","PEC LODZ CANAL+",null]

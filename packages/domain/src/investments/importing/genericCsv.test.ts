@@ -73,7 +73,6 @@ const only = <T>(items: readonly T[]): T => {
 };
 
 describe("can_parse", () => {
-  // test_accepts_the_fixture_in_its_own_encoding
   it("accepts the fixture in its own encoding", () => {
     expect(new GenericCsvImporter(plMapping()).canParse(plFile())).toBe(true);
     expect(
@@ -82,7 +81,6 @@ describe("can_parse", () => {
     expect(new GenericCsvImporter(plMapping("auto")).canParse(plFile(undefined, true))).toBe(true);
   });
 
-  // test_does_not_claim_other_headers_encodings_extensions_or_binary
   it("does not claim other headers, encodings, extensions or binary", () => {
     const importer = new GenericCsvImporter(plMapping());
     expect(importer.canParse(csvFile("Date;Type;Amount\n2026-01-05;buy;1\n"))).toBe(false);
@@ -94,7 +92,6 @@ describe("can_parse", () => {
     expect(importer.canParse({ name: "x.csv", content: binary })).toBe(false);
   });
 
-  // test_large_utf8_file_is_sniffed_as_utf8_by_auto_even_when_64k_cuts_a_character
   it("large UTF-8 file is sniffed as UTF-8 by auto even when 64k cuts a character", () => {
     const mapping = csvMapping({
       encoding: ImportTextEncoding.AUTO,
@@ -120,7 +117,6 @@ describe("can_parse", () => {
     expect(new GenericCsvImporter(mapping).canParse({ name: "big.csv", content: data })).toBe(true);
   });
 
-  // test_header_names_match_trimmed_and_case_insensitively
   it("header names match trimmed and case-insensitively", () => {
     const importer = new GenericCsvImporter(simpleMapping());
     expect(
@@ -135,7 +131,6 @@ describe("can_parse", () => {
 });
 
 describe("parse", () => {
-  // test_utf8_bom_fixture_decimal_comma_thousands_types_signs_derived_amounts
   it("UTF-8 BOM fixture: decimal comma, thousands, types, signs, derived amounts", () => {
     const result = new GenericCsvImporter(plMapping()).parse(plFile());
     expect(hasBlockingWarnings(result)).toBe(false);
@@ -186,7 +181,6 @@ describe("parse", () => {
     expect(pyEq([fee.cashAmount, fee.grossAmount], [d("-9.99"), d("9.99")])).toBe(true);
   });
 
-  // test_windows_1250_fixture_parses_to_the_same_transactions
   it("Windows-1250 fixture parses to the same transactions", () => {
     const utf8 = new GenericCsvImporter(plMapping()).parse(plFile());
     const cp1250 = new GenericCsvImporter(plMapping("windows-1250")).parse(plFile(undefined, true));
@@ -195,7 +189,6 @@ describe("parse", () => {
     expect(at(cp1250.txns, 1).name).toBe("Zażółć Gęślą Jaźń SA");
   });
 
-  // test_windows_1250_file_read_as_utf8_is_one_blocking_error
   it("Windows-1250 file read as UTF-8 is one blocking error", () => {
     const mapping = csvMapping({
       defaultCurrency: Currencies.PLN,
@@ -213,7 +206,6 @@ describe("parse", () => {
     expect(warning.message).toContain("not valid UTF-8");
   });
 
-  // test_missing_columns_and_missing_header_are_blocking
   it("missing columns and missing header are blocking", () => {
     const result = new GenericCsvImporter(simpleMapping()).parse(
       csvFile("ref,date,type\n1,2026-01-05,buy\n"),
@@ -224,7 +216,6 @@ describe("parse", () => {
     expect(at(empty.warnings, 0).message).toBe("File has no header row at record 0");
   });
 
-  // test_amount_sign_absolute_derives_the_direction_from_the_type
   it("amount_sign absolute derives the direction from the type", () => {
     const mapping = csvMapping({
       amountSign: AmountSign.ABSOLUTE,
@@ -257,7 +248,6 @@ describe("parse", () => {
     expect(at(fx.warnings, 0).message).toContain("signed amounts");
   });
 
-  // test_cash_derived_from_gross_fee_and_tax_when_the_file_has_none
   it("cash derived from gross, fee and tax when the file has none", () => {
     const mapping = csvMapping({
       defaultCurrency: Currencies.USD,
@@ -287,7 +277,6 @@ describe("parse", () => {
     expect(at(result.txns, 0).currency).toBe(Currencies.USD);
   });
 
-  // test_cash_derived_across_currencies_uses_fx_rate_else_blocking_r5
   it("cash derived across currencies uses fx_rate, else blocking (R5)", () => {
     const mapping = csvMapping({
       columns: new Map([
@@ -354,7 +343,6 @@ describe("parse", () => {
     ",,,,,,,,,,\n" +
     "f,,,PKN,,,,,,,\n";
 
-  // test_row_errors_block_by_default
   it("row errors block by default", () => {
     const result = new GenericCsvImporter(simpleMapping()).parse(csvFile(ERROR_ROWS));
     expect(result.txns.map((t) => t.externalRef)).toEqual(["a"]);
@@ -370,7 +358,6 @@ describe("parse", () => {
     expect(rows.get(6)?.blocking).toBe(false);
   });
 
-  // test_row_errors_are_skipped_with_on_row_error_skip
   it("row errors are skipped with on_row_error skip", () => {
     const mapping = csvMapping({ ...simpleMapping(), onRowError: RowErrorPolicy.SKIP });
     const result = new GenericCsvImporter(mapping).parse(csvFile(ERROR_ROWS));
@@ -378,7 +365,6 @@ describe("parse", () => {
     expect(result.warnings.filter((w) => w.message.endsWith("row skipped"))).toHaveLength(4);
   });
 
-  // test_quoted_fields_header_offset_wire_types_and_invalid_isins
   it("quoted fields, header offset, wire types and invalid ISINs", () => {
     const mapping = csvMapping({
       headerRow: 1,
@@ -408,7 +394,6 @@ describe("parse", () => {
     expect(txn.cashAmount.eq(d("1234.5"))).toBe(true);
   });
 
-  // test_time_of_day_from_the_date_cell_r9
   it("time of day from the date cell (R9)", () => {
     const result = new GenericCsvImporter(simpleMapping()).parse(
       csvFile(`${SIMPLE_HEADER}\nr1,2026-09-02 10:00,buy,PKN,,GPW,10,60,PLN,0,-600\n`),
@@ -417,7 +402,6 @@ describe("parse", () => {
     expect(at(result.txns, 0).tradeDate).toBe(day("2026-09-02"));
   });
 
-  // test_importer_identity
   it("importer identity", () => {
     const importer = new GenericCsvImporter(simpleMapping({ brokerId: "mbank" }));
     expect([importer.brokerId, importer.displayName, importer.version]).toEqual([
@@ -427,7 +411,6 @@ describe("parse", () => {
     ]);
   });
 
-  // test_warning_kinds_of_row_errors
   it("warning kinds of row errors", () => {
     const result = new GenericCsvImporter(simpleMapping()).parse(csvFile(ERROR_ROWS));
     const kinds = new Map(result.warnings.map((w) => [w.row, w.kind]));

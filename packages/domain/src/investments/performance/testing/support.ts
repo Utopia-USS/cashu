@@ -1,13 +1,10 @@
 /**
- * Builders for the performance tests: port of the pure half of
- * `tests/investments/performance/perf_support.py` (transactions, instruments, bars, rates). Every
- * value is invented. The DB pipeline household of the Python module (import, fake price / FX
- * sources, strategy file) belongs to the service tests (S19b).
- *
- * Like Python, transactions get ids `t1`, `t2`, ... from a module counter and the default
- * `createdAt` (EPOCH), so same-day ties order by id in Python `str` order.
+ * Builders and float assertions for the performance tests (transactions, instruments, bars, rates).
+ * Every value is invented. Transactions get ids `t1`, `t2`, ... from a module counter and the default
+ * `createdAt` (EPOCH), so same-day ties order by id in `str` order.
  */
 
+import { expect } from "vitest";
 import { addDays, daysBetween } from "../../../dates.js";
 import { D, type Decimal, floatRepr } from "../../../decimal.js";
 import { AssetClass, parseTxnType } from "../../domain/enums.js";
@@ -121,4 +118,50 @@ export function rates(quote: Currency, values: Readonly<Record<string, string>>)
   return Object.entries(values).map(([k, v]) =>
     fxRate({ quote, date: k, rate: D(v), source: "test" }),
   );
+}
+
+export interface Tolerance {
+  readonly rel?: number;
+  readonly abs?: number;
+}
+
+/** Approximate float equality (rel 1e-6, abs 1e-12 by default; abs alone when only abs is given). */
+export function approxEq(
+  actual: number | null | undefined,
+  expected: number,
+  tol: Tolerance = {},
+): boolean {
+  if (actual == null) return false;
+  if (actual === expected) return true;
+  const limit =
+    tol.abs !== undefined && tol.rel === undefined
+      ? tol.abs
+      : Math.max((tol.rel ?? 1e-6) * Math.abs(expected), tol.abs ?? 1e-12);
+  return Math.abs(actual - expected) <= limit;
+}
+
+export function expectApprox(
+  actual: number | null | undefined,
+  expected: number,
+  tol: Tolerance = {},
+): void {
+  expect(approxEq(actual, expected, tol), `${actual} ~ ${expected}`).toBe(true);
+}
+
+export function expectApproxList(
+  actual: readonly (number | null)[],
+  expected: readonly (number | null)[],
+  tol: Tolerance = {},
+): void {
+  expect(actual.length).toBe(expected.length);
+  actual.forEach((a, i) => {
+    const e = expected[i] as number | null;
+    if (e === null) expect(a).toBeNull();
+    else expectApprox(a, e, tol);
+  });
+}
+
+/** IEEE float equality (`-0.0 == 0.0`, unlike `toBe`). */
+export function expectFloatEq(actual: number | null | undefined, expected: number): void {
+  expect(actual === expected, `${actual} == ${expected}`).toBe(true);
 }

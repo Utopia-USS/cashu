@@ -113,7 +113,7 @@ const run: NewConnectorRun = {
   batchRef: null,
 };
 
-it("keeps a redacted stderr tail and prunes each connector to the newest runs like Python", () => {
+it("keeps a redacted stderr tail and prunes each connector to the newest runs", () => {
   const driver = betterSqlite3Driver(new Database(":memory:"));
   ensureConnectorRunHistory(driver);
   for (let i = 0; i < KEEP_CONNECTOR_RUNS + 2; i++) appendConnectorRun(driver, run);

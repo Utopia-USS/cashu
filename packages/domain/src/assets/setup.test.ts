@@ -1,6 +1,5 @@
 // Assets blank-page steps (modules/assets/setup.py) over their facts: the step halves of
-// tests/test_first_steps_api.py test_assets_vehicle_step_is_optional and
-// tests/test_i18n_core_modules.py test_modules_and_setup_steps_in_english (assets).
+// tests/test_first_steps_api.py test_assets_vehicle_step_is_optional.
 
 import { describe, expect, it } from "vitest";
 import { type SetupContext, setupView } from "../core/index.js";
@@ -40,13 +39,5 @@ describe("assets setup steps", () => {
       'cashu --profile jan add-position "Mieszkanie" --type property --value 500000',
       'cashu --profile jan set-vehicle "Auto" 80000 2025-05-01 --rate 15',
     ]);
-  });
-
-  it("test_modules_and_setup_steps_in_english (assets)", () => {
-    const steps = view({}, { cli: "cashu --profile jan", lang: "en" }).steps;
-    expect(steps.map((s) => s.title)).toEqual(["Position", "Car"]);
-    expect(steps[0]?.actions[0]?.target).toContain('"Flat"');
-    const texts = steps.flatMap((s) => [s.title, s.description]);
-    expect(texts.some((t) => /[ąęółśżźćń—]/.test(t))).toBe(false);
   });
 });

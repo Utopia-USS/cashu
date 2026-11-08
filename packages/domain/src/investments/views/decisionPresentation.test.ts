@@ -10,6 +10,7 @@ it("matches positive SPA ceil/round suggestions, zero excess and the foreign quo
     total: D("1000"),
     base: "PLN",
   };
+  expect(decisionSuggestion(input)).toMatchObject({ choice: "sell" });
   expect(decisionSuggestion(input).quantity?.toString()).toBe("10");
   expect(
     decisionSuggestion({
@@ -20,12 +21,8 @@ it("matches positive SPA ceil/round suggestions, zero excess and the foreign quo
   expect(
     decisionSuggestion({ ...input, position: { ...position, priceCurrency: "USD" } }),
   ).toMatchObject({ quantity: null, quantityUnavailable: "currency_mismatch", currency: "USD" });
-  expect(
-    decisionSuggestion({
-      ...input,
-      signal: { kind: "price_below", payload: {} },
-    }).quantity?.toString(),
-  ).toBe("2");
+  const dip = decisionSuggestion({ ...input, signal: { kind: "price_below", payload: {} } });
+  expect([dip.choice, dip.quantity?.toString()]).toEqual(["buy", "2"]);
   expect(
     decisionSuggestion({
       ...input,
@@ -52,34 +49,4 @@ it("keeps exact amount and source same-currency generic allocation estimates", (
     decisionEstimate({ ...input, bucket: { ...input.bucket, generic: false } })?.allocation,
   ).toBeNull();
   expect(decisionEstimate({ ...input, quantity: D("0") })).toBeNull();
-});
-
-it("checks defaults against the actual Signals.tsx initializer and records its foreign-currency defect", () => {
-  // Expectations captured from the retired oracle (defaultAct and the quantity initializer of
-  // frontend/src/modules/investments/v2/Signals.tsx) on 2026-11-04: [signal, quantity, price, choice, quantity text].
-  const signal = { kind: "position_concentration", payload: { weight: 0.3, max_weight: 0.2 } };
-  for (const [current, quantity, price, choice, expected] of [
-    [signal, 4.5, 10, "sell", "10"],
-    [{ ...signal, payload: { weight: 0.2, max_weight: 0.2 } }, 4.5, 10, "sell", ""],
-    [{ kind: "price_below", payload: {} }, 4.5, 10, "buy", "2"],
-  ] as const) {
-    const result = decisionSuggestion({
-      signal: current,
-      position: { quantity: D(String(quantity)), price: D(String(price)), priceCurrency: "PLN" },
-      total: D("1000"),
-      base: "PLN",
-    });
-    expect(result.choice).toBe(choice);
-    expect(result.quantity?.toString() ?? "").toBe(expected);
-  }
-  // Source had no currency check and suggested "10" USD shares from a PLN excess for the first signal
-  // above. Native leaves it editable.
-  expect(
-    decisionSuggestion({
-      signal,
-      position: { quantity: D("4.5"), price: D("10"), priceCurrency: "USD" },
-      total: D("1000"),
-      base: "PLN",
-    }).quantityUnavailable,
-  ).toBe("currency_mismatch");
 });

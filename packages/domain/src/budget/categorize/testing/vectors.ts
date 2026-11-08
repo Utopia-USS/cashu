@@ -37,15 +37,3 @@ export function loadMatchingData(): { data: MatchingData; sha256: string } {
   ];
   return row;
 }
-
-/** The rows of one `budget-categorize-<name>.jsonl` file. */
-export function categorizeRows<T>(name: "seed" | "engine" | "all" | "llm" | "reclassify"): T[] {
-  return loadVectors(`budget-categorize-${name}`).rows as T[];
-}
-
-/** `OWN_IBANS_RAW` of the generator (synthetic): the own accounts of every engine case. */
-export const ENGINE_OWN_IBANS: readonly string[] = [
-  "PL61 1090 1014 0000 0712 1981 2874",
-  "99 1000 0000 0000 0000 0000 0001",
-  "DE89370400440532013000",
-];

@@ -1,8 +1,7 @@
-// Manual transactions (Python `service/transactions.py:add_manual`): the per-type checks in Python's
-// order, instruments by gid or described (found by confirmed ISIN or symbol among the vault's
-// instruments, else stored with needsClassification), currencies, derived amounts, cash-sign refusals
-// and warnings, and the storage of events.md 8.5 m1 (ULID gid, `manual:<gid>` hash). Store-level parts
-// of test_be_api (a described bond) and test_p1_plan (manual sells by instrument gid). Synthetic data.
+// Manual transactions: the per-type checks, instruments by gid or described (found by confirmed ISIN or
+// symbol among the vault's instruments, else stored with needsClassification), currencies, derived
+// amounts, cash-sign refusals and warnings, and the storage of events.md 8.5 m1 (ULID gid,
+// `manual:<gid>` hash). Synthetic data.
 import { describe, expect, it } from "vitest";
 import { openAccount } from "../../core/commands.js";
 import { loadInstrument } from "../queries/instruments.js";
@@ -87,7 +86,7 @@ describe("addManualTransaction", () => {
     expect(refusal(v, { account, type: "short", tradeDate: "2026-10-30" })).toBe("unknown_type");
   });
 
-  it("checks the shape per type in Python's order", () => {
+  it("checks the shape per type", () => {
     const { v, account } = setup();
     const abc = stock(v, "ABC", "PL0000000ABC");
     const base = { account, tradeDate: "2026-10-30" };
@@ -132,7 +131,7 @@ describe("addManualTransaction", () => {
     ]);
   });
 
-  it("converts a cross-currency sell with fx_rate (test_p1_plan)", () => {
+  it("converts a cross-currency sell with fx_rate", () => {
     const { v, account, read } = setup();
     const xmpl = stock(v, "XMPL", "US0000000001", { currency: "USD" });
     reference(v, account, xmpl);
@@ -165,7 +164,7 @@ describe("addManualTransaction", () => {
     expect(missing).toBe("amount_fx_missing");
   });
 
-  it("stores a described instrument once every check passed (test_be_api)", () => {
+  it("stores a described instrument once every check passed", () => {
     const { v, account, read } = setup();
     const buy = {
       account,

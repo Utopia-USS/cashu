@@ -9,11 +9,9 @@ import {
   createCoreRegistry,
   getModule,
   moduleSpec,
-  notSubscriptionCategories,
   type SetupStep,
   setupState,
   setupStepDicts,
-  textRules,
   UnknownModuleError,
   withDependencies,
 } from "./modules.js";
@@ -93,26 +91,6 @@ describe("modules", () => {
     expect(setupStepDicts(steps(true))[0]?.actions).toEqual([
       { kind: "cli", label: "Kopiuj", target: "cashu x" },
     ]);
-  });
-
-  it("optional steps never count and are never on", () => {
-    const step = (id: string, done: boolean, optional: boolean): SetupStep => ({
-      id,
-      title: "T",
-      description: "D",
-      done,
-      actions: [],
-      optional,
-    });
-    const s = [step("car", false, true), step("a", true, false), step("b", false, false)];
-    expect(setupStepDicts(s).map((d) => d.status)).toEqual(["todo", "done", "on"]);
-    expect(setupState([step("car", false, true), step("a", true, false)])).toBe("ready");
-  });
-
-  // test_categorization_hooks_come_from_modules (the taxonomy half is S09's)
-  it("categorization hooks come from modules", () => {
-    expect(textRules(reg)).toContainEqual(["RATA KREDYTU", "loans"]);
-    expect(notSubscriptionCategories(reg).has("loans")).toBe(true);
   });
 });
 

@@ -121,7 +121,7 @@ describe("S25 catalog deltas (optional fields, absent keeps the v1 meaning)", ()
   });
 });
 
-describe("alert tag (S31c): exactly the form Python validate_tag stores", () => {
+describe("alert tag: lower-case letters, digits, hyphens and single spaces, at most 24 chars", () => {
   const tagOk = (tag: unknown) => PAYLOADS["alert.updated"].safeParse({ tag }).success;
   it.each(["cena", "średnia krocząca", "rsi-14", "wybicie 2", "-", "a".repeat(24), "ąę"])(
     "accepts %j",
@@ -269,37 +269,7 @@ describe("payload schemas: invalid samples", () => {
   });
 });
 
-describe("parseEvent: forward compatibility (events.md section 7)", () => {
-  it("parks an unknown type without dropping it", () => {
-    const r = parseEvent(envelope("budget.goalSet", { amount: "100" }));
-    expect(r.status).toBe("parked");
-    if (r.status === "parked") {
-      expect(r.reason).toBe("unknown-type");
-      expect(r.envelope.data).toEqual({ amount: "100" });
-    }
-  });
-
-  it("parks a newer version of a known type", () => {
-    const r = parseEvent(envelope("alert.deleted", {}, { v: 2 }));
-    expect(r.status === "parked" && r.reason === "newer-version").toBe(true);
-  });
-
-  it("parks a payload that fails this reader's schema (e.g. a new enum value)", () => {
-    const data = { ...VALID_SAMPLES["alert.created"], kind: "earnings_date" };
-    const r = parseEvent(envelope("alert.created", data));
-    expect(r.status === "parked" && r.reason === "invalid-payload").toBe(true);
-  });
-
-  it("keeps unknown payload and envelope fields", () => {
-    const data = { ...VALID_SAMPLES["watchlist.added"], priority: 3 };
-    const r = parseEvent(envelope("watchlist.added", data, { sig: "future-signature" }));
-    expect(r.status).toBe("known");
-    if (r.status === "known") {
-      expect((r.event.data as Record<string, unknown>).priority).toBe(3);
-      expect((r.event as Record<string, unknown>).sig).toBe("future-signature");
-    }
-  });
-
+describe("parseEvent: broken envelopes (store-level parking is in upgrade.test.ts)", () => {
   it("rejects a broken envelope", () => {
     expect(parseEvent(null).status).toBe("rejected");
     expect(parseEvent(envelope("alert.deleted", {}, { eid: "not-a-ulid" })).status).toBe(
@@ -339,7 +309,7 @@ describe("v1.1 acceptance of real shapes", () => {
     expect(PAYLOADS["topicThesis.marketViewSet"].safeParse(view).success).toBe(true);
   });
 
-  it("accepts a research source without a title (Python stores null, validation.py)", () => {
+  it("accepts a research source without a title, never one without a url", () => {
     const sources = [{ title: null, url: "https://example.com/a", publisher: "Example" }];
     const note = { ...VALID_SAMPLES["note.added"], sources };
     expect(PAYLOADS["note.added"].safeParse(note).success).toBe(true);

@@ -6,7 +6,7 @@ import { converge, DEV_B, Events, rows, ulid } from "./testing/kit.js";
 const SHA_A = "a".repeat(64);
 const SHA_B = "b".repeat(64);
 
-describe("proposal outcomes and the strategy version an approval caused (S31c)", () => {
+describe("proposal outcomes and the strategy version an approval caused", () => {
   const fixture = () => {
     const a = new Events();
     const b = new Events(DEV_B, "01JB");

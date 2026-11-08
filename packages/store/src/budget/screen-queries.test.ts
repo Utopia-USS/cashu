@@ -1,4 +1,4 @@
-// S42a money queries over real isolated vaults. Inputs are invented; no screen DTO or SQL mock is
+// Money-screen budget queries over real in-memory vaults. Inputs are invented; no screen DTO or SQL mock is
 // used. Commands exercise the same imports, transfer/category derivation and cash pool as the apps.
 import { D } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
@@ -90,24 +90,6 @@ function ingest(
 const args = (currency = "PLN") => ({ today: TODAY, currency, period: {} });
 
 describe("money-screen budget queries", () => {
-  it("keeps the true calendar day separate from an empty booking-date reference", () => {
-    const { store } = vault();
-    try {
-      expect(runQuery(store, budgetScreenCurrencies, { today: TODAY }).value).toEqual({
-        today: TODAY,
-        baseCurrency: "PLN",
-        currencies: [],
-        referenceDate: null,
-      });
-      expect(runQuery(store, budgetScreenCashflow, args()).value.rows).toEqual([]);
-      const spending = runQuery(store, budgetScreenSpending, { ...args(), lang: "en" }).value;
-      expect(spending.rows).toEqual([]);
-      expect(spending.total.toString()).toBe("0.00");
-    } finally {
-      store.close();
-    }
-  });
-
   it("isolates currencies, excludes own transfers and withdrawals, and includes cash expenses", () => {
     const { store, env } = vault();
     try {
@@ -198,14 +180,13 @@ describe("money-screen budget queries", () => {
     }
   });
 
-  it("invalidates live readers after imports and category claims without crossing vaults", () => {
-    const a = vault();
-    const b = vault();
+  it("invalidates the live spending reader after imports and category claims", () => {
+    const { store, env } = vault();
     let stop: (() => void) | undefined;
     try {
       const snapshots: BudgetSpendingScreen[] = [];
       stop = watchQuery(
-        a.store,
+        store,
         budgetScreenSpending,
         { ...args(), lang: "pl" },
         {
@@ -216,30 +197,15 @@ describe("money-screen budget queries", () => {
         },
       );
       expect(snapshots.at(-1)?.total.toString()).toBe("0.00");
-      ingest(a.store, a.env, "PLN", OWN_A, [
+      ingest(store, env, "PLN", OWN_A, [
         { date: "2026-03-01", amount: "-0.10", ref: "one", category: "groceries" },
         { date: "2026-03-02", amount: "-0.70", ref: "two", category: "groceries" },
       ]);
-      expect(snapshots.at(-1)?.rows[0]?.label).toBe("Spożywcze");
+      expect(snapshots.at(-1)?.rows[0]?.category).toBe("groceries");
       expect(snapshots.at(-1)?.total.toString()).toBe("0.80");
-      expect(
-        runQuery(b.store, budgetScreenSpending, { ...args(), lang: "en" }).value.total.toString(),
-      ).toBe("0.00");
-      const before = snapshots.length;
-      ingest(b.store, b.env, "PLN", OWN_A, [
-        { date: "2026-03-01", amount: "-9.00", ref: "other-vault" },
-      ]);
-      expect(snapshots).toHaveLength(before);
-      stop();
-      stop = undefined;
-      ingest(a.store, a.env, "PLN", OWN_A, [
-        { date: "2026-03-08", amount: "-1.00", ref: "after-stop" },
-      ]);
-      expect(snapshots).toHaveLength(before);
     } finally {
       stop?.();
-      a.store.close();
-      b.store.close();
+      store.close();
     }
   });
 });

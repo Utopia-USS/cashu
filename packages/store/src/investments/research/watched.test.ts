@@ -1,10 +1,5 @@
-// Test-for-test translation of `tests/investments/persistence/test_watched_thesis.py` (Q27): a
-// watched, never held instrument carries theses like a held position (created, listed newest first,
-// updated) only within its vault; research treats it as watched. Synthetic data only.
-//
-// Not translated here: the watchlist note edit (`PATCH /watchlist/{id}`: strip, empty clears, missing
-// keeps) is the watchlist update command of S22b (`commands/watchlist.ts`); the asset detail payload
-// (`GET /positions/{id}`) is S22a's view.
+// A watched, never held instrument carries theses like a held position (created, listed newest
+// first, updated) only within its vault; research treats it as watched. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { createThesis, updateThesis } from "../commands/journal.js";
 import { otherVault, stock, vault } from "../commands/testing/fixtures.js";
@@ -26,8 +21,8 @@ function watched() {
   return { v, vwce, read: v.store.read.bind(v.store) };
 }
 
-describe("theses of a watched instrument (test_watched_thesis)", () => {
-  it("test_watched_instrument_theses_create_list_update", () => {
+describe("theses of a watched instrument", () => {
+  it("watched instrument theses create list update", () => {
     const { v, vwce, read } = watched();
     expect(theses(read, vwce)).toEqual([]);
     const first = v.value(createThesis, {
@@ -68,7 +63,7 @@ describe("theses of a watched instrument (test_watched_thesis)", () => {
     expect(row?.entry_type).toBe("trend");
   });
 
-  it("test_watched_theses_and_note_stay_in_the_profile", () => {
+  it("watched theses and note stay in the profile", () => {
     const { v, vwce, read } = watched();
     v.value(createThesis, { instrument: vwce, entryType: "trend", thesis: "A" });
     const other = otherVault();

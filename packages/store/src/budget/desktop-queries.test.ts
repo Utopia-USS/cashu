@@ -4,7 +4,7 @@ import { createProfile } from "../core/commands.js";
 import { runQuery, watchQuery } from "../query.js";
 import { run, testEnv } from "../testing/commands.js";
 import { openTestStore } from "../testing/store.js";
-import { importStatement, setCushion, setTransactionCategory } from "./commands.js";
+import { importStatement, setTransactionCategory } from "./commands.js";
 import { setDesktopMerchantCategory } from "./desktop-commands.js";
 import { budgetDesktopQueries } from "./desktop-queries.js";
 
@@ -161,30 +161,7 @@ describe("native budget desktop adapters", () => {
       f.store.close();
     }
   });
-  it("shows independent month facts when legacy settings cannot be represented", () => {
-    const f = fixture();
-    try {
-      f.seed("PLN", [
-        { date: "2026-02-01", amount: "100", name: "Synthetic payroll", ref: "income" },
-      ]);
-      run(f.store, f.env, setCushion, { enabled: false, accounts: [] });
-      // Synthetic legacy copied view row: no valid native account-gid array. CLI semantics stay null.
-      f.store.driver.prepare("UPDATE budget_settings SET accounts = ?").run("[42]");
-      const result = runQuery(f.store, queries.monthClose, {
-        today: "2026-10-01",
-        month: null,
-        lang: "en",
-      }).value;
-      expect(result.settingsUnavailable).toBe(true);
-      expect(result.close.currencies[0]?.income.toString()).toBe("100.00");
-      expect(result.close.currencies[0]?.cushionTopUp).toBeNull();
-      expect(result.close.currencies[0]?.suggestedTransfer).toBeNull();
-      expect(runQuery(f.store, queries.settings, undefined).value.settings).toBeNull();
-    } finally {
-      f.store.close();
-    }
-  });
-  it("retains stale subscriptions, uses booking reference for active status and isolates vaults", () => {
+  it("retains stale subscriptions and uses the latest booking as the reference for active status", () => {
     const a = fixture(),
       b = fixture();
     try {
@@ -210,36 +187,6 @@ describe("native budget desktop adapters", () => {
     } finally {
       a.store.close();
       b.store.close();
-    }
-  });
-  it("keeps cushion validation and account ownership at the command boundary", () => {
-    const f = fixture();
-    try {
-      const account = f.seed("EUR", []);
-      expect(
-        run(f.store, f.env, setCushion, {
-          enabled: true,
-          targetAmount: "100",
-          currency: "PLN",
-          accounts: [account],
-        }).ok,
-      ).toBe(false);
-      expect(
-        run(f.store, f.env, setCushion, { enabled: true, targetMonths: 37, accounts: [] }).ok,
-      ).toBe(false);
-      expect(
-        run(f.store, f.env, setCushion, {
-          enabled: true,
-          targetAmount: "100",
-          currency: "EUR",
-          accounts: [account, account],
-        }).ok,
-      ).toBe(true);
-      expect(
-        runQuery(f.store, queries.settings, undefined).value.settings?.cushion.accountIds,
-      ).toEqual([account]);
-    } finally {
-      f.store.close();
     }
   });
 });

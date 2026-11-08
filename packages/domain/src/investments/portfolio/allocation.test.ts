@@ -1,8 +1,4 @@
-/**
- * Test-for-test translation of `tests/investments/portfolio/test_inv_allocation.py` (allocation, port
- * of allocation_test.dart incl. R1 unclassified share and R2 cash history gap). Synthetic data only.
- * Each `it` names its Python test in a comment.
- */
+/** Allocation into buckets incl. R1 unclassified share and R2 cash history gap. Synthetic data only. */
 import { describe, expect, it } from "vitest";
 import { Decimal } from "../../decimal.js";
 import {
@@ -140,7 +136,6 @@ const must = <T>(value: T | null | undefined): T => {
 };
 
 describe("allocate", () => {
-  // test_weights_drift_and_drift_values_unclassified_holdings_dilute_the_buckets
   it("weights, drift and drift values; unclassified holdings dilute the buckets", () => {
     const result = allocate(valuePortfolioOf(EXAMPLE_PORTFOLIO()), PLAN);
 
@@ -183,7 +178,6 @@ describe("allocate", () => {
     expect(allocationOf(result, "nope")).toBeNull();
   });
 
-  // test_untagged_imported_etf_is_unclassified_r1
   it("untagged imported ETF is unclassified (R1)", () => {
     const imported = instrument(null, {
       name: "Vanguard FTSE All-World",
@@ -208,7 +202,6 @@ describe("allocate", () => {
     expect(must(allocationOf(result, "global_equity")).weight).toBe(0.0);
   });
 
-  // test_the_first_matching_bucket_in_declaration_order_wins
   it("the first matching bucket in declaration order wins", () => {
     const portfolio = valuePortfolioOf([
       buy(ACC, PKN.id, "2026-01-05", "1", "100"),
@@ -240,7 +233,6 @@ describe("allocate", () => {
     ]);
   });
 
-  // test_raw_cash_goes_to_the_first_bucket_matching_cash_in_its_currency
   it("raw cash goes to the first bucket matching cash in its currency", () => {
     const portfolio = valuePortfolioOf([
       cashTxn(ACC, "2026-01-02", "350"),
@@ -309,7 +301,6 @@ describe("allocate", () => {
     expect(must(noCashBucket.allocations[0]).weight).toBeCloseTo(100 / 750, 7);
   });
 
-  // test_bucket_without_target_target_without_bucket_and_duplicate_bucket_ids
   it("bucket without target, target without bucket and duplicate bucket ids", () => {
     const result = allocate(
       valuePortfolioOf([
@@ -356,7 +347,6 @@ describe("allocate", () => {
     expect(only.driftValueBase).toEqual(d("100"));
   });
 
-  // test_negative_cash_counts_as_zero_and_flags_its_bucket_r2
   it("negative cash counts as zero and flags its bucket (R2)", () => {
     const valued = valuePortfolioOf([
       cashTxn(ACC, "2026-01-02", "1000"),
@@ -373,7 +363,6 @@ describe("allocate", () => {
     ]);
   });
 
-  // test_holdings_without_a_price_are_classified_but_add_no_value
   it("holdings without a price are classified but add no value", () => {
     const unpriced = instrument(null, { name: "Unpriced", symbol: "UNP" });
     const view = marketView(AS_OF, {
@@ -408,7 +397,6 @@ describe("allocate", () => {
     expect(result.totalBase).toEqual(d("100"));
   });
 
-  // test_the_account_filter_allocates_only_the_given_accounts
   it("the account filter allocates only the given accounts", () => {
     const portfolio = valuePortfolioOf([
       cashTxn(ACC, "2026-01-02", "1000"),
@@ -427,7 +415,6 @@ describe("allocate", () => {
     expect(allocate(portfolio, PLAN).totalBase).toEqual(d("1400"));
   });
 
-  // test_a_hand_built_portfolio_allocates_its_listed_cash_filtered_by_account
   it("a hand-built portfolio allocates its listed cash filtered by account", () => {
     const snapshot = buildSnapshot(
       PROFILE,
@@ -471,13 +458,11 @@ const TAGGED = instrument(null, {
 });
 
 describe("matchesBucket", () => {
-  // test_an_empty_match_accepts_every_instrument
   it("an empty match accepts every instrument", () => {
     expect(matchesBucket(bucketMatch(), TAGGED)).toBe(true);
     expect(matchesBucket(bucketMatch(), PKN)).toBe(true);
   });
 
-  // test_a_set_criterion_matches_any_of_its_elements
   it("a set criterion matches any of its elements", () => {
     const bonds = bucketMatch({ assetClasses: [AssetClass.BOND, AssetClass.TREASURY_BOND] });
     expect(matchesBucket(bonds, BOND)).toBe(true);
@@ -490,7 +475,6 @@ describe("matchesBucket", () => {
     expect(matchesBucket(bucketMatch({ instrumentIds: [BOND.id] }), PKN)).toBe(false);
   });
 
-  // test_tags_must_all_be_present_case_insensitive
   it("tags must all be present, case-insensitive", () => {
     expect(matchesBucket(bucketMatch({ tags: ["global_equity", "accumulating"] }), TAGGED)).toBe(
       true,
@@ -501,7 +485,6 @@ describe("matchesBucket", () => {
     expect(matchesBucket(bucketMatch({ tags: ["global_equity"] }), PKN)).toBe(false);
   });
 
-  // test_every_set_criterion_must_hold
   it("every set criterion must hold", () => {
     const etfWithTag = bucketMatch({ assetClasses: [AssetClass.ETF], tags: ["global_equity"] });
     expect(matchesBucket(etfWithTag, TAGGED)).toBe(true);
@@ -522,7 +505,6 @@ describe("matchesBucket", () => {
     expect(matchesBucket(plEquity, AAPL)).toBe(false);
   });
 
-  // test_raw_cash_matches_buckets_taking_cash_and_no_instrument_only_criteria
   it("raw cash matches buckets taking cash and no instrument-only criteria", () => {
     expect(matchesCashBucket(bucketMatch({ assetClasses: [AssetClass.CASH] }), USD)).toBe(true);
     expect(matchesCashBucket(bucketMatch(), PLN)).toBe(true);

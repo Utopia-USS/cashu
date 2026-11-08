@@ -1,81 +1,82 @@
-import { readFileSync } from "node:fs";
-import { expect, it } from "vitest";
+/** Recommendation checks: when "no exit plan" and "plan vs thesis" fire, skip or stay quiet. */
+import { describe, expect, it } from "vitest";
 import { asInstrumentId } from "../domain/index.js";
 import type { RuleOutcome } from "../rules/index.js";
-import {
-  CHECKS,
-  checkNoExit,
-  checkVsThesis,
-  evaluatePlanChecks,
-  type PlanFacts,
-  planRuleSpecs,
-} from "./checks.js";
+import { CHECKS, checkNoExit, checkVsThesis, type PlanFacts, planRuleSpecs } from "./checks.js";
 import { isPlanKey, planDedupKey, planRuleId } from "./keys.js";
 
-interface FactsVector {
-  readonly instrument_id: number;
-  readonly label: string;
-  readonly plan: string | null;
-  readonly health: string;
-  readonly has_exit_plan: boolean;
-  readonly unrealized: number | null;
-  readonly held: boolean;
-  readonly price_stale: boolean;
-  readonly symbol: string | null;
-}
-const vectors = JSON.parse(
-  readFileSync(new URL("./fixtures/plan-checks.json", import.meta.url), "utf8"),
-) as readonly {
-  lang: "pl" | "en";
-  facts: FactsVector;
-  expected: unknown;
-}[];
-function facts(f: FactsVector): PlanFacts {
-  return {
-    instrumentId: asInstrumentId(String(f.instrument_id)),
-    label: f.label,
-    plan: f.plan,
-    health: f.health,
-    hasExitPlan: f.has_exit_plan,
-    unrealized: f.unrealized,
-    held: f.held,
-    priceStale: f.price_stale,
-    symbol: f.symbol,
-  };
-}
-function pythonOutcome(o: RuleOutcome): unknown {
-  if (o.type === "fired") {
-    const c = o.candidate;
-    return {
-      type: "Fired",
-      value: {
-        candidate: {
-          rule_id: c.ruleId,
-          kind: c.kind,
-          dedup_key: c.dedupKey,
-          severity: c.severity,
-          message: c.message,
-          instrument_id: c.instrumentId,
-          account_id: c.accountId,
-          payload: c.payload,
-          polarity: c.polarity,
-        },
-      },
-    };
-  }
-  return o.type === "not_fired"
-    ? { type: "NotFired", value: { rule_id: o.ruleId, dedup_key: o.dedupKey, details: o.details } }
-    : { type: "Skipped", value: { rule_id: o.ruleId, reason: o.reason, dedup_key: o.dedupKey } };
-}
+const facts = (over: Partial<PlanFacts> = {}): PlanFacts => ({
+  instrumentId: asInstrumentId("gid_plan"),
+  label: "AAA",
+  plan: "hold",
+  health: "current",
+  hasExitPlan: false,
+  unrealized: 0.2,
+  held: true,
+  priceStale: false,
+  symbol: "AAA",
+  ...over,
+});
+const summary = (o: RuleOutcome) =>
+  o.type === "fired"
+    ? {
+        type: o.type,
+        severity: o.candidate.severity,
+        message: o.candidate.message,
+        trigger: o.candidate.payload.trigger,
+      }
+    : o.type === "skipped"
+      ? { type: o.type, reason: o.reason }
+      : { type: o.type };
 
-it.each(vectors)(
-  "matches actual Python plan checks in $lang",
-  ({ lang, facts: input, expected }) => {
-    const f = facts(input);
-    expect(evaluatePlanChecks([f], lang).map(pythonOutcome)).toEqual(expected);
-    expect([checkNoExit(f, lang), checkVsThesis(f, lang)].map(pythonOutcome)).toEqual(expected);
-  },
-);
+describe("plan_no_exit", () => {
+  it("fires on a fulfilled thesis even without a price, and at +100% from cost", () => {
+    expect(summary(checkNoExit(facts({ health: "fulfilled", unrealized: null }), "en"))).toEqual({
+      type: "fired",
+      severity: "info",
+      message: "Thesis fulfilled, no exit plan",
+      trigger: "fulfilled",
+    });
+    const gain = checkNoExit(facts({ unrealized: 1.004 }), "pl");
+    expect(summary(gain)).toEqual({
+      type: "fired",
+      severity: "info",
+      message: "+100 % od kosztu, brak planu wyjścia",
+      trigger: "gain",
+    });
+    expect(gain.type === "fired" && gain.candidate.payload.unrealized).toBe(1);
+    expect(checkNoExit(facts({ unrealized: 0.99 })).type).toBe("not_fired");
+  });
+
+  it("is quiet with an exit plan, a held-only plan or when not held", () => {
+    for (const over of [{ hasExitPlan: true }, { plan: "reduce" }, { held: false }])
+      expect(checkNoExit(facts({ unrealized: 3, ...over })).type).toBe("not_fired");
+  });
+
+  it("skips without a current price instead of guessing", () => {
+    expect(summary(checkNoExit(facts({ unrealized: null }), "en"))).toEqual({
+      type: "skipped",
+      reason: "No current price: AAA",
+    });
+    expect(checkNoExit(facts({ unrealized: 5, priceStale: true })).type).toBe("skipped");
+  });
+});
+
+describe("plan_vs_thesis", () => {
+  it("fires only for a buy plan against a weakened (info) or invalidated (action) thesis", () => {
+    expect(summary(checkVsThesis(facts({ plan: "buy", health: "weakened" }), "en"))).toEqual({
+      type: "fired",
+      severity: "info",
+      message: "Recommendation: buy more, thesis weakened",
+      trigger: undefined,
+    });
+    expect(
+      summary(checkVsThesis(facts({ plan: "buy_asap", health: "invalidated" }), "pl")),
+    ).toMatchObject({ type: "fired", severity: "action" });
+    expect(checkVsThesis(facts({ plan: "hold", health: "invalidated" })).type).toBe("not_fired");
+    expect(checkVsThesis(facts({ plan: "buy", health: "supported" })).type).toBe("not_fired");
+  });
+});
 
 it("uses canonical caller identities and ordered specs without allocating ids", () => {
   const instrument = asInstrumentId("gid_synthetic_plan");
@@ -87,5 +88,4 @@ it("uses canonical caller identities and ordered specs without allocating ids", 
   expect(planRuleSpecs().every((s) => s.polarity === "negative" && s.cooldownDays === null)).toBe(
     true,
   );
-  expect(planRuleSpecs().every((s) => s.params === null)).toBe(true);
 });

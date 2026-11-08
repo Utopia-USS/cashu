@@ -1,9 +1,4 @@
-/**
- * Test-for-test translation of `tests/investments/performance/test_perf_attribution.py`: P/L
- * attribution by instrument and bucket, account-level items and profit concentration,
- * hand-computed (through the daily series, so the end values are the series' own). Synthetic data
- * only. Each `it` names its Python test in a comment.
- */
+/** P/L attribution by instrument and bucket, account-level items and profit concentration, hand-computed. */
 import { describe, expect, it } from "vitest";
 import { D, type Decimal, floatRepr } from "../../decimal.js";
 import { allocationPlan, bucketDef, bucketMatch } from "../domain/buckets.js";
@@ -26,15 +21,17 @@ import {
 import { Renames } from "./renames.js";
 import { computeRange, rangeBase } from "./report.js";
 import { buildSeries, combineSeries, type HoldingValues } from "./series.js";
-import { bars, day, days, EUR, instrument, PLN, rates, txn } from "./testing/support.js";
-
-/** `pytest.approx` with its defaults (rel 1e-6, abs 1e-12). */
-function expectApprox(actual: number | null | undefined, expected: number): void {
-  expect(actual).not.toBeNull();
-  expect(actual).not.toBeUndefined();
-  const tolerance = Math.max(1e-6 * Math.abs(expected), 1e-12);
-  expect(Math.abs((actual as number) - expected)).toBeLessThanOrEqual(tolerance);
-}
+import {
+  bars,
+  day,
+  days,
+  EUR,
+  expectApprox,
+  instrument,
+  PLN,
+  rates,
+  txn,
+} from "./testing/support.js";
 
 const iid = (text: string): InstrumentId => asInstrumentId(text);
 
@@ -118,7 +115,6 @@ function get(rows: Map<InstrumentId, InstrumentPnl>, id: string): InstrumentPnl 
 const eq = (value: Decimal, expected: string | number): boolean => value.eq(D(String(expected)));
 
 describe("performance attribution", () => {
-  // test_instrument_pnl_account_level_and_the_rest
   it("instrument P/L, account level and the rest", () => {
     const { s, result } = run();
     const rows = byId(result.instruments);
@@ -143,7 +139,6 @@ describe("performance attribution", () => {
     expect(other.isZero()).toBe(true);
   });
 
-  // test_range_starting_mid_history_uses_the_value_at_the_base_day
   it("range starting mid history uses the value at the base day", () => {
     // On 01-12 A is still held: 10 units at the 01-12 close (111) = 1110 -> P/L in range 1195 - 1110
     const { result } = run("max", day("2025-01-12"));
@@ -153,7 +148,6 @@ describe("performance attribution", () => {
     expect(eq(pnlOf(get(rows, "B")), 0)).toBe(true); // flat price, the dividend was before the range
   });
 
-  // test_concentration_and_buckets
   it("concentration and buckets", () => {
     const { result, insts } = run();
     const conc = concentration(result.instruments.map((r) => [r.instrumentId, pnlOf(r)] as const));
@@ -184,7 +178,6 @@ describe("performance attribution", () => {
     expect(bucketOf(null, plan)).toBe("unclassified");
   });
 
-  // test_concentration_when_others_lose
   it("concentration when others lose", () => {
     const conc = concentration([
       [iid("X"), D("300")],
@@ -200,7 +193,6 @@ describe("performance attribution", () => {
     expect(new Map(concentration([[iid("X"), D("-5")]]).topShares).get(1)).toBeNull();
   });
 
-  // test_renamed_instrument_is_one_line
   it("renamed instrument is one line", () => {
     const txns = [
       txn("deposit", "2025-01-02", "1000"),

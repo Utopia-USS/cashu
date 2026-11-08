@@ -90,21 +90,4 @@ describe("inv_transactions + inv_transaction_members", () => {
       expect(members.map((m) => m.gid).sort()).toEqual([ga, gb].sort());
     });
   });
-
-  it("declares the Python indexes", () => {
-    const store = openTestStore();
-    const names = store
-      .read<{ name: string }>(
-        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'inv_transactions'",
-      )
-      .map((r) => r.name);
-    expect(names).toEqual(
-      expect.arrayContaining([
-        "inv_transactions_account_id_dedup_hash_uq",
-        "inv_transactions_trade_date_ix",
-        "inv_transactions_instrument_id_ix",
-        "inv_transactions_import_batch_id_ix",
-      ]),
-    );
-  });
 });

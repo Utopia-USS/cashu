@@ -63,7 +63,6 @@ function stateOf(resolver: InstrumentResolver, instrumentId: string): Instrument
   return found;
 }
 
-// test_isin_beats_broker_alias
 it("ISIN beats broker alias", () => {
   const byIsin = instrumentOf("i1", { name: "By ISIN", symbol: "AAA", isin: "PLAAA0000011" });
   const byAlias = instrumentOf("i2", {
@@ -81,7 +80,6 @@ it("ISIN beats broker alias", () => {
   expect(resolver.newAliases).toEqual(new Map());
 });
 
-// test_broker_alias_beats_symbol_and_exchange
 it("broker alias beats symbol and exchange", () => {
   const resolver = resolverOver([
     instrumentOf("alias", {
@@ -95,7 +93,6 @@ it("broker alias beats symbol and exchange", () => {
   expect([resolved.match, resolved.instrumentId]).toEqual([InstrumentMatch.BROKER_ALIAS, "alias"]);
 });
 
-// test_symbol_and_exchange_then_guessed_market_aliases
 it("symbol and exchange, then guessed market aliases", () => {
   const orlen = instrumentOf("orlen");
   const vanguard = instrumentOf("vwce", {
@@ -112,7 +109,6 @@ it("symbol and exchange, then guessed market aliases", () => {
   expect(resolver.newAliases.get(id("orlen"))).toEqual([instrumentAlias("generic_csv", "PKN.PL")]);
 });
 
-// test_nothing_known_plans_a_new_instrument_with_guessed_aliases
 it("nothing known plans a new instrument with guessed aliases", () => {
   const resolver = resolverOver();
   const resolved = resolver.resolve(
@@ -140,7 +136,6 @@ it("nothing known plans a new instrument with guessed aliases", () => {
   expect(resolver.newInstruments).toEqual([planned]);
 });
 
-// test_asset_class_guess_etf_ucits_and_unknown_market
 it("asset class guess: ETF / UCITS and unknown market", () => {
   const resolver = resolverOver();
   const etf = resolver.resolve(
@@ -157,7 +152,6 @@ it("asset class guess: ETF / UCITS and unknown market", () => {
   expect(planned.aliases).toEqual([instrumentAlias("generic_csv", "ABC")]);
 });
 
-// test_crypto_symbols_are_guessed_as_crypto_with_a_yahoo_pair
 it("crypto symbols are guessed as crypto with a Yahoo pair", () => {
   const resolver = resolverOver();
   const btc = stateOf(
@@ -187,7 +181,6 @@ it("crypto symbols are guessed as crypto with a Yahoo pair", () => {
   expect(etf.assetClass).toBe(AssetClass.ETF);
 });
 
-// test_crypto_resolves_to_an_existing_instrument_by_its_yahoo_pair
 it("crypto resolves to an existing instrument by its Yahoo pair", () => {
   const stored = instrumentOf("btc", {
     name: "Bitcoin",
@@ -202,7 +195,6 @@ it("crypto resolves to an existing instrument by its Yahoo pair", () => {
   expect([resolved.match, resolved.instrumentId]).toEqual([InstrumentMatch.SYMBOL_EXCHANGE, "btc"]);
 });
 
-// test_us_suffix_guesses_yahoo_and_stooq_without_a_mic
 it("US suffix guesses Yahoo and stooq without a MIC", () => {
   const resolver = resolverOver();
   const planned = stateOf(
@@ -216,7 +208,6 @@ it("US suffix guesses Yahoo and stooq without a MIC", () => {
   expect(aliasOf(planned, "generic_csv")).toBe("AAPL.US");
 });
 
-// test_one_new_instrument_per_import_later_rows_add_its_isin
 it("one new instrument per import; later rows add its ISIN", () => {
   const resolver = resolverOver();
   const first = resolver.resolve(hint({ symbol: "ZGJ", exchange: "GPW", name: "ZGJ" }));
@@ -236,7 +227,6 @@ it("one new instrument per import; later rows add its ISIN", () => {
   expect(resolver.newInstruments[0]?.isin).toBe("PLZGJ0000010");
 });
 
-// test_planned_instrument_takes_the_currency_of_priced_trades_whatever_the_order_r10
 it("planned instrument takes the currency of priced trades whatever the order (R10)", () => {
   const resolver = resolverOver();
   const row = (currency: Currency, evidence: CurrencyEvidence, name = "Apple") =>
@@ -265,7 +255,6 @@ it("planned instrument takes the currency of priced trades whatever the order (R
   expect(again.notes).toEqual([]); // noted once
 });
 
-// test_hint_from_txn_evidence
 it("hint from txn evidence", () => {
   const evidence = (type: TxnType, price?: string) =>
     hintFromTxn(parsedTxnOf(type, price === undefined ? {} : { price })).evidence;
@@ -278,7 +267,6 @@ it("hint from txn evidence", () => {
   expect(evidence(TxnType.TAX)).toBe(CurrencyEvidence.CASH_FLOW);
 });
 
-// test_matching_an_existing_instrument_plans_its_missing_isin_and_broker_alias
 it("matching an existing instrument plans its missing ISIN and broker alias", () => {
   const existing = instrumentOf("orlen", { aliases: [instrumentAlias("generic_csv", "PKN")] });
   const resolver = resolverOver([existing]);
@@ -298,7 +286,6 @@ it("matching an existing instrument plans its missing ISIN and broker alias", ()
   expect(conflicting.newAliases).toEqual(new Map());
 });
 
-// test_ambiguous_symbol_and_mic_uses_the_oldest_and_says_so
 it("ambiguous symbol and MIC uses the oldest and says so", () => {
   const resolver = resolverOver([
     instrumentOf("old", { name: "Old", symbol: "DUP" }),
@@ -309,13 +296,11 @@ it("ambiguous symbol and MIC uses the oldest and says so", () => {
   expect(resolved.notes[0]).toContain("matches 2 instruments");
 });
 
-// test_an_empty_hint_is_rejected
 it("an empty hint is rejected", () => {
   expect(() => resolverOver().resolve(hint({ symbol: " " }))).toThrow(InvariantError);
   expect(hintIsEmpty(hint({ symbol: " ", isin: "", name: null }))).toBe(true);
 });
 
-// test_find_never_plans
 it("find never plans", () => {
   const resolver = resolverOver([instrumentOf("orlen", { isin: "PLPKN0000018" })]);
   expect(resolver.find({ symbol: "XYZ" })).toBeNull();
@@ -327,7 +312,6 @@ it("find never plans", () => {
   expect(resolver.find({ symbol: "NEW" })?.instrumentId).toBe(planned.instrumentId);
 });
 
-// test_in_memory_lookup
 it("in-memory lookup", () => {
   const lookup = new InMemoryInstrumentLookup([
     instrumentOf("a", { isin: "PLAAA0000011", aliases: [instrumentAlias("isin", "PLAAA0000029")] }),

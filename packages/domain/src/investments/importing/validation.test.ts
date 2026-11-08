@@ -38,7 +38,6 @@ import {
 const spec = (language: string, needle: string) =>
   specBlocks(language).find((block) => block.includes(needle)) as string;
 
-// test_valid_canonical_csv_and_json
 it("valid canonical CSV and JSON", () => {
   const report = validateImportFile(csvFile(spec("csv", "position"), "converted.csv"));
   expect(reportOk(report)).toBe(true);
@@ -56,7 +55,6 @@ it("valid canonical CSV and JSON", () => {
   ).toBe(true);
 });
 
-// test_invalid_canonical_file_lists_every_problem
 it("invalid canonical file lists every problem", () => {
   const report = validateImportFile(
     csvFile(
@@ -76,7 +74,6 @@ it("invalid canonical file lists every problem", () => {
   expect(text).toContain("warning row 2: cash_amount: 3 is positive for tax");
 });
 
-// test_unrecognized_file
 it("unrecognized file", () => {
   const report = validateImportFile(csvFile("Date;Type;Amount\n", "export.csv"));
   expect(reportOk(report)).toBe(false);
@@ -87,7 +84,6 @@ it("unrecognized file", () => {
   expect(error?.message).toContain("docs/import-format.md");
 });
 
-// test_generic_csv_with_a_mapping_file
 it("generic CSV with a mapping file", () => {
   const data: ImportFile = { name: "pl_broker.csv", content: plExportUtf8Bom() };
   // validate_import_file(data, mapping=path): the caller reads the YAML and builds the importer
@@ -103,7 +99,6 @@ it("generic CSV with a mapping file", () => {
   // pytest.raises(OSError) for a missing file: not translatable (see the header)
 });
 
-// test_generic_csv_gets_the_semantic_checks
 it("generic CSV gets the semantic checks", () => {
   const content = `${SIMPLE_HEADER}\na,2026-01-05,buy,,,,1,10,PLN,0,-10\nb,2026-01-05,split,PKN,,GPW,,,PLN,,\n`;
   const report = validateImport(
@@ -115,7 +110,6 @@ it("generic CSV gets the semantic checks", () => {
   expect(kinds.has(ImportWarningKind.UNKNOWN_SPLIT_RATIO)).toBe(true);
 });
 
-// test_too_large_and_crashing_importers
 describe("too large and crashing importers", () => {
   it("refuses a file over the limit unread", () => {
     const report = validateImportFile(

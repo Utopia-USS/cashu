@@ -3,13 +3,11 @@ import { describe, expect, it } from "vitest";
 import { addMicroseconds, parseDateTime } from "../../dates.js";
 import type { SignalSeverity, SignalStatus } from "../domain/enums.js";
 import { type OpenSignal, reconcileSignals, UNVERIFIED } from "./lifecycle.js";
-import { Fired, NotFired, type RuleOutcome, type SignalCandidate, Skipped } from "./outcomes.js";
+import { Fired, NotFired, type RuleOutcome, Skipped } from "./outcomes.js";
 
 const NOW = parseDateTime("2026-10-02T06:00:00+00:00");
-const RULES = [
-  { id: "conc", cooldownDays: null },
-  { id: "cash", cooldownDays: 7 },
-];
+const CONC_RULE = { id: "conc", cooldownDays: null };
+const RULES = [CONC_RULE, { id: "cash", cooldownDays: 7 }];
 const PKN = "conc|i:i-PKN",
   CDR = "conc|i:i-CDR",
   CASH = "cash";
@@ -154,7 +152,7 @@ describe("test_rules_signal_lifecycle.py", () => {
     ).toEqual(["create"]);
   });
   it("open_signals_of_removed_rules_expire", () => {
-    const result = run([fired("conc", PKN)], [opened(), opened(CASH, "cash")], [RULES[0]!]);
+    const result = run([fired("conc", PKN)], [opened(), opened(CASH, "cash")], [CONC_RULE]);
     expect(result.expired).toEqual([
       {
         type: "expire",
@@ -172,7 +170,7 @@ describe("test_rules_signal_lifecycle.py", () => {
       run(
         [new NotFired("conc", CDR), fired("conc", PKN)],
         [opened(CDR), opened(CASH, "cash")],
-        [RULES[0]!],
+        [CONC_RULE],
       ).actions.map((a) => a.type),
     ).toEqual(["create", "resolve", "expire"]);
   });

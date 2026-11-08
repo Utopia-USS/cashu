@@ -1,9 +1,6 @@
 // From a synthetic import through the backfill (fake sources) to the views, on the in-memory store
-// and an in-memory price cache. Translates tests/investments/performance/test_perf_pipeline.py
-// (hand-computed values, incremental second backfill, cache invalidation, benchmark states, vault
-// isolation; the token / legacy-alias / HTTP status parts are the API's, S36: here the service's
-// refusals) and test_be_perf_overrides.py (a vault's valuation override reaches its performance).
-// Synthetic data only.
+// and an in-memory price cache: hand-computed values, incremental second backfill, cache
+// invalidation, benchmark states, vault isolation, a vault's valuation override. Synthetic data only.
 import { D } from "@cashu/domain";
 import { market, type performance as perf } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
@@ -53,8 +50,8 @@ async function backfilled(v: Vault, cache: market.PriceCache) {
   return out.value;
 }
 
-describe("performance pipeline (test_perf_pipeline)", () => {
-  it("imports, backfills and shows the hand-computed values (test_import_backfill_endpoint)", async () => {
+describe("performance pipeline", () => {
+  it("imports, backfills and shows the hand-computed values", async () => {
     const v = vault();
     household(v);
     const cache = new market.InMemoryPriceCache();
@@ -141,7 +138,7 @@ describe("performance pipeline (test_perf_pipeline)", () => {
     expect(again.value.benchmarks.map((x) => x.status)).toEqual(["found"]);
   });
 
-  it("new data invalidates the cached computation (test_new_data_invalidates_the_cache)", async () => {
+  it("new data invalidates the cached computation", async () => {
     const v = vault();
     const { account } = household(v);
     const cache = new market.InMemoryPriceCache();
@@ -188,7 +185,7 @@ describe("performance pipeline (test_perf_pipeline)", () => {
     expect(at.perf().summary?.end_value).toBe(13860.0);
   });
 
-  it("filters by account and refuses unknown ranges and accounts (test_accounts_filter_range_and_errors)", async () => {
+  it("filters by account and refuses unknown ranges and accounts", async () => {
     const v = vault();
     const { account } = household(v);
     const other = otherVault();
@@ -226,7 +223,7 @@ describe("performance pipeline (test_perf_pipeline)", () => {
     });
   });
 
-  it("vaults do not leak into each other (test_profiles_do_not_leak)", async () => {
+  it("vaults do not leak into each other", async () => {
     const v = vault();
     household(v, "Anna");
     const cache = new market.InMemoryPriceCache();
@@ -249,7 +246,7 @@ describe("performance pipeline (test_perf_pipeline)", () => {
     expect(at.perf()).toEqual(reference); // unchanged by the other vault's requests
   });
 
-  it("names every benchmark state (test_benchmark_states)", async () => {
+  it("names every benchmark state", async () => {
     const v = vault();
     household(v, "Bez");
     const cache = new market.InMemoryPriceCache();
@@ -265,7 +262,7 @@ describe("performance pipeline (test_perf_pipeline)", () => {
     expect(at.perf("max", null, noBenchmarkStrategy()).benchmark.status).toBe("not_configured");
   });
 
-  it("an unknown proxy symbol is an error, not an instrument (test_unknown_proxy_symbol_...)", async () => {
+  it("an unknown proxy symbol is an error, not an instrument", async () => {
     const v = vault();
     household(v);
     const cache = new market.InMemoryPriceCache();
@@ -277,7 +274,7 @@ describe("performance pipeline (test_perf_pipeline)", () => {
     expect(at.perf("max", null, strategy).benchmark.status).toBe("proxy_not_found");
   });
 
-  it("one backfill at a time, on the lease holder only (test_backfill_is_exclusive)", async () => {
+  it("one backfill at a time, on the lease holder only", async () => {
     const v = vault();
     household(v);
     const cache = new market.InMemoryPriceCache();
@@ -293,7 +290,7 @@ describe("performance pipeline (test_perf_pipeline)", () => {
   });
 });
 
-describe("the vault's own view of an instrument (test_be_perf_overrides)", () => {
+describe("the vault's own view of an instrument", () => {
   it("a valuation override reaches this vault's performance only", async () => {
     const a = vault();
     const { wrld } = household(a, "Anna");

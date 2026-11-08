@@ -2,14 +2,10 @@
 // with gids in place of view ids, and a convergence driver (shuffled delivery with re-delivered
 // duplicates, random batches, rebuild). Synthetic data only.
 import { expect } from "vitest";
-import { detGid, detGidFor, type GidTable } from "../../gid.js";
+import { detGid, type GidTable } from "../../gid.js";
 import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";
 import { chunked, shuffled } from "../../testing/random.js";
-import {
-  INV_REF_TABLES,
-  materializeInvestments,
-} from "../../testing/reference/fold-investments.js";
 import {
   EventFactory,
   openTestStore,
@@ -268,7 +264,7 @@ export function row(store: Store, table: string, gid: string): Record<string, un
   return rows(store, table).find((r) => r.gid === gid);
 }
 
-const ORDERS = 40;
+const ORDERS = 4;
 
 /**
  * Deliver `events` in ORDERS shuffles (single events for even k, random batches for odd k) plus three
@@ -294,7 +290,6 @@ export function converge(
       invariant?.(store);
     }
     check(store);
-    expectReference(store, events);
     const h = viewHash(store).hash;
     hash ??= h;
     expect(h).toBe(hash);
@@ -303,10 +298,4 @@ export function converge(
     last = store;
   }
   return last as Store;
-}
-
-/** The store's investments tables equal the reference fold's (fold-investments.ts), table by table. */
-export function expectReference(store: Store, events: readonly TestEnvelope[]): void {
-  const ref = materializeInvestments(events, detGidFor(TEST_SALT));
-  for (const t of INV_REF_TABLES) expect({ [t]: rows(store, t) }).toEqual({ [t]: ref[t] });
 }

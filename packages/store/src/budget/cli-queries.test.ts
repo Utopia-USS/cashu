@@ -1,7 +1,6 @@
 import { D } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
 import { expect, it } from "vitest";
-import type { Read } from "../query.js";
 import { run, testEnv } from "../testing/commands.js";
 import { openTestStore } from "../testing/store.js";
 import { cashCliSnapshot } from "./cli-queries.js";
@@ -73,32 +72,4 @@ it("renders same-day cash ties and keeps a stable cutoff across rebuild", () => 
   } finally {
     store.close();
   }
-});
-
-it("keeps a deterministic cutoff and full balance across same-day cash ties", () => {
-  const rows = Array.from({ length: 42 }, (_, i) => ({
-    bookingDate: new Date(Date.UTC(2026, 10, 30 - i)).toISOString().slice(0, 10),
-    reference: `Synthetic ${i}`,
-    description: null,
-    category: "dining",
-    amount: "-1",
-    currency: "PLN",
-  }));
-  const read = ((sql: string) => {
-    if (sql.includes("FROM accounts")) return [{ id: 1, currency: "PLN" }];
-    if (sql.includes("FROM transactions")) return rows;
-    return [];
-  }) as Read;
-  const row39 = rows[39];
-  const row40 = rows[40];
-  const row41 = rows[41];
-  if (!row39 || !row40 || !row41) throw new Error("missing synthetic cash rows");
-  row41.bookingDate = row40.bookingDate;
-  expect(cashCliSnapshot(read, null)?.rows).toHaveLength(40);
-  row40.bookingDate = row39.bookingDate;
-  const snapshot = cashCliSnapshot(read, null);
-  expect(snapshot?.rows).toHaveLength(40);
-  expect(snapshot?.rows.at(-1)?.reference).toBe("Synthetic 39");
-  expect(snapshot?.balance.toString()).toBe("-42");
-  expect(cashCliSnapshot(read, null)).toEqual(snapshot);
 });

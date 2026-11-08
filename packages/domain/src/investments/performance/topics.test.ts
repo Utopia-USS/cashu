@@ -1,13 +1,7 @@
 /**
- * Test-for-test translation of `tests/investments/performance/test_p7_topics.py`, the pure parts of
- * topics (P7): snapshot-held positions count as held at the window start (`snapshotOpenings`) and
- * the topic trend independent of holdings weight (`segmentTrends`: equal weight, held and watched
- * alike, missing / stale / same-bar closes left out). Synthetic input only. Each `it` names its
- * Python test in a comment.
- *
- * Not translated: `test_the_owner_topics_labels_and_the_power_rename` exercises
- * `research.segments` (segment labels, `LEGACY_KEYS`, `FUND_SEGMENTS`, `auto_segment`,
- * `segment_of`), which is not ported yet.
+ * Topics (P7): snapshot-held positions count as held at the window start (`snapshotOpenings`) and the
+ * topic trend is independent of holdings weight (`segmentTrends`: equal weight, held and watched alike,
+ * missing / stale / same-bar closes left out).
  */
 import { describe, expect, it } from "vitest";
 import { D, decimalKey, roundFloat } from "../../decimal.js";
@@ -82,7 +76,6 @@ function held(txns: readonly Transaction[], on: CalendarDate): Record<string, st
 // --------------------------------------------------------------------------- //
 
 describe("snapshot-held positions (P7)", () => {
-  // test_a_snapshot_opening_inside_the_window_counts_as_held_at_start
   it("a snapshot opening inside the window counts as held at start", () => {
     const opening = txn(1, "2026-10-06"); // the broker snapshot of 6 Oct, imported this week
     const moved = snapshotOpenings([opening], START);
@@ -92,7 +85,6 @@ describe("snapshot-held positions (P7)", () => {
     expect(held([opening], START)).toEqual({}); // what the history alone says
   });
 
-  // test_an_opening_before_the_window_and_real_history_keep_their_dates
   it("an opening before the window and real history keep their dates", () => {
     const before = txn(1, "2026-09-20");
     expect(snapshotOpenings([before], START)).toEqual([before]);
@@ -111,7 +103,6 @@ describe("snapshot-held positions (P7)", () => {
     expect(out.map((t) => t.tradeDate)).toEqual([day("2026-10-07"), START]);
   });
 
-  // test_openings_are_per_account_and_a_transfer_out_is_never_moved
   it("openings are per account and a transfer out is never moved", () => {
     const otherAccount = txn(1, "2026-10-06", { account: "2" });
     const real = txn(2, "2026-09-01", { kind: TxnType.BUY, source: TxnSource.IMPORT });
@@ -121,7 +112,6 @@ describe("snapshot-held positions (P7)", () => {
     expect(snapshotOpenings([surplus], START)).toEqual([surplus]);
   });
 
-  // test_a_coin_first_reported_by_a_later_snapshot_is_a_new_position
   it("a coin first reported by a later snapshot is a new position", () => {
     // BTC in the account's first snapshot of 1 Sep; ETH bought 5 Oct and first reported by the
     // snapshot of 6 Oct: the earlier snapshot without ETH is the information, so ETH keeps its date.
@@ -175,7 +165,6 @@ function trendOf(found: Map<string, SegmentTrend>, segment: string): SegmentTren
 }
 
 describe("topic trends (P7)", () => {
-  // test_trend_is_equal_weighted_over_held_and_watched_members
   it("trend is equal weighted over held and watched members", () => {
     const members = new Map<InstrumentId, readonly [string, boolean]>([
       [iid("A"), ["semis_ai", true]],
@@ -198,14 +187,12 @@ describe("topic trends (P7)", () => {
     expect(new Set(quantum.instruments.map((m) => m.held))).toEqual(new Set([false]));
   });
 
-  // test_a_segment_without_any_price_has_no_trend
   it("a segment without any price has no trend", () => {
     const found = segmentTrends(new Map([[iid("N"), ["crypto", true] as const]]), new Map(), END);
     expect(trendOf(found, "crypto").trends).toEqual([null, null]);
     expect(trendOf(found, "crypto").members).toBe(0);
   });
 
-  // test_member_return_rules
   it("member return rules", () => {
     expect(roundFloat(memberReturn(closes("A"), END, 7, 5) as number, 9)).toBe(0.1);
     expect(memberReturn(closes("C"), END, 7, 5)).toBeNull(); // end close 6 days old
@@ -216,7 +203,4 @@ describe("topic trends (P7)", () => {
     const oldStart = bars("S", { "2026-09-20": 10, "2026-10-08": 11 });
     expect(memberReturn(oldStart, END, 7, 5)).toBeNull(); // start close 11 days before the start
   });
-
-  // test_the_owner_topics_labels_and_the_power_rename: not translated (research.segments is not
-  // ported yet; see the header).
 });

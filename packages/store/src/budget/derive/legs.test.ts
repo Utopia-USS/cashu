@@ -2,9 +2,9 @@
 // incremental path) with the derived oracle after each. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { formatHlc } from "../../events/v1/hlc-format.js";
-import { complete, syntheticDet } from "../../events/v1/reference/testing/scenarios.js";
-import type { RefEvent } from "../../testing/reference/fold.js";
-import { Names, toEnvelopes } from "../../testing/reference-bridge.js";
+import type { RefEvent } from "../../testing/scenario-bridge.js";
+import { Names, toEnvelopes } from "../../testing/scenario-bridge.js";
+import { complete, syntheticDet } from "../../testing/scenarios.js";
 import { openTestStore } from "../../testing/store.js";
 
 function nrb(bban24: string): string {

@@ -1,46 +1,12 @@
 /**
- * Test-for-test translation of the pure tests of
- * `tests/investments/performance/test_fxb_benchmark_stale.py` (F6 review V2: a benchmark proxy whose
- * closes end before the range end): the simulation waits for the next priced day, and rolling windows
- * and calendar years ending on a stale benchmark tail compare nothing. Synthetic data only. Each `it`
- * names its Python test in a comment.
- *
- * Not here (DB / HTTP bound, service layer of S19b): `test_stale_benchmark_tail_is_flagged_and_drops_the_excess`
- * (API + MCP over an imported household and the price backfill) and
- * `test_worker_post_run_backfill_refreshes_the_benchmark_proxy` (worker run writing price bars).
+ * A benchmark proxy whose closes end before the range end: the simulation waits for the next priced
+ * day, and rolling windows and calendar years ending on a stale benchmark tail compare nothing.
  */
 import { describe, expect, it } from "vitest";
 import { type Combined, perYear, rolling, simulate, twrIndex } from "./index.js";
-import { days } from "./testing/support.js";
+import { approxEq, days, expectApprox, expectApproxList } from "./testing/support.js";
 
-// --------------------------------------------------------------------------- //
-// pytest.approx (rel 1e-6, abs 1e-12)
-// --------------------------------------------------------------------------- //
-
-function approxEq(actual: number | null | undefined, expected: number): boolean {
-  if (actual == null) return false;
-  if (actual === expected) return true;
-  return Math.abs(actual - expected) <= Math.max(1e-6 * Math.abs(expected), 1e-12);
-}
-
-function expectApprox(actual: number | null | undefined, expected: number): void {
-  expect(approxEq(actual, expected), `${actual} ~ ${expected}`).toBe(true);
-}
-
-function expectApproxList(
-  actual: readonly (number | null)[],
-  expected: readonly (number | null)[],
-): void {
-  expect(actual.length).toBe(expected.length);
-  actual.forEach((a, i) => {
-    const e = expected[i] as number | null;
-    if (e === null) expect(a).toBeNull();
-    else expectApprox(a, e);
-  });
-}
-
-describe("test_fxb_benchmark_stale (pure)", () => {
-  // test_simulation_waits_for_the_next_priced_day_and_holds_the_cash_meanwhile
+describe("stale benchmark tail", () => {
   it("simulation waits for the next priced day and holds the cash meanwhile", () => {
     const ds = days("2025-01-01", "2025-01-05");
     // 10 units at 100; the 500 deposit on 01-03 has no price until 01-05 (110)
@@ -54,7 +20,6 @@ describe("test_fxb_benchmark_stale (pure)", () => {
     expectApproxList(sim.withFees, [1000.0, 1000.0, 1500.0, 1500.0, 1600.0]);
   });
 
-  // test_rolling_windows_ending_on_a_stale_benchmark_tail_compare_nothing
   it("rolling windows ending on a stale benchmark tail compare nothing", () => {
     const ds = days("2024-01-01", "2025-03-31");
     const n = ds.length;
@@ -80,7 +45,6 @@ describe("test_fxb_benchmark_stale (pure)", () => {
     expect(last?.excess).toBeNull();
   });
 
-  // test_a_year_ending_on_a_stale_benchmark_tail_has_no_benchmark_return
   it("a year ending on a stale benchmark tail has no benchmark return", () => {
     const ds = days("2024-01-01", "2025-03-31");
     const n = ds.length;

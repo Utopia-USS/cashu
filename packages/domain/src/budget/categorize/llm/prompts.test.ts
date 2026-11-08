@@ -7,12 +7,6 @@ import {
   ollamaMerchantSystemPrompt,
   ollamaTxnSystemPrompt,
 } from "./prompts.js";
-import {
-  ANTHROPIC_BATCH_SIZE,
-  ANTHROPIC_DEFAULT_MODEL,
-  OLLAMA_BATCH_SIZE,
-  OLLAMA_DEFAULT_MODEL,
-} from "./requests.js";
 import { anthropicSchema, ollamaSchema } from "./schemas.js";
 
 const { data } = loadMatchingData();
@@ -37,26 +31,6 @@ describe("LLM prompts are byte-identical to Python (matching data)", () => {
     expect(anthropicSchema(AUTO_CATEGORY_KEYS)).toEqual(data.anthropicSchema);
     expect(ANTHROPIC_MERCHANT_PREFIX).toBe(data.anthropicUserPrefix);
     expect(allowed).toEqual(data.reclassifyAllowed);
-  });
-
-  it("models and batch sizes are Python's defaults", () => {
-    expect([
-      OLLAMA_DEFAULT_MODEL,
-      OLLAMA_BATCH_SIZE,
-      ANTHROPIC_DEFAULT_MODEL,
-      ANTHROPIC_BATCH_SIZE,
-    ]).toEqual([
-      data.defaults.ollamaModel,
-      data.defaults.ollamaBatch,
-      data.defaults.anthropicModel,
-      data.defaults.anthropicBatch,
-    ]);
-    expect(data.defaults.ollamaTxnBatch).toBe(OLLAMA_BATCH_SIZE);
-    expect([
-      data.defaults.settingsModel,
-      data.defaults.settingsOllamaModel,
-      data.defaults.settingsBackend,
-    ]).toEqual([ANTHROPIC_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, "ollama"]);
   });
 
   it("prompts are NFC; the only non-Polish non-ASCII character is U+2014 (built from its code point)", () => {

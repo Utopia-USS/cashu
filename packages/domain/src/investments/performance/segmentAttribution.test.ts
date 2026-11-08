@@ -1,9 +1,7 @@
 /**
- * Test-for-test translation of `tests/investments/performance/test_p5_segment_attribution.py`:
- * segment attribution (P5), pure and hand-computed. A PLN stock, a USD ETF and a USD crypto holding
- * with an FX move, a holding without a segment (with a stale close), a cost-valued holding and cash
- * in T0, a position opened within the window; contributions add up to `explained`; T0 = 0 is empty.
- * Synthetic data only. Each `it` names its Python test in a comment.
+ * Segment attribution (P5), hand-computed: a PLN stock, a USD ETF and a USD crypto holding with an FX
+ * move, a holding without a segment (stale close), a cost-valued holding and cash in T0, a position
+ * opened within the window; contributions add up to `explained`; T0 = 0 is empty.
  */
 import { describe, expect, it } from "vitest";
 import { D, floatRepr } from "../../decimal.js";
@@ -20,15 +18,7 @@ import {
   startHolding,
   startPortfolio,
 } from "./segmentAttribution.js";
-import { bars, day, PLN, rates, USD } from "./testing/support.js";
-
-/** `pytest.approx` with its defaults (rel 1e-6, abs 1e-12). */
-function expectApprox(actual: number | null | undefined, expected: number): void {
-  expect(actual).not.toBeNull();
-  expect(actual).not.toBeUndefined();
-  const tolerance = Math.max(1e-6 * Math.abs(expected), 1e-12);
-  expect(Math.abs((actual as number) - expected)).toBeLessThanOrEqual(tolerance);
-}
+import { bars, day, expectApprox, PLN, rates, USD } from "./testing/support.js";
 
 const iid = (text: string): InstrumentId => asInstrumentId(text);
 
@@ -88,7 +78,6 @@ function get(rows: Map<string | null, SegmentMove>, key: string): SegmentMove {
 }
 
 describe("segment attribution (P5)", () => {
-  // test_hand_computed_example
   it("hand computed example", () => {
     const result = run();
     const rows = bySegment(result);
@@ -136,7 +125,6 @@ describe("segment attribution (P5)", () => {
     expect(result.stale).toEqual(["D"]);
   });
 
-  // test_instruments_sorted_by_absolute_contribution
   it("instruments sorted by absolute contribution", () => {
     const segments: Readonly<Record<string, string>> = {
       A: "equity_pl",
@@ -165,7 +153,6 @@ describe("segment attribution (P5)", () => {
     expect(unassigned.ret).toBeNull();
   });
 
-  // test_zero_or_negative_total_is_empty
   it("zero or negative total is empty", () => {
     for (const total of [0, -5]) {
       const result = run(total);
@@ -176,7 +163,6 @@ describe("segment attribution (P5)", () => {
     }
   });
 
-  // test_missing_closes_count_as_no_move_and_are_flagged
   it("missing closes count as no move and are flagged", () => {
     const prices = new Map(PRICES);
     prices.set(iid("A"), bars("A", { "2026-10-05": 100 }));
@@ -198,7 +184,6 @@ describe("segment attribution (P5)", () => {
     expect(missingFx.currencyContribution).toBe(0);
   });
 
-  // test_close_on_or_before
   it("close on or before", () => {
     const series = bars("X", { "2026-10-01": 1, "2026-10-03": 2 });
     expect(closeOnOrBefore(series, day("2026-09-30"))).toBeNull();
@@ -207,7 +192,6 @@ describe("segment attribution (P5)", () => {
     expect(closeOnOrBefore(series, "2026-10-09")?.close.eq(D("2"))).toBe(true);
   });
 
-  // test_held_at_start_is_never_new_and_unvalued_or_stale_holdings_are_flagged
   it("held at start is never new and unvalued or stale holdings are flagged", () => {
     const base = portfolio();
     const start = startPortfolio({
@@ -230,7 +214,6 @@ describe("segment attribution (P5)", () => {
     expect(listed.has(iid("G"))).toBe(false);
   });
 
-  // test_no_negative_zero
   it("no negative zero", () => {
     const flat = new Map(
       [..."ABCDE"].map((k) => [iid(k), bars(k, { "2026-10-01": 1, "2026-10-08": 1 })] as const),

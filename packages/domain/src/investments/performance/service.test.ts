@@ -1,7 +1,4 @@
-// The pure service helpers, the benchmark proxy planning and the backfill plan. Translates
-// tests/investments/performance/test_perf_report.py::test_sample,
-// test_fixb_benchmark_proxy.py::test_reference_instrument_follows_the_market_symbol_conventions and
-// the plan / probe parts of test_perf_pipeline.py::test_import_backfill_endpoint (roles, need-from
+// The pure service helpers, the benchmark proxy planning and the backfill plan (roles, need-from
 // dates, the probe settling the quote currency). Invented values only.
 
 import { describe, expect, it } from "vitest";
@@ -24,7 +21,7 @@ import { EUR, instrument, PLN, txn } from "./testing/support.js";
 const span = (start: string, n: number): CalendarDate[] =>
   Array.from({ length: n }, (_, i) => addDays(start, i));
 
-describe("sample (test_perf_report.test_sample)", () => {
+describe("sample", () => {
   it("is daily up to ~13 months, weekly up to ~5 years, month ends beyond", () => {
     const short = span("2025-01-01", 365);
     expect(sample(short)).toEqual(["day", short.map((_, i) => i)]);
@@ -56,7 +53,7 @@ describe("range keys and ISINs", () => {
   });
 });
 
-describe("referenceInstrument (test_reference_instrument_follows_the_market_symbol_conventions)", () => {
+describe("referenceInstrument", () => {
   it("plans a guessed-alias instrument from a known market suffix only", () => {
     const planned = referenceInstrument("IUSQ.DE");
     expect([planned?.symbol, planned?.mic, planned?.currency]).toEqual(["IUSQ", "XETR", EUR]);

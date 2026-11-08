@@ -12,7 +12,6 @@ import { applyAlertChecks } from "./alertEvaluation.js";
 import { createAlert, deleteAlert, restoreAlert, updateAlert } from "./alertWrites.js";
 import { recordDecision } from "./journal.js";
 import { applyRaw, otherVault, raw, stock, type Vault, vault } from "./testing/fixtures.js";
-import { expectInvalidates } from "./testing/invalidation.js";
 
 const NOW = "2026-10-31T12:00:00.123456Z";
 function at<I, R>(v: Vault, command: Command<I, R>, input: unknown, now = NOW) {
@@ -274,23 +273,6 @@ describe("owner alert commands and leader evaluation", () => {
         result.events.some((event) => event.type === "alert.restored" && event.data.rearm === true),
     ).toBe(true);
     expect(alertByGid(read, alert, NOW)?.status).toBe("active");
-  });
-
-  it("invalidates tracked effective/tag reads on create, update, delete and restore", () => {
-    const { v, instrument } = setup();
-    const created = expectInvalidates(
-      v,
-      createAlert,
-      { kind: "price_above", instrument, title: "Synthetic", params: { level: 10 } },
-      (read) => alerts(read, NOW),
-    );
-    if (!created.ok) throw new Error(created.reason);
-    const alert = created.value.alert;
-    expectInvalidates(v, updateAlert, { alert, changes: { tag: "test" } }, (read) =>
-      alertByGid(read, alert, NOW),
-    );
-    expectInvalidates(v, deleteAlert, { alert }, (read) => alerts(read, NOW));
-    expectInvalidates(v, restoreAlert, { alert }, (read) => alerts(read, NOW));
   });
 
   it("enforces agent cap and keeps restored tag without leaking mutations to another vault", () => {

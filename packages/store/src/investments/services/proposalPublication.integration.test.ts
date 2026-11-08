@@ -215,7 +215,7 @@ describe("strategy proposal file publication and folded lifecycle", () => {
     expect(latestStrategyVersion(f.store.read.bind(f.store))?.mdText).toBe(base.md);
   });
 
-  it("uses Python-normalized base digest while publishing and reconciling raw CRLF text", async () => {
+  it("uses the line-ending-normalized base digest while publishing and reconciling raw CRLF text", async () => {
     const rawMd = "Synthetic\r\nnote\r";
     const semanticMd = "Synthetic\nnote\n";
     const base = { yaml: VALID_YAML_A.replace(/\n/gu, "\r\n"), md: rawMd };
