@@ -701,97 +701,54 @@ async function drainForUpdate(targetVersion: string): Promise<
 
 // The page never chooses a host method, path or key name. Each call uses a fresh authenticated UI
 // session so it cannot race the renderer's store relay handler.
-function creationIpc(method: "prepare" | "commit" | "inspect" | "current") {
-  const paramsSchema = {
-    prepare: nativeCreationPrepareParamsSchema,
-    commit: nativeCreationCommitParamsSchema,
-    inspect: nativeCreationInspectParamsSchema,
-    current: nativeCreationCurrentParamsSchema,
-  }[method];
-  const resultSchema = {
-    prepare: nativeCreationPrepareResultSchema,
-    commit: nativeCreationCommitResultSchema,
-    inspect: nativeCreationInspectResultSchema,
-    current: nativeCreationCurrentResultSchema,
-  }[method];
-  ipcMain.handle(`cashu:creation-${method}`, async (event, raw: unknown) => {
-    if (!desktop.exposesBridgeTo(fromMainFrame(event))) throw new Error("creation_unavailable");
-    if (!nativeAdmissionOpen()) throw new Error("creation_unavailable");
-    const parsedParams = paramsSchema.safeParse(raw);
-    if (!parsedParams.success) throw new Error("creation_invalid_params");
-    const connection = await connectUi();
-    try {
-      const full = `native.creation.${method}`;
-      if (!uiCreationAllowed(full, connection.host.protocol.minor, connection.host.features))
-        throw new Error("creation_unavailable");
-      const parsedResult = resultSchema.safeParse(await connection.call(full, parsedParams.data));
-      if (!parsedResult.success) throw new Error("creation_invalid_result");
-      return parsedResult.data;
-    } finally {
-      connection.close();
-    }
-  });
-}
-
-creationIpc("prepare");
-creationIpc("commit");
-creationIpc("inspect");
-creationIpc("current");
-
-function devicesIpc(
-  method:
-    | "revokePreview"
-    | "revokeCommit"
-    | "revokeInspect"
-    | "revokeCancel"
-    | "leaderPreview"
-    | "leaderCommit"
-    | "leaderInspect",
+/**
+ * Relays the renderer's `cashu:<ns>-<method>` calls to the host's `native.<ns>.<method>`: only for the
+ * main frame's bridge while native admission is open, with the params checked before and the result
+ * after the call, and only when the host's protocol and features allow the method. Failures are the
+ * codes `<ns>_unavailable`, `<ns>_invalid_params` and `<ns>_invalid_result`.
+ */
+function nativeIpc(
+  ns: "creation" | "devices" | "pairing",
+  allowed: (method: string, minor: number, features: readonly string[]) => boolean,
+  methods: Record<string, readonly [params: z.ZodType, result: z.ZodType]>,
 ) {
-  const paramsSchema = {
-    revokePreview: revokePreviewParamsSchema,
-    revokeCommit: revokeCommitParamsSchema,
-    revokeInspect: revokeInspectParamsSchema,
-    revokeCancel: revokeCancelParamsSchema,
-    leaderPreview: leaderPreviewParamsSchema,
-    leaderCommit: leaderCommitParamsSchema,
-    leaderInspect: leaderInspectParamsSchema,
-  }[method];
-  const resultSchema = {
-    revokePreview: revokePreviewResultSchema,
-    revokeCommit: revokeCommitResultSchema,
-    revokeInspect: revokeInspectResultSchema,
-    revokeCancel: revokeCancelResultSchema,
-    leaderPreview: leaderPreviewResultSchema,
-    leaderCommit: leaderCommitResultSchema,
-    leaderInspect: leaderInspectResultSchema,
-  }[method];
-  ipcMain.handle(`cashu:devices-${method}`, async (event, raw: unknown) => {
-    if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen())
-      throw new Error("devices_unavailable");
-    const params = paramsSchema.safeParse(raw);
-    if (!params.success) throw new Error("devices_invalid_params");
-    const connection = await connectUi();
-    try {
-      const full = `native.devices.${method}`;
-      if (!uiDevicesAllowed(full, connection.host.protocol.minor, connection.host.features))
-        throw new Error("devices_unavailable");
-      const result = resultSchema.safeParse(await connection.call(full, params.data));
-      if (!result.success) throw new Error("devices_invalid_result");
-      return result.data;
-    } finally {
-      connection.close();
-    }
-  });
+  for (const [method, [paramsSchema, resultSchema]] of Object.entries(methods)) {
+    ipcMain.handle(`cashu:${ns}-${method}`, async (event, raw: unknown) => {
+      if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen())
+        throw new Error(`${ns}_unavailable`);
+      const params = paramsSchema.safeParse(raw);
+      if (!params.success) throw new Error(`${ns}_invalid_params`);
+      const connection = await connectUi();
+      try {
+        const full = `native.${ns}.${method}`;
+        if (!allowed(full, connection.host.protocol.minor, connection.host.features))
+          throw new Error(`${ns}_unavailable`);
+        const result = resultSchema.safeParse(await connection.call(full, params.data));
+        if (!result.success) throw new Error(`${ns}_invalid_result`);
+        return result.data;
+      } finally {
+        connection.close();
+      }
+    });
+  }
 }
 
-devicesIpc("revokePreview");
-devicesIpc("revokeCommit");
-devicesIpc("revokeInspect");
-devicesIpc("revokeCancel");
-devicesIpc("leaderPreview");
-devicesIpc("leaderCommit");
-devicesIpc("leaderInspect");
+nativeIpc("creation", uiCreationAllowed, {
+  prepare: [nativeCreationPrepareParamsSchema, nativeCreationPrepareResultSchema],
+  commit: [nativeCreationCommitParamsSchema, nativeCreationCommitResultSchema],
+  inspect: [nativeCreationInspectParamsSchema, nativeCreationInspectResultSchema],
+  current: [nativeCreationCurrentParamsSchema, nativeCreationCurrentResultSchema],
+});
+
+nativeIpc("devices", uiDevicesAllowed, {
+  revokePreview: [revokePreviewParamsSchema, revokePreviewResultSchema],
+  revokeCommit: [revokeCommitParamsSchema, revokeCommitResultSchema],
+  revokeInspect: [revokeInspectParamsSchema, revokeInspectResultSchema],
+  revokeCancel: [revokeCancelParamsSchema, revokeCancelResultSchema],
+  leaderPreview: [leaderPreviewParamsSchema, leaderPreviewResultSchema],
+  leaderCommit: [leaderCommitParamsSchema, leaderCommitResultSchema],
+  leaderInspect: [leaderInspectParamsSchema, leaderInspectResultSchema],
+});
 
 ipcMain.handle("cashu:connectors-install", async (event) => {
   if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen() || !mainWindow)
@@ -883,42 +840,12 @@ ipcMain.handle("cashu:banking-open", async (event, raw: unknown) => {
   }
 });
 
-function pairingIpc(method: "invite" | "confirm" | "inspect" | "cancel") {
-  const paramsSchema = {
-    invite: pairingInviteParamsSchema,
-    confirm: pairingConfirmParamsSchema,
-    inspect: pairingInspectParamsSchema,
-    cancel: pairingCancelParamsSchema,
-  }[method];
-  const resultSchema = {
-    invite: pairingInviteResultSchema,
-    confirm: pairingConfirmResultSchema,
-    inspect: pairingInspectResultSchema,
-    cancel: pairingCancelResultSchema,
-  }[method];
-  ipcMain.handle(`cashu:pairing-${method}`, async (event, raw: unknown) => {
-    if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen())
-      throw new Error("pairing_unavailable");
-    const params = paramsSchema.safeParse(raw);
-    if (!params.success) throw new Error("pairing_invalid_params");
-    const connection = await connectUi();
-    try {
-      const full = `native.pairing.${method}`;
-      if (!uiPairingAllowed(full, connection.host.protocol.minor, connection.host.features))
-        throw new Error("pairing_unavailable");
-      const result = resultSchema.safeParse(await connection.call(full, params.data));
-      if (!result.success) throw new Error("pairing_invalid_result");
-      return result.data;
-    } finally {
-      connection.close();
-    }
-  });
-}
-
-pairingIpc("invite");
-pairingIpc("confirm");
-pairingIpc("inspect");
-pairingIpc("cancel");
+nativeIpc("pairing", uiPairingAllowed, {
+  invite: [pairingInviteParamsSchema, pairingInviteResultSchema],
+  confirm: [pairingConfirmParamsSchema, pairingConfirmResultSchema],
+  inspect: [pairingInspectParamsSchema, pairingInspectResultSchema],
+  cancel: [pairingCancelParamsSchema, pairingCancelResultSchema],
+});
 
 function launchBase() {
   return {

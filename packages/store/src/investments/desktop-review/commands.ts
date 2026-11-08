@@ -2,10 +2,10 @@
 import { pyLen } from "@cashu/domain";
 import { z } from "zod";
 import { defineCommand, refuse } from "../../command.js";
-import { enabledModuleIds } from "../../core/queries.js";
 import { markReviewDone, undoReview } from "../commands/reviews.js";
 import { signalsOwnerCommands } from "../desktop-signals/commands.js";
 import { ownerSignalUndecided } from "../desktop-signals/conditionalAcknowledge.js";
+import { investmentsEnabled } from "../moduleGate.js";
 import { mcpReviewStats } from "../queries/mcp.js";
 import { reviewByGid } from "../queries/reviews.js";
 import { signalByGid } from "../queries/signals.js";
@@ -14,7 +14,7 @@ export const reviewPositionDecision = defineCommand({
   ...signalsOwnerCommands.positionDecision,
   id: "investments.review.positionDecision",
   run(ctx, input) {
-    if (!enabledModuleIds(ctx.read).has("investments")) return refuse("module_disabled");
+    if (!investmentsEnabled(ctx.read)) return refuse("module_disabled");
     const signals = input.signals.filter((gid) => {
       const signal = signalByGid(ctx.read, gid);
       return (
@@ -43,7 +43,7 @@ export const saveReview = defineCommand({
   id: "investments.review.save",
   input: z.object({ notes: reviewNotesSchema.nullable(), session: reviewSessionSchema }),
   run(ctx, input) {
-    if (!enabledModuleIds(ctx.read).has("investments")) return refuse("module_disabled");
+    if (!investmentsEnabled(ctx.read)) return refuse("module_disabled");
     const result = markReviewDone.run(ctx, {
       module: "investments",
       notes: input.notes,
@@ -59,7 +59,7 @@ export const undoSavedReview = defineCommand({
   ...undoReview,
   id: "investments.review.undo",
   run(ctx, input) {
-    if (!enabledModuleIds(ctx.read).has("investments")) return refuse("module_disabled");
+    if (!investmentsEnabled(ctx.read)) return refuse("module_disabled");
     if (reviewByGid(ctx.read, input.review)?.module !== "investments") return refuse("no_review");
     return undoReview.run(ctx, input);
   },

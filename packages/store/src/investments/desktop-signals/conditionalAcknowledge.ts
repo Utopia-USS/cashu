@@ -1,6 +1,6 @@
 /** Owner fan-out conditionality; generic journal/MCP editing primitives keep their own semantics. */
 import { type CommandResult, defineCommand, ok, refuse } from "../../command.js";
-import { enabledModuleIds } from "../../core/queries.js";
+import { investmentsEnabled } from "../moduleGate.js";
 import { decisionSignalGids, decisions } from "../queries/journal.js";
 import { signalByGid } from "../queries/signals.js";
 import { signalsOwnerCommands } from "./commands.js";
@@ -25,7 +25,7 @@ export const conditionalOwnerAcknowledge = defineCommand({
     signals: readonly string[];
     skipped?: "closed" | "decided";
   }> {
-    if (!enabledModuleIds(ctx.read).has("investments")) return refuse("module_disabled");
+    if (!investmentsEnabled(ctx.read)) return refuse("module_disabled");
     const signal = signalByGid(ctx.read, input.signal);
     if (!signal) return refuse("no_signal");
     if (!["active", "acknowledged"].includes(signal.status))

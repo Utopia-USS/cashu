@@ -1,21 +1,13 @@
 /** Closed owner command list; evaluation authority is neither required nor acquired here. */
-import { type Command, refuse } from "../../command.js";
-import { enabledModuleIds } from "../../core/queries.js";
+import type { Command } from "../../command.js";
 import { deleteAlert, restoreAlert, updateAlertWithBuckets } from "../commands/alertWrites.js";
 import { acknowledgeSignal, decidePosition, decideSignal } from "../commands/decisions.js";
 import { undoDecision } from "../commands/journal.js";
 import type { CurrentStrategySource } from "../desktop/sources.js";
+import { moduleGated } from "../moduleGate.js";
 
 function ownerCommand<I, R, In>(command: Command<I, R, In>): Command<I, R, In> {
-  return {
-    ...command,
-    id: command.id.replace("investments.", "investments.signals."),
-    run(ctx, input) {
-      return enabledModuleIds(ctx.read).has("investments")
-        ? command.run(ctx, input)
-        : refuse("module_disabled");
-    },
-  };
+  return moduleGated(command, command.id.replace("investments.", "investments.signals."));
 }
 export const signalsOwnerCommands = {
   decide: ownerCommand(decideSignal),

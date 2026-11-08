@@ -1,7 +1,6 @@
 /** Owner API semantics; one buffered command preserves classification/thesis atomicity. */
 import { z } from "zod";
-import { type Command, defineCommand, ok, refuse } from "../../command.js";
-import { enabledModuleIds } from "../../core/queries.js";
+import { defineCommand, ok, refuse } from "../../command.js";
 import {
   ASSET_CLASSES,
   INSTRUMENT_STATUSES,
@@ -13,6 +12,7 @@ import { classifyInstrument, setInstrumentSegment } from "../commands/instrument
 import { createThesis, updateThesis } from "../commands/journal.js";
 import { addManualTransaction } from "../commands/manual.js";
 import { updateWatchlistItem } from "../commands/watchlist.js";
+import { moduleGated } from "../moduleGate.js";
 import { vaultInstrumentGids } from "../queries/instruments.js";
 import { theses, thesisByGid } from "../queries/journal.js";
 import { instrumentRoot } from "../queries/shared.js";
@@ -20,19 +20,9 @@ import { syncPlans } from "../services/plan-effects.js";
 import type { ResearchPlanInputs } from "../services/research-plans.js";
 import { captureThesisEffect } from "../services/thesis-effects.js";
 
-function moduleCommand<I, R, In>(command: Command<I, R, In>): Command<I, R, In> {
-  return {
-    ...command,
-    run(ctx, input) {
-      return enabledModuleIds(ctx.read).has("investments")
-        ? command.run(ctx, input)
-        : refuse("module_disabled");
-    },
-  };
-}
-export const createUiBrokerageAccount = moduleCommand(addBrokerageAccount);
-export const addUiManualTransaction = moduleCommand(addManualTransaction);
-export const updateUiWatchNote = moduleCommand(updateWatchlistItem);
+export const createUiBrokerageAccount = moduleGated(addBrokerageAccount);
+export const addUiManualTransaction = moduleGated(addManualTransaction);
+export const updateUiWatchNote = moduleGated(updateWatchlistItem);
 
 const classifyPatch = z.strictObject({
   assetClass: z.enum(ASSET_CLASSES).nullable().optional(),
@@ -45,7 +35,7 @@ const classifyPatch = z.strictObject({
   aliases: z.array(z.strictObject({ namespace: z.string(), value: z.string() })).optional(),
   segment: z.string().nullable().optional(),
 });
-export const classifyUiInstrument = moduleCommand(
+export const classifyUiInstrument = moduleGated(
   defineCommand({
     id: "investments.desktop.classify",
     input: z.strictObject({ instrument: gid, patch: classifyPatch }),
@@ -86,7 +76,7 @@ export const classifyUiInstrument = moduleCommand(
 
 export function uiThesisCommands(inputs?: ResearchPlanInputs) {
   return {
-    create: moduleCommand(
+    create: moduleGated(
       defineCommand({
         id: "investments.desktop.createThesis",
         input: createThesis.input,
@@ -109,7 +99,7 @@ export function uiThesisCommands(inputs?: ResearchPlanInputs) {
         },
       }),
     ),
-    update: moduleCommand(
+    update: moduleGated(
       defineCommand({
         id: "investments.desktop.updateThesis",
         input: updateThesis.input,
