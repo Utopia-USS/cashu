@@ -16,7 +16,7 @@ import type { NativeBlobPublication } from "../../nativeBlobs.js";
 import { cliCommandKey, reportCliCommandFailure, runCliVaultCommand } from "../commandOutcome.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
-import { type InvestmentCliDeps, investmentVault } from "./context.js";
+import { type InvestmentCliDeps, investmentVaultOrRefuse } from "./context.js";
 import { UNHANDLED } from "./inspection.js";
 import { investmentCliText as M } from "./strings.js";
 
@@ -116,8 +116,9 @@ export async function importFile(
   deps: InvestmentCliDeps,
 ): Promise<number | typeof UNHANDLED> {
   const input = parse(args);
-  const vault = investmentVault(io, root, deps);
-  if (!input || !vault) return UNHANDLED;
+  if (!input) return UNHANDLED;
+  const vault = investmentVaultOrRefuse(io, root, deps);
+  if (typeof vault === "number") return vault;
   if (io.signal.aborted) return 130;
   const slug = root.profile || io.env.CASHU_PROFILE;
   const read = vault.store.read.bind(vault.store);

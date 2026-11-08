@@ -21,7 +21,7 @@ import { printConsole } from "./core/console.js";
 import { profileCommands } from "./core/profiles.js";
 import { skillsCommand } from "./core/skills.js";
 import { statsCommand } from "./core/stats.js";
-import type { StrategyCliFiles } from "./investments/context.js";
+import type { InvestmentCliDeps, StrategyCliFiles } from "./investments/context.js";
 import { investmentCommands } from "./investments/index.js";
 import { loansCommands } from "./loans/index.js";
 import type { PortedCommand } from "./tree.js";
@@ -35,6 +35,8 @@ export interface PortedDeps {
   /** Open native vaults selected by the host. */
   readonly nativeStores?: Pick<HostStores, "vaults">;
   readonly strategyFiles?: (vault: OpenVault, profileSlug: string) => StrategyCliFiles | null;
+  /** The vault's current strategy through its file authority (native hosts; reports need no UI). */
+  readonly currentStrategy?: InvestmentCliDeps["currentStrategy"];
   readonly classifier?: CategorizeProvider;
   readonly cloudClassifier?: CloudCategorizeProvider;
   readonly investmentSources?: InvestmentScreenSources;
@@ -100,6 +102,7 @@ export function portedCommands(deps: PortedDeps = {}): PortedCommand[] {
           sources: deps.investmentSources,
           performance: deps.performance,
           strategyFiles: deps.strategyFiles,
+          ...(deps.currentStrategy === undefined ? {} : { currentStrategy: deps.currentStrategy }),
           worker: deps.worker,
           searchIo: deps.investmentSearch,
         })

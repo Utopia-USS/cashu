@@ -11,7 +11,7 @@ import {
 } from "../commandOutcome.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
-import { type InvestmentCliDeps, investmentVault } from "./context.js";
+import { type InvestmentCliDeps, investmentVaultOrRefuse } from "./context.js";
 import { UNHANDLED } from "./inspection.js";
 import { columns, investmentCliText as M } from "./strings.js";
 
@@ -49,8 +49,8 @@ export async function accounts(
   deps: InvestmentCliDeps,
 ): Promise<number | typeof UNHANDLED> {
   const [action, ...rest] = args;
-  const vault = investmentVault(io, root, deps);
-  if (!vault) return UNHANDLED;
+  const vault = investmentVaultOrRefuse(io, root, deps);
+  if (typeof vault === "number") return vault;
   const read = vault.store.read.bind(vault.store);
   if (action === "list" && rest.length === 0) {
     const rows = views.accountsView(brokerageAccountFacts(read, io.t.language), null);

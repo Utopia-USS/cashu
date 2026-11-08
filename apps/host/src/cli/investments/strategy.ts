@@ -12,7 +12,7 @@ import {
 import { cliCommandKey, runCliVaultCommand } from "../commandOutcome.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
-import { type InvestmentCliDeps, investmentVault } from "./context.js";
+import { type InvestmentCliDeps, investmentVaultOrRefuse, refuse } from "./context.js";
 import { UNHANDLED } from "./inspection.js";
 import { investmentCliText as M, strategyState } from "./strings.js";
 
@@ -45,11 +45,13 @@ export async function strategy(
   if (action === "validate" && rest.length) return UNHANDLED;
   const parsed = action === "init" ? initArgs(rest) : null;
   if (action === "init" && !parsed) return UNHANDLED;
-  const vault = investmentVault(io, root, deps);
+  const vault = investmentVaultOrRefuse(io, root, deps);
+  if (typeof vault === "number") return vault;
   const slug = root.profile || io.env.CASHU_PROFILE;
-  if (!vault || !slug || !deps.strategyFiles) return UNHANDLED;
-  const source = deps.strategyFiles(vault, slug);
-  if (!source) return UNHANDLED;
+  if (!slug) return refuse(io, { kind: "profile_required" });
+  const source = deps.strategyFiles?.(vault, slug) ?? null;
+  if (!source)
+    return refuse(io, { kind: "strategy_unavailable", slug, reason: "strategy_files_unbound" });
   if (action === "init" && !source.createAbsent) return UNHANDLED;
   if (action === "init" && parsed?.force && !source.replaceForced) {
     io.stderr(`${io.t.tr(M.forceUnavailable)}\n`);

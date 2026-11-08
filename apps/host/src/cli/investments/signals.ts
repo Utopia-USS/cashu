@@ -2,7 +2,7 @@ import { allSignals, openSignals } from "@cashu/store/investments/queries";
 import { richTable } from "../budget/richTable.js";
 import { printConsole } from "../core/console.js";
 import type { CommandIo } from "../tree.js";
-import { type InvestmentCliDeps, investmentVault } from "./context.js";
+import { type InvestmentCliDeps, investmentVaultOrRefuse } from "./context.js";
 import { UNHANDLED } from "./inspection.js";
 import { columns, investmentCliText as M } from "./strings.js";
 
@@ -13,8 +13,8 @@ export function signals(
   deps: InvestmentCliDeps,
 ): number | typeof UNHANDLED {
   if (args.length > 1 || (args.length === 1 && args[0] !== "--history")) return UNHANDLED;
-  const vault = investmentVault(io, root, deps);
-  if (!vault) return UNHANDLED;
+  const vault = investmentVaultOrRefuse(io, root, deps);
+  if (typeof vault === "number") return vault;
   const read = vault.store.read.bind(vault.store);
   const history = args[0] === "--history";
   const rows = history

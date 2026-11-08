@@ -12,7 +12,12 @@ import {
   watch,
 } from "node:fs";
 import { join } from "node:path";
-import type { StrategyDoc } from "@cashu/store/investments/services";
+import {
+  type CurrentStrategySnapshot,
+  strategySnapshot,
+} from "@cashu/store/investments/screen-sources";
+import { STRATEGY_MD, STRATEGY_YAML, type StrategyDoc } from "@cashu/store/investments/services";
+import type { Read } from "@cashu/store/query";
 import type { StrategyCliFiles } from "./cli/investments/context.js";
 import {
   type StrategyDirectoryAuthority,
@@ -266,4 +271,39 @@ export function nativeStrategyDocuments(
       return stop;
     },
   };
+}
+
+/**
+ * The vault's current strategy, read once straight through its file authority: what a CLI report
+ * needs without a strategy image published by a UI session. The files are read as the strategies
+ * screen reads them (fixed names, normalized line ends, an unreadable file as `readError`).
+ */
+export function nativeCurrentStrategy(
+  authority: StrategyDirectoryAuthority,
+  read: Read,
+): CurrentStrategySnapshot {
+  const unavailable = { status: "unavailable", reason: "current_files_unavailable" } as const;
+  if (!authority.isCurrent()) return unavailable;
+  let files: { yaml: string | null; md: string | null; readError: string | null };
+  try {
+    const dir = strategyDirectoryAccess(authority);
+    const fixed = (name: typeof STRATEGY_YAML | typeof STRATEGY_MD) => {
+      const text = dir.readFixed(name);
+      return text === null ? null : normalized(text);
+    };
+    files = { yaml: fixed(STRATEGY_YAML), md: fixed(STRATEGY_MD), readError: null };
+  } catch {
+    files = {
+      yaml: null,
+      md: null,
+      readError: "cannot read the strategy files: strategy_file_unreadable",
+    };
+  }
+  if (!authority.isCurrent()) return unavailable;
+  return strategySnapshot(read, {
+    vault: authority.vault,
+    generation: randomUUID(),
+    revision: randomUUID(),
+    files,
+  });
 }

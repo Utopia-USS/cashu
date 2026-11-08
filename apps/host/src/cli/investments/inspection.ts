@@ -5,7 +5,7 @@ import { richTable } from "../budget/richTable.js";
 import { printConsole } from "../core/console.js";
 import { S } from "../strings.js";
 import type { CommandIo } from "../tree.js";
-import { type InvestmentCliDeps, investmentVault } from "./context.js";
+import { type InvestmentCliDeps, investmentVault, investmentVaultOrRefuse } from "./context.js";
 
 export const UNHANDLED = { kind: "unhandled" } as const;
 
@@ -41,8 +41,8 @@ export async function localSearch(
   } catch {
     return UNHANDLED;
   }
-  const vault = investmentVault(io, root, deps);
-  if (!vault) return UNHANDLED;
+  const vault = investmentVaultOrRefuse(io, root, deps);
+  if (typeof vault === "number") return vault;
   const current = () =>
     !io.signal.aborted &&
     deps.stores.vaults.get(vault.id) === vault &&

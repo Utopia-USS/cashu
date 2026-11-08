@@ -8,6 +8,7 @@ import { PerformanceService } from "@cashu/store/investments/performance";
 import { brokerageAccounts, importBatches } from "@cashu/store/investments/queries";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "../../host.js";
+import { createProductionMarket } from "../../market/production.js";
 import { cleanup, tempDir, testHostOptions } from "../../testing/harness.js";
 import { nativeVaultFixture } from "../../testing/nativeVaultFixture.js";
 import { type CommandIo, runTree } from "../tree.js";
@@ -134,7 +135,7 @@ it("answers native investment commands over a real socket and refuses unavailabl
   }
 });
 
-it("adds and reads a brokerage account through a genuine encrypted native host socket", async () => {
+it("adds and reads a brokerage account through a genuine encrypted native host socket, with no UI session", async () => {
   const fixture = await nativeVaultFixture({ modules: ["investments"] });
   chmodSync(join(fixture.dataDir, "vaults"), 0o700);
   chmodSync(join(fixture.dataDir, "vaults", fixture.vaultId), 0o700);
@@ -146,6 +147,17 @@ it("adds and reads a brokerage account through a genuine encrypted native host s
       build: "test",
       launcher: false,
       vaultSource: fixture.vaultSource,
+      // The production market runtime, offline: reports value positions from the vault alone.
+      marketFactory: (stores, isCurrent, now) =>
+        createProductionMarket({
+          stores,
+          isCurrent,
+          now,
+          language: () => "en",
+          fetch: async () => {
+            throw new Error("no network in this test");
+          },
+        }),
     });
     const execute = async (argv: string[]) => {
       const connection = await connectHost({
@@ -225,6 +237,22 @@ it("adds and reads a brokerage account through a genuine encrypted native host s
     expect(imported.result).toEqual({ kind: "exit", code: 0 });
     expect(imported.notes.join(" ")).toContain("Imported");
     expect(importBatches(vault.store.read.bind(vault.store))).toHaveLength(1);
+    // Reports read the strategy through the vault's file authority: no UI session ever connected.
+    expect(host.server.sessionCounts().ui).toBe(0);
+    const positions = await execute([...prefix, "positions"]);
+    expect(positions.result).toEqual({ kind: "exit", code: 0 });
+    expect(positions.notes.join(" ")).toContain("Positions as of");
+    const performance = await execute([...prefix, "performance"]);
+    expect(performance.result).toEqual({ kind: "exit", code: 0 });
+    const signals = await execute([...prefix, "signals"]);
+    expect(signals.result).toEqual({ kind: "exit", code: 0 });
+    // A command that cannot run says why, not "unknown command".
+    const unknownProfile = await execute(["-p", "missing", "invest", "positions"]);
+    expect(unknownProfile.result).toEqual({ kind: "exit", code: 1 });
+    expect(unknownProfile.notes.join(" ")).toContain(
+      'No profile \\"missing\\" is open in this cashU background service.',
+    );
+    expect(unknownProfile.notes.join(" ")).not.toContain("Unknown or unsupported command");
     let release: (() => void) | undefined;
     let entered: (() => void) | undefined;
     const enteredQueue = new Promise<void>((resolve) => {

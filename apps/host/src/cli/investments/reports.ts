@@ -6,7 +6,12 @@ import { richTable } from "../budget/richTable.js";
 import { printConsole } from "../core/console.js";
 import { S } from "../strings.js";
 import type { CommandIo } from "../tree.js";
-import { type InvestmentCliDeps, investmentContext, performanceStrategy } from "./context.js";
+import {
+  type InvestmentCliDeps,
+  investmentContext,
+  performanceStrategy,
+  refuse,
+} from "./context.js";
 import { UNHANDLED } from "./inspection.js";
 
 const num = (value: number | null | undefined, digits = 2): string =>
@@ -47,7 +52,7 @@ export function positions(
     return UNHANDLED;
   }
   const context = investmentContext(io, root, deps);
-  if (!context) return UNHANDLED;
+  if ("kind" in context) return refuse(io, context);
   const read = context.vault.store.read.bind(context.vault.store);
   const result = readPositions(read, {
     ...context.market,
@@ -159,7 +164,7 @@ export function performance(
     return UNHANDLED;
   }
   const context = investmentContext(io, root, deps);
-  if (!context) return UNHANDLED;
+  if ("kind" in context) return refuse(io, context);
   const request = {
     ...context.market,
     asOf: context.asOf,

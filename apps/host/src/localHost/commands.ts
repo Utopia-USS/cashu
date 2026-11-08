@@ -14,7 +14,7 @@ import type { PortedCommand } from "../cli/tree.js";
 import type { ConnectorCatalog } from "../connectors/catalog.js";
 import type { createNativeCreationService } from "../nativeCreation.js";
 import { readExistingNativeInventory } from "../nativeInventory.js";
-import { nativeStrategyCliFiles } from "../nativeStrategyDocuments.js";
+import { nativeCurrentStrategy, nativeStrategyCliFiles } from "../nativeStrategyDocuments.js";
 import { type HostRuntime, shippedConnectorsSource } from "../runtime.js";
 import type { HostStores } from "../stores.js";
 import type { StrategyScreenCapability } from "../strategiesScreen.js";
@@ -80,6 +80,16 @@ export function hostedCommands(input: {
       if (capability?.vault === vault.id && capability.isCurrent()) return capability.files;
       const authority = vault.native.strategyDirectoryAuthority();
       return authority === null ? null : nativeStrategyCliFiles(authority);
+    },
+    // Reports read the strategy through the vault's own file authority, as the MCP tools and the
+    // worker do: they need no strategy image a UI session published.
+    currentStrategy: (vault) => {
+      if (vault.mode !== "native" || !vault.native.isCurrent())
+        return { status: "unavailable", reason: "native_vault_unavailable" };
+      const authority = vault.native.strategyDirectoryAuthority();
+      if (authority === null || authority.vault !== vault.id)
+        return { status: "unavailable", reason: "strategy_file_authority_unavailable" };
+      return nativeCurrentStrategy(authority, vault.store.read.bind(vault.store));
     },
     classifier: options.budgetClassifiers?.local,
     cloudClassifier: options.budgetClassifiers?.cloud,

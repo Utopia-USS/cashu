@@ -25,6 +25,36 @@ export const S = {
     pl: "Konto o tym GID nie należy do wybranego profilu inwestycyjnego.",
     en: "No brokerage account with that GID belongs to the selected investment profile.",
   },
+  // Why an investments command cannot run for the selected profile (exit 1).
+  investmentProfileRequired: {
+    pl: "Wybierz profil: `cashu --profile PROFIL invest ...` (albo ustaw CASHU_PROFILE).",
+    en: "Choose a profile: `cashu --profile PROFILE invest ...` (or set CASHU_PROFILE).",
+  },
+  investmentProfileUnknown: {
+    pl: (slug: string) =>
+      `Profil „${slug}” nie jest otwarty w tej usłudze cashU. \`cashu profiles list\` pokazuje profile.`,
+    en: (slug: string) =>
+      `No profile "${slug}" is open in this cashU background service. \`cashu profiles list\` shows the profiles.`,
+  },
+  investmentProfileAmbiguous: {
+    pl: (slug: string) =>
+      `Więcej niż jeden otwarty sejf ma profil „${slug}”; nic nie zostało wykonane.`,
+    en: (slug: string) => `More than one open vault has the profile "${slug}"; nothing was run.`,
+  },
+  investmentModuleOff: {
+    pl: (slug: string) => `Moduł inwestycji nie jest włączony w profilu „${slug}”.`,
+    en: (slug: string) => `The investments module is not enabled for the profile "${slug}".`,
+  },
+  investmentStrategyUnavailable: {
+    pl: (slug: string, reason: string) =>
+      `Nie można teraz odczytać plików strategii profilu „${slug}” (${reason}). Spróbuj ponownie za chwilę.`,
+    en: (slug: string, reason: string) =>
+      `The strategy files of the profile "${slug}" cannot be read right now (${reason}). Try again in a moment.`,
+  },
+  investmentMarketUnavailable: {
+    pl: "Dane rynkowe są niedostępne w tej usłudze cashU w tle, więc nie można wycenić inwestycji.",
+    en: "Market data is unavailable in this cashU background service, so the investments cannot be valued.",
+  },
   investmentSearchUnavailable: {
     pl: "Wyszukiwanie online jest niedostępne; pokazuję instrumenty z tego profilu.",
     en: "Online search is unavailable; showing this profile's instruments.",
