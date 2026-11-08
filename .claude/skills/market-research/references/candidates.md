@@ -74,15 +74,15 @@ szczytem, a sprzedaż dalej rośnie"); the numbers stay in the criteria.
 | `thesis_relation` | `none` |
 | `details` | structured criteria, below |
 | `segment` | never: a candidate note has no `segment` (the tool refuses it); name the segment in the summary when it matters |
-| `title` | `<Name>: <what matches> (<entry type in Polish>)` |
+| `title` | `<Name>: <what matches> (<entry type in the owner's language>)` |
 | `summary` | the facts behind each criterion with dates, the context (segment, bucket), what is unknown |
 
 `details` (the app renders one line per criterion: `✓` met, `·` not met, threshold in brackets).
 Allowed keys: `entry_type` (required), `criteria` (required, at most 12, each `{text, met, threshold}`,
 text at most 160 characters, threshold at most 60 or null), `criteria_version` (the strategy version,
 integer), `bucket` (at most 40 characters), `context` (one line, at most 200 characters; the review deck
-shows it under the candidate's name, so it says why the idea fits, in plain Polish, never where the
-criteria came from or which tool was unavailable: `notes.md` "Plain Polish for the owner"):
+shows it under the candidate's name, so it says why the idea fits, in plain words in the owner's language, never where the
+criteria came from or which tool was unavailable: `notes.md` "Plain language for the owner"):
 
 ```json
 {

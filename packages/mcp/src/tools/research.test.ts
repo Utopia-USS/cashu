@@ -627,6 +627,20 @@ describe("native research MCP tools", () => {
         .filter((row) => row.rule_id.startsWith("plan:")),
     ).toHaveLength(0);
   });
+  it("asks before saving forecast wording and saves it once the agent confirms", async () => {
+    const s = await setup("strict", false);
+    const forecast = { ...NOTE, instrument: "ABC", title: "Kurs wzrośnie do 50 zł po wynikach" };
+    const first = await s.server.call("add_research_note", forecast);
+    expect(first.ok).toBe(false);
+    expect(first.error).toContain("not saved yet: title");
+    expect(first.error).toContain("set_recommendations");
+    expect(s.batches).toHaveLength(0);
+    const second = await s.server.call("add_research_note", { ...forecast, wording_ok: true });
+    expect(second.ok).toBe(true);
+    expect(JSON.stringify(body(second).warnings)).toContain("title: saved as written");
+    expect(s.batches[0]?.some((event) => event.type === "note.added")).toBe(true);
+  });
+
   it("permits a valid base note and research signal without an optional plan provider", async () => {
     const s = await setup("strict", false);
     const out = await s.server.call("add_research_note", { ...NOTE, instrument: "ABC" });

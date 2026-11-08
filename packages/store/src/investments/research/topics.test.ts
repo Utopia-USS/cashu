@@ -71,7 +71,7 @@ describe("market view wording", () => {
     "Cena złota wzrośnie do 3000 USD w 2027.",
     "Fed prognozuje, że indeks Nasdaq zyska 20 % w 2027.",
     "The S&P 500 will reach 7000 by 2027.",
-  ])("price calls and advice are refused: %s", (wording) => {
+  ])("price calls and advice are warned about: %s", (wording) => {
     expect(research.marketViewProblem(wording)).toBe(true);
   });
 
@@ -134,12 +134,13 @@ describe("the market view under a topic thesis", () => {
     expect(row?.view_updated_at).toBeTruthy();
     expect(row?.view_sources[0]?.url).toBe(SOURCES[0]?.url);
     expect(row?.view_sources[0]?.published_at).toBe("2026-09-24");
-    expect(
-      refusal(v.run(setTopicMarketView, { ...input, outlook: "Kurs akcji wzrośnie o 40%." })),
-    ).toBe("invalid_view");
-    expect(problem(() => research.validateOutlook("Kurs akcji wzrośnie o 40%.", true))).toContain(
+    // Price-call wording is a warning (the MCP layer reports it), never a refusal.
+    expect(research.marketViewWarnings({ outlook: "Kurs akcji wzrośnie o 40%." })).toEqual([
       "outlook",
-    );
+    ]);
+    expect(problem(() => research.validateOutlook("Kurs akcji wzrośnie o 40%.", true))).toBe("");
+    const vague = "Popyt na roboty rośnie, ryzykiem jest cykl.";
+    expect(refusal(v.run(setTopicMarketView, { ...input, outlook: vague }))).toBe("invalid_view");
     expect(refusal(v.run(setTopicMarketView, { ...input, segment: "macro_risk" }))).toBe(
       "macro_segment",
     );
@@ -284,14 +285,9 @@ describe("the market view under a topic thesis", () => {
     body = view(v);
     expect([body?.assessment, body?.outlook]).toEqual([ASSESSMENT, null]);
     expect(body?.view_sources).toHaveLength(1);
-    expect(
-      refusal(
-        v.run(setTopicMarketView, {
-          ...owner,
-          assessment: "Cel cenowy 300 USD dla lidera sektora.",
-        }),
-      ),
-    ).toBe("invalid_view");
+    // The owner's own wording is never refused, price targets included.
+    v.value(setTopicMarketView, { ...owner, assessment: "Cel cenowy 300 USD dla lidera sektora." });
+    expect(view(v)?.assessment).toBe("Cel cenowy 300 USD dla lidera sektora.");
     v.value(setTopicMarketView, owner);
     body = view(v);
     expect([body?.assessment, body?.outlook, body?.view_updated_at]).toEqual([null, null, null]);

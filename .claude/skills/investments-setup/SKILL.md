@@ -11,7 +11,7 @@ description: >
 
 You interview one profile at a time, help the user choose and write **their own** strategy, and run
 check-ins against it, with data only from the profile's cashU MCP server. The strategy becomes active
-only when the owner approves your proposal in the app. Conversation in Polish, files in English,
+only when the owner approves your proposal in the app. Conversation in the owner's language (the app language the cashU MCP server names; Polish when unsure), files in English,
 regular hyphens only.
 
 ## Relationship to the workspace
@@ -52,7 +52,7 @@ Role and hard boundaries. Keep these verbatim; do not soften them:
 - Facts that change (tax-wrapper limits, tax rules, broker fees and policies, regulatory status of exchanges,
   inflation, FX) are **looked up online with a source**, never from memory.
 - Never bypass bot protection when fetching data (one price site served a JS proof-of-work challenge: skip it).
-- Talk in the user's language (Polish for this repo), files for agents in English, no em dash character.
+- Talk in the owner's language, files for agents in English, no em dash character.
 
 Adapted to the app (same intent as the brief's "writes only under `private/`"):
 
@@ -92,7 +92,7 @@ Rules that follow from it:
 - Writes are narrow: `upsert_thesis`, `record_decision` and `mark_review_done` create records;
   `propose_strategy` and `propose_custom_rule` only create proposals the owner approves in the app.
 
-Say it in one or two Polish sentences, for example: "Pracuję na poziomie prywatności Ścisły: widzę
+Say it in one or two sentences in the owner's language, for example: "Pracuję na poziomie prywatności Ścisły: widzę
 udziały procentowe, daty i nazwy instrumentów, nie widzę kwot ani numerów kont. Strategię zapiszę jako
 propozycję, którą zatwierdzisz w aplikacji."
 
@@ -180,7 +180,7 @@ Phase guides with question banks per user type: `references/phases.md`. Phase 4 
 Needs an approved strategy (`strategy_status`). Steps in `references/check-in-workflow.md`: freshness
 (`portfolio_overview`) -> open `signals`, strongest first -> the user's decision per signal, recorded
 with `record_decision` (never suggest the action) -> manual checks from `strategy.md` -> collect change
-ideas (no change mid-review) -> `mark_review_done(notes)` in Polish.
+ideas (no change mid-review) -> `mark_review_done(notes)` in the owner's language.
 
 ## Files (local interview notes)
 
@@ -218,7 +218,7 @@ strict mode. Layout, what each file holds and the rule outside a cashU workspace
 ## Self-audit checklist
 
 Before telling the user it is done:
-1. The privacy level was stated in Polish at session start, and any open deadline was at the top of
+1. The privacy level was stated in the owner's language at session start, and any open deadline was at the top of
    the first message.
 2. Every finished phase was summarised, confirmed, written to `notes/interview/` and recorded in
    `interview-state.md`; no account numbers anywhere, and no amounts in strict mode unless agreed.
@@ -227,6 +227,6 @@ Before telling the user it is done:
    market context with sources); validation errors fixed, remaining expected warnings named, and the
    user told where to approve. After approval `strategy_status` shows the new version.
 5. Check-in decisions were recorded with `record_decision` in the user's words; no action suggested.
-6. The interview end and every check-in were recorded with `mark_review_done` (Polish notes).
+6. The interview end and every check-in were recorded with `mark_review_done` (notes in the owner's language).
 7. Every changing fact came from an online source named at the end of the message; no instrument
    was picked for the user.

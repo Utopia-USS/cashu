@@ -95,8 +95,10 @@ Every row is `{instrument, strength, strength_basis, recommendation?, reason}`:
   instrument under consideration still names its entry conditions (first tranche now or not, what
   unlocks the next tranche, what blocks entry; `references/candidate-evaluation-pattern.md`).
   `buy_asap` and `exit_asap` require a clear, time-sensitive reason.
-- **Reason** (`reason`, required): one or two short Polish sentences (max 280 characters, no amounts)
-  naming the facts the assessment rests on; the app shows it under the thesis. Without a
+- **Reason** (`reason`, required): one or two short sentences in the owner's language (max 280 characters, no personal amounts or sizes)
+  naming the facts the assessment rests on; the app shows it under the thesis. A price target or
+  price forecast appears only when the owner's strategy defines how to compute it, with the method
+  named (`Cel 52 zł z wyceny DCF ze strategii.`). Without a
   recommendation it describes the thesis state, never `kup` / `sprzedaj` / `dokup` / `redukuj`:
   `Teza spełniona: kontrakt podpisany w październiku, cel z planu wyjścia osiągnięty.` /
   `Teza na dobrej drodze, ale dwa z pięciu wskaźników makro działają przeciw.`
@@ -119,7 +121,7 @@ Then call `finish_research_run(run_id, counts)` with your own counters only (the
 notes, kinds and signals itself): `{"sources_checked": n, "instruments_covered": n,
 "segments_covered": n, "candidates_screened": n, "skipped": n}`, where `segments_covered` = segments
 checked in step 6 (with or without a note) and `skipped` = duplicates, blocked sources and refused
-notes together. Then a short Polish summary in the session (at most 15 lines): notes per part
+notes together. Then a short summary in the owner's language in the session (at most 15 lines): notes per part
 (segments with a note by label), notes that created signals (title and relation), weakened,
 invalidated or fulfilled theses by symbol, position strengths and recommendations changed by symbol, alerts proposed (symbol, kind, reason), blocked
 sources, no candidate criteria in the strategy (if so), for early-stage or SPAC names the two rankings (potential / upside and risk-adjusted) and which owner entry-plan triggers or blockers were hit (or which instruments have no plan yet), what to look at on Sunday.

@@ -35,6 +35,7 @@ import {
   BRIEF_HEADLINE_MAX,
   BRIEF_ITEM_MAX,
   BRIEF_WHY_MAX,
+  noteWordingWarnings,
   ResearchInputError,
   validateNote,
   validateScope,
@@ -80,6 +81,11 @@ function problems(changes: Record<string, unknown> = {}): string {
     throw error;
   }
   throw new Error("expected ResearchInputError");
+}
+
+/** The fields a valid note is warned about (forecast, call or price-target wording); never refused. */
+function warned(changes: Record<string, unknown> = {}): string[] {
+  return noteWordingWarnings(validateNote(raw(changes), NOW));
 }
 
 function brief(changes: Record<string, unknown>): Record<string, unknown> {
@@ -151,10 +157,10 @@ describe("brief validation (test_p9_briefs.py)", () => {
     "Ropa podrożeje zimą",
     "Miedź stanieje po decyzji Chin",
     "Kurs odbije po korekcie",
-  ])("brief refuses forecast and call words: %s", (text) => {
+  ])("brief warns about forecast and call words: %s", (text) => {
     expect(forecastProblem(text)).toBe(true);
-    expect(problems(brief({ headline: head(text, 80) }))).toContain("reads like a forecast");
-    expect(problems(brief({ why: `${text} i coś jeszcze.` }))).toContain("reads like a forecast");
+    expect(warned(brief({ headline: head(text, 80) }))).toEqual(["details.brief.headline"]);
+    expect(warned(brief({ why: `${text} i coś jeszcze.` }))).toEqual(["details.brief.why"]);
   });
 
   // test_plain_condition_words_are_fine
@@ -210,20 +216,39 @@ describe("brief validation (test_p9_briefs.py)", () => {
     "MFW prognozuje wzrost PKB. Rynek będzie rósł dalej",
     "Rynek będzie rósł, bo tak prognozuje rynek",
     "Według MFW warto kupić akcje banków",
-  ])("unattributed, own, analyst and price forecasts are still refused: %s", (text) => {
+  ])("unattributed, own, analyst and price forecasts are still warned about: %s", (text) => {
     expect(forecastProblem(text) || claimProblem(text), text).toBe(true);
-    expect(problems(brief({ why: `${text}.` }))).toContain("reads like a forecast");
+    expect(warned(brief({ why: `${text}.` }))).toEqual(["details.brief.why"]);
   });
 
   // test_a_note_summary_may_cite_an_institutional_trend_forecast_but_not_a_price_call
-  it("a note summary may cite an institutional trend forecast but not a price call", () => {
+  it("a note summary may cite an institutional trend forecast; a price call is saved with a warning", () => {
     const ok = "Według projekcji NBP inflacja spadnie do 2,5 % w 2027; RPP utrzymała stopy.";
     expect(validateNote(raw({ summary: ok }), NOW).summary).toBe(ok);
+    expect(warned({ summary: ok })).toEqual([]);
     for (const bad of [
       "Kurs wzrośnie do 50 zł w tym roku po wynikach.",
       "Fed prognozuje, że kurs akcji banków wzrośnie do 50 USD.",
     ]) {
-      expect(problems({ summary: bad }), bad).toContain("notes carry sourced facts");
+      expect(validateNote(raw({ summary: bad }), NOW).summary, bad).toBe(bad);
+      expect(warned({ summary: bad }), bad).toEqual(["summary"]);
+    }
+  });
+
+  it("English forecast wording is warned about like the Polish one; facts pass", () => {
+    for (const text of [
+      "Chip demand will rise next year",
+      "Shares are going to fall after results",
+      "We predict a rebound in memory prices",
+      "The stock will reach 300 by spring",
+    ]) {
+      expect(warned(brief({ headline: head(text, 80) })), text).toEqual(["details.brief.headline"]);
+    }
+    for (const text of [
+      "Chip stocks sell off after results",
+      "IMF forecasts global growth of 3.1 % in 2027",
+    ]) {
+      expect(warned(brief({ headline: head(text, 80) })), text).toEqual([]);
     }
   });
 

@@ -1,17 +1,25 @@
 /**
- * The phrase checks of research validation (`research/validation.py`): the Python pattern sources,
- * verbatim (matching data, Polish and English; `patterns.test.ts` byte-hashes them against the
- * Python module), compiled with Python `re` semantics by `pyRegex`.
+ * The phrase checks of research validation (`research/validation.py`): the Python pattern sources
+ * (matching data, Polish and English; the English forecast words of `FORECAST_PATTERN` were added
+ * here), compiled with Python `re` semantics by `pyRegex`. Every check is a warning to the agent,
+ * never a refusal.
  */
 
 import { pyRegex } from "../../pyRegex.js";
 import { PY_WS } from "../../text.js";
 
-/** Words a brief never uses (P9): a forecast (`wzrośnie`, `spadnie`, `będzie`, `podrożeje`, ...), a call (`kupuj`, `sprzedaj`) or a price target (`cel cenowy`). */
+/**
+ * Words a brief or headline should not use (P9, a warning): a forecast (`wzrośnie`, `spadnie`,
+ * `będzie`, `podrożeje`, `will rise`, `will be`, `going to fall`, ...), a call (`kupuj`, `sprzedaj`)
+ * or a price target (`cel cenowy`). The English alternatives mirror the Polish ones for an agent
+ * writing in English (the app language); bare `buy` / `sell` stay allowed (`sell-off` is a fact).
+ */
 export const FORECAST_PATTERN =
   String.raw`(?i)\b(?:wzro[sś]n(?:ie|[aą])|ur[oó][sś]n(?:ie|[aą])|spadn(?:ie|[aą])|b[eę]dzie|b[eę]d[aą]` +
   "|podro[zż]eje|podro[zż]ej[aą]|stanieje|staniej[aą]|potanieje|potaniej[aą]|odbij(?:e|[aą])" +
-  String.raw`|prognoz\w*|kupuj(?:cie)?|sprzedaj(?:cie)?|cel\w*\s+cenow\w*|cen\w*\s+docelow\w*)(?!\w)`;
+  String.raw`|prognoz\w*|kupuj(?:cie)?|sprzedaj(?:cie)?|cel\w*\s+cenow\w*|cen\w*\s+docelow\w*` +
+  String.raw`|(?:will|won't|going\s+to)\s+(?:not\s+)?(?:rise|grow|fall|drop|increase|decrease|rebound` +
+  String.raw`|recover|climb|surge|soar|plunge|double|be)|forecast\w*|predict\w*)(?!\w)`;
 
 /** Recommendations, analyst ratings and price targets (the part `_ADVICE` and `_MARKET_ADVICE` share). */
 export const ADVICE_CORE_PATTERN =

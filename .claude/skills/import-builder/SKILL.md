@@ -18,7 +18,7 @@ the owner enters in the app. The full contract is `references/connectors.md`. Yo
 TypeScript on Deno (the app ships Deno, so it runs in the downloaded app with nothing installed), ask
 first whether the user hands over the export with values or prefers the blind route (`inspect_export`),
 test with the MCP tool `test_connector` and install with `propose_connector`. Alternatives: a one-off converter
-(`validate_import` / `propose_import`) or a generic CSV mapping. Conversation in Polish, files in
+(`validate_import` / `propose_import`) or a generic CSV mapping. Conversation in the owner's language (the app language the cashU MCP server names; Polish when unsure), files in
 English, regular hyphens only.
 
 ## Relationship to the workspace
@@ -140,7 +140,7 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
    tools; the downloaded app alone has none): `run: [python3, connector.py]`, standard library only,
    examples `budget-csv-example`, `investments-json-example`, `fetch-example`. Follow
    `references/connectors.md` (manifest, protocol, sandbox, value-free messages). Labels and the name in
-   the manifest in Polish (the owner sees them). Never put real values in the directory: the owner sees
+   the manifest in the owner's language (the owner sees them). Never put real values in the directory: the owner sees
    every file, and test samples stay synthetic.
 6. **Test on synthetic data:** build a small sample with the same columns, labels and quirks and
    invented values inside the workspace (e.g. `connectors/<id>/sample.csv`), then
@@ -231,7 +231,7 @@ moves or changes the old files; you bring the data over blind, through the impor
 ```yaml
 api_version: 1
 id: <id>
-name: <Polish name the owner sees>
+name: <name the owner sees, in the owner's language>
 version: 0.1.0
 module: budget            # or investments
 kind: file

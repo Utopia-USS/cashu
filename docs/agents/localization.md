@@ -11,7 +11,13 @@ labels the backend renders (category names, macro cards, alert and signal texts,
 names), CLI output and OS notifications. Two kinds of text are **not** localized:
 
 - **Agent content** - research notes, theses, recommendations, market views written by the user's agent
-  over MCP. They are shown as the agent wrote them; the language is the agent's choice.
+  over MCP. They are shown as the agent wrote them, in the **app language**: the MCP server names it
+  in its `instructions` at each session start (`instructionsFor` in `packages/mcp`, read from the
+  device pin by `apps/host/src/language.ts`, the same rule the window follows), the workspace
+  CLAUDE.md and the shipped skills tell the agent to write everything the owner reads in it (Polish
+  when unsure), so the app and the agent never mix languages. Content already stored stays as
+  written. The note wording check (`research/patterns.ts`) knows Polish and English forecast and
+  advice wording; it warns, never refuses.
 - **Matching data** - CSV headers, taxonomy keyword rules, installment phrases, LLM prompts, the word
   lists of `packages/domain/src/investments/research/validation.ts` and `similarity.ts`. They match Polish bank and news text;
   translating them breaks matching ([conventions.md](conventions.md) "Language").

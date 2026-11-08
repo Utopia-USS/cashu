@@ -474,7 +474,10 @@ function candidateMatch(ctx: CommandContext, key: string, owned: ReadonlySet<str
 export interface AddedNote {
   readonly note: string;
   readonly signal: SyncResult | null;
-  /** Value-free warning codes (`not_held_or_watched`: the instrument only carries an alert). */
+  /**
+   * Value-free warning codes: `not_held_or_watched` (the instrument only carries an alert),
+   * `wording:<field>` (the field reads like a forecast, a call or a price target; saved as written).
+   */
   readonly warnings: readonly string[];
 }
 
@@ -602,6 +605,7 @@ export function researchNoteCommand(afterAdded?: (ctx: CommandContext, row: Rese
       }
       const warnings: string[] = [];
       if (instrument !== null && !owned.has(instrument)) warnings.push("not_held_or_watched");
+      for (const where of research.noteWordingWarnings(data)) warnings.push(`wording:${where}`);
 
       const note = ctx.newGid();
       const expires = research.noteExpiresAt(data, now);

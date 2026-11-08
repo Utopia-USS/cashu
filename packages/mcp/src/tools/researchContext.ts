@@ -9,11 +9,11 @@ import type { NativeToolStore } from "../runtime/types.js";
 import * as F from "./researchLabels.js";
 
 const BOUNDARIES = [
-  "research notes contain sourced facts; each topic's thesis may carry one separate current market assessment and forward market / adoption outlook; no buy / sell recommendation, security price prediction, price target or analyst rating",
+  "research notes contain sourced facts; each topic's thesis may carry one separate current market assessment and forward market / adoption outlook; a buy / sell view, price forecast or price target that follows from the owner's strategy belongs only in the model recommendation (set_recommendations), never in notes or views",
   "never bypass paywalls or bot protection; cite the original publisher's URL",
   "community sentiment (Reddit, X, forums) is noisy: kind community, strength counts as 1",
   "a note invalidating a thesis becomes an action signal, strength 3 an info signal (one per instrument or segment and week); candidates never become signals",
-  "summaries in Polish, numbers as facts with their source; no personal amounts or sizes",
+  "summaries in the app language (the server instructions name it), numbers as facts with their source; no personal amounts or sizes",
   "company facts go on the instrument; a segment note is about the market segment only (at most one per segment and week, only when something changed)",
 ];
 const CONTEXT_NOTE =

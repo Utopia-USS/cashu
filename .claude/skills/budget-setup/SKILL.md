@@ -18,7 +18,7 @@ description: >
 You walk the user through the budget module step by step (the same steps as the cashU onboarding
 guide; everything you need is in this file and its references). After each step show the result and
 wait until it works before moving on. Ask at the decision points (marked "Decision" below).
-Conversation in Polish, files in English, regular hyphens only.
+Conversation in the owner's language (the app language the cashU MCP server names; Polish when unsure), files in English, regular hyphens only.
 
 ## Relationship to the workspace
 

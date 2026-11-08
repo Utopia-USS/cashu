@@ -415,10 +415,6 @@ function criteria(issues: Issues, raw: unknown): Criterion[] | null {
   return out;
 }
 
-const FORECAST_MESSAGE =
-  "reads like a forecast, a call or a price target; a brief names facts and " +
-  "conditions (what supports / weighs on such a market), never what will happen";
-
 /**
  * `details.brief` (P9): `{headline, why, supports?, risks?}` in plain Polish for a beginner;
  * `supports` / `risks` (conditions, never predictions) only on a macro note.
@@ -442,10 +438,6 @@ function brief(issues: Issues, raw: unknown, macro: boolean): Record<string, unk
     minimum: BRIEF_WHY_MIN,
     maximum: BRIEF_WHY_MAX,
   });
-  const texts: [string, string | null][] = [
-    ["headline", headline],
-    ["why", why],
-  ];
   for (const key of ["supports", "risks"]) {
     const items = get(raw, key);
     if (isNone(items) || (Array.isArray(items) && items.length === 0)) {
@@ -466,17 +458,9 @@ function brief(issues: Issues, raw: unknown, macro: boolean): Record<string, unk
         minimum: 3,
         maximum: BRIEF_ITEM_MAX,
       });
-      if (value) {
-        parsed.push(value);
-        texts.push([`${key}[${i}]`, value]);
-      }
+      if (value) parsed.push(value);
     });
     out[key] = parsed;
-  }
-  for (const [key, value] of texts) {
-    if (forecastProblem(value) || claimProblem(value)) {
-      issues.add(`${where}.${key}`, FORECAST_MESSAGE);
-    }
   }
   if (headline === null || why === null) return null;
   return { headline, why, ...out };
@@ -626,16 +610,7 @@ function details(
     maximum: BRIEF_HEADLINE_MAX,
     required: false,
   });
-  if (headline) {
-    if (forecastProblem(headline) || claimProblem(headline)) {
-      issues.add(
-        "details.headline",
-        "reads like a forecast, a call or a price target; say what happened in plain words",
-      );
-    } else {
-      out.headline = headline;
-    }
-  }
+  if (headline) out.headline = headline;
   if (!isNone(get(raw, "valuation"))) {
     if (segment !== null && isMacroKey(segment)) {
       issues.add(
@@ -694,9 +669,41 @@ function candidate(issues: Issues, raw: unknown): CandidateInput | null {
   };
 }
 
-const CLAIM_MESSAGE =
-  "reads like a recommendation, an analyst rating or a price prediction; notes carry " +
-  "sourced facts and sentiment only";
+/**
+ * The texts of a valid note that read like a forecast, a call, a rating or a price target (P9): a
+ * warning, never a refusal. A note is a sourced fact; an opinion that follows from the owner's
+ * strategy belongs in the model's recommendation, and the agent decides whether to rewrite. Returns
+ * the field paths (`title`, `details.headline`, `details.brief.why`, ...).
+ */
+export function noteWordingWarnings(note: NoteInput): string[] {
+  const texts: [string, unknown][] = [
+    ["title", note.title],
+    ["summary", note.summary],
+    ["details.headline", note.details?.headline],
+  ];
+  const brief = note.details?.brief;
+  if (isMapping(brief)) {
+    texts.push(
+      ["details.brief.headline", get(brief, "headline")],
+      ["details.brief.why", get(brief, "why")],
+    );
+    for (const key of ["supports", "risks"]) {
+      const items = get(brief, key);
+      if (!Array.isArray(items)) continue;
+      items.forEach((item: unknown, i) => {
+        texts.push([`details.brief.${key}[${i}]`, item]);
+      });
+    }
+  }
+  const out: string[] = [];
+  for (const [where, value] of texts) {
+    if (typeof value !== "string") continue;
+    // A headline or brief also avoids plain forecast words; title and summary only advice and price calls.
+    const short = where !== "title" && where !== "summary";
+    if (claimProblem(value) || (short && forecastProblem(value))) out.push(where);
+  }
+  return out;
+}
 
 /**
  * Check one note (the MCP arguments, without instrument / run resolution, which need the store).
@@ -746,12 +753,6 @@ export function validateNote(raw: JsonObject, now: Instant): NoteInput {
     maximum: RESEARCH_SUMMARY_MAX,
     multiline: true,
   });
-  for (const [where, value] of [
-    ["title", title],
-    ["summary", summary],
-  ] as const) {
-    if (claimProblem(value)) issues.add(where, CLAIM_MESSAGE);
-  }
   const themeRaw = get(raw, "theme");
   let theme: string | null = null;
   if (!isNone(themeRaw)) {
@@ -857,13 +858,6 @@ export function validateAssessment(value: unknown): string {
     maximum: ASSESSMENT_MAX,
     multiline: true,
   });
-  if (marketViewProblem(assessment)) {
-    issues.add(
-      "assessment",
-      "reads like a recommendation or price prediction; give an analytical market view, " +
-        "not a buy / sell call or price target",
-    );
-  }
   issues.raiseIfAny();
   return assessment as string;
 }
@@ -879,17 +873,22 @@ export function validateOutlook(value: unknown, quantitative = false): string {
     maximum: OUTLOOK_MAX,
     multiline: true,
   });
-  if (marketViewProblem(outlook)) {
-    issues.add(
-      "outlook",
-      "reads like a recommendation or security price prediction; forecast the market and " +
-        "adoption scenario, not a buy / sell call or price target",
-    );
-  } else if (quantitative && outlook && !hasQuantitativeEstimate(outlook)) {
+  if (quantitative && outlook && !hasQuantitativeEstimate(outlook)) {
     issues.add("", OUTLOOK_ESTIMATE_MESSAGE);
   }
   issues.raiseIfAny();
   return outlook as string;
+}
+
+/**
+ * The parts of a topic market view that read like a buy / sell call or a security price prediction
+ * (P11): a warning, never a refusal (`assessment`, `outlook`).
+ */
+export function marketViewWarnings(view: {
+  readonly assessment?: string | null;
+  readonly outlook?: string | null;
+}): string[] {
+  return (["assessment", "outlook"] as const).filter((key) => marketViewProblem(view[key]));
 }
 
 /** Validate the sources of a topic market view: 1-`VIEW_SOURCES_MAX` items, like note sources. */

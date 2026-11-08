@@ -213,13 +213,21 @@ async function start(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   };
 }
 async function add(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
-  const { instrument: reference, run_id, ...note } = args;
+  const { instrument: reference, run_id, wording_ok, ...note } = args;
+  let checked: research.NoteInput;
   try {
-    research.validateNote(note, now(ctx));
+    checked = research.validateNote(note, now(ctx));
   } catch (e) {
     if (e instanceof research.ResearchInputError) throw new ToolError(e.message);
     throw e;
   }
+  // A warning before anything is stored (a saved note cannot be edited): the agent rewrites the
+  // flagged fields as facts, or confirms the wording with wording_ok.
+  const flagged = research.noteWordingWarnings(checked);
+  if (flagged.length > 0 && wording_ok !== true)
+    throw new ToolError(
+      `not saved yet: ${flagged.join(", ")} ${WORDING_WARNING}; to save it as written, resend with wording_ok true`,
+    );
   const target = reference === undefined ? null : instrument(ctx, reference);
   const out = await execute(ctx, addResearchNoteWithPlans(ctx.store.research?.plans), {
     note,
@@ -242,14 +250,21 @@ async function add(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
             created: F.flag(out.signal.created),
             escalated: F.flag(out.signal.escalated),
           },
-    warnings: out.warnings.map((warning) =>
-      F.text(
-        warning === "not_held_or_watched"
-          ? "the instrument is neither held nor watched (it carries an alert)"
-          : warning,
-      ),
-    ),
+    warnings: out.warnings.map((warning) => F.text(noteWarning(warning))),
   };
+}
+const WORDING_WARNING =
+  "reads like a forecast, a call, a rating or a price target. A note is a sourced fact: rewrite it " +
+  "as what happened, or, if it is an opinion that follows from the owner's strategy (a target the " +
+  "strategy computes, a buy / hold / sell view), put it in set_recommendations";
+
+/** The agent-facing text of a value-free note warning code. */
+function noteWarning(code: string): string {
+  if (code === "not_held_or_watched")
+    return "the instrument is neither held nor watched (it carries an alert)";
+  if (code.startsWith("wording:"))
+    return `${code.slice("wording:".length)}: saved as written (wording_ok); it ${WORDING_WARNING}`;
+  return code;
 }
 async function finish(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const run = runId(ctx, args.run_id);
@@ -317,6 +332,18 @@ async function setTopic(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
         : new Date(ctx.store.now()).toISOString(),
     ),
     view_sources: F.sources(changed?.sources ?? before?.viewSources),
+    warnings: research
+      .marketViewWarnings({
+        assessment: typeof args.assessment === "string" ? args.assessment : null,
+        outlook: typeof args.outlook === "string" ? args.outlook : null,
+      })
+      .map((where) =>
+        F.text(
+          `${where}: reads like a buy / sell call or a security price prediction; saved as written. ` +
+            "The view describes the topic's market; a price view that follows from the owner's " +
+            "strategy belongs in set_recommendations",
+        ),
+      ),
   };
 }
 async function upsertTopic(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {

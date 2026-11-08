@@ -78,7 +78,7 @@ file:                            # kind file only (and required for it)
 | `fetch.params[]` | `id` as above, `label` <= 60, `type` `string` (default) / `date` / `number` / `boolean`, `required` (default `false`); unique ids |
 
 - Unknown keys are errors (with a "did you mean" hint), at every level. The manifest is at most 64 KiB.
-- `name` and the `label`s are shown to the owner verbatim; the app's UI is Polish, so write them in Polish.
+- `name` and the `label`s are shown to the owner verbatim; write them in the owner's language (the app language: Polish or English).
 - Schema: [`schemas/connector-manifest.v1.json`](schemas/connector-manifest.v1.json) (the app also checks
   what a schema cannot express: `run`, the matching section, unique ids, the directory rules).
 

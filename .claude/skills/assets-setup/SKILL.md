@@ -15,7 +15,7 @@ description: >
 # assets-setup: manually valued assets
 
 A short guided setup (5-10 minutes). You explain what belongs here, prepare the commands, and the user
-runs them. Conversation in Polish, files in English, regular hyphens only.
+runs them. Conversation in the owner's language (the app language the cashU MCP server names; Polish when unsure), files in English, regular hyphens only.
 
 ## Relationship to the workspace
 

@@ -2,7 +2,7 @@
 name: market-research
 description: >
   Use when the owner wants the investments module researched: the Saturday routine, a sourced note on one instrument, topic or makro, a thesis review, a full refresh, or scheduling the routine.
-  Applicability - POSITIVE: held and watched instruments, topics, macro cards, candidates and theses researched through the cashU MCP server into sourced Polish notes, topic market views and model assessments (position strength, optional recommendation).
+  Applicability - POSITIVE: held and watched instruments, topics, macro cards, candidates and theses researched through the cashU MCP server into sourced notes in the owner's language, topic market views and model assessments (position strength, optional recommendation).
   Applicability - NEGATIVE: NOT for writing or revising the strategy or an instrument thesis (/investments-setup), custom rules (/extension-builder), imports (/import-builder) or placing trades.
   Triggers: /market-research, "research", "przegląd tez", "sprawdź tezę", "sprawdź tezy", "czy teza jest aktualna", "rewizja tez", "zrób pełny research od nowa", "przejrzyj wszystko jeszcze raz", "dokończ research", "dokończ przegląd tez", "zaplanuj research".
 argument-hint: "[symbol | ISIN | segment | makro | tezy [symbol] | rutyna | od nowa]"
@@ -19,11 +19,11 @@ exit plans. What you find always becomes notes with sources, written through the
 (a finding that exists only in a local file is invisible in the app); the app shows them in
 Inwestycje (research strip, asset drawer, research view) and in the Sunday review. You keep one
 current market view (now and outlook) under each topic thesis, then assess every held and watched
-instrument: a position strength (`strong` / `neutral` / `weak` with its basis and a Polish reason),
+instrument: a position strength (`strong` / `neutral` / `weak` with its basis and a reason in the owner's language),
 plus a buy/hold/reduce/exit recommendation only where you are willing to state one, with complete
 held and watchlist coverage at the end of every routine and full refresh. After
 a run you may propose a few alerts that watch for a move out of a sideways range or a volume spike.
-You never place trades or predict security prices. Notes and conversation in Polish, working files in
+You never place trades or predict security prices. Notes and conversation in the owner's language (the app language the cashU MCP server names; Polish when unsure), working files in
 English, regular hyphens only (never the em dash character).
 
 ## Relationship to the workspace
@@ -31,7 +31,7 @@ English, regular hyphens only (never the em dash character).
 | The workspace CLAUDE.md and MCP server own | This skill adds |
 |---|---|
 | privacy level, boundaries, the MCP tool list, where files go | the research procedure per mode: routine, on-demand, full refresh, thesis review |
-| the profile's cashU server and what its tools validate or refuse | source rules, rubrics and the Polish note contract |
+| the profile's cashU server and what its tools validate or refuse | source rules, rubrics and the note contract |
 | the `research/` folder of the workspace | research limits, briefs, topic market views, the position-strength coverage gate, alert proposals, scheduling |
 
 ## Problem -> reference mapping
@@ -48,7 +48,7 @@ English, regular hyphens only (never the em dash character).
 | Which tool, what `research_context` returns | [`references/mcp-tools.md`](references/mcp-tools.md) |
 | Which sources count, coverage per instrument type, institutional estimates | [`references/sources.md`](references/sources.md) |
 | Kind, polarity, thesis relation, strength, signal checklist | [`references/rubrics.md`](references/rubrics.md) |
-| Note fields, Polish title and summary, briefs, duplicates | [`references/notes.md`](references/notes.md) |
+| Note fields, title and summary in the owner's language, briefs, duplicates | [`references/notes.md`](references/notes.md) |
 | Candidates from the strategy's criteria, `add_to_watchlist` | [`references/candidates.md`](references/candidates.md) |
 | Early-stage / hyper-growth company, SPAC or de-SPAC, two rankings, entry triggers and tranches, hard filters vs pro forma | [`references/candidate-evaluation-pattern.md`](references/candidate-evaluation-pattern.md) |
 | `range_breakout` / `volume_spike` alert proposals | [`references/alerts.md`](references/alerts.md) |
@@ -62,7 +62,7 @@ Keep these verbatim; do not soften them:
 
 - Not a licensed advisor.
 - Position strengths and recommendations are model opinions for the owner to evaluate, never decisions or orders.
-- No security price predictions or price targets.
+- No security price predictions or price targets of your own; one that follows from the owner's strategy goes only in the recommendation, as the model's opinion.
 - Facts with sources.
 - Never bypass paywalls or bot protection.
 - Data only through MCP at the profile's privacy level.
@@ -84,7 +84,7 @@ What they mean here:
   estimate of market or demand growth (who, how much, horizon, with its source), plus the main risk.
   It may describe the market's expected path (`IFR szacuje ok. 575 tys. instalacji robotów rocznie w
   2028`), never the price of a security or an index, never a price target, never buy / sell wording
-  (the tool refuses it).
+  (the tool lists it under warnings: rewrite the view).
 - After the facts are stored, assess each held and watched instrument from the current research,
   the progress against the owner's thesis, invalidation and exit plan, and the environment (macro
   cards, the topic market view), weighed with portfolio construction, strategy and history. Every
@@ -95,7 +95,13 @@ What they mean here:
   coverage gate counts. It is not the note `strength` 1-3 of `references/rubrics.md`.
 - The `recommendation` (`buy_asap` | `buy` | `hold` | `reduce` | `exit_asap`) is optional: add it
   only when you are willing to state it as a model opinion, and never invent one to pass the gate.
-  A row without it clears an older recommendation of that instrument.
+  A row without it clears an older recommendation of that instrument. When the owner's strategy
+  defines how to compute a price target or a price forecast (a valuation method, an algorithm), the
+  `reason` may state the result and name the method; this is the only place for it.
+- `add_research_note` checks the wording first: a title, summary, headline or brief that reads like a
+  forecast, a call, a rating or a price target is not saved, and the reply names the fields. Rewrite
+  them as facts; resend with `wording_ok: true` only when the wording is a fact the check misread
+  (`raport będzie 14.08`, a cited institution's forecast). An opinion goes in the recommendation.
 - The tool refuses inconsistent rows: `fulfilled` only with `weak`, `on_track` never with `weak`,
   `buy` / `buy_asap` never with `weak`, `reduce` / `exit_asap` never with `strong`, and a thesis
   whose health is `invalidated` or `fulfilled` forces `weak`.
@@ -232,7 +238,7 @@ Full procedure: [`references/weekly-routine-workflow.md`](references/weekly-rout
 7. **Alert proposals (optional):** `references/alerts.md`, at most 3.
 8. **Assess and finish:** `set_recommendations` exactly once with `scope: "all"`: a position strength
    for every held and watched instrument whose assessment changed or that has none, a recommendation
-   only where you are willing to state one (never finish unless it returns `missing: 0`), then `finish_research_run(run_id, counts)` and a Polish summary of
+   only where you are willing to state one (never finish unless it returns `missing: 0`), then `finish_research_run(run_id, counts)` and a summary in the owner's language of
    at most 15 lines.
 
 ## Thesis review (on demand, held positions)
@@ -280,7 +286,7 @@ for a clear yes, never create a schedule as a side effect.
 | [`references/mcp-tools.md`](references/mcp-tools.md) | cheatsheet | HIGH | every MCP tool, what it returns, in which step |
 | [`references/sources.md`](references/sources.md) | pattern | CRITICAL | per-source rules (news and company reports, community sentiment, trend data, macro), exclusions, access rules, coverage per instrument type, institutional estimates |
 | [`references/rubrics.md`](references/rubrics.md) | pattern | CRITICAL | kind, polarity, thesis relation (invalidation condition and exit plan), strength 1-3, signal checklist |
-| [`references/notes.md`](references/notes.md) | pattern | CRITICAL | fields, Polish title and summary, sources, segments, briefs (topics and macro), topic market view, duplicates and near duplicates, examples |
+| [`references/notes.md`](references/notes.md) | pattern | CRITICAL | fields, title and summary in the owner's language, sources, segments, briefs (topics and macro), topic market view, duplicates and near duplicates, examples |
 | [`references/candidates.md`](references/candidates.md) | workflow | MEDIUM | candidate criteria from the strategy, exclusions, `details` shape |
 | [`references/candidate-evaluation-pattern.md`](references/candidate-evaluation-pattern.md) | pattern | HIGH | early-stage / hyper-growth scoring, two rankings, entry triggers and tranches, SPAC / de-SPAC values and dilution, hard filters vs pro forma, the owner's limits, the owner's entry plan in the thesis |
 | [`references/alerts.md`](references/alerts.md) | workflow | MEDIUM | proposing `range_breakout` / `volume_spike` alerts after research: when, limits, parameters, wording |
@@ -314,7 +320,7 @@ Before telling the user it is done:
 7. Unattended: no question asked, no schedule created, no `add_to_watchlist`; interactive: alerts and
    watchlist additions only after an explicit yes.
 8. Working files only under the workspace's `research/`, with no amounts or personal data.
-9. The Polish summary names what the mode asks for (notes, signals, theses, position strengths and
+9. The summary (in the owner's language) names what the mode asks for (notes, signals, theses, position strengths and
    recommendations changed, alerts,
    blocked sources, what to look at on Sunday).
 10. Early-stage or SPAC instruments in scope: both rankings shown, no bare "obserwuj" (first tranche

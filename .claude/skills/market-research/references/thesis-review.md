@@ -1,7 +1,7 @@
 # Thesis review (on demand, held positions)
 
 The owner asks whether the theses of the held positions still hold: `/market-research tezy` (every held
-position with a thesis) or `/market-research tezy <symbol | ISIN>` (one), or a Polish request such as
+position with a thesis) or `/market-research tezy <symbol | ISIN>` (one), or a request in the owner's language such as
 "przegląd tez", "sprawdź tezy", "czy teza XYZ jest aktualna", "rewizja tez". For each position you
 check dated, sourced facts against the owner's own record: the invalidation condition, the exit plan
 and the thesis premise. You report the state of the thesis; you never say what to do with the position.
@@ -112,7 +112,7 @@ hold, plus the quoted thesis fields. Mark positions done as you go, so `dokończ
 - Time box: about 5 minutes per position; past 90 minutes stop gathering and finish with what is saved.
 - At most 3 alert proposals per review (`alerts.md`).
 
-## Summary in the chat (Polish, at most 20 lines)
+## Summary in the chat (in the owner's language, at most 20 lines)
 
 One line per reviewed position, then the rest:
 

@@ -12,6 +12,7 @@ import { checkUrl } from "./url.js";
 import {
   candidateKey,
   noteExpiresAt,
+  noteWordingWarnings,
   ResearchInputError,
   sourceJson,
   validateCounts,
@@ -186,9 +187,10 @@ describe("research validation (test_rs_validation.py)", () => {
     "The stock will reach 300 by spring",
     "Warto kupic przed dywidenda",
     "Price target raised",
-  ])("recommendation / rating / prediction is refused: %s", (text) => {
+  ])("recommendation / rating / prediction is saved with a warning: %s", (text) => {
     expect(adviceProblem(text)).toBe(true);
-    expect(issues(base({ title: Array.from(text).slice(0, 120).join("") }))).toContain("title");
+    const note = validateNote(base({ title: Array.from(text).slice(0, 120).join("") }), NOW);
+    expect(noteWordingWarnings(note)).toEqual(["title"]);
   });
 
   // test_plain_facts_pass_the_phrase_check
