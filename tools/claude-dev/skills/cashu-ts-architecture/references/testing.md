@@ -33,7 +33,7 @@ never given a longer budget.
 
 | Tier | Files | Command | Runs |
 |---|---|---|---|
-| default (fast) | every `*.test.ts(x)` except the exhaustive ones | `pnpm turbo run test` (or `vitest run` in a package) | on every change, before a commit, in CI |
+| default (fast) | every `*.test.ts(x)` except the exhaustive ones | `pnpm test` (turbo, 4 packages at once; or `vitest run` in a package) | on every change, before a commit, in CI |
 | exhaustive | `*.exhaustive.test.ts(x)` | `pnpm test:exhaustive` (turbo task `test:exhaustive`, `--concurrency=1`) | in CI (`.github/workflows/ts.yml`) and in the pre-handoff gate `pnpm check:handoff` |
 
 `pnpm test:exhaustive` runs one package at a time (`--concurrency=1`): each suite is seconds of CPU and

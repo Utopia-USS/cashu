@@ -6,6 +6,10 @@
 //
 // The per-test timeout is vitest's 5 s in both tiers: an exhaustive suite is split into small tests
 // (one per Unicode plane, per slice of vectors, per seed), never given a longer budget.
+//
+// Workers: a quarter of the cores per package, and the root `test` script runs at most 4 packages at once,
+// so a full run keeps about one worker per core. Unbounded (turbo's 10 packages x vitest's cores - 1
+// workers each) put ~150 processes on 10 cores and pushed sound tests past the 5 s timeout.
 import { configDefaults, defineProject, type TestProjectInlineConfiguration } from "vitest/config";
 
 /** File name marker of the exhaustive tier. */
@@ -18,6 +22,7 @@ export function tiered(options: Options = {}) {
   const exhaustive = process.env.CASHU_TEST_TIER === "exhaustive";
   return defineProject({
     test: {
+      maxWorkers: "25%",
       ...options,
       // Keep dependency exclusions in both tiers even when a package adds platform exclusions.
       // Otherwise exhaustive discovery follows workspace links into another package's tests.

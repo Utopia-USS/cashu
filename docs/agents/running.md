@@ -24,7 +24,7 @@ Run from the repo root with Node >=22 (`.nvmrc`) and the pnpm version pinned in 
 | Generated files | `pnpm --filter @cashu/host gen:connector-schemas --check`, `pnpm --filter @cashu/host skills:sync --check` |
 | Mobile | `pnpm --filter @cashu/mobile ios` / `android` (local dev client), `pnpm --filter @cashu/mobile start` (bundler), `pnpm bundle:check` |
 
-CI (`.github/workflows/ts.yml`) runs install, `turbo run typecheck lint test`, the exhaustive tier,
+CI (`.github/workflows/ts.yml`) runs install, `turbo run typecheck lint`, `pnpm test` (4 packages at once), the exhaustive tier,
 `arch:check` and the mobile bundle check on Linux and macOS.
 
 ## Desktop app on a synthetic demo

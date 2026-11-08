@@ -9,10 +9,10 @@
   "scripts": {
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=4",
     "test:all": "vitest run",
     "test:exhaustive": "turbo run test:exhaustive --concurrency=1",
-    "check": "turbo run typecheck lint test",
+    "check": "turbo run typecheck lint && pnpm test",
     "check:handoff": "pnpm check && pnpm test:exhaustive && pnpm arch:check",
     "arch:check": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/arch/src/run.ts",
     "bundle:check": "pnpm --filter @cashu/mobile bundle:check",

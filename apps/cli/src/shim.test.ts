@@ -2,19 +2,23 @@
 // synthetic host: native CLI output and exit codes travel over the host socket; host status / stop never start a host; no host means
 // exit 69 and nothing run; a host command (skills) prints through the host; MCP sessions relay, end
 // with the server, and survive a host killed mid-session.
-import { readdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
 import { cleanEnv } from "./testing/env.js";
-import { alive, hostPid, runShim, stopHosts } from "./testing/shim.js";
+import {
+  alive,
+  hostPid,
+  runShim,
+  SHIM_TEST_TIMEOUT_MS as SLOW,
+  stopHosts,
+} from "./testing/shim.js";
 
 afterEach(async () => {
   await stopHosts();
   removeTempDirs();
 });
-
-const SLOW = 30_000;
 
 function env(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return {

@@ -10,7 +10,7 @@ tags: enforcement, biome, eslint, dependency-cruiser, knip, sherif, hooks, ci
 |---|---|---|
 | `tools/claude-dev/scripts/check-file.sh <file>` | after every edit (the `cashu-dev` plugin runs it as a PostToolUse hook on `.ts` / `.tsx` under packages/, apps/, tools/arch/) | one file, well under 3 s: Biome (safe fixes applied), dependency-cruiser for this file's imports, ESLint react-hooks for React files |
 | `pnpm arch:check` | before a commit, in CI (`.github/workflows/ts.yml`) | the whole repo, all checks below, plus the TRANSITIONAL report |
-| `pnpm turbo run typecheck lint test` | before a commit, in CI | types (TS 7), Biome per package, unit tests |
+| `pnpm turbo run typecheck lint` + `pnpm test` | before a commit, in CI | types (TS 7), Biome per package, unit tests |
 | `pnpm test:exhaustive` | in CI, in the pre-handoff gate (`pnpm check:handoff` = check + exhaustive + arch:check) | the exhaustive tier: `*.exhaustive.test.ts` sweeps, property searches, simulations, one package at a time (see [testing.md](testing.md), "Test tiers") |
 
 ## What each check catches

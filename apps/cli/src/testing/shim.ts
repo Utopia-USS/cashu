@@ -26,6 +26,12 @@ export interface ShimRun {
   readonly stderr: string;
 }
 
+/**
+ * Per-test timeout of a test that runs the shim: each run starts Node with type stripping and the first
+ * one a whole host process, which takes seconds on a loaded machine (vitest's 5 s default is for unit tests).
+ */
+export const SHIM_TEST_TIMEOUT_MS = 30_000;
+
 const hostDirs = new Set<string>();
 
 function spawnShim(args: readonly string[], env: NodeJS.ProcessEnv, cwd: string): ChildProcess {

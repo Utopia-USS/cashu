@@ -5,14 +5,16 @@ import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
 import { cleanEnv } from "./testing/env.js";
-import { hostPid, runShim, stopHosts } from "./testing/shim.js";
+import { hostPid, runShim, SHIM_TEST_TIMEOUT_MS, stopHosts } from "./testing/shim.js";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 afterEach(async () => {
   await stopHosts();
   removeTempDirs();
 });
-it("uses the second caller's home through an already-running host", async () => {
+it("uses the second caller's home through an already-running host", {
+  timeout: SHIM_TEST_TIMEOUT_MS,
+}, async () => {
   const firstHome = tempDir("cashu-skills-first-home-");
   const secondHome = tempDir("cashu-skills-second-home-");
   const cwd = tempDir("cashu-skills-cwd-");

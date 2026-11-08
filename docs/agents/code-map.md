@@ -126,7 +126,7 @@ Apps compose packages and never import another app.
 | `packaging/icon/` | the app icon used by electron-builder |
 | `.claude/skills/` | the shipped product skills (see [skills.md](skills.md)) |
 | `.claude/settings.json`, `.claude-plugin/`, `tools/claude-dev/` | repo-local dev plugin `cashu-dev`: the TS development skills (`cashu-ts-architecture`, `cashu-ui`), `scripts/check-file.sh` and its PostToolUse hook; never shipped to workspaces |
-| `.github/workflows/ts.yml` | CI: install, `turbo run typecheck lint test`, exhaustive tests, `arch:check`, mobile bundle check |
+| `.github/workflows/ts.yml` | CI: install, `turbo run typecheck lint`, `pnpm test`, exhaustive tests, `arch:check`, mobile bundle check |
 | `.github/workflows/bump-version.yml`, `release-macos.yml`, `staging-to-main-pr.yml` | version bump on `main`, the macOS release after it (behind the `release` environment), the `staging -> main` pull request |
 | `data/` | (git-ignored) local drop folder (`data/incoming/` is the default of `cashu import-dir`) |
 | `statements/` | (git-ignored) drop CSV statements here - empty in the repo |
