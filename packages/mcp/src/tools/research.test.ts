@@ -595,6 +595,68 @@ describe("native research MCP tools", () => {
     >[];
     expect(inUse.map((row) => row.entry_type)).toEqual(["trend"]);
   });
+  it("research_context segments flag movers sold in the window and add positions bought in it", async () => {
+    const s = await setup(),
+      today = new Date(s.f.env.clock.now()).toISOString().slice(0, 10),
+      daysAgo = (n: number) =>
+        new Date(Date.parse(`${today}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+    const trade = (instrument: string, type: "buy" | "sell", tradeDate: string) => {
+      value(s.f, C.addManualTransaction, {
+        account: s.account,
+        type: "deposit",
+        tradeDate,
+        cashAmount: "500",
+        currency: "PLN",
+      });
+      value(s.f, C.addManualTransaction, {
+        account: s.account,
+        instrument,
+        type,
+        tradeDate,
+        quantity: "5",
+        price: "100",
+        cashAmount: type === "buy" ? "-500" : "500",
+        currency: "PLN",
+      });
+    };
+    const watched = (symbol: string, isin: string) =>
+      value(s.f, C.addToWatchlist, {
+        target: {
+          planned: {
+            symbol,
+            isin,
+            name: `Synthetic ${symbol}`,
+            currency: "PLN",
+            assetClass: "equity",
+            mic: "XWAR",
+          },
+        },
+      });
+    const old = watched("OLD", "PLOLD0000018"),
+      fresh = watched("NEW", "PLNEW0000011");
+    trade(old.instrument, "buy", daysAgo(30));
+    trade(old.instrument, "sell", daysAgo(2));
+    trade(fresh.instrument, "buy", daysAgo(2));
+    value(s.f, C.removeFromWatchlist, { item: old.item });
+    value(s.f, C.removeFromWatchlist, { item: fresh.item });
+    for (const instrument of [s.instrument, old.instrument, fresh.instrument])
+      value(s.f, C.setInstrumentSegment, { instrument, segment: "equity_pl", by: "owner" });
+    const context = body(await s.server.call("research_context", {})),
+      positions = context.positions as Record<string, unknown>[],
+      row = (context.segments as Record<string, unknown>[]).find((r) => r.segment === "equity_pl");
+    const instruments = new Map(
+      ((row?.instruments ?? []) as Record<string, unknown>[]).map((item) => [item.symbol, item]),
+    );
+    expect(instruments.get("OLD")).toMatchObject({ held: false, new_in_window: false });
+    expect(instruments.get("ABC")).toMatchObject({ held: true, new_in_window: false });
+    expect(instruments.get("NEW")).toMatchObject({
+      held: true,
+      new_in_window: true,
+      contribution_1w: null,
+    });
+    const nowWeight = positions.reduce((sum, p) => sum + Number(p.weight ?? 0), 0);
+    expect(row?.weight_now).toBeCloseTo(nowWeight, 5);
+  });
   it("keeps genuine native macro summaries and rejects owner-data summaries under the unchanged vocabulary", async () => {
     const s = await setup(),
       context = body(await s.server.call("research_context", {})),

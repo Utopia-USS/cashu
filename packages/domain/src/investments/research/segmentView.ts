@@ -339,10 +339,19 @@ export interface SegmentNoteFacts {
   readonly valuation: Readonly<Record<string, unknown>> | null;
 }
 
-function instrumentsOf(move: SegmentMove, labels: ReadonlyMap<InstrumentId, string>) {
+/**
+ * The window's movers of one segment: held at the window's start, weighted at the start. `held` =
+ * still held at the window's end; false = sold within the window (its move still counts).
+ */
+function instrumentsOf(
+  move: SegmentMove,
+  labels: ReadonlyMap<InstrumentId, string>,
+  heldAtEnd: ReadonlySet<InstrumentId>,
+) {
   return move.instruments.map((m) => ({
     instrument_id: String(m.instrumentId),
     label: labels.get(m.instrumentId) ?? null,
+    held: heldAtEnd.has(m.instrumentId),
     weight: share(m.weight),
     contribution: share(m.contribution),
     return: roundShare(m.ret),
@@ -400,7 +409,7 @@ export function segmentsPayload(input: SegmentsViewInput) {
       weight: move === undefined ? 0.0 : share(move.weight),
       contribution: move === undefined ? 0.0 : share(move.contribution),
       return: move === undefined ? null : roundShare(move.ret),
-      instruments: move === undefined ? [] : instrumentsOf(move, found.labels),
+      instruments: move === undefined ? [] : instrumentsOf(move, found.labels, found.heldAtEnd),
       trend_1w: trend === undefined ? null : roundShare(trend.trends[0] ?? null),
       trend_4w: trend === undefined ? null : roundShare(trend.trends[1] ?? null),
       members: trend === undefined ? 0 : trend.members,
@@ -457,7 +466,7 @@ export function segmentsPayload(input: SegmentsViewInput) {
             weight: share(unassigned.weight),
             contribution: share(unassigned.contribution),
             return: roundShare(unassigned.ret),
-            instruments: instrumentsOf(unassigned, found.labels),
+            instruments: instrumentsOf(unassigned, found.labels, found.heldAtEnd),
           },
     currency: {
       contribution: share(result.currencyContribution),

@@ -404,5 +404,5 @@ export function movingPortfolio(o: { eurFrom?: string; eurGap?: number } = {}) {
     (day) => (day <= START ? "4.0" : "4.4"),
   );
   putRates(cache, "USD", days, () => "4.0");
-  return { v, cache, abc, wrld, edox, xmpl };
+  return { v, account, cache, abc, wrld, edox, xmpl };
 }

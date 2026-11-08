@@ -17,14 +17,25 @@ const BOUNDARIES = [
   "company facts go on the instrument; a segment note is about the market segment only (at most one per segment and week, only when something changed)",
 ];
 const CONTEXT_NOTE =
-  "weights are fractions of the portfolio total (1 = 100%); sentiment_8w has one score per ISO week (week_starts, oldest first) in [-1, 1], null = no notes that week; health: invalidated, weakened, fulfilled, supported, current, no_research, no_thesis (30-day window; a thesis edit never drops notes: health_predates_thesis / predates_thesis tag notes stored before the thesis' last core change; fulfilled = a fulfills note: the outcome the thesis expected has happened); segments: what moved the portfolio by market segment (contribution = share of the portfolio value at the window start, e.g. -0.008 = -0.8 pp; return = the segment's own local price return; currency = the FX part), segments with an active note, a cost-valued holding or only a 4-week move show with contribution 0 / weight 0; per ISO week the weekly runs (scope held: true) and notes written without a run cover at most weekly_instruments_max instruments, weekly_notes_per_instrument each, weekly_segment_notes_max segment notes (strength 3, invalidates and fulfills always pass; on-demand runs are exempt)";
+  "weights are fractions of the portfolio total (1 = 100%); sentiment_8w has one score per ISO week (week_starts, oldest first) in [-1, 1], null = no notes that week; health: invalidated, weakened, fulfilled, supported, current, no_research, no_thesis (30-day window; a thesis edit never drops notes: health_predates_thesis / predates_thesis tag notes stored before the thesis' last core change; fulfilled = a fulfills note: the outcome the thesis expected has happened); segments: what moved the portfolio by market segment (weight and contribution = shares of the portfolio value at the window start, e.g. -0.008 = -0.8 pp; weight_now = the segment's share today, the positions source; return = the segment's own local price return; currency = the FX part; instruments: held false = sold within the window, its move still counts; new_in_window true = bought within the window, no share in the move yet), segments with an active note, a cost-valued holding or only a 4-week move show with contribution 0 / weight 0; per ISO week the weekly runs (scope held: true) and notes written without a run cover at most weekly_instruments_max instruments, weekly_notes_per_instrument each, weekly_segment_notes_max segment notes (strength 3, invalidates and fulfills always pass; on-demand runs are exempt)";
 const METRIC =
   /(?:^|_)(?:pe|pb|ps|peg|ev|ebitda|eps|dividend|yield|payout|market_cap|cap|roe|roa|roic|margin|growth|beta|volatility|vol|debt|ratio|return|drawdown|rsi|ter|pct|percent|score|rating|age|years|months|days|volume|liquidity|free_float|float)(?:_|$)/;
 function threshold(value: number, criterion: string, strict: boolean) {
   if (strict && !METRIC.test(criterion.toLowerCase())) return L.level(null);
   return Math.abs(value) < L.COMPACT_FROM ? L.level(value) : L.market(L.compactNumber(value));
 }
-function segments(ctx: ToolContext<NativeToolStore>, owned: ReadonlySet<string>) {
+/** A held position as the segment rows read it (the `positions` source: current holdings only). */
+interface HeldRow {
+  readonly id: string;
+  readonly label: string | null;
+  readonly segment: string | null;
+  readonly weight: number | null;
+}
+function segments(
+  ctx: ToolContext<NativeToolStore>,
+  owned: ReadonlySet<string>,
+  heldNow: readonly HeldRow[],
+) {
   const services = ctx.store.research;
   if (services === undefined) return { segments: [], currency: null, unassigned: null };
   let week: ReturnType<typeof services.segments>, month: ReturnType<typeof services.segments>;
@@ -42,27 +53,46 @@ function segments(ctx: ToolContext<NativeToolStore>, owned: ReadonlySet<string>)
       .filter((row) => !keys.has(row.segment))
       .sort((a, b) => Math.abs(b.contribution ?? 0) - Math.abs(a.contribution ?? 0)),
   ];
+  const label = (text: string | null) => F.text(ctx.strict ? ctx.guard.publicName(text) : text);
   return {
     segments: rows.map((row) => {
       const inWeek = keys.has(row.segment),
         other = months.get(row.segment);
+      const movers = inWeek ? row.instruments : [],
+        moved = new Set(movers.map((item) => item.instrument_id)),
+        current = heldNow.filter((h) => h.segment === row.segment && !owned.has(h.id));
       return {
         segment: F.category(row.segment),
         label: F.category(row.label),
         weight: F.percent(inWeek ? row.weight : 0),
+        weight_now: F.percent(current.reduce((sum, h) => sum + (h.weight ?? 0), 0)),
         contribution_1w: F.percent(inWeek ? row.contribution : 0),
         return_1w: F.percent(inWeek ? row.return : null),
         contribution_4w: F.percent(other?.contribution),
         trend_1w: F.percent(row.trend_1w),
         trend_4w: F.percent(row.trend_4w),
         members: F.count(row.members),
-        instruments: (inWeek ? row.instruments : [])
-          .filter((item) => !owned.has(item.instrument_id) && item.label)
-          .map((item) => ({
-            symbol: F.text(ctx.strict ? ctx.guard.publicName(item.label) : item.label),
-            return_1w: F.percent(item.return),
-            contribution_1w: F.percent(item.contribution),
-          })),
+        instruments: [
+          ...movers
+            .filter((item) => !owned.has(item.instrument_id) && item.label)
+            .map((item) => ({
+              symbol: label(item.label),
+              held: F.flag(item.held),
+              new_in_window: F.flag(false),
+              return_1w: F.percent(item.return),
+              contribution_1w: F.percent(item.contribution),
+            })),
+          // Bought within the window: held now, no start weight, so no share in the week's move.
+          ...current
+            .filter((h) => !moved.has(h.id) && h.label)
+            .map((h) => ({
+              symbol: label(h.label),
+              held: F.flag(true),
+              new_in_window: F.flag(true),
+              return_1w: F.percent(null),
+              contribution_1w: F.percent(null),
+            })),
+        ],
         last_note_at: F.date(row.last_note_at),
         note_this_week: F.flag(row.note_this_week),
         briefs: row.briefs.map((value) => {
@@ -287,7 +317,16 @@ export function researchContext(ctx: ToolContext<NativeToolStore>): L.LabelledTr
   );
   const review = Q.lastReview(read, "investments"),
     agenda = F.array(F.object(review?.stats.deck).agenda);
-  const segment = segments(ctx, owned),
+  const segment = segments(
+      ctx,
+      owned,
+      positions.map((row) => ({
+        id: String(row.instrument.id),
+        label: row.instrument.label,
+        segment: row.instrument.segment,
+        weight: row.weight,
+      })),
+    ),
     running = R.runningRun(read, now);
   return {
     as_of: F.date(ctx.today),

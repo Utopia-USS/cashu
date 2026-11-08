@@ -5,7 +5,7 @@ import { addDays } from "@cashu/domain";
 import { market, research } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import { setInstrumentSegment } from "../commands/instruments.js";
-import { stock, type Vault } from "../commands/testing/fixtures.js";
+import { applyRaw, stock, type Vault } from "../commands/testing/fixtures.js";
 import { PerformanceService } from "../performance/service.js";
 import { noBenchmarkStrategy } from "../performance/testing/household.js";
 import {
@@ -20,7 +20,9 @@ import { segmentsView } from "./segments.js";
 import {
   added,
   addNote,
+  d,
   distinctWords,
+  importTxn,
   investor,
   movingPortfolio,
   putBars,
@@ -370,6 +372,26 @@ describe("attribution through the service", () => {
     expect(out.stale).toEqual([]);
   });
 
+  it("flags a mover sold within the window as no longer held", () => {
+    const { v, account, cache, abc } = movingPortfolio();
+    applyRaw(v, [
+      importTxn(v, account, abc, {
+        type: "sell",
+        tradeDate: d(2),
+        quantity: "100",
+        price: "55.00",
+        grossAmount: "5500.00",
+        cashAmount: "5500.00",
+        createdAt: `${d(2)}T10:00:00.000001Z`,
+      }),
+    ]);
+    const rows = new Map(viewValue(v, cache).segments.map((r) => [r.segment, r]));
+    // ABC still explains the week's move (held at the start) but is sold now
+    expect(rows.get("equity_pl")?.instruments).toMatchObject([
+      { label: "ABC", held: false, contribution: 0.025 },
+    ]);
+    expect(rows.get("equity_global")?.instruments).toMatchObject([{ label: "WRLD", held: true }]);
+  });
   it("a start rate too old still values the holding and flags it", () => {
     const { v, cache, wrld } = movingPortfolio({ eurGap: 15 }); // the newest EUR rate is 16 days old
     const out = viewValue(v, cache);
