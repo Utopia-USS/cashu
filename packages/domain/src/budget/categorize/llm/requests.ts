@@ -71,7 +71,7 @@ const LINE_BREAKING = /[\p{Cc}\u2028\u2029]/gu;
  * become a space, so a string cannot forge an id line (`m3: ...`) in the prompt. Python sends them
  * raw; strings without them (every `merchantKey`) are byte-identical to Python's prompt.
  */
-export function listItem(merchant: string): string {
+function listItem(merchant: string): string {
   return merchant.replace(LINE_BREAKING, " ");
 }
 

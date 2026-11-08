@@ -15,6 +15,7 @@ import spendingMeta, {
   Empty as EmptySpending,
   ExactLargeValue,
   ManyCategories,
+  MultipleCategories,
 } from "./spending/SpendingView.stories";
 
 jest.mock("@expo/ui", () => require("./testing/expoUiMock").default);
@@ -26,6 +27,7 @@ const cases: [string, ComponentType<never>, object][] = [
   ["cashflow monthly", cashflowMeta.component, Monthly.args],
   ["cashflow one currency", cashflowMeta.component, OneCurrency.args],
   ["cashflow empty", cashflowMeta.component, EmptyCashflow.args],
+  ["spending multiple categories", spendingMeta.component, MultipleCategories.args],
   ["spending large value", spendingMeta.component, ExactLargeValue.args],
   ["spending many categories", spendingMeta.component, ManyCategories.args],
   ["spending empty", spendingMeta.component, EmptySpending.args],

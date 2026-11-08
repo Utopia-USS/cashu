@@ -4,7 +4,7 @@
 
 export type Lang = "pl" | "en";
 
-export const STRINGS = {
+const STRINGS = {
   loading: { pl: "Uruchamianie cashU…", en: "Starting cashU…" },
   startFailedTitle: { pl: "Nie udało się uruchomić cashU", en: "cashU could not start" },
   logHint: { pl: "Szczegóły w logu: ", en: "Details in the log: " },

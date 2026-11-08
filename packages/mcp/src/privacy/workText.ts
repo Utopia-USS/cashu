@@ -45,13 +45,6 @@ function normCharUncached(ch: string): string {
   return out;
 }
 
-/** The normalized copy the identifier and amount rules match on. */
-export function normalizeForMatching(text: string): string {
-  let out = "";
-  for (const ch of text) out += normChar(ch);
-  return out;
-}
-
 /** Saved characters put back by a replacement: the text and the original index of each unit. */
 export type Restored = readonly [string, readonly (number | null)[]];
 type WorkReplacement = string | null | Restored;

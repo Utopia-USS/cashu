@@ -4,7 +4,7 @@
 import { lstatSync, readlinkSync } from "node:fs";
 
 /** A `~user` path: Python looks the user up in the password database, which Node cannot. */
-export class UnsupportedHomeError extends Error {
+class UnsupportedHomeError extends Error {
   constructor() {
     super("a ~user path cannot be resolved by the cashu command");
     this.name = "UnsupportedHomeError";

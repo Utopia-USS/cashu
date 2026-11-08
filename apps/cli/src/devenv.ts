@@ -17,7 +17,7 @@ const PREFIX = "CASHU_";
 const BREAKS = new Set([0x0a, 0x0b, 0x0c, 0x0d, 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029]);
 
 /** Python `str.splitlines()` (no trailing empty line). */
-export function splitLines(text: string): string[] {
+function splitLines(text: string): string[] {
   const lines: string[] = [];
   let start = 0;
   for (let i = 0; i < text.length; i++) {

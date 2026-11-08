@@ -32,7 +32,7 @@ import { assertVaultId, type KeyEntry, type Keyring, KID_BYTES } from "./keys.js
 import { NONCE_BYTES, type Sodium, TAG_BYTES } from "./sodium.js";
 
 export const FRAME_VERSION = 3;
-export const FRAME_HEADER_BYTES = 1 + KID_BYTES + NONCE_BYTES;
+const FRAME_HEADER_BYTES = 1 + KID_BYTES + NONCE_BYTES;
 /** Fixed bytes around the padded plaintext: header + tag + head signature. */
 export const FRAME_OVERHEAD = FRAME_HEADER_BYTES + TAG_BYTES + SIGNATURE_BYTES;
 /** Largest plaintext one frame carries (64 MiB). */
