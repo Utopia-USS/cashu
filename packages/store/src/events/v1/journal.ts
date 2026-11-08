@@ -40,6 +40,9 @@ export const journalEvents = {
     sha256: sha256Hex,
     state: z.enum(STRATEGY_STATES),
     issues: z.array(jsonObject),
+    // The version this text was edited on top of (null: none was recorded yet). Absent in versions
+    // recorded before base tracking: their base is unknown (events.md 8.8).
+    base: gid.nullable().optional(),
   }),
 
   "plannedDeposit.created": payload({

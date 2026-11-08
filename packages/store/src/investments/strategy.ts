@@ -4,6 +4,8 @@
 // numbers are a function of the order, D-S8). A version whose sha256 equals the current (highest)
 // version's is a no-op (m9: two desktops ingesting one external edit); otherwise it becomes
 // `version = max + 1`. A revert to an older sha is a new version. "Current" = max version (a query).
+// `base` (the version the text was edited on top of) is kept as recorded; devices use it to tell a
+// newer version built on theirs from a concurrent one (services/strategyFileSync.ts).
 // A rule run naming a no-op version's gid points at no row (R-S6).
 //
 // Rule runs: `ruleRun.finished` is APPEND (LEADER, every run kept, O6); `report.new` / `escalated`
@@ -23,6 +25,10 @@ const versions: TableDef = {
     { name: "state", type: "TEXT", notNull: true },
     { name: "issues", type: "TEXT", notNull: true, json: true },
     { name: "created_at", type: "TEXT", notNull: true },
+    // The version this one was edited on top of (events.md 8.8): base_known = 0 for a version
+    // recorded before base tracking (base unknown), else base_gid (null = no version before).
+    { name: "base_gid", type: "TEXT" },
+    { name: "base_known", type: "INTEGER", notNull: true },
   ],
   indexes: [{ columns: ["version"], unique: true }],
 };
@@ -31,7 +37,7 @@ const STRATEGY = "strategy";
 
 export const strategyMaterializer: Materializer = {
   id: "investments.strategy",
-  version: 1,
+  version: 2,
   tables: [versions],
   handles: ["strategy.versionSaved"],
   partitions: () => [STRATEGY],
@@ -48,8 +54,9 @@ export const strategyMaterializer: Materializer = {
     if (current?.sha256 === d.sha256) return; // m9: same content as the current version
     ctx.sql.write(
       versions.name,
-      `INSERT INTO inv_strategy_versions (id, gid, version, sha256, yaml_text, md_text, state, issues, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO inv_strategy_versions (id, gid, version, sha256, yaml_text, md_text, state, issues, created_at,
+         base_gid, base_known)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ctx.id(e.gid),
       e.gid,
       (current?.version ?? 0) + 1,
@@ -59,6 +66,8 @@ export const strategyMaterializer: Materializer = {
       String(d.state),
       json(d.issues ?? []),
       ctx.time(e, "created_at"),
+      typeof d.base === "string" ? d.base : null,
+      d.base === undefined ? 0 : 1,
     );
   },
 };

@@ -370,6 +370,8 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
           state: d.state,
           issues: d.issues,
           created_at: time(e, "created_at"),
+          base_gid: typeof d.base === "string" ? d.base : null,
+          base_known: d.base === undefined ? 0 : 1,
         });
         break;
       }

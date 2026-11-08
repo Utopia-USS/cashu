@@ -50,6 +50,13 @@ export const saveStrategyVersion = defineCommand({
   input: z.object({
     yamlText: z.string(),
     mdText: z.string().nullable().default(null),
+    /**
+     * The version gid the text was edited on top of (null: before any version). When given, a text
+     * whose base is no longer the current version is refused (`base_changed`): a device never
+     * records older file text over a newer version (services/strategyFileSync.ts). Omitted only by
+     * callers that are not a device's files (tests, fixtures): the event then carries no base.
+     */
+    base: z.string().nullable().optional(),
   }),
   /**
    * Python `load(record=True)` on files already read: state valid / partial / invalid from the
@@ -71,6 +78,8 @@ export const saveStrategyVersion = defineCommand({
     if (latest?.sha256 === sha256) {
       return ok<SavedStrategyVersion>({ recorded: false, version: latest.gid, state, sha256 });
     }
+    if (input.base !== undefined && input.base !== (latest?.gid ?? null))
+      return refuse("base_changed");
     const version = ctx.newGid();
     ctx.emit("strategy.versionSaved", version, {
       yamlText: input.yamlText,
@@ -78,6 +87,7 @@ export const saveStrategyVersion = defineCommand({
       sha256,
       state,
       issues: result.issues.map(issueRecord),
+      ...(input.base === undefined ? {} : { base: input.base }),
     });
     return ok<SavedStrategyVersion>({ recorded: true, version, state, sha256 });
   },

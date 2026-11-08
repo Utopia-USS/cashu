@@ -55,6 +55,35 @@ describe("saveStrategyVersion", () => {
     expect(utf8Bytes("aé€\u{1f600}\ud800")).toBe(1 + 2 + 3 + 4 + 3);
   });
 
+  it("refuses a text whose base is no longer the current version, keeps the base it was given", () => {
+    const v = vault();
+    const first = v.value(saveStrategyVersion, { yamlText: MINIMAL, base: null });
+    const second = v.value(saveStrategyVersion, {
+      yamlText: "version: 1\nbase_currency: EUR\n",
+      base: first.version,
+    });
+    // A device whose files are still the first version cannot record them over the second.
+    expect(
+      v.run(saveStrategyVersion, {
+        yamlText: "version: 1\nbase_currency: USD\n",
+        base: first.version,
+      }),
+    ).toEqual({ ok: false, reason: "base_changed" });
+    expect(v.run(saveStrategyVersion, { yamlText: MINIMAL, base: null })).toEqual({
+      ok: false,
+      reason: "base_changed",
+    });
+    expect(strategyVersions(read(v)).map((r) => r.gid)).toEqual([second.version, first.version]);
+    expect(
+      v.store.read<{ base_gid: string | null; base_known: number }>(
+        "SELECT base_gid, base_known FROM inv_strategy_versions ORDER BY version",
+      ),
+    ).toEqual([
+      { base_gid: null, base_known: 1 },
+      { base_gid: first.version, base_known: 1 },
+    ]);
+  });
+
   it("two devices recording one external edit keep one version (m9)", () => {
     const v = vault();
     const a = v.run(saveStrategyVersion, { yamlText: MINIMAL });

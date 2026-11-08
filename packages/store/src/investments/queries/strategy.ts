@@ -54,3 +54,49 @@ export function latestStrategyVersion(read: Read): StrategyVersionView | undefin
 export function strategyVersions(read: Read): StrategyVersionView[] {
   return read<Row>(`${SQL} ORDER BY version DESC`).map(toView);
 }
+
+/** A version's place in the edit history: what it was edited on top of (events.md 8.8). */
+export interface StrategyVersionLink {
+  readonly gid: string;
+  readonly sha256: string;
+  /** False for a version recorded before base tracking: its base is unknown. */
+  readonly baseKnown: boolean;
+  /** The version it was edited on top of; null = none was recorded yet. */
+  readonly base: string | null;
+}
+
+/** The stored version `gid` (undefined when no row has it: unknown, or dropped as a duplicate). */
+export function strategyVersionLink(read: Read, gid: string): StrategyVersionLink | undefined {
+  const row = read<{ gid: string; sha256: string; base: string | null; baseKnown: number }>(
+    `SELECT gid, sha256, base_gid AS base, base_known AS baseKnown FROM inv_strategy_versions
+     WHERE gid = ?`,
+    gid,
+  )[0];
+  return row === undefined
+    ? undefined
+    : { gid: row.gid, sha256: row.sha256, base: row.base, baseKnown: row.baseKnown === 1 };
+}
+
+/** The newest stored version whose text has digest `sha256` (a revert can repeat an older one). */
+export function strategyVersionWithSha(read: Read, sha256: string): string | undefined {
+  return read<{ gid: string }>(
+    "SELECT gid FROM inv_strategy_versions WHERE sha256 = ? ORDER BY version DESC LIMIT 1",
+    sha256,
+  )[0]?.gid;
+}
+
+/**
+ * Whether `ancestor` is in the edit history `version` was built on (walking `base` links). An
+ * unknown link (a version from before base tracking, or a base no row has) answers true: only a
+ * known history can show that a version was recorded without seeing `ancestor`.
+ */
+export function strategyVersionBuiltOn(read: Read, version: string, ancestor: string): boolean {
+  let current: string | null = version;
+  for (let steps = 0; current !== null && steps < 100_000; steps++) {
+    if (current === ancestor) return true;
+    const link = strategyVersionLink(read, current);
+    if (link === undefined || !link.baseKnown) return true;
+    current = link.base;
+  }
+  return current !== null;
+}

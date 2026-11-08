@@ -331,7 +331,7 @@ export const FIELD_TABLE: Readonly<Record<string, readonly string[]>> = {
   "signal.reopened": ["reason", "stamps", "payloadUnset"],
   "signal.snoozed": ["until", "stamps"],
   "signal.woken": ["until", "stamps"],
-  "strategy.versionSaved": ["yamlText", "mdText", "sha256", "state", "issues", "stamps"],
+  "strategy.versionSaved": ["yamlText", "mdText", "sha256", "state", "issues", "stamps", "base"],
   "thesis.created": [
     "instrument",
     "entryType",
@@ -464,7 +464,7 @@ export const FIELD_TABLE_LOCK: Readonly<Record<string, string>> = {
   "signal.reopened": "3:fbddf0b6",
   "signal.snoozed": "2:56200007",
   "signal.woken": "2:56200007",
-  "strategy.versionSaved": "6:9549b807",
+  "strategy.versionSaved": "7:cbcf465a",
   "thesis.created": "7:eda6b0d1",
   "thesis.deleted": "1:b4a792d5",
   "thesis.updated": "7:16332f93",
