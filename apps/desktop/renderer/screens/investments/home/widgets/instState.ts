@@ -11,6 +11,7 @@ import {
   PLAN_PATH,
   planLabel,
   ringOf,
+  strengthOf,
 } from "@cashu/ui-logic/investments/v2/logic";
 import { healthOf, healthStale } from "@cashu/ui-logic/investments/v2/research/logic";
 import type { HealthKey } from "@cashu/ui-logic/investments/v2/research/types";
@@ -67,18 +68,21 @@ export function instStateOf(data: InvestmentsHomeData): InstState {
 export const isHeld = (st: InstState, id: number | string): boolean =>
   st.held ? st.held.has(String(id)) : true;
 
-/** The tile of an instrument (old InstTile, not `plain`): monogram, plan coin, freshness rim, health ring. */
+/** The tile of an instrument (old InstTile, not `plain`): monogram, plan coin (else the strength glyph), freshness
+ * rim, health ring. */
 export function tileOf(
   inst: InstLike,
   st: InstState,
-): Pick<InstTileProps, "monogram" | "plan" | "freshness" | "health" | "faded"> {
+): Pick<InstTileProps, "monogram" | "plan" | "strength" | "freshness" | "health" | "faded"> {
   const planPath = inst.plan ? PLAN_PATH[inst.plan] : undefined;
   const plan = planPath && planLabel(inst.plan, isHeld(st, inst.id)) ? planPath : null;
+  const strength = strengthOf(inst.strength);
   const ring = ringOf(st.health.get(String(inst.id)) ?? null, st.stale);
   return {
     monogram: instMono(inst),
     plan,
-    freshness: plan ? freshOf(inst.plan_freshness) : null,
+    strength,
+    freshness: plan || strength ? freshOf(inst.plan_freshness) : null,
     health: ring,
     faded: ring != null && st.pre.has(String(inst.id)),
   };

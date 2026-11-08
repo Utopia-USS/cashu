@@ -38,7 +38,6 @@ export const S = catalog({
     en: (label: string) => `Stop watching ${label}`,
   },
   empty: { pl: "Brak obserwowanych.", en: "Nothing on the watchlist." },
-  colRecommendation: { pl: "Rekomendacja", en: "Recommendation" },
   col30d: { pl: "30 dni", en: "30 days" },
   colPrice: { pl: "Cena", en: "Price" },
   colWeek: { pl: "tydz.", en: "wk" },

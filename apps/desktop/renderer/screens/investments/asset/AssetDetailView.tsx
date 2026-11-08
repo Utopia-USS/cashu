@@ -455,19 +455,19 @@ export function AssetDetailView({
   const quiet = rc?.tint ? tintInk : "text-fg-muted";
   const recW = rc && (
     <Widget
-      title={S.recommendation}
+      title={rc.title}
       tint={rc.tint}
       tight
       tags={
         <>
           {rc.date && (
-            <span title={S.recTitle} className={`text-xs-plus font-medium ${quiet}`}>
+            <span title={rc.dateTitle} className={`text-xs-plus font-medium ${quiet}`}>
               {rc.date}
             </span>
           )}
           {rc.fresh && (
             <span
-              title={S.freshTitle}
+              title={rc.fresh.title}
               className={`inline-block whitespace-nowrap rounded-full border px-1.75 py-px text-2xs leading-normal ${rc.fresh.out ? freshOut : freshMaybe}`}
             >
               {rc.fresh.text}
@@ -476,11 +476,22 @@ export function AssetDetailView({
         </>
       }
     >
-      <div role="note" aria-label={S.recAria(rc.label)} data-fresh={rc.freshKey ?? undefined}>
-        <b className="inline-flex items-center gap-1.5 text-sm-plus font-strong">
-          <PlanGlyph path={rc.path} />
-          {rc.label}
-        </b>
+      <div role="note" aria-label={rc.aria} data-fresh={rc.freshKey ?? undefined}>
+        {rc.strength && (
+          <div className="flex flex-wrap items-center gap-x-1.5 text-sm-plus">
+            <PolDot state={rc.strength.glyph} title={rc.strength.label} />
+            <b className="font-strong">{rc.strength.label}</b>
+            {rc.strength.basis && <span className={quiet}>· {rc.strength.basis}</span>}
+          </div>
+        )}
+        {rc.rec && (
+          <b
+            className={`inline-flex items-center gap-1.5 font-strong ${rc.strength ? "mt-1 text-sm" : "text-sm-plus"}`}
+          >
+            <PlanGlyph path={rc.rec.path} />
+            {rc.rec.label}
+          </b>
+        )}
         {rc.reason && <p className="mt-1.5 mb-0 text-sm leading-widget">{rc.reason}</p>}
         {rc.reasons.length > 0 && (
           <ul

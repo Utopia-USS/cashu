@@ -85,6 +85,7 @@ export {
   type InstHealth,
   InstLabel,
   type InstLabelProps,
+  type InstStrength,
   InstTile,
   type InstTileProps,
   PlanGlyph,

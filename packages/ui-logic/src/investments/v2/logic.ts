@@ -39,6 +39,8 @@ import {
   RULE_KIND,
   STATE,
   STATE_HEAD_L,
+  STRENGTH_BASIS_L,
+  STRENGTH_L,
   S as T,
 } from "./logic.strings.js";
 import {
@@ -1733,8 +1735,13 @@ export interface InstLike {
   /** Model recommendation: buy_asap | buy | hold | reduce | exit_asap, null = none; `plan_at` = generation time (UTC). */
   plan?: string | null;
   plan_at?: string | null;
-  /** P3: the recommendation's freshness (positions / watchlist rows and the asset detail only). */
+  /** P3: the opinion's freshness (positions / watchlist rows and the asset detail only); the opinion is the
+   * recommendation when there is one, else the position strength. */
   plan_freshness?: PlanFreshness | null;
+  /** Position strength: strong | neutral | weak, null = none; `strength_basis` = what it rests on. */
+  strength?: string | null;
+  strength_basis?: string | null;
+  strength_at?: string | null;
 }
 
 // ---- the model recommendation and the thesis ring on the tile -------------------------------------------
@@ -1754,6 +1761,32 @@ export const PLAN_PATH: Record<string, string> = {
   reduce: "M3 4.5l3 3 3-3",
   exit_asap: "M3 2.75l3 3 3-3M3 6.25l3 3 3-3",
 };
+
+// ---- the position strength (the model's assessment of the thesis, never a trade call) ------------------------
+
+export const STRENGTH_VALUES = ["strong", "neutral", "weak"] as const;
+export type StrengthKey = (typeof STRENGTH_VALUES)[number];
+/** A known strength value, else null (an unknown value from a newer server reads as none). */
+export const strengthOf = (v: string | null | undefined): StrengthKey | null =>
+  v === "strong" || v === "neutral" || v === "weak" ? v : null;
+/** `mocna` / `neutralna` / `słaba`; "" for none or an unknown value. */
+export const strengthLabel = (v: string | null | undefined): string => {
+  const k = strengthOf(v);
+  return k ? STRENGTH_L[k] : "";
+};
+/** `teza na dobrej drodze`, `otoczenie przeciw`, ...; "" for none or an unknown code. */
+export const strengthBasisLabel = (v: string | null | undefined): string =>
+  v ? ((STRENGTH_BASIS_L as Record<string, string>)[v] ?? "") : "";
+/** The glyph state of a strength (PolDot): strong = the green dot, neutral = the grey square, weak = the red diamond. */
+export const STRENGTH_GLYPH: Record<StrengthKey, "positive" | "neutral" | "negative"> = {
+  strong: "positive",
+  neutral: "neutral",
+  weak: "negative",
+};
+/** The strength's title: `Siła pozycji` for a held instrument, `Siła tezy` for a watched one (sentence case). */
+export const strengthTitle = (held: boolean): string =>
+  (held ? T.rowPositionStrength : T.rowThesisStrength).replace(/^./u, (c) => c.toUpperCase());
+
 export type Ring = "sup" | "ful" | "weak" | "inv";
 /** The tile's thesis ring: supported / fulfilled / weakened / invalidated; nothing for the rest or stale research. */
 export function ringOf(health: HealthKey | null | undefined, stale: boolean): Ring | null {
@@ -1818,6 +1851,8 @@ export function hintChip(h: Pick<Hint, "code" | "params">, held: boolean): strin
       return T.planVsThesisChip;
     case "thesis_fulfilled":
       return T.thesisFulfilled;
+    case "position_weak":
+      return T.positionWeakChip;
     case "gain_review":
       return withNum(pct0(num(p.gain), true), T.exitPlanTail);
     case "loss_review":
@@ -1862,6 +1897,11 @@ export function hintLine(h: Pick<Hint, "code" | "params">, held: boolean): strin
     case "thesis_fulfilled":
       if (!held) return T.fulfilledNoPosition;
       return exit ? T.fulfilledNoExit : T.fulfilledCheckExit;
+    case "position_weak":
+      return T.positionWeak(
+        strengthBasisLabel(typeof p.basis === "string" ? p.basis : null),
+        !exit,
+      );
     case "gain_review": {
       const lead = [
         T.vsCost(pct0(num(p.gain), true) || T.gain),
@@ -2085,7 +2125,21 @@ export function instCardFacts(
   const rows: CardRow[] = [];
   const held = o.held !== false;
   const plan = planLabel(i.plan, held);
-  const fresh = plan ? freshOf(i.plan_freshness) : null;
+  const strength = strengthLabel(i.strength);
+  const fresh = plan || strength ? freshOf(i.plan_freshness) : null;
+  // The strength row first; the date and freshness go with the recommendation when there is one.
+  if (strength)
+    rows.push([
+      held ? T.rowPositionStrength : T.rowThesisStrength,
+      [
+        strength,
+        strengthBasisLabel(i.strength_basis) || null,
+        !plan && i.strength_at ? dm(i.strength_at) : null,
+        !plan && fresh ? FRESH_LABEL[fresh] : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    ]);
   if (plan)
     rows.push([
       T.rowRecommendation,
@@ -2097,9 +2151,12 @@ export function instCardFacts(
     const suffix = o.healthStale ? T.researchStale : o.pre ? T.researchPre : "";
     rows.push([T.rowThesis, `${HEALTH_LABEL[o.health]}${suffix}`]);
   }
-  // P2: every hint the FE can word (the recommendation's own hints only when no `rekomendacja` row carries it).
+  // P2: every hint the FE can word (the recommendation's own hints only when no `rekomendacja` row carries it, the
+  // weak position only without a strength row).
   const hints = knownHints(o.hints, held).filter(
-    (h) => !plan || !h.code.startsWith("recommendation_"),
+    (h) =>
+      (!(plan || strength) || !h.code.startsWith("recommendation_")) &&
+      (!strength || h.code !== "position_weak"),
   );
   for (const [k, h] of hints.entries())
     rows.push([k === 0 ? T.rowStrategy : "", hintLine(h, held), `hv ${hintCls(h.severity)}`]);
@@ -2128,13 +2185,23 @@ export function instCardFacts(
  * `rekomendacja: dokup` / `teza: spełniona` when known (no date, no stale suffix). */
 export function instSummary(i: InstLike, o: InstFactsOpts = {}): string {
   const f = instCardFacts(i, o);
-  const plan = planLabel(i.plan, o.held !== false);
-  const main = knownHints(o.hints, o.held !== false)[0];
+  const held = o.held !== false;
+  const plan = planLabel(i.plan, held);
+  const strength = strengthLabel(i.strength);
+  const strengthRow = held ? T.rowPositionStrength : T.rowThesisStrength;
+  const main = knownHints(o.hints, held)[0];
   return [
     f.head[1],
     ...f.rows
-      .filter((r) => r[0] !== T.rowRecommendation && r[0] !== T.rowThesis && r.length === 2)
+      .filter(
+        (r) =>
+          r[0] !== T.rowRecommendation &&
+          r[0] !== T.rowThesis &&
+          r[0] !== strengthRow &&
+          r.length === 2,
+      )
       .map((r) => r[1]),
+    strength ? T.labeled(strengthRow, strength) : null,
     plan ? T.labeled(T.rowRecommendation, plan) : null,
     o.health ? T.labeled(T.rowThesis, HEALTH_LABEL[o.health]) : null,
     main ? T.labeled(T.rowStrategy, hintChip(main, o.held !== false)) : null,

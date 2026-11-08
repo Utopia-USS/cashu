@@ -28,7 +28,10 @@ export function watchSummary(w: WatchItem): string {
 
 export interface WatchNarrowRow {
   key: number;
-  tile: Pick<InstTileProps, "monogram" | "plan" | "freshness" | "health" | "faded"> | null;
+  tile: Pick<
+    InstTileProps,
+    "monogram" | "plan" | "strength" | "freshness" | "health" | "faded"
+  > | null;
   name: string;
   agent: boolean;
   summary: string;

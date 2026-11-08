@@ -1,7 +1,8 @@
 // The Obserwowane tab of Aktywa (ab24ab6 v2/Watchlist.tsx WatchTable `wide`, laid out as design V5): Instrument
-// (ticker over name) | 30 dni | Cena over the week | Rekomendacja (+ the coverage `n/m`) | Alerty | X; rows open the
+// (ticker over name) | 30 dni | Cena over the week | Siła tezy (+ the coverage `n/m`: the recommendation text when
+// there is one, else the strength, the strength glyph before either) | Alerty | X; rows open the
 // asset. The strategy hints and a stale price live in the tile's hover card. Texts come from assetListModel.ts.
-import { Button, emptyCls, Skeleton, Sparkline, toneCls } from "@cashu/ui";
+import { Button, emptyCls, PolDot, Skeleton, Sparkline, toneCls } from "@cashu/ui";
 import {
   cInst,
   cSpark,
@@ -85,7 +86,16 @@ export function WatchTable({ watch }: { watch: AssetListProps["watch"] }) {
               </td>
               <td className={`${tdCls()} whitespace-nowrap`}>
                 {w.recommendation ? (
-                  <span className="text-fg" title={w.recommendation.title}>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-fg"
+                    title={w.recommendation.title}
+                  >
+                    {w.recommendation.glyph && (
+                      <PolDot
+                        state={w.recommendation.glyph.state}
+                        title={w.recommendation.glyph.label}
+                      />
+                    )}
                     {w.recommendation.text}
                   </span>
                 ) : (

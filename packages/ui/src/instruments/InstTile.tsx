@@ -1,9 +1,13 @@
 import type { CSSProperties, ReactNode } from "react";
+import { PolDot } from "./SignalGlyphs.js";
 
 /** `mark`: a 10px tile without type, the ring alone (the legend of the rings, design V5). */
 export type InstDensity = "row" | "compact" | "header" | "mark";
 /** Thesis health ring: supports (accent), fulfilled (violet), weakened (warning), invalidated (dashed). */
 export type InstHealth = "sup" | "ful" | "weak" | "inv";
+/** The model's position strength: strong (green dot), neutral (grey square), weak (red diamond). */
+export type InstStrength = "strong" | "neutral" | "weak";
+const strengthGlyph = { strong: "positive", neutral: "neutral", weak: "negative" } as const;
 
 // The ticker tile (old `.il .av` per density, `.il .avw .pl` plan coin). Black with light grey type in both
 // themes; a 5-character monogram (or 4 capitals with two or more W / M) steps the type down.
@@ -95,7 +99,10 @@ export interface InstTileProps {
   density?: InstDensity;
   /** The recommendation as a coin on the top-right corner: its chevron path. */
   plan?: string | null;
-  /** Rim colour of the plan coin: `maybe` (warning) or `out` (negative) freshness; default the surface. */
+  /** Without a plan: the position strength as a small glyph in the coin's place (PolDot shapes). */
+  strength?: InstStrength | null;
+  /** Rim colour of the plan coin (or the strength glyph): `maybe` (warning) or `out` (negative) freshness;
+   * default the surface. */
   freshness?: "maybe" | "out" | null;
   /** Thesis health ring around the tile. */
   health?: InstHealth | null;
@@ -119,6 +126,7 @@ function TileFace({
   monogram,
   density = "row",
   plan,
+  strength,
   freshness,
   health,
   faded = false,
@@ -150,6 +158,14 @@ function TileFace({
           style={{ boxShadow: `0 0 0 1.5px ${rim}` }}
         >
           <ChevronSvg path={plan} className="block size-full" />
+        </span>
+      )}
+      {!plan && strength && (
+        <span
+          className={`pointer-events-none absolute flex items-center justify-center rounded-full ${coins[density]}`}
+          style={{ background: tileBg, boxShadow: `0 0 0 1.5px ${rim}` }}
+        >
+          <PolDot state={strengthGlyph[strength]} size={density === "mark" ? "sm" : "md"} />
         </span>
       )}
     </span>

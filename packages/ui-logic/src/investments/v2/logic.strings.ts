@@ -76,6 +76,21 @@ export const PLAN_WATCHED_L = catalog({
   hold: { pl: "czekam", en: "wait" },
 });
 
+/** Position strength labels (feminine: they agree with both "pozycja" and "teza"). */
+export const STRENGTH_L = catalog({
+  strong: { pl: "mocna", en: "strong" },
+  neutral: { pl: "neutralna", en: "neutral" },
+  weak: { pl: "słaba", en: "weak" },
+});
+/** What a position strength rests on. */
+export const STRENGTH_BASIS_L = catalog({
+  on_track: { pl: "teza na dobrej drodze", en: "thesis on track" },
+  fulfilled: { pl: "teza spełniona", en: "thesis fulfilled" },
+  undermined: { pl: "teza podważona", en: "thesis undermined" },
+  environment_against: { pl: "otoczenie przeciw", en: "environment against it" },
+  no_progress: { pl: "brak postępu", en: "no progress" },
+});
+
 /** The locative after "przy tezie" (en: the adjective before "thesis"). */
 export const HEALTH_LOC_L = catalog({
   weak: { pl: "osłabionej", en: "weakened" },
@@ -521,6 +536,13 @@ export const S = catalog({
     pl: "alert spełniony: sprawdź tezę i plan",
     en: "alert triggered: check the thesis and plan",
   },
+  positionWeakChip: { pl: "pozycja słaba", en: "position weak" },
+  positionWeak: {
+    pl: (basis: string, hasExit: boolean) =>
+      `model ocenia pozycję jako słabą${basis ? ` (${basis})` : ""}: ${hasExit ? "sprawdź swój plan wyjścia" : "nie masz planu wyjścia"}`,
+    en: (basis: string, hasExit: boolean) =>
+      `the model rates the position weak${basis ? ` (${basis})` : ""}: ${hasExit ? "check your exit plan" : "you have no exit plan"}`,
+  },
   planWithoutThesis: {
     pl: (plan: string) => `plan ${plan || "zakupu"} bez tezy: najpierw zapisz tezę`,
     en: (plan: string) =>
@@ -558,6 +580,8 @@ export const S = catalog({
 
   // ---- instrument card
   rowRecommendation: { pl: "rekomendacja", en: "recommendation" },
+  rowPositionStrength: { pl: "siła pozycji", en: "position strength" },
+  rowThesisStrength: { pl: "siła tezy", en: "thesis strength" },
   rowThesis: { pl: "teza", en: "thesis" },
   rowStrategy: { pl: "strategia", en: "strategy" },
   rowClass: { pl: "klasa", en: "class" },

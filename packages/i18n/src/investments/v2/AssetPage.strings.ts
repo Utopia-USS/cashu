@@ -100,6 +100,20 @@ export const S = catalog({
     pl: (label: string) => `Rekomendacja modelu: ${label}`,
     en: (label: string) => `Model recommendation: ${label}`,
   },
+  strengthTitle: {
+    pl: "Ocena modelu: jak dobrze trzyma się teza. To nie jest rekomendacja kupna ani sprzedaży.",
+    en: "The model's assessment of how well the thesis holds. Not a buy or sell call.",
+  },
+  freshTitleStrength: {
+    pl: "Według danych zapisanych po ocenie",
+    en: "Based on data stored after the assessment",
+  },
+  strengthAria: {
+    pl: (title: string, label: string, basis: string) =>
+      `${title} według modelu: ${label}${basis ? ` (${basis})` : ""}`,
+    en: (title: string, label: string, basis: string) =>
+      `${title} per the model: ${label}${basis ? ` (${basis})` : ""}`,
+  },
   reasons: { pl: "Powody", en: "Reasons" },
   alerts: { pl: "Alerty", en: "Alerts" },
   all: { pl: "wszystkie", en: "all" },

@@ -126,6 +126,15 @@ export interface Instrument {
   /** P3: whether data stored after `plan_at` puts the recommendation in question; null without a plan. Only on
    * positions rows, watchlist rows and the asset detail. */
   plan_freshness?: PlanFreshness | null;
+  /** Position strength, the model's assessment of how well the thesis holds (never a trade call):
+   * strong | neutral | weak, null = none. Always given by the agent; the recommendation (`plan`) is optional. */
+  strength?: string | null;
+  /** Why: on_track | fulfilled | undermined | environment_against | no_progress, null without a strength. */
+  strength_basis?: string | null;
+  /** The model's short reason for the strength, null without one. */
+  strength_reason?: string | null;
+  /** When the strength was set (UTC ISO), null without one. */
+  strength_at?: string | null;
   /** P5 market segment: the effective key (set by the owner / agent, else the auto table) or null, and where it
    * comes from: `owner` | `agent` | `auto` | null (`set` from earlier servers = owner or agent). */
   segment?: string | null;

@@ -32,6 +32,10 @@ import {
   price,
   rowFlags,
   STATE_LABEL,
+  STRENGTH_GLYPH,
+  strengthLabel,
+  strengthOf,
+  strengthTitle,
   subLine,
   watchMove,
   weekChange,
@@ -71,7 +75,7 @@ export interface AssetListUi {
 
 /** The instrument label of a row: tile, name, second line, marks, classify icon, hover card / touch title. */
 export interface RowLabel {
-  tile: Pick<InstTileProps, "monogram" | "plan" | "freshness" | "health" | "faded">;
+  tile: Pick<InstTileProps, "monogram" | "plan" | "strength" | "freshness" | "health" | "faded">;
   name: string;
   sub?: string;
   marks: MarksProps;
@@ -116,7 +120,12 @@ interface WatchRow {
   /** Null when the instrument is unknown (plain name button). */
   label: RowLabel | null;
   name: string;
-  recommendation: { text: string; title?: string } | null;
+  /** The recommendation when there is one, else the thesis strength; `glyph` = the strength (PolDot). */
+  recommendation: {
+    text: string;
+    title?: string;
+    glyph: { state: "positive" | "neutral" | "negative"; label: string } | null;
+  } | null;
   noRecommendation: string;
   spark: SparklineProps;
   price: string | null;
@@ -202,6 +211,7 @@ function marksOf(id: number | string, data: InvestmentsHomeData, unread: number)
 /** What a strategy hint is about (the category over its line in the card's note). */
 function hintCategory(code: string): string {
   if (code.startsWith("recommendation_")) return L.rowRecommendation;
+  if (code === "position_weak") return L.rowPositionStrength;
   if (code.startsWith("thesis_") || code === "plan_vs_thesis" || code === "no_thesis")
     return L.rowThesis;
   return L.rowStrategy;
@@ -389,7 +399,9 @@ export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): Asse
   });
 
   // ---- watchlist (WatchTable wide) ---------------------------------------------------------------------
-  const coverage = watchList.filter((w) => planLabel(w.instrument?.plan, false)).length;
+  const coverage = watchList.filter(
+    (w) => planLabel(w.instrument?.plan, false) || strengthOf(w.instrument?.strength),
+  ).length;
   const watchRows: WatchRow[] | null =
     watch === null
       ? null
@@ -398,6 +410,7 @@ export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): Asse
           const daily = mv != null && weekChange(w.closes_30d) == null;
           const name = w.instrument ? instName(w.instrument) : `instrument ${w.instrument_id}`;
           const recommendation = planLabel(w.instrument?.plan, false);
+          const strength = strengthOf(w.instrument?.strength);
           let label: RowLabel | null = null;
           if (w.instrument) {
             const { card, touchTitle } = instCardOf(w.instrument, st, {
@@ -421,12 +434,19 @@ export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): Asse
             onOpen: () => open(w.instrument_id),
             label,
             name,
-            recommendation: recommendation
-              ? {
-                  text: recommendation,
-                  title: w.instrument?.plan_reason ?? undefined,
-                }
-              : null,
+            recommendation:
+              recommendation || strength
+                ? {
+                    text: recommendation || strengthLabel(strength),
+                    title:
+                      (strength ? w.instrument?.strength_reason : null) ??
+                      w.instrument?.plan_reason ??
+                      undefined,
+                    glyph: strength
+                      ? { state: STRENGTH_GLYPH[strength], label: strengthLabel(strength) }
+                      : null,
+                  }
+                : null,
             noRecommendation: W.none,
             spark: { values: (w.closes_30d ?? []).map((x) => x.close), label: W.spark30d(name) },
             price: w.price ? price(w.price.close, w.price.currency) : null,
@@ -510,7 +530,7 @@ export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): Asse
       empty: W.empty,
       head: {
         inst: "Instrument",
-        recommendation: W.colRecommendation,
+        recommendation: strengthTitle(false),
         coverage: `${coverage}/${watchList.length}`,
         spark: W.col30d,
         price: W.colPrice,

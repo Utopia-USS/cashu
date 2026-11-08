@@ -79,7 +79,7 @@ export interface TopicDrawerInput {
   /** The tile of a known instrument (plan coin, health ring). */
   tileOf(
     inst: InstLike,
-  ): Pick<InstTileProps, "monogram" | "plan" | "freshness" | "health" | "faded">;
+  ): Pick<InstTileProps, "monogram" | "plan" | "strength" | "freshness" | "health" | "faded">;
   /** Topic key -> the watched (not held) symbols. */
   watchedTopics: Map<string, string[]>;
 }
@@ -151,7 +151,10 @@ export interface TopicDrawerModel {
           items: {
             symbol: string;
             name: string;
-            tile: Pick<InstTileProps, "monogram" | "plan" | "freshness" | "health" | "faded">;
+            tile: Pick<
+              InstTileProps,
+              "monogram" | "plan" | "strength" | "freshness" | "health" | "faded"
+            >;
             sub: string | undefined;
             onOpen: (() => void) | undefined;
           }[];

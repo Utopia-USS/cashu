@@ -30,11 +30,12 @@ import {
   qty,
   wdm,
 } from "@cashu/ui-logic/investments/labels";
-import type { Hint, Thesis } from "@cashu/ui-logic/investments/types";
+import type { Hint, Instrument, Thesis } from "@cashu/ui-logic/investments/types";
 import {
   assetTimeline,
   averageCost,
   FRESH_LABEL,
+  type FreshKey,
   freshOf,
   freshReasonLines,
   type HeaderMetaItem,
@@ -53,12 +54,19 @@ import {
   price as priceText,
   type SigState,
   STATE_LABEL,
+  STRENGTH_GLYPH,
+  type StrengthKey,
   signalFact,
   stateOf,
+  strengthBasisLabel,
+  strengthLabel,
+  strengthOf,
+  strengthTitle,
   type TlRow,
   tlDate,
   weekChange,
 } from "@cashu/ui-logic/investments/v2/logic";
+import { S as L } from "@cashu/ui-logic/investments/v2/logic.strings";
 import { isResearchKind, signalNoteId } from "@cashu/ui-logic/investments/v2/research/logic";
 import { canonKey, SEGMENTS, segmentLabel } from "@cashu/ui-logic/investments/v2/research/segments";
 import type {
@@ -121,7 +129,7 @@ export interface AssetInputs {
   /** Held anywhere in the profile (old `isHeld(useInstState(), id)`). */
   heldAnywhere: boolean;
   /** The ticker tile marks (old InstTile via instState). */
-  tile: Pick<InstTileProps, "monogram" | "plan" | "freshness" | "health" | "faded">;
+  tile: Pick<InstTileProps, "monogram" | "plan" | "strength" | "freshness" | "health" | "faded">;
   /** A name seen before the detail loaded (old NAMES map). */
   knownName: string | null;
   /** Phone width (max 640px): room for the level labels, fewer date labels. */
@@ -236,7 +244,9 @@ export function assetModel(o: AssetInputs) {
   const pLabel = (v: string | null) => planLabel(v, held);
   const plan = inst?.plan && pLabel(inst.plan) ? inst.plan : null;
   const hints = knownHints(detail?.hints ?? pos?.hints ?? w?.hints ?? [], held);
-  const fresh = plan ? freshOf(inst?.plan_freshness) : null;
+  // The model's opinion: the position strength (always from the agent) and the optional recommendation.
+  const strength = strengthOf(inst?.strength);
+  const fresh = plan || strength ? freshOf(inst?.plan_freshness) : null;
   const reasons = fresh ? freshReasonLines(inst?.plan_freshness, { hints, alerts: mine }) : [];
   const names = new Map(
     o.positions.map((p) => [Number(p.instrument.id), instName(p.instrument)] as [number, string]),
@@ -489,26 +499,59 @@ export function assetModel(o: AssetInputs) {
               : null,
           }
         : null,
-    recW: plan
-      ? {
-          tint:
-            fresh === "out"
-              ? ("negative" as const)
-              : fresh === "maybe"
-                ? ("warning" as const)
-                : undefined,
-          date: inst?.plan_at ? dmy(inst.plan_at) : null,
-          fresh: fresh ? { text: FRESH_LABEL[fresh], out: fresh === "out" } : null,
-          label: pLabel(plan),
-          path: PLAN_PATH[plan] ?? null,
-          reason: inst?.plan_reason ?? null,
-          reasons,
-          freshKey: fresh,
-        }
-      : null,
+    recW: recWidget(inst, held, plan, strength, fresh, reasons),
     watchW: !pos && w ? { note: w.note } : null,
     open,
     timeline: timeline.map((e) => ({ ...e, date: tlDate(e.at, yearNow) })),
   };
 }
 export type AssetModel = ReturnType<typeof assetModel>;
+
+/** Rekomendacja / Siła pozycji (Siła tezy): the strength row first (PolDot + label + basis), then the optional
+ * recommendation line; reason, date and freshness belong to the strength when there is one. Null without either. */
+function recWidget(
+  inst: Instrument | null,
+  held: boolean,
+  plan: string | null,
+  strength: StrengthKey | null,
+  fresh: FreshKey | null,
+  reasons: ReturnType<typeof freshReasonLines>,
+) {
+  if (!inst || !(plan || strength)) return null;
+  const pLabel = planLabel(plan, held);
+  const title = strength ? strengthTitle(held) : S.recommendation;
+  const basis = strength ? strengthBasisLabel(inst.strength_basis) : "";
+  const at = (strength ? inst.strength_at : null) ?? inst.plan_at ?? null;
+  return {
+    title,
+    tint:
+      fresh === "out"
+        ? ("negative" as const)
+        : fresh === "maybe"
+          ? ("warning" as const)
+          : undefined,
+    date: at ? dmy(at) : null,
+    dateTitle: strength ? S.strengthTitle : S.recTitle,
+    fresh: fresh
+      ? {
+          text: FRESH_LABEL[fresh],
+          out: fresh === "out",
+          title: plan ? S.freshTitle : S.freshTitleStrength,
+        }
+      : null,
+    aria: strength ? S.strengthAria(title, strengthLabel(strength), basis) : S.recAria(pLabel),
+    strength: strength
+      ? { glyph: STRENGTH_GLYPH[strength], label: strengthLabel(strength), basis }
+      : null,
+    /** Labelled (`rekomendacja: dokup`) when it sits under a strength. */
+    rec: plan
+      ? {
+          label: strength ? L.labeled(L.rowRecommendation, pLabel) : pLabel,
+          path: PLAN_PATH[plan] ?? null,
+        }
+      : null,
+    reason: (strength ? inst.strength_reason : null) ?? inst.plan_reason ?? null,
+    reasons,
+    freshKey: fresh,
+  };
+}
