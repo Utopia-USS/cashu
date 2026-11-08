@@ -1,6 +1,9 @@
 // A native vault used on ONE device: nothing else runs a sync pass (no paired peer sends a carrier
 // request), so the production fetch paths must obtain the lease's pull evidence themselves. These
 // tests never call `sync()` by hand; the market answers from a synthetic stub, never the network.
+
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import type { CliExecParams, HostFrame } from "@cashu/host-protocol";
 import { connectHost } from "@cashu/node-host";
 import { ruleRuns } from "@cashu/store/investments/queries";
@@ -63,14 +66,22 @@ const fxRequested = (urls: readonly string[]) =>
  */
 async function singleDeviceHost(
   clock: () => number,
-  options: { denyLease?: boolean; pairPeer?: boolean; remotes?: readonly Transport[] } = {},
+  options: {
+    denyLease?: boolean;
+    pairPeer?: boolean;
+    remotes?: readonly Transport[];
+    /** Start on this vault's data dir again (a restart) instead of a new fixture. */
+    reuse?: NativeVaultFixture;
+  } = {},
 ) {
-  const fixture = await nativeVaultFixture({
-    modules: ["investments"],
-    now: clock,
-    ...(options.pairPeer ? { pairPeer: true } : {}),
-  });
-  fixtures.push(fixture);
+  const fixture =
+    options.reuse ??
+    (await nativeVaultFixture({
+      modules: ["investments"],
+      now: clock,
+      ...(options.pairPeer ? { pairPeer: true } : {}),
+    }));
+  if (options.reuse === undefined) fixtures.push(fixture);
   const stub = stubMarket();
   let market: ProductionMarket | undefined;
   const host = await startLocalHost({
@@ -183,6 +194,39 @@ it("runs the worker daily on a single-device vault and stores fresh market data"
     ).toEqual([]);
   } finally {
     await host.stop();
+  }
+});
+
+it("opens the vault again after a daily run recorded its fetch report", async () => {
+  // A completed fetch report is a device-layer lease event, not a store event; the open-time
+  // history check once looked for it in the store's log and refused every later start.
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  const first = await singleDeviceHost(() => NOW);
+  try {
+    await expect.poll(() => dailyStatus(first.host)).toBe("ok");
+  } finally {
+    await first.host.stop();
+  }
+  // The run left a completed fetch report in the vault's attempt journal.
+  const journal = new DatabaseSync(
+    join(first.fixture.dataDir, "vaults", first.fixture.vaultId, "private.db"),
+    { readOnly: true },
+  );
+  try {
+    const row = journal
+      .prepare(
+        "SELECT count(*) AS n FROM host_attempts WHERE command_id='native.devices.fetchReport' AND phase='completed'",
+      )
+      .get() as { n: number };
+    expect(row.n).toBeGreaterThan(0);
+  } finally {
+    journal.close();
+  }
+  const second = await singleDeviceHost(() => NOW + 60_000, { reuse: first.fixture });
+  try {
+    expect(ruleRuns(second.vault.store.read.bind(second.vault.store))).toHaveLength(1);
+  } finally {
+    await second.host.stop();
   }
 });
 

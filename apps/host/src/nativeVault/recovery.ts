@@ -1,6 +1,7 @@
 // Reconciling keyed attempts against the authenticated log: at open (every unresolved revocation,
 // then every completed attempt's history) and when a revocation is inspected later.
 import { crypto } from "@cashu/sync";
+import { isLeaseCommand } from "../devices/leaseAttempts.js";
 import type { NativeVaultContext } from "./context.js";
 import { warnCause } from "./diagnostics.js";
 import { parseRevokeIntentProof, REVOKE_COMMAND } from "./revokeIntent.js";
@@ -53,8 +54,10 @@ export async function reconcileAttemptHistory(context: NativeVaultContext): Prom
       await reconcileRevoke(context, record.attemptId, record.eids, record.fingerprint);
   }
   const completed = meta
-    .prepare("SELECT command_id, fingerprint, eids FROM host_attempts WHERE phase='completed'")
-    .all<{ command_id: string; fingerprint: string; eids: string }>();
+    .prepare(
+      "SELECT command_id, fingerprint, eids, digest FROM host_attempts WHERE phase='completed'",
+    )
+    .all<{ command_id: string; fingerprint: string; eids: string; digest: string | null }>();
   for (const row of completed) {
     const eids: unknown = JSON.parse(row.eids);
     if (!Array.isArray(eids) || !eids.every((eid) => typeof eid === "string"))
@@ -69,6 +72,12 @@ export async function reconcileAttemptHistory(context: NativeVaultContext): Prom
         held.generation !== proof.key.generation ||
         held.epoch !== proof.key.epoch
       )
+        throw new Error("incomplete_history");
+    } else if (isLeaseCommand(row.command_id)) {
+      // Lease events (a fetch report, a pin, a release) live in the device layer of this device's
+      // own log, not in the store's event log: prove them by the own-log batch digest.
+      if (row.digest === null) throw new Error("corrupt_attempt");
+      if ((await engine.inspectOwnBatch({ eids, digest: row.digest })) !== "committed")
         throw new Error("incomplete_history");
     } else if (store.eventHlcs(eids).size !== eids.length) {
       throw new Error("incomplete_history");

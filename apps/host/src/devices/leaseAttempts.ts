@@ -8,6 +8,12 @@ const FETCH_REPORT_COMMAND = "native.devices.fetchReport";
 export const LEADER_PIN_COMMAND = "native.devices.leaderPin";
 const LEADER_RELEASE_COMMAND = "native.devices.leaderRelease";
 const LEASE_COMMANDS = new Set([FETCH_REPORT_COMMAND, LEADER_PIN_COMMAND, LEADER_RELEASE_COMMAND]);
+
+/**
+ * A lease attempt's events are device-layer lease events in this device's own log, never store
+ * events: open-time history checks prove them with the own-log batch digest.
+ */
+export const isLeaseCommand = (commandId: string): boolean => LEASE_COMMANDS.has(commandId);
 type LeaseOutcome = "completed" | "not_started" | "outcome_unknown";
 
 interface LeaseAttemptInput {
