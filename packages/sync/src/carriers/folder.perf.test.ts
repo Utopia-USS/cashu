@@ -35,8 +35,8 @@ import {
   verifyHeadSignature,
 } from "../crypto/index.js";
 import { createSyncEngine } from "../engine.js";
-import { MemoryClockStore, MemoryTransport } from "../memory.js";
 import { ManualClock } from "../testing/index.js";
+import { MemoryClockStore, MemoryTransport } from "../testing/memory.js";
 import { testSigners } from "../testing/signers.js";
 import { seededRandom } from "../transports/folder/testing/cloud.js";
 import { NodeFolderFs } from "../transports/folder/testing/node-fs.js";

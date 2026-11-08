@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { anyEpoch, code, pairWith, sodium, subjectOf } from "../testing/crypto/testkit.js";
 import { certifyDevice, TrustedDevice, verifyCertificates } from "./cert.js";
 import { createDeviceIdentity, DeviceIdentity, RECOVERY_SIGNER_ID } from "./identity.js";
 import { createKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
-import { anyEpoch, code, pairWith, sodium, subjectOf } from "./testkit.js";
 import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 function vault() {

@@ -5,11 +5,11 @@ import type { DeviceIdentity, Keyring } from "../crypto/index.js";
 import { buildDeviceAdded } from "../devices/events.js";
 import { DeviceFrameGate } from "../devices/gate.js";
 import { MemoryProvenanceStore } from "../devices/provenance.js";
-import { newEid, sodium } from "../devices/testkit.js";
 import { VaultDevices } from "../devices/vaultDevices.js";
 import { createSyncEngine } from "../engine.js";
-import { MemoryClockStore, MemoryTransport } from "../memory.js";
+import { newEid, sodium } from "./devices/testkit.js";
 import { ManualClock, MemorySink } from "./index.js";
+import { MemoryClockStore, MemoryTransport } from "./memory.js";
 
 const T0 = Date.UTC(2026, 10, 1, 12);
 

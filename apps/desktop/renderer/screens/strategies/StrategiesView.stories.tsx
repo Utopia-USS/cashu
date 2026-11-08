@@ -1,5 +1,5 @@
 import { StrategiesView } from "./StrategiesView.js";
-import { readyState, unavailableState } from "./storyState.js";
+import { readyState, unavailableState } from "./testing/storyState.js";
 
 export default {
   title: "Desktop/Strategies/Strategies",

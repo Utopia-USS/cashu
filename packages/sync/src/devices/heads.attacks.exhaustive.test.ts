@@ -1,7 +1,7 @@
 // Exhaustive tier: the signed-heads attack sweeps (seeds 2-9; seed 1 runs in heads.attacks.test.ts).
 
 import { describe, it } from "vitest";
-import { forgeryRun, rewriteRun } from "./headsSim.js";
+import { forgeryRun, rewriteRun } from "../testing/devices/headsSim.js";
 
 const SEEDS = Array.from({ length: 8 }, (_, i) => i + 2);
 

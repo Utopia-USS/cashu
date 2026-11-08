@@ -13,11 +13,6 @@ import {
   RECOVERY_SIGNER_ID,
   recoveryIdentity,
 } from "../crypto/index.js";
-import { concat, fromHex, toHex } from "./bytes.js";
-import { buildDeviceAdded, buildDeviceRevoked, DEVICE_ADDED, type LogEvent } from "./events.js";
-import { foldRegistry, type Registry } from "./registry.js";
-import { CERT_CHECK_BUDGET } from "./registryTypes.js";
-import { type StatementVerifier, verifyStatement } from "./statements.js";
 import {
   createSimVault,
   hlcAt,
@@ -27,7 +22,12 @@ import {
   type SimDevice,
   START_TIME,
   sodium,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import { concat, fromHex, toHex } from "./bytes.js";
+import { buildDeviceAdded, buildDeviceRevoked, DEVICE_ADDED, type LogEvent } from "./events.js";
+import { foldRegistry, type Registry } from "./registry.js";
+import { CERT_CHECK_BUDGET } from "./registryTypes.js";
+import { type StatementVerifier, verifyStatement } from "./statements.js";
 
 const KEYS = createDeviceIdentity(sodium); // one key pair for every junk subject (only ids differ)
 

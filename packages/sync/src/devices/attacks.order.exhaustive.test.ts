@@ -2,7 +2,7 @@
 // seed (attacks.test.ts runs seed 1 in the default tier).
 
 import { describe, it } from "vitest";
-import { deliveryOrderRun } from "./orderSim.js";
+import { deliveryOrderRun } from "../testing/devices/orderSim.js";
 
 describe("review attacks: any delivery order, every seed", () => {
   it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])("seed %i", async (seed) => {

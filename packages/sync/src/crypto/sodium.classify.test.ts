@@ -4,9 +4,9 @@
 // shapes; a planted unknown shape must never become auth_failed.
 
 import { describe, expect, it } from "vitest";
+import { code, fakeReactNativeLibsodium, sodium } from "../testing/crypto/testkit.js";
 import { CryptoError } from "./errors.js";
 import { fromLibsodium, type LibsodiumLike, type SodiumOptions } from "./sodium.js";
-import { code, fakeReactNativeLibsodium, sodium } from "./testkit.js";
 import { aeadAuthentic, sealAuthentic } from "./verify.js";
 
 type Decrypt = NonNullable<LibsodiumLike["crypto_aead_xchacha20poly1305_ietf_decrypt"]>;

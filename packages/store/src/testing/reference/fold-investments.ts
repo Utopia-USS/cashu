@@ -6,8 +6,8 @@
 // view's naive-UTC text, JSON columns parsed), so the store's materializers can be compared table by
 // table. Not incremental on purpose. Signals, watchlist, overrides and valuations are modelled in
 // fold.ts. Test oracle only: imports nothing from the store.
-import { detPartsOf } from "../det-parts.js";
-import { claimAllowed } from "../identity.js";
+import { detPartsOf } from "../../events/v1/det-parts.js";
+import { claimAllowed } from "../../events/v1/identity.js";
 import { type RefDet, type RefEvent, refFloats } from "./fold.js";
 
 type Row = Record<string, unknown>;

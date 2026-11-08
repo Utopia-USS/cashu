@@ -10,15 +10,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, metaClockStore, mintUlid, Store, vaultSalt } from "@cashu/store";
+import { createOwnLogCodec, createSyncEngine, crypto, type Transport } from "@cashu/sync";
 import {
-  createOwnLogCodec,
-  createSyncEngine,
-  crypto,
+  insecureTestCodec,
+  insecureTestGate,
+  ManualClock,
   MemoryClockStore,
+  MemorySink,
   MemoryTransport,
-  type Transport,
-} from "@cashu/sync";
-import { insecureTestCodec, insecureTestGate, ManualClock, MemorySink } from "@cashu/sync/testing";
+} from "@cashu/sync/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { startLocalHost } from "./host.js";
 import { memoryLog } from "./log.js";

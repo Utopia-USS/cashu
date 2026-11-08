@@ -1,4 +1,16 @@
 import { describe, expect, it } from "vitest";
+import {
+  backends,
+  code,
+  ctx,
+  DEVICE_B,
+  GID_SALT,
+  newRing,
+  PLAINTEXT_MARKER,
+  samplePlain,
+  testRecovery,
+  writerOf,
+} from "../testing/crypto/testkit.js";
 import { fromUtf8 } from "./encoding.js";
 import {
   frameKeyId,
@@ -12,18 +24,6 @@ import { decodeHead, encodeHead, sameHead, verifyHeadSignature } from "./head.js
 import { createVaultId, rotateKeyring } from "./keys.js";
 import type { Sodium } from "./sodium.js";
 import { keyringFromKeys } from "./testing.js";
-import {
-  backends,
-  code,
-  ctx,
-  DEVICE_B,
-  GID_SALT,
-  newRing,
-  PLAINTEXT_MARKER,
-  samplePlain,
-  testRecovery,
-  writerOf,
-} from "./testkit.js";
 
 describe.each(backends)("frames (%s)", (_name, sodium: Sodium) => {
   describe("frame roundtrip", () => {

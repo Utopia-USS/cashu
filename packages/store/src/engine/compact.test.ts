@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { PAYLOADS } from "../events/v1/catalog.js";
-import { VALID_SAMPLES } from "../events/v1/test-fixtures.js";
+import { VALID_SAMPLES } from "../testing/event-fixtures.js";
 import { decodePayload, encodePayload, PayloadCodec } from "./compact.js";
 
 const shapeOf = (schema: unknown) => (schema as { shape: Record<string, z.ZodType> }).shape;

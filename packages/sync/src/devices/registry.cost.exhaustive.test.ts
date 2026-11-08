@@ -3,7 +3,12 @@
 // above linear in the certificates. The default tier runs the 70-puppet case (registry.cost.test.ts).
 
 import { beforeAll, describe, expect, it } from "vitest";
-import { foldTwice, puppetsRevokedOneByOne, type Scenario, twoLevelTree } from "./registryCost.js";
+import {
+  foldTwice,
+  puppetsRevokedOneByOne,
+  type Scenario,
+  twoLevelTree,
+} from "../testing/devices/registryCost.js";
 
 function expectLinear(s: Scenario, label: string) {
   const { cold, warm } = foldTwice(s);

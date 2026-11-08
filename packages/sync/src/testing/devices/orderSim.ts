@@ -5,9 +5,9 @@
 // Test support only (synthetic data); production code never imports it.
 
 import { expect } from "vitest";
-import type { UnstampedEvent } from "../carrier.js";
-import { buildDeviceRevoked } from "./events.js";
-import { foldRegistry, type Registry } from "./registry.js";
+import type { UnstampedEvent } from "../../carrier.js";
+import { buildDeviceRevoked } from "../../devices/events.js";
+import { foldRegistry, type Registry } from "../../devices/registry.js";
 import {
   consentsOf,
   createSimVault,

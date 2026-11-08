@@ -4,23 +4,27 @@
 // and statement signature verifications that miss the caches. A return to quadratic folds shows as
 // a check count far above linear in the certificates. Test support only (synthetic data).
 
-import type { UnstampedEvent } from "../carrier.js";
+import type { UnstampedEvent } from "../../carrier.js";
 import {
   CertificateCache,
   certifyDevice,
   createDeviceId,
   createDeviceIdentity,
   type DeviceIdentity,
-} from "../crypto/index.js";
-import { toHex } from "./bytes.js";
+} from "../../crypto/index.js";
+import { toHex } from "../../devices/bytes.js";
 import {
   buildDeviceAdded,
   buildDeviceRevoked,
   type LogEvent,
   revocationConsentBody,
-} from "./events.js";
-import { foldRegistry, type Registry, type TrustRoot } from "./registry.js";
-import { memoizedVerifier, type StatementVerifier, signStatement } from "./statements.js";
+} from "../../devices/events.js";
+import { foldRegistry, type Registry, type TrustRoot } from "../../devices/registry.js";
+import {
+  memoizedVerifier,
+  type StatementVerifier,
+  signStatement,
+} from "../../devices/statements.js";
 import { createSimVault, hlcAt, newEid, START_TIME, sodium } from "./testkit.js";
 
 class Stream {

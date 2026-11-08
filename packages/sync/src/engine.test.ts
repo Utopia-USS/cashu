@@ -5,7 +5,6 @@ import { ownBatchDigest } from "./batchProof.js";
 import type { ClockGuardStore, SyncEngine, Transport } from "./carrier.js";
 import { createSyncEngine } from "./engine.js";
 import { SyncError } from "./errors.js";
-import { MemoryClockStore, MemoryTransport } from "./memory.js";
 import { utf8Encode } from "./runtime.js";
 import { frameBytes } from "./segment.js";
 import {
@@ -15,6 +14,7 @@ import {
   ManualClock,
   MemorySink,
 } from "./testing/index.js";
+import { MemoryClockStore, MemoryTransport } from "./testing/memory.js";
 
 const VAULT = "0123456789abcdef0123456789abcdef";
 const A = "daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

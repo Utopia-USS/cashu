@@ -1,5 +1,5 @@
 import { InstallmentDrawerView } from "./InstallmentDrawerView.js";
-import { StoryFixture, storyState } from "./storyState.js";
+import { StoryFixture, storyState } from "./testing/storyState.js";
 
 const open = { ...storyState, drawer: { kind: "payment" as const } };
 export default {

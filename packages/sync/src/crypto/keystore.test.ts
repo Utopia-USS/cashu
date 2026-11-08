@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ctx, newRing, samplePlain, sodium, writerOf } from "../testing/crypto/testkit.js";
 import { fromBase64, toBase64, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
@@ -21,7 +22,6 @@ import {
   sealKeyStoreValue,
 } from "./keystore.js";
 import { InMemoryKeyStore } from "./testing.js";
-import { ctx, newRing, samplePlain, sodium, writerOf } from "./testkit.js";
 
 // Fake safeStorage: reversible but not identity, so a test can tell stored blobs are not the raw value.
 function fakeSafeStorage(backend = "keychain", available = true): SafeStorageLike {

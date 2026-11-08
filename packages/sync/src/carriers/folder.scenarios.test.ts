@@ -10,8 +10,8 @@ import {
   rotateKeyring,
 } from "../crypto/index.js";
 import { createSyncEngine } from "../engine.js";
-import { MemoryClockStore, MemoryTransport } from "../memory.js";
 import { ManualClock, MemorySink } from "../testing/index.js";
+import { MemoryClockStore, MemoryTransport } from "../testing/memory.js";
 import { testSigners } from "../testing/signers.js";
 import { CloudSim, seededRandom } from "../transports/folder/testing/cloud.js";
 import { MemoryFolderFs } from "../transports/folder/testing/memory-fs.js";

@@ -4,8 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { parseHlc } from "../hlc.js";
-import { buildDeviceRevoked, buildLeaseClaim, type LogEvent } from "./events.js";
-import { deliveryOrderRun, note, summary, syncAll } from "./orderSim.js";
+import { deliveryOrderRun, note, summary, syncAll } from "../testing/devices/orderSim.js";
 import {
   type Batch,
   createSimVault,
@@ -16,7 +15,8 @@ import {
   revokeWithConsent,
   type SimDevice,
   START_CURSOR,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import { buildDeviceRevoked, buildLeaseClaim, type LogEvent } from "./events.js";
 
 /** The honest revoke flow (the targets consent, H2). */
 function honestRevoke(revoker: SimDevice, ...targets: SimDevice[]): LogEvent {

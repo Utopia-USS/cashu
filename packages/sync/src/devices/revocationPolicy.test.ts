@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { createRecoveryKey, recoveryIdentity } from "../crypto/index.js";
 import {
+  createSimVault,
+  newEid,
+  pairDevice,
+  START_CURSOR,
+  sodium,
+} from "../testing/devices/testkit.js";
+import {
   acknowledgeRevocationPreview,
   previewRevocation,
   type RevocationPreviewRequest,
 } from "./revocationPolicy.js";
-import { createSimVault, newEid, pairDevice, START_CURSOR, sodium } from "./testkit.js";
 
 async function pair() {
   const vault = createSimVault();

@@ -1,5 +1,5 @@
 import { LoansStartView } from "./LoansStartView.js";
-import { privacyState, StoryFixture, storyState } from "./storyState.js";
+import { privacyState, StoryFixture, storyState } from "./testing/storyState.js";
 export default {
   title: "Desktop/Loans/Start",
   component: LoansStartView,

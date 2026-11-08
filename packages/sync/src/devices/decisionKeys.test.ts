@@ -2,7 +2,7 @@
 // decisionKeys.property.exhaustive.test.ts.
 
 import { describe, expect, it } from "vitest";
-import { decisionKeysRun } from "./decisionKeysProperty.js";
+import { decisionKeysRun } from "../testing/devices/decisionKeysProperty.js";
 
 describe("decision keys property", () => {
   it.each([1, 2])(

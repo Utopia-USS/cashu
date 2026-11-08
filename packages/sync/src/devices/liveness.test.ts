@@ -3,10 +3,15 @@
 // clock (SimDevice.now), never the wall clock.
 
 import { describe, expect, it } from "vitest";
+import { devices, pin, reportFetch, view } from "../testing/devices/leaseSim.js";
+import {
+  newEid,
+  prepareReviewedRevocation,
+  type SimDevice,
+  START_CURSOR,
+} from "../testing/devices/testkit.js";
 import { buildLeaseFetched } from "./events.js";
-import { devices, pin, reportFetch, view } from "./leaseSim.js";
 import { LEADER_SILENCE_WARNING_MS, leaderLiveness } from "./liveness.js";
-import { newEid, prepareReviewedRevocation, type SimDevice, START_CURSOR } from "./testkit.js";
 
 const HOUR = 60 * 60 * 1000;
 

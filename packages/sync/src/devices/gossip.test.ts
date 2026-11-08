@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createDeviceIdentity, decodeHead, encodeHead, signHead } from "../crypto/index.js";
+import { note, syncAll } from "../testing/devices/orderSim.js";
+import {
+  createSimVault,
+  newEid,
+  pairDevice,
+  revokeWithConsent,
+  sodium,
+} from "../testing/devices/testkit.js";
 import { fromHex } from "./bytes.js";
 import {
   buildHeadsGossiped,
@@ -9,9 +17,7 @@ import {
 } from "./events.js";
 import { DeviceFrameGate } from "./gate.js";
 import { MAX_GOSSIP_HISTORY } from "./gossip.js";
-import { note, syncAll } from "./orderSim.js";
 import { MemoryProvenanceStore } from "./provenance.js";
-import { createSimVault, newEid, pairDevice, revokeWithConsent, sodium } from "./testkit.js";
 import { VaultDevices } from "./vaultDevices.js";
 
 function must<T>(value: T | undefined): T {

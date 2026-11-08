@@ -34,10 +34,9 @@ import {
   createSyncEngine,
   crypto,
   devices,
-  MemoryClockStore,
-  MemoryTransport,
   type Transport,
 } from "@cashu/sync";
+import { MemoryClockStore, MemoryTransport } from "@cashu/sync/testing";
 import { expect, it } from "vitest";
 import { startLocalHost } from "../host.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";

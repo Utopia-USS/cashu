@@ -1,15 +1,25 @@
 // Test helpers (synthetic data only). Not exported from the package.
 
-import { certifyDevice, type TrustedDevice, verifyCertificates } from "./cert.js";
-import { utf8 } from "./encoding.js";
-import { CryptoError, type CryptoErrorCode } from "./errors.js";
-import type { FrameContext } from "./frame.js";
-import { genesisChain, streamOf } from "./head.js";
-import { createDeviceIdentity, type DeviceIdentity, isDeviceId } from "./identity.js";
-import { createKeyring, type Keyring } from "./keys.js";
-import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
-import { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
-import { openPairingWrap, pairingWrapHash, sealForPairing, type UnwrapOptions } from "./wrap.js";
+import { certifyDevice, type TrustedDevice, verifyCertificates } from "../../crypto/cert.js";
+import { utf8 } from "../../crypto/encoding.js";
+import { CryptoError, type CryptoErrorCode } from "../../crypto/errors.js";
+import type { FrameContext } from "../../crypto/frame.js";
+import { genesisChain, streamOf } from "../../crypto/head.js";
+import { createDeviceIdentity, type DeviceIdentity, isDeviceId } from "../../crypto/identity.js";
+import { createKeyring, type Keyring } from "../../crypto/keys.js";
+import { createRecoveryKey, recoveryIdentity } from "../../crypto/recovery.js";
+import {
+  fromLibsodium,
+  type LibsodiumLike,
+  loadNodeSodium,
+  type Sodium,
+} from "../../crypto/sodium.js";
+import {
+  openPairingWrap,
+  pairingWrapHash,
+  sealForPairing,
+  type UnwrapOptions,
+} from "../../crypto/wrap.js";
 
 export const sodium: Sodium = await loadNodeSodium();
 

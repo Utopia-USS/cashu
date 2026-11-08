@@ -1,6 +1,6 @@
 import { UiEnvProvider } from "@cashu/ui";
 import { ConnectorDrawerView } from "./ConnectorDrawerView.js";
-import { connectorsState, syntheticConnector } from "./storyState.js";
+import { connectorsState, syntheticConnector } from "./testing/storyState.js";
 
 export default { title: "Desktop/Settings/Connectors/Drawer", component: ConnectorDrawerView };
 export const Approved = {

@@ -6,8 +6,8 @@ import {
   loadNodeSodium,
 } from "../../crypto/index.js";
 import { TransportError } from "../../errors.js";
-import { MemoryTransport } from "../../memory.js";
 import { frameBytes, scanFrames } from "../../segment.js";
+import { MemoryTransport } from "../../testing/memory.js";
 import { testSigners } from "../../testing/signers.js";
 import { createOwnLogCarrier } from "./carrier.js";
 import { createOwnLogCodec } from "./codec.js";

@@ -3,7 +3,11 @@
 // puppets, a 1000-device tree) are registry.cost.exhaustive.test.ts.
 
 import { describe, expect, it } from "vitest";
-import { foldTwice, puppetDefeatChain, puppetsRevokedOneByOne } from "./registryCost.js";
+import {
+  foldTwice,
+  puppetDefeatChain,
+  puppetsRevokedOneByOne,
+} from "../testing/devices/registryCost.js";
 
 describe("registry fold cost (M4)", () => {
   it("A8 (70 puppets): linear work, and a warm re-fold verifies nothing again", () => {

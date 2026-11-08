@@ -5,8 +5,8 @@
 import { describe, expect, it } from "vitest";
 import type { Transport } from "./carrier.js";
 import { createSyncEngine, type SyncEngineOptions } from "./engine.js";
-import { MemoryClockStore, MemoryTransport } from "./memory.js";
 import { insecureTestCodec, insecureTestGate, ManualClock, MemorySink } from "./testing/index.js";
+import { MemoryClockStore, MemoryTransport } from "./testing/memory.js";
 import { MemoryFolderFs } from "./transports/folder/testing/memory-fs.js";
 import { FolderTransport } from "./transports/folder/transport.js";
 

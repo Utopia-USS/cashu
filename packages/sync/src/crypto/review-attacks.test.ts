@@ -2,15 +2,6 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 // The S27 review's attacks A1-A7, kept as permanent tests: each asserts the attack now FAILS.
 
 import { describe, expect, it } from "vitest";
-import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
-import { CryptoError } from "./errors.js";
-import { openFrame, sealFrame } from "./frame.js";
-import { verifyHeadSignature } from "./head.js";
-import { createDeviceIdentity, type DeviceIdentity, verifySignature } from "./identity.js";
-import { decodeKeyPayload, type Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
-import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
-import { Secret } from "./secret.js";
-import { keyringFromKeys } from "./testing.js";
 import {
   anyEpoch,
   code,
@@ -23,7 +14,16 @@ import {
   testRecovery,
   trustedTo,
   writerOf,
-} from "./testkit.js";
+} from "../testing/crypto/testkit.js";
+import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
+import { CryptoError } from "./errors.js";
+import { openFrame, sealFrame } from "./frame.js";
+import { verifyHeadSignature } from "./head.js";
+import { createDeviceIdentity, type DeviceIdentity, verifySignature } from "./identity.js";
+import { decodeKeyPayload, type Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
+import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
+import { Secret } from "./secret.js";
+import { keyringFromKeys } from "./testing.js";
 import { type TrustedSigner, unwrapKeys, WRAP_VERSION, wrapKeys } from "./wrap.js";
 
 function trusting(...devices: DeviceIdentity[]): TrustedSigner {

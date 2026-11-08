@@ -1,9 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { openFrame, sealFrame } from "./frame.js";
-import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
-import { createKeyring, createVaultId, type Keyring, rotateKeyring } from "./keys.js";
-import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
-import type { Sodium } from "./sodium.js";
 import {
   anyEpoch,
   backends,
@@ -15,7 +10,12 @@ import {
   testRecovery,
   trustedTo,
   writerOf,
-} from "./testkit.js";
+} from "../testing/crypto/testkit.js";
+import { openFrame, sealFrame } from "./frame.js";
+import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
+import { createKeyring, createVaultId, type Keyring, rotateKeyring } from "./keys.js";
+import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
+import type { Sodium } from "./sodium.js";
 import {
   openPairingWrap,
   pairingWrapHash,

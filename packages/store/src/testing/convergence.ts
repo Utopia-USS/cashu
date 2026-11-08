@@ -4,12 +4,12 @@
 // order). Synthetic names stand for gids; `toEnvelopes` maps them to valid gids and `project` maps
 // the store's view back to the reference's shape.
 import { expect } from "vitest";
-import { materialize, type RefDet, type RefEvent } from "../events/v1/reference/fold.js";
 import { delivery } from "../events/v1/reference/testing/scenarios.js";
 import type { Store } from "../materialize.js";
 import { viewHash } from "../snapshot.js";
 import { expectCategoriesRecomputed } from "./categories-oracle.js";
 import { chunked } from "./random.js";
+import { materialize, type RefDet, type RefEvent } from "./reference/fold.js";
 import { Names, normalize, project, toEnvelopes } from "./reference-bridge.js";
 import { openTestStore } from "./store.js";
 

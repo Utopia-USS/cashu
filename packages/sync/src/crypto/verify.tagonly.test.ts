@@ -26,7 +26,7 @@ const { xchacha20poly1305 } = await import("@noble/ciphers/chacha.js");
 const { aeadAuthentic } = await import("./verify.js");
 const { openFrame, sealFrame } = await import("./frame.js");
 const { CryptoError } = await import("./errors.js");
-const { backends, ctx, newRing, writerOf } = await import("./testkit.js");
+const { backends, ctx, newRing, writerOf } = await import("../testing/crypto/testkit.js");
 
 function bytes(n: number, seed: number): Uint8Array {
   let x = seed >>> 0 || 1;

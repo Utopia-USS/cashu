@@ -2,9 +2,9 @@ import { D, loans } from "@cashu/domain";
 import { S as DS } from "@cashu/i18n/loans/Drawers.strings";
 import { cur } from "@cashu/ui-logic/core/format";
 import type { ComponentType } from "react";
-import { initialLoanForm } from "./loanForm.js";
-import { dmShort, listRows, loanDetail, previewText, startSteps, stepsTag } from "./loansModel.js";
-import type { LoansState } from "./useLoansScreen.js";
+import { initialLoanForm } from "../loanForm.js";
+import { dmShort, listRows, loanDetail, previewText, startSteps, stepsTag } from "../loansModel.js";
+import type { LoansState } from "../useLoansScreen.js";
 
 const terms = {
   id: "01900000-0000-8000-8000-000000000001",

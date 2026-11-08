@@ -4,11 +4,11 @@
 // transfers.property(.exhaustive).test.ts. Data-safety rule 5: only a counterparty IBAN pairs rows.
 import { describe, expect, it } from "vitest";
 import { formatHlc } from "../../events/v1/hlc-format.js";
-import type { RefEvent } from "../../events/v1/reference/fold.js";
 import { complete, syntheticDet } from "../../events/v1/reference/testing/scenarios.js";
 import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";
 import { expectCategoriesRecomputed } from "../../testing/categories-oracle.js";
+import type { RefEvent } from "../../testing/reference/fold.js";
 import { Names, toEnvelopes } from "../../testing/reference-bridge.js";
 import { EventFactory, openTestStore } from "../../testing/store.js";
 import { expectTransfersRecomputed } from "../../testing/transfers-oracle.js";

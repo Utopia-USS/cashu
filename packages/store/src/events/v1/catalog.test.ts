@@ -2,6 +2,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  ACC,
+  DEVICE,
+  INST,
+  ULID_A,
+  ULID_B,
+  VALID_SAMPLES,
+  VAULT,
+} from "../../testing/event-fixtures.js";
+import {
   CURRENT_VERSION,
   type EventType,
   META,
@@ -10,7 +19,6 @@ import {
   RESERVED_PREFIXES,
 } from "./catalog.js";
 import { envelopeSchema, fromWire, toWire } from "./envelope.js";
-import { ACC, DEVICE, INST, ULID_A, ULID_B, VALID_SAMPLES, VAULT } from "./test-fixtures.js";
 
 const HLC = `0mvwcmtc0-0000-${DEVICE}`;
 

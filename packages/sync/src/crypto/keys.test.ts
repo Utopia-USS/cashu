@@ -2,6 +2,15 @@ import { randomFillSync } from "node:crypto";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { describe, expect, it } from "vitest";
+import {
+  anyEpoch,
+  code,
+  GID_SALT,
+  newRing,
+  pairWith,
+  sodium,
+  testRecovery,
+} from "../testing/crypto/testkit.js";
 import { toHex, u32, utf8 } from "./encoding.js";
 import { createDeviceIdentity } from "./identity.js";
 import {
@@ -17,7 +26,6 @@ import {
 } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { keyringFromKeys } from "./testing.js";
-import { anyEpoch, code, GID_SALT, newRing, pairWith, sodium, testRecovery } from "./testkit.js";
 import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 const gid = (ring: Keyring, input: string) => {

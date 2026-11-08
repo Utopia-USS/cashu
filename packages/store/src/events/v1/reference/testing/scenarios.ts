@@ -7,9 +7,9 @@
 // nothing from the store.
 import { expect } from "vitest";
 import { shuffled } from "../../../../testing/random.js";
+import type { RefDet, RefEvent, RefView } from "../../../../testing/reference/fold.js";
 import { detPartsOf } from "../../det-parts.js";
 import { formatHlc } from "../../hlc-format.js";
-import type { RefDet, RefEvent, RefView } from "../fold.js";
 
 export interface Scenario {
   /** The group (describe title) the scenario belongs to. */

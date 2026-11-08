@@ -8,11 +8,11 @@ import type {
   Transport,
   TransportConsistency,
   VaultId,
-} from "./carrier.js";
-import { TransportError } from "./errors.js";
-import type { HlcState } from "./hlc.js";
-import { queueTask } from "./runtime.js";
-import { concatBytes } from "./segment.js";
+} from "../carrier.js";
+import { TransportError } from "../errors.js";
+import type { HlcState } from "../hlc.js";
+import { queueTask } from "../runtime.js";
+import { concatBytes } from "../segment.js";
 
 interface MemorySegment {
   chunks: Uint8Array[];

@@ -2,7 +2,7 @@
 // certification graphs with random revocations, one test per seed; decisionKeys.test.ts runs a few.
 
 import { describe, expect, it } from "vitest";
-import { decisionKeysRun } from "./decisionKeysProperty.js";
+import { decisionKeysRun } from "../testing/devices/decisionKeysProperty.js";
 
 describe("decision keys property, every seed", () => {
   let minters = 0;

@@ -14,8 +14,8 @@
 // the accepted data is the longest prefix that passes `guard.check`. When the gate reports data no
 // longer accepted, the device rebuilds its data view (lead decision D8).
 
-import type { LeaseTransport, SegmentCursor, UnstampedEvent } from "../carrier.js";
-import { START_CURSOR } from "../carrier.js";
+import type { LeaseTransport, SegmentCursor, UnstampedEvent } from "../../carrier.js";
+import { START_CURSOR } from "../../carrier.js";
 import {
   CertificateCache,
   createDeviceIdentity,
@@ -33,8 +33,7 @@ import {
   type SignedHead,
   type Sodium,
   signHead,
-} from "../crypto/index.js";
-import { formatHlc, type Hlc, HybridClock, parseHlc } from "../hlc.js";
+} from "../../crypto/index.js";
 import {
   buildDeviceAdded,
   buildDeviceRevoked,
@@ -42,22 +41,28 @@ import {
   type LogEvent,
   pinConfirmationText,
   type RevokedEntry,
-} from "./events.js";
-import { DeviceFrameGate } from "./gate.js";
-import type { FrameRejection } from "./guard.js";
-import { creatorPin, type LeaseLocal, type OwnLeaseRecord, pinEventFor } from "./lease.js";
-import { PairingInviter, PairingJoiner } from "./pairing.js";
-import { type PairingLink, runInviter, runJoiner } from "./pairingLink.js";
-import { comparePositions } from "./positions.js";
-import { MemoryProvenanceStore } from "./provenance.js";
+} from "../../devices/events.js";
+import { DeviceFrameGate } from "../../devices/gate.js";
+import type { FrameRejection } from "../../devices/guard.js";
+import {
+  creatorPin,
+  type LeaseLocal,
+  type OwnLeaseRecord,
+  pinEventFor,
+} from "../../devices/lease.js";
+import { PairingInviter, PairingJoiner } from "../../devices/pairing.js";
+import { type PairingLink, runInviter, runJoiner } from "../../devices/pairingLink.js";
+import { comparePositions } from "../../devices/positions.js";
+import { MemoryProvenanceStore } from "../../devices/provenance.js";
 import {
   acknowledgeRevocationPreview,
   previewRevocation,
   type RevocationPreviewRequest,
-} from "./revocationPolicy.js";
-import { recordPairingProvenance } from "./rotation.js";
-import { memoizedVerifier, type StatementVerifier } from "./statements.js";
-import { VaultDevices } from "./vaultDevices.js";
+} from "../../devices/revocationPolicy.js";
+import { recordPairingProvenance } from "../../devices/rotation.js";
+import { memoizedVerifier, type StatementVerifier } from "../../devices/statements.js";
+import { VaultDevices } from "../../devices/vaultDevices.js";
+import { formatHlc, type Hlc, HybridClock, parseHlc } from "../../hlc.js";
 
 export const sodium: Sodium = await loadNodeSodium();
 

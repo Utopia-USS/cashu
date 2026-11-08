@@ -3,10 +3,10 @@
 // pinned to the gid.md section 8 vectors (Python hmac, test salt 00..1f).
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { VALID_SAMPLES } from "../../testing/event-fixtures.js";
 import { type EventType, META, PAYLOADS } from "./catalog.js";
 import { type DetParts, detPartsOf, NOT_PAYLOAD_DERIVED } from "./det-parts.js";
 import { detMessage, uuid8FromDigest, VAULT_SALT_BYTES } from "./namespaces.js";
-import { VALID_SAMPLES } from "./test-fixtures.js";
 
 const SALT = Buffer.from(Array.from({ length: VAULT_SALT_BYTES }, (_, i) => i));
 const gidFrom = (p: DetParts | undefined): string => {

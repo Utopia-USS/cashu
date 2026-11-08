@@ -1,6 +1,6 @@
 import { UiEnvProvider } from "@cashu/ui";
 import { LoansView } from "./LoansView.js";
-import { privacyState, StoryFixture, storyState } from "./storyState.js";
+import { privacyState, StoryFixture, storyState } from "./testing/storyState.js";
 export default {
   title: "Desktop/Loans/Loans",
   component: LoansView,

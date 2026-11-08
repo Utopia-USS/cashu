@@ -12,18 +12,23 @@
 // (It may only revoke more: the fixpoint fails closed.)
 
 import { expect } from "vitest";
-import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
+import type { SegmentCursor, UnstampedEvent } from "../../carrier.js";
 import {
   CertificateCache,
   certifyDevice,
   createDeviceIdentity,
   type DeviceIdentity,
   type RecoveryIdentity,
-} from "../crypto/index.js";
-import { buildDeviceAdded, buildDeviceRevoked, buildLeaseClaim, type LogEvent } from "./events.js";
-import { comparePositions } from "./positions.js";
-import { foldRegistry, type Registry } from "./registry.js";
-import { memoizedVerifier } from "./statements.js";
+} from "../../crypto/index.js";
+import {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  buildLeaseClaim,
+  type LogEvent,
+} from "../../devices/events.js";
+import { comparePositions } from "../../devices/positions.js";
+import { foldRegistry, type Registry } from "../../devices/registry.js";
+import { memoizedVerifier } from "../../devices/statements.js";
 import {
   createSimVault,
   hlcAt,

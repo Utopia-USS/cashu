@@ -9,9 +9,6 @@ import {
   createDeviceIdentity,
   type DeviceIdentity,
 } from "../crypto/index.js";
-import { fromHex } from "./bytes.js";
-import { DecisionKeys } from "./decisionKeys.js";
-import { buildDeviceAdded, buildDeviceRevoked } from "./events.js";
 import {
   consentsOf,
   createSimVault,
@@ -22,7 +19,10 @@ import {
   type SimDevice,
   START_CURSOR,
   sodium,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import { fromHex } from "./bytes.js";
+import { DecisionKeys } from "./decisionKeys.js";
+import { buildDeviceAdded, buildDeviceRevoked } from "./events.js";
 
 function syncAll(devices: readonly SimDevice[], rounds = 2): void {
   for (let i = 0; i < rounds; i++) for (const d of devices) d.sync();

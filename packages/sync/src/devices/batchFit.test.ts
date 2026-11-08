@@ -5,9 +5,15 @@
 
 import { describe, expect, it } from "vitest";
 import { frameLoad } from "../segment.js";
+import {
+  createSimVault,
+  newEid,
+  pairDevice,
+  type SimDevice,
+  START_CURSOR,
+} from "../testing/devices/testkit.js";
 import { acknowledgeRevocationPreview, previewRevocation } from "./revocationPolicy.js";
 import { prepareRevocation, prepareRotation } from "./rotation.js";
-import { createSimVault, newEid, pairDevice, type SimDevice, START_CURSOR } from "./testkit.js";
 
 function syncAll(devices: readonly SimDevice[]): void {
   for (let i = 0; i < 2; i++) for (const d of devices) d.sync();

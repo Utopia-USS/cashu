@@ -1,5 +1,6 @@
 // Test kit for carrier adapters and store tests (`@cashu/sync/testing`). Imports vitest: never import
 // it from runtime code.
+
 export { InMemoryKeyStore, keyringFromKeys } from "../crypto/testing.js";
 export { insecureTestCodec, insecureTestGate } from "./codec.js";
 export {
@@ -9,6 +10,7 @@ export {
   describeCarrierContract,
 } from "./contract.js";
 export { FaultInjector, ManualClock } from "./faults.js";
+export { MemoryClockStore, MemoryTransport } from "./memory.js";
 export { memoryCarrier } from "./memory-carrier.js";
 export {
   checkPropagationClaim,

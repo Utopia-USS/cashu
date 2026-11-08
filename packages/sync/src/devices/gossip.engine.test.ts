@@ -9,11 +9,11 @@ import {
   recoveryIdentity,
   signHead,
 } from "../crypto/index.js";
-import { MemoryTransport } from "../memory.js";
+import { newEid, sodium } from "../testing/devices/testkit.js";
 import { must, node, subjectOf } from "../testing/gossipEngine.js";
+import { MemoryTransport } from "../testing/memory.js";
 import { buildHeadsGossiped } from "./events.js";
 import { acknowledgeRevocationPreview, previewRevocation } from "./revocationPolicy.js";
-import { newEid, sodium } from "./testkit.js";
 
 describe("real engine gossip emission", () => {
   it("publishes one authenticated local gossip receipt and pushes it in the same sync", async () => {

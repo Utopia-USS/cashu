@@ -3,15 +3,8 @@ import { join } from "node:path";
 import { connectHost, NodeFolderFs } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, metaClockStore, metaGateStateStore, Store, vaultSalt } from "@cashu/store";
-import {
-  createOwnLogCodec,
-  createSyncEngine,
-  crypto,
-  devices,
-  FolderTransport,
-  MemoryTransport,
-} from "@cashu/sync";
-import { InMemoryKeyStore } from "@cashu/sync/testing";
+import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
+import { InMemoryKeyStore, MemoryTransport } from "@cashu/sync/testing";
 import { expect, it, vi } from "vitest";
 import { startLocalHost } from "../host.js";
 import { initializeNativeClockGuard, nativeClockGuard } from "../market/clockGuard.js";

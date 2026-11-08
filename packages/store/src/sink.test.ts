@@ -1,7 +1,12 @@
 // The store as the sync engine's EventSink (S28a): two devices write, sync through a shared remote,
 // and end with the same view; cursors persist with the view; reset + resync rebuilds it.
-import { createSyncEngine, MemoryTransport, type Transport } from "@cashu/sync";
-import { insecureTestCodec, insecureTestGate, ManualClock } from "@cashu/sync/testing";
+import { createSyncEngine, type Transport } from "@cashu/sync";
+import {
+  insecureTestCodec,
+  insecureTestGate,
+  ManualClock,
+  MemoryTransport,
+} from "@cashu/sync/testing";
 import { describe, expect, it } from "vitest";
 import { metaClockStore, metaGateStateStore } from "./hlc.js";
 import type { Store } from "./materialize.js";

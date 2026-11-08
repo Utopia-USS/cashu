@@ -1,6 +1,7 @@
 import { inspect } from "node:util";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { describe, expect, it } from "vitest";
+import { anyEpoch, backends, code, ctx, samplePlain, writerOf } from "../testing/crypto/testkit.js";
 import { certifyDevice, verifyCertificates } from "./cert.js";
 import { toHex } from "./encoding.js";
 import { CryptoError } from "./errors.js";
@@ -9,7 +10,6 @@ import { createDeviceIdentity, type DeviceIdentity, RECOVERY_SIGNER_ID } from ".
 import { createKeyring, createVaultId, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, RECOVERY_WORDS, recoveryIdentity } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
-import { anyEpoch, backends, code, ctx, samplePlain, writerOf } from "./testkit.js";
 import { createVaultWithRecovery } from "./vault.js";
 import { recoveryRecipient, type TrustedSigner, unwrapKeys, wrapKeys } from "./wrap.js";
 

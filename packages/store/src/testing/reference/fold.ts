@@ -13,9 +13,9 @@
 // valuations, signals + decisions, proposals + caused events, connector bindings. Other tables follow
 // the same patterns (plain LWW-F / CREATE per gid) and are not modelled here.
 
-import { detPartsOf } from "../det-parts.js";
-import { claimAllowed } from "../identity.js";
-import type { GidTable } from "../namespaces.js";
+import { detPartsOf } from "../../events/v1/det-parts.js";
+import { claimAllowed } from "../../events/v1/identity.js";
+import type { GidTable } from "../../events/v1/namespaces.js";
 
 export interface RefEvent {
   eid: string;

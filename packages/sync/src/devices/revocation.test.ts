@@ -15,6 +15,17 @@ import {
   wrapKeys,
 } from "../crypto/index.js";
 import {
+  createSimVault,
+  hlcAt,
+  newEid,
+  pairDevice,
+  prepareConsented,
+  prepareReviewedRevocation,
+  revokedWithConsent,
+  type SimDevice,
+  sodium,
+} from "../testing/devices/testkit.js";
+import {
   buildDeviceAdded,
   buildDeviceRevoked,
   buildKeysRotated,
@@ -25,17 +36,6 @@ import { DeviceFrameGate } from "./gate.js";
 import { devicesNeedingRebuild } from "./guard.js";
 import { foldLease } from "./lease.js";
 import { applyWrap, type PreparedChange, prepareRotation } from "./rotation.js";
-import {
-  createSimVault,
-  hlcAt,
-  newEid,
-  pairDevice,
-  prepareConsented,
-  prepareReviewedRevocation,
-  revokedWithConsent,
-  type SimDevice,
-  sodium,
-} from "./testkit.js";
 import { MAX_PENDING_WRAPS_PER_SENDER } from "./vaultDevices.js";
 
 const plain = new TextEncoder().encode("synthetic frame");

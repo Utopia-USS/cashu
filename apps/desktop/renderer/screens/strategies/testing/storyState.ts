@@ -1,6 +1,6 @@
 // Synthetic states of the Strategie tab Views (stories and the view test): no real strategy, file or path.
-import type { StrategiesScreenState } from "./useStrategiesScreen.js";
-import type { StrategySettingsState } from "./useStrategySettings.js";
+import type { StrategiesScreenState } from "../useStrategiesScreen.js";
+import type { StrategySettingsState } from "../useStrategySettings.js";
 
 const noop = () => {};
 export const prose =

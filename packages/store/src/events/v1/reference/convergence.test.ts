@@ -2,7 +2,12 @@
 // scenario is delivered in many shuffled orders with re-delivered duplicates; every prefix keeps the
 // invariants and every full delivery yields the same view, which has the expected shape.
 import { describe, expect, it } from "vitest";
-import { materialize, type RefDet, type RefEvent, type RefView } from "./fold.js";
+import {
+  materialize,
+  type RefDet,
+  type RefEvent,
+  type RefView,
+} from "../../../testing/reference/fold.js";
 import { delivery, ORDERS, SCENARIOS, syntheticDet } from "./testing/scenarios.js";
 
 function invariants(v: RefView): void {

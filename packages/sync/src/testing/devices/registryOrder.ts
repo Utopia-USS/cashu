@@ -3,11 +3,11 @@
 // tier (registry.test.ts, a few seeds) and the sweep (registry.order.exhaustive.test.ts).
 
 import { expect } from "vitest";
-import type { UnstampedEvent } from "../carrier.js";
-import { CertificateCache } from "../crypto/index.js";
-import type { LogEvent } from "./events.js";
-import { foldRegistry, type Registry } from "./registry.js";
-import { memoizedVerifier } from "./statements.js";
+import type { UnstampedEvent } from "../../carrier.js";
+import { CertificateCache } from "../../crypto/index.js";
+import type { LogEvent } from "../../devices/events.js";
+import { foldRegistry, type Registry } from "../../devices/registry.js";
+import { memoizedVerifier } from "../../devices/statements.js";
 import {
   createSimVault,
   hlcAt,

@@ -5,10 +5,10 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { decodePayload } from "../engine/compact.js";
 import { detPartsOf } from "../events/v1/det-parts.js";
-import type { RefDet, RefEvent, RefView } from "../events/v1/reference/fold.js";
 import { detGid, detGidFor } from "../gid.js";
 import type { Store } from "../materialize.js";
 import { eventTimestamp } from "../sql/values.js";
+import type { RefDet, RefEvent, RefView } from "./reference/fold.js";
 import { TEST_SALT, TEST_VAULT, type TestEnvelope, testUlid } from "./store.js";
 
 // --------------------------------------------------------------------------------------------- //

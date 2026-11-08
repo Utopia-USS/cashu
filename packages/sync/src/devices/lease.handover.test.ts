@@ -1,6 +1,4 @@
 import { expect, it } from "vitest";
-import { buildLeasePin, pinConfirmationText } from "./events.js";
-import { holdsLease } from "./lease.js";
 import {
   advance,
   boundedConfig,
@@ -13,14 +11,16 @@ import {
   tick,
   view,
   visibilityOf,
-} from "./leaseSim.js";
+} from "../testing/devices/leaseSim.js";
 import {
   hlcAt,
   newEid,
   prepareReviewedRevocation,
   type SimDevice,
   START_CURSOR,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import { buildLeasePin, pinConfirmationText } from "./events.js";
+import { holdsLease } from "./lease.js";
 
 function sibling(d: SimDevice, leader: SimDevice, prev: string, wall: number): string {
   const eid = newEid();

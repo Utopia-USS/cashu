@@ -2,14 +2,14 @@
 // with gids in place of view ids, and a convergence driver (shuffled delivery with re-delivered
 // duplicates, random batches, rebuild). Synthetic data only.
 import { expect } from "vitest";
-import {
-  INV_REF_TABLES,
-  materializeInvestments,
-} from "../../events/v1/reference/fold-investments.js";
 import { detGid, detGidFor, type GidTable } from "../../gid.js";
 import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";
 import { chunked, shuffled } from "../../testing/random.js";
+import {
+  INV_REF_TABLES,
+  materializeInvestments,
+} from "../../testing/reference/fold-investments.js";
 import {
   EventFactory,
   openTestStore,

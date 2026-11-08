@@ -1,6 +1,6 @@
 import { UiEnvProvider } from "@cashu/ui";
 import { ConnectorsSectionView } from "./ConnectorsSectionView.js";
-import { connectorsState, emptyConnectorsState } from "./storyState.js";
+import { connectorsState, emptyConnectorsState } from "./testing/storyState.js";
 
 export default { title: "Desktop/Settings/Connectors/Section", component: ConnectorsSectionView };
 export const Ready = {

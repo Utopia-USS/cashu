@@ -6,8 +6,6 @@
 import { describe, expect, it } from "vitest";
 import type { UnstampedEvent } from "../carrier.js";
 import { certifyDevice, createDeviceIdentity } from "../crypto/index.js";
-import { buildDeviceAdded, buildLeaseClaim, DEVICE_ADDED, type LogEvent } from "./events.js";
-import { foldRegistry } from "./registry.js";
 import {
   createSimVault,
   hlcAt,
@@ -19,7 +17,9 @@ import {
   START_CURSOR,
   START_TIME,
   sodium,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import { buildDeviceAdded, buildLeaseClaim, DEVICE_ADDED, type LogEvent } from "./events.js";
+import { foldRegistry } from "./registry.js";
 
 function syncAll(devices: readonly SimDevice[], rounds = 2): void {
   for (let i = 0; i < rounds; i++) for (const d of devices) d.sync();

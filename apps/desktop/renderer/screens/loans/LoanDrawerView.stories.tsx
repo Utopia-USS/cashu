@@ -1,5 +1,5 @@
 import { LoanDrawerView } from "./LoanDrawerView.js";
-import { StoryFixture, storyState } from "./storyState.js";
+import { StoryFixture, storyState } from "./testing/storyState.js";
 
 const open = { ...storyState, drawer: { kind: "loan" as const } };
 export default {

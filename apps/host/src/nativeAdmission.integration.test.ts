@@ -12,16 +12,14 @@ import {
   Store,
   vaultSalt,
 } from "@cashu/store";
+import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import {
-  createOwnLogCodec,
-  createSyncEngine,
-  crypto,
-  devices,
-  FolderTransport,
+  InMemoryKeyStore,
+  insecureTestGate,
   MemoryClockStore,
+  MemorySink,
   MemoryTransport,
-} from "@cashu/sync";
-import { InMemoryKeyStore, insecureTestGate, MemorySink } from "@cashu/sync/testing";
+} from "@cashu/sync/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { takeWriterLease } from "./lease.js";

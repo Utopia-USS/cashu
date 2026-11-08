@@ -7,9 +7,9 @@
 // spec 12.4 follow-up) would bring it back to the default tier.
 
 import { describe, expect, it } from "vitest";
+import { createSimVault, newEid, pairDevice } from "../testing/devices/testkit.js";
 import { buildDeviceAdded } from "./events.js";
 import { PAGE_SIZE } from "./pairing.js";
-import { createSimVault, newEid, pairDevice } from "./testkit.js";
 
 describe("pairing: registry pages (review M4)", () => {
   it("a registry larger than one message arrives in pages, bound by the signed hash", async () => {

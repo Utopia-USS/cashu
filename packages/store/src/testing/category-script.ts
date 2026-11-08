@@ -9,11 +9,11 @@
 import fc from "fast-check";
 import { expect } from "vitest";
 import { formatHlc } from "../events/v1/hlc-format.js";
-import type { RefEvent } from "../events/v1/reference/fold.js";
 import { complete, syntheticDet } from "../events/v1/reference/testing/scenarios.js";
 import { viewHash } from "../snapshot.js";
 import { expectCategoriesRecomputed } from "./categories-oracle.js";
 import { chunked, shuffled } from "./random.js";
+import type { RefEvent } from "./reference/fold.js";
 import { Names, toEnvelopes } from "./reference-bridge.js";
 import { openTestStore } from "./store.js";
 

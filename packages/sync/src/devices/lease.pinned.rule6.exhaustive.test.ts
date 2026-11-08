@@ -8,7 +8,7 @@
 // overlaps happen, and each one is a holder that has not seen a forced pin the other has.
 
 import { describe, expect, it } from "vitest";
-import { pinnedRun, siblingRun } from "./leaseSim.js";
+import { pinnedRun, siblingRun } from "../testing/devices/leaseSim.js";
 
 const seeds = (n: number) => Array.from({ length: n }, (_, run) => run);
 

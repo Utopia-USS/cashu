@@ -3,8 +3,8 @@
 // Test support only (synthetic data); production code never imports it.
 
 import { expect } from "vitest";
-import type { RecoveryIdentity } from "../crypto/index.js";
-import { buildLeasePin, type PinRequest, pinConfirmationText } from "./events.js";
+import type { RecoveryIdentity } from "../../crypto/index.js";
+import { buildLeasePin, type PinRequest, pinConfirmationText } from "../../devices/events.js";
 import {
   foldLease,
   holdsLease,
@@ -14,7 +14,7 @@ import {
   leaseEventFor,
   nextLeaseStep,
   pinEventFor,
-} from "./lease.js";
+} from "../../devices/lease.js";
 import {
   createSimVault,
   hlcAt,

@@ -3,8 +3,8 @@
 // (heads.attacks.exhaustive.test.ts).
 
 import { expect } from "vitest";
-import type { UnstampedEvent } from "../carrier.js";
-import { genesisChain } from "../crypto/index.js";
+import type { UnstampedEvent } from "../../carrier.js";
+import { genesisChain } from "../../crypto/index.js";
 import { note, summary, syncAll } from "./orderSim.js";
 import {
   type Batch,

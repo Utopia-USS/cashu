@@ -1,8 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { CryptoError } from "./errors.js";
-import { openFrame, sealFrame } from "./frame.js";
-import { createDeviceIdentity } from "./identity.js";
-import { fromLibsodium, type LibsodiumLike, loadNodeSodium } from "./sodium.js";
 import {
   anyEpoch,
   code,
@@ -14,7 +10,11 @@ import {
   sodium,
   trustedTo,
   writerOf,
-} from "./testkit.js";
+} from "../testing/crypto/testkit.js";
+import { CryptoError } from "./errors.js";
+import { openFrame, sealFrame } from "./frame.js";
+import { createDeviceIdentity } from "./identity.js";
+import { fromLibsodium, type LibsodiumLike, loadNodeSodium } from "./sodium.js";
 import { unwrapKeys, wrapKeys } from "./wrap.js";
 
 function runtimeCode(fn: () => unknown): string {

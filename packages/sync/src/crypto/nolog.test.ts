@@ -3,13 +3,6 @@
 
 import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fromUtf8, toBase64, toHex } from "./encoding.js";
-import { openFrame, sealFrame } from "./frame.js";
-import { createDeviceIdentity } from "./identity.js";
-import { createKeyring, rotateKeyring } from "./keys.js";
-import { loadKeyring, saveKeyring } from "./keystore.js";
-import { createRecoveryKey, type NewRecoveryKey, recoveryIdentity } from "./recovery.js";
-import { InMemoryKeyStore } from "./testing.js";
 import {
   anyEpoch,
   ctx,
@@ -19,7 +12,14 @@ import {
   sodium,
   trustedTo,
   writerOf,
-} from "./testkit.js";
+} from "../testing/crypto/testkit.js";
+import { fromUtf8, toBase64, toHex } from "./encoding.js";
+import { openFrame, sealFrame } from "./frame.js";
+import { createDeviceIdentity } from "./identity.js";
+import { createKeyring, rotateKeyring } from "./keys.js";
+import { loadKeyring, saveKeyring } from "./keystore.js";
+import { createRecoveryKey, type NewRecoveryKey, recoveryIdentity } from "./recovery.js";
+import { InMemoryKeyStore } from "./testing.js";
 import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 const written: string[] = [];

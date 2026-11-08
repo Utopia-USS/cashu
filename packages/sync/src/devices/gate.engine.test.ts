@@ -16,13 +16,13 @@ import {
   recoveryIdentity,
 } from "../crypto/index.js";
 import { createSyncEngine } from "../engine.js";
-import { MemoryClockStore, MemoryTransport } from "../memory.js";
 import { frameBytes, scanFrames } from "../segment.js";
+import { newEid, sodium } from "../testing/devices/testkit.js";
 import { ManualClock, MemorySink } from "../testing/index.js";
+import { MemoryClockStore, MemoryTransport } from "../testing/memory.js";
 import { buildDeviceAdded, buildDeviceRevoked } from "./events.js";
 import { DeviceFrameGate } from "./gate.js";
 import { MemoryProvenanceStore } from "./provenance.js";
-import { newEid, sodium } from "./testkit.js";
 import { VaultDevices } from "./vaultDevices.js";
 
 const T0 = Date.UTC(2026, 10, 1, 12);

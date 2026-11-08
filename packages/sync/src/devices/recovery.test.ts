@@ -11,14 +11,6 @@ import {
   wrapKeys,
 } from "../crypto/index.js";
 import {
-  buildDeviceAdded,
-  buildDeviceRevoked,
-  buildRecoveryChanged,
-  decodeRecoveryChanged,
-} from "./events.js";
-import { buildRecoveryChange } from "./recoveryChange.js";
-import { epochPolicy } from "./rotation.js";
-import {
   createSimVault,
   newEid,
   pairDevice,
@@ -26,7 +18,15 @@ import {
   prepareReviewedRevocation,
   SimDevice,
   sodium,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  buildRecoveryChanged,
+  decodeRecoveryChanged,
+} from "./events.js";
+import { buildRecoveryChange } from "./recoveryChange.js";
+import { epochPolicy } from "./rotation.js";
 
 describe("recovery (n3)", () => {
   it("a device restored from the words caps epochs, revokes every pre-recovery device and rotates first", async () => {

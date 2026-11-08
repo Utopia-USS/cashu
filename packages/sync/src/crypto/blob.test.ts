@@ -1,12 +1,20 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { describe, expect, it } from "vitest";
+import {
+  anyEpoch,
+  backends,
+  code,
+  GID_SALT,
+  pairWith,
+  range,
+  sodium,
+} from "../testing/crypto/testkit.js";
 import { blobSize, openBlob, sealBlob, sealBlobWithNonce } from "./blob.js";
 import { toHex, utf8 } from "./encoding.js";
 import { createDeviceIdentity, RECOVERY_SIGNER_ID } from "./identity.js";
 import { createKeyring, rotateKeyring } from "./keys.js";
 import { recoveryIdentity } from "./recovery.js";
 import { keyringFromKeys } from "./testing.js";
-import { anyEpoch, backends, code, GID_SALT, pairWith, range, sodium } from "./testkit.js";
 import { createVaultWithRecovery } from "./vault.js";
 import { unwrapKeys } from "./wrap.js";
 

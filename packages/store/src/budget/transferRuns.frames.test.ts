@@ -1,6 +1,11 @@
 // A complete transfer run crosses the sync engine's default 1000-event frame boundary.
-import { createSyncEngine, MemoryTransport } from "@cashu/sync";
-import { insecureTestCodec, insecureTestGate, ManualClock } from "@cashu/sync/testing";
+import { createSyncEngine } from "@cashu/sync";
+import {
+  insecureTestCodec,
+  insecureTestGate,
+  ManualClock,
+  MemoryTransport,
+} from "@cashu/sync/testing";
 import { expect, it } from "vitest";
 import { detGid } from "../gid.js";
 import { metaClockStore } from "../hlc.js";

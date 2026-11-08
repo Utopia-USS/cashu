@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createDeviceIdentity, genesisChain, openFrame, sealFrame } from "../crypto/index.js";
+import {
+  createSimVault,
+  memoryLinks,
+  newEid,
+  pairDevice,
+  SimDevice,
+  sodium,
+} from "../testing/devices/testkit.js";
 import { fromUtf8, toHex } from "./bytes.js";
 import {
   decodeInvite,
@@ -11,7 +19,6 @@ import {
   shortAuthenticationString,
 } from "./pairing.js";
 import { runInviter, runJoiner } from "./pairingLink.js";
-import { createSimVault, memoryLinks, newEid, pairDevice, SimDevice, sodium } from "./testkit.js";
 
 const plain = new TextEncoder().encode("synthetic frame");
 

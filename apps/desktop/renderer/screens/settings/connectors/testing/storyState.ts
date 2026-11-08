@@ -1,5 +1,5 @@
 // Synthetic connector state for the connectors Views' stories (only the fields these Views read).
-import type { SettingsScreenState } from "../useSettingsScreen.js";
+import type { SettingsScreenState } from "../../useSettingsScreen.js";
 
 const account = {
   gid: "6ad703ab-383d-8c73-82a5-1ee2d6742735",

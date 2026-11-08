@@ -9,12 +9,12 @@ import {
   recoveryIdentity,
   signHead,
 } from "../crypto/index.js";
-import { MemoryTransport } from "../memory.js";
+import { newEid, sodium } from "../testing/devices/testkit.js";
 import { must, node, subjectOf } from "../testing/gossipEngine.js";
+import { MemoryTransport } from "../testing/memory.js";
 import { encodeEvidence } from "./gateState.js";
 import { MAX_GOSSIP_HISTORY } from "./gossip.js";
 import { acknowledgeRevocationPreview, previewRevocation } from "./revocationPolicy.js";
-import { newEid, sodium } from "./testkit.js";
 
 describe("real engine gossip emission (exhaustive)", () => {
   it("recovery revokes a genuine overflowing writer and preserves its fork evidence across restart", async () => {

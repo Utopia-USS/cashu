@@ -9,11 +9,15 @@ import {
   crypto,
   devices,
   formatHlc,
-  MemoryClockStore,
-  MemoryTransport,
   type UnstampedEvent,
 } from "@cashu/sync";
-import { InMemoryKeyStore, ManualClock, MemorySink } from "@cashu/sync/testing";
+import {
+  InMemoryKeyStore,
+  ManualClock,
+  MemoryClockStore,
+  MemorySink,
+  MemoryTransport,
+} from "@cashu/sync/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   assertReplayedDeviceAuthority,

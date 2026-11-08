@@ -11,10 +11,8 @@ import {
   genesisChain,
   signHead,
 } from "../crypto/index.js";
-import { buildDeviceAdded, buildDeviceRevoked, type LogEvent } from "./events.js";
-import { StreamIndex } from "./heads.js";
-import { forgeryRun, fourDevices, marked, rewriteRun } from "./headsSim.js";
-import { note, syncAll } from "./orderSim.js";
+import { forgeryRun, fourDevices, marked, rewriteRun } from "../testing/devices/headsSim.js";
+import { note, syncAll } from "../testing/devices/orderSim.js";
 import {
   chainOf,
   forgeBatch,
@@ -23,7 +21,9 @@ import {
   revokedWithConsent,
   revokeWithConsent,
   sodium,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import { buildDeviceAdded, buildDeviceRevoked, type LogEvent } from "./events.js";
+import { StreamIndex } from "./heads.js";
 
 describe("signed heads close the rewrite and forgery classes", () => {
   it("m6: a revoked device cannot forge an idle writer's frames, under any key (seed 1)", async () => {

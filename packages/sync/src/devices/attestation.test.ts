@@ -15,8 +15,6 @@
 import { describe, expect, it } from "vitest";
 import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { certifyDevice, createDeviceIdentity, type DeviceIdentity } from "../crypto/index.js";
-import { buildDeviceAdded, buildLeaseClaim, type LogEvent } from "./events.js";
-import { foldRegistry, type Registry } from "./registry.js";
 import {
   createSimVault,
   hlcAt,
@@ -26,7 +24,9 @@ import {
   type SimDevice,
   START_TIME,
   sodium,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import { buildDeviceAdded, buildLeaseClaim, type LogEvent } from "./events.js";
+import { foldRegistry, type Registry } from "./registry.js";
 
 function stamp(e: UnstampedEvent, writer: string, offset: number): LogEvent {
   return {

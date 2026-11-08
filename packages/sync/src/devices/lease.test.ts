@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { type SegmentCursor, START_CURSOR } from "../carrier.js";
+import {
+  advance,
+  config,
+  decide,
+  devices,
+  holds,
+  MIN,
+  rule6Run,
+  tick,
+  view,
+} from "../testing/devices/leaseSim.js";
+import {
+  createSimVault,
+  newEid,
+  optInAutoHandover,
+  pairDevice,
+  prepareConsented,
+  prepareReviewedRevocation,
+  sodium,
+} from "../testing/devices/testkit.js";
 import { buildLeaseClaim } from "./events.js";
 import {
   catchUpMissing,
@@ -10,17 +30,7 @@ import {
   mayRunNewestDayImports,
   nextLeaseStep,
 } from "./lease.js";
-import { advance, config, decide, devices, holds, MIN, rule6Run, tick, view } from "./leaseSim.js";
 import { comparePositions } from "./positions.js";
-import {
-  createSimVault,
-  newEid,
-  optInAutoHandover,
-  pairDevice,
-  prepareConsented,
-  prepareReviewedRevocation,
-  sodium,
-} from "./testkit.js";
 
 /** The devices a holder still has to catch up with. */
 function missing(v: LeaseView, applied: ReadonlyMap<string, SegmentCursor>): string[] {

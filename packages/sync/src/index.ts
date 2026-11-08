@@ -16,7 +16,6 @@ export {
 } from "./engine.js";
 export * from "./errors.js";
 export * from "./hlc.js";
-export { MemoryClockStore, MemoryTransport } from "./memory.js";
 export {
   DEFAULT_MAX_FRAME_BYTES,
   DEFAULT_MAX_FRAME_EVENTS,

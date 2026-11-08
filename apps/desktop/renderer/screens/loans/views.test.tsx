@@ -11,7 +11,7 @@ import { InstallmentDrawerView } from "./InstallmentDrawerView.js";
 import { LoanDrawerView } from "./LoanDrawerView.js";
 import { LoansStartView } from "./LoansStartView.js";
 import { LoansView } from "./LoansView.js";
-import { loansStoryState, StoryFixture, storyState } from "./storyState.js";
+import { loansStoryState, StoryFixture, storyState } from "./testing/storyState.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | null = null;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sodium, subjectOf } from "../testing/crypto/testkit.js";
 import { CertificateCache, CertificateIndex, certifyDevice, verifyCertificates } from "./cert.js";
 import {
   createDeviceIdentity,
@@ -9,7 +10,6 @@ import {
 } from "./identity.js";
 import { createKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
-import { sodium, subjectOf } from "./testkit.js";
 import { recoveryRecipient, verifyWrapSignature, wrapKeys, wrapSenderId } from "./wrap.js";
 
 const CONTEXTS: SigningContext[] = [

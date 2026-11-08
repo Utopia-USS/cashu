@@ -12,15 +12,6 @@ import {
   type RecoveryIdentity,
 } from "../crypto/index.js";
 import {
-  buildDeviceAdded,
-  buildLeaseClaim,
-  DEVICE_ADDED,
-  DEVICE_REVOKED,
-  type LogEvent,
-} from "./events.js";
-import { foldLease } from "./lease.js";
-import type { PreparedChange } from "./rotation.js";
-import {
   type Batch,
   createSimVault,
   newEid,
@@ -31,7 +22,16 @@ import {
   type SimDevice,
   START_CURSOR,
   sodium,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import {
+  buildDeviceAdded,
+  buildLeaseClaim,
+  DEVICE_ADDED,
+  DEVICE_REVOKED,
+  type LogEvent,
+} from "./events.js";
+import { foldLease } from "./lease.js";
+import type { PreparedChange } from "./rotation.js";
 
 function syncAll(devices: readonly SimDevice[], rounds = 2): void {
   for (let i = 0; i < rounds; i++) for (const d of devices) d.sync();

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { EventType } from "./events/v1/catalog.js";
 import { detPartsOf } from "./events/v1/det-parts.js";
-import { VALID_SAMPLES } from "./events/v1/test-fixtures.js";
 import { detGidFor } from "./gid.js";
 import { builtinModules } from "./modules.js";
 import { exportSnapshot, importSnapshot, viewHash } from "./snapshot.js";
+import { VALID_SAMPLES } from "./testing/event-fixtures.js";
 import {
   EventFactory,
   memoryDriver,

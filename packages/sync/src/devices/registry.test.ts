@@ -6,6 +6,17 @@ import {
   createDeviceIdentity,
   type DeviceIdentity,
 } from "../crypto/index.js";
+import { expectOrderFree, mutualRevocationScenario } from "../testing/devices/registryOrder.js";
+import {
+  createSimVault,
+  hlcAt,
+  newEid,
+  pairDevice,
+  revokedWithConsent,
+  type SimDevice,
+  START_TIME,
+  sodium,
+} from "../testing/devices/testkit.js";
 import { toHex } from "./bytes.js";
 import {
   buildDeviceAdded,
@@ -16,17 +27,6 @@ import {
 } from "./events.js";
 import { PairingInviter } from "./pairing.js";
 import { foldRegistry, type Registry } from "./registry.js";
-import { expectOrderFree, mutualRevocationScenario } from "./registryOrder.js";
-import {
-  createSimVault,
-  hlcAt,
-  newEid,
-  pairDevice,
-  revokedWithConsent,
-  type SimDevice,
-  START_TIME,
-  sodium,
-} from "./testkit.js";
 
 function stamp(e: UnstampedEvent, writer: string, wall: number, offset = wall): LogEvent {
   return {

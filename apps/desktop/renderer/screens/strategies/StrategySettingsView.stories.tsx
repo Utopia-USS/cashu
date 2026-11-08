@@ -1,5 +1,5 @@
 import { StrategySettingsView } from "./StrategySettingsView.js";
-import { settingsState } from "./storyState.js";
+import { settingsState } from "./testing/storyState.js";
 
 export default {
   title: "Desktop/Strategies/Settings",

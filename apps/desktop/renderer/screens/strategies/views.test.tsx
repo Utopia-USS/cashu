@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MarkdownDocument } from "./MarkdownDocument.js";
 import { StrategiesView } from "./StrategiesView.js";
-import { readyState, unavailableState } from "./storyState.js";
+import { readyState, unavailableState } from "./testing/storyState.js";
 
 describe("Strategies read-only presentation", () => {
   it.each(["en", "pl"] as const)(

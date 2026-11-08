@@ -21,10 +21,10 @@ import type {
 import { createSyncEngine, type SyncEngineOptions } from "../engine.js";
 import { SyncError, TransportError } from "../errors.js";
 import { parseHlc } from "../hlc.js";
-import { MemoryClockStore, MemoryTransport } from "../memory.js";
 import { settlesWithin, utf8Encode } from "../runtime.js";
 import { scanFrames } from "../segment.js";
 import { FaultInjector, ManualClock } from "./faults.js";
+import { MemoryClockStore, MemoryTransport } from "./memory.js";
 import { checkPropagationClaim } from "./propagation.js";
 import { MemorySink } from "./sink.js";
 

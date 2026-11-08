@@ -1,5 +1,5 @@
 // Synthetic samples for the schema tests: one valid payload per v1 event type. No real data.
-import type { EventType } from "./catalog.js";
+import type { EventType } from "../events/v1/catalog.js";
 
 export const VAULT = "5f0c3a9e81d24b7690ae13c7d2f4b856";
 export const DEVICE = "3f9a2c8e1d7b4a6050c3e9f12d8b7a64";

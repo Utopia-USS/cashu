@@ -6,6 +6,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { entropyToMnemonic, mnemonicToEntropy } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { describe, expect, it } from "vitest";
+import { ctx, DEVICE_A, GID_SALT, range, sodium, trustedTo } from "../testing/crypto/testkit.js";
 import { certifyDevice } from "./cert.js";
 import { fromHex, toHex, utf8 } from "./encoding.js";
 import { FRAME_HEADER_BYTES, openFrame, sealFrameWithNonce } from "./frame.js";
@@ -14,7 +15,6 @@ import { encodeKeyPayload, KID_BYTES } from "./keys.js";
 import { recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
 import { keyringFromKeys } from "./testing.js";
-import { ctx, DEVICE_A, GID_SALT, range, sodium, trustedTo } from "./testkit.js";
 import { wrapKeys } from "./wrap.js";
 
 describe("published test vectors", () => {

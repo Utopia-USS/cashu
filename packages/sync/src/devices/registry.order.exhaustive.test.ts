@@ -2,7 +2,11 @@
 // registry.test.ts). One test per seed, each a single fold over a shared scenario.
 
 import { beforeAll, describe, it } from "vitest";
-import { expectOrderFree, mutualRevocationScenario, type OrderScenario } from "./registryOrder.js";
+import {
+  expectOrderFree,
+  mutualRevocationScenario,
+  type OrderScenario,
+} from "../testing/devices/registryOrder.js";
 
 describe("device registry: the fold depends only on the set of events (sweep)", () => {
   let scenario: OrderScenario;

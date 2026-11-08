@@ -12,6 +12,15 @@ import {
   recoveryIdentity,
 } from "../crypto/index.js";
 import {
+  createSimVault,
+  newEid,
+  optInAutoHandover,
+  pairDevice,
+  prepareConsented,
+  type SimDevice,
+  sodium,
+} from "../testing/devices/testkit.js";
+import {
   buildDeviceAdded,
   buildLeaseClaim,
   buildLeaseRenewal,
@@ -22,15 +31,6 @@ import {
   waiveConfirmationText,
 } from "./events.js";
 import { catchUpMissing, foldLease, type LeaseView } from "./lease.js";
-import {
-  createSimVault,
-  newEid,
-  optInAutoHandover,
-  pairDevice,
-  prepareConsented,
-  type SimDevice,
-  sodium,
-} from "./testkit.js";
 
 const HOUR = 60 * 60 * 1000;
 

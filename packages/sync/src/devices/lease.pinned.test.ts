@@ -6,9 +6,6 @@
 
 import { describe, expect, it } from "vitest";
 import { createRecoveryKey, recoveryIdentity } from "../crypto/index.js";
-import { fromHex, toHex } from "./bytes.js";
-import { buildLeaseClaim, buildLeasePin, pinConfirmationText } from "./events.js";
-import { nextLeaseStep, pinEventFor } from "./lease.js";
 import {
   type Backend,
   boundedConfig,
@@ -23,7 +20,7 @@ import {
   siblingRun,
   view,
   visibilityOf,
-} from "./leaseSim.js";
+} from "../testing/devices/leaseSim.js";
 import {
   hlcAt,
   newEid,
@@ -32,7 +29,10 @@ import {
   type SimDevice,
   START_CURSOR,
   sodium,
-} from "./testkit.js";
+} from "../testing/devices/testkit.js";
+import { fromHex, toHex } from "./bytes.js";
+import { buildLeaseClaim, buildLeasePin, pinConfirmationText } from "./events.js";
+import { nextLeaseStep, pinEventFor } from "./lease.js";
 
 const BACKENDS: readonly Backend[] = ["linearizable", "bounded", "eventual"];
 
