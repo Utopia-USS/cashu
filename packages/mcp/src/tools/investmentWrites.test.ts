@@ -20,6 +20,7 @@ import { NativeMcpServer, type NativeRuntime, restrictivePrivacy } from "../runt
 import { NATIVE_TOOL_SCHEMAS } from "../runtime/toolSchemas.js";
 import type { NativeToolStore } from "../runtime/types.js";
 import { nativeFixture } from "../testing/native.js";
+import { createdAlertView } from "./alerts.js";
 import vectors from "./fixtures/investmentWrites.json" with { type: "json" };
 import { investmentWriteTools } from "./investmentWrites.js";
 
@@ -492,6 +493,30 @@ describe("native MCP local investment writes", () => {
     expect(
       Q.alerts(s.f.store.read.bind(s.f.store), new Date(s.f.env.clock.now()).toISOString()),
     ).toHaveLength(0);
+  });
+  it("replies to add_alert with fractional params as numbers, like the committed row", async () => {
+    const s = await setup();
+    const out = await s.server.call("add_alert", {
+      kind: "price_below",
+      params: { level: 90.25 },
+      polarity: "negative",
+      severity: "info",
+      title: "Synthetic price condition",
+      instrument: "ABC",
+    });
+    expect(out.ok).toBe(true);
+    const row = Q.alerts(
+      s.f.store.read.bind(s.f.store),
+      new Date(s.f.env.clock.now()).toISOString(),
+    )[0];
+    expect(row?.params).toEqual({ level: 90.25 });
+    // The reply row is built from the emitted event, whose blob carries 90.25 as Decimal text.
+    const event = s.batches.flat().find((e) => e.type === "alert.created");
+    if (event === undefined) throw new Error("no alert event");
+    expect(event.data.paramsFloats).toEqual([["level"]]);
+    expect(createdAlertView(event, row?.instrument ?? null, "2026-01-01T00:00:00Z").params).toEqual(
+      row?.params,
+    );
   });
   it("rejects stale file authority before proposal effects and leaves dry runs empty", async () => {
     const s = await setup();

@@ -9,7 +9,7 @@ import {
 } from "@cashu/domain/investments";
 import { didYouMean } from "@cashu/domain/investments/rules";
 import { loadStrategy, strategyDigest } from "@cashu/domain/investments/strategy";
-import { investmentsCommands as C, defineCommand, refuse } from "@cashu/store";
+import { investmentsCommands as C, defineCommand, refuse, v1 } from "@cashu/store";
 import * as Q from "@cashu/store/investments/queries";
 import { mcpAlertRows } from "@cashu/store/investments/services";
 import * as L from "../privacy/labels.js";
@@ -231,6 +231,42 @@ export function alerts(ctx: Context, args: ToolArgs): L.LabelledTree {
     note: L.fixedText(ALERT_NOTE),
   };
 }
+/**
+ * The view row of a just-emitted `alert.created` (the reply is built before the batch commits). Event
+ * data keeps fractional params as Decimal text with their paths in `paramsFloats` (events.md 4.3);
+ * restore them as the fold does, so the reply's numbers are the committed row's numbers.
+ */
+export function createdAlertView(
+  effect: { readonly gid: string; readonly data: Readonly<Record<string, unknown>> },
+  instrument: string | null,
+  at: string,
+): Q.AlertView {
+  const d = effect.data;
+  return {
+    gid: effect.gid,
+    instrument,
+    kind: String(d.kind),
+    scope: String(d.scope),
+    params: F.object(v1.restoreFloats(d.params, d.paramsFloats)),
+    title: String(d.title),
+    note: typeof d.note === "string" ? d.note : null,
+    tag: typeof d.tag === "string" ? d.tag : null,
+    polarity: String(d.polarity),
+    severity: String(d.severity),
+    source: "agent",
+    createdBy: "mcp",
+    status: "active",
+    cooldownDays: typeof d.cooldownDays === "number" ? d.cooldownDays : null,
+    expiresAt: typeof d.expiresAt === "string" ? d.expiresAt : null,
+    snoozedUntil: null,
+    lastTriggeredAt: null,
+    lastCheckedAt: null,
+    lastValue: null,
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: null,
+  };
+}
 export async function addAlert(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
   const target = args.instrument ? instrument(ctx, args.instrument, true) : null;
   let valid: A.ValidatedAlert;
@@ -290,32 +326,7 @@ export async function addAlert(ctx: Context, args: ToolArgs): Promise<L.Labelled
   });
   const effect = out.effects.find((e) => e.type === "alert.created");
   if (!effect) throw new Error("alert effect missing");
-  const d = effect.data,
-    at = new Date(ctx.store.now()).toISOString();
-  const row: Q.AlertView = {
-    gid: effect.gid,
-    instrument: target,
-    kind: String(d.kind),
-    scope: String(d.scope),
-    params: F.object(d.params),
-    title: String(d.title),
-    note: typeof d.note === "string" ? d.note : null,
-    tag: typeof d.tag === "string" ? d.tag : null,
-    polarity: String(d.polarity),
-    severity: String(d.severity),
-    source: "agent",
-    createdBy: "mcp",
-    status: "active",
-    cooldownDays: typeof d.cooldownDays === "number" ? d.cooldownDays : null,
-    expiresAt: typeof d.expiresAt === "string" ? d.expiresAt : null,
-    snoozedUntil: null,
-    lastTriggeredAt: null,
-    lastCheckedAt: null,
-    lastValue: null,
-    createdAt: at,
-    updatedAt: at,
-    deletedAt: null,
-  };
+  const row = createdAlertView(effect, target, new Date(ctx.store.now()).toISOString());
   return {
     alert: alertRow(ctx, row),
     limits: limits(ctx, 1),
