@@ -5,7 +5,7 @@ import type { ApprovalPublication } from "../../core/proposal-service.js";
 import type { Store } from "../../materialize.js";
 import type { SavedStrategyVersion } from "../commands/strategy.js";
 import { latestStrategyVersion } from "../queries/strategy.js";
-import { STRATEGY_MD, STRATEGY_YAML, type StrategyFileName } from "./strategy.js";
+import { STRATEGY_MD, STRATEGY_YAML, type StrategyFileName } from "./strategyFileNames.js";
 
 export interface StrategyFileImage {
   readonly yaml: string | null;
@@ -29,11 +29,14 @@ export interface StrategyPublicationFiles {
   discard(temporary: object): Promise<void>;
 }
 
-interface ManagedImage {
+export interface ManagedImage {
   readonly image: StrategyFileImage;
   readonly digests: StrategyFileDigests;
   readonly approvalEid: string | null;
+  /** The stored version this image is (the version the files were last brought to or recorded as). */
   readonly version: string | null;
+  /** This device recorded `version` from these files (strategyFileSync.ts); approvals carry `approvalEid`. */
+  readonly recorded?: boolean;
 }
 export interface StrategyPublicationJournal {
   readonly vault: string;
@@ -86,29 +89,55 @@ export function strategyFileDigests(image: StrategyFileImage): StrategyFileDiges
 function same(a: StrategyFileImage, b: StrategyFileImage): boolean {
   return a.yaml === b.yaml && a.md === b.md;
 }
-function managed(
+export function managedImage(
   image: StrategyFileImage,
   approvalEid: string | null,
   version: string | null,
+  recorded = false,
 ): ManagedImage {
   return {
     image: { yaml: image.yaml, md: image.md },
     digests: strategyFileDigests(image),
     approvalEid,
     version,
+    ...(recorded ? { recorded: true } : {}),
   };
 }
+const managed = managedImage;
 function validImage(image: StrategyFileImage, digests: StrategyFileDigests): boolean {
   const actual = strategyFileDigests(image);
   return actual.yaml === digests.yaml && actual.md === digests.md;
 }
 
-/** Construct only for an owner approval, never during an agent's proposal/dry run. */
-export async function prepareStrategyPublication(
-  deps: StrategyPublicationDeps,
+export interface StrategyJournalDeps {
+  readonly store: Store;
+  readonly files: StrategyPublicationFiles;
+  readonly journal: PrivateStrategyJournal;
+  readonly isVaultCurrent: () => boolean;
+}
+
+/**
+ * The device's private strategy-file journal, opened over the live file capability: the last
+ * managed image (what the files were brought to, and as which stored version), an interrupted
+ * transition, and the receipts of approvals. Every file write goes through `transition`, which
+ * journals its intent first and refuses to overwrite an unknown edit (`user_changed`).
+ */
+export interface StrategyJournalSession {
+  /** A journal existed before this session (false: created from `base`, not written yet). */
+  readonly existed: boolean;
+  current(): StrategyPublicationJournal;
+  check(): void;
+  read(): Promise<StrategyFileImage>;
+  write(next: StrategyPublicationJournal): Promise<void>;
+  known(current: StrategyFileImage): boolean;
+  transition(after: ManagedImage, guard: () => void): Promise<void>;
+}
+
+export async function openStrategyJournal(
+  deps: StrategyJournalDeps,
   base: StrategyFileImage,
-  target: StrategyFileImage,
-): Promise<ApprovalPublication<SavedStrategyVersion> & { isBaseCurrent(): boolean }> {
+  baseVersion: string | null,
+): Promise<StrategyJournalSession> {
   const check = () => {
     try {
       if (
@@ -143,21 +172,15 @@ export async function prepareStrategyPublication(
           !validImage(saved.pending.after.image, saved.pending.after.digests))))
   )
     throw new StrategyPublicationError("journal_invalid");
-  const baselineVersion = latestStrategyVersion(deps.store.read.bind(deps.store))?.gid ?? null;
   let journal: StrategyPublicationJournal = saved ?? {
     vault: deps.store.vault,
     baseline: { yaml: base.yaml, md: base.md },
     baselineDigests: strategyFileDigests(base),
-    baselineVersion,
-    managed: managed(base, null, baselineVersion),
+    baselineVersion: baseVersion,
+    managed: managed(base, null, baseVersion),
     pending: null,
     receipts: [],
   };
-  const restoreTarget = managed(
-    base,
-    saved?.managed.approvalEid ?? null,
-    saved?.managed.version ?? baselineVersion,
-  );
   const writeJournal = async (next: StrategyPublicationJournal) => {
     check();
     await deps.journal.write(next);
@@ -171,12 +194,6 @@ export async function prepareStrategyPublication(
       (current.yaml === before.image.yaml || current.yaml === after.image.yaml) &&
       (current.md === before.image.md || current.md === after.image.md)
     );
-  };
-  const winner = (approvalEid: string) => {
-    check();
-    const row = proposalExecution(deps.store.read.bind(deps.store), deps.proposalGid);
-    if (row?.status !== "approved" || row.approvalEid !== approvalEid)
-      throw new StrategyPublicationError("winner_changed");
   };
   const transition = async (after: ManagedImage, guard: () => void) => {
     guard();
@@ -251,6 +268,89 @@ export async function prepareStrategyPublication(
     if (failed) throw failure;
   };
   return {
+    existed: saved !== null,
+    current: () => journal,
+    check,
+    read,
+    write: writeJournal,
+    known,
+    transition,
+  };
+}
+
+/**
+ * Bring the files to the image of the current stored version (Python `_finish` reconciliation):
+ * the still-effective approval receipt of that version (its exact raw bytes), else the captured
+ * unmanaged baseline when the version is the one the journal started at, else the version's text.
+ * Refuses an unknown edit (`user_changed`); an interrupted transition is finished.
+ */
+export async function reconcileStrategyFiles(
+  store: Store,
+  session: StrategyJournalSession,
+): Promise<void> {
+  session.check();
+  const journal = session.current();
+  const version = latestStrategyVersion(store.read.bind(store));
+  const expectedVersion = version?.gid ?? null;
+  const receipts = [
+    journal.pending?.after,
+    journal.managed,
+    ...journal.receipts.toReversed(),
+  ].filter(
+    (image): image is ManagedImage => image !== undefined && image.version === expectedVersion,
+  );
+  const effective = (image: ManagedImage) =>
+    image.approvalEid !== null &&
+    isEffectiveProposalApproval(store.read.bind(store), image.approvalEid);
+  const effectiveReceipts = receipts.map(effective);
+  // A no-op save may publish stored S0 over unmanaged S0' without creating a new version.
+  // Its still-effective receipt must win over the captured S0' baseline until rejected.
+  const receipt = receipts.find(
+    (image, index) => image.version === expectedVersion && effectiveReceipts[index],
+  );
+  const image =
+    receipt !== undefined
+      ? receipt.image
+      : version === undefined || version.gid === journal.baselineVersion
+        ? journal.baseline
+        : { yaml: version.yamlText, md: version.mdText };
+  const guard = () => {
+    session.check();
+    if ((latestStrategyVersion(store.read.bind(store))?.gid ?? null) !== expectedVersion)
+      throw new StrategyPublicationError("winner_changed");
+    if (receipts.some((image, index) => effective(image) !== effectiveReceipts[index]))
+      throw new StrategyPublicationError("winner_changed");
+  };
+  const current = await session.read();
+  guard();
+  if (!session.known(current)) throw new StrategyPublicationError("user_changed");
+  if (same(current, image) && journal.pending === null) return;
+  await session.transition(receipt ?? managed(image, null, expectedVersion), guard);
+}
+
+/** Construct only for an owner approval, never during an agent's proposal/dry run. */
+export async function prepareStrategyPublication(
+  deps: StrategyPublicationDeps,
+  base: StrategyFileImage,
+  target: StrategyFileImage,
+): Promise<ApprovalPublication<SavedStrategyVersion> & { isBaseCurrent(): boolean }> {
+  const baselineVersion = latestStrategyVersion(deps.store.read.bind(deps.store))?.gid ?? null;
+  const session = await openStrategyJournal(deps, base, baselineVersion);
+  const saved = session.existed ? session.current() : null;
+  const { check, read } = session;
+  const restoreTarget = managed(
+    base,
+    saved?.managed.approvalEid ?? null,
+    saved?.managed.version ?? baselineVersion,
+  );
+  const winner = (approvalEid: string) => {
+    check();
+    const row = proposalExecution(deps.store.read.bind(deps.store), deps.proposalGid);
+    if (row?.status !== "approved" || row.approvalEid !== approvalEid)
+      throw new StrategyPublicationError("winner_changed");
+  };
+  const transition = session.transition;
+  return {
     isBaseCurrent: () => {
       try {
         check();
@@ -268,52 +368,12 @@ export async function prepareStrategyPublication(
     },
     restore: async () => {
       check();
-      if (journal.pending === null) return;
+      if (session.current().pending === null) return;
       await transition(restoreTarget, check);
     },
     discard: async () => {
       /* No live file or temporary is created before publish. */
     },
-    reconcile: async () => {
-      check();
-      const version = latestStrategyVersion(deps.store.read.bind(deps.store));
-      const expectedVersion = version?.gid ?? null;
-      const receipts = [
-        journal.pending?.after,
-        journal.managed,
-        ...journal.receipts.toReversed(),
-      ].filter(
-        (image): image is ManagedImage => image !== undefined && image.version === expectedVersion,
-      );
-      const effective = (image: ManagedImage) =>
-        image.approvalEid !== null &&
-        isEffectiveProposalApproval(deps.store.read.bind(deps.store), image.approvalEid);
-      const effectiveReceipts = receipts.map(effective);
-      // A no-op save may publish stored S0 over unmanaged S0' without creating a new version.
-      // Its still-effective receipt must win over the captured S0' baseline until rejected.
-      const receipt = receipts.find(
-        (image, index) => image.version === expectedVersion && effectiveReceipts[index],
-      );
-      const image =
-        receipt !== undefined
-          ? receipt.image
-          : version === undefined || version.gid === journal.baselineVersion
-            ? journal.baseline
-            : { yaml: version.yamlText, md: version.mdText };
-      const guard = () => {
-        check();
-        if (
-          (latestStrategyVersion(deps.store.read.bind(deps.store))?.gid ?? null) !== expectedVersion
-        )
-          throw new StrategyPublicationError("winner_changed");
-        if (receipts.some((image, index) => effective(image) !== effectiveReceipts[index]))
-          throw new StrategyPublicationError("winner_changed");
-      };
-      const current = await read();
-      guard();
-      if (!known(current)) throw new StrategyPublicationError("user_changed");
-      if (same(current, image) && journal.pending === null) return;
-      await transition(receipt ?? managed(image, null, expectedVersion), guard);
-    },
+    reconcile: () => reconcileStrategyFiles(deps.store, session),
   };
 }

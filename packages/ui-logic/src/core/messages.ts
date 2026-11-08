@@ -555,6 +555,8 @@ export const LABELS: Record<string, Label> = {
   "error.research_invalid": "Nieprawidłowe dane notatki researchu",
   "error.name_taken": "Pozycja o tej nazwie już istnieje",
   "error.loan_name_taken": "Kredyt o tej nazwie już istnieje.",
+  "error.strategy_conflict":
+    "Pliki zmieniono na starszej wersji strategii: zmiana czeka jako propozycja do zatwierdzenia.",
   "error.import_bank_unknown": "Nie rozpoznano banku: wybierz go z listy.",
   "error.import_header_missing": "To nie wygląda na wyciąg z tego banku: sprawdź bank i plik.",
   "error.import_empty": "Plik nie zawiera transakcji.",

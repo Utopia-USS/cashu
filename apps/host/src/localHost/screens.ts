@@ -8,6 +8,7 @@ import type { classifierSettingsQuery } from "@cashu/store/core/classifier-setti
 import type { deviceListQuery } from "@cashu/store/core/desktop-settings";
 import type { NotificationQueue } from "@cashu/store/investments/local";
 import { PerformanceService } from "@cashu/store/investments/performance";
+import type { DailyPriceLock } from "@cashu/store/investments/services";
 import { strategyScreenArgsSchema } from "@cashu/store/investments/strategies-screen";
 import type { Read } from "@cashu/store/query";
 import { budgetStatementActions } from "../budgetScreen.js";
@@ -16,6 +17,7 @@ import { currentStrategyImages } from "../investmentScreenSources.js";
 import type { investmentsRunningQuery } from "../investmentsRunning.js";
 import type { ProductionMarket } from "../market/production.js";
 import { nativeStrategyDocuments } from "../nativeStrategyDocuments.js";
+import { followVaultStrategy } from "../proposals/strategyFollow.js";
 import { proposalScreen } from "../proposalsScreen.js";
 import { servedQueries } from "../registry.js";
 import type { settingsInfoQuery } from "../settingsInfo.js";
@@ -43,7 +45,7 @@ const PRIVATE_UNLESS_PRIVACY = new Set([
 const STRATEGIES_SCREEN = "investments.strategies.screen";
 
 /** The strategy documents of each open native vault, bound once per vault and generation. */
-function nativeStrategyBinder() {
+function nativeStrategyBinder(lock: DailyPriceLock | undefined) {
   let stores: HostStores | null = null;
   const caps = new Map<string, { vault: OpenVault; cap: StrategyScreenCapability }>();
   return {
@@ -58,7 +60,25 @@ function nativeStrategyBinder() {
       const authority = vault.native.strategyDirectoryAuthority();
       if (!authority) return null;
       try {
-        const cap = nativeStrategyDocuments(authority);
+        const documents = nativeStrategyDocuments(authority);
+        const sync = documents.sync;
+        const cap: StrategyScreenCapability =
+          lock === undefined || sync === undefined
+            ? documents
+            : {
+                ...documents,
+                async follow() {
+                  const release = lock.tryAcquire();
+                  if (release === null) return "busy";
+                  try {
+                    return await followVaultStrategy(vault, sync, () => {
+                      return stores?.vaults.get(id) === vault && documents.isCurrent();
+                    });
+                  } finally {
+                    release();
+                  }
+                },
+              };
         caps.set(id, { vault, cap });
         return cap;
       } catch {
@@ -84,7 +104,9 @@ export function createScreenSurfaces(input: {
   const performance = new PerformanceService();
   const budgetStatements = budgetStatementActions({ now });
   const nativeStrategies =
-    options.strategies === undefined && nativeMode ? nativeStrategyBinder() : undefined;
+    options.strategies === undefined && nativeMode
+      ? nativeStrategyBinder(options.strategyLock)
+      : undefined;
   const strategies: VaultBinder<StrategyScreenCapability> | undefined =
     options.strategies ?? nativeStrategies;
   const images =

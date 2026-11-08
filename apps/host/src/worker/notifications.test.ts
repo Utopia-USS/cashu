@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { D, parseDateTime } from "@cashu/domain";
 import { investmentsCommands } from "@cashu/store";
 import { openSignals, strategyVersions } from "@cashu/store/investments/queries";
@@ -178,9 +180,13 @@ it("reads current unrecorded file policy without recording a new strategy versio
     await worker.tick();
     expect(f.notifications.pending(vault.id)).toHaveLength(1);
     const before = strategyVersions(vault.store.read.bind(vault.store)).length;
-    options.yaml = options.yaml.replace(
-      "notifications: {digest_weekday: sunday}",
-      "notifications: {immediate: [], digest_weekday: sunday}",
+    // An owner edit of the file that no daily run has recorded yet.
+    writeFileSync(
+      join(f.strategyDirs.directory(vault), "strategy.yaml"),
+      options.yaml.replace(
+        "notifications: {digest_weekday: sunday}",
+        "notifications: {immediate: [], digest_weekday: sunday}",
+      ),
     );
     const result = await deliverWorkerNotifications({
       vault,

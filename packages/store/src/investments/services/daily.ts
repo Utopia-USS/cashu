@@ -29,12 +29,15 @@ import { type DurableWrite, DurableWriteUnknown, requireDurable } from "./durabl
 import { collectPriceNeeds } from "./priceNeeds.js";
 import { type DailyPriceLock, type RefreshPriceDeps, refreshPriceNeeds } from "./prices.js";
 import { loadStrategy, type StrategyFilesPort, type StrategyState } from "./strategy.js";
+import type { StrategyFileSyncPorts } from "./strategyFileSync.js";
 
 export interface DailyVault {
   readonly store: Store;
   readonly writer: EventWriter;
   readonly env: CommandEnv;
   readonly files: StrategyFilesPort;
+  /** The device's strategy files and private journal: they follow the recorded version first. */
+  readonly sync: StrategyFileSyncPorts;
   readonly enabled: boolean;
   readonly lang: "pl" | "en";
   /** Existing per-vault host queue, bound by the caller. Never surrounds file or network awaits. */
@@ -109,6 +112,7 @@ export async function runDaily(
           record: true,
           writer: v.writer,
           env: v.env,
+          sync: v.sync,
           beforeRecord: () => v.env.lease.isHolder(),
           runWrite: (work) => v.runWrite(work),
           ...(v.durableWrite === undefined ? {} : { durableWrite: v.durableWrite }),

@@ -4,8 +4,15 @@ import { join } from "node:path";
 import { ensurePrivateDir } from "@cashu/node-host";
 import { enabledModuleIds } from "@cashu/store/core";
 import { type NotificationQueue, SqlPriceCache } from "@cashu/store/investments/local";
-import { DailyPriceLock, type DailySources } from "@cashu/store/investments/services";
-import type { StrategyDirectoryAuthority } from "../proposals/strategyFiles.js";
+import {
+  DailyPriceLock,
+  type DailySources,
+  type StrategyFileSyncPorts,
+} from "@cashu/store/investments/services";
+import {
+  type StrategyDirectoryAuthority,
+  strategyPublicationPorts,
+} from "../proposals/strategyFiles.js";
 import type { OpenVault } from "../stores.js";
 import type {
   BudgetSyncPort,
@@ -68,22 +75,28 @@ export function createProductionWorkerBindings(
     {
       authority: StrategyDirectoryAuthority;
       port: ReturnType<typeof workerStrategyFiles>;
+      sync: StrategyFileSyncPorts;
     }
   >();
-  const fileFor = (vault: OpenVault) => {
+  const portsFor = (vault: OpenVault) => {
     if (vault.mode !== "native" || !host.isCurrent(vault)) return null;
     const present = files.get(vault.id);
-    if (present !== undefined) return present.authority.isCurrent() ? present.port : null;
+    if (present !== undefined) return present.authority.isCurrent() ? present : null;
     try {
       const authority = input.strategyDirectory(vault);
       if (authority === null || authority.vault !== vault.id || !authority.isCurrent()) return null;
       const port = workerStrategyFiles(authority);
-      files.set(vault.id, { authority, port });
-      return port;
+      // The daily run brings the files to the recorded version (strategyFileSync.ts) through the
+      // same pinned directory and private journal as approvals.
+      const sync = strategyPublicationPorts(authority);
+      const entry = { authority, port, sync };
+      files.set(vault.id, entry);
+      return entry;
     } catch {
       return null;
     }
   };
+  const fileFor = (vault: OpenVault) => portsFor(vault)?.port ?? null;
   // Claim file-capable vaults and native connector vaults. A budget-only connector does not depend
   // on a strategy directory; an unbound worker still leaves missing file authority untouched.
   const eligible = currentVaults.filter(
@@ -142,6 +155,7 @@ export function createProductionWorkerBindings(
       ...(input.market === undefined ? {} : { sources: input.market.sources }),
       dailyLock,
       files: fileFor,
+      strategySync: (vault: OpenVault) => portsFor(vault)?.sync ?? null,
       ...(input.notifications === undefined ? {} : { notifications: input.notifications }),
     },
     ...(input.connectors === undefined ? {} : { connectors: input.connectors }),

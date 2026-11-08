@@ -4,7 +4,11 @@ import type { InvestmentSearchIo } from "@cashu/mcp";
 import { enabledModuleIds, mcpProfile } from "@cashu/store/core";
 import type { PerformanceService } from "@cashu/store/investments/performance";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
-import type { StrategyFilesPort, StrategyState } from "@cashu/store/investments/services";
+import type {
+  StrategyFileSyncPorts,
+  StrategyFilesPort,
+  StrategyState,
+} from "@cashu/store/investments/services";
 import type { MarketInput } from "@cashu/store/investments/views";
 import type { HostStores, OpenVault } from "../../stores.js";
 import type { HostWorker } from "../../worker/service.js";
@@ -26,6 +30,8 @@ export interface StrategyCliFiles extends StrategyFilesPort {
   createAbsent?(name: "strategy.yaml" | "strategy.md", text: string): Promise<"created" | "exists">;
   /** Explicit --force replacement of one checked private file, atomically per file. */
   replaceForced?(name: "strategy.yaml" | "strategy.md", text: string): Promise<void>;
+  /** The device's publication files and private journal: recording follows strategyFileSync.ts. */
+  readonly sync?: StrategyFileSyncPorts;
 }
 
 export interface InvestmentContext {

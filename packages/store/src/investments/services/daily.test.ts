@@ -5,7 +5,7 @@ import { reportStats as macroStats } from "@cashu/domain/investments/macro";
 import { describe, expect, it } from "vitest";
 import { runCommand, storeWriter } from "../../command.js";
 import { createProfile, renameProfile } from "../../core/commands.js";
-import { memoryDriver } from "../../testing/store.js";
+import { memoryDriver, TEST_VAULT } from "../../testing/store.js";
 import { createAlert } from "../commands/alertWrites.js";
 import { dailyEvaluation } from "../commands/daily.js";
 import { addManualTransaction } from "../commands/manual.js";
@@ -20,11 +20,12 @@ import {
 } from "../commands/testing/fixtures.js";
 import { NotificationQueue } from "../local/notificationQueue.js";
 import { openSignals, ruleRuns, signalByGid } from "../queries/signals.js";
+import { MemoryStrategyDir } from "../testing/strategyFiles.js";
 import { type DailyVault, runDaily } from "./daily.js";
 import type { DurableWriteUnknown } from "./durable.js";
 import oracle from "./fixtures/daily.json" with { type: "json" };
 import { DailyPriceLock } from "./prices.js";
-import { loadStrategy, type StrategyFilesPort } from "./strategy.js";
+import { loadStrategy } from "./strategy.js";
 
 /** Actual FIFO queue with synchronous steps, manually advanced to expose await races. */
 class ControlledQueue {
@@ -64,15 +65,12 @@ data: {max_stale_weight: 1}
 rules:
   - {id: concentration, kind: position_concentration, severity: action, params: {max_weight: 0.3}}
 `;
-const files = (yaml: string | null = YAML): StrategyFilesPort => ({
-  async read(name) {
-    return name === "strategy.yaml" ? yaml : null;
-  },
-  async exists() {
-    return true;
-  },
-  async write() {},
-});
+/** A synthetic strategy directory holding `yaml` (null: no strategy.yaml). */
+const dir = (yaml: string | null = YAML, vault = TEST_VAULT) => {
+  const files = new MemoryStrategyDir(vault);
+  if (yaml !== null) files.texts.set("strategy.yaml", yaml);
+  return { files, sync: files.sync };
+};
 function setup(v = vault()) {
   v.value(createProfile, { slug: "synthetic", name: "Synthetic", baseCurrency: "PLN" });
   const account = brokerage(v);
@@ -99,7 +97,7 @@ function setup(v = vault()) {
     store: v.store,
     writer: storeWriter(v.store),
     env: v.env,
-    files: files(),
+    ...dir(YAML, v.store.vault),
     enabled: true,
     lang: "en",
     async runWrite<T>(work: () => T) {
@@ -133,7 +131,7 @@ describe("daily native composition", () => {
     let calls = 0;
     const row: DailyVault = {
       ...s.row,
-      files: files(null),
+      ...dir(null),
       runWrite: async () => {
         throw new Error("outer_queue_entered");
       },
@@ -163,7 +161,7 @@ describe("daily native composition", () => {
         vaults: [
           {
             ...s.row,
-            files: files(`${YAML}benchmark: {id: msci_acwi, proxy: REFX.DE}\n`),
+            ...dir(`${YAML}benchmark: {id: msci_acwi, proxy: REFX.DE}\n`),
             runWrite: (work) => queue.runWrite(work),
           },
         ],
@@ -253,7 +251,7 @@ describe("daily native composition", () => {
     ]);
     const allPolicy = `${YAML}\nnotifications: {immediate: [info, action]}\n`;
     const result = await runDaily(
-      { ...s, vaults: [{ ...s.row, files: files(allPolicy) }], notifications },
+      { ...s, vaults: [{ ...s.row, ...dir(allPolicy) }], notifications },
       input,
     );
     expect(result.profiles[0]?.result?.notificationIntents.map((i) => i.severity)).toEqual([
@@ -266,15 +264,13 @@ describe("daily native composition", () => {
     await runDaily(
       {
         ...s,
-        vaults: [
-          { ...s.row, files: files(allPolicy.replace("severity: action", "severity: info")) },
-        ],
+        vaults: [{ ...s.row, ...dir(allPolicy.replace("severity: action", "severity: info")) }],
         notifications,
       },
       input,
     );
     const again = await runDaily(
-      { ...s, vaults: [{ ...s.row, files: files(allPolicy) }], notifications },
+      { ...s, vaults: [{ ...s.row, ...dir(allPolicy) }], notifications },
       input,
     );
     expect(again.profiles[0]?.result?.stats.notifications).toBe(0);
@@ -351,11 +347,12 @@ describe("daily native composition", () => {
     for (const label of ["valid", "missing", "invalid", "plan_failed"] as const) {
       const s = setup();
       cache(s);
-      const source = files(label === "missing" ? null : label === "invalid" ? "version: [" : YAML);
-      const strategy = await loadStrategy(s.v.store, source, {
+      const source = dir(label === "missing" ? null : label === "invalid" ? "version: [" : YAML);
+      const strategy = await loadStrategy(s.v.store, source.files, {
         record: true,
         writer: storeWriter(s.v.store),
         env: s.v.env,
+        sync: source.sync,
       });
       const command = dailyEvaluation({
         strategy,
@@ -495,29 +492,40 @@ describe("daily native composition", () => {
     const broken = {
       ...s.row,
       files: {
-        ...files(),
         async read(): Promise<string> {
           throw new Error("synthetic");
         },
+        async exists() {
+          return true;
+        },
+        async write() {},
       },
     };
     const other = setup(otherVault());
     const result = await runDaily(
-      { ...s, vaults: [broken, { ...other.row, files: files(null) }] },
+      { ...s, vaults: [broken, { ...other.row, ...dir(null, other.v.store.vault) }] },
       input,
     );
     expect(result.profiles.map((p) => p.status)).toEqual(["failed", "ok"]);
   });
   it("losing authority during file IO prevents version/evaluation writes", async () => {
     const s = setup();
-    const source = {
-      ...files(),
-      async read(name: string) {
-        s.v.env.holder = false;
-        return name === "strategy.yaml" ? YAML : null;
+    const source = dir();
+    const files = source.sync.files;
+    const sync = {
+      ...source.sync,
+      files: {
+        ...files,
+        async read() {
+          s.v.env.holder = false;
+          return files.read();
+        },
       },
     };
-    const result = await runDaily({ ...s, vaults: [{ ...s.row, files: source }] }, input);
+    const result = await runDaily(
+      { ...s, vaults: [{ ...s.row, files: source.files, sync }] },
+      input,
+    );
     expect(result.profiles[0]?.status).toBe("failed");
     expect(s.v.store.read("SELECT * FROM inv_strategy_versions")).toHaveLength(0);
     expect(ruleRuns(s.v.store.read.bind(s.v.store))).toHaveLength(0);

@@ -21,4 +21,5 @@ export * from "./proposalStrategy.js";
 export * from "./research-plans.js";
 export * from "./strategy.js";
 export * from "./strategy-docs.js";
+export * from "./strategyFileSync.js";
 export * from "./watchlist.js";

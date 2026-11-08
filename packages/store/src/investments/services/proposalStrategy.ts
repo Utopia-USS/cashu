@@ -65,6 +65,9 @@ export async function prepareStrategyApproval(deps: PrepareStrategyApprovalDeps)
   }
   if (!authority())
     throw new StrategyProposalError("unavailable", "strategy file authority unavailable");
+  // The stored version these files are (the host brought them to it first): the approved text is
+  // recorded on top of it, and refused if another version became current meanwhile.
+  const baseVersion = latestStrategyVersion(deps.store.read.bind(deps.store))?.gid ?? null;
   // Python Path.read_text normalizes universal newlines before digest/merge/version recording.
   // Keep the raw image separately so publication recovery never loses the owner's original bytes.
   const normalize = (text: string | null) => text?.replace(/\r\n?/gu, "\n") ?? null;
@@ -120,10 +123,11 @@ export async function prepareStrategyApproval(deps: PrepareStrategyApprovalDeps)
       if (ctx.vault !== deps.store.vault || !authority()) return "unavailable";
       if (canonicalJson(current.payload) !== fingerprint) return "proposal_changed";
       if (!publication.isBaseCurrent()) return "base_changed";
+      if ((latestStrategyVersion(ctx.read)?.gid ?? null) !== baseVersion) return "base_changed";
       return null;
     },
     apply(ctx) {
-      return saveStrategyVersion.run(ctx, { yamlText, mdText: finalMdText });
+      return saveStrategyVersion.run(ctx, { yamlText, mdText: finalMdText, base: baseVersion });
     },
     approvalResult(result, ctx) {
       const previous = latestStrategyVersion(ctx.read);

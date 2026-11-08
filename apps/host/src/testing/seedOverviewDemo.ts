@@ -31,6 +31,7 @@ import {
 import type { OverviewLoan, ShellSummarySnapshot } from "@cashu/store/overview";
 import { type LocalHost, startLocalHost } from "../host.js";
 import { currentStrategyImages } from "../investmentScreenSources.js";
+import { strategyPublicationPorts } from "../proposals/strategyFiles.js";
 import { type ResearchScreenCapability, researchScreenSources } from "../researchScreen.js";
 import { storeFiles } from "../stores.js";
 import type { StrategyScreenCapability } from "../strategiesScreen.js";
@@ -99,6 +100,7 @@ async function startDemoHost(target: string, home: string, flags: DemoHostFlags)
   const prices = new investmentsLocal.SqlPriceCache(driver);
   let alive = true;
   const capabilities = new Map<string, StrategyScreenCapability>();
+  const strategySync = new Map<string, ReturnType<typeof strategyPublicationPorts>>();
   const researchCapabilities = new Map<string, ResearchScreenCapability>();
   const researchSources = flags.research
     ? researchScreenSources((vault) => researchCapabilities.get(vault) ?? null)
@@ -107,6 +109,16 @@ async function startDemoHost(target: string, home: string, flags: DemoHostFlags)
     if (checkedProfileSlug(slug) === null) throw new Error("invalid synthetic profile segment");
     const path = join(target, "profiles", slug);
     mkdirSync(path, { recursive: true, mode: 0o700 });
+    const directory = realpathSync(path);
+    strategySync.set(
+      vault,
+      strategyPublicationPorts({
+        vault,
+        privateRoot: directory,
+        directory,
+        isCurrent: () => alive,
+      }),
+    );
     capabilities.set(
       vault,
       await syntheticStrategyDocuments({
@@ -153,6 +165,7 @@ async function startDemoHost(target: string, home: string, flags: DemoHostFlags)
                 notifications: queue,
                 dailyLock: new DailyPriceLock(),
                 files: (vault) => capabilities.get(vault.id)?.files ?? null,
+                strategySync: (vault) => strategySync.get(vault.id) ?? null,
               },
             };
           },

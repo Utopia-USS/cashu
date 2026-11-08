@@ -7,6 +7,7 @@ import { DailyPriceLock, type StrategyFilesPort } from "@cashu/store/investments
 import { expect, it } from "vitest";
 import { startLocalHost } from "../host.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
+import { testStrategyDirs } from "../testing/strategyDirs.js";
 import type { WorkerBindings } from "./contracts.js";
 import { privateWorkerState } from "./state.js";
 
@@ -37,6 +38,7 @@ it("appends a native daily result and reopens its encrypted view", async () => {
       prices: new investmentsLocal.SqlPriceCache(priceDriver),
       dailyLock: new DailyPriceLock(),
       files: () => files,
+      strategySync: testStrategyDirs().strategySync,
     },
   };
   const options = {
@@ -117,6 +119,7 @@ it("persists an uncertain native daily append and suppresses a fresh write after
       prices,
       dailyLock: new DailyPriceLock(),
       files: () => files,
+      strategySync: testStrategyDirs().strategySync,
     },
   };
   const options = {

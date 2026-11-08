@@ -11,6 +11,8 @@ import {
   type StrategyDoc,
   type StrategyDocsDir,
   type StrategyFileName,
+  type StrategyFileSyncPorts,
+  type StrategyFileSyncResult,
   type StrategyFilesPort,
   strategySummary,
 } from "@cashu/store/investments/services";
@@ -43,6 +45,14 @@ export interface StrategyScreenCapability {
   readonly documents: StrategyDocsDir;
   filePath?(document: StrategyDoc, relative: string): Promise<string | null>;
   readonly files: StrategyFilesPort;
+  /** The device's publication files and journal: a reload records through strategyFileSync.ts. */
+  readonly sync?: StrategyFileSyncPorts;
+  /**
+   * One follow pass under the host's strategy lock (proposals/strategyFollow.ts): the files follow
+   * the recorded version, a genuine local edit is recorded, a conflicting one is proposed. "busy"
+   * while a daily run or an approval holds the lock. Native capabilities have it.
+   */
+  follow?(): Promise<StrategyFileSyncResult | "busy">;
   readonly paths?: { readonly yaml: string; readonly md: string; readonly folder: string };
   readonly createAbsent?: StrategyCreateAbsent;
   /** Must revoke on loaded-vault replacement, module/policy change and private file authority loss. */
@@ -317,6 +327,7 @@ export function strategiesScreen(options: {
       revoke(context.vault);
       return refused("stale_revision");
     }
+    if (cap.follow) return followReload(context, cap.follow, snapshot.revision);
     const result = await context.execute({
       command: saveStrategyVersion.id,
       input: { yamlText: check.yaml, mdText: check.md },
@@ -361,6 +372,47 @@ export function strategiesScreen(options: {
       status: "completed",
       value: { status: "unchanged", revision: snapshot.revision, version: latest },
     };
+  }
+  /** A native reload: the files follow the recorded version; a local edit on top of it is recorded. */
+  async function followReload(
+    context: UiActionContext<StrategyScreenCapability>,
+    follow: NonNullable<StrategyScreenCapability["follow"]>,
+    revision: string,
+  ): Promise<UiActionResult<StrategyReloadResult>> {
+    let outcome: Awaited<ReturnType<typeof follow>>;
+    try {
+      outcome = await follow();
+    } catch {
+      return {
+        status: "completed",
+        value: { status: "not_recorded", revision, reason: "record_failed" },
+      };
+    }
+    if (outcome === "busy") return refused("busy");
+    const after = await refresh(context.capabilities);
+    if (!context.isCurrent()) return refused("authority_lost");
+    const latest = await context.readStep(
+      (read) =>
+        read<{ version: number }>(
+          "SELECT version FROM inv_strategy_versions ORDER BY version DESC LIMIT 1",
+        )[0]?.version ?? null,
+    );
+    const at = after.revision;
+    if (outcome.status === "conflict")
+      return {
+        status: "completed",
+        value: { status: "not_recorded", revision: at, reason: "strategy_conflict" },
+      };
+    if (outcome.status === "missing")
+      return { status: "completed", value: { status: "missing", revision: at } };
+    if (outcome.status === "local_edit")
+      return {
+        status: "completed",
+        value: { status: "not_recorded", revision: at, reason: "record_failed" },
+      };
+    if (outcome.status === "recorded" && latest !== null)
+      return { status: "completed", value: { status: "recorded", revision: at, version: latest } };
+    return { status: "completed", value: { status: "unchanged", revision: at, version: latest } };
   }
   const commands = [
     saveStrategyVersion as Command<unknown, unknown>,

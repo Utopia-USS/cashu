@@ -467,7 +467,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | inv_instruments | `instrument.created`, `instrument.updated`, `instrument.merged` | DET(creation alias), else ULID | CREATE; LWW-F; IDENTITY (merge) |
 | inv_instrument_aliases | `instrument.aliasAdded` | DET(namespace, value) | IDENTITY (claim) |
 | inv_profile_instruments | `instrumentOverride.set`, `instrumentOverride.planSet`, `instrumentOverride.segmentSet` | DET(instrument) | LWW-F on the row key; segment GUARD |
-| inv_strategy_versions (+ files) | `strategy.versionSaved` | ULID | APPEND; no-op when its sha equals the current version's; current = highest `hlc`; numbers DERIVED |
+| inv_strategy_versions (+ files) | `strategy.versionSaved` | ULID | APPEND; no-op when its sha equals the current version's; current = highest `hlc`; numbers DERIVED; `base` kept; files follow the current version per device (8.8) |
 | inv_theses | `thesis.created`, `thesis.updated`, `thesis.deleted` | ULID | CREATE; LWW-F; TOMB; `*_changed_at` DERIVED |
 | inv_topic_theses | `topicThesis.ownerSaved`, `topicThesis.draftProposed`, `topicThesis.rejected`, `topicThesis.marketViewSet` | DET(segment) | GUARD + LWW-F; restart on a rejected row (8.9); rejected SOFT |
 | watchlist_items | `watchlist.added`, `watchlist.updated`, `watchlist.removed` | DET(instrument) | row key 6.4; added = create or restore + LWW of `added_at`, `source`, given note / tags (M2); removed SOFT per member; presence = any member live (N3) |
@@ -700,12 +700,34 @@ acknowledged:              DERIVED overlay from decisions (6.5)
   `core_changed_at` = domain time of the latest change by value of `entryType`, `thesis` or
   `invalidation`; `exit_plan_changed_at` = of the latest change of `exitPlan` (null without a plan);
   `reviewed_at` = of the latest `reviewed: true`. Genesis stamps seed them (4.4).
-- `strategy.versionSaved` (ULID) `{yamlText, mdText|null, sha256, state, issues[]}`. A version whose
-  `sha256` equals the current version's at its position in the order is a no-op (m9; two desktops
-  detecting one external edit). Current = highest applied `hlc`; numbers DERIVED. The strategy files
-  are a projection (D15); the projection writer MUST compare the files on disk with the last
-  projected content before writing and, on a difference, ingest the external edit as a new version
-  first (detect-before-write, O5). It never overwrites silently.
+- `strategy.versionSaved` (ULID) `{yamlText, mdText|null, sha256, state, issues[], base?: @|null}`. A
+  version whose `sha256` equals the current version's at its position in the order is a no-op (m9;
+  two desktops detecting one external edit). Current = highest applied `hlc`; numbers DERIVED.
+  `base` = the version the text was edited on top of (null: none was recorded yet); absent in
+  versions recorded before base tracking (base unknown). The view keeps it (`base_gid`,
+  `base_known`). The recording command refuses a text whose given `base` is no longer the current
+  version (`base_changed`), so a device never records older file text over a newer version.
+- Strategy files (D15) are a per-device projection: every device keeps its own copy
+  (`vaults/<id>/strategy`) and, in its private journal, the version its files were last brought to or
+  recorded as (the device's base). The recorded versions are the shared truth; the files follow
+  them (`services/strategyFileSync.ts`; host: the daily run, approval preparation, the Strategies
+  tab's reload, and a background pass after every sync). The projection writer compares the files
+  with the base before writing (detect-before-write, O5) and never overwrites silently:
+  - files equal to the current version: in sync;
+  - files changed on top of the current version (base = current): a genuine local edit, recorded
+    as a new version with `base` = the current one;
+  - files still equal to an older base: behind; the current version is written into them;
+  - files changed on top of an older base (edited while behind), or a version this device recorded
+    or approved superseded by a version whose `base` chain does not reach it (two devices recorded
+    concurrently): a **conflict**. The version later in the order stays current (deterministic on
+    every device); the text that lost becomes a pending `strategy` proposal (`source: conflict`,
+    `payload.conflict` = `local_edit` | `concurrent_version`, `base_sha256` = the current version's
+    digest), stored by the device that holds the text (the editing device, or the author of the
+    superseded version), and then the files follow the current version. Nothing is lost: the owner
+    approves the proposal to make that text current again, or rejects it. An unknown `base` link
+    (a version from before base tracking) counts as built on it (no conflict is raised).
+  - a device without a journal (first run) takes as its base the newest version its files equal,
+    else the current one (an edit on top of it, the behaviour before base tracking).
 - `plannedDeposit.created` `{account@|null, amount, currency, plannedDate, note|null}`;
   `plannedDeposit.cancelled` `{}`; `plannedDeposit.booked` `{txn@}`. Booked / cancelled are terminal
   FWW; GUARD: a booking whose transaction already books another plan (earlier in the order) is a

@@ -9,6 +9,7 @@ import type {
   DailyPriceLock,
   DailySources,
   runDaily,
+  StrategyFileSyncPorts,
   StrategyFilesPort,
 } from "@cashu/store/investments/services";
 import type { HostStores, OpenVault } from "../stores.js";
@@ -124,6 +125,8 @@ interface InvestmentWorkerPorts {
   /** Same instance used by daily, UI prices and proposal publication. */
   readonly dailyLock: DailyPriceLock;
   files(vault: OpenVault): StrategyFilesPort | null;
+  /** The vault's strategy files and private journal on this device, for the daily follow/record. */
+  strategySync(vault: OpenVault): StrategyFileSyncPorts | null;
   sources?(vaultIds: readonly string[]): DailySources;
   readonly notifications?: NotificationQueue;
   readonly activity?: LocalRunStatus;

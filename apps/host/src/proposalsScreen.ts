@@ -48,6 +48,7 @@ export function bindApprovalIntent<I, R>(
  * (lost authority, a changed proposal, an internal failure) stays `preparation_failed`.
  */
 const STRATEGY_REFUSALS: ReadonlySet<string> = new Set([
+  "busy",
   "base_changed",
   "rule_exists",
   "rule_invalid",

@@ -35,7 +35,12 @@ profiles/<slug>/
     <id>/ *.md, *.yaml, *.txt     # a folder strategy (notes, checklists, source descriptions)
 ```
 
-All of it lives in the data dir, never in the repository. Ids are file or folder names
+All of it lives in the data dir, never in the repository. Each device keeps its own copy of the files
+(`vaults/<id>/strategy`); the recorded strategy versions are the shared truth and every device's
+`strategy.md` / `strategy.yaml` follow the current one. A local edit on top of it is recorded as a new
+version; an edit made while the files were behind, or a version superseded by one recorded
+concurrently on another device, becomes a pending proposal instead of being lost (rules:
+`packages/store/spec/events.md` 8.8, code: `services/strategyFileSync.ts`). Ids are file or folder names
 (`[a-z0-9][a-z0-9_-]*`); hidden files, symlinks and files outside the strategy are ignored.
 
 ## Stage 1 (built): the Strategie tab

@@ -328,6 +328,7 @@ const managed = z.strictObject({
   digests,
   approvalEid: z.string().nullable(),
   version: z.string().nullable(),
+  recorded: z.literal(true).optional(),
 });
 const journalSchema = z.strictObject({
   vault: z.string().min(1),

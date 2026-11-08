@@ -130,14 +130,19 @@ export async function strategy(
     }
   }
   try {
-    const state = await loadStrategy(vault.store, files, {
-      record: true,
-      writer: vault.writer,
-      env: vault.env,
-      beforeRecord: current,
-      durableWrite: (command, input) =>
-        runCliVaultCommand(vault, command, input, cliCommandKey(), current),
-    });
+    // Recording needs the device's private journal: without it the files are only read.
+    const state =
+      source.sync === undefined
+        ? await loadStrategy(vault.store, files)
+        : await loadStrategy(vault.store, files, {
+            record: true,
+            writer: vault.writer,
+            env: vault.env,
+            sync: source.sync,
+            beforeRecord: current,
+            durableWrite: (command, input) =>
+              runCliVaultCommand(vault, command, input, cliCommandKey(), current),
+          });
     if (!current()) {
       io.stderr(`${io.t.tr(M.contextChanged)}\n`);
       return 1;

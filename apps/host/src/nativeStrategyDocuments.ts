@@ -159,8 +159,10 @@ function nativeAccess(authority: StrategyDirectoryAuthority) {
 /** CLI file port with explicit no-overwrite init and force-only per-file replacement. */
 export function nativeStrategyCliFiles(authority: StrategyDirectoryAuthority): StrategyCliFiles {
   const access = nativeAccess(authority);
-  const publication = strategyPublicationPorts(authority).files;
+  const sync = strategyPublicationPorts(authority);
+  const publication = sync.files;
   return {
+    sync,
     async read(name) {
       try {
         const value = access.dir.readFixed(name);
@@ -200,6 +202,7 @@ export function nativeStrategyDocuments(
     generation: randomUUID(),
     isCurrent,
     files,
+    ...(files.sync === undefined ? {} : { sync: files.sync }),
     paths: {
       yaml: join(access.dir.directory, "strategy.yaml"),
       md: join(access.dir.directory, "strategy.md"),

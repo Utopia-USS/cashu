@@ -16,6 +16,7 @@ import type { NotificationQueue } from "@cashu/store/investments/local";
 import type { ResearchScreenSources } from "@cashu/store/investments/research-screen";
 import type { ReviewScreenSources } from "@cashu/store/investments/review-screen";
 import type { InvestmentScreenSources } from "@cashu/store/investments/screen";
+import type { DailyPriceLock } from "@cashu/store/investments/services";
 import type { BankingRuntime } from "../banking/runtime.js";
 import type {
   CategorizeProvider,
@@ -84,6 +85,12 @@ export interface LocalHostOptions {
   readonly proposals?: ProposalApprovalProvider;
   /** Owner approval of strategy and custom-rule proposals (production: the native strategy files). */
   readonly strategyProposals?: ProposalApprovalProvider;
+  /**
+   * The host's daily lock, shared with the worker and strategy approvals. With it, a native host
+   * keeps each device's strategy files following the recorded version (background after every
+   * sync pass, and the Strategies tab's reload; proposals/strategyFollow.ts).
+   */
+  readonly strategyLock?: DailyPriceLock;
   readonly connectorCatalog?: () => ConnectorCatalog | undefined;
   readonly banking?: () => BankingRuntime | undefined;
   /** Exact-vault checked workspace provider. Unbound means unavailable, never absent. */

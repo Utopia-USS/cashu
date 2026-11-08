@@ -191,7 +191,8 @@ export function nativeInvestmentJobs(
           const guard = guardOf(vault, false, offlineOverride, cliCurrent);
           guard();
           const files = ports.files(vault);
-          if (files === null) {
+          const sync = ports.strategySync(vault);
+          if (files === null || sync === null) {
             results.set(vault.id, { status: "skipped", code: "file_authority_unavailable" });
             continue;
           }
@@ -200,6 +201,7 @@ export function nativeInvestmentJobs(
             writer: vault.writer,
             env: envOf(vault, guard),
             files,
+            sync,
             enabled: enabledModuleIds(vault.store.read.bind(vault.store)).has("investments"),
             lang: bindings.language(vault),
             runWrite: (work) =>

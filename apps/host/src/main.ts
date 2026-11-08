@@ -270,6 +270,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               bind: (vault, stores) => connectors?.proposals.bind(vault, stores) ?? null,
             },
             strategyProposals: nativeStrategyApprovals({ dailyLock }),
+            strategyLock: dailyLock,
             ...(workspace === undefined ? {} : { workspace }),
             marketFactory: (stores, isCurrent, now) => {
               market = createProductionMarket({

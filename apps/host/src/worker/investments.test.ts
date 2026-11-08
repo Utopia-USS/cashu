@@ -43,6 +43,7 @@ it("keeps backfill network outside the real vault queue and refuses cache mutati
       notifications: f.notifications,
       dailyLock: ports.dailyLock,
       files: (v) => ports.files(v),
+      strategySync: (v) => ports.strategySync(v),
       sources: () => ({
         priceSource: {
           id: "yahoo",

@@ -41,6 +41,7 @@ import { startHostWorker } from "./localHost/worker.js";
 import { errorName, fileLog } from "./log.js";
 import { ConnectorProposalReceipts } from "./mcp/connectorReceipt.js";
 import type { LanPairingService } from "./pairing/service.js";
+import { startStrategyFollower } from "./proposals/strategyFollow.js";
 import { servedCommands } from "./registry.js";
 import { currentRuntime } from "./runtime.js";
 import { settingsInfoQuery } from "./settingsInfo.js";
@@ -59,6 +60,7 @@ interface StartedServices {
   notifications?: ReturnType<typeof hostNotifications>;
   worker?: ReturnType<typeof startHostWorker>;
   mcp?: ReturnType<typeof createMcpSessions>;
+  strategyFollower?: ReturnType<typeof startStrategyFollower>;
 }
 
 export interface LocalHost {
@@ -144,6 +146,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       (started.devices?.pending() ?? 0) > 0,
     release: async (reason) => {
       await started.mcp?.stop(reason);
+      started.strategyFollower?.close();
+      await started.strategyFollower?.settled();
       await started.worker?.stop();
       await started.lan?.close();
       started.notifications?.capability?.dispose();
@@ -233,6 +237,13 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       log,
     });
     started.worker = worker;
+    // Each device's strategy files follow the recorded version (after every sync pass).
+    if (nativeMode && !safeMode && options.strategyLock !== undefined)
+      started.strategyFollower = startStrategyFollower({
+        stores,
+        dailyLock: options.strategyLock,
+        onError: (_vault, error) => log.warn("strategy.follow-failed", { error: errorName(error) }),
+      });
     const connectorReceipts =
       nativeMode && options.connectorCatalog !== undefined
         ? new ConnectorProposalReceipts(server.paths.dataDir)

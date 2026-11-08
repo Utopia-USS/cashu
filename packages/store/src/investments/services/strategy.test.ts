@@ -7,15 +7,8 @@ import { storeWriter } from "../../command.js";
 import { otherVault, type Vault, vault } from "../commands/testing/fixtures.js";
 import { findProxy } from "../performance/inputs.js";
 import { latestStrategyVersion, strategyVersions } from "../queries/strategy.js";
-import {
-  checkedProfileSlug,
-  loadStrategy,
-  STRATEGY_MD,
-  STRATEGY_YAML,
-  type StrategyFileName,
-  type StrategyFilesPort,
-  type StrategyReadError,
-} from "./strategy.js";
+import { MemoryStrategyDir } from "../testing/strategyFiles.js";
+import { checkedProfileSlug, loadStrategy, STRATEGY_MD, STRATEGY_YAML } from "./strategy.js";
 
 /** tests/investments/persistence/invp_support.py `STRATEGY_YAML`. */
 const STRATEGY = `version: 1
@@ -41,30 +34,8 @@ rules:
     params: { max_weight: 0.15 }
 `;
 
-/** An in-memory profile directory holding the two strategy files. */
-class MemoryStrategyFiles implements StrategyFilesPort {
-  readonly texts = new Map<StrategyFileName, string>();
-  readonly errors = new Map<StrategyFileName, string>();
-  writes = 0;
-
-  async read(name: StrategyFileName): Promise<string | null | StrategyReadError> {
-    const error = this.errors.get(name);
-    if (error !== undefined) return { error };
-    return this.texts.get(name) ?? null;
-  }
-
-  async write(name: StrategyFileName, text: string): Promise<void> {
-    this.writes += 1;
-    this.texts.set(name, text);
-  }
-
-  async exists(name: StrategyFileName): Promise<boolean> {
-    return this.texts.has(name);
-  }
-}
-
-const recording = (v: Vault) =>
-  ({ record: true, writer: storeWriter(v.store), env: v.env }) as const;
+const recording = (v: Vault, files: MemoryStrategyDir) =>
+  ({ record: true, writer: storeWriter(v.store), env: v.env, sync: files.sync }) as const;
 const read = (v: Vault) => v.store.read.bind(v.store);
 
 describe("test_invp_strategy", () => {
@@ -102,20 +73,20 @@ describe("test_invp_strategy", () => {
 
   it("test_states_and_versions", async () => {
     const v = vault();
-    const files = new MemoryStrategyFiles();
-    expect((await loadStrategy(v.store, files, recording(v))).state).toBe("missing");
+    const files = new MemoryStrategyDir(v.store.vault);
+    expect((await loadStrategy(v.store, files, recording(v, files))).state).toBe("missing");
     files.texts.set(STRATEGY_YAML, STRATEGY);
     let st = await loadStrategy(v.store, files);
     expect([st.state, st.version, st.changed]).toEqual(["valid", null, true]); // not recorded on read
-    st = await loadStrategy(v.store, files, recording(v));
+    st = await loadStrategy(v.store, files, recording(v, files));
     expect(st.version?.version).toBe(1);
     expect(st.changed).toBe(false);
-    st = await loadStrategy(v.store, files, recording(v));
+    st = await loadStrategy(v.store, files, recording(v, files));
     expect(st.version?.version).toBe(1); // unchanged
     files.texts.set(STRATEGY_MD, "Cel: emerytura.");
-    expect((await loadStrategy(v.store, files, recording(v))).version?.version).toBe(2); // md counts
+    expect((await loadStrategy(v.store, files, recording(v, files))).version?.version).toBe(2); // md counts
     files.texts.set(STRATEGY_YAML, "version: [");
-    st = await loadStrategy(v.store, files, recording(v));
+    st = await loadStrategy(v.store, files, recording(v, files));
     expect([st.state, st.version?.version, st.config]).toEqual(["invalid", 3, null]);
     expect(st.issues[0]?.line).toBe(1);
     const rows = strategyVersions(read(v)).reverse();
@@ -139,10 +110,10 @@ describe("test_invp_strategy", () => {
 describe("strategy service (store level)", () => {
   it("a read error is invalid and records nothing", async () => {
     const v = vault();
-    const files = new MemoryStrategyFiles();
+    const files = new MemoryStrategyDir(v.store.vault);
     files.texts.set(STRATEGY_YAML, STRATEGY);
     files.errors.set(STRATEGY_MD, "strategy.md is too large");
-    const st = await loadStrategy(v.store, files, recording(v));
+    const st = await loadStrategy(v.store, files, recording(v, files));
     expect([st.state, st.readError, st.version, st.changed]).toEqual([
       "invalid",
       "cannot read the strategy files: strategy.md is too large",
@@ -154,9 +125,9 @@ describe("strategy service (store level)", () => {
 
   it("a partial strategy is recorded with its usable config", async () => {
     const v = vault();
-    const files = new MemoryStrategyFiles();
+    const files = new MemoryStrategyDir(v.store.vault);
     files.texts.set(STRATEGY_YAML, STRATEGY.replace("kind: cash_level", "kind: nope"));
-    const st = await loadStrategy(v.store, files, recording(v));
+    const st = await loadStrategy(v.store, files, recording(v, files));
     expect(st.state).toBe("partial");
     expect(st.config?.rules.map((r) => r.id)).toEqual(["concentration"]);
     expect(st.inactiveRules.map((r) => r.ruleId)).toEqual(["idle_cash"]);
@@ -165,30 +136,30 @@ describe("strategy service (store level)", () => {
 
   it("recording a strategy with a benchmark registers its proxy (S19b follow-up 3)", async () => {
     const v = vault();
-    const files = new MemoryStrategyFiles();
+    const files = new MemoryStrategyDir(v.store.vault);
     files.texts.set(STRATEGY_YAML, `${STRATEGY}benchmark: { id: msci_acwi, proxy: REFX.DE }\n`);
     expect(findProxy(read(v), "REFX.DE")).toBeUndefined();
     await loadStrategy(v.store, files); // a read never writes
     expect(findProxy(read(v), "REFX.DE")).toBeUndefined();
-    const st = await loadStrategy(v.store, files, recording(v));
+    const st = await loadStrategy(v.store, files, recording(v, files));
     expect(st.state).toBe("valid");
     expect(findProxy(read(v), "REFX.DE")?.currency).toBe("EUR");
   });
 
   it("an unresolvable benchmark proxy never fails the load", async () => {
     const v = vault();
-    const files = new MemoryStrategyFiles();
+    const files = new MemoryStrategyDir(v.store.vault);
     files.texts.set(STRATEGY_YAML, `${STRATEGY}benchmark: { id: x, proxy: "???" }\n`);
-    const st = await loadStrategy(v.store, files, recording(v));
+    const st = await loadStrategy(v.store, files, recording(v, files));
     expect([st.state, st.version?.version]).toEqual(["valid", 1]);
   });
 
   it("another vault never sees the strategy versions", async () => {
     const v = vault();
     const other = otherVault();
-    const files = new MemoryStrategyFiles();
+    const files = new MemoryStrategyDir(v.store.vault);
     files.texts.set(STRATEGY_YAML, STRATEGY);
-    await loadStrategy(v.store, files, recording(v));
+    await loadStrategy(v.store, files, recording(v, files));
     expect(strategyVersions(read(v))).toHaveLength(1);
     expect(strategyVersions(read(other))).toEqual([]);
     const st = await loadStrategy(other.store, files);

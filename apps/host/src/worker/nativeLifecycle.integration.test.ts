@@ -9,6 +9,7 @@ import { expect, it } from "vitest";
 import { runHostVaultCommand } from "../commands.js";
 import { startLocalHost } from "../host.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
+import { testStrategyDirs } from "../testing/strategyDirs.js";
 import type { WorkerBindings, WorkerHostContext } from "./contracts.js";
 import { HostWorker } from "./service.js";
 import { privateWorkerState } from "./state.js";
@@ -113,6 +114,7 @@ it("daily startup, duplicate wake and restart keep one encrypted completed run",
       prices: new investmentsLocal.SqlPriceCache(driver),
       dailyLock: new DailyPriceLock(),
       files: () => readOnlyFiles,
+      strategySync: testStrategyDirs().strategySync,
     },
   };
   const options = {

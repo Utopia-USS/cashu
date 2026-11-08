@@ -9,21 +9,31 @@ import {
   type StrategyIssue,
   type StrategyLoadResult,
   type StrategyStateName,
+  strategyDigest,
   strategyStatus,
   usableConfig,
 } from "@cashu/domain/investments/strategy";
-import { type CommandEnv, type EventWriter, runCommand } from "../../command.js";
+import {
+  type Command,
+  type CommandEnv,
+  type EventWriter,
+  refuse,
+  runCommand,
+} from "../../command.js";
+import { createProposal } from "../../core/proposal-commands.js";
 import type { Store } from "../../materialize.js";
 import { saveStrategyVersion } from "../commands/strategy.js";
 import { ensureProxy, ensureProxyDurable } from "../performance/backfill.js";
 import { latestStrategyVersion, type StrategyVersionView } from "../queries/strategy.js";
 import { type DurableWrite, DurableWriteUnknown, requireDurable } from "./durable.js";
+import { StrategyPublicationError } from "./proposalPublication.js";
+import { type StrategyFileSyncPorts, syncStrategyFiles } from "./strategyFileSync.js";
 
 export { MAX_STRATEGY_FILE_BYTES } from "../commands/strategy.js";
 
-export const STRATEGY_YAML = "strategy.yaml";
-export const STRATEGY_MD = "strategy.md";
-export type StrategyFileName = typeof STRATEGY_YAML | typeof STRATEGY_MD;
+import { STRATEGY_MD, STRATEGY_YAML, type StrategyFileName } from "./strategyFileNames.js";
+
+export { STRATEGY_MD, STRATEGY_YAML, type StrategyFileName } from "./strategyFileNames.js";
 
 /** A failed read (Python `OSError` / `UnicodeDecodeError` / the size check), message safe to show. */
 export interface StrategyReadError {
@@ -97,6 +107,13 @@ export type LoadStrategyOptions =
       readonly record: true;
       readonly writer: EventWriter;
       readonly env: CommandEnv;
+      /**
+       * The device's strategy files and private journal. Before reading, the files follow the
+       * recorded version (strategyFileSync.ts): a genuine local edit is recorded with its base,
+       * files behind a newer version receive it, and a conflicting edit becomes a proposal. A
+       * device never records older file text over a newer version.
+       */
+      readonly sync: StrategyFileSyncPorts;
       /** Background orchestration rechecks authority after file awaits; owner loads omit this. */
       readonly beforeRecord?: () => boolean;
       /** Host's existing vault queue; only the synchronous post-file-read phase enters it. */
@@ -105,86 +122,99 @@ export type LoadStrategyOptions =
     };
 
 /**
- * Python `load`: read and validate the profile's strategy files; with `record`, store a new version
- * when they changed since the newest stored one, and register the benchmark proxy as a reference
- * instrument (Python `ensure_quietly`: a failure there never fails the load).
+ * Python `load`: read and validate the profile's strategy files; with `record`, first bring the
+ * files in line with the recorded versions (recording a genuine local edit), and register the
+ * benchmark proxy as a reference instrument (Python `ensure_quietly`: a failure there never fails
+ * the load).
  */
 export async function loadStrategy(
   store: Store,
   files: StrategyFilesPort,
   options: LoadStrategyOptions = {},
 ): Promise<StrategyState> {
-  const read = await readStrategyFiles(files);
-  if (options.record === true && options.durableWrite) {
-    const status = strategyStatus(read, latestStrategyVersion(store.read.bind(store)) ?? null);
+  if (options.record === true) {
     if (options.beforeRecord?.() === false) throw new Error("not_leader");
-    if (read.yaml !== null && read.readError === null && status.changed)
-      await requireDurable(options.durableWrite, saveStrategyVersion, {
-        yamlText: read.yaml,
-        mdText: read.md,
+    const write = async <I, R>(command: Command<I, R>, input: I): Promise<R> => {
+      if (options.beforeRecord?.() === false) throw new Error("not_leader");
+      if (options.durableWrite) return requireDurable(options.durableWrite, command, input);
+      // Authority is checked again inside the queued step, right before the append.
+      const run = () =>
+        options.beforeRecord?.() === false
+          ? refuse("not_leader")
+          : runCommand(store, options.writer, command, input, options.env);
+      const out = options.runWrite ? await options.runWrite(run) : run();
+      if (!out.ok) throw new Error(out.reason);
+      return out.value;
+    };
+    try {
+      await syncStrategyFiles({
+        store,
+        files: options.sync.files,
+        journal: options.sync.journal,
+        isVaultCurrent: () => true,
+        record: (input) => write(saveStrategyVersion, input),
+        propose: async (input) => {
+          await write(createProposal, input);
+        },
       });
-    const proxy = status.result?.config?.benchmark?.proxy;
-    if (proxy) {
+    } catch (error) {
+      // Unreadable files or an unknown edit during an interrupted write: nothing is recorded and
+      // the files are validated as they are (a later run reconciles). Write failures propagate.
+      if (!(error instanceof StrategyPublicationError)) throw error;
+    }
+  }
+  const read = await readStrategyFiles(files);
+  const latest = latestStrategyVersion(store.read.bind(store)) ?? null;
+  const status = strategyStatus(read, latest);
+  const proxy = status.result?.config?.benchmark?.proxy;
+  if (options.record === true && proxy) {
+    if (options.durableWrite) {
       try {
         await ensureProxyDurable(store, proxy, options.durableWrite);
       } catch (error) {
         if (error instanceof DurableWriteUnknown) throw error;
       }
+    } else {
+      const { writer, env } = options;
+      const ensure = () => {
+        if (options.beforeRecord?.() === false) throw new Error("not_leader");
+        try {
+          ensureProxy({ store, writer, env }, proxy);
+        } catch {
+          // Python logs it; the benchmark then stays proxy_not_found until a later load
+        }
+      };
+      if (options.runWrite) await options.runWrite(ensure);
+      else ensure();
     }
-    const latest = latestStrategyVersion(store.read.bind(store)) ?? null;
-    return {
-      state: status.state,
-      result: status.result,
-      config: usableConfig(status),
-      issues: status.result?.issues ?? [],
-      inactiveRules: status.result?.inactiveRules ?? [],
-      sha256: status.sha256,
-      version: latest,
-      changed:
-        status.state === "missing" || status.readError !== null
-          ? false
-          : latest?.sha256 !== status.sha256,
-      readError: status.readError,
-    };
   }
-  const finish = () => {
-    let latest = latestStrategyVersion(store.read.bind(store)) ?? null;
-    const status = strategyStatus(read, latest);
-    let changed = status.changed;
-    const result = status.result;
-    if (options.record === true && options.beforeRecord?.() === false)
-      throw new Error("not_leader");
-    if (options.record === true && read.yaml !== null && read.readError === null && changed) {
-      const out = runCommand(
-        store,
-        options.writer,
-        saveStrategyVersion,
-        { yamlText: read.yaml, mdText: read.md },
-        options.env,
-      );
-      if (!out.ok) throw new Error(`could not record the strategy version: ${out.reason}`);
-      latest = latestStrategyVersion(store.read.bind(store)) ?? null;
-      changed = latest?.sha256 !== status.sha256;
-    }
-    const proxy = result?.config?.benchmark?.proxy;
-    if (options.record === true && proxy) {
-      try {
-        ensureProxy({ store, writer: options.writer, env: options.env }, proxy);
-      } catch {
-        // Python logs it; the benchmark then stays proxy_not_found until a later load
-      }
-    }
-    return {
-      state: status.state,
-      result,
-      config: usableConfig(status),
-      issues: result?.issues ?? [],
-      inactiveRules: result?.inactiveRules ?? [],
-      sha256: status.sha256,
-      version: latest,
-      changed: status.state === "missing" || status.readError !== null ? false : changed,
-      readError: status.readError,
-    };
+  const version = latestStrategyVersion(store.read.bind(store)) ?? null;
+  return {
+    state: status.state,
+    result: status.result,
+    config: usableConfig(status),
+    issues: status.result?.issues ?? [],
+    inactiveRules: status.result?.inactiveRules ?? [],
+    sha256: status.sha256,
+    version,
+    changed:
+      status.state === "missing" || status.readError !== null
+        ? false
+        : !versionHasText(version, read.yaml, read.md),
+    readError: status.readError,
   };
-  return options.record === true && options.runWrite ? options.runWrite(finish) : finish();
+}
+
+/** The version's text is the files' (raw, or read with universal newlines as Python does). */
+function versionHasText(
+  version: StrategyVersionView | null,
+  yaml: string | null,
+  md: string | null,
+): boolean {
+  if (version === null || yaml === null) return false;
+  const plain = (t: string | null) => t?.replace(/\r\n?/gu, "\n") ?? null;
+  return (
+    version.sha256 === strategyDigest(yaml, md) ||
+    version.sha256 === strategyDigest(plain(yaml) ?? "", plain(md))
+  );
 }

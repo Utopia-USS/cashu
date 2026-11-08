@@ -141,6 +141,7 @@ function online(
       notifications: f.notifications,
       dailyLock: ports.dailyLock,
       files: (v) => ports.files(v),
+      strategySync: (v) => ports.strategySync(v),
       sources,
     },
   };

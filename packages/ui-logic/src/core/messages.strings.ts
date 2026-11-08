@@ -16,6 +16,8 @@ export const EN_LABELS: Record<string, string | ((p: Record<string, unknown>) =>
   "import.preview_expired": "The preview expired: choose the file again.",
   "error.file_too_large": "The file is too large.",
   "error.loan_name_taken": "A loan with this name already exists.",
+  "error.strategy_conflict":
+    "The files were edited on an older strategy version: the edit waits as a proposal to approve.",
   "connector.bad_file": "The connector did not recognize this file.",
   "connector.unsupported_version": "The connector does not support this export version.",
   "connector.auth_failed": "The service rejected the key: check the binding's secret.",

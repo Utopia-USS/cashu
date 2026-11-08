@@ -9,13 +9,14 @@ import {
   runCommand,
   setModules,
 } from "@cashu/store";
-import { DailyPriceLock, type StrategyFilesPort } from "@cashu/store/investments/services";
+import { DailyPriceLock } from "@cashu/store/investments/services";
 import { startLocalHost } from "../host.js";
 import type { HostStores, OpenVault } from "../stores.js";
 import type { WorkerBindings, WorkerHostContext, WorkerJob } from "../worker/contracts.js";
 import { localDay } from "../worker/schedule.js";
 import { privateWorkerState } from "../worker/state.js";
 import { tempDir, testHostOptions } from "./harness.js";
+import { testStrategyDirs } from "./strategyDirs.js";
 
 export async function seedWorkerHolding(vault: OpenVault, time: number): Promise<string> {
   const account = await command(vault, investmentsCommands.addBrokerageAccount, {
@@ -106,13 +107,8 @@ export async function workerFixture(
   const directory = join(tempDir(), "worker");
   mkdirSync(directory, { mode: 0o700 });
   const state = privateWorkerState(directory, () => current);
-  const files: StrategyFilesPort = {
-    read: async (name) => (name === "strategy.yaml" ? (options.yaml ?? null) : null),
-    write: async () => {
-      throw new Error("synthetic_readonly_files");
-    },
-    exists: async () => options.yaml !== undefined,
-  };
+  const strategyDirs = testStrategyDirs(options.yaml);
+
   const context: WorkerHostContext = {
     stores,
     now: () => time,
@@ -127,11 +123,18 @@ export async function workerFixture(
     authority: (vault) => ({ isHolder: () => holders.has(vault.id) }),
     language: () => "en",
     offline: true,
-    investments: { prices, notifications, dailyLock: new DailyPriceLock(), files: () => files },
+    investments: {
+      prices,
+      notifications,
+      dailyLock: new DailyPriceLock(),
+      files: strategyDirs.files,
+      strategySync: strategyDirs.strategySync,
+    },
   };
   return {
     hosts,
     vaults,
+    strategyDirs,
     context,
     bindings,
     prices,
