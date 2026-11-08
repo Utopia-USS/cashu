@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { type NewConnectorRun, restoreConnectorRuns } from "../../device/connector-runs.js";
+import type { NewConnectorRun } from "../../device/connector-runs.js";
 import { DeviceStore } from "../../device/store.js";
 import { betterSqlite3Driver } from "../../sql/better-sqlite3.js";
 import { CONNECTOR_RUNS_LISTED, connectorActivity } from "./connector-activity.js";
@@ -10,8 +10,6 @@ const OTHER = "6f0c3a9e81d24b7690ae13c7d2f4b856";
 const run: NewConnectorRun = {
   connectorId: "sample-fetch",
   vault: VAULT,
-  legacyProfileId: null,
-  bindingId: null,
   binding: "binding-1",
   command: "fetch",
   startedAt: "2026-11-04T12:00:00.000Z",
@@ -46,11 +44,7 @@ describe("connectorActivity", () => {
       stderrTail: "key [secret] rejected",
     });
     device.appendConnectorRun({ ...run, vault: OTHER, stderrTail: "other vault" });
-    driver.transaction(() =>
-      restoreConnectorRuns(driver, [
-        { ...run, id: 9000, vault: null, legacyProfileId: 4, stderrTail: "no profile" },
-      ]),
-    );
+    device.appendConnectorRun({ ...run, vault: null, binding: null, stderrTail: "no profile" });
     device.updateConnectorFetch(VAULT, "binding-1", {
       lastRunAt: "2026-11-04T12:00:00.000Z",
       lastStatus: "ok",

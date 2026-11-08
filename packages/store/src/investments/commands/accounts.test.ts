@@ -4,13 +4,8 @@
 import { describe, expect, it } from "vitest";
 import { accountByGid } from "../../core/queries.js";
 import { accountSettings, brokerageAccounts } from "../queries/transactions.js";
-import {
-  addBrokerageAccount,
-  brokerIds,
-  rememberAccountImporter,
-  setAccountSettings,
-} from "./accounts.js";
-import { brokerage, otherVault, type Vault, vault } from "./testing/fixtures.js";
+import { addBrokerageAccount, brokerIds } from "./accounts.js";
+import { type Vault, vault } from "./testing/fixtures.js";
 
 const refusal = (v: Vault, input: Record<string, unknown>) => {
   const out = v.run(addBrokerageAccount, input);
@@ -83,54 +78,5 @@ describe("addBrokerageAccount (test_accounts_endpoint)", () => {
     expect(settings?.data).toEqual({ account: out.value.account, wrapper: "regular" });
     expect(refusal(v, { name: "KONTO", broker: "dif" })).toBe("ok");
     expect(refusal(v, { name: "konto", broker: "xtb" })).toBe("account_exists");
-  });
-});
-
-describe("account settings", () => {
-  it("patches only changed fields and refuses another vault's account", () => {
-    const v = vault();
-    const read = v.store.read.bind(v.store);
-    const account = brokerage(v);
-    const first = v.run(setAccountSettings, { account, wrapper: "ikze", importer: "xtb" });
-    expect(first.ok && first.events.map((e) => e.data)).toEqual([
-      { account, wrapper: "ikze", importer: "xtb" },
-    ]);
-    const same = v.run(setAccountSettings, {
-      account,
-      wrapper: "ikze",
-      importer: "xtb",
-      mappingYaml: null,
-    });
-    expect(same.ok && [same.value.changed, same.events.length]).toEqual([false, 0]);
-    expect(accountSettings(read, account)).toMatchObject({ wrapper: "ikze", importer: "xtb" });
-    const other = otherVault().run(setAccountSettings, { account, wrapper: "ike" });
-    expect(other.ok ? "ok" : other.reason).toBe("no_account");
-  });
-
-  it("remembers the importer and keeps the mapping unless generic_csv or a mapping is given", () => {
-    const v = vault();
-    const read = v.store.read.bind(v.store);
-    const account = brokerage(v);
-    const remember = (importer: string, mappingYaml?: string) =>
-      v.value(rememberAccountImporter, {
-        account,
-        importer,
-        ...(mappingYaml === undefined ? {} : { mappingYaml }),
-      }).changed;
-    expect(remember("generic_csv", "columns: {}")).toBe(true);
-    expect(accountSettings(read, account)).toMatchObject({
-      importer: "generic_csv",
-      mappingYaml: "columns: {}",
-    });
-    expect(remember("generic_csv")).toBe(false); // an unchanged re-import writes nothing
-    expect(remember("xtb")).toBe(true);
-    expect(accountSettings(read, account)).toMatchObject({
-      importer: "xtb",
-      mappingYaml: "columns: {}",
-    });
-    expect(remember("xtb", "other: 1")).toBe(true); // a given mapping is stored with any importer
-    expect(accountSettings(read, account).mappingYaml).toBe("other: 1");
-    const out = otherVault().run(rememberAccountImporter, { account, importer: "xtb" });
-    expect(out.ok ? "ok" : out.reason).toBe("no_account");
   });
 });

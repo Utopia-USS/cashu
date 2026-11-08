@@ -4,7 +4,7 @@ import { views } from "@cashu/domain/investments";
 import type { NotificationState } from "../local/notificationQueue.js";
 import { decisions } from "./journal.js";
 import type { Read } from "./shared.js";
-import { openSignals, signalByGid } from "./signals.js";
+import { signalByGid } from "./signals.js";
 export function workerNotificationState(
   read: Read,
   signalGid: string,
@@ -24,12 +24,4 @@ export function workerNotificationState(
       ),
     },
   };
-}
-export function workerReviewCount(read: Read, now: string): number {
-  return openSignals(read).filter(
-    (s) =>
-      s.status === "active" &&
-      !views.hiddenFromOwner(s) &&
-      (s.snoozedUntil === null || toStorage(s.snoozedUntil) <= toStorage(now)),
-  ).length;
 }

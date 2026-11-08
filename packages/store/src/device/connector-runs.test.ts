@@ -9,45 +9,41 @@ import {
   KEEP_CONNECTOR_RUNS,
   listConnectorRuns,
   type NewConnectorRun,
-  restoreConnectorRuns,
 } from "./connector-runs.js";
 import { DeviceStore } from "./store.js";
 
 const VAULT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const VAULT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const history: ConnectorRunRecord = {
-  id: 7,
-  connectorId: "sample-fetch",
-  vault: null,
-  legacyProfileId: null,
-  bindingId: null,
-  command: "check",
-  startedAt: "2026-09-01 08:00:00.000000",
-  durationMs: 13,
-  outcome: "error",
-  errorKind: "protocol",
-  exitCode: 1,
-  records: 0,
-  bytesIn: 12,
-  bytesOut: 6,
-  deniedHostsJson: '["denied.example"]',
-  stderrTail: "synthetic [REDACTED] tail",
-  proposalId: null,
-  batchRef: null,
-};
-
-it("restores every historical field and keeps global rows behind owner read", () => {
+it("keeps runs of no vault behind owner read", () => {
   const driver = betterSqlite3Driver(new Database(":memory:"));
   ensureConnectorRunHistory(driver);
-  driver.transaction(() => restoreConnectorRuns(driver, [history]));
+  const global: NewConnectorRun = {
+    connectorId: "sample-fetch",
+    vault: null,
+    binding: null,
+    command: "check",
+    startedAt: "2026-09-01 08:00:00.000000",
+    durationMs: 13,
+    outcome: "error",
+    errorKind: "protocol",
+    exitCode: 1,
+    records: 0,
+    bytesIn: 12,
+    bytesOut: 6,
+    deniedHostsJson: '["denied.example"]',
+    stderrTail: "synthetic [REDACTED] tail",
+    proposalId: null,
+    batchRef: null,
+  };
+  const id = appendConnectorRun(driver, global);
   expect(listConnectorRuns(driver, { kind: "vault", vault: VAULT_A })).toEqual([]);
   expect(() =>
     listConnectorRuns(driver, { kind: "global-owner", ownerAction: true, isCurrent: () => false }),
   ).toThrow();
+  const { binding: _binding, ...stored } = global;
   expect(
     listConnectorRuns(driver, { kind: "global-owner", ownerAction: true, isCurrent: () => true }),
-  ).toEqual([history]);
-  expect(() => restoreConnectorRuns(driver, [history])).toThrow();
+  ).toEqual([{ id, ...stored } satisfies ConnectorRunRecord]);
   driver.close();
 });
 
@@ -56,8 +52,6 @@ it("scopes new run history by vault", () => {
   const device = DeviceStore.open(driver);
   const common = {
     connectorId: "sample-fetch",
-    legacyProfileId: null,
-    bindingId: null,
     binding: null,
     command: "fetch",
     startedAt: "2026-11-04T12:00:00Z",
@@ -103,8 +97,6 @@ it("scopes new run history by vault", () => {
 const run: NewConnectorRun = {
   connectorId: "sample-fetch",
   vault: VAULT_A,
-  legacyProfileId: null,
-  bindingId: null,
   binding: "binding-a",
   command: "fetch",
   startedAt: "2026-11-04T12:00:00.000Z",

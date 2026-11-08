@@ -42,17 +42,6 @@ const FUTURE_DAYS = 366;
 const MAX_AMOUNT: Decimal = D("1000000000");
 const MAX_NOTE = 500;
 
-/** Refusals Python raises as `PlannedError` (the API answers 422 `planned_invalid`). */
-export const PLANNED_INVALID_REASONS = [
-  "amount_not_number",
-  "amount_not_positive",
-  "amount_too_large",
-  "planned_date_too_old",
-  "planned_date_too_far",
-  "invalid_currency",
-  "note_too_long",
-] as const;
-
 /** A deposit emitted earlier in the caller's batch (not in the view yet). */
 export interface PendingDeposit {
   readonly gid: string;

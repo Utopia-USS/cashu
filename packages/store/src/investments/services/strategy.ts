@@ -5,13 +5,11 @@
 // `StrategyFilesPort`, which the desktop wires to `<data dir>/profiles/<slug>/` and tests fake.
 import {
   type InactiveRule,
-  STRATEGY_TEMPLATE_NAMES,
   type StrategyConfig,
   type StrategyIssue,
   type StrategyLoadResult,
   type StrategyStateName,
   strategyStatus,
-  strategyTemplate,
   usableConfig,
 } from "@cashu/domain/investments/strategy";
 import { type CommandEnv, type EventWriter, runCommand } from "../../command.js";
@@ -189,33 +187,4 @@ export async function loadStrategy(
     };
   };
   return options.record === true && options.runWrite ? options.runWrite(finish) : finish();
-}
-
-export type InitStrategyResult =
-  | { readonly ok: true; readonly written: readonly StrategyFileName[] }
-  | { readonly ok: false; readonly reason: "unknown_template" }
-  | { readonly ok: false; readonly reason: "files_exist"; readonly existing: StrategyFileName[] };
-
-/**
- * Python `init_files`: write strategy.yaml / strategy.md from a shipped template; refuses to overwrite
- * existing files unless `force`. Template names: `STRATEGY_TEMPLATE_NAMES`.
- */
-export async function initStrategyFiles(
-  files: StrategyFilesPort,
-  template: string = STRATEGY_TEMPLATE_NAMES[0],
-  options: { force?: boolean } = {},
-): Promise<InitStrategyResult> {
-  const tpl = strategyTemplate(template);
-  if (tpl === null) return { ok: false, reason: "unknown_template" };
-  const targets: [StrategyFileName, string][] = [
-    [STRATEGY_YAML, tpl.yaml],
-    [STRATEGY_MD, tpl.markdown],
-  ];
-  const existing: StrategyFileName[] = [];
-  for (const [name] of targets) if (await files.exists(name)) existing.push(name);
-  if (existing.length > 0 && options.force !== true) {
-    return { ok: false, reason: "files_exist", existing };
-  }
-  for (const [name, text] of targets) await files.write(name, text);
-  return { ok: true, written: targets.map(([name]) => name) };
 }

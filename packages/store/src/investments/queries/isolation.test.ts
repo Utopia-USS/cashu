@@ -11,7 +11,6 @@ import {
   classifyInstrument,
   createInstrument,
   createThesis,
-  deleteThesis,
   mergeInstruments,
   recordDecision,
   setInstrumentStatus,
@@ -192,7 +191,6 @@ describe("writes through one vault never touch another", () => {
     expect(refused(b.run(updateThesis, { id: ha.thesis, values: { thesis: "x" } }))).toBe(
       "no_thesis",
     );
-    expect(refused(b.run(deleteThesis, { id: ha.thesis }))).toBe("no_thesis");
     expect(
       refused(b.run(createThesis, { instrument: only, entryType: "trend", thesis: "x" })),
     ).toBe("no_instrument");

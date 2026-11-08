@@ -12,7 +12,6 @@ import {
 import { signalByGid } from "../queries/signals.js";
 import {
   createThesis,
-  deleteThesis,
   recordDecision,
   UNDO_WINDOW_MS,
   undoDecision,
@@ -166,12 +165,6 @@ describe("theses", () => {
       reviewedAt: "2026-10-31 12:02:00.000000",
     });
     expect(theses(read, a).map((t) => t.gid)).toEqual([thesis]);
-    v.value(deleteThesis, { id: thesis });
-    expect(thesisByGid(read, thesis)).toBeUndefined();
-    expect(v.run(updateThesis, { id: thesis, values: { thesis: "x" } })).toEqual({
-      ok: false,
-      reason: "no_thesis",
-    });
   });
 
   it("validates entry type, thesis text and the instrument", () => {

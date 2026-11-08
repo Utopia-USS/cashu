@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
 import { addManualTransaction } from "../commands/manual.js";
 import { createPlannedDeposit } from "../commands/planned.js";
 import { brokerage, type Vault, vault } from "../commands/testing/fixtures.js";
-import { type MonthPlanRequest, monthPlan, monthPlanRecord } from "./planned.js";
+import { type MonthPlanRequest, monthPlan } from "./planned.js";
+import { monthPlanRecord } from "./testing/planned.js";
 
 const yaml = (extra: string) => `version: 1
 base_currency: PLN

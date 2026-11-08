@@ -2,13 +2,13 @@
 // touches a table the matching query reads, a subscriber is notified, the answer changed. Synthetic.
 import { sha256Hex } from "@cashu/domain";
 import { describe, it } from "vitest";
-import { importBatches, storedReconciliation } from "../queries/import-preview.js";
+import { importBatches } from "../queries/import-preview.js";
 import { decisions } from "../queries/journal.js";
 import { signalByGid } from "../queries/signals.js";
 import { transactions } from "../queries/transactions.js";
 import { addBrokerageAccount } from "./accounts.js";
 import { acknowledgeSignal, decidePosition, decideSignal } from "./decisions.js";
-import { applyReconciliation, commitImport } from "./imports.js";
+import { commitImport } from "./imports.js";
 import { applyRaw, raw, rawGid, stock, vault } from "./testing/fixtures.js";
 import { expectInvalidates } from "./testing/invalidation.js";
 
@@ -18,7 +18,7 @@ const HEADER =
 const file = (lines: string[]) => new TextEncoder().encode(`${[HEADER, ...lines].join("\n")}\n`);
 
 describe("S22b import and decision batches invalidate the queries that read their tables", () => {
-  it("commitImport and applyReconciliation", () => {
+  it("commitImport", () => {
     const v = vault();
     const account = v.value(addBrokerageAccount, { name: "Konto", broker: "dif" }).account;
     const content = file([
@@ -31,13 +31,6 @@ describe("S22b import and decision batches invalidate the queries that read thei
       commitImport,
       { account, file: { name: "a.csv", content }, archive },
       (r) => [transactions(r), importBatches(r)],
-    );
-    const instrument = String(
-      storedReconciliation(v.store.read.bind(v.store), account, "2026-10-31T12:00:00.000Z")
-        ?.diffs[0]?.instrumentId,
-    );
-    expectInvalidates(v, applyReconciliation, { account, instruments: [instrument] }, (r) =>
-      transactions(r),
     );
   });
 

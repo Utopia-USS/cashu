@@ -283,23 +283,6 @@ export function instrumentsBySymbol(read: Read, symbol: string, mic: string): In
   return gids.flatMap((g) => found.get(g) ?? []);
 }
 
-/**
- * Python `find_confirmed`: an already stored instrument a planned one turns out to be (same ISIN
- * first, then any of its confirmed aliases; guessed aliases never re-resolve).
- */
-export function findConfirmed(read: Read, planned: Instrument): Instrument | undefined {
-  if (planned.isin) {
-    const found = instrumentByIsin(read, planned.isin, { confirmedOnly: true });
-    if (found !== undefined) return found;
-  }
-  for (const alias of planned.aliases) {
-    if (alias.guessed) continue;
-    const found = instrumentByAlias(read, alias.namespace, alias.value, { confirmedOnly: true });
-    if (found !== undefined) return found;
-  }
-  return undefined;
-}
-
 /** The alias row holding `namespace:value` (normalized): its instrument root gid and guess flag. */
 export function aliasOwner(
   read: Read,

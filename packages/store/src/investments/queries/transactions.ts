@@ -150,19 +150,6 @@ export function transactions(read: Read, accounts?: Iterable<string>): Transacti
   ).map(toTransaction);
 }
 
-/** Python `has_transactions`: which of the account gids have at least one investments transaction. */
-export function accountsWithTransactions(read: Read, accounts: Iterable<string>): Set<string> {
-  const ids = [...new Set(accounts)];
-  if (ids.length === 0) return new Set();
-  return new Set(
-    read<{ gid: string }>(
-      `SELECT DISTINCT a.gid FROM inv_transactions t JOIN accounts a ON a.id = t.account_id
-       WHERE a.gid IN (${marks(ids.length)})`,
-      ...ids,
-    ).map((r) => r.gid),
-  );
-}
-
 /** Python `existing_hashes`: the subset of `hashes` already stored for the account. */
 export function existingHashes(
   read: Read,

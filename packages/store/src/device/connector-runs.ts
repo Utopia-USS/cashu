@@ -1,13 +1,10 @@
-// Device-only connector audit and the leader-local fetch state of each binding. Imported Python IDs are historical
-// labels, never execution authority.
+// Device-only connector audit and the leader-local fetch state of each binding.
 import type { SqlDriver } from "../sql/driver.js";
 
 export interface ConnectorRunRecord {
   readonly id: number;
   readonly connectorId: string;
   readonly vault: string | null;
-  readonly legacyProfileId: number | null;
-  readonly bindingId: number | null;
   readonly command: string;
   readonly startedAt: string;
   readonly durationMs: number;
@@ -24,10 +21,8 @@ export interface ConnectorRunRecord {
   readonly batchRef: string | null;
 }
 
-export type NewConnectorRun = Omit<ConnectorRunRecord, "id" | "legacyProfileId"> & {
-  readonly legacyProfileId: null;
-  /** The native binding gid the run fetched for (null for a run of no binding). Python's integer `bindingId` is a
-   * historical label of restored rows only. */
+export type NewConnectorRun = Omit<ConnectorRunRecord, "id"> & {
+  /** The native binding gid the run fetched for (null for a run of no binding). */
   readonly binding: string | null;
 };
 
@@ -38,8 +33,6 @@ const DDL = `CREATE TABLE IF NOT EXISTS connector_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   connector_id TEXT NOT NULL,
   vault TEXT,
-  legacy_profile_id INTEGER,
-  binding_id INTEGER,
   command TEXT NOT NULL,
   started_at TEXT NOT NULL,
   duration_ms INTEGER NOT NULL,
@@ -60,7 +53,7 @@ CREATE INDEX IF NOT EXISTS connector_runs_connector ON connector_runs(connector_
 
 export function ensureConnectorRunHistory(driver: SqlDriver): void {
   driver.exec(DDL);
-  // A device database created before runs recorded their binding gets the column (restored rows keep null).
+  // A device database created before runs recorded their binding gets the column.
   const columns = driver.prepare("PRAGMA table_info(connector_runs)").all<{ name: string }>();
   if (!columns.some((column) => column.name === "binding"))
     driver.exec("ALTER TABLE connector_runs ADD COLUMN binding TEXT");
@@ -71,9 +64,7 @@ function valid(row: ConnectorRunRecord): void {
   if (
     nonnegative.some((n) => !Number.isSafeInteger(n) || n < 0) ||
     row.id < 1 ||
-    [row.legacyProfileId, row.bindingId, row.proposalId, row.exitCode].some(
-      (n) => n !== null && !Number.isSafeInteger(n),
-    ) ||
+    [row.proposalId, row.exitCode].some((n) => n !== null && !Number.isSafeInteger(n)) ||
     !/^[a-z][a-z0-9-]{1,39}$/.test(row.connectorId) ||
     (row.vault !== null && !/^[a-f0-9]{32}$/.test(row.vault)) ||
     !/^[a-z][a-z0-9_]{0,39}$/.test(row.command) ||
@@ -96,17 +87,15 @@ function valid(row: ConnectorRunRecord): void {
     throw new Error("invalid connector run audit");
 }
 
-const COLUMNS = `connector_id, vault, legacy_profile_id, binding_id, command, started_at,
+const COLUMNS = `connector_id, vault, command, started_at,
   duration_ms, outcome, error_kind, exit_code, records, bytes_in, bytes_out,
   denied_hosts_json, stderr_tail, proposal_id, batch_ref`;
-const VALUES = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`;
+const VALUES = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`;
 
 function values(row: Omit<ConnectorRunRecord, "id">) {
   return [
     row.connectorId,
     row.vault,
-    row.legacyProfileId,
-    row.bindingId,
     row.command,
     row.startedAt,
     row.durationMs,
@@ -123,26 +112,12 @@ function values(row: Omit<ConnectorRunRecord, "id">) {
   ] as const;
 }
 
-/** Caller owns the surrounding local-state transaction. Exact legacy IDs cannot be overwritten. */
-export function restoreConnectorRuns(driver: SqlDriver, rows: readonly ConnectorRunRecord[]): void {
-  const insert = driver.prepare(
-    `INSERT INTO connector_runs (id, ${COLUMNS}) VALUES (?, ${VALUES})`,
-  );
-  for (const row of rows) {
-    valid(row);
-    insert.run(row.id, ...values(row));
-  }
-}
-
 /**
- * Runtime writes have no historical ID; the stderr tail arrives redacted. Prunes the connector's history to the newest
+ * The stderr tail arrives redacted. Prunes the connector's history to the newest
  * `KEEP_CONNECTOR_RUNS` rows (Python `record_run`). Caller owns the surrounding transaction.
  */
 export function appendConnectorRun(driver: SqlDriver, row: NewConnectorRun): number {
-  if (
-    row.legacyProfileId !== null ||
-    (row.binding !== null && (row.binding.length < 1 || row.binding.length > 64))
-  )
+  if (row.binding !== null && (row.binding.length < 1 || row.binding.length > 64))
     throw new Error("invalid connector run audit");
   valid({ ...row, id: 1 });
   const id = driver
@@ -172,8 +147,7 @@ export type ConnectorRunReadScope =
       readonly limit?: number;
     };
 
-const SELECT = `SELECT id, connector_id AS connectorId, vault,
-  legacy_profile_id AS legacyProfileId, binding_id AS bindingId, command,
+const SELECT = `SELECT id, connector_id AS connectorId, vault, command,
   started_at AS startedAt, duration_ms AS durationMs, outcome,
   error_kind AS errorKind, exit_code AS exitCode, records,
   bytes_in AS bytesIn, bytes_out AS bytesOut, denied_hosts_json AS deniedHostsJson,

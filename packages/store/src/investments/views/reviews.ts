@@ -21,11 +21,9 @@ import {
 } from "@cashu/domain/investments";
 import type * as macro from "@cashu/domain/investments/macro";
 import type { Read } from "../../core/queries.js";
-import type { Store } from "../../materialize.js";
-import { type ResearchInputs, readResearchDigestInputs } from "../desktop-research/inputs.js";
-import { performanceStrategy } from "../desktop-research/sources.js";
+import type { ResearchInputs } from "../desktop-research/inputs.js";
 import { type MarketInput, resolveMarketInput } from "../marketInput.js";
-import { PerformanceService } from "../performance/service.js";
+import type { PerformanceService } from "../performance/service.js";
 import { importBatches } from "../queries/import-preview.js";
 import { loadInstruments } from "../queries/instruments.js";
 import { decisionSignalGids, decisions } from "../queries/journal.js";
@@ -311,39 +309,4 @@ export function readReviewDigestInputs(
       priceMoveBars,
     } satisfies views.ReviewDigestInput,
   } as const;
-}
-
-/** Existing cached Store adapter and public result shape are preserved. */
-export function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
-  const read: Read = store.read.bind(store);
-  const result = readReviewDigestInputs(read, request, () => {
-    let computed: perf.ComputedPerformance | null = null;
-    try {
-      computed = (request.performance ?? new PerformanceService()).computed(store, {
-        asOf: request.clock.today,
-        strategy: performanceStrategy(request.strategy),
-        ...(request.marketData === undefined
-          ? { prices: request.prices }
-          : { marketData: request.marketData }),
-      });
-    } catch {
-      /* Source digest remains readable without attribution. */
-    }
-    return readResearchDigestInputs(
-      read,
-      {
-        ...request,
-        macro: { status: "current", value: request.macroCloses },
-        calendar: { status: "unavailable", reason: "calendar_not_requested" },
-      },
-      computed,
-    );
-  });
-  if (!result.ok) return result;
-  return { ok: true as const, segmentTrends: result.segmentTrends, value: result.value };
-}
-
-export function readReviewDigest(store: Store, request: ReviewDigestRequest) {
-  const input = reviewDigestInputs(store, request);
-  return input.ok ? { ok: true as const, value: reviewDigestView(input.value) } : input;
 }

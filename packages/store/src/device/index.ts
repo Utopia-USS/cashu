@@ -13,7 +13,6 @@ export {
   KEEP_CONNECTOR_RUNS,
   listConnectorRuns,
   type NewConnectorRun,
-  restoreConnectorRuns,
   updateConnectorFetch,
 } from "./connector-runs.js";
 export {

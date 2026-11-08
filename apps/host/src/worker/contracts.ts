@@ -1,8 +1,8 @@
 /** Injection-only worker capabilities. Writer ownership is never fetch authority. */
 import type {
   LocalRunStatus,
+  MacroBarView,
   NotificationQueue,
-  SourceMacroBarView,
   TransactionalPriceCache,
 } from "@cashu/store/investments/local";
 import type {
@@ -128,7 +128,7 @@ interface InvestmentWorkerPorts {
   readonly notifications?: NotificationQueue;
   readonly activity?: LocalRunStatus;
   readonly macroStore?: NonNullable<Parameters<typeof runDaily>[0]["macroStore"]>;
-  readonly macroBars?: (series: string) => readonly SourceMacroBarView[];
+  readonly macroBars?: (series: string) => readonly MacroBarView[];
 }
 export interface WorkerBindings {
   readonly state: WorkerStatePort;

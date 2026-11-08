@@ -1,18 +1,7 @@
-// Instrument commands and the instrument queries on the in-memory store. Translates the store-level
-// tests of Python tests/investments/persistence/test_invp_store.py (test_db_instrument_lookup,
-// test_classify_and_aliases; the rest of that file is the price cache, device-local, S18 / S22c)
-// plus the set_plan / set_status / set_segment / upsert_manual_valuation rules. Synthetic data only.
-import { toCurrency } from "@cashu/domain";
-import {
-  asInstrumentId,
-  instrument as domainInstrument,
-  instrumentAlias,
-} from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import {
   aliasOwner,
   allInstruments,
-  findConfirmed,
   instrumentByAlias,
   instrumentByIsin,
   instrumentsBySymbol,
@@ -105,22 +94,7 @@ describe("instrument lookup (test_db_instrument_lookup)", () => {
     expect(instrumentsBySymbol(read, "xmpl", "XNAS").map((i) => i.id)).toEqual([iid]);
     expect(instrumentsBySymbol(read, "XMPL", "XWAR")).toEqual([]);
     expect(instrumentByAlias(read, "yahoo", "XMPL", { confirmedOnly: true })).toBeUndefined();
-    const guessedOnly = domainInstrument({
-      id: asInstrumentId("new-1"),
-      name: "?",
-      currency: toCurrency("USD"),
-      assetClass: "other",
-      aliases: [instrumentAlias("yahoo", "XMPL", true)],
-    });
-    expect(findConfirmed(read, guessedOnly)).toBeUndefined(); // guessed aliases never re-resolve
-    const confirmed = domainInstrument({
-      id: asInstrumentId("new-2"),
-      name: "?",
-      currency: toCurrency("USD"),
-      assetClass: "other",
-      aliases: [instrumentAlias("examplebroker", "XMPL")],
-    });
-    expect(findConfirmed(read, confirmed)?.id).toBe(iid);
+    expect(instrumentByAlias(read, "examplebroker", "XMPL", { confirmedOnly: true })?.id).toBe(iid);
   });
 });
 
@@ -177,14 +151,9 @@ describe("classifyInstrument (test_classify_and_aliases)", () => {
       instrument: iid,
       guessed: false,
     });
-    const confirmed = domainInstrument({
-      id: asInstrumentId("planned"),
-      name: "Planned",
-      currency: toCurrency("USD"),
-      assetClass: "equity",
-      aliases: [instrumentAlias("yahoo", "XMPL")],
-    });
-    expect(findConfirmed(v.store.read.bind(v.store), confirmed)?.id).toBe(iid);
+    expect(
+      instrumentByAlias(v.store.read.bind(v.store), "yahoo", "XMPL", { confirmedOnly: true })?.id,
+    ).toBe(iid);
   });
 
   it("an ISIN alias fills the display ISIN when the instrument has none", () => {

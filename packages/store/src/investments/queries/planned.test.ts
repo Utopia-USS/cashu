@@ -3,31 +3,17 @@
 // test_invp_isolation.py: another profile never sees the rows, and its commands refuse this vault's
 // gids). Synthetic data only.
 import { describe, expect, it } from "vitest";
-import { addBrokerageAccount, setAccountSettings } from "../commands/accounts.js";
+import { addBrokerageAccount } from "../commands/accounts.js";
 import { addManualTransaction } from "../commands/manual.js";
 import { cancelPlannedDeposit, createPlannedDeposit } from "../commands/planned.js";
 import { otherVault, type Vault, vault } from "../commands/testing/fixtures.js";
 import {
   brokerageDeposits,
   PLANNED_DEPOSIT_STATUSES,
-  parsePlannedStatuses,
   plannedDeposit,
   plannedDeposits,
 } from "./planned.js";
 import { brokerageAccounts, transactions } from "./transactions.js";
-
-describe("parsePlannedStatuses", () => {
-  it("defaults, all, a comma list (deduplicated, stripped) and unknown statuses", () => {
-    expect(parsePlannedStatuses(undefined)).toEqual({ ok: true, statuses: ["planned", "booked"] });
-    expect(parsePlannedStatuses("  ")).toEqual({ ok: true, statuses: ["planned", "booked"] });
-    expect(parsePlannedStatuses(" all ")).toEqual({ ok: true, statuses: PLANNED_DEPOSIT_STATUSES });
-    expect(parsePlannedStatuses("cancelled, planned,,cancelled")).toEqual({
-      ok: true,
-      statuses: ["cancelled", "planned"],
-    });
-    expect(parsePlannedStatuses("planned,nope")).toEqual({ ok: false, reason: "unknown_status" });
-  });
-});
 
 function household(v: Vault) {
   const { account } = v.value(addBrokerageAccount, { name: "DIF", broker: "dif" });
@@ -93,12 +79,8 @@ describe("planned deposits, manual transactions and accounts per vault", () => {
         }),
       ),
     ).toBe("no_account");
-    expect(refused(b.run(setAccountSettings, { account: ids.account, wrapper: "ike" }))).toBe(
-      "no_account",
-    );
     // the first vault's own writes after all that leave the second's view unchanged
     a.value(cancelPlannedDeposit, { plan: ids.open });
-    a.value(setAccountSettings, { account: ids.account, wrapper: "ike" });
     expect(snapshot(b)).toBe(reference);
   });
 });

@@ -20,8 +20,8 @@ import { removeFromWatchlist } from "../commands/watchlist.js";
 import { watchlist, watchlistItem } from "../queries/alerts.js";
 import { loadInstrument, vaultInstrumentGids } from "../queries/instruments.js";
 import type { Read } from "../queries/shared.js";
+import { addToWatchlistService } from "./testing/watchlistService.js";
 import {
-  addToWatchlistService,
   cleanPick,
   type SearchPick,
   type WatchAddRequest,

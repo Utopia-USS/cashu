@@ -5,9 +5,6 @@
 import { byCreation, newestFirst } from "../views/stableOrder.js";
 import { gidOf, jsonList, jsonObject, type Read } from "./shared.js";
 
-export const OPEN_STATUSES = ["active", "acknowledged"] as const;
-export const CLOSED_STATUSES = ["resolved", "expired"] as const;
-
 export interface SignalView {
   /** The episode's gid (the row the view shows). */
   readonly gid: string;
@@ -170,8 +167,6 @@ export function ruleRuns(read: Read, limit = 20): RuleRun[] {
 export function lastRun(read: Read): RuleRun | undefined {
   return ruleRuns(read, 1)[0];
 }
-
-export const GOOD_RUN_STATUSES = ["ok", "partial"] as const;
 
 /** Python `last_good_run_id`: the newest run that did not fail (`ok` / `partial`). */
 export function lastGoodRunGid(read: Read): string | undefined {

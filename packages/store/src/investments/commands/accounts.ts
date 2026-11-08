@@ -7,15 +7,8 @@ import { GENERIC_CSV_BROKER_ID } from "@cashu/domain/investments/importing";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
 import { ensureAccount } from "../../core/commands.js";
-import { accountByMemberGid } from "../../core/queries.js";
 import { ACCOUNT_WRAPPERS } from "../../events/v1/investments.js";
-import { gid } from "../../events/v1/primitives.js";
-import {
-  accountSettings,
-  BROKERAGE,
-  brokerageAccount,
-  brokerageAccounts,
-} from "../queries/transactions.js";
+import { accountSettings, BROKERAGE, brokerageAccounts } from "../queries/transactions.js";
 
 const institutions = builtinRegistry().institutions;
 
@@ -126,41 +119,3 @@ export function rememberImporter(
       : current.mappingYaml;
   return patchSettings(ctx, account, { importer, mappingYaml: mapping });
 }
-
-export const setAccountSettings = defineCommand({
-  id: "investments.setAccountSettings",
-  input: z.object({
-    account: gid,
-    wrapper: z.enum(ACCOUNT_WRAPPERS).optional(),
-    importer: z.string().min(1).nullable().optional(),
-    mappingYaml: z.string().nullable().optional(),
-  }),
-  /** Patch a brokerage account's settings; an unchanged value emits nothing. */
-  run(ctx, input) {
-    const root = accountByMemberGid(ctx.read, input.account)?.gid ?? input.account;
-    if (brokerageAccount(ctx.read, root) === undefined) return refuse("no_account");
-    const patch: SettingsPatch = {};
-    if (input.wrapper !== undefined) patch.wrapper = input.wrapper;
-    if (input.importer !== undefined) patch.importer = input.importer;
-    if (input.mappingYaml !== undefined) patch.mappingYaml = input.mappingYaml;
-    return ok({ account: root, changed: patchSettings(ctx, root, patch) });
-  },
-});
-
-export const rememberAccountImporter = defineCommand({
-  id: "investments.rememberAccountImporter",
-  input: z.object({
-    account: gid,
-    importer: z.string().min(1),
-    mappingYaml: z.string().optional(),
-  }),
-  /** `rememberImporter` as a command (the import commit calls the building block in its batch). */
-  run(ctx, input) {
-    const root = accountByMemberGid(ctx.read, input.account)?.gid ?? input.account;
-    if (brokerageAccount(ctx.read, root) === undefined) return refuse("no_account");
-    return ok({
-      account: root,
-      changed: rememberImporter(ctx, root, input.importer, input.mappingYaml),
-    });
-  },
-});

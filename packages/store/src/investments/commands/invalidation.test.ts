@@ -12,7 +12,6 @@ import {
   classifyInstrument,
   createInstrument,
   createThesis,
-  deleteThesis,
   mergeInstruments,
   recordDecision,
   setInstrumentPlan,
@@ -162,6 +161,5 @@ describe("S22d command batches invalidate the queries that read their tables", (
     expectInvalidates(v, wakeSnoozedSignals, {}, (r) => q.openSignals(r));
     const t = v.value(createThesis, { instrument: a, entryType: "trend", thesis: "x" }).thesis;
     expectInvalidates(v, updateThesis, { id: t, values: { thesis: "y" } }, (r) => q.theses(r));
-    expectInvalidates(v, deleteThesis, { id: t }, (r) => q.theses(r));
   });
 });

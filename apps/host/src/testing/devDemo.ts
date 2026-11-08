@@ -38,7 +38,7 @@ import {
   importStatement,
   investmentsCommands,
   investmentsLocal,
-  revalue,
+  updateAssetDetails,
 } from "@cashu/store";
 import { matchTransfersCommand } from "@cashu/store/budget/commands";
 import { setCurrentVault } from "@cashu/store/device";
@@ -545,7 +545,7 @@ async function seedAssetsAndLoan(vault: OpenVault, today: string, lender: string
     value: PROPERTY.first,
     onDate: first,
   });
-  await command(vault, revalue, {
+  await command(vault, updateAssetDetails, {
     account: property.account,
     value: PROPERTY.current,
     onDate: today,

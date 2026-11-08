@@ -64,18 +64,6 @@ export const rejectProposal = defineCommand({
   },
 });
 
-export const failPendingProposal = defineCommand({
-  id: "core.failPendingProposal",
-  input: z.object({ proposalGid: gid, result: resultObject }),
-  run(ctx, input) {
-    const current = currentPending(ctx, input.proposalGid);
-    if (!current) return refuse("not_pending");
-    if (requiresImportHolder(current.kind) && !ctx.lease.isHolder()) return refuse("not_holder");
-    ctx.emit("proposal.failed", input.proposalGid, { result: input.result });
-    return ok({ proposalGid: input.proposalGid });
-  },
-});
-
 /** Mark a post-approval publication failure only for this proposal's winning approval. */
 export const failApprovedProposal = defineCommand({
   id: "core.failApprovedProposal",

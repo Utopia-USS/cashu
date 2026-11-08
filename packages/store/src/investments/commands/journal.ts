@@ -178,14 +178,3 @@ export const updateThesis = defineCommand({
     return ok({ thesis: input.id });
   },
 });
-
-export const deleteThesis = defineCommand({
-  id: "investments.deleteThesis",
-  input: z.object({ id: gid }),
-  /** Python `delete_thesis` (TOMB). */
-  run(ctx, input) {
-    if (thesisByGid(ctx.read, input.id) === undefined) return refuse("no_thesis");
-    ctx.emit("thesis.deleted", input.id, {});
-    return ok({ thesis: input.id });
-  },
-});

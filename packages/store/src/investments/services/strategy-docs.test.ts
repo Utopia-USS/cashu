@@ -10,7 +10,6 @@ import { loadStrategy, type StrategyFileName, type StrategyFilesPort } from "./s
 import {
   type DirEntry,
   discoverStrategies,
-  findStrategy,
   frontmatter,
   MAIN_ID,
   MAX_FILE_BYTES,
@@ -103,6 +102,11 @@ async function listed(dir: MemoryDir): Promise<Map<string, StrategyDocSummary>> 
   const out = new Map<string, StrategyDocSummary>();
   for (const d of docs) out.set(d.id, await strategySummary(dir, d));
   return out;
+}
+
+/** The strategy `id`, undefined when there is none (Python `find`). */
+async function findStrategy(dir: MemoryDir, id: string) {
+  return (await discoverStrategies(dir)).find((d) => d.id === id);
 }
 
 async function readFile(dir: MemoryDir, id: string, path: string) {

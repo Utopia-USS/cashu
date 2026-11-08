@@ -10,8 +10,9 @@ import { z } from "zod";
 import { defineCommand, ok } from "../../command.js";
 import { createProfile, openAccount } from "../../core/commands.js";
 import { calendarDate, decimal, gid } from "../../events/v1/primitives.js";
-import { parsePlannedStatuses, plannedDeposit, plannedDeposits } from "../queries/planned.js";
-import { monthPlan, monthPlanRecord } from "../services/planned.js";
+import { PLANNED_DEPOSIT_STATUSES, plannedDeposit, plannedDeposits } from "../queries/planned.js";
+import { monthPlan } from "../services/planned.js";
+import { monthPlanRecord } from "../services/testing/planned.js";
 import { addManualTransaction } from "./manual.js";
 import { bookMatchingPlans, cancelPlannedDeposit, createPlannedDeposit } from "./planned.js";
 import { brokerage, otherVault, type Vault, vault } from "./testing/fixtures.js";
@@ -170,12 +171,9 @@ describe("planned deposits (test_be_api)", () => {
       status: "cancelled",
     });
     expect(plannedDeposits(read).map((p) => p.gid)).not.toContain(later.plan);
-    const all = parsePlannedStatuses("all");
-    if (!all.ok) expect.fail("all is a valid filter");
-    expect(new Set(plannedDeposits(read, all.statuses).map((p) => p.status))).toEqual(
+    expect(new Set(plannedDeposits(read, PLANNED_DEPOSIT_STATUSES).map((p) => p.status))).toEqual(
       new Set(["booked", "cancelled"]),
     );
-    expect(parsePlannedStatuses("nope")).toEqual({ ok: false, reason: "unknown_status" });
     const badMonth = monthPlan(read, {
       month: "2026-13",
       today: "2026-10-31",

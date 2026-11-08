@@ -14,15 +14,7 @@ import {
 export const SIGNAL_SEVERITIES = ["info", "action"] as const;
 export const POLARITIES = ["positive", "negative", "neutral"] as const;
 export const SIGNAL_CLOSE_STATUSES = ["resolved", "expired"] as const;
-/**
- * Close reasons any device may emit: owner actions on an alert (Python payload.closed_by) and the
- * dismissal of a research note (payload.closed_reason). Every other reason (rule outcomes,
- * `alert_expired` from housekeeping, `notes_expired`) comes from the lease holder.
- */
-export const OWNER_CLOSE_REASONS = ["snooze", "mute", "delete", "note_dismissed"] as const;
 export const REOPEN_REASONS = ["alert_restored", "note_restored"] as const;
-/** Known rule-run triggers (informational, open set: `app` is service/autorun.py's TRIGGER). */
-export const KNOWN_RULE_RUN_TRIGGERS = ["worker", "api", "cli", "app"] as const;
 export const RULE_RUN_STATUSES = ["ok", "partial", "failed"] as const;
 export const ALERT_SCOPES = ["instrument", "portfolio", "bucket"] as const;
 export const ALERT_KINDS = [
@@ -41,8 +33,6 @@ export const ALERT_KINDS = [
 /** Owner-settable alert states; triggered / expired are runtime or time-derived (events.md 8.7). */
 export const ALERT_OWNER_STATUSES = ["active", "muted", "snoozed"] as const;
 export const ALERT_SOURCES = ["user", "agent"] as const;
-/** Known alert creators (informational, open set). */
-export const KNOWN_ALERT_CREATORS = ["app", "cli", "mcp"] as const;
 /** Python `alerts.catalog.MAX_TAG_LENGTH` (characters, i.e. code points). */
 export const MAX_ALERT_TAG_LENGTH = 24;
 
@@ -127,7 +117,8 @@ export const signalsEvents = {
   }).extend(refreshFields),
   "signal.closed": payload({
     status: z.enum(SIGNAL_CLOSE_STATUSES),
-    // Rule outcomes (LEADER) use the reconciler's reason text; owner-caused closes use OWNER_CLOSE_REASONS.
+    // Rule outcomes (LEADER) use the reconciler's reason text; owner-caused closes use snooze, mute,
+    // delete or note_dismissed.
     reason: nonEmpty,
   }).extend({
     /** Present (null included) sets the episode's `last_run_id`; absent keeps it (S25-F2). */

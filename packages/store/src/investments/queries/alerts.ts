@@ -161,15 +161,6 @@ export function alertCounts(read: Read, now: DateTime | string): AlertCounts {
   };
 }
 
-/** Python `alert_instrument_ids`: instruments of live alerts (effective `statuses` filter). */
-export function alertInstrumentGids(
-  read: Read,
-  now: DateTime | string,
-  statuses?: Iterable<EffectiveAlertStatus>,
-): Set<string> {
-  return new Set(alerts(read, now, statuses).flatMap((a) => a.instrument ?? []));
-}
-
 // ------------------------------------------------------------------ watchlist
 
 export interface WatchlistItem {

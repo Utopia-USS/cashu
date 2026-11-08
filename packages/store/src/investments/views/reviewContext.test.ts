@@ -4,7 +4,7 @@ import { viewHash } from "../../snapshot.js";
 import { openTestStore } from "../../testing/store.js";
 import { household } from "../testing/household.js";
 import { ulid } from "../testing/kit.js";
-import { readReviewContext, readReviewContextWithCalendar } from "./reviewContext.js";
+import { readReviewContext } from "./reviewContext.js";
 import { makeReviewClock } from "./reviews.js";
 
 describe("native review deck context", () => {
@@ -40,30 +40,6 @@ describe("native review deck context", () => {
     expect(en.review.name).toBe("Weekly review");
     expect(pl.review.name).toBe("Przegląd tygodnia");
     expect(viewHash(store)).toEqual(before);
-    store.close();
-  });
-  it("treats an offline calendar-port failure as stale while preserving the rest of the deck", async () => {
-    const h = household();
-    const store = openTestStore();
-    store.applyEnvelopes(h.events);
-    let called = 0;
-    const value = await readReviewContextWithCalendar(store.read.bind(store), {
-      config: h.strategy.config,
-      lang: "en",
-      clock: makeReviewClock({
-        now: parseDateTime("2026-10-31T12:00:00Z"),
-        today: "2026-10-31",
-        timeZone: "Europe/Warsaw",
-      }),
-      calendar: async (request) => {
-        called++;
-        expect(request.days).toBe(14);
-        throw new Error("Synthetic offline feed");
-      },
-    });
-    expect(called).toBe(1);
-    expect(value.calendar).toEqual({ stale: true, events: [] });
-    expect(value.review.cards).toHaveLength(7);
     store.close();
   });
 });

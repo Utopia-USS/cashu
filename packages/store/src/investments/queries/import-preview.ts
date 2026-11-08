@@ -4,7 +4,7 @@
 // several importers) and the reconciliation of the file's position lines against the history after the
 // import. Read-only over the vault's `Read`, so the commit command re-runs it inside its own batch
 // against the view it writes to (Python re-previews the staged file at commit, then re-resolves).
-import { D, type DateTime, parseDateTime, sha256Hex, toCurrency, toStorage } from "@cashu/domain";
+import { type DateTime, parseDateTime, sha256Hex, toStorage } from "@cashu/domain";
 import { builtinRegistry } from "@cashu/domain/core";
 import {
   asAccountId,
@@ -19,8 +19,6 @@ import {
 } from "@cashu/domain/investments";
 import {
   type BrokerImporter,
-  type BrokerPosition,
-  brokerPosition,
   CanonicalImporter,
   type CsvMapping,
   canonicalImporterId,
@@ -60,7 +58,6 @@ import {
   type BrokerageAccount,
   brokerageAccount,
   existingHashes,
-  latestPositionSnapshot,
   renames,
   transactions,
 } from "./transactions.js";
@@ -528,43 +525,6 @@ function reconcilePlanned(
   let n = 0;
   return reconcile(asAccountId(account), positions, snapshot, {
     now,
-    txnIdFactory: () => asTxnId(`reconciliation-${++n}`),
-  });
-}
-
-/** `stored_positions`: the account's newest stored broker snapshot as reconciler input. */
-export function storedPositions(read: Read, account: string): BrokerPosition[] {
-  return latestPositionSnapshot(read, account).rows.map((r) =>
-    brokerPosition({
-      instrumentId: asInstrumentId(r.instrument),
-      quantity: D(r.quantity),
-      currency: toCurrency(r.currency),
-      asOf: r.asOf,
-      avgPrice: r.avgPrice === null ? null : D(r.avgPrice),
-      marketValue: r.marketValue === null ? null : D(r.marketValue),
-    }),
-  );
-}
-
-/**
- * `reconciliation`: the account's history vs its newest stored broker snapshot (null without a
- * snapshot); undefined for an account that is not one of the vault's brokerage accounts.
- */
-export function storedReconciliation(
-  read: Read,
-  account: string,
-  now: string,
-): ReconciliationReport | null | undefined {
-  if (brokerageAccount(read, account) === undefined) return undefined;
-  const positions = storedPositions(read, account);
-  if (positions.length === 0) return null;
-  const asOf = positions
-    .map((p) => p.asOf)
-    .sort()
-    .at(-1) as string;
-  let n = 0;
-  return reconcile(asAccountId(account), positions, accountSnapshot(read, account, asOf), {
-    now: parseDateTime(now),
     txnIdFactory: () => asTxnId(`reconciliation-${++n}`),
   });
 }

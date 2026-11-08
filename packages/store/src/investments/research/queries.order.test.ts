@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { assertOrderedDelivery } from "../testing/delivery.js";
 import { household } from "../testing/household.js";
 import { ulid } from "../testing/kit.js";
-import { noteRows, notes, notesByGid, unreadNotes, weekNoteRows } from "./queries.js";
+import { noteRows, notes, unreadNotes, weekNoteRows } from "./queries.js";
 
 it("uses applied storing order for tied observations despite non-monotonic stamps and replay", () => {
   const h = household();
@@ -28,7 +28,6 @@ it("uses applied storing order for tied observations despite non-monotonic stamp
     const gids = (rows: readonly { readonly gid: string }[]) => rows.map((row) => row.gid);
     return {
       stored: gids(noteRows(read, "1=1")),
-      byGid: gids(notesByGid(read, [...ids].reverse())),
       presented: gids(notes(read, now)),
       limited: gids(notes(read, now, { limit: 2 })),
       unread: gids(unreadNotes(read, now)),
@@ -37,7 +36,6 @@ it("uses applied storing order for tied observations despite non-monotonic stamp
   });
   expect(result).toEqual({
     stored: ids,
-    byGid: ids,
     presented: [...ids].reverse(),
     limited: [...ids].reverse().slice(0, 2),
     unread: ids,

@@ -18,7 +18,15 @@ import {
   setModules,
   setProfileSettings,
 } from "./commands.js";
-import { accountByGid, ownIbanKeys, type Read } from "./queries.js";
+import { accountByGid, type Read } from "./queries.js";
+
+/** The identity IBAN keys of every account (removed ones included; checksum-valid only, N2). */
+const ownIbanKeys = (read: Read) =>
+  new Set(
+    read<{ iban_key: string }>("SELECT iban_key FROM accounts WHERE iban_key IS NOT NULL").map(
+      (r) => r.iban_key,
+    ),
+  );
 
 const reader =
   (store: Store): Read =>

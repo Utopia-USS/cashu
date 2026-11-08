@@ -10,18 +10,12 @@ import { describe, expect, it } from "vitest";
 import { type EventWriter, storeWriter } from "../../command.js";
 import type { Envelope } from "../../events/v1/envelope.js";
 import { addBrokerageAccount } from "../commands/accounts.js";
-import { applyReconciliation } from "../commands/imports.js";
 import { createInstrument } from "../commands/instruments.js";
 import { addManualTransaction } from "../commands/manual.js";
 import { mergeInstruments } from "../commands/merge.js";
 import { createPlannedDeposit } from "../commands/planned.js";
 import { otherVault, type Vault, vault } from "../commands/testing/fixtures.js";
-import {
-  formerInstrumentGids,
-  importBatches,
-  previewImport,
-  storedReconciliation,
-} from "../queries/import-preview.js";
+import { formerInstrumentGids, importBatches, previewImport } from "../queries/import-preview.js";
 import { allInstruments, loadInstrument } from "../queries/instruments.js";
 import { plannedDeposits } from "../queries/planned.js";
 import {
@@ -360,37 +354,6 @@ describe("import service (test_invp_imports.py)", () => {
     expect(result.corrections).toBe(1);
     const fixes = transactions(read(s.v)).filter((t) => t.source === "reconciliation");
     expect(fixes.map((f) => [f.type, f.quantity?.toString()])).toEqual([["adjustment", "5"]]);
-    expect(storedReconciliation(read(s.v), s.account, now(s.v))?.corrections).toEqual([]);
-    const again = s.v.value(applyReconciliation, {
-      account: s.account,
-      instruments: [String(fixes[0]?.instrumentId)],
-    });
-    expect(again.applied).toBe(0);
-  });
-
-  it("test_apply_reconciliation_against_the_stored_snapshot", async () => {
-    const s = setup();
-    await importFile(s, canonicalCsv({ xmpl: 18 }));
-    const report = storedReconciliation(read(s.v), s.account, now(s.v));
-    const mismatches = report?.diffs.filter((d) => d.kind !== "match") ?? [];
-    expect(mismatches).toHaveLength(1);
-    const instrument = String(mismatches[0]?.instrumentId);
-    expect(mismatches[0]?.brokerQuantity.sub(mismatches[0].computedQuantity).eq(D("-2"))).toBe(
-      true,
-    );
-    expect(
-      s.v.value(applyReconciliation, { account: s.account, instruments: [instrument] }),
-    ).toEqual({
-      applied: 1,
-    });
-    expect(
-      s.v.value(applyReconciliation, { account: s.account, instruments: [instrument] }),
-    ).toEqual({
-      applied: 0,
-    });
-    expect(storedReconciliation(read(s.v), s.account, now(s.v))?.corrections).toEqual([]);
-    const fixes = transactions(read(s.v)).filter((t) => t.source === "reconciliation");
-    expect(fixes.map((f) => [f.type, f.quantity?.toString()])).toEqual([["transfer_out", "2"]]);
   });
 
   it("test_generic_csv_mapping_is_remembered", async () => {

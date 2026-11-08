@@ -74,42 +74,6 @@ export const addManualPosition = defineCommand({
   },
 });
 
-export const setNote = defineCommand({
-  id: "assets.setNote",
-  input: z.object({ account: gid, note: z.string().nullable() }),
-  run(ctx, input) {
-    const a = visibleAccount(ctx, input.account);
-    if (a === undefined) return refuse("no_account");
-    const note = cleanNote(input.note);
-    if (note === "too_long") return refuse("note_too_long");
-    emitNote(ctx, a.gid, note);
-    return ok({ note });
-  },
-});
-
-export const setDepreciation = defineCommand({
-  id: "assets.setDepreciation",
-  input: z.object({
-    account: gid,
-    purchasePrice: decimalInput,
-    purchaseDate: calendarDate,
-    annualRate: decimalInput,
-    floor: decimalInput.nullable().optional(),
-  }),
-  run(ctx, input) {
-    const a = visibleAccount(ctx, input.account);
-    if (a === undefined) return refuse("no_account");
-    ctx.emit("depreciation.set", ctx.det("depreciations", [a.gid]), {
-      account: a.gid,
-      purchasePrice: input.purchasePrice,
-      purchaseDate: input.purchaseDate,
-      annualRate: input.annualRate,
-      floor: input.floor ?? null,
-    });
-    return ok(null);
-  },
-});
-
 /** One native asset edit, so a valuation and note change either append together or not at all. */
 export const updateAssetDetails = defineCommand({
   id: "assets.updateDetails",
@@ -168,18 +132,6 @@ export const updateAssetDetails = defineCommand({
         account.currency,
       );
     if (input.note !== undefined) emitNote(ctx, account.gid, note);
-    return ok(null);
-  },
-});
-
-/** A new value of a position (Python `set_balance`, source manual). */
-export const revalue = defineCommand({
-  id: "assets.revalue",
-  input: z.object({ account: gid, value: decimalInput, onDate: calendarDate.optional() }),
-  run(ctx, input) {
-    const a = visibleAccount(ctx, input.account);
-    if (a === undefined) return refuse("no_account");
-    emitBalance(ctx, a.gid, input.onDate ?? ctx.today(), "manual", input.value, a.currency);
     return ok(null);
   },
 });

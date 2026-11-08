@@ -67,9 +67,6 @@ const CASH_NEUTRAL: ReadonlySet<TxnType> = new Set([
 const ISIN = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
 const MIC = /^[A-Z]{4}$/;
 
-/** Refusals Python raises as `ManualTxnNotFound` (the API answers 404); the rest are 422. */
-export const MANUAL_NOT_FOUND_REASONS = ["no_account", "no_instrument"] as const;
-
 const text = z.string().nullable().optional();
 const amount = decimalInput.nullable().optional();
 

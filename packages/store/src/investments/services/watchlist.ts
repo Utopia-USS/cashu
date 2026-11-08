@@ -1,11 +1,10 @@
-// Adding to the watchlist as a service (Python `service/watchlist.py`: `add`, `resolve_pick`,
+// Resolving what to add to the watchlist (Python `service/watchlist.py`: `resolve_pick`,
 // `_create_pick`, `resolve_instrument` / `_resolve_text`, `_search_fallback`, `_clean_pick`,
 // `WatchWarning`). The instrument is resolved by read-only lookups over the vault's view, then over the
-// network through the injected `WatchlistMarket` port (pick verification against the Yahoo chart, the
-// free-text search fallback), ALL before the one command batch (`addToWatchlist`). A verified pick's
-// daily bars go to the device's price cache under its Yahoo symbol (Python `market.upsert_bars`).
+// network through the caller's search / chart answers (pick verification against the Yahoo chart, the
+// free-text search fallback), ALL before the one command batch (`addToWatchlist`) the caller runs.
 // Failures are coded results (`reason` + `params`), never thrown texts; UI copy lives in catalogs.
-import { addDays, type DateTime, parseDateTime, tryCurrency } from "@cashu/domain";
+import { addDays, tryCurrency } from "@cashu/domain";
 import {
   AliasNamespace,
   ASSET_CLASSES,
@@ -22,18 +21,10 @@ import {
   yahooSymbol,
 } from "@cashu/domain/investments/importing";
 import { isPySpace, pyLen, pyLower, pyStrip, pyUpper } from "@cashu/domain/text";
-import { type CommandEnv, type EventWriter, runCommand } from "../../command.js";
 import type { WATCHLIST_SOURCES } from "../../events/v1/research.js";
-import type { Store } from "../../materialize.js";
 import { type InstrumentSpec, instrumentSpec } from "../commands/instruments.js";
-import {
-  addToWatchlist,
-  cleanNote,
-  cleanTags,
-  MAX_ITEMS,
-  type WatchAddResult,
-} from "../commands/watchlist.js";
-import { watchedItemFor, watchlist } from "../queries/alerts.js";
+import { cleanNote, cleanTags, MAX_ITEMS, type WatchAddResult } from "../commands/watchlist.js";
+import { watchlist } from "../queries/alerts.js";
 import {
   instrumentByAlias,
   instrumentByIsin,
@@ -42,7 +33,7 @@ import {
   vaultInstrumentGids,
 } from "../queries/instruments.js";
 import type { Read } from "../queries/shared.js";
-import { storedByYahoo, type WatchTargetRef, watchTargetInstrument } from "../queries/watchlist.js";
+import { storedByYahoo } from "../queries/watchlist.js";
 
 export const MAX_NAME_LENGTH = 120;
 /** Days of daily bars fetched with a verified pick (price, 30-day sparkline and 52-week high at once). */
@@ -76,15 +67,6 @@ export interface WatchlistMarket {
    * OpenFIGI); empty (or a throw) when the sources are unavailable.
    */
   search(text: string): Promise<readonly market.SearchHit[]>;
-}
-
-export interface WatchlistServiceDeps {
-  readonly store: Store;
-  readonly writer: EventWriter;
-  readonly env: CommandEnv;
-  readonly market: WatchlistMarket;
-  /** The device-local price cache (keyed by market symbol). */
-  readonly prices: market.PriceCache;
 }
 
 /**
@@ -558,110 +540,4 @@ export function prepareWatchResolution(
   if ("pick" in target) return resolvePick(read, answers, target.pick, request.today);
   if ("instrument" in target) return stored(target.instrument);
   return resolveText(read, answers, target, request.today);
-}
-
-/** Existing convenience service keeps its write semantics; MCP uses only the pure decision helper. */
-async function resolveService(
-  read: Read,
-  port: WatchlistMarket,
-  request: WatchAddRequest,
-): Promise<Outcome<WatchResolution>> {
-  let answers: WatchResolutionAnswers = {};
-  for (let phase = 0; phase <= 2; phase++) {
-    const result = prepareWatchResolution(read, request, answers);
-    if (result.ok || !needsWatchIo(result)) return result;
-    const operation = result.operation;
-    if (operation.kind === "search") {
-      let hits: readonly market.SearchHit[] = [];
-      try {
-        hits = await port.search(operation.query);
-      } catch {
-        /* source unavailable */
-      }
-      answers = { ...answers, search: { query: operation.query, hits } };
-    } else {
-      let quote: market.ChartQuote | null = null;
-      try {
-        quote = await port.chart(operation.symbol, operation.start, operation.end);
-      } catch {
-        /* unverified */
-      }
-      answers = { ...answers, chart: { symbol: operation.symbol, quote } };
-    }
-  }
-  return fail("remote_phase_limit");
-}
-
-function nowOf(env: CommandEnv): DateTime {
-  return parseDateTime(new Date(env.clock.now()).toISOString());
-}
-
-/**
- * Python `add`: put an instrument on the vault's watchlist. Checks in Python's order (note / tags,
- * the item limit, the resolution with its network, then the command, which re-checks everything
- * against the view it writes on). An instrument whose row was removed gets that row back. Warnings
- * and the verified bars belong to an instrument this add created.
- */
-export async function addToWatchlistService(
-  deps: WatchlistServiceDeps,
-  request: WatchAddRequest,
-): Promise<WatchAddOutcome> {
-  const read: Read = (sql, ...params) => deps.store.read(sql, ...params);
-  const t = request.target;
-  const resolution = await resolveService(read, deps.market, request);
-  if (!resolution.ok) return resolution;
-  const r = resolution.value;
-  const target: WatchTargetRef =
-    r.kind === "planned"
-      ? { planned: r.planned, ...(r.yahooSymbol === null ? {} : { yahooSymbol: r.yahooSymbol }) }
-      : "instrument" in t
-        ? { instrument: r.instrument }
-        : { stored: r.instrument };
-
-  const out = runCommand(
-    deps.store,
-    deps.writer,
-    addToWatchlist,
-    {
-      target,
-      note: request.note ?? null,
-      tags: request.tags ?? null,
-      source: request.source ?? "user",
-      keepExistingNote: request.keepExistingNote ?? false,
-    },
-    deps.env,
-  );
-  if (!out.ok) {
-    if (out.reason === "already_watched") {
-      const instrument = watchTargetInstrument(read, target);
-      const item = instrument === undefined ? undefined : watchedItemFor(read, instrument);
-      return fail("already_watched", { item: item?.gid ?? null });
-    }
-    return fail(out.reason, out.reason === "watchlist_full" ? { max: MAX_ITEMS } : {});
-  }
-  // PARITY(S22b): Python's free-text paths insert unconditionally (always "created", with warnings);
-  // `storeInstrument` reuses an instrument that took the creation alias meanwhile, so warnings (and
-  // the bars, written to the device cache after the batch instead of in its transaction) belong to
-  // a created instrument only. Differs from Python only in a race.
-  const created = out.value.createdInstrument;
-  if (created && r.kind === "planned" && r.quote !== null && r.yahooSymbol !== null) {
-    deps.prices.upsertBars(
-      market.marketSymbol(AliasNamespace.YAHOO, r.yahooSymbol),
-      r.quote.bars.map((b) => ({
-        date: b.date,
-        close: b.close,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        volume: b.volume,
-        currency: b.currency,
-        fetchedAt: b.fetchedAt,
-      })),
-      nowOf(deps.env),
-    );
-  }
-  return {
-    ok: true,
-    value: { ...out.value, warnings: created && r.kind === "planned" ? r.warnings : [] },
-  };
 }

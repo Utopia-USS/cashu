@@ -9,7 +9,6 @@ import { gid, timestamp } from "../../events/v1/primitives.js";
 import {
   alertByGid,
   alertCounts,
-  alertInstrumentGids,
   alerts,
   deletedAlert,
   liveAgentAlerts,
@@ -115,7 +114,6 @@ describe("alert reads show the effective status only", () => {
     expect(alertByGid(read, a4, noon)).toBeUndefined();
     expect(deletedAlert(read, a4, noon)?.gid).toBe(a4);
     expect(deletedAlert(read, a1, noon)).toBeUndefined();
-    expect(alertInstrumentGids(read, noon)).toEqual(new Set([i])); // the deleted one is left out
   });
 });
 

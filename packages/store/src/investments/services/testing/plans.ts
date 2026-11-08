@@ -1,8 +1,7 @@
-// The model recommendation write (Python `api.py` `PUT instruments/{id}/plan` and the MCP
-// `set_recommendation` path): the instrument must be one the vault references, `held` comes from the
-// vault's transactions on the caller's day, then `setInstrumentPlan` (S22d) validates and writes.
-// Immediate leader checks use an explicitly injected local valuation and pending recommendation.
-// Full cache construction, nonleader wake-up and the other mutation callers remain S22c.
+// Test support: the old model recommendation write (Python `api.py` `PUT instruments/{id}/plan`; the
+// shipped MCP path is mcp-writes.ts `recommendWithPlans`): the instrument must be one the vault
+// references, `held` comes from the vault's transactions on the caller's day, then
+// `setInstrumentPlan` (S22d) validates and writes, then the plan checks stage derived signals.
 
 import { type DateTime, parseDateTime, utcIso } from "@cashu/domain";
 import { asInstrumentId, type ValuedPortfolio } from "@cashu/domain/investments";
@@ -16,16 +15,16 @@ import {
   type EventWriter,
   refuse,
   runCommand,
-} from "../../command.js";
-import { calendarDate, gid } from "../../events/v1/primitives.js";
-import type { Store } from "../../materialize.js";
-import { stageDerivedSignals } from "../commands/derivedSignals.js";
-import { setInstrumentPlan } from "../commands/instruments.js";
-import { applyPlanChecks } from "../commands/planSignals.js";
-import { heldSince } from "../queries/holdings.js";
-import { vaultInstrumentGids } from "../queries/instruments.js";
-import { type PendingPlan, planFacts } from "../queries/planFacts.js";
-import { instrumentRoot } from "../queries/shared.js";
+} from "../../../command.js";
+import { calendarDate, gid } from "../../../events/v1/primitives.js";
+import type { Store } from "../../../materialize.js";
+import { stageDerivedSignals } from "../../commands/derivedSignals.js";
+import { setInstrumentPlan } from "../../commands/instruments.js";
+import { applyPlanChecks } from "../../commands/planSignals.js";
+import { heldSince } from "../../queries/holdings.js";
+import { vaultInstrumentGids } from "../../queries/instruments.js";
+import { type PendingPlan, planFacts } from "../../queries/planFacts.js";
+import { instrumentRoot } from "../../queries/shared.js";
 
 export interface PlanWrite {
   readonly instrument: string;

@@ -36,57 +36,7 @@ const cachedBar = (row: BarRow): market.CachedBar => ({
   fetchedAt: row.fetched_at === null ? null : parseDateTime(row.fetched_at),
 });
 
-export interface SourcePriceIdentity {
-  readonly instrumentId: number;
-  readonly vault: string;
-  readonly gid: string;
-}
-export interface SourcePriceAlias {
-  readonly instrumentId: number;
-  readonly provider: string;
-  readonly symbol: string;
-}
-export interface SourceCachedBar extends market.CachedBar {
-  readonly id: number;
-  readonly source: string;
-}
-/** Rows of the old app's price cache in the shape `restoreSourceCache` writes. */
-export interface SourceCacheReceipt {
-  readonly format: 1;
-  readonly schema: string;
-  readonly priceBars: readonly {
-    readonly id: number;
-    readonly instrumentId: number;
-    readonly date: string;
-    readonly close: string;
-    readonly open: string | null;
-    readonly high: string | null;
-    readonly low: string | null;
-    readonly volume: number | null;
-    readonly currency: string | null;
-    readonly source: string;
-    readonly fetchedAt: string | null;
-  }[];
-  readonly fxRates: readonly {
-    readonly id: number;
-    readonly base: string;
-    readonly quote: string;
-    readonly date: string;
-    readonly rate: string;
-    readonly source: string;
-    readonly fetchedAt: string | null;
-  }[];
-  readonly macroBars: readonly {
-    readonly id: number;
-    readonly series: string;
-    readonly date: string;
-    readonly close: string;
-    readonly source: string;
-    readonly fetchedAt: string | null;
-  }[];
-}
-export interface SourceMacroBarView {
-  readonly id: number;
+export interface MacroBarView {
   readonly date: string;
   readonly close: ReturnType<typeof D>;
   readonly source: string;
@@ -115,24 +65,6 @@ export class SqlPriceCache implements TransactionalPriceCache {
         id INTEGER PRIMARY KEY, provider TEXT NOT NULL, base TEXT NOT NULL, quote TEXT NOT NULL,
         date TEXT NOT NULL, rate TEXT NOT NULL, fetched_at TEXT,
         UNIQUE(provider,base,quote,date));
-      CREATE TABLE IF NOT EXISTS local_source_price_bars (
-        id INTEGER PRIMARY KEY, instrument_id INTEGER NOT NULL, date TEXT NOT NULL,
-        close TEXT NOT NULL, open TEXT, high TEXT, low TEXT, volume INTEGER, currency TEXT,
-        source TEXT NOT NULL, fetched_at TEXT);
-      CREATE TABLE IF NOT EXISTS local_source_price_aliases (
-        instrument_id INTEGER NOT NULL, provider TEXT NOT NULL, symbol TEXT NOT NULL,
-        PRIMARY KEY(instrument_id,provider,symbol));
-      CREATE TABLE IF NOT EXISTS local_market_bar_masks (
-        provider TEXT NOT NULL, symbol TEXT NOT NULL, date TEXT NOT NULL,
-        PRIMARY KEY(provider,symbol,date));
-      CREATE INDEX IF NOT EXISTS local_source_price_alias_lookup
-        ON local_source_price_aliases(provider,symbol);
-      CREATE TABLE IF NOT EXISTS local_source_price_gids (
-        instrument_id INTEGER NOT NULL, vault TEXT NOT NULL, gid TEXT NOT NULL,
-        PRIMARY KEY(vault,instrument_id), UNIQUE(vault,gid));
-      CREATE TABLE IF NOT EXISTS local_market_macro_bars (
-        id INTEGER PRIMARY KEY, series TEXT NOT NULL, date TEXT NOT NULL,
-        close TEXT NOT NULL, source TEXT NOT NULL, fetched_at TEXT);
       CREATE TABLE IF NOT EXISTS local_native_macro_bars (
         series TEXT NOT NULL, date TEXT NOT NULL, close TEXT NOT NULL,
         source TEXT NOT NULL, fetched_at TEXT NOT NULL,
@@ -189,70 +121,12 @@ export class SqlPriceCache implements TransactionalPriceCache {
     }
   }
   bars(key: market.MarketSymbol): readonly market.CachedBar[] {
-    const native = this.driver
-      .prepare("SELECT * FROM local_market_bars WHERE provider=? AND symbol=? ORDER BY date")
-      .all<BarRow>(key.provider, key.symbol);
-    const owners = this.driver
-      .prepare(
-        "SELECT instrument_id AS instrumentId FROM local_source_price_aliases WHERE provider=? AND symbol=? ORDER BY instrument_id",
-      )
-      .all<{ instrumentId: number }>(key.provider, key.symbol);
-    const owner = owners.length === 1 ? owners[0] : undefined;
-    const source =
-      owner !== undefined
-        ? this.driver
-            .prepare(
-              `SELECT b.* FROM local_source_price_bars b
-               WHERE b.instrument_id=? AND b.source=?
-               AND NOT EXISTS (SELECT 1 FROM local_market_bar_masks m
-                 WHERE m.provider=? AND m.symbol=? AND m.date=b.date)
-               ORDER BY b.date,b.id`,
-            )
-            .all<BarRow>(owner.instrumentId, key.provider, key.provider, key.symbol)
-        : [];
-    const merged = new Map<string, market.CachedBar>();
-    for (const row of source) merged.set(row.date, cachedBar(row));
-    for (const row of native) merged.set(row.date, cachedBar(row));
-    return [...merged.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  }
-
-  /** Device-native public bars only; imported instrument rows require an exact vault identity. */
-  nativeBars(key: market.MarketSymbol): readonly market.CachedBar[] {
     return this.driver
       .prepare("SELECT * FROM local_market_bars WHERE provider=? AND symbol=? ORDER BY date")
       .all<BarRow>(key.provider, key.symbol)
       .map(cachedBar);
   }
 
-  /** Effective imported bars after a split refresh, scoped to one vault and canonical instrument. */
-  effectiveBarsForInstrument(vault: string, gid: string): readonly SourceCachedBar[] {
-    return this.driver
-      .prepare(
-        `SELECT b.* FROM local_source_price_bars b
-         JOIN local_source_price_gids g ON g.instrument_id=b.instrument_id
-         WHERE g.vault=? AND g.gid=?
-           AND NOT EXISTS (
-             SELECT 1 FROM local_source_price_aliases a
-             JOIN local_market_bar_masks m ON m.provider=a.provider AND m.symbol=a.symbol
-             WHERE a.instrument_id=b.instrument_id AND a.provider=b.source AND m.date=b.date
-           )
-         ORDER BY b.date,b.source,b.id`,
-      )
-      .all<BarRow & { id: number; source: string }>(vault, gid)
-      .map((row) => ({ id: row.id, source: row.source, ...cachedBar(row) }));
-  }
-
-  /** Exact source rows by stable native instrument identity, including alias-less instruments. */
-  barsForInstrument(vault: string, gid: string): readonly SourceCachedBar[] {
-    return this.driver
-      .prepare(
-        `SELECT b.* FROM local_source_price_bars b
-         JOIN local_source_price_gids g ON g.instrument_id=b.instrument_id
-         WHERE g.vault=? AND g.gid=? ORDER BY b.date,b.source,b.id`,
-      )
-      .all<BarRow & { id: number; source: string }>(vault, gid)
-      .map((row) => ({ id: row.id, source: row.source, ...cachedBar(row) }));
-  }
   upsertBars(key: market.MarketSymbol, bars: readonly market.CachedBar[], now: DateTime): void {
     this.write(() => {
       const stmt = this.driver.prepare(`INSERT INTO local_market_bars VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -276,21 +150,6 @@ export class SqlPriceCache implements TransactionalPriceCache {
   }
   deleteBars(key: market.MarketSymbol, from: CalendarDate, to: CalendarDate): void {
     this.write(() => {
-      const owners = this.driver
-        .prepare(
-          "SELECT instrument_id AS instrumentId FROM local_source_price_aliases WHERE provider=? AND symbol=? ORDER BY instrument_id",
-        )
-        .all<{ instrumentId: number }>(key.provider, key.symbol);
-      const owner = owners.length === 1 ? owners[0] : undefined;
-      if (owner !== undefined) {
-        this.driver
-          .prepare(
-            `INSERT OR IGNORE INTO local_market_bar_masks(provider,symbol,date)
-             SELECT ?,?,date FROM local_source_price_bars
-             WHERE instrument_id=? AND source=? AND date>=? AND date<=?`,
-          )
-          .run(key.provider, key.symbol, owner.instrumentId, key.provider, from, to);
-      }
       this.driver
         .prepare(
           "DELETE FROM local_market_bars WHERE provider=? AND symbol=? AND date>=? AND date<=?",
@@ -299,37 +158,12 @@ export class SqlPriceCache implements TransactionalPriceCache {
     });
   }
   rates(provider: string, quote: Currency): readonly market.CachedRate[] {
-    return this.ratesForBase(provider, "PLN", quote);
-  }
-  /** Exact imported FX base is retained; the normal PriceCache facade uses PLN. */
-  ratesForBase(provider: string, base: string, quote: Currency): readonly market.CachedRate[] {
     return this.driver
       .prepare(
-        "SELECT date,rate,fetched_at FROM local_market_rates WHERE provider=? AND base=? AND quote=? ORDER BY date",
+        "SELECT date,rate,fetched_at FROM local_market_rates WHERE provider=? AND base='PLN' AND quote=? ORDER BY date",
       )
-      .all<RateRow>(provider, base, quote)
+      .all<RateRow>(provider, quote)
       .map((r) => ({
-        date: r.date as CalendarDate,
-        rate: D(r.rate),
-        fetchedAt: r.fetched_at === null ? null : parseDateTime(r.fetched_at),
-      }));
-  }
-  /**
-   * Every rate of `base`/`quote` with its provider, by date then provider. Native refreshes write
-   * only NBP; other providers come from an import (Python kept one rate per base, quote and day
-   * whatever its source, so an imported day is never ambiguous).
-   */
-  ratesOfEveryProvider(
-    base: string,
-    quote: Currency,
-  ): readonly (market.CachedRate & { readonly provider: string })[] {
-    return this.driver
-      .prepare(
-        "SELECT provider,date,rate,fetched_at FROM local_market_rates WHERE base=? AND quote=? ORDER BY date,provider",
-      )
-      .all<RateRow & { provider: string }>(base, quote)
-      .map((r) => ({
-        provider: r.provider,
         date: r.date as CalendarDate,
         rate: D(r.rate),
         fetchedAt: r.fetched_at === null ? null : parseDateTime(r.fetched_at),
@@ -357,72 +191,9 @@ export class SqlPriceCache implements TransactionalPriceCache {
     );
   }
 
-  /** One-shot import of exact old cache rows, without invented fetch times or provider aliases. */
-  restoreSourceCache(
-    receipt: SourceCacheReceipt,
-    identities: readonly SourcePriceIdentity[],
-    aliases: readonly SourcePriceAlias[],
-  ): void {
-    this.write(() => {
-      const price = this.driver.prepare(
-        `INSERT INTO local_source_price_bars
-         (id,instrument_id,date,close,open,high,low,volume,currency,source,fetched_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      );
-      for (const row of receipt.priceBars)
-        price.run(
-          row.id,
-          row.instrumentId,
-          row.date,
-          row.close,
-          row.open,
-          row.high,
-          row.low,
-          row.volume,
-          row.currency,
-          row.source,
-          row.fetchedAt,
-        );
-      const identity = this.driver.prepare(
-        "INSERT INTO local_source_price_gids(instrument_id,vault,gid) VALUES (?,?,?)",
-      );
-      for (const row of identities) identity.run(row.instrumentId, row.vault, row.gid);
-      const alias = this.driver.prepare(
-        "INSERT INTO local_source_price_aliases(instrument_id,provider,symbol) VALUES (?,?,?)",
-      );
-      for (const row of aliases) alias.run(row.instrumentId, row.provider, row.symbol);
-      const fx = this.driver.prepare(
-        "INSERT INTO local_market_rates(id,provider,base,quote,date,rate,fetched_at) VALUES (?,?,?,?,?,?,?)",
-      );
-      for (const row of receipt.fxRates)
-        fx.run(row.id, row.source, row.base, row.quote, row.date, row.rate, row.fetchedAt);
-      const macro = this.driver.prepare(
-        "INSERT INTO local_market_macro_bars(id,series,date,close,source,fetched_at) VALUES (?,?,?,?,?,?)",
-      );
-      for (const row of receipt.macroBars)
-        macro.run(row.id, row.series, row.date, row.close, row.source, row.fetchedAt);
-    });
-  }
-
   /** Cached macro closes are available offline by series and provider. */
-  macroBars(series: string, source?: string): readonly SourceMacroBarView[] {
-    const imported = this.driver
-      .prepare(
-        `SELECT id,date,close,source,fetched_at AS fetchedAt FROM local_market_macro_bars
-         WHERE series=? ${source === undefined ? "" : "AND source=?"} ORDER BY date,id`,
-      )
-      .all<{ id: number; date: string; close: string; source: string; fetchedAt: string | null }>(
-        series,
-        ...(source === undefined ? [] : [source]),
-      )
-      .map((row) => ({
-        id: row.id,
-        date: row.date,
-        close: D(row.close),
-        source: row.source,
-        fetchedAt: row.fetchedAt === null ? null : parseDateTime(row.fetchedAt),
-      }));
-    const native = this.driver
+  macroBars(series: string, source?: string): readonly MacroBarView[] {
+    return this.driver
       .prepare(`SELECT date,close,source,fetched_at AS fetchedAt FROM local_native_macro_bars
         WHERE series=? ${source === undefined ? "" : "AND source=?"} ORDER BY date`)
       .all<{ date: string; close: string; source: string; fetchedAt: string }>(
@@ -430,15 +201,11 @@ export class SqlPriceCache implements TransactionalPriceCache {
         ...(source === undefined ? [] : [source]),
       )
       .map((row) => ({
-        id: 0,
         date: row.date,
         close: D(row.close),
         source: row.source,
         fetchedAt: parseDateTime(row.fetchedAt),
       }));
-    const byDate = new Map(imported.map((row) => [row.date, row]));
-    for (const row of native) byDate.set(row.date, row);
-    return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   }
 
   applyMacroReport(report: MacroReport, now: DateTime) {

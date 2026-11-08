@@ -9,7 +9,6 @@ import { findProxy } from "../performance/inputs.js";
 import { latestStrategyVersion, strategyVersions } from "../queries/strategy.js";
 import {
   checkedProfileSlug,
-  initStrategyFiles,
   loadStrategy,
   STRATEGY_MD,
   STRATEGY_YAML,
@@ -127,25 +126,6 @@ describe("test_invp_strategy", () => {
     ]);
     expect(rows[2]?.issues[0]?.severity).toBe("error");
     expect(rows[1]?.mdText).toBe("Cel: emerytura.");
-  });
-
-  it("test_init_from_template", async () => {
-    const files = new MemoryStrategyFiles();
-    const written = await initStrategyFiles(files, "blank");
-    expect(written).toEqual({ ok: true, written: [STRATEGY_YAML, STRATEGY_MD] });
-    expect(await initStrategyFiles(files)).toEqual({
-      ok: false,
-      reason: "files_exist",
-      existing: [STRATEGY_YAML, STRATEGY_MD],
-    });
-    expect((await initStrategyFiles(files, "passive_etf", { force: true })).ok).toBe(true);
-    expect(files.texts.get(STRATEGY_YAML)).toContain("global_equity");
-    const writes = files.writes;
-    expect(await initStrategyFiles(files, "nope", { force: true })).toEqual({
-      ok: false,
-      reason: "unknown_template",
-    });
-    expect(files.writes).toBe(writes);
   });
 
   it("test_profile_dirs_reject_path_tricks", () => {

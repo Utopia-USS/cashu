@@ -35,15 +35,10 @@ import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
 import { accountByMemberGid } from "../../core/queries.js";
 import { blobRef, gid } from "../../events/v1/primitives.js";
-import {
-  accountSnapshot,
-  type ImportRequest,
-  previewImport,
-  storedPositions,
-} from "../queries/import-preview.js";
+import { accountSnapshot, type ImportRequest, previewImport } from "../queries/import-preview.js";
 import { loadInstrument } from "../queries/instruments.js";
 import { instrumentRoot } from "../queries/shared.js";
-import { brokerageAccount, existingHashes } from "../queries/transactions.js";
+import { existingHashes } from "../queries/transactions.js";
 import { rememberImporter } from "./accounts.js";
 import { addAliases, instrumentSpec, storeInstrument } from "./instruments.js";
 import { bookMatchingPlans } from "./planned.js";
@@ -313,33 +308,6 @@ export const commitImport = defineCommand({
       instrumentMap: Object.fromEntries(mapping),
       plannedBooked: booked,
     });
-  },
-});
-
-export const applyReconciliation = defineCommand({
-  id: "investments.applyReconciliation",
-  input: z.object({ account: gid, instruments: z.array(gid) }),
-  /**
-   * Python `apply_reconciliation`: insert the proposed corrections of the chosen instruments (vs the
-   * newest stored broker snapshot); applying the same proposal twice inserts it once.
-   */
-  run(ctx, input) {
-    const root = accountByMemberGid(ctx.read, input.account)?.gid ?? input.account;
-    if (brokerageAccount(ctx.read, root) === undefined) return refuse("no_account");
-    const positions = storedPositions(ctx.read, root);
-    if (positions.length === 0) return ok({ applied: 0 });
-    const wanted = new Set(input.instruments.map((g) => instrumentRoot(ctx.read, g)));
-    const found = proposedCorrections(
-      ctx,
-      root,
-      positions,
-      wanted,
-      parseDateTime(ctx.now()),
-      null,
-      {},
-    );
-    for (const t of found) emitTxn(ctx, root, t);
-    return ok({ applied: found.length });
   },
 });
 

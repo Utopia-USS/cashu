@@ -1,12 +1,6 @@
 // @cashu/store: the event-sourced store every runtime uses (desktop utility process, phone, CLI).
 // Spec: packages/store/spec/events.md, gid.md. Platform pieces come in through `SqlDriver` adapters.
-export {
-  addManualPosition,
-  revalue,
-  setDepreciation,
-  setNote,
-  updateAssetDetails,
-} from "./assets/commands.js";
+export { addManualPosition, updateAssetDetails } from "./assets/commands.js";
 export { assetsModule } from "./assets/index.js";
 export {
   createOverviewAsset,

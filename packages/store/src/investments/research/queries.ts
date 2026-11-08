@@ -182,16 +182,6 @@ export function noteByGid(read: Read, gid: string): ResearchNote | undefined {
   return r === undefined ? undefined : toNote(r);
 }
 
-/** Notes by gid (unknown gids are absent). */
-export function notesByGid(read: Read, gids: readonly string[]): ResearchNote[] {
-  if (gids.length === 0) return [];
-  return byCreation(
-    read,
-    "researchNotes",
-    read<NoteRow>(`${NOTE_SQL} WHERE n.gid IN (${marks(gids.length)})`, ...gids).map(toNote),
-  );
-}
-
 /** Raw note rows with an extra SQL condition (internal building block). */
 export function noteRows(
   read: Read,

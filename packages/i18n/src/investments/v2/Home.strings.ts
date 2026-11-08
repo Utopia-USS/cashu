@@ -1,5 +1,5 @@
 // Texts of the investments home (frontend/src/modules/investments/v2/Home.tsx). See docs/agents/localization.md.
-import { catalog, enCount, enForm, plCount } from "../../index.js";
+import { catalog, enForm } from "../../index.js";
 
 export const S = catalog({
   weeklyReview: { pl: "Przegląd tygodnia", en: "Weekly review" },

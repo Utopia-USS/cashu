@@ -2,7 +2,7 @@
 // the status filter of the list, and the brokerage deposits the booking match and the month plan read.
 // `booked_txn_id` holds the view id of the transaction gid as the booking named it; a non-anchor
 // member resolves to its row through `inv_transaction_members` (D-S2).
-import { D, type Decimal, pyStrip } from "@cashu/domain";
+import { D, type Decimal } from "@cashu/domain";
 import { gidOf, marks, type Read } from "./shared.js";
 import { BROKERAGE } from "./transactions.js";
 
@@ -79,30 +79,6 @@ export function openPlannedDeposits(read: Read): PlannedDepositView[] {
   return read<PlannedRow>(
     `${PLANNED_SQL} WHERE p.status = 'planned' ORDER BY p.planned_date, p.id`,
   ).map(toView);
-}
-
-export type PlannedStatusesResult =
-  | { readonly ok: true; readonly statuses: readonly PlannedStatus[] }
-  | { readonly ok: false; readonly reason: "unknown_status" };
-
-/** Python `parse_statuses`: `planned,booked` (default for blank), `all` or a comma list. */
-export function parsePlannedStatuses(text: string | null | undefined): PlannedStatusesResult {
-  if (text == null || pyStrip(text) === "") return { ok: true, statuses: DEFAULT_PLANNED_STATUSES };
-  if (pyStrip(text) === "all") return { ok: true, statuses: PLANNED_DEPOSIT_STATUSES };
-  const wanted = [
-    ...new Set(
-      text
-        .split(",")
-        .map((v) => pyStrip(v))
-        .filter((v) => v !== ""),
-    ),
-  ];
-  const statuses: PlannedStatus[] = [];
-  for (const v of wanted) {
-    if (!isStatus(v)) return { ok: false, reason: "unknown_status" };
-    statuses.push(v);
-  }
-  return { ok: true, statuses };
 }
 
 /** A deposit transaction of one of the vault's brokerage accounts. */

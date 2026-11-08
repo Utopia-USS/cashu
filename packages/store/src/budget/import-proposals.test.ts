@@ -5,7 +5,7 @@ import type { ExecutionSnapshot } from "../core/proposal-execution.js";
 import { proposalExecution } from "../core/proposal-execution.js";
 import { run, testEnv } from "../testing/commands.js";
 import { openTestStore, testUlid } from "../testing/store.js";
-import { prepareBudgetConnectorImport, prepareBudgetImport } from "./import-proposals.js";
+import { prepareBudgetConnectorImport } from "./import-proposals.js";
 
 function fixture() {
   const store = openTestStore();
@@ -94,43 +94,5 @@ describe("budget proposal binding boundary", () => {
     expect(approved.events.slice(1).every((event) => event.cause === approved.events[0]?.eid)).toBe(
       true,
     );
-  });
-  it("validates owned native metadata then refuses before any staged bytes or effects", () => {
-    const { store, snapshot } = fixture();
-    expect(prepareBudgetImport(store.read.bind(store), snapshot)).toEqual({
-      ok: false,
-      reason: "connector_binding_unsupported",
-    });
-    expect(store.read("SELECT gid FROM proposals")).toHaveLength(0);
-    expect(store.read("SELECT gid FROM transactions")).toHaveLength(0);
-  });
-  it("does not convert legacy binding/run ids into a made-up approval capability", () => {
-    const { store, snapshot } = fixture();
-    expect(
-      prepareBudgetImport(store.read.bind(store), {
-        ...snapshot,
-        payload: { ...snapshot.payload, binding_id: 1, run_id: 2 },
-      }),
-    ).toEqual({ ok: false, reason: "connector_binding_unsupported" });
-  });
-  it("refuses absent/foreign target, nonconnector input and inconsistent blob metadata", () => {
-    const { store, snapshot } = fixture();
-    const read = store.read.bind(store);
-    expect(
-      prepareBudgetImport(read, {
-        ...snapshot,
-        payload: { ...snapshot.payload, account: testUlid("01JG", 401) },
-      }).reason,
-    ).toBe("no_account");
-    expect(
-      prepareBudgetImport(read, { ...snapshot, payload: { ...snapshot.payload, source: "agent" } })
-        .reason,
-    ).toBe("invalid_payload");
-    expect(
-      prepareBudgetImport(read, {
-        ...snapshot,
-        payload: { ...snapshot.payload, file_sha256: "b".repeat(64) },
-      }).reason,
-    ).toBe("staged_changed");
   });
 });

@@ -14,7 +14,7 @@ import { type CommandContext, defineCommand, ok, storeWriter } from "../../comma
 import { loadInstruments, overrides } from "../queries/instruments.js";
 import { openSignals } from "../queries/signals.js";
 import { transactions } from "../queries/transactions.js";
-import { writePlan } from "../services/plans.js";
+import { writePlan } from "../services/testing/plans.js";
 import { stageDerivedSignals } from "./derivedSignals.js";
 import { setInstrumentPlan } from "./instruments.js";
 import { addManualTransaction } from "./manual.js";

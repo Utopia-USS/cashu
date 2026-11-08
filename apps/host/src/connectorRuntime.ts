@@ -660,8 +660,6 @@ export function createConnectorRuntime(input: {
             input.device.appendConnectorRun({
               connectorId: row.connector,
               vault: vault.id,
-              legacyProfileId: null,
-              bindingId: null,
               binding: row.id,
               command: "fetch",
               startedAt,

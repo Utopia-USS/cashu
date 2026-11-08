@@ -1,13 +1,58 @@
 import { parseDateTime } from "@cashu/domain";
-import { asProfileId, toCurrency } from "@cashu/domain/investments";
+import {
+  asProfileId,
+  type performance as perf,
+  toCurrency,
+  views,
+} from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
+import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";
 import { openTestStore } from "../../testing/store.js";
+import { readResearchDigestInputs } from "../desktop-research/inputs.js";
+import { performanceStrategy } from "../desktop-research/sources.js";
 import { PerformanceService } from "../performance/service.js";
+import type { Read } from "../queries/shared.js";
 import { assertOrderedDelivery } from "../testing/delivery.js";
 import { household } from "../testing/household.js";
 import { det, ulid } from "../testing/kit.js";
-import { makeReviewClock, readReviewDigest, reviewDigestInputs } from "./reviews.js";
+import { makeReviewClock, type ReviewDigestRequest, readReviewDigestInputs } from "./reviews.js";
+
+/** The digest inputs over a Store, computing the research attribution on demand. */
+function reviewDigestInputs(store: Store, request: ReviewDigestRequest) {
+  const read: Read = store.read.bind(store);
+  const result = readReviewDigestInputs(read, request, () => {
+    let computed: perf.ComputedPerformance | null = null;
+    try {
+      computed = (request.performance ?? new PerformanceService()).computed(store, {
+        asOf: request.clock.today,
+        strategy: performanceStrategy(request.strategy),
+        ...(request.marketData === undefined
+          ? { prices: request.prices }
+          : { marketData: request.marketData }),
+      });
+    } catch {
+      /* Source digest remains readable without attribution. */
+    }
+    return readResearchDigestInputs(
+      read,
+      {
+        ...request,
+        macro: { status: "current", value: request.macroCloses },
+        calendar: { status: "unavailable", reason: "calendar_not_requested" },
+      },
+      computed,
+    );
+  });
+  if (!result.ok) return result;
+  return { ok: true as const, segmentTrends: result.segmentTrends, value: result.value };
+}
+
+/** The digest the way a screen reads it: its inputs, then the view. */
+function readReviewDigest(store: Store, request: ReviewDigestRequest) {
+  const input = reviewDigestInputs(store, request);
+  return input.ok ? { ok: true as const, value: views.reviewDigestView(input.value) } : input;
+}
 
 describe("native review service clock and identity", () => {
   it("resolves Warsaw midnight across DST without consulting the process timezone", () => {

@@ -66,19 +66,6 @@ export function accountByIbanKey(read: Read, key: string): AccountView | undefin
 }
 
 /**
- * The identity IBAN keys of every account of the vault (removed ones included; checksum-valid only,
- * N2). Not the match set of transfers and categories: those use Python's `own_ibans` over the raw
- * `iban` column (lead decision D-08.1, events.md 6.4; `budgetEngineContext`).
- */
-export function ownIbanKeys(read: Read): Set<string> {
-  return new Set(
-    read<{ iban_key: string }>("SELECT iban_key FROM accounts WHERE iban_key IS NOT NULL").map(
-      (r) => r.iban_key,
-    ),
-  );
-}
-
-/**
  * The account of `bank` showing external id `externalId` (a parked key never matches); several
  * (name keys held by several live accounts, m12): the smallest gid.
  */

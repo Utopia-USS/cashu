@@ -198,14 +198,6 @@ export async function discoverStrategies(dir: StrategyDocsDir): Promise<Strategy
   );
 }
 
-/** Python `find`: the strategy `id`, undefined when there is none. */
-export async function findStrategy(
-  dir: StrategyDocsDir,
-  id: string,
-): Promise<StrategyDoc | undefined> {
-  return (await discoverStrategies(dir)).find((d) => d.id === id);
-}
-
 export type StrategyFileText =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly reason: "no_file" | "too_large" };

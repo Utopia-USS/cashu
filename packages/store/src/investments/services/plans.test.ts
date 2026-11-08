@@ -13,7 +13,7 @@ import { addManualTransaction } from "../commands/manual.js";
 import { applyRaw, otherVault, raw, type Vault, vault } from "../commands/testing/fixtures.js";
 import { heldSince } from "../queries/holdings.js";
 import { allInstruments, loadInstrument, overrides } from "../queries/instruments.js";
-import { writePlan } from "./plans.js";
+import { writePlan } from "./testing/plans.js";
 
 const HEADER =
   "format_version,record,date,time,type,external_ref,symbol,isin,name,exchange,quantity,price," +

@@ -3,17 +3,9 @@
 // snapshot. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { openAccount } from "../../core/commands.js";
-import {
-  applyRaw,
-  brokerage,
-  rawGid,
-  stock,
-  type Vault,
-  vault,
-} from "../commands/testing/fixtures.js";
+import { applyRaw, brokerage, stock, type Vault, vault } from "../commands/testing/fixtures.js";
 import {
   accountSettings,
-  accountsWithTransactions,
   brokerageAccount,
   brokerageAccounts,
   existingHashes,
@@ -124,7 +116,6 @@ describe("brokerage reads", () => {
     expect(all[0]?.instrumentId).toBeNull();
     expect(transactions(read)).toHaveLength(4);
     expect(transactions(read, [])).toEqual([]);
-    expect(accountsWithTransactions(read, [acc, other, rawGid(9)])).toEqual(new Set([acc, other]));
     expect(existingHashes(read, acc, [hash("a"), hash("d"), hash("e")])).toEqual(
       new Set([hash("a")]),
     );

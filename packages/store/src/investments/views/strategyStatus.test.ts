@@ -1,10 +1,35 @@
 import { toCurrency } from "@cashu/domain/investments";
 import { expect, it } from "vitest";
+import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";
 import { openTestStore } from "../../testing/store.js";
 import type { StrategyFilesPort } from "../services/strategy.js";
+import { loadStrategy } from "../services/strategy.js";
 import { household } from "../testing/household.js";
-import { readStrategyStatus } from "./strategyStatus.js";
+import { projectStoredStrategyStatus } from "./strategyStatus.js";
+
+/** Load the files, then project the stored status (what an explicit read does). */
+async function readStrategyStatus(
+  store: Store,
+  request: {
+    readonly files: StrategyFilesPort;
+    readonly paths: { readonly yaml: string; readonly md: string };
+    readonly profileBase: ReturnType<typeof toCurrency>;
+    readonly lang: "pl" | "en";
+  },
+) {
+  const state = await loadStrategy(store, request.files);
+  const [yamlExists, mdExists] = await Promise.all([
+    request.files.exists("strategy.yaml"),
+    request.files.exists("strategy.md"),
+  ]);
+  return projectStoredStrategyStatus(store.read.bind(store), {
+    state,
+    profileBase: request.profileBase,
+    lang: request.lang,
+    files: { ...request.paths, yamlExists, mdExists },
+  });
+}
 
 it("shows file-only strategy edits and read failures with no implicit version or file writes", async () => {
   const h = household();

@@ -102,7 +102,7 @@ export function createProductionMarket(input: ProductionMarketInput): Production
     const cached = marketImages.get(id);
     if (cached?.vault === vault && cached.version === version && cached.instruments === fingerprint)
       return cached.image;
-    const image = cachedInstrumentMarketData(instruments, id, prices);
+    const image = cachedInstrumentMarketData(instruments, prices);
     marketImages.set(id, { vault, version, instruments: fingerprint, image });
     return image;
   };

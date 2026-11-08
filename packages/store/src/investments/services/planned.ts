@@ -2,7 +2,7 @@
 // this vault's view plus injected inputs. The strategy comes in as the usable config (the caller's
 // strategy loader, `usableConfig`); FX rates come from the device's price cache (device-local, never
 // in the view: events.md 10), the PORT this read takes, as `performance/inputs.ts` does.
-import { addDays, type Decimal, daysInMonth, format2, pyStrip, sum, ZERO } from "@cashu/domain";
+import { addDays, type Decimal, daysInMonth, pyStrip, sum, ZERO } from "@cashu/domain";
 import {
   type Currency,
   convert,
@@ -99,8 +99,7 @@ function monthBounds(
 /**
  * Python `month_plan`: the month's contribution-plan progress in the base currency (the strategy's,
  * else the profile's): the strategy's `monthly_amount`, deposits dated in the month, open plans dated
- * in the month, what remains and whether the plan is covered. Unrounded values; `monthPlanRecord`
- * renders the Python dict.
+ * in the month, what remains and whether the plan is covered. Unrounded values.
  */
 export function monthPlan(read: Read, request: MonthPlanRequest): MonthPlanResult {
   const bounds = monthBounds(request.month, request.today);
@@ -159,25 +158,5 @@ export function monthPlan(read: Read, request: MonthPlanRequest): MonthPlanResul
       covered,
       plannedCount: plans.length,
     },
-  };
-}
-
-/** Python `_money`: rounded to 2 places (half even), as a decimal string; null stays null. */
-const money = (value: Decimal | null): string | null => (value === null ? null : format2(value));
-
-/** The Python dict shape of `month_plan` (snake_case keys), amounts as 2-place decimal strings. */
-export function monthPlanRecord(
-  plan: MonthPlan,
-): Readonly<Record<string, string | number | boolean | null>> {
-  return {
-    month: plan.month,
-    currency: plan.currency,
-    monthly_amount: money(plan.monthlyAmount),
-    day_of_month: plan.dayOfMonth,
-    deposited: money(plan.deposited),
-    planned: money(plan.planned),
-    remaining: money(plan.remaining),
-    covered: plan.covered,
-    planned_count: plan.plannedCount,
   };
 }

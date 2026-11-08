@@ -44,17 +44,6 @@ const payloadSchema = z.looseObject({
   connector_binding: connectorBindingSchema.optional(),
 });
 
-/** Validate native metadata/target ownership, then explicitly refuse the unresolved connector gate. */
-export function prepareBudgetImport(read: Read, snapshot: ExecutionSnapshot): CommandRefusal {
-  if (snapshot.kind !== "budget_import") return refuse("wrong_kind");
-  if (snapshot.status !== "pending") return refuse("not_pending");
-  const parsed = payloadSchema.safeParse(snapshot.payload);
-  if (!parsed.success) return refuse("invalid_payload");
-  if (parsed.data.file_sha256 !== parsed.data.blob.sha256) return refuse("staged_changed");
-  if (accountByMemberGid(read, parsed.data.account) === undefined) return refuse("no_account");
-  return refuse("connector_binding_unsupported");
-}
-
 /** Fully prepared bytes are copied by the host after a bounded encrypted-blob read. */
 export function prepareBudgetConnectorImport(input: {
   readonly read: Read;
