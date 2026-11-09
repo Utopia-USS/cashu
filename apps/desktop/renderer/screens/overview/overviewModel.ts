@@ -20,6 +20,7 @@ import {
   pctSigned,
   TYPE_LABEL,
 } from "@cashu/ui-logic/core/format";
+import { showsBananas } from "@cashu/ui-logic/core/incognito";
 import { incomeShare, rateText } from "@cashu/ui-logic/loans/logic";
 import { R } from "./AccountRemoval.strings.js";
 
@@ -150,8 +151,8 @@ export function heroModel(args: {
   const missing = conv?.parts.filter((p) => p.quote === null).map((p) => p.currency) ?? [];
   const otherText = others.map(([k, v]) => cur(v.toFloat(), k)).join(" · ");
   return {
-    label: conv ? O.netWorthConverted(c) : O.netWorth,
-    caption: conv ? O.netWorthConverted(c) : O.netWorth,
+    label: showsBananas() ? O.netWorthBananas : conv ? O.netWorthConverted(c) : O.netWorth,
+    caption: showsBananas() ? O.netWorthBananas : conv ? O.netWorthConverted(c) : O.netWorth,
     value: cur((conv?.net ?? h.net).toFloat(), c),
     since:
       change === null || ch === null ? null : O.since(MONTH_GEN[monthIndex(change.since)] ?? ""),

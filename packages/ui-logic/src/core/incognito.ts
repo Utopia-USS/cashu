@@ -87,6 +87,9 @@ export function setBananaScale(next: BananaScale | null, vault: string | null = 
   for (const l of listeners) l();
 }
 
+/** Money shows on the banana scale right now (incognito on, scale known). */
+export const showsBananas = (): boolean => isIncognito() && scale !== null;
+
 /** One string per display state, for remount keys: "off", "masked" or the banana factor. */
 export function incognitoKey(): string {
   if (!isIncognito()) return "off";

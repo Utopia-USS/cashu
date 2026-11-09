@@ -25,6 +25,8 @@ export const S = catalog({
     pl: (currency: string) => `Wartość netto, przeliczona na ${currency}`,
     en: (currency: string) => `Net worth, converted to ${currency}`,
   },
+  // Incognito with the banana scale: every amount, in any currency, is in bananas.
+  netWorthBananas: { pl: "Wartość netto, przeliczona na banany", en: "Net worth, in bananas" },
   convertedParts: {
     pl: (list: string) => `w tym ${list}`,
     en: (list: string) => `incl. ${list}`,
