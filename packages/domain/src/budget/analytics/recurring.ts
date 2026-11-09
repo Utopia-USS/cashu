@@ -7,11 +7,11 @@
 import { type CoreRegistry, notSubscriptionCategories } from "../../core/index.js";
 import { addDays, type IsoDate } from "../../dates.js";
 import {
-  detectRecurring,
+  detectRecurringPayments,
   type EngineContext,
   NOT_SUBSCRIPTION_CATEGORIES,
   type RecurringCandidate,
-  type RecurringOptions,
+  type RecurringListOptions,
   type RecurringRow,
 } from "../categorize/index.js";
 import type { BudgetBook } from "./book.js";
@@ -23,7 +23,9 @@ export function subscriptionExclusions(registry: CoreRegistry): Set<string> {
 }
 
 /**
- * `detect_recurring` over the book: the non-internal rows in storage order, each row's stored
+ * The recurring-payments list over the book (`detectRecurringPayments`: the exact-amount
+ * `detect_recurring` plus amount drift, an extra charge in a month and two-month `subscriptions`
+ * merchants): the non-internal rows in storage order, each row's stored
  * category decision (`category_source` + `category`) as its decided claim; an undecided row is
  * categorized by the engine without the recurring signal (`ctx`: own IBANs of every account, the
  * profile's merchant rules and module payment patterns).
@@ -32,7 +34,7 @@ export function recurringPayments(
   book: BudgetBook,
   ctx: EngineContext,
   notSubscription: ReadonlySet<string>,
-  opts: RecurringOptions = {},
+  opts: RecurringListOptions = {},
 ): RecurringCandidate[] {
   const rows: RecurringRow[] = [];
   for (const t of book.transactions) {
@@ -50,7 +52,7 @@ export function recurringPayments(
         t.categorySource === null ? null : { category: t.category, source: t.categorySource },
     });
   }
-  return detectRecurring(rows, ctx, notSubscription, opts);
+  return detectRecurringPayments(rows, ctx, notSubscription, opts);
 }
 
 /**

@@ -78,9 +78,11 @@ export {
 } from "./reclassify.js";
 export {
   detectRecurring,
+  detectRecurringPayments,
   NOT_SUBSCRIPTION_CATEGORIES,
   type RecurringCandidate,
   type RecurringDates,
+  type RecurringListOptions,
   type RecurringMember,
   type RecurringOptions,
   type RecurringRow,
