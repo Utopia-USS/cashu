@@ -7,7 +7,6 @@ export const S = catalog({
     pl: "Konta bankowe, wydatki po kategoriach, przepływy i subskrypcje",
     en: "Bank accounts, expenses by category, cash flow and subscriptions",
   },
-  tabExpenses: { pl: "Wydatki", en: "Expenses" },
-  tabFlows: { pl: "Przepływy", en: "Cash flow" },
-  tabSubs: { pl: "Subskrypcje", en: "Subscriptions" },
+  /** The budget's one tab (expenses, cash flow and subscriptions on one screen). */
+  tab: { pl: "Budżet", en: "Budget" },
 });

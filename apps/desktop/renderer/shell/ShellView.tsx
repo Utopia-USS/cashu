@@ -31,18 +31,11 @@ export interface ShellViewProps {
 }
 
 // Navigation order of the Python app (core/registry.ts MODULES): budget | loans | investments, each module its
-// own group after Przegląd, with its tabs (budget: Wydatki | Przepływy | Subskrypcje, investments: Inwestycje |
-// Strategie). Majątek has no tab: it lives on Przegląd (its widget opens the Majątek page). Settings lives in
-// the profile menu, as there.
+// own group after Przegląd, with its tabs (budget: Budżet, one screen for expenses, cash flow and
+// subscriptions; investments: Inwestycje | Strategie). Majątek has no tab: it lives on Przegląd (its widget
+// opens the Majątek page). Settings lives in the profile menu, as there.
 const MODULE_TABS: readonly (readonly [string, readonly (readonly [string, () => string])[]])[] = [
-  [
-    "budget",
-    [
-      ["budget.expenses", () => BI.tabExpenses],
-      ["budget.flows", () => BI.tabFlows],
-      ["budget.subs", () => BI.tabSubs],
-    ],
-  ],
+  ["budget", [["budget.expenses", () => BI.tab]]],
   ["loans", [["loans", () => S.loans]]],
   [
     "investments",

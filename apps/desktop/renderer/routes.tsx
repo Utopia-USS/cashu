@@ -32,10 +32,8 @@ import { NotificationSignalFocus } from "./notificationFocusContext.js";
 import { AssetsStartScreen } from "./screens/assets/AssetsStartScreen.js";
 import { BankingSettingsPanel } from "./screens/banking/BankingSettingsPanel.js";
 import { BudgetActions } from "./screens/budget/actions/BudgetActions.js";
-import { ExpensesScreen } from "./screens/budget/expenses/ExpensesScreen.js";
-import { FlowsScreen } from "./screens/budget/flows/FlowsScreen.js";
+import { BudgetHomeScreen } from "./screens/budget/home/BudgetHomeScreen.js";
 import { BudgetStartScreen } from "./screens/budget/start/BudgetStartScreen.js";
-import { SubscriptionsScreen } from "./screens/budget/subs/SubscriptionsScreen.js";
 import { ClassificationPanel } from "./screens/classification/ClassificationPanel.js";
 import { DevicesScreen } from "./screens/devices/DevicesScreen.js";
 import { InvestmentsHomeLoading } from "./screens/investments/home/InvestmentsHomeScreen.js";
@@ -314,17 +312,6 @@ const search = z.object({
     .string()
     .regex(/^[0-9a-f]{32}$/)
     .optional(),
-  mode: z.enum(["month", "quarter", "year", "all"]).optional(),
-  anchor: z.number().int().min(0).max(120000).optional(),
-  gran: z.enum(["monthly", "quarterly", "yearly"]).optional(),
-  range: z.number().int().min(0).max(240).optional(),
-  month: z
-    .string()
-    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
-    .optional(),
-  drill: z.string().max(100).optional(),
-  sort: z.enum(["date", "amount"]).optional(),
-  order: z.enum(["asc", "desc"]).optional(),
   currency: z
     .string()
     .regex(/^[A-Z]{3}$/)
@@ -436,10 +423,31 @@ const budgetIndexRoute = createRoute({
     });
   },
 });
+/** The budget screen's search: the one period state (mode + anchor month), the currency, the drilled
+ * category and its sort. */
+const budgetSearch = search.extend({
+  mode: z.enum(["month", "quarter", "year", "all"]).optional(),
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional(),
+  drill: z.string().max(100).optional(),
+  sort: z.enum(["date", "amount"]).optional(),
+});
 const budgetRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/budget/$tab",
-  validateSearch: (raw) => search.parse(raw),
+  validateSearch: (raw) => budgetSearch.parse(raw),
+  // The former Przepływy and Subskrypcje tabs live on the one budget screen now: old links land there.
+  beforeLoad: ({ params, search: query }) => {
+    if (params.tab === "flows" || params.tab === "subs")
+      throw redirect({
+        to: "/$slug/budget/$tab",
+        params: { slug: params.slug, tab: "expenses" },
+        search: query,
+        replace: true,
+      });
+  },
   pendingComponent: () => (
     <p role="status" className="p-6">
       {S.waiting}
@@ -483,7 +491,7 @@ function BudgetRoute() {
   const vault = useProfile();
   const today = useCalendarDay();
   if (!budget) return <p className="p-6">{S.setup}</p>;
-  if (!["expenses", "flows", "subs"].includes(tab)) return <RouteFailure />;
+  if (tab !== "expenses") return <RouteFailure />;
   const change = (next: typeof filters) =>
     startTransition(() => {
       if (next.currency) budgetCurrencyByVault.set(vault, next.currency);
@@ -493,19 +501,15 @@ function BudgetRoute() {
         search: { ...next, vault },
       });
     });
-  // An enabled budget without data: its first tab is the module's first steps (old Shell `def.Start`).
-  const body =
-    tab === "expenses" && budget.setupState === "empty" ? (
-      <BudgetStartBound slug={slug} vault={vault} inSetupView={false} />
-    ) : tab === "flows" ? (
-      <FlowsScreen today={today} filters={filters} onFilters={change} />
-    ) : tab === "subs" ? (
-      <SubscriptionsScreen />
-    ) : (
-      <ExpensesScreen today={today} filters={filters} onFilters={change} />
-    );
+  // An enabled budget without data: its tab is the module's first steps (old Shell `def.Start`).
+  const empty = budget.setupState === "empty";
+  const body = empty ? (
+    <BudgetStartBound slug={slug} vault={vault} inSetupView={false} />
+  ) : (
+    <BudgetHomeScreen today={today} filters={filters} onFilters={change} />
+  );
   return (
-    <Page width="narrow" label={budgetTabLabel(tab)}>
+    <Page width={empty ? "narrow" : "wide"} label={BI.tab}>
       <ToastProvider>
         <Suspense fallback={<SkeletonTable rows={8} />}>
           <Fragment key={`${vault}:${privacy}`}>{body}</Fragment>
@@ -514,8 +518,6 @@ function BudgetRoute() {
     </Page>
   );
 }
-const budgetTabLabel = (tab: string) =>
-  tab === "flows" ? BI.tabFlows : tab === "subs" ? BI.tabSubs : BI.tabExpenses;
 
 /** `setup/budget`: the budget first steps in the page box (the budget's first tab stays lit). */
 function BudgetStartRoute({ slug, vault }: { slug: string; vault: string }) {

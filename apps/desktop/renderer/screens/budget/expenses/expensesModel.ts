@@ -1,16 +1,9 @@
-// Pure shaping of the Wydatki views (ab24ab6 Expenses.tsx / SpendingDonut.tsx): the period label, the donut slices
-// with the collapsed "Reszta" slice, the old palette, the drill rows with privacy masking.
+// Pure shaping of the budget's spending (ab24ab6 Expenses.tsx / SpendingDonut.tsx): the donut slices with the
+// collapsed "Reszta" slice in the old palette, and the privacy mask of names.
+import { type Decimal, D as dec } from "@cashu/domain";
 import { S as D } from "@cashu/i18n/budget/SpendingDonut.strings";
 import type { ChartColor, SpendingSlice } from "@cashu/ui";
-import { monthShort } from "@cashu/ui-logic/budget/logic";
 import { cur } from "@cashu/ui-logic/core/format";
-
-export type Mode = "month" | "quarter" | "year" | "all";
-export interface Period {
-  year?: number;
-  month?: number;
-  quarter?: number;
-}
 
 /** The old 22-colour PALETTE as chart colours (format.ts order). */
 const PALETTE: readonly ChartColor[] = Array.from(
@@ -19,32 +12,27 @@ const PALETTE: readonly ChartColor[] = Array.from(
 );
 
 const REST = "__rest__";
+const ZERO = dec("0.00");
 /** The masked text of names in privacy mode (native behaviour). */
 export const MASK = "•••";
-
-export function periodLabel(mode: Mode, period: Period, whole: string): string {
-  if (mode === "all") return whole;
-  if (mode === "month" && period.month) return `${monthShort(period.month)} ${period.year}`;
-  if (mode === "quarter" && period.quarter) return `Q${period.quarter} ${period.year}`;
-  if (mode === "year") return `${period.year ?? ""}`;
-  return "";
-}
 
 export interface SpendRow {
   category: string;
   label: string;
-  amount: number;
+  /** Positive magnitude in the one currency. */
+  amount: Decimal;
 }
 
-/** Legend / ring slices: categories of 1 % or less collapse into "Reszta" when there are two or more. */
+/** Legend / ring slices: categories of 1 % or less collapse into "Reszta" when there are two or more. Sums are
+ * exact; numbers are only the arcs' sizes and the shares. */
 export function spendingSlices(rows: readonly SpendRow[], currency: string) {
-  const total = rows.reduce((s, r) => s + r.amount, 0);
-  const pct = (a: number) => (total ? Math.round((a / total) * 100) : 0);
+  const total = rows.reduce((s, r) => s.add(r.amount), ZERO);
+  const pct = (a: Decimal) => (total.isZero() ? 0 : Math.round(a.div(total).toFloat() * 100));
   const slice = (r: SpendRow, color: ChartColor): SpendingSlice => ({
     key: r.category,
     label: r.label,
-    value: r.amount,
-    amount: cur(r.amount, currency),
+    value: r.amount.toFloat(),
+    amount: cur(r.amount.toFloat(), currency),
     share: `${pct(r.amount)}%`,
     color,
   });
@@ -54,11 +42,11 @@ export function spendingSlices(rows: readonly SpendRow[], currency: string) {
   const shown = collapsed ? big : rows;
   const slices = shown.map((r, i) => slice(r, PALETTE[i % PALETTE.length] ?? "palette-1"));
   if (collapsed) {
-    const rest = small.reduce((s, r) => s + r.amount, 0);
+    const rest = small.reduce((s, r) => s.add(r.amount), ZERO);
     slices.push({
       ...slice({ category: REST, label: D.rest, amount: rest }, "muted"),
       members: small.map((r) => slice(r, "muted")),
     });
   }
-  return { slices, total: cur(total, currency) };
+  return { slices, total: cur(total.toFloat(), currency) };
 }
