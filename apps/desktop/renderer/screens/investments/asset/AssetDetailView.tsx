@@ -16,6 +16,7 @@ import {
   PolDot,
   Seg,
   Select,
+  Spinner,
   TextField,
   tintInk,
   Widget,
@@ -29,7 +30,8 @@ export interface AssetDetailUi {
   lotsOpen: boolean;
   toggleLots(): void;
   /** Header actions (old AssetDetail props). */
-  onToggleWatch(): void;
+  /** Returns the toggle's promise (the button's spinner). */
+  onToggleWatch(): unknown;
   watchBusy: boolean;
   onAddTxn(): void;
   onTxns(): void;
@@ -42,9 +44,9 @@ export interface AssetDetailUi {
   /** `notatka` of a research signal / a reason line of the recommendation. */
   onOpenNote?(noteId: number | null, segment: string | null): void;
   /** `potwierdź` of one open signal, `Potwierdź` of all of them. */
-  onAck(id: number): void;
+  onAck(id: number): unknown;
   ackBusy(id: number): boolean;
-  onAckAll(): void;
+  onAckAll(): unknown;
   ackAllBusy: boolean;
   /** Dlaczego obserwuję: the draft while editing (null = reading). */
   note: {
@@ -55,7 +57,7 @@ export interface AssetDetailUi {
     onEdit(): void;
     onDraft(text: string): void;
     onCancel(): void;
-    onSave(): void;
+    onSave(): unknown;
   };
 }
 
@@ -128,6 +130,9 @@ function OpenSignalRow({
         )}
       </div>
       <div>
+        {!grouped && ui.ackBusy(s.id) && (
+          <Spinner className="mr-1.5 inline-block align-middle text-xs text-fg-muted" />
+        )}
         {!grouped && (
           <button
             type="button"
@@ -571,7 +576,7 @@ export function AssetDetailView({
               {C.cancel}
             </Button>
             <Button size="sm" variant="primary" disabled={n.busy} onPress={n.onSave}>
-              {n.busy ? S.saving : C.save}
+              {C.save}
             </Button>
           </div>
         </div>

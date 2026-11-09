@@ -393,9 +393,10 @@ export function useSettingsScreen(
     liveWorkspace.status === "ready"
       ? workspaceStatus(liveWorkspace.workspace)
       : { availability: "unavailable", reason: "checking" };
-  const [applying, setApplying] = useState(false);
+  // The workspace write in flight: the routine switch shows its own spinner, the buttons theirs.
+  const [applying, setApplying] = useState<"routine" | "write" | null>(null);
   const workspaceBusy =
-    applying ||
+    applying !== null ||
     liveWorkspace.status === "loading" ||
     (liveWorkspace.status === "ready" && liveWorkspace.checking);
   // Drafts of the folder field and the routine switch, per vault; null follows the live workspace.
@@ -451,7 +452,7 @@ export function useSettingsScreen(
       return;
     }
     workspaceApplying.current = true;
-    setApplying(true);
+    setApplying(run.routinePermissions === undefined ? "write" : "routine");
     try {
       const result = await apply.run({
         ...(path !== null ? { path } : {}),
@@ -494,7 +495,7 @@ export function useSettingsScreen(
       }
     } finally {
       workspaceApplying.current = false;
-      setApplying(false);
+      setApplying(null);
     }
   };
   const toggleModule = (id: string) => {
@@ -535,13 +536,19 @@ export function useSettingsScreen(
   };
   // "Sprawdzaj codziennie" lives in Electron main's update preferences; the switch shows
   // updateStatus.autoCheck, which main re-pushes after the change.
+  const [updatesAutoBusy, setUpdatesAutoBusy] = useState(false);
   const setUpdatesAuto = async (enabled: boolean) => {
-    const result = await update.run({ action: "auto", enabled });
-    setNotice(
-      result.status === "completed" && result.value.kind === "completed"
-        ? T.saved
-        : T.updatesUnavailable,
-    );
+    setUpdatesAutoBusy(true);
+    try {
+      const result = await update.run({ action: "auto", enabled });
+      setNotice(
+        result.status === "completed" && result.value.kind === "completed"
+          ? T.saved
+          : T.updatesUnavailable,
+      );
+    } finally {
+      setUpdatesAutoBusy(false);
+    }
   };
   const copyDataDir = async () => {
     if (hostInfo.availability !== "ready" || !hostInfo.dataDir) return;
@@ -597,6 +604,8 @@ export function useSettingsScreen(
     installConnector,
     onConnectorAction,
     workspaceBusy,
+    /** The routine switch's write is in flight (its spinner). */
+    routineSaving: applying === "routine",
     workspacePath,
     editingPath,
     routinePermissions,
@@ -625,6 +634,8 @@ export function useSettingsScreen(
     onDataDirCopied: copyDataDir,
     updater,
     updaterBusy: update.isPending,
+    /** The "check daily" switch's change is in flight (its spinner). */
+    updatesAutoBusy,
     onCheckUpdates: checkUpdates,
     onUpdatesAutoPicked: setUpdatesAuto,
     onThemePicked: setTheme,

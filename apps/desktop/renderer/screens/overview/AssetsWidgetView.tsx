@@ -90,7 +90,7 @@ export function AssetsWidgetView({
           )}
           <span className="flex-1" />
           {state.undone !== null && (
-            <Button variant="link" size="sm" onPress={() => void state.undo()}>
+            <Button variant="link" size="sm" onPress={state.undo}>
               {C.undo}
             </Button>
           )}
@@ -266,12 +266,17 @@ export function AssetDrawerView({
       onClose={state.close}
       footer={
         <>
-          <Button variant="primary" disabled={state.busy} onPress={() => void state.submit()}>
-            {state.busy ? A.saving : C.save}
+          <Button
+            variant="primary"
+            disabled={state.busy}
+            pending={state.saving}
+            onPress={state.submit}
+          >
+            {C.save}
           </Button>
           <Button onPress={state.close}>{C.cancel}</Button>
           {target !== null && (
-            <Button disabled={state.busy} onPress={() => void state.remove()}>
+            <Button disabled={state.busy} onPress={state.remove}>
               {C.remove}
             </Button>
           )}

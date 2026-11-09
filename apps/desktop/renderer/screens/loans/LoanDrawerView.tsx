@@ -26,7 +26,7 @@ export function LoanDrawerView({ state }: { state: LoansState }) {
           <span className="flex-1" />
           <Button onPress={state.close}>{C.cancel}</Button>
           <Button variant="primary" disabled={state.busy} onPress={state.loan.save}>
-            {state.busy ? S.saving : C.add}
+            {C.add}
           </Button>
         </>
       }

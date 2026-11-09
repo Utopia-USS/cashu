@@ -48,23 +48,22 @@ export function useRecoveryScreen(
     busy,
     canAct: bridge !== null,
     onCopy: () =>
-      void run(async () =>
+      run(async () =>
         report !== null && (await bridge?.copyPrompt(lang())) ? "copied" : "copyFailed",
       ),
-    onOpenFolder: () =>
-      void run(async () => ((await bridge?.openDataFolder()) ? null : "openFailed")),
+    onOpenFolder: () => run(async () => ((await bridge?.openDataFolder()) ? null : "openFailed")),
     onRetry: () =>
-      void run(async () => {
+      run(async () => {
         await bridge?.retry();
         return null;
       }),
     onContinueWithoutOldData: () =>
-      void run(async () => {
+      run(async () => {
         await bridge?.continueWithoutOldData();
         return null;
       }),
     onQuit: () =>
-      void run(async () => {
+      run(async () => {
         await bridge?.quit();
         return null;
       }),

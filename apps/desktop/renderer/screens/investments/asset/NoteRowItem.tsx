@@ -11,8 +11,8 @@ export function NoteRowItem({
 }: {
   n: NoteRowModel;
   onToggle(): void;
-  onRestore(): void;
-  onDismiss(): void;
+  onRestore(): unknown;
+  onDismiss(): unknown;
 }) {
   return (
     <NoteRow

@@ -73,7 +73,7 @@ export function loansStoryState(privacy: boolean): LoansState {
       errors: {},
       preview: previewText(136.26, 120, "PLN"),
       currencies: ["PLN", "EUR", "USD", "CHF"],
-      save: noop,
+      save: async () => {},
     },
     payment: {
       loans: [{ value: row.accountId, label: name }],
@@ -95,7 +95,7 @@ export function loansStoryState(privacy: boolean): LoansState {
           detail: DS.candidate(cur(136.26, "PLN"), 30, dmShort("2026-10-05")),
         },
       ],
-      send: noop,
+      send: async () => {},
     },
   };
 }

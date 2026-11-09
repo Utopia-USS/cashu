@@ -43,6 +43,7 @@ export const T = catalog({
     en: "The outcome is unknown. Check this operation before making more changes.",
   },
   completed: { pl: "Urządzenie usunięto.", en: "Device removed." },
+  working: { pl: "Trwa operacja…", en: "Working…" },
   failed: {
     pl: "Nie udało się dokończyć operacji. Sprawdź stan i spróbuj ponownie.",
     en: "The operation could not finish. Check its status and try again.",

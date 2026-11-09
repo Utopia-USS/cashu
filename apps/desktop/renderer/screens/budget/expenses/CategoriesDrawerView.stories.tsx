@@ -12,6 +12,7 @@ const ready: CategoriesDrawerState = {
       total: "120 zł",
       picked: "",
       saved: false,
+      saving: false,
       choose: () => {},
     },
   ],

@@ -7,7 +7,6 @@ export const S = catalog({
     en: "Fetch new transactions from banks (Enable Banking)",
   },
   syncTitleNone: { pl: "Brak kont bankowych do synchronizacji", en: "No bank accounts to sync" },
-  syncing: { pl: "Synchronizuję…", en: "Syncing…" },
   sync: { pl: "↻ Synchronizuj", en: "↻ Sync" },
   pendingTitle: {
     pl: "Import z konektora czeka na zatwierdzenie",

@@ -1,4 +1,6 @@
+import { Spinner } from "../feedback/Spinner.js";
 import type { ButtonProps } from "./Button.types.js";
+import { usePressPending } from "./usePressPending.js";
 
 // The Python app's buttons (old index.css): `.btn` (chip face), `.btn.primary`, `.btn.ghost`, `.lnk`
 // (underlined text link) and `.icon-btn` (bare glyph). Weight 400 like the old UA button font.
@@ -26,10 +28,12 @@ const linkSizes = { sm: "text-xs", md: "text-xs-plus", lg: "text-sm" } as const;
 const selected = "aria-pressed:border-accent aria-[current=page]:border-accent";
 const weights = { regular: "font-regular", strong: "font-strong" } as const;
 
-/** Action button with semantic intent, a selected look for toggles and tabs, and a visible keyboard focus ring. */
+/** Action button with semantic intent, a selected look for toggles and tabs, a visible keyboard focus ring and
+ * a busy state (spinner over the kept-width content) while its action runs. */
 export function Button({
   children,
   onPress,
+  pending,
   variant = "secondary",
   size = "md",
   weight = "regular",
@@ -49,20 +53,33 @@ export function Button({
       : variant === "icon" || variant === "glyph"
         ? ""
         : `${boxSizes[size]} ${selected}`;
+  const busy = usePressPending(onPress, pending);
+  // The running button keeps its full face (no disabled fade) and blocks presses itself; siblings that
+  // share the screen's busy flag still fade through `disabled`.
   return (
     <button
       ref={ref}
       type={type}
-      disabled={disabled}
-      onClick={onPress}
+      disabled={disabled && !busy.inFlight}
+      onClick={busy.inFlight ? (e) => e.preventDefault() : busy.press}
+      aria-busy={busy.inFlight || undefined}
+      aria-disabled={busy.inFlight || undefined}
       aria-label={label}
       aria-pressed={pressed}
       aria-current={current}
       aria-expanded={expanded}
       title={title}
-      className={`${variants[variant]} ${sized} ${weights[weight]} ${className}`}
+      className={`${variants[variant]} ${sized} ${weights[weight]} ${busy.inFlight ? "cursor-progress" : ""} ${className}`}
     >
-      {children}
+      {busy.visible ? (
+        <span className="relative inline-grid place-items-center align-bottom">
+          {/* opacity, not visibility: the label stays the button's accessible name while it runs */}
+          <span className="col-start-1 row-start-1 opacity-0">{children}</span>
+          <Spinner immediate className="col-start-1 row-start-1" />
+        </span>
+      ) : (
+        children
+      )}
     </button>
   );
 }

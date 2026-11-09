@@ -24,8 +24,9 @@ export interface TopicDrawerActions {
   onEdit(): void;
   onCancel(): void;
   onField(key: keyof TopicEdit, value: string): void;
-  onSave(): void;
-  onConfirm(): void;
+  /** Returns the save's promise (the button's spinner). */
+  onSave(): unknown;
+  onConfirm(): unknown;
 }
 
 const empty = "text-sm text-fg-muted";

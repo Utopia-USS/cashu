@@ -42,6 +42,7 @@ const state: CashDrawerViewProps["state"] = {
   categories: [{ key: "groceries", label: "Groceries" }],
   error: null,
   busy: false,
+  adding: false,
   setOpen: () => {},
   setAmount: () => {},
   setTitle: () => {},

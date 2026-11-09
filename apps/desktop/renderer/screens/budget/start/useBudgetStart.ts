@@ -23,7 +23,7 @@ interface StepAction {
   label: string;
   primary: boolean;
   disabled?: boolean;
-  onPress(): void;
+  onPress(): unknown;
 }
 
 export function useBudgetStart(args: { today: IsoDate; inSetupView: boolean; onExpenses(): void }) {
@@ -79,10 +79,10 @@ export function useBudgetStart(args: { today: IsoDate; inSetupView: boolean; onE
     tr?.status === "on"
       ? [
           {
-            label: busy ? S.matching : S.match,
+            label: S.match,
             primary: true,
             disabled: busy,
-            onPress: () => void match(),
+            onPress: match,
           },
         ]
       : [];

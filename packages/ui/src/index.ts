@@ -70,6 +70,7 @@ export { Skeleton, type SkeletonProps } from "./feedback/Skeleton.js";
 export { SkeletonChart, type SkeletonChartProps } from "./feedback/SkeletonChart.js";
 export { SkeletonKpis, type SkeletonKpisProps } from "./feedback/SkeletonKpis.js";
 export { SkeletonTable, type SkeletonTableProps } from "./feedback/SkeletonTable.js";
+export { Spinner, type SpinnerProps } from "./feedback/Spinner.js";
 export { type ToastAction, ToastProvider, useToast, useToastClose } from "./feedback/Toast.js";
 export {
   Grid,

@@ -23,12 +23,13 @@ export interface RecoveryViewProps {
   readonly busy: boolean;
   /** The main-process bridge is present. */
   readonly canAct: boolean;
-  readonly onCopy: () => void;
-  readonly onOpenFolder: () => void;
-  readonly onRetry: () => void;
+  /** Each action resolves when main has answered (its button shows a spinner until then). */
+  readonly onCopy: () => Promise<void>;
+  readonly onOpenFolder: () => Promise<void>;
+  readonly onRetry: () => Promise<void>;
   /** Old app data only: go on to first-run setup without it. */
-  readonly onContinueWithoutOldData: () => void;
-  readonly onQuit: () => void;
+  readonly onContinueWithoutOldData: () => Promise<void>;
+  readonly onQuit: () => Promise<void>;
 }
 
 const NOTICE: Record<RecoveryNotice, () => string> = {

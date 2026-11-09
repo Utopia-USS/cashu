@@ -276,6 +276,9 @@
      hover (design/desktop/overview/layered-tiles.html). */
   --ease-tile: cubic-bezier(0.16, 1, 0.3, 1);
   --animate-tile-in: tile-in 0.56s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  /* A spinner outside a button fades in only after 150ms, so a fast action never flashes it (the busy
+     Button delays its own spinner in code and also holds it). */
+  --animate-spinner-in: scrim-in 0.15s ease-out 0.15s both;
 
   @keyframes tile-in {
     from {

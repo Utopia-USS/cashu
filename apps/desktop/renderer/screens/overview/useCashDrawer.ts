@@ -93,6 +93,8 @@ export function useCashDrawer() {
     categories,
     error,
     busy: add.isPending || remove.isPending,
+    /** The quick add is being saved (the `Dodaj` submit button's spinner). */
+    adding: add.isPending,
     setOpen,
     setAmount,
     setTitle,

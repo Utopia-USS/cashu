@@ -98,18 +98,15 @@ export function useStrategySettings(o: StrategySettingsOptions) {
   const copyPath = (path: string, name: string) => {
     void copyText(path, () => toast(H.pathCopied(name), 2000));
   };
-  const onInit = () => {
-    void writes
-      .init()
-      .then((failure) =>
-        failure === null ? toast(S.created, 3000) : toast(S.createFailed(failure), 4000),
-      );
+  const onInit = async () => {
+    const failure = await writes.init();
+    if (failure === null) toast(S.created, 3000);
+    else toast(S.createFailed(failure), 4000);
   };
-  const onReload = () => {
-    void writes.reload().then((r) => {
-      if ("error" in r) toast(S.loadFailed(r.error), 4000);
-      else toast(r.version != null ? S.loaded(r.version) : S.noFile, 2500);
-    });
+  const onReload = async () => {
+    const r = await writes.reload();
+    if ("error" in r) toast(S.loadFailed(r.error), 4000);
+    else toast(r.version != null ? S.loaded(r.version) : S.noFile, 2500);
   };
   const onProposal = (gid: string) => o.onProposalOpened?.(gid);
   const popover = !s

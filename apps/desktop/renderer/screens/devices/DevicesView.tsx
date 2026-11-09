@@ -1,4 +1,4 @@
-import { Button } from "@cashu/ui";
+import { Button, Spinner } from "@cashu/ui";
 import { T } from "./Devices.strings.js";
 import { LeaderAction } from "./LeaderAction.js";
 import type { DevicesScreenState } from "./useDevicesScreen.js";
@@ -136,7 +136,7 @@ export function DevicesView({
       {!state.preview && (
         <Button
           disabled={!state.target || state.status === "busy" || reviewBlocked}
-          onPress={() => void state.review()}
+          onPress={state.review}
         >
           {T.preview}
         </Button>
@@ -181,7 +181,7 @@ export function DevicesView({
             </fieldset>
           )}
           {state.selectionDirty && (
-            <Button disabled={state.status === "busy"} onPress={() => void state.review()}>
+            <Button disabled={state.status === "busy"} onPress={state.review}>
               {T.refreshSelection}
             </Button>
           )}
@@ -227,15 +227,21 @@ export function DevicesView({
                 !state.phrase ||
                 (state.preview.localStartConfirmationRequired && !state.localAck)
               }
-              onPress={() => void state.commit()}
+              onPress={state.commit}
             >
               {T.remove}
             </Button>
-            <Button disabled={state.status === "busy"} onPress={() => void state.cancel()}>
+            <Button disabled={state.status === "busy"} onPress={state.cancel}>
               {T.cancel}
             </Button>
           </div>
         </div>
+      )}
+      {state.status === "busy" && (
+        <p role="status" className="flex items-center gap-1.5">
+          <Spinner />
+          {T.working}
+        </p>
       )}
       {state.status === "completed" && <p role="status">{T.completed}</p>}
       {state.status === "failed" && (
@@ -243,7 +249,7 @@ export function DevicesView({
       )}
       {state.status === "unknown" && <p role="alert">{T.unknown}</p>}
       {state.status === "unknown" && state.operationId && (
-        <Button onPress={() => void state.inspect()}>{T.inspect}</Button>
+        <Button onPress={state.inspect}>{T.inspect}</Button>
       )}
     </div>
   );

@@ -46,8 +46,8 @@ const raw = (kind: ProposalDetail["kind"], message: ProposalDrawerState["message
     busy: false,
     message,
     failure: "",
-    onApproved() {},
-    onRejected() {},
+    async onApproved() {},
+    async onRejected() {},
   }) as ProposalDrawerState;
 const state = (kind: ProposalDetail["kind"], message: ProposalDrawerState["message"] = null) =>
   proposalDrawerModel(raw(kind, message));

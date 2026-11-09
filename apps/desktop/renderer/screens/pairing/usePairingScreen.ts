@@ -242,8 +242,8 @@ export function usePairingScreen(): PairingViewState {
       expiresAt: new Date(invite.expiresAt).toLocaleTimeString(),
       code,
       onCodeChange: setCode,
-      onConfirm: () => void confirm(),
-      onCancel: () => void cancel(),
+      onConfirm: confirm,
+      onCancel: cancel,
       canCopy: !!navigator.clipboard?.writeText,
       onCopy: () => {
         if (navigator.clipboard?.writeText)
@@ -251,11 +251,11 @@ export function usePairingScreen(): PairingViewState {
       },
       submitting,
     };
-  if (phase === "unknown") return { kind: "unknown", onInspect: () => void inspectCurrent() };
+  if (phase === "unknown") return { kind: "unknown", onInspect: inspectCurrent };
   if (phase === "creating") return { kind: "creating" };
   if (phase === "checking") return { kind: "checking" };
-  if (phase === "completed") return { kind: "completed", onCreate: () => void create() };
-  if (phase === "refused") return { kind: "refused", onCreate: () => void create() };
-  if (phase === "expired") return { kind: "expired", onCreate: () => void create() };
-  return { kind: "idle", onCreate: () => void create() };
+  if (phase === "completed") return { kind: "completed", onCreate: create };
+  if (phase === "refused") return { kind: "refused", onCreate: create };
+  if (phase === "expired") return { kind: "expired", onCreate: create };
+  return { kind: "idle", onCreate: create };
 }

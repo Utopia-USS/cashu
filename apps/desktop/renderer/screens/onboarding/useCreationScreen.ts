@@ -487,35 +487,28 @@ export function useCreationScreen(options: CreationScreenOptions) {
       setWorkspacePath(path);
     },
     onRoutinePermissionsChanged: setRoutinePermissions,
-    onWorkspaceApply: () => void applyWorkspace(),
-    onWorkspaceInspect: () => {
+    onWorkspaceApply: applyWorkspace,
+    onWorkspaceInspect: async () => {
       const locator = verified.current;
       const generation = lifetime.current;
-      if (locator && !actionBusy.current) {
-        actionBusy.current = true;
-        void (async () => {
-          try {
-            if (await reverifyWorkspaceOwner(locator, generation))
-              await inspectWorkspace(locator, generation);
-          } finally {
-            if (isCurrent(generation)) actionBusy.current = false;
-          }
-        })();
+      if (!locator || actionBusy.current) return;
+      actionBusy.current = true;
+      try {
+        if (await reverifyWorkspaceOwner(locator, generation))
+          await inspectWorkspace(locator, generation);
+      } finally {
+        if (isCurrent(generation)) actionBusy.current = false;
       }
     },
-    onWorkspaceSkip: () => {
+    onWorkspaceSkip: async () => {
       const locator = verified.current;
       const generation = lifetime.current;
-      if (locator && !actionBusy.current) {
-        actionBusy.current = true;
-        void (async () => {
-          try {
-            if (await reverifyWorkspaceOwner(locator, generation))
-              await complete(locator, generation);
-          } finally {
-            if (isCurrent(generation)) actionBusy.current = false;
-          }
-        })();
+      if (!locator || actionBusy.current) return;
+      actionBusy.current = true;
+      try {
+        if (await reverifyWorkspaceOwner(locator, generation)) await complete(locator, generation);
+      } finally {
+        if (isCurrent(generation)) actionBusy.current = false;
       }
     },
     onNext: () => {
@@ -527,10 +520,10 @@ export function useCreationScreen(options: CreationScreenOptions) {
       if (phase === "modules") setPhase("profile");
       if (phase === "privacy") setPhase("modules");
     },
-    onPrepare: () => void form.handleSubmit(),
+    onPrepare: () => form.handleSubmit(),
     onBackupConfirmed: setBackupConfirmed,
-    onCommit: () => void commit(),
-    onCheckStatus: () => void checkStatus(),
+    onCommit: commit,
+    onCheckStatus: checkStatus,
     onRestart: () => {
       if (phase !== "restart_possible") return;
       attempt.current = null;

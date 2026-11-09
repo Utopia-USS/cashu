@@ -128,7 +128,6 @@ export const S = catalog({
     en: (err: string) => `Could not save: ${err}`,
   },
   whyWatch: { pl: "Dlaczego obserwuję", en: "Why I watch it" },
-  saving: { pl: "Zapisuję…", en: "Saving…" },
   noNote: { pl: "Brak notatki.", en: "No note." },
 
   // open signals

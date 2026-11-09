@@ -90,8 +90,8 @@ export interface TopicDrawerUi {
   err: string | null;
   openNote: number | null;
   onToggleNote(id: number): void;
-  onDismiss(n: ResearchNote): void;
-  onRestore(n: ResearchNote): void;
+  onDismiss(n: ResearchNote): unknown;
+  onRestore(n: ResearchNote): unknown;
   onOpenAsset(id: number): void;
 }
 
@@ -162,7 +162,7 @@ export interface TopicDrawerModel {
       };
   notes: {
     count: number | undefined;
-    rows: (NoteRowModel & { onToggle(): void; onDismiss(): void; onRestore(): void })[];
+    rows: (NoteRowModel & { onToggle(): void; onDismiss(): unknown; onRestore(): unknown })[];
   };
 }
 
@@ -193,7 +193,7 @@ function thesisModel(t: TopicThesis | null, ui: TopicDrawerUi): ThesisModel {
               : []),
           ],
           cancel: C.cancel,
-          save: ui.busy ? S.saving : C.save,
+          save: C.save,
         }
       : null,
     view: e

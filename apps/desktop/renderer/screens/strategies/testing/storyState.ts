@@ -89,7 +89,7 @@ export const settingsState: StrategySettingsState = {
     tag: { key: "none", text: "none", tone: "warning" },
     fromTemplate: "Create from a template",
     copyCommand: "Copy /investments-setup",
-    onInit: noop,
+    onInit: async () => {},
     onCopyCommand: noop,
     notice: null,
   },

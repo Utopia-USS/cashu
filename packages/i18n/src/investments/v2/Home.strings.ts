@@ -87,7 +87,6 @@ export const S = catalog({
   saved: { pl: "zapisana", en: "saved" },
   recommended: { pl: "zalecana", en: "recommended" },
   orInterview: { pl: " albo wywiad w Claude Code: ", en: " or an interview in Claude Code: " },
-  creating: { pl: "Tworzę…", en: "Creating…" },
   fromTemplate: { pl: "Utwórz z szablonu", en: "Create from template" },
   firstTxn: { pl: "Pierwsza wpłata lub zakup", en: "First contribution or purchase" },
   firstTxnHint: {

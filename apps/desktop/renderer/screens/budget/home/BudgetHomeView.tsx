@@ -7,7 +7,17 @@
 import { S as H } from "@cashu/i18n/budget/BudgetHome.strings";
 import { S as E } from "@cashu/i18n/budget/Expenses.strings";
 import { S as MC } from "@cashu/i18n/budget/MonthClose.strings";
-import { Button, MeterRows, Seg, Select, Skeleton, StatementFigure, Tag, Widget } from "@cashu/ui";
+import {
+  Button,
+  MeterRows,
+  Seg,
+  Select,
+  Skeleton,
+  Spinner,
+  StatementFigure,
+  Tag,
+  Widget,
+} from "@cashu/ui";
 import { type ReactNode, useState } from "react";
 import { AfterMonthTile, SubscriptionsTile, UncategorizedTile } from "./BudgetRailView.js";
 import type { PeriodMode } from "./budgetHomeModel.js";
@@ -300,7 +310,12 @@ function DrillTile({ drill }: { drill: DrillState }) {
         </span>
       }
       label={drill.label}
-      tags={<span className="text-sm text-fg-muted">{drill.meta}</span>}
+      tags={
+        <span className="inline-flex items-center gap-2 text-sm text-fg-muted">
+          {drill.meta}
+          {drill.busy && <Spinner />}
+        </span>
+      }
       controls={
         <>
           <Seg<"date" | "amount">

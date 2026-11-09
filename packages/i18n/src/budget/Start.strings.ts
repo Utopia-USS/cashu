@@ -32,7 +32,6 @@ export const S = catalog({
   review: { pl: "Przejrzyj", en: "Review" },
   expensesLink: { pl: "Wydatki →", en: "Expenses →" },
   transfersTitle: { pl: "Przelewy między kontami", en: "Transfers between accounts" },
-  matching: { pl: "Dopasowuję…", en: "Matching…" },
   match: { pl: "Dopasuj", en: "Match" },
   title: { pl: "Budżet domowy", en: "Home budget" },
   importedN: {

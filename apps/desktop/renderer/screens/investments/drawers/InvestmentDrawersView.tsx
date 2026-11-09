@@ -68,7 +68,7 @@ export function TxnDrawerView({ state: s }: { state: TxnDrawerState }) {
           <span className="flex-1" />
           <Button onPress={s.onClose}>{C.cancel}</Button>
           <Button variant="primary" disabled={s.saveDisabled} onPress={s.onSave}>
-            {s.busy ? S.saving : C.save}
+            {C.save}
           </Button>
         </>
       }
@@ -172,7 +172,7 @@ export function AccountDrawerView({ state: s }: { state: AccountDrawerState }) {
           <span className="flex-1" />
           <Button onPress={s.onClose}>{C.cancel}</Button>
           <Button variant="primary" disabled={s.busy} onPress={s.onSave}>
-            {s.busy ? S.saving : C.add}
+            {C.add}
           </Button>
         </>
       }
@@ -236,7 +236,7 @@ export function ThesisDrawerView({ state: s }: { state: ThesisDrawerState }) {
           <span className="flex-1" />
           <Button onPress={s.onClose}>{C.cancel}</Button>
           <Button variant="primary" disabled={s.saveDisabled} onPress={s.onSave}>
-            {s.busy ? S.saving : C.save}
+            {C.save}
           </Button>
         </>
       }

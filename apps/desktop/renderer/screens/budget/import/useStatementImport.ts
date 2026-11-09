@@ -337,14 +337,14 @@ export function useStatementImport(input: StatementImportInput) {
           ? {
               kind: "file" as const,
               back: S.back,
-              run: busy ? S.checking : S.preview,
+              run: S.preview,
               runDisabled: file === null || busy,
             }
           : step === 2 && preview
             ? {
                 kind: "preview" as const,
                 back: S.back,
-                commit: busy ? S.importing : S.importN(counts?.new ?? 0),
+                commit: S.importN(counts?.new ?? 0),
                 commitDisabled: busy || !counts?.new,
               }
             : { kind: "done" as const, close: C.close },
@@ -360,12 +360,8 @@ export function useStatementImport(input: StatementImportInput) {
       input.onClose();
       input.onInstructions();
     },
-    onPreview: () => {
-      void runPreview();
-    },
-    onCommit: () => {
-      void commit();
-    },
+    onPreview: runPreview,
+    onCommit: commit,
   };
 }
 export type StatementImportState = ReturnType<typeof useStatementImport>;

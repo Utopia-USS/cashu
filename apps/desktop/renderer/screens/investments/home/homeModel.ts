@@ -270,7 +270,8 @@ interface StartAction {
   label: string;
   primary: boolean;
   disabled?: boolean;
-  onPress(): void;
+  /** May return the action's promise: the button shows its spinner until it settles. */
+  onPress(): unknown;
 }
 interface StartStep {
   key: string;
@@ -295,7 +296,7 @@ export function startModel(input: {
   hasTxn: boolean;
   initBusy: boolean;
   onAddAccount(): void;
-  onInitStrategy(): void;
+  onInitStrategy(): unknown;
   onAddTxn(): void;
 }): StartModel {
   const { accounts, strategy } = input;
@@ -332,7 +333,7 @@ export function startModel(input: {
           ? []
           : [
               {
-                label: input.initBusy ? S.creating : S.fromTemplate,
+                label: S.fromTemplate,
                 primary: hasAccount,
                 disabled: input.initBusy,
                 onPress: input.onInitStrategy,

@@ -122,5 +122,4 @@ export const S = catalog({
     en: "Choose whether the agent sees amounts.",
   },
   next: { pl: "Dalej →", en: "Next →" },
-  creatingWorkspace: { pl: "Tworzę workspace…", en: "Creating the workspace…" },
 });

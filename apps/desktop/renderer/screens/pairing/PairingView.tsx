@@ -1,10 +1,10 @@
-import { Button } from "@cashu/ui";
+import { Button, Spinner } from "@cashu/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { T } from "./Pairing.strings.js";
 
 export type PairingViewState =
   | { kind: "unavailable" }
-  | { kind: "idle"; onCreate(): void }
+  | { kind: "idle"; onCreate(): Promise<void> }
   | { kind: "creating" }
   | {
       kind: "invited";
@@ -12,16 +12,16 @@ export type PairingViewState =
       expiresAt: string;
       code: string;
       onCodeChange(code: string): void;
-      onConfirm(): void;
-      onCancel(): void;
+      onConfirm(): Promise<void>;
+      onCancel(): Promise<void>;
       onCopy(): void;
       canCopy: boolean;
       submitting: boolean;
     }
   | { kind: "checking" }
-  | { kind: "unknown"; onInspect(): void }
-  | { kind: "completed"; onCreate(): void }
-  | { kind: "refused" | "expired"; onCreate(): void };
+  | { kind: "unknown"; onInspect(): Promise<void> }
+  | { kind: "completed"; onCreate(): Promise<void> }
+  | { kind: "refused" | "expired"; onCreate(): Promise<void> };
 
 export function PairingView({ state }: { state: PairingViewState }) {
   return (
@@ -31,7 +31,12 @@ export function PairingView({ state }: { state: PairingViewState }) {
       </h2>
       <p>{T.intro}</p>
       {state.kind === "unavailable" && <p role="status">{T.unavailable}</p>}
-      {state.kind === "creating" && <p role="status">{T.checking}</p>}
+      {state.kind === "creating" && (
+        <p role="status" className="flex items-center gap-1.5">
+          <Spinner />
+          {T.checking}
+        </p>
+      )}
       {state.kind === "invited" && (
         <div className="grid gap-4">
           <div role="img" aria-label={T.qrLabel}>
@@ -74,7 +79,12 @@ export function PairingView({ state }: { state: PairingViewState }) {
           </div>
         </div>
       )}
-      {state.kind === "checking" && <p role="status">{T.checking}</p>}
+      {state.kind === "checking" && (
+        <p role="status" className="flex items-center gap-1.5">
+          <Spinner />
+          {T.checking}
+        </p>
+      )}
       {state.kind === "unknown" && (
         <div className="grid gap-2">
           <p role="alert">{T.unknown}</p>

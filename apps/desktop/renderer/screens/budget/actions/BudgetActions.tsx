@@ -101,10 +101,11 @@ export function BudgetActions(props: BudgetActionsProps) {
       </Button>
       <Button
         disabled={busy || banking.sessions === 0}
+        pending={busy}
         title={banking.sessions ? S.syncTitleBanks : S.syncTitleNone}
-        onPress={() => void sync()}
+        onPress={sync}
       >
-        {busy ? S.syncing : S.sync}
+        {S.sync}
       </Button>
       {open && (
         <StatementImport

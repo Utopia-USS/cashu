@@ -95,12 +95,10 @@ export function useStrategiesScreen(o: StrategiesScreenOptions) {
     hint: main ? S.mainMissing : S.noneHint,
     fromTemplate: S.fromTemplate,
     copyCommand: S.copyCommand,
-    onTemplate: () => {
-      void writes
-        .init()
-        .then((failure) =>
-          failure === null ? toast(S.created, 3000) : toast(S.createFailed(failure), 4000),
-        );
+    onTemplate: async () => {
+      const failure = await writes.init();
+      if (failure === null) toast(S.created, 3000);
+      else toast(S.createFailed(failure), 4000);
     },
     onCopyCommand: () => {
       void copyText("/investments-setup", () => toast(S.commandCopied, 2000));

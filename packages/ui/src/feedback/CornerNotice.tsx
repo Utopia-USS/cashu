@@ -1,10 +1,13 @@
 import { C } from "@cashu/i18n/core/common.strings";
 import type { ReactNode } from "react";
+import { usePressPending } from "../controls/usePressPending.js";
+import { Spinner } from "./Spinner.js";
 
 export interface CornerNoticeAction {
   label: string;
-  /** A button; with `href` the action is a link that opens a new window instead. */
-  onPress?: () => void;
+  /** A button; with `href` the action is a link that opens a new window instead. When it returns a
+   * promise, the button is busy until it settles (a spinner over its label, further presses ignored). */
+  onPress?: () => unknown;
   href?: string;
   primary?: boolean;
   title?: string;
@@ -96,16 +99,7 @@ export function CornerNotice({
                   {item.label}
                 </a>
               ) : (
-                <button
-                  key={item.label}
-                  type="button"
-                  className={look}
-                  title={item.title}
-                  disabled={item.disabled}
-                  onClick={item.onPress}
-                >
-                  {item.label}
-                </button>
+                <ActionButton key={item.label} item={item} className={look} />
               );
             })}
           </div>
@@ -131,5 +125,29 @@ export function CornerNotice({
         </button>
       )}
     </aside>
+  );
+}
+
+/** One action button; busy (spinner over the kept-width label) while its press promise runs. */
+function ActionButton({ item, className }: { item: CornerNoticeAction; className: string }) {
+  const busy = usePressPending(item.onPress, undefined);
+  return (
+    <button
+      type="button"
+      className={`${className} ${busy.inFlight ? "cursor-progress" : ""}`}
+      title={item.title}
+      disabled={item.disabled && !busy.inFlight}
+      aria-busy={busy.inFlight || undefined}
+      onClick={busy.press}
+    >
+      {busy.visible ? (
+        <span className="relative inline-grid place-items-center align-bottom">
+          <span className="col-start-1 row-start-1 opacity-0">{item.label}</span>
+          <Spinner immediate className="col-start-1 row-start-1" />
+        </span>
+      ) : (
+        item.label
+      )}
+    </button>
   );
 }

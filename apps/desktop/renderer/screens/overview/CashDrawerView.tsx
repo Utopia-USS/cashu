@@ -81,7 +81,7 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
             onChange={state.setCategory}
             options={state.categories.map((o) => ({ value: o.key, label: o.label }))}
           />
-          <Button variant="primary" type="submit" disabled={state.busy}>
+          <Button variant="primary" type="submit" disabled={state.busy} pending={state.adding}>
             {C.add}
           </Button>
         </form>
@@ -128,7 +128,7 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
                         title={C.remove}
                         label={`${C.remove}: ${privacy ? K.cash : t.title || K.cash}`}
                         disabled={state.busy}
-                        onPress={() => void state.deleteRow(t.gid)}
+                        onPress={() => state.deleteRow(t.gid)}
                       >
                         {REMOVE}
                       </Button>

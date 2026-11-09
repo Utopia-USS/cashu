@@ -33,7 +33,8 @@ interface Run {
 export type Rich = readonly Run[];
 export interface Link {
   label: string;
-  onPress(): void;
+  /** May return the action's promise: the button shows its spinner until it settles. */
+  onPress(): unknown;
 }
 /** A fact whose detail may carry toned runs (the investments hero fact). */
 export interface RichFact extends Omit<FactProps, "detail"> {
@@ -380,7 +381,7 @@ export function accountsModel(args: {
           title: R.confirmTitle,
           text: R.confirmText(removal.asked.name),
           error: removal.error,
-          confirm: { label: R.confirm, onPress: () => void removal.confirm() },
+          confirm: { label: R.confirm, onPress: removal.confirm },
           cancel: { label: R.cancel, onPress: removal.cancel },
         }
       : null,
@@ -389,7 +390,7 @@ export function accountsModel(args: {
         ? {
             text: R.removed(removal.undone.name),
             error: removal.asked ? null : removal.error,
-            undo: { label: R.undo, onPress: () => void removal.undo() },
+            undo: { label: R.undo, onPress: removal.undo },
           }
         : null,
   };

@@ -1,4 +1,4 @@
-import { Button } from "@cashu/ui";
+import { Button, Spinner } from "@cashu/ui";
 import { T } from "./Devices.strings.js";
 import type { LeaderActionState } from "./useLeaderAction.js";
 
@@ -64,7 +64,7 @@ export function LeaderAction({ state }: { state: LeaderActionState }) {
       {!preview && (
         <Button
           disabled={!target || blocked || status === "busy" || status === "unknown"}
-          onPress={() => void review()}
+          onPress={review}
         >
           {T.repinReview}
         </Button>
@@ -84,22 +84,23 @@ export function LeaderAction({ state }: { state: LeaderActionState }) {
             />
           </label>
           <div className="flex gap-2">
-            <Button
-              disabled={typed !== preview.confirmationText || expired}
-              onPress={() => void commit()}
-            >
+            <Button disabled={typed !== preview.confirmationText || expired} onPress={commit}>
               {T.repinCommit}
             </Button>
             <Button onPress={cancel}>{T.cancel}</Button>
           </div>
         </div>
       )}
+      {status === "busy" && (
+        <p role="status" className="flex items-center gap-1.5">
+          <Spinner />
+          {T.working}
+        </p>
+      )}
       {status === "completed" && <p role="status">{T.repinCompleted}</p>}
       {status === "failed" && <p role="alert">{T.failed}</p>}
       {status === "unknown" && <p role="alert">{T.unknown}</p>}
-      {status === "unknown" && operationId && (
-        <Button onPress={() => void inspect()}>{T.inspect}</Button>
-      )}
+      {status === "unknown" && operationId && <Button onPress={inspect}>{T.inspect}</Button>}
     </section>
   );
 }

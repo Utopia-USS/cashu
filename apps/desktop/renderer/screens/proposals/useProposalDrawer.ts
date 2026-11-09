@@ -123,8 +123,8 @@ export function useProposalDrawer(
     busy: busy || review.isPending,
     message,
     failure: proposalError(detail?.result)?.text ?? "",
-    onApproved: () => void act("approve"),
-    onRejected: () => void act("reject"),
+    onApproved: () => act("approve"),
+    onRejected: () => act("reject"),
   };
 }
 export type ProposalDrawerState = ReturnType<typeof useProposalDrawer>;

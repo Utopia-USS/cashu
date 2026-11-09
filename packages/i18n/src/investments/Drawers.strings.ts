@@ -20,7 +20,6 @@ export const S = catalog({
     en: (m: string) => `Effect on cash: ${m}`,
   },
   noCashEffect: { pl: "bez wpływu na gotówkę", en: "no effect on cash" },
-  saving: { pl: "Zapisuję…", en: "Saving…" },
   notSaved: { pl: (e: string) => `Nie zapisano: ${e}`, en: (e: string) => `Not saved: ${e}` },
   account: { pl: "Rachunek", en: "Account" },
   optional: { pl: " (opcjonalnie)", en: " (optional)" },

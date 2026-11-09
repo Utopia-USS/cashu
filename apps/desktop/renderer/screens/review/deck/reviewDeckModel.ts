@@ -73,6 +73,8 @@ export interface DecideItemModel {
   why: string;
   context: string | null;
   choice: string | null;
+  /** The answer is being written (the row's spinner). */
+  pending: boolean;
   actions: DecideActionModel[];
 }
 export interface IdeaModel {
@@ -387,6 +389,7 @@ function decide(c: CardContext): CardModel {
       why: d.why,
       context: d.context || null,
       choice,
+      pending: c.pending === d.key,
       // No answer is highlighted (the card never suggests a trade); a proposal's only one is.
       actions: d.actions.map((a, k) => ({
         action: a.action,

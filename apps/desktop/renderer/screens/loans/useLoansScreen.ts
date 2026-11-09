@@ -262,9 +262,7 @@ export function useLoansScreen(today: string) {
       errors: touched ? errors : {},
       preview,
       currencies: [...new Set([base, "PLN", "EUR", "USD", "CHF"])],
-      save: (): void => {
-        void saveLoan();
-      },
+      save: saveLoan,
     },
     payment: {
       loans: rows.map((r, k) => ({ value: r.accountId, label: loanName(r, k, privacy) })),
@@ -287,9 +285,7 @@ export function useLoansScreen(today: string) {
         payee: c.payee,
         detail: DS.candidate(cur(Math.abs(c.amount), c.currency), c.gap_days, dmShort(c.last)),
       })),
-      send: (value: string): void => {
-        void sendPayment(value);
-      },
+      send: sendPayment,
     },
   };
 }

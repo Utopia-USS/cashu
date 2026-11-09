@@ -130,7 +130,7 @@ export function ShellView({
                 actions={actions}
                 title={S.profile}
                 menuLabel={T.profiles}
-                disabled={state.isSwitching}
+                pending={state.isSwitching}
               />
             }
             actions={

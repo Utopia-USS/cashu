@@ -1,4 +1,4 @@
-import { Button, Select } from "@cashu/ui";
+import { Button, Select, Spinner } from "@cashu/ui";
 import { B } from "./Banking.strings.js";
 import type { useBankingScreen } from "./useBankingScreen.js";
 
@@ -107,7 +107,7 @@ export function BankingView({
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" disabled={screen.busy} onPress={() => void screen.check()}>
+              <Button type="button" disabled={screen.busy} onPress={screen.check}>
                 {t("check")}
               </Button>
               {!screen.editingKey && (
@@ -138,7 +138,7 @@ export function BankingView({
                     disabled={screen.busy}
                     onPress={() => {
                       setConfirmRemove(false);
-                      void screen.unconfigure();
+                      return screen.unconfigure();
                     }}
                   >
                     {t("removeYes")}
@@ -162,7 +162,7 @@ export function BankingView({
                 <Button
                   type="button"
                   disabled={screen.busy}
-                  onPress={() => void screen.forget(session.handle)}
+                  onPress={() => screen.forget(session.handle)}
                 >
                   {t("forget")}
                 </Button>
@@ -173,7 +173,7 @@ export function BankingView({
               disabled={
                 screen.busy || screen.waiting || screen.importing || screen.connected.length === 0
               }
-              onPress={() => void screen.sync()}
+              onPress={screen.sync}
             >
               {t("sync")}
             </Button>
@@ -182,7 +182,11 @@ export function BankingView({
             {t(screen.connected.length > 0 ? "connectAnother" : "connectTitle")}
           </h4>
           {screen.importing && (
-            <p role="status" className="rounded-md border border-border p-3">
+            <p
+              role="status"
+              className="flex items-center gap-1.5 rounded-md border border-border p-3"
+            >
+              <Spinner className="flex-none" />
               {t("importing")}
             </p>
           )}
@@ -195,18 +199,15 @@ export function BankingView({
               }}
             >
               {screen.bankList === "loading" && (
-                <p role="status" className="text-sm text-fg-muted">
+                <p role="status" className="flex items-center gap-1.5 text-sm text-fg-muted">
+                  <Spinner />
                   {t("banksLoading")}
                 </p>
               )}
               {screen.bankList === "failed" && (
                 <div className="grid justify-items-start gap-2">
                   <p className="text-sm">{t("banksFailed")}</p>
-                  <Button
-                    type="button"
-                    disabled={screen.busy}
-                    onPress={() => void screen.loadBanks()}
-                  >
+                  <Button type="button" disabled={screen.busy} onPress={screen.loadBanks}>
                     {t("banksRetry")}
                   </Button>
                 </div>
@@ -231,11 +232,14 @@ export function BankingView({
           )}
           {screen.pendingUrl && !screen.importing && (
             <div className="grid gap-2">
-              <p role="status">{t(screen.waiting ? "waiting" : "openToContinue")}</p>
-              <Button type="button" variant="primary" onPress={() => void screen.open()}>
+              <p role="status" className="flex items-center gap-1.5">
+                {screen.waiting && <Spinner className="flex-none" />}
+                {t(screen.waiting ? "waiting" : "openToContinue")}
+              </p>
+              <Button type="button" variant="primary" onPress={screen.open}>
                 {t("openBank")}
               </Button>
-              <Button type="button" disabled={screen.busy} onPress={() => void screen.cancel()}>
+              <Button type="button" disabled={screen.busy} onPress={screen.cancel}>
                 {t("cancel")}
               </Button>
               <details className="text-sm">
@@ -286,14 +290,19 @@ export function BankingView({
             <Button
               type="button"
               disabled={screen.busy}
-              onPress={() => void screen.checkAttempt(attempt.key)}
+              onPress={() => screen.checkAttempt(attempt.key)}
             >
               {t("checkAttempt")}
             </Button>
           )}
         </div>
       ))}
-      {screen.busy && <p role="status">{t("busy")}</p>}
+      {screen.busy && (
+        <p role="status" className="flex items-center gap-1.5">
+          <Spinner />
+          {t("busy")}
+        </p>
+      )}
       {screen.notice && (
         <p role="status">
           {screen.notice === "checked" && screen.application

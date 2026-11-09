@@ -336,7 +336,7 @@ export const LIVE_DATA_ALLOWED: ReadonlyArray<{
   {
     path: "apps/desktop/renderer/screens/strategies/useStrategySettings.ts",
     kind: "reload",
-    line: "void writes.reload().then(",
+    line: "const r = await writes.reload();",
     reason:
       "owner command 'Wczytaj ponownie' imports strategy.yaml from disk into the store (a write); the screen sees it by push",
   },

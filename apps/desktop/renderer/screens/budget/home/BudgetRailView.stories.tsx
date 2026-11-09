@@ -72,7 +72,7 @@ export const CushionForm = {
           ],
           error: null,
           busy: false,
-          save: () => {},
+          save: async () => {},
           cancel: () => {},
         },
       }}

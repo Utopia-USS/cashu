@@ -8,8 +8,8 @@ import { NoteRowItem } from "./NoteRowItem.js";
 export interface AssetResearchUi {
   onToggleOlder(): void;
   onToggleNote(id: number): void;
-  onDismiss(id: number): void;
-  onRestore(id: number): void;
+  onDismiss(id: number): unknown;
+  onRestore(id: number): unknown;
 }
 
 const tagTone = { "": "neutral", warn: "warning", info: "info", neg: "negative" } as const;

@@ -8,7 +8,6 @@ export const S = catalog({
       `installment ≈ ${amount} · ${enCount(n, "installment", "installments")}`,
   },
   addLoan: { pl: "Dodaj kredyt", en: "Add a loan" },
-  saving: { pl: "Zapisuję…", en: "Saving…" },
   name: { pl: "Nazwa", en: "Name" },
   namePlaceholder: { pl: "Hipoteka", en: "Mortgage" },
   type: { pl: "Typ", en: "Type" },

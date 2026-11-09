@@ -19,8 +19,9 @@ export type CandidateState =
   | { kind: "watched"; label: string }
   | {
       kind: "open";
-      watch: { label: string; title: string; onPress(): void };
-      dismiss: { label: string; title: string; onPress(): void };
+      /** A press returning a promise keeps its button busy (spinner) until it settles. */
+      watch: { label: string; title: string; onPress(): unknown };
+      dismiss: { label: string; title: string; onPress(): unknown };
       busy?: boolean;
     };
 
@@ -41,7 +42,7 @@ export interface CandidateCardProps {
   /** The note title (shown when there are no criteria). */
   title: string;
   /** A dismissed candidate: the dismissed tag, its line and the optional restore link; no action row. */
-  dismissed?: { tag: string; line: string; restore?: { label: string; onPress(): void } } | null;
+  dismissed?: { tag: string; line: string; restore?: { label: string; onPress(): unknown } } | null;
   state: CandidateState;
   /** `n źródeł · d.m` on the right of the action row. */
   sources: string;

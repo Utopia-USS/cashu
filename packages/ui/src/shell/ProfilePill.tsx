@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { usePressPending } from "../controls/usePressPending.js";
+import { Spinner } from "../feedback/Spinner.js";
 
 export interface ProfilePillProfile {
   id: string;
@@ -25,6 +27,9 @@ export interface ProfilePillProps {
   menuLabel: string;
   /** The pill cannot open (e.g. while a switch is in flight). */
   disabled?: boolean;
+  /** A profile switch is in flight: the pill keeps its face, cannot open and shows a spinner in place of
+   * its chevron (after a short delay, so a fast switch never blinks). */
+  pending?: boolean;
 }
 
 // Avatar fills by profile position (old ProfileMenu AVATAR: --nw, --net, --nw-property, --nw-loan,
@@ -138,8 +143,10 @@ export function ProfilePill({
   title,
   menuLabel,
   disabled,
+  pending,
 }: ProfilePillProps) {
   const [open, setOpen] = useState(false);
+  const busy = usePressPending(undefined, pending);
   const anchor = useRef<HTMLDivElement>(null);
   const pill = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -189,15 +196,20 @@ export function ProfilePill({
         aria-haspopup="menu"
         aria-expanded={open}
         title={title}
-        disabled={disabled}
+        disabled={disabled || busy.inFlight}
+        aria-busy={busy.inFlight || undefined}
         onClick={() => setOpen((was) => !was)}
-        className={`inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-full border bg-surface-raised py-0.75 pr-2.5 pl-0.75 text-sm text-fg leading-cozy font-regular disabled:cursor-default disabled:opacity-60 ${open ? "border-accent" : "border-border"}`}
+        className={`inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-full border bg-surface-raised py-0.75 pr-2.5 pl-0.75 text-sm text-fg leading-cozy font-regular ${busy.inFlight ? "cursor-progress" : "disabled:cursor-default disabled:opacity-60"} ${open ? "border-accent" : "border-border"}`}
       >
         <Avatar name={active.name} fill={avatarFill(profiles, active.id)} small />
         {active.name}
-        <span aria-hidden className="text-2xs text-fg-muted">
-          {open ? "▴" : "▾"}
-        </span>
+        {busy.visible ? (
+          <Spinner immediate className="text-2xs text-fg-muted" />
+        ) : (
+          <span aria-hidden className="text-2xs text-fg-muted">
+            {open ? "▴" : "▾"}
+          </span>
+        )}
       </button>
       {open && (
         <div

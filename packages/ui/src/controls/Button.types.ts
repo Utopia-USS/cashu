@@ -3,7 +3,13 @@ import type { ReactNode, Ref } from "react";
 export interface ButtonProps {
   /** Visible content: usually the translated label, or inline content such as a title with an amount. */
   children: ReactNode;
-  onPress?: () => void;
+  /** Press handler. When it returns a promise, the button is busy until it settles: it ignores further
+   * presses and shows a spinner in place of its content (after a short delay, so fast actions never
+   * blink). Return the action's promise (`onPress={state.save}`, not `() => void state.save()`). */
+  onPress?: () => unknown;
+  /** Busy from the outside (a form submit, an action started elsewhere): the same spinner and blocking
+   * as a pending `onPress` promise. */
+  pending?: boolean;
   /** `secondary` is the plain chip button; `ghost` the same on a transparent face; `link` an underlined
    * text action; `icon` a bare glyph for a removing action (turns red on hover); `glyph` a neutral bare glyph
    * (copy). Both glyph variants need `label`. */

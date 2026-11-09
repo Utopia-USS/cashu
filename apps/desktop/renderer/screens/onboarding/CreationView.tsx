@@ -14,6 +14,7 @@ import {
   Notice,
   RadioList,
   Select,
+  Spinner,
   Switch,
   Tag,
   TextField,
@@ -133,9 +134,10 @@ function StepForm({ state, step }: { state: CreationScreenState; step: number })
         <Button
           variant="primary"
           type="submit"
+          pending={busy}
           disabled={busy || (step === 2 && state.values.mcpPrivacy === null)}
         >
-          {busy ? C.preparing : Wizard.next}
+          {Wizard.next}
         </Button>
       </div>
     </form>
@@ -301,10 +303,11 @@ function Recovery({ state }: { state: CreationScreenState }) {
         <span className="flex-1" />
         <Button
           variant="primary"
+          pending={busy}
           disabled={busy || !state.backupConfirmed}
           onPress={state.onCommit}
         >
-          {busy ? C.committing : C.commit}
+          {C.commit}
         </Button>
       </div>
     </>
@@ -325,7 +328,8 @@ function WorkspaceStep({ state }: { state: CreationScreenState }) {
       </div>
       <div className={`${muted125} mb-3`}>{Wizard.workspaceDesc}</div>
       {phase === "workspace_checking" && (
-        <div role="status" className={`${muted125} mb-3`}>
+        <div role="status" className={`${muted125} mb-3 flex items-center gap-1.5`}>
+          <Spinner />
           {C.workspaceChecking}
         </div>
       )}
@@ -376,14 +380,11 @@ function WorkspaceStep({ state }: { state: CreationScreenState }) {
         {(phase === "workspace_ready" || phase === "workspace_failed" || applying) && ready && (
           <Button
             variant="primary"
+            pending={applying}
             disabled={busy || !state.workspaceInspected}
             onPress={state.onWorkspaceApply}
           >
-            {applying
-              ? Wizard.creatingWorkspace
-              : phase === "workspace_ready"
-                ? C.workspaceApply
-                : C.workspaceRetry}
+            {phase === "workspace_failed" ? C.workspaceRetry : C.workspaceApply}
           </Button>
         )}
         {(phase === "workspace_unknown" || phase === "workspace_unavailable") && (
@@ -450,6 +451,9 @@ function Progress({ state }: { state: CreationScreenState }) {
   return (
     <>
       <Notice tone={tone} role={alert ? "alert" : "status"} className="m-0">
+        {(phase === "checking" || phase === "verifying") && (
+          <Spinner className="mr-1.5 align-middle" />
+        )}
         {text}
         {(phase === "pending" || phase === "unknown") && state.stage && (
           <div className={`${muted12} mt-0.5`}>{STAGE[state.stage]}</div>
@@ -466,8 +470,13 @@ function Progress({ state }: { state: CreationScreenState }) {
               {C.restart}
             </Button>
           ) : (
-            <Button variant="primary" disabled={state.checkingStatus} onPress={state.onCheckStatus}>
-              {state.checkingStatus ? C.checkingStatus : C.checkStatus}
+            <Button
+              variant="primary"
+              pending={state.checkingStatus}
+              disabled={state.checkingStatus}
+              onPress={state.onCheckStatus}
+            >
+              {C.checkStatus}
             </Button>
           )}
         </div>

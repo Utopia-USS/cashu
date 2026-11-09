@@ -37,7 +37,7 @@ export function ConnectorsSectionView({
   const opened = connectors.find((c) => c.id === open) ?? null;
   const actions = (
     <>
-      <Button disabled={busy} onPress={() => void state.installConnector()}>
+      <Button disabled={busy} onPress={state.installConnector}>
         {T.connectorInstall}
       </Button>
     </>

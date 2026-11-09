@@ -355,6 +355,8 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     form,
     error,
     undone,
+    /** The drawer's save is running (also when started with Enter in the form). */
+    saving: create.isPending || editCommand.isPending,
     busy:
       create.isPending ||
       editCommand.isPending ||

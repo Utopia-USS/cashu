@@ -5,9 +5,7 @@ export const S = catalog({
   detected: { pl: " (rozpoznany)", en: " (detected)" },
   instructions: { pl: "Instrukcja", en: "Instructions" },
   back: { pl: "← Wstecz", en: "← Back" },
-  checking: { pl: "Sprawdzam…", en: "Checking…" },
   preview: { pl: "Podgląd", en: "Preview" },
-  importing: { pl: "Importuję…", en: "Importing…" },
   importN: {
     pl: (n: number) => `Importuj ${plCount(n, "transakcję", "transakcje", "transakcji")}`,
     en: (n: number) => `Import ${enCount(n, "transaction", "transactions")}`,

@@ -72,7 +72,7 @@ export function ConnectorDrawerView({
   const approve = () => {
     if (!interpreter) return;
     // the values this drawer showed, never re-read before sending
-    void state.onConnectorAction({
+    return state.onConnectorAction({
       op: "approve",
       id: connector.id,
       digest: connector.contentSha256,
@@ -89,9 +89,7 @@ export function ConnectorDrawerView({
       <Button
         variant="danger"
         disabled={busy}
-        onPress={() =>
-          void state.onConnectorAction({ op: "remove", id: connector.id, allVaults: true })
-        }
+        onPress={() => state.onConnectorAction({ op: "remove", id: connector.id, allVaults: true })}
       >
         {S.yesDelete}
       </Button>
@@ -104,7 +102,7 @@ export function ConnectorDrawerView({
       {(status === "changed" || status === "approved") && (
         <Button
           disabled={busy}
-          onPress={() => void state.onConnectorAction({ op: "disable", id: connector.id })}
+          onPress={() => state.onConnectorAction({ op: "disable", id: connector.id })}
         >
           {S.turnOff}
         </Button>

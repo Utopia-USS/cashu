@@ -117,9 +117,9 @@ export function useResearchPage(o: ResearchPageOptions) {
         () => undefined,
       );
     },
-    onWatch: (n) => void actions.watch(n),
-    onDismiss: (n) => void actions.dismiss(n),
-    onRestore: (n) => void actions.restore(n),
+    onWatch: (n) => actions.watch(n),
+    onDismiss: (n) => actions.dismiss(n),
+    onRestore: (n) => actions.restore(n),
   };
   const model = researchPageModel(
     {

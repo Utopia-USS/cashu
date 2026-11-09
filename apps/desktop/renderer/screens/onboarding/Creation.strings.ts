@@ -21,15 +21,12 @@ export const C = catalog({
     en: "I saved the phrase and can retrieve it.",
   },
   commit: { pl: "Utwórz bezpieczny profil", en: "Create secure profile" },
-  preparing: { pl: "Przygotowywanie frazy odzyskiwania…", en: "Preparing recovery…" },
-  committing: { pl: "Tworzenie zaszyfrowanego profilu…", en: "Creating encrypted profile…" },
   pending: { pl: "Tworzenie profilu trwa.", en: "Profile creation is in progress." },
   unknown: {
     pl: "Nie wiadomo jeszcze, czy profil powstał. Sprawdź stan tworzenia tego profilu. Nie zaczynaj nowego.",
     en: "The result is not confirmed yet. Check this creation's status. Do not start a new profile.",
   },
   checkStatus: { pl: "Sprawdź stan", en: "Check status" },
-  checkingStatus: { pl: "Sprawdzanie stanu…", en: "Checking status…" },
   restartPossible: {
     pl: "Aplikacja potwierdziła, że tworzenie profilu się nie rozpoczęło. Możesz zacząć od nowa.",
     en: "The host confirmed no creation was started. You can start again.",

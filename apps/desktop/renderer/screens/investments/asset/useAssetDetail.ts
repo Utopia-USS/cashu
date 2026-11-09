@@ -315,14 +315,14 @@ export function useAssetDetail(input: AssetDetailInput) {
     research: {
       onToggleOlder: () => setOlder((v) => !v),
       onToggleNote: (nid: number) => setOpenId((v) => (v === nid ? null : nid)),
-      onDismiss: (nid: number) => void noteAction(nid, notesActions.dismiss),
-      onRestore: (nid: number) => void noteAction(nid, notesActions.restore),
+      onDismiss: (nid: number) => noteAction(nid, notesActions.dismiss),
+      onRestore: (nid: number) => noteAction(nid, notesActions.restore),
     },
     ui: {
       setMonths,
       lotsOpen,
       toggleLots: () => setLotsOpen((v) => !v),
-      onToggleWatch: () => void toggleWatch(),
+      onToggleWatch: toggleWatch,
       watchBusy,
       onDecide: () => setDecideOpen(true),
       segment: seg
@@ -333,9 +333,9 @@ export function useAssetDetail(input: AssetDetailInput) {
             onChange: (v: string) => void saveSegment(v),
           }
         : null,
-      onAck: (sid: number) => void ackRun([sid]),
+      onAck: (sid: number) => ackRun([sid]),
       ackBusy: (sid: number) => ackBusy.has(sid),
-      onAckAll: () => void ackRun(model.open.map((s) => s.id)),
+      onAckAll: () => ackRun(model.open.map((s) => s.id)),
       ackAllBusy: ackBusy.size > 0,
       note: {
         draft,
@@ -348,7 +348,7 @@ export function useAssetDetail(input: AssetDetailInput) {
         },
         onDraft: setDraft,
         onCancel: () => setDraft(null),
-        onSave: () => void saveNote(),
+        onSave: saveNote,
       },
     },
   };

@@ -36,3 +36,5 @@ export const RichContent: Story<ButtonProps> = {
     ),
   },
 };
+export const Pending: Story<ButtonProps> = { args: { variant: "primary", pending: true } };
+export const PendingSecondary: Story<ButtonProps> = { args: { pending: true, children: "Sync" } };

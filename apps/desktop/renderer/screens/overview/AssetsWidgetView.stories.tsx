@@ -72,6 +72,7 @@ const state: AssetsWidgetViewProps["state"] = {
   error: null,
   undone: null,
   busy: false,
+  saving: false,
   openNew: () => {},
   openEdit: () => {},
   close: () => {},

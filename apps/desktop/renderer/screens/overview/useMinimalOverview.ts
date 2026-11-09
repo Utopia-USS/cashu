@@ -34,9 +34,9 @@ export function useMinimalOverview(args: { today: string; openWatchlist(): void 
     kind: "ready" as const,
     ...model,
     busy: actions.busy,
-    onPlan: () => {
+    onPlan: async () => {
       if (plan !== null)
-        void actions.save(plan.amount.toFloat(), plan.currency, plan.date, plan.account);
+        await actions.save(plan.amount.toFloat(), plan.currency, plan.date, plan.account);
     },
     onWatchInstrument: args.openWatchlist,
   };

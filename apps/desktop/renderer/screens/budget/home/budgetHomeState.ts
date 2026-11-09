@@ -187,7 +187,7 @@ export interface CushionFormState {
   accounts: readonly { id: string; name: string }[];
   error: string | null;
   busy: boolean;
-  save(): void;
+  save(): Promise<void>;
   cancel(): void;
 }
 

@@ -47,7 +47,7 @@ export function InstallmentDrawerView({ state }: { state: LoansState }) {
             disabled={state.busy || !value.trim() || p.name == null}
             onPress={() => p.send(value.trim())}
           >
-            {state.busy ? S.saving : C.save}
+            {C.save}
           </Button>
         </>
       }

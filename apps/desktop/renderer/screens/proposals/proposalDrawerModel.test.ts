@@ -12,8 +12,8 @@ const state = (message: ProposalDrawerState["message"]): ProposalDrawerState => 
   busy: false,
   message,
   failure: "",
-  onApproved: () => {},
-  onRejected: () => {},
+  onApproved: async () => {},
+  onRejected: async () => {},
 });
 
 const initial = lang();

@@ -41,11 +41,11 @@ const actions = {
   notice: null,
   busy: false,
   canAct: true,
-  onCopy: () => {},
-  onOpenFolder: () => {},
-  onRetry: () => {},
-  onContinueWithoutOldData: () => {},
-  onQuit: () => {},
+  onCopy: async () => {},
+  onOpenFolder: async () => {},
+  onRetry: async () => {},
+  onContinueWithoutOldData: async () => {},
+  onQuit: async () => {},
 };
 
 export default {

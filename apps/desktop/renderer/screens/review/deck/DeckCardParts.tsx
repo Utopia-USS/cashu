@@ -2,7 +2,7 @@
 // components over reviewDeckModel.ts data; class constants carry the effective values of reviewDeck.css plus the
 // global-class quirks the old cascade gave them (old-frontend-map.md section C).
 import { S } from "@cashu/i18n/investments/v2/ReviewDeck.strings";
-import { Pill, Skeleton } from "@cashu/ui";
+import { Pill, Skeleton, Spinner } from "@cashu/ui";
 import type { Tone } from "@cashu/ui-logic/investments/v2/reviewDeckLogic";
 import type {
   CardBody,
@@ -146,6 +146,7 @@ function DecideRow({
       <div className="flex items-center gap-2">
         <span className={`${k} ${kTone[d.tone]}`}>{d.tag}</span>
         {d.choice && <span className={st}>✓ {d.choice}</span>}
+        {d.pending && <Spinner className="text-fg-muted" />}
       </div>
       <div className={itemTitle}>{d.title}</div>
       <div className={why}>{d.why}</div>
@@ -182,6 +183,7 @@ function IdeaRow({
       <div className="flex items-center gap-2">
         <span className={`${k} text-positive`}>{n.tag}</span>
         {n.choice && <span className={st}>✓ {n.choice}</span>}
+        {n.busy && <Spinner className="text-fg-muted" />}
       </div>
       <div className={itemTitle}>
         {n.name}
@@ -492,7 +494,14 @@ export function SummaryBody({
         value={closing}
         onChange={(e) => onClosing(e.target.value)}
       />
-      <button type="button" className={close} onClick={onFinish} disabled={busy}>
+      <button
+        type="button"
+        className={close}
+        onClick={onFinish}
+        disabled={busy}
+        aria-busy={busy || undefined}
+      >
+        {busy && <Spinner className="mr-2 inline-block align-middle" />}
         {S.closeReview}
       </button>
       <div className={hint}>{S.agentHint}</div>

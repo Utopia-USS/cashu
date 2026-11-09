@@ -44,7 +44,7 @@ const ready: MinimalOverviewState = {
   },
   plan: { amount: D("2000"), date: "2026-10-10", currency: "PLN", account: null },
   busy: false,
-  onPlan: () => {},
+  onPlan: async () => {},
   onWatchInstrument: () => {},
 };
 

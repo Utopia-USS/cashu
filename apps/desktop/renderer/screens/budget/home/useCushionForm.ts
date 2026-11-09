@@ -71,7 +71,7 @@ export function useCushionForm(args: {
             .map((a) => ({ id: a.gid, name: args.privacy ? MASK : a.name })),
           error,
           busy: command.isPending,
-          save: () => void save(),
+          save,
           cancel: () => setDraft(null),
         }
       : null,

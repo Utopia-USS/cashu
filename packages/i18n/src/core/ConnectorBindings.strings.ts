@@ -23,7 +23,6 @@ export const S = catalog({
     pl: (when: string) => `limit API do ${when}`,
     en: (when: string) => `API limit until ${when}`,
   },
-  fetching: { pl: "Pobieram…", en: "Fetching…" },
   sync: { pl: "Synchronizuj", en: "Sync" },
   noBindings: {
     pl: "Brak powiązań w tym profilu. Powiąż konto, wpisz klucz, sprawdź połączenie.",
@@ -53,5 +52,4 @@ export const S = catalog({
   },
   yesUnbind: { pl: "Tak, odłącz", en: "Yes, unbind" },
   unbind: { pl: "Odłącz", en: "Unbind" },
-  saving: { pl: "Zapisuję…", en: "Saving…" },
 });

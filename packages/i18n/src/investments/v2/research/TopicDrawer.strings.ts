@@ -25,7 +25,6 @@ export const S = catalog({
   invalidation: { pl: "Unieważnienie", en: "Invalidation" },
   assessmentNow: { pl: "Bieżąca ocena", en: "Assessment now" },
   outlook: { pl: "Perspektywa", en: "Outlook" },
-  saving: { pl: "Zapisuję…", en: "Saving…" },
   noThesis: { pl: "Brak tezy.", en: "No thesis." },
   state: { pl: "Stan", en: "State" },
   noMacroData: { pl: "Brak danych makro.", en: "No macro data." },

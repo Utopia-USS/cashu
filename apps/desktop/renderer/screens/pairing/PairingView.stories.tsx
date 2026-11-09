@@ -1,6 +1,6 @@
 import { PairingView, type PairingViewState } from "./PairingView.js";
 
-const noop = () => {};
+const noop = async () => {};
 const invited: PairingViewState = {
   kind: "invited",
   qr: "synthetic-invitation",

@@ -27,6 +27,8 @@ export function useCategoriesDrawer({ currency, onClose }: CategoriesDrawerOptio
   const [rows] = useState(live);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
+  // the merchants whose rule is being saved (the row's spinner)
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const changed = useRef(false);
   const command = useCommand(setDesktopMerchantCategory);
@@ -52,7 +54,10 @@ export function useCategoriesDrawer({ currency, onClose }: CategoriesDrawerOptio
     setPicked((p) => ({ ...p, [merchantKey]: category }));
     setSaved((s) => ({ ...s, [merchantKey]: false }));
     setError(null);
-    const result = await durable.run(`merchant:${merchantKey}`, command, { merchantKey, category });
+    setSaving((s) => ({ ...s, [merchantKey]: true }));
+    const result = await durable
+      .run(`merchant:${merchantKey}`, command, { merchantKey, category })
+      .finally(() => setSaving((s) => ({ ...s, [merchantKey]: false })));
     if (result.kind !== "completed") {
       setError(S.notSaved(commandFailure(result)));
       return;
@@ -78,6 +83,7 @@ export function useCategoriesDrawer({ currency, onClose }: CategoriesDrawerOptio
         total: cur0s(r.total.toFloat(), r.currency),
         picked: picked[r.merchantKey] ?? "",
         saved: saved[r.merchantKey] === true,
+        saving: saving[r.merchantKey] === true,
         choose: (category: string) => void choose(r.merchantKey, r.sample, category),
       };
     }),

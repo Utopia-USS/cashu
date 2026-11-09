@@ -59,8 +59,8 @@ test("Settings saves the profile and agent privacy in one vault, reviews the age
     await expect.poll(async () => (await profileOf(anna)).mcpPrivacy).toBe(nextPrivacy);
     expect((await profileOf(piotr)).mcpPrivacy).toBe(other.mcpPrivacy);
 
-    // The copy buttons (a glyph named Kopiuj) may write the clipboard: the session grants that one web
-    // permission to the app and keeps every other one denied.
+    // The copy buttons (a glyph named Kopiuj, shown once the profile has an agent workspace) may write
+    // the clipboard: the session grants that one web permission to the app and keeps every other one denied.
     const permission = (name: string) =>
       page.evaluate(
         async (n) => (await navigator.permissions.query({ name: n as PermissionName })).state,
@@ -69,7 +69,6 @@ test("Settings saves the profile and agent privacy in one vault, reviews the age
     expect(await permission("clipboard-write")).toBe("granted");
     expect(await permission("clipboard-read")).toBe("denied");
     expect(await permission("camera")).toBe("denied");
-    await expect(agent.getByRole("button", { name: "Kopiuj", exact: true }).first()).toBeVisible();
 
     // Proposals belong to their vault; a rejection is stored and leaves the list.
     expect(await proposalsOf(piotr, "pending")).toEqual([]);

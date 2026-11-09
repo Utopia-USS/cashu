@@ -149,8 +149,8 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
       err,
       openNote,
       onToggleNote: (id) => setOpenNote((x) => (x === id ? null : id)),
-      onDismiss: (n) => void actions.dismiss(n),
-      onRestore: (n) => void actions.restore(n),
+      onDismiss: (n) => actions.dismiss(n),
+      onRestore: (n) => actions.restore(n),
       onOpenAsset: o.onOpenAsset,
     },
   );
@@ -172,7 +172,7 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
     onSave: () => {
       if (!edit) return;
       const plan = topicSavePlan(t, edit);
-      void run(
+      return run(
         edit,
         true,
         !edit.thesis.trim()
@@ -186,7 +186,7 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
     },
     onConfirm: () => {
       if (!t) return;
-      void run(
+      return run(
         {
           thesis: t.thesis,
           invalidation: t.invalidation ?? "",

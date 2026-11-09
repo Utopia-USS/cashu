@@ -158,7 +158,7 @@ type SurplusActions =
   | { kind: "tag"; text: string }
   | {
       kind: "buttons";
-      primary: { label: string; disabled: boolean; onPress(): void } | null;
+      primary: { label: string; disabled: boolean; onPress(): unknown } | null;
       other: Link;
     }
   | {
@@ -168,7 +168,7 @@ type SurplusActions =
       onChange(v: string): void;
       onEnter(): void;
       onEscape(): void;
-      plan: { label: string; disabled: boolean; onPress(): void };
+      plan: { label: string; disabled: boolean; onPress(): unknown };
       cancel: Link;
     };
 
@@ -336,7 +336,7 @@ export function surplusModel(args: {
   const busy = inv.actions.busy;
   const save = (value: number) => {
     args.setOther(null);
-    void inv.actions.save(value, c, due, accountId);
+    return inv.actions.save(value, c, due, accountId);
   };
   const otherNum = args.other != null ? parseNum(args.other) : null;
   const curName = MONTH_NOM[Number(curMonth.slice(5, 7)) - 1] ?? "";
@@ -406,15 +406,13 @@ export function surplusModel(args: {
           value: args.other,
           onChange: args.setOther,
           onEnter: () => {
-            if (otherNum && otherNum > 0) save(otherNum);
+            if (otherNum && otherNum > 0) void save(otherNum);
           },
           onEscape: () => args.setOther(null),
           plan: {
             label: S.plan,
             disabled: !otherNum || otherNum <= 0 || busy,
-            onPress: () => {
-              if (otherNum) save(otherNum);
-            },
+            onPress: () => (otherNum ? save(otherNum) : undefined),
           },
           cancel: { label: CM.cancel, onPress: () => args.setOther(null) },
         };
@@ -450,7 +448,7 @@ export function surplusModel(args: {
     actions,
     change:
       plan?.status === "planned"
-        ? { label: S.change, onPress: () => void inv.actions.drop(plan) }
+        ? { label: S.change, onPress: () => inv.actions.drop(plan) }
         : null,
     foot,
     footRight: plan?.status === "booked" ? S.bookedFromImport : S.toBookByImport,

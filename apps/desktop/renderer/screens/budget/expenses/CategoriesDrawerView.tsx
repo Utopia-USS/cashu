@@ -2,7 +2,7 @@
 // category in a fixed-column table, one category select per merchant, the rule hint in the foot.
 import { S } from "@cashu/i18n/budget/CategoriesDrawer.strings";
 import { C } from "@cashu/i18n/core/common.strings";
-import { Button, Drawer, Notice, Select, Skeleton, Tag } from "@cashu/ui";
+import { Button, Drawer, Notice, Select, Skeleton, Spinner, Tag } from "@cashu/ui";
 import type { ReactNode } from "react";
 import type { CategoriesDrawerState } from "./useCategoriesDrawer.js";
 
@@ -81,10 +81,16 @@ export function CategoriesDrawerView({ state }: { state: CategoriesDrawerState }
                     options={state.options}
                     onChange={r.choose}
                   />
-                  {r.saved && (
-                    <div>
-                      <Tag tone="positive">{S.saved}</Tag>
+                  {r.saving ? (
+                    <div className="py-0.5 text-fg-muted">
+                      <Spinner />
                     </div>
+                  ) : (
+                    r.saved && (
+                      <div>
+                        <Tag tone="positive">{S.saved}</Tag>
+                      </div>
+                    )
                   )}
                 </td>
               </tr>

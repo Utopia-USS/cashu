@@ -383,7 +383,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
             hasTxn: (positions?.positions.length ?? 0) > 0,
             initBusy: commands.initBusy,
             onAddAccount: () => setDrawer({ kind: "account" }),
-            onInitStrategy: () => void initStrategy(),
+            onInitStrategy: initStrategy,
             onAddTxn: () => setDrawer({ kind: "txn" }),
           })
         : null,

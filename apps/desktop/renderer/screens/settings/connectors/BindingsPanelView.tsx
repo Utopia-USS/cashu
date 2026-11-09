@@ -47,20 +47,11 @@ export function BindingsPanelView({
   const approved = connector.approval === "approved";
   const mine = snapshot?.bindings.filter((b) => b.connector_id === connector.id) ?? [];
   const [form, setForm] = useState<"new" | string | null>(null);
-  const [syncing, setSyncing] = useState<string | null>(null);
   const labelOf = (binding: Binding) =>
     snapshot?.accounts.find((a) => a.gid === binding.account)?.name ?? binding.account;
   const free = state
     .connectorAccounts(connector)
     .filter((account) => !mine.some((b) => b.account === account.gid));
-  const sync = async (binding: Binding) => {
-    setSyncing(binding.gid);
-    try {
-      await state.onConnectorAction({ op: "run", binding: binding.gid });
-    } finally {
-      setSyncing(null);
-    }
-  };
   return (
     <>
       <Kicker title={CB.bindings(state.current?.name ?? "")}>
@@ -124,8 +115,11 @@ export function BindingsPanelView({
             detail={lastSyncText(fetchState)}
             action={
               <div className={controls}>
-                <Button disabled={busy || !approved} onPress={() => void sync(binding)}>
-                  {syncing === binding.gid ? CB.fetching : CB.sync}
+                <Button
+                  disabled={busy || !approved}
+                  onPress={() => state.onConnectorAction({ op: "run", binding: binding.gid })}
+                >
+                  {CB.sync}
                 </Button>
                 <Button variant="link" size="lg" onPress={() => setForm(binding.gid)}>
                   {C.edit}
@@ -270,8 +264,8 @@ function BindingForm({
         <Button disabled={busy} onPress={onDone}>
           {C.cancel}
         </Button>
-        <Button variant="primary" disabled={busy || !accounts.length} onPress={() => void save()}>
-          {busy && saved ? CB.saving : C.save}
+        <Button variant="primary" disabled={busy || !accounts.length} onPress={save}>
+          {C.save}
         </Button>
       </div>
     </div>
@@ -330,7 +324,7 @@ function SecretsForm({
               size="lg"
               disabled={busy}
               onPress={() =>
-                void state.onConnectorAction({
+                state.onConnectorAction({
                   op: "clearSecret",
                   binding: binding.gid,
                   secret: secret.id,
@@ -355,7 +349,7 @@ function SecretsForm({
           <Button
             variant="danger"
             disabled={busy}
-            onPress={() => void state.onConnectorAction({ op: "unbind", binding: binding.gid })}
+            onPress={() => state.onConnectorAction({ op: "unbind", binding: binding.gid })}
           >
             {CB.yesUnbind}
           </Button>
@@ -369,8 +363,8 @@ function SecretsForm({
           <Button disabled={busy} onPress={onDone}>
             {C.cancel}
           </Button>
-          <Button variant="primary" disabled={busy || !typed.length} onPress={() => void save()}>
-            {busy ? CB.saving : C.save}
+          <Button variant="primary" disabled={busy || !typed.length} onPress={save}>
+            {C.save}
           </Button>
         </div>
       )}

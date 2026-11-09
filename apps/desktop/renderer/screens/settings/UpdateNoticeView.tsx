@@ -36,9 +36,7 @@ export function UpdateNoticeView({ state }: { state: UpdateNoticeState }) {
     );
   }
   const version = app.version ?? "";
-  const act = (choice: "install" | "skip" | "dismiss") => () => {
-    void state.onAction(choice);
-  };
+  const act = (choice: "install" | "skip" | "dismiss") => () => state.onAction(choice);
   switch (app.stage) {
     case "available":
       return (

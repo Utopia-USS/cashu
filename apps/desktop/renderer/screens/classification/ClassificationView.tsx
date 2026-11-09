@@ -24,24 +24,20 @@ export function ClassificationView({ state }: { state: State }) {
           <p>{state.snapshot.keyPresent ? T.keyStored : T.keyMissing}</p>
           <p>{T.keyChange}</p>
           <div className="flex gap-2">
-            <Button
-              type="button"
-              disabled={state.busy || !state.key}
-              onPress={() => void state.saveKey()}
-            >
+            <Button type="button" disabled={state.busy || !state.key} onPress={state.saveKey}>
               {T.saveKey}
             </Button>
             <Button
               type="button"
               disabled={state.busy || !state.snapshot.keyPresent}
-              onPress={() => void state.clearKey()}
+              onPress={state.clearKey}
             >
               {T.clearKey}
             </Button>
           </div>
           <p>{T.risk}</p>
           {state.snapshot.backend === "anthropic" ? (
-            <Button type="button" disabled={state.busy} onPress={() => void state.revokeCloud()}>
+            <Button type="button" disabled={state.busy} onPress={state.revokeCloud}>
               {T.revoke}
             </Button>
           ) : (
@@ -64,7 +60,7 @@ export function ClassificationView({ state }: { state: State }) {
               <Button
                 type="button"
                 disabled={state.busy || !state.accepted || !state.snapshot.keyPresent}
-                onPress={() => void state.grantCloud()}
+                onPress={state.grantCloud}
               >
                 {T.enable}
               </Button>

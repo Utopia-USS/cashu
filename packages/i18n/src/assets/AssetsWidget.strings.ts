@@ -36,7 +36,6 @@ export const S = catalog({
   },
   noteLabel: { pl: "Notatka", en: "Note" },
   newPosition: { pl: "Nowa pozycja", en: "New position" },
-  saving: { pl: "Zapisuję…", en: "Saving…" },
   name: { pl: "Nazwa", en: "Name" },
   type: { pl: "Typ", en: "Type" },
   lastValuation: {

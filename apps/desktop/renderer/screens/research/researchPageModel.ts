@@ -134,9 +134,9 @@ export interface ResearchPageUi {
   onSettings(): void;
   /** Copy a command and confirm with `done`. */
   onCopy(command: string, done: string): void;
-  onWatch(n: ResearchNote): void;
-  onDismiss(n: ResearchNote): void;
-  onRestore(n: ResearchNote): void;
+  onWatch(n: ResearchNote): unknown;
+  onDismiss(n: ResearchNote): unknown;
+  onRestore(n: ResearchNote): unknown;
 }
 
 export interface CopyModel {
@@ -245,7 +245,7 @@ interface NoteItem {
   } | null;
   dismissLabel: string;
   busy: boolean;
-  onDismiss(): void;
+  onDismiss(): unknown;
 }
 
 interface RunRow {
@@ -602,9 +602,9 @@ function candidateCard(
     now: number;
     state: CandidateWatch | undefined;
     busy: boolean;
-    onWatch(): void;
-    onDismiss(): void;
-    onRestore(): void;
+    onWatch(): unknown;
+    onDismiss(): unknown;
+    onRestore(): unknown;
   },
 ): CandidateCardProps {
   const { name, sym } = noteSubject(n);

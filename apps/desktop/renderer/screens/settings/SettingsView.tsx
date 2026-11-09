@@ -27,6 +27,7 @@ import {
   SectionCard,
   Seg,
   SettingRow,
+  Spinner,
   Switch,
   scrollCls,
   Tag,
@@ -306,7 +307,8 @@ function ProfileSection({ state }: { state: SettingsScreenState }) {
               <Button
                 variant="primary"
                 disabled={!dirty || submitting || state.profileBusy}
-                onPress={() => void form.handleSubmit()}
+                pending={submitting}
+                onPress={() => form.handleSubmit()}
               >
                 {C.save}
               </Button>
@@ -441,19 +443,22 @@ function WorkspacePanel({
           <Button
             title={S.updateTitle}
             disabled={busy}
-            onPress={() => void state.saveWorkspace({ path: null })}
+            onPress={() => state.saveWorkspace({ path: null })}
           >
-            {busy ? S.updating : S.update}
+            {S.update}
           </Button>
         )}
         {ready && !ws.exists && (
-          <Button variant="primary" disabled={busy} onPress={() => void state.saveWorkspace()}>
-            {busy ? S.creating : S.create}
+          <Button variant="primary" disabled={busy} onPress={() => state.saveWorkspace()}>
+            {S.create}
           </Button>
         )}
       </div>
       {!ready && (
-        <div className="text-sm text-fg-muted">{busy ? S.checking : T.workspaceUnbound}</div>
+        <div className="flex items-center gap-1.5 text-sm text-fg-muted">
+          {busy && <Spinner />}
+          {busy ? S.checking : T.workspaceUnbound}
+        </div>
       )}
       {ready && (
         <KeyValues
@@ -496,7 +501,7 @@ function WorkspacePanel({
                         {ws.exists && (
                           <Button
                             disabled={busy || !state.workspacePath.trim()}
-                            onPress={() => void state.saveWorkspace({ path: state.workspacePath })}
+                            onPress={() => state.saveWorkspace({ path: state.workspacePath })}
                           >
                             {S.move}
                           </Button>
@@ -554,7 +559,7 @@ function WorkspacePanel({
               <Button
                 title={S.forceTitle}
                 disabled={busy}
-                onPress={() => void state.saveWorkspace({ path: null, force: true })}
+                onPress={() => state.saveWorkspace({ path: null, force: true })}
               >
                 {S.force}
               </Button>
@@ -580,6 +585,7 @@ function WorkspacePanel({
               onChange={(on) => void state.saveWorkspace({ path: null, routinePermissions: on })}
             />
             <span>{WS.routinePermissionsLabel}</span>
+            {state.routineSaving && <Spinner className="text-fg-muted" />}
           </div>
           <div className="text-xs-plus text-fg-muted">{WS.routinePermissionsHint}</div>
           {ws.exists && (
@@ -733,7 +739,7 @@ function DataSection({ state }: { state: SettingsScreenState }) {
           value: (
             <>
               <code className={`${code} wrap-anywhere`}>{dir ?? "-"}</code>
-              {dir && <Button onPress={() => void state.onDataDirCopied()}>{S.copy}</Button>}
+              {dir && <Button onPress={state.onDataDirCopied}>{S.copy}</Button>}
             </>
           ),
         },
@@ -804,6 +810,9 @@ function WorkerSection({ state }: { state: SettingsScreenState }) {
         title={
           <>
             {T.serviceToggle}{" "}
+            {state.serviceBusy && service !== "requires_approval" && (
+              <Spinner className="mr-1 text-fg-muted" />
+            )}
             <Tag
               tone={
                 service === "enabled"
@@ -829,7 +838,7 @@ function WorkerSection({ state }: { state: SettingsScreenState }) {
         }
         action={
           service === "requires_approval" ? (
-            <Button disabled={state.serviceBusy} onPress={() => void state.onServiceEnabled(false)}>
+            <Button disabled={state.serviceBusy} onPress={() => state.onServiceEnabled(false)}>
               {T.serviceCancelApproval}
             </Button>
           ) : null
@@ -941,7 +950,7 @@ function WorkerSection({ state }: { state: SettingsScreenState }) {
           state.notificationPermission === "pending" ? (
             <Button
               disabled={state.notificationPermissionBusy}
-              onPress={() => void state.onNotificationPermissionRequested()}
+              onPress={state.onNotificationPermissionRequested}
             >
               {T.notificationPermissionRequest}
             </Button>
@@ -1031,11 +1040,12 @@ function AppSection({ state }: { state: SettingsScreenState }) {
                       title={S.updatesDailyTitle}
                       onChange={(on) => void state.onUpdatesAutoPicked(on)}
                     />
+                    {state.updatesAutoBusy && <Spinner className="text-fg-muted" />}
                     <span className={hint}>{S.updatesDailyHint(auto)}</span>
                     <Button
                       className="ml-2.5"
                       disabled={state.updaterBusy}
-                      onPress={() => void state.onCheckUpdates()}
+                      onPress={state.onCheckUpdates}
                     >
                       {S.updatesCheck}
                     </Button>
