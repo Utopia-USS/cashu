@@ -4,7 +4,7 @@
  */
 
 import type { PaymentPattern } from "../../core/index.js";
-import { type Decimal, ZERO } from "../../decimal.js";
+import { D, type Decimal, ZERO } from "../../decimal.js";
 import { ibanKey } from "../../iban.js";
 import { normalizeText } from "../../text.js";
 import { merchantKey } from "../ingestion/index.js";
@@ -82,13 +82,36 @@ function patternMatch(
   return null;
 }
 
+/**
+ * The Polish split-payment (MPP) message `/VAT/<vat amount>/IDC/<NIP>/INV/<invoice>` (comma or dot
+ * decimals), as banks put it in the title.
+ */
+const MPP_MESSAGE = /\/VAT\/(\d{1,15}(?:[.,]\d{1,2})?)\/IDC\/[^/]*\/INV\//i;
+
+/**
+ * A split-payment VAT move (native rule, not in the Python engine): an outflow whose MPP title names
+ * a VAT amount equal to the whole outflow. The bank moves the VAT of a split-paid invoice from the
+ * main account to the owner's VAT account (often not visible to cashU, so the transfer matcher
+ * cannot pair it). A payment to a supplier carries the gross amount and a smaller VAT amount, so it
+ * stays an expense.
+ */
+export function isSplitPaymentVatMove(t: EngineTxn): boolean {
+  if (!t.amount.lt(ZERO)) return false;
+  for (const field of [t.reference, t.description]) {
+    const m = field ? MPP_MESSAGE.exec(field) : null;
+    if (m?.[1] && D(m[1].replace(",", ".")).eq(t.amount.abs())) return true;
+  }
+  return false;
+}
+
 function ownerDecisionAt(t: EngineTxn, mk: string, ctx: EngineContext): Categorization | null {
   const cp = t.counterpartyIban ? ibanKey(t.counterpartyIban) : "";
   if (
     t.isInternalTransfer ||
     (cp && ctx.ownIbans.has(cp)) ||
     mk.includes("TRANSAKCJA WALUT") ||
-    mk.includes("PRZEWALUTOWANIE")
+    mk.includes("PRZEWALUTOWANIE") ||
+    isSplitPaymentVatMove(t)
   ) {
     return TRANSFER;
   }
@@ -101,7 +124,8 @@ function ownerDecisionAt(t: EngineTxn, mk: string, ctx: EngineContext): Categori
 
 /**
  * `owner_decision` (engine.py:86-121): what structure or the owner's configuration decides, else
- * null. 1. a move between own accounts or an FX conversion -> transfer; 2. a locked merchant rule;
+ * null. 1. a move between own accounts, an FX conversion or a split-payment VAT move (native) ->
+ * transfer; 2. a locked merchant rule;
  * 3. a module payment pattern (outflows) -> keyword.
  */
 export function ownerDecision(t: EngineTxn, ctx: EngineContext): Categorization | null {

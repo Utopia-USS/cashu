@@ -444,7 +444,8 @@ function deriveAll(ctx: DeriveContext): void {
 
 export const categoriesDeriver: Deriver = {
   id: "budget.categories",
-  version: 2,
+  // 3: split-payment VAT moves are transfers (engine `isSplitPaymentVatMove`); the upgrade re-derives.
+  version: 3,
   tables: [membersTable, groupsTable, envTable],
   writes: [{ table: TRANSACTIONS, columns: ["category", "category_source"] }],
   inputs: [
