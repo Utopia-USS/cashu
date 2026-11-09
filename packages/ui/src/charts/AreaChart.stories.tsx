@@ -45,6 +45,10 @@ export const Interactive: Story<AreaChartProps> = {
   },
 };
 
+export const Scrubbed: Story<AreaChartProps> = {
+  args: { ...Interactive.args, onScrub: () => {} },
+};
+
 export const Empty: Story<AreaChartProps> = { args: { layers: [], xLabels: [] } };
 
 export const PrivacyMode: Story<AreaChartProps> = {

@@ -17,6 +17,7 @@ export function LineChart(props: LineChartProps) {
       label={props.label}
       build={(w) => lineScene(props, w, privacy)}
       tooltip={tooltip ? (i) => maskTip(tooltip(i), privacy) : undefined}
+      onScrub={props.onScrub}
     />
   );
 }

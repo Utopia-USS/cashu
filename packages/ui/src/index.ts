@@ -214,6 +214,12 @@ export { Notice, type NoticeProps } from "./surfaces/Notice.js";
 export { Page, type PageProps } from "./surfaces/Page.js";
 export { PageHead, type PageHeadProps } from "./surfaces/PageHead.js";
 export { SectionCard, type SectionCardProps } from "./surfaces/SectionCard.js";
+export {
+  StatementFigure,
+  type StatementFigureProps,
+  type StatementParts,
+  statementParts,
+} from "./surfaces/StatementFigure.js";
 export { SumStrip, type SumStripItem } from "./surfaces/SumStrip.js";
 export { Pill, type PillProps, Tag, type TagProps, type TagTone } from "./surfaces/Tag.js";
 export {

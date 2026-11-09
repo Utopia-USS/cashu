@@ -63,6 +63,9 @@ export interface HeroModel {
   label: string;
   caption: string;
   value: string;
+  /** The month the change is measured from ("since October"), the caption next to the label. */
+  since: string | null;
+  /** The toned change since that month (amount and percent). */
   delta: Rich | null;
   facts: RichFact[];
   other: string | null;
@@ -88,7 +91,6 @@ export function heroModel(args: {
             text: `${ch >= 0 ? "+" : ""}${whole(ch)}${change.changePct !== null ? ` (${pctSigned(change.changePct.toFloat())})` : ""}`,
             tone: ch >= 0 ? "positive" : "negative",
           },
-          { text: ` ${O.since(MONTH_GEN[monthIndex(change.since)] ?? "")}` },
         ];
   const liabNames = h.liabilityTypes
     .map((t) => (TYPE_LABEL[t] ?? t).toLowerCase())
@@ -135,6 +137,8 @@ export function heroModel(args: {
     label: O.netWorth,
     caption: O.netWorth,
     value: cur(h.net.toFloat(), c),
+    since:
+      change === null || ch === null ? null : O.since(MONTH_GEN[monthIndex(change.since)] ?? ""),
     delta,
     facts,
     other: others.length

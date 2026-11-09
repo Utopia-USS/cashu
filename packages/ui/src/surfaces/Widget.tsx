@@ -1,4 +1,4 @@
-import { type ReactNode, useId } from "react";
+import { type PointerEvent, type ReactNode, useId } from "react";
 import { Tag } from "./Tag.js";
 
 export interface WidgetProps {
@@ -27,6 +27,13 @@ export interface WidgetProps {
    * `quiet`: the investments home look (design V5): a sentence-case 13px / 500 secondary title, 20px padding,
    * 16px under the header, a footer on a hairline without a band. */
   variant?: "eyebrow" | "quiet";
+  /** The layered tile of the overview bento (design/desktop/overview/layered-tiles.html): a top-lit gradient
+   * over the card colour, an inset hairline with a lit top edge and a soft drop shadow instead of the border;
+   * hovered, it lifts 2px and a spotlight follows the cursor; the footer sits on the tile without a band or
+   * hairline. `ghost` keeps its dashed frame, `highlight` adds the accent outline. */
+  layered?: boolean;
+  /** A layered tile that does not lift on hover (it holds a scrubbed chart). */
+  still?: boolean;
   id?: string;
   /** Accessible name when the title is not plain text. */
   label?: string;
@@ -47,7 +54,17 @@ const frames = {
   plain: "border-border bg-surface-raised shadow-card",
   highlight: "border-accent bg-surface-raised shadow-none ring-1 ring-accent",
   ghost: "border-dashed border-border bg-transparent shadow-none",
+  layered: "tile-layered",
+  layeredHighlight: "outline -outline-offset-1 outline-accent",
 } as const;
+
+/** The layered tile's cursor spotlight: its position in the tile as CSS variables (no React state). */
+function followSpot(event: PointerEvent<HTMLElement>) {
+  const tile = event.currentTarget;
+  const box = tile.getBoundingClientRect();
+  tile.style.setProperty("--spot-x", `${event.clientX - box.left}px`);
+  tile.style.setProperty("--spot-y", `${event.clientY - box.top}px`);
+}
 
 /** Widget frame of the dashboards (old `.w` with `.wh` head, `.wb` body, `.wf` footer): a landmark section
  * named by its title. */
@@ -63,27 +80,34 @@ export function Widget({
   tight,
   flush,
   variant = "eyebrow",
+  layered = false,
+  still = false,
   id,
   label,
   children,
   className = "",
 }: WidgetProps) {
   const headingId = useId();
+  const tile = layered && !ghost;
   const frame = ghost
     ? frames.ghost
-    : highlight
-      ? frames.highlight
-      : tint
-        ? tints[tint]
-        : frames.plain;
+    : tile
+      ? `${frames.layered} ${still ? "" : "tile-lift"} ${highlight ? frames.layeredHighlight : ""}`
+      : highlight
+        ? frames.highlight
+        : tint
+          ? tints[tint]
+          : frames.plain;
   const hasHead = title != null || count != null || tags != null || controls != null;
   const look = looks[variant];
+  const bodyBottom = tile && footer != null ? "pb-3" : look.body;
   return (
     <section
       id={id}
       aria-labelledby={label ? undefined : headingId}
       aria-label={label}
-      className={`flex min-w-0 flex-col rounded-widget border ${frame} ${className}`}
+      onPointerMove={tile ? followSpot : undefined}
+      className={`flex min-w-0 flex-col rounded-widget ${tile ? "" : "border"} ${frame} ${className}`}
     >
       {hasHead && (
         <div className={look.head}>
@@ -104,17 +128,19 @@ export function Widget({
       )}
       {children != null && (
         <div
-          className={`min-w-0 flex-1 ${look.body} ${tight ? look.tight : look.top} ${flush ? "px-0" : look.side}`}
+          className={`min-w-0 flex-1 ${bodyBottom} ${tight ? look.tight : look.top} ${flush ? "px-0" : look.side}`}
         >
           {children}
         </div>
       )}
-      {footer != null && <div className={look.footer}>{footer}</div>}
+      {footer != null && <div className={tile ? layeredFooter : look.footer}>{footer}</div>}
     </section>
   );
 }
 
 const footerText = "text-xs text-fg-muted [&_b]:font-strong [&_b]:text-fg [&_b]:tabular-nums";
+/** The layered tile's footer: on the tile at its bottom, no band or hairline (the mockup's `.t-foot`). */
+const layeredFooter = `flex min-h-8 flex-wrap items-center gap-x-3.5 gap-y-1.5 px-5 pb-4.5 ${footerText}`;
 /** The two header / body / footer looks of `Widget` (`variant`). */
 const looks = {
   eyebrow: {

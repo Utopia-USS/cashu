@@ -76,6 +76,9 @@ export interface NetWorthWidgetModel {
   step: { label: string; items: [string, Step][]; value: Step; onChange(v: Step): void };
   foot: Rich[];
   empty: string | null;
+  /** A chart point as the hero shows it while the chart is scrubbed: the value, the date and the composition
+   * (assets and liabilities of that point); null outside the plotted points. */
+  point(i: number): { value: string; date: string; detail: string | null } | null;
   chart:
     | {
         kind: "line";
@@ -140,15 +143,39 @@ export function netWorthModel(args: {
         Math.round(v / 1000) * 1000,
       ),
     );
+  const dateOf = (p: core.SeriesPoint) =>
+    new Date(`${p.date}T12:00:00`).toLocaleDateString(intlLocale(), {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  const point = (i: number) => {
+    const p = points[i];
+    if (!p) return null;
+    let assets = 0;
+    let liabilities = 0;
+    for (const v of Object.values(p.components)) {
+      const n = v.toFloat();
+      if (n >= 0) assets += n;
+      else liabilities += n;
+    }
+    const any = Object.keys(p.components).length > 0;
+    return {
+      value: cur(p.value.toFloat(), currency),
+      date: dateOf(p),
+      detail: any
+        ? N.composition(
+            cur0(Math.round(assets), currency),
+            liabilities < 0 ? cur0(Math.round(liabilities), currency) : null,
+          )
+        : null,
+    };
+  };
   const tooltip = (i: number): ChartTip => {
     const p = points[i];
     if (!p) return { title: "", rows: [] };
     return {
-      title: new Date(`${p.date}T12:00:00`).toLocaleDateString(intlLocale(), {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
+      title: dateOf(p),
       rows: [
         ...(ui.mode === "stacked"
           ? comps.flatMap((c) => {
@@ -210,6 +237,7 @@ export function netWorthModel(args: {
     },
     foot,
     empty: all.length ? null : N.empty,
+    point,
     chart: !all.length
       ? null
       : ui.mode === "line"

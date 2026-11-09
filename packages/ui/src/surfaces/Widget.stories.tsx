@@ -16,3 +16,18 @@ export const Ghost: Story<WidgetProps> = { args: { ghost: true } };
 export const Quiet: Story<WidgetProps> = {
   args: { title: "Allocation", variant: "quiet", footer: "Cash 20.8 %" },
 };
+export const Layered: Story<WidgetProps> = {
+  args: {
+    title: "Loans",
+    count: 2,
+    variant: "quiet",
+    layered: true,
+    footer: "left to repay 431,200 PLN",
+  },
+};
+export const LayeredStill: Story<WidgetProps> = {
+  args: { title: "Net worth", variant: "quiet", layered: true, still: true },
+};
+export const LayeredHighlight: Story<WidgetProps> = {
+  args: { title: "Surplus -> contribution", variant: "quiet", layered: true, highlight: true },
+};

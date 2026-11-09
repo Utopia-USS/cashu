@@ -15,6 +15,10 @@ export interface ChartFrameProps {
   /** Pointer hover over a path that carries a `hover` index (desktop only); null when it leaves. */
   onHover?: ((index: number | null) => void) | undefined;
   build: (width: number) => Built;
+  /** The focused index while the user scrubs (pointer, arrow keys, touch), null when the scrub ends. The caller
+   * shows the point itself (e.g. in a hero figure): the floating tip is then drawn for assistive technology
+   * only (its live region still announces it). */
+  onScrub?: ((index: number | null) => void) | undefined;
   /** Tooltip for a focused index, already privacy-masked; makes a scrubbable scene interactive. */
   tooltip?: ((i: number) => ChartTip) | undefined;
   /** Centre text (donut), already privacy-masked. */

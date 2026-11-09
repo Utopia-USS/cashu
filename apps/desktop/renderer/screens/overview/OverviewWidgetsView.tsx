@@ -1,23 +1,9 @@
-// The core widgets of Przegląd (ab24ab6 core/overview/CoreWidgets.tsx, NetWorthWidget.tsx, loans LoansWidget):
-// Budżet · <month>, Subskrypcje, Konta, a module that is not set up, Wartość netto w czasie and Kredyty.
-// Pure: every string comes formatted from overviewModel.ts / netWorthModel.ts.
-import {
-  AreaChart,
-  Button,
-  ChartLegend,
-  emptyCls,
-  Facts,
-  LineChart,
-  MeterRows,
-  Seg,
-  Select,
-  Tag,
-  tableCls,
-  tdCls,
-  Widget,
-} from "@cashu/ui";
-import { Fragment, type ReactNode } from "react";
-import type { NetWorthWidgetModel, Scope } from "./netWorthModel.js";
+// The core tiles of Przegląd (ab24ab6 core/overview/CoreWidgets.tsx, loans LoansWidget) as layered tiles
+// (design/desktop/overview/layered-tiles.html): Budżet · <month>, Subskrypcje, Konta, a module that is not set up
+// (a ghost tile) and Kredyty. "Wartość netto w czasie" lives in the net worth tile (OverviewView.tsx).
+// Pure: every string comes formatted from overviewModel.ts.
+import { Button, emptyCls, Facts, MeterRows, Tag, tableCls, Widget } from "@cashu/ui";
+import { Fragment } from "react";
 import type {
   AccountsModel,
   BudgetMonthModel,
@@ -29,7 +15,11 @@ import type {
 
 const runTone = { positive: "text-positive", negative: "text-negative", warning: "text-warning" };
 const sym = "block -mt-px text-2xs-plus text-fg-muted";
-const symInl = "ml-1 inline text-2xs-plus text-fg-muted";
+/** A list table inside a layered tile: rows on the tile's own padding, 10px cells (the mockup's `.row`). */
+export const tileTable = `${tableCls(false)} [&_td:first-child]:pl-0 [&_td:last-child]:pr-0`;
+export const tileTd = "border-b border-border px-2 py-2.5 text-left align-middle";
+export const tileNum =
+  "border-b border-border px-2 py-2.5 text-right align-middle tabular-nums whitespace-nowrap";
 
 /** Text runs with the old inline `<b>` / `.pos` / `.neg` / `.warn` spans. */
 export function RichText({ runs }: { runs: Rich }) {
@@ -75,6 +65,8 @@ export function BudgetMonthWidgetView({ m }: { m: BudgetMonthModel }) {
   return (
     <Widget
       title={m.title}
+      variant="quiet"
+      layered
       tags={
         m.tag ? (
           <Tag solid tone={m.tag.tone === "positive" ? "positive" : "neutral"}>
@@ -96,7 +88,11 @@ export function BudgetMonthWidgetView({ m }: { m: BudgetMonthModel }) {
         </>
       }
     >
-      {m.rows ? <MeterRows rows={m.rows} /> : <div className={emptyCls}>{m.empty}</div>}
+      {m.rows ? (
+        <MeterRows rows={m.rows} className="mt-1" />
+      ) : (
+        <div className={emptyCls}>{m.empty}</div>
+      )}
     </Widget>
   );
 }
@@ -106,24 +102,61 @@ export function SubscriptionsWidgetView({ m }: { m: SubscriptionsModel }) {
     <Widget
       title={m.title}
       count={m.count ?? undefined}
+      variant="quiet"
+      layered
       controls={
         <Button variant="link" onPress={m.link.onPress}>
           {m.link.label}
         </Button>
       }
       tight
-      footer={m.warn ? <span className="text-warning">{m.warn}</span> : undefined}
+      footer={
+        m.warn ? (
+          <span className="inline-flex items-center gap-2 text-warning">
+            <span aria-hidden className="size-1.5 rounded-full bg-warning" />
+            {m.warn}
+          </span>
+        ) : undefined
+      }
     >
-      <Facts items={m.facts} columns={2} />
+      <Facts items={m.facts} columns={2} tile />
     </Widget>
   );
 }
 
+type AccountRow = AccountsModel["rows"][number];
+
+/** One column of Konta: name over its bank line, the balance right. */
+function AccountsTable({ rows }: { rows: readonly AccountRow[] }) {
+  return (
+    <table className={tileTable}>
+      <tbody>
+        {rows.map((a) => (
+          <tr key={a.key}>
+            <td className={tileTd}>
+              <span className="font-demi">{a.name}</span>
+              <span className={sym}>{a.sub}</span>
+            </td>
+            <td
+              className={`${tileNum} font-heavy ${a.negative ? "text-negative" : ""} ${a.muted ? "text-fg-muted" : ""}`}
+            >
+              {a.value}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function AccountsWidgetView({ m }: { m: AccountsModel }) {
+  const half = Math.ceil(m.rows.length / 2);
   return (
     <Widget
       title={m.title}
       count={m.count ?? undefined}
+      variant="quiet"
+      layered
       controls={
         m.toggle ? (
           <Button variant="link" onPress={m.toggle.onPress}>
@@ -132,40 +165,31 @@ export function AccountsWidgetView({ m }: { m: AccountsModel }) {
         ) : undefined
       }
       tight
-      flush
-      footer={
-        <>
-          {m.wallet && (
-            <span>
-              <RichText runs={m.wallet} />
-            </span>
-          )}
-          <Spacer />
-          <Button variant="link" size="sm" onPress={m.cash.onPress}>
-            {m.cash.label}
-          </Button>
-        </>
-      }
     >
       {m.empty ? (
         <div className={emptyCls}>{m.empty}</div>
       ) : (
-        <table className={tableCls(true)}>
-          <tbody>
-            {m.rows.map((a) => (
-              <tr key={a.key}>
-                <td className={tdCls()}>
-                  {a.name} <span className={symInl}>{a.sub}</span>
-                </td>
-                <td
-                  className={`${tdCls(true)} ${a.negative ? "text-negative" : ""} ${a.muted ? "text-fg-muted" : ""}`}
-                >
-                  {a.value}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="grid grid-cols-2 items-start gap-x-7 max-narrow:grid-cols-1">
+          <AccountsTable rows={m.rows.slice(0, half)} />
+          {m.rows.length > half && <AccountsTable rows={m.rows.slice(half)} />}
+        </div>
+      )}
+      {m.wallet ? (
+        <div className="tile-sub mt-3 flex flex-wrap items-center gap-2.5 px-3.5 py-2 text-xs-plus text-fg-secondary [&_b]:font-heavy [&_b]:text-fg [&_b]:tabular-nums">
+          <span>
+            <RichText runs={m.wallet} />
+          </span>
+          <Spacer />
+          <Button size="sm" onPress={m.cash.onPress}>
+            {m.cash.label}
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-3 flex justify-end">
+          <Button size="sm" onPress={m.cash.onPress}>
+            {m.cash.label}
+          </Button>
+        </div>
       )}
     </Widget>
   );
@@ -175,6 +199,7 @@ export function PendingWidgetView({ m }: { m: PendingModel }) {
   return (
     <Widget
       title={m.title}
+      variant="quiet"
       ghost
       tags={<Tag tone={m.tag.tone}>{m.tag.text}</Tag>}
       controls={
@@ -197,99 +222,19 @@ export function PendingWidgetView({ m }: { m: PendingModel }) {
   );
 }
 
-export function NetWorthWidgetView({ m }: { m: NetWorthWidgetModel }) {
-  const chart = m.chart;
-  let body: ReactNode;
-  if (chart === null) body = <div className={emptyCls}>{m.empty}</div>;
-  else if (chart.kind === "line")
-    body = (
-      <LineChart
-        label={chart.label}
-        height={230}
-        padL={60}
-        padR={110}
-        yFormat={chart.yFormat}
-        xLabels={chart.xLabels}
-        valueKind="amount"
-        series={[{ values: chart.values, color: "accent", area: true, endLabel: chart.endLabel }]}
-        tooltip={chart.tooltip}
-      />
-    );
-  else
-    body = (
-      <>
-        <AreaChart
-          label={chart.label}
-          layers={chart.layers}
-          totals={chart.totals}
-          xLabels={chart.xLabels}
-          yFormat={chart.yFormat}
-          valueKind="amount"
-          tooltip={chart.tooltip}
-        />
-        <ChartLegend className="mt-1.5" items={chart.legend} />
-      </>
-    );
-  return (
-    <Widget
-      title={m.title}
-      controls={
-        <>
-          <Seg
-            quiet
-            label={m.mode.label}
-            items={m.mode.items}
-            value={m.mode.value}
-            onChange={m.mode.onChange}
-          />
-          <Select
-            label={m.scope.label}
-            labelHidden
-            value={m.scope.value}
-            onChange={(v) => m.scope.onChange(v as Scope)}
-            options={m.scope.options}
-          />
-          <Seg
-            quiet
-            label={m.range.label}
-            items={m.range.items}
-            value={m.range.value}
-            onChange={m.range.onChange}
-          />
-        </>
-      }
-      tight
-      footer={
-        <>
-          <FootFacts items={m.foot} />
-          <Spacer />
-          <Seg
-            quiet
-            label={m.step.label}
-            items={m.step.items}
-            value={m.step.value}
-            onChange={m.step.onChange}
-          />
-        </>
-      }
-    >
-      {body}
-    </Widget>
-  );
-}
-
 export function LoansWidgetView({ m }: { m: LoansModel }) {
   return (
     <Widget
       title={m.title}
       count={m.count ?? undefined}
+      variant="quiet"
+      layered
       controls={
         <Button variant="link" onPress={m.link.onPress}>
           {m.link.label}
         </Button>
       }
       tight
-      flush
       footer={
         m.foot ? (
           <span>
@@ -301,17 +246,17 @@ export function LoansWidgetView({ m }: { m: LoansModel }) {
       {m.empty ? (
         <div className={emptyCls}>{m.empty}</div>
       ) : (
-        <table className={tableCls(true)}>
+        <table className={tileTable}>
           <tbody>
             {m.rows.map((l) => (
               <tr key={l.key}>
-                <td className={tdCls()}>
-                  <span className="font-strong">{l.name}</span>
+                <td className={tileTd}>
+                  <span className="font-demi">{l.name}</span>
                   <span className={sym}>{l.meta}</span>
                 </td>
-                <td className={`${tdCls(true)} text-negative`}>
+                <td className={`${tileNum} font-heavy text-negative`}>
                   {l.value}
-                  {l.sub && <span className={sym}>{l.sub}</span>}
+                  {l.sub && <span className={`${sym} font-regular`}>{l.sub}</span>}
                 </td>
               </tr>
             ))}

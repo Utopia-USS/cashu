@@ -359,9 +359,15 @@ export function ChartFrame({
   inline,
   onActivate,
   onHover,
+  onScrub,
 }: ChartFrameProps) {
   const { ref, width } = useMeasuredWidth(fixed);
-  const [hover, setHover] = useState<number | null>(null);
+  const [hover, setFocus] = useState<number | null>(null);
+  // Every focus change reports to the caller's scrub (the overview hero follows the scrubbed point).
+  const setHover = (next: number | null) => {
+    setFocus(next);
+    if (onScrub && next !== hover) onScrub(next);
+  };
   // A per-instance gradient id usable inside url(#...) (React's useId contains colons).
   const prefix = `g${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const built = width > 0 ? build(width) : null;
@@ -376,7 +382,7 @@ export function ChartFrame({
     const delta = { ArrowRight: 1, ArrowLeft: -1, End: scrub.n, Home: -scrub.n }[e.key];
     if (delta != null) {
       e.preventDefault();
-      setHover((cur) => stepIndex(cur, delta, scrub.n));
+      setHover(stepIndex(hover, delta, scrub.n));
     } else if (e.key === "Escape") setHover(null);
   };
   const onPointerMove = (e: PointerEvent<SVGSVGElement>) => {
@@ -434,7 +440,7 @@ export function ChartFrame({
         (tip && focus ? (
           <div
             role="status"
-            className={LOOK.tip}
+            className={onScrub ? "sr-only" : LOOK.tip}
             style={{
               left: focus.x,
               top: focus.tipBelow ? focus.tipY : Math.max(0, focus.tipY - 8),

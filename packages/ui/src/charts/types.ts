@@ -66,6 +66,10 @@ export interface LineChartProps extends ChartBase {
   markers?: { i: number; kind: "buy" | "sell"; y?: number }[];
   /** Tooltip for a data index; makes the chart focusable (arrow keys, pointer, touch scrub). */
   tooltip?: (i: number) => ChartTip;
+  /** The focused index while the user scrubs (pointer, arrow keys, touch), null when the scrub ends. The caller
+   * shows the point itself (e.g. in a hero figure): the floating tip is then drawn for assistive technology
+   * only (its live region still announces it). */
+  onScrub?: ((index: number | null) => void) | undefined;
 }
 
 export interface AreaLayer {
@@ -89,6 +93,10 @@ export interface AreaChartProps extends ChartBase {
   padL?: number;
   padR?: number;
   tooltip?: (i: number) => ChartTip;
+  /** The focused index while the user scrubs (pointer, arrow keys, touch), null when the scrub ends. The caller
+   * shows the point itself (e.g. in a hero figure): the floating tip is then drawn for assistive technology
+   * only (its live region still announces it). */
+  onScrub?: ((index: number | null) => void) | undefined;
 }
 
 export interface BarChartProps extends ChartBase {

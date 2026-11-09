@@ -22,6 +22,7 @@ import {
   changeSince,
   contributionPp,
   isDigestDay,
+  monthlyFlows,
   perfNotes,
   planForMonth,
   planMonthsSoFar,
@@ -164,6 +165,24 @@ type SurplusActions =
       cancel: Link;
     };
 
+/** A month of the year's contribution strip: deposited, missed, planned (this month, not yet deposited),
+ * due (this month, nothing planned yet), ahead (later this year) or before the plan started. */
+export type MonthState = "on" | "missed" | "planned" | "due" | "ahead" | "before";
+
+/** The year's contributions against the monthly plan (the ring and the 12-month strip of the card). */
+export interface SurplusYear {
+  /** Accessible name of the ring and the strip ("2026 contributions against the plan"). */
+  label: string;
+  /** Months of the plan span with a deposit, of the months that count (the current one once deposited). */
+  covered: number;
+  due: number;
+  /** covered / due as a whole percent; null before any month counts. */
+  pct: number | null;
+  /** "plan covered 9 of 11 mo". */
+  text: string;
+  months: { key: string; initial: string; state: MonthState; title: string }[];
+}
+
 export type SurplusModel =
   | { kind: "none"; title: string; text: string }
   | {
@@ -178,7 +197,75 @@ export type SurplusModel =
       change: Link | null;
       foot: Rich[];
       footRight: string;
+      /** The year's contributions against the plan; null without a monthly plan amount. */
+      year: SurplusYear | null;
     };
+
+/** The year's months against the monthly plan: deposits per calendar month from the 1-year portfolio flows,
+ * the plan span from January or from the first deposit of this year (planMonthsSoFar), this month's planned
+ * deposit. Pure. */
+export function surplusYear(args: {
+  points: { date: string; flow: number | null }[];
+  today: string;
+  amount: number | null;
+  currency: string;
+  firstDeposit: string | null;
+  planned: { amount: number; currency: string; planned_date: string; status: string } | null;
+}): SurplusYear | null {
+  const { today, amount } = args;
+  if (amount == null || !(amount > 0)) return null;
+  const year = today.slice(0, 4);
+  const cur = Number(today.slice(5, 7)) - 1;
+  const span = planMonthsSoFar(args.firstDeposit, today);
+  const from = cur - span + 1;
+  const flows = monthlyFlows(args.points, `${year}-12-15`, 12);
+  const months = flows.map((m, k) => {
+    const name = MONTH_NOM[k] ?? m.label;
+    const state: MonthState =
+      k > cur
+        ? "ahead"
+        : k < from
+          ? "before"
+          : m.value > 0
+            ? "on"
+            : k < cur
+              ? "missed"
+              : args.planned?.status === "planned"
+                ? "planned"
+                : "due";
+    const title =
+      state === "on"
+        ? S.monthOn(name, money0(m.value, args.currency))
+        : state === "missed"
+          ? S.monthMissed(name)
+          : state === "planned" && args.planned
+            ? S.monthPlanned(
+                name,
+                money0(args.planned.amount, args.planned.currency),
+                dm(args.planned.planned_date),
+              )
+            : state === "due"
+              ? S.monthDue(name)
+              : state === "ahead"
+                ? S.monthAhead(name)
+                : S.monthBefore(name);
+    return { key: m.key, initial: m.label.charAt(0).toUpperCase(), state, title };
+  });
+  const counted = months.slice(Math.max(0, from), cur + 1).filter((m, i, all) => {
+    // The current month counts only once it has a deposit (contributionFacts).
+    return i < all.length - 1 || m.state === "on";
+  });
+  const covered = counted.filter((m) => m.state === "on").length;
+  const due = counted.length;
+  return {
+    label: S.yearPlan(year),
+    covered,
+    due,
+    pct: due > 0 ? Math.round((covered / due) * 100) : null,
+    text: S.coveredOf(covered, due),
+    months,
+  };
+}
 
 /** Nadwyżka -> wpłata (SurplusWidget). `other` is the "Inna kwota" draft (null = closed). */
 export function surplusModel(args: {
@@ -348,5 +435,13 @@ export function surplusModel(args: {
         : null,
     foot,
     footRight: plan?.status === "booked" ? S.bookedFromImport : S.toBookByImport,
+    year: surplusYear({
+      points: inv.perf1y.data?.points ?? [],
+      today,
+      amount,
+      currency: c,
+      firstDeposit,
+      planned: plan,
+    }),
   };
 }

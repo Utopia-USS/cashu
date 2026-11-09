@@ -1,36 +1,83 @@
+import { AssetsWidgetView } from "./AssetsWidgetView.js";
+import assetStories from "./AssetsWidgetView.stories.js";
+import { InvestmentsSummaryWidgetView, SurplusWidgetView } from "./InvestmentsWidgetView.js";
 import { OverviewView, type OverviewViewProps } from "./OverviewView.js";
-import type { HeroModel } from "./overviewModel.js";
+import {
+  AccountsWidgetView,
+  BudgetMonthWidgetView,
+  LoansWidgetView,
+  PendingWidgetView,
+  SubscriptionsWidgetView,
+} from "./OverviewWidgetsView.js";
+import {
+  accounts,
+  budget,
+  hero,
+  investments,
+  loans,
+  netWorth,
+  pending,
+  privateHero,
+  subscriptions,
+  surplus,
+} from "./overviewStoryData.js";
 
-const hero: HeroModel = {
-  label: "Net worth",
-  caption: "Net worth",
-  value: "12,000.00 PLN",
-  delta: [{ text: "+50 PLN (+0.4%)", tone: "positive" }, { text: " since September" }],
-  facts: [
-    { label: "Assets", value: "14,000 PLN", detail: "3 accounts · 2 modules" },
-    { label: "Liabilities", value: "-2,000 PLN", detail: "loan" },
-    { label: "Liquid", value: "8,000 PLN", detail: "accounts and cash" },
+/** Every module on (the design's bento). */
+const args: OverviewViewProps = {
+  hero,
+  netWorth,
+  side: [
+    { id: "budget", node: <BudgetMonthWidgetView m={budget} /> },
+    { id: "investments.surplus", node: <SurplusWidgetView m={surplus} /> },
   ],
-  other: "other currencies: 400.00 EUR",
-  meta: "not converted",
+  middle: [
+    { id: "investments.summary", node: <InvestmentsSummaryWidgetView m={investments} /> },
+    { id: "assets.list", node: <AssetsWidgetView {...assetStories.args} /> },
+    { id: "loans.list", node: <LoansWidgetView m={loans} /> },
+  ],
+  bottom: [
+    { id: "accounts", node: <AccountsWidgetView m={accounts} /> },
+    { id: "subs", node: <SubscriptionsWidgetView m={subscriptions} /> },
+  ],
+  noModules: null,
 };
-const args: OverviewViewProps = { hero, slots: [], noModules: null };
 
 export default { title: "Desktop/Overview", component: OverviewView, args };
 export const Ready = {};
+/** Budget and investments only, loans not set up: the ghost tile joins the middle row. */
+export const FewerModules = {
+  args: {
+    ...args,
+    middle: [
+      { id: "pending.loans", node: <PendingWidgetView m={pending} /> },
+      { id: "investments.summary", node: <InvestmentsSummaryWidgetView m={investments} /> },
+    ],
+  },
+};
+/** No budget: the middle row moves up beside the net worth tile, accounts take the full width. */
+export const NoBudget = {
+  args: {
+    ...args,
+    side: [],
+    bottom: [{ id: "accounts", node: <AccountsWidgetView m={accounts} /> }],
+  },
+};
 export const Empty = {
-  args: { ...args, noModules: { label: "Turn on modules", onPress: () => {} } },
+  args: {
+    ...args,
+    side: [],
+    middle: [],
+    bottom: [{ id: "accounts", node: <AccountsWidgetView m={{ ...accounts, rows: [] }} /> }],
+    noModules: { label: "Turn on modules", onPress: () => {} },
+  },
 };
 export const Privacy = {
   args: {
     ...args,
-    hero: {
-      ...hero,
-      value: "••• PLN",
-      delta: null,
-      facts: hero.facts.map((f) => ({ ...f, value: "••• PLN" })),
-      other: null,
-      meta: null,
-    },
+    hero: privateHero,
+    netWorth: { ...netWorth, chart: null, empty: null, foot: [] },
+    side: [],
+    middle: [],
+    bottom: [],
   },
 };

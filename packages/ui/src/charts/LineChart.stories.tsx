@@ -104,6 +104,11 @@ export const Interactive: Story<LineChartProps> = {
   },
 };
 
+/** The caller follows the scrub (the overview hero shows the point); the tip is for assistive tech only. */
+export const Scrubbed: Story<LineChartProps> = {
+  args: { ...Interactive.args, onScrub: () => {} },
+};
+
 export const Empty: Story<LineChartProps> = { args: { series: [{ values: [] }], xLabels: [] } };
 
 export const PrivacyMode: Story<LineChartProps> = {

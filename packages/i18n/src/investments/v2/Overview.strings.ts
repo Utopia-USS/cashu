@@ -126,6 +126,38 @@ export const S = catalog({
     pl: (bucket: string, pp: string) => `${bucket} poniżej celu: wpłata domyka ${pp}`,
     en: (bucket: string, pp: string) => `${bucket} below target: the contribution closes ${pp}`,
   },
+  yearPlan: {
+    pl: (year: string) => `Wpłaty ${year} według planu`,
+    en: (year: string) => `${year} contributions against the plan`,
+  },
+  coveredOf: {
+    pl: (done: number, due: number) => `plan pokryty w ${done} z ${due} mies.`,
+    en: (done: number, due: number) => `plan covered ${done} of ${due} mo`,
+  },
+  monthOn: {
+    pl: (month: string, amount: string) => `${month}: wpłacono ${amount}`,
+    en: (month: string, amount: string) => `${month}: contributed ${amount}`,
+  },
+  monthMissed: {
+    pl: (month: string) => `${month}: bez wpłaty`,
+    en: (month: string) => `${month}: no contribution`,
+  },
+  monthPlanned: {
+    pl: (month: string, amount: string, day: string) => `${month}: zaplanowano ${amount} · ${day}`,
+    en: (month: string, amount: string, day: string) => `${month}: planned ${amount} · ${day}`,
+  },
+  monthDue: {
+    pl: (month: string) => `${month}: jeszcze bez wpłaty`,
+    en: (month: string) => `${month}: not contributed yet`,
+  },
+  monthAhead: {
+    pl: (month: string) => `${month}: przed nami`,
+    en: (month: string) => `${month}: still ahead`,
+  },
+  monthBefore: {
+    pl: (month: string) => `${month}: przed planem`,
+    en: (month: string) => `${month}: before the plan`,
+  },
   planAmount: {
     pl: (amount: string) => `Zaplanuj ${amount}`,
     en: (amount: string) => `Plan ${amount}`,

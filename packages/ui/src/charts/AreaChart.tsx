@@ -17,6 +17,7 @@ export function AreaChart(props: AreaChartProps) {
       label={props.label}
       build={(w) => areaScene(props, w, privacy)}
       tooltip={tooltip ? (i) => maskTip(tooltip(i), privacy) : undefined}
+      onScrub={props.onScrub}
     />
   );
 }

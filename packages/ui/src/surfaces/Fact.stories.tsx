@@ -9,3 +9,6 @@ const meta = {
 export default meta;
 export const Default: Story<FactProps> = {};
 export const Negative: Story<FactProps> = { args: { tone: "negative", size: "sm" } };
+export const Tile: Story<FactProps> = {
+  args: { label: "Liquid", value: "46,812 PLN", detail: "4.1 mo. of spending", tile: true },
+};

@@ -23,6 +23,12 @@ export const S = catalog({
     pl: (c: string) => `Wartość netto w czasie, ${c}`,
     en: (c: string) => `Net worth over time, ${c}`,
   },
+  composition: {
+    pl: (assets: string, liabilities: string | null) =>
+      liabilities ? `aktywa ${assets} · zobowiązania ${liabilities}` : `aktywa ${assets}`,
+    en: (assets: string, liabilities: string | null) =>
+      liabilities ? `assets ${assets} · liabilities ${liabilities}` : `assets ${assets}`,
+  },
   stackedLabel: {
     pl: (c: string) => `Składniki wartości netto, ${c}`,
     en: (c: string) => `Net worth components, ${c}`,

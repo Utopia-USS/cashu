@@ -160,9 +160,15 @@ export function ChartFrame({
   decorative,
   inline,
   onActivate,
+  onScrub,
 }: ChartFrameProps) {
   const [measured, setMeasured] = useState(0);
-  const [hover, setHover] = useState<number | null>(null);
+  const [hover, setFocus] = useState<number | null>(null);
+  // Every focus change reports to the caller's scrub, which then shows the point itself (no floating tip).
+  const setHover = (next: number | null) => {
+    setFocus(next);
+    if (onScrub && next !== hover) onScrub(next);
+  };
   const color = usePalette();
   const width = fixed ?? measured;
   const built = width > 0 ? build(width) : null;
@@ -184,7 +190,7 @@ export function ChartFrame({
     }
     if (!scrub) return;
     const delta = { increment: 1, decrement: -1 }[e.nativeEvent.actionName];
-    if (delta != null) setHover((cur) => stepIndex(cur, delta, scrub.n));
+    if (delta != null) setHover(stepIndex(hover, delta, scrub.n));
   };
   const a11y = decorative
     ? {
@@ -288,7 +294,7 @@ export function ChartFrame({
           )}
         </View>
       )}
-      {tip && focus && scene && (
+      {tip && focus && scene && !onScrub && (
         <View
           pointerEvents="none"
           className="absolute rounded-md border border-border bg-surface-raised px-2 py-1"

@@ -12,12 +12,11 @@ import {
   Select,
   Tag,
   TextField,
-  tableCls,
-  tdCls,
   Widget,
 } from "@cashu/ui";
 import { useState } from "react";
 import { AssetsStepsView } from "../assets/AssetsStepsView.js";
+import { tileNum, tileTable, tileTd } from "./OverviewWidgetsView.js";
 import type { AssetDrawerState } from "./useAssetDrawer.js";
 
 const sym = "block -mt-px text-2xs-plus text-fg-muted";
@@ -50,6 +49,8 @@ export function AssetsWidgetView({
     return (
       <Widget
         title={A.title}
+        variant="quiet"
+        layered
         tight
         id="ov-assets"
         footer={
@@ -67,6 +68,8 @@ export function AssetsWidgetView({
     <Widget
       title={A.title}
       count={rows.length}
+      variant="quiet"
+      layered
       id="ov-assets"
       controls={
         <Button size="sm" disabled={privacy} onPress={() => add("property")}>
@@ -74,7 +77,6 @@ export function AssetsWidgetView({
         </Button>
       }
       tight
-      flush
       footer={
         <>
           <span>
@@ -100,7 +102,7 @@ export function AssetsWidgetView({
         </>
       }
     >
-      <table className={tableCls(true)}>
+      <table className={tileTable}>
         <tbody>
           {shown.map((row) => (
             <tr
@@ -108,7 +110,7 @@ export function AssetsWidgetView({
               className={privacy ? undefined : rowLinkCls}
               onClick={privacy ? undefined : () => state.openEdit(row.gid)}
             >
-              <td className={tdCls()}>
+              <td className={tileTd}>
                 <button
                   type="button"
                   className={nameBtn}
@@ -136,9 +138,9 @@ export function AssetsWidgetView({
                   </span>
                 )}
               </td>
-              <td className={tdCls(true)}>
+              <td className={`${tileNum} font-heavy`}>
                 {row.value}
-                {row.lossLine && <span className={sym}>{row.lossLine}</span>}
+                {row.lossLine && <span className={`${sym} font-regular`}>{row.lossLine}</span>}
               </td>
             </tr>
           ))}

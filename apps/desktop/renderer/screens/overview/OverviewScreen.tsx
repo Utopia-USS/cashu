@@ -1,13 +1,13 @@
-// Przegląd (ab24ab6 core/Overview.tsx): the old `.wrap.wide` page with a toast stack, the first load as the
-// Suspense fallback, then the hero and the widget grid in the old slot order: budget 10, surplus 20, investments
-// 30, modules not set up 35+, net worth 40 (two columns), assets 45 and loans 50 (stacked beside it), accounts
-// 70 (two columns), subscriptions 80. The investments reads mount only while that module is set up.
+// Przegląd (ab24ab6 core/Overview.tsx; layout design/desktop/overview/layered-tiles.html): the old `.wrap.wide`
+// page with a toast stack, the first load as the Suspense fallback, then the bento: the net worth tile (with
+// "Net worth over time" folded in) with budget and surplus beside it, then modules not set up, investments,
+// assets and loans, then accounts and subscriptions. The investments reads mount only while that module is set up.
 
 import { lang } from "@cashu/i18n";
 import { S as D } from "@cashu/i18n/core/Overview.strings";
 import { overviewQueries } from "@cashu/store/overview";
 import { useQuery } from "@cashu/store-react";
-import { type GridItem, Page, Skeleton, ToastProvider, useUiEnv } from "@cashu/ui";
+import { Page, Skeleton, ToastProvider, useUiEnv } from "@cashu/ui";
 import { Suspense, useEffect, useState } from "react";
 import { S } from "../../Desktop.strings.js";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
@@ -15,12 +15,11 @@ import { AssetsWidgetView } from "./AssetsWidgetView.js";
 import { CashDrawerView } from "./CashDrawerView.js";
 import { InvestmentsSummaryWidgetView, SurplusWidgetView } from "./InvestmentsWidgetView.js";
 import { investmentsHeroFact, investmentsSummaryModel, surplusModel } from "./investmentsModel.js";
-import { OverviewView } from "./OverviewView.js";
+import { type OverviewTile, OverviewView } from "./OverviewView.js";
 import {
   AccountsWidgetView,
   BudgetMonthWidgetView,
   LoansWidgetView,
-  NetWorthWidgetView,
   PendingWidgetView,
   SubscriptionsWidgetView,
 } from "./OverviewWidgetsView.js";
@@ -48,19 +47,19 @@ export function OverviewScreen(props: OverviewScreenProps) {
   );
 }
 
-/** First load: the hero and three widget placeholders. */
+/** First load: the net worth tile and the two tiles beside it as placeholders. */
 function OverviewLoading() {
   return (
-    <div
-      role="status"
-      className="grid grid-cols-3 gap-4 max-wide:grid-cols-2 max-narrow:grid-cols-1"
-    >
-      <div className="col-span-3 max-wide:col-span-2 max-narrow:col-auto">
-        <Skeleton height={92} radius="widget" />
+    <div role="status" className="grid grid-cols-12 gap-3.5">
+      <div className="col-span-8 row-span-2 max-wide:col-span-12 max-wide:row-span-1">
+        <Skeleton height={480} radius="widget" />
       </div>
-      <Skeleton height={160} radius="widget" />
-      <Skeleton height={160} radius="widget" />
-      <Skeleton height={160} radius="widget" />
+      <div className="col-span-4 max-wide:col-span-6 max-narrow:col-span-12">
+        <Skeleton height={233} radius="widget" />
+      </div>
+      <div className="col-span-4 max-wide:col-span-6 max-narrow:col-span-12">
+        <Skeleton height={233} radius="widget" />
+      </div>
     </div>
   );
 }
@@ -103,22 +102,15 @@ function OverviewBody({
     if (s.privacy && assets.open) assets.close();
   }, [s.privacy, assets]);
 
-  type Slot = GridItem & { order: number };
-  const slots: Slot[] = [];
-  if (s.show.budget) {
-    slots.push({ id: "budget", span: 1, order: 10, node: <BudgetMonthWidgetView m={s.budget} /> });
-    slots.push({
-      id: "subs",
-      span: 1,
-      order: 80,
-      node: <SubscriptionsWidgetView m={s.subscriptions} />,
-    });
-  }
+  // The tiles in the bento's groups (OverviewView / overviewLayout.ts place them): beside the hero, the
+  // middle row, the bottom row. Modules not set up come first in the middle row (old slots 35+).
+  const side: OverviewTile[] = [];
+  const middle: OverviewTile[] = [];
+  const bottom: OverviewTile[] = [];
+  if (s.show.budget) side.push({ id: "budget", node: <BudgetMonthWidgetView m={s.budget} /> });
   if (inv && s.show.surplus)
-    slots.push({
+    side.push({
       id: "investments.surplus",
-      span: 1,
-      order: 20,
       node: (
         <SurplusWidgetView
           m={surplusModel({
@@ -132,11 +124,11 @@ function OverviewBody({
         />
       ),
     });
+  for (const m of s.pending)
+    middle.push({ id: `pending.${m.id}`, node: <PendingWidgetView m={m} /> });
   if (inv && s.show.investments)
-    slots.push({
+    middle.push({
       id: "investments.summary",
-      span: 1,
-      order: 30,
       node: (
         <InvestmentsSummaryWidgetView
           m={investmentsSummaryModel(inv, today, nav.openInvestments)}
@@ -144,11 +136,8 @@ function OverviewBody({
       ),
     });
   if (s.show.assets)
-    slots.push({
+    middle.push({
       id: "assets.list",
-      span: 1,
-      order: 45,
-      stack: "side",
       node: (
         <AssetsWidgetView
           state={assets}
@@ -159,35 +148,18 @@ function OverviewBody({
         />
       ),
     });
-  if (s.show.loans)
-    slots.push({
-      id: "loans.list",
-      span: 1,
-      order: 50,
-      stack: "side",
-      node: <LoansWidgetView m={s.loans} />,
-    });
-  s.pending.forEach((m, k) => {
-    slots.push({
-      id: `pending.${m.id}`,
-      span: 1,
-      order: 35 + k / 10,
-      node: <PendingWidgetView m={m} />,
-    });
-  });
-  slots.push({ id: "networth", span: 2, order: 40, node: <NetWorthWidgetView m={s.netWorth} /> });
-  slots.push({
-    id: "accounts",
-    span: 2,
-    order: 70,
-    node: <AccountsWidgetView m={s.accounts} />,
-  });
-  slots.sort((a, b) => a.order - b.order);
+  if (s.show.loans) middle.push({ id: "loans.list", node: <LoansWidgetView m={s.loans} /> });
+  bottom.push({ id: "accounts", node: <AccountsWidgetView m={s.accounts} /> });
+  if (s.show.budget)
+    bottom.push({ id: "subs", node: <SubscriptionsWidgetView m={s.subscriptions} /> });
   return (
     <>
       <OverviewView
         hero={s.hero}
-        slots={slots}
+        netWorth={s.netWorth}
+        side={side}
+        middle={middle}
+        bottom={bottom}
         noModules={
           s.noModules ? { label: D.enableModules, onPress: nav.openModulesSettings } : null
         }

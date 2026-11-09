@@ -118,6 +118,8 @@
   --radius-sm-plus: 7px;
   --radius-control: 8px;
   --radius-md: 10px;
+  /* The small layered sub-tile inside a layered tile (`tile-sub`: the overview hero's facts). */
+  --radius-tile: 16px;
   --radius-widget: 28px;
   /* The big full-width buttons of the review deck: they kept the Python app's 12px when cards grew. */
   --radius-button-lg: 12px;
@@ -172,6 +174,8 @@
   --text-6xl: 40px;
   /* The investments hero figure (design/desktop/investments-home/lab.html V5, Statement size). */
   --text-statement: 64px;
+  /* The statement figure inside a layered tile (design/desktop/overview/layered-tiles.html: the net worth). */
+  --text-statement-tile: 56px;
   /* The UA button size (13.333px) of the old bare buttons that set no font size (deck "Cofnij"). */
   --text-control: 13.3333px;
   /* Inline code of rendered Markdown (old `.md code { font-size: .88em }`, relative to its text). */
@@ -268,6 +272,17 @@
   --animate-scrim-in: scrim-in 0.16s ease-out;
   /* A signal opened from a notification or a rail row flashes once (old `.sig.flash` sig-flash 2.4s). */
   --animate-sig-flash: sig-flash 2.4s ease-out;
+  /* Layered tiles rise in (`tile-enter`, staggered by --tile-i; none under reduced motion) and settle on
+     hover (design/desktop/overview/layered-tiles.html). */
+  --ease-tile: cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-tile-in: tile-in 0.56s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+
+  @keyframes tile-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+  }
 
   @keyframes panel-in {
     from {
@@ -319,6 +334,21 @@
     --modal-panel-layer: 50;
     --modal-layer-step: 20;
     --elevation-card: 0 1px 2px rgba(16, 18, 22, 0.04);
+    /* The layered tile surface (`tile-layered`, `tile-sub`; design/desktop/overview/layered-tiles.html): the
+       top-lit gradient start, the inset hairline and its hover step, the lit top edge, the cursor spotlight,
+       the soft drop shadow and its hover step, and the sub-tile fill. */
+    --tile-top: #ffffff;
+    --tile-ring: rgba(16, 18, 22, 0.08);
+    --tile-ring-hover: rgba(16, 18, 22, 0.14);
+    --tile-edge: rgba(255, 255, 255, 0.7);
+    --tile-spot: rgba(16, 18, 22, 0.025);
+    --elevation-tile: 0 1px 2px rgba(16, 18, 22, 0.04), 0 14px 34px -18px rgba(16, 18, 22, 0.16);
+    --elevation-tile-hover:
+      0 2px 4px rgba(16, 18, 22, 0.05), 0 20px 44px -20px rgba(16, 18, 22, 0.24);
+    --sub-top: rgba(16, 18, 22, 0.025);
+    --sub-bottom: rgba(16, 18, 22, 0.01);
+    --sub-edge: rgba(255, 255, 255, 0.7);
+    --sub-ring-hover: rgba(16, 18, 22, 0.18);
     /* Dark follows the design direction in design/desktop/investments-home/lab.html (V5, built on V4):
        page #0a0a0b, card #0e0e10, surfaces #111113 / #17171a / #1e1e22, popover #161618, ink
        #ededf0 / #a3a3ab / #6e6e77, accent #8ea4ff, chart c1..c5. No new hues: every role below takes
@@ -388,6 +418,17 @@
       --color-nw-mortgage: #ef6f6c;
       --color-nw-loan: #e5a54a;
       --elevation-card: 0 0 #0000;
+      --tile-top: #161619;
+      --tile-ring: rgba(255, 255, 255, 0.065);
+      --tile-ring-hover: rgba(255, 255, 255, 0.11);
+      --tile-edge: rgba(255, 255, 255, 0.05);
+      --tile-spot: rgba(255, 255, 255, 0.055);
+      --elevation-tile: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -18px rgba(0, 0, 0, 0.85);
+      --elevation-tile-hover: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -20px rgba(0, 0, 0, 0.95);
+      --sub-top: rgba(255, 255, 255, 0.035);
+      --sub-bottom: rgba(255, 255, 255, 0.012);
+      --sub-edge: rgba(255, 255, 255, 0.04);
+      --sub-ring-hover: rgba(255, 255, 255, 0.18);
     }
     @variant light {
       --color-fg: #1a1d21;
@@ -449,6 +490,18 @@
       --color-nw-mortgage: #dc2626;
       --color-nw-loan: #ea580c;
       --elevation-card: 0 1px 2px rgba(16, 18, 22, 0.04);
+      --tile-top: #ffffff;
+      --tile-ring: rgba(16, 18, 22, 0.08);
+      --tile-ring-hover: rgba(16, 18, 22, 0.14);
+      --tile-edge: rgba(255, 255, 255, 0.7);
+      --tile-spot: rgba(16, 18, 22, 0.025);
+      --elevation-tile: 0 1px 2px rgba(16, 18, 22, 0.04), 0 14px 34px -18px rgba(16, 18, 22, 0.16);
+      --elevation-tile-hover:
+        0 2px 4px rgba(16, 18, 22, 0.05), 0 20px 44px -20px rgba(16, 18, 22, 0.24);
+      --sub-top: rgba(16, 18, 22, 0.025);
+      --sub-bottom: rgba(16, 18, 22, 0.01);
+      --sub-edge: rgba(255, 255, 255, 0.7);
+      --sub-ring-hover: rgba(16, 18, 22, 0.18);
     }
   }
 }
@@ -487,5 +540,89 @@
     &::after {
       animation: none;
     }
+  }
+}
+
+/* The layered tile (Widget `layered`; design/desktop/overview/layered-tiles.html): a top-lit gradient over the
+   card colour, an inset hairline with a lit top edge and a soft drop shadow; hovered, the hairline and the
+   shadow step up and a spotlight follows the cursor (--spot-x / --spot-y, set on pointer move; without them
+   it sits at the top centre). Pair with `rounded-widget`. */
+@utility tile-layered {
+  position: relative;
+  background: linear-gradient(180deg, var(--tile-top), var(--color-surface-raised) 58%);
+  box-shadow:
+    inset 0 0 0 1px var(--tile-ring),
+    inset 0 1px 0 var(--tile-edge),
+    var(--elevation-tile);
+  transition:
+    transform 0.25s var(--ease-tile),
+    box-shadow 0.25s;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    background: radial-gradient(
+      340px circle at var(--spot-x, 50%) var(--spot-y, 30%),
+      var(--tile-spot),
+      transparent 60%
+    );
+  }
+  &:hover {
+    box-shadow:
+      inset 0 0 0 1px var(--tile-ring-hover),
+      inset 0 1px 0 var(--tile-edge),
+      var(--elevation-tile-hover);
+  }
+  &:hover::before {
+    opacity: 1;
+  }
+  /* The content paints over the spotlight. */
+  & > * {
+    position: relative;
+  }
+}
+
+/* A layered tile lifts 2px while hovered (not under reduced motion). */
+@utility tile-lift {
+  @media (prefers-reduced-motion: no-preference) {
+    &:hover {
+      transform: translateY(-2px);
+    }
+  }
+}
+
+/* The small layered sub-tile inside a layered tile (Fact `tile`): a faint top-lit fill, the inset hairline
+   and the lit edge, a 16px radius; hovered, the hairline steps up and it lifts 1px. */
+@utility tile-sub {
+  border-radius: var(--radius-tile);
+  background: linear-gradient(180deg, var(--sub-top), var(--sub-bottom));
+  box-shadow:
+    inset 0 0 0 1px var(--tile-ring),
+    inset 0 1px 0 var(--sub-edge);
+  transition:
+    box-shadow 0.15s,
+    transform 0.2s var(--ease-tile);
+  &:hover {
+    box-shadow:
+      inset 0 0 0 1px var(--sub-ring-hover),
+      inset 0 1px 0 var(--sub-edge);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    &:hover {
+      transform: translateY(-1px);
+    }
+  }
+}
+
+/* The entrance of a layered tile: rises in, staggered 50ms per --tile-i (its place on the page); nothing
+   under reduced motion. The fill mode is `backwards`, so no transform stays on the tile afterwards. */
+@utility tile-enter {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: var(--animate-tile-in);
+    animation-delay: calc(var(--tile-i, 0) * 50ms);
   }
 }
