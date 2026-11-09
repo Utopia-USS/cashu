@@ -303,6 +303,9 @@ it("picks a bank from Enable Banking's list and retries right after a refusal", 
   let refusal: string | null = "unknown_bank";
   const port = {
     ...base,
+    openBank: async () => {
+      throw new Error("synthetic refusal");
+    },
     async invoke(action: Parameters<typeof base.invoke>[0]): Promise<BankingReply> {
       if (action.type === "banks")
         return {
@@ -358,6 +361,14 @@ it("picks a bank from Enable Banking's list and retries right after a refusal", 
     await submit();
     expect(begun).toEqual(["Bank Millennium", "Bank Millennium", "Bank Millennium"]);
     expect(container.textContent).toContain("Open bank page");
+    // A page the app may not open says so instead of doing nothing.
+    const open = [...container.querySelectorAll("button")].find((node) =>
+      node.textContent?.includes("Open bank page"),
+    );
+    await act(async () => {
+      open?.click();
+    });
+    expect(container.textContent).toContain("The bank's page could not be opened");
     const check = [...container.querySelectorAll("button")].find((node) =>
       node.textContent?.includes("Check application"),
     );
@@ -367,6 +378,48 @@ it("picks a bank from Enable Banking's list and retries right after a refusal", 
     expect(container.textContent).toContain(
       "The Enable Banking connection works. Application: cashu",
     );
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("shows the configured application and removes it only after a confirmation", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const port = syntheticBankingPort(true);
+  const press = async (label: string) => {
+    const button = [...container.querySelectorAll("button")].find(
+      (node) => node.textContent === label,
+    );
+    expect(button, label).toBeDefined();
+    await act(async () => {
+      button?.click();
+    });
+  };
+  try {
+    await act(async () =>
+      root.render(<BankingScreen vaultId="synthetic-a" port={port} language="en" />),
+    );
+    expect(container.textContent).toContain("Enable Banking is configured");
+    expect(container.textContent).toContain("2e79b1c2-0000-4000-8000-000000000000");
+    expect(container.textContent).toContain("Connect another bank");
+    // Changing the key brings the key form back, and it can be closed again.
+    await press("Change application or key");
+    expect(container.querySelector('[data-testid="banking-key-drop"]')).not.toBeNull();
+    await press("Keep the current configuration");
+    expect(container.querySelector('[data-testid="banking-key-drop"]')).toBeNull();
+    await press("Remove configuration");
+    expect(container.textContent).toContain("Connected banks stop syncing");
+    await press("Keep it");
+    expect(container.textContent).toContain("Enable Banking is configured");
+    await press("Remove configuration");
+    await press("Yes, remove");
+    expect(container.textContent).toContain("The Enable Banking configuration was removed");
+    expect(container.querySelector('[data-testid="banking-key-drop"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Enable Banking is configured");
   } finally {
     await act(async () => root.unmount());
     container.remove();

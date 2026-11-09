@@ -1,7 +1,9 @@
 import type { UiAction } from "../ui-actions.js";
 
 export type BankingSettingsInput =
-  | { readonly type: "status" | "check" | "banks" | "cancelConsent" | "sync" }
+  | {
+      readonly type: "status" | "check" | "banks" | "cancelConsent" | "sync" | "unconfigure";
+    }
   | { readonly type: "beginConsent"; readonly aspsp: string }
   | { readonly type: "completeConsent"; readonly callbackUrl?: string }
   | { readonly type: "offerCallback"; readonly callbackUrl: string }

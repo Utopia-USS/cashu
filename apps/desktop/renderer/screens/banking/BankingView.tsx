@@ -19,6 +19,9 @@ export interface BankingScreenState {
   readonly setDragging: (value: boolean) => void;
   /** The listed bank "Połącz bank" will use; empty until one is picked. */
   readonly chosen: string;
+  /** "Usuń konfigurację" was pressed and waits for the owner's confirmation. */
+  readonly confirmRemove: boolean;
+  readonly setConfirmRemove: (value: boolean) => void;
 }
 
 /** Pure profile-local view. The native bridge and state live in BankingScreen. */
@@ -30,14 +33,14 @@ export function BankingView({
   readonly language: "pl" | "en";
 }) {
   const { screen, appId, setAppId, setAspsp, callbackUrl, setCallbackUrl } = state;
-  const { dragging, setDragging, chosen } = state;
+  const { dragging, setDragging, chosen, confirmRemove, setConfirmRemove } = state;
   const t = (key: keyof typeof B) => B[key][language];
   if (!state.available) return <p role="status">{t("unavailable")}</p>;
   return (
     <section aria-label={t("title")} className="grid max-w-xl gap-3 text-md">
       <h3 className="font-strong text-fg">{t("title")}</h3>
       <p className="text-sm text-fg-muted">{t("keyHint")}</p>
-      {!screen.configured && (
+      {(!screen.configured || screen.editingKey) && (
         <form
           className="grid gap-2"
           onSubmit={(event) => {
@@ -87,15 +90,95 @@ export function BankingView({
               {t("chooseKey")}
             </Button>
           </fieldset>
+          {screen.editingKey && (
+            <Button type="button" onPress={() => screen.editKey(false)}>
+              {t("keepKey")}
+            </Button>
+          )}
         </form>
       )}
       {screen.configured && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" disabled={screen.busy} onPress={() => void screen.check()}>
-              {t("check")}
+          <div className="grid gap-2 rounded-md border border-border p-3">
+            <p className="font-strong text-fg">{t("configuredTitle")}</p>
+            {screen.applicationId && (
+              <p className="text-sm text-fg-muted">
+                {t("appIdLabel")} <code>{screen.applicationId}</code>
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" disabled={screen.busy} onPress={() => void screen.check()}>
+                {t("check")}
+              </Button>
+              {!screen.editingKey && (
+                <Button
+                  type="button"
+                  disabled={screen.busy || screen.waiting}
+                  onPress={() => screen.editKey(true)}
+                >
+                  {t("changeKey")}
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="danger"
+                disabled={screen.busy || screen.waiting}
+                onPress={() => setConfirmRemove(true)}
+              >
+                {t("removeConfig")}
+              </Button>
+            </div>
+            {confirmRemove && (
+              <div className="grid gap-2" role="alert">
+                <p className="text-sm">{t("removeConfirm")}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="danger"
+                    disabled={screen.busy}
+                    onPress={() => {
+                      setConfirmRemove(false);
+                      void screen.unconfigure();
+                    }}
+                  >
+                    {t("removeYes")}
+                  </Button>
+                  <Button type="button" onPress={() => setConfirmRemove(false)}>
+                    {t("removeNo")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="grid gap-2">
+            <h4 className="font-strong text-fg">{t("sessions")}</h4>
+            {screen.connected.length === 0 && (
+              <p className="text-sm text-fg-muted">{t("noSessions")}</p>
+            )}
+            {screen.connected.map((session) => (
+              <div key={session.handle} className="rounded-md border border-border p-3">
+                <p>{session.institution}</p>
+                <p className="text-sm">{t("localForget")}</p>
+                <Button
+                  type="button"
+                  disabled={screen.busy}
+                  onPress={() => void screen.forget(session.handle)}
+                >
+                  {t("forget")}
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              disabled={screen.busy || screen.waiting || screen.connected.length === 0}
+              onPress={() => void screen.sync()}
+            >
+              {t("sync")}
             </Button>
           </div>
+          <h4 className="font-strong text-fg">
+            {t(screen.connected.length > 0 ? "connectAnother" : "connectTitle")}
+          </h4>
           {!screen.pendingUrl && (
             <form
               className="grid gap-2"
@@ -179,29 +262,6 @@ export function BankingView({
               </details>
             </div>
           )}
-          <div className="grid gap-2">
-            <h4 className="font-strong text-fg">{t("sessions")}</h4>
-            {screen.connected.map((session) => (
-              <div key={session.handle} className="rounded-md border border-border p-3">
-                <p>{session.institution}</p>
-                <p className="text-sm">{t("localForget")}</p>
-                <Button
-                  type="button"
-                  disabled={screen.busy}
-                  onPress={() => void screen.forget(session.handle)}
-                >
-                  {t("forget")}
-                </Button>
-              </div>
-            ))}
-            <Button
-              type="button"
-              disabled={screen.busy || screen.waiting || screen.connected.length === 0}
-              onPress={() => void screen.sync()}
-            >
-              {t("sync")}
-            </Button>
-          </div>
         </>
       )}
       {screen.attemptList.map((attempt) => (

@@ -17,6 +17,7 @@ export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort
             ok: true,
             value: {
               configured,
+              application: configured ? "2e79b1c2-0000-4000-8000-000000000000" : null,
               sessions: connected
                 ? [
                     {
@@ -31,6 +32,11 @@ export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort
               pendingAttempts,
             },
           };
+        case "unconfigure":
+          configured = false;
+          connected = false;
+          pendingConsent = null;
+          return { ok: true, value: { removed: true } };
         case "check":
           return { ok: true, value: { ok: true, application: { name: "Synthetic app" } } };
         case "banks":

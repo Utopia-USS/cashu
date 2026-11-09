@@ -130,5 +130,10 @@ give the next step, opening with one line of where they are.
    to 180, but cashU requests 90 today); then the user reconnects the bank in the same panel.
    Connections are per profile; `cashu --profile <slug> eb sessions` lists them.
 
+The top of the Open Banking section shows the state: "Enable Banking jest skonfigurowany" with the
+application ID, the connected banks, "Zmień aplikację albo klucz" (the key form again) and "Usuń
+konfigurację" (after a confirmation: the key and every bank connection leave the profile; imported
+transactions stay).
+
 If the EB panel looks different from these steps, say so plainly and let the user describe what they
 see; never guess labels.

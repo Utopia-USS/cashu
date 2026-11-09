@@ -14,6 +14,7 @@ const command = z.discriminatedUnion("type", [
     keyFilePath: z.string().min(1).max(4096),
   }),
   z.object({ type: z.literal("check") }),
+  z.object({ type: z.literal("unconfigure") }),
   z.object({
     type: z.literal("banks"),
     country: z
@@ -151,6 +152,8 @@ export async function runBankingOwnerAction(input: {
       }
       case "check":
         return { ok: true, value: await service.check() };
+      case "unconfigure":
+        return { ok: true, value: await service.unconfigure() };
       case "banks":
         return { ok: true, value: await service.banks(action.country) };
       case "beginConsent":
@@ -174,9 +177,13 @@ export async function runBankingOwnerAction(input: {
     // beginConsent and cancelConsent are not here: they store nothing (the pending consent lives in
     // memory, kept only after /auth gave a usable URL), so each of their refusals is definite and the
     // owner can simply retry.
-    const mutating = ["configure", "completeConsent", "sync", "forgetSession"].includes(
-      parsed.data.type,
-    );
+    const mutating = [
+      "configure",
+      "unconfigure",
+      "completeConsent",
+      "sync",
+      "forgetSession",
+    ].includes(parsed.data.type);
     const code =
       mutating && !(error instanceof BankingFault && DEFINITE_FAULTS.has(error.kind))
         ? "outcome_unknown"

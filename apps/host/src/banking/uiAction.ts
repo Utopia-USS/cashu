@@ -9,6 +9,7 @@ import type { BankingRuntime } from "./runtime.js";
 const publicAction = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("status") }),
   z.strictObject({ type: z.literal("check") }),
+  z.strictObject({ type: z.literal("unconfigure") }),
   z.strictObject({ type: z.literal("banks") }),
   z.strictObject({ type: z.literal("beginConsent"), aspsp: z.string().min(1).max(256) }),
   z.strictObject({

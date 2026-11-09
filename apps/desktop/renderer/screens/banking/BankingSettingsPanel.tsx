@@ -31,6 +31,7 @@ function bridge(): NativeBankingBridge | null {
  * every other action (reads, starting, cancelling or feeding a consent) stays usable meanwhile.
  */
 const WRITES: ReadonlySet<BankingAction["type"]> = new Set([
+  "unconfigure",
   "completeConsent",
   "sync",
   "forgetSession",

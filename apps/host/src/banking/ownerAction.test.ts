@@ -90,7 +90,18 @@ it("uses the native private-file boundary and returns only sanitized owner outco
     });
     expect(result).toEqual({ ok: true, value: { configured: true } });
     expect(JSON.stringify(result)).not.toContain("PRIVATE KEY");
-    expect(await action({ type: "status" })).toMatchObject({ ok: true });
+    expect(await action({ type: "status" })).toMatchObject({
+      ok: true,
+      value: { configured: true, application: "synthetic-app" },
+    });
+    // Removing the configuration clears the key and every connection; the vault keeps its data.
+    expect(await action({ type: "unconfigure" })).toEqual({ ok: true, value: { removed: true } });
+    expect(values.has("credentials")).toBe(false);
+    expect(values.has("sessions")).toBe(false);
+    expect(await action({ type: "status" })).toMatchObject({
+      ok: true,
+      value: { configured: false, application: null, sessions: [] },
+    });
     owner = false;
     expect(await action({ type: "status" })).toEqual({ ok: false, error: "authorization" });
   } finally {

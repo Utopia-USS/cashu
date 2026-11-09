@@ -46,6 +46,27 @@ export const B = {
     en: "The Enable Banking connection works.",
   },
   checkedApp: { pl: "Aplikacja:", en: "Application:" },
+  configuredTitle: {
+    pl: "Enable Banking jest skonfigurowany",
+    en: "Enable Banking is configured",
+  },
+  appIdLabel: { pl: "Identyfikator aplikacji:", en: "Application ID:" },
+  changeKey: { pl: "Zmień aplikację albo klucz", en: "Change application or key" },
+  keepKey: { pl: "Zostaw obecną konfigurację", en: "Keep the current configuration" },
+  removeConfig: { pl: "Usuń konfigurację", en: "Remove configuration" },
+  removeConfirm: {
+    pl: "Usunąć konfigurację Enable Banking z tego profilu? Połączone banki przestaną się synchronizować. Pobrane transakcje zostają w cashU.",
+    en: "Remove the Enable Banking configuration from this profile? Connected banks stop syncing. Transactions already loaded stay in cashU.",
+  },
+  removeYes: { pl: "Tak, usuń", en: "Yes, remove" },
+  removeNo: { pl: "Zostaw", en: "Keep it" },
+  removed: {
+    pl: "Konfiguracja Enable Banking została usunięta. Pobrane transakcje zostały w cashU.",
+    en: "The Enable Banking configuration was removed. Loaded transactions stay in cashU.",
+  },
+  noSessions: { pl: "Nie masz jeszcze połączonych banków.", en: "No bank is connected yet." },
+  connectTitle: { pl: "Połącz bank", en: "Connect a bank" },
+  connectAnother: { pl: "Połącz kolejny bank", en: "Connect another bank" },
   bank: { pl: "Bank", en: "Bank" },
   banksLoading: { pl: "Pobieram listę banków...", en: "Loading the list of banks..." },
   banksFailed: {
@@ -78,6 +99,10 @@ export const B = {
   openToContinue: {
     pl: "Otwórz stronę banku i udziel zgody. Po niej cashU sam dokończy połączenie.",
     en: "Open the bank's page and give your consent. cashU then finishes the connection by itself.",
+  },
+  openFailed: {
+    pl: "Nie udało się otworzyć strony banku. Anuluj połączenie i połącz bank jeszcze raz.",
+    en: "The bank's page could not be opened. Cancel the connection and connect the bank again.",
   },
   consentDenied: {
     pl: "Bank albo Enable Banking nie udzielił zgody. Sprawdź, czy to konto jest połączone w panelu Enable Banking („Link accounts”), i połącz bank jeszcze raz.",

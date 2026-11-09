@@ -25,6 +25,7 @@ function ProfileBankingScreen({
   const [aspsp, setAspsp] = useState("");
   const [callbackUrl, setCallbackUrl] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   // Only a name from Enable Banking's own list is ever sent.
   const chosen = screen.institutions.includes(aspsp) ? aspsp : "";
   return (
@@ -42,6 +43,8 @@ function ProfileBankingScreen({
         dragging,
         setDragging,
         chosen,
+        confirmRemove,
+        setConfirmRemove,
       }}
     />
   );

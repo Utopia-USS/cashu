@@ -157,6 +157,8 @@ export class EnableBankingService {
   private capture: CallbackCapture | null = null;
   private beginGeneration = 0;
   private beginning = false;
+  /** A completeConsent is waiting for this pending consent's callback (at most one at a time). */
+  private completing = false;
   private readonly unknownAttempts = new Map<string, BankingAttempt>();
   private pending: {
     state: string;
@@ -254,6 +256,25 @@ export class EnableBankingService {
       return { configured: true };
     });
   }
+
+  /**
+   * Removes the Enable Banking application and every bank connection made with it from this
+   * profile (owner-only). Transactions already imported stay in the vault.
+   */
+  async unconfigure(): Promise<{ removed: true }> {
+    this.guard(false, true);
+    await this.close();
+    return serial(this.options.secrets.namespace, async () => {
+      this.guard(false, true);
+      bump(`${this.options.secrets.namespace}:credentials`);
+      for (const session of await this.sessions())
+        bump(`${this.options.secrets.namespace}:session:${session.id}`);
+      await this.options.secrets.clear("sessions");
+      await this.options.secrets.clear("credentials");
+      this.guard(false, true);
+      return { removed: true };
+    });
+  }
   async status() {
     this.guard();
     return serial(this.options.secrets.namespace, async () => {
@@ -278,6 +299,8 @@ export class EnableBankingService {
       ].slice(0, 100);
       return {
         configured,
+        // The application ID is not a secret (the key file carries it as its name); owner only.
+        application: owner ? (credential?.appId ?? null) : null,
         sessions,
         pendingConsent: owner ? (this.pending?.url ?? null) : null,
         pendingAttempts: owner ? pendingAttempts : [],
@@ -388,10 +411,11 @@ export class EnableBankingService {
     this.guard(true, true);
     const pending = this.pending;
     const capture = this.capture;
-    if (!pending || !capture) throw new BankingFault("authorization");
-    this.pending = null;
-    // The capture stays reachable while waiting: cancelConsent closes it (the wait then ends with
-    // consent_cancelled) and offerCallback hands it a copied callback URL.
+    if (!pending || !capture || this.completing) throw new BankingFault("authorization");
+    // The pending consent and its capture stay in place while waiting: the window may still open
+    // the bank's page (its URL must stay the pending one), cancelConsent closes the capture (the wait
+    // then ends with consent_cancelled) and offerCallback hands it a copied callback URL.
+    this.completing = true;
     let code: string;
     try {
       code =
@@ -399,6 +423,8 @@ export class EnableBankingService {
           ? await capture.wait()
           : parseBankingCallbackUrl(callbackUrl, capture.redirectUrl, pending.state);
     } finally {
+      this.completing = false;
+      if (this.pending === pending) this.pending = null;
       if (this.capture === capture) this.capture = null;
       await capture.close();
     }

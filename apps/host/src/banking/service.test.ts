@@ -726,6 +726,10 @@ it("ends a waited consent definitely when the owner cancels, and connects again 
   await service.beginConsent({ aspsp: "Synthetic Bank" });
   const waiting = service.completeConsent();
   await new Promise<void>((resolve) => setImmediate(resolve));
+  // The window opens the bank's page while cashU waits: the URL stays the pending consent's.
+  expect((await service.status()).pendingConsent).toBe("https://synthetic-bank.example/consent");
+  // One waiter per consent.
+  await expect(service.completeConsent()).rejects.toThrow("enable_banking_authorization");
   // While the bank's answer is awaited, a second consent cannot start.
   await expect(service.beginConsent({ aspsp: "Synthetic Bank" })).rejects.toThrow(
     "enable_banking_authorization",
@@ -733,6 +737,7 @@ it("ends a waited consent definitely when the owner cancels, and connects again 
   await service.cancelConsent();
   await expect(waiting).rejects.toThrow("enable_banking_consent_cancelled");
   expect(open).toBe(0);
+  expect((await service.status()).pendingConsent).toBeNull();
   expect((await service.beginConsent({ aspsp: "Synthetic Bank" })).url).toBe(
     "https://synthetic-bank.example/consent",
   );

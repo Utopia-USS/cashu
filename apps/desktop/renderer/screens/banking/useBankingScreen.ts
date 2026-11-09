@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 export type BankingAction =
-  | { readonly type: "status" | "check" | "banks" | "cancelConsent" | "sync" }
+  | {
+      readonly type: "status" | "check" | "banks" | "cancelConsent" | "sync" | "unconfigure";
+    }
   | { readonly type: "beginConsent"; readonly aspsp: string }
   | { readonly type: "completeConsent"; readonly callbackUrl?: string }
   | { readonly type: "offerCallback"; readonly callbackUrl: string }
@@ -37,6 +39,7 @@ const sessionSchema = z.object({
 const httpsUrl = z.url().refine((value) => value.startsWith("https://"));
 const statusSchema = z.object({
   configured: z.boolean(),
+  application: z.string().max(128).nullable().optional(),
   sessions: z.array(sessionSchema).max(32),
   pendingConsent: httpsUrl.nullable().optional(),
   pendingAttempts: z.array(attemptSchema).max(100).optional(),
@@ -71,7 +74,9 @@ export type BankingNotice =
   | "appRestricted"
   | "consentDenied"
   | "consentTimeout"
-  | "callbackInvalid";
+  | "callbackInvalid"
+  | "openFailed"
+  | "removed";
 /** Definite refusal codes with a notice of their own; any other refusal is a plain error. */
 const NOTICE_BY_ERROR: Readonly<Record<string, BankingNotice>> = {
   app_id_required: "appIdRequired",
@@ -116,6 +121,9 @@ export interface BankingAttemptView {
 export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
   const generation = useRef(0);
   const [configured, setConfigured] = useState(false);
+  const [applicationId, setApplicationId] = useState<string | null>(null);
+  /** The owner chose to replace the configured application or key: the key form shows again. */
+  const [editingKey, setEditingKey] = useState(false);
   const [connected, setConnected] = useState<z.infer<typeof sessionSchema>[]>([]);
   const [institutions, setInstitutions] = useState<string[]>([]);
   const [bankList, setBankList] = useState<BankListState>("idle");
@@ -143,6 +151,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
       return;
     }
     setConfigured(parsed.data.configured);
+    setApplicationId(parsed.data.application ?? null);
     setConnected(parsed.data.sessions);
     setPendingUrl(parsed.data.pendingConsent ?? null);
     setAttempts((old) => {
@@ -166,6 +175,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
             return;
           }
           setConfigured(parsed.data.configured);
+          setApplicationId(parsed.data.application ?? null);
           setConnected(parsed.data.sessions);
           setPendingUrl(parsed.data.pendingConsent ?? null);
           setAttempts(
@@ -239,8 +249,10 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
     if (!z.object({ configured: z.literal(true) }).safeParse(value).success)
       throw new Error("invalid configuration result");
     await refresh(ticket);
-    if (current(ticket)) setNotice("refreshed");
-    if (current(ticket)) await fillBanks(ticket);
+    if (!current(ticket)) return;
+    setEditingKey(false);
+    setNotice("refreshed");
+    await fillBanks(ticket);
   };
   /**
    * Waits (up to 5 minutes, on the host) for the bank's answer and finishes the connection: the
@@ -293,6 +305,9 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
   };
   return {
     configured,
+    applicationId,
+    editingKey,
+    editKey: (on: boolean) => setEditingKey(on),
     connected,
     institutions,
     bankList,
@@ -339,6 +354,21 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
           setNotice("checked");
         },
       ),
+    unconfigure: () =>
+      perform(
+        () => invoke({ type: "unconfigure" }),
+        async (value, ticket) => {
+          if (!z.object({ removed: z.literal(true) }).safeParse(value).success)
+            throw new Error("invalid remove result");
+          await refresh(ticket);
+          if (!current(ticket)) return;
+          setInstitutions([]);
+          setBankList("idle");
+          setApplication(null);
+          setNotice("removed");
+        },
+        "changeUnknown",
+      ),
     loadBanks: () =>
       perform(
         async () => ({ ok: true, value: null }),
@@ -358,8 +388,13 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
     open: async () => {
       if (!port || !pendingUrl) return;
       // After a reopened Settings nobody may be waiting yet: start before the browser opens.
-      void awaitConsent(generation.current);
-      await port.openBank(pendingUrl);
+      const ticket = generation.current;
+      void awaitConsent(ticket);
+      try {
+        await port.openBank(pendingUrl);
+      } catch {
+        if (current(ticket)) setNotice("openFailed");
+      }
     },
     offer: (callbackUrl: string) =>
       perform(
