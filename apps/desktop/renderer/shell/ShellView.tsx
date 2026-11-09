@@ -20,8 +20,6 @@ import type { ShellScreenState } from "./useShellScreen.js";
 export interface ShellViewProps {
   state: ShellScreenState;
   activeModule?: string;
-  /** The page asks for the 1120px frame (old Shell `narrow`, e.g. the asset page of the investments Home). */
-  narrow?: boolean;
   onOverviewOpened(): void;
   onModuleOpened(tab: string): void;
   onAddProfile?: () => void;
@@ -55,9 +53,6 @@ const MODULE_TABS: readonly (readonly [string, readonly (readonly [string, () =>
   ],
 ];
 
-// Przegląd and the investments workspace tabs use the wide page (old `.wrap.wide`), everything else 1120px.
-const WIDE = new Set(["overview", "investments", "investments.strategies"]);
-
 function EyeGlyph({ crossed }: { crossed: boolean }) {
   return (
     <svg
@@ -86,7 +81,6 @@ export function ShellView({
   headerTags,
   children,
   activeModule = "overview",
-  narrow = false,
 }: ShellViewProps) {
   const actions: ProfilePillAction[] = [
     ...(onAddProfile
@@ -125,7 +119,9 @@ export function ShellView({
     <UiEnvProvider privacy={state.privacy} locale={state.locale}>
       <div className="min-h-screen bg-surface text-body text-fg">
         <div
-          className={`mx-auto px-5 pt-6 ${WIDE.has(activeModule) && !narrow ? "max-w-360" : "max-w-280"}`}
+          // One frame for the header on every page (the wide page box, old `.wrap.wide`): the page under it
+          // picks its own width, so switching tabs never moves the logo or the tabs.
+          className="mx-auto max-w-360 px-5 pt-6"
         >
           <AppHeader
             logo={{ light: logoLight, dark: logoDark, label: T.brand }}

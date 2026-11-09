@@ -200,7 +200,6 @@ function ShellRoute() {
                         ? "investments"
                         : "overview"
         }
-        narrow={assetPage || pageNarrow}
         onModuleOpened={openModule}
         headerTags={
           state.investmentsTag && state.profile !== null ? (
