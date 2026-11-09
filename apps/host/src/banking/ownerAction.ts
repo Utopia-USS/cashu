@@ -85,6 +85,18 @@ async function readPrivateBankingKey(path: string): Promise<string> {
   }
 }
 
+/**
+ * One stderr line per refused owner action (the detached host sends stderr to host.log): the action
+ * type and a static code only, never a bank name, URL, path or response text.
+ */
+function logRefusal(action: string, code: string): void {
+  try {
+    console.warn("banking.refused", action, code);
+  } catch {
+    // Best effort: a broken stderr must not change the refusal.
+  }
+}
+
 export type BankingOwnerResult =
   | { readonly ok: true; readonly value: unknown }
   | { readonly ok: false; readonly error: string };
@@ -112,9 +124,13 @@ export async function runBankingOwnerAction(input: {
         try {
           privateKeyPem = await readPrivateBankingKey(action.keyFilePath);
         } catch {
+          logRefusal("configure", "key_unreadable");
           return { ok: false, error: "key_unreadable" };
         }
-        if (!isBankingRsaKey(privateKeyPem)) return { ok: false, error: "key_invalid" };
+        if (!isBankingRsaKey(privateKeyPem)) {
+          logRefusal("configure", "key_invalid");
+          return { ok: false, error: "key_invalid" };
+        }
         return {
           ok: true,
           value: await service.configure({ appId: action.appId, privateKeyPem }),
@@ -140,16 +156,19 @@ export async function runBankingOwnerAction(input: {
         return { ok: true, value: { status: service.attemptStatus(action.key) } };
     }
   } catch (error) {
-    const mutating = [
-      "configure",
-      "beginConsent",
-      "completeConsent",
-      "cancelConsent",
-      "sync",
-      "forgetSession",
-    ].includes(parsed.data.type);
-    if (mutating && !(error instanceof BankingFault && error.kind === "configuration"))
-      return { ok: false, error: "outcome_unknown" };
-    return { ok: false, error: error instanceof BankingFault ? error.kind : "unavailable" };
+    // beginConsent and cancelConsent are not here: they store nothing (the pending consent lives in
+    // memory, kept only after /auth gave a usable URL), so each of their refusals is definite and the
+    // owner can simply retry.
+    const mutating = ["configure", "completeConsent", "sync", "forgetSession"].includes(
+      parsed.data.type,
+    );
+    const code =
+      mutating && !(error instanceof BankingFault && error.kind === "configuration")
+        ? "outcome_unknown"
+        : error instanceof BankingFault
+          ? error.kind
+          : "unavailable";
+    logRefusal(parsed.data.type, code);
+    return { ok: false, error: code };
   }
 }

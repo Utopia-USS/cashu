@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { BankingView } from "./BankingView.js";
-import { type BankingUiPort, useBankingScreen } from "./useBankingScreen.js";
+import { type BankingUiPort, bankMatches, useBankingScreen } from "./useBankingScreen.js";
 
 /** Keyed profile boundary clears form fields and invalidates old async responses on vault switch. */
 export function BankingScreen(props: {
@@ -25,6 +25,10 @@ function ProfileBankingScreen({
   const [aspsp, setAspsp] = useState("");
   const [callbackUrl, setCallbackUrl] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [bankQuery, setBankQuery] = useState("");
+  const matches = screen.institutions.filter((name) => bankMatches(name, bankQuery));
+  // Only a name from Enable Banking's own list is ever sent: the picked one, or the single match.
+  const chosen = matches.includes(aspsp) ? aspsp : matches.length === 1 ? (matches[0] ?? "") : "";
   return (
     <BankingView
       language={language}
@@ -39,6 +43,10 @@ function ProfileBankingScreen({
         setCallbackUrl,
         dragging,
         setDragging,
+        bankQuery,
+        setBankQuery,
+        matches,
+        chosen,
       }}
     />
   );

@@ -12,7 +12,35 @@ type BankingFaultKind =
   | "authorization"
   | "expired"
   | "rate_limited"
+  /** The local consent callback (127.0.0.1, the redirect URL's port) could not start, e.g. port in use. */
+  | "callback"
+  /** Enable Banking: the application does not list cashU's redirect URL (REDIRECT_URI_NOT_ALLOWED). */
+  | "redirect_not_allowed"
+  /** Enable Banking: no bank of that name (WRONG_ASPSP_PROVIDED). */
+  | "unknown_bank"
+  /** Enable Banking: the restricted application has no linked accounts yet (NO_ACCOUNTS_ADDED). */
+  | "app_restricted"
   | "response";
+
+/** Enable Banking error codes that name an application setup problem, and the fault each one is. */
+const SETUP_FAULTS: Readonly<Record<string, BankingFaultKind>> = {
+  REDIRECT_URI_NOT_ALLOWED: "redirect_not_allowed",
+  WRONG_ASPSP_PROVIDED: "unknown_bank",
+  NO_ACCOUNTS_ADDED: "app_restricted",
+};
+
+/** The `error` code of an Enable Banking error body (an upper-case enum value), or null. */
+function enableBankingErrorCode(text: string): string | null {
+  if (!text || Buffer.byteLength(text) > 64 * 1024) return null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    const code =
+      typeof parsed === "object" && parsed !== null ? (parsed as { error?: unknown }).error : null;
+    return typeof code === "string" && /^[A-Z_]{1,64}$/.test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
 
 export class BankingFault extends Error {
   readonly kind: BankingFaultKind;
@@ -161,6 +189,12 @@ export class EnableBankingClient {
     } catch (error) {
       if (error instanceof BankingFault) throw error;
       throw new BankingFault("transport");
+    }
+    // A few of Enable Banking's own error codes say exactly what the owner must fix in their
+    // application; read only that code (never the message), the rest keep their HTTP meaning.
+    if (result.status >= 400 && result.status !== 429) {
+      const setup = SETUP_FAULTS[enableBankingErrorCode(result.text) ?? ""];
+      if (setup) throw new BankingFault(setup);
     }
     if (result.status === 401 || result.status === 403) throw new BankingFault("authorization");
     if (result.status === 404 || result.status === 410) throw new BankingFault("expired");

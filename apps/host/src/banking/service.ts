@@ -322,11 +322,16 @@ export class EnableBankingService {
         if (!credential) throw new BankingFault("configuration");
         return { credential, tick: revision(`${this.options.secrets.namespace}:credentials`) };
       });
-      const capture = await this.callback(
-        this.options.redirectUrl,
-        state,
-        this.options.language?.() ?? "en",
-      );
+      let capture: CallbackCapture;
+      try {
+        capture = await this.callback(
+          this.options.redirectUrl,
+          state,
+          this.options.language?.() ?? "en",
+        );
+      } catch {
+        throw new BankingFault("callback");
+      }
       if (generation !== this.beginGeneration) {
         await capture.close();
         throw new BankingFault("authorization");

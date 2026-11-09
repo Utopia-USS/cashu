@@ -17,6 +17,13 @@ export interface BankingScreenState {
   /** A file is being dragged over the key drop zone. */
   readonly dragging: boolean;
   readonly setDragging: (value: boolean) => void;
+  /** What the owner typed to find their bank. */
+  readonly bankQuery: string;
+  readonly setBankQuery: (value: string) => void;
+  /** Enable Banking's bank names that match `bankQuery`. */
+  readonly matches: readonly string[];
+  /** The listed bank "Połącz bank" will use; empty until one is picked or only one matches. */
+  readonly chosen: string;
 }
 
 /** Pure profile-local view. The native bridge and state live in BankingScreen. */
@@ -27,8 +34,8 @@ export function BankingView({
   readonly state: BankingScreenState;
   readonly language: "pl" | "en";
 }) {
-  const { screen, appId, setAppId, aspsp, setAspsp, callbackUrl, setCallbackUrl } = state;
-  const { dragging, setDragging } = state;
+  const { screen, appId, setAppId, setAspsp, callbackUrl, setCallbackUrl } = state;
+  const { dragging, setDragging, bankQuery, setBankQuery, matches, chosen } = state;
   const t = (key: keyof typeof B) => B[key][language];
   if (!state.available) return <p role="status">{t("unavailable")}</p>;
   return (
@@ -89,41 +96,72 @@ export function BankingView({
       )}
       {screen.configured && (
         <>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button type="button" disabled={screen.busy} onPress={() => void screen.check()}>
               {t("check")}
-            </Button>
-            <Button type="button" disabled={screen.busy} onPress={() => void screen.loadBanks()}>
-              {t("banks")}
             </Button>
           </div>
           <form
             className="grid gap-2"
             onSubmit={(event) => {
               event.preventDefault();
-              void screen.begin(aspsp);
+              if (chosen) void screen.begin(chosen);
             }}
           >
             <label className="grid gap-1">
-              {t("bank")}
+              {t("bankSearch")}
               <input
                 className={control}
-                list="banking-institutions"
-                value={aspsp}
-                onChange={(event) => setAspsp(event.target.value)}
-                required
-                maxLength={256}
+                type="search"
+                value={bankQuery}
+                onChange={(event) => setBankQuery(event.target.value)}
+                maxLength={100}
                 autoComplete="off"
               />
             </label>
-            <datalist id="banking-institutions">
-              {screen.institutions.map((name) => (
-                <option key={name} value={name} />
+            {screen.bankList === "loading" && (
+              <p role="status" className="text-sm text-fg-muted">
+                {t("banksLoading")}
+              </p>
+            )}
+            {screen.bankList === "failed" && (
+              <div className="grid justify-items-start gap-2">
+                <p className="text-sm">{t("banksFailed")}</p>
+                <Button
+                  type="button"
+                  disabled={screen.busy}
+                  onPress={() => void screen.loadBanks()}
+                >
+                  {t("banksRetry")}
+                </Button>
+              </div>
+            )}
+            {screen.bankList === "ready" &&
+              (matches.length > 0 ? (
+                <label className="grid gap-1">
+                  {t("bank")}
+                  <select
+                    className={control}
+                    size={Math.min(6, Math.max(2, matches.length))}
+                    value={chosen}
+                    onChange={(event) => setAspsp(event.target.value)}
+                  >
+                    {matches.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <p className="text-sm">{t("noBankMatch")}</p>
               ))}
-            </datalist>
-            <Button type="submit" disabled={screen.busy}>
+            <Button type="submit" disabled={screen.busy || !chosen}>
               {t("consent")}
             </Button>
+            {!chosen && screen.bankList === "ready" && matches.length > 0 && (
+              <p className="text-sm text-fg-muted">{t("pickBank")}</p>
+            )}
           </form>
           {screen.pendingUrl && (
             <div className="grid gap-2" role="status">
@@ -191,7 +229,7 @@ export function BankingView({
           <p>
             {t(
               attempt.status === "outcome_unknown"
-                ? "unknown"
+                ? "attemptUnknown"
                 : attempt.status === "not_started"
                   ? "notStarted"
                   : attempt.status,
@@ -209,7 +247,13 @@ export function BankingView({
         </div>
       ))}
       {screen.busy && <p role="status">{t("busy")}</p>}
-      {screen.notice && <p role="status">{t(screen.notice)}</p>}
+      {screen.notice && (
+        <p role="status">
+          {screen.notice === "checked" && screen.application
+            ? `${t("checked")} ${t("checkedApp")} ${screen.application}`
+            : t(screen.notice)}
+        </p>
+      )}
     </section>
   );
 }

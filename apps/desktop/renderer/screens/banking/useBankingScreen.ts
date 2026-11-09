@@ -18,6 +18,8 @@ export interface BankingUiPort {
   invoke(action: BankingAction): Promise<BankingReply>;
   chooseKeyAndConfigure(appId: string): Promise<BankingReply | { readonly cancelled: true }>;
   configureWithDroppedKey(appId: string, file: File): Promise<BankingReply>;
+  /** Every attempt of unknown outcome is now resolved: the panel may accept writes again. */
+  settled?(): void;
   openBank(url: string): Promise<void>;
 }
 
@@ -50,22 +52,73 @@ const attemptStatusSchema = z.object({
 export type BankingNotice =
   | "error"
   | "refreshed"
-  | "unknown"
+  | "checked"
+  | "importUnknown"
+  | "changeUnknown"
+  | "previousUnknown"
   | "keyType"
   | "keyUnreadable"
   | "keyInvalid"
   | "configuration"
-  | "appIdRequired";
-/** Refusal codes with a notice of their own; any other refusal is a plain error. */
+  | "appIdRequired"
+  | "bankRefused"
+  | "transport"
+  | "rateLimited"
+  | "callback"
+  | "redirectNotAllowed"
+  | "unknownBank"
+  | "appRestricted";
+/** Definite refusal codes with a notice of their own; any other refusal is a plain error. */
 const NOTICE_BY_ERROR: Readonly<Record<string, BankingNotice>> = {
-  outcome_unknown: "unknown",
   app_id_required: "appIdRequired",
   key_file_invalid: "keyType",
   key_unreadable: "keyUnreadable",
   key_invalid: "keyInvalid",
   configuration: "configuration",
+  response: "bankRefused",
+  expired: "bankRefused",
+  transport: "transport",
+  rate_limited: "rateLimited",
+  callback: "callback",
+  redirect_not_allowed: "redirectNotAllowed",
+  unknown_bank: "unknownBank",
+  app_restricted: "appRestricted",
+  pending_previous_attempt: "previousUnknown",
 };
 const PEM_NAME = /\.pem$/i;
+
+export type BankListState = "idle" | "loading" | "ready" | "failed";
+
+/** Folds case, Polish diacritics and doubled letters: "millenium" finds "Bank Millennium". */
+function foldBankName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[\u0141\u0142]/g, "l") // the stroked L has no combining mark to strip
+    .toLowerCase()
+    .replace(/(.)\1+/g, "$1");
+}
+
+/** Whether a listed bank name matches what the owner typed (every typed word, in any order). */
+export function bankMatches(name: string, query: string): boolean {
+  const folded = foldBankName(name);
+  return foldBankName(query)
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => folded.includes(word));
+}
+
+/** The bank names Enable Banking lists for the profile's country; null when it cannot be read. */
+async function loadBankNames(port: BankingUiPort): Promise<string[] | null> {
+  try {
+    const reply = await port.invoke({ type: "banks" });
+    const parsed = reply.ok ? bankSchema.safeParse(reply.value) : null;
+    if (!parsed?.success) return null;
+    return [...new Set(parsed.data.map((item) => item.name))].sort((a, b) => a.localeCompare(b));
+  } catch {
+    return null;
+  }
+}
 
 export interface BankingAttemptView {
   readonly key: string;
@@ -77,6 +130,8 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
   const [configured, setConfigured] = useState(false);
   const [connected, setConnected] = useState<z.infer<typeof sessionSchema>[]>([]);
   const [institutions, setInstitutions] = useState<string[]>([]);
+  const [bankList, setBankList] = useState<BankListState>("idle");
+  const [application, setApplication] = useState<string | null>(null);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [attemptList, setAttempts] = useState<BankingAttemptView[]>([]);
   const [busy, setBusy] = useState(false);
@@ -129,6 +184,16 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
               status: "outcome_unknown",
             })),
           );
+          if (!parsed.data.configured) return;
+          // The bank picker needs the list: load it once, right after the status, never in parallel.
+          setBankList("loading");
+          setBusy(true);
+          return loadBankNames(port).then((names) => {
+            if (generation.current !== ticket) return;
+            setBusy(false);
+            setInstitutions(names ?? []);
+            setBankList(names ? "ready" : "failed");
+          });
         })
         .catch(() => {
           if (generation.current === ticket) setNotice("error");
@@ -141,10 +206,14 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
   }, [port, vaultId]);
   const invoke = (action: BankingAction): Promise<BankingReply> =>
     port ? port.invoke(action) : Promise.resolve({ ok: false, error: "unavailable" });
+  /**
+   * Runs one action. `unknownNotice` is what an action that may have written says when its outcome is
+   * unknown; null for an action that writes nothing, whose every failure is a definite error.
+   */
   const perform = async (
     task: () => Promise<BankingReply | { readonly cancelled: true }>,
     onSuccess?: (value: unknown, ticket: number) => Promise<void> | void,
-    mutating = false,
+    unknownNotice: BankingNotice | null = null,
   ) => {
     if (!port || busy) return;
     const ticket = generation.current;
@@ -154,21 +223,34 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
       const reply = await task();
       if (!current(ticket) || "cancelled" in reply) return;
       if (!reply.ok) {
-        setNotice(NOTICE_BY_ERROR[reply.error] ?? "error");
+        setNotice(
+          reply.error === "outcome_unknown"
+            ? (unknownNotice ?? "error")
+            : (NOTICE_BY_ERROR[reply.error] ?? "error"),
+        );
         return;
       }
       await onSuccess?.(reply.value, ticket);
     } catch {
-      if (current(ticket)) setNotice(mutating ? "unknown" : "error");
+      if (current(ticket)) setNotice(unknownNotice ?? "error");
     } finally {
       if (current(ticket)) setBusy(false);
     }
+  };
+  const fillBanks = async (ticket: number) => {
+    if (!port) return;
+    setBankList("loading");
+    const names = await loadBankNames(port);
+    if (!current(ticket)) return;
+    setInstitutions(names ?? []);
+    setBankList(names ? "ready" : "failed");
   };
   const afterConfigure = async (value: unknown, ticket: number) => {
     if (!z.object({ configured: z.literal(true) }).safeParse(value).success)
       throw new Error("invalid configuration result");
     await refresh(ticket);
     if (current(ticket)) setNotice("refreshed");
+    if (current(ticket)) await fillBanks(ticket);
   };
   const applyResult = (value: unknown, ticket: number) => {
     const parsed = resultSchema.safeParse(value);
@@ -179,12 +261,16 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
       status: "outcome_unknown" as const,
     }));
     setAttempts(unknown);
-    setNotice(unknown.length ? "unknown" : parsed.data.errors?.length ? "error" : "refreshed");
+    setNotice(
+      unknown.length ? "importUnknown" : parsed.data.errors?.length ? "error" : "refreshed",
+    );
   };
   return {
     configured,
     connected,
     institutions,
+    bankList,
+    application,
     pendingUrl,
     attemptList,
     busy,
@@ -194,7 +280,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
         () =>
           port ? port.chooseKeyAndConfigure(appId) : Promise.resolve({ cancelled: true as const }),
         afterConfigure,
-        true,
+        "changeUnknown",
       ),
     configureDropped: (appId: string, file: File) => {
       if (!PEM_NAME.test(file.name)) {
@@ -207,33 +293,29 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
             ? port.configureWithDroppedKey(appId, file)
             : Promise.resolve({ cancelled: true as const }),
         afterConfigure,
-        true,
+        "changeUnknown",
       );
     },
     check: () =>
       perform(
         () => invoke({ type: "check" }),
         (value, ticket) => {
-          if (
-            !z
-              .object({
-                ok: z.literal(true),
-                application: z.object({ name: z.string().nullable() }),
-              })
-              .safeParse(value).success
-          )
-            throw new Error("invalid application result");
-          if (current(ticket)) setNotice("refreshed");
+          const parsed = z
+            .object({
+              ok: z.literal(true),
+              application: z.object({ name: z.string().nullable() }),
+            })
+            .safeParse(value);
+          if (!parsed.success) throw new Error("invalid application result");
+          if (!current(ticket)) return;
+          setApplication(parsed.data.application.name);
+          setNotice("checked");
         },
       ),
     loadBanks: () =>
       perform(
-        () => invoke({ type: "banks" }),
-        (value, ticket) => {
-          const parsed = bankSchema.safeParse(value);
-          if (!parsed.success) throw new Error("invalid banks result");
-          if (current(ticket)) setInstitutions(parsed.data.map((item) => item.name));
-        },
+        async () => ({ ok: true, value: null }),
+        (_value, ticket) => fillBanks(ticket),
       ),
     begin: (aspsp: string) =>
       perform(
@@ -243,7 +325,6 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
           if (!parsed.success) throw new Error("invalid consent result");
           if (current(ticket)) setPendingUrl(parsed.data.url);
         },
-        true,
       ),
     open: async () => {
       if (port && pendingUrl) await port.openBank(pendingUrl);
@@ -256,7 +337,6 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
             throw new Error("invalid cancel result");
           await refresh(ticket);
         },
-        true,
       ),
     complete: (callbackUrl: string) =>
       perform(
@@ -265,7 +345,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
           await refresh(ticket);
           applyResult(value, ticket);
         },
-        true,
+        "importUnknown",
       ),
     sync: () =>
       perform(
@@ -274,7 +354,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
           await refresh(ticket);
           applyResult(value, ticket);
         },
-        true,
+        "importUnknown",
       ),
     forget: (handle: string) =>
       perform(
@@ -284,7 +364,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
             throw new Error("invalid forget result");
           await refresh(ticket);
         },
-        true,
+        "changeUnknown",
       ),
     checkAttempt: (key: string) =>
       perform(
@@ -292,12 +372,14 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
         (value, ticket) => {
           const parsed = attemptStatusSchema.safeParse(value);
           if (!parsed.success) throw new Error("invalid attempt result");
-          if (current(ticket))
-            setAttempts((old) =>
-              old.map((item) =>
-                item.key === key ? { ...item, status: parsed.data.status } : item,
-              ),
-            );
+          if (!current(ticket)) return;
+          setAttempts((old) =>
+            old.map((item) => (item.key === key ? { ...item, status: parsed.data.status } : item)),
+          );
+          const stillUnknown = attemptList.some(
+            (item) => item.key !== key && item.status === "outcome_unknown",
+          );
+          if (parsed.data.status !== "outcome_unknown" && !stillUnknown) port?.settled?.();
         },
       ),
   };

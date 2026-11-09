@@ -27,8 +27,8 @@ the app's own bank list); the bank names in the conversation come only from the 
      about 15 minutes: a free account at Enable Banking (a licensed intermediary that connects to banks),
      its key added in the app, then logging in at the bank's own page. Read-only access; the bank
      password is typed only at the bank, cashU and you never see it; every 90 days the bank asks to renew
-     the consent (one login). Whether a given bank is covered the user sees in the app (step 6,
-     "Pobierz banki"); never claim it yourself.
+     the consent (one login). Whether a given bank is covered the user sees in the app (step 6, the
+     bank list); never claim it yourself.
    - **Files:** the user downloads a statement (usually CSV) from the bank's website and imports it.
      Works today with no setup, but has to be repeated, e.g. once a month.
    - **Both (good default in Europe):** files once for the older history (over Open Banking a bank often
@@ -108,10 +108,15 @@ give the next step, opening with one line of where they are.
    string in brackets next to the application's name in the EB panel; the key file carries the same
    name, so the field can stay empty. Then "Sprawdź aplikację". A refusal names the cause (not a key
    file, not an RSA key, no application ID); say what it means, never guess further.
-4. "Pobierz banki", choose the bank, "Połącz bank": the bank's page opens in the browser; they log in
-   at the bank and confirm SCA there, then paste the full callback URL from the browser into the app
-   and press "Dokończ połączenie". A bank with a separate business banking login is a separate entry
-   and a separate connection.
+4. Below "Sprawdź aplikację" (which confirms with the application's name), the app loads Enable
+   Banking's bank list by itself: they type part of the bank's name in "Szukaj banku" (spelling and
+   Polish letters do not matter), pick it and press "Połącz bank", which works only with a bank from
+   the list. The bank's page opens in the browser; they log in at the bank and confirm SCA there, then
+   paste the full return address from the browser into the app and press "Dokończ połączenie". A bank
+   with a separate business banking login is a separate entry and a separate connection. A refusal
+   names its fix: cashU's return address missing from the application's Redirect URLs (add
+   `https://127.0.0.1:18888/eb/callback` in the EB panel), no linked accounts yet ("Link accounts" in
+   the EB panel), port 18888 in use, no internet. Retrying right away is fine.
 5. Later: the daily background job syncs (Ustawienia > Praca w tle keeps it running after the window
    closes), or "Synchronizuj teraz" in the same panel, or `cashu --profile <slug> eb resync` in their
    terminal, about once a day. The bank consent cashU asks for lasts 90 days (the EU rules allow banks up

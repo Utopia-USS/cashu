@@ -517,6 +517,190 @@ it("cancels a deferred authorization and refuses a concurrent begin", async () =
   await service.cancelConsent();
 });
 
+it("is ready for an immediate retry after Enable Banking refuses the bank name", async () => {
+  const privateKeyPem = generateKeyPairSync("rsa", { modulusLength: 2048 })
+    .privateKey.export({ format: "pem", type: "pkcs8" })
+    .toString();
+  let listening = 0;
+  let closes = 0;
+  const asked: string[] = [];
+  const service = new EnableBankingService({
+    authority: {
+      profileId: "profile-a",
+      isCurrent: () => true,
+      isHolder: () => true,
+      isOwnerAction: () => true,
+    },
+    secrets: {
+      namespace: "synthetic-retry-begin",
+      async get(kind) {
+        return kind === "credentials"
+          ? JSON.stringify({ appId: "synthetic-app", privateKeyPem, revision: "initial" })
+          : null;
+      },
+      async set() {
+        throw new Error("unexpected write");
+      },
+      async clear() {
+        throw new Error("unexpected clear");
+      },
+    },
+    imports: {
+      checkAttempt: () => "not_started",
+      unresolvedAttempts: async () => [],
+      async findAccount() {
+        return null;
+      },
+      async runImport() {
+        throw new Error("unexpected import");
+      },
+    },
+    redirectUrl: "https://127.0.0.1:18888/eb/callback",
+    callback: async () => {
+      // One listener at a time on the callback port: a second one before close would fail.
+      if (listening - closes !== 0) throw new Error("callback port still in use");
+      listening++;
+      return {
+        redirectUrl: "https://127.0.0.1:18888/eb/callback",
+        wait: async () => "synthetic",
+        close: async () => {
+          closes++;
+        },
+      };
+    },
+    transport: {
+      async send(input) {
+        const body = JSON.parse(input.body ?? "{}") as { aspsp?: { name?: string } };
+        asked.push(body.aspsp?.name ?? "");
+        return body.aspsp?.name === "Synthetic Bank"
+          ? { status: 200, text: JSON.stringify({ url: "https://synthetic-bank.example/consent" }) }
+          : { status: 422, text: "synthetic unknown ASPSP" };
+      },
+    },
+  });
+  await expect(service.beginConsent({ aspsp: "Synthetic Bnak" })).rejects.toThrow(
+    "enable_banking_response",
+  );
+  expect((await service.status()).pendingConsent).toBeNull();
+  expect(closes).toBe(1);
+  expect((await service.beginConsent({ aspsp: "Synthetic Bank" })).url).toBe(
+    "https://synthetic-bank.example/consent",
+  );
+  expect(asked).toEqual(["Synthetic Bnak", "Synthetic Bank"]);
+  await service.cancelConsent();
+});
+
+it.each([
+  ["REDIRECT_URI_NOT_ALLOWED", 400, "enable_banking_redirect_not_allowed"],
+  ["WRONG_ASPSP_PROVIDED", 422, "enable_banking_unknown_bank"],
+  ["NO_ACCOUNTS_ADDED", 403, "enable_banking_app_restricted"],
+  ["WRONG_REQUEST_PARAMETERS", 422, "enable_banking_response"],
+  ["NOT A CODE <script>", 422, "enable_banking_response"],
+] as const)("maps Enable Banking's %s on /auth to its own refusal", async (code, status, fault) => {
+  const privateKeyPem = generateKeyPairSync("rsa", { modulusLength: 2048 })
+    .privateKey.export({ format: "pem", type: "pkcs8" })
+    .toString();
+  const service = new EnableBankingService({
+    authority: {
+      profileId: "profile-a",
+      isCurrent: () => true,
+      isHolder: () => true,
+      isOwnerAction: () => true,
+    },
+    secrets: {
+      namespace: `synthetic-auth-${code}`,
+      async get(kind) {
+        return kind === "credentials"
+          ? JSON.stringify({ appId: "synthetic-app", privateKeyPem, revision: "initial" })
+          : null;
+      },
+      async set() {
+        throw new Error("unexpected write");
+      },
+      async clear() {
+        throw new Error("unexpected clear");
+      },
+    },
+    imports: {
+      checkAttempt: () => "not_started",
+      unresolvedAttempts: async () => [],
+      async findAccount() {
+        return null;
+      },
+      async runImport() {
+        throw new Error("unexpected import");
+      },
+    },
+    redirectUrl: "https://127.0.0.1:18888/eb/callback",
+    callback: async () => ({
+      redirectUrl: "https://127.0.0.1:18888/eb/callback",
+      wait: async () => "synthetic",
+      close: async () => {},
+    }),
+    transport: {
+      async send() {
+        return {
+          status,
+          text: JSON.stringify({ message: "synthetic private detail", code: status, error: code }),
+        };
+      },
+    },
+  });
+  const failure = await service.beginConsent({ aspsp: "Synthetic Bank" }).catch((error) => error);
+  expect(String(failure)).toContain(fault);
+  expect(String(failure)).not.toContain("synthetic private detail");
+});
+
+it("reports a callback port it cannot open as its own refusal", async () => {
+  const privateKeyPem = generateKeyPairSync("rsa", { modulusLength: 2048 })
+    .privateKey.export({ format: "pem", type: "pkcs8" })
+    .toString();
+  const service = new EnableBankingService({
+    authority: {
+      profileId: "profile-a",
+      isCurrent: () => true,
+      isHolder: () => true,
+      isOwnerAction: () => true,
+    },
+    secrets: {
+      namespace: "synthetic-callback-busy",
+      async get(kind) {
+        return kind === "credentials"
+          ? JSON.stringify({ appId: "synthetic-app", privateKeyPem, revision: "initial" })
+          : null;
+      },
+      async set() {
+        throw new Error("unexpected write");
+      },
+      async clear() {
+        throw new Error("unexpected clear");
+      },
+    },
+    imports: {
+      checkAttempt: () => "not_started",
+      unresolvedAttempts: async () => [],
+      async findAccount() {
+        return null;
+      },
+      async runImport() {
+        throw new Error("unexpected import");
+      },
+    },
+    redirectUrl: "https://127.0.0.1:18888/eb/callback",
+    callback: async () => {
+      throw new Error("EADDRINUSE");
+    },
+    transport: {
+      async send() {
+        throw new Error("unexpected request");
+      },
+    },
+  });
+  await expect(service.beginConsent({ aspsp: "Synthetic Bank" })).rejects.toThrow(
+    "enable_banking_callback",
+  );
+});
+
 it("stops a daily sync after network authority loss before account import", async () => {
   const values = new Map<string, string>([
     ["credentials", JSON.stringify({ appId: "synthetic-app", privateKeyPem, revision: "initial" })],
