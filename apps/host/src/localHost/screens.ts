@@ -141,7 +141,12 @@ export function createScreenSurfaces(input: {
   });
   type InvestmentSources = ReturnType<typeof investmentSources>;
 
-  /** Prepares the strategy documents image a non-private strategies screen read needs. */
+  /**
+   * Prepares the strategy documents image a strategies screen read needs, in incognito too: the image
+   * stays in the host (the screen itself answers `unavailable: privacy`), and the portfolio, signals and
+   * review read their strategy from it. Skipping it left a host started in incognito without strategy
+   * files (`current_files_unavailable` on Investments) until incognito was turned off.
+   */
   const prepareQuery: NonNullable<StoreChannelOptions["prepareQuery"]> = async (
     vault,
     query,
@@ -150,7 +155,7 @@ export function createScreenSurfaces(input: {
     if (query === STRATEGIES_SCREEN) {
       const parsed = strategyScreenArgsSchema.safeParse(args);
       if (!parsed.success) throw new Error("invalid_query_input");
-      if (!parsed.data.privacy) await strategyManager?.prepare(vault, parsed.data.selection);
+      await strategyManager?.prepare(vault, parsed.data.privacy ? null : parsed.data.selection);
     }
     await options.prepareUiQuery?.(vault, query, args);
   };

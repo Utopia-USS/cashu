@@ -63,3 +63,39 @@ it("serves desktop Strategies source and refresh action from a native vault with
     fixture.cleanup();
   }
 });
+
+it("prepares the strategy files for a fresh host read in incognito, so the portfolio is not left without them", async () => {
+  const fixture = await nativeVaultFixture({ modules: ["investments"] });
+  chmodSync(join(fixture.dataDir, "vaults", fixture.vaultId), 0o700);
+  const host = await startLocalHost({
+    dataDir: fixture.dataDir,
+    home: fixture.home,
+    build: "test",
+    launcher: false,
+    vaultSource: fixture.vaultSource,
+  });
+  const client = await storeClient(fixture.dataDir);
+  try {
+    // Incognito from the first read (the flag survives an app restart): the strategies screen itself
+    // stays unavailable, but the host still reads the files the portfolio needs.
+    const screen = await client.subscribe("investments.strategies.screen", fixture.vaultId, {
+      lang: "en",
+      privacy: true,
+      selection: null,
+    });
+    expect(screen.values.at(-1)).toMatchObject({ status: "unavailable", reason: "privacy" });
+    const portfolio = await client.subscribe("investments.desktop.portfolio", fixture.vaultId, {
+      today: "2026-11-09",
+      lang: "en",
+      account: null,
+      range: "1y",
+    });
+    await expect
+      .poll(() => (portfolio.values.at(-1) as { reason?: string })?.reason)
+      .not.toBe("current_files_unavailable");
+  } finally {
+    client.close();
+    await host.stop();
+    fixture.cleanup();
+  }
+});
