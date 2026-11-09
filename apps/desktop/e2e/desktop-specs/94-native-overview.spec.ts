@@ -56,7 +56,12 @@ test("the Overview shows each profile's stored amounts, hides them in privacy mo
     const loansWidget = page.getByRole("region", { name: "Kredyty", exact: true });
     for (const loan of expected.anna.loans)
       await expect(loansWidget).toContainText(rendered(negate(loan.outstanding), loan.currency));
-    await expect(page.getByRole("region", { name: "Wartość netto", exact: true })).toContainText(
+    // The demo holds EUR with an NBP rate: the hero is the net worth converted to PLN.
+    const hero = page.getByRole("region", {
+      name: "Wartość netto, przeliczona na PLN",
+      exact: true,
+    });
+    await expect(hero).toContainText(
       rendered0(expected.anna.investments.value, expected.anna.investments.currency),
     );
     const chartControl = page.getByRole("group", { name: /^Wartość netto w czasie/u });

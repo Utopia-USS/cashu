@@ -328,6 +328,16 @@ async function expectations(query: Query, vaults: ReadonlyMap<string, string>, t
   const annaSummary = await summary(anna);
   const piotrSummary = await summary(piotr);
   const base = annaSummary.breakdown.currency;
+  // The Overview headline: every other currency converted at the NBP rate when one is known
+  // (`core.convertedHero`), else the headline currency's own net worth.
+  const shown = async (vault: string, own: Decimal): Promise<Decimal> => {
+    const hero = await query<{
+      converted: { net: Decimal; rateDate: string | null } | null;
+    }>("core.hero", vault, { today });
+    return hero.converted?.rateDate ? hero.converted.net : own;
+  };
+  const annaShown = await shown(anna, annaSummary.breakdown.net);
+  const piotrShown = await shown(piotr, piotrSummary.breakdown.net);
 
   const accounts = await query<AccountLine[]>("core.overviewAccounts", anna, { today });
   const line = (type: string, currency: string) =>
@@ -410,16 +420,16 @@ async function expectations(query: Query, vaults: ReadonlyMap<string, string>, t
   const series = await query<{ currency: string; points: { value: Decimal }[] }>(
     "core.netWorthSeries",
     anna,
-    { today, lang: "pl", currency: base, granularity: "monthly", scope: "total" },
+    { today, lang: "pl", currency: base, granularity: "monthly", scope: "total", convert: true },
   );
   const last = series.points.at(-1)?.value;
   if (last === undefined) throw new Error("synthetic net worth series is empty");
-  agree("anna series end vs net worth", last, text(annaSummary.breakdown.net));
+  agree("anna series end vs net worth", last, text(annaShown));
 
   return {
     today,
     anna: {
-      net: text(annaSummary.breakdown.net),
+      net: text(annaShown),
       currency: base,
       currencies: Object.keys(annaSummary.networth),
       months,
@@ -448,7 +458,7 @@ async function expectations(query: Query, vaults: ReadonlyMap<string, string>, t
       },
       seriesEnd: { value: text(last), currency: series.currency },
     },
-    piotr: { net: text(piotrSummary.breakdown.net), currency: piotrSummary.breakdown.currency },
+    piotr: { net: text(piotrShown), currency: piotrSummary.breakdown.currency },
   };
 }
 
