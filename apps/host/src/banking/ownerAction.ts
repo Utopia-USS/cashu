@@ -38,6 +38,7 @@ const command = z.discriminatedUnion("type", [
     keepOthers: z.boolean().default(false),
   }),
   z.object({ type: z.literal("completeConsent"), callbackUrl: z.string().max(4096).optional() }),
+  z.object({ type: z.literal("awaitConsent") }),
   z.object({ type: z.literal("offerCallback"), callbackUrl: z.string().min(1).max(4096) }),
   z.object({ type: z.literal("cancelConsent") }),
   z.object({ type: z.literal("sync"), days: z.number().int().min(1).max(365).default(90) }),
@@ -160,6 +161,8 @@ export async function runBankingOwnerAction(input: {
         return { ok: true, value: await service.beginConsent(action) };
       case "completeConsent":
         return { ok: true, value: await service.completeConsent(action.callbackUrl) };
+      case "awaitConsent":
+        return { ok: true, value: await service.awaitConsent() };
       case "offerCallback":
         return { ok: true, value: service.offerCallback(action.callbackUrl) };
       case "cancelConsent":

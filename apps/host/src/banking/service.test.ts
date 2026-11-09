@@ -15,7 +15,6 @@ it("stores only profile-private consent, imports exact decimal rows, and guards 
   let holder = true;
   let owner = true;
   let limited = false;
-  let consentState = "";
   let imports = 0;
   let exposeAttempt = true;
   const calls: string[] = [];
@@ -105,8 +104,7 @@ it("stores only profile-private consent, imports exact decimal rows, and guards 
     redirectUrl: "https://127.0.0.1:18888/eb/callback",
     clock: { now: () => new Date("2026-11-04T00:00:00.000Z") },
     transport,
-    callback: async (_redirect, state) => {
-      consentState = state;
+    callback: async () => {
       return {
         redirectUrl: "https://127.0.0.1:18888/eb/callback",
         offer: () => undefined,
@@ -118,11 +116,11 @@ it("stores only profile-private consent, imports exact decimal rows, and guards 
   expect((await service.beginConsent({ aspsp: "mBank" })).url).toBe(
     "https://synthetic-bank.example/consent",
   );
-  expect(
-    await service.completeConsent(
-      `https://127.0.0.1:18888/eb/callback?state=${consentState}&code=synthetic-code`,
-    ),
-  ).toEqual({
+  // Two steps, as the window runs them: the bank's answer first, then the session and the import.
+  expect(await service.awaitConsent()).toEqual({ received: true });
+  expect((await service.status()).pendingConsent).toBeNull();
+  expect(imports).toBe(0);
+  expect(await service.completeConsent()).toEqual({
     institution: "mbank",
     accounts: 1,
     inserted: 1,

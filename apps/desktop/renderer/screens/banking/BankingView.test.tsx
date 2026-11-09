@@ -44,8 +44,17 @@ it("runs the native banking consent and recovers an unknown import by checking t
   const port = syntheticBankingPort(true);
   let opened = "";
   let settled = 0;
+  let releaseImport: (() => void) | undefined;
   const bridged = {
     ...port,
+    // The first import takes a while: hold it until the test lets it finish.
+    async invoke(action: Parameters<typeof port.invoke>[0]): Promise<BankingReply> {
+      if (action.type === "completeConsent")
+        await new Promise<void>((resolve) => {
+          releaseImport = resolve;
+        });
+      return port.invoke(action);
+    },
     openBank: async (url: string) => {
       opened = url;
     },
@@ -74,7 +83,13 @@ it("runs the native banking consent and recovers an unknown import by checking t
     await click("Open bank page");
     expect(opened).toBe("https://synthetic-bank.example/authorize");
     await pasteCallback(container, "https://127.0.0.1:18888/eb/callback?code=synthetic&state=s");
+    // Between the bank's answer and the end of the import the screen says what is going on.
+    expect(container.textContent).toContain("The bank confirmed the consent");
     expect(container.textContent).not.toContain("Open bank page");
+    await act(async () => {
+      releaseImport?.();
+    });
+    expect(container.textContent).not.toContain("The bank confirmed the consent");
     expect(container.textContent).toContain("Data refreshed");
     await click("Sync now");
     expect(container.textContent).toContain("It is not known whether");

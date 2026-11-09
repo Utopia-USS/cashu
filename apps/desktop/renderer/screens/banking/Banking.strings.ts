@@ -96,6 +96,10 @@ export const B = {
     pl: "Czekam na Twoją zgodę na stronie banku. Po niej cashU sam dokończy połączenie i pobierze transakcje.",
     en: "Waiting for your consent on the bank's page. After it cashU finishes the connection and loads the transactions by itself.",
   },
+  importing: {
+    pl: "Bank potwierdził zgodę. Pobieram konta i transakcje, to może potrwać kilkanaście sekund.",
+    en: "The bank confirmed the consent. Loading the accounts and transactions, this can take a few seconds.",
+  },
   openToContinue: {
     pl: "Otwórz stronę banku i udziel zgody. Po niej cashU sam dokończy połączenie.",
     en: "Open the bank's page and give your consent. cashU then finishes the connection by itself.",

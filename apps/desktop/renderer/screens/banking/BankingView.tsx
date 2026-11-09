@@ -113,7 +113,7 @@ export function BankingView({
               {!screen.editingKey && (
                 <Button
                   type="button"
-                  disabled={screen.busy || screen.waiting}
+                  disabled={screen.busy || screen.waiting || screen.importing}
                   onPress={() => screen.editKey(true)}
                 >
                   {t("changeKey")}
@@ -122,7 +122,7 @@ export function BankingView({
               <Button
                 type="button"
                 variant="danger"
-                disabled={screen.busy || screen.waiting}
+                disabled={screen.busy || screen.waiting || screen.importing}
                 onPress={() => setConfirmRemove(true)}
               >
                 {t("removeConfig")}
@@ -170,7 +170,9 @@ export function BankingView({
             ))}
             <Button
               type="button"
-              disabled={screen.busy || screen.waiting || screen.connected.length === 0}
+              disabled={
+                screen.busy || screen.waiting || screen.importing || screen.connected.length === 0
+              }
               onPress={() => void screen.sync()}
             >
               {t("sync")}
@@ -179,7 +181,12 @@ export function BankingView({
           <h4 className="font-strong text-fg">
             {t(screen.connected.length > 0 ? "connectAnother" : "connectTitle")}
           </h4>
-          {!screen.pendingUrl && (
+          {screen.importing && (
+            <p role="status" className="rounded-md border border-border p-3">
+              {t("importing")}
+            </p>
+          )}
+          {!screen.pendingUrl && !screen.importing && (
             <form
               className="grid gap-2"
               onSubmit={(event) => {
@@ -222,7 +229,7 @@ export function BankingView({
               <p className="text-sm text-fg-muted">{t("consentHint")}</p>
             </form>
           )}
-          {screen.pendingUrl && (
+          {screen.pendingUrl && !screen.importing && (
             <div className="grid gap-2">
               <p role="status">{t(screen.waiting ? "waiting" : "openToContinue")}</p>
               <Button type="button" variant="primary" onPress={() => void screen.open()}>

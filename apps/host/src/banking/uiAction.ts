@@ -16,6 +16,7 @@ const publicAction = z.discriminatedUnion("type", [
     type: z.literal("completeConsent"),
     callbackUrl: z.string().max(4096).optional(),
   }),
+  z.strictObject({ type: z.literal("awaitConsent") }),
   z.strictObject({
     type: z.literal("offerCallback"),
     callbackUrl: z.string().min(1).max(4096),

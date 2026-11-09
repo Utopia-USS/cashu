@@ -7,6 +7,7 @@ export type BankingAction =
     }
   | { readonly type: "beginConsent"; readonly aspsp: string }
   | { readonly type: "completeConsent"; readonly callbackUrl?: string }
+  | { readonly type: "awaitConsent" }
   | { readonly type: "offerCallback"; readonly callbackUrl: string }
   | { readonly type: "forgetSession"; readonly handle: string }
   | { readonly type: "attemptStatus"; readonly key: string };
@@ -130,6 +131,8 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
   const [application, setApplication] = useState<string | null>(null);
   /** The owner is at the bank: cashU waits for the bank's answer and finishes by itself. */
   const [waiting, setWaiting] = useState(false);
+  /** The bank answered: cashU creates the session and loads the transactions. */
+  const [importing, setImporting] = useState(false);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [attemptList, setAttempts] = useState<BankingAttemptView[]>([]);
   const [busy, setBusy] = useState(false);
@@ -255,33 +258,49 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
     await fillBanks(ticket);
   };
   /**
-   * Waits (up to 5 minutes, on the host) for the bank's answer and finishes the connection: the
-   * first import runs right after. Runs beside the other buttons, so it never sets `busy`.
+   * Finishes a consent in two calls: the first returns as soon as the bank's answer is in (up to 5
+   * minutes, on the host), the second creates the session and runs the first import, which takes a
+   * while; between them the screen says the transactions are loading. Neither sets `busy`, so the
+   * other buttons stay usable while the owner is at the bank.
    */
   const awaitConsent = async (ticket: number) => {
-    if (!port || waiting) return;
+    if (!port || waiting || importing) return;
     setWaiting(true);
+    let answer: BankingReply;
+    try {
+      answer = await port.invoke({ type: "awaitConsent" });
+    } catch {
+      answer = { ok: false, error: "error" };
+    }
+    if (!current(ticket)) return;
+    setWaiting(false);
+    if (!answer.ok) {
+      await refresh(ticket);
+      // A cancel by the owner needs no notice; everything else says what happened.
+      if (current(ticket) && answer.error !== "consent_cancelled")
+        setNotice(NOTICE_BY_ERROR[answer.error] ?? "error");
+      return;
+    }
+    setImporting(true);
     let reply: BankingReply;
     try {
       reply = await port.invoke({ type: "completeConsent" });
     } catch {
       if (!current(ticket)) return;
-      setWaiting(false);
+      setImporting(false);
       setNotice("importUnknown");
       return;
     }
     if (!current(ticket)) return;
-    setWaiting(false);
     await refresh(ticket);
     if (!current(ticket)) return;
+    setImporting(false);
     if (!reply.ok) {
-      // A cancel by the owner needs no notice; everything else says what happened.
-      if (reply.error !== "consent_cancelled")
-        setNotice(
-          reply.error === "outcome_unknown"
-            ? "importUnknown"
-            : (NOTICE_BY_ERROR[reply.error] ?? "error"),
-        );
+      setNotice(
+        reply.error === "outcome_unknown"
+          ? "importUnknown"
+          : (NOTICE_BY_ERROR[reply.error] ?? "error"),
+      );
       return;
     }
     try {
@@ -314,6 +333,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
     application,
     pendingUrl,
     waiting,
+    importing,
     attemptList,
     busy,
     notice,

@@ -150,6 +150,17 @@ export function isBankingRsaKey(pem: string): boolean {
   }
 }
 
+/** A consent started with the bank, until its callback arrives or it is cancelled. */
+interface PendingConsent {
+  state: string;
+  credential: Credentials;
+  credentialTick: number;
+  bank: string | null;
+  keepOthers: boolean;
+  days: number;
+  url: string;
+}
+
 export class EnableBankingService {
   private readonly clock: BankingClock;
   private readonly transport: BankingTransport;
@@ -160,15 +171,9 @@ export class EnableBankingService {
   /** A completeConsent is waiting for this pending consent's callback (at most one at a time). */
   private completing = false;
   private readonly unknownAttempts = new Map<string, BankingAttempt>();
-  private pending: {
-    state: string;
-    credential: Credentials;
-    credentialTick: number;
-    bank: string | null;
-    keepOthers: boolean;
-    days: number;
-    url: string;
-  } | null = null;
+  private pending: PendingConsent | null = null;
+  /** The bank's answer arrived (awaitConsent) and waits for completeConsent to use it. */
+  private received: { pending: PendingConsent; code: string } | null = null;
 
   private readonly options: BankingServiceOptions;
   constructor(options: BankingServiceOptions) {
@@ -185,6 +190,7 @@ export class EnableBankingService {
     const capture = this.capture;
     this.capture = null;
     this.pending = null;
+    this.received = null;
     if (capture) await capture.close();
   }
 
@@ -336,6 +342,8 @@ export class EnableBankingService {
     this.guard(true, true);
     // One consent at a time: a pending one, or one whose callback is still being waited for.
     if (this.pending || this.capture || this.beginning) throw new BankingFault("authorization");
+    // An answer nobody finished (the window went away mid-way) does not outlive a new consent.
+    this.received = null;
     this.beginning = true;
     const generation = ++this.beginGeneration;
     const state = randomBytes(32).toString("base64url");
@@ -400,21 +408,16 @@ export class EnableBankingService {
     }
   }
 
-  async completeConsent(callbackUrl?: string): Promise<{
-    institution: string;
-    accounts: number;
-    inserted: number;
-    errors: readonly string[];
-    attempts: readonly BankingAttempt[];
-  }> {
-    await this.freshHolder();
-    this.guard(true, true);
+  /**
+   * Waits (up to 5 minutes) for the bank's answer to the pending consent, or reads a copied callback
+   * URL. The pending consent and its capture stay in place while waiting: the window may still open
+   * the bank's page (its URL must stay the pending one), cancelConsent closes the capture (the wait
+   * then ends with consent_cancelled) and offerCallback hands it a copied callback URL.
+   */
+  private async receive(callbackUrl?: string): Promise<{ pending: PendingConsent; code: string }> {
     const pending = this.pending;
     const capture = this.capture;
     if (!pending || !capture || this.completing) throw new BankingFault("authorization");
-    // The pending consent and its capture stay in place while waiting: the window may still open
-    // the bank's page (its URL must stay the pending one), cancelConsent closes the capture (the wait
-    // then ends with consent_cancelled) and offerCallback hands it a copied callback URL.
     this.completing = true;
     let code: string;
     try {
@@ -428,6 +431,33 @@ export class EnableBankingService {
       if (this.capture === capture) this.capture = null;
       await capture.close();
     }
+    return { pending, code };
+  }
+
+  /**
+   * The first half of finishing a consent: returns as soon as the bank's answer is in, so the window
+   * can say so while completeConsent creates the session and runs the first import. Stores nothing.
+   */
+  async awaitConsent(): Promise<{ received: true }> {
+    await this.freshHolder();
+    this.guard(true, true);
+    if (this.received) return { received: true };
+    this.received = await this.receive();
+    return { received: true };
+  }
+
+  async completeConsent(callbackUrl?: string): Promise<{
+    institution: string;
+    accounts: number;
+    inserted: number;
+    errors: readonly string[];
+    attempts: readonly BankingAttempt[];
+  }> {
+    await this.freshHolder();
+    this.guard(true, true);
+    const received = this.received ?? (await this.receive(callbackUrl));
+    this.received = null;
+    const { pending, code } = received;
     // The owner may have spent minutes in the bank's browser: refresh before acting as leader.
     await this.freshHolder();
     this.guard(true, true);

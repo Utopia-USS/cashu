@@ -50,14 +50,10 @@ export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort
           return { ok: true, value: { cancelled: true } };
         case "offerCallback":
           if (!answer) return { ok: false, error: "consent_cancelled" };
-          connected = true;
           pendingConsent = null;
-          answer({
-            ok: true,
-            value: { institution: "synthetic", accounts: 1, inserted: 1, attempts: [] },
-          });
+          answer({ ok: true, value: { received: true } });
           return { ok: true, value: { accepted: true } };
-        case "completeConsent":
+        case "awaitConsent":
           // Waits like the host: until the bank answers (here: a pasted URL) or a cancel.
           return new Promise<BankingReply>((resolve) => {
             answer = (reply) => {
@@ -65,6 +61,12 @@ export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort
               resolve(reply);
             };
           });
+        case "completeConsent":
+          connected = true;
+          return {
+            ok: true,
+            value: { institution: "synthetic", accounts: 1, inserted: 1, attempts: [] },
+          };
         case "sync":
           pendingAttempts = [{ key: "b".repeat(32), command: "banking.importAccount" }];
           return {

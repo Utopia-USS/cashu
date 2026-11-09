@@ -6,6 +6,7 @@ export type BankingSettingsInput =
     }
   | { readonly type: "beginConsent"; readonly aspsp: string }
   | { readonly type: "completeConsent"; readonly callbackUrl?: string }
+  | { readonly type: "awaitConsent" }
   | { readonly type: "offerCallback"; readonly callbackUrl: string }
   | { readonly type: "forgetSession"; readonly handle: string }
   | { readonly type: "attemptStatus"; readonly key: string };
