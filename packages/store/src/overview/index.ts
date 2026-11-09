@@ -296,11 +296,17 @@ export interface BudgetWidgets {
     readonly income: budget.MonthSummary["income"];
     readonly spending: budget.MonthSummary["expense"];
     readonly surplus: budget.MonthSummary["net"];
+    /**
+     * Surplus over income; null for a month in progress, a month the data does not cover whole (the
+     * first month of an import) or without income.
+     */
+    readonly savingsRate: Decimal | null;
     readonly suggestedTransfer: Decimal | null;
     readonly currency: string;
     readonly otherCurrencies: readonly string[];
   } | null;
   readonly norm: budget.MonthNorm | null;
+  /** Surplus over income of the last 6 whole, closed months (`budget.averageSavingsRate`). */
   readonly averageSavingsRate: budget.MonthSummary["net"] | null;
   readonly subscriptions: budget.SubscriptionsSummary;
   readonly subscriptionCurrency: string;
@@ -330,22 +336,17 @@ export function budgetWidgets(
     subscriptions.monthlyTotals[base] !== undefined
       ? base
       : (Object.keys(subscriptions.monthlyTotals)[0] ?? base);
-  const norm = budget.closedMonthNorm(budget.monthlyCashflow(book, base), today);
-  const closed = budget
-    .monthlyCashflow(book, base)
-    .filter((row) => row.label < today.slice(0, 7))
-    .slice(-6);
-  const averageSavingsRate =
-    closed.length < 2
-      ? null
-      : closed
-          .reduce(
-            (sum, row) => sum.add(row.income.isZero() ? D("0") : row.net.div(row.income)),
-            D("0"),
-          )
-          .div(D(String(closed.length)));
+  // Only whole months: the first month of an import begins mid-month and would read as a month
+  // with almost no income.
+  const rows = budget.monthlyCashflow(book, base);
+  const start = budget.cashflowCoverageStart(book, base);
+  const norm = budget.closedMonthNorm(budget.wholeMonths(rows, start), today);
+  const averageSavingsRate = budget.averageSavingsRate(rows, start, today);
   const subscriptionNorm = budget.closedMonthNorm(
-    budget.monthlyCashflow(book, subscriptionCurrency),
+    budget.wholeMonths(
+      budget.monthlyCashflow(book, subscriptionCurrency),
+      budget.cashflowCoverageStart(book, subscriptionCurrency),
+    ),
     today,
   );
   const current = Date.parse(`${today}T12:00:00Z`);
@@ -375,7 +376,20 @@ export function budgetWidgets(
           planned: sources.plannedContribution?.(read) ?? null,
         });
   const preferred = close?.currencies.find((row) => row.currency === base) ?? close?.currencies[0];
-  const fallback = budget.monthSummary(budget.monthlyCashflow(book, base));
+  const fallback = budget.monthSummary(rows);
+  /** A month's savings rate: only for a closed month the data covers whole, with income. */
+  const savingsRate = (
+    label: string,
+    complete: boolean | null,
+    currency: string,
+    income: Decimal,
+    surplus: Decimal,
+  ): Decimal | null => {
+    const from = currency === base ? start : budget.cashflowCoverageStart(book, currency);
+    const whole = from === null || `${label}-01` >= from;
+    const closed = complete ?? label < today.slice(0, 7);
+    return whole && closed && income.gt(D("0")) ? surplus.div(income) : null;
+  };
   const month =
     preferred === undefined
       ? fallback === null
@@ -386,6 +400,7 @@ export function budgetWidgets(
             income: fallback.income,
             spending: fallback.expense,
             surplus: fallback.net,
+            savingsRate: savingsRate(fallback.label, null, base, fallback.income, fallback.net),
             suggestedTransfer: null,
             currency: base,
             otherCurrencies: [],
@@ -396,6 +411,13 @@ export function budgetWidgets(
           income: preferred.income,
           spending: preferred.spending,
           surplus: preferred.surplus,
+          savingsRate: savingsRate(
+            close?.label ?? "",
+            close?.complete ?? null,
+            preferred.currency,
+            preferred.income,
+            preferred.surplus,
+          ),
           suggestedTransfer: preferred.suggestedTransfer,
           currency: preferred.currency,
           otherCurrencies:

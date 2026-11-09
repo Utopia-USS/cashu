@@ -1,11 +1,11 @@
 // Texts of the Strategie tab (Strategies.tsx). See docs/agents/localization.md.
-import { catalog, plCount } from "../../index.js";
+import { catalog } from "../../index.js";
 
 export const S = catalog({
   tab: { pl: "Strategie", en: "Strategies" },
   listLabel: { pl: "Strategie i ich pliki", en: "Strategies and their files" },
   mainTitle: { pl: "Strategia główna", en: "Main strategy" },
-  executed: { pl: "aktywna", en: "executed" },
+  executed: { pl: "wykonywana", en: "executed" },
   executedTitle: {
     pl: "Reguły z tego pliku YAML działają: aplikacja sprawdza je codziennie i tworzy sygnały.",
     en: "The rules of this YAML file run: the app checks them daily and creates signals.",
@@ -25,11 +25,11 @@ export const S = catalog({
     en: (name: string) => `Copied the path of ${name}`,
   },
   notExecuted: {
-    pl: "Ten plik YAML nie jest jeszcze aktywny: jego reguły nie tworzą sygnałów. Aplikacja sprawdza tylko reguły strategii głównej.",
+    pl: "Ten plik YAML nie jest jeszcze wykonywany: reguły z niego nie tworzą sygnałów. Aplikacja wykonuje tylko strategię główną.",
     en: "This YAML file is not executed yet: its rules create no signals. The app runs only the main strategy.",
   },
   issuesHere: {
-    pl: (n: number) => `${plCount(n, "uwaga", "uwagi", "uwag")} w tym pliku`,
+    pl: (n: number) => (n === 1 ? "1 uwaga w tym pliku" : `${n} uwag w tym pliku`),
     en: (n: number) => (n === 1 ? "1 issue in this file" : `${n} issues in this file`),
   },
   emptyFile: { pl: "Plik jest pusty.", en: "The file is empty." },
@@ -43,11 +43,11 @@ export const S = catalog({
   },
   noneTitle: { pl: "Nie masz jeszcze strategii", en: "You have no strategy yet" },
   noneHint: {
-    pl: "Strategię piszesz razem z agentem w wywiadzie /investments-setup. Może to być dowolny dokument (reguły, sygnały z narzędzia, grupa na Telegramie, własny styl); plik YAML jest potrzebny tylko wtedy, gdy aplikacja ma czegoś pilnować.",
+    pl: "Strategię pisze agent z Tobą: wywiad /investments-setup. Może to być dowolny dokument (reguły, sygnały z narzędzia, grupa na Telegramie, własny styl); plik YAML jest potrzebny tylko wtedy, gdy aplikacja ma czegoś pilnować.",
     en: "Your agent writes the strategy with you: the /investments-setup interview. It can be any document (rules, signals from a tool, a Telegram group, your own style); a YAML file is needed only when the app should watch something.",
   },
   mainMissing: {
-    pl: "Strategia główna nie istnieje. Tylko jej reguły aplikacja sprawdza i z nich tworzy sygnały; pozostałe strategie są dokumentami.",
+    pl: "Strategia główna nie istnieje. To ją aplikacja wykonuje (reguły i sygnały); pozostałe strategie są dokumentami.",
     en: "The main strategy does not exist. It is the one the app executes (rules and signals); the other strategies are documents.",
   },
   fromTemplate: { pl: "Utwórz z szablonu", en: "Create from a template" },

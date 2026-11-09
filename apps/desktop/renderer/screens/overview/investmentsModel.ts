@@ -51,7 +51,14 @@ export function investmentsHeroFact(inv: OverviewInvestments): RichFact {
       ? `${S.chances(pol.positive)} · ${S.risks(pol.negative + pol.neutral)}`
       : S.signalsCount(k.signals.action + k.signals.info),
   });
-  return { label: S.investments, value: money0(k.value.total, c), detail };
+  // The portfolio in the investments base currency (converted); net worth counts the same accounts per
+  // currency without conversion, so the tooltip says why the figures do not add up.
+  return {
+    label: S.investments,
+    value: money0(k.value.total, c),
+    title: S.portfolioTitle(c),
+    detail,
+  };
 }
 type Run = Rich[number];
 
@@ -265,6 +272,18 @@ export function surplusYear(args: {
     text: S.coveredOf(covered, due),
     months,
   };
+}
+
+/**
+ * Whether Nadwyżka -> inwestycje has anything to say: a monthly contribution in the strategy, a monthly
+ * plan amount or a deposit planned or booked for this month. Without any of them the card would only
+ * repeat the month's surplus from the budget card next to "no plan in the strategy", so it stays away.
+ */
+export function surplusApplies(inv: OverviewInvestments, today: string): boolean {
+  const planned = inv.monthClose.investing?.planned ?? null;
+  if (planned !== null && planned.amount > 0) return true;
+  if ((inv.plan?.monthly_amount ?? 0) > 0) return true;
+  return planForMonth<PlanRow>(inv.plans, today.slice(0, 7)) != null;
 }
 
 /** Nadwyżka -> wpłata (SurplusWidget). `other` is the "Inna kwota" draft (null = closed). */

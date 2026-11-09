@@ -166,7 +166,8 @@ export function budgetMonthModel(b: BudgetWidgets, openExpenses: () => void): Bu
   const spending = f(m?.spending);
   const surplus = f(m?.surplus);
   const c = m?.currency ?? "PLN";
-  const rate = income && surplus != null ? surplus / income : null;
+  // The store leaves it out for a month in progress or one the data does not cover whole.
+  const rate = f(m?.savingsRate);
   const avg = f(b.averageSavingsRate);
   const w = (v: number | null) =>
     income && v != null ? Math.max(0, Math.min(100, (Math.abs(v) / income) * 100)) : 0;

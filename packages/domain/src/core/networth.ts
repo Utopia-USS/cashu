@@ -242,6 +242,36 @@ function resamplePeriodEnd<T>(
   return [...buckets.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, v]) => v);
 }
 
+/** The accounts of one currency (and scope) the history counts, with their valuations. */
+function seriesValuations(
+  book: NetWorthBook,
+  currency: string,
+  scope: SeriesScope,
+): { byId: Map<string, NetWorthAccount>; vals: Map<string, Valuation> } {
+  let accounts = visibleAccounts(book).filter((a) => a.currency === currency);
+  if (scope === "liquid") accounts = accounts.filter((a) => book.types.get(a.type).liquid);
+  return { byId: new Map(accounts.map((a) => [a.id, a])), vals: valuationsFor(book, accounts) };
+}
+
+/**
+ * The first date from which the history in `currency` knows every account it counts: the latest
+ * `knownFrom` of their valuations. Points before it miss accounts whose data starts later (an Open
+ * Banking import reaches only ~90 days back, a balance first entered by hand), so a change measured
+ * from such a point is not a change of net worth. null when every account is known from the start.
+ */
+export function netWorthSeriesCompleteFrom(
+  book: NetWorthBook,
+  currency: string,
+  scope: SeriesScope = "total",
+): IsoDate | null {
+  let from: IsoDate | null = null;
+  for (const v of seriesValuations(book, currency, scope).vals.values()) {
+    const d = v.knownFrom?.() ?? null;
+    if (d !== null && (from === null || d > from)) from = d;
+  }
+  return from;
+}
+
 /**
  * `net_worth_component_series`: net worth over time in one currency, split into display buckets
  * (`componentOrder`); the buckets sum to the total at each date. Points sit on the dates where some
@@ -254,12 +284,8 @@ export function netWorthComponentSeries(
   granularity: Granularity = "daily",
   scope: SeriesScope = "total",
 ): [IsoDate, Map<string, Decimal>][] {
-  let accounts = visibleAccounts(book).filter((a) => a.currency === currency);
-  if (scope === "liquid") accounts = accounts.filter((a) => book.types.get(a.type).liquid);
-  if (accounts.length === 0) return [];
-
-  const byId = new Map(accounts.map((a) => [a.id, a]));
-  const vals = valuationsFor(book, accounts);
+  const { byId, vals } = seriesValuations(book, currency, scope);
+  if (byId.size === 0) return [];
   const axis = new Set<IsoDate>();
   for (const v of vals.values()) for (const d of v.axisDates()) axis.add(d);
 

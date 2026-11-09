@@ -17,7 +17,7 @@ export const S = catalog({
       plCount(
         n,
         "sprzedawca bez kategorii",
-        "sprzedawcy bez kategorii",
+        "sprzedawców bez kategorii",
         "sprzedawców bez kategorii",
       ),
     en: (n: number) => `${enCount(n, "merchant", "merchants")} without a category`,

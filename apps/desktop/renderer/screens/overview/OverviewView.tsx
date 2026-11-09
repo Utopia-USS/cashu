@@ -181,13 +181,15 @@ function NetWorthTile({ hero, m }: { hero: HeroModel; m: NetWorthWidgetModel }) 
             value={m.mode.value}
             onChange={m.mode.onChange}
           />
-          <Select
-            label={m.scope.label}
-            labelHidden
-            value={m.scope.value}
-            onChange={(v) => m.scope.onChange(v as Scope)}
-            options={m.scope.options}
-          />
+          {m.scope && (
+            <Select
+              label={m.scope.label}
+              labelHidden
+              value={m.scope.value}
+              onChange={(v) => m.scope?.onChange(v as Scope)}
+              options={m.scope.options}
+            />
+          )}
           <span className="flex-1" />
           <Seg
             quiet

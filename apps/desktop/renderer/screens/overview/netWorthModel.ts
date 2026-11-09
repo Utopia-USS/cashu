@@ -39,10 +39,15 @@ const ranges = (): [string, number | null][] => [
 const isoMinus = (iso: string, days: number) =>
   new Date(new Date(iso).getTime() - days * DAY).toISOString().slice(0, 10);
 
-/** Change over the last 12 months of a series (first point on/after a year ago -> last). */
-function yearChange(
-  points: readonly core.SeriesPoint[],
-): { abs: number; pct: number | null } | null {
+/** The points from which every account of the series is known (`SeriesView.completeFrom`). */
+const wholePoints = (view: core.SeriesView): readonly core.SeriesPoint[] => {
+  const from = view.completeFrom;
+  return from === null ? view.points : view.points.filter((p) => p.date >= from);
+};
+
+/** Change over the last 12 months of a series (first whole point on/after a year ago -> last). */
+function yearChange(view: core.SeriesView): { abs: number; pct: number | null } | null {
+  const points = wholePoints(view);
   if (points.length < 2) return null;
   const last = points[points.length - 1] as core.SeriesPoint;
   const from = isoMinus(last.date, 365);
@@ -61,12 +66,13 @@ export interface NetWorthWidgetModel {
     value: ChartMode;
     onChange(v: ChartMode): void;
   };
+  /** null when the total and the liquid series are the same (no property, car or loan). */
   scope: {
     label: string;
     options: { value: Scope; label: string }[];
     value: Scope;
     onChange(v: Scope): void;
-  };
+  } | null;
   range: {
     label: string;
     items: [string, number | null][];
@@ -121,7 +127,10 @@ export function netWorthModel(args: {
 }): NetWorthWidgetModel {
   const { series, ui } = args;
   const currency = series.currency;
-  const all = series.points;
+  // Points before `completeFrom` miss accounts whose data starts later (the first Open Banking import
+  // reaches ~90 days back): drawn, they climb to today's value and read as growth.
+  const all = wholePoints(series);
+  const wholeFrom = series.completeFrom;
   let points = all;
   if (ui.range != null && all.length) {
     const from = isoMinus((all[all.length - 1] as core.SeriesPoint).date, ui.range);
@@ -135,20 +144,25 @@ export function netWorthModel(args: {
     i,
     text: monthYearShort((points[i] as core.SeriesPoint).date),
   }));
-  const y = yearChange(args.total.points);
-  const yl = yearChange(args.liquid.points);
+  const y = yearChange(args.total);
+  // What the total holds beyond the liquid series (property, car, loans): the scope choice and the
+  // "accounts only" fact mean something only then.
+  const liquidKeys = new Set(args.liquid.components.map((c) => c.key));
+  const beyond = args.total.components.filter((c) => !liquidKeys.has(c.key));
+  const yl = beyond.length ? yearChange(args.liquid) : null;
   const yFormat = (v: number) =>
     hideAmount(
       new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 0, ...GROUP }).format(
         Math.round(v / 1000) * 1000,
       ),
     );
-  const dateOf = (p: core.SeriesPoint) =>
-    new Date(`${p.date}T12:00:00`).toLocaleDateString(intlLocale(), {
+  const dayText = (iso: string) =>
+    new Date(`${iso}T12:00:00`).toLocaleDateString(intlLocale(), {
       day: "numeric",
       month: "short",
       year: "numeric",
     });
+  const dateOf = (p: core.SeriesPoint) => dayText(p.date);
   const point = (i: number) => {
     const p = points[i];
     if (!p) return null;
@@ -199,11 +213,14 @@ export function netWorthModel(args: {
     ]);
   if (yl && yl.pct != null)
     foot.push([
-      { text: N.noProperty },
+      { text: N.accountsOnly },
       { text: pctSigned(yl.pct), bold: true, tone: yl.pct >= 0 ? "positive" : "negative" },
     ]);
+  if (wholeFrom !== null && all.length >= 2)
+    foot.push([{ text: N.historyFrom(dayText(wholeFrom)) }]);
   const last = points[points.length - 1];
   const values = points.map((p) => p.value.toFloat());
+  const drawn = all.length >= 2 || (wholeFrom === null && all.length > 0);
   return {
     title: N.title,
     mode: {
@@ -215,15 +232,20 @@ export function netWorthModel(args: {
       value: ui.mode,
       onChange: ui.setMode,
     },
-    scope: {
-      label: N.scope,
-      options: [
-        { value: "total", label: N.scopeTotal },
-        { value: "liquid", label: N.scopeLiquid },
-      ],
-      value: ui.scope,
-      onChange: ui.setScope,
-    },
+    scope: beyond.length
+      ? {
+          label: N.scope,
+          options: [
+            {
+              value: "total",
+              label: N.scopeTotal(beyond.map((c) => c.label.toLocaleLowerCase(intlLocale()))),
+            },
+            { value: "liquid", label: N.scopeLiquid },
+          ],
+          value: ui.scope,
+          onChange: ui.setScope,
+        }
+      : null,
     range: { label: N.range, items: ranges(), value: ui.range, onChange: ui.setRange },
     step: {
       label: N.step,
@@ -236,9 +258,13 @@ export function netWorthModel(args: {
       onChange: ui.setStep,
     },
     foot,
-    empty: all.length ? null : N.empty,
+    empty: drawn
+      ? null
+      : wholeFrom !== null && series.points.length
+        ? N.tooShort(dayText(wholeFrom))
+        : N.empty,
     point,
-    chart: !all.length
+    chart: !drawn
       ? null
       : ui.mode === "line"
         ? {

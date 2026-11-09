@@ -25,7 +25,7 @@ export const S = catalog({
   categoriesTitle: { pl: "Kategorie wydatków", en: "Expense categories" },
   categoriesCount: {
     pl: (n: number) =>
-      `${plCount(n, "sprzedawca", "sprzedawcy", "sprzedawców")} bez kategorii · reguła zapamięta wybór.`,
+      `${plCount(n, "sprzedawca", "sprzedawców", "sprzedawców")} bez kategorii · reguła zapamięta wybór.`,
     en: (n: number) =>
       `${enCount(n, "merchant", "merchants")} without a category · a rule remembers the choice.`,
   },

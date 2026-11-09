@@ -42,6 +42,12 @@ export interface Valuation {
   at(d: IsoDate): Decimal | null;
   /** Dates that create points on the history series (may be empty). */
   axisDates(): readonly IsoDate[];
+  /**
+   * The first date the history knows this account's value; earlier points of the series miss it
+   * (no data yet, not a zero). Absent or null: the value is known for every date (a computed value,
+   * a pool that started empty).
+   */
+  knownFrom?(): IsoDate | null;
 }
 
 export interface NetWorthContributor {
@@ -103,6 +109,11 @@ export class RunningValuation implements Valuation {
   axisDates(): IsoDate[] {
     return this.points.map(([d]) => d);
   }
+
+  /** The pool starts empty: before its first row it holds nothing, which is known. */
+  knownFrom(): null {
+    return null;
+  }
 }
 
 /** A stored balance snapshot (`core.models.Balance`). */
@@ -160,6 +171,11 @@ export class BalanceValuation implements Valuation {
 
   axisDates(): IsoDate[] {
     return this.points.map(([d]) => d);
+  }
+
+  /** Before the first snapshot the balance is unknown. */
+  knownFrom(): IsoDate | null {
+    return this.points[0]?.[0] ?? null;
   }
 }
 

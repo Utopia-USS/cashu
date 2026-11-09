@@ -89,7 +89,7 @@ export const S = catalog({
   currencies: { pl: "Waluty", en: "Currencies" },
   noSectors: { pl: "Brak podziału na sektory.", en: "No sector breakdown." },
   carriesAll: {
-    pl: (l: string) => `${l} odpowiada za cały wynik.`,
+    pl: (l: string) => `${l} niesie cały wynik.`,
     en: (l: string) => `${l} carries the whole result.`,
   },
   allPlus: { pl: "wszystko na plus", en: "all up" },

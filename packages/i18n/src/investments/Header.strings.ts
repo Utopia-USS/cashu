@@ -21,7 +21,7 @@ export const S = catalog({
   copyCommand: { pl: "Kopiuj /investments-setup", en: "Copy /investments-setup" },
   contributions: {
     pl: (amount: string, day: number | null) =>
-      `wpłaty ${amount} co miesiąc${day ? ` do ${day}. dnia` : ""}`,
+      `wpłaty ${amount} co miesiąc${day ? ` do ${day}.` : ""}`,
     en: (amount: string, day: number | null) =>
       `contributions ${amount} monthly${day ? ` by day ${day}` : ""}`,
   },
@@ -63,7 +63,7 @@ export const S = catalog({
   colState: { pl: "Stan", en: "State" },
   stateValid: { pl: "poprawna", en: "valid" },
   statePartial: {
-    pl: (n: number) => `częściowa · ${plCount(n, "uwaga", "uwagi", "uwag")}`,
+    pl: (n: number) => `częściowa · ${n} uwag`,
     en: (n: number) => `partial · ${enCount(n, "issue", "issues")}`,
   },
   stateInvalid: { pl: "błędna", en: "invalid" },

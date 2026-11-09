@@ -9,11 +9,24 @@ export const S = catalog({
   line: { pl: "Linia", en: "Line" },
   stacked: { pl: "Warstwy", en: "Layers" },
   scope: { pl: "Zakres majątku", en: "Asset scope" },
-  scopeTotal: { pl: "Całość (z nieruchomością)", en: "Total (with property)" },
+  scopeTotal: {
+    pl: (beyond: readonly string[]) => `Całość: konta, ${beyond.join(", ")}`,
+    en: (beyond: readonly string[]) => `Total: accounts, ${beyond.join(", ")}`,
+  },
   scopeLiquid: { pl: "Płynne (tylko konta)", en: "Liquid (accounts only)" },
   range: { pl: "Zakres czasu", en: "Time range" },
   months12: { pl: "12 mies. ", en: "12 mo. " },
-  noProperty: { pl: "bez nieruchomości ", en: "without property " },
+  accountsOnly: { pl: "tylko konta ", en: "accounts only " },
+  historyFrom: {
+    pl: (day: string) => `historia od ${day}: wcześniej część kont nie ma danych`,
+    en: (day: string) => `history from ${day}: before that some accounts have no data`,
+  },
+  tooShort: {
+    pl: (day: string) =>
+      `Za krótka historia: część kont ma dane dopiero od ${day}. Wykres pojawi się z kolejnymi dniami.`,
+    en: (day: string) =>
+      `History too short: some accounts have data only from ${day}. The chart fills in over the next days.`,
+  },
   step: { pl: "Krok wykresu", en: "Chart step" },
   monthly: { pl: "miesięcznie", en: "monthly" },
   weekly: { pl: "tygodniowo", en: "weekly" },

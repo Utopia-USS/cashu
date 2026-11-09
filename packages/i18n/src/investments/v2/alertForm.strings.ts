@@ -6,7 +6,7 @@ export const S = catalog({
   pickBucket: { pl: "Wybierz koszyk.", en: "Pick a bucket." },
   priceLevel: { pl: "Podaj poziom ceny większy od zera.", en: "Enter a price level above zero." },
   window: {
-    pl: (min: number) => `Okres: od ${min} do 260 sesji.`,
+    pl: (min: number) => `Okno: liczba sesji od ${min} do 260.`,
     en: (min: number) => `Window: ${min} to 260 sessions.`,
   },
   changeThreshold: {

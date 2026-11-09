@@ -34,7 +34,7 @@ export const metricStrings = {
     en: (word: string) => `Weight of the ${word} unknown`,
   },
   bucketTarget: {
-    pl: (word: string) => `Docelowy udział ${word} nieznany`,
+    pl: (word: string) => `Cel ${word} nieznany`,
     en: (word: string) => `Target of the ${word} unknown`,
   },
   bucketDrift: {
@@ -42,7 +42,7 @@ export const metricStrings = {
     en: (word: string) => `Drift of the ${word} unknown`,
   },
   bucketRelativeDrift: {
-    pl: (word: string) => `Względny dryf ${word} nieokreślony (docelowy udział 0)`,
+    pl: (word: string) => `Względny dryf ${word} nieokreślony (cel 0)`,
     en: (word: string) => `Relative drift of the ${word} undefined (target 0)`,
   },
 } as const;

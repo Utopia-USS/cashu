@@ -33,7 +33,7 @@ function netWorthAccounts(read: Read): core.NetWorthAccount[] {
  * Balance snapshots per account gid, each list in the order the rows were first recorded (Python's
  * id order: a re-recorded snapshot keeps its place).
  */
-function netWorthBalances(read: Read): Map<string, core.BalanceSnapshot[]> {
+export function netWorthBalances(read: Read): Map<string, core.BalanceSnapshot[]> {
   const out = new Map<string, core.BalanceSnapshot[]>();
   for (const b of read<{ gid: string; date: string; amount: string; source: string }>(
     `SELECT a.gid, b.date, b.amount, b.source FROM balances b JOIN accounts a ON a.id = b.account_id

@@ -170,7 +170,7 @@ describe("all 35 metric resolvers", () => {
       "asset_class_weight",
     ])
       expect(reasons(value(name, [name === "asset_class_weight" ? "etf" : "equity"], env))).toBe(
-        "Nieaktualne ceny: 90,0\u00a0% portfela (maks. 5,0\u00a0%)",
+        "Nieaktualne ceny: 90,0\u00a0% portfela (maks 5,0\u00a0%)",
       );
     decimal(value("stale_weight", [], env), ".9");
     decimal(value("bucket_target", ["equity"], env), ".7");
@@ -241,7 +241,7 @@ describe("all 35 metric resolvers", () => {
       "Koszyk cash: ujemna gotówka (brak wpłat w zaimportowanej historii), wartość nieznana",
     );
     expect(reasons(value("drift_rel", [], envFor(ctx, undefined, "gold")))).toBe(
-      "Względny dryf koszyka gold nieokreślony (docelowy udział 0)",
+      "Względny dryf koszyka gold nieokreślony (cel 0)",
     );
     decimal(value("drift_pp", [], envFor(ctx, undefined, "gold")), "2");
   });

@@ -1,7 +1,7 @@
 export type HealthTone = "sup" | "weak" | "inv" | "ful" | "plain";
 
 export interface HealthPillProps {
-  /** The state word (e.g. "wzmacnia", "bez researchu"). */
+  /** The state word (e.g. "wspiera", "bez researchu"). */
   label: string;
   /** Hue: supports (positive), weakens (negative outline), invalidates (negative fill, 600), fulfilled (violet). */
   tone: HealthTone;
@@ -52,7 +52,7 @@ export interface RelationIconProps {
   tone: RelationTone;
   /** The circled glyph (+, -, ~, a check mark). */
   glyph: string;
-  /** Accessible name and tooltip (e.g. "wzmacnia tezę"). */
+  /** Accessible name and tooltip (e.g. "wspiera tezę"). */
   label: string;
 }
 

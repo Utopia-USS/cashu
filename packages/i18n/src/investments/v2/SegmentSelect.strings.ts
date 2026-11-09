@@ -3,7 +3,7 @@ import { catalog } from "../../index.js";
 
 export const S = catalog({
   autoTitle: {
-    pl: "auto: na podstawie symbolu lub klasy aktywów. Twój wybór ma pierwszeństwo.",
+    pl: "auto: po symbolu lub klasie aktywów. Wybór nadpisuje.",
     en: "auto: from the symbol or asset class. A choice overrides it.",
   },
   setByClaude: { pl: "ustawił Claude", en: "set by Claude" },

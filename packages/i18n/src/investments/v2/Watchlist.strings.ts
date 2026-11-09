@@ -18,7 +18,7 @@ export const S = catalog({
     en: (label: string) => `Removed ${label} from the watchlist`,
   },
   removeWhat: { pl: "usunięcie z obserwowanych", en: "removal from the watchlist" },
-  backAsYours: { pl: "wraca na listę jako Twoje", en: "comes back as your item" },
+  backAsYours: { pl: "wraca jako Twoja pozycja", en: "comes back as your item" },
   removeFailed: {
     pl: (err: string) => `Nie usunięto: ${err}`,
     en: (err: string) => `Not removed: ${err}`,
@@ -28,7 +28,7 @@ export const S = catalog({
     en: (n: number) => enCount(n, "alert", "alerts"),
   },
   alertsWord: {
-    pl: (n: number) => plForm(n, "alert", "alerty", "alertów"),
+    pl: (n: number) => plForm(n, "alert", "alerty", "alerty"),
     en: (n: number) => enForm(n, "alert", "alerts"),
   },
   noAlert: { pl: "bez alertu", en: "no alert" },
@@ -49,7 +49,7 @@ export const S = catalog({
     en: (label: string) => `${label}: 30 days`,
   },
   noPrice: { pl: "brak ceny", en: "no price" },
-  stale: { pl: "nieaktualna", en: "stale" },
+  stale: { pl: "stara", en: "stale" },
   oneSessionTitle: { pl: "zmiana z 1 sesji", en: "1-session change" },
   oneDay: { pl: "1 d.", en: "1d" },
   title: { pl: "Obserwowane", en: "Watchlist" },

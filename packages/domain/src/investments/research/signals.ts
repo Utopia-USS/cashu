@@ -45,7 +45,7 @@ export const RELATION_LABEL: ReadonlyMap<string, string> = new Map([
   ["invalidates", "podważa tezę"],
   ["weakens", "osłabia tezę"],
   ["supports", "wzmacnia tezę"],
-  ["fulfills", "potwierdza tezę"],
+  ["fulfills", "spełnia tezę"],
 ]);
 
 /** English labels of note kinds (`KIND_LABEL` in v2/research/logic.strings.ts). */

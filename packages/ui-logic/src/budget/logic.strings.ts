@@ -10,7 +10,7 @@ export const S = catalog({
   cushionAmount: { pl: "Podaj kwotę większą od zera.", en: "Enter an amount greater than zero." },
   cushionMonths: { pl: "Liczba miesięcy: od 1 do 36.", en: "Number of months: 1 to 36." },
   cushionMax: {
-    pl: "Maks. dopłata: liczba większa od zera albo zostaw puste.",
+    pl: "Maks. dopłata: liczba większa od zera albo puste.",
     en: "Max top-up: a number greater than zero, or empty.",
   },
   autoDetect: { pl: "rozpoznaj automatycznie", en: "detect automatically" },
@@ -29,7 +29,7 @@ export const S = catalog({
     en: (n: number) => `${enCount(n, "duplicate", "duplicates")} skipped`,
   },
   doneCategorized: {
-    pl: (n: number) => `skategoryzowano automatycznie: ${n}`,
+    pl: (n: number) => `${n} skategoryzowanych automatycznie`,
     en: (n: number) => `${n} categorized automatically`,
   },
   donePairs: {
@@ -38,18 +38,15 @@ export const S = catalog({
   },
   syncFailed: { pl: "Synchronizacja nieudana", en: "Sync failed" },
   syncInserted: {
-    pl: (n: number) =>
-      `Pobrano ${plCount(n, "nową transakcję", "nowe transakcje", "nowych transakcji")}`,
+    pl: (n: number) => `Wgrano ${n} nowych transakcji`,
     en: (n: number) => `Loaded ${enCount(n, "new transaction", "new transactions")}`,
   },
   syncPairs: {
-    pl: (n: number) =>
-      `, ${plCount(n, "przelew wewnętrzny", "przelewy wewnętrzne", "przelewów wewnętrznych")}`,
+    pl: (n: number) => `, ${n} przelewów wewn.`,
     en: (n: number) => `, ${enCount(n, "internal transfer", "internal transfers")}`,
   },
   syncSkipped: {
-    pl: (n: number) =>
-      ` · ${plCount(n, "konto pominięte", "konta pominięte", "kont pominiętych")} (limit banku)`,
+    pl: (n: number) => ` · ${n} konto/a pominięte (limit banku)`,
     en: (n: number) => ` · ${enCount(n, "account", "accounts")} skipped (bank limit)`,
   },
 });

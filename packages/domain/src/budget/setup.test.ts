@@ -33,7 +33,7 @@ describe("budget setup steps", () => {
       'cashu --profile jan eb login "mBank"',
     ]);
     expect(body.steps[2]?.description).toBe(
-      "Rozpoznawane po IBAN-ach Twoich kont; nie liczą się jako wydatki.",
+      "Po IBAN między Twoimi kontami; nie liczą się jako wydatki.",
     );
   });
 
@@ -60,7 +60,7 @@ describe("budget setup steps", () => {
     const two = { bankAccounts: 2, transactions: 2 };
     expect(view(two).steps[2]?.status).not.toBe("done");
     expect(view(two).steps[2]?.description).toBe(
-      "Rozpoznawane po IBAN-ach Twoich kont; nie liczą się jako wydatki.",
+      "Po IBAN między Twoimi kontami; nie liczą się jako wydatki.",
     );
     expect(view({ ...two, ownMoves: 1 }).steps[2]?.status).toBe("done");
     expect(view({ ...two, internalTransfers: 2 }).steps[2]?.status).toBe("done");

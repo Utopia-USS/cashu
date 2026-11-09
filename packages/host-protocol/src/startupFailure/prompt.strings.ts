@@ -38,17 +38,17 @@ export const PROMPT = {
     en: (n: number) => `(lines without a code left out: ${n})`,
   },
   oldDataTitle: {
-    pl: "Jak przenieść stare dane (robisz to Ty, agent, przez funkcje importu aplikacji):",
+    pl: "Jak przenieść stare dane (robisz to Ty, agent, przez ścieżki importu aplikacji):",
     en: "How to bring the old data over (you, the agent, do it through the app's import paths):",
   },
   oldDataSetup: {
     pl: (mcp: string) =>
-      `Poproś mnie o wybranie w aplikacji „Kontynuuj bez starych danych” i założenie profilu, potem podłącz serwer MCP profilu: \`${mcp}\`.`,
+      `Poproś mnie, żebym w aplikacji wybrał(a) "Kontynuuj bez starych danych" i założył(a) profil, potem podłącz serwer MCP profilu: \`${mcp}\`.`,
     en: (mcp: string) =>
       `Ask me to choose "Continue without the old data" in the app and create the profile, then connect the profile's MCP server: \`${mcp}\`.`,
   },
   oldDataSkill: {
-    pl: "Pracuj w workspace agenta tego profilu według skilla import-builder, sekcja „Old cashU (Python) data”.",
+    pl: 'Pracuj w przestrzeni agenta tego profilu według umiejętności import-builder, sekcja "Old cashU (Python) data".',
     en: 'Work in the profile\'s agent workspace and follow the import-builder skill, section "Old cashU (Python) data".',
   },
   oldDataBlind: {
@@ -56,11 +56,11 @@ export const PROMPT = {
     en: "Never look at the values in the old database (amounts, account numbers, IBANs, names, titles): learn its schema only from table and column names (`.schema` on a copy) and the cashU repository history, and check your output with value-free tools (`inspect_export`, `validate_import`, `validate_budget_import`).",
   },
   oldDataConvert: {
-    pl: "Na kopii cashu.db poza folderem danych uruchom lokalnie własny konwerter do formatów z docs/budget-import-format.md (wyciągi) i docs/import-format.md (historia inwestycji); historię inwestycji przekaż przez `propose_import`, a plik budżetu zaimportuję samodzielnie w Wydatki > Import.",
+    pl: "Na kopii cashu.db poza folderem danych uruchom lokalnie własny konwerter do formatów z docs/budget-import-format.md (wyciągi) i docs/import-format.md (historia inwestycji); historię inwestycji przekaż przez `propose_import`, a plik budżetu zaimportuję sam w Wydatki > Import.",
     en: "On a copy of cashu.db outside the data folder, run your own converter locally into the formats of docs/budget-import-format.md (statements) and docs/import-format.md (investment history); hand the investment history over with `propose_import`, and I import the budget file myself in Wydatki > Import.",
   },
   oldDataRest: {
-    pl: "Strategię (strategy.md, strategy.yaml) skopiuj do workspace agenta nowego profilu albo zaproponuj przez `propose_strategy`; notatki, tezy, obserwowane i alerty dodaj narzędziami MCP (`add_research_note`, `upsert_thesis`, `add_to_watchlist`, `add_alert`). Powiedz mi, czego nie da się przenieść.",
+    pl: "Strategię (strategy.md, strategy.yaml) skopiuj do przestrzeni agenta nowego profilu albo zaproponuj przez `propose_strategy`; notatki, tezy, obserwowane i alerty dodaj narzędziami MCP (`add_research_note`, `upsert_thesis`, `add_to_watchlist`, `add_alert`). Powiedz mi, czego nie da się przenieść.",
     en: "Copy the strategy (strategy.md, strategy.yaml) into the new profile's agent workspace or propose it with `propose_strategy`; add notes, theses, watchlist entries and alerts with the MCP tools (`add_research_note`, `upsert_thesis`, `add_to_watchlist`, `add_alert`). Tell me what cannot be brought over.",
   },
   rulesTitle: { pl: "Zasady dla agenta:", en: "Rules for the agent:" },
@@ -73,7 +73,7 @@ export const PROMPT = {
     en: "Delete or overwrite nothing, including diagnostics files and backups.",
   },
   ruleSend: {
-    pl: "Nigdy nie wysyłaj danych nigdzie: żadnego przesyłania plików i żadnego wklejania zawartości plików, kwot, numerów kont, nazwisk ani kontrahentów do czatu.",
+    pl: "Nigdy nie wysyłaj danych nigdzie: żadnych uploadów i żadnego wklejania zawartości plików, kwot, numerów kont, nazwisk ani kontrahentów do czatu.",
     en: "Never send data anywhere: no uploads, and never paste file contents, amounts, account numbers, names or counterparties into the chat.",
   },
   ruleAsk: {
@@ -88,14 +88,14 @@ export const PROMPT = {
 
 const MEANING_PL: Record<StartupFailureCode, string> = {
   python_data_present:
-    "W folderze danych są dane starej aplikacji cashU (Python), a nie ma jeszcze profilu nowej aplikacji. Aplikacja ich nie otwiera, nie przenosi i nie zmienia; można je przenieść przez funkcje importu z pomocą agenta.",
+    "W folderze danych są dane starej aplikacji cashU (Python), a nie ma jeszcze profilu nowej aplikacji. Aplikacja ich nie otwiera, nie przenosi i nie zmienia; można je przenieść przez ścieżki importu z pomocą agenta.",
   native_inventory_unavailable:
     "Spis sejfów (native/v1/inventory.json) albo dziennik tworzenia profilu jest niekompletny lub nieprawidłowy, więc usługa w tle odmówiła startu.",
   vault_key_unavailable:
     "Klucz sejfu nie jest dostępny w pęku kluczy systemu albo nie daje się odszyfrować.",
   view_rebuild_failed:
     "Nie udało się odbudować widoku z zaszyfrowanej historii; historia pozostaje nietknięta.",
-  unknown: "Przyczyna nie ma jeszcze własnego kodu; pomóc może log i ponowne uruchomienie.",
+  unknown: "Przyczyna nie ma jeszcze własnego kodu; pomóc może log i powtórzenie startu.",
 };
 
 const MEANING_EN: Record<StartupFailureCode, string> = {

@@ -25,6 +25,7 @@ import { runQuery, watchQuery } from "../query.js";
 import { run, type TestEnv, testEnv } from "../testing/commands.js";
 import { memoryDriver, openTestStore } from "../testing/store.js";
 import {
+  budgetWidgets,
   heroView,
   moduleSetup,
   moduleStates,
@@ -427,7 +428,15 @@ describe("net worth over the view", () => {
       { prices: null },
     );
     expect(monthly.currency).toBe("PLN");
-    expect(monthly.points.map((p) => p.date)).toEqual(["2026-06-01", "2026-09-30"]);
+    // One balance (09-30) and four months of transactions: the checking account's history walks back
+    // from that balance, so every month has its point.
+    expect(monthly.points.map((p) => p.date)).toEqual([
+      "2026-06-12",
+      "2026-07-12",
+      "2026-08-12",
+      "2026-09-30",
+    ]);
+    expect(monthly.completeFrom).toBeNull();
     expect(monthly.components.map((c) => [c.key, c.label, c.liability])).toEqual([
       ["money", "Money", false],
       ["property", "Property", false],
@@ -444,12 +453,29 @@ describe("net worth over the view", () => {
     const hero = heroView(read, { today: TODAY, prices: null });
     expect(s(hero.facts.liquid)).toBe("5000.00");
     expect(hero.facts.liabilityTypes).toEqual(["mortgage"]);
-    expect(hero.norm && [hero.norm.months, s(hero.norm.expense)]).toEqual([4, "1043.00"]);
+    // June is the first month of the import (rows from 06-07): not whole, so not in the norm.
+    expect(hero.norm && [hero.norm.months, s(hero.norm.expense)]).toEqual([3, "1043.00"]);
     expect(hero.monthsOfSpending?.quantize(D("0.1")).toString()).toBe("4.8");
-    expect(hero.change?.since).toBe("2026-06-01");
+    expect(hero.change?.since).toBe("2026-08-12");
     const last = monthly.points.at(-1)?.value ?? D("0");
     const prev = monthly.points.at(-2)?.value ?? D("0");
     expect(hero.change?.change.eq(last.sub(prev))).toBe(true);
+  });
+
+  it("the budget card: savings rates of whole, closed months only", () => {
+    const h = household();
+    const read = h.store.read.bind(h.store);
+    // Rows start 06-07, so June is the import's partial month; July to September are whole.
+    const closed = budgetWidgets(read, "2026-10-01");
+    expect(closed.month?.label).toBe("2026-09");
+    expect(s(closed.month?.savingsRate)).toBe(s(D("7957.00").div(D("9000.00"))));
+    expect(s(closed.averageSavingsRate)).toBe(s(D("23871.00").div(D("27000.00"))));
+    expect(closed.norm?.months).toBe(3);
+    // In July the card closes June, which the data does not cover whole: no rate, no average yet.
+    const first = budgetWidgets(read, "2026-07-05");
+    expect(first.month?.label).toBe("2026-06");
+    expect(first.month?.savingsRate).toBeNull();
+    expect(first.averageSavingsRate).toBeNull();
   });
 
   it("brokerage accounts are valued from the device's price cache, else the last trade", () => {

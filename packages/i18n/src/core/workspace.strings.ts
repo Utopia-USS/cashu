@@ -19,7 +19,7 @@ export const WS = catalog({
   },
   /** The proposal-safety line (wizard and Settings share it). */
   proposalNote: {
-    pl: "Wszystko, co zapisuje agent, jest propozycją, którą zatwierdzasz w aplikacji.",
+    pl: "Zapis przez agenta to zawsze propozycja do zatwierdzenia w aplikacji.",
     en: "Anything the agent writes is always a proposal you approve in the app.",
   },
   /** macOS App Translocation (PK3). */

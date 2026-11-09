@@ -15,7 +15,7 @@ export const W = catalog({
     en: "The asset could not be changed.",
   },
   investmentUnavailable: {
-    pl: "Dane inwestycji pojawią się, gdy ten profil będzie miał strategię i źródło notowań.",
+    pl: "Dane inwestycji będą dostępne po podłączeniu strategii i rynku do tego profilu.",
     en: "Investment data will be available when this profile has a strategy and market binding.",
   },
   benchmark: { pl: "Benchmark", en: "Benchmark" },

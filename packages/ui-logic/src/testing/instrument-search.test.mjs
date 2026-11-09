@@ -164,7 +164,7 @@ test("toast: Obserwujesz / Przywrócono, a coded warning appended", () => {
   );
   assert.match(
     addedToast({ created_instrument: true, warnings: ["guessed"] }, "VWCE", d),
-    /^Obserwujesz VWCE · symbol notowań odgadnięty/,
+    /^Obserwujesz VWCE · symbol ceny zgadnięty/,
   );
 });
 

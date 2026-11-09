@@ -15,8 +15,8 @@ export const S = catalog({
 
   // run strip
   running: { pl: "trwa", en: "running" },
-  interrupted: { pl: "przerwane", en: "interrupted" },
-  finished: { pl: "zakończone", en: "finished" },
+  interrupted: { pl: "przerwany", en: "interrupted" },
+  finished: { pl: "zakończony", en: "finished" },
   candidates: { pl: "Kandydaci", en: "Candidates" },
 
   // candidates
@@ -31,8 +31,8 @@ export const S = catalog({
   scopeWatched: { pl: "obserwowane", en: "watchlist" },
   scopeCandidates: { pl: "kandydaci", en: "candidates" },
   scopeTopics: { pl: "tematy", en: "topics" },
-  runs: { pl: "Uruchomienia", en: "Runs" },
-  lastN: { pl: (n: number) => `ostatnie ${n}`, en: (n: number) => `last ${n}` },
+  runs: { pl: "Przebiegi", en: "Runs" },
+  lastN: { pl: (n: number) => `${n} ost.`, en: (n: number) => `last ${n}` },
   routine: { pl: "rutyna:", en: "routine:" },
   saturday: { pl: "sobota 07:00", en: "Saturday 07:00" },
   colDate: { pl: "Data", en: "Date" },
@@ -78,7 +78,7 @@ export const S = catalog({
   privacy: { pl: "Prywatność", en: "Privacy" },
   privacyLine: {
     pl: (level: string, amounts: boolean) =>
-      `poziom ${level} · ${amounts ? "także kwoty, bez numerów kont" : "wagi i tezy, bez kwot i rachunków"}`,
+      `poziom ${level} · ${amounts ? "także kwoty, bez numerów kont" : "udziały i tezy, bez kwot i rachunków"}`,
     en: (level: string, amounts: boolean) =>
       `level ${level} · ${amounts ? "amounts too, no account numbers" : "weights and theses, no amounts or accounts"}`,
   },

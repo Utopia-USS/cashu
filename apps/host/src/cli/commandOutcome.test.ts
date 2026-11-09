@@ -86,7 +86,7 @@ it("reports an uncertain durable key in Polish", () => {
       "loans.addLoan",
     ),
   ).toBe(1);
-  expect(lines.join("")).toContain("Nie wiadomo, czy polecenie się udało");
+  expect(lines.join("")).toContain("Wynik polecenia jest nieznany");
   expect(lines.join("")).toContain("cashu command-status loans.addLoan synthetic");
 });
 

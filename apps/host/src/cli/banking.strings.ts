@@ -5,7 +5,7 @@ export const M = {
   },
   profile: { pl: "Wybierz jeden otwarty profil natywny.", en: "Select one open native profile." },
   uiOnly: {
-    pl: "Połączenie z bankiem i zgodę ustaw w Ustawieniach aplikacji.",
+    pl: "Konfigurację i zgodę bankową wykonaj w Ustawieniach aplikacji.",
     en: "Use app Settings for bank setup and consent.",
   },
   unavailable: {
@@ -13,7 +13,7 @@ export const M = {
     en: "The banking operation is unavailable.",
   },
   unknown: {
-    pl: "Nie wiadomo, czy się udało. Sprawdź stan operacji, zanim spróbujesz ponownie.",
+    pl: "Wynik operacji jest nieznany. Sprawdź próbę przed ponowieniem.",
     en: "The outcome is unknown. Check the attempt before retrying.",
   },
   done: { pl: "Gotowe.", en: "Done." },

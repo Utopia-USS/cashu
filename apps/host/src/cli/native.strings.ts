@@ -4,7 +4,7 @@ import type { TranslationVariants } from "@cashu/i18n";
 export const N = {
   commandUnknown: {
     pl: (command: string, key: string) =>
-      `Nie wiadomo, czy polecenie się udało. Sprawdź to poleceniem cashu command-status ${command} ${key}, zanim spróbujesz ponownie.`,
+      `Wynik polecenia jest nieznany. Sprawdź: cashu command-status ${command} ${key}. Nie rozpoczynaj nowej próby przed wyjaśnieniem wyniku.`,
     en: (command: string, key: string) =>
       `Command outcome unknown. Check: cashu command-status ${command} ${key}. Do not issue a new attempt until reconciled.`,
   },
@@ -16,12 +16,12 @@ export const N = {
   },
   projectionUnavailable: {
     pl: (command: string, key: string) =>
-      `Polecenie się udało, ale nie można teraz pokazać aktualnego stanu. Sprawdź: cashu command-status ${command} ${key}.`,
+      `Polecenie wykonane, ale bieżący widok jest niedostępny. Sprawdź: cashu command-status ${command} ${key}.`,
     en: (command: string, key: string) =>
       `Command completed, but its current view is unavailable. Check: cashu command-status ${command} ${key}.`,
   },
   selectProfile: {
-    pl: "Wybierz profil opcją --profile lub zmienną CASHU_PROFILE.",
+    pl: "Wybierz profil przez --profile lub CASHU_PROFILE.",
     en: "Select a profile with --profile or CASHU_PROFILE.",
   },
   missingProfile: {

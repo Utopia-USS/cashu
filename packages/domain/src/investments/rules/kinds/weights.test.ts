@@ -131,7 +131,7 @@ it("concentration sums accounts and applies combined filters", () => {
   });
   const result = runKind(positionConcentrationRule, context({ portfolioValue: p }), params);
   expect(describe(result)).toEqual(["fired r|i:i-PKN"]);
-  expect(fired(result[0]).message).toBe("PKN: 20,0\u00a0% portfela (maks. 10,0\u00a0%).");
+  expect(fired(result[0]).message).toBe("PKN: 20,0\u00a0% portfela (maks 10,0\u00a0%).");
   expect(fired(result[0]).payload.accounts).toBe(2);
 });
 it("concentration is quiet at the limit and excludes cash unless explicitly selected", () => {

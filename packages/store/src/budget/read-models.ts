@@ -4,19 +4,26 @@
 import { budget, core, D, type IsoDate } from "@cashu/domain";
 import type { PaymentPattern } from "@cashu/domain/core";
 import { MANUAL_INSTITUTION } from "@cashu/domain/core";
+import { netWorthBalances } from "../core/networth.js";
 import { profileOf } from "../core/queries.js";
 import type { Read } from "../query.js";
 import type { NetWorthSource, SetupSource } from "../registry.js";
 
-/** The cash pool valued by its running transaction sum (`CashContributor`). */
+/**
+ * The cash pool valued by its running transaction sum (`CashContributor`) and the bank accounts by
+ * their balance snapshots, walked back over their transactions before the first one
+ * (`budgetContributor`).
+ */
 export const budgetNetWorth: NetWorthSource = (read) =>
-  budget.cashContributor(
+  budget.budgetContributor(
     read<{ account: string; bookingDate: IsoDate; amount: string }>(
       `SELECT a.gid AS account, t.booking_date AS bookingDate, t.amount
        FROM transactions t JOIN accounts a ON a.id = t.account_id
-       WHERE a.type = ? ORDER BY t.id`,
+       WHERE a.type IN (?, ?, ?, ?) ORDER BY t.id`,
       budget.CASH_ACCOUNT_TYPE,
+      ...budget.BANK_BALANCE_TYPES,
     ).map((t) => ({ account: t.account, bookingDate: t.bookingDate, amount: D(t.amount) })),
+    netWorthBalances(read),
   );
 
 interface AccountRow {

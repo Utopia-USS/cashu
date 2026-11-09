@@ -20,12 +20,12 @@ export const T = catalog({
   revoke: { pl: "Cofnij zgodę i używaj Ollama", en: "Revoke consent and use Ollama" },
   key: { pl: "Klucz API Anthropic", en: "Anthropic API key" },
   keyStored: {
-    pl: "Klucz zapisany w systemowym magazynie haseł",
+    pl: "Klucz zapisany w systemowym magazynie",
     en: "Key saved in OS credential store",
   },
   keyMissing: { pl: "Brak zapisanego klucza", en: "No saved key" },
   keyChange: {
-    pl: "Zmiana lub usunięcie klucza wyłącza klasyfikację w chmurze i cofa zgodę. Aby znów jej używać, zaakceptuj ryzyko ponownie.",
+    pl: "Zmiana lub usunięcie klucza wyłącza chmurę i cofa zgodę. Aby znów jej używać, zaakceptuj ryzyko ponownie.",
     en: "Changing or removing the key turns off cloud classification and revokes consent. Accept the risk again to use it.",
   },
   saveKey: { pl: "Zapisz klucz", en: "Save key" },
@@ -33,7 +33,7 @@ export const T = catalog({
   model: { pl: "Model", en: "Model" },
   unavailable: { pl: "Klasyfikacja jest niedostępna.", en: "Classification is unavailable." },
   unknown: {
-    pl: "Nie wiadomo, czy zmiana się zapisała. Zanim wprowadzisz kolejną, poczekaj, aż ustawienia poniżej się odświeżą.",
+    pl: "Wynik zmiany jest niepewny. Zanim wprowadzisz kolejną, poczekaj, aż stan poniżej się zaktualizuje.",
     en: "The change outcome is uncertain. Wait for the state below to update before another change.",
   },
   failed: { pl: "Nie udało się zmienić ustawień.", en: "Could not change settings." },

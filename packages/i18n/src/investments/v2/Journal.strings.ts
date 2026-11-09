@@ -1,5 +1,5 @@
 // Texts of the decision journal (frontend/src/modules/investments/v2/Journal.tsx). See docs/agents/localization.md.
-import { catalog, enCount, plCount, plForm } from "../../index.js";
+import { catalog, enCount, plCount } from "../../index.js";
 
 /** Signal status words. */
 export const STATUS_L = catalog({
@@ -34,14 +34,13 @@ export const S = catalog({
   signals: { pl: "Sygnały", en: "Signals" },
   allInstruments: { pl: "wszystkie instrumenty", en: "all instruments" },
   error: { pl: (e: string) => `Błąd: ${e}`, en: (e: string) => `Error: ${e}` },
-  record: { pl: "Wpisy", en: "Record" },
-  showMore: { pl: (n: number) => `pokaż kolejne (${n})`, en: (n: number) => `show ${n} more` },
+  record: { pl: "Zapis", en: "Record" },
+  showMore: { pl: (n: number) => `pokaż ${n} kolejnych`, en: (n: number) => `show ${n} more` },
   noDecisions: { pl: "Brak decyzji.", en: "No decisions." },
   noEntries: { pl: "Brak wpisów.", en: "No entries." },
   inNumbers: { pl: (y: string) => `W liczbach · ${y}`, en: (y: string) => `In numbers · ${y}` },
   decidedExpired: {
-    pl: (d: number, e: number) =>
-      `${d} z decyzją · ${e} ${plForm(e, "wygasł", "wygasły", "wygasło")}`,
+    pl: (d: number, e: number) => `${d} z decyzją · ${e} wygasło`,
     en: (d: number, e: number) => `${d} with a decision · ${e} expired`,
   },
   timeToDecision: { pl: "Czas do decyzji", en: "Time to decision" },

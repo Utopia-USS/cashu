@@ -1,5 +1,5 @@
 // Texts of the expenses tab (Expenses.tsx). See docs/agents/localization.md.
-import { catalog, enCount, plCount } from "../index.js";
+import { catalog, enCount } from "../index.js";
 
 export const S = catalog({
   wholePeriod: { pl: "Cały okres", en: "All time" },
@@ -12,7 +12,7 @@ export const S = catalog({
     en: (merchant: string) => `All from ${merchant}`,
   },
   nTransactions: {
-    pl: (n: number) => plCount(n, "transakcja", "transakcje", "transakcji"),
+    pl: (n: number) => `${n} transakcji`,
     en: (n: number) => enCount(n, "transaction", "transactions"),
   },
   /** The cash withdrawal pseudo-category of the drill-down select. */

@@ -8,7 +8,7 @@ type Status = [string, Tone | undefined, boolean];
 export const CS = catalog({
   /** The rule behind `Automatyczny zapis` (tooltip, D10). */
   autoRule: {
-    pl: "Dopiero po pierwszym zatwierdzonym imporcie i tylko przy uruchomieniach bez zastrzeżeń (bez ostrzeżeń, same nowe rekordy). Inaczej import czeka na Twoją decyzję.",
+    pl: "Dopiero po pierwszym zatwierdzonym imporcie i tylko czyste przebiegi (bez ostrzeżeń, same nowe rekordy). Inaczej import czeka na Twoją decyzję.",
     en: "Only after the first approved import and only clean runs (no warnings, only new records). Otherwise the import waits for your decision.",
   },
   kindFailed: {
@@ -17,7 +17,7 @@ export const CS = catalog({
   },
   neverRun: { pl: "jeszcze nie uruchomiony", en: "not run yet" },
   lastRun: {
-    pl: (when: string, outcome: string) => `ostatnie uruchomienie ${when} · ${outcome}`,
+    pl: (when: string, outcome: string) => `ostatni przebieg ${when} · ${outcome}`,
     en: (when: string, outcome: string) => `last run ${when} · ${outcome}`,
   },
   bindings: {
@@ -71,8 +71,8 @@ export const KIND_SHORT = catalog({
   internal: { pl: "błąd konektora", en: "connector error" },
   protocol: { pl: "protokół", en: "protocol" },
   timeout: { pl: "limit czasu", en: "timeout" },
-  sandbox_unavailable: { pl: "brak sandboxa", en: "no sandbox" },
-  spawn_failed: { pl: "nie uruchomił się", en: "did not start" },
+  sandbox_unavailable: { pl: "brak piaskownicy", en: "no sandbox" },
+  spawn_failed: { pl: "nie uruchomiony", en: "did not start" },
   not_approved: { pl: "niezatwierdzony", en: "not approved" },
   changed: { pl: "zmieniony", en: "changed" },
   interpreter_changed: { pl: "zmieniony interpreter", en: "interpreter changed" },

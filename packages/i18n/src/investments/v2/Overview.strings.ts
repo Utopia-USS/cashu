@@ -15,20 +15,7 @@ const MONTH_ADJ = [
   "listopadowa",
   "grudniowa",
 ];
-const MONTH_GEN = [
-  "stycznia",
-  "lutego",
-  "marca",
-  "kwietnia",
-  "maja",
-  "czerwca",
-  "lipca",
-  "sierpnia",
-  "września",
-  "października",
-  "listopada",
-  "grudnia",
-];
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 /** English month name of a 0-based month index. */
 const enMonth = (i: number, month: "long" | "short") =>
   new Intl.DateTimeFormat(intlLocale(), { month }).format(new Date(2000, i, 1));
@@ -63,6 +50,12 @@ export const S = catalog({
 
   // hero fact, header tag
   investments: { pl: "Inwestycje", en: "Investments" },
+  portfolioTitle: {
+    pl: (currency: string) =>
+      `Cały portfel przeliczony na ${currency} kursami NBP. Wartość netto liczy rachunki maklerskie już bez przeliczania, każdy w swojej walucie: w kwocie głównej albo w „inne waluty”.`,
+    en: (currency: string) =>
+      `The whole portfolio converted to ${currency} at NBP rates. Net worth already counts the brokerage accounts without conversion, each in its own currency: in the headline amount or under "other currencies".`,
+  },
   week: { pl: "tydz.", en: "wk" },
   chances: {
     pl: (n: number) => plCount(n, "szansa", "szanse", "szans"),
@@ -73,7 +66,7 @@ export const S = catalog({
     en: (n: number) => enCount(n, "risk", "risks"),
   },
   signalsCount: {
-    pl: (n: number) => plCount(n, "sygnał", "sygnały", "sygnałów"),
+    pl: (n: number) => `${n} sygnałów`,
     en: (n: number) => enCount(n, "signal", "signals"),
   },
   lastQuote: {
@@ -106,7 +99,7 @@ export const S = catalog({
   valueChart12m: { pl: "Wartość portfela, 12 miesięcy", en: "Portfolio value, 12 months" },
 
   // surplus widget
-  surplusTitle: { pl: "Nadwyżka → wpłata", en: "Surplus → contribution" },
+  surplusTitle: { pl: "Nadwyżka → inwestycje", en: "Surplus → investing" },
   noMonthClose: { pl: "Brak zamknięcia miesiąca.", en: "No month close." },
   monthClose: { pl: "zamknięcie miesiąca", en: "month close" },
   depositsOfYear: {
@@ -114,16 +107,16 @@ export const S = catalog({
     en: (year: string) => `contributions ${year}:`,
   },
   ofTotal: { pl: "z", en: "of" },
-  planCovered: { pl: "plan zrealizowany", en: "plan covered" },
+  planCovered: { pl: "plan pokryty", en: "plan covered" },
   missing: { pl: "brakuje", en: "missing" },
   bookedFromImport: { pl: "zaksięgowana z importu", en: "booked from an import" },
   toBookByImport: { pl: "do zaksięgowania importem", en: "to be booked by an import" },
   surplusOf: {
-    pl: (i: number) => `Nadwyżka z ${MONTH_GEN[i]}`,
+    pl: (i: number) => `Nadwyżka ${ROMAN[i]}`,
     en: (i: number) => `${enMonth(i, "short")} surplus`,
   },
   forInvesting: {
-    pl: (amount: string) => `na inwestycje ${amount} ponad poduszkę`,
+    pl: (amount: string) => `na inwestycje ${amount} po poduszce`,
     en: (amount: string) => `${amount} to invest after the cushion`,
   },
   depositPlan: { pl: "Plan wpłaty", en: "Contribution plan" },
@@ -136,7 +129,7 @@ export const S = catalog({
   cushionMonths: { pl: (n: number) => `${n} mies.`, en: (n: number) => `${n} mo` },
   cushionMissing: { pl: "poduszka: brakuje", en: "cushion: missing" },
   belowTarget: {
-    pl: (bucket: string, pp: string) => `${bucket} pod celem: wpłata zmniejsza lukę o ${pp}`,
+    pl: (bucket: string, pp: string) => `${bucket} poniżej celu: wpłata domyka ${pp}`,
     en: (bucket: string, pp: string) => `${bucket} below target: the contribution closes ${pp}`,
   },
   yearPlan: {
@@ -144,7 +137,7 @@ export const S = catalog({
     en: (year: string) => `${year} contributions against the plan`,
   },
   coveredOf: {
-    pl: (done: number, due: number) => `plan zrealizowany w ${done} z ${due} mies.`,
+    pl: (done: number, due: number) => `plan pokryty w ${done} z ${due} mies.`,
     en: (done: number, due: number) => `plan covered ${done} of ${due} mo`,
   },
   monthOn: {
@@ -168,7 +161,7 @@ export const S = catalog({
     en: (month: string) => `${month}: still ahead`,
   },
   monthBefore: {
-    pl: (month: string) => `${month}: przed startem planu`,
+    pl: (month: string) => `${month}: przed planem`,
     en: (month: string) => `${month}: before the plan`,
   },
   planAmount: {

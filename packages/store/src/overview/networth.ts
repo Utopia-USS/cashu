@@ -157,7 +157,10 @@ export interface HeroView {
   readonly norm: budget.MonthNorm | null;
   /** `liquid / norm.expense`; null without a norm. */
   readonly monthsOfSpending: core.HeroFacts["liquid"] | null;
-  /** Net worth change since the previous month end (monthly total series); null below 2 points. */
+  /**
+   * Net worth change since the previous month end (monthly total series, whole points only); null
+   * below 2 such points.
+   */
   readonly change: core.NetWorthChange | null;
 }
 
@@ -165,7 +168,12 @@ export interface HeroView {
 export function heroView(read: Read, env: NetWorthEnv, sources: OverviewSources = {}): HeroView {
   const parts = summaryParts(read, env, sources);
   const facts = core.heroFacts(parts.core);
-  const rows = budget.monthlyCashflow(parts.book, facts.currency).slice(-HERO_CASHFLOW_MONTHS);
+  const rows = budget
+    .wholeMonths(
+      budget.monthlyCashflow(parts.book, facts.currency),
+      budget.cashflowCoverageStart(parts.book, facts.currency),
+    )
+    .slice(-HERO_CASHFLOW_MONTHS);
   const norm = budget.closedMonthNorm(rows, env.today);
   const monthly = core.seriesView(
     parts.netWorth,
@@ -176,7 +184,8 @@ export function heroView(read: Read, env: NetWorthEnv, sources: OverviewSources 
     facts,
     norm,
     monthsOfSpending: core.monthsOfSpending(facts.liquid, norm?.expense ?? null),
-    change: core.netWorthChange(monthly.points),
+    // Only whole points: one that misses accounts with later data is no starting value.
+    change: core.netWorthChange(core.completePoints(monthly)),
   };
 }
 

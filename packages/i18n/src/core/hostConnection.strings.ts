@@ -13,7 +13,7 @@ export const S = catalog({
     en: "Starting the background service…",
   },
   unavailable: {
-    pl: "cashU nie może uruchomić usługi w tle. Próbuję ponownie…",
+    pl: "cashU nie może uruchomić usługi w tle. Ponawiam próbę…",
     en: "cashU could not start its background service. Retrying…",
   },
   recovered: { pl: "Połączenie przywrócone.", en: "Connection restored." },

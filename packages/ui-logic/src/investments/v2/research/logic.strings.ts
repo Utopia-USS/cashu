@@ -21,8 +21,8 @@ export const RELATION_LABEL = catalog({
   supports: { pl: "wzmacnia tezę", en: "supports the thesis" },
   weakens: { pl: "osłabia tezę", en: "weakens the thesis" },
   invalidates: { pl: "podważa tezę", en: "invalidates the thesis" },
-  fulfills: { pl: "potwierdza tezę", en: "fulfills the thesis" },
-  neutral: { pl: "nie dotyczy tezy", en: "doesn't touch the thesis" },
+  fulfills: { pl: "spełnia tezę", en: "fulfills the thesis" },
+  neutral: { pl: "nie dotyka tezy", en: "doesn't touch the thesis" },
   none: { pl: "bez tezy", en: "no thesis" },
 });
 
@@ -39,7 +39,7 @@ export const HEALTH_LABEL = catalog({
 export const DIRECTION_LABEL = catalog({
   up: { pl: "rośnie", en: "rising" },
   down: { pl: "słabnie", en: "weakening" },
-  flat: { pl: "bez zmian", en: "stable" },
+  flat: { pl: "stabilnie", en: "stable" },
 });
 
 type Rel = "invalidates" | "weakens" | "fulfills" | "supports";
@@ -47,7 +47,7 @@ type Rel = "invalidates" | "weakens" | "fulfills" | "supports";
 const PL_VERB: Record<Rel, [string, string]> = {
   invalidates: ["podważa", "podważają"],
   weakens: ["osłabia", "osłabiają"],
-  fulfills: ["potwierdza", "potwierdzają"],
+  fulfills: ["spełnia", "spełniają"],
   supports: ["wzmacnia", "wzmacniają"],
 };
 const EN_VERB: Record<Rel, [string, string]> = {
@@ -108,7 +108,7 @@ export const S = catalog({
     pl: (rel: Rel, n: number) => plCount(n, PL_VERB[rel][0], PL_VERB[rel][1], PL_VERB[rel][0]),
     en: (rel: Rel, n: number) => `${n} ${enForm(n, EN_VERB[rel][0], EN_VERB[rel][1])}`,
   },
-  noise: { pl: (n: number) => `szum: ${n}`, en: (n: number) => `${n} noise` },
+  noise: { pl: (n: number) => `${n} szum`, en: (n: number) => `${n} noise` },
   nNeutral: {
     pl: (n: number) => plCount(n, "neutralna", "neutralne", "neutralnych"),
     en: (n: number) => `${n} neutral`,
@@ -148,7 +148,7 @@ export const S = catalog({
   },
 
   // note rows
-  relFulfills: { pl: "potwierdza tezę", en: "fulfills the thesis" },
+  relFulfills: { pl: "spełnia tezę", en: "fulfills the thesis" },
   relSupports: { pl: "wzmacnia tezę", en: "supports the thesis" },
   relWeakens: { pl: "osłabia tezę", en: "weakens the thesis" },
   relInvalidates: { pl: "podważa tezę", en: "invalidates the thesis" },

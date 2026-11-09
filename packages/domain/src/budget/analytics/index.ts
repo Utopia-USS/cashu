@@ -12,12 +12,15 @@ export {
   type Period,
 } from "./book.js";
 export {
+  averageSavingsRate,
   budgetCurrencies,
   type CurrencyUse,
+  cashflowCoverageStart,
   type MonthlyCashflow,
   monthBounds,
   monthlyCashflow,
   referenceDate,
+  wholeMonths,
 } from "./cashflow.js";
 export {
   averageSpending,

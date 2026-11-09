@@ -1,5 +1,5 @@
 // The topic drawer (ab24ab6 v2/research/TopicDrawer.tsx TopicDetail, `topics/<key>` over the Home): a topic's
-// Teza (edited in place, the agent's draft to confirm, its market view Bieżąca ocena / Perspektywa), its
+// Teza (edited in place, the agent's draft to confirm, its market view Ocena teraz / Perspektywa), its
 // Instrumenty and Notatki; a macro key (`macro_risk`) shows the regime's state instead (no thesis, no members).
 // Every string and list the pure TopicDrawerView renders.
 import { C } from "@cashu/i18n/core/common.strings";

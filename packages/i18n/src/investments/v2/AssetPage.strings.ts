@@ -85,7 +85,7 @@ export const S = catalog({
   entry: { pl: "Wejście", en: "Entry" },
   invalidation: { pl: "Unieważnienie", en: "Invalidation" },
   exitPlan: { pl: "Plan wyjścia", en: "Exit plan" },
-  sizePlan: { pl: "Wielkość pozycji i dokupowanie", en: "Size and add-ons" },
+  sizePlan: { pl: "Wielkość i dokupienia", en: "Size and add-ons" },
   noThesis: { pl: "Brak tezy.", en: "No thesis." },
   recommendation: { pl: "Rekomendacja", en: "Recommendation" },
   recTitle: {

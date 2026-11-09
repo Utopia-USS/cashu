@@ -79,6 +79,65 @@ export function monthlyCashflow(
     });
 }
 
+/**
+ * The first day from which every bank account with transactions in `currency` (the base currency when
+ * none is given) has them: the latest first booking date among those accounts. The cash pool is derived
+ * from bank rows and removed accounts are gone, so neither counts. A month that starts before this day
+ * misses some account's rows: the first month of an import (Open Banking reaches ~90 days back, so the
+ * first month begins mid-month, often after the salary) or the months before an account's history
+ * starts. null without transactions.
+ */
+export function cashflowCoverageStart(
+  book: BudgetBook,
+  currency: string | null = null,
+): IsoDate | null {
+  const cur = currency || book.baseCurrency;
+  const counted = new Set(
+    book.accounts.filter((a) => a.removedAt === null && a.type !== "cash").map((a) => a.id),
+  );
+  const first = new Map<string, IsoDate>();
+  for (const t of book.transactions) {
+    if (t.currency !== cur || !counted.has(t.account)) continue;
+    const seen = first.get(t.account);
+    if (seen === undefined || t.bookingDate < seen) first.set(t.account, t.bookingDate);
+  }
+  let start: IsoDate | null = null;
+  for (const d of first.values()) if (start === null || d > start) start = d;
+  return start;
+}
+
+/** The rows of whole months: those starting on or after `start` (`cashflowCoverageStart`). */
+export function wholeMonths(
+  rows: readonly MonthlyCashflow[],
+  start: IsoDate | null,
+): MonthlyCashflow[] {
+  return start === null ? [...rows] : rows.filter((r) => `${r.label}-01` >= start);
+}
+
+/**
+ * The savings rate of whole, closed months (before `today`'s month), the last `n` of them: their
+ * surplus over their income, both summed (a mean of monthly ratios lets one month with almost no
+ * income swing it by thousands of percent). null below 2 such months or without income.
+ */
+export function averageSavingsRate(
+  rows: readonly MonthlyCashflow[],
+  start: IsoDate | null,
+  today: IsoDate,
+  n = 6,
+): Decimal | null {
+  const closed = wholeMonths(rows, start)
+    .filter((r) => r.label < today.slice(0, 7))
+    .slice(-n);
+  if (closed.length < 2) return null;
+  let income = ZERO_00;
+  let net = ZERO_00;
+  for (const r of closed) {
+    income = income.add(r.income);
+    net = net.add(r.net);
+  }
+  return income.gt(ZERO) ? net.div(income) : null;
+}
+
 export interface CurrencyUse {
   readonly currency: string;
   readonly transactions: number;

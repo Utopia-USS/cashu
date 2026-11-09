@@ -5,11 +5,11 @@ export const S = catalog({
   taskDone: { pl: "Ukończone zadanie", en: "Completed task" },
   taskPending: { pl: "Nieukończone zadanie", en: "Incomplete task" },
   unavailable: {
-    pl: "Pliki strategii są niedostępne.",
+    pl: "Dostęp do plików strategii jest niedostępny.",
     en: "Strategy file access is unavailable.",
   },
   privacy: {
-    pl: "Treść strategii jest ukryta w trybie incognito.",
+    pl: "Treść strategii jest ukryta w trybie prywatności.",
     en: "Strategy content is hidden in privacy mode.",
   },
 });

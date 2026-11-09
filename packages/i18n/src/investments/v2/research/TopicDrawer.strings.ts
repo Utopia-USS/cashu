@@ -23,7 +23,7 @@ export const S = catalog({
   toConfirm: { pl: "do potwierdzenia", en: "to confirm" },
   confirm: { pl: "Potwierdź", en: "Confirm" },
   invalidation: { pl: "Unieważnienie", en: "Invalidation" },
-  assessmentNow: { pl: "Bieżąca ocena", en: "Assessment now" },
+  assessmentNow: { pl: "Ocena teraz", en: "Assessment now" },
   outlook: { pl: "Perspektywa", en: "Outlook" },
   saving: { pl: "Zapisuję…", en: "Saving…" },
   noThesis: { pl: "Brak tezy.", en: "No thesis." },

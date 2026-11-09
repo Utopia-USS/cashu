@@ -46,7 +46,7 @@ test("planLabel: held and watched forms for every value; held-only and unknown v
   const held = PLAN_VALUES.map((p) => planLabel(p, true));
   assert.deepEqual(held, ["dokup asap", "dokup", "trzymaj", "redukuj", "pozbądź się asap"]);
   const watched = PLAN_VALUES.map((p) => planLabel(p, false));
-  assert.deepEqual(watched, ["kup asap", "kup", "czekaj", "", ""]);
+  assert.deepEqual(watched, ["kup asap", "kup", "czekam", "", ""]);
   assert.equal(planLabel(null, true), "");
   assert.equal(planLabel(undefined, false), "");
   assert.equal(planLabel("sell_everything", true), "");
@@ -80,7 +80,7 @@ test("instCardFacts: recommendation and thesis rows first, date, stale suffix, n
   // without plan_at: the label alone; watched form
   assert.deepEqual(instCardFacts(inst({ plan: "hold", plan_at: null }), { held: false }).rows[0], [
     "rekomendacja",
-    "czekaj",
+    "czekam",
   ]);
   // unknown held state -> the held form
   assert.deepEqual(instCardFacts(inst({ plan: "hold" }), {}).rows[0], ["rekomendacja", "trzymaj"]);
@@ -134,7 +134,7 @@ test("fulfills relation and fulfilled health: labels, classes, precedence and at
   assert.equal(normHealth("fulfilled"), "ful");
   assert.equal(normHealth("spełniona"), "ful");
   assert.equal(normRelation("fulfills"), "fulfills");
-  assert.deepEqual(relationIcon("fulfills"), { cls: "ful", glyph: "✓", label: "potwierdza tezę" });
+  assert.deepEqual(relationIcon("fulfills"), { cls: "ful", glyph: "✓", label: "spełnia tezę" });
   // precedence: invalidated > weakened > fulfilled > supported
   const today = "2026-10-05";
   const n = (rel) => ({
@@ -162,7 +162,7 @@ test("fulfills relation and fulfilled health: labels, classes, precedence and at
     ),
     "ful",
   );
-  assert.equal(countsText("ful", c), "1 potwierdza · 1 wzmacnia");
+  assert.equal(countsText("ful", c), "1 spełnia · 1 wzmacnia");
 });
 
 const planSig = (kind, payload, message = "") => ({

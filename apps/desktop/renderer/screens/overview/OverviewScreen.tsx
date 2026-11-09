@@ -14,7 +14,12 @@ import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { AssetsWidgetView } from "./AssetsWidgetView.js";
 import { CashDrawerView } from "./CashDrawerView.js";
 import { InvestmentsSummaryWidgetView, SurplusWidgetView } from "./InvestmentsWidgetView.js";
-import { investmentsHeroFact, investmentsSummaryModel, surplusModel } from "./investmentsModel.js";
+import {
+  investmentsHeroFact,
+  investmentsSummaryModel,
+  surplusApplies,
+  surplusModel,
+} from "./investmentsModel.js";
 import { type OverviewTile, OverviewView } from "./OverviewView.js";
 import {
   AccountsWidgetView,
@@ -108,7 +113,8 @@ function OverviewBody({
   const middle: OverviewTile[] = [];
   const bottom: OverviewTile[] = [];
   if (s.show.budget) side.push({ id: "budget", node: <BudgetMonthWidgetView m={s.budget} /> });
-  if (inv && s.show.surplus)
+  // Nadwyżka -> inwestycje only once there is a contribution plan (surplusApplies).
+  if (inv && s.show.surplus && surplusApplies(inv, today))
     side.push({
       id: "investments.surplus",
       node: (

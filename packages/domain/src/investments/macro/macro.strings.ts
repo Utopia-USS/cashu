@@ -28,7 +28,7 @@ export const regimeStateLabels = {
   "dollar.flat": { pl: "bez trendu", en: "no trend" },
   "em.leading": { pl: "silniejsze od świata", en: "stronger than the world" },
   "em.lagging": { pl: "słabsze od świata", en: "weaker than the world" },
-  "em.inline": { pl: "podobnie jak świat", en: "in line" },
+  "em.inline": { pl: "w linii", en: "in line" },
   "commodities.bull": { pl: "hossa surowcowa", en: "commodity bull market" },
   "commodities.bear": { pl: "bessa surowcowa", en: "commodity bear market" },
   "commodities.flat": { pl: "bez trendu", en: "no trend" },

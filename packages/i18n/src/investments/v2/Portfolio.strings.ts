@@ -20,7 +20,7 @@ export const S = catalog({
   assets: { pl: "Aktywa", en: "Assets" },
   split: { pl: "Podział", en: "Split" },
   total: { pl: "Razem", en: "Total" },
-  perAccount: { pl: "Według rachunków", en: "Per account" },
+  perAccount: { pl: "Per rachunek", en: "Per account" },
   sortResult: { pl: "wynik %", en: "return %" },
   sortValue: { pl: "wartość", en: "value" },
   sortWeek: { pl: "tydzień", en: "week" },
@@ -31,7 +31,7 @@ export const S = catalog({
     en: (n: number) => enCount(n, "alert", "alerts").replace(/^\d+ /, ""),
   },
   col30d: { pl: "30 dni", en: "30 days" },
-  colWeight: { pl: "Waga", en: "Weight" },
+  colWeight: { pl: "Udział", en: "Weight" },
   colResultTitle: {
     pl: "Od kosztu (FIFO), ceny zamknięcia",
     en: "Against cost (FIFO), closing prices",
@@ -74,18 +74,18 @@ export const S = catalog({
   band: { pl: (pp: number) => `pasmo ±${pp} pp`, en: (pp: number) => `band ±${pp} pp` },
   priorityGrow: {
     pl: (bucket: string, pp: string) =>
-      `Najpierw zwiększaj wagę ${bucket}: ${pp} do celu. Rekomendacje „kup” dla pozycji to drugi krok.`,
+      `Najpierw zwiększaj udział ${bucket}: ${pp} do celu. Lokalne „kup” są drugim krokiem.`,
     en: (bucket: string, pp: string) =>
       `First grow the weight of ${bucket}: ${pp} to target. Local "buy" calls come second.`,
   },
   priorityHold: {
     pl: (bucket: string, pp: string) =>
-      `Nie zwiększaj wagi ${bucket}: ${pp} ponad cel. Rekomendacje „kup” dla pozycji to drugi krok.`,
+      `Nie zwiększaj udziału ${bucket}: ${pp} ponad cel. Lokalne „kup” są drugim krokiem.`,
     en: (bucket: string, pp: string) =>
       `Do not grow the weight of ${bucket}: ${pp} over target. Local "buy" calls come second.`,
   },
   priorityKeep: {
-    pl: "Utrzymuj docelowe udziały. Rekomendacje dla pojedynczych pozycji nie powinny zaburzać równowagi portfela.",
+    pl: "Utrzymuj docelowe udziały. Lokalne rekomendacje nie powinny naruszać balansu portfela.",
     en: "Keep the target weights. Local recommendations should not upset the portfolio's balance.",
   },
   noBucket: { pl: "Bez koszyka", en: "No bucket" },

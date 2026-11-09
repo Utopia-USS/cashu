@@ -51,7 +51,7 @@ it("unknown data skips, while decisive Kleene false retains null measured values
     portfolioValue: portfolio([h(etf, { value: "9000", stale: true })], { cash: "1000" }),
   });
   expect(skipped(runKind(customRule, ctx, params("cash_weight < 50%"))[0])).toBe(
-    "Nieaktualne ceny: 90,0\u00a0% portfela (maks. 5,0\u00a0%)",
+    "Nieaktualne ceny: 90,0\u00a0% portfela (maks 5,0\u00a0%)",
   );
   expect(
     describe(runKind(customRule, ctx, params("cash_weight < 50% and total_value > 1000000"))),

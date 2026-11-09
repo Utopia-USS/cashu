@@ -20,7 +20,7 @@ export const S = catalog({
   review: { pl: "Przejrzyj i zatwierdź", en: "Review and approve" },
   checkChanges: { pl: "Sprawdź zmiany", en: "Check changes" },
   foot: {
-    pl: "Konektor działa dopiero po zatwierdzeniu, w sandboxie, z limitem czasu; każda zmiana jego plików wymaga ponownego zatwierdzenia.",
+    pl: "Konektor działa dopiero po zatwierdzeniu, w piaskownicy, z limitem czasu; każda zmiana plików wymaga ponownego zatwierdzenia.",
     en: "A connector runs only once approved, in a sandbox, with a time limit; any change to its files needs approval again.",
   },
 });

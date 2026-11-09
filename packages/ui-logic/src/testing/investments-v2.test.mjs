@@ -165,7 +165,7 @@ test("signal copy: plain words, no rule ids", () => {
     { total: 186401, base: "PLN" },
   );
   assert.equal(conc.title, "Koncentracja: PKN Orlen");
-  assert.ok(conc.tail.includes("maks. 10") && conc.tail.includes("nad limitem"));
+  assert.ok(conc.tail.includes("maks 10") && conc.tail.includes("nad limitem"));
   const below = signalText(
     sig({
       kind: "allocation_drift",
@@ -265,7 +265,7 @@ test("alert texts: condition, level, now, default title, preview sentence", () =
   );
   assert.equal(
     alertDefaultTitle("change_pct", { threshold: 0.1, direction: "down", window_days: 30 }, "KGHM"),
-    `KGHM -10${NB}% w ciągu 30 sesji`,
+    `KGHM -10${NB}% w 30 sesji`,
   );
   const p = alertPreview({
     kind: "price_below",
@@ -279,7 +279,7 @@ test("alert texts: condition, level, now, default title, preview sentence", () =
   });
   assert.equal(
     p,
-    `Zadziała, gdy cena CDR spadnie poniżej 140,00${NB}zł (teraz 148,60${NB}zł). Powiadomienie od razu, sygnał w kolumnie „Szanse", pauza 14 dni po spełnieniu.`,
+    `Zadziała, gdy cena CDR spadnie poniżej 140,00${NB}zł (teraz 148,60${NB}zł). Powiadomienie od razu, sygnał w „Szanse", pauza 14 dni po spełnieniu.`,
   );
   assert.ok(
     alertPreview({

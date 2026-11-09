@@ -101,6 +101,7 @@ describe("summary (test_api.py)", () => {
       currency: "PLN",
       points: [],
       components: [],
+      completeFrom: null,
     });
   });
 });

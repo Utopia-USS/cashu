@@ -9,7 +9,7 @@ export const S = catalog({
   approve: { pl: "Zatwierdź", en: "Approve" },
   connector: { pl: "Konektor", en: "Connector" },
   foot: {
-    pl: "Wyłączony konektor się nie uruchamia, ale powiązania zostają. Usunięcie kasuje katalog, powiązania i sekrety.",
+    pl: "Wyłączenie zatrzymuje przebiegi, powiązania zostają. Usunięcie kasuje katalog, powiązania i sekrety.",
     en: "Turning it off stops the runs, the bindings stay. Deleting removes the folder, the bindings and the secrets.",
   },
 
@@ -44,10 +44,7 @@ export const S = catalog({
     en: "only these hosts, port 443, through the app's proxy",
   },
   none: { pl: "brak", en: "none" },
-  noNetwork: {
-    pl: "sandbox bez dostępu do sieci",
-    en: "sandbox without network access",
-  },
+  noNetwork: { pl: "piaskownica bez dostępu do sieci", en: "sandbox without network access" },
   secrets: { pl: "Sekrety", en: "Secrets" },
   secretsHint: {
     pl: "wpisujesz w powiązaniu; pęk kluczy; nigdy w logach ani u agenta",
@@ -64,9 +61,9 @@ export const S = catalog({
   checksum: { pl: "Suma kontrolna", en: "Checksum" },
   copy: { pl: "kopiuj", en: "copy" },
   diskWrite: { pl: "Zapis na dysku", en: "Disk writes" },
-  tmpOnly: { pl: "tylko katalog tymczasowy uruchomienia", en: "only the run's temporary folder" },
+  tmpOnly: { pl: "tylko katalog tymczasowy przebiegu", en: "only the run's temporary folder" },
   sandbox: {
-    pl: "Sandbox: odczyt plików systemu i własnego katalogu, zapis tylko do katalogu tymczasowego; po limicie czasu proces jest zatrzymywany.",
+    pl: "Piaskownica: odczyt systemu i własnego katalogu, zapis tylko do katalogu tymczasowego; proces zabijany po limicie czasu.",
     en: "Sandbox: reads the system and its own folder, writes only to the temporary folder; the process is killed after the time limit.",
   },
 
@@ -82,7 +79,7 @@ export const S = catalog({
 
   // Runs
   lastN: { pl: (n: number) => `ostatnie ${n}`, en: (n: number) => `last ${n}` },
-  runs: { pl: "Uruchomienia", en: "Runs" },
+  runs: { pl: "Przebiegi", en: "Runs" },
   colWhen: { pl: "Kiedy", en: "When" },
   colCommand: { pl: "Polecenie", en: "Command" },
   colResult: { pl: "Wynik", en: "Result" },

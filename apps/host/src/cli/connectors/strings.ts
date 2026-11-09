@@ -9,7 +9,7 @@ export const M = {
   },
   invalid: { pl: "Nieprawidłowy konektor lub ścieżka.", en: "Invalid connector or path." },
   pending: {
-    pl: "Konektor czeka na zatwierdzenie w aplikacji.",
+    pl: "Konektor dodano do przeglądu w aplikacji.",
     en: "Connector submitted for review in the app.",
   },
   exists: {

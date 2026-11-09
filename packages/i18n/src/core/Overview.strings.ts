@@ -9,9 +9,9 @@ export const S = catalog({
   netWorth: { pl: "Wartość netto", en: "Net worth" },
   assets: { pl: "Aktywa", en: "Assets" },
   liabilities: { pl: "Zobowiązania", en: "Liabilities" },
-  homeEquity: { pl: "Kapitał w nieruchomości", en: "Home equity" },
+  homeEquity: { pl: "Home equity", en: "Home equity" },
   homeEquityDetail: { pl: "nieruchomość - hipoteka", en: "property - mortgage" },
-  liquid: { pl: "Płynne środki", en: "Liquid" },
+  liquid: { pl: "Płynne", en: "Liquid" },
   monthsOfSpending: {
     pl: (n: string) => `${n} mies. wydatków`,
     en: (n: string) => `${n} mo. of spending`,
@@ -21,5 +21,8 @@ export const S = catalog({
     pl: (list: string) => `inne waluty: ${list}`,
     en: (list: string) => `other currencies: ${list}`,
   },
-  notConverted: { pl: "bez przeliczenia", en: "not converted" },
+  notConverted: {
+    pl: "Wartość netto w innych walutach, każda osobno i bez przeliczania: konta bankowe i rachunki maklerskie w tej walucie.",
+    en: "Net worth in other currencies, each on its own and not converted: the bank and brokerage accounts in that currency.",
+  },
 });

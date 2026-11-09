@@ -75,7 +75,7 @@ test("Research: a note and its asset, an owner topic thesis, a candidate answer,
     await thesis.getByRole("button", { name: "Zapisz" }).click();
     await expect(page.getByText("Zapisano tezę", { exact: true })).toBeVisible();
     await thesis.getByRole("button", { name: "Edytuj" }).click();
-    await thesis.getByRole("textbox", { name: "Bieżąca ocena" }).fill(ownerView);
+    await thesis.getByRole("textbox", { name: "Ocena teraz" }).fill(ownerView);
     await thesis.getByRole("button", { name: "Zapisz" }).click();
     await expect(page.getByText("Zapisano ocenę", { exact: true })).toBeVisible();
     const saved = (await readTopics()).topics.find((item) => item.thesis?.thesis === ownerThesis);
@@ -94,7 +94,7 @@ test("Research: a note and its asset, an owner topic thesis, a candidate answer,
     await tab("Notatki").click();
     await setPrivacy(page, true);
     await expect(research.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
-    await expect(research.getByText("Ukryte w trybie incognito", { exact: true })).toBeVisible();
+    await expect(research.getByText("Ukryte w trybie prywatności", { exact: true })).toBeVisible();
     await setPrivacy(page, false);
     await pickProfile(page, "Demo Piotr");
     await expect(page.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);

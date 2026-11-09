@@ -330,8 +330,7 @@ export const LABELS: Record<string, Label> = {
   "strategy.yaml_merge_key": "Klucze scalania YAML (<<) nie są obsługiwane",
   "strategy.yaml_tag": "Nieobsługiwany tag YAML {tag}",
   "strategy.yaml_key_not_text": "Klucze w YAML muszą być zwykłym tekstem",
-  "strategy.empty":
-    "Plik strategy.yaml jest pusty: musi zawierać co najmniej version i base_currency",
+  "strategy.empty": "Plik strategy.yaml jest pusty; potrzebuje co najmniej version i base_currency",
   "strategy.not_mapping": "strategy.yaml musi być mapą kluczy (version, base_currency, ...)",
   "strategy.md_empty": "Plik strategy.md jest pusty: zapisz w nim cele",
   // ---- header -----------------------------------------------------------------------------------
@@ -341,7 +340,7 @@ export const LABELS: Record<string, Label> = {
   "strategy.base_currency_not_pln":
     "Tylko PLN jest w pełni obsługiwany jako waluta bazowa (kursy NBP są w PLN)",
   // ---- buckets ----------------------------------------------------------------------------------
-  "strategy.buckets_not_list": "buckets musi być listą koszyków, każdy z id i match",
+  "strategy.buckets_not_list": "buckets musi być listą wpisów z id i match",
   "strategy.bucket_not_mapping": "Każdy koszyk musi być mapą z id i match",
   "strategy.bucket_id_required": "Brak id koszyka",
   "strategy.id_invalid": (p) =>
@@ -354,9 +353,9 @@ export const LABELS: Record<string, Label> = {
       : null,
   "strategy.match_required": "Brak match (dla koszyka na wszystko wpisz match: {})",
   "strategy.bucket_catch_all":
-    'Koszyk „{bucket}" pasuje do każdego instrumentu, więc do koszyków po nim nic już nie trafi',
+    'Koszyk „{bucket}" pasuje do każdego instrumentu, więc koszyki po nim nigdy nie pasują',
   "strategy.no_cash_bucket":
-    "Żaden koszyk nie obejmuje asset_class: cash, więc gotówka nie trafi do żadnego koszyka",
+    "Żaden koszyk nie obejmuje asset_class: cash, więc gotówka zostaje nieprzypisana",
   // ---- allocation -------------------------------------------------------------------------------
   "strategy.targets_missing": "Są koszyki, ale brakuje allocation.targets",
   "strategy.allocation_not_mapping": "allocation musi być mapą z targets i rebalance",
@@ -365,12 +364,11 @@ export const LABELS: Record<string, Label> = {
   "strategy.target_unknown_bucket": (p) =>
     has(p, "bucket") ? `Cel wskazuje nieistniejący koszyk ${q(p.bucket)}${hint(p)}` : null,
   "strategy.target_invalid":
-    "Docelowy udział koszyka {bucket} musi być liczbą od 0 do 1 (0.6 = 60%), jest {value}",
-  "strategy.targets_sum": "Docelowe udziały sumują się do {sum}, a powinny do 1",
-  "strategy.target_missing":
-    'Koszyk „{bucket}" nie ma docelowego udziału w allocation.targets; przyjęto 0',
+    "Cel koszyka {bucket} musi być liczbą od 0 do 1 (0.6 = 60%), jest {value}",
+  "strategy.targets_sum": "Cele sumują się do {sum}, a powinny do 1",
+  "strategy.target_missing": 'Koszyk „{bucket}" nie ma celu w allocation.targets; liczony jako 0',
   // ---- rules ------------------------------------------------------------------------------------
-  "strategy.rules_not_list": "rules musi być listą reguł, każda z id, kind i params",
+  "strategy.rules_not_list": "rules musi być listą wpisów z id, kind i params",
   "strategy.rule_not_mapping": "Każda reguła musi być mapą z id, kind i opcjonalnym params",
   "strategy.rule_id_required": "Brak id reguły",
   "strategy.rule_kind_required": "Brak rodzaju reguły (kind); dostępne: {known}",
@@ -390,7 +388,7 @@ export const LABELS: Record<string, Label> = {
       : null,
   "strategy.contribution_gap_needs_plan":
     "contribution_gap wymaga planu contributions; bez niego reguła jest zawsze pomijana",
-  "strategy.when_required": 'Brak warunku when:, np. „weight > 10%"',
+  "strategy.when_required": 'Brak when: warunku, np. „weight > 10%"',
   "strategy.expression_invalid": (p) => {
     const pl = exprDetail(p.detail);
     return has(p, "column") ? `Błąd w warunku (kolumna ${p.column})${pl ? `: ${pl}` : ""}` : null;
@@ -414,7 +412,7 @@ export const LABELS: Record<string, Label> = {
   "strategy.watchlist_not_mapping": "watchlist musi być mapą z criteria",
   "strategy.criteria_not_mapping": "watchlist.criteria musi być mapą: kryterium -> liczba",
   "strategy.criterion_unknown": (p) =>
-    has(p, "key") ? `Nieznane kryterium ${q(p.key)}${hint(p)}; zostaje zachowane` : null,
+    has(p, "key") ? `Nieznane kryterium ${q(p.key)}${hint(p)}; zostaje na później` : null,
   // ---- generic param problems -------------------------------------------------------------------
   "strategy.unknown_key": (p) =>
     has(p, "key") ? `Nieznany klucz ${q(p.key)}${hint(p)}; jest pomijany` : null,
@@ -466,7 +464,7 @@ export const LABELS: Record<string, Label> = {
   "import.unknown_instrument": "Nieznany instrument",
   "import.history_gap_hint": "Możliwa luka w historii",
   "import.currency_mismatch": "Waluta nie zgadza się z walutą konta",
-  "import.overlap": "Pominięto wiersze, które są już w historii konta z innego źródła (bank, CSV)",
+  "import.overlap": "Wiersze już w historii konta z innego źródła (bank, CSV): pominięte",
   "import.unknown_institution": "Nieznany bank w pliku",
   "import.empty": "Plik nie zawiera transakcji",
   "import.duplicate_id": "Powtórzony identyfikator transakcji",
@@ -519,17 +517,17 @@ export const LABELS: Record<string, Label> = {
   "proposal.error.too_long": "Uzasadnienie jest za długie",
   "proposal.error.invalid_status": "Nieznany status propozycji",
   "proposal.error.not_pending": "Propozycja nie czeka już na decyzję",
-  "proposal.error.invalid_strategy": "Po tej zmianie strategia miałaby błędy",
-  "proposal.error.rule_invalid": "Proponowana reguła ma błędy",
+  "proposal.error.invalid_strategy": "Strategia po tej zmianie nie przechodzi walidacji",
+  "proposal.error.rule_invalid": "Proponowana reguła nie przechodzi walidacji",
   "proposal.error.rules_made_inactive": "Ta zmiana wyłączyłaby inne reguły",
   "proposal.error.strategy_unreadable": "Nie można odczytać obecnych plików strategii",
   "proposal.error.base_changed":
     "Pliki strategii zmieniły się od czasu propozycji; poproś agenta o nową",
   "proposal.error.strategy_missing": "Brak pliku strategii albo nie można go odczytać",
   "proposal.error.rule_exists": "Strategia ma już regułę o tym id",
-  "proposal.error.staged_missing": "Zapisany plik eksportu zniknął; poproś agenta o nowy import",
+  "proposal.error.staged_missing": "Zapisany plik eksportu zniknął; zaproponuj import jeszcze raz",
   "proposal.error.staged_changed":
-    "Zapisany plik eksportu się zmienił; poproś agenta o nowy import",
+    "Zapisany plik eksportu się zmienił; zaproponuj import jeszcze raz",
   "proposal.error.converter_missing": "Brak skryptu konwertera",
   "proposal.error.converter_changed":
     "Skrypt konwertera zmienił się od czasu propozycji; poproś agenta o nową",
@@ -537,7 +535,7 @@ export const LABELS: Record<string, Label> = {
   "proposal.error.import_failed": "Import się nie udał",
   "proposal.error.import_blocked": "Tego pliku nie da się teraz zaimportować",
   "proposal.error.interrupted":
-    "Zatwierdzanie przerwane (aplikacja się zamknęła): sprawdź wynik, zanim poprosisz o nową propozycję",
+    "Zatwierdzanie przerwane (aplikacja się zamknęła): sprawdź wynik przed nową propozycją",
   "proposal.error.converter_unsupported":
     "Skryptu konwertera z tej propozycji nie da się zatwierdzić: aplikacja uruchamia tylko konektory zatwierdzone w Ustawieniach › Konektory. Poproś agenta o konektor albo przekonwertowany plik",
   "proposal.error.apply_failed": "Zatwierdzenie nie powiodło się (szczegóły w logu aplikacji)",
@@ -553,12 +551,12 @@ export const LABELS: Record<string, Label> = {
   "error.busy": "Trwa inna operacja; spróbuj za chwilę",
   "error.planned_invalid": "Nieprawidłowy plan wpłaty: sprawdź kwotę, datę i rachunek",
   "error.planned_booked": "Ta wpłata jest już zaksięgowana z importu; planu nie można zmienić",
-  "error.research_conflict": "Ta notatka jest już rozpatrzona (obserwowana albo odrzucona)",
+  "error.research_conflict": "Notatka już obsłużona (obserwowana albo odrzucona)",
   "error.research_invalid": "Nieprawidłowe dane notatki researchu",
-  "error.name_taken": "Ta nazwa jest już zajęta",
+  "error.name_taken": "Pozycja o tej nazwie już istnieje",
   "error.loan_name_taken": "Kredyt o tej nazwie już istnieje.",
   "error.strategy_conflict":
-    "Pliki edytowano na podstawie starszej wersji strategii: zmiana czeka na zatwierdzenie jako propozycja.",
+    "Pliki zmieniono na starszej wersji strategii: zmiana czeka jako propozycja do zatwierdzenia.",
   "error.import_bank_unknown": "Nie rozpoznano banku: wybierz go z listy.",
   "error.import_header_missing": "To nie wygląda na wyciąg z tego banku: sprawdź bank i plik.",
   "error.import_empty": "Plik nie zawiera transakcji.",
@@ -586,7 +584,7 @@ export const LABELS: Record<string, Label> = {
       : null,
   "alert.change_pct": (p) =>
     has(p, "change", "window_days")
-      ? `${p.direction === "down" ? "-" : p.direction === "up" ? "+" : ""}${frac(p.change)} w ciągu ${p.window_days} sesji${has(p, "threshold") ? ` (próg ${frac(p.threshold)})` : ""}`
+      ? `${p.direction === "down" ? "-" : p.direction === "up" ? "+" : ""}${frac(p.change)} w ${p.window_days} sesji${has(p, "threshold") ? ` (próg ${frac(p.threshold)})` : ""}`
       : null,
   "alert.drawdown_from_high": (p) =>
     has(p, "drawdown")
@@ -594,7 +592,7 @@ export const LABELS: Record<string, Label> = {
       : null,
   "alert.new_high": (p) =>
     has(p, "close")
-      ? `nowy szczyt ${cur(p.close, p.currency)}${has(p, "window_days") ? ` (z ${p.window_days} sesji)` : ""}`
+      ? `nowy szczyt ${cur(p.close, p.currency)}${has(p, "window_days") ? ` (${p.window_days} sesji)` : ""}`
       : null,
   "alert.sma_cross": (p) =>
     has(p, "close", "window_days")
@@ -616,10 +614,10 @@ export const LABELS: Record<string, Label> = {
 
   // ---- watchlist warnings (`warning_codes` of POST watchlist) -----------------------------------------
   "watchlist.guessed_price_symbol": (p) =>
-    `symbol notowań odgadnięty${p.price_symbol ? ` (${p.price_symbol})` : ""}: sprawdź, czy pojawią się notowania`,
-  "watchlist.no_price_symbol": "brak symbolu notowań: dodaj alias Yahoo w klasyfikacji",
+    `symbol ceny zgadnięty${p.price_symbol ? ` (${p.price_symbol})` : ""}: sprawdź, czy przyjdą notowania`,
+  "watchlist.no_price_symbol": "brak symbolu ceny: dodaj alias Yahoo w klasyfikacji",
   "watchlist.unverified_price_symbol": (p) =>
-    `notowania niepotwierdzone${p.symbol ? ` (${p.symbol})` : ""}: sprawdź, czy się pojawią`,
+    `notowania niepotwierdzone${p.symbol ? ` (${p.symbol})` : ""}: sprawdź, czy przyjdą`,
 
   // ---- performance data quality (`data_quality.notes[] {code, params}` of GET investments/performance) -------
   "perf.incomplete_days": (p) =>
@@ -647,14 +645,16 @@ export const LABELS: Record<string, Label> = {
 
   // connectors (F10): the approval / bindings routes send `connector.<code>`, the import previews `connector_<kind>`
   "error.connector.not_found": "Nie znaleziono konektora: mógł zostać usunięty",
-  "error.connector.conflict": "Konektor zmienił się od otwarcia: sprawdź pliki jeszcze raz.",
-  "error.connector.invalid": "Konektor ma błędy",
+  "error.connector.conflict":
+    "Konektor zmienił się, odkąd go otworzyłeś: sprawdź pliki jeszcze raz.",
+  "error.connector.invalid": "Konektor nie przechodzi walidacji",
   "error.connector.binary_file": "Plik binarny: bez podglądu.",
   "error.connector.file_too_large": "Plik za duży do podglądu (limit 200 KiB).",
   "error.connector.keychain": "Pęk kluczy macOS jest niedostępny",
   "error.connector.busy": "Trwa inna synchronizacja tego konta; spróbuj za chwilę.",
-  "error.connector_changed": "Konektor zmienił się od otwarcia: sprawdź pliki jeszcze raz.",
-  "error.connector_invalid": "Konektor ma błędy",
+  "error.connector_changed":
+    "Konektor zmienił się, odkąd go otworzyłeś: sprawdź pliki jeszcze raz.",
+  "error.connector_invalid": "Konektor nie przechodzi walidacji",
   "error.connector_busy": "Trwa inna synchronizacja tego konta; spróbuj za chwilę.",
   "error.connector_conflict": "Konektor o tym identyfikatorze jest już zainstalowany",
   "error.connector_not_approved":
@@ -667,8 +667,7 @@ export const LABELS: Record<string, Label> = {
   "connector.bad_file": "Konektor nie rozpoznał tego pliku.",
   "connector.unsupported_version": "Konektor nie obsługuje tej wersji eksportu.",
   "connector.auth_failed": "Serwis odrzucił klucz: sprawdź sekret powiązania.",
-  "connector.rate_limited":
-    "Serwis ograniczył liczbę zapytań; aplikacja spróbuje ponownie później.",
+  "connector.rate_limited": "Serwis ograniczył liczbę zapytań; następna próba później.",
   "connector.network": "Brak połączenia z serwisem.",
   "connector.upstream": "Serwis odpowiedział błędem.",
   "connector.internal": "Błąd w konektorze.",
@@ -678,7 +677,7 @@ export const LABELS: Record<string, Label> = {
       ? `Konektor przekroczył limit czasu (${p.timeout_s} s).`
       : "Konektor przekroczył limit czasu.",
   "connector.sandbox_unavailable":
-    "Konektory działają tylko w aplikacji na macOS (tylko tam mają sandbox).",
+    "Konektory działają tylko w aplikacji na macOS (brak piaskownicy).",
   "connector.spawn_failed": "Nie udało się uruchomić konektora.",
   "connector.not_approved": "Konektor czeka na zatwierdzenie w Ustawieniach › Konektory.",
   "connector.changed": "Konektor zmienił się: zatwierdź go ponownie w Ustawieniach › Konektory.",
@@ -689,7 +688,7 @@ export const LABELS: Record<string, Label> = {
   "connector.bad_request": "Konektor nie przyjmie tego pliku (rozszerzenie albo rozmiar).",
   "connector.denied_host": "Konektor próbował połączyć się poza dozwolonymi hostami.",
   "connector.forbidden_import":
-    "Konektor wczytuje niedozwolony moduł: wolno tylko pliki z jego katalogu i wbudowane moduły node:.",
+    "Import w konektorze łamie regułę importów: tylko pliki z katalogu konektora i wbudowane node:.",
   "connector.module_parse_error": "Moduł konektora nie wczytuje się albo ma błąd składni.",
 };
 

@@ -22,7 +22,7 @@ export const budgetSetupStrings = {
     en: "One bank account: nothing to match.",
   },
   transfersDescription: {
-    pl: "Rozpoznawane po IBAN-ach Twoich kont; nie liczą się jako wydatki.",
+    pl: "Po IBAN między Twoimi kontami; nie liczą się jako wydatki.",
     en: "By IBAN between your accounts; they do not count as expenses.",
   },
 } as const;

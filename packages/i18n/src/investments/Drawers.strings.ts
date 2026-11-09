@@ -72,7 +72,7 @@ export const S = catalog({
   invalidation: { pl: "Unieważnienie", en: "Invalidation" },
   invalidationPlaceholder: { pl: "Co by znaczyło, że się mylę?", en: "What would mean I'm wrong?" },
   exitPlan: { pl: "Plan wyjścia", en: "Exit plan" },
-  sizePlan: { pl: "Wielkość pozycji i dokupowanie", en: "Size and adding to it" },
+  sizePlan: { pl: "Wielkość i dokupienia", en: "Size and adding to it" },
 
   // an instrument's transactions
   srcImport: { pl: "import", en: "import" },

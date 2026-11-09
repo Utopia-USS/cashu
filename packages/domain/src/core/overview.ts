@@ -20,6 +20,7 @@ import {
   netWorth,
   netWorthBreakdown,
   netWorthComponentSeries,
+  netWorthSeriesCompleteFrom,
   type SeriesScope,
 } from "./networth.js";
 import { ZERO_00 } from "./zero.js";
@@ -77,6 +78,17 @@ export interface SeriesView {
   readonly points: readonly SeriesPoint[];
   /** The buckets that hold a value at some point, in stacking order. */
   readonly components: readonly SeriesComponent[];
+  /**
+   * Points dated before this miss accounts whose data starts later (`netWorthSeriesCompleteFrom`):
+   * not a net worth of that day, so no change is measured from them. null when every point is whole.
+   */
+  readonly completeFrom: IsoDate | null;
+}
+
+/** The points from which every account is known (`completeFrom`). */
+export function completePoints(view: SeriesView): readonly SeriesPoint[] {
+  const from = view.completeFrom;
+  return from === null ? view.points : view.points.filter((p) => p.date >= from);
 }
 
 /** `GET /networth/series`: the net-worth history in one currency, split into its present buckets. */
@@ -103,9 +115,11 @@ export function seriesView(book: NetWorthBook, request: SeriesRequest, lang: UiL
     }
     return { date, value, components };
   });
+  const from = netWorthSeriesCompleteFrom(book, request.currency, request.scope);
   return {
     currency: request.currency,
     points,
+    completeFrom: from !== null && points.some((p) => p.date < from) ? from : null,
     components: present.map((key) => ({
       key,
       label: labels.get(key) ?? key,

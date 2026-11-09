@@ -4,7 +4,7 @@ import { catalog, enCount, plCount } from "../../../index.js";
 export const S = catalog({
   macro: { pl: "Makro", en: "Macro" },
   lastSession: { pl: "ostatnia sesja w danych", en: "last session in the data" },
-  stateOn: { pl: (d: string) => `stan na ${d}`, en: (d: string) => `as of ${d}` },
+  stateOn: { pl: (d: string) => `stan ${d}`, en: (d: string) => `as of ${d}` },
   noData: { pl: "brak danych", en: "no data" },
   lastQuote: { pl: "ostatnie notowanie w danych", en: "last quote in the data" },
   nNewNotes: {
