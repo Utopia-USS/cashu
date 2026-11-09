@@ -4,7 +4,7 @@
 // close) lives in `./index.ts`; this file stays apart so the phone, whose bundler (Metro) does not
 // tree-shake, carries these read models without the desktop widgets.
 import { budget, core, type IsoDate } from "@cashu/domain";
-import type { market } from "@cashu/domain/investments";
+import { InMemoryFxLookup, market, toCurrency } from "@cashu/domain/investments";
 import { budgetBook, budgetEngineContext } from "../budget/read-models.js";
 import { netWorthBook } from "../core/networth.js";
 import { profileOf } from "../core/queries.js";
@@ -53,6 +53,33 @@ export function vaultNetWorthBook(
   return netWorthBook(read, contributors, env.today, registryOf(sources));
 }
 
+/**
+ * The NBP rates of the device's price cache as a `core.RateAt` into `target`: the newest rate on or
+ * before the day, cross rates through PLN. Without a price cache no rate is known.
+ */
+export function vaultRateAt(
+  read: Read,
+  env: Omit<NetWorthEnv, "today">,
+  sources: OverviewSources,
+  target: string,
+): core.RateAt {
+  const data =
+    env.marketData ??
+    sources.marketData?.(read) ??
+    (env.prices === null ? null : market.cachedMarketData(env.prices, []));
+  if (data === null) return () => null;
+  const currencies = read<{ currency: string }>(
+    "SELECT DISTINCT currency FROM accounts WHERE removed_at IS NULL ORDER BY currency",
+  ).map((r) => r.currency);
+  const lookup = new InMemoryFxLookup(
+    [...new Set([...currencies, target])].flatMap((c) => data.fxRates(toCurrency(c))),
+  );
+  return (currency, on) => {
+    const q = lookup.quoteOnOrBefore(toCurrency(currency), on, toCurrency(target));
+    return q === null ? null : { rate: q.rate, date: q.date };
+  };
+}
+
 /** Every module's payment patterns (what the categorization of an undecided row reads). */
 export function vaultPaymentPatterns(
   read: Read,
@@ -74,6 +101,11 @@ export type SeriesArgs = {
   readonly granularity?: string | null;
   /** `total` (default) or `liquid`. */
   readonly scope?: string | null;
+  /**
+   * Convert every other currency into `currency` at the NBP rate of each day and sum them
+   * (`core.convertedSeriesView`); default: that currency alone.
+   */
+  readonly convert?: boolean | null;
 };
 
 /** `GET /networth/series`. */
@@ -90,7 +122,9 @@ export function netWorthSeries(
     baseCurrency: profileOf(read)?.baseCurrency,
   });
   const book = vaultNetWorthBook(read, { ...env, today: args.today }, sources);
-  return core.seriesView(book, request, args.lang);
+  if (!args.convert) return core.seriesView(book, request, args.lang);
+  const rateAt = vaultRateAt(read, env, sources, request.currency);
+  return core.convertedSeriesView(book, request, args.lang, rateAt);
 }
 
 // --------------------------------------------------------------------------- summary
@@ -153,13 +187,18 @@ export const HERO_CASHFLOW_MONTHS = 7;
 
 export interface HeroView {
   readonly facts: core.HeroFacts;
+  /**
+   * The facts with every other currency converted into the headline one at today's NBP rate; null
+   * when the profile holds one currency only.
+   */
+  readonly converted: core.ConvertedHero | null;
   /** Monthly spending of complete months in the headline currency; null without data. */
   readonly norm: budget.MonthNorm | null;
   /** `liquid / norm.expense`; null without a norm. */
   readonly monthsOfSpending: core.HeroFacts["liquid"] | null;
   /**
-   * Net worth change since the previous month end (monthly total series, whole points only); null
-   * below 2 such points.
+   * Net worth change since the previous month end (monthly total series, converted when `converted`
+   * is set, whole points only); null below 2 such points.
    */
   readonly change: core.NetWorthChange | null;
 }
@@ -175,13 +214,20 @@ export function heroView(read: Read, env: NetWorthEnv, sources: OverviewSources 
     )
     .slice(-HERO_CASHFLOW_MONTHS);
   const norm = budget.closedMonthNorm(rows, env.today);
-  const monthly = core.seriesView(
-    parts.netWorth,
-    { currency: facts.currency, granularity: "monthly", scope: "total" },
-    "pl",
-  );
+  const rateAt = vaultRateAt(read, env, sources, facts.currency);
+  const converted = core.convertedHero(parts.netWorth, parts.core, facts, rateAt, env.today);
+  const request: core.SeriesRequest = {
+    currency: facts.currency,
+    granularity: "monthly",
+    scope: "total",
+  };
+  const monthly =
+    converted?.rateDate == null
+      ? core.seriesView(parts.netWorth, request, "pl")
+      : core.convertedSeriesView(parts.netWorth, request, "pl", rateAt);
   return {
     facts,
+    converted,
     norm,
     monthsOfSpending: core.monthsOfSpending(facts.liquid, norm?.expense ?? null),
     // Only whole points: one that misses accounts with later data is no starting value.

@@ -55,8 +55,10 @@ off the machine:
    explicit OK.
 4. **Bank credentials (login/password/SCA) are entered only by the user** in the bank's browser. The
    code never sees them and must never ask for them.
-5. **Net worth is computed per-currency** (never sum currencies); **internal transfers are matched by
-   counterparty IBAN only** (never by name/amount).
+5. **Net worth is computed per-currency**; a sum across currencies exists only as an explicitly
+   labelled conversion at NBP rates on top of it (the Overview headline, `core/converted.ts`), with
+   every currency's own amount shown beside it. **Internal transfers are matched by counterparty IBAN
+   only** (never by name/amount).
 6. **Never run `eb resync` / `reclassify` in a loop** - banks throttle PSD2 (429), and the local LLM
    is slow. Sync ~once a day.
 7. **Never mix profiles**: each profile is its own vault; a query, command or MCP session works on

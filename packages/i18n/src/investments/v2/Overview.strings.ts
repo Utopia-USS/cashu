@@ -65,9 +65,9 @@ export const S = catalog({
   investments: { pl: "Inwestycje", en: "Investments" },
   portfolioTitle: {
     pl: (currency: string) =>
-      `Cały portfel przeliczony na ${currency} kursami NBP. Wartość netto liczy rachunki maklerskie już bez przeliczania, każdy w swojej walucie: w kwocie głównej albo w „inne waluty”.`,
+      `Cały portfel przeliczony na ${currency} kursami NBP. Te same rachunki są już w wartości netto: każdy w swojej walucie, przeliczony na walutę wartości netto.`,
     en: (currency: string) =>
-      `The whole portfolio converted to ${currency} at NBP rates. Net worth already counts the brokerage accounts without conversion, each in its own currency: in the headline amount or under "other currencies".`,
+      `The whole portfolio converted to ${currency} at NBP rates. Net worth already counts the same accounts: each in its own currency, converted to the net worth currency.`,
   },
   week: { pl: "tydz.", en: "wk" },
   chances: {

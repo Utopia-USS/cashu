@@ -21,6 +21,10 @@ export const S = catalog({
     pl: (day: string) => `historia od ${day}: wcześniej część kont nie ma danych`,
     en: (day: string) => `history from ${day}: before that some accounts have no data`,
   },
+  convertedFrom: {
+    pl: (list: string) => `${list} przeliczone kursem NBP z każdego dnia`,
+    en: (list: string) => `${list} converted at each day's NBP rate`,
+  },
   tooShort: {
     pl: (day: string) =>
       `Za krótka historia: część kont ma dane dopiero od ${day}. Wykres pojawi się z kolejnymi dniami.`,

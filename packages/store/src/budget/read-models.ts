@@ -11,8 +11,8 @@ import type { NetWorthSource, SetupSource } from "../registry.js";
 
 /**
  * The cash pool valued by its running transaction sum (`CashContributor`) and the bank accounts by
- * their balance snapshots, walked back over their transactions before the first one
- * (`budgetContributor`).
+ * their balance snapshots, walked back over their transactions before the first one and, for a first
+ * Open Banking fetch, back to the day it asked from (`budgetContributor`).
  */
 export const budgetNetWorth: NetWorthSource = (read) =>
   budget.budgetContributor(
@@ -24,6 +24,15 @@ export const budgetNetWorth: NetWorthSource = (read) =>
       ...budget.BANK_BALANCE_TYPES,
     ).map((t) => ({ account: t.account, bookingDate: t.bookingDate, amount: D(t.amount) })),
     netWorthBalances(read),
+    budget.openBankingWindowStarts(
+      read<{ account: string; bank: string; day: IsoDate; first: IsoDate | null }>(
+        `SELECT a.gid AS account, b.bank, substr(b.started_at, 1, 10) AS day,
+                min(t.booking_date) AS first
+         FROM import_batches b JOIN accounts a ON a.id = b.account_id
+         LEFT JOIN transactions t ON t.import_batch_id = b.id
+         WHERE b.source = 'open_banking' GROUP BY b.id ORDER BY b.id`,
+      ),
+    ),
   );
 
 interface AccountRow {

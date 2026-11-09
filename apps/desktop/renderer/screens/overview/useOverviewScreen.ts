@@ -71,7 +71,8 @@ export function useOverviewScreen(args: {
   const budget = useQuery(queries.budgetWidgets, { today: args.today });
   const loans = useQuery(queries.loans, { today: args.today });
   const currency = hero.facts.currency;
-  const seriesArgs = { today: args.today, lang: language, currency };
+  // Every other currency converted into the headline one at each day's NBP rate (the owner's choice).
+  const seriesArgs = { today: args.today, lang: language, currency, convert: true };
   const series = useQuery(queries.netWorthSeries, { ...seriesArgs, granularity: step, scope });
   const total = useQuery(queries.netWorthSeries, {
     ...seriesArgs,
@@ -134,6 +135,7 @@ export function useOverviewScreen(args: {
     },
     hero: heroModel({
       facts: hero.facts,
+      converted: hero.converted,
       change: hero.change,
       norm: hero.norm,
       modules: modules.length,

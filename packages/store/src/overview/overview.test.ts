@@ -462,6 +462,42 @@ describe("net worth over the view", () => {
     expect(hero.change?.change.eq(last.sub(prev))).toBe(true);
   });
 
+  it("converted to the headline currency at the device's NBP rates (owner decision)", () => {
+    const h = household();
+    const read = h.store.read.bind(h.store);
+    const eur = [{ quote: "EUR", date: "2026-09-30", rate: D("4.25"), source: "nbp", base: "PLN" }];
+    const sources = {
+      marketData: () =>
+        ({
+          series: () => [],
+          fxRates: (quote: string) => (quote === "EUR" ? eur : []),
+        }) as unknown as market.CachedMarketData,
+    };
+    const hero = heroView(read, { today: TODAY, prices: null }, sources);
+    // 460.04 EUR at 4.25 = 1955.17 zł on top of the PLN net worth.
+    expect(s(hero.converted?.net)).toBe(s(hero.facts.net.add(D("1955.17"))));
+    expect(hero.converted?.rateDate).toBe("2026-09-30");
+    expect(hero.converted?.parts.map((p) => [p.currency, s(p.amount)])).toEqual([
+      ["EUR", "460.04"],
+    ]);
+    const series = netWorthSeries(
+      read,
+      { today: TODAY, lang: "en", granularity: "monthly", convert: true },
+      { prices: null },
+      sources,
+    );
+    expect(series.convertedFrom).toEqual(["EUR"]);
+    const pln = netWorthSeries(
+      read,
+      { today: TODAY, lang: "en", granularity: "monthly" },
+      { prices: null },
+      sources,
+    );
+    expect(s(series.points.at(-1)?.value)).toBe(s(pln.points.at(-1)?.value.add(D("1955.17"))));
+    // Without a rate source nothing is converted, and the hero says so.
+    expect(heroView(read, { today: TODAY, prices: null }).converted?.rateDate).toBeNull();
+  });
+
   it("the budget card: savings rates of whole, closed months only", () => {
     const h = household();
     const read = h.store.read.bind(h.store);

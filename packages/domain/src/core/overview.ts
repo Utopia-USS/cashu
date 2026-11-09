@@ -83,6 +83,11 @@ export interface SeriesView {
    * not a net worth of that day, so no change is measured from them. null when every point is whole.
    */
   readonly completeFrom: IsoDate | null;
+  /**
+   * The other currencies converted into `currency` (`convertedSeriesView`); absent or empty for a
+   * plain one-currency series.
+   */
+  readonly convertedFrom?: readonly string[];
 }
 
 /** The points from which every account is known (`completeFrom`). */

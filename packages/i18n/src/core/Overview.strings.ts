@@ -21,6 +21,20 @@ export const S = catalog({
     pl: (list: string) => `inne waluty: ${list}`,
     en: (list: string) => `other currencies: ${list}`,
   },
+  netWorthConverted: {
+    pl: (currency: string) => `Wartość netto, przeliczona na ${currency}`,
+    en: (currency: string) => `Net worth, converted to ${currency}`,
+  },
+  convertedParts: {
+    pl: (list: string) => `w tym ${list}`,
+    en: (list: string) => `incl. ${list}`,
+  },
+  convertedTitle: {
+    pl: (currency: string, day: string, missing: string | null) =>
+      `Kwoty w innych walutach (obok, bez przeliczania) są przeliczone na ${currency} kursem średnim NBP z ${day} i wliczone w wartość netto, aktywa i płynne środki.${missing ? ` Bez kursu, więc poza sumą: ${missing}.` : ""}`,
+    en: (currency: string, day: string, missing: string | null) =>
+      `The amounts in other currencies (shown as they are) are converted to ${currency} at the NBP mid rate of ${day} and counted in net worth, assets and liquid money.${missing ? ` No rate, so left out: ${missing}.` : ""}`,
+  },
   notConverted: {
     pl: "Wartość netto w innych walutach, każda osobno i bez przeliczania: konta bankowe i rachunki maklerskie w tej walucie.",
     en: "Net worth in other currencies, each on its own and not converted: the bank and brokerage accounts in that currency.",

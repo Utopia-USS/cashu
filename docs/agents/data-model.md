@@ -31,8 +31,14 @@ relative to those unless they start with `apps/` or `packages/`).
    snapshots (`core/networth.ts`, `core/valuation.ts`); a module values the accounts it owns through
    its `NetWorthContributor` (`<module>/networth.ts`: loans, vehicles, cash pool, brokerage), plugged
    into the store through `StoreModule.netWorth`. Sign, liquidity and chart bucket come from the
-   account type registry (`core/accountTypes.ts`). Why: a sum across currencies is a meaningless
-   number.
+   account type registry (`core/accountTypes.ts`). Why: a raw sum across currencies is a
+   meaningless number. The one exception, the owner's decision of 2026-11-09: the Overview converts
+   every other currency into the headline one at the NBP mid rate (`core/converted.ts`: today's
+   rate for the hero, each day's rate for the chart; rates from the device's price cache through
+   `vaultRateAt` in `store/overview/networth.ts`). It is labelled as converted, keeps every
+   currency's own amount beside it, and leaves a currency without a rate out (named in the tooltip).
+   Everything else (CLI, MCP, budget, per-account views) stays per currency. Why: money moved from
+   PLN into USD investments must not read as a loss of the PLN line.
 4. **Internal transfers** (mBank<->Erste<->Pekao) are matched **by counterparty IBAN only**
    (`budget/transfers.ts`) and are excluded from income/expenses. Why: names caused false positives.
 5. **Illiquid accounts** (`property`, `vehicle`, `mortgage`, `loan`) count toward net worth but not

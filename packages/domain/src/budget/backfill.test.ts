@@ -19,6 +19,7 @@ import {
   bankBalanceContributor,
   budgetContributor,
   type CashPoolTxn,
+  openBankingWindowStarts,
 } from "./networth.js";
 
 const types = builtinRegistry().accountTypes;
@@ -166,5 +167,49 @@ describe("the series after a first Open Banking import", () => {
       ["2026-11-09", "30000.00"],
     ]);
     expect(netWorth(b).totals.get("PLN")?.toString()).toBe("30000.00");
+  });
+});
+
+describe("a quiet account of the same Open Banking fetch", () => {
+  // Savings fetched with the checking account on 11-09: its first transaction is 10-04, but the fetch
+  // asked from 08-11 (the checking account's first row), so it held its opening balance since then.
+  const quiet = new BackfilledBalanceValuation(
+    [snap("2026-11-09", "30000.00")],
+    [txn("sav", "2026-10-04", "5000.00")],
+    "2026-08-11",
+  );
+
+  it("holds the opening balance back to the window start, unknown before it", () => {
+    expect(quiet.at("2026-10-04")?.toString()).toBe("30000.00");
+    expect(quiet.at("2026-10-03")?.toString()).toBe("25000.00");
+    expect(quiet.at("2026-08-11")?.toString()).toBe("25000.00");
+    expect(quiet.at("2026-08-10")).toBeNull();
+    expect(quiet.knownFrom()).toBe("2026-08-11");
+    expect(quiet.axisDates()[0]).toBe("2026-08-11");
+  });
+
+  it("a window start after the first transaction changes nothing", () => {
+    const v = new BackfilledBalanceValuation(
+      [snap("2026-11-09", "10000.00")],
+      OB_TXNS,
+      "2026-09-01",
+    );
+    expect(v.knownFrom()).toBe("2026-08-11");
+  });
+
+  it("the window is the earliest row of the bank's accounts fetched the same day", () => {
+    const starts = openBankingWindowStarts([
+      { account: "chk", bank: "millennium", day: "2026-11-09", first: "2026-08-11" },
+      { account: "sav", bank: "millennium", day: "2026-11-09", first: "2026-10-04" },
+      { account: "chk", bank: "millennium", day: "2026-11-10", first: "2026-11-10" },
+      // Connected later in its own fetch: its own group.
+      { account: "new", bank: "millennium", day: "2026-11-20", first: "2026-11-15" },
+      { account: "mb", bank: "mbank", day: "2026-11-09", first: null },
+    ]);
+    expect([...starts]).toEqual([
+      ["chk", "2026-08-11"],
+      ["sav", "2026-08-11"],
+      ["new", "2026-11-15"],
+    ]);
   });
 });

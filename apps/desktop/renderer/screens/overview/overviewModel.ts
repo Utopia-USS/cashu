@@ -54,6 +54,13 @@ interface OverviewAccount {
 }
 const f = (v: Decimal | null | undefined): number | null => (v == null ? null : v.toFloat());
 const monthIndex = (iso: string) => Number(iso.slice(5, 7)) - 1;
+/** "7 lis 2026": the day of an NBP rate. */
+const dayMonth = (iso: string) =>
+  new Date(`${iso}T12:00:00`).toLocaleDateString(intlLocale(), {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
 /** Tooltip of a ratio over the norm. */
 const normTitle = (n: { months: number }) => C.normTitle(n.months);
@@ -75,6 +82,8 @@ export interface HeroModel {
 
 export function heroModel(args: {
   facts: core.HeroFacts;
+  /** Every currency converted into the headline one (store `HeroView.converted`). */
+  converted?: core.ConvertedHero | null;
   change: { change: Decimal; changePct: Decimal | null; since: string } | null;
   norm: { expense: Decimal; months: number } | null;
   modules: number;
@@ -82,6 +91,8 @@ export function heroModel(args: {
 }): HeroModel {
   const { facts: h, change } = args;
   const c = h.currency;
+  // Converted only when some other currency has a rate; else every currency stays on its own.
+  const conv = args.converted?.rateDate ? args.converted : null;
   const whole = (v: number) => cur0s(v, c);
   const ch = f(change?.change);
   const delta: Rich | null =
@@ -98,19 +109,20 @@ export function heroModel(args: {
     .filter((t, i, all) => all.indexOf(t) === i)
     .slice(0, 2)
     .join(", ");
-  const liquid = h.liquid.toFloat();
+  const liquid = (conv?.liquid ?? h.liquid).toFloat();
   const spend = f(args.norm?.expense);
   const facts: RichFact[] = [
     {
       label: O.assets,
-      value: whole(h.assets.toFloat()),
+      value: whole((conv?.assets ?? h.assets).toFloat()),
       detail: `${nAccounts(h.accounts)} · ${nModules(args.modules)}`,
     },
   ];
-  if (h.liabilities.gt(D("0")))
+  const liabilities = conv?.liabilities ?? h.liabilities;
+  if (liabilities.gt(D("0")))
     facts.push({
       label: O.liabilities,
-      value: whole(-h.liabilities.toFloat()),
+      value: whole(-liabilities.toFloat()),
       detail: liabNames || null,
     });
   if (h.homeEquity !== null)
@@ -134,18 +146,26 @@ export function heroModel(args: {
       : O.accountsAndCash,
   });
   const others = Object.entries(h.otherCurrencies);
+  const missing = conv?.parts.filter((p) => p.quote === null).map((p) => p.currency) ?? [];
+  const otherText = others.map(([k, v]) => cur(v.toFloat(), k)).join(" · ");
   return {
-    label: O.netWorth,
-    caption: O.netWorth,
-    value: cur(h.net.toFloat(), c),
+    label: conv ? O.netWorthConverted(c) : O.netWorth,
+    caption: conv ? O.netWorthConverted(c) : O.netWorth,
+    value: cur((conv?.net ?? h.net).toFloat(), c),
     since:
       change === null || ch === null ? null : O.since(MONTH_GEN[monthIndex(change.since)] ?? ""),
     delta,
     facts,
-    other: others.length
-      ? O.otherCurrencies(others.map(([k, v]) => cur(v.toFloat(), k)).join(" · "))
-      : null,
-    meta: others.length ? O.notConverted : null,
+    other: !others.length
+      ? null
+      : conv
+        ? O.convertedParts(otherText)
+        : O.otherCurrencies(otherText),
+    meta: !others.length
+      ? null
+      : conv?.rateDate
+        ? O.convertedTitle(c, dayMonth(conv.rateDate), missing.length ? missing.join(", ") : null)
+        : O.notConverted,
   };
 }
 

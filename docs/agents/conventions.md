@@ -108,7 +108,7 @@ Before adding or changing a string:
 
 | Don't | Why |
 |---|---|
-| Sum different currencies into a single net-worth figure | net worth is per currency ([data-model.md](data-model.md) rule 3) |
+| Sum different currencies into a single net-worth figure, except as the labelled NBP conversion of `core/converted.ts` | net worth is per currency ([data-model.md](data-model.md) rule 3) |
 | Match internal transfers by name/amount - IBAN only | names caused false positives |
 | Run `eb resync` / `reclassify` in a loop; sync ~once a day | banks throttle PSD2 (429), and the local LLM is slow |
 | Overwrite an existing account's type, or its name with the owner name from OB | keeps the type and name the owner chose (the OB owner name is a person's name, not an account name) |

@@ -223,7 +223,7 @@ export type Granularity = "daily" | "weekly" | "monthly";
 export type SeriesScope = "total" | "liquid";
 
 /** Keep the last value in each week / month (period-end net worth); the series is ascending. */
-function resamplePeriodEnd<T>(
+export function resamplePeriodEnd<T>(
   series: readonly (readonly [IsoDate, T])[],
   granularity: "weekly" | "monthly",
 ): [IsoDate, T][] {

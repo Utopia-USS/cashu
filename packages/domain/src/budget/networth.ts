@@ -70,8 +70,9 @@ export const BANK_BALANCE_TYPES: ReadonlySet<string> = new Set(["checking", "sav
  * stores one balance (today's) next to ~90 days of transactions, so the snapshots alone know nothing
  * before today; the end-of-day balance of an earlier day is the first snapshot minus every
  * transaction booked after that day up to the snapshot's day. Before the first transaction the
- * balance is the opening one: known when it is zero (the account started empty), unknown otherwise.
- * Net worth now (`latest`) is the snapshots' own value, unchanged.
+ * balance is the opening one: known when it is zero (the account started empty), back to `windowStart`
+ * when the import is known to have asked from that day (a quiet account had no transactions since),
+ * unknown otherwise. Net worth now (`latest`) is the snapshots' own value, unchanged.
  */
 export class BackfilledBalanceValuation implements Valuation {
   private readonly snapshots: BalanceValuation;
@@ -80,8 +81,14 @@ export class BackfilledBalanceValuation implements Valuation {
   private readonly back: readonly LatestEntry[];
   /** The balance before the first transaction (or the first snapshot's when none is earlier). */
   private readonly opening: Decimal | null;
+  /** The first day the import asked for: the opening balance holds from it (null: unknown). */
+  private readonly windowStart: IsoDate | null;
 
-  constructor(balances: readonly BalanceSnapshot[], txns: readonly CashPoolTxn[]) {
+  constructor(
+    balances: readonly BalanceSnapshot[],
+    txns: readonly CashPoolTxn[],
+    windowStart: IsoDate | null = null,
+  ) {
     this.snapshots = new BalanceValuation(balances);
     this.first = this.snapshots.knownFrom();
     const anchor = this.first === null ? null : this.snapshots.at(this.first);
@@ -89,6 +96,7 @@ export class BackfilledBalanceValuation implements Valuation {
     if (first === null || anchor === null) {
       this.back = [];
       this.opening = null;
+      this.windowStart = null;
       return;
     }
     const byDay = new Map<IsoDate, Decimal>();
@@ -104,6 +112,8 @@ export class BackfilledBalanceValuation implements Valuation {
     }
     this.back = back.reverse();
     this.opening = run;
+    const earliest = this.back[0]?.[0] ?? first;
+    this.windowStart = windowStart !== null && windowStart < earliest ? windowStart : null;
   }
 
   latest(asOf: IsoDate | null, today: IsoDate): LatestEntry | null {
@@ -119,16 +129,21 @@ export class BackfilledBalanceValuation implements Valuation {
       else break;
     }
     if (last !== null) return last;
-    return this.opening?.isZero() ? ZERO_00 : null;
+    if (this.opening?.isZero()) return ZERO_00;
+    return this.windowStart !== null && d >= this.windowStart ? this.opening : null;
   }
 
   axisDates(): IsoDate[] {
-    return [...this.back.map(([d]) => d), ...this.snapshots.axisDates()];
+    return [
+      ...(this.windowStart === null ? [] : [this.windowStart]),
+      ...this.back.map(([d]) => d),
+      ...this.snapshots.axisDates(),
+    ];
   }
 
   knownFrom(): IsoDate | null {
     if (this.opening?.isZero()) return null;
-    return this.back[0]?.[0] ?? this.first;
+    return this.windowStart ?? this.back[0]?.[0] ?? this.first;
   }
 }
 
@@ -140,6 +155,7 @@ export class BackfilledBalanceValuation implements Valuation {
 export function bankBalanceContributor(
   txns: readonly CashPoolTxn[],
   balances: ReadonlyMap<string, readonly BalanceSnapshot[]>,
+  windowStarts: ReadonlyMap<string, IsoDate> = new Map(),
 ): NetWorthContributor {
   const byAccount = new Map<string, CashPoolTxn[]>();
   for (const t of txns) {
@@ -154,7 +170,14 @@ export function bankBalanceContributor(
         if (!BANK_BALANCE_TYPES.has(account.type)) continue;
         const rows = balances.get(account.id);
         if (rows === undefined || rows.length === 0) continue;
-        out.set(account.id, new BackfilledBalanceValuation(rows, byAccount.get(account.id) ?? []));
+        out.set(
+          account.id,
+          new BackfilledBalanceValuation(
+            rows,
+            byAccount.get(account.id) ?? [],
+            windowStarts.get(account.id) ?? null,
+          ),
+        );
       }
       return out;
     },
@@ -165,12 +188,54 @@ export function bankBalanceContributor(
 export function budgetContributor(
   txns: readonly CashPoolTxn[],
   balances: ReadonlyMap<string, readonly BalanceSnapshot[]>,
+  windowStarts: ReadonlyMap<string, IsoDate> = new Map(),
 ): NetWorthContributor {
   const cash = cashContributor(txns);
-  const bank = bankBalanceContributor(txns, balances);
+  const bank = bankBalanceContributor(txns, balances, windowStarts);
   return {
     valuations(accounts: ReadonlyMap<string, NetWorthAccount>): ReadonlyMap<string, Valuation> {
       return new Map([...cash.valuations(accounts), ...bank.valuations(accounts)]);
     },
   };
+}
+
+/** One Open Banking import batch: its account, bank, day and earliest booked transaction. */
+export interface OpenBankingBatch {
+  readonly account: string;
+  readonly bank: string;
+  /** The day the batch ran. */
+  readonly day: IsoDate;
+  /** Its earliest booking date; null when it brought no transaction. */
+  readonly first: IsoDate | null;
+}
+
+/**
+ * The first day each account's first Open Banking fetch asked for. The accounts of one bank fetched
+ * on the same day share the window (one consent, one request range), so its start is the earliest
+ * transaction any of them got that day; a quiet account (savings) whose own first transaction comes
+ * weeks later held its opening balance since then. An account first fetched on another day gets its
+ * own group, and a group without any transaction gets none.
+ */
+export function openBankingWindowStarts(
+  batches: readonly OpenBankingBatch[],
+): Map<string, IsoDate> {
+  const firstDay = new Map<string, { bank: string; day: IsoDate }>();
+  for (const b of batches) {
+    const seen = firstDay.get(b.account);
+    if (seen === undefined || b.day < seen.day)
+      firstDay.set(b.account, { bank: b.bank, day: b.day });
+  }
+  const groupStart = new Map<string, IsoDate>();
+  for (const b of batches) {
+    if (b.first === null) continue;
+    const key = `${b.bank}\u0000${b.day}`;
+    const seen = groupStart.get(key);
+    if (seen === undefined || b.first < seen) groupStart.set(key, b.first);
+  }
+  const out = new Map<string, IsoDate>();
+  for (const [account, { bank, day }] of firstDay) {
+    const start = groupStart.get(`${bank}\u0000${day}`);
+    if (start !== undefined) out.set(account, start);
+  }
+  return out;
 }

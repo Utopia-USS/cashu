@@ -216,6 +216,8 @@ export function netWorthModel(args: {
       { text: N.accountsOnly },
       { text: pctSigned(yl.pct), bold: true, tone: yl.pct >= 0 ? "positive" : "negative" },
     ]);
+  if (series.convertedFrom?.length)
+    foot.push([{ text: N.convertedFrom(series.convertedFrom.join(", ")) }]);
   if (wholeFrom !== null && all.length >= 2)
     foot.push([{ text: N.historyFrom(dayText(wholeFrom)) }]);
   const last = points[points.length - 1];
