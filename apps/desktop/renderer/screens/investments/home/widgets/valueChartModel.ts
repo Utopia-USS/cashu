@@ -7,7 +7,7 @@ import { BENCH_NOTE_L, RANGE_TEXT_L, S } from "@cashu/i18n/investments/v2/Perf.s
 import type { LineChartProps } from "@cashu/ui";
 import { labelIndices } from "@cashu/ui/charts/geometry";
 import { GROUP, monthYearShort } from "@cashu/ui-logic/core/format";
-import { hideAmount } from "@cashu/ui-logic/core/incognito";
+import { bananaMoney, hideAmount } from "@cashu/ui-logic/core/incognito";
 import { dm, money0, pct, pp } from "@cashu/ui-logic/investments/labels";
 import { benchmarkLabel, staleBenchmark } from "@cashu/ui-logic/investments/v2/logic";
 import type { PerfRange } from "@cashu/ui-logic/investments/v2/types";
@@ -109,7 +109,8 @@ const dateLong = (iso: string) =>
     month: "short",
     year: "numeric",
   });
-const axisK = (v: number) =>
+const axisK = (v: number, currency: string) =>
+  bananaMoney(v, currency) ??
   hideAmount(
     new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 0, ...GROUP }).format(
       Math.round(v / 1000) * 1000,
@@ -208,7 +209,7 @@ export function valueChartProps(
         height: 250,
         padL: 56,
         padR: 150,
-        yFormat: axisK,
+        yFormat: (v: number) => axisK(v, c),
         valueKind: "share",
         xLabels,
         series: [

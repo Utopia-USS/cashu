@@ -6,9 +6,9 @@ import {
   bucketLabel,
   DECISION_ACTION,
   dm,
-  money,
   pct,
   pctTarget,
+  plainMoney,
   pp,
   qty,
 } from "./labels.js";
@@ -69,7 +69,8 @@ export function decisionEffect(args: {
   const { side, quantity, price, bucket, total } = args;
   if (quantity == null || price == null || quantity <= 0 || price <= 0) return null;
   const amount = quantity * price;
-  const head = `≈ ${money(amount, args.currency)}`;
+  // quantity x price is on the screen: in bananas it would give the scale away.
+  const head = `≈ ${plainMoney(amount, args.currency)}`;
   // A non-generic (the owner's own) bucket is not named in the app, nor are its target and drift (F7-generic).
   if (!bucket || !total || args.currency !== args.base || !bucketLabel(bucket.bucket_id))
     return head;

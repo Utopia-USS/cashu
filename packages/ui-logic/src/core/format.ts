@@ -1,6 +1,6 @@
 import { intlLocale, lang } from "@cashu/i18n";
 import { S, TYPE } from "./format.strings.js";
-import { hideAmount } from "./incognito.js";
+import { bananaMoney, hideAmount } from "./incognito.js";
 
 /** Group thousands from 1 000 on (pl-PL groups only from 10 000 by default: "8600,00 zł" next to
  * "11 240,00 zł" in one column reads badly). */
@@ -9,12 +9,14 @@ export const GROUP = { useGrouping: "always" } as unknown as Intl.NumberFormatOp
 export const cur = (v: number | null | undefined, c = "PLN"): string =>
   v == null
     ? "-"
-    : hideAmount(
+    : (bananaMoney(v, c) ??
+      hideAmount(
         new Intl.NumberFormat(intlLocale(), { style: "currency", currency: c, ...GROUP }).format(v),
-      );
+      ));
 
 /** Whole units in currency `c` (chart axes): cur0(400000, "EUR") -> "400 000 €". */
 export const cur0 = (v: number, c = "PLN"): string =>
+  bananaMoney(v, c) ??
   hideAmount(
     new Intl.NumberFormat(intlLocale(), {
       style: "currency",

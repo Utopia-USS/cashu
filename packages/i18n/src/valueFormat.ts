@@ -113,3 +113,36 @@ export function formatCalendarDate(
   }
   return format.format(date);
 }
+
+/** The unit of the privacy mode's banana scale (`@cashu/domain` core/bananas.ts). */
+export const BANANA = "🍌";
+
+/**
+ * An amount on the banana scale: "🍌 1 000", "-🍌 280", "🍌 1,5". Banana values are approximate by
+ * nature, so a plain number is fine here; the digits shrink with the size (whole bananas from 100,
+ * one decimal from 10, two below) so a coffee still reads next to the rent.
+ */
+export function formatBananaValue(
+  value: number,
+  locale: string,
+  options: { readonly signed?: boolean } = {},
+): NumberDisplay {
+  const abs = Math.abs(value);
+  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+  const text = numberFormat(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+    useGrouping: "always",
+  } as Intl.NumberFormatOptions).format(abs);
+  // Rounded zero has no sign, as with money.
+  const sign = Number(abs.toFixed(digits)) === 0 ? 0 : value < 0 ? -1 : 1;
+  const prefix = sign < 0 ? "-" : sign > 0 && options.signed ? "+" : "";
+  return { text: `${prefix}${BANANA} ${text}`, sign };
+}
+
+/** `formatBananaValue` as text only. */
+export const formatBananas = (
+  value: number,
+  locale: string,
+  options: { readonly signed?: boolean } = {},
+): string => formatBananaValue(value, locale, options).text;

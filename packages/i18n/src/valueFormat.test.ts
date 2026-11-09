@@ -1,6 +1,6 @@
 import { D } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
-import { formatCalendarDate, formatDecimalValue } from "./valueFormat.js";
+import { formatBananaValue, formatCalendarDate, formatDecimalValue } from "./valueFormat.js";
 
 describe("exact value formatting", () => {
   it.each(["pl-PL", "en-US", "en-GB", "ar-EG", "en-IN", "en-US-u-nu-arab", "en-US-u-nu-fullwide"])(
@@ -61,5 +61,19 @@ describe("calendar dates", () => {
   });
   it("rejects impossible dates instead of normalizing them into the next month", () => {
     expect(() => formatCalendarDate("2026-02-29", "en-US")).toThrow();
+  });
+});
+
+describe("banana values", () => {
+  it("shrinks the digits with the size and keeps the sign", () => {
+    expect(formatBananaValue(1000, "en-US").text).toBe("🍌 1,000");
+    expect(formatBananaValue(-280.4, "en-US")).toEqual({ text: "-🍌 280", sign: -1 });
+    expect(formatBananaValue(12.34, "en-US").text).toBe("🍌 12.3");
+    expect(formatBananaValue(1.5, "pl-PL").text).toBe("🍌 1,5");
+    expect(formatBananaValue(0.031, "en-US", { signed: true }).text).toBe("+🍌 0.03");
+  });
+
+  it("drops the sign of a rounded zero", () => {
+    expect(formatBananaValue(-0.001, "en-US", { signed: true })).toEqual({ text: "🍌 0", sign: 0 });
   });
 });

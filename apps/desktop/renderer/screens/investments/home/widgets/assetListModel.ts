@@ -16,7 +16,13 @@ import type {
   SparklineProps,
   Tone,
 } from "@cashu/ui";
-import { accountLabel, money, nAccountsInv, pct } from "@cashu/ui-logic/investments/labels";
+import {
+  accountLabel,
+  money,
+  nAccountsInv,
+  pct,
+  unitPrice,
+} from "@cashu/ui-logic/investments/labels";
 import type { AccountRow, Hint } from "@cashu/ui-logic/investments/types";
 import {
   alertFact,
@@ -375,7 +381,7 @@ export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): Asse
         tone: cost ? "muted" : undefined,
         label: S.spark30d(i.label),
       },
-      price: p.price != null ? money(p.price, p.price_currency ?? c) : "-",
+      price: p.price != null ? unitPrice(p.price, p.price_currency ?? c) : "-",
       week: {
         text: wk != null ? pct(wk, true) : "-",
         tone: cost || wk == null ? "muted" : wk >= 0 ? "positive" : "negative",

@@ -1,4 +1,5 @@
 import { D, Money as MoneyValue } from "@cashu/domain";
+import { bananaScale } from "@cashu/domain/core";
 import { setLanguageForTests } from "@cashu/i18n";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -35,6 +36,19 @@ it("masks money, amount and monetary delta in text, labels and tone", () => {
   expect(screen.getAllByText("Amount hidden")).toHaveLength(3);
   expect(container.textContent).toBe("•••Amount hidden".repeat(3));
   expect(container.innerHTML).not.toMatch(/123|negative|positive|USD/);
+});
+it("shows money with a currency on the banana scale and still masks a bare amount", () => {
+  const bananas = bananaScale("salary", D("8000"), { USD: 4 });
+  const { container } = render(
+    <UiEnvProvider privacy locale="en-US" bananas={bananas}>
+      <Money value={new MoneyValue(D("-500"), "USD")} tone="negative" />
+      <Amount value={D("-123.45")} />
+      <Money value={new MoneyValue(D("10"), "CHF")} />
+    </UiEnvProvider>,
+  );
+  expect(screen.getByText("-🍌 250").classList.contains("text-negative")).toBe(true);
+  expect(screen.getAllByText("Amount hidden")).toHaveLength(2);
+  expect(container.innerHTML).not.toMatch(/500|123|CHF|USD/);
 });
 it("keeps shares, percentage changes and dates visible in privacy mode", () => {
   render(

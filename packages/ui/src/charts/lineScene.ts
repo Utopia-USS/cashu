@@ -17,7 +17,7 @@ import {
 import type { Built, ChartRole, Gradient, SceneNode, Scrub } from "./scene.js";
 import { colorRole } from "./scene.js";
 import type { Level, LineChartProps, LineSeries } from "./types.js";
-import { chartSummary, hides, seriesSummary, wholeNumber } from "./values.js";
+import { chartSummary, hides, isBanana, seriesSummary, wholeNumber } from "./values.js";
 
 /** The strong end of a line's area fade: the legacy flat fill (.12) x 1.6 (F7 PX1). */
 export const AREA_FADE = fadeOpacity(0.12);
@@ -66,13 +66,14 @@ export function lineScene(p: LineChartProps, width: number, privacy: boolean): B
   const fmt = p.yFormat === false ? null : (p.yFormat ?? wholeNumber);
   for (const v of ticks(lo, hi, p.yTicks ?? 4)) {
     nodes.push({ k: "line", x1: left, x2: right, y1: Y(v), y2: Y(v), stroke: "grid", width: 1 });
-    // Privacy mode hides the amount axis: the grid stays, the numbers go.
-    if (fmt && !hidden) {
+    // Privacy mode hides the amount axis: the grid stays, the numbers go (banana values stay).
+    const label = fmt?.(v);
+    if (label !== undefined && (!hidden || isBanana(label))) {
       nodes.push({
         k: "text",
         x: left - 8,
         y: Y(v) + 3.5,
-        text: fmt(v),
+        text: label,
         anchor: "end",
         tone: "muted",
       });

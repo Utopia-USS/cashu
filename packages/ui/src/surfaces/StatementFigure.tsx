@@ -1,6 +1,7 @@
 // The statement figure: one big formatted amount with the currency small and muted and the decimals dimmed
 // (design/desktop/investments-home/lab.html V5 Statement, design/desktop/overview/layered-tiles.html `.hv`).
 // Promoted from the investments home's hero on its second use (the overview's net worth tile).
+import { BANANA } from "@cashu/i18n/values";
 
 /** A formatted amount split for the statement figure: the currency before / after it, the whole part and the
  * decimals. Joined, the parts are exactly the input. */
@@ -44,16 +45,18 @@ const looks = {
 export function StatementFigure({ value, size = "page" }: StatementFigureProps) {
   const look = looks[size];
   const parts = statementParts(value);
+  // The privacy mode's banana is the figure's unit, not a currency: it scales with the digits.
+  const unit = (text: string) => (text.includes(BANANA) ? "" : look.currency);
   return (
     <span
       className={`whitespace-nowrap font-bold leading-none tracking-dense text-fg tabular-nums ${look.figure}`}
     >
       {parts ? (
         <>
-          {parts.pre && <span className={look.currency}>{parts.pre}</span>}
+          {parts.pre && <span className={unit(parts.pre)}>{parts.pre}</span>}
           {parts.main}
           {parts.fraction && <span className="text-fg-muted">{parts.fraction}</span>}
-          {parts.post && <span className={look.currency}>{parts.post}</span>}
+          {parts.post && <span className={unit(parts.post)}>{parts.post}</span>}
         </>
       ) : (
         value

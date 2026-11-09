@@ -3,7 +3,7 @@
 import { CARD_LABEL, S } from "@cashu/i18n/investments/v2/Alerts.strings";
 import { csvLine } from "@cashu/ui-logic/core/csv";
 import { addDays, localDay, parseServerTime, todayLocal } from "@cashu/ui-logic/core/time";
-import { bucketLabel, DECISION_ACTION, dm, pct } from "@cashu/ui-logic/investments/labels";
+import { bucketLabel, DECISION_ACTION, dm, pct, qty } from "@cashu/ui-logic/investments/labels";
 import {
   type AlertState,
   alertConditionText,
@@ -188,7 +188,7 @@ function historyDecision(s: SignalV2): string {
   const verb = DECISION_ACTION[d.action] ?? d.action;
   const q =
     d.quantity != null && (d.action === "bought" || d.action === "sold")
-      ? ` ${d.quantity}${d.price != null ? ` @ ${price(d.price, d.currency)}` : ""}`
+      ? ` ${qty(d.quantity)}${d.price != null ? ` @ ${price(d.price, d.currency)}` : ""}`
       : "";
   return `${verb}${q}${d.reason ? S.reasonQuoted(d.reason.length > 40 ? `${d.reason.slice(0, 38)}…` : d.reason) : ""}`;
 }

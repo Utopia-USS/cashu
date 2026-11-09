@@ -3,6 +3,7 @@
 
 export * from "./accounts.js";
 export * from "./accountTypes.js";
+export * from "./bananas.js";
 export * from "./builtinModules.js";
 export * from "./converted.js";
 export * from "./currency.js";

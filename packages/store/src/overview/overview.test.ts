@@ -25,6 +25,7 @@ import { runQuery, watchQuery } from "../query.js";
 import { run, type TestEnv, testEnv } from "../testing/commands.js";
 import { memoryDriver, openTestStore } from "../testing/store.js";
 import {
+  bananaScaleView,
   budgetWidgets,
   heroView,
   moduleSetup,
@@ -611,5 +612,66 @@ describe("queries", () => {
     stop();
     expect(values.length).toBe(2);
     expect(values[1]).toBe((values[0] ?? 0) + 1); // a new point on 2026-09-20
+  });
+});
+
+describe("banana scale", () => {
+  it("anchors 🍌 1000 on the average salary of the whole months", () => {
+    const h = household();
+    const read = h.store.read.bind(h.store);
+    const scale = () => bananaScaleView(read, { today: TODAY, prices: null });
+    // Rows start 06-07, so June is partial: July to September each pay 9000 zł. Not categorized yet,
+    // the rows count through the categorizer's salary keyword (WYNAGRODZENIE).
+    expect(scale()?.anchor).toBe("salary");
+    expect(scale()?.perPln).toBeCloseTo(1000 / 9000, 12);
+    const salaries = h.store.read<{ gid: string }>(
+      "SELECT gid FROM transactions WHERE amount = ? ORDER BY booking_date",
+      "9000.00",
+    );
+    for (const { gid } of salaries)
+      run(h.store, h.env, claimCategory, { gid, category: "income_salary" });
+    expect(scale()?.perPln).toBeCloseTo(1000 / 9000, 12);
+    // An owner's other category wins over the keyword: July is no salary, (0 + 9000 + 9000) / 3.
+    const [, july, , september] = salaries.map((r) => r.gid);
+    run(h.store, h.env, claimCategory, { gid: july ?? "", category: "income_other" });
+    expect(scale()?.perPln).toBeCloseTo(1000 / 6000, 12);
+    // The newest imported month without its salary is an import that stopped early, not a month
+    // without pay: (0 + 9000) / 2.
+    run(h.store, h.env, claimCategory, { gid: september ?? "", category: "income_other" });
+    expect(scale()?.perPln).toBeCloseTo(1000 / 4500, 12);
+  });
+
+  it("falls back to a tenth of the brokerage accounts, and to nothing without them", () => {
+    const empty = vault(["budget"]).store;
+    expect(bananaScaleView(empty.read.bind(empty), { today: TODAY, prices: null })).toBeNull();
+    const { store } = vault(["investments"]);
+    const ev = new Events();
+    const acc = ulid(1);
+    const inst = instrument(ev, ["yahoo", "TST.WA"], { symbol: "TST" });
+    store.applyEnvelopes([
+      brokerageOpened(ev, acc),
+      ...inst.events,
+      ev.make("invTxn.imported", ulid(3), {
+        account: acc,
+        instrument: inst.gid,
+        source: "manual",
+        dedupHash: `manual:${ulid(3)}`,
+        tradeDate: "2026-09-01",
+        quantity: "10",
+        price: "12.5",
+        grossAmount: "125",
+        fee: "0",
+        cashAmount: "0",
+      }),
+    ]);
+    const read = store.read.bind(store);
+    const book = vaultNetWorthBook(read, { today: TODAY, prices: null });
+    const invested = core
+      .netWorthSummary(book, "PLN")
+      .lines.find((l) => l.account.type === core.BROKERAGE)?.contribution;
+    expect(invested?.gt(D("0"))).toBe(true);
+    const scale = bananaScaleView(read, { today: TODAY, prices: null });
+    expect(scale?.anchor).toBe("portfolio");
+    expect(scale?.perPln).toBeCloseTo(1000 / (Number(invested?.toString()) * 0.1), 12);
   });
 });

@@ -5,6 +5,7 @@ import { S as D } from "@cashu/i18n/investments/v2/Decide.strings";
 import { S as RI } from "@cashu/i18n/investments/v2/research/index.strings";
 import { S } from "@cashu/i18n/investments/v2/Signals.strings";
 import type { InstCardProps } from "@cashu/ui";
+import { isIncognito } from "@cashu/ui-logic/core/incognito";
 import { accountLabel, dm, numInput, parseNum, qty } from "@cashu/ui-logic/investments/labels";
 import { decisionEffect, decisionTag } from "@cashu/ui-logic/investments/logic";
 import type { Thesis } from "@cashu/ui-logic/investments/types";
@@ -163,7 +164,9 @@ export function initialForm(
       ? (ctx.positions.find((p) => String(p.instrument.id) === String(instId)) ?? null)
       : null;
   let q = "";
-  if (pos?.price && s) {
+  // In incognito a pre-filled quantity (from the real holding) next to the public price would decode the
+  // banana scale of the position's value: the owner types it.
+  if (pos?.price && s && !isIncognito()) {
     if (s.kind === "position_concentration") {
       const over = (Number(s.payload.weight) - Number(s.payload.max_weight)) * ctx.total;
       q = over > 0 ? String(Math.max(1, Math.ceil(over / pos.price))) : "";

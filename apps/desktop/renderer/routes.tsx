@@ -49,6 +49,7 @@ import { useSettingsScreen } from "./screens/settings/useSettingsScreen.js";
 import { SignalsPageScreen } from "./screens/signals/SignalsPageScreen.js";
 import { StrategiesScreen } from "./screens/strategies/StrategiesScreen.js";
 import { StrategySettings } from "./screens/strategies/StrategySettings.js";
+import { BananaScaleSync } from "./shell/BananaScaleSync.js";
 import { InvestmentsHeaderTag } from "./shell/InvestmentsHeaderTag.js";
 import { NarrowFrameContext } from "./shell/narrowFrame.js";
 import { resolveProfileRoute } from "./shell/profileRoute.js";
@@ -165,101 +166,108 @@ function ShellRoute() {
     else void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
   };
   return (
-    <ProposalScope
-      key={`${state.vault}:${state.privacy}`}
-      vault={state.vault}
-      privacy={state.privacy}
-    >
-      <ShellView
-        state={state}
-        onAddProfile={openCreation}
-        onOverviewOpened={() => {
-          if (state.profile !== null)
-            void router.navigate({
-              to: "/$slug/overview",
-              params: { slug: state.profile.slug },
-              search: { vault: state.vault },
-            });
-        }}
-        activeModule={
-          pathname.endsWith("/settings")
-            ? "settings"
-            : /\/setup\/budget(\/cli)?$/u.test(pathname)
-              ? "budget.expenses"
-              : pathname.includes("/budget/")
-                ? `budget.${pathname.split("/budget/")[1]?.split("/")[0] ?? "expenses"}`
-                : pathname.endsWith("/loans.list") || /\/setup\/loans(\/cli)?$/u.test(pathname)
-                  ? "loans"
-                  : /\/setup\/investments(\/cli)?$/u.test(pathname)
-                    ? "investments"
-                    : pathname.endsWith("/investments.strategies")
-                      ? "investments.strategies"
-                      : pathname.includes("/investments.") || pathname.includes("/assets/")
-                        ? "investments"
-                        : "overview"
-        }
-        onModuleOpened={openModule}
-        headerTags={
-          state.investmentsTag && state.profile !== null ? (
-            <InvestmentsHeaderTag
-              key={state.vault}
-              onOpen={() => {
-                const slug = state.profile?.slug ?? "";
-                // Alokacja on its Rachunki view; `t` makes a repeated click a new request (old F8 FE-7).
-                void router.navigate({
-                  to: "/$slug/investments.portfolio",
-                  params: { slug },
-                  search: {
-                    vault: state.vault,
-                    period: "1y",
-                    view: "chart",
-                    alloc: "accounts",
-                    t: Date.now(),
-                  },
-                });
-                setTimeout(
-                  () =>
-                    (
-                      document.getElementById("inv-alloc") ??
-                      document.getElementById("inv-accounts")
-                    )?.scrollIntoView({ behavior: "smooth", block: "start" }),
-                  400,
-                );
-              }}
-            />
-          ) : undefined
-        }
-        tabActions={
-          pathname.includes("/budget/") && state.profile !== null ? (
-            <BudgetTabActions
-              key={state.vault}
-              vault={state.vault}
-              slug={state.profile.slug}
-              profileName={
-                state.profiles.find((profile) => profile.vault === state.vault)?.displayName ?? ""
-              }
-            />
-          ) : undefined
-        }
+    <>
+      {state.privacy && <BananaScaleSync key={state.vault} vault={state.vault} />}
+      <ProposalScope
+        // A new banana scale remounts the page too: the formatters read it while the models are built.
+        key={`${state.vault}:${state.privacyKey}`}
+        vault={state.vault}
+        privacy={state.privacy}
       >
-        {selection !== null &&
-        (selection.kind !== "ready" || selection.profile.vault !== state.vault) ? (
-          <p role="status" className="p-6">
-            {selection.kind === "ambiguous"
-              ? S.ambiguousProfile
-              : selection.kind === "unavailable"
-                ? S.noProfile
-                : S.waiting}
-          </p>
-        ) : (
-          <NarrowFrameContext value={{ narrow: assetPage || pageNarrow, request: setPageNarrow }}>
-            <Outlet />
-          </NarrowFrameContext>
-        )}
-      </ShellView>
-      {/* Old core/App.tsx: the update card under the shell (agent C's port owns its hook). */}
-      <UpdateNotice />
-    </ProposalScope>
+        <ShellView
+          state={state}
+          onAddProfile={openCreation}
+          onOverviewOpened={() => {
+            if (state.profile !== null)
+              void router.navigate({
+                to: "/$slug/overview",
+                params: { slug: state.profile.slug },
+                search: { vault: state.vault },
+              });
+          }}
+          activeModule={
+            pathname.endsWith("/settings")
+              ? "settings"
+              : /\/setup\/budget(\/cli)?$/u.test(pathname)
+                ? "budget.expenses"
+                : pathname.includes("/budget/")
+                  ? `budget.${pathname.split("/budget/")[1]?.split("/")[0] ?? "expenses"}`
+                  : pathname.endsWith("/loans.list") || /\/setup\/loans(\/cli)?$/u.test(pathname)
+                    ? "loans"
+                    : /\/setup\/investments(\/cli)?$/u.test(pathname)
+                      ? "investments"
+                      : pathname.endsWith("/investments.strategies")
+                        ? "investments.strategies"
+                        : pathname.includes("/investments.") || pathname.includes("/assets/")
+                          ? "investments"
+                          : "overview"
+          }
+          onModuleOpened={openModule}
+          headerTags={
+            state.investmentsTag && state.profile !== null ? (
+              <InvestmentsHeaderTag
+                key={state.vault}
+                onOpen={() => {
+                  const slug = state.profile?.slug ?? "";
+                  // Alokacja on its Rachunki view; `t` makes a repeated click a new request (old F8 FE-7).
+                  void router.navigate({
+                    to: "/$slug/investments.portfolio",
+                    params: { slug },
+                    search: {
+                      vault: state.vault,
+                      period: "1y",
+                      view: "chart",
+                      alloc: "accounts",
+                      t: Date.now(),
+                    },
+                  });
+                  setTimeout(
+                    () =>
+                      (
+                        document.getElementById("inv-alloc") ??
+                        document.getElementById("inv-accounts")
+                      )?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                    400,
+                  );
+                }}
+              />
+            ) : undefined
+          }
+          tabActions={
+            pathname.includes("/budget/") && state.profile !== null ? (
+              <BudgetTabActions
+                key={state.vault}
+                vault={state.vault}
+                slug={state.profile.slug}
+                profileName={
+                  state.profiles.find((profile) => profile.vault === state.vault)?.displayName ?? ""
+                }
+              />
+            ) : undefined
+          }
+        >
+          {state.bananasStale ||
+          (selection !== null &&
+            (selection.kind !== "ready" || selection.profile.vault !== state.vault)) ? (
+            <p role="status" className="p-6">
+              {selection === null || state.bananasStale
+                ? S.waiting
+                : selection.kind === "ambiguous"
+                  ? S.ambiguousProfile
+                  : selection.kind === "unavailable"
+                    ? S.noProfile
+                    : S.waiting}
+            </p>
+          ) : (
+            <NarrowFrameContext value={{ narrow: assetPage || pageNarrow, request: setPageNarrow }}>
+              <Outlet />
+            </NarrowFrameContext>
+          )}
+        </ShellView>
+        {/* Old core/App.tsx: the update card under the shell (agent C's port owns its hook). */}
+        <UpdateNotice />
+      </ProposalScope>
+    </>
   );
 }
 

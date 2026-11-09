@@ -6,7 +6,7 @@ import { S as N } from "@cashu/i18n/core/overview/NetWorthWidget.strings";
 import type { AreaLayer, ChartColor, ChartTip, LegendItem } from "@cashu/ui";
 import { labelIndices } from "@cashu/ui/charts/geometry";
 import { cur, cur0, GROUP, monthYearShort, pctSigned, round0 } from "@cashu/ui-logic/core/format";
-import { hideAmount } from "@cashu/ui-logic/core/incognito";
+import { bananaMoney, hideAmount } from "@cashu/ui-logic/core/incognito";
 import type { Rich } from "./overviewModel.js";
 
 export type ChartMode = "line" | "stacked";
@@ -151,6 +151,7 @@ export function netWorthModel(args: {
   const beyond = args.total.components.filter((c) => !liquidKeys.has(c.key));
   const yl = beyond.length ? yearChange(args.liquid) : null;
   const yFormat = (v: number) =>
+    bananaMoney(v, currency) ??
     hideAmount(
       new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 0, ...GROUP }).format(
         Math.round(v / 1000) * 1000,

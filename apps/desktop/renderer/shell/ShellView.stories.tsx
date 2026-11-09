@@ -20,6 +20,10 @@ const state: ShellViewProps["state"] = {
   ],
   vault: "a",
   privacy: false,
+  privacyKey: "off",
+  bananas: null,
+  bananasStale: false,
+  privacyTitle: "Hide amounts: show them in bananas",
   toast: null,
   connectionText: "Connected.",
   connectionOk: true,
@@ -42,6 +46,17 @@ export default {
 export const Ready = {};
 export const NoProfile = { args: { state: { ...state, profile: null } } };
 export const Privacy = { args: { state: { ...state, privacy: true } } };
+export const Bananas = {
+  args: {
+    state: {
+      ...state,
+      privacy: true,
+      privacyKey: "bananas:salary:0.1",
+      bananas: { anchor: "salary" as const, perPln: 0.1, plnRates: {} },
+      privacyTitle: "Amounts in bananas: 🍌 1000 is your average monthly salary",
+    },
+  },
+};
 export const Reconnecting = {
   args: {
     state: {

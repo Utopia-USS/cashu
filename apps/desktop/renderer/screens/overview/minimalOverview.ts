@@ -6,6 +6,7 @@ import { S as I } from "@cashu/i18n/investments/v2/Overview.strings";
 import type { PortfolioSnapshot } from "@cashu/store/investments/screen";
 import type { InvestmentWidgets } from "@cashu/store/overview";
 import { MONTH_NOM } from "@cashu/ui-logic/core/format";
+import { bananaMoney } from "@cashu/ui-logic/core/incognito";
 import {
   accountLabel,
   dm,
@@ -133,7 +134,10 @@ export function minimalOverviewModel(input: {
   const { portfolio, today, privacy } = input;
   const currency = portfolio.overview.base_currency;
   // Python `money0`: whole units, always grouped ("2 000 zł", the locale default leaves four digits ungrouped)
-  const whole = (amount: Decimal) => (privacy ? HIDDEN : money0(amount.toFloat(), currency));
+  const whole = (amount: Decimal) =>
+    privacy
+      ? (bananaMoney(amount.toFloat(), currency) ?? HIDDEN)
+      : money0(amount.toFloat(), currency);
   const kpis = portfolio.overview.kpis;
   const perf = portfolio.performance;
   const summary = perf.summary;
@@ -198,7 +202,7 @@ export function minimalOverviewModel(input: {
       : plan !== null
         ? `${I.plannedOn(dm(plan.plannedDate))}${
             planAmount === null || !plan.amount.eq(planAmount)
-              ? ` · ${privacy ? HIDDEN : money0(plan.amount.toFloat(), plan.currency)}`
+              ? ` · ${privacy ? (bananaMoney(plan.amount.toFloat(), plan.currency) ?? HIDDEN) : money0(plan.amount.toFloat(), plan.currency)}`
               : ""
           }`
         : (account ?? I.perPlan);

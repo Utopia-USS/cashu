@@ -4,7 +4,7 @@
 // formatted here; the View lays it out.
 import { S } from "@cashu/i18n/investments/v2/Portfolio.strings";
 import type { ChartColor, DonutProps } from "@cashu/ui";
-import { hideAmount } from "@cashu/ui-logic/core/incognito";
+import { bananaMoney, hideAmount } from "@cashu/ui-logic/core/incognito";
 import {
   accountLabel,
   assetClass,
@@ -140,7 +140,8 @@ const paletteAt = (k: number): ChartColor => PALETTE[k % 8] ?? "inv-other";
 const colorName = (cssVar: string): ChartColor =>
   cssVar.replace(/^var\(--/, "").replace(/\)$/, "") as ChartColor;
 const totalK = (total: number, currency: string) =>
-  total >= 1000 ? hideAmount(S.thousands(Math.round(total / 1000))) : money0(total, currency);
+  bananaMoney(total, currency) ??
+  (total >= 1000 ? hideAmount(S.thousands(Math.round(total / 1000))) : money0(total, currency));
 
 function accountsBody(overview: Overview, today: string): AllocationBody {
   const accounts = overview.accounts;

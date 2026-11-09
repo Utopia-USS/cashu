@@ -28,6 +28,7 @@ import {
   money0,
   pct,
   qty,
+  unitPrice,
   wdm,
 } from "@cashu/ui-logic/investments/labels";
 import type { Hint, Instrument, Thesis } from "@cashu/ui-logic/investments/types";
@@ -324,8 +325,8 @@ export function assetModel(o: AssetInputs) {
       : []),
   ];
   const foot: { label: string; value: string }[] = [
-    ...(high != null ? [{ label: S.high52, value: money(high, c) }] : []),
-    ...(closes.length > 1 ? [{ label: S.low, value: money(Math.min(...closes), c) }] : []),
+    ...(high != null ? [{ label: S.high52, value: unitPrice(high, c) }] : []),
+    ...(closes.length > 1 ? [{ label: S.low, value: unitPrice(Math.min(...closes), c) }] : []),
     ...(vol30 != null ? [{ label: S.vol30, value: pct(vol30) }] : []),
     ...(nearest
       ? [
@@ -355,7 +356,7 @@ export function assetModel(o: AssetInputs) {
           padL: o.small ? 36 : 46,
           padR: o.small ? 150 : 200,
           values: closes,
-          endLabel: last != null ? money(last, c) : undefined,
+          endLabel: last != null ? unitPrice(last, c) : undefined,
           levels,
           markers,
           xLabels: labelIndices(series.length, o.small ? 3 : 5).map((i) => ({
@@ -366,7 +367,7 @@ export function assetModel(o: AssetInputs) {
             hideAmount(v.toLocaleString(intlLocale(), { maximumFractionDigits: v >= 100 ? 0 : 2 })),
           tooltip: (i: number): ChartTip => ({
             title: dmy(series[i]?.date ?? null),
-            rows: [{ name: S.legendPrice, value: money(series[i]?.close ?? null, c) }],
+            rows: [{ name: S.legendPrice, value: unitPrice(series[i]?.close ?? null, c) }],
           }),
         };
 
@@ -418,7 +419,7 @@ export function assetModel(o: AssetInputs) {
       date: dmy(l.open_date),
       account: lots.multi && a ? accountLabel(a, accounts) : null,
       quantity: qty(l.quantity),
-      price: l.unit_cost != null ? money(l.unit_cost, l.currency) : "-",
+      price: l.unit_cost != null ? unitPrice(l.unit_cost, l.currency) : "-",
       result: { text: money0(l.result, l.currency, true), tone: toneOf(l.result) },
       resultPct: { text: pct(l.resultPct, true), tone: toneOf(l.resultPct) },
     };
@@ -446,7 +447,7 @@ export function assetModel(o: AssetInputs) {
       sub,
       state: state ? { state, label: STATE_LABEL[state] } : null,
       hint: hints.length > 0 ? headerHint(hints, held) : null,
-      price: last != null ? money(last, c) : "-",
+      price: last != null ? unitPrice(last, c) : "-",
       week: wk != null ? { text: `${pct(wk, true)} ${S.week}`, tone: toneOf(wk) } : null,
       date: chart?.last ? wdm(chart.last.date) : "",
       fromHigh:
@@ -462,7 +463,7 @@ export function assetModel(o: AssetInputs) {
               tone: toneOf(pos.unrealized),
             },
             resultPct: pct(pos.unrealized_pct, true),
-            avgCost: avgCost ? money(avgCost.value, avgCost.currency) : "-",
+            avgCost: avgCost ? unitPrice(avgCost.value, avgCost.currency) : "-",
             quantity: qty(pos.quantity),
           }
         : null,

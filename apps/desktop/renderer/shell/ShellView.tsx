@@ -109,7 +109,7 @@ export function ShellView({
     }),
   ];
   return (
-    <UiEnvProvider privacy={state.privacy} locale={state.locale}>
+    <UiEnvProvider privacy={state.privacy} locale={state.locale} bananas={state.bananas}>
       <div className="min-h-screen bg-surface text-body text-fg">
         <div
           // One frame for the header on every page (the wide page box, old `.wrap.wide`): the page under it
@@ -140,7 +140,7 @@ export function ShellView({
                   checked={state.privacy}
                   onChange={state.onPrivacyChanged}
                   label={S.privacy}
-                  title={state.privacy ? T.showAmounts : S.privacy}
+                  title={state.privacyTitle}
                 >
                   <EyeGlyph crossed={state.privacy} />
                 </IconToggle>

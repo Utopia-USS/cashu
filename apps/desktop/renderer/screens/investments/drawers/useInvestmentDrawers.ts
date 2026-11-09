@@ -20,9 +20,11 @@ import {
   money,
   numInput,
   parseNum,
+  plainMoney,
   qty,
   TXN_TYPE,
   txnType,
+  unitPrice,
   WRAPPER,
 } from "@cashu/ui-logic/investments/labels";
 import { TXN_RULES, txnCash, validateTxn } from "@cashu/ui-logic/investments/logic";
@@ -189,7 +191,7 @@ export function useTxnDrawer(input: TxnDrawerInput) {
     error: err ? S.notSaved(err) : null,
     footHint:
       cash != null && cash !== 0
-        ? S.cashEffect(money(cash, cross ? accCur : currency, true))
+        ? S.cashEffect(plainMoney(cash, cross ? accCur : currency, true))
         : rule?.sign === "neutral"
           ? S.noCashEffect
           : "",
@@ -441,7 +443,7 @@ export function useTxnsDrawer(input: TxnsDrawerInput) {
           account: acc ? accountLabel(acc, all) : "-",
           type: txnType(x.type),
           quantity: quantity != null ? qty(quantity) : "-",
-          price: price != null ? money(price, x.currency) : "-",
+          price: price != null ? unitPrice(price, x.currency) : "-",
           cash: money(cash, x.cashCurrency, true),
           tone: cash > 0 ? ("positive" as const) : cash < 0 ? ("negative" as const) : null,
           source: src[x.source] ?? x.source,

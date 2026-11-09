@@ -18,7 +18,7 @@ import { MIN_WIDTH } from "./lineScene.js";
 import type { Built, Gradient, SceneNode, Scrub } from "./scene.js";
 import { colorRole } from "./scene.js";
 import type { AreaChartProps } from "./types.js";
-import { chartSummary, hides, seriesSummary, wholeNumber } from "./values.js";
+import { chartSummary, hides, isBanana, seriesSummary, wholeNumber } from "./values.js";
 
 /** The strong end of a single layer's fade: the legacy flat fill (.8) x 1.6, capped (F7 PX1). */
 const STACK_FADE = fadeOpacity(0.8);
@@ -50,12 +50,13 @@ export function areaScene(p: AreaChartProps, width: number, privacy: boolean): B
 
   for (const v of ticks(lo, hi, 4)) {
     nodes.push({ k: "line", x1: padL, x2: w - padR, y1: Y(v), y2: Y(v), stroke: "grid", width: 1 });
-    if (!hidden) {
+    const label = fmt(v);
+    if (!hidden || isBanana(label)) {
       nodes.push({
         k: "text",
         x: padL - 8,
         y: Y(v) + 3.5,
-        text: fmt(v),
+        text: label,
         anchor: "end",
         tone: "muted",
       });

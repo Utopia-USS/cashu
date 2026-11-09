@@ -93,14 +93,20 @@ test("the Overview shows each profile's stored amounts, hides them in privacy mo
     }, annaWorth);
     expect(exposed).toBe(false);
     await expect(privacy).toBeChecked();
-    await expect(worth).not.toContainText(/\d/u);
+    // The demo's budget knows a salary: amounts show as bananas (🍌 1000 = the average monthly salary),
+    // never in złoty, and the toggle's tooltip says what the scale stands for.
+    await expect(worth).toHaveText(/^-?🍌 [\d\s\u00a0\u202f,]+$/u);
+    // The tooltip sits on the toggle's circle (the label around the checkbox).
+    await expect(page.locator("label", { has: privacy })).toHaveAttribute("title", /🍌 1000 to /u);
     await expect(page.getByRole("img", { name: /^Wartość netto w czasie/u })).not.toHaveAttribute(
       "aria-label",
-      /\d{3}|\d\s?zł/u,
+      // "PLN" alone is the chart's title; an amount next to a currency would be a leak.
+      /\d\s?(?:zł|PLN)|PLN\s?\d/u,
     );
     await chartControl.focus();
     await chartControl.press("End");
-    await expect(chartControl.getByRole("status")).toContainText("•••");
+    await expect(chartControl.getByRole("status")).toContainText("🍌");
+    await expect(chartControl.getByRole("status")).not.toContainText(/zł|PLN/u);
     await privacy.click();
     await expect(worth).toHaveText(annaWorth);
 

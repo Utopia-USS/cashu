@@ -4,7 +4,7 @@
 
 import { intlLocale, lang, normalizeNumberInput } from "@cashu/i18n";
 import { cur, GROUP } from "../core/format.js";
-import { hideAmount } from "../core/incognito.js";
+import { bananaMoney, hideAmount } from "../core/incognito.js";
 import { hmLocal, localIsoDate, serverDate } from "../core/time.js";
 import {
   ASSET_CLASS as ASSET_CLASS_C,
@@ -72,18 +72,41 @@ export function money(v: number | null | undefined, c = "PLN", signed = false): 
   return signed && v >= 0.005 ? `+${text}` : text;
 }
 
+/**
+ * Money that incognito masks and never puts on the banana scale: an amount next to what makes it
+ * computable from public data (a quantity and a price in a form). One such banana value would give the
+ * scale away. "+3 240,15 zł" as `money`.
+ */
+export function plainMoney(v: number | null | undefined, c = "PLN", signed = false): string {
+  if (v == null || !Number.isFinite(v)) return "-";
+  const r = Math.abs(v) < 0.005 ? 0 : v;
+  const text = hideAmount(
+    new Intl.NumberFormat(intlLocale(), { style: "currency", currency: c, ...GROUP }).format(r),
+  );
+  return signed && r > 0 ? `+${text}` : text;
+}
+
+/**
+ * A per-unit market price (last price, average cost, a level): "148,60 zł". Prices are public, so in
+ * incognito they never go on the banana scale (one known price would give the scale away); they stay
+ * masked.
+ */
+export const unitPrice = (v: number | null | undefined, c = "PLN"): string => plainMoney(v, c);
+
 /** Whole money for hints: "11 600 zł". */
 export function money0(v: number | null | undefined, c = "PLN", signed = false): string {
   if (v == null || !Number.isFinite(v)) return "-";
   const r = Math.round(v) || 0; // no negative zero: -0.3 zł is "0 zł", not "-0 zł" (F7 FE11)
-  const text = hideAmount(
-    new Intl.NumberFormat(intlLocale(), {
-      style: "currency",
-      currency: c,
-      maximumFractionDigits: 0,
-      ...GROUP,
-    }).format(r),
-  );
+  const text =
+    bananaMoney(r, c) ??
+    hideAmount(
+      new Intl.NumberFormat(intlLocale(), {
+        style: "currency",
+        currency: c,
+        maximumFractionDigits: 0,
+        ...GROUP,
+      }).format(r),
+    );
   return signed && r > 0 ? `+${text}` : text;
 }
 

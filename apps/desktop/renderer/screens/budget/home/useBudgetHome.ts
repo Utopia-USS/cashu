@@ -22,7 +22,7 @@ import { useToast, useUiEnv } from "@cashu/ui";
 import { monthLabel, monthShort, planState } from "@cashu/ui-logic/budget/logic";
 import type { InvestingLink } from "@cashu/ui-logic/budget/types";
 import { cur, cur0s, GROUP } from "@cashu/ui-logic/core/format";
-import { hideAmount } from "@cashu/ui-logic/core/incognito";
+import { bananaMoney, hideAmount } from "@cashu/ui-logic/core/incognito";
 import { useState } from "react";
 import { commandFailure, useDurableCommands } from "../../useDurableCommand.js";
 import { useBudgetCurrency } from "../expenses/budgetCurrency.js";
@@ -125,6 +125,8 @@ function longLabel(mode: PeriodMode, i: number): string {
 
 /** "PLN 6 037,60": the hero's figure with the currency code in front. */
 function codeAmount(v: number, currency: string): string {
+  const bananas = bananaMoney(v, currency);
+  if (bananas !== null) return bananas;
   const n = new Intl.NumberFormat(intlLocale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -135,8 +137,9 @@ function codeAmount(v: number, currency: string): string {
 
 const signed = (v: number, currency: string) => `${v >= 0 ? "+" : ""}${cur0s(v, currency)}`;
 
-/** Compact axis values ("30 tys.", "30K"). */
-const compact = (v: number) =>
+/** Compact axis values ("30 tys.", "30K"); bananas in incognito. */
+const compact = (v: number, currency: string) =>
+  bananaMoney(v, currency) ??
   hideAmount(new Intl.NumberFormat(intlLocale(), { notation: "compact" }).format(v));
 
 export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOptions): {
@@ -287,7 +290,7 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
     ? {
         label: H.chart,
         top: ticks.top,
-        ticks: ticks.values.map((value) => ({ value, label: compact(value) })),
+        ticks: ticks.values.map((value) => ({ value, label: compact(value, currency) })),
         groups: shown.map((g) => {
           const net = g.income.sub(g.expense).toFloat();
           return {

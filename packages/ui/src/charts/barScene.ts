@@ -5,7 +5,7 @@ import { barLayout } from "./geometry.js";
 import { MIN_WIDTH } from "./lineScene.js";
 import { type Built, type ChartRole, type SceneNode, seriesRole } from "./scene.js";
 import type { BarChartProps } from "./types.js";
-import { hides, wholeNumber } from "./values.js";
+import { hides, isBanana, wholeNumber } from "./values.js";
 
 const KIND: Record<"main" | "plan" | "muted", { fill: ChartRole; opacity?: number }> = {
   main: { fill: "series1" },
@@ -22,7 +22,8 @@ function barsSummary(p: BarChartProps, privacy: boolean): string {
   const parts = p.values.map((v, i) => {
     const name = p.labels?.[i] ?? String(i + 1);
     const given = p.valueLabels?.[i];
-    const value = !v && given == null ? S.none : hidden ? S.hidden : (given ?? fmt(v));
+    const shown = given ?? fmt(v);
+    const value = !v && given == null ? S.none : hidden && !isBanana(shown) ? S.hidden : shown;
     return `${name} ${value}`;
   });
   return parts.length ? `${p.label}: ${parts.join(", ")}` : `${p.label}: ${S.noData}`;
@@ -51,7 +52,7 @@ export function barScene(p: BarChartProps, width: number, privacy: boolean): Bui
       nodes.push({ k: "text", x: b.cx, y: h - 4, text: label, anchor: "middle", tone: "muted" });
     }
     const value = p.valueLabels?.[i];
-    if (value != null && b.h > 0 && !hidden) {
+    if (value != null && b.h > 0 && (!hidden || isBanana(value))) {
       nodes.push({ k: "text", x: b.cx, y: b.y - 4, text: value, anchor: "middle", tone: "text" });
     }
   });

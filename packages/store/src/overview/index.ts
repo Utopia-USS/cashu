@@ -21,6 +21,7 @@ import { monthPlan } from "../investments/services/planned.js";
 import { readOverview } from "../investments/views/overview.js";
 import { mcpLoanRows } from "../loans/mcp-queries.js";
 import { type ChangeSource, defineQuery, type Query, type Read } from "../query.js";
+import { bananaScaleView } from "./bananas.js";
 import {
   modulesOf,
   type NetWorthQueries,
@@ -37,6 +38,7 @@ import {
   overviewAssets,
 } from "./widgets.js";
 
+export { bananaScaleView } from "./bananas.js";
 export {
   HERO_CASHFLOW_MONTHS,
   type HeroView,
@@ -119,6 +121,8 @@ export interface OverviewQueries extends NetWorthQueries {
     { readonly today: IsoDate; readonly lang: core.UiLang },
     InvestmentWidgets
   >;
+  /** The privacy mode's banana scale (`core.bananaScale`); null without a salary or a portfolio. */
+  readonly bananaScale: Query<{ readonly today: IsoDate }, core.BananaScale | null>;
 }
 
 export type InvestmentWidgets =
@@ -495,6 +499,12 @@ export function overviewQueries(
       ...(env.changes === undefined ? {} : { changes: env.changes }),
       run: (read, args: { readonly today: IsoDate; readonly lang: core.UiLang }) =>
         investmentWidgets(read, { today: args.today, lang: args.lang, prices }, sources),
+    }),
+    bananaScale: defineQuery({
+      id: "core.bananaScale",
+      ...(env.changes === undefined ? {} : { changes: env.changes }),
+      run: (read, args: { readonly today: IsoDate }) =>
+        bananaScaleView(read, { today: args.today, prices }, sources),
     }),
   };
 }

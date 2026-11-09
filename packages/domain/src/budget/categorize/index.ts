@@ -23,6 +23,7 @@ export {
   type EngineContext,
   type EngineSource,
   type EngineTxn,
+  isSalaryKey,
   ownerDecision,
   txnMerchantKey,
   txnText,

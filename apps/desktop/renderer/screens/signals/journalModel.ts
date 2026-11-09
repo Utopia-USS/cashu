@@ -2,7 +2,7 @@
 // signal they answer, signals as they appeared, signals that expired or resolved without a decision) and the
 // signal history rows; links and the undo come in as callbacks.
 import { S, STATUS_L } from "@cashu/i18n/investments/v2/Journal.strings";
-import { DECISION_ACTION, dm, money, qty } from "@cashu/ui-logic/investments/labels";
+import { DECISION_ACTION, dm, qty, unitPrice } from "@cashu/ui-logic/investments/labels";
 import type { Decision } from "@cashu/ui-logic/investments/types";
 import { type JournalEntry, polarityOf, signalText } from "@cashu/ui-logic/investments/v2/logic";
 import type { SignalV2 } from "@cashu/ui-logic/investments/v2/types";
@@ -63,7 +63,7 @@ export function recordRow(
     const id = d.instrument_id ?? s?.instrument_id ?? null;
     const trade =
       d.quantity != null && (d.action === "bought" || d.action === "sold")
-        ? ` · ${qty(d.quantity)}${d.price != null ? ` @ ${money(d.price, d.currency ?? "PLN")}` : ""}`
+        ? ` · ${qty(d.quantity)}${d.price != null ? ` @ ${unitPrice(d.price, d.currency ?? "PLN")}` : ""}`
         : "";
     return {
       key,

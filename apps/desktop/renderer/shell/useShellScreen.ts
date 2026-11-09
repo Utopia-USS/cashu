@@ -11,10 +11,18 @@ import {
   useStoreClient,
 } from "@cashu/store-react";
 import type { StoreClient } from "@cashu/store-react/client";
-import { isIncognito, onIncognitoChange, setIncognito } from "@cashu/ui-logic/core/incognito";
+import {
+  bananaScaleVault,
+  currentBananaScale,
+  incognitoKey,
+  isIncognito,
+  onIncognitoChange,
+  setIncognito,
+} from "@cashu/ui-logic/core/incognito";
 import { use, useState, useSyncExternalStore } from "react";
 import { S } from "../Desktop.strings.js";
 import { commandFailure, useDurableCommands } from "../screens/useDurableCommand.js";
+import { S as T } from "./Shell.strings.js";
 
 const queries = overviewQueries({ prices: null });
 const profileSources = new WeakMap<
@@ -75,6 +83,9 @@ export function useShellScreen(args: {
   const switchProfile = useCommand(setCurrentVault);
   const durable = useDurableCommands();
   const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
+  const privacyKey = useSyncExternalStore(onIncognitoChange, incognitoKey);
+  const bananas = useSyncExternalStore(onIncognitoChange, currentBananaScale);
+  const bananasOf = useSyncExternalStore(onIncognitoChange, bananaScaleVault);
   const [toast, setToast] = useState<string | null>(null);
   return {
     profile,
@@ -87,6 +98,21 @@ export function useShellScreen(args: {
     })),
     vault,
     privacy,
+    /** Changes with incognito and with the banana scale: the page's remount key. */
+    privacyKey,
+    /** Money in incognito goes on this scale (null: masked). */
+    bananas: privacy ? bananas : null,
+    /** The scale still belongs to the profile before a switch: the page waits for it to drop (the
+     * formatters read it while the models are built), so one profile never shows on another's scale. */
+    bananasStale: privacy && bananasOf !== null && bananasOf !== vault,
+    /** The incognito toggle's tooltip: what the toggle does, or what 🍌 1000 stands for now. */
+    privacyTitle: !privacy
+      ? T.bananasOff
+      : bananas === null
+        ? T.bananasMasked
+        : bananas.anchor === "salary"
+          ? T.bananasSalary
+          : T.bananasPortfolio,
     toast,
     connectionText: isStale(connection)
       ? `${Connection[connection]} ${Connection.stale}`

@@ -58,6 +58,11 @@ export function txnText(t: EngineTxn): string {
   );
 }
 
+/** The salary keyword rule: an inflow whose merchant key names a salary is `income_salary` (Polish
+ * matching data, keep it Polish). */
+export const isSalaryKey = (mk: string): boolean =>
+  mk.includes("WYNAGRODZENIE") || mk.includes("PENSJA");
+
 /** `merchant_key(counterparty_name, reference, description)` (argument order matters). */
 export function txnMerchantKey(t: EngineTxn): string {
   return merchantKey(t.counterpartyName, t.reference, t.description);
@@ -149,7 +154,7 @@ export function categorizeWith(
   // 5. Income (inflows), separate from the expense seeds.
   if (t.amount.gt(ZERO)) {
     if (seed && INCOME_KEYS.has(seed)) return { category: seed, source: "keyword" };
-    if (mk.includes("WYNAGRODZENIE") || mk.includes("PENSJA")) {
+    if (isSalaryKey(mk)) {
       return { category: "income_salary", source: "keyword" };
     }
     return { category: "income_other", source: "default" };

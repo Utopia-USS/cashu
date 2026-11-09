@@ -1,11 +1,16 @@
 // Value text of the charts: privacy masking, the default number format and the accessible summaries.
 // Pure (the language and locale come from @cashu/i18n, privacy is a parameter).
 import { intlLocale } from "@cashu/i18n";
+import { BANANA } from "@cashu/i18n/values";
 import { S } from "./charts.strings.js";
 import type { ValueKind } from "./types.js";
 
 /** Shown in place of an amount in privacy mode. */
 export const MASK = "•••";
+
+/** Text already on the privacy mode's banana scale: safe to show while amounts are hidden (the caller's
+ * formatter converted it; any other amount text stays masked). */
+export const isBanana = (text: string): boolean => text.includes(BANANA);
 
 /** True when values of this kind are hidden. */
 export const hides = (kind: ValueKind | undefined, privacy: boolean): boolean =>
@@ -33,7 +38,10 @@ export function seriesSummary(
   const finite = values.filter((v): v is number => v != null && Number.isFinite(v));
   const last = finite[finite.length - 1];
   if (last == null) return null;
-  const say = (v: number) => (hidden ? S.hidden : format(v));
+  const say = (v: number) => {
+    const text = format(v);
+    return hidden && !isBanana(text) ? S.hidden : text;
+  };
   return S.seriesSummary(name, say(last), say(Math.min(...finite)), say(Math.max(...finite)));
 }
 
@@ -51,12 +59,15 @@ export function chartSummary(
   return [label, range, ...body].filter((p) => p != null).join(". ");
 }
 
-/** A tooltip with its amount values masked in privacy mode. */
+/** A tooltip with its amount values masked in privacy mode (banana values stay). */
 export function maskTip<T extends { rows: { value: string; amount?: boolean }[] }>(
   tip: T,
   privacy: boolean,
 ): T {
   return privacy
-    ? { ...tip, rows: tip.rows.map((r) => (r.amount ? { ...r, value: MASK } : r)) }
+    ? {
+        ...tip,
+        rows: tip.rows.map((r) => (r.amount && !isBanana(r.value) ? { ...r, value: MASK } : r)),
+      }
     : tip;
 }

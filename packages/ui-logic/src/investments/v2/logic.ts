@@ -23,6 +23,7 @@ import {
   qty,
   REGION,
   txnType,
+  unitPrice,
   WEEKDAY_INDEX,
 } from "../labels.js";
 import type { FreshReason, Hint, PlanFreshness } from "../types.js";
@@ -566,9 +567,9 @@ const signedPct = (v: number | null) => (v == null ? "-" : pct(v, true));
 const breakoutPct = (v: number | null) =>
   v != null && Math.abs(v) < 0.0005 ? T.breakoutJust : signedPct(v);
 
-/** Price with currency (2 decimals): "30,00 €", "148,60 zł". */
+/** Price with currency (2 decimals): "30,00 €", "148,60 zł"; a unit price, never in bananas. */
 export const price = (v: number | null | undefined, c?: string | null) =>
-  v == null || !Number.isFinite(v) ? "-" : money(v, c || "PLN");
+  v == null || !Number.isFinite(v) ? "-" : unitPrice(v, c || "PLN");
 
 /** Display name of an instrument: the name when it differs from the symbol (a manual instrument's label
  * is its symbol), else the label. */
@@ -2409,7 +2410,7 @@ export function assetTimeline(
   }
   for (const d of real) {
     const trade = (d.action === "bought" || d.action === "sold") && d.quantity != null;
-    const fact = `${DECISION_ACTION[d.action] ?? d.action}${trade ? ` ${T.units(qty(d.quantity))}${d.price != null ? ` @ ${money(d.price, d.currency ?? o.currency)}` : ""}` : ""}`;
+    const fact = `${DECISION_ACTION[d.action] ?? d.action}${trade ? ` ${T.units(qty(d.quantity))}${d.price != null ? ` @ ${unitPrice(d.price, d.currency ?? o.currency)}` : ""}` : ""}`;
     const reason =
       d.reason && d.reason !== "acknowledged" && !d.reason.startsWith("decyzja: ")
         ? d.reason
@@ -2454,7 +2455,7 @@ export function assetTimeline(
       at: `${t.trade_date}T12:00:00`,
       dot: "nw",
       head: txnType(t.type).replace(/^./, (c) => c.toUpperCase()),
-      fact: `${qty(t.quantity)} @ ${money(t.price, t.currency)}`,
+      fact: `${qty(t.quantity)} @ ${unitPrice(t.price, t.currency)}`,
       key: `t:${t.id}`,
     });
   }
