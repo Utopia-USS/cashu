@@ -1,30 +1,25 @@
 // The loans first steps (ab24ab6 modules/loans/Start.tsx in core/StartPage.tsx): the shared module start frame
-// with the loan and installment steps and the Agent AI widget. Pure; the drawers come in as children.
+// with the loan and installment steps and the Claude Code card under them. Pure; the card and the drawers come in.
 import { S as A } from "@cashu/i18n/core/chrome.strings";
 import { S as T } from "@cashu/i18n/loans/Start.strings";
-import { AgentWidget, Button, ModuleStart, Tag } from "@cashu/ui";
+import { Button, ModuleStart, Tag } from "@cashu/ui";
 import type { ReactNode } from "react";
 import type { LoansState } from "./useLoansScreen.js";
 
 export interface LoansStartViewProps {
   state: LoansState;
-  onGuide(): void;
-  onAgentSettings(): void;
+  /** The `Z pomocą Claude Code` card under the steps. */
+  agent?: ReactNode;
   children?: ReactNode;
 }
 
-export function LoansStartView({ state, onGuide, onAgentSettings, children }: LoansStartViewProps) {
+export function LoansStartView({ state, agent, children }: LoansStartViewProps) {
   const { start } = state;
   return (
     <ModuleStart
       title={T.title}
       tag={<Tag tone={start.tag.tone}>{start.tag.text}</Tag>}
       stepsTitle={A.firstSteps}
-      footer={
-        <Button variant="link" size="sm" onPress={onGuide}>
-          {A.cliGuide}
-        </Button>
-      }
       steps={
         start.steps?.map((step) => ({
           key: step.key,
@@ -46,7 +41,7 @@ export function LoansStartView({ state, onGuide, onAgentSettings, children }: Lo
             : undefined,
         })) ?? null
       }
-      aside={<AgentWidget privacy={start.mcpPrivacy} onSettings={onAgentSettings} />}
+      below={agent}
     >
       {children}
     </ModuleStart>

@@ -6,7 +6,6 @@
 // the screen.
 import { S } from "@cashu/i18n/investments/v2/Home.strings";
 import {
-  AgentWidget,
   Button,
   CodeLine,
   type FactProps,
@@ -213,7 +212,13 @@ export interface HomeViewProps extends HomeHeadProps {
         /** Only with watched instruments or on the watch route. */
         watch: ReactNode;
       }
-    | { kind: "start"; start: StartModel; onCopy(): void; onSettings(): void };
+    | {
+        kind: "start";
+        start: StartModel;
+        onCopy(): void;
+        /** The `Z pomocą Claude Code` card under the steps. */
+        agent?: ReactNode;
+      };
   /** Layers over the page: the review deck, the signals dialog, the Import drawer. */
   overlays?: ReactNode;
 }
@@ -280,18 +285,14 @@ function HomeGrid({ main, rail, research }: Extract<HomeViewProps["content"], { 
   return <Grid items={items} />;
 }
 
-/** First steps of an empty portfolio (strategy first, purchases later) next to the Agent AI widget. */
-function StartView({
-  start,
-  onCopy,
-  onSettings,
-}: Extract<HomeViewProps["content"], { kind: "start" }>) {
+/** First steps of an empty portfolio (strategy first, purchases later), the Claude Code card under them. */
+function StartView({ start, onCopy, agent }: Extract<HomeViewProps["content"], { kind: "start" }>) {
   return (
     <Grid
       items={[
         {
           id: "start",
-          span: 2,
+          span: 3,
           node: (
             <Widget title={S.firstSteps} tight>
               <SetupSteps
@@ -329,11 +330,7 @@ function StartView({
             </Widget>
           ),
         },
-        {
-          id: "privacy",
-          span: 1,
-          node: <AgentWidget privacy={"strict"} onSettings={onSettings} />,
-        },
+        ...(agent != null ? [{ id: "agent", span: 3 as const, node: agent }] : []),
       ]}
     />
   );

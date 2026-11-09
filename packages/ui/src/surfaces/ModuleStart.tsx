@@ -14,16 +14,16 @@ export interface ModuleStartProps {
   stepsTitle: string;
   /** null while loading: three skeleton rows. */
   steps: readonly SetupStepItem[] | null;
-  /** The steps widget's footer (the Claude Code / CLI guide link). */
+  /** The steps widget's footer. */
   footer?: ReactNode;
-  /** The narrow widget next to the steps (the Agent AI widget). */
-  aside?: ReactNode;
+  /** The full-width card under the steps (`Z pomocą Claude Code`). */
+  below?: ReactNode;
   /** Drawers of the page. */
   children?: ReactNode;
 }
 
-/** A module's in-app first steps (old core/StartPage.tsx): page head with the steps tag, then the steps widget
- * (two columns) next to the aside widget (one column) in the dashboard grid. */
+/** A module's first steps on one page: page head with the steps tag, the steps widget, then the full-width card
+ * under it (the Claude Code card) in the dashboard grid. */
 export function ModuleStart(props: ModuleStartProps) {
   return (
     <>
@@ -32,7 +32,7 @@ export function ModuleStart(props: ModuleStartProps) {
         items={[
           {
             id: "start",
-            span: 2,
+            span: 3,
             node: (
               <Widget title={props.stepsTitle} tight footer={props.footer}>
                 {props.steps ? (
@@ -47,7 +47,7 @@ export function ModuleStart(props: ModuleStartProps) {
               </Widget>
             ),
           },
-          ...(props.aside != null ? [{ id: "agent", span: 1 as const, node: props.aside }] : []),
+          ...(props.below != null ? [{ id: "agent", span: 3 as const, node: props.below }] : []),
         ]}
       />
       {props.children}

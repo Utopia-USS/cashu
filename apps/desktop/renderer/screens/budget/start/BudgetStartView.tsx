@@ -1,33 +1,23 @@
 // The budget first steps page (ab24ab6 modules/budget/Start.tsx in core/StartPage.tsx): the shared module start
-// frame with the three steps and the Agent AI widget. Pure; the drawers come in as children.
+// frame with the three steps and the Claude Code card under them. Pure; the card and the drawers come in.
 import { S as A } from "@cashu/i18n/core/chrome.strings";
-import { AgentWidget, Button, ModuleStart, Tag } from "@cashu/ui";
+import { Button, ModuleStart, Tag } from "@cashu/ui";
 import type { ReactNode } from "react";
 import type { BudgetStartState } from "./useBudgetStart.js";
 
 export interface BudgetStartViewProps {
   state: BudgetStartState;
-  onGuide(): void;
-  onAgentSettings(): void;
+  /** The `Z pomocą Claude Code` card under the steps. */
+  agent?: ReactNode;
   children?: ReactNode;
 }
 
-export function BudgetStartView({
-  state,
-  onGuide,
-  onAgentSettings,
-  children,
-}: BudgetStartViewProps) {
+export function BudgetStartView({ state, agent, children }: BudgetStartViewProps) {
   return (
     <ModuleStart
       title={state.title}
       tag={<Tag tone={state.tag.tone}>{state.tag.text}</Tag>}
       stepsTitle={A.firstSteps}
-      footer={
-        <Button variant="link" size="sm" onPress={onGuide}>
-          {A.cliGuide}
-        </Button>
-      }
       steps={
         state.steps?.map((step) => ({
           key: step.key,
@@ -49,7 +39,7 @@ export function BudgetStartView({
             : undefined,
         })) ?? null
       }
-      aside={<AgentWidget privacy={state.mcpPrivacy} onSettings={onAgentSettings} />}
+      below={agent}
     >
       {children}
     </ModuleStart>

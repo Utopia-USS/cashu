@@ -7,7 +7,6 @@ import { S } from "@cashu/i18n/budget/Start.strings";
 import { S as P } from "@cashu/i18n/core/SetupPage.strings";
 import { S as N } from "@cashu/i18n/core/setupSteps.strings";
 import { budgetDesktopQueries, matchDesktopTransfers } from "@cashu/store/budget/queries";
-import { profile } from "@cashu/store/core";
 import { overviewQueries } from "@cashu/store/overview";
 import { useCommand, useQuery } from "@cashu/store-react";
 import { useToast } from "@cashu/ui";
@@ -29,7 +28,6 @@ interface StepAction {
 
 export function useBudgetStart(args: { today: IsoDate; inSetupView: boolean; onExpenses(): void }) {
   const toast = useToast();
-  const identity = useQuery(profile);
   const setup = useQuery(q.moduleSetup, { module: "budget", cli: "", lang: lang() });
   const bc = useBudgetCurrency({ today: args.today, requested: undefined, onChange: () => {} });
   const settings = useQuery(queries.settings);
@@ -91,7 +89,6 @@ export function useBudgetStart(args: { today: IsoDate; inSetupView: boolean; onE
   return {
     title: S.title,
     tag,
-    mcpPrivacy: identity?.mcpPrivacy ?? "strict",
     currency: bc.currency,
     steps: info
       ? [

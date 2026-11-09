@@ -60,7 +60,6 @@ export const Start = {
         command: "cashu invest accounts add",
       },
       onCopy() {},
-      onSettings() {},
     },
   },
 };

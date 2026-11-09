@@ -1,4 +1,6 @@
 import assets from "../overview/AssetsWidgetView.stories.js";
+import { AgentWidgetView } from "../setup/AgentWidgetView.js";
+import agent from "../setup/AgentWidgetView.stories.js";
 import { AssetsStartView, type AssetsStartViewProps } from "./AssetsStartView.js";
 
 const { state } = assets.args;
@@ -7,9 +9,7 @@ const args: AssetsStartViewProps = {
   today: assets.args.today,
   baseCurrency: assets.args.baseCurrency,
   privacy: false,
-  mcpPrivacy: "strict",
-  onGuide: () => {},
-  onAgentSettings: () => {},
+  agent: <AgentWidgetView {...agent.args} skill="/assets-setup" />,
 };
 export default { title: "Desktop/Assets/Start", component: AssetsStartView, args };
 export const Ready = {};
@@ -29,5 +29,5 @@ export const Empty = {
     },
   },
 };
-export const Loading = { args: { ...args, state: null, mcpPrivacy: null } };
+export const Loading = { args: { ...args, state: null, agent: undefined } };
 export const Privacy = { args: { ...args, privacy: true } };

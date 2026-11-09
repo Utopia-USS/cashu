@@ -1,3 +1,5 @@
+import { AgentWidgetView } from "../../setup/AgentWidgetView.js";
+import agent from "../../setup/AgentWidgetView.stories.js";
 import { BudgetStartView } from "./BudgetStartView.js";
 import type { BudgetStartState } from "./useBudgetStart.js";
 
@@ -5,7 +7,6 @@ const noop = () => {};
 const state = {
   title: "Home budget",
   tag: { tone: "warning", text: "0 of 3 steps" },
-  mcpPrivacy: "strict",
   currency: "PLN",
   steps: [
     {
@@ -24,7 +25,7 @@ const state = {
 export default {
   title: "Budget/Start",
   component: BudgetStartView,
-  args: { state, onGuide: noop, onAgentSettings: noop },
+  args: { state, agent: <AgentWidgetView {...agent.args} /> },
 };
 export const SetupRequired = {};
 export const Loading = { args: { state: { ...state, steps: null } } };

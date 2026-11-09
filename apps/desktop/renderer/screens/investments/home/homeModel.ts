@@ -296,7 +296,6 @@ export function startModel(input: {
   initBusy: boolean;
   onAddAccount(): void;
   onInitStrategy(): void;
-  onGuide(): void;
   onAddTxn(): void;
 }): StartModel {
   const { accounts, strategy } = input;
@@ -338,7 +337,6 @@ export function startModel(input: {
                 disabled: input.initBusy,
                 onPress: input.onInitStrategy,
               },
-              { label: S.claudeGuide, primary: false, onPress: input.onGuide },
             ],
       },
       {

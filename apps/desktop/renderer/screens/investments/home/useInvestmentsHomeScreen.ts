@@ -89,7 +89,8 @@ export interface InvestmentsHomeOptions {
   onTopicOpened?(key: string): void;
   onTopicClosed?(): void;
   onProposalOpened?(gid: string, onResumed: () => void): boolean;
-  onSetupOpened?(): void;
+  /** `setup/investments`: the first steps even when the portfolio has data. */
+  readonly setup?: boolean;
   onSettingsOpened?(): void;
   /** The asset of the route (`assets/{gid}`): its drawer over the Home, or its page with `page`. */
   readonly instrument?: string;
@@ -327,7 +328,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   // ---- models ----------------------------------------------------------------------------------------------
   const err = data.ov.error || data.pos.error;
   const phase: "error" | "start" | "home" =
-    !overview || !positions ? "error" : hasData ? "home" : "start";
+    !overview || !positions ? "error" : hasData && !o.setup ? "home" : "start";
   const head = overview
     ? headModel({ overview, filter, hasData, today, running: data.running })
     : null;
@@ -383,7 +384,6 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
             initBusy: commands.initBusy,
             onAddAccount: () => setDrawer({ kind: "account" }),
             onInitStrategy: () => void initStrategy(),
-            onGuide: () => o.onSetupOpened?.(),
             onAddTxn: () => setDrawer({ kind: "txn" }),
           })
         : null,

@@ -48,7 +48,6 @@ export function loansStoryState(privacy: boolean): LoansState {
     setRange: noop,
     start: {
       tag: stepsTag({ state: "partial", steps }),
-      mcpPrivacy: "strict",
       steps: startSteps({
         steps,
         budgetOn: true,
@@ -111,17 +110,8 @@ export function StoryFixture({
   component: ComponentType<{
     state: LoansState;
     onSetup(): void;
-    onGuide(): void;
-    onAgentSettings(): void;
   }>;
   state?: Partial<LoansState>;
 }) {
-  return (
-    <Component
-      state={{ ...storyState, ...state }}
-      onSetup={noop}
-      onGuide={noop}
-      onAgentSettings={noop}
-    />
-  );
+  return <Component state={{ ...storyState, ...state }} onSetup={noop} />;
 }

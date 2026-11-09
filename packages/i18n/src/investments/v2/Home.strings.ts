@@ -89,7 +89,6 @@ export const S = catalog({
   orInterview: { pl: " albo wywiad w Claude Code: ", en: " or an interview in Claude Code: " },
   creating: { pl: "Tworzę…", en: "Creating…" },
   fromTemplate: { pl: "Utwórz z szablonu", en: "Create from template" },
-  claudeGuide: { pl: "Instrukcja Claude Code", en: "Claude Code guide" },
   firstTxn: { pl: "Pierwsza wpłata lub zakup", en: "First contribution or purchase" },
   firstTxnHint: {
     pl: "Ręcznie albo import pliku od brokera.",

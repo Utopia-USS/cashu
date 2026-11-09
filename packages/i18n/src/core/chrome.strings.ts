@@ -36,5 +36,4 @@ export const S = catalog({
 
   // StartPage
   firstSteps: { pl: "Pierwsze kroki", en: "First steps" },
-  cliGuide: { pl: "Instrukcja Claude Code i CLI", en: "Claude Code and CLI guide" },
 });

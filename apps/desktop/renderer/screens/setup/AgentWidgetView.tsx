@@ -12,7 +12,7 @@ import {
   Tag,
 } from "@cashu/ui";
 import { S } from "./Setup.strings.js";
-import type { SetupAgentContext } from "./useSetupScreen.js";
+import type { SetupAgentContext } from "./useSetupAgent.js";
 
 export interface AgentWidgetViewProps {
   readonly agent: SetupAgentContext;

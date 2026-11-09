@@ -6,7 +6,6 @@ import { lang } from "@cashu/i18n";
 import { S as DS } from "@cashu/i18n/loans/Drawers.strings";
 import { S as T } from "@cashu/i18n/loans/Start.strings";
 import { budgetDesktopQueries } from "@cashu/store/budget/queries";
-import { profile as profileQuery } from "@cashu/store/core";
 import { createUiLoan, loansScreen, setUiLoanPayment } from "@cashu/store/loans/screen";
 import { overviewQueries } from "@cashu/store/overview";
 import { useCommand, useQuery } from "@cashu/store-react";
@@ -53,7 +52,6 @@ export function useLoansScreen(today: string) {
   const hero = useQuery(q.hero, { today });
   const setup = useQuery(q.moduleSetup, { module: "loans", cli: "", lang: lang() });
   const modules = useQuery(q.moduleStates);
-  const identity = useQuery(profileQuery);
   const base = hero.facts.currency;
   const budgetOn = modules.some((m) => m.id === "budget" && m.enabled);
   const setupState = modules.find((m) => m.id === "loans")?.setupState ?? "empty";
@@ -243,7 +241,6 @@ export function useLoansScreen(today: string) {
     setRange,
     start: {
       tag: stepsTag(info),
-      mcpPrivacy: identity?.mcpPrivacy ?? "strict",
       steps: startSteps({
         steps: info?.steps ?? null,
         budgetOn,

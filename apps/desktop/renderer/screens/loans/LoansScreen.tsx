@@ -13,6 +13,7 @@ import {
 } from "@cashu/ui";
 import { Suspense } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
+import { SetupAgentCard } from "../setup/SetupAgentCard.js";
 import { InstallmentDrawerView } from "./InstallmentDrawerView.js";
 import { LoanDrawerView } from "./LoanDrawerView.js";
 import { LoansStartView } from "./LoansStartView.js";
@@ -24,9 +25,7 @@ export interface LoansScreenProps {
   setup?: boolean;
   /** The empty tab's "Konfiguracja" (`setup/loans`). */
   onSetup(): void;
-  /** The steps widget's Claude Code / CLI guide link. */
-  onGuide(): void;
-  /** The Agent AI widget's settings link. */
+  /** `Ustawienia` on the Claude Code card's privacy line: Ustawienia › Agent AI. */
   onAgentSettings(): void;
 }
 
@@ -52,7 +51,7 @@ export function LoansScreen(props: LoansScreenProps) {
   );
 }
 
-function LoansBound({ setup = false, onSetup, onGuide, onAgentSettings }: LoansScreenProps) {
+function LoansBound({ setup = false, onSetup, onAgentSettings }: LoansScreenProps) {
   const state = useLoansScreen(useCalendarDay());
   const drawers = (
     <>
@@ -61,7 +60,10 @@ function LoansBound({ setup = false, onSetup, onGuide, onAgentSettings }: LoansS
     </>
   );
   return setup || state.empty ? (
-    <LoansStartView state={state} onGuide={onGuide} onAgentSettings={onAgentSettings}>
+    <LoansStartView
+      state={state}
+      agent={<SetupAgentCard moduleId="loans" onSettings={onAgentSettings} />}
+    >
       {drawers}
     </LoansStartView>
   ) : (

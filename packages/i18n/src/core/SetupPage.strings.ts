@@ -1,4 +1,4 @@
-// Texts of the module setup page (frontend/src/core/SetupPage.tsx). See docs/agents/localization.md.
+// Texts of the module setup steps and the Claude Code card (frontend/src/core/SetupPage.tsx). See docs/agents/localization.md.
 import { catalog } from "../index.js";
 
 export const S = catalog({
@@ -16,14 +16,6 @@ export const S = catalog({
   },
   copied: { pl: "Skopiowano", en: "Copied" },
   soon: { pl: "Dostępne wkrótce", en: "Coming soon" },
-  configTitle: {
-    pl: (name: string) => `${name} · konfiguracja`,
-    en: (name: string) => `${name} · setup`,
-  },
-  firstSteps: { pl: "Pierwsze kroki w aplikacji", en: "First steps in the app" },
-  overview: { pl: "Przegląd →", en: "Overview →" },
-  configured: { pl: "Skonfigurowany.", en: "Set up." },
-  noSteps: { pl: "Brak kroków konfiguracji.", en: "No setup steps." },
   withClaude: { pl: "Z pomocą Claude Code", en: "With Claude Code" },
   connectMcp: { pl: "Podłącz MCP do Claude Code", en: "Connect MCP to Claude Code" },
   oncePerProfile: { pl: "raz na profil", en: "once per profile" },

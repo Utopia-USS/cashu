@@ -48,8 +48,6 @@ import { ProposalDrawerScreen } from "./screens/proposals/ProposalDrawerScreen.j
 import { SettingsView } from "./screens/settings/SettingsView.js";
 import { UpdateNotice } from "./screens/settings/UpdateNotice.js";
 import { useSettingsScreen } from "./screens/settings/useSettingsScreen.js";
-import type { SetupNavigation } from "./screens/setup/actionIntent.js";
-import { SetupScreen } from "./screens/setup/SetupScreen.js";
 import { SignalsPageScreen } from "./screens/signals/SignalsPageScreen.js";
 import { StrategiesScreen } from "./screens/strategies/StrategiesScreen.js";
 import { StrategySettings } from "./screens/strategies/StrategySettings.js";
@@ -467,7 +465,7 @@ function BudgetTabActions(props: { vault: string; slug: string; profileName: str
         onProposal={(gid) => proposals.open(gid)}
         onInstructions={() =>
           void router.navigate({
-            to: "/$slug/setup/$module/cli",
+            to: "/$slug/setup/$module",
             params: { slug: props.slug, module: "budget" },
             search: { vault: props.vault },
           })
@@ -538,24 +536,18 @@ function BudgetStartRoute({ slug, vault }: { slug: string; vault: string }) {
 
 function BudgetStartBound(props: { slug: string; vault: string; inSetupView: boolean }) {
   const today = useCalendarDay();
-  const go = (to: "/$slug/budget/$tab" | "/$slug/setup/$module/cli" | "/$slug/settings") => {
+  const go = (to: "/$slug/budget/$tab" | "/$slug/settings") => {
     if (to === "/$slug/budget/$tab")
       void router.navigate({
         to,
         params: { slug: props.slug, tab: "expenses" },
         search: { vault: props.vault },
       });
-    else if (to === "/$slug/settings")
+    else
       void router.navigate({
         to,
         params: { slug: props.slug },
         search: { vault: props.vault, section: "agent" },
-      });
-    else
-      void router.navigate({
-        to,
-        params: { slug: props.slug, module: "budget" },
-        search: { vault: props.vault },
       });
   };
   return (
@@ -564,7 +556,6 @@ function BudgetStartBound(props: { slug: string; vault: string; inSetupView: boo
       slug={props.slug}
       inSetupView={props.inSetupView}
       onExpenses={() => go("/$slug/budget/$tab")}
-      onGuide={() => go("/$slug/setup/$module/cli")}
       onAgentSettings={() => go("/$slug/settings")}
     />
   );
@@ -606,105 +597,49 @@ const assetsStartRoute = createRoute({
   ),
   errorComponent: RouteFailure,
 });
+/** The old `/cli` guide of a module: its first steps now carry the Claude Code card on one page. */
 const setupGuideRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/setup/$module/cli",
   validateSearch: (raw) => search.pick({ vault: true }).parse(raw),
-  component: SetupGuideRoute,
+  beforeLoad: ({ params, search: query }) => {
+    throw redirect({
+      to: "/$slug/setup/$module",
+      params,
+      search: { vault: query.vault },
+      replace: true,
+    });
+  },
   errorComponent: RouteFailure,
 });
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$slug/setup/$module",
   validateSearch: (raw) => search.pick({ vault: true }).parse(raw),
-  component: SetupGuideRoute,
+  // Loans and assets have their own routes; any other module id is not a module: Przegląd.
+  beforeLoad: ({ params, search: query }) => {
+    if (params.module !== "budget" && params.module !== "investments")
+      throw redirect({
+        to: "/$slug/overview",
+        params: { slug: params.slug },
+        search: { vault: query.vault },
+        replace: true,
+      });
+  },
+  component: SetupRoute,
+  pendingComponent: () => (
+    <p role="status" className="p-6">
+      {S.waiting}
+    </p>
+  ),
   errorComponent: RouteFailure,
 });
-function SetupGuideRoute() {
+/** `setup/<module>` (loans and assets have their own routes): the module's first steps with the Claude Code card. */
+function SetupRoute() {
   const { slug, module } = useParams({ strict: false });
   const vault = useProfile();
-  const cli = useLocation({ select: (location) => location.pathname.endsWith("/cli") });
-  const onNavigate = (target: SetupNavigation) => {
-    if (target.kind === "settings") {
-      const section = z
-        .enum(["profile", "modules", "agent", "connectors", "data", "worker", "secrets", "app"])
-        .safeParse(target.section);
-      if (!section.success) return;
-      void router.navigate({
-        to: "/$slug/settings",
-        params: { slug: slug ?? "" },
-        search: { vault, section: section.data },
-      });
-    } else if (target.kind === "start")
-      void router.navigate({
-        to: "/$slug/setup/$module",
-        params: { slug: slug ?? "", module: target.module },
-        search: { vault },
-      });
-    else if (target.kind === "overview")
-      void router.navigate({
-        to: "/$slug/overview",
-        params: { slug: slug ?? "" },
-        search: { vault },
-      });
-    else if (target.module === "budget")
-      void router.navigate({
-        to: "/$slug/budget/$tab",
-        params: { slug: slug ?? "", tab: target.tab },
-        search: { vault },
-      });
-    else if (target.module === "loans")
-      void router.navigate({
-        to: "/$slug/loans.list",
-        params: { slug: slug ?? "" },
-        search: { vault },
-      });
-    else if (target.module === "investments") {
-      if (target.tab === "strategies")
-        void router.navigate({
-          to: "/$slug/investments.strategies",
-          params: { slug: slug ?? "" },
-          search: { vault },
-        });
-      else if (["alerts", "watchlist", "journal"].includes(target.tab))
-        void router.navigate({
-          to:
-            target.tab === "alerts"
-              ? "/$slug/investments.alerts"
-              : target.tab === "watchlist"
-                ? "/$slug/investments.watchlist"
-                : "/$slug/investments.journal",
-          params: { slug: slug ?? "" },
-          search: { vault },
-        });
-      else if (target.tab === "research")
-        void router.navigate({
-          to: "/$slug/investments.research",
-          params: { slug: slug ?? "" },
-          search: { vault, period: "1y", view: "chart" },
-        });
-      else if (["portfolio", "review"].includes(target.tab))
-        void router.navigate({
-          to: "/$slug/investments.portfolio",
-          params: { slug: slug ?? "" },
-          search: {
-            vault,
-            period: "1y",
-            view: "chart",
-            ...(target.tab === "review" ? { review: "1" as const } : {}),
-          },
-        });
-    }
-  };
-  // The budget's in-app first steps at `setup/budget` (old `def.Start`); `setup/budget/cli` stays the guide.
-  if (module === "budget" && !cli) return <BudgetStartRoute slug={slug ?? ""} vault={vault} />;
-  return (
-    <SetupScreen
-      moduleId={module ?? ""}
-      onNavigate={onNavigate}
-      onCopy={async (value) => navigator.clipboard.writeText(value)}
-    />
-  );
+  if (module === "budget") return <BudgetStartRoute slug={slug ?? ""} vault={vault} />;
+  return <PortfolioRoute setup />;
 }
 function LoansRoute() {
   return <LoansBody slug={loansRoute.useParams().slug} setup={false} />;
@@ -724,13 +659,6 @@ function LoansBody({ slug, setup }: { slug: string; setup: boolean }) {
       setup={setup}
       onSetup={() =>
         void router.navigate({ to: "/$slug/setup/loans", params: { slug }, search: { vault } })
-      }
-      onGuide={() =>
-        void router.navigate({
-          to: "/$slug/setup/$module/cli",
-          params: { slug, module: "loans" },
-          search: { vault },
-        })
       }
       onAgentSettings={() =>
         void router.navigate({
@@ -752,13 +680,6 @@ function AssetsStartRoute() {
     <AssetsStartScreen
       onSaved={() => {
         void router.navigate({ to: "/$slug/overview", params: { slug }, search: { vault } });
-      }}
-      onGuide={() => {
-        void router.navigate({
-          to: "/$slug/setup/$module/cli",
-          params: { slug, module: "assets" },
-          search: { vault },
-        });
       }}
       onAgentSettings={() => {
         void router.navigate({
@@ -1006,7 +927,8 @@ function InvestmentPageRoute() {
     />
   );
 }
-function PortfolioRoute() {
+/** The investments Home; `setup` = `setup/investments`: its first steps even when the portfolio has data. */
+function PortfolioRoute({ setup = false }: { setup?: boolean }) {
   const { slug, instrument } = useParams({ strict: false });
   const selected = useSearch({ strict: false }) as z.infer<typeof investmentSearch>;
   const vault = useProfile();
@@ -1043,13 +965,7 @@ function PortfolioRoute() {
       watch={watch}
       allocRequest={selected.alloc === "accounts" ? (selected.t ?? 0) : null}
       slug={slug ?? ""}
-      onSetupOpened={() =>
-        void router.navigate({
-          to: "/$slug/setup/$module",
-          params: { slug: slug ?? "", module: "investments" },
-          search: { vault },
-        })
-      }
+      setup={setup}
       onSettingsOpened={() =>
         void router.navigate({
           to: "/$slug/settings",

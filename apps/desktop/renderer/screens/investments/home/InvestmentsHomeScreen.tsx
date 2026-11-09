@@ -10,6 +10,7 @@ import { ResearchPageScreen } from "../../research/ResearchPageScreen.js";
 import { TopicDrawerScreen } from "../../research/TopicDrawerScreen.js";
 import { ReviewDeckScreen } from "../../review/deck/ReviewDeckScreen.js";
 import { ReviewSlotView } from "../../review/deck/ReviewSlotView.js";
+import { SetupAgentCard } from "../../setup/SetupAgentCard.js";
 import { SignalsDialogScreen } from "../../signals/SignalsDialogScreen.js";
 import { InstrumentSearchScreen, WatchlistWidgetScreen } from "../../signals/WatchlistScreens.js";
 import { AssetDrawerScreen, AssetPage } from "../asset/AssetDetailScreen.js";
@@ -131,7 +132,7 @@ function HomeBound(props: InvestmentsHomeOptions) {
           kind: "start",
           start,
           onCopy: () => start.command && s.onCopy(start.command),
-          onSettings: s.onSettings,
+          agent: <SetupAgentCard moduleId="investments" onSettings={s.onSettings} />,
         }}
         overlays={overlays}
       />
