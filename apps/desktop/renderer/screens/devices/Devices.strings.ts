@@ -6,22 +6,22 @@ export const T = catalog({
     en: "Device management is unavailable.",
   },
   evidencePending: {
-    pl: "Historia urządzeń wymaga dalszej weryfikacji. Usunięcie jest teraz wstrzymane.",
+    pl: "Historia urządzeń nie jest jeszcze sprawdzona. Na razie nie można usunąć urządzenia.",
     en: "Device history still needs verification. Removal is paused for now.",
   },
   evidenceOverflow: {
-    pl: "Osiągnięto limit dowodów urządzeń. Usunięcie jest niedostępne do czasu naprawy historii sejfu.",
+    pl: "Osiągnięto limit zapisów o urządzeniach. Nie można usuwać urządzeń, dopóki historia sejfu nie zostanie naprawiona.",
     en: "The device evidence limit was reached. Removal is unavailable until the vault history is repaired.",
   },
   writerPaused: {
-    pl: "Zapisy są wstrzymane do czasu potwierdzenia lokalnej historii sejfu.",
+    pl: "Zapisywanie zmian jest wstrzymane, dopóki lokalna historia sejfu nie zostanie sprawdzona.",
     en: "Writes are paused until this vault's local history is verified.",
   },
   choose: { pl: "Wybierz urządzenie do usunięcia", en: "Choose a device to remove" },
   preview: { pl: "Sprawdź usunięcie", en: "Review removal" },
   cancel: { pl: "Anuluj", en: "Cancel" },
   warning: {
-    pl: "Usunięcie urządzenia może pominąć jego niewidoczne jeszcze zmiany. Rotacja klucza może nie dotrzeć do urządzenia, jeśli synchronizacja jest wstrzymana. Sprawdź stan pozostałych urządzeń.",
+    pl: "Usunięcie urządzenia może pominąć zmiany, których to urządzenie jeszcze nie widziało. Nowy klucz może nie dotrzeć do urządzenia, jeśli synchronizacja jest wstrzymana. Sprawdź stan pozostałych urządzeń.",
     en: "Removing a device may exclude changes this device has not seen. Key rotation may not reach a device while synchronization is withheld. Check the other devices' status.",
   },
   warningAck: {
@@ -29,7 +29,7 @@ export const T = catalog({
     en: "I understand the risk of losing unseen changes",
   },
   localStart: {
-    pl: "To urządzenie nie pobrało jeszcze zmian z wybranego urządzenia. Potwierdzam tę lokalną obserwację.",
+    pl: "To urządzenie nie pobrało jeszcze zmian z wybranego urządzenia. Potwierdzam, że tak to wygląda na tym urządzeniu.",
     en: "This device has not fetched changes from the selected device. I confirm this local observation.",
   },
   recovery: { pl: "24 słowa odzyskiwania", en: "24 recovery words" },
@@ -39,12 +39,12 @@ export const T = catalog({
   },
   remove: { pl: "Usuń urządzenie i zmień klucz", en: "Remove device and rotate key" },
   unknown: {
-    pl: "Wynik jest nieznany. Sprawdź stan tej operacji przed dalszymi zmianami.",
+    pl: "Nie wiadomo, czy operacja się udała. Sprawdź to, zanim wprowadzisz kolejne zmiany.",
     en: "The outcome is unknown. Check this operation before making more changes.",
   },
   completed: { pl: "Urządzenie usunięto.", en: "Device removed." },
   failed: {
-    pl: "Nie udało się wykonać operacji. Sprawdź stan i spróbuj ponownie.",
+    pl: "Nie udało się dokończyć operacji. Sprawdź stan i spróbuj ponownie.",
     en: "The operation could not finish. Check its status and try again.",
   },
   capacity: {

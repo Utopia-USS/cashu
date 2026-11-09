@@ -1969,7 +1969,7 @@ export function freshOf(f: Pick<PlanFreshness, "state"> | null | undefined): Fre
   return f?.state === "outdated" ? "out" : f?.state === "maybe_outdated" ? "maybe" : null;
 }
 export const FRESH_LABEL: Record<FreshKey, string> = FRESH;
-/** `notatka podważa tezę` / `3 notatki podważają tezę` / `5 notatek spełnia tezę` (Polish numeral agreement); for the
+/** `notatka podważa tezę` / `3 notatki podważają tezę` / `5 notatek potwierdza tezę` (Polish numeral agreement); for the
  * reasons whose notes share one relation (`note_invalidates`, `fulfilled_buy`). */
 export function notesVerb(
   count: number | null | undefined,

@@ -1,5 +1,5 @@
 // Texts of the investments home (frontend/src/modules/investments/v2/Home.tsx). See docs/agents/localization.md.
-import { catalog, enForm } from "../../index.js";
+import { catalog, enForm, plForm } from "../../index.js";
 
 export const S = catalog({
   weeklyReview: { pl: "Przegląd tygodnia", en: "Weekly review" },
@@ -34,17 +34,17 @@ export const S = catalog({
   noQuotes: { pl: "brak notowań", en: "no quotes" },
   lastQuote: { pl: (d: string) => `ostatnie notowanie ${d}`, en: (d: string) => `last quote ${d}` },
   staleCount: {
-    pl: (n: number) => (n === 1 ? "1 nieaktualna" : `${n} nieaktualne`),
+    pl: (n: number) => `${n} ${plForm(n, "nieaktualna", "nieaktualne", "nieaktualnych")}`,
     en: (n: number) => `${n} out of date`,
   },
   runTitle: { pl: "Ceny, wycena, reguły i alerty", en: "Prices, valuation, rules and alerts" },
-  rulesRunning: { pl: "reguły w toku", en: "rules running" },
-  rulesPartial: { pl: "reguły częściowo", en: "rules partial" },
+  rulesRunning: { pl: "sprawdzam reguły", en: "rules running" },
+  rulesPartial: { pl: "reguły sprawdzone częściowo", en: "rules partial" },
   previousRunSignals: {
-    pl: " · sygnały z poprzedniego przebiegu",
+    pl: " · sygnały z poprzedniego sprawdzenia",
     en: " · signals from the previous run",
   },
-  rulesFailed: { pl: "reguły nieudane", en: "rules failed" },
+  rulesFailed: { pl: "błąd reguł", en: "rules failed" },
   rulesNeverRan: { pl: "reguły jeszcze nie działały", en: "rules have not run yet" },
   addTxn: { pl: "Dodaj transakcję", en: "Add transaction" },
   portfolioValue: { pl: "Wartość portfela", en: "Portfolio value" },
@@ -85,13 +85,13 @@ export const S = catalog({
   addAccount: { pl: "Dodaj rachunek", en: "Add account" },
   strategy: { pl: "Strategia", en: "Strategy" },
   saved: { pl: "zapisana", en: "saved" },
-  recommended: { pl: "zalecane", en: "recommended" },
+  recommended: { pl: "zalecana", en: "recommended" },
   orInterview: { pl: " albo wywiad w Claude Code: ", en: " or an interview in Claude Code: " },
   creating: { pl: "Tworzę…", en: "Creating…" },
   fromTemplate: { pl: "Utwórz z szablonu", en: "Create from template" },
   firstTxn: { pl: "Pierwsza wpłata lub zakup", en: "First contribution or purchase" },
   firstTxnHint: {
-    pl: "Ręcznie albo import pliku od brokera.",
+    pl: "Ręcznie lub z pliku od brokera.",
     en: "By hand or by importing a broker file.",
   },
   firstReview: { pl: "Pierwszy przegląd", en: "First review" },

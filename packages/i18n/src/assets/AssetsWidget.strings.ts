@@ -15,7 +15,7 @@ export const S = catalog({
   addPlus: { pl: "+ Dodaj", en: "+ Add" },
   total: { pl: "razem", en: "total" },
   cars: {
-    pl: (n: number) => plForm(n, "auto", "auta", "auta"),
+    pl: (n: number) => plForm(n, "auto", "auta", "aut"),
     en: (n: number) => enForm(n, "car", "cars"),
   },
   perMonth: { pl: " / mies.", en: " / mo" },

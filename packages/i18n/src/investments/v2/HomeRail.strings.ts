@@ -35,7 +35,7 @@ export const S = catalog({
   pillMixed: { pl: (n: number) => `${n} do przejrzenia`, en: (n: number) => `${n} to review` },
   pillFix: { pl: (n: number) => `${n} do poprawy`, en: (n: number) => `${n} to fix` },
   planNotCounted: {
-    pl: (n: number) => `${n} w toku, poza liczbą`,
+    pl: (n: number) => `${n} w toku, niewliczone`,
     en: (n: number) => `${n} in progress, not counted`,
   },
   pillProposal: {

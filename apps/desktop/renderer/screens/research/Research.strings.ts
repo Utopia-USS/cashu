@@ -1,17 +1,20 @@
 import { catalog } from "@cashu/i18n";
 
 export const S = catalog({
-  hidden: { pl: "Ukryte w trybie prywatności", en: "Hidden in privacy mode" },
-  confirmDraft: { pl: "Potwierdzam przyjęcie szkicu agenta", en: "I confirm this agent draft" },
+  hidden: { pl: "Ukryte w trybie incognito", en: "Hidden in privacy mode" },
+  confirmDraft: {
+    pl: "Akceptuję szkic przygotowany przez agenta",
+    en: "I confirm this agent draft",
+  },
   noChanges: { pl: "Brak zmian do zapisania", en: "No changes to save" },
   saved: { pl: "Zapisano", en: "Saved" },
   partialSave: {
-    pl: "Teza została zapisana, lecz widok rynku nie. Sprawdź aktualny stan przed ponowieniem.",
+    pl: "Teza została zapisana, ale widok rynku nie. Sprawdź, co się zapisało, zanim spróbujesz ponownie.",
     en: "The thesis was saved, but the market view was not. Check the current state before retrying.",
   },
   refused: { pl: "Nie zapisano", en: "Not saved" },
   unknown: {
-    pl: "Wynik jest nieznany. Sprawdź aktualny stan.",
+    pl: "Nie wiadomo, czy się zapisało. Sprawdź aktualny stan.",
     en: "The outcome is unknown. Check the current state.",
   },
 });

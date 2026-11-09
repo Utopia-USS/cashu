@@ -43,7 +43,7 @@ export const STATE = catalog({
 export const ALERT_KIND = catalog({
   price_above: { pl: "Cena powyżej", en: "Price above" },
   price_below: { pl: "Cena poniżej", en: "Price below" },
-  change_pct: { pl: "Zmiana % w oknie", en: "Change % in a window" },
+  change_pct: { pl: "Zmiana % w okresie", en: "Change % in a window" },
   drawdown_from_high: { pl: "Spadek od szczytu", en: "Drop from the high" },
   new_high: { pl: "Nowy szczyt", en: "New high" },
   sma_cross: { pl: "Przecięcie SMA", en: "SMA cross" },
@@ -73,7 +73,7 @@ export const PLAN_HELD_L = catalog({
 export const PLAN_WATCHED_L = catalog({
   buy_asap: { pl: "kup asap", en: "buy asap" },
   buy: { pl: "kup", en: "buy" },
-  hold: { pl: "czekam", en: "wait" },
+  hold: { pl: "czekaj", en: "wait" },
 });
 
 /** Position strength labels (feminine: they agree with both "pozycja" and "teza"). */
@@ -87,7 +87,7 @@ export const STRENGTH_BASIS_L = catalog({
   on_track: { pl: "teza na dobrej drodze", en: "thesis on track" },
   fulfilled: { pl: "teza spełniona", en: "thesis fulfilled" },
   undermined: { pl: "teza podważona", en: "thesis undermined" },
-  environment_against: { pl: "otoczenie przeciw", en: "environment against it" },
+  environment_against: { pl: "niesprzyjające otoczenie", en: "environment against it" },
   no_progress: { pl: "brak postępu", en: "no progress" },
 });
 
@@ -133,7 +133,7 @@ export const STATE_HEAD_L = catalog({
 const REL_VERB_PL: Record<string, [string, string, string]> = {
   invalidates: ["podważa", "podważają", "tezę"],
   weakens: ["osłabia", "osłabiają", "tezę"],
-  fulfills: ["spełnia", "spełniają", "tezę"],
+  fulfills: ["potwierdza", "potwierdzają", "tezę"],
   supports: ["wzmacnia", "wzmacniają", "tezę"],
 };
 const REL_VERB_EN: Record<string, [string, string]> = {
@@ -163,7 +163,7 @@ export const S = catalog({
   vsCost: { pl: (v: string) => `${v} od kosztu`, en: (v: string) => `${v} vs cost` },
   fromCost: { pl: "od kosztu", en: "vs cost" },
   ofPortfolio: { pl: "portfela", en: "of the portfolio" },
-  max: { pl: (v: string) => `maks ${v}`, en: (v: string) => `max ${v}` },
+  max: { pl: (v: string) => `maks. ${v}`, en: (v: string) => `max ${v}` },
   min: { pl: (v: string) => `min ${v}`, en: (v: string) => `min ${v}` },
   above: { pl: (v: string) => `powyżej ${v}`, en: (v: string) => `above ${v}` },
   below: { pl: (v: string) => `poniżej ${v}`, en: (v: string) => `below ${v}` },
@@ -173,11 +173,11 @@ export const S = catalog({
     en: (over: boolean, v: string) => `${over ? "above" : "below"} ${v}`,
   },
   driftSide: {
-    pl: (over: boolean, t: string) => `${over ? "nad celem" : "do celu"} ${t}`,
+    pl: (over: boolean, t: string) => `${over ? "nad celem" : "pod celem"} ${t}`,
     en: (over: boolean, t: string) => `${over ? "above target" : "below target"} ${t}`,
   },
   inSessions: {
-    pl: (w: number | string) => `w ${w} sesji`,
+    pl: (w: number | string) => `w ciągu ${w} sesji`,
     en: (w: number | string) => `in ${w} sessions`,
   },
   threshold: { pl: "próg", en: "threshold" },
@@ -248,7 +248,7 @@ export const S = catalog({
     en: (w: number) => `breakout from a ${w}-session range`,
   },
   avgOfSessions: {
-    pl: (w: number) => `średniej ${w} sesji`,
+    pl: (w: number) => `średniej z ${w} sesji`,
     en: (w: number) => `the ${w}-session average`,
   },
 
@@ -256,7 +256,7 @@ export const S = catalog({
   condPriceBelow: { pl: "cena poniżej poziomu", en: "price below the level" },
   condPriceAbove: { pl: "cena powyżej poziomu", en: "price above the level" },
   condChange: {
-    pl: (w: number | string) => `zmiana w oknie ${w} sesji`,
+    pl: (w: number | string) => `zmiana w ciągu ${w} sesji`,
     en: (w: number | string) => `change over ${w} sessions`,
   },
   condDrawdown: {
@@ -310,7 +310,7 @@ export const S = catalog({
   },
   previewChange: {
     pl: (who: string, dir: unknown, t: string, w: number | string) =>
-      `kurs ${who} ${dir === "up" ? "wzrośnie" : dir === "down" ? "spadnie" : "zmieni się"} o co najmniej ${t} w ${w} sesjach`,
+      `kurs ${who} ${dir === "up" ? "wzrośnie" : dir === "down" ? "spadnie" : "zmieni się"} o co najmniej ${t} w ciągu ${w} sesji`,
     en: (who: string, dir: unknown, t: string, w: number | string) =>
       `${who} ${dir === "up" ? "rises" : dir === "down" ? "falls" : "moves"} by at least ${t} within ${w} sessions`,
   },
@@ -370,7 +370,7 @@ export const S = catalog({
   },
   previewTail: {
     pl: (notify: string, column: string, pause: string) =>
-      ` ${notify}, sygnał w ${column}${pause}.`,
+      ` ${notify}, sygnał w kolumnie ${column}${pause}.`,
     en: (notify: string, column: string, pause: string) =>
       ` ${notify}, signal in ${column}${pause}.`,
   },
@@ -529,7 +529,7 @@ export const S = catalog({
     en: "thesis without an exit plan: add one",
   },
   alertTriggeredTitled: {
-    pl: (t: string) => `alert spełniony: ${t}. sprawdź tezę i plan`,
+    pl: (t: string) => `alert spełniony: ${t}. Sprawdź tezę i plan`,
     en: (t: string) => `alert triggered: ${t}. check the thesis and plan`,
   },
   alertTriggeredCheck: {

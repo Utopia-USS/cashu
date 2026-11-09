@@ -5,7 +5,7 @@ import type { TranslationVariants } from "@cashu/i18n";
 export const S = {
   rootHelp: {
     pl: (commands: string) =>
-      `Użycie: cashu [--profile PROFIL] POLECENIE [ARGUMENTY]\n\nPolecenia: ${commands}\n\nAplikacja: cashu app\nSerwer MCP: cashu mcp --profile PROFIL\nUsługa: cashu host status|stop|run\nPomoc: cashu --help`,
+      `Użycie: cashu [--profile PROFIL] POLECENIE [ARGUMENTY]\n\nPolecenia: ${commands}\n\nAplikacja: cashu app\nSerwer MCP: cashu mcp --profile PROFIL\nUsługa w tle: cashu host status|stop|run\nPomoc: cashu --help`,
     en: (commands: string) =>
       `Usage: cashu [--profile PROFILE] COMMAND [ARGS]\n\nCommands: ${commands}\n\nDesktop app: cashu app\nMCP server: cashu mcp --profile PROFILE\nBackground service: cashu host status|stop|run\nHelp: cashu --help`,
   },
@@ -18,11 +18,11 @@ export const S = {
     en: "Usage: cashu mcp --profile PROFILE. The MCP server requires one profile.",
   },
   investmentAccountGid: {
-    pl: "Podaj pełny identyfikator GID konta z `cashu invest accounts list` przez `--account GID`.",
+    pl: "Podaj pełny GID rachunku z `cashu invest accounts list` w opcji `--account GID`.",
     en: "Use the full account GID from `cashu invest accounts list` with `--account GID`.",
   },
   investmentAccountUnknown: {
-    pl: "Konto o tym GID nie należy do wybranego profilu inwestycyjnego.",
+    pl: "Wybrany profil nie ma rachunku maklerskiego o tym GID.",
     en: "No brokerage account with that GID belongs to the selected investment profile.",
   },
   // Why an investments command cannot run for the selected profile (exit 1).
@@ -88,7 +88,7 @@ export const S = {
     en: "Unknown or unsupported command or arguments. Check the syntax and try again.",
   } satisfies TranslationVariants<string>,
   busy: {
-    pl: "Ta sesja wykonuje już polecenie.",
+    pl: "W tej sesji trwa już inne polecenie.",
     en: "This session is already running a command.",
   } satisfies TranslationVariants<string>,
 } as const;

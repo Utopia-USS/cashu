@@ -37,7 +37,7 @@ export const S = catalog({
   },
   workspace: { pl: "Workspace agenta", en: "Agent workspace" },
   mcpStaleTitle: {
-    pl: "Serwer MCP w .mcp.json wskazuje poprzednią lokalizację aplikacji. Aktualizuj zapisze nową.",
+    pl: "Serwer MCP w .mcp.json wskazuje poprzednią lokalizację aplikacji. Przycisk „Aktualizuj” zapisze nową.",
     en: "The MCP server in .mcp.json points to the app's previous location. Update writes the new one.",
   },
   mcpStale: { pl: "MCP: stara ścieżka", en: "MCP: old path" },
@@ -107,7 +107,7 @@ export const S = catalog({
   dailyAt: { pl: (t: string) => `codziennie ${t}`, en: (t: string) => `daily at ${t}` },
   everyDayAt: { pl: (t: string) => `Codziennie o ${t}`, en: (t: string) => `Every day at ${t}` },
   nextRun: {
-    pl: (when: string) => ` · następny przebieg ${when}`,
+    pl: (when: string) => ` · następne uruchomienie ${when}`,
     en: (when: string) => ` · next run ${when}`,
   },
   lastRun: { pl: (when: string) => ` · ostatni ${when}`, en: (when: string) => ` · last ${when}` },
@@ -123,7 +123,7 @@ export const S = catalog({
     en: (schedule: string) => `${schedule} (bank limit)`,
   },
   workerFoot: {
-    pl: 'Natychmiast tylko sygnały „do działania", reszta w podsumowaniu tygodnia.',
+    pl: "Od razu tylko sygnały „do działania”, reszta w podsumowaniu tygodnia.",
     en: 'Only "act now" signals right away, the rest in the weekly digest.',
   },
 
@@ -135,7 +135,7 @@ export const S = catalog({
   unknownState: { pl: "stan nieznany", en: "state unknown" },
   ebKey: { pl: "Enable Banking · klucz prywatny", en: "Enable Banking · private key" },
   ebKeyHint: {
-    pl: "plik .pem w katalogu danych · sesje per bank w bazie",
+    pl: "plik .pem w katalogu danych · sesje każdego banku w bazie",
     en: ".pem file in the data folder · per-bank sessions in the database",
   },
   apiToken: { pl: "Token API aplikacji", en: "App API token" },
@@ -218,5 +218,5 @@ export const JOB_STATUS = catalog({
   ok: { pl: ["ok", "pos"] as [string, Tone], en: ["ok", "pos"] },
   partial: { pl: ["częściowy", "warn"] as [string, Tone], en: ["partial", "warn"] },
   failed: { pl: ["błąd", "neg"] as [string, Tone], en: ["error", "neg"] },
-  skipped: { pl: ["pominięte", undefined] as [string, Tone], en: ["skipped", undefined] },
+  skipped: { pl: ["pominięty", undefined] as [string, Tone], en: ["skipped", undefined] },
 });

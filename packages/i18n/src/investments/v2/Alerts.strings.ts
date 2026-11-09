@@ -1,5 +1,5 @@
 // Texts of the alerts widget, manager, form and history (Alerts.tsx). See docs/agents/localization.md.
-import { catalog, enCount, plCount } from "../../index.js";
+import { catalog, enCount, plCount, plForm } from "../../index.js";
 
 const days = {
   pl: (n: number) => plCount(n, "dzień", "dni", "dni"),
@@ -10,7 +10,7 @@ const days = {
 export const CARD_LABEL = catalog({
   price_above: { pl: "Cena powyżej", en: "Price above" },
   price_below: { pl: "Cena poniżej", en: "Price below" },
-  change_pct: { pl: "Zmiana % w oknie", en: "% change in a window" },
+  change_pct: { pl: "Zmiana % w okresie", en: "% change in a window" },
   drawdown_from_high: { pl: "Spadek od szczytu", en: "Drawdown from high" },
   new_high: { pl: "Nowy szczyt", en: "New high" },
   sma_cross: { pl: "Przecięcie SMA", en: "SMA cross" },
@@ -43,7 +43,7 @@ export const S = catalog({
   portfolioPrefix: { pl: "portfel · ", en: "portfolio · " },
   bucketPrefix: { pl: "koszyk · ", en: "bucket · " },
   avgOfSessions: {
-    pl: (n: number) => ` średniej ${n} sesji`,
+    pl: (n: number) => ` średniej z ${n} sesji`,
     en: (n: number) => ` of the ${n}-session average`,
   },
   removeAgentAlert: { pl: "Usuń alert agenta", en: "Delete the agent's alert" },
@@ -76,7 +76,7 @@ export const S = catalog({
   },
   listLabel: { pl: "Lista alertów", en: "Alert list" },
   alertsWord: {
-    pl: (n: number): string => (n === 1 ? "alert" : "alertów"),
+    pl: (n: number): string => plForm(n, "alert", "alerty", "alertów"),
     en: (n: number) => (n === 1 ? "alert" : "alerts"),
   },
   agentLimit: { pl: "limit agenta:", en: "agent limit:" },
@@ -120,7 +120,7 @@ export const S = catalog({
   closeEdit: { pl: "Zamknij edycję", en: "Close the edit" },
   closeEsc: { pl: "Zamknij (Esc)", en: "Close (Esc)" },
   scopeNewOnly: {
-    pl: "Zakres zmienisz tylko nowym alertem.",
+    pl: "Aby zmienić zakres, dodaj nowy alert.",
     en: "The scope changes only with a new alert.",
   },
   scopeInstrument: { pl: "Instrument", en: "Instrument" },
@@ -128,7 +128,7 @@ export const S = catalog({
   condition: { pl: "Warunek", en: "Condition" },
   level: { pl: "Poziom", en: "Level" },
   nowLabel: { pl: "Teraz", en: "Now" },
-  window: { pl: "Okno (sesje)", en: "Window (sessions)" },
+  window: { pl: "Okres (sesje)", en: "Window (sessions)" },
   thresholdPct: { pl: "Próg (%)", en: "Threshold (%)" },
   direction: { pl: "Kierunek", en: "Direction" },
   down: { pl: "w dół", en: "down" },
@@ -142,7 +142,7 @@ export const S = catalog({
   rise: { pl: "wzrost", en: "rise" },
   weightDirection: { pl: "Kierunek wagi", en: "Weight direction" },
   directionNewOnly: {
-    pl: "Kierunek zmienisz tylko nowym alertem.",
+    pl: "Aby zmienić kierunek, dodaj nowy alert.",
     en: "The direction changes only with a new alert.",
   },
   thresholdPortfolio: { pl: "Próg (% portfela)", en: "Threshold (% of portfolio)" },
@@ -151,18 +151,18 @@ export const S = catalog({
   chance: { pl: "Szansa", en: "Opportunity" },
   risk: { pl: "Ryzyko", en: "Risk" },
   neutral: { pl: "Neutralny", en: "Neutral" },
-  severity: { pl: "Waga", en: "Severity" },
+  severity: { pl: "Priorytet", en: "Severity" },
   info: { pl: "Informacja", en: "Info" },
   action: { pl: "Do działania", en: "Action" },
   title: { pl: "Tytuł", en: "Title" },
   note: { pl: "Notatka", en: "Note" },
   notePlaceholder: { pl: "Dlaczego ten poziom?", en: "Why this level?" },
-  cooldown: { pl: "Cooldown", en: "Cooldown" },
+  cooldown: { pl: "Pauza", en: "Cooldown" },
   expires: { pl: "Wygasa", en: "Expires" },
   never: { pl: "nigdy", en: "never" },
   saving: { pl: "Zapisuję…", en: "Saving…" },
   noForecasts: {
-    pl: "bez prognoz: tylko warunki na danych",
+    pl: "bez prognoz: tylko warunki oparte na danych",
     en: "no forecasts: only conditions on data",
   },
 
@@ -173,7 +173,7 @@ export const S = catalog({
     en: (date: string) => `acknowledged ${date}`,
   },
   resolved: {
-    pl: (date: string) => `rozstrzygnięty ${date}`,
+    pl: (date: string) => `rozwiązany ${date}`,
     en: (date: string) => `resolved ${date}`,
   },
   expired: { pl: (date: string) => `wygasł ${date}`, en: (date: string) => `expired ${date}` },

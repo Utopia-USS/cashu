@@ -20,7 +20,7 @@ export const S = catalog({
     en: (name: string) => `Restored ${name}`,
   },
   guessedSymbol: {
-    pl: "symbol ceny zgadnięty, sprawdź, czy przyjdą notowania",
+    pl: "symbol notowań odgadnięty, sprawdź, czy pojawią się notowania",
     en: "price symbol guessed, check that quotes arrive",
   },
 });

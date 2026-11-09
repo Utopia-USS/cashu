@@ -22,7 +22,7 @@ export const S = catalog({
   paidInterest: { pl: "Spłacone odsetki", en: "Interest paid" },
   payoffDate: { pl: "Data spłaty", en: "Payoff date" },
   paidCount: {
-    pl: (n: number) => `${n} rat spłaconych`,
+    pl: (n: number) => plCount(n, "rata spłacona", "raty spłacone", "rat spłaconych"),
     en: (n: number) => `${enCount(n, "installment", "installments")} paid`,
   },
   balanceOf: { pl: (name: string) => `Saldo · ${name}`, en: (name: string) => `Balance · ${name}` },

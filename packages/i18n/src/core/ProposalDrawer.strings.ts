@@ -69,7 +69,8 @@ export const S = catalog({
     en: (n: number) => enCount(n, "new row", "new rows"),
   },
   mismatches: {
-    pl: (n: number) => `${plCount(n, "różnica", "różnice", "różnic")} ze snapshotem`,
+    pl: (n: number) =>
+      `${plCount(n, "różnica", "różnice", "różnic")} względem stanu pozycji z pliku`,
     en: (n: number) => `${enCount(n, "difference", "differences")} from the snapshot`,
   },
   errors: {

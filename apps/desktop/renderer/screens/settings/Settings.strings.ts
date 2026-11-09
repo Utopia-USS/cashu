@@ -1,4 +1,4 @@
-import { catalog } from "@cashu/i18n";
+import { catalog, plCount } from "@cashu/i18n";
 
 export const T = catalog({
   devicesTitle: { pl: "Urządzenia", en: "Devices" },
@@ -21,11 +21,11 @@ export const T = catalog({
     en: "Workspace management is not connected to this profile.",
   },
   workspacePartial: {
-    pl: "Część zmian zapisano. Sprawdź stan i ponów ręcznie.",
+    pl: "Zapisano tylko część zmian. Sprawdź stan i spróbuj ponownie ręcznie.",
     en: "Some changes were saved. Check the status and retry manually.",
   },
   workspaceUnknown: {
-    pl: "Wynik jest nieznany. Sprawdź stan przed ponowieniem.",
+    pl: "Nie wiadomo, czy się udało. Sprawdź stan, zanim spróbujesz ponownie.",
     en: "The outcome is unknown. Check status before retrying.",
   },
   workspacePathRequired: { pl: "Podaj ścieżkę folderu.", en: "Enter a folder path." },
@@ -38,7 +38,7 @@ export const T = catalog({
     en: "Choose a subfolder instead of the home folder.",
   },
   workspacePathHidden: {
-    pl: "Ten ukryty folder jest niedozwolony.",
+    pl: "Nie można użyć tego ukrytego folderu.",
     en: "This hidden folder is not allowed.",
   },
   workspacePathSymlink: {
@@ -63,14 +63,14 @@ export const T = catalog({
   },
   mcpInstructions: { pl: "Połączenie MCP", en: "MCP connection" },
   mcpUnavailable: {
-    pl: "Polecenie MCP jest niedostępne bez sprawdzonej lokalizacji aplikacji i profilu.",
+    pl: "Polecenie MCP jest niedostępne: nie udało się ustalić, gdzie są aplikacja i profil.",
     en: "The MCP command is unavailable without a checked app location and profile.",
   },
   proposals: { pl: "Propozycje agenta", en: "Agent proposals" },
   noProposals: { pl: "Brak oczekujących propozycji.", en: "No pending proposals." },
   openProposal: { pl: "Otwórz propozycję", en: "Open proposal" },
   connectorUnavailable: {
-    pl: "Katalog i uruchamianie konektorów nie są połączone. Istniejące propozycje można sprawdzić powyżej.",
+    pl: "Katalog konektorów i ich uruchamianie są niedostępne. Istniejące propozycje możesz przejrzeć powyżej.",
     en: "Connector catalog and execution are not connected. Existing proposals can be reviewed above.",
   },
   connectorSaved: { pl: "Zapisano ustawienia konektora.", en: "Connector settings saved." },
@@ -79,11 +79,11 @@ export const T = catalog({
     en: "Could not change connector settings.",
   },
   connectorUnknown: {
-    pl: "Wynik zmiany jest niepewny. Lista konektorów pokazuje aktualny stan; sprawdź ją przed kolejną zmianą.",
+    pl: "Nie wiadomo, czy zmiana się zapisała. Lista konektorów pokazuje aktualny stan; sprawdź ją przed kolejną zmianą.",
     en: "The change outcome is uncertain. The connector list shows the current state; check it before another change.",
   },
   connectorRunFailed: {
-    pl: "Pobranie nie powiodło się. Sprawdź stan zadania w tle.",
+    pl: "Nie udało się pobrać danych. Sprawdź stan zadania w tle.",
     en: "Fetch failed. Check the background job status.",
   },
   connectorInvalidParams: {
@@ -92,7 +92,7 @@ export const T = catalog({
   },
   connectorInstall: { pl: "Zainstaluj z folderu", en: "Install from folder" },
   connectorInstalled: {
-    pl: "Konektor zainstalowany. Sprawdź skrót kodu przed zatwierdzeniem.",
+    pl: "Konektor zainstalowany. Przed zatwierdzeniem sprawdź sumę kontrolną kodu.",
     en: "Connector installed. Review its code digest before approval.",
   },
   connectorInterpreter: { pl: "Interpreter", en: "Interpreter" },
@@ -115,13 +115,14 @@ export const T = catalog({
     en: "Update checking and installation are unavailable.",
   },
   auditUnknownArgs: {
-    pl: (n: number) => `oraz ${n} nieznanych argumentów`,
+    pl: (n: number) =>
+      `oraz ${plCount(n, "nieznany argument", "nieznane argumenty", "nieznanych argumentów")}`,
     en: (n: number) => `and ${n} unknown arguments`,
   },
   copied: { pl: "Skopiowano", en: "Copied" },
   copyFailed: { pl: "Nie udało się skopiować.", en: "Could not copy." },
   workerOff: {
-    pl: "Praca w otwartej aplikacji nie jest połączona.",
+    pl: "Praca w tle nie działa w otwartej aplikacji.",
     en: "Work in the open app is not connected.",
   },
   workerSafeMode: {
@@ -143,7 +144,7 @@ export const T = catalog({
   serviceCancelApproval: { pl: "Anuluj oczekującą zgodę", en: "Cancel pending approval" },
   serviceUnavailable: { pl: "Niedostępne w tym środowisku", en: "Unavailable in this environment" },
   serviceError: {
-    pl: "Nie można sprawdzić lub zmienić usługi",
+    pl: "Nie można sprawdzić ani zmienić usługi",
     en: "Could not check or change the service",
   },
   serviceNextWake: { pl: "Następne planowane uruchomienie", en: "Next scheduled start" },
@@ -163,11 +164,11 @@ export const T = catalog({
     en: "Unavailable in this environment",
   },
   notificationPermissionRequest: { pl: "Poproś o zgodę", en: "Request permission" },
-  workerNoRuns: { pl: "Brak zapisanych przebiegów.", en: "No recorded runs." },
-  workerConnector: { pl: "Pobranie konektorów", en: "Connector fetch" },
+  workerNoRuns: { pl: "Brak zapisanych uruchomień.", en: "No recorded runs." },
+  workerConnector: { pl: "Pobieranie przez konektory", en: "Connector fetch" },
   auditDuration: { pl: (ms: number) => `${ms} ms`, en: (ms: number) => `${ms} ms` },
   auditHidden: {
-    pl: "Dziennik ukryty w trybie prywatnym.",
+    pl: "Dziennik wywołań ukryty w trybie incognito.",
     en: "Call log hidden in privacy mode.",
   },
 });

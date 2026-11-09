@@ -23,7 +23,7 @@ export const HELP: Readonly<Record<string, Text>> = {
     en: "Usage: cashu invest accounts add NAME --broker BROKER [--wrapper TYPE] [--currency CODE]",
   },
   "invest positions": {
-    pl: "Użycie: cashu invest positions [--account GID]. GID znajdziesz przez `cashu invest accounts list`.",
+    pl: "Użycie: cashu invest positions [--account GID]. GID pokazuje `cashu invest accounts list`.",
     en: "Usage: cashu invest positions [--account GID]. Find the GID with `cashu invest accounts list`.",
   },
   "invest performance": {

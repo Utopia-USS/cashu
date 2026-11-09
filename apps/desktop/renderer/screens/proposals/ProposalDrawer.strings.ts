@@ -10,24 +10,24 @@ export const P = catalog({
     en: "Comparison with current files is unavailable.",
   },
   unavailableApproval: {
-    pl: "Zatwierdzenie jest niedostępne bez sprawdzonego wykonawcy.",
+    pl: "Zatwierdzanie jest teraz niedostępne.",
     en: "Approval is unavailable without a checked executor.",
   },
-  refused: { pl: "Nie udało się wykonać działania.", en: "The action was refused." },
+  refused: { pl: "Działanie zostało odrzucone.", en: "The action was refused." },
   busy: {
-    pl: "Inna propozycja jest teraz zatwierdzana. Spróbuj ponownie później.",
+    pl: "Inna propozycja jest teraz wprowadzana. Spróbuj ponownie później.",
     en: "Another proposal is being applied. Try again later.",
   },
   baseChanged: {
-    pl: "Baza propozycji zmieniła się. Poproś o nową propozycję.",
+    pl: "Pliki, na których oparto propozycję, zmieniły się. Poproś o nową propozycję.",
     en: "The proposal base changed. Ask for a new proposal.",
   },
   ruleExists: {
-    pl: "Strategia ma już regułę o tym id. Poproś o nową propozycję.",
+    pl: "Strategia ma już regułę o tym identyfikatorze. Poproś o nową propozycję.",
     en: "The strategy already has a rule with this id. Ask for a new proposal.",
   },
   ruleInvalid: {
-    pl: "Proponowana reguła nie przechodzi walidacji.",
+    pl: "Proponowana reguła zawiera błędy.",
     en: "The proposed rule does not pass validation.",
   },
   strategyMissing: {
@@ -39,7 +39,7 @@ export const P = catalog({
     en: "The current strategy files cannot be read.",
   },
   invalidStrategy: {
-    pl: "Strategia po tej zmianie nie przechodzi walidacji.",
+    pl: "Po tej zmianie strategia zawierałaby błędy.",
     en: "The strategy does not pass validation after this change.",
   },
   rulesMadeInactive: {
@@ -59,11 +59,11 @@ export const P = catalog({
     en: "The action was refused, but temporary files need review.",
   },
   unknown: {
-    pl: "Wynik jest nieznany. Sprawdź aktualny stan propozycji przed kolejną próbą.",
+    pl: "Nie wiadomo, czy się udało. Sprawdź stan propozycji, zanim spróbujesz ponownie.",
     en: "The outcome is unknown. Check the proposal's current status before trying again.",
   },
   recovery: {
-    pl: "Wymagane odzyskanie lub uzgodnienie plików. Sprawdź stan przed kolejną próbą.",
+    pl: "Trzeba odzyskać lub uzgodnić pliki. Sprawdź stan, zanim spróbujesz ponownie.",
     en: "File recovery or reconciliation is needed. Check the state before trying again.",
   },
   recoveryAuthority: {
@@ -75,7 +75,7 @@ export const P = catalog({
     en: "Recovery is needed: files could not be restored.",
   },
   recoveryEvent: {
-    pl: "Wymagane odzyskanie: zapis niepowodzenia nie został utrwalony.",
+    pl: "Wymagane odzyskanie: nie zapisano informacji o niepowodzeniu.",
     en: "Recovery is needed: the failure record was not committed.",
   },
   recoveryReconcile: {
@@ -100,5 +100,5 @@ export const P = catalog({
     pl: "Szczegóły tej propozycji są niedostępne.",
     en: "This proposal's details are unavailable.",
   },
-  hidden: { pl: "Ukryte w trybie prywatnym", en: "Hidden in privacy mode" },
+  hidden: { pl: "Ukryte w trybie incognito", en: "Hidden in privacy mode" },
 });

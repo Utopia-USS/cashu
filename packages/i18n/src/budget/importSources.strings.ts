@@ -14,7 +14,7 @@ export const S = catalog({
   notConfigured: { pl: "nieskonfigurowany", en: "not configured" },
   connector: { pl: "Konektor", en: "Connector" },
   connectorDesc: {
-    pl: "Własny importer innego banku; zgłasza go Claude Code, zatwierdzasz w Ustawieniach › Konektory.",
+    pl: "Własny importer innego banku; proponuje go Claude Code, a Ty zatwierdzasz w Ustawieniach › Konektory.",
     en: "Your own importer for another bank; Claude Code proposes it, you approve it in Settings › Connectors.",
   },
   connectorTag: { pl: "konektor", en: "connector" },

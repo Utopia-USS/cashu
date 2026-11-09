@@ -27,13 +27,13 @@ export const S = catalog({
   years: { pl: "lat", en: "years" },
   months: { pl: "mies.", en: "months" },
   variableRate: {
-    pl: "Przy zmiennej stopie: dzisiejsza; zmianę zapiszesz później.",
+    pl: "Przy zmiennym oprocentowaniu podaj dzisiejsze; zmianę zapiszesz później.",
     en: "With a variable rate: today's; you record a change later.",
   },
   firstInstallment: { pl: "Pierwsza rata", en: "First installment" },
   origination: { pl: "Wypłata kredytu (opcjonalnie)", en: "Disbursement (optional)" },
   originationTitle: {
-    pl: "Od tej daty istnieje dług; puste = tak jak pierwsza rata",
+    pl: "Od tej daty liczy się dług; puste pole = data pierwszej raty",
     en: "The debt exists from this date; empty = same as the first installment",
   },
   cleared: { pl: "Wyczyszczono", en: "Cleared" },

@@ -57,7 +57,7 @@ export const S = catalog({
     en: (c: string) => `NBP rate ${c} unavailable`,
   },
   fxSkipped: {
-    pl: "kwoty w tej walucie pominięte · odświeży się przy następnym przebiegu",
+    pl: "kwoty w tej walucie pominięte · odświeży się przy następnym uruchomieniu",
     en: "amounts in this currency skipped · refreshes on the next run",
   },
   fxRate: {
@@ -65,7 +65,7 @@ export const S = catalog({
     en: (c: string, stale: boolean) => `NBP rate ${c} ${stale ? "stale" : "unavailable"}`,
   },
   refreshesNextRun: {
-    pl: "odświeży się przy następnym przebiegu",
+    pl: "odświeży się przy następnym uruchomieniu",
     en: "refreshes on the next run",
   },
   checkAlias: {
@@ -73,7 +73,10 @@ export const S = catalog({
     en: "no fresh quote · check the Yahoo alias",
   },
   noPrice: { pl: "brak ceny", en: "no price" },
-  positionSkipped: { pl: "pozycja pominięta w udziałach", en: "position left out of the weights" },
+  positionSkipped: {
+    pl: "pozycja niewliczona do udziałów",
+    en: "position left out of the weights",
+  },
   historyGap: {
     pl: (acc: string) => `Luka w historii ${acc}`,
     en: (acc: string) => `History gap in ${acc}`,
@@ -95,7 +98,7 @@ export const S = catalog({
   valuedAtZero: { pl: "wyceniony na 0 do czasu wyceny", en: "valued at 0 until valued" },
   noInstrumentData: { pl: "brak danych instrumentu", en: "no instrument data" },
   substituteValuation: { pl: "wyceniony zastępczo", en: "valued with a fallback" },
-  dataWarning: { pl: "Ostrzeżenie danych", en: "Data warning" },
+  dataWarning: { pl: "Ostrzeżenie o danych", en: "Data warning" },
   noCostBasis: {
     pl: (n: number) => `Brak kosztu nabycia dla ${plCount(n, "lotu", "lotów", "lotów")}`,
     en: (n: number) => `No cost basis for ${enCount(n, "lot", "lots")}`,
@@ -108,16 +111,16 @@ export const S = catalog({
   // manual transaction form
   errType: { pl: "Wybierz typ transakcji.", en: "Choose a transaction type." },
   errDate: { pl: "Podaj datę.", en: "Enter a date." },
-  errFutureDate: { pl: "Data z przyszłości.", en: "The date is in the future." },
+  errFutureDate: { pl: "Data nie może być z przyszłości.", en: "The date is in the future." },
   errInstrument: {
     pl: "Wybierz instrument albo wpisz symbol.",
     en: "Choose an instrument or type a symbol.",
   },
   errQtyPositive: {
-    pl: "Ilość musi być większa od zera.",
+    pl: "Liczba sztuk musi być większa od zera.",
     en: "Quantity must be greater than zero.",
   },
-  errQtyNegative: { pl: "Ilość nie może być ujemna.", en: "Quantity can't be negative." },
+  errQtyNegative: { pl: "Liczba sztuk nie może być ujemna.", en: "Quantity can't be negative." },
   errPrice: { pl: "Podaj cenę za sztukę.", en: "Enter the price per unit." },
   errPriceNegative: { pl: "Cena nie może być ujemna.", en: "Price can't be negative." },
   errAmount: { pl: "Podaj kwotę (bez znaku).", en: "Enter the amount (no sign)." },

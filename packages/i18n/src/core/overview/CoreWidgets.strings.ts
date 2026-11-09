@@ -47,7 +47,7 @@ export const S = catalog({
   walletTitle: { pl: "Gotówka w portfelu", en: "Cash in the wallet" },
   hide: { pl: "ukryj", en: "hide" },
   stepsDone: {
-    pl: (done: number, n: number) => `${done} z ${n} kroków`,
+    pl: (done: number, n: number) => `${done} z ${n} ${plForm(n, "kroku", "kroków", "kroków")}`,
     en: (done: number, n: number) => `${done} of ${n} ${n === 1 ? "step" : "steps"}`,
   },
   continue: { pl: "Kontynuuj", en: "Continue" },

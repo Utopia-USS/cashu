@@ -1,5 +1,5 @@
 // Texts of the review deck (frontend/src/modules/investments/v2/ReviewDeck.tsx). See docs/agents/localization.md.
-import { catalog, enCount, enForm, plCount } from "../../index.js";
+import { catalog, enCount, enForm, plCount, plForm } from "../../index.js";
 
 export const S = catalog({
   weeklyReview: { pl: "Przegląd tygodnia", en: "Weekly review" },
@@ -78,7 +78,7 @@ export const S = catalog({
   before: { pl: "wcześniej: ", en: "before: " },
   relInvalidates: { pl: " · podważa tezę", en: " · invalidates the thesis" },
   relWeakens: { pl: " · osłabia tezę", en: " · weakens the thesis" },
-  relSupports: { pl: " · wspiera tezę", en: " · supports the thesis" },
+  relSupports: { pl: " · wzmacnia tezę", en: " · supports the thesis" },
   detailsLead: { pl: "Szczegóły:", en: "Details:" },
   // decide
   items: {
@@ -92,7 +92,7 @@ export const S = catalog({
     en: (n: number) => `${n} ${enForm(n, "item waits", "items wait")} for your decision.`,
   },
   resolved: {
-    pl: (done: number, all: number) => `${done} z ${all} rozstrzygnięte`,
+    pl: (done: number, all: number) => `rozstrzygnięto ${done} z ${all}`,
     en: (done: number, all: number) => `${done} of ${all} resolved`,
   },
   moreInSignals: {
@@ -116,7 +116,7 @@ export const S = catalog({
         research ? ` · ${enCount(research, "news item", "news items")} in Research` : "",
       ].join(""),
   },
-  noTrade: { pl: " · decyzja nie zawiera transakcji", en: " · a decision records no transaction" },
+  noTrade: { pl: " · decyzja nie zapisuje transakcji", en: " · a decision records no transaction" },
   // ideas
   candidates: {
     pl: (n: number) => plCount(n, "kandydat", "kandydaci", "kandydatów"),
@@ -171,7 +171,7 @@ export const S = catalog({
   // frame
   closeNoSave: { pl: "Zamknij przegląd bez zapisu", en: "Close the review without saving" },
   closeTitle: {
-    pl: "Zamknij (przegląd zostaje niezrobiony)",
+    pl: "Zamknij (przegląd pozostanie niedokończony)",
     en: "Close (the review stays not done)",
   },
   lastCard: { pl: "Ostatnia karta", en: "Last card" },
@@ -206,9 +206,12 @@ export const S = catalog({
   stampFlag: { pl: "WRÓĆ DO TEGO", en: "COME BACK" },
   // summary
   summary: { pl: "Podsumowanie", en: "Summary" },
-  statCards: { pl: (_n: number) => "kart", en: (n: number) => enForm(n, "card", "cards") },
+  statCards: {
+    pl: (n: number) => plForm(n, "karta", "karty", "kart"),
+    en: (n: number) => enForm(n, "card", "cards"),
+  },
   statDecisions: {
-    pl: (_n: number) => "decyzji",
+    pl: (n: number) => plForm(n, "decyzja", "decyzje", "decyzji"),
     en: (n: number) => enForm(n, "decision", "decisions"),
   },
   statAgent: { pl: "do agenta", en: "for the agent" },

@@ -2,7 +2,7 @@ import type { TranslationVariants } from "@cashu/i18n";
 
 export const C = {
   selectProfile: {
-    pl: "Wybierz profil przez --profile lub CASHU_PROFILE.",
+    pl: "Wybierz profil opcją --profile lub zmienną CASHU_PROFILE.",
     en: "Select a profile with --profile or CASHU_PROFILE.",
   },
   missingProfile: {
@@ -24,7 +24,7 @@ export const C = {
   },
   nameRequired: { pl: "Nazwa konta jest wymagana.", en: "Account name is required." },
   accountRender: {
-    pl: "Szerokość terminala lub tekst konta uniemożliwia bezpieczne wyświetlenie.",
+    pl: "Nie można bezpiecznie wyświetlić kont: za wąski terminal lub nieobsługiwany tekst konta.",
     en: "Terminal width or account text cannot be rendered safely.",
   },
   accountsTitle: { pl: "Konta", en: "Accounts" },
@@ -62,7 +62,7 @@ export const C = {
   },
   languageSet: {
     pl: (name: string, system: boolean) =>
-      `Język aplikacji: ${name}${system ? " (jak w systemie)" : ""}. Okno aplikacji przeładuje się samo, agent dostanie ten język przy następnej sesji.`,
+      `Język aplikacji: ${name}${system ? " (jak w systemie)" : ""}. Okno aplikacji przeładuje się samo, agent dostanie ten język w następnej sesji.`,
     en: (name: string, system: boolean) =>
       `App language: ${name}${system ? " (follows the system)" : ""}. The app window reloads by itself; the agent gets this language in its next session.`,
   },
@@ -88,7 +88,7 @@ export const C = {
   },
   inspectUnknown: {
     pl: (id: string, stage: string) =>
-      `Wynik operacji ${id} jest nieznany (${stage}). Sprawdź ponownie przed nową próbą.`,
+      `Nie wiadomo, czy operacja ${id} się udała (${stage}). Sprawdź jej stan, zanim spróbujesz ponownie.`,
     en: (id: string, stage: string) =>
       `Operation ${id} has an unknown outcome (${stage}). Inspect again before a new attempt.`,
   },
@@ -134,13 +134,13 @@ export const C = {
   },
   creationOperation: {
     pl: (id: string) =>
-      `Operacja tworzenia: ${id}. Jeśli odpowiedź zaginie, sprawdź: cashu profiles inspect ${id}.`,
+      `Operacja tworzenia profilu: ${id}. Jeśli wynik nie dotrze, sprawdź: cashu profiles inspect ${id}.`,
     en: (id: string) =>
       `Creation operation: ${id}. If the result is lost, inspect with: cashu profiles inspect ${id}.`,
   },
   creationUnknown: {
     pl: (id: string) =>
-      `Wynik tworzenia jest nieznany. Sprawdź: cashu profiles inspect ${id}. Nie rozpoczynaj nowej próby.`,
+      `Nie wiadomo, czy profil został utworzony. Sprawdź: cashu profiles inspect ${id}. Nie twórz go ponownie.`,
     en: (id: string) =>
       `Creation outcome unknown. Check: cashu profiles inspect ${id}. Do not start a new creation.`,
   },
@@ -164,12 +164,12 @@ export const C = {
     en: ["slug", "name", "currency", "agent privacy", "modules"],
   },
   profileRender: {
-    pl: "Szerokość terminala lub tekst profilu uniemożliwia bezpieczne wyświetlenie.",
+    pl: "Nie można bezpiecznie wyświetlić profili: za wąski terminal lub nieobsługiwany tekst profilu.",
     en: "Terminal width or profile text cannot be rendered safely.",
   },
   statsUsage: { pl: "Użycie: cashu stats [--months N]", en: "Usage: cashu stats [--months N]" },
   statsProfile: {
-    pl: "Wybierz otwarty natywny profil przez --profile lub CASHU_PROFILE.",
+    pl: "Wybierz otwarty profil natywny opcją --profile lub zmienną CASHU_PROFILE.",
     en: "Select an open native profile with --profile or CASHU_PROFILE.",
   },
   netWorthTitle: { pl: "Wartość netto", en: "Net worth" },
@@ -182,7 +182,7 @@ export const C = {
     en: ["account", "type", "currency", "as of", "balance"],
   },
   cashflowTitle: {
-    pl: (currency: string) => `Miesięczne przepływy ${currency} (bez przelewów własnych)`,
+    pl: (currency: string) => `Miesięczne przepływy ${currency} (bez przelewów wewnętrznych)`,
     en: (currency: string) => `Monthly cashflow ${currency} (internal transfers excluded)`,
   },
   cashflowHeaders: {
@@ -211,7 +211,7 @@ export const C = {
     en: "The skills shipped with this installation cannot be read.",
   },
   skillsUserHome: {
-    pl: "--dest rozwija tylko ~ i ~/. Podaj pełną ścieżkę katalogu innego użytkownika.",
+    pl: "--dest rozpoznaje tylko ~ i ~/. Katalog innego użytkownika podaj jako pełną ścieżkę.",
     en: "--dest expands only ~ and ~/. Give another user's folder as a full path.",
   },
   skillsNoHome: {
@@ -223,7 +223,7 @@ export const C = {
     en: "The --dest path or a skill name contains control characters.",
   },
   skillsInsideSource: {
-    pl: "Katalog docelowy leży wewnątrz skilli tej instalacji.",
+    pl: "Katalog docelowy leży w katalogu skilli tej instalacji.",
     en: "The destination is inside this installation's skills.",
   },
   skillsNotDirectory: {

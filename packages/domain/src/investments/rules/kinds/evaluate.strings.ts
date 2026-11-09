@@ -12,7 +12,7 @@ export const kindStrings = {
   no: { pl: "nie", en: "no" },
   concentration: {
     pl: (label: string, weight: string, maximum: string) =>
-      `${label}: ${weight} portfela (maks ${maximum}).`,
+      `${label}: ${weight} portfela (maks. ${maximum}).`,
     en: (label: string, weight: string, maximum: string) =>
       `${label}: ${weight} of the portfolio (max ${maximum}).`,
   },
@@ -86,7 +86,7 @@ export const kindStrings = {
   },
   tagged: {
     pl: (tags: string, weight: string, maximum: string, labels: string) =>
-      `Pozycje z tagami ${tags}: ${weight} portfela (maks ${maximum}): ${labels}.`,
+      `Pozycje z tagami ${tags}: ${weight} portfela (maks. ${maximum}): ${labels}.`,
     en: (tags: string, weight: string, maximum: string, labels: string) =>
       `Positions tagged ${tags}: ${weight} of the portfolio (max ${maximum}): ${labels}.`,
   },

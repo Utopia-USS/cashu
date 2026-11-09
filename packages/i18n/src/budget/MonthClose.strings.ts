@@ -44,7 +44,7 @@ export const S = catalog({
   },
   noStrategy: { pl: "brak strategii", en: "no strategy" },
   strategyInvalid: { pl: "strategia z błędami", en: "strategy has errors" },
-  noContributions: { pl: "brak contributions w strategii", en: "no contributions in the strategy" },
+  noContributions: { pl: "brak planu wpłat w strategii", en: "no contributions in the strategy" },
   plan: { pl: "Plan wpłat", en: "Contribution plan" },
   perMonth: {
     pl: (amount: string) => `${amount} / mies.`,

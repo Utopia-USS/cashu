@@ -21,6 +21,6 @@ export const M = {
   },
   profile: { pl: "Podaj jeden istniejący profil.", en: "Select one existing profile." },
   failed: { pl: "Operacja nie powiodła się.", en: "The operation failed." },
-  busy: { pl: "Pracownik jest zajęty.", en: "The worker is busy." },
+  busy: { pl: "Praca w tle już trwa.", en: "The worker is busy." },
   done: { pl: "Gotowe.", en: "Done." },
 } as const;

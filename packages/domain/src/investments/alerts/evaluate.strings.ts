@@ -8,7 +8,7 @@ export const alertStrings = {
   noInstrument: { pl: "Alert nie ma instrumentu", en: "The alert has no instrument" },
   notValued: { pl: "Nie udało się wycenić portfela", en: "The portfolio could not be valued" },
   noPrices: {
-    pl: (s: string) => `Brak cen: ${s} (pobierze je dzienny przebieg)`,
+    pl: (s: string) => `Brak cen: ${s} (zostaną pobrane przy codziennym uruchomieniu)`,
     en: (s: string) => `No prices: ${s} (the daily run will fetch them)`,
   },
   status: {
@@ -17,15 +17,15 @@ export const alertStrings = {
     en: (s: string, status: string) => `${s}: ${status}, no current prices`,
   },
   invalidPrices: {
-    pl: (s: string) => `Nieprawidłowe ceny w oknie: ${s}`,
+    pl: (s: string) => `Nieprawidłowe ceny w okresie: ${s}`,
     en: (s: string) => `Invalid prices in the window: ${s}`,
   },
   noVolume: {
-    pl: (s: string) => `Brak wolumenu w oknie: ${s} (źródło cen go nie podaje)`,
+    pl: (s: string) => `Brak wolumenu w okresie: ${s} (źródło cen go nie podaje)`,
     en: (s: string) => `No volume in the window: ${s} (the price source does not provide it)`,
   },
   zeroVolume: {
-    pl: (s: string) => `Zerowy średni wolumen w oknie: ${s}`,
+    pl: (s: string) => `Zerowy średni wolumen w okresie: ${s}`,
     en: (s: string) => `Zero average volume in the window: ${s}`,
   },
   noWeight: { pl: (s: string) => `Brak wagi: ${s}`, en: (s: string) => `No weight: ${s}` },
@@ -50,7 +50,7 @@ export const alertStrings = {
       from: string,
       last: string,
       date: string,
-    ) => `${s}: ${size} w ${n} sesji (${first} ${from} -> ${last} ${date}).`,
+    ) => `${s}: ${size} w ciągu ${n} sesji (${first} ${from} -> ${last} ${date}).`,
     en: (
       s: string,
       size: string,

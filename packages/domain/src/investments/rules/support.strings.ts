@@ -27,13 +27,14 @@ export const supportStrings = {
       `No price for ${count} ${count === 1 ? "position" : "positions"} (${names}): portfolio weights incomplete`,
   },
   staleShare: {
-    pl: (share: string, maximum: string) => `Nieaktualne ceny: ${share} portfela (maks ${maximum})`,
+    pl: (share: string, maximum: string) =>
+      `Nieaktualne ceny: ${share} portfela (maks. ${maximum})`,
     en: (share: string, maximum: string) =>
       `Stale prices: ${share} of the portfolio (max ${maximum})`,
   },
   unclassified: {
     pl: (share: string, maximum: string, names: string) =>
-      `Pozycje bez koszyka: ${share} portfela (maks ${maximum}): ${names}; sklasyfikuj je lub otaguj, by trafiły do koszyka`,
+      `Pozycje bez koszyka: ${share} portfela (maks. ${maximum}): ${names}; sklasyfikuj je lub otaguj, by trafiły do koszyka`,
     en: (share: string, maximum: string, names: string) =>
       `Positions without a bucket: ${share} of the portfolio (max ${maximum}): ${names}; classify or tag them to put them in a bucket`,
   },
