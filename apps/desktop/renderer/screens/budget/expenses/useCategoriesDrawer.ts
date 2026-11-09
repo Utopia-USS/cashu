@@ -5,11 +5,10 @@ import { lang } from "@cashu/i18n";
 import { S } from "@cashu/i18n/budget/CategoriesDrawer.strings";
 import { budgetDesktopQueries, setDesktopMerchantCategory } from "@cashu/store/budget/queries";
 import { useCommand, useQuery } from "@cashu/store-react";
-import { type SelectOption, useToast, useUiEnv } from "@cashu/ui";
+import { type SelectOption, useToast } from "@cashu/ui";
 import { cur0s } from "@cashu/ui-logic/core/format";
 import { useRef, useState } from "react";
 import { commandFailure, useDurableCommands } from "../../useDurableCommand.js";
-import { MASK } from "./expensesModel.js";
 
 const queries = budgetDesktopQueries();
 
@@ -21,7 +20,6 @@ export interface CategoriesDrawerOptions {
 }
 
 export function useCategoriesDrawer({ currency, onClose }: CategoriesDrawerOptions) {
-  const { privacy } = useUiEnv();
   const toast = useToast();
   const live = useQuery(queries.uncategorized, { currency });
   const [rows] = useState(live);
@@ -64,16 +62,13 @@ export function useCategoriesDrawer({ currency, onClose }: CategoriesDrawerOptio
     }
     changed.current = true;
     setSaved((s) => ({ ...s, [merchantKey]: true }));
-    toast(
-      `${privacy ? MASK : sample} → ${labelOf(category)} · ${S.nTransactions(result.value.updated)}`,
-      2500,
-    );
+    toast(`${sample} → ${labelOf(category)} · ${S.nTransactions(result.value.updated)}`, 2500);
   };
 
   return {
     rows: rows.map((r) => {
-      const sample = privacy ? MASK : r.sample;
-      const key = privacy ? MASK : r.merchantKey;
+      const sample = r.sample;
+      const key = r.merchantKey;
       return {
         key: r.merchantKey,
         sample,

@@ -20,4 +20,3 @@ export const Iban = {
   },
 };
 export const Invalid = { args: { state: { ...open, err: "Synthetic refusal" } } };
-export const Privacy = { args: { state: { ...storyState, privacy: true } } };

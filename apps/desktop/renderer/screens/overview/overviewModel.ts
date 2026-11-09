@@ -1,6 +1,6 @@
 // Przegląd (ab24ab6 core/Overview.tsx NetHero, core/overview/CoreWidgets.tsx, modules/loans/index.tsx
 // LoansWidget): the formatting part, so the Views stay pure. Every amount goes through the old formatters, which
-// mask the digits in privacy mode; names the native app hides in privacy mode stay hidden.
+// show money on the banana scale (or masked) in incognito; names and text stay as they are.
 import { type core, D, type Decimal } from "@cashu/domain";
 import { intlLocale } from "@cashu/i18n";
 import { S as O } from "@cashu/i18n/core/Overview.strings";
@@ -41,8 +41,6 @@ export interface Link {
 export interface RichFact extends Omit<FactProps, "detail"> {
   detail?: string | Rich | null;
 }
-
-const MASK = "•••";
 
 /** The account row fields Konta reads (store overview `OverviewAccount`). */
 interface OverviewAccount {
@@ -240,11 +238,7 @@ export interface SubscriptionsModel {
   warn: string | null;
 }
 
-export function subscriptionsModel(
-  b: BudgetWidgets,
-  privacy: boolean,
-  open: () => void,
-): SubscriptionsModel {
+export function subscriptionsModel(b: BudgetWidgets, open: () => void): SubscriptionsModel {
   const subs = b.subscriptions;
   const mc = b.subscriptionCurrency;
   const monthly = f(subs.monthlyTotals[mc] ?? null);
@@ -266,7 +260,7 @@ export function subscriptionsModel(
       {
         label: C.thisWeek,
         value: String(due.length),
-        detail: due.length > 0 ? (privacy ? MASK : due.slice(0, 3).join(", ")) : null,
+        detail: due.length > 0 ? due.slice(0, 3).join(", ") : null,
       },
     ],
     warn: b.staleCount ? C.noCharge(b.staleCount) : null,
@@ -308,7 +302,7 @@ export interface AccountsModel {
     value: string;
     negative: boolean;
     muted: boolean;
-    /** Remove this bank account from view (asks first); null for manual accounts and in privacy mode. */
+    /** Remove this bank account from view (asks first); null for manual accounts. */
     remove: (Link & { title: string }) | null;
   }[];
   empty: string | null;
@@ -330,7 +324,6 @@ export function accountsModel(args: {
   accounts: readonly OverviewAccount[];
   wallet: { exists: boolean; balance: Decimal; currency: string };
   showEmpty: boolean;
-  privacy: boolean;
   removal: AccountRemovalState;
   onToggle(): void;
   onCash(): void;
@@ -355,13 +348,13 @@ export function accountsModel(args: {
         : null,
     rows: visible.map((a) => ({
       key: a.gid,
-      name: args.privacy ? MASK : a.name,
-      sub: args.privacy ? MASK : [bank(a.bank), a.ibanTail].filter(Boolean).join(" · "),
+      name: a.name,
+      sub: [bank(a.bank), a.ibanTail].filter(Boolean).join(" · "),
       value: cur(f(a.amount), a.currency),
       negative: (f(a.amount) ?? 0) < 0,
       muted: isEmpty(a),
       remove:
-        args.privacy || a.bank === "manual" || !REMOVABLE.has(a.type)
+        a.bank === "manual" || !REMOVABLE.has(a.type)
           ? null
           : {
               label: R.remove,
@@ -386,14 +379,13 @@ export function accountsModel(args: {
           cancel: { label: R.cancel, onPress: removal.cancel },
         }
       : null,
-    undone:
-      removal.undone && !args.privacy
-        ? {
-            text: R.removed(removal.undone.name),
-            error: removal.asked ? null : removal.error,
-            undo: { label: R.undo, onPress: removal.undo },
-          }
-        : null,
+    undone: removal.undone
+      ? {
+          text: R.removed(removal.undone.name),
+          error: removal.asked ? null : removal.error,
+          undo: { label: R.undo, onPress: removal.undo },
+        }
+      : null,
   };
 }
 
@@ -451,7 +443,6 @@ export function loansModel(args: {
   loans: readonly OverviewLoan[];
   base: string;
   norm: { income: Decimal; months: number } | null;
-  privacy: boolean;
   open(): void;
 }): LoansModel {
   const perCur = new Map<string, number>();
@@ -478,7 +469,7 @@ export function loansModel(args: {
     link: { label: L.title, onPress: args.open },
     rows: args.loans.map((l) => ({
       key: l.gid,
-      name: args.privacy ? MASK : l.name,
+      name: l.name,
       meta: [
         l.monthlyPayment.isZero()
           ? null

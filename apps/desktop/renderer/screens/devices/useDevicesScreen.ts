@@ -1,8 +1,7 @@
 import { deviceListResultSchema } from "@cashu/host-protocol";
 import { deviceListState } from "@cashu/store/core/desktop-settings";
 import { useConnection, useProfile, useQuery } from "@cashu/store-react";
-import { isIncognito, onIncognitoChange } from "@cashu/ui-logic/core/incognito";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { devicesBridge } from "../../devicesBridge.js";
 
 type Preview = Extract<
@@ -13,17 +12,13 @@ type Preview = Extract<
 export function useDevicesScreen() {
   const vault = useProfile();
   const connection = useConnection();
-  const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const bridge = devicesBridge();
   // The device list is a live host query, pushed again after every sync pass and device change.
-  const live = useQuery(deviceListState, { privacy });
+  const live = useQuery(deviceListState, { privacy: false });
   const parsed = live.status === "ready" ? deviceListResultSchema.safeParse(live.list) : null;
-  const [scope, setScope] = useState({ vault, bridge, connection, privacy });
+  const [scope, setScope] = useState({ vault, bridge, connection });
   const scopeActive =
-    scope.vault === vault &&
-    scope.bridge === bridge &&
-    scope.connection === connection &&
-    scope.privacy === privacy;
+    scope.vault === vault && scope.bridge === bridge && scope.connection === connection;
   const [selectedTarget, setTarget] = useState("");
   const [selectedRecertify, setRecertify] = useState<string[]>([]);
   const [preparedPreview, setPreview] = useState<Preview | null>(null);
@@ -36,9 +31,9 @@ export function useDevicesScreen() {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [currentOperationId, setOperationId] = useState<string | null>(null);
   const [inspectedOperationId, setInspectedOperationId] = useState<string | null>(null);
-  // Reset scoped input during render, before the new vault or privacy state reaches the View.
+  // Reset scoped input during render, before the new vault reaches the View.
   if (!scopeActive) {
-    setScope({ vault, bridge, connection, privacy });
+    setScope({ vault, bridge, connection });
     setTarget("");
     setRecertify([]);
     setPreview(null);
@@ -51,18 +46,15 @@ export function useDevicesScreen() {
     setInspectedOperationId(null);
   }
   const list =
-    scopeActive &&
-    !privacy &&
-    (connection === "online" || connection === "recovered") &&
-    parsed?.success
+    scopeActive && (connection === "online" || connection === "recovered") && parsed?.success
       ? parsed.data
       : null;
   const target = scopeActive ? selectedTarget : "";
   const recertify = scopeActive ? selectedRecertify : [];
-  const preview = scopeActive && !privacy ? preparedPreview : null;
+  const preview = scopeActive ? preparedPreview : null;
   const warningAck = scopeActive && acknowledgedWarning;
   const localAck = scopeActive && acknowledgedLocalStart;
-  const phrase = scopeActive && !privacy ? enteredPhrase : "";
+  const phrase = scopeActive ? enteredPhrase : "";
   // A removal the host still records as possibly appended (also one started before a restart or in another
   // window) shows as unknown until it is inspected.
   const pendingOperation =
@@ -99,7 +91,7 @@ export function useDevicesScreen() {
         void bridge.revokeCancel({ vault, token: pending.token }).catch(() => {});
       setPhrase("");
     };
-  }, [vault, bridge, connection, privacy]);
+  }, [vault, bridge, connection]);
 
   useEffect(() => {
     if (!scopeActive || !preparedPreview) return;

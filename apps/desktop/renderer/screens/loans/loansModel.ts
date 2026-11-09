@@ -1,6 +1,5 @@
 // Kredyty (ab24ab6 modules/loans/Loans.tsx, Start.tsx, Drawers.tsx): the formatting part, so the Views stay pure.
-// Amounts go through the old formatters (masked in privacy mode); loan names the native app hides in privacy
-// mode stay hidden.
+// Amounts go through the old formatters (bananas or masked in incognito); loan names always show.
 import { intlLocale, lang } from "@cashu/i18n";
 import { S as P } from "@cashu/i18n/core/SetupPage.strings";
 import { S as N } from "@cashu/i18n/core/setupSteps.strings";
@@ -14,15 +13,14 @@ import { capJoin, paymentHint, rateText } from "@cashu/ui-logic/loans/logic";
 import { S as LG } from "@cashu/ui-logic/loans/logic.strings";
 import { L } from "./Loans.strings.js";
 
-const MASK = "•••";
 const DAY = 86400000;
 
 /** An example Polish transfer title (matching data, not UI copy): the phrase field's placeholder. */
 export const PHRASE_EXAMPLE = "RATA KREDYTU";
 
-/** Old api.ts `loanName`: the name, else "Kredyt n"; hidden in privacy mode. */
-export const loanName = (l: Pick<LoanScreenRow, "name">, i: number, privacy: boolean): string =>
-  privacy ? MASK : l.name || LG.loanN(i + 1);
+/** Old api.ts `loanName`: the name, else "Kredyt n". */
+export const loanName = (l: Pick<LoanScreenRow, "name">, i: number): string =>
+  l.name || LG.loanN(i + 1);
 
 /** "5.10" (English: "Oct 5") of "2026-10-05" (old Drawers.tsx `dmShort`). */
 export const dmShort = (iso: string): string =>
@@ -46,10 +44,10 @@ export interface LoanListRow {
   payoff: string;
 }
 
-export function listRows(rows: readonly LoanScreenRow[], privacy: boolean): LoanListRow[] {
+export function listRows(rows: readonly LoanScreenRow[]): LoanListRow[] {
   return rows.map((l, k) => ({
     key: l.id,
-    name: loanName(l, k, privacy),
+    name: loanName(l, k),
     installment: cur(l.monthlyPayment.toFloat(), l.currency),
     remaining: cur(-l.outstanding.toFloat(), l.currency),
     totalInterest: cur(l.totalInterest.toFloat(), l.currency),
@@ -178,18 +176,17 @@ export function startSteps(args: {
   budgetOn: boolean;
   loans: readonly LoanScreenRow[];
   base: string;
-  privacy: boolean;
   openLoan(): void;
   openPayment(account: string | null): void;
 }): StartStep[] | null {
-  const { steps, loans, privacy } = args;
+  const { steps, loans } = args;
   if (!steps) return null;
   const loanStep = steps.find((s) => s.id === "loan") ?? null;
   const payStep = args.budgetOn ? (steps.find((s) => s.id === "payments") ?? null) : null;
   const loanLine = (l: LoanScreenRow, i: number) => {
     const c = l.currency || args.base;
     return [
-      loanName(l, i, privacy),
+      loanName(l, i),
       rateText(l.annualRate.toFloat()),
       T.installment(cur(l.monthlyPayment.toFloat(), c)),
       l.payoffDate ? T.until(l.payoffDate.slice(0, 4)) : null,
@@ -231,7 +228,7 @@ export function startSteps(args: {
                   { payment_text: l.paymentText, payment_iban_tail: l.paymentIbanTail },
                   true,
                 );
-                return h ? `${loanName(l, i, privacy)} · ${h}` : loanName(l, i, privacy);
+                return h ? `${loanName(l, i)} · ${h}` : loanName(l, i);
               }),
             )
           : T.paymentsHint,

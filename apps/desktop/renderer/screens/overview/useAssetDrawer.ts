@@ -17,6 +17,7 @@ import {
   valuationLabel,
 } from "@cashu/ui-logic/assets/logic";
 import { cur0s, round0, TYPE_LABEL } from "@cashu/ui-logic/core/format";
+import { isIncognito } from "@cashu/ui-logic/core/incognito";
 import { useState } from "react";
 import { assetStepsModel } from "../assets/assetStepsModel.js";
 import { O } from "../CommandOutcome.strings.js";
@@ -127,6 +128,9 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     floor: "",
   });
   const [error, setError] = useState<string | null>(null);
+  // An edit opened in incognito leaves the owner's money out of the form: its money fields start empty, and
+  // an empty one saves as "unchanged" (the note and the date still save).
+  const [masked, setMasked] = useState(false);
   const [undone, setUndone] = useState<string | null>(null);
   const target = selected === null ? null : (rows.find((row) => row.gid === selected) ?? null);
   const live =
@@ -165,6 +169,7 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     if (protectDraft()) return;
     setSelected(null);
     setNewType(type);
+    setMasked(false);
     setForm({
       name: "",
       type,
@@ -185,17 +190,19 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     if (!row) return;
     setNewType(null);
     setSelected(gid);
+    const hide = isIncognito();
+    setMasked(hide);
     setForm({
       name: row.name,
       type: row.type,
-      value: row.amount?.format("f") ?? "",
+      value: hide ? "" : (row.amount?.format("f") ?? ""),
       currency: row.currency,
       onDate: row.asOf ?? today,
       note: row.note ?? "",
-      purchasePrice: row.depreciation?.purchasePrice.format("f") ?? "",
+      purchasePrice: hide ? "" : (row.depreciation?.purchasePrice.format("f") ?? ""),
       purchaseDate: row.depreciation?.purchaseDate ?? today,
       annualRate: row.depreciation?.annualRate.format("f") ?? "15",
-      floor: row.depreciation?.floor?.format("f") ?? "",
+      floor: hide ? "" : (row.depreciation?.floor?.format("f") ?? ""),
     });
     setError(null);
   };
@@ -213,14 +220,18 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     const annualRate = decimal(form.annualRate);
     const floor = form.floor.trim() === "" ? null : decimal(form.floor);
     const type = assetType(form.type);
+    // A masked edit (incognito) keeps the value or the curve the owner did not type again.
+    const keepValue = masked && target !== null && form.value.trim() === "";
+    const keepCurve = masked && target !== null && form.purchasePrice.trim() === "";
     if (
       form.name.trim() === "" ||
       type === null ||
       (isVehicle &&
+        !keepCurve &&
         (purchasePrice === null ||
           annualRate === null ||
           (floor === null && form.floor.trim() !== ""))) ||
-      (!isVehicle && amount === null)
+      (!isVehicle && amount === null && !keepValue)
     ) {
       setError(W.invalidAsset);
       return;
@@ -249,14 +260,34 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
           return;
         }
       } else if (target !== null) {
-        if (target.kind === "vehicle") {
+        if (target.kind === "vehicle" && keepCurve) {
+          if (form.note !== (target.note ?? "")) {
+            const result = await durable.run(`asset-edit:${target.gid}`, editCommand, {
+              account: target.gid,
+              note: form.note,
+            });
+            if (result.kind !== "completed") {
+              setError(commandFailure(result, W.assetRefused));
+              return;
+            }
+          }
+        } else if (target.kind === "vehicle") {
           if (purchasePrice === null || annualRate === null) {
             setError(W.assetRefused);
             return;
           }
           const result = await durable.run(`asset-edit:${target.gid}`, editCommand, {
             account: target.gid,
-            depreciation: { purchasePrice, purchaseDate: form.purchaseDate, annualRate, floor },
+            depreciation: {
+              purchasePrice,
+              purchaseDate: form.purchaseDate,
+              annualRate,
+              // Opened in incognito the floor field starts empty: empty keeps the stored floor.
+              floor:
+                masked && form.floor.trim() === ""
+                  ? (target.depreciation?.floor?.format("f") ?? null)
+                  : floor,
+            },
             ...(form.note !== (target.note ?? "") ? { note: form.note } : {}),
           });
           if (result.kind !== "completed") {
@@ -353,6 +384,8 @@ export function useAssetDrawer(today: string, baseCurrency: string) {
     target,
     open,
     form,
+    /** An edit opened in incognito: the money fields start empty (shown as dots) and empty keeps the value. */
+    masked,
     error,
     undone,
     /** The drawer's save is running (also when started with Enter in the form). */

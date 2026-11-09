@@ -29,12 +29,11 @@ const removal = (over: Partial<AccountRemovalState> = {}): AccountRemovalState =
   undo: vi.fn(async () => {}),
   ...over,
 });
-const model = (state: AccountRemovalState, privacy = false) =>
+const model = (state: AccountRemovalState) =>
   accountsModel({
     accounts,
     wallet: { exists: false, balance: D("0"), currency: "PLN" },
     showEmpty: true,
-    privacy,
     removal: state,
     onToggle: () => {},
     onCash: () => {},
@@ -43,7 +42,7 @@ const model = (state: AccountRemovalState, privacy = false) =>
 const initial = lang();
 afterEach(() => setLanguageForTests(initial));
 
-it("offers removal on bank accounts only, never in privacy mode", () => {
+it("offers removal on bank accounts only", () => {
   setLanguageForTests("en");
   const state = removal();
   const m = model(state);
@@ -53,7 +52,6 @@ it("offers removal on bank accounts only, never in privacy mode", () => {
   expect(byKey.get("c")?.remove).toBeNull();
   byKey.get("a")?.remove?.onPress();
   expect(state.ask).toHaveBeenCalledWith({ gid: "a", name: "Synthetic a" });
-  expect(model(state, true).rows.every((r) => r.remove === null)).toBe(true);
   expect(m.confirm).toBeNull();
   expect(m.undone).toBeNull();
 });

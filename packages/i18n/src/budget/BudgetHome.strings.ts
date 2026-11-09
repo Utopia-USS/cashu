@@ -96,6 +96,4 @@ export const S = catalog({
   /** The contribution plan row when the plan cannot be read here (no strategy source in this app). */
   planUnavailable: { pl: "porównanie niedostępne", en: "comparison unavailable" },
   review: { pl: "Przejrzyj", en: "Review" },
-  /** The toast action in privacy mode (the plain one names the merchant: "Wszystkie od ..."). */
-  allFromMerchant: { pl: "Wszystkie od tego sprzedawcy", en: "All from this merchant" },
 });

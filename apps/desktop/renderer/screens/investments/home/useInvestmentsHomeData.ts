@@ -17,7 +17,6 @@ import {
   strategyReload,
 } from "@cashu/store/investments/strategies-screen";
 import { useCommand, useQuery, useUiAction } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
 import { label } from "@cashu/ui-logic/core/messages";
 import { showStrip } from "@cashu/ui-logic/investments/v2/research/logic";
 import type { ResearchNote } from "@cashu/ui-logic/investments/v2/research/types";
@@ -73,7 +72,6 @@ export type WriteOutcome = string | null;
 
 export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
   const today = useCalendarDay();
-  const { privacy } = useUiEnv();
   const language = lang();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const account = gidOf(input.filter);
@@ -87,17 +85,17 @@ export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
     today,
     timeZone,
     lang: language,
-    privacy,
+    privacy: false,
   });
-  const strategy = useQuery(strategies, { lang: language, privacy, selection: null });
+  const strategy = useQuery(strategies, { lang: language, privacy: false, selection: null });
   const reviewRead = useQuery(review, {
     today,
     lang: language,
     account: null,
     open: false,
-    privacy,
+    privacy: false,
   });
-  const pending = useQuery(proposalList, { status: "pending", privacy });
+  const pending = useQuery(proposalList, { status: "pending", privacy: false });
   const pYtd = useQuery(portfolio.portfolio, { ...args, range: "ytd" });
   const p1m = useQuery(portfolio.portfolio, { ...args, range: "1m" });
   const pChart = useQuery(portfolio.portfolio, { ...args, range: input.chartRange ?? "1y" });
@@ -160,7 +158,6 @@ export function useInvestmentsHomeData(input: InvestmentsHomeDataInput) {
 
   return {
     today,
-    privacy,
     ov,
     pos,
     allPos,
@@ -230,13 +227,13 @@ export function useResearchNoteActions() {
 
 /** The Home's writes: the empty state's strategy init and research candidate actions. Every
  * write answers null when it went through, else the old toast's message; the readback is the live queries. */
-export function useInvestmentsHomeCommands(data: InvestmentsHomeData) {
+export function useInvestmentsHomeCommands() {
   const research = useResearchNoteActions();
   const init = useUiAction(strategyInit);
   const reload = useUiAction(strategyReload);
   const strategyRead = useQuery(strategies, {
     lang: lang(),
-    privacy: data.privacy,
+    privacy: false,
     selection: null,
   });
 

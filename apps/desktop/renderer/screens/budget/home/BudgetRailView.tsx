@@ -16,6 +16,8 @@ import type {
 import { QuietLink, rowDelay, rowIn } from "./tileParts.js";
 
 const UNKNOWN = "?";
+/** The placeholder of a money field an incognito form leaves empty. */
+const MASK = "•••";
 
 /** The rail's big figure ("439,69 zł" with a small unit after it). */
 function Big({ children, unit }: { children: ReactNode; unit?: string | undefined }) {
@@ -236,6 +238,7 @@ function CushionForm({ form }: { form: CushionFormState }) {
                 label={MC.amountIn(draft.currency)}
                 inputMode="decimal"
                 value={draft.amount}
+                placeholder={form.masked ? MASK : undefined}
                 onChange={(v) => set({ amount: v })}
               />
             ) : (
@@ -260,6 +263,7 @@ function CushionForm({ form }: { form: CushionFormState }) {
               label={MC.maxTopUp}
               inputMode="decimal"
               value={draft.monthlyMax}
+              placeholder={form.masked ? MASK : undefined}
               onChange={(v) => set({ monthlyMax: v })}
             />
           </div>

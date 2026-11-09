@@ -11,7 +11,7 @@ import {
   strategyReload,
 } from "@cashu/store/investments/strategies-screen";
 import { useQuery, useUiAction } from "@cashu/store-react";
-import { useToast, useUiEnv } from "@cashu/ui";
+import { useToast } from "@cashu/ui";
 import { label } from "@cashu/ui-logic/core/messages";
 import type { StrategyStatus } from "@cashu/ui-logic/investments/types";
 import { useState } from "react";
@@ -74,8 +74,7 @@ export interface StrategySettingsOptions {
 
 export function useStrategySettings(o: StrategySettingsOptions) {
   const toast = useToast();
-  const { privacy } = useUiEnv();
-  const data = useQuery(queries.screen, { lang: lang(), privacy, selection: null });
+  const data = useQuery(queries.screen, { lang: lang(), privacy: false, selection: null });
   const writes = useStrategyWrites(data.status === "current" ? data.revision : null);
   const [history, setHistory] = useState(false);
   const s = data.status === "current" ? wire<StrategyStatus>(data.strategy) : null;
@@ -141,9 +140,8 @@ export function useStrategySettings(o: StrategySettingsOptions) {
     side: !!o.side,
     title: S.title,
     tag: strategyTag(brief),
-    /** Native-only states: privacy mode hides the strategy, a host without file access cannot read it. */
-    unavailableText:
-      data.status === "unavailable" && data.reason === "privacy" ? N.privacy : N.unavailable,
+    /** Native-only state: a host without file access cannot read the strategy. */
+    unavailableText: N.unavailable,
     popover,
     view: H.view,
     onProposal,

@@ -14,30 +14,21 @@ export interface AssetsStartViewProps {
   state: AssetDrawerState | null;
   today: string;
   baseCurrency: string;
-  privacy: boolean;
   /** The `Z pomocą Claude Code` card under the steps; none while loading. */
   agent?: ReactNode;
 }
 
-export function AssetsStartView({
-  state,
-  today,
-  baseCurrency,
-  privacy,
-  agent,
-}: AssetsStartViewProps) {
+export function AssetsStartView({ state, today, baseCurrency, agent }: AssetsStartViewProps) {
   return (
     <ModuleStart
       title={A.name}
       stepsTitle={CH.firstSteps}
       steps={
-        state
-          ? assetStepItems(state.steps, privacy, (type) => state.openNew(type, baseCurrency))
-          : null
+        state ? assetStepItems(state.steps, (type) => state.openNew(type, baseCurrency)) : null
       }
       below={agent}
     >
-      {state && <AssetDrawerView state={state} today={today} privacy={privacy} />}
+      {state && <AssetDrawerView state={state} today={today} />}
     </ModuleStart>
   );
 }

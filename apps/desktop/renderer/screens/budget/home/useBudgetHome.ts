@@ -18,7 +18,7 @@ import {
   setDesktopMerchantCategory,
 } from "@cashu/store/budget/queries";
 import { useCommand, useQuery } from "@cashu/store-react";
-import { useToast, useUiEnv } from "@cashu/ui";
+import { useToast } from "@cashu/ui";
 import { monthLabel, monthShort, planState } from "@cashu/ui-logic/budget/logic";
 import type { InvestingLink } from "@cashu/ui-logic/budget/types";
 import { cur, cur0s, GROUP } from "@cashu/ui-logic/core/format";
@@ -26,7 +26,7 @@ import { bananaMoney, hideAmount } from "@cashu/ui-logic/core/incognito";
 import { useState } from "react";
 import { commandFailure, useDurableCommands } from "../../useDurableCommand.js";
 import { useBudgetCurrency } from "../expenses/budgetCurrency.js";
-import { MASK, spendingSlices } from "../expenses/expensesModel.js";
+import { spendingSlices } from "../expenses/expensesModel.js";
 import {
   averageSpending,
   averageSurplusBefore,
@@ -147,7 +147,6 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
   drawer: ReviewDrawer | null;
   others: OtherCurrencies;
 } {
-  const { privacy } = useUiEnv();
   const toast = useToast();
   const warm = useWarmQueries();
   const language = lang();
@@ -233,7 +232,6 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
     settings,
     base: loaded.close.baseCurrency,
     codes: bc.codes,
-    privacy,
   });
 
   // ---- period -------------------------------------------------------------------------------------
@@ -394,7 +392,7 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
     const merchantKey = row.merchantKey;
     const name = row.counterparty || row.merchant || merchantKey;
     toast(E.changed(labelFor(category)), 9000, {
-      label: privacy ? H.allFromMerchant : E.allFrom(name),
+      label: E.allFrom(name),
       onClick: () => void applyMerchant(merchantKey, category),
     });
   };
@@ -421,9 +419,9 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
         rows: (showAllRows ? drillRows : drillRows.slice(0, DRILL_ROWS)).map((r) => ({
           key: r.key,
           date: shortDate(r.date, mode === "all"),
-          merchant: privacy ? MASK : r.merchant || "-",
-          details: r.details ? (privacy ? MASK : r.details) : null,
-          account: privacy ? MASK : r.account || "-",
+          merchant: r.merchant || "-",
+          details: r.details || null,
+          account: r.account || "-",
           amount: cur(r.amount.toFloat(), r.currency),
           negative: r.amount.toFloat() < 0,
           category: r.category ?? "other",
@@ -452,7 +450,6 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
   const subsState = subscriptionsState({
     rows: subscriptions,
     today,
-    privacy,
     base: bc.base,
     open: subsOpen,
     toggle: () => setSubsOpen((v) => !v),
@@ -550,7 +547,7 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
             text: cushionText,
             title: c && !loaded.settingsUnavailable ? MC.cushionLevel : undefined,
             button: cushion.open ? C.close : MC.set,
-            disabled: privacy || loaded.settingsUnavailable,
+            disabled: loaded.settingsUnavailable,
             open: cushion.open,
             toggle: cushion.toggle,
           },
@@ -570,7 +567,7 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
         ),
         rows: uncategorized.slice(0, 3).map((r) => ({
           key: r.merchantKey,
-          name: privacy ? MASK : r.sample,
+          name: r.sample,
           count: E.nTransactions(r.count),
           total: cur(r.total.toFloat(), r.currency),
         })),

@@ -70,6 +70,7 @@ export const CushionForm = {
             { id: "a1", name: "Demo savings" },
             { id: "a2", name: "Demo joint" },
           ],
+          masked: false,
           error: null,
           busy: false,
           save: async () => {},

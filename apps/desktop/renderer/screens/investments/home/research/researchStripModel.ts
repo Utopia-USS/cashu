@@ -26,7 +26,6 @@ import type {
   Valuation,
 } from "@cashu/ui-logic/investments/v2/research/types";
 import type { CalendarEvent } from "@cashu/ui-logic/investments/v2/types";
-import { S as R } from "../../../research/Research.strings.js";
 import type { InvestmentsHomeData } from "../useInvestmentsHomeData.js";
 import { type MacroStripProps, macroStripProps } from "./macroStripModel.js";
 
@@ -129,15 +128,7 @@ export interface ResearchStoryProps {
 
 /** The old Home's research grid item: ResearchStory after the first run, MacroStrip before it (when there are
  * regimes), else nothing. */
-/** Privacy mode: the research text stays hidden (the native app's rule; the old app had no privacy mode here). */
-export interface ResearchHiddenProps {
-  kind: "hidden";
-  text: string;
-  allLabel: string;
-  onAll(): void;
-}
-
-export type ResearchStripProps = ResearchStoryProps | MacroStripProps | ResearchHiddenProps;
+export type ResearchStripProps = ResearchStoryProps | MacroStripProps;
 
 const regimeTone = (t: string): StoryTone =>
   t === "pos" ? "pos" : t === "neg" ? "neg" : t === "warn" ? "warn" : "calm";
@@ -235,13 +226,6 @@ export function researchStripProps(
 ): ResearchStripProps | null {
   const r = data.research;
   if (!r.ran || !r.runs) return macroStripProps(r.macro, ui.onOpenTopic);
-  if (data.privacy)
-    return {
-      kind: "hidden",
-      text: R.hidden,
-      allLabel: S.all(r.summary?.totals?.notes_active ?? r.weekNotes.length),
-      onAll: () => ui.onOpenResearch(),
-    };
   const today = data.today;
   const held = new Map<number, Named>(
     (data.pos.data?.positions ?? []).map((p) => [

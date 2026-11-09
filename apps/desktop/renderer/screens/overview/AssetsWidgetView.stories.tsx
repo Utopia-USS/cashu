@@ -69,6 +69,7 @@ const state: AssetsWidgetViewProps["state"] = {
     annualRate: "15",
     floor: "",
   },
+  masked: false,
   error: null,
   undone: null,
   busy: false,
@@ -85,7 +86,6 @@ const args: AssetsWidgetViewProps = {
   state,
   today: "2026-10-01",
   baseCurrency: "PLN",
-  privacy: false,
   onSetup: () => {},
 };
 
@@ -111,4 +111,3 @@ export const Empty = {
   },
 };
 export const Open = { args: { ...args, state: { ...state, open: true } } };
-export const Privacy = { args: { ...args, privacy: true } };

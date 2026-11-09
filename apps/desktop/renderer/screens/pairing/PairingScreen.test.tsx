@@ -9,16 +9,11 @@ import { usePairingScreen } from "./usePairingScreen.js";
 const bindings = vi.hoisted(() => ({
   vault: "a".repeat(32),
   connection: "online",
-  privacy: false,
   bridge: null as unknown,
 }));
 vi.mock("@cashu/store-react", () => ({
   useProfile: () => bindings.vault,
   useConnection: () => bindings.connection,
-}));
-vi.mock("@cashu/ui-logic/core/incognito", () => ({
-  isIncognito: () => bindings.privacy,
-  onIncognitoChange: () => () => {},
 }));
 vi.mock("./pairingBridge.js", () => ({ pairingBridge: () => bindings.bridge }));
 
@@ -38,7 +33,6 @@ beforeEach(() => {
   setLanguageForTests("en");
   bindings.vault = "a".repeat(32);
   bindings.connection = "online";
-  bindings.privacy = false;
 });
 afterEach(() => {
   vi.unstubAllGlobals();

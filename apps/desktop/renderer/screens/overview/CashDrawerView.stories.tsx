@@ -66,4 +66,3 @@ export const Empty = {
     },
   },
 };
-export const Privacy = { args: { state, privacy: true } };

@@ -32,7 +32,7 @@ export function LoansStartView({ state, agent, children }: LoansStartViewProps) 
                 <Button
                   key={action.label}
                   variant={action.primary ? "primary" : "secondary"}
-                  disabled={state.privacy || state.busy}
+                  disabled={state.busy}
                   onPress={action.onPress}
                 >
                   {action.label}

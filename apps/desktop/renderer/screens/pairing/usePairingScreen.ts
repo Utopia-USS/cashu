@@ -1,6 +1,5 @@
 import { useConnection, useProfile } from "@cashu/store-react";
-import { isIncognito, onIncognitoChange } from "@cashu/ui-logic/core/incognito";
-import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PairingViewState } from "./PairingView.js";
 import { pairingBridge } from "./pairingBridge.js";
 
@@ -18,14 +17,10 @@ type Phase =
 export function usePairingScreen(): PairingViewState {
   const vault = useProfile();
   const connection = useConnection();
-  const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const bridge = pairingBridge();
-  const [scope, setScope] = useState({ vault, bridge, connection, privacy });
+  const [scope, setScope] = useState({ vault, bridge, connection });
   const active =
-    scope.vault === vault &&
-    scope.bridge === bridge &&
-    scope.connection === connection &&
-    scope.privacy === privacy;
+    scope.vault === vault && scope.bridge === bridge && scope.connection === connection;
   const [phase, setPhase] = useState<Phase>("idle");
   const [invite, setInvite] = useState<Invite | null>(null);
   const [code, setCode] = useState("");
@@ -42,7 +37,7 @@ export function usePairingScreen(): PairingViewState {
   });
 
   if (!active) {
-    setScope({ vault, bridge, connection, privacy });
+    setScope({ vault, bridge, connection });
     setPhase("idle");
     setInvite(null);
     setCode("");
@@ -56,14 +51,14 @@ export function usePairingScreen(): PairingViewState {
     if (currentAttempt.current?.vault !== vault) currentAttempt.current = null;
     if (inviteRef.current && currentAttempt.current?.operationId !== inviteRef.current.operationId)
       inviteRef.current = null;
-    if (bridge && !privacy && currentAttempt.current?.vault === vault) inspectOnScope();
+    if (bridge && currentAttempt.current?.vault === vault) inspectOnScope();
     return () => {
       lifetimeRef.current++;
       const pending = inviteRef.current;
       if (pending && bridge && !busy.current)
         void bridge.cancel({ vault, operationId: pending.operationId }).catch(() => {});
     };
-  }, [vault, bridge, privacy, connection]);
+  }, [vault, bridge, connection]);
 
   useEffect(() => {
     if (!invite || phase !== "invited") return;
@@ -131,7 +126,6 @@ export function usePairingScreen(): PairingViewState {
       !bridge ||
       busy.current ||
       currentAttempt.current ||
-      privacy ||
       (connection !== "online" && connection !== "recovered")
     )
       return;
@@ -233,7 +227,7 @@ export function usePairingScreen(): PairingViewState {
     }
   }
 
-  if (!active || !bridge || privacy || (connection !== "online" && connection !== "recovered"))
+  if (!active || !bridge || (connection !== "online" && connection !== "recovered"))
     return { kind: "unavailable" };
   if (phase === "invited" && invite)
     return {

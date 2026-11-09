@@ -185,6 +185,8 @@ export interface CushionFormState {
   set(patch: Partial<CushionFormState["draft"]>): void;
   currencies: readonly string[];
   accounts: readonly { id: string; name: string }[];
+  /** Opened in incognito: the saved amounts are not in the fields (shown as dots); an empty one keeps them. */
+  masked: boolean;
   error: string | null;
   busy: boolean;
   save(): Promise<void>;

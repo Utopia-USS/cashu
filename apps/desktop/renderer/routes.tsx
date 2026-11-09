@@ -64,16 +64,8 @@ const ProposalNavigation = createContext<{
   open(gid: string, onResumed?: () => void): boolean;
 }>({ open: () => false });
 
-/** Route-owned proposal selection resets when the vault or owner policy scope changes. */
-function ProposalScope({
-  vault,
-  privacy,
-  children,
-}: {
-  vault: string;
-  privacy: boolean;
-  children: ReactNode;
-}) {
+/** Route-owned proposal selection resets when the vault or the incognito display state changes. */
+function ProposalScope({ vault, children }: { vault: string; children: ReactNode }) {
   const [proposal, setProposal] = useState<{ gid: string; onResumed?: () => void } | null>(null);
   const close = () => {
     proposal?.onResumed?.();
@@ -83,7 +75,6 @@ function ProposalScope({
     <ProposalNavigation
       value={{
         open: (gid, onResumed) => {
-          if (privacy) return false;
           setProposal({ gid, onResumed });
           return true;
         },
@@ -92,7 +83,7 @@ function ProposalScope({
       {children}
       {proposal && (
         <ProposalDrawerScreen
-          key={`${vault}:${privacy}:${proposal.gid}`}
+          key={`${vault}:${proposal.gid}`}
           gid={proposal.gid}
           onClose={close}
           onOutcome={(outcome) => {
@@ -167,12 +158,11 @@ function ShellRoute() {
   };
   return (
     <>
-      {state.privacy && <BananaScaleSync key={state.vault} vault={state.vault} />}
+      <BananaScaleSync key={state.vault} vault={state.vault} />
       <ProposalScope
         // A new banana scale remounts the page too: the formatters read it while the models are built.
         key={`${state.vault}:${state.privacyKey}`}
         vault={state.vault}
-        privacy={state.privacy}
       >
         <ShellView
           state={state}

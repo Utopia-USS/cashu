@@ -58,7 +58,7 @@ export interface AssetDetailInput {
 export function useAssetDetail(input: AssetDetailInput) {
   const toast = useToast();
   const data = useInvestmentsHomeData({ filter: input.filter });
-  const { today, privacy } = data;
+  const { today } = data;
   const language = lang();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [months, setMonthsNow] = useState(24);
@@ -72,7 +72,7 @@ export function useAssetDetail(input: AssetDetailInput) {
     today,
     timeZone,
     lang: language,
-    privacy,
+    privacy: false,
   });
   const asset = useQuery(portfolio.asset, {
     today,
@@ -276,10 +276,10 @@ export function useAssetDetail(input: AssetDetailInput) {
   const markRead = useCommand(research.markRead);
   const marked = useRef(false);
   useEffect(() => {
-    if (marked.current || privacy || !notes.some((n) => n.unread === true)) return;
+    if (marked.current || !notes.some((n) => n.unread === true)) return;
     marked.current = true;
     void durable.run(`mark:${input.instrument}`, markRead, { instrument: input.instrument });
-  }, [notes, privacy, durable, markRead, input.instrument]);
+  }, [notes, durable, markRead, input.instrument]);
   const researchModel = assetResearchModel(rInputs, { older, openId, highlightId: hlId, now });
   // Deep link: scroll the target row into view.
   useEffect(() => {
@@ -305,7 +305,6 @@ export function useAssetDetail(input: AssetDetailInput) {
     model,
     /** The Home's reads (the position decision dialog's context). */
     data,
-    privacy,
     mode: input.mode,
     decideOpen,
     closeDecide: () => setDecideOpen(false),

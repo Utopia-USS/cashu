@@ -1,5 +1,6 @@
 import { D } from "@cashu/domain";
 import { setLanguageForTests } from "@cashu/i18n";
+import { setIncognito } from "@cashu/ui-logic/core/incognito";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type SubscriptionRow, subscriptionsState } from "./subscriptionsModel.js";
 
@@ -27,7 +28,6 @@ const row = (
 
 const base = {
   today: "2026-11-09",
-  privacy: false,
   base: "PLN",
   open: false,
   toggle: () => {},
@@ -76,9 +76,12 @@ describe("subscriptionsState", () => {
     expect(s.sub).toContain("4% of spending");
   });
 
-  it("masks payees in privacy mode", () => {
-    const s = subscriptionsState({ ...base, privacy: true, rows });
-    expect(s.next.every((r) => r.payee === "•••" && r.initial === "•")).toBe(true);
+  it("shows payees but masks amounts in incognito", () => {
+    setIncognito(true);
+    const s = subscriptionsState({ ...base, rows });
+    setIncognito(false);
+    expect(s.next.map((r) => r.payee)).toContain("Synthetic gym");
+    expect(s.next.every((r) => r.initial !== "•" && !/\d/.test(r.amount))).toBe(true);
   });
 
   it("says so without any", () => {

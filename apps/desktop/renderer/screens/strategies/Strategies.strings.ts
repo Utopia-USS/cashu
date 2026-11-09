@@ -1,5 +1,5 @@
 // Native-only texts of the Strategie tab (the Python texts live in @cashu/i18n/investments/v2/Strategies.strings):
-// privacy mode, a host without strategy file access, the task checkbox names of rendered Markdown.
+// a host without strategy file access, the task checkbox names of rendered Markdown.
 import { catalog } from "@cashu/i18n";
 export const S = catalog({
   taskDone: { pl: "Ukończone zadanie", en: "Completed task" },
@@ -7,9 +7,5 @@ export const S = catalog({
   unavailable: {
     pl: "Pliki strategii są niedostępne.",
     en: "Strategy file access is unavailable.",
-  },
-  privacy: {
-    pl: "Treść strategii jest ukryta w trybie incognito.",
-    en: "Strategy content is hidden in privacy mode.",
   },
 });

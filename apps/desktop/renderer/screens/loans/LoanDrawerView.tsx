@@ -1,5 +1,5 @@
 // A new loan (ab24ab6 modules/loans/Drawers.tsx `LoanDrawer`): the fields of `cashu loans add` with the
-// installment preview in the footer. Pure; refused (not rendered) in privacy mode by the hook.
+// installment preview in the footer. Pure.
 import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/loans/Drawers.strings";
 import { Button, Drawer, FieldNote, FormRow, Notice, Seg, Select, TextField } from "@cashu/ui";
@@ -10,7 +10,7 @@ import type { LoansState } from "./useLoansScreen.js";
 const fieldCls = "mb-3 grid gap-1 text-xs text-fg-muted";
 
 export function LoanDrawerView({ state }: { state: LoansState }) {
-  if (state.privacy || state.drawer?.kind !== "loan") return null;
+  if (state.drawer?.kind !== "loan") return null;
   const { form, set, errors } = state.loan;
   const fe = (k: keyof typeof errors) =>
     errors[k] ? <FieldNote tone="negative">{errors[k]}</FieldNote> : undefined;

@@ -3,17 +3,8 @@ import { currentVault, setCurrentVault } from "@cashu/store/device";
 import { profileIdentity } from "@cashu/store/overview";
 import { ProfileProvider, StoreProvider, useProfile } from "@cashu/store-react";
 import { DEVICE_TARGET, type StoreClient } from "@cashu/store-react/client";
-import { isIncognito, onIncognitoChange } from "@cashu/ui-logic/core/incognito";
 import { RouterProvider } from "@tanstack/react-router";
-import {
-  Component,
-  type ReactNode,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { Component, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { type CreationBridge, creationBridge } from "./creationBridge.js";
 import { CreationContext } from "./creationContext.js";
 import { CreationTransition } from "./creationTransition.js";
@@ -33,7 +24,6 @@ class RootBoundary extends Component<{ children: ReactNode }, { failed: boolean 
 }
 
 function AdditionalCreationOverlay({
-  privacy,
   bridge,
   onReady,
   onComplete,
@@ -41,7 +31,6 @@ function AdditionalCreationOverlay({
   onLifetimeEnded,
   onVaultChanged,
 }: {
-  privacy: boolean;
   bridge: CreationBridge | null;
   onReady: (locator: NativeCreationReady, sourceVault?: string) => Promise<boolean>;
   onComplete: (locator: NativeCreationReady) => Promise<void>;
@@ -59,7 +48,7 @@ function AdditionalCreationOverlay({
   // The wizard brings its own overlay (WizardFrame `overlay`: scrim over the dimmed app, old `.overlay`).
   return (
     <CreationScreen
-      key={`additional:${vault}:${privacy}`}
+      key={`additional:${vault}`}
       mode="additional"
       bridge={bridge}
       onReady={(locator) => onReady(locator, vault)}
@@ -75,7 +64,6 @@ export function App({ client }: { client: StoreClient }) {
   const [firstCreation] = useState(() => client.vaults.length === 0);
   const [firstCompleted, setFirstCompleted] = useState(false);
   const hostEpoch = useRef(0);
-  const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const bridge = creationBridge();
   const lifetime = useRef(new CreationTransition());
   const cancelWait = useRef<(() => void) | null>(null);
@@ -83,7 +71,6 @@ export function App({ client }: { client: StoreClient }) {
     vaultId: string;
     profileSlug: string;
     sourceVault?: string;
-    privacy: boolean;
     generation: number;
     hostEpoch: number;
   } | null>(null);
@@ -112,7 +99,7 @@ export function App({ client }: { client: StoreClient }) {
   useEffect(() => {
     endLifetime();
     return endLifetime;
-  }, [privacy, endLifetime]);
+  }, [endLifetime]);
   useEffect(() => {
     if (!bridge || client.vaults.length === 0 || (firstCreation && !firstCompleted)) return;
     let active = true;
@@ -129,7 +116,7 @@ export function App({ client }: { client: StoreClient }) {
   }, [bridge, client, firstCompleted, firstCreation]);
   const onReady = async (locator: NativeCreationReady, sourceVault?: string): Promise<boolean> => {
     const generation = lifetime.current.begin();
-    const active = () => lifetime.current.active(generation) && isIncognito() === privacy;
+    const active = () => lifetime.current.active(generation);
     if (!client.vaults.includes(locator.vaultId)) {
       const appeared = await new Promise<boolean>((resolve) => {
         let settled = false;
@@ -189,7 +176,6 @@ export function App({ client }: { client: StoreClient }) {
       vaultId: locator.vaultId,
       profileSlug: locator.profileSlug,
       sourceVault,
-      privacy,
       generation,
       hostEpoch: hostEpoch.current,
     };
@@ -201,7 +187,6 @@ export function App({ client }: { client: StoreClient }) {
       receipt === null ||
       receipt.vaultId !== locator.vaultId ||
       receipt.profileSlug !== locator.profileSlug ||
-      receipt.privacy !== isIncognito() ||
       receipt.hostEpoch !== hostEpoch.current ||
       !lifetime.current.active(receipt.generation) ||
       !client.vaults.includes(locator.vaultId)
@@ -221,7 +206,6 @@ export function App({ client }: { client: StoreClient }) {
     if (
       verified.current !== receipt ||
       receipt.hostEpoch !== hostEpoch.current ||
-      receipt.privacy !== isIncognito() ||
       !lifetime.current.active(receipt.generation) ||
       !client.vaults.includes(locator.vaultId)
     )
@@ -239,8 +223,7 @@ export function App({ client }: { client: StoreClient }) {
     if (
       selected.kind !== "completed" ||
       !lifetime.current.active(receipt.generation) ||
-      receipt.hostEpoch !== hostEpoch.current ||
-      isIncognito() !== receipt.privacy
+      receipt.hostEpoch !== hostEpoch.current
     ) {
       lifetime.current.clearExpected();
       throw new Error("creation_selection_failed");
@@ -274,7 +257,7 @@ export function App({ client }: { client: StoreClient }) {
             >
               {firstCreation && !firstCompleted ? (
                 <CreationScreen
-                  key={`first:${privacy}`}
+                  key="first"
                   mode="first"
                   bridge={bridge}
                   onReady={onReady}
@@ -287,7 +270,6 @@ export function App({ client }: { client: StoreClient }) {
                   </div>
                   {additional && (
                     <AdditionalCreationOverlay
-                      privacy={privacy}
                       bridge={bridge}
                       onReady={onReady}
                       onComplete={onComplete}

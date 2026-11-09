@@ -15,7 +15,7 @@ function rendered0(amount: string, currency: string, locale = "pl-PL"): string {
   } as Intl.NumberFormatOptions).format(Math.round(Number(amount)));
 }
 
-test("the Overview shows each profile's stored amounts, hides them in privacy mode and saves an asset edit", async () => {
+test("the Overview shows each profile's stored amounts, hides only the money in incognito and saves an asset edit", async () => {
   const demo = await openNativeDemo();
   const { page } = demo;
   try {
@@ -78,7 +78,11 @@ test("the Overview shows each profile's stored amounts, hides them in privacy mo
     await pickProfile(page, "Demo Anna");
     await expect(worth).toHaveText(annaWorth);
 
-    // Privacy mode: the exact amount is never left readable, not even right after the click.
+    // Incognito: the exact amount is never left readable, not even right after the click.
+    const firstAccount = (
+      (await accountsWidget.locator("tbody tr").first().locator("td").first().textContent()) ?? ""
+    ).trim();
+    expect(firstAccount).not.toBe("");
     const privacy = page.getByRole("checkbox", { name: "Ukryj kwoty" });
     await privacy.click();
     const exposed = await page.evaluate((exact) => {
@@ -107,6 +111,18 @@ test("the Overview shows each profile's stored amounts, hides them in privacy mo
     await chartControl.press("End");
     await expect(chartControl.getByRole("status")).toContainText("🍌");
     await expect(chartControl.getByRole("status")).not.toContainText(/zł|PLN/u);
+    // Only money hides: names stay readable, and an asset edit opens without its stored value in the field.
+    await expect(accountsWidget.locator("tbody tr").first()).toContainText(firstAccount);
+    const manualIndex = assets.findIndex((asset) => asset.kind === "manual");
+    if (manualIndex >= 0 && manualIndex < 5) {
+      await assetsWidget.locator("tbody tr").nth(manualIndex).getByRole("button").click();
+      const maskedDialog = page.getByRole("dialog", { name: "Majątek", exact: true });
+      const value = maskedDialog.getByRole("textbox", { name: "Wartość", exact: true });
+      await expect(value).toHaveValue("");
+      await expect(value).toHaveAttribute("placeholder", "•••");
+      await maskedDialog.getByRole("button", { name: "Anuluj" }).click();
+      await expect(maskedDialog).toHaveCount(0);
+    }
     await privacy.click();
     await expect(worth).toHaveText(annaWorth);
 

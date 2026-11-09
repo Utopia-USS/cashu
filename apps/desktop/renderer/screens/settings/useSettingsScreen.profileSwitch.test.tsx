@@ -58,7 +58,6 @@ vi.mock("@cashu/store-react", () => ({
     input: { safeParse: () => ({ success: true }) },
   }),
 }));
-vi.mock("@cashu/ui", () => ({ useUiEnv: () => ({ privacy: false }) }));
 vi.mock("../useDurableCommand.js", () => ({
   useDurableCommands: () => ({ run: async () => ({ kind: "completed" }), uncertain: () => false }),
   commandFailure: () => "failed",

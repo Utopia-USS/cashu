@@ -5,7 +5,7 @@
 import { S } from "@cashu/i18n/budget/BankSync.strings";
 import { proposalList } from "@cashu/store/core/desktop-proposals";
 import { useQuery } from "@cashu/store-react";
-import { Button, useToast, useUiEnv } from "@cashu/ui";
+import { Button, useToast } from "@cashu/ui";
 import { resyncBankText } from "@cashu/ui-logic/budget/logic";
 import { errorText } from "@cashu/ui-logic/core/messages";
 import { useEffect, useRef, useState } from "react";
@@ -24,7 +24,7 @@ export interface BudgetActionsProps {
   vault: string;
   slug: string;
   profileName: string;
-  /** Opens a proposal in the shell's proposal drawer (false in privacy mode). */
+  /** Opens a proposal in the shell's proposal drawer (false when it cannot). */
   onProposal(gid: string): boolean;
   onInstructions(): void;
 }
@@ -50,7 +50,6 @@ function StatementImport(props: {
 }
 
 export function BudgetActions(props: BudgetActionsProps) {
-  const { privacy } = useUiEnv();
   const toast = useToast();
   const [, rerender] = useState(0);
   const alive = useRef(true);
@@ -64,7 +63,7 @@ export function BudgetActions(props: BudgetActionsProps) {
     };
   }, []);
   const banking = useBankingStatus();
-  const waiting = useQuery(proposalList, { status: "pending", privacy }).filter(
+  const waiting = useQuery(proposalList, { status: "pending", privacy: false }).filter(
     (p) => p.kind === "budget_import",
   );
   const [open, setOpen] = useState(false);

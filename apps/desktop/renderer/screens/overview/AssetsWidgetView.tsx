@@ -23,27 +23,21 @@ const sym = "block -mt-px text-2xs-plus text-fg-muted";
 const nameBtn =
   "cursor-pointer border-0 bg-transparent p-0 text-left font-strong text-fg [font:inherit] hover:text-accent";
 const CAP = 5;
+/** The placeholder of a money field an incognito edit leaves empty (useAssetDrawer `masked`). */
 const MASK = "•••";
 
 export interface AssetsWidgetViewProps {
   state: AssetDrawerState;
   today: string;
   baseCurrency: string;
-  privacy: boolean;
   /** The Majątek page (old `Instrukcja Claude Code i CLI` link of the first steps). */
   onSetup(): void;
 }
 
-export function AssetsWidgetView({
-  state,
-  today,
-  baseCurrency,
-  privacy,
-  onSetup,
-}: AssetsWidgetViewProps) {
+export function AssetsWidgetView({ state, today, baseCurrency, onSetup }: AssetsWidgetViewProps) {
   const [all, setAll] = useState(false);
   const rows = state.widgetRows;
-  const drawer = <AssetDrawerView state={state} today={today} privacy={privacy} />;
+  const drawer = <AssetDrawerView state={state} today={today} />;
   const add = (type: string) => state.openNew(type, baseCurrency);
   if (!rows.length)
     return (
@@ -59,7 +53,7 @@ export function AssetsWidgetView({
           </Button>
         }
       >
-        <AssetsStepsView compact model={state.steps} privacy={privacy} onAdd={add} />
+        <AssetsStepsView compact model={state.steps} onAdd={add} />
         {drawer}
       </Widget>
     );
@@ -72,7 +66,7 @@ export function AssetsWidgetView({
       layered
       id="ov-assets"
       controls={
-        <Button size="sm" disabled={privacy} onPress={() => add("property")}>
+        <Button size="sm" onPress={() => add("property")}>
           {A.addPlus}
         </Button>
       }
@@ -105,25 +99,20 @@ export function AssetsWidgetView({
       <table className={tileTable}>
         <tbody>
           {shown.map((row) => (
-            <tr
-              key={row.gid}
-              className={privacy ? undefined : rowLinkCls}
-              onClick={privacy ? undefined : () => state.openEdit(row.gid)}
-            >
+            <tr key={row.gid} className={rowLinkCls} onClick={() => state.openEdit(row.gid)}>
               <td className={tileTd}>
                 <button
                   type="button"
                   className={nameBtn}
-                  disabled={privacy}
-                  aria-label={A.editOf(privacy ? A.title : row.name)}
+                  aria-label={A.editOf(row.name)}
                   onClick={(event) => {
                     event.stopPropagation();
                     state.openEdit(row.gid);
                   }}
                 >
-                  {privacy ? MASK : row.name}
+                  {row.name}
                 </button>
-                {!privacy && row.note && (
+                {row.note && (
                   <>
                     {" "}
                     <Tag title={row.note}>{A.note}</Tag>
@@ -155,13 +144,9 @@ const sub = "-mt-1.5 mb-3 text-2xs-plus text-fg-muted";
 
 /** The add / edit form in a drawer (old AssetDrawer, 480px): a new position (name, type, value, currency, date,
  * note; a vehicle: its curve instead), a manual row (value, date, note) or a vehicle (read-only value, its curve,
- * note). Shared by Przegląd and the Majątek page; refused (closed) in privacy mode. */
-export function AssetDrawerView({
-  state,
-  today,
-  privacy,
-}: Pick<AssetsWidgetViewProps, "state" | "today" | "privacy">) {
-  if (!state.open || privacy) return null;
+ * note). Shared by Przegląd and the Majątek page; an edit opened in incognito leaves its money fields empty. */
+export function AssetDrawerView({ state, today }: Pick<AssetsWidgetViewProps, "state" | "today">) {
+  if (!state.open) return null;
   const target = state.target;
   const form = state.form;
   const vehicle = target?.kind === "vehicle";
@@ -174,6 +159,7 @@ export function AssetDrawerView({
       inputMode="decimal"
       autoComplete="off"
       value={form.value}
+      placeholder={state.masked ? MASK : undefined}
       onChange={(v) => state.set("value", v)}
       className={field}
     />
@@ -204,6 +190,7 @@ export function AssetDrawerView({
       inputMode="decimal"
       autoComplete="off"
       value={form.purchasePrice}
+      placeholder={state.masked ? MASK : undefined}
       onChange={(v) => state.set("purchasePrice", v)}
       className={field}
     />
@@ -241,6 +228,7 @@ export function AssetDrawerView({
         inputMode="decimal"
         autoComplete="off"
         value={form.floor}
+        placeholder={state.masked ? MASK : undefined}
         onChange={(v) => state.set("floor", v)}
         className={field}
       />

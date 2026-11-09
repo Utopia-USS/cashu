@@ -18,7 +18,6 @@ import {
   signalsSnooze,
 } from "@cashu/store/investments/signals-screen";
 import { useCommand, useQuery, useUiAction } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
 import { label } from "@cashu/ui-logic/core/messages";
 import { benchmarkLabel, changeSince, staleBenchmark } from "@cashu/ui-logic/investments/v2/logic";
 import type { DigestResearch, ResearchNote } from "@cashu/ui-logic/investments/v2/research/types";
@@ -94,16 +93,21 @@ export function useReviewDeckData({
   open,
 }: ReviewDeckDataInput) {
   const today = useCalendarDay();
-  const { privacy } = useUiEnv();
   const language = lang();
   const researchRead = useQuery(research, { today, lang: language });
-  const reviewRead = useQuery(review, { today, lang: language, account: null, open, privacy });
+  const reviewRead = useQuery(review, {
+    today,
+    lang: language,
+    account: null,
+    open,
+    privacy: false,
+  });
   const signalsRead = useQuery(signalsQuery, {
     now: dayReadInstant(today),
     today,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     lang: language,
-    privacy,
+    privacy: false,
   });
   const since = digest?.since ?? null;
   // "New since the last review" counts from the review's exact time, not its day.

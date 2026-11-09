@@ -91,13 +91,17 @@ test("Settings saves the profile and agent privacy in one vault, reviews the age
       .toContainEqual(expect.objectContaining({ gid: strategyGid, status: "rejected" }));
     await expect(strategyOpener).toHaveCount(0);
 
-    // Privacy mode drops the proposal values and keeps the drawer closed.
+    // Incognito hides only money: the proposal values stay and a proposal still opens.
     const incognito = page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true });
     await incognito.click();
-    await expect(proposals).not.toContainText("Nowa reguła: w teście wstecznym 1 epizod");
+    await expect(incognito).toBeChecked();
+    await expect(proposals).toContainText("Nowa reguła: w teście wstecznym 1 epizod");
     await proposals.getByRole("button", { name: "Otwórz propozycję" }).first().click();
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
     await incognito.click();
+    await expect(incognito).not.toBeChecked();
     await expect(proposals).toContainText("Nowa reguła: w teście wstecznym 1 epizod");
 
     // The language pin survives a reload.

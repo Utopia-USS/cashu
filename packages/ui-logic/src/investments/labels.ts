@@ -87,11 +87,21 @@ export function plainMoney(v: number | null | undefined, c = "PLN", signed = fal
 }
 
 /**
- * A per-unit market price (last price, average cost, a level): "148,60 zł". Prices are public, so in
- * incognito they never go on the banana scale (one known price would give the scale away); they stay
- * masked.
+ * The owner's own per-unit price (average cost, a lot's unit cost, a trade's fill price): "148,60 zł".
+ * Masked in incognito and never on the banana scale (one known price would give the scale away).
  */
 export const unitPrice = (v: number | null | undefined, c = "PLN"): string => plainMoney(v, c);
+
+/**
+ * A public market price (last price, close, 52-week high, a level, an SMA): "148,60 zł". Shown as is in
+ * incognito: it says nothing about the owner, and it is never put on the banana scale.
+ */
+export function marketPrice(v: number | null | undefined, c = "PLN"): string {
+  if (v == null || !Number.isFinite(v)) return "-";
+  return new Intl.NumberFormat(intlLocale(), { style: "currency", currency: c, ...GROUP }).format(
+    Math.abs(v) < 0.005 ? 0 : v,
+  );
+}
 
 /** Whole money for hints: "11 600 zł". */
 export function money0(v: number | null | undefined, c = "PLN", signed = false): string {

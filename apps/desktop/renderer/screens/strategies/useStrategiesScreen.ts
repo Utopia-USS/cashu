@@ -6,7 +6,7 @@ import { lang } from "@cashu/i18n";
 import { S } from "@cashu/i18n/investments/v2/Strategies.strings";
 import { strategiesQueries, strategyRefresh } from "@cashu/store/investments/strategies-screen";
 import { useQuery, useUiAction } from "@cashu/store-react";
-import { useToast, useUiEnv } from "@cashu/ui";
+import { useToast } from "@cashu/ui";
 import { label } from "@cashu/ui-logic/core/messages";
 import type { StrategyDoc, StrategyStatus } from "@cashu/ui-logic/investments/types";
 import {
@@ -17,7 +17,6 @@ import {
 } from "@cashu/ui-logic/investments/v2/strategiesLogic";
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 import { wire } from "../investments/home/legacyWire.js";
-import { S as N } from "./Strategies.strings.js";
 import { sourceLines, treeModel, yamlIssues } from "./strategiesModel.js";
 import { copyText, useStrategyWrites } from "./useStrategySettings.js";
 
@@ -31,11 +30,10 @@ export interface StrategiesScreenOptions {
 
 export function useStrategiesScreen(o: StrategiesScreenOptions) {
   const toast = useToast();
-  const { privacy } = useUiEnv();
   const [picked, setPicked] = useState<Selection | null>(null);
   const [mode, setMode] = useState<"preview" | "source">("preview");
   const selection = picked?.path ? { document: picked.id, path: picked.path } : null;
-  const data = useQuery(queries.screen, { lang: lang(), privacy, selection });
+  const data = useQuery(queries.screen, { lang: lang(), privacy: false, selection });
   const writes = useStrategyWrites(data.status === "current" ? data.revision : null);
   // The old tab read the folder on every visit: re-scan the strategy files once when the tab opens.
   // `run` is a new function on every render, so the effect must not depend on it: that re-ran the
@@ -51,7 +49,7 @@ export function useStrategiesScreen(o: StrategiesScreenOptions) {
   if (data.status !== "current")
     return {
       phase: "unavailable" as const,
-      text: data.reason === "privacy" ? N.privacy : S.listFailed(reasonText(data.reason)),
+      text: S.listFailed(reasonText(data.reason)),
     };
 
   const status = wire<StrategyStatus>(data.strategy);

@@ -5,6 +5,7 @@
 
 import * as reviewDomain from "@cashu/domain/investments/review-deck";
 import { inEveryLang, intlLocale, lang } from "@cashu/i18n";
+import { hideAmount } from "../../core/incognito.js";
 import { describePerfNote } from "../../core/messages.js";
 import { localDay, parseServerTime, serverDate } from "../../core/time.js";
 import {
@@ -14,6 +15,7 @@ import {
   dm,
   GENERIC_BUCKET_IDS,
   isGenericBucket,
+  marketPrice,
   micName,
   money,
   money0,
@@ -474,7 +476,8 @@ export function signalFact(sig: SigLike): SigFact {
         post: `${T.ofPortfolio}, ${T.max(pctTarget(n(p.max_weight)))}`,
       };
     default:
-      return { pre: unnameBuckets(sig.message || "") || T.customRule, bold: "" };
+      // The stored message can carry the owner's amounts (built-in rules): masked in incognito.
+      return { pre: hideAmount(unnameBuckets(sig.message || "")) || T.customRule, bold: "" };
   }
 }
 
@@ -497,7 +500,7 @@ export function planFact(sig: Pick<SigLike, "kind" | "payload" | "message">): Si
       post: T.thesisHealth(HEALTH_LABEL[health]),
     };
   }
-  return { pre: sig.message || "Plan", bold: "" };
+  return { pre: hideAmount(sig.message || "Plan"), bold: "" };
 }
 
 /** `x` ratio with one decimal: 3.4 -> "3,4x". */
@@ -567,9 +570,9 @@ const signedPct = (v: number | null) => (v == null ? "-" : pct(v, true));
 const breakoutPct = (v: number | null) =>
   v != null && Math.abs(v) < 0.0005 ? T.breakoutJust : signedPct(v);
 
-/** Price with currency (2 decimals): "30,00 €", "148,60 zł"; a unit price, never in bananas. */
+/** A market price with currency (2 decimals): "30,00 €", "148,60 zł"; shown as is in incognito. */
 export const price = (v: number | null | undefined, c?: string | null) =>
-  v == null || !Number.isFinite(v) ? "-" : unitPrice(v, c || "PLN");
+  v == null || !Number.isFinite(v) ? "-" : marketPrice(v, c || "PLN");
 
 /** Display name of an instrument: the name when it differs from the symbol (a manual instrument's label
  * is its symbol), else the label. */
@@ -603,7 +606,7 @@ export function signalText(
     const f = planFact(sig);
     const pre = f.pre && f.pre !== T.recommendationPre ? ` ${f.pre}` : "";
     return {
-      title: name || sig.message,
+      title: name || hideAmount(sig.message),
       sym,
       lead: `${RULE_KIND_LABEL.plan} ·${pre}`,
       bold: f.bold || undefined,
@@ -692,7 +695,7 @@ export function signalText(
       };
     default:
       return {
-        title: unnameBuckets(sig.message || "") || T.customRule,
+        title: hideAmount(unnameBuckets(sig.message || "")) || T.customRule,
         sym: null,
         tail: name || undefined,
       };

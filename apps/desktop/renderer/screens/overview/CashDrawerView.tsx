@@ -20,14 +20,12 @@ import type { CashDrawerState } from "./useCashDrawer.js";
 
 export interface CashDrawerViewProps {
   state: CashDrawerState;
-  privacy: boolean;
 }
 
-const MASK = "•••";
 const DOWN = "⬇︎ ";
 const REMOVE = "✕";
 
-export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
+export function CashDrawerView({ state }: CashDrawerViewProps) {
   if (!state.open) return null;
   const d = state.display;
   return (
@@ -114,7 +112,7 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
                     <td className={dataTdCls()}>{t.date}</td>
                     <td className={dataTdCls()}>
                       {t.withdrawal ? DOWN : ""}
-                      {privacy ? MASK : t.title}
+                      {t.title}
                     </td>
                     <td className={`${dataTdCls()} text-fg-muted`}>{t.category}</td>
                     <td
@@ -126,7 +124,7 @@ export function CashDrawerView({ state, privacy }: CashDrawerViewProps) {
                       <Button
                         variant="icon"
                         title={C.remove}
-                        label={`${C.remove}: ${privacy ? K.cash : t.title || K.cash}`}
+                        label={`${C.remove}: ${t.title || K.cash}`}
                         disabled={state.busy}
                         onPress={() => state.deleteRow(t.gid)}
                       >

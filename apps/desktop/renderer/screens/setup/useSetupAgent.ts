@@ -7,7 +7,6 @@ import { profile } from "@cashu/store/core";
 import { hostSettingsInfo } from "@cashu/store/core/desktop-settings";
 import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import { useQuery } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
 
 export type SetupAgentContext =
   | { readonly kind: "unavailable"; readonly reason: string }
@@ -16,15 +15,13 @@ export type SetupAgentContext =
 const q = overviewQueries({ prices: null });
 
 export function useSetupAgent(moduleId: string) {
-  const { privacy: incognito } = useUiEnv();
   const identity = useQuery(profile);
   const slug = useQuery(profileIdentity)?.slug ?? null;
   // The stable launcher and the flavor's MCP server prefix the host reports (Settings > Agent AI reads
-  // the same query); hidden while incognito.
-  const host = useQuery(hostSettingsInfo, { privacy: incognito });
-  const agent: SetupAgentContext = incognito
-    ? { kind: "unavailable", reason: "privacy" }
-    : host.availability !== "ready" || !host.launcher || !host.mcpServerPrefix || !slug
+  // the same query).
+  const host = useQuery(hostSettingsInfo, { privacy: false });
+  const agent: SetupAgentContext =
+    host.availability !== "ready" || !host.launcher || !host.mcpServerPrefix || !slug
       ? { kind: "unavailable", reason: "launcher_unavailable" }
       : {
           kind: "ready",
@@ -37,7 +34,6 @@ export function useSetupAgent(moduleId: string) {
     lang: lang(),
   });
   return {
-    incognito,
     agent,
     skill: setup.ok ? setup.value.skill : null,
     /** The module's note under the skill step (old `def.skillHint`). */

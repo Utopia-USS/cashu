@@ -4,12 +4,8 @@ import { setLanguageForTests } from "@cashu/i18n";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import assetDrawer, { Privacy as PrivateAsset } from "./AssetDrawerView.stories.js";
-import cashDrawer, {
-  Empty as EmptyCash,
-  Privacy as PrivateCash,
-  Ready as ReadyCash,
-} from "./CashDrawerView.stories.js";
+import assetDrawer, { Masked as MaskedAsset } from "./AssetDrawerView.stories.js";
+import cashDrawer, { Empty as EmptyCash, Ready as ReadyCash } from "./CashDrawerView.stories.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | null = null;
@@ -29,30 +25,24 @@ async function mount(node: ReactNode) {
   return document.body;
 }
 
-it("renders the cash drawer stories as a named dialog and masks titles in privacy mode", async () => {
-  const ready = await mount(
-    <cashDrawer.component {...cashDrawer.args} {...ReadyCash} privacy={false} />,
-  );
+it("renders the cash drawer stories as a named dialog with the transaction titles", async () => {
+  const ready = await mount(<cashDrawer.component {...cashDrawer.args} {...ReadyCash} />);
   expect(ready.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe(
     "Cash in the wallet",
   );
   expect(ready.textContent).toContain("Synthetic purchase");
-  const empty = await mount(
-    <cashDrawer.component {...cashDrawer.args} {...EmptyCash.args} privacy={false} />,
-  );
+  const empty = await mount(<cashDrawer.component {...cashDrawer.args} {...EmptyCash.args} />);
   expect(empty.innerHTML).toContain("groceries");
-  const hidden = await mount(
-    <cashDrawer.component {...cashDrawer.args} {...PrivateCash.args} privacy />,
-  );
-  expect(hidden.textContent).not.toContain("Synthetic purchase");
 });
 
-it("renders the asset drawer story as a named dialog and nothing in privacy mode", async () => {
+it("renders the asset drawer story as a named dialog, an incognito edit with dotted money fields", async () => {
   const ready = await mount(<assetDrawer.component {...assetDrawer.args} />);
   expect(ready.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Assets");
   expect(ready.querySelector('[role="dialog"] form')).not.toBeNull();
-  const hidden = await mount(
-    <assetDrawer.component {...assetDrawer.args} {...PrivateAsset.args} />,
+  const masked = await mount(<assetDrawer.component {...assetDrawer.args} {...MaskedAsset.args} />);
+  const value = masked.querySelector<HTMLInputElement>(
+    '[role="dialog"] input[inputmode="decimal"]',
   );
-  expect(hidden.querySelector('[role="dialog"]')).toBeNull();
+  expect(value?.value).toBe("");
+  expect(value?.placeholder).toBe("•••");
 });

@@ -1,8 +1,8 @@
-// While incognito is on, keeps the profile's banana scale (`core.bananaScale`) in the incognito module,
-// where the formatters and the shell read it. Mounted beside the shell (outside its remount key), once
-// per vault, so a new scale remounts the page once and turning incognito off or switching the profile
-// drops the old one. The scale is pinned for the day: a portfolio anchor moves with every price, and
-// each change remounts the page (open drawers, typed forms). A failing read leaves the dots.
+// Keeps the profile's banana scale (`core.bananaScale`) in the incognito module, where the formatters and
+// the shell read it. Mounted beside the shell (outside its remount key) once per vault, whether incognito is
+// on or not, so turning incognito on shows bananas at once; only a profile switch (unmount) drops the old
+// scale. The scale is pinned for the day: a portfolio anchor moves with every price, and each change
+// remounts the page in incognito (open drawers, typed forms). A failing read leaves the dots.
 
 import type { BananaScale } from "@cashu/domain/core";
 import { overviewQueries } from "@cashu/store/overview";

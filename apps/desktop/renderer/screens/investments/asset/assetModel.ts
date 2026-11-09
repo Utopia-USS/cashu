@@ -23,6 +23,7 @@ import {
   bucketLabel,
   dmy,
   ENTRY_TYPE,
+  marketPrice,
   micName,
   money,
   money0,
@@ -107,10 +108,9 @@ const SYMBOL_END = new RegExp(`\\s?(${ZL}|€|\\$)$`);
 const SYMBOL_START = new RegExp(`^(?:[A-Z]{3}|[A-Z]{0,2}\\$|€|${ZL})\\s?`);
 /** A formatted price without its currency symbol (the chart's level labels, AssetPage.tsx:56). */
 const bareNumber = (s: string) => s.replace(SYMBOL_END, "").replace(SYMBOL_START, "");
+/** A market price level as a bare number (public: shown in incognito). */
 const num2 = (v: number) =>
-  hideAmount(
-    v.toLocaleString(intlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  );
+  v.toLocaleString(intlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const toneOf = (v: number | null | undefined): Tone => ((v ?? 0) >= 0 ? "positive" : "negative");
 
 export interface AssetInputs {
@@ -277,7 +277,8 @@ export function assetModel(o: AssetInputs) {
         t.kind === "gain_from_cost" ? "+" : "-",
         Math.round(t.threshold * 100),
         t.basis === "cost",
-        num2(t.y),
+        // A level from the owner's average cost would give that cost away.
+        t.basis === "cost" ? hideAmount(num2(t.y)) : num2(t.y),
       ),
     });
   }
@@ -285,7 +286,12 @@ export function assetModel(o: AssetInputs) {
     levels.push({ y: high, kind: "rule", muted: true, label: `${S.high52} · ${num2(high)}` });
   const cost = chart?.cost?.average;
   if (cost != null && pos?.valuation_mode === "market")
-    levels.push({ y: cost, kind: "cost", muted: true, label: `${S.avgCost} · ${num2(cost)}` });
+    levels.push({
+      y: cost,
+      kind: "cost",
+      muted: true,
+      label: `${S.avgCost} · ${hideAmount(num2(cost))}`,
+    });
   const first = series[0];
   const markers = (chart?.markers ?? [])
     .filter((m) => series.length > 1 && first !== undefined && m.date >= first.date)
@@ -325,8 +331,8 @@ export function assetModel(o: AssetInputs) {
       : []),
   ];
   const foot: { label: string; value: string }[] = [
-    ...(high != null ? [{ label: S.high52, value: unitPrice(high, c) }] : []),
-    ...(closes.length > 1 ? [{ label: S.low, value: unitPrice(Math.min(...closes), c) }] : []),
+    ...(high != null ? [{ label: S.high52, value: marketPrice(high, c) }] : []),
+    ...(closes.length > 1 ? [{ label: S.low, value: marketPrice(Math.min(...closes), c) }] : []),
     ...(vol30 != null ? [{ label: S.vol30, value: pct(vol30) }] : []),
     ...(nearest
       ? [
@@ -356,18 +362,19 @@ export function assetModel(o: AssetInputs) {
           padL: o.small ? 36 : 46,
           padR: o.small ? 150 : 200,
           values: closes,
-          endLabel: last != null ? unitPrice(last, c) : undefined,
+          endLabel: last != null ? marketPrice(last, c) : undefined,
           levels,
           markers,
           xLabels: labelIndices(series.length, o.small ? 3 : 5).map((i) => ({
             i,
             text: monthYearShort(series[i]?.date ?? ""),
           })),
+          // Market prices: public, shown in incognito.
           yFormat: (v: number) =>
-            hideAmount(v.toLocaleString(intlLocale(), { maximumFractionDigits: v >= 100 ? 0 : 2 })),
+            v.toLocaleString(intlLocale(), { maximumFractionDigits: v >= 100 ? 0 : 2 }),
           tooltip: (i: number): ChartTip => ({
             title: dmy(series[i]?.date ?? null),
-            rows: [{ name: S.legendPrice, value: unitPrice(series[i]?.close ?? null, c) }],
+            rows: [{ name: S.legendPrice, value: marketPrice(series[i]?.close ?? null, c) }],
           }),
         };
 
@@ -447,7 +454,7 @@ export function assetModel(o: AssetInputs) {
       sub,
       state: state ? { state, label: STATE_LABEL[state] } : null,
       hint: hints.length > 0 ? headerHint(hints, held) : null,
-      price: last != null ? unitPrice(last, c) : "-",
+      price: last != null ? marketPrice(last, c) : "-",
       week: wk != null ? { text: `${pct(wk, true)} ${S.week}`, tone: toneOf(wk) } : null,
       date: chart?.last ? wdm(chart.last.date) : "",
       fromHigh:

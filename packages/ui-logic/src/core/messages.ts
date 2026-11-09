@@ -14,7 +14,6 @@
 // exprDetail / yamlProblem return the English sentence unchanged.
 
 import { lang } from "@cashu/i18n";
-import { hideAmount } from "./incognito.js";
 import { EN_LABELS, S } from "./messages.strings.js";
 
 export type Params = Record<string, unknown>;
@@ -47,7 +46,8 @@ const cur = (v: unknown, c?: unknown) => {
   const txt = Number.isFinite(n)
     ? n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : String(v);
-  return c ? hideAmount(`${txt} ${CUR_SIGN[String(c)] ?? String(c)}`) : txt;
+  // Only market prices (close, level, high, SMA, range) go through here: public, shown in incognito.
+  return c ? `${txt} ${CUR_SIGN[String(c)] ?? String(c)}` : txt;
 };
 /** A fraction as a percent with one decimal: 0.124 -> "12,4 %". */
 const frac = (v: unknown) => {

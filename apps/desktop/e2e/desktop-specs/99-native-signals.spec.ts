@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { expect, test } from "../electron-test.ts";
 import { openNativeDemo } from "../native-baseline.ts";
 
-test("Signals: a decision from the signals dialog, the alerts manager and its CSV, the journal and privacy", async () => {
+test("Signals: a decision from the signals dialog, the alerts manager and its CSV, the journal and incognito", async () => {
   const demo = await openNativeDemo({ env: { CASHU_E2E_SIGNALS: "1" } });
   const { app, page, dataDir } = demo;
   try {
@@ -96,10 +96,27 @@ test("Signals: a decision from the signals dialog, the alerts manager and its CS
     await journal.getByRole("button", { name: "cofnij" }).first().click();
     await expect(journal).not.toContainText("Synthetic decision99");
 
-    // In privacy mode the signals read answers `unavailable: privacy`: the page stays, without rows.
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).click();
+    // Incognito hides only money: the journal stays and the signals are still listed.
+    const incognito = page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true });
+    await incognito.click();
+    await expect(incognito).toBeChecked();
     await expect(journal).toBeVisible();
-    await expect(journal).not.toContainText("Synthetic watched chance");
+    await page
+      .getByRole("navigation", { name: "Moduły" })
+      .getByRole("button", { name: "Inwestycje", exact: true })
+      .click();
+    await expect(rail).toContainText("S55F");
+    await rail
+      .getByRole("region", { name: "Sygnały" })
+      .getByRole("button", { name: /Wszystkie/u })
+      .click();
+    await expect(
+      dialog.locator("[data-signal], [data-group]").filter({ hasText: "WATCH" }).first(),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await incognito.click();
+    await expect(incognito).not.toBeChecked();
   } finally {
     await demo.close();
   }

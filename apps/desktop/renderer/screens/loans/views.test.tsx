@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The loan drawers are portaled Modals, so they render into a DOM document. Every loan story is
-// rendered through its form composition in stories.test.tsx; this file pins privacy mode.
+// rendered through its form composition in stories.test.tsx; this file pins incognito.
 import { setLanguageForTests } from "@cashu/i18n";
 import { UiEnvProvider } from "@cashu/ui";
 import { setIncognito } from "@cashu/ui-logic/core/incognito";
@@ -29,17 +29,17 @@ async function mount(node: ReactNode) {
   return document.body;
 }
 
-it("suppresses identities, amounts and forms in privacy mode", async () => {
+it("shows names and forms but no amounts in incognito", async () => {
   setLanguageForTests("en");
   setIncognito(true);
-  const state = loansStoryState(true);
+  const state = loansStoryState();
   const html = renderToStaticMarkup(
     <UiEnvProvider locale="en-US" privacy={true}>
       <StoryFixture component={LoansView} state={state} />
     </UiEnvProvider>,
   );
   setIncognito(false);
-  expect(html).not.toContain("Synthetic mortgage");
+  expect(html).toContain("Synthetic mortgage");
   expect(html).not.toContain("12,000");
   for (const [component, drawer] of [
     [LoanDrawerView, { kind: "loan" }],
@@ -51,11 +51,11 @@ it("suppresses identities, amounts and forms in privacy mode", async () => {
       </UiEnvProvider>,
     );
     expect(open.querySelector('[role="dialog"]')).not.toBeNull();
-    const hidden = await mount(
+    const incognito = await mount(
       <UiEnvProvider locale="en-US" privacy={true}>
         <StoryFixture component={component} state={{ ...state, drawer }} />
       </UiEnvProvider>,
     );
-    expect(hidden.querySelector('[role="dialog"]')).toBeNull();
+    expect(incognito.querySelector('[role="dialog"]')).not.toBeNull();
   }
 });

@@ -15,7 +15,7 @@ export interface SetupAgentCardProps {
 }
 
 export function SetupAgentCard({ moduleId, onSettings }: SetupAgentCardProps) {
-  const { incognito, agent, skill, skillHint, mcpPrivacy } = useSetupAgent(moduleId);
+  const { agent, skill, skillHint, mcpPrivacy } = useSetupAgent(moduleId);
   const toast = useToast();
   return (
     <AgentWidgetView
@@ -24,7 +24,6 @@ export function SetupAgentCard({ moduleId, onSettings }: SetupAgentCardProps) {
       skillHint={skillHint}
       privacy={mcpPrivacy}
       onCopy={(text) => {
-        if (incognito) return;
         navigator.clipboard.writeText(text).then(
           () => toast(P.copied, COPY_TOAST_MS),
           () => toast(S.copyFailed, COPY_TOAST_MS),

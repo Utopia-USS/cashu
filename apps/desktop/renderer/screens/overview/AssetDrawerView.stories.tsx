@@ -6,4 +6,7 @@ export default {
   args: { ...assets.args, state: { ...assets.args.state, open: true } },
 };
 export const Ready = {};
-export const Privacy = { args: { ...assets.args, privacy: true } };
+/** An edit opened in incognito: the money fields start empty, shown as dots. */
+export const Masked = {
+  args: { ...assets.args, state: { ...assets.args.state, open: true, masked: true } },
+};

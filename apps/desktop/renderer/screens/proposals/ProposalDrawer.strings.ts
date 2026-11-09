@@ -100,5 +100,4 @@ export const P = catalog({
     pl: "Szczegóły tej propozycji są niedostępne.",
     en: "This proposal's details are unavailable.",
   },
-  hidden: { pl: "Ukryte w trybie incognito", en: "Hidden in privacy mode" },
 });

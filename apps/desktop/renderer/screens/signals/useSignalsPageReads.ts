@@ -5,7 +5,6 @@ import { lang } from "@cashu/i18n";
 import { reviewScreenQueries } from "@cashu/store/investments/review-screen";
 import { signalsQueries } from "@cashu/store/investments/signals-screen";
 import { useQuery } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
 import { isGenericBucket } from "@cashu/ui-logic/investments/labels";
 import type { AccountRow } from "@cashu/ui-logic/investments/types";
 import { instName } from "@cashu/ui-logic/investments/v2/logic";
@@ -21,21 +20,20 @@ const reviewQuery = reviewScreenQueries().screen;
 
 export function useSignalsPageReads() {
   const today = useCalendarDay();
-  const { privacy } = useUiEnv();
   const language = lang();
   const snapshot = useQuery(signalsQuery, {
     now: dayReadInstant(today),
     today,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     lang: language,
-    privacy,
+    privacy: false,
   });
   const review = useQuery(reviewQuery, {
     today,
     lang: language,
     account: null,
     open: false,
-    privacy,
+    privacy: false,
   });
   // Signals first: their legacy numbers follow creation order (openSignalsOf) before any other read names one.
   const signals =
@@ -71,7 +69,6 @@ export function useSignalsPageReads() {
   const digest = digestOf(review).data;
   return {
     today,
-    privacy,
     /** `GET /signals?status=all` (isShownSignal). */
     signals,
     /** `GET /alerts?status=all`. */

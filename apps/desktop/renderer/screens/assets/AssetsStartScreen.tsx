@@ -4,7 +4,7 @@
 import { S as A } from "@cashu/i18n/assets/index.strings";
 import { profileIdentity } from "@cashu/store/overview";
 import { useProfile, useQuery } from "@cashu/store-react";
-import { Page, ToastProvider, useUiEnv } from "@cashu/ui";
+import { Page, ToastProvider } from "@cashu/ui";
 import { Suspense, useEffect, useRef } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { useAssetDrawer } from "../overview/useAssetDrawer.js";
@@ -20,13 +20,10 @@ export interface AssetsStartScreenProps {
 
 export function AssetsStartScreen(props: AssetsStartScreenProps) {
   const vault = useProfile();
-  const { privacy } = useUiEnv();
   return (
     <Page width="narrow" label={A.name} testID="native-assets-start">
       <ToastProvider>
-        <Suspense
-          fallback={<AssetsStartView state={null} today="" baseCurrency="" privacy={privacy} />}
-        >
+        <Suspense fallback={<AssetsStartView state={null} today="" baseCurrency="" />}>
           <AssetsStartBound key={vault} {...props} />
         </Suspense>
       </ToastProvider>
@@ -37,7 +34,6 @@ export function AssetsStartScreen(props: AssetsStartScreenProps) {
 function AssetsStartBound({ onSaved, onAgentSettings }: AssetsStartScreenProps) {
   const today = useCalendarDay();
   const profile = useQuery(profileIdentity);
-  const { privacy } = useUiEnv();
   const base = profile?.baseCurrency ?? "PLN";
   const state = useAssetDrawer(today, base);
   const prior = useRef(state.rows.length);
@@ -61,7 +57,6 @@ function AssetsStartBound({ onSaved, onAgentSettings }: AssetsStartScreenProps) 
       state={drawer}
       today={today}
       baseCurrency={base}
-      privacy={privacy}
       agent={<SetupAgentCard moduleId="assets" onSettings={onAgentSettings} />}
     />
   );

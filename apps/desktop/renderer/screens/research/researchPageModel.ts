@@ -63,7 +63,6 @@ import {
   topicMap,
   valuationView,
 } from "../investments/home/research/researchStripModel.js";
-import { S as R } from "./Research.strings.js";
 
 export type StoryTab = "topics" | "mine" | "notes" | "calendar" | "candidates" | "runs";
 const STORY_TABS: readonly StoryTab[] = [
@@ -97,8 +96,6 @@ export interface ResearchPageInput {
   now: number;
   /** The profile's MCP privacy level (`strict` / `amounts`). */
   privacy: string;
-  /** The app's privacy mode: the research text stays hidden (native rule, data safety over parity). */
-  hidden: boolean;
   runs: ResearchRun[];
   summary: ResearchSummary | null;
   /** Candidate notes, dismissed ones included. */
@@ -290,8 +287,7 @@ export interface ResearchPageModel {
   runNow: CopyModel | null;
   body:
     | { kind: "empty"; empty: EmptyModel }
-    | { kind: "story"; head: StoryHeadModel; tab: TabModel }
-    | { kind: "hidden"; text: string };
+    | { kind: "story"; head: StoryHeadModel; tab: TabModel };
 }
 
 const relOf = (n: ResearchNote): { text: string; tone: "pos" | "neg" } | null => {
@@ -746,9 +742,8 @@ function runsTab(p: ResearchPageInput): TabModel {
 
 export function researchPageModel(p: ResearchPageInput, ui: ResearchPageUi): ResearchPageModel {
   const cmd = researchCommand(p.workspace?.path, p.slug);
-  if (p.hidden && p.runs.length) return { runNow: null, body: { kind: "hidden", text: R.hidden } };
   const runNow =
-    !p.hidden && p.workspace?.exists !== false
+    p.workspace?.exists !== false
       ? copy(ui, cmd, S.runNow, { primary: false, showCommand: false })
       : null;
   if (!p.runs.length) return { runNow, body: { kind: "empty", empty: emptyModel(p, ui, cmd) } };

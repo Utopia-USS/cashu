@@ -10,7 +10,6 @@ import { S as II } from "@cashu/i18n/investments/index.strings";
 import { S as L } from "@cashu/i18n/loans/index.strings";
 import { overviewQueries } from "@cashu/store/overview";
 import { useQuery } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
 import { useState } from "react";
 import { type ChartMode, netWorthModel, type Scope, type Step } from "./netWorthModel.js";
 import {
@@ -51,7 +50,6 @@ export function useOverviewScreen(args: {
   /** The investments hero fact (null while the module is off or empty). */
   investmentsFact: RichFact | null;
 }) {
-  const { privacy } = useUiEnv();
   const language = lang();
   const [mode, setMode] = useState<ChartMode>("line");
   const [scope, setScope] = useState<Scope>("total");
@@ -124,7 +122,6 @@ export function useOverviewScreen(args: {
 
   return {
     today: args.today,
-    privacy,
     noModules: modules.length === 0,
     show: {
       budget: setUp("budget"),
@@ -142,12 +139,11 @@ export function useOverviewScreen(args: {
       investments: args.investmentsFact,
     }),
     budget: budgetMonthModel(budget, args.nav.openExpenses),
-    subscriptions: subscriptionsModel(budget, privacy, args.nav.openSubscriptions),
+    subscriptions: subscriptionsModel(budget, args.nav.openSubscriptions),
     accounts: accountsModel({
       accounts,
       wallet: args.wallet,
       showEmpty,
-      privacy,
       removal,
       onToggle: () => setShowEmpty((v) => !v),
       onCash: args.onCash,
@@ -163,7 +159,6 @@ export function useOverviewScreen(args: {
       loans,
       base: currency,
       norm: budget.norm,
-      privacy,
       open: args.nav.openLoans,
     }),
     baseCurrency: currency,

@@ -43,6 +43,8 @@ export interface SignalsBriefInput {
   items: readonly DecideItem[];
   total: number;
   loading: boolean;
+  /** The signals read failed: its message in place of the rows (no skeleton forever). */
+  error: string | null;
   lastReviewAt: string | null;
   insts: Map<number, InstLike>;
   onOpenAsset(id: number): void;
@@ -93,9 +95,9 @@ export function signalsBriefProps(i: SignalsBriefInput): SignalsBriefProps {
   // No lead sentence and no unchanged count (design V5): the header, then the rows; the review's own counts are the
   // hero button's popover, every signal is behind All (n).
   return {
-    loading: i.loading,
-    groups,
-    empty: groups.length ? null : S.nothingNew,
+    loading: i.loading && i.error === null,
+    groups: i.error === null ? groups : [],
+    empty: i.error ?? (groups.length ? null : S.nothingNew),
     all: S.all(i.total),
     allDisabled: !i.total,
     onAll: () => i.onAll(null),
@@ -104,6 +106,8 @@ export function signalsBriefProps(i: SignalsBriefInput): SignalsBriefProps {
 
 export interface AlertsBriefInput {
   alerts: Alert[] | null;
+  /** The alerts read failed: its message in place of the rows (an error is not "no alerts"). */
+  error: string | null;
   near: { near_price_pct?: number | null; near_pp?: number | null } | null | undefined;
   sinceAt: string | null;
   onManage(): void;
@@ -118,12 +122,12 @@ export function alertsBriefProps(i: AlertsBriefInput): AlertsBriefProps {
     i.sinceAt,
   );
   return {
-    loading: !i.alerts,
+    loading: !i.alerts && i.error === null,
     counts: {
       close: S.closeN(rows.filter((r) => r.state === "near").length),
       fired: S.firedN(rows.filter((r) => r.state === "met").length),
     },
-    empty: rows.length ? null : S.noneClose(live.length),
+    empty: i.error ?? (rows.length ? null : S.noneClose(live.length)),
     rows: rows.map((r) => ({
       key: String(r.id),
       monogram: monoOf(r.inst),

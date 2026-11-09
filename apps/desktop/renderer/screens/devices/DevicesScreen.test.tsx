@@ -9,7 +9,6 @@ import { DevicesScreen } from "./DevicesScreen.js";
 const bindings = vi.hoisted(() => ({
   vault: "a".repeat(32),
   connection: "online",
-  privacy: false,
   bridge: null as unknown,
   /** The device list the host pushes (the live `core.settings.deviceList` query). */
   list: null as unknown,
@@ -19,10 +18,6 @@ vi.mock("@cashu/store-react", () => ({
   useConnection: () => bindings.connection,
   useQuery: () =>
     bindings.list === null ? { status: "unavailable" } : { status: "ready", list: bindings.list },
-}));
-vi.mock("@cashu/ui-logic/core/incognito", () => ({
-  isIncognito: () => bindings.privacy,
-  onIncognitoChange: () => () => {},
 }));
 vi.mock("../../devicesBridge.js", () => ({ devicesBridge: () => bindings.bridge }));
 
@@ -101,7 +96,6 @@ beforeEach(() => {
   setLanguageForTests("en");
   bindings.vault = "a".repeat(32);
   bindings.connection = "online";
-  bindings.privacy = false;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);

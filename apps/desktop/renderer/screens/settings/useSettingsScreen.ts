@@ -27,7 +27,6 @@ import {
 } from "@cashu/store/device";
 import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import { useCommand, useProfile, useQuery, useUiAction } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
 import { hmLocal, localDay } from "@cashu/ui-logic/core/time";
 import { useForm } from "@tanstack/react-form";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -215,7 +214,6 @@ export function useSettingsScreen(
   onModuleConfigured: (id: string) => void,
 ) {
   const vault = useProfile();
-  const { privacy: ownerIncognito } = useUiEnv();
   const identity = useQuery(profileIdentity);
   const current = useQuery(profile);
   const modules = useQuery(modulesQuery);
@@ -226,9 +224,9 @@ export function useSettingsScreen(
   const update = useUiAction(updateAction);
   // The call log is pushed on every MCP call; its 7-day count rolls with the calendar day (no Odśwież).
   const since = auditWindowStart(useCalendarDay());
-  const audit = useQuery(mcpAudit, { vault, since, privacy: ownerIncognito });
-  const connectorActivity = useConnectorActivity(vault, ownerIncognito);
-  const hostInfo = useQuery(hostSettingsInfo, { privacy: ownerIncognito });
+  const audit = useQuery(mcpAudit, { vault, since, privacy: false });
+  const connectorActivity = useConnectorActivity(vault);
+  const hostInfo = useQuery(hostSettingsInfo, { privacy: false });
   const [service, setService] = useState<DesktopServiceStatus>({ state: "unavailable" });
   const [serviceBusy, setServiceBusy] = useState(false);
   const [notificationPermission, setNotificationPermission] =
@@ -301,7 +299,7 @@ export function useSettingsScreen(
           })),
         }
       : null;
-  const proposals = useQuery(proposalList, { status: "pending", privacy: ownerIncognito });
+  const proposals = useQuery(proposalList, { status: "pending", privacy: false });
   const save = useCommand(saveProfile);
   const setEnabled = useCommand(setModules);
   const setPrivacy = useCommand(setProfileSettings);
@@ -642,7 +640,6 @@ export function useSettingsScreen(
     onLanguagePicked: setLanguagePin,
     notice,
     onNoticeDismissed: () => setNotice(null),
-    ownerIncognito,
   };
 }
 export type SettingsScreenState = ReturnType<typeof useSettingsScreen>;

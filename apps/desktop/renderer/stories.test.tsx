@@ -5,7 +5,6 @@ import { beforeEach, expect, it } from "vitest";
 import assets, {
   Empty as EmptyAssets,
   Open as OpenAssets,
-  Privacy as PrivateAssets,
   Ready as ReadyAssets,
 } from "./screens/overview/AssetsWidgetView.stories.js";
 import investments, {
@@ -63,9 +62,6 @@ it("renders asset and investment widget stories from synthetic state", () => {
   expect(
     renderToStaticMarkup(<assets.component {...assets.args} {...OpenAssets.args} />),
   ).toContain("Synthetic property");
-  expect(
-    renderToStaticMarkup(<assets.component {...assets.args} {...PrivateAssets.args} />),
-  ).not.toContain("Synthetic property");
   expect(
     renderToStaticMarkup(<investments.component {...investments.args} {...ReadyInvestments} />),
   ).toContain("Investments");

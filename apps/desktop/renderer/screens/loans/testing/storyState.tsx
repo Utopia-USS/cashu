@@ -34,12 +34,11 @@ const steps = [
   { id: "payments", status: "on" as const },
 ];
 /** The fake state, formatted now (call it with incognito on to get masked amounts). */
-export function loansStoryState(privacy: boolean): LoansState {
-  const name = privacy ? "•••" : "Synthetic mortgage";
+export function loansStoryState(): LoansState {
+  const name = "Synthetic mortgage";
   return {
-    privacy,
     empty: false,
-    rows: listRows([row], privacy),
+    rows: listRows([row]),
     count: 1,
     selected: 0,
     select: noop,
@@ -53,7 +52,6 @@ export function loansStoryState(privacy: boolean): LoansState {
         budgetOn: true,
         loans: [row],
         base: "PLN",
-        privacy,
         openLoan: noop,
         openPayment: noop,
       }),
@@ -99,8 +97,7 @@ export function loansStoryState(privacy: boolean): LoansState {
     },
   };
 }
-export const storyState = loansStoryState(false);
-export const privacyState = loansStoryState(true);
+export const storyState = loansStoryState();
 
 /** Fake state and links keep stories independent of the store and router. */
 export function StoryFixture({

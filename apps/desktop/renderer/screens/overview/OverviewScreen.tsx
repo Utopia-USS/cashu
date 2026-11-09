@@ -7,8 +7,8 @@ import { lang } from "@cashu/i18n";
 import { S as D } from "@cashu/i18n/core/Overview.strings";
 import { overviewQueries } from "@cashu/store/overview";
 import { useQuery } from "@cashu/store-react";
-import { Page, Skeleton, ToastProvider, useUiEnv } from "@cashu/ui";
-import { Suspense, useEffect, useState } from "react";
+import { Page, Skeleton, ToastProvider } from "@cashu/ui";
+import { Suspense, useState } from "react";
 import { S } from "../../Desktop.strings.js";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { AssetsWidgetView } from "./AssetsWidgetView.js";
@@ -79,9 +79,8 @@ function OverviewBound(props: OverviewScreenProps) {
 
 function WithInvestments(props: OverviewScreenProps) {
   const today = useCalendarDay();
-  const { privacy } = useUiEnv();
   const widgets = useQuery(queries.investments, { today, lang: lang() });
-  const inv = useOverviewInvestments({ today, privacy, widgets });
+  const inv = useOverviewInvestments({ today, widgets });
   return <OverviewBody {...props} inv={inv} />;
 }
 
@@ -102,10 +101,6 @@ function OverviewBody({
   });
   const assets = useAssetDrawer(today, s.baseCurrency);
   const [other, setOther] = useState<string | null>(null);
-  // Privacy mode refuses asset edits: an open drawer closes (native behaviour).
-  useEffect(() => {
-    if (s.privacy && assets.open) assets.close();
-  }, [s.privacy, assets]);
 
   // The tiles in the bento's groups (OverviewView / overviewLayout.ts place them): beside the hero, the
   // middle row, the bottom row. Modules not set up come first in the middle row (old slots 35+).
@@ -149,7 +144,6 @@ function OverviewBody({
           state={assets}
           today={today}
           baseCurrency={s.baseCurrency}
-          privacy={s.privacy}
           onSetup={() => nav.openSetup("assets")}
         />
       ),
@@ -170,7 +164,7 @@ function OverviewBody({
           s.noModules ? { label: D.enableModules, onPress: nav.openModulesSettings } : null
         }
       />
-      <CashDrawerView state={cash} privacy={s.privacy} />
+      <CashDrawerView state={cash} />
     </>
   );
 }

@@ -7,7 +7,6 @@ import { S as H } from "@cashu/i18n/budget/BudgetHome.strings";
 import { S as SUB } from "@cashu/i18n/budget/Subscriptions.strings";
 import type { budgetDesktopQueries } from "@cashu/store/budget/queries";
 import { cur, cur0s } from "@cashu/ui-logic/core/format";
-import { MASK } from "../expenses/expensesModel.js";
 import { daysBetween, isMonthly, nextCharge } from "./budgetHomeModel.js";
 import type { SubRowState, SubscriptionsState } from "./budgetHomeState.js";
 
@@ -35,7 +34,6 @@ export type SubscriptionRow = ReturnType<
 export function subscriptionsState(args: {
   rows: readonly SubscriptionRow[];
   today: IsoDate;
-  privacy: boolean;
   /** The profile's base currency: the primary total when it has subscriptions. */
   base: string;
   open: boolean;
@@ -43,7 +41,7 @@ export function subscriptionsState(args: {
   /** The average monthly spending of a currency (null when unknown). */
   spendingOf(currency: string): Decimal | null;
 }): SubscriptionsState {
-  const { today, privacy } = args;
+  const { today } = args;
   const active = args.rows
     .filter((r) => r.active)
     .map((r) => ({ r, next: nextCharge(r.lastDate, r.medianGapDays) }))
@@ -61,9 +59,8 @@ export function subscriptionsState(args: {
     : ([...totals.entries()].sort((a, b) => b[1].compare(a[1]))[0]?.[0] ?? null);
   const monthly = primary !== null ? (totals.get(primary) ?? null) : null;
   const spent = primary !== null ? args.spendingOf(primary) : null;
-  const payee = (r: SubscriptionRow) => (privacy ? MASK : r.counterparty);
-  const initial = (r: SubscriptionRow) =>
-    privacy ? "•" : (r.counterparty.trim()[0] ?? "?").toUpperCase();
+  const payee = (r: SubscriptionRow) => r.counterparty;
+  const initial = (r: SubscriptionRow) => (r.counterparty.trim()[0] ?? "?").toUpperCase();
   const key = (r: SubscriptionRow) =>
     `${r.counterparty}:${r.currency}:${r.typicalAmount.toString()}`;
   const cadence = (gap: number) =>

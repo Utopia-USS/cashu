@@ -1,6 +1,6 @@
 // Kredyty (ab24ab6 modules/loans/Loans.tsx, Start.tsx, Drawers.tsx): the native loans, setup steps, recurring
-// payments and the two loan commands, adapted to what the old views got. Drawers and writes are refused in
-// privacy mode (native behaviour); command outcomes stay durable (an uncertain attempt is reconciled first).
+// payments and the two loan commands, adapted to what the old views got. Command outcomes stay durable (an
+// uncertain attempt is reconciled first).
 import { normalizeIban } from "@cashu/domain";
 import { lang } from "@cashu/i18n";
 import { S as DS } from "@cashu/i18n/loans/Drawers.strings";
@@ -9,7 +9,7 @@ import { budgetDesktopQueries } from "@cashu/store/budget/queries";
 import { createUiLoan, loansScreen, setUiLoanPayment } from "@cashu/store/loans/screen";
 import { overviewQueries } from "@cashu/store/overview";
 import { useCommand, useQuery } from "@cashu/store-react";
-import { useToast, useUiEnv } from "@cashu/ui";
+import { useToast } from "@cashu/ui";
 import { cur } from "@cashu/ui-logic/core/format";
 import { label } from "@cashu/ui-logic/core/messages";
 import {
@@ -45,7 +45,6 @@ const q = overviewQueries({ prices: null });
 type Drawer = { kind: "loan" } | { kind: "payment" } | null;
 
 export function useLoansScreen(today: string) {
-  const { privacy } = useUiEnv();
   const toast = useToast();
   const rows = useQuery(loansScreen, { today });
   const recurring = useQuery(budgetDesktopQueries().subscriptions);
@@ -118,7 +117,6 @@ export function useLoansScreen(today: string) {
     }
   };
   const openLoan = () => {
-    if (privacy) return;
     if (uncertain()) {
       setErr(O.unknown);
       return;
@@ -134,7 +132,6 @@ export function useLoansScreen(today: string) {
     setIban("");
   };
   const openPayment = (account: string | null) => {
-    if (privacy) return;
     if (uncertain()) {
       setErr(O.unknown);
       return;
@@ -229,14 +226,13 @@ export function useLoansScreen(today: string) {
   const payIndex = payLoan ? rows.indexOf(payLoan) : -1;
 
   return {
-    privacy,
     /** Old shell: an empty module's tab is its first steps. */
     empty: setupState === "empty",
-    rows: listRows(rows, privacy),
+    rows: listRows(rows),
     count: rows.length,
     selected: i,
     select,
-    detail: current ? loanDetail(current, loanName(current, i, privacy)) : null,
+    detail: current ? loanDetail(current, loanName(current, i)) : null,
     range,
     setRange,
     start: {
@@ -246,12 +242,11 @@ export function useLoansScreen(today: string) {
         budgetOn,
         loans: rows,
         base,
-        privacy,
         openLoan,
         openPayment,
       }),
     },
-    drawer: privacy ? null : drawer,
+    drawer,
     busy,
     err,
     close,
@@ -265,9 +260,9 @@ export function useLoansScreen(today: string) {
       save: saveLoan,
     },
     payment: {
-      loans: rows.map((r, k) => ({ value: r.accountId, label: loanName(r, k, privacy) })),
+      loans: rows.map((r, k) => ({ value: r.accountId, label: loanName(r, k) })),
       account: payId ?? "",
-      name: payLoan ? loanName(payLoan, payIndex, privacy) : null,
+      name: payLoan ? loanName(payLoan, payIndex) : null,
       pick,
       mode,
       setMode: (m: PaymentMode) => {

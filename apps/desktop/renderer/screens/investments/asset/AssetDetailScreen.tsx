@@ -76,10 +76,9 @@ function Detail(props: CommonProps & { mode: AssetMode }) {
   const m = st.model;
   const pill = st.thesisPill;
   const removeAlert = useRemoveAlert();
-  const research: ReactNode =
-    st.researchShown && !st.privacy ? (
-      <AssetResearchView model={st.researchModel} ui={st.research} />
-    ) : null;
+  const research: ReactNode = st.researchShown ? (
+    <AssetResearchView model={st.researchModel} ui={st.research} />
+  ) : null;
   const openNote = props.onOpenNote
     ? (noteId: number | null, segment: string | null) =>
         props.onOpenNote?.(props.instrument, gidOf(noteId), segment)

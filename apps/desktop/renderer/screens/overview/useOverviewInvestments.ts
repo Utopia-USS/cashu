@@ -52,12 +52,8 @@ export interface PlanRow {
   booked_at: string | null;
 }
 
-export function useOverviewInvestments(args: {
-  today: string;
-  privacy: boolean;
-  widgets: InvestmentWidgets;
-}) {
-  const { today, privacy } = args;
+export function useOverviewInvestments(args: { today: string; widgets: InvestmentWidgets }) {
+  const { today } = args;
   const language = lang();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const base = { today, timeZone, lang: language, account: null };
@@ -69,14 +65,14 @@ export function useOverviewInvestments(args: {
     today,
     timeZone,
     lang: language,
-    privacy,
+    privacy: false,
   });
   const reviewRead = useQuery(review, {
     today,
     lang: language,
     account: null,
     open: false,
-    privacy,
+    privacy: false,
   });
   const close = useQuery(budgetQueries.monthClose, {
     today,

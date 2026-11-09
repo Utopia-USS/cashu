@@ -4,21 +4,20 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MarkdownDocument } from "./MarkdownDocument.js";
 import { StrategiesView } from "./StrategiesView.js";
-import { unavailableState } from "./testing/storyState.js";
+import { readyState } from "./testing/storyState.js";
 
 describe("Strategies read-only presentation", () => {
   it.each(["en", "pl"] as const)(
-    "suppresses prose, descriptions, paths and proposals in privacy mode (%s)",
+    "shows the strategy prose and titles in incognito (%s)",
     (language) => {
       setLanguageForTests(language);
       const markup = renderToStaticMarkup(
         <UiEnvProvider locale="en-US" privacy={true}>
-          <StrategiesView state={unavailableState} />
+          <StrategiesView state={readyState} />
         </UiEnvProvider>,
       );
-      expect(markup).not.toMatch(
-        /Private synthetic|Synthetic strategy|\/synthetic|Synthetic pending proposal/,
-      );
+      expect(markup).toContain("Private synthetic investment prose.");
+      expect(markup).toContain("Synthetic strategy");
     },
   );
   it("renders safe Markdown as elements and keeps forbidden links and HTML as text", () => {

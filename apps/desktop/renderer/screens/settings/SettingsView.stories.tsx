@@ -207,7 +207,6 @@ function SyntheticSettings({
     onLanguagePicked: async () => {},
     notice: null,
     onNoticeDismissed() {},
-    ownerIncognito: false,
   } as unknown as SettingsScreenState;
   return (
     <UiEnvProvider locale="en-US" privacy={false}>

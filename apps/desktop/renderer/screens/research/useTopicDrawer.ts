@@ -7,7 +7,7 @@ import { useCommand } from "@cashu/store-react";
 import { useToast } from "@cashu/ui";
 import { type InstLike, instName } from "@cashu/ui-logic/investments/v2/logic";
 import { canonKey, topicSavePlan } from "@cashu/ui-logic/investments/v2/research/segments";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InvestmentsHomeData } from "../investments/home/useInvestmentsHomeData.js";
 import { instStateOf, tileOf } from "../investments/home/widgets/instState.js";
 import { useDisplayClock } from "../signals/useDisplayClock.js";
@@ -47,22 +47,13 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openNote, setOpenNote] = useState<number | null>(null);
-  // Privacy mode hides the topic and refuses its writes (native rule, data safety over parity); the ref lets a
-  // save in flight stop before its second write once privacy turns on.
-  const privacy = data.privacy;
-  const hidden = useRef(privacy);
-  useLayoutEffect(() => {
-    hidden.current = privacy;
-  });
-
   // Opening marks the key's unread agent notes read, once (old useTopicNotes).
   const marked = useRef(false);
   useEffect(() => {
-    if (marked.current || privacy || !r.notes.some((n) => n.segment === key && n.unread === true))
-      return;
+    if (marked.current || !r.notes.some((n) => n.segment === key && n.unread === true)) return;
     marked.current = true;
     void durable.run(`mark-segment:${key}`, markRead, { segment: key });
-  }, [r.notes, key, durable, markRead, privacy]);
+  }, [r.notes, key, durable, markRead]);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -73,7 +64,6 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
 
   /** One save: the native sequence (thesis, then the market view); `done` = the old toast. */
   const run = async (e: TopicEdit, confirm: boolean, done: string) => {
-    if (hidden.current) return;
     setBusy(true);
     setErr(null);
     let ok = false;
@@ -81,7 +71,7 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
       topic: key,
       record: t,
       value: { ...e, clearSources: false, confirmDraft: confirm },
-      current: () => alive.current && !hidden.current,
+      current: () => alive.current,
       saveThesis: (input) => durable.run(`topic-thesis:${key}`, saveThesis, input),
       deleteThesis: (input) => durable.run(`topic-thesis:${key}`, deleteThesis, input),
       setView: (input) => durable.run(`topic-view:${key}`, setView, input),
@@ -98,7 +88,6 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
     });
     if (!alive.current) return;
     setBusy(false);
-    if (hidden.current) return;
     if (!ok) return;
     setEdit(null);
     toast(done, 2000);
@@ -158,7 +147,6 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
     onClose: o.onClose,
     onCrumb: o.onCrumb,
     onEdit: () => {
-      if (hidden.current) return;
       setErr(null);
       setEdit({
         thesis: t?.thesis ?? "",
@@ -198,5 +186,5 @@ export function useTopicDrawer(o: TopicDrawerOptions) {
       );
     },
   };
-  return { model: { ...model, hidden: privacy ? R.hidden : null }, a };
+  return { model, a };
 }

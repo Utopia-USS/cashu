@@ -114,7 +114,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   const toast = useToast();
   const filter = legacyIdOf(o.account);
   const data = useInvestmentsHomeData({ filter, chartRange: o.range });
-  const commands = useInvestmentsHomeCommands(data);
+  const commands = useInvestmentsHomeCommands();
   const deckCommands = useReviewDeckCommands();
   const widgets = useHomeWidgetsState({ adding: !!o.watch });
   const displayNow = useDisplayClock(data.today);
@@ -173,8 +173,8 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
   const watch = data.watchQ.data ?? [];
   // The watch row's X with the undo (re-add), old removeWatchWithUndo.
   const unwatch = useUnwatch(watch);
-  // A list that never loaded reads as empty (as the old `.catch(() => [])` did).
-  const alertsList = data.alertsQ.data ?? (data.alertsQ.error ? [] : null);
+  // A failed read shows its message on the card, never an empty list.
+  const alertsList = data.alertsQ.data ?? null;
 
   const names = new Map<number, string>();
   const insts = new Map<number, InstLike>();
@@ -395,7 +395,11 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
     signals: signalsBriefProps({
       items: deckData.live.rail,
       total: data.signals.length,
-      loading: !data.sig.data || !deckData.ready,
+      // Only while there is neither data nor an error: a failed read never leaves the skeleton up.
+      loading:
+        (!data.sig.data || !deckData.ready) &&
+        [data.sig, data.dig, data.perf1m, data.perf1y].every((q) => q.error === null),
+      error: data.sig.error,
       lastReviewAt: doneLocal ?? digest?.last_review?.done_at ?? null,
       insts,
       onOpenAsset: openAsset,
@@ -403,6 +407,7 @@ export function useInvestmentsHomeScreen(o: InvestmentsHomeOptions) {
     }),
     alerts: alertsBriefProps({
       alerts: alertsList,
+      error: data.alertsQ.error,
       near: strategy?.facts?.alerts ?? null,
       sinceAt: digest?.since_at ?? null,
       onManage: () => o.onSignalsPageOpened?.("alerts"),

@@ -3,6 +3,6 @@
 import { connectorActivity } from "@cashu/store/core/desktop-settings";
 import { useQuery } from "@cashu/store-react";
 
-export function useConnectorActivity(vault: string, privacy: boolean) {
-  return useQuery(connectorActivity, { vault, privacy });
+export function useConnectorActivity(vault: string) {
+  return useQuery(connectorActivity, { vault, privacy: false });
 }

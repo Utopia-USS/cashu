@@ -1,6 +1,5 @@
 import { proposalDetail, proposalReview } from "@cashu/store/core/desktop-proposals";
 import { useQuery, useUiAction } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
 import { proposalError } from "@cashu/ui-logic/core/messages";
 import { useEffect, useRef, useState } from "react";
 import { type Message, strategyRefusal } from "./proposalRefusals.js";
@@ -15,8 +14,7 @@ export function useProposalDrawer(
     recoveryReason?: string;
   }) => void,
 ) {
-  const { privacy } = useUiEnv();
-  const detail = useQuery(proposalDetail, { gid, privacy });
+  const detail = useQuery(proposalDetail, { gid, privacy: false });
   const review = useUiAction(proposalReview);
   const pending = useRef(false);
   const lifetime = useRef(0);

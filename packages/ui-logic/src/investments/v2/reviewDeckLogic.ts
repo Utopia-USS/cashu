@@ -2,6 +2,7 @@
 // context per card, a card with nothing to say this week is skipped. Order: Czy świat się wali, Sektory,
 // Pozycje, Wydarzenia, Okazje, Kalendarz, Do decyzji last (what needs the owner closes the review), then the
 // summary. Verdicts are facts in plain Polish.
+import { hideAmount } from "../../core/incognito.js";
 import { proposalSummary } from "../../core/messages.js";
 import { parseServerTime } from "../../core/time.js";
 import { pct, pctTarget } from "../labels.js";
@@ -412,7 +413,7 @@ function ruleSentence(s: SignalV2, names?: Map<number, string>, fact = false): s
       .join(" ")
       .replace(/\s+/g, " ")
       .replace(/\s·$/, "")
-      .trim() || s.message
+      .trim() || hideAmount(s.message)
   );
 }
 
@@ -608,9 +609,11 @@ function subjectItem(
   const name =
     (sub.instrumentId != null ? names?.get(sub.instrumentId) : null) ??
     signalText(any, { names }).title ??
-    any.message;
+    hideAmount(any.message);
   const why = changing
-    ? (str(changing.payload.headline) ?? str(changing.payload.title) ?? changing.message)
+    ? (str(changing.payload.headline) ??
+      str(changing.payload.title) ??
+      hideAmount(changing.message))
     : lead
       ? ruleSentence(lead, names)
       : fulfilled

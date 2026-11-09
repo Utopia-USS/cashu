@@ -17,7 +17,6 @@ import {
   statementContentBase64,
 } from "@cashu/store/budget/queries";
 import { useQuery, useUiAction } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
 import {
   bankName,
   bankOptions,
@@ -35,7 +34,6 @@ import { builtinSources, connectorSources, isFileSource } from "./importSources.
 
 const queries = budgetDesktopQueries();
 const registry = core.builtinRegistry();
-const MASK = "•••";
 
 /** The `Bank` select's choices (Python GET /budget/import/importers without connectors): the banks with a CSV
  * parser and the cashU format (`bankOptions` puts `rozpoznaj automatycznie` first). */
@@ -72,7 +70,6 @@ export interface StatementImportInput {
 
 /** Mounted while the drawer is open, so every opening starts at its first step. */
 export function useStatementImport(input: StatementImportInput) {
-  const { privacy } = useUiEnv();
   const bankAccounts = useQuery(queries.statementAccounts, { lang: lang() });
   const previewAction = useUiAction(budgetStatementPreview);
   const commitAction = useUiAction(budgetStatementCommit);
@@ -179,12 +176,7 @@ export function useStatementImport(input: StatementImportInput) {
   };
 
   const accountLabel = (a: (typeof bankAccounts)[number]) =>
-    [
-      a.bankName,
-      privacy ? MASK : a.name,
-      a.ibanTail && !privacy ? `…${a.ibanTail}` : "",
-      a.currency,
-    ]
+    [a.bankName, a.name, a.ibanTail ? `…${a.ibanTail}` : "", a.currency]
       .filter(Boolean)
       .join(" · ");
   const counts = preview?.counts;
@@ -197,7 +189,7 @@ export function useStatementImport(input: StatementImportInput) {
     ? previewRows(preview.rows, onlyNew, all)
     : { shown: [], rest: 0 };
   const importerLabel = preview ? bankName(preview.importer.id, choices) : "";
-  const accountName0 = preview ? (privacy ? MASK : preview.account.name) : "";
+  const accountName0 = preview ? preview.account.name : "";
 
   return {
     title: S.title,
@@ -255,7 +247,7 @@ export function useStatementImport(input: StatementImportInput) {
             account: [
               accBank,
               accountName0,
-              preview.account.ibanTail && !privacy ? `…${preview.account.ibanTail}` : null,
+              preview.account.ibanTail ? `…${preview.account.ibanTail}` : null,
               preview.account.currency,
             ]
               .filter(Boolean)
@@ -283,8 +275,8 @@ export function useStatementImport(input: StatementImportInput) {
               return {
                 key: r.row,
                 date: r.date,
-                title: r.title ? (privacy ? MASK : r.title) : null,
-                counterparty: r.counterparty ? (privacy ? MASK : r.counterparty) : null,
+                title: r.title || null,
+                counterparty: r.counterparty || null,
                 amount: signed(v, r.currency),
                 tone: (dup ? null : v > 0 ? "positive" : v < 0 ? "negative" : null) as Tone,
                 duplicate: dup,
@@ -303,9 +295,9 @@ export function useStatementImport(input: StatementImportInput) {
         batch_id: null,
         account: {
           id: 0,
-          name: privacy ? MASK : done.account.name,
+          name: done.account.name,
           currency: done.account.currency,
-          iban_tail: privacy ? null : done.account.ibanTail,
+          iban_tail: done.account.ibanTail,
           created: done.account.created,
         },
         inserted: done.inserted,

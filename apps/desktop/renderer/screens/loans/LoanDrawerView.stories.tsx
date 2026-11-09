@@ -21,4 +21,3 @@ export const Invalid = {
   },
 };
 export const Pending = { args: { state: { ...open, busy: true } } };
-export const Privacy = { args: { state: { ...storyState, privacy: true } } };

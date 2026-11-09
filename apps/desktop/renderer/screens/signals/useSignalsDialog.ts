@@ -8,7 +8,7 @@ import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/investments/v2/Signals.strings";
 import { signalsQueries } from "@cashu/store/investments/signals-screen";
 import { useQuery } from "@cashu/store-react";
-import { useToast, useUiEnv } from "@cashu/ui";
+import { useToast } from "@cashu/ui";
 import { parseServerTime } from "@cashu/ui-logic/core/time";
 import { dm } from "@cashu/ui-logic/investments/labels";
 import { nextDeposit } from "@cashu/ui-logic/investments/logic";
@@ -209,7 +209,6 @@ export function useSignalsDialog(
   const toast = useToast();
   const api = useLegacySignalsApi();
   const flight = useInFlight();
-  const { privacy } = useUiEnv();
   const displayNow = useDisplayClock(o.data.today);
   const ctx: SignalsCtx = signalsCtxOf(o.data);
   const snapshot = useQuery(signalsQuery, {
@@ -217,7 +216,7 @@ export function useSignalsDialog(
     today: o.data.today,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     lang: lang(),
-    privacy,
+    privacy: false,
   });
   const list = o.data.signals;
   const held = ctx.held;

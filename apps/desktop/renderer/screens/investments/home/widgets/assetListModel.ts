@@ -18,10 +18,10 @@ import type {
 } from "@cashu/ui";
 import {
   accountLabel,
+  marketPrice,
   money,
   nAccountsInv,
   pct,
-  unitPrice,
 } from "@cashu/ui-logic/investments/labels";
 import type { AccountRow, Hint } from "@cashu/ui-logic/investments/types";
 import {
@@ -381,7 +381,7 @@ export function assetListProps(data: InvestmentsHomeData, ui: AssetListUi): Asse
         tone: cost ? "muted" : undefined,
         label: S.spark30d(i.label),
       },
-      price: p.price != null ? unitPrice(p.price, p.price_currency ?? c) : "-",
+      price: p.price != null ? marketPrice(p.price, p.price_currency ?? c) : "-",
       week: {
         text: wk != null ? pct(wk, true) : "-",
         tone: cost || wk == null ? "muted" : wk >= 0 ? "positive" : "negative",

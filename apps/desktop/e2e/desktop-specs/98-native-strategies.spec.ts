@@ -14,7 +14,7 @@ async function seedDocument(dataDir: string): Promise<void> {
   );
 }
 
-test("Strategies renders a document without unsafe links or scripts and hides its prose in privacy mode", async () => {
+test("Strategies renders a document without unsafe links or scripts and keeps its prose in incognito", async () => {
   const demo = await openNativeDemo({ prepare: seedDocument });
   const { page } = demo;
   try {
@@ -28,10 +28,13 @@ test("Strategies renders a document without unsafe links or scripts and hides it
     );
     await expect(page.getByRole("link", { name: "blocked", exact: true })).toHaveCount(0);
     await expect(page.locator("script").filter({ hasText: "synthetic()" })).toHaveCount(0);
-    await page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true }).click();
-    await expect(page.getByText("Synthetic reference", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Synthetic private description", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Read-only reference prose.", { exact: true })).toHaveCount(0);
+    // Incognito hides only money: the strategy's titles and prose stay readable.
+    const incognito = page.getByRole("checkbox", { name: "Ukryj kwoty", exact: true });
+    await incognito.click();
+    await expect(incognito).toBeChecked();
+    await tree.getByRole("button", { name: /^Synthetic reference/ }).click();
+    await expect(page.getByText("Read-only reference prose.", { exact: true })).toBeVisible();
+    await incognito.click();
   } finally {
     await demo.close();
   }

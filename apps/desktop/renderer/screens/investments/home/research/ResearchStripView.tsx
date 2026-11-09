@@ -8,11 +8,7 @@ import { S } from "@cashu/i18n/investments/v2/research/Story.strings";
 import { Button, MacroRows, Tag, Widget } from "@cashu/ui";
 import { useState } from "react";
 import type { MacroStripProps } from "./macroStripModel.js";
-import type {
-  ResearchHiddenProps,
-  ResearchStoryProps,
-  ResearchStripProps,
-} from "./researchStripModel.js";
+import type { ResearchStoryProps, ResearchStripProps } from "./researchStripModel.js";
 import { AheadDays, Mood, NowOutlook, storyHead } from "./storyParts.js";
 
 export function ResearchStripView(props: ResearchStripProps) {
@@ -21,27 +17,7 @@ export function ResearchStripView(props: ResearchStripProps) {
       return <ResearchStory {...props} />;
     case "macro":
       return <MacroStrip {...props} />;
-    case "hidden":
-      return <ResearchHidden {...props} />;
   }
-}
-
-/** Privacy mode: the strip's frame with the hidden line instead of the research text. */
-function ResearchHidden(p: ResearchHiddenProps) {
-  return (
-    <Widget
-      title={S.research}
-      id="inv-research"
-      tight
-      controls={
-        <Button variant="link" onPress={p.onAll}>
-          {p.allLabel}
-        </Button>
-      }
-    >
-      <div className="text-sm text-fg-muted">{p.text}</div>
-    </Widget>
-  );
 }
 
 /** Old MacroWidgets MacroStrip (the Home before the first research run): the five regimes side by side. */

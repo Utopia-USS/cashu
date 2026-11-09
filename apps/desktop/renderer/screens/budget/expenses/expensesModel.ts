@@ -1,5 +1,5 @@
 // Pure shaping of the budget's spending (ab24ab6 Expenses.tsx / SpendingDonut.tsx): the donut slices with the
-// collapsed "Reszta" slice in the old palette, and the privacy mask of names.
+// collapsed "Reszta" slice in the old palette.
 import { type Decimal, D as dec } from "@cashu/domain";
 import { S as D } from "@cashu/i18n/budget/SpendingDonut.strings";
 import type { ChartColor, SpendingSlice } from "@cashu/ui";
@@ -13,8 +13,6 @@ const PALETTE: readonly ChartColor[] = Array.from(
 
 const REST = "__rest__";
 const ZERO = dec("0.00");
-/** The masked text of names in privacy mode (native behaviour). */
-export const MASK = "•••";
 
 export interface SpendRow {
   category: string;

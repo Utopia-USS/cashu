@@ -14,7 +14,7 @@ type ResearchScreen = {
   topics: { key: string; thesis: { thesis: string | null; assessment: string | null } | null }[];
 };
 
-test("Research: a note and its asset, an owner topic thesis, a candidate answer, privacy and profiles", async () => {
+test("Research: a note and its asset, an owner topic thesis, a candidate answer, incognito and profiles", async () => {
   const demo = await openNativeDemo({ env: { CASHU_E2E_RESEARCH: "1" } });
   const { page, dataDir } = demo;
   try {
@@ -90,11 +90,11 @@ test("Research: a note and its asset, an owner topic thesis, a candidate answer,
     await dismissedToast.getByRole("button", { name: "Cofnij" }).click();
     await expect(page.getByText("Cofnięto: odrzucenie kandydata")).toBeVisible();
 
-    // Privacy mode hides the research text; another profile never sees it.
+    // Incognito hides only money: the research text stays readable; another profile never sees it.
     await tab("Notatki").click();
     await setPrivacy(page, true);
-    await expect(research.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);
-    await expect(research.getByText("Ukryte w trybie incognito", { exact: true })).toBeVisible();
+    await tab("Notatki").click();
+    await expect(fact1).toBeVisible();
     await setPrivacy(page, false);
     await pickProfile(page, "Demo Piotr");
     await expect(page.getByText("Synthetic research fact 1", { exact: true })).toHaveCount(0);

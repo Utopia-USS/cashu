@@ -1,7 +1,6 @@
 import type { DeviceListResult, LeaderPreviewResult } from "@cashu/host-protocol";
 import { useConnection, useProfile } from "@cashu/store-react";
-import { isIncognito, onIncognitoChange } from "@cashu/ui-logic/core/incognito";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { devicesBridge } from "../../devicesBridge.js";
 
 type Ready = Extract<DeviceListResult, { kind: "ready" }>;
@@ -12,9 +11,8 @@ type Status = "idle" | "busy" | "completed" | "unknown" | "failed";
 export function useLeaderAction(list: Ready | null) {
   const vault = useProfile();
   const connection = useConnection();
-  const privacy = useSyncExternalStore(onIncognitoChange, isIncognito);
   const bridge = devicesBridge();
-  const [scope, setScope] = useState({ vault, bridge, connection, privacy });
+  const [scope, setScope] = useState({ vault, bridge, connection });
   const epoch = useRef(0);
   const [target, setTarget] = useState("");
   const [force, setForce] = useState(false);
@@ -25,12 +23,9 @@ export function useLeaderAction(list: Ready | null) {
   const [inspectedOperationId, setInspectedOperationId] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const scopeActive =
-    scope.vault === vault &&
-    scope.bridge === bridge &&
-    scope.connection === connection &&
-    scope.privacy === privacy;
+    scope.vault === vault && scope.bridge === bridge && scope.connection === connection;
   if (!scopeActive) {
-    setScope({ vault, bridge, connection, privacy });
+    setScope({ vault, bridge, connection });
     setTarget("");
     setForce(false);
     setPreview(null);
@@ -41,9 +36,7 @@ export function useLeaderAction(list: Ready | null) {
     setExpired(false);
   }
   const activeList =
-    scopeActive && !privacy && (connection === "online" || connection === "recovered")
-      ? list
-      : null;
+    scopeActive && (connection === "online" || connection === "recovered") ? list : null;
 
   useEffect(() => {
     const current = ++epoch.current;
@@ -51,7 +44,7 @@ export function useLeaderAction(list: Ready | null) {
     return () => {
       if (ref.current === current) ref.current++;
     };
-  }, [bridge, connection, privacy, vault]);
+  }, [bridge, connection, vault]);
 
   useEffect(() => {
     if (!preview) return;

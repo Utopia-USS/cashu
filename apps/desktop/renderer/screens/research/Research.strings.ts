@@ -1,7 +1,6 @@
 import { catalog } from "@cashu/i18n";
 
 export const S = catalog({
-  hidden: { pl: "Ukryte w trybie incognito", en: "Hidden in privacy mode" },
   confirmDraft: {
     pl: "Akceptuję szkic przygotowany przez agenta",
     en: "I confirm this agent draft",

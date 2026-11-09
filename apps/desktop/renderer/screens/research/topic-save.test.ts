@@ -45,7 +45,7 @@ async function save(overrides: Partial<Input> = {}) {
   return { calls, feedback, views };
 }
 
-it("stops the second topic write and feedback when privacy or vault scope changes during the first", async () => {
+it("stops the second topic write and feedback when the vault scope changes during the first", async () => {
   let current = true;
   const first: string[] = [];
   const { calls, feedback } = await save({

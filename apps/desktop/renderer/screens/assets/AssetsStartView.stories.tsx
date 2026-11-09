@@ -8,7 +8,6 @@ const args: AssetsStartViewProps = {
   state,
   today: assets.args.today,
   baseCurrency: assets.args.baseCurrency,
-  privacy: false,
   agent: <AgentWidgetView {...agent.args} skill="/assets-setup" />,
 };
 export default { title: "Desktop/Assets/Start", component: AssetsStartView, args };
@@ -30,4 +29,3 @@ export const Empty = {
   },
 };
 export const Loading = { args: { ...args, state: null, agent: undefined } };
-export const Privacy = { args: { ...args, privacy: true } };

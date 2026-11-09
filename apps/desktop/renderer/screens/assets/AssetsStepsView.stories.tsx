@@ -8,7 +8,6 @@ const args: AssetsStepsViewProps = {
     totals: "Synthetic total",
     vehicles: [{ name: "Synthetic car", rate: "15", loss: "Synthetic loss" }],
   },
-  privacy: false,
   onAdd: () => {},
 };
 export default { title: "Desktop/Assets/Steps", component: AssetsStepsView, args };
@@ -26,4 +25,3 @@ export const Empty = {
     },
   },
 };
-export const Privacy = { args: { ...args, privacy: true } };

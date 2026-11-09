@@ -1,5 +1,5 @@
 // Installment matching (ab24ab6 modules/loans/Drawers.tsx `InstallmentDrawer`, `set-payment`): a title phrase or
-// the bank's IBAN, with the recent regular payments as phrase candidates. Pure; refused in privacy mode.
+// the bank's IBAN, with the recent regular payments as phrase candidates. Pure.
 import { C } from "@cashu/i18n/core/common.strings";
 import { S } from "@cashu/i18n/loans/Drawers.strings";
 import {
@@ -23,7 +23,7 @@ const fieldCls = "mb-3 grid gap-1 text-xs text-fg-muted";
 const kickerCls = "mt-3.5 mb-1 text-2xs font-strong uppercase tracking-eyebrow text-fg-muted";
 
 export function InstallmentDrawerView({ state }: { state: LoansState }) {
-  if (state.privacy || state.drawer?.kind !== "payment") return null;
+  if (state.drawer?.kind !== "payment") return null;
   const p = state.payment;
   const value = p.mode === "text" ? p.text : p.iban;
   const clear = p.stored ? (
