@@ -4,7 +4,9 @@
 // the research strip last. The light grid and the empty portfolio's first steps keep the page head. Also the loading
 // skeleton and the error line. Pure: models come from homeModel.ts, the widget / rail / research / review nodes from
 // the screen.
+
 import { S } from "@cashu/i18n/investments/v2/Home.strings";
+import { BANANA } from "@cashu/i18n/values";
 import {
   Button,
   CodeLine,
@@ -116,12 +118,15 @@ function HeadTags({ head, onAccount, onStale }: Omit<HomeHeadProps, "onAddTxn">)
 function StatementValue({ value, parts }: { value: string; parts: HeroValueParts | null }) {
   if (!parts) return value;
   const currency = "text-4xl font-strong tracking-heading text-fg-muted";
+  // The privacy mode's banana is the figure's unit, not a currency: it scales with the digits.
+  const unit = (text: string, extra = "") =>
+    text.includes(BANANA) ? undefined : `${currency}${extra}`;
   return (
     <>
-      {parts.pre && <span className={`${currency} align-top`}>{parts.pre}</span>}
+      {parts.pre && <span className={unit(parts.pre, " align-top")}>{parts.pre}</span>}
       {parts.main}
       {parts.fraction && <span className="text-fg-muted">{parts.fraction}</span>}
-      {parts.post && <span className={currency}>{parts.post}</span>}
+      {parts.post && <span className={unit(parts.post)}>{parts.post}</span>}
     </>
   );
 }
