@@ -12,7 +12,10 @@ import * as F from "./researchLabels.js";
 const NOT_BANK = "only bank accounts (checking, savings, credit card) can be removed";
 const REFUSALS: Readonly<Record<string, readonly [string, string]>> = {
   already_removed: ["the account is already removed from view", "invalid"],
-  already_proposed: ["a removal of this account already waits for the owner's approval", "conflict"],
+  already_proposed: [
+    "a removal of this account already waits for the owner's approval",
+    "conflict",
+  ],
   no_bank_account: [NOT_BANK, "invalid"],
 };
 
