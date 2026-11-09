@@ -1,5 +1,5 @@
 import { BankingScreen } from "./BankingScreen.js";
-import type { BankingUiPort } from "./useBankingScreen.js";
+import type { BankingReply, BankingUiPort } from "./useBankingScreen.js";
 
 /** Synthetic owner bridge, with no bank/network/keyring access. */
 export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort {
@@ -7,6 +7,8 @@ export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort
   let connected = initiallyConfigured;
   let pendingConsent: string | null = null;
   let pendingAttempts: { key: string; command: "banking.importAccount" }[] = [];
+  /** The bank's answer the waiting completeConsent gets: a pasted URL or a cancel. */
+  let answer: ((reply: BankingReply) => void) | null = null;
   return {
     async invoke(action) {
       switch (action.type) {
@@ -38,14 +40,25 @@ export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort
           return { ok: true, value: { url: pendingConsent } };
         case "cancelConsent":
           pendingConsent = null;
+          answer?.({ ok: false, error: "consent_cancelled" });
           return { ok: true, value: { cancelled: true } };
-        case "completeConsent":
+        case "offerCallback":
+          if (!answer) return { ok: false, error: "consent_cancelled" };
           connected = true;
           pendingConsent = null;
-          return {
+          answer({
             ok: true,
             value: { institution: "synthetic", accounts: 1, inserted: 1, attempts: [] },
-          };
+          });
+          return { ok: true, value: { accepted: true } };
+        case "completeConsent":
+          // Waits like the host: until the bank answers (here: a pasted URL) or a cancel.
+          return new Promise<BankingReply>((resolve) => {
+            answer = (reply) => {
+              answer = null;
+              resolve(reply);
+            };
+          });
         case "sync":
           pendingAttempts = [{ key: "b".repeat(32), command: "banking.importAccount" }];
           return {

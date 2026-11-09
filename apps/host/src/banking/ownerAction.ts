@@ -37,6 +37,7 @@ const command = z.discriminatedUnion("type", [
     keepOthers: z.boolean().default(false),
   }),
   z.object({ type: z.literal("completeConsent"), callbackUrl: z.string().max(4096).optional() }),
+  z.object({ type: z.literal("offerCallback"), callbackUrl: z.string().min(1).max(4096) }),
   z.object({ type: z.literal("cancelConsent") }),
   z.object({ type: z.literal("sync"), days: z.number().int().min(1).max(365).default(90) }),
   z.object({ type: z.literal("forgetSession"), handle: z.string().regex(/^[a-f0-9]{64}$/) }),
@@ -84,6 +85,18 @@ async function readPrivateBankingKey(path: string): Promise<string> {
     await file.close();
   }
 }
+
+/**
+ * Faults that end a mutating action before it changed anything: a bad key or setting, or a consent
+ * that never produced a code (denied, timed out, cancelled, a wrong copied URL). They are definite.
+ */
+const DEFINITE_FAULTS: ReadonlySet<string> = new Set([
+  "configuration",
+  "consent_denied",
+  "consent_timeout",
+  "consent_cancelled",
+  "callback_invalid",
+]);
 
 /**
  * One stderr line per refused owner action (the detached host sends stderr to host.log): the action
@@ -144,6 +157,8 @@ export async function runBankingOwnerAction(input: {
         return { ok: true, value: await service.beginConsent(action) };
       case "completeConsent":
         return { ok: true, value: await service.completeConsent(action.callbackUrl) };
+      case "offerCallback":
+        return { ok: true, value: service.offerCallback(action.callbackUrl) };
       case "cancelConsent":
         await service.cancelConsent();
         return { ok: true, value: { cancelled: true } };
@@ -163,7 +178,7 @@ export async function runBankingOwnerAction(input: {
       parsed.data.type,
     );
     const code =
-      mutating && !(error instanceof BankingFault && error.kind === "configuration")
+      mutating && !(error instanceof BankingFault && DEFINITE_FAULTS.has(error.kind))
         ? "outcome_unknown"
         : error instanceof BankingFault
           ? error.kind

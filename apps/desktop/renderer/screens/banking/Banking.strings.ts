@@ -46,7 +46,6 @@ export const B = {
     en: "The Enable Banking connection works.",
   },
   checkedApp: { pl: "Aplikacja:", en: "Application:" },
-  bankSearch: { pl: "Szukaj banku", en: "Search for a bank" },
   bank: { pl: "Bank", en: "Bank" },
   banksLoading: { pl: "Pobieram listę banków...", en: "Loading the list of banks..." },
   banksFailed: {
@@ -54,25 +53,43 @@ export const B = {
     en: "The list of banks could not be loaded from Enable Banking.",
   },
   banksRetry: { pl: "Pobierz listę banków ponownie", en: "Load the list again" },
-  noBankMatch: {
-    pl: "Żaden bank z listy Enable Banking nie pasuje. Sprawdź pisownię albo wpisz krótszą nazwę.",
-    en: "No bank on Enable Banking's list matches. Check the spelling or type a shorter name.",
-  },
-  pickBank: {
-    pl: "Wybierz bank z listy, żeby się połączyć.",
-    en: "Pick a bank from the list to connect.",
-  },
   consent: { pl: "Połącz bank", en: "Connect bank" },
-  openBank: { pl: "Otwórz stronę banku", en: "Open bank page" },
-  manual: {
-    pl: "Wklej z przeglądarki pełny adres strony, na którą wrócisz z banku",
-    en: "Paste the full callback URL from the browser",
+  consentHint: {
+    pl: "Zalogujesz się w banku jeszcze raz, nawet jeśli konta są już połączone w panelu Enable Banking. Tamto logowanie tylko wskazało Twoje konta, a to daje cashU dostęp do nich na 90 dni.",
+    en: "You log in at the bank once more, even if the accounts are already linked in the Enable Banking panel. That login only named your accounts; this one gives cashU access to them for 90 days.",
   },
+  openBank: { pl: "Otwórz stronę banku", en: "Open bank page" },
+  pickBankOption: { pl: "Wybierz bank", en: "Choose a bank" },
+  manualSummary: {
+    pl: "Przeglądarka nie wróciła do cashU?",
+    en: "The browser did not come back to cashU?",
+  },
+  manualHint: {
+    pl: "Po zgodzie w banku przeglądarka otwiera adres zaczynający się od https://127.0.0.1:18888/eb/callback. Jeśli cashU sam tego nie odebrał, skopiuj ten adres z paska przeglądarki i wklej go tutaj.",
+    en: "After the consent the browser opens an address starting with https://127.0.0.1:18888/eb/callback. If cashU did not pick it up by itself, copy that address from the browser's address bar and paste it here.",
+  },
+  manual: { pl: "Adres z paska przeglądarki", en: "Address from the browser's address bar" },
   complete: { pl: "Dokończ połączenie", en: "Complete connection" },
   cancel: { pl: "Anuluj połączenie", en: "Cancel connection" },
   waiting: {
-    pl: "Czekam na Twoją zgodę na stronie banku.",
-    en: "Waiting for consent in the bank browser.",
+    pl: "Czekam na Twoją zgodę na stronie banku. Po niej cashU sam dokończy połączenie i pobierze transakcje.",
+    en: "Waiting for your consent on the bank's page. After it cashU finishes the connection and loads the transactions by itself.",
+  },
+  openToContinue: {
+    pl: "Otwórz stronę banku i udziel zgody. Po niej cashU sam dokończy połączenie.",
+    en: "Open the bank's page and give your consent. cashU then finishes the connection by itself.",
+  },
+  consentDenied: {
+    pl: "Bank albo Enable Banking nie udzielił zgody. Sprawdź, czy to konto jest połączone w panelu Enable Banking („Link accounts”), i połącz bank jeszcze raz.",
+    en: "The bank or Enable Banking did not grant the consent. Check that this account is linked in the Enable Banking panel (“Link accounts”) and connect the bank again.",
+  },
+  consentTimeout: {
+    pl: "Bank nie odpowiedział w ciągu 5 minut. Połącz bank jeszcze raz.",
+    en: "The bank did not answer within 5 minutes. Connect the bank again.",
+  },
+  callbackInvalid: {
+    pl: "To nie jest adres powrotu z tego połączenia. Skopiuj cały adres z paska przeglądarki, zaczynający się od https://127.0.0.1:18888/eb/callback.",
+    en: "This is not the return address of this connection. Copy the whole address from the browser's address bar, starting with https://127.0.0.1:18888/eb/callback.",
   },
   sessions: { pl: "Połączone banki", en: "Connected banks" },
   sync: { pl: "Synchronizuj teraz", en: "Sync now" },

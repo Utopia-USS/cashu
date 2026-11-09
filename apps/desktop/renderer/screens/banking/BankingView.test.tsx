@@ -8,6 +8,34 @@ import type { BankingReply } from "./useBankingScreen.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** Picks an option of the bank picker the way the system picker does (React sees the change). */
+async function choose(container: HTMLElement, name: string) {
+  const select = container.querySelector("select") as HTMLSelectElement;
+  const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+  await act(async () => {
+    setValue?.call(select, name);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+/** Submits the form that holds `field`. */
+async function submitForm(field: Element | null) {
+  await act(async () => {
+    field?.closest("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+}
+
+/** The owner pastes the bank's return address into the folded fallback. */
+async function pasteCallback(container: HTMLElement, url: string) {
+  const field = container.querySelector('input[type="url"]') as HTMLInputElement;
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  await act(async () => {
+    setValue?.call(field, url);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await submitForm(field);
+}
+
 it("runs the native banking consent and recovers an unknown import by checking the attempt", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
@@ -39,17 +67,15 @@ it("runs the native banking consent and recovers an unknown import by checking t
       root.render(<BankingScreen vaultId="synthetic-a" port={bridged} language="en" />),
     );
     expect(container.textContent).toContain("Synthetic Bank");
-    const field = container.querySelector('input[type="search"]') as HTMLInputElement;
-    await act(async () => {
-      field.value = "Synthetic Bank";
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const form = field.closest("form");
-    await act(async () => {
-      form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
+    await choose(container, "Synthetic Bank");
+    await submitForm(container.querySelector("select"));
+    // cashU waits for the bank by itself; the next step is the one primary button.
+    expect(container.textContent).toContain("Waiting for your consent on the bank's page");
     await click("Open bank page");
     expect(opened).toBe("https://synthetic-bank.example/authorize");
+    await pasteCallback(container, "https://127.0.0.1:18888/eb/callback?code=synthetic&state=s");
+    expect(container.textContent).not.toContain("Open bank page");
+    expect(container.textContent).toContain("Data refreshed");
     await click("Sync now");
     expect(container.textContent).toContain("It is not known whether");
     expect(settled).toBe(0);
@@ -84,11 +110,10 @@ it("configures through the native chooser, completes a manual callback, and forg
     const appId = container.querySelector('input[maxlength="128"]') as HTMLInputElement;
     await submit(appId);
     expect(container.textContent).toContain("Connect bank");
-    const bank = container.querySelector('input[type="search"]') as HTMLInputElement;
-    await submit(bank);
-    const callback = container.querySelector('input[type="url"]') as HTMLInputElement;
-    expect(callback).toBeTruthy();
-    await submit(callback);
+    await choose(container, "Synthetic Bank");
+    await submitForm(container.querySelector("select"));
+    expect(container.querySelector('input[type="url"]')).toBeTruthy();
+    await pasteCallback(container, "https://127.0.0.1:18888/eb/callback?code=synthetic&state=s");
     expect(container.querySelector('input[type="url"]')).toBeNull();
     expect(container.textContent).toContain("Synthetic Bank");
     const forget = [...container.querySelectorAll("button")].find((node) =>
@@ -113,10 +138,8 @@ it("resumes or cancels a pending consent and keeps unknown attempts after Settin
   const render = async () =>
     act(async () => root.render(<BankingScreen vaultId="synthetic-a" port={port} language="en" />));
   const submitBank = async () => {
-    const bank = container.querySelector('input[type="search"]') as HTMLInputElement;
-    await act(async () => {
-      bank.closest("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
+    await choose(container, "Synthetic Bank");
+    await submitForm(container.querySelector("select"));
   };
   try {
     await render();
@@ -124,6 +147,8 @@ it("resumes or cancels a pending consent and keeps unknown attempts after Settin
     await act(async () => root.render(<div />));
     await render();
     expect(container.textContent).toContain("Open bank page");
+    // Nobody waits after a remount until the owner opens the bank again.
+    expect(container.textContent).toContain("Open the bank's page and give your consent");
     const cancel = [...container.querySelectorAll("button")].find(
       (node) => node.textContent === "Cancel connection",
     );
@@ -268,7 +293,7 @@ it("configures from a dropped key file and explains a wrong file or a missing ap
   }
 });
 
-it("picks a bank from Enable Banking's list, never sends free text, and retries after a refusal", async () => {
+it("picks a bank from Enable Banking's list and retries right after a refusal", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
@@ -293,15 +318,6 @@ it("picks a bank from Enable Banking's list, never sends free text, and retries 
       return base.invoke(action);
     },
   };
-  const type = async (value: string) => {
-    const field = container.querySelector('input[type="search"]') as HTMLInputElement;
-    // React tracks the last value it rendered; the native setter makes the change visible to it.
-    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    await act(async () => {
-      setValue?.call(field, value);
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  };
   const connect = () =>
     [...container.querySelectorAll("button")].find((node) =>
       node.textContent?.includes("Connect bank"),
@@ -317,19 +333,19 @@ it("picks a bank from Enable Banking's list, never sends free text, and retries 
     await act(async () =>
       root.render(<BankingScreen vaultId="synthetic-a" port={port} language="en" />),
     );
-    // The list loads by itself; with three banks nothing is chosen yet.
-    expect(container.querySelectorAll("option")).toHaveLength(3);
-    expect(connect().disabled).toBe(true);
-    await type("xyz");
-    expect(container.textContent).toContain("No bank on Enable Banking's list matches");
+    // The list loads by itself; nothing is chosen until the owner picks a bank.
+    const options = [...container.querySelectorAll("option")];
+    expect(options.map((node) => node.textContent)).toEqual([
+      "Choose a bank",
+      "Bank Millennium",
+      "Bank Pekao",
+      "mBank",
+    ]);
+    expect(options[0]?.disabled).toBe(true);
     expect(connect().disabled).toBe(true);
     await submit();
     expect(begun).toEqual([]);
-    // Misspelt, without the bank's prefix: still the one listed name.
-    await type("millenium");
-    expect([...container.querySelectorAll("option")].map((node) => node.textContent)).toEqual([
-      "Bank Millennium",
-    ]);
+    await choose(container, "Bank Millennium");
     expect(connect().disabled).toBe(false);
     await submit();
     expect(begun).toEqual(["Bank Millennium"]);

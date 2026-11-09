@@ -5,6 +5,7 @@ export type BankingAction =
   | { readonly type: "status" | "check" | "banks" | "cancelConsent" | "sync" }
   | { readonly type: "beginConsent"; readonly aspsp: string }
   | { readonly type: "completeConsent"; readonly callbackUrl?: string }
+  | { readonly type: "offerCallback"; readonly callbackUrl: string }
   | { readonly type: "forgetSession"; readonly handle: string }
   | { readonly type: "attemptStatus"; readonly key: string };
 export type BankingReply =
@@ -67,7 +68,10 @@ export type BankingNotice =
   | "callback"
   | "redirectNotAllowed"
   | "unknownBank"
-  | "appRestricted";
+  | "appRestricted"
+  | "consentDenied"
+  | "consentTimeout"
+  | "callbackInvalid";
 /** Definite refusal codes with a notice of their own; any other refusal is a plain error. */
 const NOTICE_BY_ERROR: Readonly<Record<string, BankingNotice>> = {
   app_id_required: "appIdRequired",
@@ -83,30 +87,14 @@ const NOTICE_BY_ERROR: Readonly<Record<string, BankingNotice>> = {
   redirect_not_allowed: "redirectNotAllowed",
   unknown_bank: "unknownBank",
   app_restricted: "appRestricted",
+  consent_denied: "consentDenied",
+  consent_timeout: "consentTimeout",
+  callback_invalid: "callbackInvalid",
   pending_previous_attempt: "previousUnknown",
 };
 const PEM_NAME = /\.pem$/i;
 
 export type BankListState = "idle" | "loading" | "ready" | "failed";
-
-/** Folds case, Polish diacritics and doubled letters: "millenium" finds "Bank Millennium". */
-function foldBankName(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .replace(/[\u0141\u0142]/g, "l") // the stroked L has no combining mark to strip
-    .toLowerCase()
-    .replace(/(.)\1+/g, "$1");
-}
-
-/** Whether a listed bank name matches what the owner typed (every typed word, in any order). */
-export function bankMatches(name: string, query: string): boolean {
-  const folded = foldBankName(name);
-  return foldBankName(query)
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((word) => folded.includes(word));
-}
 
 /** The bank names Enable Banking lists for the profile's country; null when it cannot be read. */
 async function loadBankNames(port: BankingUiPort): Promise<string[] | null> {
@@ -132,6 +120,8 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
   const [institutions, setInstitutions] = useState<string[]>([]);
   const [bankList, setBankList] = useState<BankListState>("idle");
   const [application, setApplication] = useState<string | null>(null);
+  /** The owner is at the bank: cashU waits for the bank's answer and finishes by itself. */
+  const [waiting, setWaiting] = useState(false);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [attemptList, setAttempts] = useState<BankingAttemptView[]>([]);
   const [busy, setBusy] = useState(false);
@@ -252,6 +242,42 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
     if (current(ticket)) setNotice("refreshed");
     if (current(ticket)) await fillBanks(ticket);
   };
+  /**
+   * Waits (up to 5 minutes, on the host) for the bank's answer and finishes the connection: the
+   * first import runs right after. Runs beside the other buttons, so it never sets `busy`.
+   */
+  const awaitConsent = async (ticket: number) => {
+    if (!port || waiting) return;
+    setWaiting(true);
+    let reply: BankingReply;
+    try {
+      reply = await port.invoke({ type: "completeConsent" });
+    } catch {
+      if (!current(ticket)) return;
+      setWaiting(false);
+      setNotice("importUnknown");
+      return;
+    }
+    if (!current(ticket)) return;
+    setWaiting(false);
+    await refresh(ticket);
+    if (!current(ticket)) return;
+    if (!reply.ok) {
+      // A cancel by the owner needs no notice; everything else says what happened.
+      if (reply.error !== "consent_cancelled")
+        setNotice(
+          reply.error === "outcome_unknown"
+            ? "importUnknown"
+            : (NOTICE_BY_ERROR[reply.error] ?? "error"),
+        );
+      return;
+    }
+    try {
+      applyResult(reply.value, ticket);
+    } catch {
+      setNotice("error");
+    }
+  };
   const applyResult = (value: unknown, ticket: number) => {
     const parsed = resultSchema.safeParse(value);
     if (!parsed.success) throw new Error("invalid banking result");
@@ -272,6 +298,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
     bankList,
     application,
     pendingUrl,
+    waiting,
     attemptList,
     busy,
     notice,
@@ -323,12 +350,24 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
         (value, ticket) => {
           const parsed = beginSchema.safeParse(value);
           if (!parsed.success) throw new Error("invalid consent result");
-          if (current(ticket)) setPendingUrl(parsed.data.url);
+          if (!current(ticket)) return;
+          setPendingUrl(parsed.data.url);
+          void awaitConsent(ticket);
         },
       ),
     open: async () => {
-      if (port && pendingUrl) await port.openBank(pendingUrl);
+      if (!port || !pendingUrl) return;
+      // After a reopened Settings nobody may be waiting yet: start before the browser opens.
+      void awaitConsent(generation.current);
+      await port.openBank(pendingUrl);
     },
+    offer: (callbackUrl: string) =>
+      perform(
+        () => invoke({ type: "offerCallback", callbackUrl }),
+        (_value, ticket) => {
+          if (current(ticket)) void awaitConsent(ticket);
+        },
+      ),
     cancel: () =>
       perform(
         () => invoke({ type: "cancelConsent" }),
@@ -337,15 +376,6 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
             throw new Error("invalid cancel result");
           await refresh(ticket);
         },
-      ),
-    complete: (callbackUrl: string) =>
-      perform(
-        () => invoke({ type: "completeConsent", ...(callbackUrl ? { callbackUrl } : {}) }),
-        async (value, ticket) => {
-          await refresh(ticket);
-          applyResult(value, ticket);
-        },
-        "importUnknown",
       ),
     sync: () =>
       perform(

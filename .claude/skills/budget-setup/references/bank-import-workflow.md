@@ -102,21 +102,28 @@ give the next step, opening with one line of where they are.
    Downloads: it stays on the Mac, never in the workspace or a chat.
 2. **Activate it.** The new application shows as **Inactive**: next to it, click **Activate by linking
    accounts** and link their own bank account. It then shows **Active** in restricted mode (only their
-   own linked accounts), which is what cashU needs.
+   own linked accounts), which is what cashU needs. Say up front that step 4 asks for a second bank
+   login on purpose: linking here only tells Enable Banking which accounts the application may read
+   (once, while setting up); it gives cashU no access. The access itself is the consent in step 4,
+   renewed every 90 days in cashU only. An account not linked here cannot be read in cashU.
 3. **In the app:** Ustawienia > Konektory, section Open Banking: drag the `.pem` from Downloads onto the
    dashed box (or "Wybierz prywatny plik klucza"). The application ID (Identyfikator aplikacji) is the
    string in brackets next to the application's name in the EB panel; the key file carries the same
    name, so the field can stay empty. Then "Sprawdź aplikację". A refusal names the cause (not a key
    file, not an RSA key, no application ID); say what it means, never guess further.
 4. Below "Sprawdź aplikację" (which confirms with the application's name), the app loads Enable
-   Banking's bank list by itself: they type part of the bank's name in "Szukaj banku" (spelling and
-   Polish letters do not matter), pick it and press "Połącz bank", which works only with a bank from
-   the list. The bank's page opens in the browser; they log in at the bank and confirm SCA there, then
-   paste the full return address from the browser into the app and press "Dokończ połączenie". A bank
-   with a separate business banking login is a separate entry and a separate connection. A refusal
-   names its fix: cashU's return address missing from the application's Redirect URLs (add
-   `https://127.0.0.1:18888/eb/callback` in the EB panel), no linked accounts yet ("Link accounts" in
-   the EB panel), port 18888 in use, no internet. Retrying right away is fine.
+   Banking's bank list by itself into the "Bank" picker (typing while it has focus jumps to the bank).
+   They pick the bank and press "Połącz bank" (it works only with a bank from the list), then "Otwórz
+   stronę banku": the bank's page opens in their browser and they log in at the bank again (the second
+   login announced in step 2, this time for cashU's own consent). After the consent the browser says
+   "Otrzymano autoryzację banku" and cashU finishes by itself and loads the transactions: no button,
+   nothing to paste. Only if the browser could not come back (it shows an error for
+   `https://127.0.0.1:18888/eb/callback...`), the folded "Przeglądarka nie wróciła do cashU?" takes
+   that whole address from the address bar. A bank with a separate business banking login is a
+   separate entry and a separate connection. A refusal names its fix: consent not granted (is the
+   account linked in the EB panel?), no answer within 5 minutes, cashU's return address missing from
+   the application's Redirect URLs (add `https://127.0.0.1:18888/eb/callback` in the EB panel), no
+   linked accounts ("Link accounts"), port 18888 in use, no internet. Retrying right away is fine.
 5. Later: the daily background job syncs (Ustawienia > Praca w tle keeps it running after the window
    closes), or "Synchronizuj teraz" in the same panel, or `cashu --profile <slug> eb resync` in their
    terminal, about once a day. The bank consent cashU asks for lasts 90 days (the EU rules allow banks up

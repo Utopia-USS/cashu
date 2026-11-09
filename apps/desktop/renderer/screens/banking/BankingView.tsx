@@ -1,4 +1,4 @@
-import { Button } from "@cashu/ui";
+import { Button, Select } from "@cashu/ui";
 import { B } from "./Banking.strings.js";
 import type { useBankingScreen } from "./useBankingScreen.js";
 
@@ -17,12 +17,7 @@ export interface BankingScreenState {
   /** A file is being dragged over the key drop zone. */
   readonly dragging: boolean;
   readonly setDragging: (value: boolean) => void;
-  /** What the owner typed to find their bank. */
-  readonly bankQuery: string;
-  readonly setBankQuery: (value: string) => void;
-  /** Enable Banking's bank names that match `bankQuery`. */
-  readonly matches: readonly string[];
-  /** The listed bank "Połącz bank" will use; empty until one is picked or only one matches. */
+  /** The listed bank "Połącz bank" will use; empty until one is picked. */
   readonly chosen: string;
 }
 
@@ -35,7 +30,7 @@ export function BankingView({
   readonly language: "pl" | "en";
 }) {
   const { screen, appId, setAppId, setAspsp, callbackUrl, setCallbackUrl } = state;
-  const { dragging, setDragging, bankQuery, setBankQuery, matches, chosen } = state;
+  const { dragging, setDragging, chosen } = state;
   const t = (key: keyof typeof B) => B[key][language];
   if (!state.available) return <p role="status">{t("unavailable")}</p>;
   return (
@@ -101,102 +96,87 @@ export function BankingView({
               {t("check")}
             </Button>
           </div>
-          <form
-            className="grid gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (chosen) void screen.begin(chosen);
-            }}
-          >
-            <label className="grid gap-1">
-              {t("bankSearch")}
-              <input
-                className={control}
-                type="search"
-                value={bankQuery}
-                onChange={(event) => setBankQuery(event.target.value)}
-                maxLength={100}
-                autoComplete="off"
-              />
-            </label>
-            {screen.bankList === "loading" && (
-              <p role="status" className="text-sm text-fg-muted">
-                {t("banksLoading")}
-              </p>
-            )}
-            {screen.bankList === "failed" && (
-              <div className="grid justify-items-start gap-2">
-                <p className="text-sm">{t("banksFailed")}</p>
-                <Button
-                  type="button"
-                  disabled={screen.busy}
-                  onPress={() => void screen.loadBanks()}
-                >
-                  {t("banksRetry")}
-                </Button>
-              </div>
-            )}
-            {screen.bankList === "ready" &&
-              (matches.length > 0 ? (
-                <label className="grid gap-1">
-                  {t("bank")}
-                  <select
-                    className={control}
-                    size={Math.min(6, Math.max(2, matches.length))}
-                    value={chosen}
-                    onChange={(event) => setAspsp(event.target.value)}
+          {!screen.pendingUrl && (
+            <form
+              className="grid gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (chosen) void screen.begin(chosen);
+              }}
+            >
+              {screen.bankList === "loading" && (
+                <p role="status" className="text-sm text-fg-muted">
+                  {t("banksLoading")}
+                </p>
+              )}
+              {screen.bankList === "failed" && (
+                <div className="grid justify-items-start gap-2">
+                  <p className="text-sm">{t("banksFailed")}</p>
+                  <Button
+                    type="button"
+                    disabled={screen.busy}
+                    onPress={() => void screen.loadBanks()}
                   >
-                    {matches.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <p className="text-sm">{t("noBankMatch")}</p>
-              ))}
-            <Button type="submit" disabled={screen.busy || !chosen}>
-              {t("consent")}
-            </Button>
-            {!chosen && screen.bankList === "ready" && matches.length > 0 && (
-              <p className="text-sm text-fg-muted">{t("pickBank")}</p>
-            )}
-          </form>
+                    {t("banksRetry")}
+                  </Button>
+                </div>
+              )}
+              {screen.bankList === "ready" && (
+                // The system's own picker: typing while it has focus jumps to the matching bank.
+                <Select
+                  label={t("bank")}
+                  value={chosen}
+                  onChange={setAspsp}
+                  options={[
+                    { value: "", label: t("pickBankOption"), disabled: true },
+                    ...screen.institutions.map((name) => ({ value: name, label: name })),
+                  ]}
+                />
+              )}
+              <Button type="submit" variant="primary" disabled={screen.busy || !chosen}>
+                {t("consent")}
+              </Button>
+              <p className="text-sm text-fg-muted">{t("consentHint")}</p>
+            </form>
+          )}
           {screen.pendingUrl && (
-            <div className="grid gap-2" role="status">
-              <p>{t("waiting")}</p>
-              <Button type="button" onPress={() => void screen.open()}>
+            <div className="grid gap-2">
+              <p role="status">{t(screen.waiting ? "waiting" : "openToContinue")}</p>
+              <Button type="button" variant="primary" onPress={() => void screen.open()}>
                 {t("openBank")}
               </Button>
               <Button type="button" disabled={screen.busy} onPress={() => void screen.cancel()}>
                 {t("cancel")}
               </Button>
-              <form
-                className="grid gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const submitted = callbackUrl;
-                  setCallbackUrl("");
-                  void screen.complete(submitted);
-                }}
-              >
-                <label className="grid gap-1">
-                  {t("manual")}
-                  <input
-                    className={control}
-                    type="url"
-                    value={callbackUrl}
-                    onChange={(event) => setCallbackUrl(event.target.value)}
-                    maxLength={4096}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </label>
-                <Button type="submit" disabled={screen.busy}>
-                  {t("complete")}
-                </Button>
-              </form>
+              <details className="text-sm">
+                <summary className="cursor-pointer text-fg-muted">{t("manualSummary")}</summary>
+                <form
+                  className="mt-2 grid gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const submitted = callbackUrl;
+                    setCallbackUrl("");
+                    if (submitted.trim()) void screen.offer(submitted);
+                  }}
+                >
+                  <p className="text-fg-muted">{t("manualHint")}</p>
+                  <label className="grid gap-1">
+                    {t("manual")}
+                    <input
+                      className={control}
+                      type="url"
+                      value={callbackUrl}
+                      onChange={(event) => setCallbackUrl(event.target.value)}
+                      maxLength={4096}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </label>
+                  <Button type="submit" disabled={screen.busy || !callbackUrl.trim()}>
+                    {t("complete")}
+                  </Button>
+                </form>
+              </details>
             </div>
           )}
           <div className="grid gap-2">
@@ -216,7 +196,7 @@ export function BankingView({
             ))}
             <Button
               type="button"
-              disabled={screen.busy || screen.connected.length === 0}
+              disabled={screen.busy || screen.waiting || screen.connected.length === 0}
               onPress={() => void screen.sync()}
             >
               {t("sync")}

@@ -9,32 +9,61 @@ import { BankingFault } from "./client.js";
 export interface CallbackCapture {
   readonly redirectUrl: string;
   wait(timeoutMs?: number): Promise<string>;
+  /** Hands over a callback URL the owner copied from the browser; throws `callback_invalid`. */
+  offer(callbackUrl: string): void;
   close(): Promise<void>;
 }
 
+/** What a callback's query says: the authorization code, the bank's refusal, or nothing usable. */
+type CallbackReading =
+  | { readonly kind: "code"; readonly code: string }
+  | { readonly kind: "denied"; readonly reason: string }
+  | { readonly kind: "invalid"; readonly reason: string };
+
+/**
+ * Reads the query Enable Banking redirects to. Only `state`, `code` and `error` count; anything else
+ * Enable Banking or the bank adds (`error_description`, tracking parameters) is ignored, never echoed.
+ */
+function readCallback(params: URLSearchParams, state: string): CallbackReading {
+  if (params.getAll("state").length !== 1 || params.get("state") !== state)
+    return { kind: "invalid", reason: "state" };
+  const errors = params.getAll("error");
+  if (errors.length > 0) {
+    const reason = errors[0] ?? "";
+    return { kind: "denied", reason: /^[a-z_]{1,40}$/.test(reason) ? reason : "other" };
+  }
+  const codes = params.getAll("code");
+  if (codes.length !== 1) return { kind: "invalid", reason: "code_missing" };
+  const code = codes[0] ?? "";
+  if (!/^[A-Za-z0-9._~-]{1,2048}$/.test(code)) return { kind: "invalid", reason: "code_format" };
+  return { kind: "code", code };
+}
+
+/** One stderr line (host.log) per callback that did not deliver a code: a static reason only. */
+function logCallback(reason: string): void {
+  try {
+    console.warn("banking.callback", reason);
+  } catch {
+    // Best effort: logging must not change the answer.
+  }
+}
+
+/** The owner's copied callback URL: the pending origin, path and state, and a code. */
 export function parseBankingCallbackUrl(value: string, redirectUrl: string, state: string): string {
   let target: URL;
   let parsed: URL;
   try {
     target = new URL(redirectUrl);
-    parsed = new URL(value);
+    parsed = new URL(value.trim());
   } catch {
-    throw new BankingFault("authorization");
+    throw new BankingFault("callback_invalid");
   }
-  if (
-    parsed.origin !== target.origin ||
-    parsed.pathname !== target.pathname ||
-    parsed.hash ||
-    parsed.searchParams.getAll("state").length !== 1 ||
-    parsed.searchParams.get("state") !== state ||
-    parsed.searchParams.getAll("code").length !== 1 ||
-    parsed.searchParams.has("error") ||
-    [...parsed.searchParams.keys()].some((key) => key !== "state" && key !== "code")
-  )
-    throw new BankingFault("authorization");
-  const code = parsed.searchParams.get("code") ?? "";
-  if (!/^[A-Za-z0-9._~-]{1,2048}$/.test(code)) throw new BankingFault("authorization");
-  return code;
+  if (parsed.origin !== target.origin || parsed.pathname !== target.pathname)
+    throw new BankingFault("callback_invalid");
+  const reading = readCallback(parsed.searchParams, state);
+  if (reading.kind === "denied") throw new BankingFault("consent_denied");
+  if (reading.kind === "invalid") throw new BankingFault("callback_invalid");
+  return reading.code;
 }
 
 function pem(label: string, bytes: Uint8Array): string {
@@ -102,64 +131,59 @@ export async function listenForBankingCallback(
   });
   void code.catch(() => undefined);
   const server: Server = createServer(identity, (request, response) => {
-    const finish = (status: number) => {
-      response.writeHead(status, {
+    const finish = (page: "accepted" | "denied" | "stale") => {
+      response.writeHead(page === "stale" ? 400 : 200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
         "Referrer-Policy": "no-referrer",
       });
       response.end(
-        `<!doctype html><meta charset="utf-8"><title>cashU</title><p>${status === 200 ? S.accepted[language] : S.rejected[language]}</p>`,
+        `<!doctype html><meta charset="utf-8"><title>cashU</title><p>${S[page][language]}</p>`,
       );
     };
-    if (
-      used ||
-      request.method !== "GET" ||
-      request.headers.host !== target.host ||
-      !request.url ||
-      request.url.length > 4096
-    ) {
-      finish(404);
+    if (request.method !== "GET" || !request.url || request.url.length > 4096) {
+      logCallback("request");
+      finish("stale");
       return;
     }
     let parsed: URL;
     try {
       parsed = new URL(request.url, target);
     } catch {
-      finish(400);
+      logCallback("url");
+      finish("stale");
       return;
     }
-    if (
-      parsed.origin !== target.origin ||
-      parsed.pathname !== target.pathname ||
-      parsed.hash ||
-      parsed.searchParams.getAll("state").length !== 1 ||
-      parsed.searchParams.get("state") !== state ||
-      [...parsed.searchParams.keys()].some(
-        (key) => key !== "state" && key !== "code" && key !== "error",
-      )
-    ) {
-      finish(400);
+    // A browser also asks for /favicon.ico: answer it without touching the consent.
+    if (parsed.pathname !== target.pathname) {
+      response.writeHead(404).end();
       return;
     }
-    if (parsed.searchParams.getAll("error").length === 1 && !parsed.searchParams.has("code")) {
-      used = true;
-      finish(200);
-      reject?.(new BankingFault("authorization"));
+    if (request.headers.host !== target.host) {
+      logCallback("host");
+      finish("stale");
       return;
     }
-    if (parsed.searchParams.getAll("code").length !== 1 || parsed.searchParams.has("error")) {
-      finish(400);
+    if (used) {
+      logCallback("used");
+      finish("stale");
       return;
     }
-    const value = parsed.searchParams.get("code") ?? "";
-    if (!/^[A-Za-z0-9._~-]{1,2048}$/.test(value)) {
-      finish(400);
+    const reading = readCallback(parsed.searchParams, state);
+    if (reading.kind === "invalid") {
+      logCallback(reading.reason);
+      finish("stale");
       return;
     }
     used = true;
-    finish(200);
-    settle?.(value);
+    if (reading.kind === "denied") {
+      logCallback(`denied:${reading.reason}`);
+      finish("denied");
+      reject?.(new BankingFault("consent_denied"));
+      return;
+    }
+    finish("accepted");
+    settle?.(reading.code);
   });
   const sockets = new Set<Duplex>();
   server.on("connection", (socket) => {
@@ -188,17 +212,23 @@ export async function listenForBankingCallback(
         return await Promise.race([
           code,
           new Promise<string>((_, fail) => {
-            timer = setTimeout(() => fail(new BankingFault("expired")), timeoutMs);
+            timer = setTimeout(() => fail(new BankingFault("consent_timeout")), timeoutMs);
           }),
         ]);
       } finally {
         if (timer) clearTimeout(timer);
       }
     },
+    offer(callbackUrl: string) {
+      if (closed || used) throw new BankingFault("callback_invalid");
+      const code = parseBankingCallbackUrl(callbackUrl, redirectUrl, state);
+      used = true;
+      settle?.(code);
+    },
     async close() {
       if (closed) return;
       closed = true;
-      reject?.(new BankingFault("expired"));
+      reject?.(new BankingFault("consent_cancelled"));
       server.closeAllConnections();
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));

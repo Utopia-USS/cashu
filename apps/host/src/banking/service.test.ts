@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { expect, it } from "vitest";
-import type { BankingTransport } from "./client.js";
+import { BankingFault, type BankingTransport } from "./client.js";
 import { type BankingImportPort, EnableBankingService } from "./service.js";
 
 const privateKeyPem = generateKeyPairSync("rsa", { modulusLength: 2048 })
@@ -109,6 +109,7 @@ it("stores only profile-private consent, imports exact decimal rows, and guards 
       consentState = state;
       return {
         redirectUrl: "https://127.0.0.1:18888/eb/callback",
+        offer: () => undefined,
         wait: async () => "synthetic-code",
         close: async () => undefined,
       };
@@ -356,6 +357,7 @@ it("closes the callback listener when authorization fails before completion", as
     redirectUrl: "https://127.0.0.1:18888/eb/callback",
     callback: async () => ({
       redirectUrl: "https://127.0.0.1:18888/eb/callback",
+      offer: () => undefined,
       wait: async () => "synthetic",
       close: async () => {
         closed++;
@@ -414,6 +416,7 @@ it("invalidates pending consent after credentials change before code exchange", 
         state = captured;
         return {
           redirectUrl: "https://127.0.0.1:18888/eb/callback",
+          offer: () => undefined,
           wait: async () => "synthetic",
           close: async () => undefined,
         };
@@ -483,6 +486,7 @@ it("cancels a deferred authorization and refuses a concurrent begin", async () =
     redirectUrl: "https://127.0.0.1:18888/eb/callback",
     callback: async () => ({
       redirectUrl: "https://127.0.0.1:18888/eb/callback",
+      offer: () => undefined,
       wait: async () => "synthetic-code",
       close: async () => {
         closes++;
@@ -562,6 +566,7 @@ it("is ready for an immediate retry after Enable Banking refuses the bank name",
       listening++;
       return {
         redirectUrl: "https://127.0.0.1:18888/eb/callback",
+        offer: () => undefined,
         wait: async () => "synthetic",
         close: async () => {
           closes++;
@@ -634,6 +639,7 @@ it.each([
     redirectUrl: "https://127.0.0.1:18888/eb/callback",
     callback: async () => ({
       redirectUrl: "https://127.0.0.1:18888/eb/callback",
+      offer: () => undefined,
       wait: async () => "synthetic",
       close: async () => {},
     }),
@@ -649,6 +655,88 @@ it.each([
   const failure = await service.beginConsent({ aspsp: "Synthetic Bank" }).catch((error) => error);
   expect(String(failure)).toContain(fault);
   expect(String(failure)).not.toContain("synthetic private detail");
+});
+
+it("ends a waited consent definitely when the owner cancels, and connects again at once", async () => {
+  const privateKeyPem = generateKeyPairSync("rsa", { modulusLength: 2048 })
+    .privateKey.export({ format: "pem", type: "pkcs8" })
+    .toString();
+  let open = 0;
+  const service = new EnableBankingService({
+    authority: {
+      profileId: "profile-a",
+      isCurrent: () => true,
+      isHolder: () => true,
+      isOwnerAction: () => true,
+    },
+    secrets: {
+      namespace: "synthetic-cancel-wait",
+      async get(kind) {
+        return kind === "credentials"
+          ? JSON.stringify({ appId: "synthetic-app", privateKeyPem, revision: "initial" })
+          : null;
+      },
+      async set() {
+        throw new Error("unexpected write");
+      },
+      async clear() {
+        throw new Error("unexpected clear");
+      },
+    },
+    imports: {
+      checkAttempt: () => "not_started",
+      unresolvedAttempts: async () => [],
+      async findAccount() {
+        return null;
+      },
+      async runImport() {
+        throw new Error("unexpected import");
+      },
+    },
+    redirectUrl: "https://127.0.0.1:18888/eb/callback",
+    callback: async () => {
+      if (open > 0) throw new Error("callback port still in use");
+      open++;
+      let fail: ((error: Error) => void) | undefined;
+      const answer = new Promise<string>((_, reject) => {
+        fail = reject;
+      });
+      void answer.catch(() => undefined);
+      return {
+        redirectUrl: "https://127.0.0.1:18888/eb/callback",
+        wait: () => answer,
+        offer: () => undefined,
+        close: async () => {
+          if (!fail) return;
+          open--;
+          fail(new BankingFault("consent_cancelled"));
+          fail = undefined;
+        },
+      };
+    },
+    transport: {
+      async send() {
+        return {
+          status: 200,
+          text: JSON.stringify({ url: "https://synthetic-bank.example/consent" }),
+        };
+      },
+    },
+  });
+  await service.beginConsent({ aspsp: "Synthetic Bank" });
+  const waiting = service.completeConsent();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  // While the bank's answer is awaited, a second consent cannot start.
+  await expect(service.beginConsent({ aspsp: "Synthetic Bank" })).rejects.toThrow(
+    "enable_banking_authorization",
+  );
+  await service.cancelConsent();
+  await expect(waiting).rejects.toThrow("enable_banking_consent_cancelled");
+  expect(open).toBe(0);
+  expect((await service.beginConsent({ aspsp: "Synthetic Bank" })).url).toBe(
+    "https://synthetic-bank.example/consent",
+  );
+  await service.cancelConsent();
 });
 
 it("reports a callback port it cannot open as its own refusal", async () => {

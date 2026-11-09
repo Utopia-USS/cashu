@@ -25,12 +25,15 @@ function bridge(): NativeBankingBridge | null {
   return (window as Window & { readonly cashuBanking?: NativeBankingBridge }).cashuBanking ?? null;
 }
 
-/** Actions that only read: they never leave an outcome the owner has to check. */
-const READS: ReadonlySet<BankingAction["type"]> = new Set([
-  "status",
-  "check",
-  "banks",
-  "attemptStatus",
+/**
+ * Actions whose outcome can be unknown (an import or a stored change may have happened). They go
+ * through their own UI action instance, which blocks after an unknown outcome until it is renewed;
+ * every other action (reads, starting, cancelling or feeding a consent) stays usable meanwhile.
+ */
+const WRITES: ReadonlySet<BankingAction["type"]> = new Set([
+  "completeConsent",
+  "sync",
+  "forgetSession",
 ]);
 
 type Run = (input: BankingAction) => Promise<UiActionResult<unknown>>;
@@ -73,7 +76,7 @@ export function BankingSettingsPanel() {
   });
   const [port] = useState<BankingUiPort>(() => ({
     async invoke(input: BankingAction): Promise<BankingReply> {
-      const run = READS.has(input.type) ? readRun.current : writeRun.current;
+      const run = WRITES.has(input.type) ? writeRun.current : readRun.current;
       if (!run) return { ok: false, error: "unavailable" };
       return reply(await run(input));
     },

@@ -14,6 +14,14 @@ type BankingFaultKind =
   | "rate_limited"
   /** The local consent callback (127.0.0.1, the redirect URL's port) could not start, e.g. port in use. */
   | "callback"
+  /** The bank or Enable Banking redirected back with an error instead of a code. */
+  | "consent_denied"
+  /** No callback within the wait (the owner did not finish at the bank in time). */
+  | "consent_timeout"
+  /** The pending consent was cancelled (or replaced) while waiting for the callback. */
+  | "consent_cancelled"
+  /** A copied callback URL that is not this consent's (origin, path, state or code). */
+  | "callback_invalid"
   /** Enable Banking: the application does not list cashU's redirect URL (REDIRECT_URI_NOT_ALLOWED). */
   | "redirect_not_allowed"
   /** Enable Banking: no bank of that name (WRONG_ASPSP_PROVIDED). */

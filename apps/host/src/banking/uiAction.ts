@@ -15,6 +15,10 @@ const publicAction = z.discriminatedUnion("type", [
     type: z.literal("completeConsent"),
     callbackUrl: z.string().max(4096).optional(),
   }),
+  z.strictObject({
+    type: z.literal("offerCallback"),
+    callbackUrl: z.string().min(1).max(4096),
+  }),
   z.strictObject({ type: z.literal("cancelConsent") }),
   z.strictObject({ type: z.literal("sync") }),
   z.strictObject({ type: z.literal("forgetSession"), handle: z.string().regex(/^[a-f0-9]{64}$/) }),

@@ -311,7 +311,8 @@ export class EnableBankingService {
   }) {
     await this.freshHolder();
     this.guard(true, true);
-    if (this.pending || this.beginning) throw new BankingFault("authorization");
+    // One consent at a time: a pending one, or one whose callback is still being waited for.
+    if (this.pending || this.capture || this.beginning) throw new BankingFault("authorization");
     this.beginning = true;
     const generation = ++this.beginGeneration;
     const state = randomBytes(32).toString("base64url");
@@ -389,7 +390,8 @@ export class EnableBankingService {
     const capture = this.capture;
     if (!pending || !capture) throw new BankingFault("authorization");
     this.pending = null;
-    this.capture = null;
+    // The capture stays reachable while waiting: cancelConsent closes it (the wait then ends with
+    // consent_cancelled) and offerCallback hands it a copied callback URL.
     let code: string;
     try {
       code =
@@ -397,6 +399,7 @@ export class EnableBankingService {
           ? await capture.wait()
           : parseBankingCallbackUrl(callbackUrl, capture.redirectUrl, pending.state);
     } finally {
+      if (this.capture === capture) this.capture = null;
       await capture.close();
     }
     // The owner may have spent minutes in the bank's browser: refresh before acting as leader.
@@ -461,6 +464,14 @@ export class EnableBankingService {
       bump(`${this.options.secrets.namespace}:session:${target.id}`);
       await this.save(current.filter((item) => item !== target));
     });
+  }
+
+  /** A callback URL the owner copied from the browser, for the consent being waited for. */
+  offerCallback(callbackUrl: string): { accepted: true } {
+    this.guard(false, true);
+    if (!this.capture) throw new BankingFault("consent_cancelled");
+    this.capture.offer(callbackUrl);
+    return { accepted: true };
   }
 
   async cancelConsent(): Promise<void> {
