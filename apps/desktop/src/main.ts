@@ -95,6 +95,7 @@ import {
 import { z } from "zod";
 import { DesktopApp, type WindowHandle } from "./app.js";
 import { APP_ENTRY, appAssetResponse } from "./appProtocol.js";
+import { acceptedDroppedKey, bankingAppId } from "./bankingKey.js";
 import {
   checkDataDir,
   defaultDataDir,
@@ -116,7 +117,6 @@ import { notificationIntake } from "./notification/early.js";
 import { loadNativeNotificationCenter, releaseResponseHandler } from "./notification/native.js";
 import type { NotificationResponsePair } from "./notification/responses.js";
 import { type OldAppData, StartupRecovery } from "./recovery.js";
-import { acceptedDroppedKey, bankingAppId } from "./bankingKey.js";
 import {
   ALLOW,
   EXTERNAL,

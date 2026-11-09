@@ -1,7 +1,12 @@
 import type { CommandContext, CommandResult } from "../command.js";
 import type { Read } from "../query.js";
 
-export type ProposalKind = "strategy" | "custom_rule" | "import" | "budget_import" | "account_removal";
+export type ProposalKind =
+  | "strategy"
+  | "custom_rule"
+  | "import"
+  | "budget_import"
+  | "account_removal";
 export type ProposalStatus = "pending" | "approved" | "rejected" | "failed";
 
 /** Pending investment proposals, without payloads or execution capabilities. */

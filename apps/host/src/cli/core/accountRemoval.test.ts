@@ -50,7 +50,9 @@ it("removes a bank account from the accounts list and restores it", async () => 
     const commands = new Map(accountCommands(deps).map((command) => [command.name, command]));
     const removed = output();
     expect(await commands.get("remove-account")?.run([bank], removed.io, {})).toBe(0);
-    expect(removed.stdout.join("")).toContain(`Removed account ${bank} from view and from the budget`);
+    expect(removed.stdout.join("")).toContain(
+      `Removed account ${bank} from view and from the budget`,
+    );
     const listed = output();
     expect(await commands.get("accounts")?.run([], listed.io, {})).toBe(0);
     expect(listed.stdout.join("")).not.toContain("Closed account");
