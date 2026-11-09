@@ -135,7 +135,7 @@ applicability. A new skill must be added to `MODULE_SKILLS` in
 | Skill | Module | Applicability |
 |---|---|---|
 | `workspace-setup` | core | Agent layout of a profile workspace (CLAUDE.md inventory, `AGENTS.md` + `.agents/skills` links for Codex) and the user's own skills in the same shape - NOT module setup, importers, portfolio rules or research |
-| `budget-setup` | budget | Budget module setup: app check, banks, CSV vs Open Banking, categorization backend (Ollama vs Anthropic), first categorization pass via MCP - NOT broker exports, manual assets, loans or investments |
+| `budget-setup` | budget | Budget module setup: app check, automatic (Open Banking) vs statement files by country, catalog connectors, categorization backend (Ollama vs Anthropic), first categorization pass via MCP - NOT broker exports, manual assets, loans or investments |
 | `assets-setup` | assets | Manually valued assets (property, car with a depreciation curve, other), CLI placeholders, revaluing, MCP check - NOT loans, bank accounts and cash, or brokerage accounts |
 | `loans-setup` | loans | Each loan's terms, installments recognised by a title phrase, balance the bank reports, MCP check - NOT the property or car itself, bank imports or spending categories |
 | `investments-setup` | investments | Strategy interview (goals, horizon, risk, history retrospective), strategy.md + strategy.yaml proposals, weekly / monthly / quarterly check-ins - NOT broker-export conversion, one custom rule or market research; never recommends instruments or trades |

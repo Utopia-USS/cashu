@@ -23,7 +23,7 @@ claude mcp add cashu-<slug> -- "$HOME/Library/Application Support/cashU/bin/cash
 | skill | what it does |
 |---|---|
 | `/workspace-setup` | the profile's agent workspace layout (CLAUDE.md, `AGENTS.md` and `.agents/skills` links for Codex) and the user's own skills built in the same shape (core skill, every workspace) |
-| `/budget-setup` | ONBOARDING as a dialogue: the app, banks, CSV vs Open Banking, categorization backend, first categorization pass |
+| `/budget-setup` | ONBOARDING as a dialogue: the app, automatic (Open Banking) vs statement files by country, categorization backend, first categorization pass |
 | `/assets-setup` | home, car (depreciation curve) and other manually valued assets |
 | `/loans-setup` | mortgages and loans, installment recognition, balances from the bank |
 | `/investments-setup` | strategy interview (goals, risk, history retrospective, strategy) and check-ins against the strategy |

@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ConnectorCatalog, resolveInterpreter } from "./catalog.js";
-import { ConnectorFault, scanConnector } from "./manifest.js";
+import { ConnectorFault, manifestSchema, scanConnector } from "./manifest.js";
 import { runConnector } from "./runner.js";
 
 /** Deno at one of the fixed paths resolveInterpreter searches (CI runners have none). */
@@ -407,3 +407,31 @@ describe("native connector sandbox", () => {
 function fixtureMarker(): string {
   return "OUTSIDE_MARKER_PATH";
 }
+
+describe("manifest countries", () => {
+  const base = {
+    api_version: 1,
+    id: "sample-file",
+    name: "Sample",
+    version: "1",
+    module: "budget",
+    kind: "file",
+    run: ["python3", "connector.py"],
+    file: { extensions: ["csv"] },
+  };
+
+  it("accepts ISO 3166-1 alpha-2 codes and leaves the field optional", () => {
+    expect(manifestSchema.parse({ ...base, countries: ["PL", "CZ"] }).countries).toEqual([
+      "PL",
+      "CZ",
+    ]);
+    expect(manifestSchema.parse(base).countries).toBeUndefined();
+  });
+
+  it("rejects lowercase, malformed, empty and duplicate country lists", () => {
+    for (const countries of [["pl"], ["POL"], [], ["PL", "PL"]])
+      expect(manifestSchema.safeParse({ ...base, countries }).success, String(countries)).toBe(
+        false,
+      );
+  });
+});

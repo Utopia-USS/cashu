@@ -38,6 +38,7 @@ export interface NativeToolStore {
         readonly version: string;
         readonly maintainer: string | null;
         readonly lastVerified: string | null;
+        readonly countries: readonly string[] | null;
         readonly contentSha256: string;
         readonly stale: boolean;
         readonly valid: boolean;

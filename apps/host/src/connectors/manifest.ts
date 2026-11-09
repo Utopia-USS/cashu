@@ -60,6 +60,12 @@ export const manifestSchema = z
     description: z.string().trim().min(1).max(280).nullable().optional(),
     maintainer: z.string().trim().min(1).max(80).nullable().optional(),
     last_verified: z.iso.date().nullable().optional(),
+    countries: z
+      .array(z.string().regex(/^[A-Z]{2}$/))
+      .min(1)
+      .max(60)
+      .nullable()
+      .optional(),
     module: z.enum(["investments", "budget"]),
     kind: z.enum(["file", "fetch"]),
     run: z.array(z.string().min(1).max(200)).min(1).max(8),
@@ -97,6 +103,8 @@ export const manifestSchema = z
         /%2e|%2f|%5c/i.test(arg)
       )
         ctx.addIssue({ code: "custom", message: "unsafe run argument" });
+    if (value.countries && new Set(value.countries).size !== value.countries.length)
+      ctx.addIssue({ code: "custom", message: "duplicate country" });
     if (value.fetch)
       for (const values of [
         value.fetch.hosts,

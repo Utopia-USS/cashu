@@ -44,6 +44,7 @@ export function shippedConnectorList(deps: ConnectorCliDeps): readonly {
   readonly version: string;
   readonly maintainer: string | null;
   readonly lastVerified: string | null;
+  readonly countries: readonly string[] | null;
   readonly contentSha256: string;
 }[] {
   if (!deps.shippedCatalog) return [];
@@ -65,6 +66,7 @@ export function shippedConnectorList(deps: ConnectorCliDeps): readonly {
             version: manifest.version,
             maintainer: manifest.maintainer ?? null,
             lastVerified: manifest.last_verified ?? null,
+            countries: manifest.countries ?? null,
             contentSha256,
           },
         ];

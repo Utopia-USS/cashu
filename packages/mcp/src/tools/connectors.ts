@@ -6,7 +6,7 @@ import type { NativeToolStore } from "../runtime/types.js";
 const RULE =
   "The app runs an installed connector only after the owner approves it in the app (Ustawienia > Konektory); MCP calls never install as approved and never approve.";
 const CATALOG_NOTE =
-  "catalog: community connectors shipped with the app (best effort, each with a maintainer; stale = not verified for 180 days, treat as unmaintained). Check it before writing a new connector; install an entry for the owner's review with propose_connector(catalog_id=...).";
+  "catalog: community connectors shipped with the app (best effort, each with a maintainer; stale = not verified for 180 days, treat as unmaintained; countries = ISO codes of the countries the source serves, null = not tied to a country). Match the owner's country and institution against it before writing a new connector; install an entry for the owner's review with propose_connector(catalog_id=...).";
 
 /** Preserve the frozen Python schemas; only a bound native authority may advertise a handler. */
 export function connectorTools(): readonly ToolSpec<NativeToolStore>[] {
@@ -121,6 +121,7 @@ export function connectorTools(): readonly ToolSpec<NativeToolStore>[] {
             version: L.text(item.version),
             maintainer: L.text(item.maintainer),
             last_verified: L.date(item.lastVerified),
+            countries: item.countries === null ? null : item.countries.map(L.category),
             stale: L.flag(item.stale),
             valid: L.flag(item.valid),
             installed_status: L.category(item.installedStatus),

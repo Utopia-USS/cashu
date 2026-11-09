@@ -92,7 +92,7 @@ it("reports a shipped connector verified in the future as invalid until its date
     mkdirSync(join(entry, "fixtures"), { recursive: true });
     writeFileSync(
       join(entry, "connector.yaml"),
-      "api_version: 1\nid: sample-file\nname: Sample\nversion: '1'\nmaintainer: Synthetic\nlast_verified: 2026-10-30\nmodule: budget\nkind: file\nrun: [python3, connector.py]\nfile:\n  extensions: [csv]\n",
+      "api_version: 1\nid: sample-file\nname: Sample\nversion: '1'\nmaintainer: Synthetic\nlast_verified: 2026-10-30\ncountries: [PL, CZ]\nmodule: budget\nkind: file\nrun: [python3, connector.py]\nfile:\n  extensions: [csv]\n",
     );
     writeFileSync(join(entry, "connector.py"), "print('synthetic')\n");
     writeFileSync(join(entry, "README.md"), "Synthetic connector\n");
@@ -117,6 +117,7 @@ it("reports a shipped connector verified in the future as invalid until its date
       isCurrent: () => true,
     });
     expect((await port.list()).catalog[0]?.valid).toBe(false);
+    expect((await port.list()).catalog[0]?.countries).toEqual(["PL", "CZ"]);
     expect((await port.list()).catalog.find((row) => row.id === "missing-date")).toBeUndefined();
     now = Date.parse("2026-10-31T12:00:00Z");
     expect((await port.list()).catalog[0]?.valid).toBe(true);

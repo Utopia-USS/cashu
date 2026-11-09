@@ -41,7 +41,7 @@ If the user keeps statements inside a git repository (for example a copy of the 
 that they cannot be committed (prints nothing when all is well; run it in that repository):
 
 ```bash
-for p in data/x.db statements/mbank/x.csv .env key.pem; do git check-ignore -q "$p" || echo "NOT IGNORED: $p"; done
+for p in data/x.db statements/bank/x.csv .env key.pem; do git check-ignore -q "$p" || echo "NOT IGNORED: $p"; done
 ```
 
 Any `NOT IGNORED` line: stop and fix `.gitignore` before the user commits anything. A workspace

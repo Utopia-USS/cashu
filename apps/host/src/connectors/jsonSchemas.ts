@@ -194,6 +194,16 @@ export function manifestJsonSchema(): SchemaNode {
       description: optional("description", text(1, 280)),
       maintainer: optional("maintainer", text(1, 80)),
       last_verified: optional("last_verified", { format: "date", type: "string" }),
+      countries: optional(
+        "countries",
+        {
+          items: { pattern: "^[A-Z]{2}$", type: "string" },
+          maxItems: 60,
+          minItems: 1,
+          type: "array",
+        },
+        "ISO 3166-1 alpha-2 codes of the countries whose banks or users this source serves; absent for a source not tied to a country (an international broker or exchange).",
+      ),
       module: field("module", { enum: MODULES, type: "string" }),
       kind: field("kind", { enum: ["file", "fetch"], type: "string" }),
       run: list("run", STRING, { maxItems: 8, minItems: 1 }),

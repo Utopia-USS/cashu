@@ -46,6 +46,7 @@ author: Jan Kowalski             # optional, <= 80 characters
 description: Wyciąg CSV ...      # optional, <= 280 characters
 maintainer: "@jkowalski"         # optional (required in the catalog), <= 80 characters
 last_verified: 2026-10-01        # optional (required in the catalog), ISO date
+countries: [PL]                  # optional, ISO 3166-1 alpha-2 codes; absent = not tied to a country
 module: budget                   # investments | budget
 kind: file                       # file | fetch
 run: [deno, connector.ts]        # argv, see below (deno: the app's own Deno, the default)
@@ -69,6 +70,7 @@ file:                            # kind file only (and required for it)
 | `author`, `description` | optional, <= 80 / <= 280 characters |
 | `maintainer` | optional, <= 80 characters: who keeps the connector working, a GitHub handle (`@octocat`) or a name. Required for an entry of the connector catalog (`connectors/` in the cashU repository) |
 | `last_verified` | optional, an ISO date `YYYY-MM-DD` (quoted or not; no time): the last day the maintainer checked the connector against a real, current export or API. Required in the catalog, where an entry older than 180 days is shown as stale |
+| `countries` | optional, 1..60 unique ISO 3166-1 alpha-2 codes in upper case (`[PL]`, `[DE, AT]`): the countries whose banks or users the source serves. Leave it out for a source not tied to a country (an international broker or exchange). In the catalog the owner's agent matches the owner's country against it, so set it for every bank |
 | `module`, `kind` | see above; `kind: file` needs a `file` section and no `fetch` section, and the other way round |
 | `run` | 1..8 plain strings, each <= 200 characters, no control characters, no `..` path segment, no absolute or `~` paths. No shell: it is an argv, not a command line. An argument that names a file of the connector (`connector.py`) is passed as that file's absolute path, because the process runs in another directory (section 4) |
 | `run[0]` | an interpreter name from the allowlist `deno`, `python3`, `node`, `bun`, `ruby`, `perl`, or `./<file>`: an executable file inside the connector directory (covered by the hash). **`deno` is the default**: the app ships its own Deno, so a Deno connector needs nothing installed (section 4, "Deno connectors") |

@@ -212,6 +212,25 @@
       "default": null,
       "title": "Last Verified"
     },
+    "countries": {
+      "anyOf": [
+        {
+          "items": {
+            "pattern": "^[A-Z]{2}$",
+            "type": "string"
+          },
+          "maxItems": 60,
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO 3166-1 alpha-2 codes of the countries whose banks or users this source serves; absent for a source not tied to a country (an international broker or exchange).",
+      "title": "Countries"
+    },
     "module": {
       "enum": [
         "investments",

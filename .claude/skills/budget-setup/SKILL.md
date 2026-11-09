@@ -3,14 +3,16 @@ name: budget-setup
 description: >
   Use when the user wants to start with cashU, connect or import their bank accounts, set up the home
   budget, or clean up spending categories.
-  Applicability - POSITIVE: budget module setup for one profile: app check, banks, CSV vs Open
-  Banking (Enable Banking), categorization backend (Ollama vs Anthropic), first categorization pass via
+  Applicability - POSITIVE: budget module setup for one profile: app check, where the transactions
+  come from by country (automatic Open Banking via Enable Banking, or statement files through the app
+  or a catalog connector), categorization backend (Ollama vs Anthropic), first categorization pass via
   MCP, sanity check.
   Applicability - NEGATIVE: NOT broker exports (import-builder), manual assets like a flat or a car
   (assets-setup), loans and mortgages (loans-setup) or investment accounts and strategy
   (investments-setup).
   Triggers: /budget-setup, "skonfiguruj budżet", "podłącz bank", "zaimportuj wyciągi", "wgraj CSV z
-  banku", "Open Banking", "popraw kategorie wydatków", "przeprowadź mnie przez instalację".
+  banku", "Open Banking", "popraw kategorie wydatków", "przeprowadź mnie przez instalację", "connect my
+  bank", "import bank statements", "set up my budget".
 ---
 
 # budget-setup: banks, import and categories
@@ -24,7 +26,7 @@ Conversation in the owner's language (the app language the cashU MCP server name
 
 | The workspace CLAUDE.md and MCP server own | This skill adds |
 |---|---|
-| privacy level, boundaries, the MCP tool list, where files go | the budget setup order and its decision points (banks, CSV vs Open Banking, LLM backend) |
+| privacy level, boundaries, the MCP tool list, where files go | the budget setup order and its decision points (where transactions come from, by country; LLM backend) |
 | which profile the workspace serves | budget-specific privacy rules: which `cashu` commands only the user runs |
 | the `cashu` command of this install (the app's launcher) | supported bank formats, Open Banking setup, the categorization pass and category keys |
 
@@ -36,9 +38,9 @@ Conversation in the owner's language (the app language the cashU MCP server name
 | Where does the user stand, is MCP connected | this file, step 1 |
 | Getting the app running, the `cashu` command, data from the older Python app | [`references/install-workflow.md`](references/install-workflow.md), step 2 |
 | One person or a household, profiles | this file, step 3 |
-| Which banks are supported, a bank cashU does not read yet | [`references/bank-import-workflow.md`](references/bank-import-workflow.md), step 4 |
-| Import CSV statements, many files at once, internal transfers | [`references/bank-import-workflow.md`](references/bank-import-workflow.md), step 5 |
-| Open Banking with Enable Banking | [`references/bank-import-workflow.md`](references/bank-import-workflow.md), step 6 |
+| Automatic or files for the user's country, is their bank ready (connector catalog) | [`references/bank-import-workflow.md`](references/bank-import-workflow.md), step 4 |
+| Import statement files, many files at once, a bank with no reader yet, internal transfers | [`references/bank-import-workflow.md`](references/bank-import-workflow.md), step 5 |
+| Automatic import: Open Banking with Enable Banking | [`references/bank-import-workflow.md`](references/bank-import-workflow.md), step 6 |
 | Ollama vs Anthropic for unknown merchants | [`references/categorization-workflow.md`](references/categorization-workflow.md), step 7 |
 | Categorize the most frequent unknown merchants, category keys | [`references/categorization-workflow.md`](references/categorization-workflow.md), step 8 |
 | Do the numbers look sane, doubled net worth | this file, step 9 |
@@ -82,6 +84,8 @@ Privacy and boundaries (say the first two lines at the start):
 |---|---|
 | `profile_overview` | start: modules, privacy level, data freshness |
 | `setup_status("budget")` | start and after each step: bank account, first import, categories, transfers |
+| `connectors` | step 4: the community catalog, matched by the user's bank and country |
+| `propose_connector(catalog_id=...)` | step 4: install a matching catalog entry for the owner's approval in the app |
 | `uncategorized_merchants(limit)` | first categorization pass |
 | `set_merchant_category(merchant, category)` | after the user confirms a category (a learned rule for this profile) |
 | `spending_breakdown(period)`, `cashflow_summary(months)`, `recurring_payments` | sanity check at the end |
@@ -122,18 +126,22 @@ app shows a 24-word recovery phrase: the user writes it down outside the compute
 Several people: one profile each, and every later command takes `cashu --profile <slug> ...`
 (`cashu profiles list` shows the slugs).
 
-### Steps 4-6 - Banks, CSV import, Open Banking
+### Steps 4-6 - Where the transactions come from
 
-Follow [`references/bank-import-workflow.md`](references/bank-import-workflow.md):
+Follow [`references/bank-import-workflow.md`](references/bank-import-workflow.md). Name no bank
+yourself: what cashU can read comes from the connector catalog and the app at run time.
 
-- **Step 4 - Which banks (Decision):** CSV for mBank, Erste / former Santander, Pekao; Bank
-  Millennium and Revolut via Open Banking only; any other bank via Open Banking or a connector
-  (`/import-builder`).
-- **Step 5 - CSV import (recommended first):** a supported bank: the user runs `import-dir` on the
-  workspace's `inbox/statements/`; you may run `match-transfers`. For a bank cashU does not read yet
-  ask once: file with values, or the recommended connector written without seeing values.
-- **Step 6 - Open Banking (optional, Decision):** the user sets up Enable Banking in the app and logs
-  in at the bank themselves; sync about once a day (the daily job, or `eb resync`).
+- **Step 4 - Automatic or files (Decision):** ask the country and the banks first. In Europe
+  recommend the automatic path (Open Banking: one-time setup, then daily without files), files for
+  older history; elsewhere files, with no promise of an automatic connection. Explain both in plain
+  words, then check each bank on the files path against the `connectors` catalog (name and
+  `countries`).
+- **Step 5 - Files:** the user imports in the app (Wydatki > Import, auto-detect) or runs `import-dir`
+  for formats the app reads itself; you may run `match-transfers`. A bank with no reader yet: ask once,
+  file with values or the recommended connector written without seeing values (`/import-builder`).
+- **Step 6 - Open Banking (Europe):** five steps, one per message, each confirmed before the next;
+  the user registers an Enable Banking application (the reference gives every form field), sets it up
+  in the app and logs in at the bank themselves; sync about once a day (the daily job, or `eb resync`).
 
 ### Steps 7-8 - Categorization
 
@@ -166,7 +174,7 @@ Next: manual assets with `/assets-setup`, loans with `/loans-setup`, investing w
 
 | File | Style | Impact | Description |
 |---|---|---|---|
-| [`references/bank-import-workflow.md`](references/bank-import-workflow.md) | workflow | CRITICAL | steps 4-6: supported banks, CSV import, Open Banking via Enable Banking |
+| [`references/bank-import-workflow.md`](references/bank-import-workflow.md) | workflow | CRITICAL | steps 4-6: automatic vs files by country, catalog connectors, file import, Open Banking via Enable Banking |
 | [`references/categorization-workflow.md`](references/categorization-workflow.md) | workflow | HIGH | steps 7-8: LLM backend, first categorization pass, category keys |
 | [`references/install-workflow.md`](references/install-workflow.md) | workflow | MEDIUM | steps 2 and 10: the app, the `cashu` command, data from the Python app, git-ignore check |
 
