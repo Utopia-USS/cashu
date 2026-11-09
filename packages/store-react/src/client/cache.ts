@@ -1,8 +1,10 @@
 // The snapshot cache under `useQuery`: one entry per target + `queryKey(query, args)`, shared by every
 // component that reads it. The first reader opens the live query; readers subscribe (ref-counted);
 // when the last one leaves, the entry lingers briefly (a remount or a StrictMode double effect reuses
-// it) and is then released, which stops the live query. Every pushed value is structurally shared with
-// the previous one, and an unchanged value notifies nobody.
+// it), then its live query stops. With `retainMs` the last value is kept that long after the stop, so a
+// page opened again renders it at once (no suspend) while the reopened live query brings it up to date;
+// without it (or after it) the entry is released. Every pushed value is structurally shared with the
+// previous one, and an unchanged value notifies nobody.
 import { mintUlid } from "@cashu/store/gid";
 import { type Query, type QueryArgs, queryKey } from "@cashu/store/query";
 import type { UiAction, UiActionResult } from "@cashu/store/ui-actions";
@@ -26,6 +28,13 @@ export interface CacheOptions {
   readonly lingerMs?: number;
   /** How long an entry opened by a render that never subscribed stays open (default 10 s). */
   readonly idleMs?: number;
+  /**
+   * How long the last value of a stopped live query is kept for the next reader (default 0: none).
+   * Only values are kept, never errors; a privacy policy change drops every kept value.
+   */
+  readonly retainMs?: number;
+  /** At most this many stopped entries are kept; the oldest goes first (default 200). */
+  readonly maxRetained?: number;
   /** The link to the store's process (default: always online, the in-process client). */
   readonly connection?: ConnectionSource;
   readonly mintKey?: () => string;
@@ -136,6 +145,7 @@ class Entry<R> implements QueryEntry<R> {
       closed = true;
       close();
     };
+    this.cache.unretain(this);
     if (this.#refs === 0) this.#schedule(this.cache.idleMs);
   }
 
@@ -187,8 +197,23 @@ class Entry<R> implements QueryEntry<R> {
     this.#cancel();
     this.#timer = setTimeout(() => {
       this.#timer = null;
-      if (this.#refs === 0) this.release();
+      if (this.#refs === 0) this.#stop();
     }, ms);
+  }
+
+  /** Nobody reads the entry any more: stop its live query, keeping a value for the next reader. */
+  #stop(): void {
+    if (this.#state.status !== "value" || this.cache.retainMs <= 0) {
+      this.release();
+      return;
+    }
+    this.#close?.();
+    this.#close = null;
+    this.cache.retain(this);
+    this.#timer = setTimeout(() => {
+      this.#timer = null;
+      if (this.#refs === 0) this.release();
+    }, this.cache.retainMs);
   }
 
   #cancel(): void {
@@ -200,6 +225,7 @@ class Entry<R> implements QueryEntry<R> {
     this.#cancel();
     this.#close?.();
     this.#close = null;
+    this.cache.unretain(this);
     this.cache.forget(this);
   }
 }
@@ -214,15 +240,21 @@ export class QueryCache implements StoreClient {
   readonly async: boolean;
   readonly lingerMs: number;
   readonly idleMs: number;
+  readonly retainMs: number;
+  readonly maxRetained: number;
   readonly connection: ConnectionSource;
   readonly mintKey: () => string;
   readonly #entries = new Map<string, Entry<unknown>>();
+  /** Stopped entries that keep their last value, oldest first. */
+  readonly #retained = new Set<Entry<unknown>>();
 
   constructor(adapter: Adapter, options: CacheOptions) {
     this.adapter = adapter;
     this.async = options.async;
     this.lingerMs = options.lingerMs ?? 1_000;
     this.idleMs = options.idleMs ?? 10_000;
+    this.retainMs = options.retainMs ?? 0;
+    this.maxRetained = options.maxRetained ?? 200;
     this.connection = options.connection ?? ALWAYS_ONLINE;
     this.mintKey = options.mintKey ?? (() => mintUlid(Date.now()));
   }
@@ -231,9 +263,11 @@ export class QueryCache implements StoreClient {
     return this.adapter.vaults;
   }
 
-  /** Live queries currently open (for tests and diagnostics). */
+  /** Live queries currently open (for tests and diagnostics); kept values of stopped ones do not count. */
   get size(): number {
-    return this.#entries.size;
+    let open = 0;
+    for (const entry of this.#entries.values()) if (entry.open) open += 1;
+    return open;
   }
 
   entry<A extends QueryArgs, R>(target: Target, query: Query<A, R>, args: A): QueryEntry<R> {
@@ -242,6 +276,9 @@ export class QueryCache implements StoreClient {
     if (entry === undefined) {
       entry = new Entry(this, key, target, query as Query<QueryArgs, R>, args);
       this.#entries.set(key, entry as Entry<unknown>);
+      entry.start();
+    } else if (!entry.open) {
+      // A kept value: render it now and reopen the live query behind it.
       entry.start();
     }
     return entry;
@@ -296,12 +333,27 @@ export class QueryCache implements StoreClient {
     entry.start();
   }
 
+  /** Keep a stopped entry's value for the next reader, within `maxRetained`. */
+  retain(entry: Entry<unknown>): void {
+    this.#retained.delete(entry);
+    this.#retained.add(entry);
+    for (const oldest of this.#retained) {
+      if (this.#retained.size <= this.maxRetained) break;
+      oldest.release();
+    }
+  }
+
+  unretain(entry: Entry<unknown>): void {
+    this.#retained.delete(entry);
+  }
+
   forget(entry: Entry<unknown>): void {
     if (this.#entries.get(entry.key) === entry) this.#entries.delete(entry.key);
   }
 
   /** A privacy policy change invalidates every snapshot, including errors and private values. */
   resetSnapshots(): void {
+    for (const entry of [...this.#retained]) entry.release();
     const entries = [...this.#entries.values()];
     for (const entry of entries) entry.reset();
     for (const entry of entries) entry.notify();

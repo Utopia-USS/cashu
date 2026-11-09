@@ -15,7 +15,7 @@ import {
   pickSelection,
   type Selection,
 } from "@cashu/ui-logic/investments/v2/strategiesLogic";
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useEffectEvent, useState } from "react";
 import { wire } from "../investments/home/legacyWire.js";
 import { S as N } from "./Strategies.strings.js";
 import { sourceLines, treeModel, yamlIssues } from "./strategiesModel.js";
@@ -38,11 +38,15 @@ export function useStrategiesScreen(o: StrategiesScreenOptions) {
   const data = useQuery(queries.screen, { lang: lang(), privacy, selection });
   const writes = useStrategyWrites(data.status === "current" ? data.revision : null);
   // The old tab read the folder on every visit: re-scan the strategy files once when the tab opens.
+  // `run` is a new function on every render, so the effect must not depend on it: that re-ran the
+  // refresh after every render it caused (a host busy loop for as long as the tab stayed open).
   const refresh = useUiAction(strategyRefresh);
-  const { run } = refresh;
+  const refreshOnOpen = useEffectEvent(() => {
+    void refresh.run({}).catch(() => null);
+  });
   useEffect(() => {
-    void run({}).catch(() => null);
-  }, [run]);
+    refreshOnOpen();
+  }, []);
 
   if (data.status !== "current")
     return {
