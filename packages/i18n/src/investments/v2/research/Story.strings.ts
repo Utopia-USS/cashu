@@ -12,10 +12,10 @@ export const MOOD = catalog({
 });
 
 export const REL = catalog({
-  supports: { pl: "wspiera tezę", en: "supports the thesis" },
+  supports: { pl: "wzmacnia tezę", en: "supports the thesis" },
   weakens: { pl: "osłabia tezę", en: "weakens the thesis" },
   invalidates: { pl: "podważa tezę", en: "undermines the thesis" },
-  fulfills: { pl: "spełnia tezę", en: "fulfils the thesis" },
+  fulfills: { pl: "potwierdza tezę", en: "fulfils the thesis" },
 });
 
 export const S = catalog({
@@ -81,7 +81,7 @@ export const S = catalog({
     en: (n: number) => `${n} of yours`,
   },
   lostGround: {
-    pl: (n: number) => `${n} ${plForm(n, "teza straciła", "tezy straciły", "tez straciło")} grunt:`,
+    pl: (n: number) => `${n} ${plForm(n, "teza osłabła", "tezy osłabły", "tez osłabło")}:`,
     en: (n: number) => `${n} ${enForm(n, "thesis lost", "theses lost")} ground:`,
   },
   review: { pl: "Przejrzyj", en: "Review" },
@@ -117,7 +117,7 @@ export const S = catalog({
     en: (names: string) => ` Most movement: ${names}.`,
   },
   sentWeak: {
-    pl: (n: number) => `${n} ${plForm(n, "teza straciła", "tezy straciły", "tez straciło")} grunt`,
+    pl: (n: number) => `${n} ${plForm(n, "teza osłabła", "tezy osłabły", "tez osłabło")}`,
     en: (n: number) => `${n} ${enForm(n, "thesis lost", "theses lost")} ground`,
   },
   sentStrong: {
@@ -143,7 +143,7 @@ export const S = catalog({
   tabNotes: { pl: "Notatki", en: "Notes" },
   tabCalendar: { pl: "Kalendarz", en: "Calendar" },
   tabCandidates: { pl: "Kandydaci", en: "Candidates" },
-  tabRuns: { pl: "Przebiegi", en: "Runs" },
+  tabRuns: { pl: "Uruchomienia", en: "Runs" },
   thesis: { pl: (h: string) => `teza ${h}`, en: (h: string) => `thesis ${h}` },
   nothingNew: { pl: "Nic nowego w tym tygodniu", en: "Nothing new this week" },
   earningsOn: { pl: (d: string) => `wyniki ${d}`, en: (d: string) => `earnings ${d}` },

@@ -8,7 +8,7 @@ export const RANGE_TEXT_L = catalog({
   ytd: { pl: "od początku roku", en: "year to date" },
   "1y": { pl: "12 mies.", en: "12 months" },
   "3y": { pl: "3 lata", en: "3 years" },
-  max: { pl: "całość", en: "all time" },
+  max: { pl: "cały okres", en: "all time" },
 });
 
 /** Why the benchmark is missing, by the backend's status code. */
@@ -36,7 +36,7 @@ export const S = catalog({
   valueVsBench: { pl: "Wartość vs benchmark", en: "Value vs benchmark" },
   range: { pl: "Zakres", en: "Range" },
   benchmark: { pl: "benchmark", en: "benchmark" },
-  contributionsIn: { pl: (r: string) => `wpłaty ${r}`, en: (r: string) => `contributions ${r}` },
+  contributionsIn: { pl: (r: string) => `wpłaty (${r})`, en: (r: string) => `contributions ${r}` },
   benchUnavailable: { pl: "benchmark niedostępny", en: "benchmark unavailable" },
   chart: { pl: "wykres", en: "chart" },
   table: { pl: "tabela", en: "table" },

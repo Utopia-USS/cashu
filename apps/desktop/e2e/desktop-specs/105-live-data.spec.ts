@@ -245,7 +245,7 @@ test("a daily worker run reaches the open Settings", async () => {
     const { page } = demo;
     await openProfileMenuItem(page, "Ustawienia");
     const worker = page.getByRole("region", { name: "Praca w tle", exact: true });
-    await expect(worker).toContainText("Brak zapisanych przebiegów.");
+    await expect(worker).toContainText("Brak zapisanych uruchomień.");
     await expect(worker.getByRole("row").filter({ hasText: "Sprawdzenie reguł" })).toHaveCount(0);
 
     // The worker's forced run (offline, no bank sync) records its jobs.
@@ -254,7 +254,7 @@ test("a daily worker run reaches the open Settings", async () => {
     await expect(
       worker.getByRole("row").filter({ hasText: "Sprawdzenie reguł" }).first(),
     ).toBeVisible();
-    await expect(worker).not.toContainText("Brak zapisanych przebiegów.");
+    await expect(worker).not.toContainText("Brak zapisanych uruchomień.");
   } finally {
     await demo.close();
   }

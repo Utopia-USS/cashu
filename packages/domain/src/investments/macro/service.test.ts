@@ -164,7 +164,7 @@ describe("the macro card view", () => {
     });
     expect(by.dollar?.state).toBe("flat");
     expect(by.dollar?.tone).toBe("");
-    expect(by.em?.state_label).toBe("w linii");
+    expect(by.em?.state_label).toBe("podobnie jak świat");
     const commodities = by.commodities;
     expect(commodities?.missing).toBe(true);
     expect(commodities?.state).toBe("unknown");

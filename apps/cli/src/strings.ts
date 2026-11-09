@@ -129,7 +129,7 @@ export const S = {
   hostSyncNever: { pl: "nigdy", en: "never" } satisfies Text,
   hostSync: {
     pl: (state: string, pending: string, lastRun: string) =>
-      `  synchronizacja ${state}, oczekujące ${pending}, ostatni przebieg ${lastRun}`,
+      `  synchronizacja ${state}, oczekujące ${pending}, ostatnie uruchomienie ${lastRun}`,
     en: (state: string, pending: string, lastRun: string) =>
       `  sync        ${state}, pending ${pending}, last run ${lastRun}`,
   } satisfies Fn<[string, string, string]>,
@@ -142,7 +142,7 @@ export const S = {
 
   // `cashu mcp`: tool errors and diagnostics the agent reads (both languages at once).
   mcpLost: {
-    pl: "Połączenie z usługą cashU w tle zostało przerwane, więc nie wiadomo, czy to wywołanie się wykonało. Sprawdź stan i dopiero wtedy je powtórz.",
+    pl: "Połączenie z usługą cashU w tle zostało przerwane. Nie wiadomo, czy się udało. Sprawdź stan, zanim spróbujesz ponownie.",
     en: "The connection to the cashU background service was lost, so this call may or may not have run. Check the state before repeating it.",
   } satisfies Text,
   mcpStillStarting: {

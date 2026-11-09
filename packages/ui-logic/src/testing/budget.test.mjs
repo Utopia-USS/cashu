@@ -175,7 +175,7 @@ test("first steps: the import done line", () => {
   };
   assert.equal(
     importDoneLine(d),
-    "4 duplikaty pominięte · konto eKonto …1234 (nowe) · 241 skategoryzowanych automatycznie · 2 pary przelewów",
+    "4 duplikaty pominięte · konto eKonto …1234 (nowe) · skategoryzowano automatycznie: 241 · 2 pary przelewów",
   );
   assert.equal(
     importDoneLine({
@@ -184,7 +184,7 @@ test("first steps: the import done line", () => {
       transfer_pairs: 0,
       account: { ...d.account, created: false, iban_tail: null },
     }),
-    "konto eKonto · 241 skategoryzowanych automatycznie",
+    "konto eKonto · skategoryzowano automatycznie: 241",
   );
 });
 
@@ -250,11 +250,11 @@ test("FE-4 bankAccounts: bank statement types only (no brokerage, property, cash
 test("FE-3 resyncBankText: banks line, connectors-only answer, failure", () => {
   assert.equal(
     resyncBankText({ ok: true, inserted: 3, banks: [{}], pairs: 1, errors: [] }),
-    "Wgrano 3 nowych transakcji, 1 przelewów wewn.",
+    "Pobrano 3 nowe transakcje, 1 przelew wewnętrzny",
   );
   assert.equal(
     resyncBankText({ ok: true, inserted: 0, banks: [{}], errors: ["x"] }),
-    "Wgrano 0 nowych transakcji · 1 konto/a pominięte (limit banku)",
+    "Pobrano 0 nowych transakcji · 1 konto pominięte (limit banku)",
   );
   // bindings but no Enable Banking session: only the connector lines speak
   assert.equal(

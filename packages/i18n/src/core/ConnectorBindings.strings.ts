@@ -29,7 +29,10 @@ export const S = catalog({
     pl: "Brak powiązań w tym profilu. Powiąż konto, wpisz klucz, sprawdź połączenie.",
     en: "No bindings in this profile. Bind an account, enter the key, check the connection.",
   },
-  bindingsAfterApproval: { pl: "Powiązania po zatwierdzeniu.", en: "Bindings after approval." },
+  bindingsAfterApproval: {
+    pl: "Powiązania będą dostępne po zatwierdzeniu.",
+    en: "Bindings after approval.",
+  },
   required: { pl: "Wymagane.", en: "Required." },
   accountLabel: { pl: "Konto: ", en: "Account: " },
   account: { pl: "Konto", en: "Account" },
@@ -40,7 +43,7 @@ export const S = catalog({
   clear: { pl: "wyczyść", en: "clear" },
   pasteKey: { pl: "wklej klucz", en: "paste the key" },
   keychainHint: {
-    pl: "Zostaje w pęku kluczy macOS; konektor dostaje go tylko podczas przebiegu.",
+    pl: "Zostaje w pęku kluczy macOS; konektor dostaje go tylko na czas uruchomienia.",
     en: "It stays in the macOS keychain; the connector gets it only during a run.",
   },
   autoCommitLabel: { pl: "Automatyczny zapis", en: "Auto save" },

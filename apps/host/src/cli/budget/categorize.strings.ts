@@ -1,20 +1,22 @@
-import type { TranslationVariants } from "@cashu/i18n";
+import { plCount, type TranslationVariants } from "@cashu/i18n";
 export const S = {
   transferCleared: {
-    pl: (count: number) => `Wyczyszczono grupowanie ${count} transakcji.`,
+    pl: (count: number) => `Usunięto wcześniejsze grupowanie ${count} transakcji.`,
     en: (count: number) => `Cleared ${count} previously-grouped transactions.`,
   } satisfies TranslationVariants<(count: number) => string>,
   transferMatched: {
-    pl: (count: number) => `Dopasowano ${count} par przelewów wewnętrznych.`,
+    pl: (count: number) =>
+      `Dopasowano ${plCount(count, "parę", "pary", "par")} przelewów wewnętrznych.`,
     en: (count: number) => `Matched ${count} internal-transfer pair(s).`,
   } satisfies TranslationVariants<(count: number) => string>,
   categorized: {
-    pl: (count: number) => `Skategoryzowano ${count} transakcji.`,
+    pl: (count: number) =>
+      `Skategoryzowano ${plCount(count, "transakcję", "transakcje", "transakcji")}.`,
     en: (count: number) => `Categorized ${count} transactions.`,
   } satisfies TranslationVariants<(count: number) => string>,
   categoryPinned: {
     pl: (merchant: string, category: string, count: number) =>
-      `${merchant} → ${category} (${count} transakcji)`,
+      `${merchant} → ${category} (${plCount(count, "transakcja", "transakcje", "transakcji")})`,
     en: (merchant: string, category: string, count: number) =>
       `${merchant} → ${category} (${count} transactions)`,
   } satisfies TranslationVariants<(merchant: string, category: string, count: number) => string>,
@@ -23,7 +25,7 @@ export const S = {
     en: "Cloud categorization sends eligible merchant names from card payments to Anthropic. A merchant name may include the personal name of a sole trader. No additional transaction details are included. Local Ollama remains the default.",
   } satisfies TranslationVariants<string>,
   cloudUnavailable: {
-    pl: "Kategoryzacja w chmurze jest niedostępna: wymagane są aktualne uprawnienia, świadoma zgoda dla tego profilu i dane uwierzytelniające.",
+    pl: "Kategoryzacja w chmurze jest niedostępna: potrzebne są aktualne uprawnienia, potwierdzona zgoda dla tego profilu i dane dostępowe.",
     en: "Cloud categorization is unavailable: current authority, reviewed consent for this profile and credentials are required.",
   } satisfies TranslationVariants<string>,
   cloudEmpty: {

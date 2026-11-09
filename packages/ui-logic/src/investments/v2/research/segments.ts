@@ -185,7 +185,7 @@ export function viewSourceLink(s: NoteSource): ViewSourceLink {
   };
 }
 
-/** P11 market view under a topic thesis (`Ocena teraz` / `Perspektywa`) with its cited sources; null when the
+/** P11 market view under a topic thesis (`Bieżąca ocena` / `Perspektywa`) with its cited sources; null when the
  * thesis has neither text. `publishers`: the distinct publishers for the home row tooltip (`Źródła: IFR, IEA`). */
 export function topicView(t: TopicThesis | null | undefined): {
   assessment: string | null;

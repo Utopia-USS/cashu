@@ -35,7 +35,7 @@ export const DOLLAR_STATE = catalog({
 export const EM_STATE = catalog({
   leading: { pl: "silniejsze od świata", en: "stronger than the world" },
   lagging: { pl: "słabsze od świata", en: "weaker than the world" },
-  inline: { pl: "w linii", en: "in line" },
+  inline: { pl: "podobnie jak świat", en: "in line" },
   unknown: noData,
 });
 export const COMMODITIES_STATE = catalog({

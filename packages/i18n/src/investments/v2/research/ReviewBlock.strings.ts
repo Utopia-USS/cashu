@@ -5,7 +5,7 @@ type Rel = "invalidates" | "weakens" | "fulfills" | "supports";
 const PL_REL: Record<Rel, [string, string, string]> = {
   invalidates: ["notatka podważa", "notatki podważają", "notatek podważa"],
   weakens: ["notatka osłabia", "notatki osłabiają", "notatek osłabia"],
-  fulfills: ["notatka spełnia", "notatki spełniają", "notatek spełnia"],
+  fulfills: ["notatka potwierdza", "notatki potwierdzają", "notatek potwierdza"],
   supports: ["notatka wzmacnia", "notatki wzmacniają", "notatek wzmacnia"],
 };
 const EN_REL: Record<Rel, [string, string]> = {

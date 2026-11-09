@@ -24,6 +24,6 @@ export const investmentsSetupStrings = {
     pl: "invest import PLIK.csv --account ID_RACHUNKU",
     en: "invest import FILE.csv --account ACCOUNT_ID",
   },
-  runTitle: { pl: "Pierwszy przebieg reguł", en: "First rules run" },
+  runTitle: { pl: "Pierwsze uruchomienie reguł", en: "First rules run" },
   runDescription: { pl: "Wycena, alokacja, sygnały.", en: "Valuation, allocation, signals." },
 } as const;

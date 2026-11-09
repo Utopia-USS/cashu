@@ -87,7 +87,8 @@ export const S = catalog({
   duplicate: { pl: "duplikat", en: "duplicate" },
   new: { pl: "nowy", en: "new" },
   moreRows: {
-    pl: (n: number) => `… ${n} kolejnych wierszy · `,
+    pl: (n: number) =>
+      `… ${plCount(n, "kolejny wiersz", "kolejne wiersze", "kolejnych wierszy")} · `,
     en: (n: number) => `… ${enCount(n, "more row", "more rows")} · `,
   },
   showAll: { pl: "pokaż wszystkie", en: "show all" },

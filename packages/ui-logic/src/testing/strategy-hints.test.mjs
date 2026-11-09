@@ -213,14 +213,14 @@ test("notesVerb: Polish numeral agreement per relation", () => {
   assert.equal(notesVerb(1, "invalidates"), "notatka podważa tezę");
   assert.equal(notesVerb(3, "weakens"), "3 notatki osłabiają tezę");
   assert.equal(notesVerb(5, "supports"), "5 notatek wzmacnia tezę");
-  assert.equal(notesVerb(22, "fulfills"), "22 notatki spełniają tezę");
+  assert.equal(notesVerb(22, "fulfills"), "22 notatki potwierdzają tezę");
   assert.equal(notesVerb(2, null), "2 notatki dotyczą tezy");
 });
 
 test("noteAfterText: one note reads like its relation chip, several read neutrally (review FE-2 / FE-3)", () => {
   assert.equal(noteAfterText(1, "weakens"), "notatka osłabia tezę");
   assert.equal(noteAfterText(null, "supports"), "notatka wzmacnia tezę");
-  assert.equal(noteAfterText(1, "neutral"), "notatka nie dotyka tezy");
+  assert.equal(noteAfterText(1, "neutral"), "notatka nie dotyczy tezy");
   assert.equal(noteAfterText(1, null), "nowa notatka");
   assert.equal(noteAfterText(3, "weakens"), "3 nowe notatki");
   assert.equal(noteAfterText(5, "fulfills"), "5 nowych notatek");
@@ -231,7 +231,7 @@ test("noteAfterText: one note reads like its relation chip, several read neutral
   );
   assert.equal(
     freshReasonText({ code: "note_after", at: null, count: 1, relation: "neutral" }),
-    "notatka nie dotyka tezy",
+    "notatka nie dotyczy tezy",
   );
 });
 
@@ -294,7 +294,7 @@ test("freshReasonText / freshReasonLines: dated lines, thresholds from hints, al
   assert.equal(lines[1].noteId, null);
   assert.equal(
     freshReasonText({ code: "fulfilled_buy", at: null, count: 2, relation: "fulfills" }),
-    "2 notatki spełniają tezę",
+    "2 notatki potwierdzają tezę",
   );
   assert.equal(freshReasonText({ code: "thesis_invalidated", at: null }), "teza podważona");
   assert.deepEqual(freshReasonLines({ state: "fresh", reasons: [{ code: "age", at: null }] }), []);

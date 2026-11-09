@@ -15,7 +15,7 @@ export const S = catalog({
     en: "The disbursement can't be after the first installment.",
   },
   phrase: { pl: (text: string) => `fraza „${text}"`, en: (text: string) => `phrase "${text}"` },
-  builtin: { pl: "rozpoznane z wbudowanych fraz", en: "recognized by the built-in phrases" },
+  builtin: { pl: "rozpoznane po wbudowanych frazach", en: "recognized by the built-in phrases" },
   /** A loan without a name or an account (api.ts loanName). */
   loanN: { pl: (n: number) => `Kredyt ${n}`, en: (n: number) => `Loan ${n}` },
 });

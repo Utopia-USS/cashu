@@ -9,9 +9,9 @@ export const S = catalog({
   netWorth: { pl: "Wartość netto", en: "Net worth" },
   assets: { pl: "Aktywa", en: "Assets" },
   liabilities: { pl: "Zobowiązania", en: "Liabilities" },
-  homeEquity: { pl: "Home equity", en: "Home equity" },
+  homeEquity: { pl: "Kapitał w nieruchomości", en: "Home equity" },
   homeEquityDetail: { pl: "nieruchomość - hipoteka", en: "property - mortgage" },
-  liquid: { pl: "Płynne", en: "Liquid" },
+  liquid: { pl: "Płynne środki", en: "Liquid" },
   monthsOfSpending: {
     pl: (n: string) => `${n} mies. wydatków`,
     en: (n: string) => `${n} mo. of spending`,

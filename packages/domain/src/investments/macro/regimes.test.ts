@@ -243,7 +243,7 @@ describe("emerging markets (EEM / ACWI)", () => {
     const lag = one({ acwi, eem: series(geometric(N, 1.0002 / 1.0005, 40)) }, "em");
     expect(triple(lag)).toEqual(["lagging", "słabsze od świata", "neg"]);
     const inline = one({ acwi, eem: series(geometric(N, 1.0002, 40)) }, "em");
-    expect(triple(inline)).toEqual(["inline", "w linii", ""]);
+    expect(triple(inline)).toEqual(["inline", "podobnie jak świat", ""]);
     const t = texts(lead);
     expect(Object.keys(t)).toEqual(["EEM wobec ACWI 6 mies.", "EEM 6 mies."]);
     expect(t["EEM wobec ACWI 6 mies."]).toBe("+6,5 pp");

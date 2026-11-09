@@ -18,13 +18,13 @@ export const PRIVACY = catalog({
         title: "Ścisły",
         desc: "Udziały procentowe, kategorie, daty, nazwy instrumentów.",
         example:
-          'Przykład: zamiast „CD Projekt: 12 400 zł" agent dostaje „CD Projekt: 6,7 % portfela".',
+          "Przykład: zamiast „CD Projekt: 12 400 zł” agent dostaje „CD Projekt: 6,7 % portfela”.",
       },
       {
         value: "amounts",
         title: "Z kwotami",
         desc: "To samo plus kwoty w walucie konta.",
-        example: 'Przykład: pytanie „ile wydałam na jedzenie we wrześniu".',
+        example: "Przykład: pytanie „ile wydałam na jedzenie we wrześniu”.",
       },
     ] as PrivacyOption[],
     en: [
@@ -58,7 +58,7 @@ export const S = catalog({
     en: "Everything runs locally on this computer.",
   },
   leadLater: {
-    pl: "Do zmiany później w Ustawieniach.",
+    pl: "Możesz to później zmienić w Ustawieniach.",
     en: "You can change this later in Settings.",
   },
   leadMcp: {
@@ -70,7 +70,7 @@ export const S = catalog({
   stepPrivacy: { pl: "Prywatność", en: "Privacy" },
   profileName: { pl: "Nazwa profilu", en: "Profile name" },
   baseCurrencyTitle: {
-    pl: "Waluta nagłówka wartości netto; inne waluty osobno, bez przeliczania.",
+    pl: "Waluta, w której pokazujemy wartość netto; inne waluty osobno, bez przeliczania.",
     en: "The currency of the net worth headline; other currencies shown separately, not converted.",
   },
   baseCurrency: { pl: "Waluta bazowa", en: "Base currency" },
@@ -81,7 +81,7 @@ export const S = catalog({
   },
   createWorkspace: { pl: "Utwórz workspace agenta", en: "Create the agent workspace" },
   workspaceTitle: {
-    pl: "CLAUDE.md z kontekstem profilu, tylko serwer MCP tego profilu, skille włączonych modułów, blokada odczytu katalogu danych. Twoje pliki zostają przy aktualizacjach.",
+    pl: "CLAUDE.md z kontekstem profilu, tylko serwer MCP tego profilu, skille włączonych modułów, bez dostępu do katalogu danych. Twoje pliki zostają przy aktualizacjach.",
     en: "CLAUDE.md with the profile's context, only this profile's MCP server, skills of the enabled modules, no read access to the data folder. Your own files stay on updates.",
   },
   workspaceHeading: { pl: "Workspace agenta (Claude Code)", en: "Agent workspace (Claude Code)" },
@@ -91,7 +91,7 @@ export const S = catalog({
   },
   workspaceFolder: { pl: "Folder workspace", en: "Workspace folder" },
   workspaceLater: {
-    pl: "Do utworzenia później: Ustawienia › Agent AI.",
+    pl: "Możesz go utworzyć później: Ustawienia › Agent AI.",
     en: "You can create it later: Settings › AI agent.",
   },
   summary: { pl: "Podsumowanie", en: "Summary" },
@@ -103,7 +103,7 @@ export const S = catalog({
   strictLevelHint: { pl: "udziały procentowe, nie kwoty", en: "percentage shares, not amounts" },
   amountsLevel: { pl: "poziom z kwotami · ", en: "level with amounts · " },
   amountsLevelHint: { pl: "kwoty bez numerów kont", en: "amounts without account numbers" },
-  toChoose: { pl: "do wyboru", en: "not chosen yet" },
+  toChoose: { pl: "jeszcze nie wybrano", en: "not chosen yet" },
   workspace: { pl: "Workspace agenta", en: "Agent workspace" },
   defaultFolder: { pl: "folder domyślny", en: "default folder" },
   skipped: { pl: "pominięty", en: "skipped" },

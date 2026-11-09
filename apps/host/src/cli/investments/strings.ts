@@ -17,11 +17,11 @@ export const investmentCliText = {
     en: "Strategy overwrite through the CLI is unavailable in this host.",
   },
   partialStrategy: {
-    pl: "Inicjalizacja strategii nie została ukończona. Sprawdź pliki przed ponowieniem.",
+    pl: "Tworzenie strategii nie zostało ukończone. Sprawdź pliki, zanim spróbujesz ponownie.",
     en: "Strategy initialization did not complete. Check the files before retrying.",
   },
-  completedFiles: { pl: "Ukończone pliki:", en: "Completed files:" },
-  attemptedFile: { pl: "Plik o niepewnym wyniku:", en: "File with uncertain outcome:" },
+  completedFiles: { pl: "Zapisane pliki:", en: "Completed files:" },
+  attemptedFile: { pl: "Nie wiadomo, czy zapisano plik:", en: "File with uncertain outcome:" },
   strategyFailed: {
     pl: "Operacja na strategii nie powiodła się. Sprawdź pliki strategii i spróbuj ponownie.",
     en: "Strategy operation failed. Check the strategy files and try again.",
@@ -36,15 +36,15 @@ export const investmentCliText = {
   inactiveRule: { pl: "nieaktywna reguła", en: "inactive rule" },
   line: { pl: "wiersz", en: "line" },
   unknownOutcome: {
-    pl: "Nieznany wynik polecenia. Sprawdź:",
+    pl: "Nie wiadomo, czy polecenie się udało. Sprawdź:",
     en: "Command outcome unknown. Check:",
   },
   doNotRetry: {
-    pl: "Nie ponawiaj przed wyjaśnieniem wyniku.",
+    pl: "Zrób to, zanim spróbujesz ponownie.",
     en: "Do not issue a new attempt until reconciled.",
   },
   contextChanged: {
-    pl: "Profil lub uprawnienie do plików zmieniło się podczas polecenia.",
+    pl: "Profil lub uprawnienie do plików zmieniło się w trakcie polecenia.",
     en: "The profile or file authority changed during the command.",
   },
   importer: { pl: "importer", en: "importer" },
@@ -63,7 +63,7 @@ export const investmentCliText = {
   },
   dryRun: { pl: "Podgląd: nic nie zapisano.", en: "Dry run: nothing written." },
   importUnavailable: {
-    pl: "Import niedostępny: utracono uprawnienie lub przywództwo.",
+    pl: "Import niedostępny: utracono uprawnienie lub rolę lidera.",
     en: "Import unavailable: authority or leadership was lost.",
   },
   imported: { pl: "Zaimportowano", en: "Imported" },
@@ -93,7 +93,7 @@ export const investmentCliText = {
     pl: "Źródło danych makro jest niedostępne.",
     en: "Macro source is unavailable.",
   },
-  bars: { pl: "punktów", en: "bars" },
+  bars: { pl: "pkt", en: "bars" },
   stored: { pl: "zapisano", en: "stored" },
   closes: { pl: "zamknięć", en: "closes" },
   since: { pl: "od", en: "since" },
@@ -105,7 +105,7 @@ export const investmentCliText = {
   signalsEscalated: { pl: "nasilone sygnały", en: "escalated signals" },
   alertsResolved: { pl: "rozwiązane alerty", en: "resolved alerts" },
   plansResolved: { pl: "rozwiązane plany", en: "resolved plans" },
-  researchResolved: { pl: "rozwiązane badania", en: "resolved research" },
+  researchResolved: { pl: "rozwiązany research", en: "resolved research" },
   profileError: { pl: "!", en: "!" },
   reason: { pl: "powód", en: "reason" },
   mergeNativeIds: {
@@ -113,13 +113,13 @@ export const investmentCliText = {
     en: "Use full native instrument IDs.",
   },
   mergeBackupUnavailable: {
-    pl: "Scalenie wymaga zaszyfrowanej kopii skarbca przed zapisem. Ta możliwość jest niedostępna.",
+    pl: "Scalenie wymaga zaszyfrowanej kopii sejfu przed zapisem. Ta funkcja jest niedostępna.",
     en: "Merge requires an encrypted vault checkpoint before writing. That capability is unavailable.",
   },
-  wouldMerge: { pl: "Scalono by", en: "Would merge" },
+  wouldMerge: { pl: "Podgląd: scalenie", en: "Would merge" },
   merged: { pl: "Scalono", en: "Merged" },
-  into: { pl: "z", en: "into" },
-  moved: { pl: "przeniesiono by", en: "would move" },
+  into: { pl: "w", en: "into" },
+  moved: { pl: "do przeniesienia", en: "would move" },
   didMove: { pl: "przeniesiono", en: "moved" },
   mergeCheckpointSaved: {
     pl: "Zaszyfrowana kopia przed scaleniem:",
@@ -147,17 +147,17 @@ export const runReason: Readonly<Record<string, { readonly pl: string; readonly 
     en: "this device may not fetch right now (fetch leader or sync)",
   },
   authority_lost: {
-    pl: "profil lub uprawnienie zmieniło się podczas przebiegu",
+    pl: "profil lub uprawnienie zmieniło się w trakcie uruchomienia",
     en: "the profile or its authority changed during the run",
   },
   file_authority_unavailable: {
     pl: "pliki strategii są niedostępne",
     en: "the strategy files are unavailable",
   },
-  busy: { pl: "trwa inny przebieg", en: "another run is in progress" },
+  busy: { pl: "trwa inne uruchomienie", en: "another run is in progress" },
   preparation_failed: { pl: "przygotowanie nie powiodło się", en: "preparation failed" },
-  daily_failed: { pl: "przebieg nie powiódł się", en: "the run failed" },
-  outcome_unknown: { pl: "wynik zapisu nieznany", en: "write outcome unknown" },
+  daily_failed: { pl: "uruchomienie nie powiodło się", en: "the run failed" },
+  outcome_unknown: { pl: "nie wiadomo, czy zapis się udał", en: "write outcome unknown" },
 };
 
 export const runStatus = {
@@ -182,14 +182,14 @@ export const columns = {
   id: { pl: "id", en: "id" },
   name: { pl: "nazwa", en: "name" },
   broker: { pl: "broker", en: "broker" },
-  wrapper: { pl: "konto", en: "wrapper" },
+  wrapper: { pl: "opakowanie", en: "wrapper" },
   currency: { pl: "waluta", en: "currency" },
   importer: { pl: "importer", en: "importer" },
-  snapshot: { pl: "migawka", en: "snapshot" },
+  snapshot: { pl: "stan na", en: "snapshot" },
   lastImport: { pl: "ostatni import", en: "last import" },
   severity: { pl: "ważność", en: "severity" },
   status: { pl: "stan", en: "status" },
   rule: { pl: "reguła", en: "rule" },
-  message: { pl: "wiadomość", en: "message" },
+  message: { pl: "komunikat", en: "message" },
   since: { pl: "od", en: "since" },
 } as const;

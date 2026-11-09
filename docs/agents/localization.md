@@ -174,6 +174,7 @@ and the `context.tr({ pl, en })` pattern.
 | Profil | Profile | Moduł | Module |
 | Agent AI | AI agent | Praca w tle | Background work |
 | Sekrety | Secrets | Tryb incognito | Incognito mode |
+| Sandbox (zapożyczenie, nigdy "piaskownica") | Sandbox | | |
 | Ustawienia | Settings | Aplikacja | App |
 
 ## Adding a language
