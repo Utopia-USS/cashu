@@ -5,8 +5,9 @@ export interface ButtonProps {
   children: ReactNode;
   onPress?: () => void;
   /** `secondary` is the plain chip button; `ghost` the same on a transparent face; `link` an underlined
-   * text action; `icon` a bare glyph (pass `label`). */
-  variant?: "primary" | "secondary" | "danger" | "ghost" | "link" | "icon";
+   * text action; `icon` a bare glyph for a removing action (turns red on hover); `glyph` a neutral bare glyph
+   * (copy). Both glyph variants need `label`. */
+  variant?: "primary" | "secondary" | "danger" | "ghost" | "link" | "icon" | "glyph";
   /** Box sizes for the framed variants; for `link`: sm = widget footer, md = widget body, lg = plain text. */
   size?: "sm" | "md" | "lg";
   /** Label weight (default regular, like the Python app's buttons). */

@@ -10,6 +10,8 @@ const variants = {
   ghost: `${frame} rounded-control border border-border bg-transparent text-chip-fg disabled:opacity-60`,
   link: "cursor-pointer border-0 bg-transparent p-0 text-accent underline underline-offset-2 disabled:cursor-default disabled:text-fg-muted disabled:no-underline",
   icon: "cursor-pointer border-0 bg-transparent px-1.5 py-0.5 text-base leading-control text-fg-muted hover:text-negative disabled:cursor-default disabled:opacity-60",
+  glyph:
+    "inline-flex cursor-pointer items-center justify-center rounded-sm border-0 bg-transparent p-1 text-fg-muted hover:text-fg disabled:cursor-default disabled:opacity-60",
 } as const;
 // `.btn` 5px 10px / 12px, `.btn.sm` 2px 7px / 11.5px, lg (no old twin) 7px 14px / 14px. A link takes its
 // size from where the old `.lnk` sat: sm = drawer footers (12px), md = anywhere inside a widget, footer included
@@ -44,7 +46,7 @@ export function Button({
   const sized =
     variant === "link"
       ? linkSizes[size]
-      : variant === "icon"
+      : variant === "icon" || variant === "glyph"
         ? ""
         : `${boxSizes[size]} ${selected}`;
   return (

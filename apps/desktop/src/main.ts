@@ -117,7 +117,13 @@ import { loadNativeNotificationCenter, releaseResponseHandler } from "./notifica
 import type { NotificationResponsePair } from "./notification/responses.js";
 import { type OldAppData, StartupRecovery } from "./recovery.js";
 import { acceptedDroppedKey, bankingAppId } from "./bankingKey.js";
-import { ALLOW, EXTERNAL, navigationDecision, sanitizeLogLine } from "./security.js";
+import {
+  ALLOW,
+  EXTERNAL,
+  navigationDecision,
+  permissionAllowed,
+  sanitizeLogLine,
+} from "./security.js";
 import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { ensurePrivateDir } from "./state.js";
 import { pickLang, t } from "./strings.js";
@@ -1155,8 +1161,13 @@ if (!hasLock) {
       }
     }
     const hardened = session.defaultSession;
-    hardened.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
-    hardened.setPermissionCheckHandler(() => false);
+    // Only the copy buttons' clipboard write from the app's own page; every other permission stays denied.
+    hardened.setPermissionRequestHandler((_wc, permission, callback, details) =>
+      callback(permissionAllowed(permission, details.requestingUrl, desktop.origin)),
+    );
+    hardened.setPermissionCheckHandler((_wc, permission, requestingOrigin) =>
+      permissionAllowed(permission, requestingOrigin, desktop.origin),
+    );
     Menu.setApplicationMenu(applicationMenu());
     if (process.platform === "darwin" && existsSync(iconPath)) {
       app.dock?.setIcon(nativeImage.createFromPath(iconPath));

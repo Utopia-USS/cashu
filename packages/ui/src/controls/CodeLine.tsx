@@ -1,7 +1,8 @@
 import { S as U } from "@cashu/i18n/core/ui.strings";
 import { Button } from "./Button.js";
+import { CopyGlyph } from "./CopyGlyph.js";
 
-/** Monospace command with a copy button (old `.code` + ui.tsx `Code`; `multiline` = `.code.multi`). */
+/** Monospace command with a copy glyph button (old `.code` + ui.tsx `Code`; `multiline` = `.code.multi`). */
 export interface CodeLineProps {
   command: string;
   onCopy(): void;
@@ -17,8 +18,8 @@ export function CodeLine({ command, onCopy, multiline }: CodeLineProps) {
       >
         {command}
       </span>
-      <Button onPress={onCopy} className="flex-none font-sans">
-        {U.copy}
+      <Button variant="glyph" label={U.copy} title={U.copy} onPress={onCopy} className="flex-none">
+        <CopyGlyph />
       </Button>
     </div>
   );

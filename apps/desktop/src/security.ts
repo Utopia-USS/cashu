@@ -60,6 +60,25 @@ export function sanitizeLogLine(text: string): string {
   return stripAnsi(text).replace(/(#token=)[A-Za-z0-9_-]+/g, "$1<redacted>");
 }
 
+/** The one web permission the app grants: writing plain text to the clipboard (`navigator.clipboard`). */
+const CLIPBOARD_WRITE = "clipboard-sanitized-write";
+
+/**
+ * Whether a page may use a web permission (session permission request and check handlers): only the
+ * clipboard write behind the copy buttons, and only from the app's own origin. Every other permission
+ * (camera, notifications, clipboard read, ...) stays denied.
+ */
+export function permissionAllowed(
+  permission: string,
+  requestingUrl: string | null | undefined,
+  origin: string | null,
+): boolean {
+  return (
+    permission === CLIPBOARD_WRITE &&
+    Boolean(requestingUrl && origin && sameOrigin(requestingUrl, origin))
+  );
+}
+
 /**
  * The preload exposes native bridges only to the app's own origin. The main process decides
  * from the sending frame's URL, never from what the page claims.

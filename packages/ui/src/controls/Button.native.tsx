@@ -25,7 +25,7 @@ export function Button({
   const nativeVariant =
     pressed || current || variant === "primary" || variant === "danger"
       ? "filled"
-      : variant === "ghost" || variant === "link" || variant === "icon"
+      : variant === "ghost" || variant === "link" || variant === "icon" || variant === "glyph"
         ? "text"
         : "outlined";
   return (

@@ -5,6 +5,7 @@ import {
   bridgeAllowed,
   EXTERNAL,
   navigationDecision,
+  permissionAllowed,
   sameOrigin,
   sanitizeLogLine,
 } from "./security.js";
@@ -17,6 +18,21 @@ describe("origin matching", () => {
     expect(sameOrigin("app://cashu/assets/x?y=1", ORIGIN)).toBe(true);
     expect(sameOrigin("app://other/index.html", ORIGIN)).toBe(false);
     expect(sameOrigin("http://127.0.0.1:8500/", ORIGIN)).toBe(false);
+  });
+});
+
+describe("web permissions", () => {
+  it("grants only the clipboard write, and only to the app origin", () => {
+    expect(permissionAllowed("clipboard-sanitized-write", "app://cashu", ORIGIN)).toBe(true);
+    expect(permissionAllowed("clipboard-sanitized-write", `${ORIGIN}#/setup`, ORIGIN)).toBe(true);
+    expect(permissionAllowed("clipboard-read", "app://cashu", ORIGIN)).toBe(false);
+    expect(permissionAllowed("media", "app://cashu", ORIGIN)).toBe(false);
+    expect(permissionAllowed("notifications", "app://cashu", ORIGIN)).toBe(false);
+    expect(permissionAllowed("clipboard-sanitized-write", "https://evil.example/", ORIGIN)).toBe(
+      false,
+    );
+    expect(permissionAllowed("clipboard-sanitized-write", "", ORIGIN)).toBe(false);
+    expect(permissionAllowed("clipboard-sanitized-write", "app://cashu", null)).toBe(false);
   });
 });
 
