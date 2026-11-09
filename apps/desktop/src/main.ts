@@ -116,6 +116,7 @@ import { notificationIntake } from "./notification/early.js";
 import { loadNativeNotificationCenter, releaseResponseHandler } from "./notification/native.js";
 import type { NotificationResponsePair } from "./notification/responses.js";
 import { type OldAppData, StartupRecovery } from "./recovery.js";
+import { acceptedDroppedKey, bankingAppId } from "./bankingKey.js";
 import { ALLOW, EXTERNAL, navigationDecision, sanitizeLogLine } from "./security.js";
 import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { ensurePrivateDir } from "./state.js";
@@ -779,17 +780,18 @@ ipcMain.handle("cashu:connectors-install", async (event) => {
   }
 });
 
-ipcMain.handle("cashu:banking-configure", async (event, raw: unknown) => {
-  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen() || !mainWindow)
-    throw new Error("banking_unavailable");
-  const selected = bankingConfigureParamsSchema.omit({ keyFilePath: true }).safeParse(raw);
-  if (!selected.success) throw new Error("banking_invalid_params");
-  const chosen = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openFile"],
-    securityScopedBookmarks: false,
-    filters: [{ name: "PEM", extensions: ["pem"] }],
-  });
-  if (chosen.canceled || chosen.filePaths.length !== 1) return { cancelled: true };
+/** What the window sends to configure banking: the vault and the typed (maybe empty) application ID. */
+const bankingConfigureRequest = bankingConfigureParamsSchema
+  .pick({ vaultId: true })
+  .extend({ appId: z.string().max(128) });
+
+/** Configures the profile's Enable Banking application with a key file the main process vetted. */
+async function configureBanking(
+  request: z.infer<typeof bankingConfigureRequest>,
+  keyFilePath: string,
+): Promise<{ ok: true; value: { configured: true } } | { ok: false; error: string }> {
+  const appId = bankingAppId(request.appId, keyFilePath);
+  if (!appId) return { ok: false, error: "app_id_required" };
   const connection = await connectUi();
   try {
     if (
@@ -803,8 +805,9 @@ ipcMain.handle("cashu:banking-configure", async (event, raw: unknown) => {
       throw new Error("banking_unavailable");
     const result = bankingNativeResultSchema.parse(
       await connection.call("native.banking.configure", {
-        ...selected.data,
-        keyFilePath: chosen.filePaths[0],
+        vaultId: request.vaultId,
+        appId,
+        keyFilePath,
       }),
     );
     return result.kind === "configured"
@@ -813,6 +816,35 @@ ipcMain.handle("cashu:banking-configure", async (event, raw: unknown) => {
   } finally {
     connection.close();
   }
+}
+
+ipcMain.handle("cashu:banking-configure", async (event, raw: unknown) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen() || !mainWindow)
+    throw new Error("banking_unavailable");
+  const selected = bankingConfigureRequest.safeParse(raw);
+  if (!selected.success) throw new Error("banking_invalid_params");
+  const chosen = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile"],
+    securityScopedBookmarks: false,
+    filters: [{ name: "PEM", extensions: ["pem"] }],
+  });
+  if (chosen.canceled || chosen.filePaths.length !== 1 || !chosen.filePaths[0])
+    return { cancelled: true };
+  return configureBanking(selected.data, chosen.filePaths[0]);
+});
+
+// A key file the owner dropped on the window: the preload resolves the dropped File to its path
+// (webUtils), so the page never names a path itself; it is still vetted here before the host reads it.
+ipcMain.handle("cashu:banking-configure-dropped", async (event, raw: unknown) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event)) || !nativeAdmissionOpen() || !mainWindow)
+    throw new Error("banking_unavailable");
+  const selected = bankingConfigureRequest
+    .extend({ keyFilePath: z.string().max(4096) })
+    .safeParse(raw);
+  if (!selected.success) throw new Error("banking_invalid_params");
+  const { keyFilePath, ...request } = selected.data;
+  if (!acceptedDroppedKey(keyFilePath)) return { ok: false, error: "key_file_invalid" };
+  return configureBanking(request, keyFilePath);
 });
 
 ipcMain.handle("cashu:banking-open", async (event, raw: unknown) => {

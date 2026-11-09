@@ -14,6 +14,9 @@ export interface BankingScreenState {
   readonly setAspsp: (value: string) => void;
   readonly callbackUrl: string;
   readonly setCallbackUrl: (value: string) => void;
+  /** A file is being dragged over the key drop zone. */
+  readonly dragging: boolean;
+  readonly setDragging: (value: boolean) => void;
 }
 
 /** Pure profile-local view. The native bridge and state live in BankingScreen. */
@@ -25,12 +28,13 @@ export function BankingView({
   readonly language: "pl" | "en";
 }) {
   const { screen, appId, setAppId, aspsp, setAspsp, callbackUrl, setCallbackUrl } = state;
+  const { dragging, setDragging } = state;
   const t = (key: keyof typeof B) => B[key][language];
   if (!state.available) return <p role="status">{t("unavailable")}</p>;
   return (
-    <section aria-label={t("title")} className="grid max-w-xl gap-5">
-      <h2 className="text-headline font-semibold">{t("title")}</h2>
-      <p>{t("keyHint")}</p>
+    <section aria-label={t("title")} className="grid max-w-xl gap-3 text-md">
+      <h3 className="font-strong text-fg">{t("title")}</h3>
+      <p className="text-sm text-fg-muted">{t("keyHint")}</p>
       {!screen.configured && (
         <form
           className="grid gap-2"
@@ -46,13 +50,41 @@ export function BankingView({
               value={appId}
               onChange={(event) => setAppId(event.target.value)}
               autoComplete="off"
-              required
+              aria-describedby="banking-app-id-hint"
               maxLength={128}
             />
           </label>
-          <Button type="submit" disabled={screen.busy}>
-            {t("chooseKey")}
-          </Button>
+          <p id="banking-app-id-hint" className="text-sm text-fg-muted">
+            {t("appIdHint")}
+          </p>
+          {/* Mouse path only; the chooser button below is the keyboard path. */}
+          <fieldset
+            data-testid="banking-key-drop"
+            aria-label={t("dropKey")}
+            className={`grid justify-items-center gap-2 rounded-sm border border-dashed p-5 text-center ${dragging ? "border-accent bg-surface-raised" : "border-border"}`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              if (!dragging) setDragging(true);
+            }}
+            onDragLeave={(event) => {
+              // Moving onto a child (the text, the button) is still inside the zone.
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                setDragging(false);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              const file = event.dataTransfer.files[0];
+              if (file && !screen.busy) void screen.configureDropped(appId, file);
+            }}
+          >
+            <p>{t("dropKey")}</p>
+            <p className="text-sm text-fg-muted">{t("dropOr")}</p>
+            <Button type="submit" disabled={screen.busy}>
+              {t("chooseKey")}
+            </Button>
+          </fieldset>
         </form>
       )}
       {screen.configured && (
@@ -130,7 +162,7 @@ export function BankingView({
             </div>
           )}
           <div className="grid gap-2">
-            <h3 className="font-semibold">{t("sessions")}</h3>
+            <h4 className="font-strong text-fg">{t("sessions")}</h4>
             {screen.connected.map((session) => (
               <div key={session.handle} className="rounded-md border border-border p-3">
                 <p>{session.institution}</p>
@@ -177,17 +209,7 @@ export function BankingView({
         </div>
       ))}
       {screen.busy && <p role="status">{t("busy")}</p>}
-      {screen.notice && (
-        <p role="status">
-          {t(
-            screen.notice === "unknown"
-              ? "unknown"
-              : screen.notice === "refreshed"
-                ? "refreshed"
-                : "error",
-          )}
-        </p>
-      )}
+      {screen.notice && <p role="status">{t(screen.notice)}</p>}
     </section>
   );
 }

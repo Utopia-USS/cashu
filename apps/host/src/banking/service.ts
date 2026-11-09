@@ -138,6 +138,18 @@ function sessionHandle(namespace: string, item: SavedSession): string {
 }
 
 /** Host-owned, profile-scoped bank service. No session id or private key enters the event log. */
+/** The key Enable Banking signs with: an RSA private key of at least 2048 bits, in PEM. */
+export function isBankingRsaKey(pem: string): boolean {
+  try {
+    const key = createPrivateKey(pem);
+    return (
+      key.asymmetricKeyType === "rsa" && (key.asymmetricKeyDetails?.modulusLength ?? 0) >= 2048
+    );
+  } catch {
+    return false;
+  }
+}
+
 export class EnableBankingService {
   private readonly clock: BankingClock;
   private readonly transport: BankingTransport;
@@ -230,13 +242,7 @@ export class EnableBankingService {
   async configure(input: { appId: string; privateKeyPem: string }): Promise<{ configured: true }> {
     this.guard(false, true);
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(input.appId)) throw new BankingFault("configuration");
-    try {
-      const key = createPrivateKey(input.privateKeyPem);
-      if (key.asymmetricKeyType !== "rsa" || (key.asymmetricKeyDetails?.modulusLength ?? 0) < 2048)
-        throw new Error("invalid key");
-    } catch {
-      throw new BankingFault("configuration");
-    }
+    if (!isBankingRsaKey(input.privateKeyPem)) throw new BankingFault("configuration");
     await this.close();
     return serial(this.options.secrets.namespace, async () => {
       this.guard(false, true);

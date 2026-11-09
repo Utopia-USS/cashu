@@ -1,12 +1,41 @@
 export const B = {
-  title: { pl: "Bankowość otwarta", en: "Open Banking" },
+  title: { pl: "Open Banking", en: "Open Banking" },
   unavailable: {
-    pl: "Bankowość otwarta jest niedostępna dla tego profilu.",
+    pl: "Open Banking jest niedostępny dla tego profilu.",
     en: "Open Banking is unavailable for this profile.",
   },
   configure: { pl: "Skonfiguruj Enable Banking", en: "Configure Enable Banking" },
-  appId: { pl: "Identyfikator aplikacji", en: "Application ID" },
+  appId: { pl: "Identyfikator aplikacji (Application ID)", en: "Application ID" },
+  appIdHint: {
+    pl: "Znajdziesz go w panelu Enable Banking, w nawiasie obok nazwy aplikacji. Możesz zostawić puste: plik klucza nazywa się tak samo, więc cashU odczyta go z nazwy pliku.",
+    en: "Find it in the Enable Banking Control Panel, in brackets next to the application name. You can leave it empty: the key file has the same name, so cashU reads it from the file name.",
+  },
+  dropKey: {
+    pl: "Przeciągnij tutaj plik klucza prywatnego (.pem)",
+    en: "Drag the private key file (.pem) here",
+  },
+  dropOr: { pl: "albo", en: "or" },
   chooseKey: { pl: "Wybierz prywatny plik klucza", en: "Choose private key file" },
+  keyType: {
+    pl: "To nie jest plik klucza .pem. Użyj pliku pobranego przy rejestracji aplikacji.",
+    en: "This is not a .pem key file. Use the file downloaded when you registered the application.",
+  },
+  keyUnreadable: {
+    pl: "Nie da się odczytać pliku klucza. Wybierz zwykły plik .pem (nie skrót), pobrany przy rejestracji aplikacji.",
+    en: "The key file cannot be read. Choose a regular .pem file (not an alias), the one downloaded when you registered the application.",
+  },
+  keyInvalid: {
+    pl: "Ten plik nie jest prywatnym kluczem RSA (co najmniej 2048 bitów). Użyj pliku .pem pobranego przy rejestracji aplikacji w Enable Banking.",
+    en: "This file is not an RSA private key (at least 2048 bits). Use the .pem file downloaded when you registered the application in Enable Banking.",
+  },
+  configuration: {
+    pl: "Nie udało się zapisać ustawień Enable Banking. Sprawdź identyfikator aplikacji i plik klucza.",
+    en: "The Enable Banking settings could not be saved. Check the application ID and the key file.",
+  },
+  appIdRequired: {
+    pl: "Wpisz identyfikator aplikacji: nazwa pliku klucza go nie zawiera.",
+    en: "Enter the application ID: the key file's name does not contain it.",
+  },
   keyHint: {
     pl: "Klucz jest odczytywany lokalnie. Hasło do banku wpisujesz tylko w przeglądarce banku.",
     en: "The key is read locally. Enter your bank password only in the bank's browser.",

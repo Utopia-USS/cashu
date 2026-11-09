@@ -10,10 +10,14 @@ export type BankingAction =
 export type BankingReply =
   | { readonly ok: true; readonly value: unknown }
   | { readonly ok: false; readonly error: string };
-/** Native bridge owns the file chooser and bank browser. No path or PEM reaches React. */
+/**
+ * Native bridge owns the file chooser and bank browser. No path or PEM reaches React: a dropped key
+ * file goes to the bridge as the File handle, unread.
+ */
 export interface BankingUiPort {
   invoke(action: BankingAction): Promise<BankingReply>;
   chooseKeyAndConfigure(appId: string): Promise<BankingReply | { readonly cancelled: true }>;
+  configureWithDroppedKey(appId: string, file: File): Promise<BankingReply>;
   openBank(url: string): Promise<void>;
 }
 
@@ -43,6 +47,26 @@ const resultSchema = z.object({
 const attemptStatusSchema = z.object({
   status: z.enum(["outcome_unknown", "completed", "not_started", "refused"]),
 });
+export type BankingNotice =
+  | "error"
+  | "refreshed"
+  | "unknown"
+  | "keyType"
+  | "keyUnreadable"
+  | "keyInvalid"
+  | "configuration"
+  | "appIdRequired";
+/** Refusal codes with a notice of their own; any other refusal is a plain error. */
+const NOTICE_BY_ERROR: Readonly<Record<string, BankingNotice>> = {
+  outcome_unknown: "unknown",
+  app_id_required: "appIdRequired",
+  key_file_invalid: "keyType",
+  key_unreadable: "keyUnreadable",
+  key_invalid: "keyInvalid",
+  configuration: "configuration",
+};
+const PEM_NAME = /\.pem$/i;
+
 export interface BankingAttemptView {
   readonly key: string;
   readonly status: "outcome_unknown" | "completed" | "not_started" | "refused";
@@ -56,7 +80,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [attemptList, setAttempts] = useState<BankingAttemptView[]>([]);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<"error" | "refreshed" | "unknown" | null>(null);
+  const [notice, setNotice] = useState<BankingNotice | null>(null);
   const current = (ticket: number) => generation.current === ticket;
   const refresh = async (ticket = generation.current) => {
     if (!port) return;
@@ -130,7 +154,7 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
       const reply = await task();
       if (!current(ticket) || "cancelled" in reply) return;
       if (!reply.ok) {
-        setNotice(reply.error === "outcome_unknown" ? "unknown" : "error");
+        setNotice(NOTICE_BY_ERROR[reply.error] ?? "error");
         return;
       }
       await onSuccess?.(reply.value, ticket);
@@ -139,6 +163,12 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
     } finally {
       if (current(ticket)) setBusy(false);
     }
+  };
+  const afterConfigure = async (value: unknown, ticket: number) => {
+    if (!z.object({ configured: z.literal(true) }).safeParse(value).success)
+      throw new Error("invalid configuration result");
+    await refresh(ticket);
+    if (current(ticket)) setNotice("refreshed");
   };
   const applyResult = (value: unknown, ticket: number) => {
     const parsed = resultSchema.safeParse(value);
@@ -163,14 +193,23 @@ export function useBankingScreen(port: BankingUiPort | null, vaultId: string) {
       perform(
         () =>
           port ? port.chooseKeyAndConfigure(appId) : Promise.resolve({ cancelled: true as const }),
-        async (value, ticket) => {
-          if (!z.object({ configured: z.literal(true) }).safeParse(value).success)
-            throw new Error("invalid configuration result");
-          await refresh(ticket);
-          if (current(ticket)) setNotice("refreshed");
-        },
+        afterConfigure,
         true,
       ),
+    configureDropped: (appId: string, file: File) => {
+      if (!PEM_NAME.test(file.name)) {
+        setNotice("keyType");
+        return Promise.resolve();
+      }
+      return perform(
+        () =>
+          port
+            ? port.configureWithDroppedKey(appId, file)
+            : Promise.resolve({ cancelled: true as const }),
+        afterConfigure,
+        true,
+      );
+    },
     check: () =>
       perform(
         () => invoke({ type: "check" }),

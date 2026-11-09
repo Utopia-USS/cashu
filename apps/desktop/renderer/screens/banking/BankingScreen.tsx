@@ -24,6 +24,7 @@ function ProfileBankingScreen({
   const [appId, setAppId] = useState("");
   const [aspsp, setAspsp] = useState("");
   const [callbackUrl, setCallbackUrl] = useState("");
+  const [dragging, setDragging] = useState(false);
   return (
     <BankingView
       language={language}
@@ -36,6 +37,8 @@ function ProfileBankingScreen({
         setAspsp,
         callbackUrl,
         setCallbackUrl,
+        dragging,
+        setDragging,
       }}
     />
   );

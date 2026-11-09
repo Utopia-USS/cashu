@@ -20,7 +20,14 @@ export const bankingNativeResultSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("outcome_unknown") }),
   z.strictObject({
     kind: z.literal("refused"),
-    code: z.enum(["unavailable", "invalid_input", "authorization", "configuration"]),
+    code: z.enum([
+      "unavailable",
+      "invalid_input",
+      "authorization",
+      "configuration",
+      "key_unreadable",
+      "key_invalid",
+    ]),
   }),
 ]);
 export function uiBankingAllowed(

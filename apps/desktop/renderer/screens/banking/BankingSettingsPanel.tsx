@@ -8,10 +8,15 @@ import type { BankingAction, BankingReply, BankingUiPort } from "./useBankingScr
 
 interface NativeBankingBridge {
   chooseKeyAndConfigure(vaultId: string, appId: string): Promise<unknown>;
+  configureWithDroppedKey(vaultId: string, appId: string, file: File): Promise<unknown>;
   openBank(vaultId: string, url: string): Promise<void>;
 }
 const chooserReply = z.union([
   z.object({ cancelled: z.literal(true) }),
+  z.object({ ok: z.literal(true), value: z.object({ configured: z.literal(true) }) }),
+  z.object({ ok: z.literal(false), error: z.string() }),
+]);
+const dropReply = z.union([
   z.object({ ok: z.literal(true), value: z.object({ configured: z.literal(true) }) }),
   z.object({ ok: z.literal(false), error: z.string() }),
 ]);
@@ -47,6 +52,14 @@ export function BankingSettingsPanel() {
       if (!native) return { ok: false, error: "unavailable" };
       const parsed = chooserReply.safeParse(
         await native.chooseKeyAndConfigure(vault.current, appId),
+      );
+      return parsed.success ? parsed.data : { ok: false, error: "unavailable" };
+    },
+    async configureWithDroppedKey(appId: string, file: File) {
+      const native = bridge();
+      if (!native) return { ok: false, error: "unavailable" };
+      const parsed = dropReply.safeParse(
+        await native.configureWithDroppedKey(vault.current, appId, file),
       );
       return parsed.success ? parsed.data : { ok: false, error: "unavailable" };
     },

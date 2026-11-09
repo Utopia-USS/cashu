@@ -213,3 +213,50 @@ it.each(["reply", "transport"] as const)(
     }
   },
 );
+
+it("configures from a dropped key file and explains a wrong file or a missing application ID", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const base = syntheticBankingPort();
+  const dropped: { appId: string; name: string }[] = [];
+  let refuse: string | null = "app_id_required";
+  const port = {
+    ...base,
+    async configureWithDroppedKey(appId: string, file: File): Promise<BankingReply> {
+      dropped.push({ appId, name: file.name });
+      if (refuse) return { ok: false, error: refuse };
+      return base.configureWithDroppedKey(appId, file);
+    },
+  };
+  const drop = async (file: File) => {
+    const zone = container.querySelector('[data-testid="banking-key-drop"]') as HTMLElement;
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: { files: [file], dropEffect: "" } });
+    await act(async () => {
+      zone.dispatchEvent(event);
+    });
+  };
+  try {
+    await act(async () =>
+      root.render(<BankingScreen vaultId="synthetic-a" port={port} language="en" />),
+    );
+    expect(container.textContent).toContain("in brackets next to the application name");
+    await drop(new File(["synthetic"], "notes.txt"));
+    expect(dropped).toEqual([]);
+    expect(container.textContent).toContain("This is not a .pem key file");
+    await drop(new File(["synthetic"], "my key.pem"));
+    expect(dropped).toEqual([{ appId: "", name: "my key.pem" }]);
+    expect(container.textContent).toContain("Enter the application ID");
+    refuse = "key_invalid";
+    await drop(new File(["synthetic"], "2e79b1c2-0000-4000-8000-000000000000.pem"));
+    expect(container.textContent).toContain("is not an RSA private key");
+    refuse = null;
+    await drop(new File(["synthetic"], "2e79b1c2-0000-4000-8000-000000000000.pem"));
+    expect(container.textContent).toContain("Connect bank");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

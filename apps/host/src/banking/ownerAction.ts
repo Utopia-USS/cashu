@@ -4,6 +4,7 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { BankingFault } from "./client.js";
 import type { BankingRuntime } from "./runtime.js";
+import { isBankingRsaKey } from "./service.js";
 
 const command = z.discriminatedUnion("type", [
   z.object({ type: z.literal("status") }),
@@ -42,7 +43,11 @@ const command = z.discriminatedUnion("type", [
   z.object({ type: z.literal("attemptStatus"), key: z.string().regex(/^[a-f0-9]{32}$/) }),
 ]);
 
-/** Native chooser passes a path; only the owner host reads this private regular PEM file. */
+/**
+ * The owner's chooser or drop passes a path; only the owner host reads this regular PEM file. Its
+ * permission bits are not checked: Enable Banking's Control Panel hands the key over as a browser
+ * download (0644), and its contents go into the vault's secret store, not used from the file.
+ */
 async function readPrivateBankingKey(path: string): Promise<string> {
   if (!isAbsolute(path) || path.includes("\0")) throw new BankingFault("configuration");
   let file: Awaited<ReturnType<typeof open>>;
@@ -57,7 +62,6 @@ async function readPrivateBankingKey(path: string): Promise<string> {
       !stat.isFile() ||
       stat.size < 1 ||
       stat.size > 64 * 1024 ||
-      (stat.mode & 0o077) !== 0 ||
       (typeof process.getuid === "function" && stat.uid !== process.getuid())
     )
       throw new BankingFault("configuration");
@@ -102,14 +106,20 @@ export async function runBankingOwnerAction(input: {
     switch (action.type) {
       case "status":
         return { ok: true, value: await service.status() };
-      case "configure":
+      case "configure": {
+        // Both checks run before anything is stored, so their refusals are definite.
+        let privateKeyPem: string;
+        try {
+          privateKeyPem = await readPrivateBankingKey(action.keyFilePath);
+        } catch {
+          return { ok: false, error: "key_unreadable" };
+        }
+        if (!isBankingRsaKey(privateKeyPem)) return { ok: false, error: "key_invalid" };
         return {
           ok: true,
-          value: await service.configure({
-            appId: action.appId,
-            privateKeyPem: await readPrivateBankingKey(action.keyFilePath),
-          }),
+          value: await service.configure({ appId: action.appId, privateKeyPem }),
         };
+      }
       case "check":
         return { ok: true, value: await service.check() };
       case "banks":

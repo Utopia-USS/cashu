@@ -28,6 +28,14 @@ type BankingScope = RequestScope & {
   readonly bundleReplaced: () => boolean;
 };
 
+/** Configure refusals the window explains to the owner; any other refusal is `authorization`. */
+type BankingKeyRefusal = "configuration" | "key_unreadable" | "key_invalid";
+const KEY_REFUSALS: ReadonlySet<string> = new Set<BankingKeyRefusal>([
+  "configuration",
+  "key_unreadable",
+  "key_invalid",
+]);
+
 export function serveBankingRequest(
   scope: BankingScope,
   session: HostSession,
@@ -105,7 +113,9 @@ async function configureBanking(
     ? ({ kind: "configured" } as const)
     : ({
         kind: "refused",
-        code: result.error === "configuration" ? "configuration" : "authorization",
+        code: KEY_REFUSALS.has(result.error)
+          ? (result.error as BankingKeyRefusal)
+          : "authorization",
       } as const);
 }
 

@@ -64,13 +64,25 @@ it("uses the native private-file boundary and returns only sanitized owner outco
       error: "unknown_or_invalid_action",
     });
     expect(await action({ type: "configure", appId: "synthetic-app", keyFilePath: alias })).toEqual(
-      { ok: false, error: "configuration" },
+      { ok: false, error: "key_unreadable" },
     );
-    chmodSync(keyPath, 0o644);
+    const notKey = join(dataDir, "synthetic-not-a-key.pem");
+    writeFileSync(notKey, "synthetic, not a key\n", { mode: 0o600 });
     expect(
-      await action({ type: "configure", appId: "synthetic-app", keyFilePath: keyPath }),
-    ).toEqual({ ok: false, error: "configuration" });
-    chmodSync(keyPath, 0o600);
+      await action({ type: "configure", appId: "synthetic-app", keyFilePath: notKey }),
+    ).toEqual({ ok: false, error: "key_invalid" });
+    const small = join(dataDir, "synthetic-small.pem");
+    writeFileSync(
+      small,
+      generateKeyPairSync("rsa", { modulusLength: 1024 })
+        .privateKey.export({ format: "pem", type: "pkcs8" })
+        .toString(),
+    );
+    expect(await action({ type: "configure", appId: "synthetic-app", keyFilePath: small })).toEqual(
+      { ok: false, error: "key_invalid" },
+    );
+    // A browser download (0644), the way Enable Banking's Control Panel hands the key over.
+    chmodSync(keyPath, 0o644);
     const result = await action({
       type: "configure",
       appId: "synthetic-app",

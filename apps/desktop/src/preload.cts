@@ -55,6 +55,16 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
   electron.contextBridge.exposeInMainWorld("cashuBanking", {
     chooseKeyAndConfigure: (vaultId: string, appId: string): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:banking-configure", { vaultId, appId }),
+    // The page hands over the dropped File itself; only here does it become a path (empty for a File
+    // the page built, which the main process refuses), so the page never names a path.
+    configureWithDroppedKey: (vaultId: string, appId: string, file: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:banking-configure-dropped", {
+        vaultId,
+        appId,
+        keyFilePath: electron.webUtils.getPathForFile(
+          file as Parameters<typeof electron.webUtils.getPathForFile>[0],
+        ),
+      }),
     openBank: (vaultId: string, url: string): Promise<void> =>
       electron.ipcRenderer.invoke("cashu:banking-open", { vaultId, url }),
   });

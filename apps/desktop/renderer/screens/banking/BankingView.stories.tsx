@@ -68,6 +68,10 @@ export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort
       configured = true;
       return { ok: true, value: { configured: true } };
     },
+    async configureWithDroppedKey() {
+      configured = true;
+      return { ok: true, value: { configured: true } };
+    },
     async openBank() {},
   };
 }
@@ -75,6 +79,11 @@ export function syntheticBankingPort(initiallyConfigured = false): BankingUiPort
 const port = syntheticBankingPort(true);
 export const Connected = {
   render: () => <BankingScreen vaultId="synthetic-profile" port={port} language="en" />,
+};
+export const NotConfigured = {
+  render: () => (
+    <BankingScreen vaultId="synthetic-profile" port={syntheticBankingPort()} language="pl" />
+  ),
 };
 export const Unavailable = {
   render: () => <BankingScreen vaultId="synthetic-profile" port={null} language="pl" />,

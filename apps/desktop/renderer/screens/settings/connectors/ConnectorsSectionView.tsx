@@ -108,7 +108,7 @@ export function ConnectorsSectionView({
         />
       ))}
       <div className="mt-2.5 text-xs-plus text-fg-muted">{CS.foot}</div>
-      {bankingPanel}
+      {bankingPanel && <div className="mt-5 border-t border-border pt-4">{bankingPanel}</div>}
       {opened && (
         <ConnectorDrawerView
           key={`${state.connectorVault}:${opened.id}`}
