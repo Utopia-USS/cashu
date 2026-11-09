@@ -15,7 +15,7 @@ import {
   type GridItem,
   Hero,
   PageHead,
-  Seg,
+  Select,
   SetupSteps,
   Skeleton,
   Split,
@@ -87,16 +87,23 @@ function HomeHead({ head, onAccount, onStale, onAddTxn }: HomeHeadProps) {
 }
 
 /** The head's account filter and status tags (the page head's items, or the statement hero's label line). */
+/** The account picker's value for "all accounts". */
+const ALL = "all";
+
 function HeadTags({ head, onAccount, onStale }: Omit<HomeHeadProps, "onAddTxn">) {
   return (
     <>
       {head.accounts && (
-        <Seg<number | null>
-          quiet
+        <Select
+          compact
+          labelHidden
           label={S.account}
-          items={head.accounts.items}
-          value={head.accounts.value}
-          onChange={onAccount}
+          options={head.accounts.items.map(([label, value]) => ({
+            label,
+            value: value === null ? ALL : String(value),
+          }))}
+          value={head.accounts.value === null ? ALL : String(head.accounts.value)}
+          onChange={(value) => onAccount(value === ALL ? null : Number(value))}
         />
       )}
       {head.prices && <Tag title={head.prices.title}>{head.prices.text}</Tag>}
@@ -143,8 +150,9 @@ function StatementCell({
   return (
     <Hero
       variant="statement"
+      // The account picker beside the figure says what it sums; the name stays for screen readers.
       label={S.portfolioValue}
-      caption={S.portfolioValue}
+      caption={null}
       value={<StatementValue value={hero.value} parts={hero.valueParts} />}
       facts={[]}
       meta={<HeadTags head={head} onAccount={onAccount} onStale={onStale} />}

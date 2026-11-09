@@ -34,7 +34,9 @@ function StatementHero({ label, caption, value, delta, right, meta }: HeroProps)
     >
       <div className="min-w-0">
         <div className="flex min-h-6 flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs-plus text-fg-muted">
-          <span className="font-medium text-fg-secondary">{caption}</span>
+          {caption != null && caption !== "" && (
+            <span className="font-medium text-fg-secondary">{caption}</span>
+          )}
           {meta}
         </div>
         <div className="mt-3.5 mb-2.5 whitespace-nowrap text-statement font-bold leading-none tracking-dense text-fg tabular-nums">
