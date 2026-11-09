@@ -85,6 +85,8 @@ export interface LocalHostOptions {
   readonly proposals?: ProposalApprovalProvider;
   /** Owner approval of strategy and custom-rule proposals (production: the native strategy files). */
   readonly strategyProposals?: ProposalApprovalProvider;
+  /** Owner approval of account-removal proposals (production: any current native vault). */
+  readonly accountProposals?: ProposalApprovalProvider;
   /**
    * The host's daily lock, shared with the worker and strategy approvals. With it, a native host
    * keeps each device's strategy files following the recorded version (background after every

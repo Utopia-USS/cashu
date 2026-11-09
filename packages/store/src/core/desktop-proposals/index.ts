@@ -5,7 +5,13 @@ import { SUMMARY_PARAMS } from "../proposal-commands.js";
 import type { ProposalKind, ProposalStatus } from "../proposal-execution.js";
 import type { ApprovalExecutionResult } from "../proposal-service.js";
 
-const kinds: readonly ProposalKind[] = ["strategy", "custom_rule", "import", "budget_import"];
+const kinds: readonly ProposalKind[] = [
+  "strategy",
+  "custom_rule",
+  "import",
+  "budget_import",
+  "account_removal",
+];
 const statuses: readonly ProposalStatus[] = ["pending", "approved", "rejected", "failed"];
 
 export interface ProposalListRow {

@@ -508,6 +508,8 @@ export const LABELS: Record<string, Label> = {
     (p.new != null
       ? `: ${plural(Number(p.new), "nowa transakcja", "nowe transakcje", "nowych transakcji")}`
       : ""),
+  "proposal.account_removal": (p) =>
+    has(p, "account") ? `Usunięcie konta ${p.account} z widoku` : "Usunięcie konta z widoku",
   // ---- agent proposals: why applying failed (result.error_code) -----------------------------------
   "proposal.error.cursor_conflict":
     "Konto zsynchronizowano później niż ta propozycja; uruchom synchronizację jeszcze raz",

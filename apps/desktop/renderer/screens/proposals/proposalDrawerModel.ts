@@ -1,8 +1,10 @@
 // The proposal drawer's texts (ab24ab6 core/ProposalDrawer.tsx): kind tag, summary, submitted / status line,
 // notices, the diff blocks, the backtest line and the import facts, from the native proposal detail.
 import { S } from "@cashu/i18n/core/ProposalDrawer.strings";
+import type { ProposalListRow } from "@cashu/store/core/desktop-proposals";
 import { proposalError, proposalSummary } from "@cashu/ui-logic/core/messages";
 import { dm, dmy } from "@cashu/ui-logic/investments/labels";
+import { A } from "./AccountRemovalProposal.strings.js";
 import { P } from "./ProposalDrawer.strings.js";
 import type { ProposalDrawerState } from "./useProposalDrawer.js";
 
@@ -32,22 +34,24 @@ const diffBlock = (title: string, text: string): DiffBlockModel => ({
   })),
 });
 
+/** The drawer tag of each proposal kind. */
+const KIND_LABEL: Readonly<Record<ProposalListRow["kind"], () => string>> = {
+  strategy: () => S.kindStrategy,
+  custom_rule: () => S.kindRule,
+  import: () => S.kindImport,
+  budget_import: () => S.kindBudgetImport,
+  account_removal: () => A.kind,
+};
+
 export function proposalDrawerModel(state: ProposalDrawerState) {
   const data = state.detail;
   const display = data?.display;
   const budgetImport = data?.kind === "budget_import";
   const isImport = data?.kind === "import" || budgetImport;
+  const accountRemoval = data?.kind === "account_removal";
   // why applying failed (stable error_code -> label)
   const failure = proposalError(data?.result);
-  const kindLabel = !data
-    ? ""
-    : budgetImport
-      ? S.kindBudgetImport
-      : isImport
-        ? S.kindImport
-        : data.kind === "strategy"
-          ? S.kindStrategy
-          : S.kindRule;
+  const kindLabel = data ? KIND_LABEL[data.kind]() : "";
   const payload = data?.payload ?? {};
   const fromConnector =
     display?.fromConnector ?? (payload.source === "connector" || data?.source === "connector");
@@ -78,7 +82,11 @@ export function proposalDrawerModel(state: ProposalDrawerState) {
     tag: data ? kindLabel : null,
     pending: data?.status === "pending",
     reject: S.reject,
-    approve: isImport ? S.approveImport : S.approveAs(data?.nextStrategyVersion ?? 1),
+    approve: accountRemoval
+      ? A.approve
+      : isImport
+        ? S.approveImport
+        : S.approveAs(data?.nextStrategyVersion ?? 1),
     approveDisabled: state.busy || unsupported,
     busy: state.busy,
     onApprove: state.onApproved,
@@ -138,6 +146,12 @@ export function proposalDrawerModel(state: ProposalDrawerState) {
                   : `${S.newRows(num(pv.new))} · ${S.duplicates(num(pv.duplicates))}${num(pv.reconciliation_mismatches) ? ` · ${S.mismatches(num(pv.reconciliation_mismatches))}` : ""}${num(pv.errors) ? ` · ${S.errors(num(pv.errors))}` : ""}`,
               }
             : null,
+        }
+      : null,
+    accountFacts: accountRemoval
+      ? {
+          account: { label: A.account, value: display?.accountLabel ?? "-" },
+          effect: { label: A.effectLabel, value: A.effect },
         }
       : null,
     foot: S.rejectChangesNothing,

@@ -57,9 +57,13 @@ interface TxnRow {
 const CASHLEG = "cashleg:";
 
 /**
- * The vault's `BudgetBook`: every account (removed ones too) in fold order and every transaction
- * by account, then in the order the view first recorded it (Python's id order: only ties of equal sort
- * keys in the analytics depend on it). A cash leg names the bank row it mirrors.
+ * The vault's `BudgetBook`: every account (removed ones too, so their IBANs stay own IBANs) in fold
+ * order and the transactions of the accounts that are not removed, by account, then in the order the
+ * view first recorded it (Python's id order: only ties of equal sort keys in the analytics depend on
+ * it). A removed account's history leaves the budget (spending, income, cash flow, recurring
+ * payments, uncategorized merchants) and comes back with `account.restored`; the live side of a
+ * transfer with it stays an own transfer (pair flag or own counterparty IBAN). A cash leg names the
+ * bank row it mirrors.
  */
 export function budgetBook(read: Read): budget.BudgetBook {
   const accounts = read<AccountRow>(
@@ -73,7 +77,8 @@ export function budgetBook(read: Read): budget.BudgetBook {
        t.description, t.reference, t.bank_transaction_id AS bankTransactionId, t.category,
        t.category_source AS categorySource, t.is_internal_transfer AS internal,
        t.transfer_group_id AS transferGroup, t.dedup_hash AS dedupHash
-     FROM transactions t JOIN accounts a ON a.id = t.account_id ORDER BY t.id`,
+     FROM transactions t JOIN accounts a ON a.id = t.account_id
+     WHERE a.removed_at IS NULL ORDER BY t.id`,
   );
   rows.sort((x, y) => (order.get(x.account) ?? 0) - (order.get(y.account) ?? 0));
   const profile = profileOf(read);
@@ -151,10 +156,11 @@ function budgetSetupFacts(read: Read): budget.BudgetSetupFacts {
   return {
     bankAccounts: count(read, "SELECT count(*) AS n FROM accounts WHERE bank != ?", m),
     transactions: count(read, `SELECT count(*) AS n ${BANK_TXNS}`, m),
+    // A removed account's rows are out of the budget, so they need no category.
     uncategorized: count(
       read,
       `SELECT count(*) AS n ${BANK_TXNS} AND CAST(t.amount AS REAL) < 0
-       AND t.category_source = 'default'`,
+       AND t.category_source = 'default' AND a.removed_at IS NULL`,
       m,
     ),
     manualDecisions:

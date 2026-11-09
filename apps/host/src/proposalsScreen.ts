@@ -82,11 +82,12 @@ export interface ProposalApprovalProvider {
 }
 
 /** Serializes reject with applying approval; returns the executor's actual business outcome.
- * Strategy and custom-rule proposals approve through `strategies`, every other kind through
- * `provider` (imports). */
+ * Strategy and custom-rule proposals approve through `strategies`, account removals through
+ * `accounts`, every other kind through `provider` (imports). */
 export function proposalScreen(
   provider?: ProposalApprovalProvider,
   strategies?: ProposalApprovalProvider,
+  accounts?: ProposalApprovalProvider,
 ): UiActionRegistration {
   const applyingLock = new ProposalApplyingLock();
   // A pending approval may still publish files, so another proposal cannot overlap it.
@@ -140,7 +141,11 @@ export function proposalScreen(
         }
       }
       const approver =
-        snapshot.kind === "strategy" || snapshot.kind === "custom_rule" ? strategies : provider;
+        snapshot.kind === "strategy" || snapshot.kind === "custom_rule"
+          ? strategies
+          : snapshot.kind === "account_removal"
+            ? accounts
+            : provider;
       const binding = approver?.bind(target, stores);
       if (!binding?.isCurrent())
         return { status: "refused", reason: "capability_unavailable", preparation: "none" };

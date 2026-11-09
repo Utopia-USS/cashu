@@ -21,6 +21,7 @@ import {
   TYPE_LABEL,
 } from "@cashu/ui-logic/core/format";
 import { incomeShare, rateText } from "@cashu/ui-logic/loans/logic";
+import { R } from "./AccountRemoval.strings.js";
 
 /** A run of text with an optional bold / tone (the old inline `<b>` / `.pos` / `.neg` / `.warn` spans). */
 interface Run {
@@ -260,6 +261,20 @@ const BANK: Record<string, string> = {
 };
 const LISTED = new Set(["checking", "savings", "credit", "investment", "other"]);
 
+/** The Konta widget's account removal state (useAccountRemoval). */
+export interface AccountRemovalState {
+  readonly asked: { readonly gid: string; readonly name: string } | null;
+  readonly undone: { readonly gid: string; readonly name: string } | null;
+  readonly error: string | null;
+  ask(target: { gid: string; name: string }): void;
+  cancel(): void;
+  confirm(): Promise<void>;
+  undo(): Promise<void>;
+}
+
+/** Bank account types the owner can remove from view (store `isRemovableBankAccount`). */
+const REMOVABLE = new Set(["checking", "savings", "credit"]);
+
 export interface AccountsModel {
   title: string;
   count: number | null;
@@ -271,10 +286,22 @@ export interface AccountsModel {
     value: string;
     negative: boolean;
     muted: boolean;
+    /** Remove this bank account from view (asks first); null for manual accounts and in privacy mode. */
+    remove: (Link & { title: string }) | null;
   }[];
   empty: string | null;
   wallet: Rich | null;
   cash: Link;
+  /** The confirmation of a removal, while the owner is asked. */
+  confirm: {
+    title: string;
+    text: string;
+    error: string | null;
+    confirm: Link;
+    cancel: Link;
+  } | null;
+  /** The last removal with its undo (or an undo failure). */
+  undone: { text: string; error: string | null; undo: Link } | null;
 }
 
 export function accountsModel(args: {
@@ -282,9 +309,11 @@ export function accountsModel(args: {
   wallet: { exists: boolean; balance: Decimal; currency: string };
   showEmpty: boolean;
   privacy: boolean;
+  removal: AccountRemovalState;
   onToggle(): void;
   onCash(): void;
 }): AccountsModel {
+  const { removal } = args;
   const isEmpty = (a: OverviewAccount) => a.amount === null || a.amount.abs().lt(D("0.005"));
   const list = args.accounts
     .filter((a) => LISTED.has(a.type) && !(a.bank === "manual" && a.type === "other"))
@@ -309,6 +338,14 @@ export function accountsModel(args: {
       value: cur(f(a.amount), a.currency),
       negative: (f(a.amount) ?? 0) < 0,
       muted: isEmpty(a),
+      remove:
+        args.privacy || a.bank === "manual" || !REMOVABLE.has(a.type)
+          ? null
+          : {
+              label: R.remove,
+              title: R.removeTitle(a.name),
+              onPress: () => removal.ask({ gid: a.gid, name: a.name }),
+            },
     })),
     empty: list.length ? null : C.noBankAccounts,
     wallet: args.wallet.exists
@@ -318,6 +355,23 @@ export function accountsModel(args: {
         ]
       : null,
     cash: { label: args.wallet.exists ? C.addCashExpense : C.cash, onPress: args.onCash },
+    confirm: removal.asked
+      ? {
+          title: R.confirmTitle,
+          text: R.confirmText(removal.asked.name),
+          error: removal.error,
+          confirm: { label: R.confirm, onPress: () => void removal.confirm() },
+          cancel: { label: R.cancel, onPress: removal.cancel },
+        }
+      : null,
+    undone:
+      removal.undone && !args.privacy
+        ? {
+            text: R.removed(removal.undone.name),
+            error: removal.asked ? null : removal.error,
+            undo: { label: R.undo, onPress: () => void removal.undo() },
+          }
+        : null,
   };
 }
 

@@ -1,7 +1,7 @@
 import type { CommandContext, CommandResult } from "../command.js";
 import type { Read } from "../query.js";
 
-export type ProposalKind = "strategy" | "custom_rule" | "import" | "budget_import";
+export type ProposalKind = "strategy" | "custom_rule" | "import" | "budget_import" | "account_removal";
 export type ProposalStatus = "pending" | "approved" | "rejected" | "failed";
 
 /** Pending investment proposals, without payloads or execution capabilities. */
@@ -76,7 +76,7 @@ export function proposalExecution(read: Read, gid: string): ExecutionSnapshot | 
   )[0];
   if (row === undefined) return undefined;
   if (
-    !["strategy", "custom_rule", "import", "budget_import"].includes(row.kind) ||
+    !["strategy", "custom_rule", "import", "budget_import", "account_removal"].includes(row.kind) ||
     !["pending", "approved", "rejected", "failed"].includes(row.status)
   )
     throw new Error("stored proposal has an unsupported kind or status");

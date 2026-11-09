@@ -22,5 +22,5 @@ it("assigns every canonical MCP descriptor to one native handler", () => {
   ].map((tool) => tool.name);
   expect(new Set(names).size).toBe(names.length);
   expect(names.sort()).toEqual(TOOL_INVENTORY.map((entry) => entry.name).sort());
-  expect(names).toHaveLength(45);
+  expect(names).toHaveLength(46);
 });

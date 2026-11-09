@@ -161,7 +161,8 @@ it("keeps spending filters, first-seen ties and the denominator before top", () 
     { merchant: "ZXQ FIRST", share: 0.4, count: 1, amount: 20 },
   ]);
   expect(f.run(removeAccount, { account }).ok).toBe(true);
-  expect(callTool(f.context(), "spending_breakdown").total).toBe(50);
+  // A removed account's transactions leave the budget (store budgetBook).
+  expect(callTool(f.context(), "spending_breakdown").total).toBe(0);
 });
 it("defaults period across currencies and parses Python-compatible digits", () => {
   const f = fixture();

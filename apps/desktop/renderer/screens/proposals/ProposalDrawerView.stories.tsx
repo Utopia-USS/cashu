@@ -68,6 +68,26 @@ export const Strategy = {};
 export const Rule = { args: { m: state("custom_rule") } };
 export const InvestmentImport = { args: { m: state("import") } };
 export const BudgetImport = { args: { m: state("budget_import") } };
+const removal = detail("account_removal");
+export const AccountRemoval = {
+  args: {
+    m: proposalDrawerModel({
+      ...raw("account_removal"),
+      detail: {
+        ...removal,
+        summary: "Remove account Synthetic bank checking 2 from view",
+        display: removal.display && {
+          ...removal.display,
+          yamlDiff: null,
+          mdDiff: null,
+          preview: null,
+          fileName: null,
+          accountLabel: "Synthetic closed account",
+        },
+      },
+    }),
+  },
+};
 export const RecoveryNeeded = { args: { m: state("strategy", "recoveryRestore") } };
 export const UnavailableDiff = {
   args: {

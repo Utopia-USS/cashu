@@ -104,7 +104,18 @@ export function proposalDetailWithImages(source: {
       const detail = proposalDetail.run(read, args);
       if (!detail) return null;
       const vault = read<{ gid: string }>("SELECT gid FROM profiles")[0]?.gid;
-      return projectProposalDetail(detail, vault ? source.image(vault) : null, args.privacy);
+      const projected = projectProposalDetail(
+        detail,
+        vault ? source.image(vault) : null,
+        args.privacy,
+      );
+      // An account removal names the account by gid; the drawer shows the account's own name.
+      if (detail.kind !== "account_removal" || args.privacy || !projected.display) return projected;
+      const account = str(detail.payload.account);
+      const name = account
+        ? read<{ name: string }>("SELECT name FROM accounts WHERE gid = ?", account)[0]?.name
+        : undefined;
+      return { ...projected, display: { ...projected.display, accountLabel: name ?? null } };
     },
   });
 }

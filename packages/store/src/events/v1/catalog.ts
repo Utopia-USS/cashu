@@ -35,8 +35,8 @@ export type GidStrategy = "VAULT" | "DET" | "ULID" | "DET-or-ULID";
  * - leader-or-owner: the leader for rule outcomes, any device for owner-caused closes / reopens;
  * - leader-or-research: the leader for rule / plan / alert signals, the device running the research
  *   agent for research signals (`research:` keys);
- * - leader-for-imports: any device for strategy / custom_rule proposals, only the leader for the
- *   import-like kinds (`import`, `budget_import`, O3 / O4).
+ * - leader-for-imports: any device for strategy / custom_rule / account_removal proposals, only the
+ *   leader for the import-like kinds (`import`, `budget_import`, O3 / O4).
  */
 export type Emitter =
   | "any"

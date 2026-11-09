@@ -7,7 +7,7 @@ import {
   proposalExecution,
 } from "./proposal-execution.js";
 
-const kind = z.enum(["strategy", "custom_rule", "import", "budget_import"]);
+const kind = z.enum(["strategy", "custom_rule", "import", "budget_import", "account_removal"]);
 const gid = z.string().min(1);
 const resultObject = z.record(z.string(), z.unknown());
 /** The payload key of a proposal's summary values (Python `summary_params`). */

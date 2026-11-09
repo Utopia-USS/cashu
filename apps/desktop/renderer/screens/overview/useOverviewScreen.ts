@@ -22,6 +22,7 @@ import {
   type RichFact,
   subscriptionsModel,
 } from "./overviewModel.js";
+import { useAccountRemoval } from "./useAccountRemoval.js";
 
 const queries = overviewQueries({ prices: null });
 const MODULE_NAME: Readonly<Record<string, () => string>> = {
@@ -57,6 +58,7 @@ export function useOverviewScreen(args: {
   const [step, setStep] = useState<Step>("monthly");
   const [range, setRange] = useState<number | null>(null);
   const [showEmpty, setShowEmpty] = useState(false);
+  const removal = useAccountRemoval();
   const [hiddenKeys, setHiddenKeys] = useState<ReadonlySet<string>>(() => new Set());
   const hero = useQuery(queries.hero, { today: args.today });
   const modules = useQuery(queries.moduleStates).filter((m) => m.enabled);
@@ -144,6 +146,7 @@ export function useOverviewScreen(args: {
       wallet: args.wallet,
       showEmpty,
       privacy,
+      removal,
       onToggle: () => setShowEmpty((v) => !v),
       onCash: args.onCash,
     }),

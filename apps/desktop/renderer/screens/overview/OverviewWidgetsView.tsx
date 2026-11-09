@@ -2,7 +2,17 @@
 // (design/desktop/overview/layered-tiles.html): Budżet · <month>, Subskrypcje, Konta, a module that is not set up
 // (a ghost tile) and Kredyty. "Wartość netto w czasie" lives in the net worth tile (OverviewView.tsx).
 // Pure: every string comes formatted from overviewModel.ts.
-import { Button, emptyCls, Facts, MeterRows, Tag, tableCls, Widget } from "@cashu/ui";
+import {
+  Button,
+  Dialog,
+  emptyCls,
+  Facts,
+  MeterRows,
+  Notice,
+  Tag,
+  tableCls,
+  Widget,
+} from "@cashu/ui";
 import { Fragment } from "react";
 import type {
   AccountsModel,
@@ -132,7 +142,7 @@ function AccountsTable({ rows }: { rows: readonly AccountRow[] }) {
     <table className={tileTable}>
       <tbody>
         {rows.map((a) => (
-          <tr key={a.key}>
+          <tr key={a.key} className="group">
             <td className={tileTd}>
               <span className="font-demi">{a.name}</span>
               <span className={sym}>{a.sub}</span>
@@ -141,6 +151,18 @@ function AccountsTable({ rows }: { rows: readonly AccountRow[] }) {
               className={`${tileNum} font-heavy ${a.negative ? "text-negative" : ""} ${a.muted ? "text-fg-muted" : ""}`}
             >
               {a.value}
+              {a.remove && (
+                <span className="ml-2 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+                  <Button
+                    variant="link"
+                    size="sm"
+                    title={a.remove.title}
+                    onPress={a.remove.onPress}
+                  >
+                    {a.remove.label}
+                  </Button>
+                </span>
+              )}
             </td>
           </tr>
         ))}
@@ -173,6 +195,31 @@ export function AccountsWidgetView({ m }: { m: AccountsModel }) {
           <AccountsTable rows={m.rows.slice(0, half)} />
           {m.rows.length > half && <AccountsTable rows={m.rows.slice(half)} />}
         </div>
+      )}
+      {m.undone && (
+        <div className="mt-3 flex flex-wrap items-center gap-2.5 text-xs-plus text-fg-secondary">
+          <span>{m.undone.error ?? m.undone.text}</span>
+          <Button variant="link" size="sm" onPress={m.undone.undo.onPress}>
+            {m.undone.undo.label}
+          </Button>
+        </div>
+      )}
+      {m.confirm && (
+        <Dialog
+          title={m.confirm.title}
+          label={m.confirm.title}
+          size="narrow"
+          onClose={m.confirm.cancel.onPress}
+        >
+          {m.confirm.error && <Notice tone="negative">{m.confirm.error}</Notice>}
+          <div className="text-sm text-fg-secondary">{m.confirm.text}</div>
+          <div className="flex justify-end gap-2.5">
+            <Button onPress={m.confirm.cancel.onPress}>{m.confirm.cancel.label}</Button>
+            <Button variant="primary" onPress={m.confirm.confirm.onPress}>
+              {m.confirm.confirm.label}
+            </Button>
+          </div>
+        </Dialog>
       )}
       {m.wallet ? (
         <div className="tile-sub mt-3 flex flex-wrap items-center gap-2.5 px-3.5 py-2 text-xs-plus text-fg-secondary [&_b]:font-heavy [&_b]:text-fg [&_b]:tabular-nums">

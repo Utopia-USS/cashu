@@ -141,6 +141,14 @@ export const HELP: Readonly<Record<string, Text>> = {
     en: "Usage: cashu set-account-type GID TYPE",
   },
   "set-balance": C.balanceUsage,
+  "remove-account": {
+    pl: "Użycie: cashu remove-account GID",
+    en: "Usage: cashu remove-account GID",
+  },
+  "restore-account": {
+    pl: "Użycie: cashu restore-account GID",
+    en: "Usage: cashu restore-account GID",
+  },
   "set-loan": N.loanSetUsage,
   "set-category": {
     pl: "Użycie: cashu set-category SPRZEDAWCA KATEGORIA",

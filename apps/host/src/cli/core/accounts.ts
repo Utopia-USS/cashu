@@ -1,12 +1,20 @@
 import { D } from "@cashu/domain";
-import { recordBalance, renameAccount, setAccountType } from "@cashu/store";
-import { mcpProfile } from "@cashu/store/core";
+import {
+  isRemovableBankAccount,
+  recordBalance,
+  removeBankAccount,
+  renameAccount,
+  restoreBankAccount,
+  setAccountType,
+} from "@cashu/store";
+import { accountByGid, mcpProfile } from "@cashu/store/core";
 import type { HostStores, OpenVault } from "../../stores.js";
 import { cashMoney } from "../budget/cashOutput.js";
 import { richTable } from "../budget/richTable.js";
 import { cliCommandKey, reportCliCommandFailure, runCliVaultCommand } from "../commandOutcome.js";
 import { date, decimal, parse } from "../nativeInput.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
+import { R } from "./accountRemoval.strings.js";
 import { C } from "./strings.js";
 
 interface Deps {
@@ -152,11 +160,49 @@ async function change(
   return 0;
 }
 
+/**
+ * `remove-account GID` / `restore-account GID`: hide a bank account from every view (its history
+ * stays) or bring it back. A removed account is still found by its GID here.
+ */
+async function removal(
+  kind: "remove" | "restore",
+  args: readonly string[],
+  io: CommandIo,
+  root: Root,
+  deps: Deps,
+): Promise<number> {
+  const command = `${kind}-account`;
+  const parsed = parse(args, []);
+  const gid = parsed?.args[0];
+  if (!parsed || !gid || parsed.args.length !== 1 || parsed.options.size)
+    return usage(io, io.t.tr(R.usage)(command));
+  const vault = selected(io, root, deps);
+  if (!vault) return 2;
+  const target = accountByGid(vault.store.read.bind(vault.store), gid);
+  if (target === undefined) return usage(io, io.t.tr(C.noAccount)(gid));
+  if (!isRemovableBankAccount(target)) return usage(io, io.t.tr(R.noBankAccount)(gid));
+  if (io.signal.aborted) return 130;
+  const key = cliCommandKey();
+  const cmd = kind === "remove" ? removeBankAccount : restoreBankAccount;
+  const result = await runCliVaultCommand(
+    vault,
+    cmd,
+    { account: target.gid },
+    key,
+    current(vault, io, root, deps),
+  );
+  if (result.kind !== "completed") return reportCliCommandFailure(io, result, key, cmd.id);
+  io.stdout(`${io.t.tr(kind === "remove" ? R.removed : R.restored)(target.gid)}\n`);
+  return 0;
+}
+
 export function accountCommands(deps: Deps): PortedCommand[] {
   return [
     { name: "accounts", run: async (args, io, root) => list(args, io, root, deps) },
     { name: "set-account-name", run: (args, io, root) => change("name", args, io, root, deps) },
     { name: "set-account-type", run: (args, io, root) => change("type", args, io, root, deps) },
     { name: "set-balance", run: (args, io, root) => change("balance", args, io, root, deps) },
+    { name: "remove-account", run: (args, io, root) => removal("remove", args, io, root, deps) },
+    { name: "restore-account", run: (args, io, root) => removal("restore", args, io, root, deps) },
   ];
 }

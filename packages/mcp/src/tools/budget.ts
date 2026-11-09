@@ -11,6 +11,7 @@ import {
   toolSpec,
 } from "../registry.js";
 import type { NativeToolStore } from "../runtime/types.js";
+import { proposeAccountRemovalTool } from "./accountRemoval.js";
 import { validateBudgetImport } from "./budgetImport.js";
 import {
   cashflowSummary,
@@ -126,6 +127,19 @@ export function budgetTools(): readonly ToolSpec<NativeToolStore>[] {
       handler: validateBudgetImport,
       properties: { path: { type: "string", maxLength: 1024 } },
       required: ["path"],
+    }),
+    toolSpec({
+      name: "propose_account_removal",
+      module: "budget",
+      description:
+        "Propose removing a bank account the owner no longer uses (e.g. closed, or dropped from Open Banking) from view, when the owner asks for it. account: its label from networth_breakdown. Stored as a proposal the owner approves in the app; approving hides the account from the overview, account lists and net worth, stops its imports and takes its transactions out of the budget (spending, income, cash flow, recurring payments, uncategorized merchants; transfers with the owner's other accounts stay own transfers). Reversible: restoring the account brings its history back. Only checking, savings and credit-card accounts.",
+      handler: proposeAccountRemovalTool,
+      properties: {
+        account: { type: "string", maxLength: 200 },
+        reason: { type: "string", maxLength: 1000 },
+      },
+      required: ["account"],
+      write: true,
     }),
   ];
 }

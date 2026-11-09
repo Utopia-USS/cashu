@@ -114,6 +114,14 @@ export function ProposalDrawerView({ m, onClose }: { m: ProposalDrawerModel; onC
               )}
             </div>
           )}
+          {m.accountFacts && (
+            <div className="mt-1 mb-2.5 grid grid-cols-[--spacing(37.5)_minmax(0,1fr)] items-center gap-x-4 gap-y-2.5 text-md">
+              <span className={kvKey}>{m.accountFacts.account.label}</span>
+              <span className={kvValue}>{m.accountFacts.account.value}</span>
+              <span className={kvKey}>{m.accountFacts.effect.label}</span>
+              <span className={kvValue}>{m.accountFacts.effect.value}</span>
+            </div>
+          )}
           <div className="mt-2.5 text-xs-plus text-fg-muted">{m.foot}</div>
         </>
       )}

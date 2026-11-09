@@ -98,7 +98,11 @@ export function createScreenSurfaces(input: {
   readonly now: () => number;
 }) {
   const { options, nativeMode, now } = input;
-  const proposals = proposalScreen(options.proposals, options.strategyProposals);
+  const proposals = proposalScreen(
+    options.proposals,
+    options.strategyProposals,
+    options.accountProposals,
+  );
   const workspaceActions = settingsWorkspaceActions(options.workspace);
   const updates = updateScreen(options.updates);
   const clock = signalsScreenClock(now);

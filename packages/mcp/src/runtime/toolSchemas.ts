@@ -20,6 +20,7 @@ export const TOOL_ORDER: readonly string[] = [
   "uncategorized_merchants",
   "set_merchant_category",
   "validate_budget_import",
+  "propose_account_removal",
   "loans_summary",
   "portfolio_overview",
   "positions",

@@ -9,6 +9,13 @@ export {
 } from "./assets/overview.js";
 export { setVehicle, vehicleAccount } from "./assets/vehicle.js";
 export {
+  isRemovableBankAccount,
+  prepareAccountRemoval,
+  proposeAccountRemoval,
+  removeBankAccount,
+  restoreBankAccount,
+} from "./budget/account-removal.js";
+export {
   addCashExpense,
   addCashExpenseCli,
   cacheLlmRules,

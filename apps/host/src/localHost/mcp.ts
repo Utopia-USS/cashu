@@ -59,6 +59,7 @@ const NATIVE_MCP_STORE_TOOLS = new Set([
   "upsert_topic_thesis",
   "set_instrument_segment",
   "validate_budget_import",
+  "propose_account_removal",
   "inspect_export",
   "validate_import",
 ]);

@@ -3,7 +3,13 @@ import { z } from "zod";
 import { empty, payload } from "./helpers.js";
 import { floatPaths, gid, jsonObject, nonEmpty, timestamp, ulid } from "./primitives.js";
 
-export const PROPOSAL_KINDS = ["strategy", "custom_rule", "import", "budget_import"] as const;
+export const PROPOSAL_KINDS = [
+  "strategy",
+  "custom_rule",
+  "import",
+  "budget_import",
+  "account_removal",
+] as const;
 
 /** Proposal payloads use gids and blob refs: a local `account_id` or a `staged` path is rejected. */
 const proposalPayload = jsonObject.refine((p) => !("account_id" in p) && !("staged" in p), {

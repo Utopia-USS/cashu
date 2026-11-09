@@ -43,6 +43,7 @@ import { createProductionMarket, type ProductionMarket } from "./market/producti
 import { classifyNativeCreationStartup } from "./nativeCreationJournal.js";
 import { readExistingNativeInventory } from "./nativeInventory.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
+import { nativeAccountRemovalApprovals } from "./proposals/accountRemovalApproval.js";
 import { nativeStrategyApprovals } from "./proposals/strategyApproval.js";
 import { currentRuntime, shimProgram, shippedSkillsSource } from "./runtime.js";
 import { hostUpdateBridge } from "./updateBridge.js";
@@ -269,6 +270,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               bind: (vault, stores) => connectors?.proposals.bind(vault, stores) ?? null,
             },
             strategyProposals: nativeStrategyApprovals({ dailyLock }),
+            accountProposals: nativeAccountRemovalApprovals({ dailyLock }),
             strategyLock: dailyLock,
             ...(workspace === undefined ? {} : { workspace }),
             marketFactory: (stores, isCurrent, now) => {

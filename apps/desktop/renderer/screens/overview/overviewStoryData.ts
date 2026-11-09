@@ -222,10 +222,13 @@ export const accounts: AccountsModel = {
     value,
     negative: false,
     muted: false,
+    remove: { label: "Remove", title: `Remove account ${name} from view`, onPress: noop },
   })),
   empty: null,
   wallet: [{ text: "Cash in the wallet " }, { text: "PLN 380.00", bold: true }],
   cash: { label: "+ cash expense", onPress: noop },
+  confirm: null,
+  undone: null,
 };
 
 export const loans: LoansModel = {

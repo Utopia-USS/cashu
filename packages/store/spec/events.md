@@ -783,8 +783,9 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 ### 8.10 Agent layer, connectors
 
 - `review.done` `{module, doneAt?, notes|null, stats}`; `review.undone` (TOMB).
-- `proposal.created` `{kind: strategy|custom_rule|import|budget_import, summary, reason|null, payload,
-  source}`; `payload` uses gids and blob refs (`account@`, `blob: {sha256, ext}`, never `account_id` or
+- `proposal.created` `{kind: strategy|custom_rule|import|budget_import|account_removal, summary,
+  reason|null, payload, source}` (`account_removal`: `{account@}`, approving it emits `account.removed`; a removed account's transactions
+  are out of the budget reads until `account.restored`); `payload` uses gids and blob refs (`account@`, `blob: {sha256, ext}`, never `account_id` or
   `staged`). `proposal.approved {result}` / `rejected {note|null}` / `failed {result}`: terminal FWW;
   side-effect events in the approval batch carry `cause`. `rejected.note` is the owner's note (Python
   `result.note`, view `result = {note}`, `{}` without one). `proposal.applyFailed {result, approval:
