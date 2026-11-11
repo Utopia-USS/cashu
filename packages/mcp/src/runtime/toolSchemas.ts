@@ -247,7 +247,7 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
     name: "propose_import",
     module: "investments",
     description:
-      "Propose importing a file into a brokerage account (account: the generated label or id from portfolio_overview). path: a cashu-format file or a CSV with a mapping (MCP never makes the app run code). Runs the preview and stores a pending import the owner commits in the app.",
+      "Propose importing a file into a brokerage account (account: use accounts[].account_id from portfolio_overview; an unmasked generated label is also accepted). path: a cashu-format file or a CSV with a mapping (MCP never makes the app run code). Runs the preview and stores a pending import the owner commits in the app.",
     properties: {
       path: {
         type: "string",

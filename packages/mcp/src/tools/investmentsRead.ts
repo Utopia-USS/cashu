@@ -365,6 +365,7 @@ export function portfolioOverview(ctx: Context): L.LabelledTree {
       message: systemText(ctx, w.message),
     })),
     accounts: ov.accounts.map((r) => ({
+      account_id: L.ref(encodeEntityRef("account", r.id)),
       account: L.account(labels.get(r.id) ?? null),
       name: L.identifier(r.name),
       broker: L.category(r.broker),

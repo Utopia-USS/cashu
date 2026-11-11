@@ -47,11 +47,11 @@ function account(ctx: Context, args: ToolArgs) {
   const row = brokerageAccounts(ctx.store.read).find(
     (a) =>
       wanted === a.gid ||
-      (wanted === null && pyCasefold(labels.get(a.gid) ?? "") === pyCasefold(value)),
+      (wanted === null && value !== "" && pyCasefold(labels.get(a.gid) ?? "") === pyCasefold(value)),
   );
   if (!row)
     throw new ToolError(
-      "no such brokerage account; use the account label or id from portfolio_overview",
+      "no such brokerage account; use accounts[].account_id from portfolio_overview",
       "not_found",
     );
   const label = labels.get(row.gid);
